@@ -27,8 +27,6 @@
   $: $heatmap = heatmap_labels[selected[0]]
 </script>
 
-<a href="/" class="back" sveltekit:prefetch>&laquo; back</a>
-
 <h1>{element.name}</h1>
 <h2>{element.category}</h2>
 
@@ -92,17 +90,5 @@
     font-size: 12pt;
     font-weight: lighter;
     opacity: 0.8;
-  }
-  a.back {
-    padding: 2pt 1ex;
-    border-radius: 4pt;
-    background: rgba(255, 255, 255, 0.1);
-    transition: color 0.3s, background-color 0.3s;
-    position: absolute;
-    top: 2em;
-    left: 2em;
-  }
-  a.back:hover {
-    background: rgba(255, 255, 255, 0.2);
   }
 </style>

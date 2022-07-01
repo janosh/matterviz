@@ -45,7 +45,7 @@
   div.periodic-table {
     display: grid;
     grid-template-columns: repeat(18, 1fr);
-    gap: 0.2vw;
+    gap: min(0.2vw, 3pt);
     min-width: 600px;
     max-width: 1500px;
     position: relative;

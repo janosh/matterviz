@@ -25,7 +25,7 @@
     {#each Object.keys(category_colors) as category}
       <label
         for="{category}-color"
-        transition:fade={{ duration: 200 }}
+        transition:fade|local={{ duration: 200 }}
         on:mouseenter={() => ($active_category = category)}
         on:focus={() => ($active_category = category)}
         on:mouseleave={() => ($active_category = null)}
@@ -47,6 +47,7 @@
     display: grid;
     grid-template-columns: repeat(3, 12em);
     gap: 2vw;
+    place-content: center;
   }
   div.grid > label {
     display: flex;

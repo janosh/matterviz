@@ -6,15 +6,17 @@
   export let y: number
   export let fill = `gray`
   export let active = false
+  export let tween_duration = 600
 
-  const tX = tweened(0, { duration: 400, easing: cubicOut })
-  const tY = tweened(0, { duration: 400, easing: cubicOut })
+  const tween_params = { duration: tween_duration, easing: cubicOut }
+  const tweened_x = tweened(0, tween_params)
+  const tweened_y = tweened(0, tween_params)
 
-  $: tX.set(x)
-  $: tY.set(y)
+  $: tweened_x.set(x)
+  $: tweened_y.set(y)
 </script>
 
-<g transform="translate({$tX} {$tY})" {fill} on:mouseenter class:active>
+<g transform="translate({$tweened_x} {$tweened_y})" {fill} on:mouseenter class:active>
   <circle cx="0" cy="0" r="3" />
 </g>
 

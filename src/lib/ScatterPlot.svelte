@@ -41,7 +41,7 @@
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
     <svg>
-      <Line data={scaled_data} />
+      <Line points={scaled_data.map(([x, y]) => [x, y])} />
       {#each scaled_data as [x, y, fill, element]}
         {@const active = $active_element?.name === element.name}
         <Datapoint
