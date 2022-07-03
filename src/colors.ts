@@ -1,4 +1,4 @@
-export const category_colors: Record<string, string> = {
+export const default_category_colors: Record<string, string> = {
   'diatomic-nonmetal': `#ff8c00`, // darkorange
   'noble-gas': `#9932cc`, // darkorchid
   'alkali-metal': `#006400`, // darkgreen
@@ -10,4 +10,7 @@ export const category_colors: Record<string, string> = {
   lanthanide: `#58748e`,
   actinide: `#6495ed`, // cornflowerblue
   experimental: `#808080`, // gray
+}
+export const category_colors: Record<string, string> = {
+  ...default_category_colors,
 }

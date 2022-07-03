@@ -4,7 +4,7 @@ export type Element = {
   atomic_radius: number
   boiling_point: number | null
   category: string
-  column: number // aka group
+  column: number // aka group, in range 1 - 18
   covalent_radius: number
   density: number
   discoverer: string
@@ -30,7 +30,7 @@ export type Element = {
   nonmetal: boolean | null
   number_of_isotopes: number
   number: number
-  phase: string
+  phase: 'Gas' | 'Liquid' | 'Solid'
   radioactive: boolean | null
   row: number // != period for lanthanides and actinides
   shells: number[]

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { category_colors } from '../colors'
   import elements from '../periodic-table-data.ts'
   import { active_element, color_scale, heatmap } from '../stores'
   import ColorCustomizer from './ColorCustomizer.svelte'
@@ -23,9 +22,8 @@
 
   {#each elements as element}
     {@const value = element[$heatmap]}
-    {@const heatmap_color = value ? $color_scale(value) : `transparent`}
-    {@const default_color = category_colors[element.category.replaceAll(` `, `-`)]}
-    {@const bg_color = $heatmap ? heatmap_color : default_color}
+    {@const heatmap_color = value ? $color_scale?.(value) : `transparent`}
+    {@const bg_color = $heatmap ? heatmap_color : null}
     <a
       href={element.name.toLowerCase()}
       style="grid-column: {element.column}; grid-row: {element.row};"

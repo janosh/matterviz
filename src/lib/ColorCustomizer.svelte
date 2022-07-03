@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from 'svelte/transition'
-  import { category_colors } from '../colors'
+  import { category_colors, default_category_colors } from '../colors'
   import { active_category } from '../stores'
 
   export let open = false
@@ -13,14 +13,14 @@
   }
 </script>
 
+<h2
+  on:click={() => (open = !open)}
+  title={!open && collapsible ? `Click to open color picker` : null}
+  style:cursor={collapsible ? `pointer` : `default`}
+>
+  Customize Colors
+</h2>
 <div class="grid">
-  <h2
-    on:click={() => (open = !open)}
-    title={!open && collapsible ? `Click to open color picker` : null}
-    style:cursor={collapsible ? `pointer` : `default`}
-  >
-    Customize Colors
-  </h2>
   {#if open || !collapsible}
     {#each Object.keys(category_colors) as category}
       <label
@@ -37,6 +37,14 @@
           bind:value={category_colors[category]}
         />
         {category.replaceAll(`-`, ` `)}
+        {#if category_colors[category] !== default_category_colors[category]}
+          <button
+            on:click={() =>
+              (category_colors[category] = default_category_colors[category])}
+          >
+            <small>reset</small>
+          </button>
+        {/if}
       </label>
     {/each}
   {/if}
@@ -68,7 +76,16 @@
     cursor: pointer;
   }
   h2 {
-    margin: 0;
-    white-space: nowrap;
+    text-align: center;
+  }
+  label > button {
+    background: none;
+    border: none;
+    color: white;
+    opacity: 0;
+    transition: 0.3s;
+  }
+  label:hover > button {
+    opacity: 0.5;
   }
 </style>

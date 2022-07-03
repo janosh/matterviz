@@ -3,7 +3,7 @@
 [![Netlify Status](https://api.netlify.com/api/v1/badges/42b5fd04-c538-4e3c-bd69-73e383989cfd/deploy-status)](https://app.netlify.com/sites/ptable-elements/deploys)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/janosh/periodic-table/main.svg?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)](https://results.pre-commit.ci/latest/github/janosh/periodic-table/main?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)
 
-A dynamic Periodic Table component written in Svelte.
+Interactive Periodic Table component written in Svelte.
 
 ![Screenshot of periodic table](static/2022-06-01-screenshot.png)
 

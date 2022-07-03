@@ -3,7 +3,7 @@
   import { Element } from '../types'
 
   export let element: Element
-  export let bg_color: string
+  export let bg_color: string | null
   export let style = ``
   export let show_number = true
   export let show_name = true
@@ -11,12 +11,13 @@
   export let precision = 2
 
   $: category = element.category.replaceAll(` `, `-`)
+  // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
+  $: bg_color = bg_color ?? `var(--${category}-bg-color)`
 </script>
 
 <div
   class="element-tile {category}"
-  class:active={$active_category === element.category.replaceAll(` `, `-`) ||
-    $active_element?.name === element.name}
+  class:active={$active_category === category || $active_element?.name === element.name}
   {style}
   style:background-color={bg_color}
 >
