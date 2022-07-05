@@ -12,7 +12,7 @@ active_element.subscribe((el) => {
   if (el) last_element.set(el)
 })
 
-export const heatmap = writable<string | null>(null)
+export const heatmap = writable<keyof Element | null>(null)
 
 export const color_scale = writable<ScaleLinear<number, number, never> | null>(
   null

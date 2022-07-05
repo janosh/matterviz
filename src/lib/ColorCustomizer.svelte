@@ -39,10 +39,10 @@
         {category.replaceAll(`-`, ` `)}
         {#if category_colors[category] !== default_category_colors[category]}
           <button
-            on:click={() =>
+            on:click|preventDefault={() =>
               (category_colors[category] = default_category_colors[category])}
           >
-            <small>reset</small>
+            reset
           </button>
         {/if}
       </label>
@@ -53,20 +53,22 @@
 <style>
   div.grid {
     display: grid;
-    grid-template-columns: repeat(3, 12em);
-    gap: 2vw;
+    grid-template-columns: repeat(auto-fill, minmax(12em, 1fr));
     place-content: center;
+    gap: 7pt;
   }
   div.grid > label {
+    padding: 1pt 6pt;
     display: flex;
     align-items: center;
     gap: 4pt;
+    border-radius: 3pt;
     text-transform: capitalize;
     font-weight: lighter;
     cursor: pointer;
   }
   div.grid > label:hover {
-    filter: brightness(130%);
+    background-color: rgba(255, 255, 255, 0.1);
   }
   div.grid > label > input {
     height: 3em;
@@ -74,18 +76,22 @@
     border: none;
     background-color: transparent;
     cursor: pointer;
+    aspect-ratio: 1;
   }
   h2 {
     text-align: center;
   }
   label > button {
     background: none;
-    border: none;
     color: white;
     opacity: 0;
     transition: 0.3s;
+    border-radius: 2pt;
   }
   label:hover > button {
-    opacity: 0.5;
+    opacity: 0.8;
+  }
+  label > button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
   }
 </style>
