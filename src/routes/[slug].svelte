@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import Select from 'svelte-multiselect'
   import { element_property_labels, heatmap_labels } from '../labels'
   import ElementPhoto from '../lib/ElementPhoto.svelte'
+  import PropertySelect from '../lib/PropertySelect.svelte'
   import ScatterPlot from '../lib/ScatterPlot.svelte'
-  import { active_element, heatmap } from '../stores'
+  import { active_element } from '../stores'
   import { Element } from '../types'
 
   export let element: Element
@@ -18,24 +17,15 @@
     if (unit) label = `${label} (${unit})`
     return [label, value]
   })
-  let selected: string[] = []
-  onMount(() => {
-    // set atomic radius as initial scatter plot data (note order in JS objects not guaranteed)
-    selected = [Object.keys(heatmap_labels)[1]]
-    $heatmap = Object.values(heatmap_labels)[1]
-  })
-  $: $heatmap = heatmap_labels[selected[0]]
+
+  // set atomic radius as initial heatmap
+  const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof Element
 </script>
 
 <h1>{element.name}</h1>
 <h2>{element.category}</h2>
 
-<Select
-  options={Object.keys(heatmap_labels)}
-  maxSelect={1}
-  bind:selected
-  placeholder="Select a heat map"
-/>
+<PropertySelect selected={[initial_heatmap]} />
 
 <main>
   <ElementPhoto style="border-radius: 4pt;" />
