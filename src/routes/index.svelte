@@ -1,29 +1,20 @@
 <script lang="ts">
-  import Select from 'svelte-multiselect'
   import '../app.css'
-  import { heatmap_labels } from '../labels'
   import EasterEgg from '../lib/EasterEgg.svelte'
   import PeriodicTable from '../lib/PeriodicTable.svelte'
-  import { heatmap } from '../stores'
+  import PropertySelect from '../lib/PropertySelect.svelte'
 
   let windowWidth: number
   let x_angle = 0
   let y_angle = 0
   let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
-  let selected: string[] = []
-  $: $heatmap = heatmap_labels[selected[0]]
 </script>
 
 <svelte:window bind:innerWidth={windowWidth} />
 
 <h1>Periodic Table of Elements</h1>
 
-<Select
-  options={Object.keys(heatmap_labels)}
-  maxSelect={1}
-  bind:selected
-  placeholder="Select a heat map"
-/>
+<PropertySelect />
 
 <div
   style:transform="rotateX({x_angle}deg) rotateY({y_angle}deg)"
