@@ -1,8 +1,8 @@
-import { Element } from './types'
+import { ChemicalElement } from './types'
 
 // TODO add labels and units for all elemental properties
 export const element_property_labels: Partial<
-  Record<keyof Element, [string, string | null]>
+  Record<keyof ChemicalElement, [string, string | null]>
 > = {
   number: [`Atomic Number`, null],
   atomic_mass: [`Atomic Mass`, `u`],
@@ -20,7 +20,7 @@ export const element_property_labels: Partial<
   specific_heat: [`Specific Heat`, `J/g`], // TODO check correct unit
 }
 
-const heatmap_keys: (keyof Element)[] = [
+const heatmap_keys: (keyof ChemicalElement)[] = [
   `atomic_mass`,
   `atomic_radius`,
   `covalent_radius`,
@@ -31,7 +31,7 @@ const heatmap_keys: (keyof Element)[] = [
   `first_ionization`,
 ]
 
-export const heatmap_labels: Partial<Record<string, keyof Element>> =
+export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
   Object.fromEntries(
     heatmap_keys.map((key) => {
       const [label, unit] = element_property_labels[key] ?? []

@@ -9,7 +9,6 @@ export const default_category_colors: Record<string, string> = {
   'post-transition-metal': `#938d4a`,
   lanthanide: `#58748e`,
   actinide: `#6495ed`, // cornflowerblue
-  experimental: `#808080`, // gray
 }
 export const category_colors: Record<string, string> = {
   ...default_category_colors,

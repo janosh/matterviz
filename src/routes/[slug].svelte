@@ -4,9 +4,9 @@
   import PropertySelect from '../lib/PropertySelect.svelte'
   import ScatterPlot from '../lib/ScatterPlot.svelte'
   import { active_element } from '../stores'
-  import { Element } from '../types'
+  import { ChemicalElement } from '../types'
 
-  export let element: Element
+  export let element: ChemicalElement
 
   $: $active_element = element
 
@@ -19,7 +19,7 @@
   })
 
   // set atomic radius as initial heatmap
-  const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof Element
+  const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof ChemicalElement
 </script>
 
 <h1>{element.name}</h1>

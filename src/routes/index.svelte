@@ -1,8 +1,10 @@
 <script lang="ts">
   import '../app.css'
+  import ColorCustomizer from '../lib/ColorCustomizer.svelte'
   import EasterEgg from '../lib/EasterEgg.svelte'
   import PeriodicTable from '../lib/PeriodicTable.svelte'
   import PropertySelect from '../lib/PropertySelect.svelte'
+  import { heatmap } from '../stores'
 
   let windowWidth: number
   let x_angle = 0
@@ -21,6 +23,10 @@
   class="auto-rotate-{auto_rotate}"
 >
   <PeriodicTable show_names={windowWidth > 1000} />
+
+  {#if !$heatmap}
+    <ColorCustomizer collapsible={false} />
+  {/if}
 </div>
 
 <EasterEgg bind:x_angle bind:y_angle bind:auto_rotate />

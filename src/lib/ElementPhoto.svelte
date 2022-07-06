@@ -1,11 +1,11 @@
 <script lang="ts">
   import { active_element } from '../stores'
-  import { Element } from '../types'
+  import { ChemicalElement } from '../types'
   import ElementTile from './ElementTile.svelte'
 
   export let style = ``
   // element defaults to active_element store but can be pinned by passing it as prop
-  export let element: Element | undefined = undefined
+  export let element: ChemicalElement | undefined = undefined
 
   $: elem = element ?? $active_element
 

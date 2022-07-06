@@ -47,7 +47,8 @@
     width: 25%;
   }
   div strong {
-    font-size: 2vw;
+    font-size: min(2vw, 2em);
+    line-height: min(2vw, 2em);
   }
   p {
     margin: 0;

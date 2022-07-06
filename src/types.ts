@@ -1,4 +1,4 @@
-export type Element = {
+export type ChemicalElement = {
   appearance: string
   atomic_mass: number
   atomic_radius: number

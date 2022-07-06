@@ -2,8 +2,8 @@
   import Select from 'svelte-multiselect'
   import { heatmap_labels } from '../labels'
   import { heatmap } from '../stores'
-  import { Element } from '../types'
-  export let selected: (keyof Element)[] = []
+  import { ChemicalElement } from '../types'
+  export let selected: (keyof ChemicalElement)[] = []
 
   $: $heatmap = heatmap_labels[selected[0]]
 </script>
