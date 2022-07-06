@@ -1,7 +1,6 @@
 <script lang="ts">
   import elements from '../periodic-table-data.ts'
   import { active_element, color_scale, heatmap } from '../stores'
-  import ColorCustomizer from './ColorCustomizer.svelte'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementStats from './ElementStats.svelte'
   import ElementTile from './ElementTile.svelte'
@@ -37,7 +36,6 @@
 
   <ElementPhoto style="grid-column: 1 / span 2; grid-row: 9 / span 2;" />
 </div>
-<ColorCustomizer collapsible={false} />
 
 <style>
   div.periodic-table {

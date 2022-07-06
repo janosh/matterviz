@@ -2,17 +2,17 @@ import { extent } from 'd3-array'
 import { ScaleLinear, scaleLinear } from 'd3-scale'
 import { writable } from 'svelte/store'
 import elements from './periodic-table-data.ts'
-import { Element } from './types'
+import { ChemicalElement } from './types'
 
 export const active_category = writable<string | null>(null)
 
-export const active_element = writable<Element | null>(null)
-export const last_element = writable<Element | null>(null)
+export const active_element = writable<ChemicalElement | null>(null)
+export const last_element = writable<ChemicalElement | null>(null)
 active_element.subscribe((el) => {
   if (el) last_element.set(el)
 })
 
-export const heatmap = writable<keyof Element | null>(null)
+export const heatmap = writable<keyof ChemicalElement | null>(null)
 
 export const color_scale = writable<ScaleLinear<number, number, never> | null>(
   null

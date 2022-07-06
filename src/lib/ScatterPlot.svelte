@@ -5,19 +5,19 @@
   import { element_property_labels } from '../labels'
   import elements from '../periodic-table-data.ts'
   import { active_element, color_scale, heatmap } from '../stores'
-  import { Element } from '../types'
+  import { ChemicalElement } from '../types'
   import Line from './Line.svelte'
   import Datapoint from './ScatterPoint.svelte'
 
   export let style = ``
 
-  const dispatch = createEventDispatcher<{ hover: { element: Element } }>()
-  type $$Events = { hover: CustomEvent<{ element: Element }> }
+  const dispatch = createEventDispatcher<{ hover: { element: ChemicalElement } }>()
+  type $$Events = { hover: CustomEvent<{ element: ChemicalElement }> }
 
-  let data: [number, number, Element][]
+  let data: [number, number, ChemicalElement][]
   $: data = elements.map((el) => [el.number, el[$heatmap], el])
 
-  const padding = { top: 15, bottom: 25, left: 35, right: 20 } // pixels
+  const padding = { top: 15, bottom: 30, left: 35, right: 20 } // pixels
   const axis_label_offset = { x: 15, y: 20 } // pixels
 
   let width: number
@@ -33,7 +33,7 @@
     .domain(yrange)
     .range([height - padding.bottom, padding.top])
 
-  let scaled_data: [number, number, string, Element][]
+  let scaled_data: [number, number, string, ChemicalElement][]
   // make sure to apply colorscale to y values before scaling
   $: scaled_data = data
     .filter(([x, y]) => !(isNaN(x) || isNaN(y) || x === null || y === null))
@@ -88,7 +88,7 @@
 </div>
 
 <style>
-  .scatter {
+  div.scatter {
     width: 100%;
     height: 100%;
     display: flex;
@@ -99,7 +99,7 @@
     fill: white;
     font-weight: lighter;
   }
-  .tick {
+  g.tick {
     font-size: 9pt;
   }
   line {

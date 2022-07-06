@@ -17,10 +17,11 @@
   on:click={() => (open = !open)}
   title={!open && collapsible ? `Click to open color picker` : null}
   style:cursor={collapsible ? `pointer` : `default`}
+  transition:fade|local
 >
   Customize Colors
 </h2>
-<div class="grid">
+<div class="grid" transition:fade|local>
   {#if open || !collapsible}
     {#each Object.keys(category_colors) as category}
       <label
@@ -56,6 +57,8 @@
     grid-template-columns: repeat(auto-fill, minmax(12em, 1fr));
     place-content: center;
     gap: 7pt;
+    max-width: 70em;
+    margin: 2em auto;
   }
   div.grid > label {
     padding: 1pt 6pt;
