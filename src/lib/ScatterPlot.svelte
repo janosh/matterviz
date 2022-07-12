@@ -78,7 +78,11 @@
           </g>
         {/each}
         {#if heatmap_unit}
-          <text x={padding.left - axis_label_offset.y} y="-{padding.top - 20}">
+          <text
+            text-anchor="start"
+            x={padding.left - axis_label_offset.y}
+            y="-{padding.top - 12}"
+          >
             {heatmap_unit}
           </text>
         {/if}
@@ -107,7 +111,7 @@
     stroke-dasharray: 4;
     stroke-width: 0.4;
   }
-  text {
+  g.x-axis text {
     text-anchor: middle;
   }
   g.x-axis text {

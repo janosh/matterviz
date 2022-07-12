@@ -1,9 +1,10 @@
 <script lang="ts">
   import { last_element } from '../stores'
 
-  export let padding = `1vw 3vw`
+  export let padding = `1vw 2vw`
   export let precision = 2
-  $: element = $last_element
+
+  $: element = $last_element // used to decide whether to show user tip to hover an element tile
 </script>
 
 {#if element}
@@ -11,56 +12,62 @@
     <h2>
       {element.number} - {element.name} <small>{element.category}</small>
     </h2>
-    <div style="display: flex;">
-      <section>
-        <p>
-          Atomic Mass
-          <abbr title="Dalton aka atomic mass unit">(u)</abbr>
-        </p>
-        <strong>{parseFloat(element.atomic_mass?.toFixed(precision))}</strong>
-      </section>
-      <section>
-        <p>
-          Density
-          <abbr title="grams per cubic centimeter">(g/cm&sup3;)</abbr>
-        </p>
-        <strong>{parseFloat(element.density?.toFixed(precision))}</strong>
-      </section>
-      <section>
-        <p>Phase</p>
-        <strong>{element.phase}</strong>
-      </section>
-      <section>
-        <p>Year of Discovery</p>
-        <strong>
-          {element.year}
-        </strong>
-      </section>
-    </div>
+    <section>
+      <p>
+        Atomic Mass
+        <abbr title="Dalton aka atomic mass unit">(u)</abbr>
+      </p>
+      <strong>{parseFloat(element.atomic_mass?.toFixed(precision))}</strong>
+    </section>
+    <section>
+      <p>
+        Density
+        <abbr title="grams per cubic centimeter">(g/cm&sup3;)</abbr>
+      </p>
+      <strong>{parseFloat(element.density?.toFixed(precision))}</strong>
+    </section>
+    <section>
+      <p>Phase</p>
+      <strong>{element.phase}</strong>
+    </section>
+    <section>
+      <p>Year of Discovery</p>
+      <strong>
+        {element.year}
+      </strong>
+    </section>
   </div>
 {:else}
   <h3 style="text-align: center;">Try hovering an element!</h3>
 {/if}
 
 <style>
+  div {
+    display: grid;
+    grid-template: auto auto / repeat(4, 1fr);
+    place-items: center;
+  }
   div > section {
-    width: 25%;
+    display: grid;
+    gap: 0.5vw;
   }
-  div strong {
-    font-size: min(2vw, 2em);
-    line-height: min(2vw, 2em);
+  div > section > strong {
+    font-size: 1.6vw;
   }
-  p {
+  div > section > p {
     margin: 0;
     font-weight: lighter;
-    font-size: clamp(6pt, 1.2vw, 15pt);
+    font-size: 1.2vw;
   }
-  h2 {
-    font-size: clamp(9pt, 3vw, 25pt);
+  div > h2 {
+    grid-column: 1 / -1;
+    font-size: min(3vw, 3em);
     white-space: nowrap;
+    margin-top: 0;
+    align-self: end;
   }
-  h2 small {
-    margin-left: 8pt;
+  div > h2 > small {
+    margin-left: min(1vw, 10pt);
     font-weight: 100;
     opacity: 0.7;
   }

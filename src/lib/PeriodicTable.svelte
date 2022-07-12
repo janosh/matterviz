@@ -43,7 +43,6 @@
     grid-template-columns: repeat(18, 1fr);
     gap: min(0.2vw, 3pt);
     min-width: 600px;
-    max-width: 1500px;
     position: relative;
     margin: 2em auto 4em;
   }
