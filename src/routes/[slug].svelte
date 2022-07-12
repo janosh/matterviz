@@ -20,18 +20,29 @@
 
   // set atomic radius as initial heatmap
   const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof ChemicalElement
+
+  $: head_title = `${element.name} | Periodic Table`
 </script>
+
+<svelte:head>
+  <title>{head_title}</title>
+  <meta property="og:title" content={head_title} />
+</svelte:head>
 
 <h1>{element.name}</h1>
 <h2>{element.category}</h2>
 
 <PropertySelect selected={[initial_heatmap]} />
 
-<main>
+<section>
   <ElementPhoto style="border-radius: 4pt;" />
 
   <ScatterPlot />
-</main>
+</section>
+
+{#if element.summary}
+  <p class="description">{@html element.summary}</p>
+{/if}
 
 <div class="properties">
   {#each key_vals as [label, value]}
@@ -52,11 +63,17 @@
     font-weight: lighter;
     opacity: 0.7;
   }
-  main {
+  section {
     margin: 2em 0;
     display: grid;
     gap: 2em;
     grid-template-columns: 1fr 2fr;
+  }
+  p.description {
+    text-align: center;
+    opacity: 0.9;
+    margin: 3em auto;
+    max-width: 50em;
   }
   div.properties {
     display: grid;
