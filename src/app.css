@@ -3,7 +3,7 @@
 }
 body {
   background: var(--page-bg);
-  padding: 4em;
+  padding: 2vw 6vw;
   font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   margin: auto;
   color: #eee;

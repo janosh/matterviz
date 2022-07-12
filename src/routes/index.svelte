@@ -12,6 +12,11 @@
   let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
 </script>
 
+<svelte:head>
+  <title>Periodic Table</title>
+  <meta property="og:title" content="Periodic Table" />
+</svelte:head>
+
 <svelte:window bind:innerWidth={windowWidth} />
 
 <h1>Periodic Table of Elements</h1>
