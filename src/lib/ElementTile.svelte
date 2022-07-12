@@ -49,7 +49,7 @@
     place-items: center;
     place-content: center;
     background-color: var(--experimental-bg-color);
-    border-radius: 1pt;
+    border-radius: var(--elem-tile-border-radius, 0.1vw);
     color: white;
   }
   div.element-tile.active,
@@ -60,25 +60,24 @@
     line-height: 1em;
   }
   .atomic-number {
-    font-size: max(6pt, min(9pt, 0.8vw));
+    font-size: 0.9vw;
     position: absolute;
-    top: 0.3vw;
+    top: 0.35vw;
     font-weight: lighter;
-    left: 0.3vw;
+    left: 0.35vw;
   }
   .symbol {
-    font-size: min(2vw, 19pt);
+    font-size: 2vw;
   }
   span.name,
   span.value {
     position: absolute;
-    bottom: 2pt;
-    font-weight: lighter;
+    bottom: 0.35vw;
   }
   span.value {
-    font-size: max(8pt, min(10pt, 0.8vw));
+    font-size: 0.8vw;
   }
   span.name {
-    font-size: max(5pt, min(7pt, 0.65vw));
+    font-size: 0.65vw;
   }
 </style>

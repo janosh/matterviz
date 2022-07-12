@@ -35,7 +35,7 @@
   }
   main {
     margin: auto;
-    max-width: 70em;
+    max-width: 75em;
   }
   a.back {
     padding: 2pt 1ex;
