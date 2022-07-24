@@ -16,7 +16,7 @@
 
 <style>
   footer {
-    margin: 6em 0 0;
+    margin: 6em 0 2em;
     text-align: center;
   }
 </style>

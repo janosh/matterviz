@@ -118,6 +118,6 @@
     dominant-baseline: hanging;
   }
   g.y-axis text {
-    dominant-baseline: middle;
+    dominant-baseline: central;
   }
 </style>
