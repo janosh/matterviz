@@ -5,7 +5,7 @@
 
 Interactive Periodic Table component written in Svelte.
 
-![Screenshot of periodic table](static/2022-06-01-screenshot.png)
+![Screenshot of periodic table](static/2022-07-12-screenshot.png)
 
 ## Usage
 
