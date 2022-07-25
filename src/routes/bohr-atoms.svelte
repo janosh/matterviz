@@ -18,8 +18,10 @@
 <ol>
   {#each elements as { shells, symbol, number, name }}
     <li>
-      <strong><a href="/{name.toLowerCase()}">{number}</a></strong>
-      <BohrAtom {shells} label={symbol} {name} {orbiting} />
+      <strong>
+        <a href="/{name.toLowerCase()}">{number}</a>
+      </strong>
+      <BohrAtom {shells} {symbol} {name} {orbiting} />
     </li>
   {/each}
 </ol>

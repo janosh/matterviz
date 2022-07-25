@@ -6,7 +6,7 @@
   import PropertySelect from '../lib/PropertySelect.svelte'
   import { heatmap } from '../stores'
 
-  let windowWidth: number
+  let window_width: number
   let x_angle = 0
   let y_angle = 0
   let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
@@ -17,7 +17,7 @@
   <meta property="og:title" content="Periodic Table" />
 </svelte:head>
 
-<svelte:window bind:innerWidth={windowWidth} />
+<svelte:window bind:innerWidth={window_width} />
 
 <h1>Periodic Table of Elements</h1>
 
@@ -27,7 +27,7 @@
   style:transform="rotateX({x_angle}deg) rotateY({y_angle}deg)"
   class="auto-rotate-{auto_rotate}"
 >
-  <PeriodicTable show_names={windowWidth > 1000} />
+  <PeriodicTable show_names={window_width > 1000} />
 
   {#if !$heatmap}
     <ColorCustomizer collapsible={false} />
@@ -41,6 +41,7 @@
     text-align: center;
     line-height: 1.1;
     font-size: clamp(20pt, 5.5vw, 50pt);
+    margin: 0 1em 2em;
   }
   div.auto-rotate-x {
     animation: spin-x 30s linear infinite;

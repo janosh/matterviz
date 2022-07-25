@@ -25,6 +25,7 @@
     --sms-max-width: 22em;
     --sms-border: 1px dotted teal;
     --sms-focus-border: 1px dotted cornflowerblue;
+    --sms-active-color: cornflowerblue;
   }
   :global(div.multiselect) {
     margin: auto;
