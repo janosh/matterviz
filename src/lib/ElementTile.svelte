@@ -48,7 +48,6 @@
     display: flex;
     place-items: center;
     place-content: center;
-    background-color: var(--experimental-bg-color);
     border-radius: var(--elem-tile-border-radius, 0.1vw);
     color: white;
   }

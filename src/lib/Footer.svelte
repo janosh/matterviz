@@ -12,6 +12,8 @@
     <strong>&ensp;&bull;&ensp;</strong>
     <a href="acknowledgements">Acknowledgements</a>
   {/if}
+  <strong>&ensp;&bull;&ensp;</strong>
+  <a href="/bohr-atoms">Bohr Atoms</a>
 </footer>
 
 <style>
