@@ -1,10 +1,12 @@
 <script lang="ts">
   import { element_property_labels, heatmap_labels } from '../labels'
+  import BohrAtom from '../lib/BohrAtom.svelte'
   import ElementPhoto from '../lib/ElementPhoto.svelte'
+  import ElementStats from '../lib/ElementStats.svelte'
   import PropertySelect from '../lib/PropertySelect.svelte'
   import ScatterPlot from '../lib/ScatterPlot.svelte'
   import { active_element } from '../stores'
-  import { ChemicalElement } from '../types'
+  import type { ChemicalElement } from '../types'
 
   export let element: ChemicalElement
 
@@ -22,15 +24,17 @@
   const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof ChemicalElement
 
   $: head_title = `${element.name} | Periodic Table`
+
+  let orbiting = true
+  let window_width: number
 </script>
+
+<svelte:window bind:innerWidth={window_width} />
 
 <svelte:head>
   <title>{head_title}</title>
   <meta property="og:title" content={head_title} />
 </svelte:head>
-
-<h1>{element.name}</h1>
-<h2>{element.category}</h2>
 
 <PropertySelect selected={[initial_heatmap]} />
 
@@ -40,9 +44,17 @@
   <ScatterPlot />
 </section>
 
-{#if element.summary}
-  <p class="description">{@html element.summary}</p>
-{/if}
+<section>
+  {#if window_width > 900}
+    <ElementStats />
+  {/if}
+
+  <div on:click={() => (orbiting = !orbiting)}>
+    <BohrAtom {...element} adapt_size={true} {orbiting} />
+  </div>
+
+  <p style="flex: 1">{@html element.summary}</p>
+</section>
 
 <div class="properties">
   {#each key_vals as [label, value]}
@@ -55,24 +67,21 @@
 </div>
 
 <style>
-  h1,
-  h2 {
-    text-align: center;
-  }
-  h2 {
-    font-weight: lighter;
-    opacity: 0.7;
-  }
-  section {
+  section:nth-child(even) {
     margin: 2em 0;
     display: grid;
     gap: 2em;
     grid-template-columns: 1fr 2fr;
   }
-  p.description {
+  section:nth-child(odd) {
+    margin: 2em 0;
+    display: flex;
+    gap: 2em;
+    place-items: center;
+  }
+  section p {
     text-align: center;
-    opacity: 0.9;
-    margin: 3em auto;
+
     max-width: 50em;
   }
   div.properties {
