@@ -1,5 +1,16 @@
 :root {
   --page-bg: #090019;
+  --diatomic-nonmetal-bg-color: #ff8c00;
+  --noble-gas-bg-color: darkorchid;
+  --alkali-metal-bg-color: darkgreen;
+  --alkaline-earth-metal-bg-color: darkslateblue;
+  --metalloid-bg-color: darkgoldenrod;
+  --polyatomic-nonmetal-bg-color: brown;
+  --transition-metal-bg-color: teal;
+  --post-transition-metal-bg-color: #938d4a;
+  --lanthanide-bg-color: #58748e;
+  --actinide-bg-color: cornflowerblue;
+  --experimental-bg-color: gray;
 }
 body {
   background: var(--page-bg);
