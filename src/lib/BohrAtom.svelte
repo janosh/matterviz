@@ -1,9 +1,10 @@
 <script lang="ts">
-  export let label = ``
-  export let name = ``
-  export let size = 270
-  export let shells: number[]
-  export let shell_width = 15
+  export let symbol = `` // usually H, He, etc. but can be anything
+  export let name = `` // usually Hydrogen, Helium, etc. but can be anything
+  export let shells: number[] = [] // e.g. [2, 8, 6] for sulfur
+  export let adapt_size = false
+  export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
+  export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 30 : 270
   export let base_fill = `white`
   export let orbiting = true
   // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
@@ -39,8 +40,8 @@
       <title>{name}</title>
     {/if}
   </circle>
-  {#if label}
-    <text>{label}</text>
+  {#if symbol}
+    <text>{symbol}</text>
   {/if}
 
   <!-- electron orbitals -->
