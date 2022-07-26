@@ -5,7 +5,7 @@
   import { element_property_labels } from '../labels'
   import elements from '../periodic-table-data.ts'
   import { active_element, color_scale, heatmap } from '../stores'
-  import { ChemicalElement } from '../types'
+  import type { ChemicalElement } from '../types'
   import Line from './Line.svelte'
   import Datapoint from './ScatterPoint.svelte'
 

@@ -1,4 +1,4 @@
-import { RequestHandler } from '@sveltejs/kit'
+import type { RequestHandler } from '@sveltejs/kit'
 import elements from '../periodic-table-data'
 
 export const GET: RequestHandler = ({ params }) => {

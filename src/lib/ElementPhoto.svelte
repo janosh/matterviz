@@ -1,6 +1,6 @@
 <script lang="ts">
   import { active_element } from '../stores'
-  import { ChemicalElement } from '../types'
+  import type { ChemicalElement } from '../types'
 
   export let style = ``
   // element defaults to active_element store but can be pinned by passing it as prop
