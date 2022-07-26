@@ -1,4 +1,4 @@
-import { ChemicalElement } from './types'
+import type { ChemicalElement } from './types'
 
 // TODO add labels and units for all elemental properties
 export const element_property_labels: Partial<

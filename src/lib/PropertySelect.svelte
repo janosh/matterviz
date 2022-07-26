@@ -2,10 +2,10 @@
   import Select from 'svelte-multiselect'
   import { heatmap_labels } from '../labels'
   import { heatmap } from '../stores'
-  import { ChemicalElement } from '../types'
+  import type { ChemicalElement } from '../types'
   export let selected: (keyof ChemicalElement)[] = []
 
-  $: $heatmap = heatmap_labels[selected[0]]
+  $: $heatmap = heatmap_labels[selected[0]] ?? null
 </script>
 
 <Select

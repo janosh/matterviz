@@ -1,8 +1,9 @@
 import { extent } from 'd3-array'
-import { ScaleLinear, scaleLinear } from 'd3-scale'
+import type { ScaleLinear } from 'd3-scale'
+import { scaleLinear } from 'd3-scale'
 import { writable } from 'svelte/store'
 import elements from './periodic-table-data.ts'
-import { ChemicalElement } from './types'
+import type { ChemicalElement } from './types'
 
 export const active_category = writable<string | null>(null)
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { active_category, active_element } from '../stores'
-  import { ChemicalElement } from '../types'
+  import type { ChemicalElement } from '../types'
 
   export let element: ChemicalElement
   export let bg_color: string | null
