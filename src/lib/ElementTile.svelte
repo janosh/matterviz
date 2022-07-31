@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { active_category, active_element } from '../stores'
+  import { active_category, active_element, last_element } from '../stores'
   import type { ChemicalElement } from '../types'
 
   export let element: ChemicalElement
   export let bg_color: string | null
-  export let style = ``
   export let show_number = true
   export let show_name = true
   export let value: number | undefined = undefined
@@ -18,8 +17,8 @@
 <div
   class="element-tile {category}"
   class:active={$active_category === category || $active_element?.name === element.name}
-  {style}
   style:background-color={bg_color}
+  class:last-active={$last_element === element}
 >
   {#if show_number}
     <span class="atomic-number">
@@ -43,7 +42,7 @@
 <style>
   div.element-tile {
     position: relative;
-    transition: 0.4s;
+    transition: background-color 0.4s;
     aspect-ratio: 1;
     display: flex;
     place-items: center;
@@ -51,8 +50,10 @@
     border-radius: var(--elem-tile-border-radius, 0.1vw);
     color: white;
   }
-  div.element-tile.active,
-  div.element-tile:hover {
+  div.element-tile.last-active {
+    filter: brightness(120%);
+  }
+  div.element-tile.active {
     filter: brightness(130%);
   }
   div.element-tile span {

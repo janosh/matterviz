@@ -1,6 +1,6 @@
 <script lang="ts">
   import elements from '../periodic-table-data.ts'
-  import { active_element, color_scale, heatmap } from '../stores'
+  import { active_element, color_scale, heatmap, last_element } from '../stores'
   import BohrAtom from './BohrAtom.svelte'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementStats from './ElementStats.svelte'
@@ -26,10 +26,10 @@
     {/if}
   </TableInset>
 
-  {#if show_active_elem_bohr_model && $active_element && window_width > 1300}
-    {@const { shells, name, symbol } = $active_element}
+  {#if show_active_elem_bohr_model && $last_element && window_width > 1300}
+    {@const { shells, name, symbol } = $last_element}
     <div class="bohr-atom">
-      <BohrAtom {shells} {name} {symbol} />
+      <BohrAtom {shells} name="Bohr Model of {name}" {symbol} />
     </div>
   {/if}
 

@@ -8,9 +8,10 @@ import type { ChemicalElement } from './types'
 export const active_category = writable<string | null>(null)
 
 export const active_element = writable<ChemicalElement | null>(null)
+
 export const last_element = writable<ChemicalElement | null>(null)
 active_element.subscribe((el) => {
-  if (el) last_element.set(el)
+  if (el !== null) last_element.set(el)
 })
 
 export const heatmap = writable<keyof ChemicalElement | null>(null)
@@ -20,7 +21,8 @@ export const color_scale = writable<ScaleLinear<number, number, never> | null>(
 )
 
 heatmap.subscribe((heatmap_val) => {
-  const heatmap_range = extent(elements.map((el) => el[heatmap_val]))
+  if (!heatmap_val) return
+  const heatmap_range = extent(elements.map((el) => el[heatmap_val] as number))
   const scale = scaleLinear().domain(heatmap_range).range([`blue`, `red`])
   color_scale.set(scale)
 })
