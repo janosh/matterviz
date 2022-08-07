@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { extent } from 'd3-array'
+  import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { curveMonotoneX, line } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
@@ -10,7 +10,7 @@
   export let area_color = `rgba(255, 255, 255, 0.1)`
   export let area_stroke: string | null = null
   export let tween_duration = 600
-
+  export let origin: [number, number]
   export let points: [number, number][]
 
   const lineGenerator = line()
@@ -27,12 +27,12 @@
   const tweened_area = tweened(``, tween_params)
 
   $: [x_min, x_max] = extent(points.map((p) => p[0]))
-  $: [_, y_min] = extent(points.map((p) => p[1]))
   $: line_path = lineGenerator(points)
 
   $: tweened_line.set(line_path)
 
-  $: area_path = `${line_path}L${x_max},${y_min}L${x_min},${y_min}Z`
+  $: ymin = origin[1] ?? min(points.map((p) => p[1]))
+  $: area_path = `${line_path}L${x_max},${ymin}L${x_min},${ymin}Z`
   $: tweened_area.set(area_path)
 </script>
 

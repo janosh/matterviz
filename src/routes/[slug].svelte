@@ -41,7 +41,7 @@
 <section>
   <ElementPhoto style="border-radius: 4pt;" />
 
-  <ScatterPlot />
+  <ScatterPlot ylim={[0, null]} />
 </section>
 
 <section>
