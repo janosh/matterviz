@@ -40,3 +40,5 @@ export type ChemicalElement = {
   symbol: string
   year: number | string
 }
+
+export type PlotPoint = [number, number, ChemicalElement]
