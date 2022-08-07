@@ -21,8 +21,8 @@
   <TableInset>
     {#if $heatmap}
       <ScatterPlot
-        on:hover={(e) => ($active_element = e.detail.element)}
         ylim={[0, null]}
+        on_hover_point={(point) => ($active_element = point[2])}
       />
     {:else if show_active_elem_stats}
       <ElementStats />

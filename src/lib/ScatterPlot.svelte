@@ -1,38 +1,32 @@
 <script lang="ts">
-  import { extent } from 'd3-array'
+  import { bisector, extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
-  import { createEventDispatcher } from 'svelte'
   import { element_property_labels } from '../labels'
   import elements from '../periodic-table-data.ts'
   import { active_element, color_scale, heatmap } from '../stores'
-  import type { ChemicalElement } from '../types'
+  import type { ChemicalElement, PlotPoint } from '../types'
   import Line from './Line.svelte'
   import Datapoint from './ScatterPoint.svelte'
 
   export let style = ``
   export let xlim: [number | null, number | null] = [null, null]
   export let ylim: [number | null, number | null] = [null, null]
-  export let padding = {} // pixels
   export let pad_top = 5
   export let pad_bottom = 30
   export let pad_left = 30
   export let pad_right = 20
+  export let on_hover_point: (point: PlotPoint) => void = () => {}
 
-  $: _padding = { top: 20, bottom: 30, left: 30, right: 20, ...padding }
-
-  const dispatch = createEventDispatcher<{ hover: { element: ChemicalElement } }>()
-  type $$Events = { hover: CustomEvent<{ element: ChemicalElement }> }
-
-  let data: [number, number, ChemicalElement][]
-  $: data = elements.map((el) => [el.number, el[$heatmap], el])
+  let data_points: PlotPoint[]
+  $: data_points = elements.map((el) => [el.number, el[$heatmap], el])
 
   const axis_label_offset = { x: 15, y: 20 } // pixels
 
   let width: number
   let height: number
   // determine x/y-range from data but default to x/y-lim if defined
-  $: xrange = extent(data, (point) => point[0]).map((x, idx) => xlim[idx] ?? x)
-  $: yrange = extent(data, (point) => point[1]).map((y, idx) => ylim[idx] ?? y)
+  $: xrange = extent(data_points, (point) => point[0]).map((x, idx) => xlim[idx] ?? x)
+  $: yrange = extent(data_points, (point) => point[1]).map((y, idx) => ylim[idx] ?? y)
 
   $: x_scale = scaleLinear()
     .domain(xrange)
@@ -44,29 +38,40 @@
 
   let scaled_data: [number, number, string, ChemicalElement][]
   // make sure to apply colorscale to y values before scaling
-  $: scaled_data = data
+  $: scaled_data = data_points
     .filter(([x, y]) => !(isNaN(x) || isNaN(y) || x === null || y === null))
     .map(([x, y, elem]) => [x_scale(x), y_scale(y), $color_scale?.(y), elem])
 
-  $: heatmap_unit = element_property_labels[$heatmap]?.[1]
+  $: [heatmap_label, heatmap_unit] = element_property_labels[$heatmap]
+
+  let tooltip_point: PlotPoint
+  let hovered = false
+  const bisect = bisector((data_point: PlotPoint) => data_point[0]).right
+
+  function on_mouse_move(event: MouseEvent) {
+    hovered = true
+    const mouse_coords = [event.offsetX, event.offsetY]
+
+    // returns point to right of our current mouse position
+    let arr_idx = bisect(data_points, x_scale.invert(mouse_coords[0]))
+
+    if (arr_idx < data_points.length) {
+      tooltip_point = data_points[arr_idx] // update point
+      on_hover_point(tooltip_point)
+    }
+  }
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
-    <svg>
+    <svg on:mousemove={on_mouse_move} on:mouseleave={() => (hovered = false)}>
       <Line
         points={scaled_data.map(([x, y]) => [x, y])}
         origin={[x_scale(xrange[0]), y_scale(yrange[0])]}
       />
       {#each scaled_data as [x, y, fill, element]}
         {@const active = $active_element?.name === element.name}
-        <Datapoint
-          {x}
-          {y}
-          {fill}
-          {active}
-          on:mouseenter={() => dispatch(`hover`, { element })}
-        />
+        <Datapoint {x} {y} {fill} {active} />
       {/each}
 
       <!-- x axis -->
@@ -93,6 +98,21 @@
           </g>
         {/each}
       </g>
+
+      {#if tooltip_point}
+        {@const [raw_x, raw_y] = tooltip_point}
+        {@const [x, y] = [x_scale(raw_x), y_scale(raw_y)]}
+        <circle cx={x} cy={y} r="5" fill="orange" />
+        {#if hovered}
+          <foreignObject x={x + 5} {y} width="200" height="200">
+            <strong>{tooltip_point[2].name}</strong>
+            <br />number = {raw_x}
+            {#if raw_y}
+              <br />{heatmap_label} = {raw_y}{heatmap_unit}
+            {/if}
+          </foreignObject>
+        {/if}
+      {/if}
     </svg>
   {/if}
 </div>
