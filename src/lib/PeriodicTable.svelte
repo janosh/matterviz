@@ -20,7 +20,10 @@
 <div class="periodic-table">
   <TableInset>
     {#if $heatmap}
-      <ScatterPlot on:hover={(e) => ($active_element = e.detail.element)} />
+      <ScatterPlot
+        on:hover={(e) => ($active_element = e.detail.element)}
+        ylim={[0, null]}
+      />
     {:else if show_active_elem_stats}
       <ElementStats />
     {/if}
