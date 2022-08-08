@@ -31,7 +31,7 @@ code {
   padding: 1pt 3pt;
   border-radius: 3pt;
   font-size: 1.3em;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: black;
 }
 pre code {
   background-color: transparent;

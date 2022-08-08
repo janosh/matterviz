@@ -5,6 +5,8 @@
   export let precision = 2
 
   $: element = $last_element // used to decide whether to show user tip to hover an element tile
+
+  $: density_unit = $last_element?.phase === `Gas` ? `g/liter` : `g/cm³`
 </script>
 
 {#if element}
@@ -22,7 +24,7 @@
     <section>
       <p>
         Density
-        <abbr title="grams per cubic centimeter">(g/cm&sup3;)</abbr>
+        <abbr title="grams per cubic centimeter">({density_unit})</abbr>
       </p>
       <strong>{parseFloat(element.density?.toFixed(precision))}</strong>
     </section>

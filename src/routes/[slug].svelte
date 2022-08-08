@@ -13,10 +13,16 @@
   $: $active_element = element
 
   $: key_vals = Object.entries(element_property_labels).map(([key, [label, unit]]) => {
-    let value = element[key]
+    let value = element[key as keyof ChemicalElement]
     if (typeof value === `number`) value = parseFloat(value.toFixed(2))
     if (Array.isArray(value)) value = value.join(`, `)
-    if (unit) label = `${label} (${unit})`
+    if (unit) {
+      if (label === `Density`) {
+        if (element.phase === `Gas`) unit = `g/liter`
+        else unit = `g/cm³`
+      }
+      value = `${value} &thinsp;${unit}`
+    }
     return [label, value]
   })
 
@@ -59,7 +65,7 @@
 <div class="properties">
   {#each key_vals as [label, value]}
     {#if value}<div>
-        <strong>{value}</strong>
+        <strong>{@html value}</strong>
         <small>{label}</small>
       </div>
     {/if}

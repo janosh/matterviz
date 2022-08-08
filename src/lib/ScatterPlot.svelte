@@ -15,7 +15,7 @@
   export let pad_bottom = 30
   export let pad_left = 30
   export let pad_right = 20
-  export let on_hover_point: (point: PlotPoint) => void = () => {}
+  export let on_hover_point: (point: PlotPoint) => void | null = null
 
   let data_points: PlotPoint[]
   $: data_points = elements.map((el) => [el.number, el[$heatmap], el])
@@ -57,7 +57,7 @@
 
     if (arr_idx < data_points.length) {
       tooltip_point = data_points[arr_idx] // update point
-      on_hover_point(tooltip_point)
+      if (on_hover_point) on_hover_point(tooltip_point)
     }
   }
 </script>
@@ -100,15 +100,14 @@
       </g>
 
       {#if tooltip_point}
-        {@const [raw_x, raw_y] = tooltip_point}
-        {@const [x, y] = [x_scale(raw_x), y_scale(raw_y)]}
+        {@const [atomic_num, raw_y] = tooltip_point}
+        {@const [x, y] = [x_scale(atomic_num), y_scale(raw_y)]}
         <circle cx={x} cy={y} r="5" fill="orange" />
         {#if hovered}
-          <foreignObject x={x + 5} {y} width="200" height="200">
-            <strong>{tooltip_point[2].name}</strong>
-            <br />number = {raw_x}
+          <foreignObject x={x + 5} {y} width="150" height="200">
+            <strong>{atomic_num} - {tooltip_point[2].name}</strong>
             {#if raw_y}
-              <br />{heatmap_label} = {raw_y}{heatmap_unit}
+              <br />{heatmap_label} = {parseFloat(raw_y.toFixed(2))}{heatmap_unit}
             {/if}
           </foreignObject>
         {/if}
