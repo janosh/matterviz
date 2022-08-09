@@ -42,7 +42,7 @@
     .filter(([x, y]) => !(isNaN(x) || isNaN(y) || x === null || y === null))
     .map(([x, y, elem]) => [x_scale(x), y_scale(y), $color_scale?.(y), elem])
 
-  $: [heatmap_label, heatmap_unit] = element_property_labels[$heatmap]
+  $: [heatmap_label, heatmap_unit] = element_property_labels[$heatmap] ?? []
 
   let tooltip_point: PlotPoint
   let hovered = false

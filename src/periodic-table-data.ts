@@ -5025,7 +5025,7 @@ export default [
     name: `Nihonium`,
     appearance: null,
     atomic_mass: 286,
-    category: `post transition metal`,
+    category: `post-transition metal`,
     density: 16,
     discoverer: `RIKEN`,
     molar_heat: null,
