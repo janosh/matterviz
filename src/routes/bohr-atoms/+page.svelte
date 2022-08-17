@@ -1,7 +1,7 @@
 <script lang="ts">
-  import BohrAtom from '../lib/BohrAtom.svelte'
-  import Toggle from '../lib/Toggle.svelte'
-  import elements from '../periodic-table-data'
+  import BohrAtom from '$lib/BohrAtom.svelte'
+  import Toggle from '$lib/Toggle.svelte'
+  import elements from '../../periodic-table-data'
 
   let orbiting = true
 </script>

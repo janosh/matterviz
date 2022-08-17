@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores'
+  import Footer from '$lib/Footer.svelte'
   import GitHubCorner from 'svelte-github-corner'
   import '../app.css'
-  import Footer from '../lib/Footer.svelte'
 </script>
 
 <GitHubCorner href="https://github.com/janosh/periodic-table" />
