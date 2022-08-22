@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { pretty_num } from './labels'
+
   export let x_angle = 0
   export let y_angle = 0
   export let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
@@ -9,11 +11,11 @@
 <div class:visible={show_easter_egg}>
   <p>You found the easter egg!</p>
   <label>
-    Rotate X = <span>{parseFloat(x_angle.toFixed(0))}</span>
+    Rotate X = <span>{pretty_num(x_angle)}</span>
     <input type="range" bind:value={x_angle} max={360} />
   </label>
   <label>
-    Rotate Y = <span>{parseFloat(y_angle.toFixed(0))}</span>
+    Rotate Y = <span>{pretty_num(y_angle)}</span>
     <input type="range" bind:value={y_angle} max={360} />
   </label>
   <section>

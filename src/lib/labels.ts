@@ -8,7 +8,7 @@ export const element_property_labels: Partial<
   atomic_mass: [`Atomic Mass`, `u`],
   melting_point: [`Melting Point`, `K`],
   boiling_point: [`Boiling Point`, `K`],
-  density: [`Density`, `solid: g/cm³, gas: g/liter`],
+  density: [`Density`, `g/cm³`],
   atomic_radius: [`Atomic Radius`, `Å`],
   covalent_radius: [`Covalent Radius`, `Å`],
   electronegativity: [`Electronegativity`, null],
@@ -39,3 +39,11 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
       return [label + (unit ? ` (${unit})` : ``), key]
     })
   )
+
+export const pretty_num = (num: number, precision = 2) => {
+  if (num < 0.01 || num > 10000) {
+    return num.toExponential(precision)
+  } else {
+    return parseFloat(num.toFixed(precision))
+  }
+}

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import element_data from '../src/periodic-table-data.ts'
+import element_data from '../src/lib/periodic-table-data.ts'
 
 export const category_counts: Record<string, number> = {}
 

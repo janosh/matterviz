@@ -1,7 +1,7 @@
 <script lang="ts">
   import { fade } from 'svelte/transition'
-  import { category_colors, default_category_colors } from '../colors'
-  import { active_category } from '../stores'
+  import { category_colors, default_category_colors } from './colors'
+  import { active_category } from './stores'
 
   export let open = false
   export let collapsible = true
