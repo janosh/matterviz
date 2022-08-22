@@ -1,5 +1,5 @@
+import elements from '$lib/periodic-table-data'
 import { error } from '@sveltejs/kit'
-import elements from '../../periodic-table-data'
 import type { PageServerLoad } from './$types'
 
 export const load: PageServerLoad = ({ params }) => {

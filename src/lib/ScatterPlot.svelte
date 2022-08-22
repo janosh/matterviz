@@ -1,12 +1,12 @@
 <script lang="ts">
   import { bisector, extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
-  import { element_property_labels } from '../labels'
-  import elements from '../periodic-table-data.ts'
-  import { active_element, color_scale, heatmap } from '../stores'
-  import type { ChemicalElement, PlotPoint } from '../types'
+  import { element_property_labels, pretty_num } from './labels'
   import Line from './Line.svelte'
+  import elements from './periodic-table-data.ts'
   import Datapoint from './ScatterPoint.svelte'
+  import { active_element, color_scale, heatmap } from './stores'
+  import type { ChemicalElement, PlotPoint } from './types'
 
   export let style = ``
   export let xlim: [number | null, number | null] = [null, null]
@@ -46,6 +46,10 @@
 
   let tooltip_point: PlotPoint
   let hovered = false
+  $: if ($active_element?.number) {
+    hovered = true
+    tooltip_point = data_points[$active_element.number]
+  }
   const bisect = bisector((data_point: PlotPoint) => data_point[0]).right
 
   function on_mouse_move(event: MouseEvent) {
@@ -104,10 +108,10 @@
         {@const [x, y] = [x_scale(atomic_num), y_scale(raw_y)]}
         <circle cx={x} cy={y} r="5" fill="orange" />
         {#if hovered}
-          <foreignObject x={x + 5} {y} width="150" height="200">
+          <foreignObject x={x + 5} {y} width="170" height="100">
             <strong>{atomic_num} - {tooltip_point[2].name}</strong>
             {#if raw_y}
-              <br />{heatmap_label} = {parseFloat(raw_y.toFixed(2))}{heatmap_unit}
+              <br />{heatmap_label} = {pretty_num(raw_y)}{heatmap_unit ?? ``}
             {/if}
           </foreignObject>
         {/if}
@@ -127,6 +131,7 @@
     fill: white;
     font-weight: lighter;
     overflow: visible;
+    z-index: 1;
   }
   g.tick {
     font-size: 9pt;

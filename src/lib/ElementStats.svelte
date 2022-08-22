@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { last_element } from '../stores'
+  import { pretty_num } from './labels'
+
+  import { last_element } from './stores'
 
   export let padding = `1vw 2vw`
-  export let precision = 2
 
   $: element = $last_element // used to decide whether to show user tip to hover an element tile
-
-  $: density_unit = $last_element?.phase === `Gas` ? `g/liter` : `g/cm³`
 </script>
 
 {#if element}
@@ -19,14 +18,14 @@
         Atomic Mass
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
-      <strong>{parseFloat(element.atomic_mass?.toFixed(precision))}</strong>
+      <strong>{pretty_num(element.atomic_mass)}</strong>
     </section>
     <section>
       <p>
         Density
-        <abbr title="grams per cubic centimeter">({density_unit})</abbr>
+        <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
-      <strong>{parseFloat(element.density?.toFixed(precision))}</strong>
+      <strong>{pretty_num(element.density)}</strong>
     </section>
     <section>
       <p>Phase</p>

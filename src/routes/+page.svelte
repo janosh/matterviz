@@ -3,8 +3,8 @@
   import EasterEgg from '$lib/EasterEgg.svelte'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
+  import { heatmap } from '$lib/stores'
   import '../app.css'
-  import { heatmap } from '../stores'
 
   let window_width: number
   let x_angle = 0

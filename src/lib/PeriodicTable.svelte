@@ -1,11 +1,11 @@
 <script lang="ts">
-  import elements from '../periodic-table-data.ts'
-  import { active_element, color_scale, heatmap, last_element } from '../stores'
   import BohrAtom from './BohrAtom.svelte'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementStats from './ElementStats.svelte'
   import ElementTile from './ElementTile.svelte'
+  import elements from './periodic-table-data.ts'
   import ScatterPlot from './ScatterPlot.svelte'
+  import { active_element, color_scale, heatmap, last_element } from './stores'
   import TableInset from './TableInset.svelte'
 
   export let show_names = true
