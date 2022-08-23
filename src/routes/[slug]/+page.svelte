@@ -46,7 +46,8 @@
 <section>
   <ElementPhoto />
 
-  <ScatterPlot ylim={[0, null]} />
+  <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
+  <ScatterPlot ylim={[0, null]} on:mouseleave={() => ($active_element = element)} />
 </section>
 
 <section>
