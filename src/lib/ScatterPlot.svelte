@@ -46,12 +46,13 @@
 
   let tooltip_point: PlotPoint
   let hovered = false
-  $: if ($active_element?.number) {
-    hovered = true
-    tooltip_point = data_points[$active_element.number]
-  }
   const bisect = bisector((data_point: PlotPoint) => data_point[0]).right
 
+  // update tooltip on hover element tile
+  $: if ($active_element?.number) {
+    hovered = true
+    tooltip_point = data_points[$active_element.number - 1]
+  }
   function on_mouse_move(event: MouseEvent) {
     hovered = true
     const mouse_coords = [event.offsetX, event.offsetY]
@@ -68,7 +69,11 @@
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
-    <svg on:mousemove={on_mouse_move} on:mouseleave={() => (hovered = false)}>
+    <svg
+      on:mousemove={on_mouse_move}
+      on:mouseleave={() => (hovered = false)}
+      on:mouseleave
+    >
       <Line
         points={scaled_data.map(([x, y]) => [x, y])}
         origin={[x_scale(xrange[0]), y_scale(yrange[0])]}
