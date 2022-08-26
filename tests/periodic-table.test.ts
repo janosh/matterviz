@@ -8,7 +8,7 @@ test(`periodic table in default state`, async ({ page }) => {
 
   for (const [category, count] of Object.entries(category_counts)) {
     const css_cls = `.${category.replaceAll(` `, `-`)}`
-    expect(await page.$$(css_cls)).toHaveLength(count)
+    expect(await page.$$(css_cls)).toHaveLength(count as number)
   }
 })
 
