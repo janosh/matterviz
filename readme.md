@@ -14,6 +14,12 @@ Below a screenshot demonstrating the periodicity of elemental properties, i.e. w
 
 ![Screenshot of periodic table heatmap](static/2022-08-08-screenshot-heatmap.png)
 
+## Element Details Pages
+
+The details page for gold.
+
+<https://user-images.githubusercontent.com/30958850/186975855-8e0d94f9-e4e3-47a2-9354-9c012b37307c.mp4>
+
 ## Usage
 
 Copy the `src/lib/` folder into your Svelte project and import the `PeriodicTable` component:
@@ -28,6 +34,6 @@ Copy the `src/lib/` folder into your Svelte project and import the `PeriodicTabl
 
 ## Acknowledgements
 
-1. Element properties in `src/lib/periodic-table-data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
-1. Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
-1. Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to inset a scatter plot into the periodic nature of elemental properties.
+- Element properties in `src/lib/periodic-table-data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
+- Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
+- Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.

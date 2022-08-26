@@ -2,7 +2,7 @@
   import { active_element } from './stores'
   import type { ChemicalElement } from './types'
 
-  export let style = ``
+  export let style: string | null = null
   // element defaults to active_element store but can be pinned by passing it as prop
   export let element: ChemicalElement | undefined = undefined
 
@@ -14,7 +14,7 @@
 </script>
 
 {#if elem}
-  <img {src} alt={element?.name} on:error={() => (hidden = true)} {style} {hidden} />
+  <img {src} alt={elem?.name} on:error={() => (hidden = true)} {style} {hidden} />
 {/if}
 
 <style>
