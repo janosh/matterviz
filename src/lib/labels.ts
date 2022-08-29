@@ -40,7 +40,8 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
     })
   )
 
-export const pretty_num = (num: number, precision = 2) => {
+export const pretty_num = (num: number | null, precision = 2) => {
+  if (num === null) return ``
   if (num < 0.01 || num > 10000) {
     return num.toExponential(precision)
   } else {
