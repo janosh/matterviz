@@ -1,6 +1,6 @@
-/** @type {import('@playwright/test').PlaywrightTestConfig} */
-const config = {
-  browser: `chromium`,
+import type { PlaywrightTestConfig } from '@playwright/test'
+
+const config: PlaywrightTestConfig = {
   webServer: {
     command: `vite dev --port 3005`,
     port: 3005,

@@ -20,7 +20,7 @@ export const element_property_labels: Partial<
   specific_heat: [`Specific Heat`, `J/g`], // TODO check correct unit
 }
 
-const heatmap_keys: (keyof ChemicalElement)[] = [
+export const heatmap_keys: (keyof ChemicalElement)[] = [
   `atomic_mass`,
   `atomic_radius`,
   `covalent_radius`,
