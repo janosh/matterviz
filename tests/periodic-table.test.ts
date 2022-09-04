@@ -1,12 +1,19 @@
+import { heatmap_keys, heatmap_labels, pretty_num } from '$lib/labels.ts'
+import element_data from '$lib/periodic-table-data.ts'
 import { expect, test } from '@playwright/test'
-import { category_counts } from './element-data.test.ts'
 
-test.describe(`Periodic Table`, async () => {
+export const category_counts: Record<string, number> = {}
+
+for (const { category } of element_data) {
+  category_counts[category] = (category_counts[category] ?? 0) + 1
+}
+
+test.describe(`Periodic Table`, () => {
   test(`in default state`, async ({ page }) => {
-    await page.goto(`/`)
+    await page.goto(`/`, { waitUntil: `networkidle` })
 
     const element_tiles = await page.$$(`.element-tile`)
-    expect(element_tiles).toHaveLength(118)
+    expect(element_tiles).toHaveLength(element_data.length)
 
     for (const [category, count] of Object.entries(category_counts)) {
       const css_cls = `.${category.replaceAll(` `, `-`)}`
@@ -15,7 +22,7 @@ test.describe(`Periodic Table`, async () => {
   })
 
   test(`shows stats on hover element`, async ({ page }) => {
-    await page.goto(`/`)
+    await page.goto(`/`, { waitUntil: `networkidle` })
 
     await page.hover(`text=Hydrogen`)
 
@@ -31,7 +38,7 @@ test.describe(`Periodic Table`, async () => {
       )
         logs.push(msg.text())
     })
-    await page.goto(`/`)
+    await page.goto(`/`, { waitUntil: `networkidle` })
 
     const element_tiles = await page.$$(`.element-tile`)
     for (const element_tile of element_tiles) {
@@ -41,21 +48,33 @@ test.describe(`Periodic Table`, async () => {
     expect(logs).toHaveLength(0)
   })
 
-  test(`in heatmap mode`, async ({ page }) => {
-    test.skip(
-      process.env.CI === `true`,
-      `This test fails in CI at clicking click('text=Electronegativity')`
-      // works locally, maybe due to faster CPU
-    )
+  test.describe(`in heatmap mode`, () => {
+    test(`displays elemental heat values`, async ({ page }) => {
+      await page.goto(`/`, { waitUntil: `networkidle` })
 
-    await page.goto(`/`)
+      // select all heatmaps in sequence making sure non of them crash
+      for (const heatmap_label of Object.keys(heatmap_labels)) {
+        await page.click(`div.multiselect`)
+        // somehow clicking twice helps not to get stuck with a closed multi-select dropdown
+        await page.click(`div.multiselect`)
+        await page.click(`text=${heatmap_label}`)
+      }
 
-    await page.click(`[placeholder="Select a heat map"]`)
+      for (const _ of [...Array(5)]) {
+        // check 5 random element tiles display the expected heatmap value
 
-    // select electronegativity heatmap
-    await page.click(`text=Electronegativity`)
+        const rand_idx = Math.floor(Math.random() * element_data.length)
+        const random_element = element_data[rand_idx]
 
-    // make sure Fluorine electronegativity value is displayed correctly
-    expect(await page.$(`text=9 F 3.98`)).not.toBeNull()
+        const heatmap_val = pretty_num(random_element[heatmap_keys.at(-1)])
+
+        // make sure Fluorine electronegativity value is displayed correctly
+        const elem_tile = await page.$(
+          `text=${rand_idx + 1} ${random_element.symbol} ${heatmap_val}`,
+          { strict: true }
+        )
+        expect(elem_tile).not.toBeNull()
+      }
+    })
   })
 })
