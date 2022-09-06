@@ -44,7 +44,7 @@
 <PropertySelect selected={[initial_heatmap]} />
 
 <section>
-  <ElementPhoto />
+  <ElementPhoto missing_msg="No image for" />
 
   <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
   <ScatterPlot ylim={[0, null]} on:mouseleave={() => ($active_element = element)} />
