@@ -35,6 +35,7 @@
 
   let orbiting = true
   let window_width: number
+  let active_shell: number | null = null
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -59,7 +60,12 @@
   {/if}
 
   <div on:click={() => (orbiting = !orbiting)}>
-    <BohrAtom {...element} adapt_size={true} electron_speed={Number(orbiting)} />
+    <BohrAtom
+      {...element}
+      adapt_size={true}
+      electron_speed={Number(orbiting)}
+      highlight_shell={active_shell}
+    />
   </div>
 
   <p style="flex: 1">{@html element.summary}</p>
@@ -73,7 +79,10 @@
       .split(` `)
       .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
       .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
-    <tr>
+    <tr
+      on:mouseenter={() => (active_shell = shell_idx + 1)}
+      on:mouseleave={() => (active_shell = null)}
+    >
       <td>{shell_idx + 1}</td> <td>{shell_occu}</td><td>{shell_orbitals.join(` + `)}</td>
     </tr>
   {/each}
@@ -137,7 +146,7 @@
   }
   table thead th,
   table td {
-    padding: 2pt 1ex;
+    padding: 4pt 1ex;
   }
   table tr:nth-child(even) {
     background-color: rgba(255, 255, 255, 0.1);

@@ -113,11 +113,13 @@
         {@const [x, y] = [x_scale(atomic_num), y_scale(raw_y)]}
         <circle cx={x} cy={y} r="5" fill="orange" />
         {#if hovered}
-          <foreignObject x={x + 5} {y} width="170" height="100">
-            <strong>{atomic_num} - {tooltip_point[2].name}</strong>
-            {#if raw_y}
-              <br />{heatmap_label} = {pretty_num(raw_y)}{heatmap_unit ?? ``}
-            {/if}
+          <foreignObject x={x + 5} {y}>
+            <div>
+              <strong>{atomic_num} - {tooltip_point[2].name}</strong>
+              {#if raw_y}
+                <br />{heatmap_label} = {pretty_num(raw_y)}{heatmap_unit ?? ``}
+              {/if}
+            </div>
           </foreignObject>
         {/if}
       {/if}
@@ -154,5 +156,14 @@
   }
   g.y-axis text {
     dominant-baseline: central;
+  }
+  foreignObject {
+    overflow: visible;
+  }
+  foreignObject div {
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 1pt 3pt;
+    width: max-content;
+    box-sizing: border-box;
   }
 </style>
