@@ -52,10 +52,10 @@
     color: white;
   }
   div.element-tile.last-active {
-    filter: brightness(120%);
+    filter: brightness(110%);
   }
   div.element-tile.active {
-    filter: brightness(130%);
+    filter: brightness(110%);
   }
   div.element-tile span {
     line-height: 1em;

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { bisector, extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
+  import elements from './element-data.ts'
   import { element_property_labels, pretty_num } from './labels'
   import Line from './Line.svelte'
-  import elements from './periodic-table-data.ts'
   import Datapoint from './ScatterPoint.svelte'
   import { active_element, color_scale, heatmap } from './stores'
   import type { ChemicalElement, PlotPoint } from './types'

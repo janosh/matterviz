@@ -1,12 +1,13 @@
 <script lang="ts">
+  // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
   export let symbol = `` // usually H, He, etc. but can be anything
   export let name = `` // usually Hydrogen, Helium, etc. but can be anything
-  export let shells: number[] = [] // e.g. [2, 8, 6] for sulfur
+  export let shells: number[] // e.g. [2, 8, 6] for sulfur
   export let adapt_size = false
   export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
   export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 30 : 270
   export let base_fill = `white`
-  export let orbiting = true
+  export let electron_speed = 10 // time for one electron orbit is 10/electron_speed seconds, 0 for no motion
   // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
   export let nucleus_props: Record<string, string | number> = {}
   export let shell_props: Record<string, string | number> = {}
@@ -33,7 +34,12 @@
   }
 </script>
 
-<svg width={size} fill={base_fill} viewBox="-{size / 2}, -{size / 2}, {size}, {size}">
+<svg
+  width={size}
+  fill={base_fill}
+  viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
+  on:click
+>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}
@@ -47,7 +53,10 @@
   <!-- electron orbitals -->
   {#each shells as n_electrons, shell_idx}
     {@const shell_radius = _nucleus_props.r + (shell_idx + 1) * shell_width}
-    <g class="shell" style:animation-duration="{orbiting ? 5 * (shell_idx + 1) : 0}s">
+    <g
+      class="shell"
+      style:animation-duration="{electron_speed ? 10 / electron_speed : 0}s"
+    >
       <circle r={shell_radius} {..._shell_props} />
 
       <!-- electrons -->

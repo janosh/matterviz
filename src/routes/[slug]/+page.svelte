@@ -13,17 +13,20 @@
 
   $: [$active_element, element] = [data.element, data.element]
 
-  $: key_vals = Object.entries(element_property_labels).map(([key, [label, unit]]) => {
-    let value = element[key as keyof ChemicalElement]
-    if (typeof value === `number`) {
-      value = pretty_num(value)
-    }
-    if (Array.isArray(value)) value = value.join(`, `)
-    if (unit) {
-      value = `${value} &thinsp;${unit}`
-    }
-    return [label, value]
-  })
+  $: key_vals = Object.keys(element_property_labels)
+    .filter((key) => element[key])
+    .map((key) => {
+      const [label, unit] = element_property_labels[key]
+      let value = element[key as keyof ChemicalElement]
+      if (typeof value === `number`) {
+        value = pretty_num(value)
+      }
+      if (Array.isArray(value)) value = value.join(`, `)
+      if (unit) {
+        value = `${value} &thinsp;${unit}`
+      }
+      return [label, value]
+    })
 
   // set atomic radius as initial heatmap
   const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof ChemicalElement
@@ -56,15 +59,30 @@
   {/if}
 
   <div on:click={() => (orbiting = !orbiting)}>
-    <BohrAtom {...element} adapt_size={true} {orbiting} />
+    <BohrAtom {...element} adapt_size={true} electron_speed={Number(orbiting)} />
   </div>
 
   <p style="flex: 1">{@html element.summary}</p>
 </section>
 
+<table>
+  <thead><th>Shell</th><th>Electrons</th><th>Orbitals</th></thead>
+
+  {#each element.shells as shell_occu, shell_idx}
+    {@const shell_orbitals = element.electron_configuration
+      .split(` `)
+      .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
+      .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
+    <tr>
+      <td>{shell_idx + 1}</td> <td>{shell_occu}</td><td>{shell_orbitals.join(` + `)}</td>
+    </tr>
+  {/each}
+</table>
+
 <div class="properties">
   {#each key_vals as [label, value]}
-    {#if value}<div>
+    {#if value}
+      <div>
         <strong>{@html value}</strong>
         <small>{label}</small>
       </div>
@@ -112,5 +130,16 @@
     font-size: 12pt;
     font-weight: lighter;
     opacity: 0.8;
+  }
+  table {
+    border-collapse: collapse;
+    text-align: center;
+  }
+  table thead th,
+  table td {
+    padding: 2pt 1ex;
+  }
+  table tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.1);
   }
 </style>
