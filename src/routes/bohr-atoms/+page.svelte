@@ -23,8 +23,8 @@
 
 <label>
   Electron Speed:
-  <input type="number" bind:value={electron_speed} min={0} max={10} />
-  <input type="range" bind:value={electron_speed} min={0} max={10} step={1} />
+  <input type="number" bind:value={electron_speed} min={0} max={5} />
+  <input type="range" bind:value={electron_speed} min={0} max={5} step={1} />
 </label>
 
 <ol>

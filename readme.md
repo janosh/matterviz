@@ -27,7 +27,7 @@ Copy the `src/lib/` folder into your Svelte project and import the `PeriodicTabl
 
 ```svelte
 <script>
-  import PeriodicTable from 'src/components/PeriodicTable.svelte'
+  import PeriodicTable from 'src/lib/PeriodicTable.svelte'
 </script>
 
 <PeriodicTable />
