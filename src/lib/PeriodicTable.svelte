@@ -1,9 +1,9 @@
 <script lang="ts">
   import BohrAtom from './BohrAtom.svelte'
+  import elements from './element-data.ts'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementStats from './ElementStats.svelte'
   import ElementTile from './ElementTile.svelte'
-  import elements from './periodic-table-data.ts'
   import ScatterPlot from './ScatterPlot.svelte'
   import { active_element, color_scale, heatmap, last_element } from './stores'
   import TableInset from './TableInset.svelte'
@@ -31,9 +31,9 @@
 
   {#if show_active_elem_bohr_model && $last_element && window_width > 1300}
     {@const { shells, name, symbol } = $last_element}
-    <div class="bohr-atom">
+    <a href="/bohr-atoms">
       <BohrAtom {shells} name="Bohr Model of {name}" {symbol} />
-    </div>
+    </a>
   {/if}
 
   {#each elements as element}
@@ -68,7 +68,7 @@
     height: 24pt;
     grid-row: 8;
   }
-  div.bohr-atom {
+  a[href='/bohr-atoms'] {
     position: absolute;
     bottom: 90%;
     right: 10%;

@@ -1,11 +1,5 @@
-import element_data from '$lib/periodic-table-data.ts'
+import element_data from '$lib/element-data.ts'
 import { expect, test } from '@playwright/test'
-
-export const category_counts: Record<string, number> = {}
-
-for (const { category } of element_data) {
-  category_counts[category] = (category_counts[category] ?? 0) + 1
-}
 
 test.describe(`Bohr Atoms page`, () => {
   test(`lists all elements`, async ({ page }) => {
@@ -25,7 +19,7 @@ test.describe(`Bohr Atoms page`, () => {
     )
     expect(parseInt(initial_animation_duration)).toBeGreaterThan(0)
 
-    await page.click(`text=Orbiting electrons?`)
+    await page.fill(`input[type="number"]`, `0`)
     const toggled_animation_duration = await shell_svg_group.evaluate(
       (el) => getComputedStyle(el).animationDuration
     )

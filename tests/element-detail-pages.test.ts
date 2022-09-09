@@ -1,4 +1,4 @@
-import element_data from '$lib/periodic-table-data.ts'
+import element_data from '$lib/element-data.ts'
 import { expect, test } from '@playwright/test'
 
 export const category_counts: Record<string, number> = {}

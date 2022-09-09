@@ -1,19 +1,31 @@
 <script lang="ts">
   import BohrAtom from '$lib/BohrAtom.svelte'
-  import elements from '$lib/periodic-table-data'
-  import Toggle from '$lib/Toggle.svelte'
+  import elements from '$lib/element-data'
 
-  let orbiting = true
+  let electron_speed = 2
 </script>
 
 <h1>Bohr Atoms</h1>
 <p>
-  Radius of electron orbitals increases with the square of the shell number (shown here as
-  linear due to page width constraints). Meanwhile, 'kinetic energy' of the electrons
-  decreases linearly with shell number.
+  This solar-system-like visualization of the elements is known as the Bohr model. It was
+  proposed by Niels Bohr in 1913. It is very much just a pretty picture far removed from
+  the more accurate picture of 3d wave functions painted by quantum mechanics.
+</p>
+<p>
+  In fact this 2d visualization is a simplification even of the incorrect Bohr model in
+  which electrons really orbit in 3d around the nucleus. Yet this animation gives an
+  intuitive understanding of how electrons are placed into shells and how electron
+  energies decrease with increasing shell number. To be precise, the radius of electron
+  orbitals increases with the square of the shell number (shown here as linear due to page
+  width constraints). Meanwhile, the 'kinetic energy' of the electrons decreases linearly
+  with shell number.
 </p>
 
-<Toggle bind:checked={orbiting} style="margin: auto;">Orbiting electrons?&emsp;</Toggle>
+<label>
+  Electron Speed:
+  <input type="number" bind:value={electron_speed} min={0} max={10} />
+  <input type="range" bind:value={electron_speed} min={0} max={10} step={1} />
+</label>
 
 <ol>
   {#each elements as { shells, symbol, number, name }}
@@ -21,7 +33,7 @@
       <strong>
         <a href="/{name.toLowerCase()}">{number}</a>
       </strong>
-      <BohrAtom {shells} {symbol} {name} {orbiting} />
+      <BohrAtom {shells} {symbol} {name} {electron_speed} />
     </li>
   {/each}
 </ol>
@@ -32,6 +44,25 @@
     text-align: center;
     max-width: 50em;
     margin: 2em auto;
+  }
+  p {
+    text-align: justify;
+  }
+  label {
+    display: flex;
+    place-content: center;
+  }
+  input[type='number'] {
+    background: transparent;
+    color: inherit;
+    border: none;
+    text-align: center;
+    padding: 0 4pt;
+    font-size: large;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
   }
   ol {
     display: flex;
