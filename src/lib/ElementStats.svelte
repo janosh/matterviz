@@ -1,15 +1,15 @@
 <script lang="ts">
   import { pretty_num } from './labels'
-
   import { last_element } from './stores'
 
   export let padding = `1vw 2vw`
+  export let style = ``
 
   $: element = $last_element // used to decide whether to show user tip to hover an element tile
 </script>
 
 {#if element}
-  <div style:padding style="overflow: hidden;">
+  <div style:padding {style}>
     <h2>
       {element.number} - {element.name} <small>{element.category}</small>
     </h2>
