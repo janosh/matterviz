@@ -47,77 +47,111 @@
 
 <PropertySelect selected={[initial_heatmap]} />
 
-<section>
-  <ElementPhoto missing_msg="No image for" />
+<section class="viz">
+  <ElementPhoto
+    missing_msg={window_width < 900 ? `` : `No image for`}
+    style="max-width: 400px;"
+  />
 
   <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
-  <ScatterPlot ylim={[0, null]} on:mouseleave={() => ($active_element = element)} />
+  <ScatterPlot
+    ylim={[0, null]}
+    on:mouseleave={() => ($active_element = element)}
+    style="min-height: min(50vmin, 400px);"
+  />
 </section>
 
-<section>
-  {#if window_width > 900}
-    <ElementStats />
-  {/if}
+<section class="orbitals">
+  <ElementStats style="grid-area: stats;" />
 
-  <div on:click={() => (orbiting = !orbiting)}>
-    <BohrAtom
-      {...element}
-      adapt_size={true}
-      electron_speed={Number(orbiting)}
-      highlight_shell={active_shell}
-    />
-  </div>
+  <table style="grid-area: table;">
+    <thead><th>Shell</th><th>Electrons</th><th>Orbitals</th></thead>
 
-  <p style="flex: 1">{@html element.summary}</p>
+    {#each element.shells as shell_occu, shell_idx}
+      {@const shell_orbitals = element.electron_configuration
+        .split(` `)
+        .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
+        .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
+      <tr
+        on:mouseenter={() => (active_shell = shell_idx + 1)}
+        on:mouseleave={() => (active_shell = null)}
+      >
+        <td>{shell_idx + 1}</td>
+        <td>{shell_occu}</td>
+        <td>{shell_orbitals.join(` + `)}</td>
+      </tr>
+    {/each}
+  </table>
+
+  <BohrAtom
+    symbol={element.symbol}
+    shells={element.shells}
+    name={element.name}
+    adapt_size={true}
+    electron_speed={Number(orbiting)}
+    highlight_shell={active_shell}
+    on:click={() => (orbiting = !orbiting)}
+    style="grid-area: bohr;"
+  />
+
+  <p style="grid-area: summary;">{@html element.summary}</p>
 </section>
 
-<table>
-  <thead><th>Shell</th><th>Electrons</th><th>Orbitals</th></thead>
-
-  {#each element.shells as shell_occu, shell_idx}
-    {@const shell_orbitals = element.electron_configuration
-      .split(` `)
-      .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
-      .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
-    <tr
-      on:mouseenter={() => (active_shell = shell_idx + 1)}
-      on:mouseleave={() => (active_shell = null)}
-    >
-      <td>{shell_idx + 1}</td> <td>{shell_occu}</td><td>{shell_orbitals.join(` + `)}</td>
-    </tr>
-  {/each}
-</table>
-
-<div class="properties">
-  {#each key_vals as [label, value]}
-    {#if value}
+<section class="properties">
+  {#each key_vals as [label, value], idx}
+    <!-- skip last item if index is uneven to avoid single dangling item on last row -->
+    {#if idx % 2 === 1 || idx < key_vals.length - 1}
       <div>
         <strong>{@html value}</strong>
         <small>{label}</small>
       </div>
     {/if}
   {/each}
-</div>
+</section>
 
 <style>
-  section:nth-child(even) {
-    margin: 2em 0;
+  section.viz {
+    margin: 2em auto;
     display: grid;
-    gap: 2em;
-    grid-template-columns: 1fr 2fr;
-  }
-  section:nth-child(odd) {
-    margin: 2em 0;
-    display: flex;
     gap: 2em;
     place-items: center;
   }
+  @media (min-width: 700px) {
+    section.viz {
+      grid-template-columns: 1fr 2fr;
+    }
+  }
+  section.orbitals {
+    margin: 2em auto;
+    display: grid;
+    gap: 1em 2em;
+    place-items: center;
+    grid-template-areas:
+      'stats'
+      'table'
+      'bohr'
+      'summary';
+  }
+  @media (min-width: 700px) {
+    section.orbitals {
+      grid-template-areas:
+        'stats stats'
+        'table bohr'
+        'summary summary';
+    }
+  }
+  @media (min-width: 800px) {
+    section.orbitals {
+      grid-template-areas:
+        'stats stats stats'
+        'table bohr summary';
+    }
+  }
   section p {
     text-align: center;
-
-    max-width: 50em;
+    max-width: 30em;
   }
-  div.properties {
+  section.properties {
     display: grid;
     grid-gap: 3em;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -126,15 +160,15 @@
     padding: 2em 1em;
     border-radius: 4pt;
   }
-  div.properties div {
+  section.properties div {
     text-align: center;
     display: grid;
     place-content: center;
   }
-  div.properties strong {
+  section.properties strong {
     font-size: 14pt;
   }
-  div.properties small {
+  section.properties small {
     display: block;
     font-size: 12pt;
     font-weight: lighter;

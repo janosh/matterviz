@@ -4,7 +4,7 @@
   import elements from './element-data.ts'
   import { element_property_labels, pretty_num } from './labels'
   import Line from './Line.svelte'
-  import Datapoint from './ScatterPoint.svelte'
+  import ScatterPoint from './ScatterPoint.svelte'
   import { active_element, color_scale, heatmap } from './stores'
   import type { ChemicalElement, PlotPoint } from './types'
 
@@ -78,9 +78,8 @@
         points={scaled_data.map(([x, y]) => [x, y])}
         origin={[x_scale(xrange[0]), y_scale(yrange[0])]}
       />
-      {#each scaled_data as [x, y, fill, element]}
-        {@const active = $active_element?.name === element.name}
-        <Datapoint {x} {y} {fill} {active} />
+      {#each scaled_data as [x, y, fill]}
+        <ScatterPoint {x} {y} {fill} />
       {/each}
 
       <!-- x axis -->

@@ -13,6 +13,7 @@
   export let shell_props: Record<string, string | number> = {}
   export let electron_props: Record<string, string | number> = {}
   export let highlight_shell: number | null = null
+  export let style = ``
 
   $: _nucleus_props = {
     r: 20,
@@ -40,6 +41,7 @@
   fill={base_fill}
   viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
   on:click
+  {style}
 >
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
