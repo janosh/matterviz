@@ -7,7 +7,7 @@
   export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
   export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 30 : 270
   export let base_fill = `white`
-  export let electron_speed = 2 // time for one electron orbit is 10/electron_speed seconds, 0 for no motion
+  export let electron_speed = 1 // time for one electron orbit is 10/electron_speed seconds, 0 for no motion
   // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
   export let nucleus_props: Record<string, string | number> = {}
   export let shell_props: Record<string, string | number> = {}

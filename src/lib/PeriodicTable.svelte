@@ -23,6 +23,7 @@
       <ScatterPlot
         ylim={[0, null]}
         on_hover_point={(point) => ($active_element = point[2])}
+        x_label_y={42}
       />
     {:else if show_active_elem_stats}
       <ElementStats />
