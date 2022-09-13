@@ -13,9 +13,11 @@
   export let ylim: [number | null, number | null] = [null, null]
   export let pad_top = 5
   export let pad_bottom = 30
-  export let pad_left = 30
+  export let pad_left = 50
   export let pad_right = 20
-  export let on_hover_point: (point: PlotPoint) => void | null = null
+  export let on_hover_point: ((point: PlotPoint) => void) | null = null
+  export let x_label = `Atomic Number`
+  export let x_label_y = 0
 
   let data_points: PlotPoint[]
   $: data_points = elements.map((el) => [el.number, el[$heatmap], el])
@@ -90,6 +92,9 @@
             <text y={-pad_bottom + axis_label_offset.x}>{tick}</text>
           </g>
         {/each}
+        <text x={width / 2} y={height + 5 - x_label_y} class="label x">
+          {x_label}
+        </text>
       </g>
 
       <!-- y axis -->
@@ -105,6 +110,9 @@
             </text>
           </g>
         {/each}
+        <text x={-height / 2} y={13} transform="rotate(-90)" class="label y">
+          {heatmap_label}
+        </text>
       </g>
 
       {#if tooltip_point}
@@ -140,7 +148,7 @@
     z-index: 1;
   }
   g.tick {
-    font-size: 9pt;
+    font-size: clamp(10pt, 1vw, 15pt);
   }
   line {
     stroke: gray;
@@ -164,5 +172,9 @@
     padding: 1pt 3pt;
     width: max-content;
     box-sizing: border-box;
+  }
+  text.label {
+    text-anchor: middle;
+    font-size: clamp(11pt, 1.2vw, 16pt);
   }
 </style>

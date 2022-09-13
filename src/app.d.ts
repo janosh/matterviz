@@ -1,6 +1,6 @@
 /// <reference types="@sveltejs/kit" />
 
-declare module '*periodic-table-data.ts' {
+declare module '*element-data.ts' {
   const elements: import('./lib/types').ChemicalElement[]
   export default elements
 }
