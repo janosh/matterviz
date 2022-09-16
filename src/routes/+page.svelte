@@ -1,9 +1,13 @@
 <script lang="ts">
+  import BohrAtom from '$lib/BohrAtom.svelte'
   import ColorCustomizer from '$lib/ColorCustomizer.svelte'
   import EasterEgg from '$lib/EasterEgg.svelte'
+  import ElementStats from '$lib/ElementStats.svelte'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
-  import { heatmap } from '$lib/stores'
+  import ScatterPlot from '$lib/ScatterPlot.svelte'
+  import { active_element, heatmap, last_element } from '$lib/stores'
+  import TableInset from '$lib/TableInset.svelte'
   import '../app.css'
 
   let window_width: number
@@ -27,7 +31,29 @@
   style:transform="rotateX({x_angle}deg) rotateY({y_angle}deg)"
   class="auto-rotate-{auto_rotate}"
 >
-  <PeriodicTable show_names={window_width > 1000} />
+  {#if $last_element && window_width > 1300}
+    {@const { shells, name, symbol } = $last_element}
+    <a href="/bohr-atoms">
+      <BohrAtom {shells} name="Bohr Model of {name}" {symbol} />
+    </a>
+  {/if}
+  <PeriodicTable
+    show_names={window_width > 1000}
+    heatmap={$heatmap}
+    style="margin: 2em auto 4em;"
+  >
+    <TableInset slot="inset">
+      {#if $heatmap}
+        <ScatterPlot
+          ylim={[0, null]}
+          on_hover_point={(point) => ($active_element = point[2])}
+          x_label_y={42}
+        />
+      {:else}
+        <ElementStats --font-size="1vw" />
+      {/if}
+    </TableInset>
+  </PeriodicTable>
 
   {#if !$heatmap}
     <ColorCustomizer collapsible={false} />
@@ -66,5 +92,10 @@
     100% {
       transform: rotateX(360deg) rotateY(360deg);
     }
+  }
+  a[href='/bohr-atoms'] {
+    position: absolute;
+    bottom: 92%;
+    right: 10%;
   }
 </style>

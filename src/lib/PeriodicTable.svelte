@@ -1,59 +1,57 @@
 <script lang="ts">
-  import BohrAtom from './BohrAtom.svelte'
   import elements from './element-data.ts'
   import ElementPhoto from './ElementPhoto.svelte'
-  import ElementStats from './ElementStats.svelte'
   import ElementTile from './ElementTile.svelte'
-  import ScatterPlot from './ScatterPlot.svelte'
-  import { active_element, color_scale, heatmap, last_element } from './stores'
-  import TableInset from './TableInset.svelte'
+  import { active_element, color_scale } from './stores'
+  import type { ChemicalElement } from './types'
 
   export let show_names = true
-  export let show_active_elem_stats = true
-  export let show_active_elem_bohr_model = true
+  export let show_numbers = true
+  export let show_symbols = true
+  export let show_photo = true
+  export let heatmap: keyof ChemicalElement | null = null
+  export let style = ``
+  export let disabled = false
+
+  $: set_active_element = (element: ChemicalElement | null) => () => {
+    if (disabled) return
+    $active_element = element
+  }
 
   let window_width: number
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
 
-<div class="periodic-table">
-  <TableInset>
-    {#if $heatmap}
-      <ScatterPlot
-        ylim={[0, null]}
-        on_hover_point={(point) => ($active_element = point[2])}
-        x_label_y={42}
-      />
-    {:else if show_active_elem_stats}
-      <ElementStats />
-    {/if}
-  </TableInset>
-
-  {#if show_active_elem_bohr_model && $last_element && window_width > 1300}
-    {@const { shells, name, symbol } = $last_element}
-    <a href="/bohr-atoms">
-      <BohrAtom {shells} name="Bohr Model of {name}" {symbol} />
-    </a>
-  {/if}
+<div class="periodic-table" {style}>
+  <slot name="inset" />
 
   {#each elements as element}
-    {@const value = element[$heatmap]}
+    {@const value = element[heatmap]}
     {@const heatmap_color = value ? $color_scale?.(value) : `transparent`}
-    {@const bg_color = $heatmap ? heatmap_color : null}
+    {@const bg_color = heatmap ? heatmap_color : null}
     <a
       href={element.name.toLowerCase()}
       style="grid-column: {element.column}; grid-row: {element.row};"
-      on:mouseenter={() => ($active_element = element)}
-      on:mouseleave={() => ($active_element = null)}
+      on:mouseenter={set_active_element(element)}
+      on:mouseleave={set_active_element(null)}
     >
-      <ElementTile {element} show_name={show_names} {value} {bg_color} />
+      <ElementTile
+        {element}
+        show_name={show_names}
+        show_number={show_numbers}
+        show_symbol={show_symbols}
+        {value}
+        {bg_color}
+      />
     </a>
   {/each}
   <!-- provide vertical offset for lathanices + actinides -->
   <div class="spacer" />
 
-  <ElementPhoto style="grid-column: 1 / span 2; grid-row: 9 / span 2;" />
+  {#if show_photo}
+    <ElementPhoto style="grid-column: 1 / span 2; grid-row: 9 / span 2;" />
+  {/if}
 </div>
 
 <style>
@@ -61,17 +59,11 @@
     display: grid;
     grid-template-columns: repeat(18, 1fr);
     gap: min(0.2vw, 3pt);
-    min-width: 600px;
     position: relative;
-    margin: 2em auto 4em;
   }
   div.spacer {
-    height: 24pt;
     grid-row: 8;
-  }
-  a[href='/bohr-atoms'] {
-    position: absolute;
-    bottom: 90%;
-    right: 10%;
+    grid-column: 1;
+    aspect-ratio: 2;
   }
 </style>
