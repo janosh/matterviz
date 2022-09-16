@@ -2,14 +2,13 @@
   import { pretty_num } from './labels'
   import { last_element } from './stores'
 
-  export let padding = `1vw 2vw`
   export let style = ``
 
   $: element = $last_element // used to decide whether to show user tip to hover an element tile
 </script>
 
 {#if element}
-  <div style:padding {style}>
+  <div {style}>
     <h2>
       {element.number} - {element.name} <small>{element.category}</small>
     </h2>
@@ -64,7 +63,7 @@
     grid-column: 1 / -1;
     font-size: min(3vw, 3em);
     white-space: nowrap;
-    margin-top: 0;
+    margin: 0;
     align-self: end;
   }
   div > h2 > small {

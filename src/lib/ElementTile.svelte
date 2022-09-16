@@ -6,6 +6,7 @@
 
   export let element: ChemicalElement
   export let bg_color: string | null
+  export let show_symbol = true
   export let show_number = true
   export let show_name = true
   export let value: number | undefined = undefined
@@ -26,9 +27,11 @@
       {element.number}
     </span>
   {/if}
-  <span class="symbol">
-    {element.symbol}
-  </span>
+  {#if show_symbol}
+    <span class="symbol">
+      {element.symbol}
+    </span>
+  {/if}
   {#if value}
     <span class="value">
       {pretty_num(value)}
@@ -50,12 +53,16 @@
     place-content: center;
     border-radius: var(--elem-tile-border-radius, 0.1vw);
     color: white;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
   }
   div.element-tile.last-active {
     filter: brightness(110%);
   }
   div.element-tile.active {
     filter: brightness(110%);
+    border: 1px solid white;
   }
   div.element-tile span {
     line-height: 1em;

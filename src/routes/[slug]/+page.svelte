@@ -3,6 +3,7 @@
   import ElementPhoto from '$lib/ElementPhoto.svelte'
   import ElementStats from '$lib/ElementStats.svelte'
   import { element_property_labels, heatmap_labels, pretty_num } from '$lib/labels'
+  import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element } from '$lib/stores'
@@ -61,7 +62,17 @@
   />
 </section>
 
-<section class="orbitals">
+<section class="grid">
+  <PeriodicTable
+    show_names={false}
+    show_numbers={false}
+    show_symbols={false}
+    show_active_elem_stats={false}
+    show_photo={false}
+    disabled={true}
+    style="width: 100%; grid-area: ptable; max-width: 400px;"
+  />
+
   <ElementStats style="grid-area: stats;" />
 
   <table style="grid-area: table;">
@@ -121,29 +132,30 @@
       grid-template-columns: 1fr 2fr;
     }
   }
-  section.orbitals {
-    margin: 2em auto;
+  section.grid {
+    margin: 4em auto;
     display: grid;
     gap: 1em 2em;
     place-items: center;
     grid-template-areas:
       'stats'
+      'ptable'
       'table'
       'bohr'
       'summary';
   }
   @media (min-width: 700px) {
-    section.orbitals {
+    section.grid {
       grid-template-areas:
         'stats stats'
         'table bohr'
-        'summary summary';
+        'summary ptable';
     }
   }
   @media (min-width: 800px) {
-    section.orbitals {
+    section.grid {
       grid-template-areas:
-        'stats stats stats'
+        'stats stats ptable'
         'table bohr summary';
     }
   }
