@@ -1,13 +1,10 @@
 <script lang="ts">
   import { page } from '$app/stores'
+  import { repository } from '../../package.json'
 </script>
 
 <footer>
-  <a href="https://github.com/janosh">&copy; Janosh Riebesell</a>
-  <strong>&ensp;&bull;&ensp;</strong>
-  <a href="https://github.com/janosh/periodic-table/blob/main/license">
-    MIT License 2022
-  </a>
+  <a href="{repository}/blob/main/license">MIT License 2022</a>
   {#if $page.url.pathname !== `/acknowledgements`}
     <strong>&ensp;&bull;&ensp;</strong>
     <a href="acknowledgements">Acknowledgements</a>

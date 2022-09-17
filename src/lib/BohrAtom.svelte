@@ -77,6 +77,7 @@
 <style>
   svg {
     overflow: visible;
+    width: 100%;
   }
   g.shell {
     animation: spin-right linear infinite;

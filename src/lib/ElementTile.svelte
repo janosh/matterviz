@@ -1,7 +1,5 @@
 <script lang="ts">
   import { pretty_num } from './labels'
-
-  import { active_category, active_element, last_element } from './stores'
   import type { ChemicalElement } from './types'
 
   export let element: ChemicalElement
@@ -10,6 +8,8 @@
   export let show_number = true
   export let show_name = true
   export let value: number | undefined = undefined
+  export let style = ``
+  export let active = false
 
   $: category = element.category.replaceAll(` `, `-`)
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
@@ -18,9 +18,9 @@
 
 <div
   class="element-tile {category}"
-  class:active={$active_category === category || $active_element?.name === element.name}
+  class:active
   style:background-color={bg_color}
-  class:last-active={$last_element === element}
+  {style}
 >
   {#if show_number}
     <span class="atomic-number">
@@ -57,15 +57,12 @@
     height: 100%;
     box-sizing: border-box;
   }
-  div.element-tile.last-active {
-    filter: brightness(110%);
-  }
-  div.element-tile.active {
-    filter: brightness(110%);
-    border: 1px solid white;
-  }
   div.element-tile span {
     line-height: 1em;
+  }
+  div.element-tile.active,
+  div.element-tile:hover {
+    border: 1px solid white;
   }
   .atomic-number {
     font-size: 0.9vw;

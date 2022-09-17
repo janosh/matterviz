@@ -2,7 +2,7 @@
   import elements from './element-data.ts'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
-  import { active_element, color_scale } from './stores'
+  import { active_category, active_element, color_scale, last_element } from './stores'
   import type { ChemicalElement } from './types'
 
   export let show_names = true
@@ -30,12 +30,15 @@
     {@const value = element[heatmap]}
     {@const heatmap_color = value ? $color_scale?.(value) : `transparent`}
     {@const bg_color = heatmap ? heatmap_color : null}
+    {@const active =
+      $active_category === element.category || $active_element?.name === element.name}
     <a
       href={element.name.toLowerCase()}
       data-sveltekit-noscroll
       style="grid-column: {element.column}; grid-row: {element.row};"
       on:mouseenter={set_active_element(element)}
       on:mouseleave={set_active_element(null)}
+      class:last-active={$last_element === element}
     >
       <ElementTile
         {element}
@@ -44,6 +47,7 @@
         show_symbol={show_symbols}
         {value}
         {bg_color}
+        {active}
       />
     </a>
   {/each}
@@ -64,7 +68,9 @@
   }
   div.spacer {
     grid-row: 8;
-    grid-column: 1;
     aspect-ratio: 2;
+  }
+  div.periodic-table > a.last-active {
+    filter: brightness(110%);
   }
 </style>

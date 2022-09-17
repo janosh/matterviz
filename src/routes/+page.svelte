@@ -31,7 +31,7 @@
   style:transform="rotateX({x_angle}deg) rotateY({y_angle}deg)"
   class="auto-rotate-{auto_rotate}"
 >
-  {#if $last_element && window_width > 1300}
+  {#if $last_element && window_width > 1100}
     {@const { shells, name, symbol } = $last_element}
     <a href="/bohr-atoms">
       <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
@@ -95,7 +95,7 @@
   }
   a[href='/bohr-atoms'] {
     position: absolute;
-    bottom: 94%;
-    right: 10%;
+    bottom: 93%;
+    right: 8%;
   }
 </style>
