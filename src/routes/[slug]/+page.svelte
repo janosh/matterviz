@@ -1,7 +1,7 @@
 <script lang="ts">
   import BohrAtom from '$lib/BohrAtom.svelte'
+  import ElementHeading from '$lib/ElementHeading.svelte'
   import ElementPhoto from '$lib/ElementPhoto.svelte'
-  import ElementStats from '$lib/ElementStats.svelte'
   import { element_property_labels, heatmap_labels, pretty_num } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
@@ -46,13 +46,12 @@
   <meta property="og:title" content={head_title} />
 </svelte:head>
 
+<ElementHeading {element} />
+
 <PropertySelect selected={[initial_heatmap]} />
 
 <section class="viz">
-  <ElementPhoto
-    missing_msg={window_width < 900 ? `` : `No image for`}
-    style="max-width: 400px;"
-  />
+  <ElementPhoto missing_msg={window_width < 900 ? `` : `No image for`} />
 
   <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
   <ScatterPlot
@@ -62,20 +61,19 @@
   />
 </section>
 
-<section class="grid">
+<p class="summary">{@html element.summary}</p>
+
+<section class="flex-wrap">
   <PeriodicTable
     show_names={false}
     show_numbers={false}
     show_symbols={false}
-    show_active_elem_stats={false}
     show_photo={false}
     disabled={true}
-    style="width: 100%; grid-area: ptable; max-width: 400px;"
+    style="width: 100%;  max-width: 350px;"
   />
 
-  <ElementStats style="grid-area: stats;" />
-
-  <table style="grid-area: table;">
+  <table>
     <thead><th>Shell</th><th>Electrons</th><th>Orbitals</th></thead>
 
     {#each element.shells as shell_occu, shell_idx}
@@ -102,10 +100,8 @@
     electron_speed={Number(orbiting)}
     highlight_shell={active_shell}
     on:click={() => (orbiting = !orbiting)}
-    style="grid-area: bohr;"
+    style="max-width: 300px;"
   />
-
-  <p style="grid-area: summary;">{@html element.summary}</p>
 </section>
 
 <section class="properties">
@@ -132,36 +128,18 @@
       grid-template-columns: 1fr 2fr;
     }
   }
-  section.grid {
-    margin: 4em auto;
-    display: grid;
-    gap: 1em 2em;
+  section.flex-wrap {
+    margin: 3em auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2em;
     place-items: center;
-    grid-template-areas:
-      'stats'
-      'ptable'
-      'table'
-      'bohr'
-      'summary';
+    place-content: center space-around;
   }
-  @media (min-width: 700px) {
-    section.grid {
-      grid-template-areas:
-        'stats stats'
-        'table bohr'
-        'summary ptable';
-    }
-  }
-  @media (min-width: 800px) {
-    section.grid {
-      grid-template-areas:
-        'stats stats ptable'
-        'table bohr summary';
-    }
-  }
-  section p {
+  p.summary {
     text-align: center;
-    max-width: 30em;
+    max-width: 40em;
+    margin: 3em auto;
   }
   section.properties {
     display: grid;
@@ -185,10 +163,12 @@
     font-size: 12pt;
     font-weight: lighter;
     opacity: 0.8;
+    margin-top: 1ex;
   }
   table {
     border-collapse: collapse;
     text-align: center;
+    font-size: clamp(9pt, 1.5vw, 12pt);
   }
   table thead th,
   table td {

@@ -32,6 +32,7 @@
     {@const bg_color = heatmap ? heatmap_color : null}
     <a
       href={element.name.toLowerCase()}
+      data-sveltekit-noscroll
       style="grid-column: {element.column}; grid-row: {element.row};"
       on:mouseenter={set_active_element(element)}
       on:mouseleave={set_active_element(null)}

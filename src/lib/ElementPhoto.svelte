@@ -41,6 +41,7 @@
     );
     border-radius: 4pt;
     overflow: hidden;
+    width: 100%;
   }
   div > span {
     background-color: rgba(255, 255, 255, 0.1);
