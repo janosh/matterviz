@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ElementHeading from './ElementHeading.svelte'
   import { pretty_num } from './labels'
   import { last_element } from './stores'
 
@@ -9,9 +10,10 @@
 
 {#if element}
   <div {style}>
-    <h2>
-      {element.number} - {element.name} <small>{element.category}</small>
-    </h2>
+    <ElementHeading
+      {element}
+      style="font-size: min(3vw, 3em); grid-column: 1/-1; margin: auto 0 0;"
+    />
     <section>
       <p>
         Atomic Mass
@@ -58,18 +60,6 @@
     margin: 0;
     font-weight: lighter;
     font-size: 1.2vw;
-  }
-  div > h2 {
-    grid-column: 1 / -1;
-    font-size: min(3vw, 3em);
-    white-space: nowrap;
-    margin: 0;
-    align-self: end;
-  }
-  div > h2 > small {
-    margin-left: min(1vw, 10pt);
-    font-weight: 100;
-    opacity: 0.7;
   }
   abbr {
     font-size: 0.9vw;

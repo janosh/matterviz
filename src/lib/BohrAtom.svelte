@@ -5,7 +5,7 @@
   export let shells: number[] // e.g. [2, 8, 6] for sulfur
   export let adapt_size = false
   export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
-  export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 30 : 270
+  export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270
   export let base_fill = `white`
   export let electron_speed = 1 // time for one electron orbit is 10/electron_speed seconds, 0 for no motion
   // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
@@ -36,13 +36,7 @@
   }
 </script>
 
-<svg
-  width={size}
-  fill={base_fill}
-  viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
-  on:click
-  {style}
->
+<svg fill={base_fill} viewBox="-{size / 2}, -{size / 2}, {size}, {size}" on:click {style}>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}
