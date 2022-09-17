@@ -5,6 +5,9 @@ const vite_config: UserConfig = {
   plugins: [sveltekit()],
 
   server: {
+    fs: {
+      allow: [`..`], // needed to import package.json
+    },
     port: 3000,
   },
 

@@ -4,20 +4,21 @@ import type { ChemicalElement } from './types'
 export const element_property_labels: Partial<
   Record<keyof ChemicalElement, [string, string | null]>
 > = {
-  number: [`Atomic Number`, null],
   atomic_mass: [`Atomic Mass`, `u`],
-  melting_point: [`Melting Point`, `K`],
-  boiling_point: [`Boiling Point`, `K`],
-  density: [`Density`, `g/cm³`],
   atomic_radius: [`Atomic Radius`, `Å`],
+  boiling_point: [`Boiling Point`, `K`],
   covalent_radius: [`Covalent Radius`, `Å`],
+  density: [`Density`, `g/cm³`],
+  electron_affinity: [`Electron Affinity`, null],
   electronegativity: [`Electronegativity`, null],
   first_ionization: [`First Ionization Energy`, `eV`],
-  electron_affinity: [`Electron Affinity`, null],
+  melting_point: [`Melting Point`, `K`],
+  // molar_heat: [`Molar Heat`, `J/(mol·K)`],
   n_shells: [`Number of Shells`, null],
   n_valence: [`Electron Valency`, null],
+  number: [`Atomic Number`, null],
   shells: [`Electron Shell Occupations`, null],
-  specific_heat: [`Specific Heat`, `J/g`], // TODO check correct unit
+  specific_heat: [`Specific Heat`, `J/(g K)`],
 }
 
 export const heatmap_keys: (keyof ChemicalElement)[] = [

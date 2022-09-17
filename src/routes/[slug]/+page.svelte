@@ -8,6 +8,7 @@
   import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element } from '$lib/stores'
   import type { ChemicalElement } from '$lib/types'
+  import Icon from '@iconify/svelte'
   import type { PageData } from './$types'
 
   export let data: PageData
@@ -37,6 +38,23 @@
   let orbiting = true
   let window_width: number
   let active_shell: number | null = null
+
+  const icon_property_map = {
+    'Atomic Mass': `mdi:weight`,
+    'Atomic Number': `mdi:periodic-table`,
+    'Atomic Radius': `mdi:atom`,
+    'Atomic Volume': `mdi:cube-outline`,
+    'Boiling Point': `mdi:gas-cylinder`,
+    'Covalent Radius': `mdi:atom`,
+    'Electron Affinity': `mdi:electron-framework`,
+    'First Ionization Energy': `simple-line-icons:energy`,
+    'Ionization Energies': `mdi:flash`,
+    'Melting Point': `mdi:water-outline`,
+    'Number of Shells': `ic:baseline-wifi-tethering`,
+    'Specific Heat': `mdi:fire`,
+    Density: `ion:scale-outline`,
+    Electronegativity: `mdi:electron-framework`,
+  }
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -47,6 +65,13 @@
 </svelte:head>
 
 <ElementHeading {element} />
+
+{#if element?.discoverer && element?.year}
+  <p class="discovery">
+    Discovered by <strong>{element.discoverer}</strong> in
+    <strong>{element.year}</strong>
+  </p>
+{/if}
 
 <PropertySelect selected={[initial_heatmap]} />
 
@@ -109,7 +134,7 @@
     <!-- skip last item if index is uneven to avoid single dangling item on last row -->
     {#if idx % 2 === 1 || idx < key_vals.length - 1}
       <div>
-        <strong>{@html value}</strong>
+        <strong><Icon icon={icon_property_map[label]} inline /> {@html value}</strong>
         <small>{label}</small>
       </div>
     {/if}
@@ -136,10 +161,11 @@
     place-items: center;
     place-content: center space-around;
   }
-  p.summary {
+  p {
     text-align: center;
     max-width: 40em;
     margin: 3em auto;
+    font-weight: 200;
   }
   section.properties {
     display: grid;
@@ -176,5 +202,8 @@
   }
   table tr:nth-child(even) {
     background-color: rgba(255, 255, 255, 0.1);
+  }
+  table tr:hover {
+    background-color: rgba(150, 150, 255, 0.2);
   }
 </style>

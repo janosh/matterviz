@@ -2,10 +2,11 @@
   import { page } from '$app/stores'
   import Footer from '$lib/Footer.svelte'
   import GitHubCorner from 'svelte-github-corner'
+  import { repository } from '../../package.json'
   import '../app.css'
 </script>
 
-<GitHubCorner href="https://github.com/janosh/periodic-table" />
+<GitHubCorner href={repository} />
 {#if $page.url.pathname !== `/`}
   <a href="/" class="back" data-sveltekit-prefetch>&laquo; back</a>
   <main>

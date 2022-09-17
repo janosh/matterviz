@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte'
   import ElementHeading from './ElementHeading.svelte'
   import { pretty_num } from './labels'
   import { last_element } from './stores'
@@ -6,6 +7,12 @@
   export let style = ``
 
   $: element = $last_element // used to decide whether to show user tip to hover an element tile
+
+  const icon_phase_map = {
+    Solid: `mdi:cube-outline`,
+    Liquid: `mdi:water-outline`,
+    Gas: `mdi:gas-cylinder`,
+  }
 </script>
 
 {#if element}
@@ -14,27 +21,38 @@
       {element}
       style="font-size: min(3vw, 3em); grid-column: 1/-1; margin: auto 0 0;"
     />
+
     <section>
       <p>
         Atomic Mass
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
-      <strong>{pretty_num(element.atomic_mass)}</strong>
+      <strong>
+        <Icon icon="mdi:weight" inline />
+        {pretty_num(element.atomic_mass)}
+      </strong>
     </section>
     <section>
       <p>
         Density
         <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
-      <strong>{pretty_num(element.density)}</strong>
+      <strong>
+        <Icon icon="ion:scale-outline" inline />
+        {pretty_num(element.density)}
+      </strong>
     </section>
     <section>
       <p>Phase</p>
-      <strong>{element.phase}</strong>
+      <strong>
+        <Icon icon={icon_phase_map[element.phase]} inline />
+        {element.phase}</strong
+      >
     </section>
     <section>
       <p>Year of Discovery</p>
       <strong>
+        <Icon icon="material-symbols:event-available" inline />
         {element.year}
       </strong>
     </section>
@@ -48,12 +66,11 @@
     display: grid;
     grid-template: auto auto / repeat(4, 1fr);
     place-items: center;
-  }
-  div > section {
-    display: grid;
-    gap: 0.5vw;
+    text-align: center;
   }
   div > section > strong {
+    display: block;
+    margin-top: 1ex;
     font-size: 1.6vw;
   }
   div > section > p {
