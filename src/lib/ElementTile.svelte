@@ -21,6 +21,8 @@
   class:active
   style:background-color={bg_color}
   {style}
+  on:mouseenter
+  on:mouseleave
 >
   {#if show_number}
     <span class="atomic-number">

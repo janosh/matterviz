@@ -36,8 +36,6 @@
       href={element.name.toLowerCase()}
       data-sveltekit-noscroll
       style="grid-column: {element.column}; grid-row: {element.row};"
-      on:mouseenter={set_active_element(element)}
-      on:mouseleave={set_active_element(null)}
       class:last-active={$last_element === element}
     >
       <ElementTile
@@ -48,6 +46,8 @@
         {value}
         {bg_color}
         {active}
+        on:mouseenter={set_active_element(element)}
+        on:mouseleave={set_active_element(null)}
       />
     </a>
   {/each}
