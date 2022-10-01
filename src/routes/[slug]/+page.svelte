@@ -47,6 +47,7 @@
     'Boiling Point': `mdi:gas-cylinder`,
     'Covalent Radius': `mdi:atom`,
     'Electron Affinity': `mdi:electron-framework`,
+    'Electron Valency': `mdi:atom-variant`,
     'First Ionization Energy': `simple-line-icons:energy`,
     'Ionization Energies': `mdi:flash`,
     'Melting Point': `mdi:water-outline`,

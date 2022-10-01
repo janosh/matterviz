@@ -9,6 +9,15 @@ test.describe(`Bohr Atoms page`, () => {
     expect(element_tiles).toHaveLength(element_data.length)
   })
 
+  test(`SVG elements have expected height`, async ({ page }) => {
+    await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
+
+    const first_svg = await page.$(`ol > li > svg`)
+    const { height } = (await first_svg?.boundingBox()) ?? {}
+
+    expect(height).toBe(300)
+  })
+
   test(`can toggle orbiting electron animation`, async ({ page }) => {
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
