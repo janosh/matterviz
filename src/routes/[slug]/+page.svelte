@@ -2,13 +2,13 @@
   import BohrAtom from '$lib/BohrAtom.svelte'
   import ElementHeading from '$lib/ElementHeading.svelte'
   import ElementPhoto from '$lib/ElementPhoto.svelte'
+  import Icon from '$lib/Icon.svelte'
   import { element_property_labels, heatmap_labels, pretty_num } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element } from '$lib/stores'
   import type { ChemicalElement } from '$lib/types'
-  import Icon from '@iconify/svelte'
   import type { PageData } from './$types'
 
   export let data: PageData
@@ -100,7 +100,11 @@
   />
 
   <table>
-    <thead><th>Shell</th><th>Electrons</th><th>Orbitals</th></thead>
+    <thead>
+      <th><Icon icon="ic:outline-circle" />Shell</th>
+      <th><Icon icon="mdi:atom-variant" />Electrons</th>
+      <th><Icon icon="mdi:rotate-orbit" />Orbitals</th>
+    </thead>
 
     {#each element.shells as shell_occu, shell_idx}
       {@const shell_orbitals = element.electron_configuration
@@ -135,7 +139,10 @@
     <!-- skip last item if index is uneven to avoid single dangling item on last row -->
     {#if idx % 2 === 1 || idx < key_vals.length - 1}
       <div>
-        <strong><Icon icon={icon_property_map[label]} inline /> {@html value}</strong>
+        <strong>
+          <Icon icon={icon_property_map[label]} />
+          {@html value}
+        </strong>
         <small>{label}</small>
       </div>
     {/if}

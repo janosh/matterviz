@@ -21,7 +21,7 @@
 
 <style>
   label {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     width: max-content;
   }

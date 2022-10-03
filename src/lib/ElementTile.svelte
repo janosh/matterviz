@@ -3,7 +3,7 @@
   import type { ChemicalElement } from './types'
 
   export let element: ChemicalElement
-  export let bg_color: string | null
+  export let bg_color: string | null = null
   export let show_symbol = true
   export let show_number = true
   export let show_name = true
@@ -13,13 +13,12 @@
 
   $: category = element.category.replaceAll(` `, `-`)
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
-  $: bg_color = bg_color ?? `var(--${category}-bg-color)`
 </script>
 
 <div
   class="element-tile {category}"
   class:active
-  style:background-color={bg_color}
+  style:background-color={bg_color ?? `var(--${category}-bg-color)`}
   {style}
   on:mouseenter
   on:mouseleave

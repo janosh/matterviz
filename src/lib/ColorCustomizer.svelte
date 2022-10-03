@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fade } from 'svelte/transition'
   import { category_colors, default_category_colors } from './colors'
+  import Icon from './Icon.svelte'
   import { active_category } from './stores'
 
   export let open = false
@@ -19,6 +20,7 @@
   style:cursor={collapsible ? `pointer` : `default`}
   transition:fade|local
 >
+  <Icon icon="ion:color-palette" />
   Customize Colors
 </h2>
 <div class="grid" transition:fade|local>
