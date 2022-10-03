@@ -26,3 +26,23 @@ heatmap.subscribe((heatmap_val) => {
   const scale = scaleLinear().domain(heatmap_range).range([`blue`, `red`])
   color_scale.set(scale)
 })
+
+function session_store<T>(name: string, initialValue: T) {
+  if (typeof sessionStorage !== `undefined` && sessionStorage[name]) {
+    initialValue = JSON.parse(sessionStorage[name])
+  }
+
+  const { subscribe, set } = writable(initialValue)
+
+  return {
+    subscribe,
+    set: (val: T) => {
+      if (val !== undefined && typeof sessionStorage !== `undefined`) {
+        sessionStorage[name] = JSON.stringify(val)
+      }
+      set(val)
+    },
+  }
+}
+
+export const show_icons = session_store<boolean>(`show-icons`, true)

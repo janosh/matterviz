@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte'
   import { active_element } from './stores'
   import type { ChemicalElement } from './types'
 
@@ -18,7 +19,10 @@
   <img {src} alt={elem?.name} on:error={() => (hidden = true)} {style} {hidden} />
   {#if hidden && missing_msg}
     <div {style}>
-      <span>{missing_msg} {elem.name}</span>
+      <span>
+        <Icon icon="ic:outline-image-not-supported" />{missing_msg}
+        {elem.name}
+      </span>
     </div>
   {/if}
 {/if}

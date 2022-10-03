@@ -55,7 +55,7 @@
   <div class="spacer" />
 
   {#if show_photo}
-    <ElementPhoto style="grid-column: 1 / span 2; grid-row: 9 / span 2;" />
+    <ElementPhoto style="grid-area: 9/1/span 2/span 2;" />
   {/if}
 </div>
 
