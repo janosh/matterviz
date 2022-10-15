@@ -10,6 +10,14 @@ export async function sleep(ms = 1) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function doc_query(selector: string): HTMLElement {
+  const node = document.querySelector(selector)
+  if (!node) {
+    throw new Error(`Selector ${selector} not in document`)
+  }
+  return node as HTMLElement
+}
+
 describe(`PeriodicTable`, () => {
   test(`renders element tiles`, async () => {
     new PeriodicTable({ target: document.body })
@@ -29,7 +37,7 @@ describe(`PeriodicTable`, () => {
       },
     })
 
-    const ptable = document.querySelector(`.periodic-table`)
+    const ptable = doc_query(`.periodic-table`)
 
     expect(ptable?.textContent?.trim()).toBe(``)
 
@@ -41,8 +49,7 @@ describe(`PeriodicTable`, () => {
   test(`hovering element tile toggles CSS class 'active'`, async () => {
     new PeriodicTable({ target: document.body })
 
-    const element_tile = document.querySelector(`.element-tile`)
-    if (!element_tile) throw new Error(`No element tile found`)
+    const element_tile = doc_query(`.element-tile`)
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
     await sleep()
@@ -60,14 +67,11 @@ describe(`PeriodicTable`, () => {
     const random_element = elements[rand_idx]
 
     const element_tile = document.querySelectorAll(`.element-tile`)[rand_idx]
-    if (!element_tile) throw new Error(`No element tile found`)
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
     await sleep()
 
-    const element_photo = document.querySelector(
-      `img[alt="${random_element.name}"]`
-    )
+    const element_photo = doc_query(`img[alt="${random_element.name}"]`)
     expect(element_photo?.style.gridArea).toBe(`9/1/span 2/span 2`)
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseleave`))

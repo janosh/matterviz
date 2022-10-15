@@ -1,27 +1,22 @@
 <script lang="ts">
   import Icon from './Icon.svelte'
-  import { active_element } from './stores'
-  import type { ChemicalElement } from './types'
 
+  export let element_name: string | null = null
   export let style: string | null = null
-  // element defaults to active_element store but can be pinned by passing it as prop
-  export let element: ChemicalElement | undefined = undefined
   export let missing_msg = ``
 
-  $: elem = element ?? $active_element
-
-  $: src = `https://images-of-elements.com/s/${elem?.name?.toLowerCase()}.jpg`
+  $: src = `https://images-of-elements.com/s/${element_name?.toLowerCase()}.jpg`
   let hidden = false
   $: src, (hidden = false) // reset hidden to false when src changes
 </script>
 
-{#if elem}
-  <img {src} alt={elem?.name} on:error={() => (hidden = true)} {style} {hidden} />
+{#if element_name}
+  <img {src} alt={element_name} on:error={() => (hidden = true)} {style} {hidden} />
   {#if hidden && missing_msg}
     <div {style}>
       <span>
         <Icon icon="ic:outline-image-not-supported" />{missing_msg}
-        {elem.name}
+        {element_name}
       </span>
     </div>
   {/if}

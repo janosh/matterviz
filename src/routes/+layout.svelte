@@ -8,7 +8,7 @@
 
 <GitHubCorner href={repository} />
 {#if $page.url.pathname !== `/`}
-  <a href="/" class="back" data-sveltekit-prefetch>&laquo; back</a>
+  <a href="/" class="back">&laquo; back</a>
   <main>
     <slot />
   </main>

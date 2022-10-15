@@ -3,8 +3,19 @@ import { error } from '@sveltejs/kit'
 import type { PageServerLoad } from './$types'
 
 export const load: PageServerLoad = ({ params }) => {
-  const element = elements.find((el) => el.name.toLowerCase() === params.slug)
+  const { slug } = params
 
-  if (element) return { element }
-  throw error(404, `Page not found`)
+  const idx = elements.findIndex((elem) => elem.name.toLowerCase() === slug)
+  if (idx === -1) {
+    throw error(404, { message: `No element found for slug ${slug}` })
+  }
+  // wrap around start/end of array
+  const prev_idx = (idx - 1 + elements.length) % elements.length
+  const next_idx = (idx + 1) % elements.length
+
+  const prev_elem = elements[prev_idx]
+  const next_elem = elements[next_idx]
+  const element = elements[idx]
+
+  return { prev_elem, element, next_elem }
 }

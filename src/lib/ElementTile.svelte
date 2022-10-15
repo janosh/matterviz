@@ -52,10 +52,9 @@
     display: flex;
     place-items: center;
     place-content: center;
-    border-radius: var(--elem-tile-border-radius, 0.1vw);
+    border-radius: var(--elem-tile-border-radius, 1pt);
     color: white;
     width: 100%;
-    height: 100%;
     box-sizing: border-box;
   }
   div.element-tile span {
