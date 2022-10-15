@@ -1,14 +1,13 @@
 <script lang="ts">
   import { fade } from 'svelte/transition'
-  import { category_colors, default_category_colors } from './colors'
   import Icon from './Icon.svelte'
-  import { active_category } from './stores'
+  import { active_category, category_colors, default_category_colors } from './stores'
 
   export let open = false
   export let collapsible = true
 
   $: if (typeof document !== `undefined`) {
-    for (const [key, val] of Object.entries(category_colors)) {
+    for (const [key, val] of Object.entries($category_colors)) {
       document.documentElement.style.setProperty(`--${key}-bg-color`, val)
     }
   }
@@ -25,7 +24,7 @@
 </h2>
 <div class="grid" transition:fade|local>
   {#if open || !collapsible}
-    {#each Object.keys(category_colors) as category}
+    {#each Object.keys($category_colors) as category}
       <label
         for="{category}-color"
         transition:fade|local={{ duration: 200 }}
@@ -37,13 +36,13 @@
         <input
           type="color"
           id="{category}-color"
-          bind:value={category_colors[category]}
+          bind:value={$category_colors[category]}
         />
         {category.replaceAll(`-`, ` `)}
-        {#if category_colors[category] !== default_category_colors[category]}
+        {#if $category_colors[category] !== default_category_colors[category]}
           <button
             on:click|preventDefault={() =>
-              (category_colors[category] = default_category_colors[category])}
+              ($category_colors[category] = default_category_colors[category])}
           >
             reset
           </button>
@@ -61,6 +60,7 @@
     gap: 7pt;
     max-width: 70em;
     margin: 2em auto;
+    justify-self: center;
   }
   div.grid > label {
     padding: 1pt 6pt;
@@ -86,12 +86,16 @@
   h2 {
     text-align: center;
   }
+  label {
+    max-width: 16em;
+  }
   label > button {
     background: none;
     color: white;
     opacity: 0;
     transition: 0.3s;
     border-radius: 2pt;
+    margin-left: auto;
   }
   label:hover > button {
     opacity: 0.8;

@@ -31,7 +31,8 @@
     {@const heatmap_color = value ? $color_scale?.(value) : `transparent`}
     {@const bg_color = heatmap ? heatmap_color : null}
     {@const active =
-      $active_category === element.category || $active_element?.name === element.name}
+      $active_category === element.category.replaceAll(` `, `-`) ||
+      $active_element?.name === element.name}
     <a
       href={element.name.toLowerCase()}
       data-sveltekit-noscroll
@@ -55,7 +56,10 @@
   <div class="spacer" />
 
   {#if show_photo}
-    <ElementPhoto style="grid-area: 9/1/span 2/span 2;" />
+    <ElementPhoto
+      element_name={$active_element?.name}
+      style="grid-area: 9/1/span 2/span 2;"
+    />
   {/if}
 </div>
 

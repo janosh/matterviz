@@ -5,6 +5,7 @@
   import Icon from '$lib/Icon.svelte'
   import { element_property_labels, heatmap_labels, pretty_num } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
+  import PrevNextElement from '$lib/PrevNextElement.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element } from '$lib/stores'
@@ -77,7 +78,10 @@
 <PropertySelect selected={[initial_heatmap]} />
 
 <section class="viz">
-  <ElementPhoto missing_msg={window_width < 900 ? `` : `No image for`} />
+  <ElementPhoto
+    element_name={$active_element?.name}
+    missing_msg={window_width < 900 ? `` : `No image for`}
+  />
 
   <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
   <ScatterPlot
@@ -148,6 +152,8 @@
     {/if}
   {/each}
 </section>
+
+<PrevNextElement prev={data.prev_elem} next={data.next_elem} />
 
 <style>
   section.viz {

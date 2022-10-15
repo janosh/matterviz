@@ -12,7 +12,7 @@
     <h1>⛔ &nbsp;{$page.status}: Page '{$page.params.slug}' not found</h1>
     <p>
       Back to
-      <a data-sveltekit-prefetch href="/">landing page</a>.
+      <a href="/">landing page</a>.
     </p>
   {:else}
     <h1>⛔ &nbsp;{$page.status}</h1>
