@@ -13,7 +13,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "yarn build && yarn preview",
+    "serve": "pnpm build && pnpm preview",
     "check": "svelte-check",
     "test": "vitest --run tests/unit/*.ts && playwright test tests/*.ts"
   },
