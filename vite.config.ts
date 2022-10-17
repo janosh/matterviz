@@ -20,4 +20,5 @@ const vite_config: UserConfig & { test: VitestConfig } = {
     environment: `jsdom`,
   },
 }
+
 export default vite_config

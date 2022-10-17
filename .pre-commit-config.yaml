@@ -32,5 +32,5 @@ repos:
     hooks:
       - id: codespell
         stages: [commit, commit-msg]
-        exclude: yarn.lock
+        exclude: pnpm-lock.yaml
         args: [--ignore-words-list, 'te,ba,nd,ore']
