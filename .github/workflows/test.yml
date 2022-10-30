@@ -15,7 +15,7 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v3
 
-      - name: Setup pnpm
+      - name: Set up pnpm
         uses: pnpm/action-setup@v2
         with:
           version: latest
@@ -23,6 +23,7 @@ jobs:
       - name: Set up node
         uses: actions/setup-node@v3
         with:
+          node-version: 18
           cache: pnpm
 
       - name: Install dependencies

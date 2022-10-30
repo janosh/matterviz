@@ -1,4 +1,4 @@
-import elements from '$lib/element-data'
+import elements from '$lib/element-data.yml'
 import ElementTile from '$lib/ElementTile.svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 

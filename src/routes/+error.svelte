@@ -9,7 +9,8 @@
 
 <div>
   {#if $page.status === 404}
-    <h1>⛔ &nbsp;{$page.status}: Page '{$page.params.slug}' not found</h1>
+    <h1>👨‍🔬 🥽 The element of surprise! 🧪 💥</h1>
+    <h2>⛔ &nbsp;{$page.status}: Page '{$page.params.slug}' not found</h2>
     <p>
       Back to
       <a href="/">landing page</a>.
@@ -31,6 +32,7 @@
     padding: 5em 3em 1em;
     margin: auto;
     text-align: center;
+    min-height: 50vh;
   }
   h2 {
     margin-top: 2em;

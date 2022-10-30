@@ -1,4 +1,4 @@
-import elements from '$lib/element-data'
+import elements from '$lib/element-data.yml'
 import PeriodicTable from '$lib/PeriodicTable.svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
 

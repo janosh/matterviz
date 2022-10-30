@@ -3,6 +3,8 @@ ci:
 
 default_install_hook_types: [pre-commit, commit-msg]
 
+exclude: pnpm-lock.yaml
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
@@ -32,5 +34,4 @@ repos:
     hooks:
       - id: codespell
         stages: [commit, commit-msg]
-        exclude: pnpm-lock.yaml
-        args: [--ignore-words-list, 'te,ba,nd,ore']
+        args: [--ignore-words-list, 'te,ba,nd,ore,claus']

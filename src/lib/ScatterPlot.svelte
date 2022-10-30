@@ -1,7 +1,7 @@
 <script lang="ts">
   import { bisector, extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
-  import elements from './element-data.ts'
+  import elements from './element-data.yml'
   import { element_property_labels, pretty_num } from './labels'
   import Line from './Line.svelte'
   import ScatterPoint from './ScatterPoint.svelte'
@@ -93,7 +93,7 @@
           </g>
         {/each}
         <text x={width / 2} y={height + 5 - x_label_y} class="label x">
-          {x_label}
+          {x_label ?? ``}
         </text>
       </g>
 
@@ -111,7 +111,7 @@
           </g>
         {/each}
         <text x={-height / 2} y={13} transform="rotate(-90)" class="label y">
-          {heatmap_label}
+          {heatmap_label ?? ``}
         </text>
       </g>
 

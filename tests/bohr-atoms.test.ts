@@ -1,5 +1,5 @@
-import element_data from '$lib/element-data.ts'
 import { expect, test } from '@playwright/test'
+import { element_data } from './index.ts'
 
 test.describe(`Bohr Atoms page`, () => {
   test(`lists all elements`, async ({ page }) => {
