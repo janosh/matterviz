@@ -1,5 +1,5 @@
 <script lang="ts">
-  import elements from './element-data.ts'
+  import elements from './element-data.yml'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
   import { active_category, active_element, color_scale, last_element } from './stores'

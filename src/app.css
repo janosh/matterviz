@@ -11,6 +11,8 @@
   --lanthanide-bg-color: #3f5d78;
   --actinide-bg-color: cornflowerblue;
   --experimental-bg-color: gray;
+
+  --sms-margin: 1em auto;
 }
 body {
   background: var(--page-bg);

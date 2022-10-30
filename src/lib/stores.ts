@@ -2,7 +2,7 @@ import { extent } from 'd3-array'
 import type { ScaleLinear } from 'd3-scale'
 import { scaleLinear } from 'd3-scale'
 import { writable } from 'svelte/store'
-import elements from './element-data.ts'
+import elements from './element-data.yml'
 import type { ChemicalElement } from './types'
 
 export const active_category = writable<string | null>(null)

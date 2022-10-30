@@ -1,6 +1,6 @@
 <script lang="ts">
   import BohrAtom from '$lib/BohrAtom.svelte'
-  import elements from '$lib/element-data'
+  import elements from '$lib/element-data.yml'
 
   let electron_speed = 2
 </script>
