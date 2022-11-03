@@ -29,7 +29,6 @@
   {#each elements as element}
     {@const value = element[heatmap]}
     {@const heatmap_color = value ? $color_scale?.(value) : `transparent`}
-    {@const bg_color = heatmap ? heatmap_color : null}
     {@const active =
       $active_category === element.category.replaceAll(` `, `-`) ||
       $active_element?.name === element.name}
@@ -45,7 +44,7 @@
         show_number={show_numbers}
         show_symbol={show_symbols}
         {value}
-        {bg_color}
+        bg_color={heatmap ? heatmap_color : null}
         {active}
         on:mouseenter={set_active_element(element)}
         on:mouseleave={set_active_element(null)}

@@ -1,5 +1,7 @@
 import elements from '$lib/element-data.yml'
+import { heatmap_labels } from '$lib/labels'
 import PeriodicTable from '$lib/PeriodicTable.svelte'
+import PropertySelect from '$lib/PropertySelect.svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
 
 beforeEach(() => {
@@ -60,7 +62,7 @@ describe(`PeriodicTable`, () => {
     expect([...element_tile.classList]).not.toContain(`active`)
   })
 
-  test(`renders element photo when hovering element tile`, async () => {
+  test(`shows element photo when hovering element tile`, async () => {
     new PeriodicTable({ target: document.body })
 
     const rand_idx = Math.floor(Math.random() * elements.length)
@@ -77,5 +79,27 @@ describe(`PeriodicTable`, () => {
     element_tile?.dispatchEvent(new MouseEvent(`mouseleave`))
     await sleep()
     expect(document.querySelector(`img`)).toBeNull()
+  })
+
+  test(`hooking PeriodicTable up to PropertySelect and selecting heatmap sets element tile background`, async () => {
+    const ptable = new PeriodicTable({ target: document.body })
+    new PropertySelect({ target: document.body })
+
+    const li = doc_query(`ul.options > li`)
+    li.dispatchEvent(new MouseEvent(`mouseup`))
+    await sleep()
+
+    const selected = doc_query(`div.multiselect > ul.selected`)
+    const heatmap_label = `Atomic Mass (u)`
+    expect(selected.textContent?.trim()).toBe(heatmap_label)
+    const heatmap_key = heatmap_labels[heatmap_label]
+
+    expect(heatmap_key).toBe(`atomic_mass`)
+    ptable.$set({ heatmap: heatmap_key })
+    await sleep()
+
+    const element_tile = doc_query(`div.element-tile`)
+
+    expect(element_tile.style.backgroundColor).toBe(`rgb(0, 0, 255)`)
   })
 })
