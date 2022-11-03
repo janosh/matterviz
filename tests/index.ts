@@ -1,5 +1,4 @@
 import type { ChemicalElement } from '$lib/types'
-
 import { readFileSync } from 'fs'
 import yaml from 'js-yaml'
 
