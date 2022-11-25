@@ -2,7 +2,7 @@
   import BohrAtom from '$lib/BohrAtom.svelte'
   import elements from '$lib/element-data.yml'
 
-  let electron_speed = 2
+  let electron_speed = 1
 </script>
 
 <h1>Bohr Atoms</h1>
@@ -31,7 +31,7 @@
   {#each elements as { shells, symbol, number, name }}
     <li>
       <strong>
-        <a href="/{name.toLowerCase()}">{number}</a>
+        <a href={name.toLowerCase()}>{number}</a>
       </strong>
       <BohrAtom {shells} {symbol} {name} {electron_speed} />
     </li>

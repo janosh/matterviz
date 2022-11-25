@@ -15,6 +15,7 @@
 
 <h2
   on:click={() => (open = !open)}
+  on:keyup={(e) => [`Enter`, ` `].includes(e.key) && (open = !open)}
   title={!open && collapsible ? `Click to open color picker` : null}
   style:cursor={collapsible ? `pointer` : `default`}
   transition:fade|local
