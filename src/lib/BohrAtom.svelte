@@ -36,7 +36,13 @@
   }
 </script>
 
-<svg fill={base_fill} viewBox="-{size / 2}, -{size / 2}, {size}, {size}" on:click {style}>
+<svg
+  fill={base_fill}
+  viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
+  on:click
+  on:keyup
+  {style}
+>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}

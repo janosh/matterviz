@@ -19,12 +19,12 @@
     </a>
   {/if}
   <strong>&ensp;&bull;&ensp;</strong>
-  <a href="/bohr-atoms">
+  <a href="bohr-atoms">
     <Icon icon="mdi:atom-variant" />
     Bohr Atoms
   </a>
   <p class="toggle-icons">
-    <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Show icons?
+    <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons?
   </p>
 </footer>
 

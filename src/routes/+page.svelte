@@ -33,7 +33,7 @@
 >
   {#if $last_element && window_width > 1100}
     {@const { shells, name, symbol } = $last_element}
-    <a href="/bohr-atoms">
+    <a href="bohr-atoms">
       <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
     </a>
   {/if}
@@ -93,7 +93,7 @@
       transform: rotateX(360deg) rotateY(360deg);
     }
   }
-  a[href='/bohr-atoms'] {
+  a[href='bohr-atoms'] {
     position: absolute;
     bottom: 93%;
     right: 8%;

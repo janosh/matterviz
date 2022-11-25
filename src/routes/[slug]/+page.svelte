@@ -34,7 +34,7 @@
   // set atomic radius as initial heatmap
   const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof ChemicalElement
 
-  $: head_title = `${element.name} | Periodic Table`
+  $: head_title = `${element.name} &bull; Periodic Table`
 
   let orbiting = true
   let window_width: number
@@ -66,96 +66,116 @@
   <meta property="og:title" content={head_title} />
 </svelte:head>
 
-<ElementHeading {element} />
+<a href="." class="back">&laquo; back</a>
 
-{#if element?.discoverer && element?.year}
-  <p class="discovery">
-    Discovered by <strong>{element.discoverer}</strong> in
-    <strong>{element.year}</strong>
-  </p>
-{/if}
+<main>
+  <ElementHeading {element} />
 
-<PropertySelect selected={[initial_heatmap]} />
+  {#if element?.discoverer && element?.year}
+    <p class="discovery">
+      Discovered by <strong>{element.discoverer}</strong> in
+      <strong>{element.year}</strong>
+    </p>
+  {/if}
 
-<section class="viz">
-  <ElementPhoto
-    element_name={$active_element?.name}
-    missing_msg={window_width < 900 ? `` : `No image for`}
-  />
+  <PropertySelect selected={[initial_heatmap]} />
 
-  <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
-  <ScatterPlot
-    ylim={[0, null]}
-    on:mouseleave={() => ($active_element = element)}
-    style="min-height: min(50vmin, 400px);"
-  />
-</section>
+  <section class="viz">
+    <ElementPhoto
+      element_name={$active_element?.name}
+      missing_msg={window_width < 900 ? `` : `No image for`}
+    />
 
-<p class="summary">{@html element.summary}</p>
+    <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
+    <ScatterPlot
+      ylim={[0, null]}
+      on:mouseleave={() => ($active_element = element)}
+      style="min-height: min(50vmin, 400px);"
+    />
+  </section>
 
-<section class="flex-wrap">
-  <PeriodicTable
-    show_names={false}
-    show_numbers={false}
-    show_symbols={false}
-    show_photo={false}
-    disabled={true}
-    style="width: 100%;  max-width: 350px;"
-  />
+  <p class="summary">{@html element.summary}</p>
 
-  <table>
-    <thead>
-      <th><Icon icon="ic:outline-circle" />Shell</th>
-      <th><Icon icon="mdi:atom-variant" />Electrons</th>
-      <th><Icon icon="mdi:rotate-orbit" />Orbitals</th>
-    </thead>
+  <section class="flex-wrap">
+    <PeriodicTable
+      show_names={false}
+      show_numbers={false}
+      show_symbols={false}
+      show_photo={false}
+      disabled={true}
+      style="width: 100%;  max-width: 350px;"
+    />
 
-    {#each element.shells as shell_occu, shell_idx}
-      {@const shell_orbitals = element.electron_configuration
-        .split(` `)
-        .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
-        .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
-      <tr
-        on:mouseenter={() => (active_shell = shell_idx + 1)}
-        on:mouseleave={() => (active_shell = null)}
-      >
-        <td>{shell_idx + 1}</td>
-        <td>{shell_occu}</td>
-        <td>{shell_orbitals.join(` + `)}</td>
-      </tr>
+    <table>
+      <thead>
+        <th><Icon icon="ic:outline-circle" />Shell</th>
+        <th><Icon icon="mdi:atom-variant" />Electrons</th>
+        <th><Icon icon="mdi:rotate-orbit" />Orbitals</th>
+      </thead>
+
+      {#each element.shells as shell_occu, shell_idx}
+        {@const shell_orbitals = element.electron_configuration
+          .split(` `)
+          .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
+          .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
+        <tr
+          on:mouseenter={() => (active_shell = shell_idx + 1)}
+          on:mouseleave={() => (active_shell = null)}
+        >
+          <td>{shell_idx + 1}</td>
+          <td>{shell_occu}</td>
+          <td>{shell_orbitals.join(` + `)}</td>
+        </tr>
+      {/each}
+    </table>
+
+    <BohrAtom
+      symbol={element.symbol}
+      shells={element.shells}
+      name={element.name}
+      adapt_size={true}
+      electron_speed={Number(orbiting)}
+      highlight_shell={active_shell}
+      on:click={() => (orbiting = !orbiting)}
+      style="max-width: 300px;"
+    />
+  </section>
+
+  <section class="properties">
+    {#each key_vals as [label, value], idx}
+      <!-- skip last item if index is uneven to avoid single dangling item on last row -->
+      {#if idx % 2 === 1 || idx < key_vals.length - 1}
+        <div>
+          <strong>
+            <Icon icon={icon_property_map[label]} />
+            {@html value}
+          </strong>
+          <small>{label}</small>
+        </div>
+      {/if}
     {/each}
-  </table>
+  </section>
 
-  <BohrAtom
-    symbol={element.symbol}
-    shells={element.shells}
-    name={element.name}
-    adapt_size={true}
-    electron_speed={Number(orbiting)}
-    highlight_shell={active_shell}
-    on:click={() => (orbiting = !orbiting)}
-    style="max-width: 300px;"
-  />
-</section>
-
-<section class="properties">
-  {#each key_vals as [label, value], idx}
-    <!-- skip last item if index is uneven to avoid single dangling item on last row -->
-    {#if idx % 2 === 1 || idx < key_vals.length - 1}
-      <div>
-        <strong>
-          <Icon icon={icon_property_map[label]} />
-          {@html value}
-        </strong>
-        <small>{label}</small>
-      </div>
-    {/if}
-  {/each}
-</section>
-
-<PrevNextElement prev={data.prev_elem} next={data.next_elem} />
+  <PrevNextElement prev={data.prev_elem} next={data.next_elem} />
+</main>
 
 <style>
+  a.back {
+    padding: 2pt 1ex;
+    border-radius: 4pt;
+    background: rgba(255, 255, 255, 0.1);
+    transition: color 0.3s, background-color 0.3s;
+    position: absolute;
+    top: 2em;
+    left: 2em;
+  }
+  a.back:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  main {
+    margin: auto;
+    max-width: 75em;
+  }
   section.viz {
     margin: 2em auto;
     display: grid;
