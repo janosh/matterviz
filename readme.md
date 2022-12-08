@@ -1,11 +1,19 @@
-# Periodic Table
+<h1 align="center">
+  <img src="static/favicon.svg" alt="Logo" height="60">
+  <br>
+  Periodic Table
+</h1>
+
+<h4 align="center">
 
 [![Tests](https://github.com/janosh/periodic-table/actions/workflows/test.yml/badge.svg)](https://github.com/janosh/periodic-table/actions/workflows/test.yml)
 [![GH Pages](https://github.com/janosh/periodic-table/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/janosh/periodic-table/actions/workflows/gh-pages.yml)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/janosh/periodic-table/main.svg?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)](https://results.pre-commit.ci/latest/github/janosh/periodic-table/main?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)
 [![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz)](https://stackblitz.com/github/janosh/periodic-table)
 
-Interactive Periodic Table component written in Svelte.
+</h4>
+
+Interactive Periodic Table component written in Svelte. With scatter plot showing periodicity of elemental properties and Bohr atoms showing electron shell configuration of different elements.
 
 ![Screenshot of periodic table](static/2022-08-08-screenshot.png)
 
@@ -23,7 +31,7 @@ The details page for gold.
 
 ## Usage
 
-Copy the `src/lib/` folder into your Svelte project and import the `PeriodicTable` component:
+Copy the contents of [`src/lib/`](https://github.com/janosh/periodic-table/tree/main/src/lib) into your Svelte project and import the `PeriodicTable` component:
 
 ```svelte
 <script>
