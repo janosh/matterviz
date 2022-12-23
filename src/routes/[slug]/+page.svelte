@@ -134,7 +134,7 @@
       shells={element.shells}
       name={element.name}
       adapt_size={true}
-      electron_speed={Number(orbiting)}
+      orbital_period={Number(orbiting)}
       highlight_shell={active_shell}
       on:click={() => (orbiting = !orbiting)}
       style="max-width: 300px;"

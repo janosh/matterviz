@@ -8,23 +8,20 @@
 
 <footer>
   <a href="{repository}/blob/main/license">
-    <Icon icon="octicon:law" />
-    MIT License 2022
+    <Icon icon="octicon:law" />MIT License 2022
   </a>
-  {#if $page.url.pathname !== `/acknowledgements`}
+  {#if $page.route.id !== `/acknowledgements`}
     <strong>&ensp;&bull;&ensp;</strong>
     <a href="acknowledgements">
-      <Icon icon="fa6-solid:hands-clapping" />
-      Acknowledgements
+      <Icon icon="fa6-solid:hands-clapping" />Acknowledgements
     </a>
   {/if}
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="bohr-atoms">
-    <Icon icon="mdi:atom-variant" />
-    Bohr Atoms
+    <Icon icon="mdi:atom-variant" />Bohr Atoms
   </a>
   <p class="toggle-icons">
-    <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons?
+    <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons
   </p>
 </footer>
 
@@ -37,6 +34,6 @@
     display: flex;
     place-content: center;
     place-items: center;
-    gap: 1ex;
+    gap: 3pt;
   }
 </style>
