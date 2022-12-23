@@ -7,13 +7,18 @@
   export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
   export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270
   export let base_fill = `white`
-  export let electron_speed = 1 // time for one electron orbit is 10/electron_speed seconds, 0 for no motion
+  export let orbital_period = 2 // time for inner-most electron orbit in seconds, 0 for no motion
   // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
   export let nucleus_props: Record<string, string | number> = {}
   export let shell_props: Record<string, string | number> = {}
   export let electron_props: Record<string, string | number> = {}
   export let highlight_shell: number | null = null
   export let style = ``
+
+  // Bohr atom electron orbital period is given by
+  // T = (n^3 h^3) / (4pi^2 m K e^4 Z^2) = 1.52 * 10^-16 * n^3 / Z^2 s
+  // with n the shell number, Z the atomic number, m the mass of the electron
+  $: Z = shells.reduce((a, b) => a + b, 0)
 
   $: _nucleus_props = {
     r: 20,
@@ -55,12 +60,10 @@
 
   <!-- electron orbitals -->
   {#each shells as n_electrons, shell_idx}
-    {@const shell_radius = _nucleus_props.r + (shell_idx + 1) * shell_width}
-    {@const active = shell_idx + 1 === highlight_shell}
-    <g
-      class="shell"
-      style:animation-duration="{electron_speed ? 10 / electron_speed : 0}s"
-    >
+    {@const n = shell_idx + 1}
+    {@const shell_radius = _nucleus_props.r + n * shell_width}
+    {@const active = n === highlight_shell}
+    <g class="shell" style:animation-duration="{orbital_period * n ** 1.5}s">
       <circle
         r={shell_radius}
         {..._shell_props}
