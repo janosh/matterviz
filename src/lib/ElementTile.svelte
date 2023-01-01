@@ -65,24 +65,24 @@
     border: 1px solid white;
   }
   .atomic-number {
-    font-size: 0.9vw;
+    font-size: 1.1cqw;
     position: absolute;
-    top: 0.35vw;
+    top: 0.3cqw;
     font-weight: lighter;
-    left: 0.35vw;
+    left: 0.3cqw;
   }
   .symbol {
-    font-size: 2vw;
+    font-size: 2cqw;
   }
   span.name,
   span.value {
     position: absolute;
-    bottom: 0.35vw;
+    bottom: 0.4cqw;
   }
   span.value {
-    font-size: 0.8vw;
+    font-size: 0.9cqw;
   }
   span.name {
-    font-size: 0.65vw;
+    font-size: 0.6cqw;
   }
 </style>

@@ -1,7 +1,7 @@
 import type { ChemicalElement } from './types'
 
 // TODO add labels and units for all elemental properties
-export const element_property_labels: Partial<
+export const property_labels: Partial<
   Record<keyof ChemicalElement, [string, string | null]>
 > = {
   atomic_mass: [`Atomic Mass`, `u`],
@@ -35,7 +35,7 @@ export const heatmap_keys: (keyof ChemicalElement)[] = [
 export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
   Object.fromEntries(
     heatmap_keys.map((key) => {
-      const [label, unit] = element_property_labels[key] ?? []
+      const [label, unit] = property_labels[key] ?? []
       if (!label) throw `Unexpected missing label ${label}`
       return [label + (unit ? ` (${unit})` : ``), key]
     })
@@ -43,9 +43,9 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
 
 export const pretty_num = (num: number | null, precision = 2) => {
   if (num === null) return ``
-  if (num < 0.01 || num > 10000) {
+  if (num < 0.01 || num > 1e6) {
     return num.toExponential(precision)
   } else {
-    return parseFloat(num.toFixed(precision))
+    return parseFloat(num.toFixed(precision)).toLocaleString()
   }
 }

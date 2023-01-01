@@ -1,25 +1,28 @@
 <script lang="ts">
   import BohrAtom from '$lib/BohrAtom.svelte'
+  import elements from '$lib/element-data.yml'
   import ElementHeading from '$lib/ElementHeading.svelte'
   import ElementPhoto from '$lib/ElementPhoto.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { element_property_labels, heatmap_labels, pretty_num } from '$lib/labels'
+  import { pretty_num, property_labels } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PrevNextElement from '$lib/PrevNextElement.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
-  import { active_element } from '$lib/stores'
+  import { active_element, heatmap } from '$lib/stores'
   import type { ChemicalElement } from '$lib/types'
+  import { extent } from 'd3-array'
+  import { scaleLinear } from 'd3-scale'
   import type { PageData } from './$types'
 
   export let data: PageData
 
   $: [$active_element, element] = [data.element, data.element]
 
-  $: key_vals = Object.keys(element_property_labels)
+  $: key_vals = Object.keys(property_labels)
     .filter((key) => element[key])
     .map((key) => {
-      const [label, unit] = element_property_labels[key]
+      const [label, unit] = property_labels[key]
       let value = element[key as keyof ChemicalElement]
       if (typeof value === `number`) {
         value = pretty_num(value)
@@ -31,8 +34,8 @@
       return [label, value]
     })
 
-  // set atomic radius as initial heatmap
-  const initial_heatmap = Object.keys(heatmap_labels)[1] as keyof ChemicalElement
+  // set atomic radius as default heatmap
+  $: if (!$heatmap) $heatmap = `atomic_radius`
 
   $: head_title = `${element.name} &bull; Periodic Table`
 
@@ -57,6 +60,13 @@
     Density: `ion:scale-outline`,
     Electronegativity: `mdi:electron-framework`,
   }
+
+  $: scatter_plot_values = elements.map((el) => el[$heatmap])
+  $: color_scale = scaleLinear()
+    .domain(extent(scatter_plot_values))
+    .range([`blue`, `red`])
+
+  $: [y_label, y_unit] = property_labels[$heatmap] ?? []
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -78,7 +88,7 @@
     </p>
   {/if}
 
-  <PropertySelect selected={[initial_heatmap]} />
+  <PropertySelect />
 
   <section class="viz">
     <ElementPhoto
@@ -88,7 +98,11 @@
 
     <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
     <ScatterPlot
-      ylim={[0, null]}
+      y_values={scatter_plot_values}
+      {y_label}
+      {y_unit}
+      {color_scale}
+      y_lim={[0, null]}
       on:mouseleave={() => ($active_element = element)}
       style="min-height: min(50vmin, 400px);"
     />
