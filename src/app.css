@@ -6,9 +6,9 @@
   --alkaline-earth-metal-bg-color: darkslateblue;
   --metalloid-bg-color: darkgoldenrod;
   --polyatomic-nonmetal-bg-color: brown;
-  --transition-metal-bg-color: teal;
+  --transition-metal-bg-color: #571e6c;
   --post-transition-metal-bg-color: #938d4a;
-  --lanthanide-bg-color: #3f5d78;
+  --lanthanide-bg-color: #58748e;
   --actinide-bg-color: cornflowerblue;
   --experimental-bg-color: gray;
 
@@ -20,6 +20,12 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   margin: auto;
   color: #eee;
+}
+main {
+  margin: auto;
+  margin-bottom: 3em;
+  width: 100%;
+  max-width: 50em;
 }
 a {
   color: cornflowerblue;
@@ -64,4 +70,12 @@ button {
 }
 :where(h2, h3, h4, h5, h6):hover a[aria-hidden='true'] {
   opacity: 1;
+}
+
+/* svelte-toc styles */
+aside.toc.desktop {
+  position: fixed;
+  top: 3em;
+  left: calc(50vw + 50em / 2);
+  max-width: 16em;
 }

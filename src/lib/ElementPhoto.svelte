@@ -2,8 +2,9 @@
   import Icon from './Icon.svelte'
 
   export let element_name: string | null = null
+  // style applies to img and missing_msg div
   export let style: string | null = null
-  export let missing_msg = ``
+  export let missing_msg = `No image for `
 
   $: src = `https://images-of-elements.com/s/${element_name?.toLowerCase()}.jpg`
   let hidden = false
@@ -15,7 +16,7 @@
   {#if hidden && missing_msg}
     <div {style}>
       <span>
-        <Icon icon="ic:outline-image-not-supported" />{missing_msg}
+        <Icon icon="ic:outline-image-not-supported" inline />{missing_msg}
         {element_name}
       </span>
     </div>
@@ -25,8 +26,8 @@
 <style>
   img {
     width: 100%;
-    height: 100%;
     object-fit: cover;
+    margin: 0;
   }
   div {
     aspect-ratio: 1;
@@ -38,14 +39,13 @@
       rgba(0, 100, 0, 0.5),
       rgba(0, 0, 100, 0.3)
     );
+    color: white;
     border-radius: 4pt;
     overflow: hidden;
     width: 100%;
+    container-type: inline-size;
   }
   div > span {
-    background-color: rgba(255, 255, 255, 0.1);
-    padding: 1ex 1em;
-    border-radius: 1em;
-    margin: 1em;
+    font-size: 15cqw;
   }
 </style>

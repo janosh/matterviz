@@ -7,7 +7,7 @@
   export let value: keyof ChemicalElement | null = null
   export let selected: keyof ChemicalElement[] = []
 
-  $: $heatmap = heatmap_labels[value ?? ''] ?? null
+  $: $heatmap = heatmap_labels[value ?? ``] ?? null
 </script>
 
 <Select

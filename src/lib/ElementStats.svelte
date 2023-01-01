@@ -6,7 +6,7 @@
 
   export let style = ``
 
-  $: element = $last_element // used to decide whether to show user tip to hover an element tile
+  $: element = $last_element // variable needed to decide whether to show user tip
 
   const icon_phase_map = {
     Solid: `mdi:cube-outline`,
@@ -67,19 +67,20 @@
     grid-template: auto auto / repeat(4, 1fr);
     place-items: center;
     text-align: center;
+    container-type: inline-size;
   }
   div > section > strong {
     display: block;
     margin-top: 1ex;
-    font-size: 1.6vw;
+    font-size: 3.5cqw;
   }
   div > section > p {
     margin: 0;
     font-weight: lighter;
-    font-size: 1.2vw;
+    font-size: 3cqw;
   }
-  abbr {
-    font-size: 0.9vw;
+  div > section > p > abbr {
+    font-size: 2cqw;
     text-decoration: none;
   }
   h3 {

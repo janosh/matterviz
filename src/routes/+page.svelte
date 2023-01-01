@@ -2,18 +2,24 @@
   import BohrAtom from '$lib/BohrAtom.svelte'
   import ColorCustomizer from '$lib/ColorCustomizer.svelte'
   import EasterEgg from '$lib/EasterEgg.svelte'
+  import elements from '$lib/element-data.yml'
   import ElementStats from '$lib/ElementStats.svelte'
+  import { property_labels } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element, heatmap, last_element } from '$lib/stores'
   import TableInset from '$lib/TableInset.svelte'
+  import type { ScaleLinear } from 'd3-scale'
   import '../app.css'
 
   let window_width: number
+  let color_scale: ScaleLinear<number, number, never>
   let x_angle = 0
   let y_angle = 0
   let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
+
+  $: [y_label, y_unit] = property_labels[$heatmap] ?? []
 </script>
 
 <svelte:head>
@@ -39,15 +45,20 @@
   {/if}
   <PeriodicTable
     show_names={window_width > 1000}
-    heatmap={$heatmap}
+    heatmap_values={$heatmap ? elements.map((el) => el[$heatmap]) : []}
     style="margin: 2em auto 4em;"
+    bind:color_scale
   >
     <TableInset slot="inset">
       {#if $heatmap}
         <ScatterPlot
-          ylim={[0, null]}
+          y_lim={[0, null]}
+          y_values={elements.map((el) => el[$heatmap])}
+          {y_label}
+          {y_unit}
           on_hover_point={(point) => ($active_element = point[2])}
           x_label_y={42}
+          {color_scale}
         />
       {:else}
         <ElementStats --font-size="1vw" />
