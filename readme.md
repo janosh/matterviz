@@ -29,16 +29,24 @@ The details page for gold.
 
 <https://user-images.githubusercontent.com/30958850/186975855-8e0d94f9-e4e3-47a2-9354-9c012b37307c.mp4>
 
+## Installation
+
+```sh
+npm install --dev periodic-tables
+```
+
 ## Usage
 
-Copy the contents of [`src/lib/`](https://github.com/janosh/periodic-table/tree/main/src/lib) into your Svelte project and import the `PeriodicTable` component:
+Import the `PeriodicTable` component and pass it some heatmap values:
 
 ```svelte
 <script>
-  import PeriodicTable from 'src/lib/PeriodicTable.svelte'
+  import PeriodicTable from 'periodic-tables'
+
+  const heatmap_values = { H: 10, He: 4, Li: 8, Fe: 3, O: 24 }
 </script>
 
-<PeriodicTable />
+<PeriodicTable {heatmap_values} />
 ```
 
 ## Acknowledgements

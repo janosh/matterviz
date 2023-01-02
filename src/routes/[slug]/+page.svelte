@@ -9,7 +9,7 @@
   import PrevNextElement from '$lib/PrevNextElement.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
-  import { active_element, heatmap } from '$lib/stores'
+  import { active_element, heatmap_key } from '$lib/stores'
   import type { ChemicalElement } from '$lib/types'
   import { extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
@@ -34,8 +34,8 @@
       return [label, value]
     })
 
-  // set atomic radius as default heatmap
-  $: if (!$heatmap) $heatmap = `atomic_radius`
+  // set atomic radius as default heatmap_key
+  $: if (!$heatmap_key) $heatmap_key = `atomic_radius`
 
   $: head_title = `${element.name} &bull; Periodic Table`
 
@@ -61,12 +61,12 @@
     Electronegativity: `mdi:electron-framework`,
   }
 
-  $: scatter_plot_values = elements.map((el) => el[$heatmap])
+  $: scatter_plot_values = elements.map((el) => el[$heatmap_key])
   $: color_scale = scaleLinear()
     .domain(extent(scatter_plot_values))
     .range([`blue`, `red`])
 
-  $: [y_label, y_unit] = property_labels[$heatmap] ?? []
+  $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
