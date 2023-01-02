@@ -7,7 +7,7 @@
 
 <footer>
   <a href="{repository}/blob/main/license">
-    <Icon icon="octicon:law" />MIT License 2022
+    <Icon icon="octicon:law" />License
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/acknowledgements">
@@ -20,6 +20,10 @@
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/changelog">
     <Icon icon="octicon:history" />Changelog
+  </a>
+  <strong>&ensp;&bull;&ensp;</strong>
+  <a href="/contributing">
+    <Icon icon="octicon:repo-forked" />Contributing
   </a>
   <p class="toggle-icons">
     <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons
