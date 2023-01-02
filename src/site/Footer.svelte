@@ -1,8 +1,8 @@
 <script lang="ts">
   import { repository } from '../../package.json'
-  import Icon from './Icon.svelte'
-  import { show_icons } from './stores'
-  import Toggle from './Toggle.svelte'
+  import Icon from '../lib/Icon.svelte'
+  import { show_icons } from '../lib/stores'
+  import Toggle from '../lib/Toggle.svelte'
 </script>
 
 <footer>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Footer from '$lib/Footer.svelte'
+  import Footer from '$site/Footer.svelte'
   import GitHubCorner from 'svelte-github-corner'
   import { repository } from '../../package.json'
   import '../app.css'

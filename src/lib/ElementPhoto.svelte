@@ -16,7 +16,7 @@
   {#if hidden && missing_msg}
     <div {style}>
       <span>
-        <Icon icon="ic:outline-image-not-supported" inline />{missing_msg}
+        <Icon icon="ic:outline-image-not-supported" />{missing_msg}
         {element_name}
       </span>
     </div>

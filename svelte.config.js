@@ -10,5 +10,9 @@ export default {
 
   kit: {
     adapter: adapter(),
+
+    alias: {
+      $site: `src/site`,
+    },
   },
 }
