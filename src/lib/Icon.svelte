@@ -4,5 +4,5 @@
 </script>
 
 {#if $show_icons}
-  <Icon inline {...$$props} style="padding: 0 6pt 0 0;" />
+  <Icon inline {...$$props} style="padding: 0 5pt 0 0;" />
 {/if}
