@@ -17,25 +17,25 @@ Interactive Periodic Table component written in Svelte. With scatter plot showin
 
 ![Screenshot of periodic table](static/2022-08-08-screenshot.png)
 
-## Heatmap
+## 📊 &thinsp; Heatmap
 
 Below a screenshot demonstrating the periodicity of elemental properties, i.e. why the periodic table is called periodic. In this case its showing recurring bumps and valleys in the first ionization energy as a function of atomic number.
 
 ![Screenshot of periodic table heatmap](static/2022-08-08-screenshot-heatmap.png)
 
-## Element Details Pages
+## ⚛️ &thinsp; Element Details Pages
 
 The details page for gold.
 
 <https://user-images.githubusercontent.com/30958850/186975855-8e0d94f9-e4e3-47a2-9354-9c012b37307c.mp4>
 
-## Installation
+## 🔨 &thinsp; Installation
 
 ```sh
 npm install --dev periodic-tables
 ```
 
-## Usage
+## 📙 &thinsp; Usage
 
 Import the `PeriodicTable` component and pass it some heatmap values:
 
@@ -49,7 +49,13 @@ Import the `PeriodicTable` component and pass it some heatmap values:
 <PeriodicTable {heatmap_values} />
 ```
 
-## Acknowledgements
+## 🧪 &thinsp; Coverage
+
+| Statements                                                                                 | Branches                                                                          | Lines                                                                            |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| ![Statements](https://img.shields.io/badge/statements-99.84%25-brightgreen.svg?style=flat) | ![Branches](https://img.shields.io/badge/branches-82.92%25-yellow.svg?style=flat) | ![Lines](https://img.shields.io/badge/lines-99.84%25-brightgreen.svg?style=flat) |
+
+## 🙏 &thinsp; Acknowledgements
 
 - Element properties in `src/lib/element-data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
 - Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.

@@ -43,7 +43,7 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
 
 export const pretty_num = (num: number | null, precision = 2) => {
   if (num === null) return ``
-  if (num < 0.01 || num > 1e6) {
+  if ((Math.abs(num) < 0.01 && Math.abs(num) > 0) || num > 1e6) {
     return num.toExponential(precision)
   } else {
     return parseFloat(num.toFixed(precision)).toLocaleString()
