@@ -13,16 +13,18 @@
   }
 </script>
 
-<h2
-  on:click={() => (open = !open)}
-  on:keyup={(e) => [`Enter`, ` `].includes(e.key) && (open = !open)}
-  title={!open && collapsible ? `Click to open color picker` : null}
-  style:cursor={collapsible ? `pointer` : `default`}
-  transition:fade|local
->
-  <Icon icon="ion:color-palette" />
-  Customize Colors
-</h2>
+<slot name="title">
+  <h2
+    on:click={() => (open = !open)}
+    on:keyup={(e) => [`Enter`, ` `].includes(e.key) && (open = !open)}
+    title={!open && collapsible ? `Click to open color picker` : null}
+    style:cursor={collapsible ? `pointer` : `default`}
+    transition:fade|local
+  >
+    <Icon icon="ion:color-palette" />
+    Customize Colors
+  </h2>
+</slot>
 <div class="grid" transition:fade|local>
   {#if open || !collapsible}
     {#each Object.keys($category_colors) as category}

@@ -21,10 +21,16 @@
     "test:unit": "vitest tests/unit/*.ts",
     "test:e2e": "playwright test tests/*.ts",
     "changelog": "npx auto-changelog --package --output changelog.md --unreleased-only --hide-credit --commit-limit false",
-    "update-coverage": "pnpm test:unit --run --coverage && npx istanbul-badges-readme"
+    "update-coverage": "vitest tests/unit --run --coverage && npx istanbul-badges-readme"
+  },
+  "dependencies": {
+    "@iconify/svelte": "^3.0.1",
+    "d3-array": "^3.2.1",
+    "d3-interpolate-path": "^2.3.0",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0"
   },
   "devDependencies": {
-    "@iconify/svelte": "^3.0.1",
     "@playwright/test": "^1.29.1",
     "@sveltejs/adapter-static": "1.0.0",
     "@sveltejs/kit": "1.0.1",
@@ -36,10 +42,6 @@
     "@typescript-eslint/eslint-plugin": "^5.47.0",
     "@typescript-eslint/parser": "^5.47.0",
     "@vitest/coverage-c8": "^0.26.3",
-    "d3-array": "^3.2.1",
-    "d3-interpolate-path": "^2.3.0",
-    "d3-scale": "^4.0.2",
-    "d3-shape": "^3.2.0",
     "eslint": "^8.30.0",
     "eslint-plugin-svelte3": "^4.0.0",
     "hastscript": "^7.1.0",
