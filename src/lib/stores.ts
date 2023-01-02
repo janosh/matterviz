@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store'
-import type { ChemicalElement } from './types'
+import type { Category, ChemicalElement } from './types'
 
-export const active_category = writable<string | null>(null)
+export const active_category = writable<Category | null>(null)
 
 export const active_element = writable<ChemicalElement | null>(null)
 
@@ -10,7 +10,7 @@ active_element.subscribe((el) => {
   if (el !== null) last_element.set(el)
 })
 
-export const heatmap = writable<keyof ChemicalElement | null>(null)
+export const heatmap_key = writable<keyof ChemicalElement | null>(null)
 
 function session_store<T>(name: string, initialValue: T) {
   if (typeof sessionStorage !== `undefined` && sessionStorage[name]) {

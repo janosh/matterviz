@@ -8,7 +8,7 @@
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import PropertySelect from '$lib/PropertySelect.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
-  import { active_element, heatmap, last_element } from '$lib/stores'
+  import { active_element, heatmap_key, last_element } from '$lib/stores'
   import TableInset from '$lib/TableInset.svelte'
   import type { ScaleLinear } from 'd3-scale'
   import '../app.css'
@@ -19,7 +19,7 @@
   let y_angle = 0
   let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
 
-  $: [y_label, y_unit] = property_labels[$heatmap] ?? []
+  $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
 </script>
 
 <svelte:head>
@@ -45,15 +45,15 @@
   {/if}
   <PeriodicTable
     show_names={window_width > 1000}
-    heatmap_values={$heatmap ? elements.map((el) => el[$heatmap]) : []}
+    heatmap_values={$heatmap_key ? elements.map((el) => el[$heatmap_key]) : []}
     style="margin: 2em auto 4em;"
     bind:color_scale
   >
     <TableInset slot="inset">
-      {#if $heatmap}
+      {#if $heatmap_key}
         <ScatterPlot
           y_lim={[0, null]}
-          y_values={elements.map((el) => el[$heatmap])}
+          y_values={elements.map((el) => el[$heatmap_key])}
           {y_label}
           {y_unit}
           on_hover_point={(point) => ($active_element = point[2])}
@@ -66,7 +66,7 @@
     </TableInset>
   </PeriodicTable>
 
-  {#if !$heatmap}
+  {#if !$heatmap_key}
     <ColorCustomizer collapsible={false} />
   {/if}
 </div>

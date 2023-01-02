@@ -1,9 +1,21 @@
+export type Category =
+  | `diatomic nonmetal`
+  | `noble gas`
+  | `alkali metal`
+  | `alkaline earth metal`
+  | `metalloid`
+  | `polyatomic nonmetal`
+  | `transition metal`
+  | `post-transition metal`
+  | `lanthanide`
+  | `actinide`
+
 export type ChemicalElement = {
   appearance: string
   atomic_mass: number
   atomic_radius: number
   boiling_point: number | null
-  category: string
+  category: Category
   column: number // aka group, in range 1 - 18
   covalent_radius: number
   density: number

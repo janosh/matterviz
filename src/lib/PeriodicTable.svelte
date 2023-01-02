@@ -13,7 +13,7 @@
   export let show_symbols = true
   export let show_photo = true
   export let style = ``
-  export let disabled = false
+  export let disabled = false // disable hover and click events
   // either array of length 118 (one heat value for each element) or object with
   // element symbol as key and heat value as value
   export let heatmap_values: number[] = []
