@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ChemicalElement } from '$lib'
   import { element_data } from '$lib'
   import BohrAtom from '$lib/BohrAtom.svelte'
   import ElementHeading from '$lib/ElementHeading.svelte'
@@ -8,7 +9,6 @@
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element, heatmap_key } from '$lib/stores'
-  import type { ChemicalElement } from '$lib/types'
   import PrevNextElement from '$site/PrevNextElement.svelte'
   import PropertySelect from '$site/PropertySelect.svelte'
   import { extent } from 'd3-array'

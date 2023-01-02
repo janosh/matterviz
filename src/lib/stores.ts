@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store'
-import type { Category, ChemicalElement } from './types'
+import type { Category, ChemicalElement } from '.'
 
 export const active_category = writable<Category | null>(null)
 
