@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { element_data } from './index.ts'
+import element_data from '../src/lib/element-data.ts'
 
 test(`element data`, async () => {
   expect(element_data.length).toBe(118)

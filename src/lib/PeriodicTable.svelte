@@ -2,7 +2,7 @@
   import { extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear, scaleLog } from 'd3-scale'
-  import elements from './element-data.yml'
+  import element_data from './element-data'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
   import { active_category, active_element, last_element } from './stores'
@@ -45,7 +45,7 @@
 <div class="periodic-table" {style}>
   <slot name="inset" />
 
-  {#each elements as element, idx}
+  {#each element_data as element, idx}
     {@const { column, row, category, name } = element}
     {@const value = heatmap_values?.length && heatmap_values[idx]}
     {@const heatmap_color = color_scale?.(value) ?? `transparent`}

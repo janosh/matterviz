@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { element_data } from '$lib'
   import BohrAtom from '$lib/BohrAtom.svelte'
-  import elements from '$lib/element-data.yml'
 
   let orbital_period = 2
 </script>
@@ -33,7 +33,7 @@
 </label>
 
 <ol>
-  {#each elements as { shells, symbol, number, name }}
+  {#each element_data as { shells, symbol, number, name }}
     <li>
       <strong>
         <a href={name.toLowerCase()}>{number}</a>

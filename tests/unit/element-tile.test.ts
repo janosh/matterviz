@@ -1,4 +1,4 @@
-import elements from '$lib/element-data.yml'
+import { element_data } from '$lib'
 import ElementTile from '$lib/ElementTile.svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -7,8 +7,8 @@ beforeEach(() => {
 })
 
 // test random element for increased robustness
-const rand_idx = Math.floor(Math.random() * elements.length)
-const rand_element = elements[rand_idx]
+const rand_idx = Math.floor(Math.random() * element_data.length)
+const rand_element = element_data[rand_idx]
 
 describe(`ElementTile`, () => {
   test(`renders element name, symbol and atomic number`, () => {

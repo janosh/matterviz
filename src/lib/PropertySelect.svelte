@@ -5,7 +5,7 @@
   import type { ChemicalElement } from './types'
 
   export let value: keyof ChemicalElement | null = null
-  export let selected: keyof ChemicalElement[] = []
+  export let selected: string[] = []
 
   $: $heatmap_key = heatmap_labels[value ?? ``] ?? null
 </script>

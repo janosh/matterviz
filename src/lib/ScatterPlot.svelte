@@ -2,7 +2,7 @@
   import { bisector, extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear } from 'd3-scale'
-  import elements from './element-data.yml'
+  import element_data from './element-data'
   import { pretty_num } from './labels'
   import Line from './Line.svelte'
   import ScatterPoint from './ScatterPoint.svelte'
@@ -27,7 +27,7 @@
   export let y_unit = ``
 
   let data_points: PlotPoint[]
-  $: data_points = elements.map((elem, idx) => [elem.number, y_values[idx], elem])
+  $: data_points = element_data.map((elem, idx) => [elem.number, y_values[idx], elem])
 
   const axis_label_offset = { x: 15, y: 20 } // pixels
 

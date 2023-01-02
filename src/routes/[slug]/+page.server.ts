@@ -1,4 +1,4 @@
-import elements from '$lib/element-data.yml'
+import elements from '$lib/element-data'
 import { error } from '@sveltejs/kit'
 import type { PageServerLoad } from './$types'
 
