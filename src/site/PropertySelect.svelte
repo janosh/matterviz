@@ -1,8 +1,8 @@
 <script lang="ts">
   import Select from 'svelte-multiselect'
-  import { heatmap_labels } from './labels'
-  import { heatmap_key } from './stores'
-  import type { ChemicalElement } from './types'
+  import { heatmap_labels } from '../lib/labels'
+  import { heatmap_key } from '../lib/stores'
+  import type { ChemicalElement } from '../lib/types'
 
   export let value: keyof ChemicalElement | null = null
   export let selected: string[] = []
