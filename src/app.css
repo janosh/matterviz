@@ -12,6 +12,12 @@
   --actinide-bg-color: cornflowerblue;
   --experimental-bg-color: gray;
 
+  --toc-mobile-bg: #1c0e3e;
+  --toc-li-padding: 4pt 7pt;
+  --toc-mobile-btn-color: white;
+  --toc-desktop-nav-margin: 0 0 0 1em;
+  --toc-active-bg: teal;
+
   --sms-margin: 1em auto;
 }
 body {
@@ -50,9 +56,15 @@ pre {
 }
 blockquote {
   border-left: 3pt solid cornflowerblue;
-  padding: 1px 8pt;
+  padding: 3pt 7pt;
   background: rgba(255, 255, 255, 0.2);
   margin: 1em 0;
+}
+blockquote p:first-child {
+  margin-top: 0;
+}
+blockquote p:last-child {
+  margin-bottom: 0;
 }
 button {
   cursor: pointer;
