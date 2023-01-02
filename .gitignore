@@ -8,3 +8,4 @@ package
 
 # screen recordings
 *.mp4
+coverage

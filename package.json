@@ -20,12 +20,12 @@
     "test": "vitest --run tests/unit/*.ts && playwright test tests/*.ts",
     "test:unit": "vitest tests/unit/*.ts",
     "test:e2e": "playwright test tests/*.ts",
-    "changelog": "npx auto-changelog --package --output changelog.md --unreleased-only --hide-credit --commit-limit false"
+    "changelog": "npx auto-changelog --package --output changelog.md --unreleased-only --hide-credit --commit-limit false",
+    "update-coverage": "pnpm test:unit --run --coverage && npx istanbul-badges-readme"
   },
   "devDependencies": {
     "@iconify/svelte": "^3.0.1",
     "@playwright/test": "^1.29.1",
-    "@rollup/plugin-yaml": "^4.0.1",
     "@sveltejs/adapter-static": "1.0.0",
     "@sveltejs/kit": "1.0.1",
     "@sveltejs/package": "^1.0.1",
@@ -35,6 +35,7 @@
     "@types/d3-shape": "^3.1.0",
     "@typescript-eslint/eslint-plugin": "^5.47.0",
     "@typescript-eslint/parser": "^5.47.0",
+    "@vitest/coverage-c8": "^0.26.3",
     "d3-array": "^3.2.1",
     "d3-interpolate-path": "^2.3.0",
     "d3-scale": "^4.0.2",

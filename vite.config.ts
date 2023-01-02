@@ -1,10 +1,9 @@
-import yaml from '@rollup/plugin-yaml'
 import { sveltekit } from '@sveltejs/kit/vite'
 import type { UserConfig } from 'vite'
-import type { UserConfig as VitestConfig } from 'vitest'
+import type { UserConfig as VitestConfig } from 'vitest/config'
 
 const vite_config: UserConfig & { test: VitestConfig } = {
-  plugins: [sveltekit(), yaml()],
+  plugins: [sveltekit()],
 
   server: {
     fs: {
@@ -19,6 +18,11 @@ const vite_config: UserConfig & { test: VitestConfig } = {
 
   test: {
     environment: `jsdom`,
+    css: true,
+    coverage: {
+      // add 'json'/'html' for more detailed reports
+      reporter: [`text`, `json-summary`],
+    },
   },
 }
 
