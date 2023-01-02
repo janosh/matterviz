@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { element_data } from '$lib'
   import BohrAtom from '$lib/BohrAtom.svelte'
-  import elements from '$lib/element-data.yml'
   import ElementHeading from '$lib/ElementHeading.svelte'
   import ElementPhoto from '$lib/ElementPhoto.svelte'
   import Icon from '$lib/Icon.svelte'
@@ -61,7 +61,7 @@
     Electronegativity: `mdi:electron-framework`,
   }
 
-  $: scatter_plot_values = elements.map((el) => el[$heatmap_key])
+  $: scatter_plot_values = element_data.map((el) => el[$heatmap_key])
   $: color_scale = scaleLinear()
     .domain(extent(scatter_plot_values))
     .range([`blue`, `red`])

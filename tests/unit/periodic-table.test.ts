@@ -1,4 +1,4 @@
-import elements from '$lib/element-data.yml'
+import { element_data } from '$lib'
 import { heatmap_labels } from '$lib/labels'
 import PeriodicTable from '$lib/PeriodicTable.svelte'
 import PropertySelect from '$lib/PropertySelect.svelte'
@@ -65,8 +65,8 @@ describe(`PeriodicTable`, () => {
   test(`shows element photo when hovering element tile`, async () => {
     new PeriodicTable({ target: document.body })
 
-    const rand_idx = Math.floor(Math.random() * elements.length)
-    const random_element = elements[rand_idx]
+    const rand_idx = Math.floor(Math.random() * element_data.length)
+    const random_element = element_data[rand_idx]
 
     const element_tile = document.querySelectorAll(`.element-tile`)[rand_idx]
 
@@ -95,7 +95,7 @@ describe(`PeriodicTable`, () => {
     const heatmap_key = heatmap_labels[heatmap_label]
 
     expect(heatmap_key).toBe(`atomic_mass`)
-    ptable.$set({ heatmap_values: elements.map((e) => e[heatmap_key]) })
+    ptable.$set({ heatmap_values: element_data.map((e) => e[heatmap_key]) })
     await sleep()
 
     const element_tile = doc_query(`div.element-tile`)

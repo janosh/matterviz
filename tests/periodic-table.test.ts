@@ -1,6 +1,6 @@
-import { heatmap_keys, heatmap_labels, pretty_num } from '$lib/labels.ts'
 import { expect, test } from '@playwright/test'
-import { element_data } from './index.ts'
+import element_data from '../src/lib/element-data.ts'
+import { heatmap_keys, heatmap_labels, pretty_num } from '../src/lib/labels.ts'
 
 export const category_counts: Record<string, number> = {}
 

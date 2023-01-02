@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { element_data } from '$lib'
   import BohrAtom from '$lib/BohrAtom.svelte'
   import ColorCustomizer from '$lib/ColorCustomizer.svelte'
   import EasterEgg from '$lib/EasterEgg.svelte'
-  import elements from '$lib/element-data.yml'
   import ElementStats from '$lib/ElementStats.svelte'
   import { property_labels } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
@@ -45,7 +45,7 @@
   {/if}
   <PeriodicTable
     show_names={window_width > 1000}
-    heatmap_values={$heatmap_key ? elements.map((el) => el[$heatmap_key]) : []}
+    heatmap_values={$heatmap_key ? element_data.map((el) => el[$heatmap_key]) : []}
     style="margin: 2em auto 4em;"
     bind:color_scale
   >
@@ -53,7 +53,7 @@
       {#if $heatmap_key}
         <ScatterPlot
           y_lim={[0, null]}
-          y_values={elements.map((el) => el[$heatmap_key])}
+          y_values={element_data.map((el) => el[$heatmap_key])}
           {y_label}
           {y_unit}
           on_hover_point={(point) => ($active_element = point[2])}

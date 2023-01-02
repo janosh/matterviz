@@ -20,7 +20,6 @@ specifiers:
   eslint: ^8.30.0
   eslint-plugin-svelte3: ^4.0.0
   hastscript: ^7.1.0
-  js-yaml: ^4.1.0
   jsdom: ^20.0.3
   mdsvex: ^0.10.6
   prettier: ^2.8.1
@@ -58,7 +57,6 @@ devDependencies:
   eslint: 8.30.0
   eslint-plugin-svelte3: 4.0.0_khrjkzzv5v2x7orkj5o7sxbz3a
   hastscript: 7.1.0
-  js-yaml: 4.1.0
   jsdom: 20.0.3
   mdsvex: 0.10.6_svelte@3.55.0
   prettier: 2.8.1
