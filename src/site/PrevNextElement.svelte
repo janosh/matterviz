@@ -1,8 +1,8 @@
 <script lang="ts">
+  import type { ChemicalElement } from '$lib'
   import Icon from '@iconify/svelte'
   import ElementPhoto from '../lib/ElementPhoto.svelte'
   import ElementTile from '../lib/ElementTile.svelte'
-  import type { ChemicalElement } from '../lib/types'
 
   export let prev: ChemicalElement
   export let next: ChemicalElement

@@ -1,6 +1,6 @@
 <script lang="ts">
+  import type { ChemicalElement } from '.'
   import { pretty_num } from './labels'
-  import type { ChemicalElement } from './types'
 
   export let element: ChemicalElement
   export let bg_color: string | null = null

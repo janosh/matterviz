@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChemicalElement } from './types'
+  import type { ChemicalElement } from './'
 
   export let element: ChemicalElement
   export let style = ``

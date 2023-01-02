@@ -2,12 +2,12 @@
   import { bisector, extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear } from 'd3-scale'
+  import type { ChemicalElement, PlotPoint } from '.'
   import element_data from './element-data'
   import { pretty_num } from './labels'
   import Line from './Line.svelte'
   import ScatterPoint from './ScatterPoint.svelte'
   import { active_element } from './stores'
-  import type { ChemicalElement, PlotPoint } from './types'
 
   export let style = ``
   export let x_lim: [number | null, number | null] = [null, null]

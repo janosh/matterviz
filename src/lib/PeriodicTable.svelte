@@ -2,11 +2,11 @@
   import { extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear, scaleLog } from 'd3-scale'
+  import type { ChemicalElement } from '.'
   import element_data from './element-data'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
   import { active_category, active_element, last_element } from './stores'
-  import type { ChemicalElement } from './types'
 
   export let show_names = true
   export let show_numbers = true
