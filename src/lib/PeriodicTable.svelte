@@ -2,11 +2,11 @@
   import { extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear, scaleLog } from 'd3-scale'
-  import type { ChemicalElement } from '.'
+  import type { Category, ChemicalElement } from '.'
   import element_data from './element-data'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
-  import { active_category, active_element, last_element } from './stores'
+  import { last_element } from './stores'
 
   export let show_names = true
   export let show_numbers = true
@@ -20,6 +20,8 @@
   export let color_map: Record<number, string> | null = null
   export let log = false
   export let color_scale: ScaleLinear<number, number, never> | null = null
+  export let active_element: ChemicalElement | null = null
+  export let active_category: Category | null = null
 
   $: if (![0, 118].includes(heatmap_values.length)) {
     console.error(
@@ -34,7 +36,7 @@
 
   $: set_active_element = (element: ChemicalElement | null) => () => {
     if (disabled) return
-    $active_element = element
+    active_element = element
   }
 
   let window_width: number
@@ -50,8 +52,7 @@
     {@const value = heatmap_values?.length && heatmap_values[idx]}
     {@const heatmap_color = color_scale?.(value) ?? `transparent`}
     {@const active =
-      $active_category === category.replaceAll(` `, `-`) ||
-      $active_element?.name === name}
+      active_category === category.replaceAll(` `, `-`) || active_element?.name === name}
     <a
       href={name.toLowerCase()}
       data-sveltekit-noscroll
@@ -76,7 +77,7 @@
 
   {#if show_photo}
     <ElementPhoto
-      element_name={$active_element?.name}
+      element_name={active_element?.name}
       style="grid-area: 9/1/span 2/span 2;"
     />
   {/if}

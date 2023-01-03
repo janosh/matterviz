@@ -6,7 +6,7 @@
   import { property_labels } from '$lib/labels'
   import PeriodicTable from '$lib/PeriodicTable.svelte'
   import ScatterPlot from '$lib/ScatterPlot.svelte'
-  import { active_element, heatmap_key, last_element } from '$lib/stores'
+  import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
   import TableInset from '$lib/TableInset.svelte'
   import EasterEgg from '$site/EasterEgg.svelte'
   import PropertySelect from '$site/PropertySelect.svelte'
@@ -48,6 +48,8 @@
     heatmap_values={$heatmap_key ? element_data.map((el) => el[$heatmap_key]) : []}
     style="margin: 2em auto 4em;"
     bind:color_scale
+    bind:active_element={$active_element}
+    bind:active_category={$active_category}
   >
     <TableInset slot="inset">
       {#if $heatmap_key}
@@ -61,7 +63,7 @@
           {color_scale}
         />
       {:else}
-        <ElementStats --font-size="1vw" />
+        <ElementStats --font-size="1vw" element={$last_element} />
       {/if}
     </TableInset>
   </PeriodicTable>
