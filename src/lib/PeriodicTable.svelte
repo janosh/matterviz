@@ -6,20 +6,22 @@
   import element_data from './element-data'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
-  import { last_element } from './stores'
 
   export let show_names = true
   export let show_numbers = true
   export let show_symbols = true
   export let show_photo = true
   export let style = ``
-  export let disabled = false // disable hover and click events
+  export let disabled = false // disable hover and click events from updating active_element
   // either array of length 118 (one heat value for each element) or object with
   // element symbol as key and heat value as value
   export let heatmap_values: number[] = []
-  export let color_map: Record<number, string> | null = null
+  // links is either string with element property (name, symbol, number, ...) to use as link,
+  // or object with mapping element symbols to link
+  export let links: keyof ChemicalElement | Record<string, string> | null = null
+  export let color_map: keyof ChemicalElement | Record<number, string> | null = null
   export let log = false
-  export let color_scale: ScaleLinear<number, number, never> | null = null
+  export let color_scale: ScaleLinear<number, string, never> | null = null
   export let active_element: ChemicalElement | null = null
   export let active_category: Category | null = null
 
@@ -48,29 +50,27 @@
   <slot name="inset" />
 
   {#each element_data as element, idx}
-    {@const { column, row, category, name } = element}
-    {@const value = heatmap_values?.length && heatmap_values[idx]}
-    {@const heatmap_color = color_scale?.(value) ?? `transparent`}
+    {@const { column, row, category, name, symbol } = element}
+    {@const value = heatmap_values?.length > 0 && heatmap_values[idx]}
     {@const active =
       active_category === category.replaceAll(` `, `-`) || active_element?.name === name}
-    <a
-      href={name.toLowerCase()}
-      data-sveltekit-noscroll
+    <ElementTile
+      {element}
+      href={links
+        ? typeof links == `string`
+          ? `${element[links]}`.toLowerCase()
+          : links[symbol]
+        : null}
       style="grid-column: {column}; grid-row: {row};"
-      class:last-active={$last_element === element}
-    >
-      <ElementTile
-        {element}
-        show_name={show_names}
-        show_number={show_numbers}
-        show_symbol={show_symbols}
-        {value}
-        bg_color={value != false ? heatmap_color : null}
-        {active}
-        on:mouseenter={set_active_element(element)}
-        on:mouseleave={set_active_element(null)}
-      />
-    </a>
+      show_name={show_names}
+      show_number={show_numbers}
+      show_symbol={show_symbols}
+      {value}
+      bg_color={value != false ? color_scale?.(value) ?? `transparent` : null}
+      {active}
+      on:mouseenter={set_active_element(element)}
+      on:mouseleave={set_active_element(null)}
+    />
   {/each}
   <!-- provide vertical offset for lanthanides + actinides -->
   <div class="spacer" />
@@ -84,6 +84,10 @@
 </div>
 
 <style>
+  :global(:has(div.periodic-table)) {
+    /* needed for gap: 0.3cqw; below to work */
+    container-type: inline-size;
+  }
   div.periodic-table {
     display: grid;
     grid-template-columns: repeat(18, 1fr);
@@ -94,8 +98,5 @@
   div.spacer {
     grid-row: 8;
     aspect-ratio: 2;
-  }
-  div.periodic-table > a.last-active {
-    filter: brightness(110%);
   }
 </style>
