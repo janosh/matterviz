@@ -6,10 +6,10 @@
 
 <h4 align="center">
 
-[![Tests](https://github.com/janosh/periodic-table/actions/workflows/test.yml/badge.svg)](https://github.com/janosh/periodic-table/actions/workflows/test.yml)
-[![GH Pages](https://github.com/janosh/periodic-table/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/janosh/periodic-table/actions/workflows/gh-pages.yml)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/janosh/periodic-table/main.svg?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)](https://results.pre-commit.ci/latest/github/janosh/periodic-table/main?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)
-[![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz)](https://stackblitz.com/github/janosh/periodic-table)
+[![Tests](https://github.com/janosh/sveriodic-table/actions/workflows/test.yml/badge.svg)](https://github.com/janosh/sveriodic-table/actions/workflows/test.yml)
+[![GH Pages](https://github.com/janosh/sveriodic-table/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/janosh/sveriodic-table/actions/workflows/gh-pages.yml)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/janosh/sveriodic-table/main.svg?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)](https://results.pre-commit.ci/latest/github/janosh/sveriodic-table/main?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)
+[![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz)](https://stackblitz.com/github/janosh/sveriodic-table)
 
 </h4>
 
@@ -32,7 +32,7 @@ The details page for gold.
 ## 🔨 &thinsp; Installation
 
 ```sh
-npm install --dev periodic-tables
+npm install --dev sveriodic-tables
 ```
 
 ## 📙 &thinsp; Usage
@@ -41,7 +41,7 @@ Import the `PeriodicTable` component and pass it some heatmap values:
 
 ```svelte
 <script>
-  import PeriodicTable from 'periodic-tables'
+  import PeriodicTable from 'sveriodic-tables'
 
   const heatmap_values = { H: 10, He: 4, Li: 8, Fe: 3, O: 24 }
 </script>
