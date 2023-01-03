@@ -1,7 +1,10 @@
 // data here is a combination of 2 sources
 // https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json
+
+import type { ChemicalElement } from '$lib'
+
 // https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952
-export default [
+const element_data: ChemicalElement[] = [
   {
     name: `Hydrogen`,
     appearance: `colorless gas`,
@@ -5286,3 +5289,5 @@ export default [
     covalent_radius: null,
   },
 ]
+
+export default element_data

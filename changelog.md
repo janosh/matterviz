@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Dates are d
 
 <!-- auto-changelog-above -->
 
+#### [v0.1.1](https://github.com/janosh/periodic-table/compare/v0.1.0...v0.1.1)
+
+> 2023-01-03
+
+- only wrap ElementTile in &lt;a&gt; if passed href prop, else &lt;div&gt; [`73a61be`](https://github.com/janosh/periodic-table/commit/73a61be112f4fe1554b9e4e78c2ff65fddb96e35)
+
 #### 0.1.0
 
 > 2023-01-03

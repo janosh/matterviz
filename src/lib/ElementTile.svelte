@@ -1,23 +1,29 @@
 <script lang="ts">
   import type { ChemicalElement } from '.'
   import { pretty_num } from './labels'
+  import { last_element } from './stores'
 
   export let element: ChemicalElement
   export let bg_color: string | null = null
   export let show_symbol = true
   export let show_number = true
   export let show_name = true
-  export let value: number | undefined = undefined
+  export let value: number | false | undefined = undefined
   export let style = ``
   export let active = false
+  export let href: string | null = null
 
   $: category = element.category.replaceAll(` `, `-`)
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
 </script>
 
-<div
+<svelte:element
+  this={href ? 'a' : 'div'}
+  {href}
+  data-sveltekit-noscroll
   class="element-tile {category}"
   class:active
+  class:last-active={$last_element === element}
   style:background-color={bg_color ?? `var(--${category}-bg-color)`}
   {style}
   on:mouseenter
@@ -42,10 +48,10 @@
       {element.name}
     </span>
   {/if}
-</div>
+</svelte:element>
 
 <style>
-  div.element-tile {
+  .element-tile {
     position: relative;
     transition: background-color 0.4s;
     aspect-ratio: 1;
@@ -57,12 +63,15 @@
     width: 100%;
     box-sizing: border-box;
   }
-  div.element-tile span {
+  .element-tile span {
     line-height: 1em;
   }
-  div.element-tile.active,
-  div.element-tile:hover {
+  .element-tile.active,
+  .element-tile:hover {
     border: 1px solid white;
+  }
+  .last-active {
+    border: 1px dotted white;
   }
   .atomic-number {
     font-size: 1.1cqw;

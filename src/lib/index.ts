@@ -22,6 +22,7 @@ export type Category =
   | `actinide`
 
 export type ChemicalElement = {
+  'cpk-hex': string | null
   appearance: string
   atomic_mass: number
   atomic_radius: number
@@ -53,6 +54,7 @@ export type ChemicalElement = {
   nonmetal: boolean | null
   number_of_isotopes: number
   number: number
+  period: number
   phase: 'Gas' | 'Liquid' | 'Solid'
   radioactive: boolean | null
   row: number // != period for lanthanides and actinides

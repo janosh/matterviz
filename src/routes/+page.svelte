@@ -50,6 +50,7 @@
     bind:color_scale
     bind:active_element={$active_element}
     bind:active_category={$active_category}
+    links="name"
   >
     <TableInset slot="inset">
       {#if $heatmap_key}

@@ -81,10 +81,15 @@
 <main>
   <ElementHeading {element} />
 
-  {#if element?.discoverer && element?.year}
+  {#if element?.discoverer || element?.year}
     <p class="discovery">
-      Discovered by <strong>{element.discoverer}</strong> in
-      <strong>{element.year}</strong>
+      Discovered
+      {#if element?.discoverer}
+        by <strong>{element.discoverer}</strong>
+      {/if}
+      {#if typeof element?.year == `number`}
+        in <strong>{element.year}</strong>
+      {/if}
     </p>
   {/if}
 
@@ -118,6 +123,8 @@
       show_photo={false}
       disabled={true}
       style="width: 100%;  max-width: 350px;"
+      links="name"
+      active_element={$active_element}
     />
 
     <table>
@@ -148,7 +155,7 @@
       shells={element.shells}
       name={element.name}
       adapt_size={true}
-      orbital_period={Number(orbiting)}
+      orbital_period={orbiting ? 3 : 0}
       highlight_shell={active_shell}
       on:click={() => (orbiting = !orbiting)}
       style="max-width: 300px;"
