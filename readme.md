@@ -17,9 +17,9 @@ Interactive Periodic Table component written in Svelte. With scatter plot showin
 
 ![Screenshot of periodic table](static/2022-08-08-screenshot.png)
 
-## 📊 &thinsp; Heatmap
+## 📦 &thinsp; Heatmap
 
-Below a screenshot demonstrating the periodicity of elemental properties, i.e. why the periodic table is called periodic. In this case its showing recurring bumps and valleys in the first ionization energy as a function of atomic number.
+Below a screenshot demonstrating the periodicity of elemental properties, the reason it's called periodic table. In this case, you're seeing recurring bumps and valleys in the first ionization energy as a function of atomic number.
 
 ![Screenshot of periodic table heatmap](static/2022-08-08-screenshot-heatmap.png)
 

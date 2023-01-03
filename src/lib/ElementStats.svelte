@@ -1,12 +1,11 @@
 <script lang="ts">
+  import type { ChemicalElement } from '$lib'
   import ElementHeading from './ElementHeading.svelte'
   import Icon from './Icon.svelte'
   import { pretty_num } from './labels'
-  import { last_element } from './stores'
 
+  export let element: ChemicalElement | null
   export let style = ``
-
-  $: element = $last_element // variable needed to decide whether to show user tip
 
   const icon_phase_map = {
     Solid: `mdi:cube-outline`,

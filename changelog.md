@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file. Dates are d
 
 #### 0.1.0
 
+> 2023-01-03
+
+- move d3-array, d3-interpolate-path, d3-shape, d3-scale, @iconify/svelte from package devDeps to deps [`0898f1e`](https://github.com/janosh/periodic-table/commit/0898f1e3c2012cc012d751ea48dde4429e7c1666)
+- export active_element + active_category from PeriodicTable.svelte [`1ab602b`](https://github.com/janosh/periodic-table/commit/1ab602b26ceaf876a8683ba70d2a238dfc3652fc)
+- move types into src/lib/index.ts [`5072c76`](https://github.com/janosh/periodic-table/commit/5072c76003b3942b1ebcb6f7aee473cf1381c3e7)
+- add coverage badges to readme [`264e375`](https://github.com/janosh/periodic-table/commit/264e375614f0e4b84dc2d17c5d574c630478b1b2)
+- revert #13 `src/lib/element-data.{yml -> ts}` [`b3d11f9`](https://github.com/janosh/periodic-table/commit/b3d11f9218dca5a3a6b48d5387f735065e222e45)
+- add npm install cmd to readme [`278d17f`](https://github.com/janosh/periodic-table/commit/278d17f6323dc8051158c256446dc2872cade6ba)
+- move non-package components to new src/site dir [`ddeef16`](https://github.com/janosh/periodic-table/commit/ddeef16a26ae44e4d3fa997f8fa6b76eaee284de)
 - NPM Release [`#16`](https://github.com/janosh/periodic-table/pull/16)
 - Deploy site to GitHub Pages [`#15`](https://github.com/janosh/periodic-table/pull/15)
 - add test 'hooking PeriodicTable up to PropertySelect and selecting heatmap sets element tile background' [`#14`](https://github.com/janosh/periodic-table/pull/14)
