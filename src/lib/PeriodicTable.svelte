@@ -2,7 +2,7 @@
   import { extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear, scaleLog } from 'd3-scale'
-  import type { Category, ChemicalElement } from '.'
+  import type { Category, ChemicalElement, PeriodicTableEvents } from '.'
   import element_data from './element-data'
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
@@ -25,6 +25,9 @@
   export let active_element: ChemicalElement | null = null
   export let active_category: Category | null = null
   export let gap = `0.3cqw` // gap between element tiles, default is 0.3% of container width
+  export let inner_transition_metal_offset = 0.5
+
+  type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
   $: if (![0, 118].includes(heatmap_values.length)) {
     console.error(
@@ -73,10 +76,15 @@
         {active}
         on:mouseenter={set_active_element(element)}
         on:mouseleave={set_active_element(null)}
+        on:click
+        on:mouseenter
+        on:mouseleave
       />
     {/each}
-    <!-- provide vertical offset for lanthanides + actinides -->
-    <div class="spacer" />
+    {#if inner_transition_metal_offset}
+      <!-- provide vertical offset for lanthanides + actinides -->
+      <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset} />
+    {/if}
 
     <slot name="bottom-left-inset">
       {#if show_photo}
@@ -102,6 +110,5 @@
   }
   div.spacer {
     grid-row: 8;
-    aspect-ratio: 2;
   }
 </style>

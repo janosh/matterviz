@@ -67,3 +67,17 @@ export type ChemicalElement = {
 }
 
 export type PlotPoint = [number, number, ChemicalElement]
+
+export type DispatchPayload = CustomEvent<{
+  element: ChemicalElement
+  active: boolean // whether the event target tile is currently active
+  dom_event: Event // the DOM event that triggered the Svelte dispatch
+}>
+
+export type PeriodicTableEvents = {
+  click: DispatchPayload
+  mouseenter: DispatchPayload
+  mouseleave: DispatchPayload
+  keyup: DispatchPayload
+  keydown: DispatchPayload
+}
