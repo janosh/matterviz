@@ -19,7 +19,7 @@
   export let on_hover_point: ((point: PlotPoint) => void) | null = null
   export let x_label = `Atomic Number`
   export let x_label_y = 0
-  export let color_scale: ScaleLinear<number, number, never> | null = null
+  export let color_scale: ScaleLinear<number, string, never> | null = null
   // either array of length 118 (one heat value for each element) or object with
   // element symbol as key and heat value as value
   export let y_values: number[]
