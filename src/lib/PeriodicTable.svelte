@@ -24,6 +24,7 @@
   export let color_scale: ScaleLinear<number, string, never> | null = null
   export let active_element: ChemicalElement | null = null
   export let active_category: Category | null = null
+  export let gap = `0.3cqw` // gap between element tiles, default is 0.3% of container width
 
   $: if (![0, 118].includes(heatmap_values.length)) {
     console.error(
@@ -46,52 +47,56 @@
 
 <svelte:window bind:innerWidth={window_width} />
 
-<div class="periodic-table" {style}>
-  <slot name="inset" />
+<div class="periodic-table-container">
+  <div class="periodic-table" {style} style:gap>
+    <slot name="inset" />
 
-  {#each element_data as element, idx}
-    {@const { column, row, category, name, symbol } = element}
-    {@const value = heatmap_values?.length > 0 && heatmap_values[idx]}
-    {@const active =
-      active_category === category.replaceAll(` `, `-`) || active_element?.name === name}
-    <ElementTile
-      {element}
-      href={links
-        ? typeof links == `string`
-          ? `${element[links]}`.toLowerCase()
-          : links[symbol]
-        : null}
-      style="grid-column: {column}; grid-row: {row};"
-      show_name={show_names}
-      show_number={show_numbers}
-      show_symbol={show_symbols}
-      {value}
-      bg_color={value != false ? color_scale?.(value) ?? `transparent` : null}
-      {active}
-      on:mouseenter={set_active_element(element)}
-      on:mouseleave={set_active_element(null)}
-    />
-  {/each}
-  <!-- provide vertical offset for lanthanides + actinides -->
-  <div class="spacer" />
+    {#each element_data as element, idx}
+      {@const { column, row, category, name, symbol } = element}
+      {@const value = heatmap_values?.length > 0 && heatmap_values[idx]}
+      {@const active =
+        active_category === category.replaceAll(` `, `-`) ||
+        active_element?.name === name}
+      <ElementTile
+        {element}
+        href={links
+          ? typeof links == `string`
+            ? `${element[links]}`.toLowerCase()
+            : links[symbol]
+          : null}
+        style="grid-column: {column}; grid-row: {row};"
+        show_name={show_names}
+        show_number={show_numbers}
+        show_symbol={show_symbols}
+        {value}
+        bg_color={value != false ? color_scale?.(value) ?? `transparent` : null}
+        {active}
+        on:mouseenter={set_active_element(element)}
+        on:mouseleave={set_active_element(null)}
+      />
+    {/each}
+    <!-- provide vertical offset for lanthanides + actinides -->
+    <div class="spacer" />
 
-  {#if show_photo}
-    <ElementPhoto
-      element_name={active_element?.name}
-      style="grid-area: 9/1/span 2/span 2;"
-    />
-  {/if}
+    <slot name="bottom-left-inset">
+      {#if show_photo}
+        <ElementPhoto
+          element_name={active_element?.name}
+          style="grid-area: 9/1/span 2/span 2;"
+        />
+      {/if}
+    </slot>
+  </div>
 </div>
 
 <style>
-  :global(:has(div.periodic-table)) {
+  .periodic-table-container {
     /* needed for gap: 0.3cqw; below to work */
     container-type: inline-size;
   }
   div.periodic-table {
     display: grid;
     grid-template-columns: repeat(18, 1fr);
-    gap: 0.3cqw;
     position: relative;
     container-type: inline-size;
   }
