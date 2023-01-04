@@ -49,6 +49,28 @@ Import the `PeriodicTable` component and pass it some heatmap values:
 <PeriodicTable {heatmap_values} />
 ```
 
+## 🎬 &thinsp; Events
+
+`PeriodicTable.svelte` forwards the following events from each `ElementTile`:
+
+1. `click`
+1. `mouseenter`
+1. `mouseleave`
+1. `keyup`
+1. `keydown`
+
+Each event is a Svelte `dispatch` event with the following `detail` payload:
+
+```ts
+detail: {
+  element: ChemicalElement
+  active: boolean // whether the event target tile is currently active
+  dom_event: Event // the DOM event that triggered the Svelte dispatch
+}
+```
+
+See `DispatchPayload` and `PeriodicTableEvents` in `src/lib/index.ts`
+
 ## 🧪 &thinsp; Coverage
 
 | Statements                                                                                 | Branches                                                                          | Lines                                                                            |

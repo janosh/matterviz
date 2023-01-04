@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ChemicalElement } from '.'
+  import { createEventDispatcher } from 'svelte'
+  import type { ChemicalElement, PeriodicTableEvents } from '.'
   import { pretty_num } from './labels'
   import { last_element } from './stores'
 
@@ -13,8 +14,14 @@
   export let active = false
   export let href: string | null = null
 
+  type $$Events = PeriodicTableEvents // for type-safe event listening on this component
+
   $: category = element.category.replaceAll(` `, `-`)
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
+  const dispatch = createEventDispatcher<PeriodicTableEvents>()
+  function payload_event(dom_event: Event) {
+    dispatch(dom_event.type, { element, event: dom_event, active })
+  }
 </script>
 
 <svelte:element
@@ -26,8 +33,11 @@
   class:last-active={$last_element === element}
   style:background-color={bg_color ?? `var(--${category}-bg-color)`}
   {style}
-  on:mouseenter
-  on:mouseleave
+  on:mouseenter={payload_event}
+  on:mouseleave={payload_event}
+  on:click={payload_event}
+  on:keyup={payload_event}
+  on:keydown={payload_event}
 >
   {#if show_number}
     <span class="atomic-number">

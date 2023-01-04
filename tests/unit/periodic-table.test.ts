@@ -102,4 +102,21 @@ describe(`PeriodicTable`, () => {
     // hydrogen with lowest mass should be blue (low end of color scale)
     expect(element_tile.style.backgroundColor).toBe(`rgb(0, 0, 255)`)
   })
+
+  test.each([[0], [0.5], [1], [2]])(
+    `inner_transition_metal_offset`,
+    async (inner_transition_metal_offset) => {
+      new PeriodicTable({
+        target: document.body,
+        props: { inner_transition_metal_offset },
+      })
+
+      if (inner_transition_metal_offset) {
+        const spacer = doc_query(`div.spacer`)
+        expect(getComputedStyle(spacer).gridRow).toBe(`8`)
+      } else {
+        expect(document.querySelector(`div.spacer`)).toBeNull()
+      }
+    }
+  )
 })

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Dates are d
 
 <!-- auto-changelog-above -->
 
+#### [v0.1.2](https://github.com/janosh/periodic-table/compare/v0.1.1...v0.1.2)
+
+> 2023-01-04
+
+- remove `EasterEgg.svelte` from landing page [`257d73a`](https://github.com/janosh/periodic-table/commit/257d73a2ede19e992274f4240b128a246bd3a684)
+- `PeriodicTable` forward `click`, `mouseenter`, `mouseleave`, `keyup`, `keydown` events from `ElementTile` [`7450f71`](https://github.com/janosh/periodic-table/commit/7450f71fc3cb815412d7e4102c73179a196da834)
+- add prop `gap = 0.3cqw` between element tiles, default is `0.3%` of container width [`c625fbc`](https://github.com/janosh/periodic-table/commit/c625fbc134c47519823efb644ef48093d08b56a4)
+
 #### [v0.1.1](https://github.com/janosh/periodic-table/compare/v0.1.0...v0.1.1)
 
 > 2023-01-03
