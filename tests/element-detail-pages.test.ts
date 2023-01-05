@@ -1,12 +1,6 @@
 import { expect, test } from '@playwright/test'
 import element_data from '../src/lib/element-data.ts'
 
-export const category_counts: Record<string, number> = {}
-
-for (const { category } of element_data) {
-  category_counts[category] = (category_counts[category] ?? 0) + 1
-}
-
 test.describe(`Element detail page`, async () => {
   test(`has periodicity plot`, async ({ page }) => {
     // test any 5 random elements

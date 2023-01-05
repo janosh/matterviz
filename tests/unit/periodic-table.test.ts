@@ -1,5 +1,5 @@
 import { element_data } from '$lib'
-import { heatmap_labels } from '$lib/labels'
+import { category_counts, heatmap_labels } from '$lib/labels'
 import PeriodicTable from '$lib/PeriodicTable.svelte'
 import PropertySelect from '$site/PropertySelect.svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -117,6 +117,50 @@ describe(`PeriodicTable`, () => {
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
       }
+    }
+  )
+
+  test(`clicking element tile emits event`, async () => {
+    const ptable = new PeriodicTable({ target: document.body })
+    let expected_active = false
+
+    let emitted = false
+    ptable.$on(`click`, (e) => {
+      emitted = true
+      expect(e.detail.element).toBe(element_data[0])
+      expect(e.detail.active).toBe(expected_active)
+      expect(e.detail.event).toBeInstanceOf(MouseEvent)
+      expect(e.detail.event.type).toBe(`click`)
+    })
+
+    const element_tile = doc_query(`.element-tile`)
+    element_tile?.dispatchEvent(new MouseEvent(`click`))
+    await sleep()
+    expect(emitted).toBe(true)
+
+    expected_active = true
+    element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
+    await sleep()
+
+    element_tile?.dispatchEvent(new MouseEvent(`click`))
+  })
+
+  test.each([[`0`], [`10px`], [`1cqw`]])(`gap prop`, async (gap) => {
+    new PeriodicTable({ target: document.body, props: { gap } })
+    const ptable = doc_query(`.periodic-table`)
+    expect(getComputedStyle(ptable).gap).toBe(gap)
+  })
+
+  test.each(Object.entries(category_counts))(
+    `setting active_category=%s highlights corresponding element tiles`,
+    async (active_category, expected_active) => {
+      new PeriodicTable({
+        target: document.body,
+        props: { active_category: active_category.replaceAll(` `, `-`) },
+      })
+
+      const active_tiles = document.querySelectorAll(`.element-tile.active`)
+      expect(active_tiles.length).toBe(expected_active)
     }
   )
 })

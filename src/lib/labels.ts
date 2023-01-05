@@ -1,4 +1,4 @@
-import type { ChemicalElement } from '.'
+import type { Category, ChemicalElement } from '.'
 
 // TODO add labels and units for all elemental properties
 export const property_labels: Partial<
@@ -48,4 +48,17 @@ export const pretty_num = (num: number | null, precision = 2) => {
   } else {
     return parseFloat(num.toFixed(precision)).toLocaleString()
   }
+}
+
+export const category_counts: Record<Category, number> = {
+  actinide: 15,
+  'alkali metal': 6,
+  'alkaline earth metal': 6,
+  'diatomic nonmetal': 7,
+  lanthanide: 15,
+  metalloid: 8,
+  'noble gas': 7,
+  'polyatomic nonmetal': 4,
+  'post-transition metal': 12,
+  'transition metal': 38,
 }
