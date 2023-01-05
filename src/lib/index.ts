@@ -10,16 +10,16 @@ export { default as TableInset } from './TableInset.svelte'
 export { default as Toggle } from './Toggle.svelte'
 
 export type Category =
-  | `diatomic nonmetal`
-  | `noble gas`
+  | `actinide`
   | `alkali metal`
   | `alkaline earth metal`
-  | `metalloid`
-  | `polyatomic nonmetal`
-  | `transition metal`
-  | `post-transition metal`
+  | `diatomic nonmetal`
   | `lanthanide`
-  | `actinide`
+  | `metalloid`
+  | `noble gas`
+  | `polyatomic nonmetal`
+  | `post-transition metal`
+  | `transition metal`
 
 export type ChemicalElement = {
   'cpk-hex': string | null

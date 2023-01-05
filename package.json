@@ -8,7 +8,6 @@
   "version": "0.1.2",
   "type": "module",
   "svelte": "index.js",
-  "main": "index.js",
   "bugs": "https://github.com/janosh/sveriodic-table/issues",
   "scripts": {
     "dev": "vite dev",
