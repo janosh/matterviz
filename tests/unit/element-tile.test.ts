@@ -1,10 +1,7 @@
 import { element_data } from '$lib'
 import ElementTile from '$lib/ElementTile.svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-
-beforeEach(() => {
-  document.body.innerHTML = ``
-})
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query } from '.'
 
 // test random element for increased robustness
 const rand_idx = Math.floor(Math.random() * element_data.length)
@@ -17,14 +14,14 @@ describe(`ElementTile`, () => {
       props: { element: rand_element },
     })
 
-    const name = document.querySelector(`.name`)
-    expect(name?.textContent).toBe(rand_element.name)
+    const name = doc_query(`.name`)
+    expect(name.textContent).toBe(rand_element.name)
 
-    const symbol = document.querySelector(`.symbol`)
-    expect(symbol?.textContent).toBe(rand_element.symbol)
+    const symbol = doc_query(`.symbol`)
+    expect(symbol.textContent).toBe(rand_element.symbol)
 
-    const number = document.querySelector(`.atomic-number`)
-    expect(number?.textContent).toBe(rand_element.number.toString())
+    const number = doc_query(`.atomic-number`)
+    expect(number.textContent).toBe(rand_element.number.toString())
   })
 
   test(`forwards mouseenter and mouseleave events`, () => {
@@ -39,7 +36,7 @@ describe(`ElementTile`, () => {
     element_tile.$on(`mouseenter`, mouseenter)
     element_tile.$on(`mouseleave`, mouseleave)
 
-    const node = document.querySelector(`.element-tile`)
+    const node = doc_query(`.element-tile`)
     if (!node) throw new Error(`DOM node not found`)
 
     node.dispatchEvent(new MouseEvent(`mouseenter`))
@@ -55,8 +52,37 @@ describe(`ElementTile`, () => {
       props: { element: rand_element, bg_color: `red` },
     })
 
-    const node = document.querySelector(`.element-tile`) as HTMLElement
+    const node = doc_query(`.element-tile`) as HTMLElement
 
     expect(node.style.backgroundColor).toBe(`red`)
   })
+
+  test.each([
+    [`red`, `white`],
+    [`#eee`, `black`],
+    [`#ddd`, `black`],
+    [`#cccccc`, `black`],
+    [`green`, `white`],
+    [`blue`, `white`],
+    [`yellow`, `white`],
+    [`orange`, `white`],
+    [`purple`, `white`],
+    [`white`, `black`],
+    [`lightgray`, `black`],
+  ])(
+    `sets text_color based on lightness of bg_color`,
+    async (bg_color, text_color) => {
+      new ElementTile({
+        target: document.body,
+        props: { element: rand_element, bg_color },
+      })
+
+      const node = doc_query(`.element-tile`)
+
+      expect(
+        node.style.color,
+        `got text_color=${node.style.color} for bg_color=${bg_color}, expected ${text_color}`
+      ).toBe(text_color)
+    }
+  )
 })

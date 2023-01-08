@@ -2,23 +2,8 @@ import { element_data } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
 import PeriodicTable from '$lib/PeriodicTable.svelte'
 import PropertySelect from '$site/PropertySelect.svelte'
-import { beforeEach, describe, expect, test } from 'vitest'
-
-beforeEach(() => {
-  document.body.innerHTML = ``
-})
-
-export async function sleep(ms = 1) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function doc_query(selector: string): HTMLElement {
-  const node = document.querySelector(selector)
-  if (!node) {
-    throw new Error(`Selector ${selector} not in document`)
-  }
-  return node as HTMLElement
-}
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query, sleep } from '.'
 
 describe(`PeriodicTable`, () => {
   test(`renders element tiles`, async () => {
@@ -161,6 +146,23 @@ describe(`PeriodicTable`, () => {
 
       const active_tiles = document.querySelectorAll(`.element-tile.active`)
       expect(active_tiles.length).toBe(expected_active)
+    }
+  )
+
+  test.each([[[...Array(10).keys()]], [[...Array(119).keys()]]])(
+    `raises error when receiving heatmap values any length other than 0 and 118`,
+    async (heatmap_values) => {
+      console.error = vi.fn()
+
+      new PeriodicTable({
+        target: document.body,
+        props: { heatmap_values },
+      })
+
+      expect(console.error).toHaveBeenCalledOnce()
+      expect(console.error).toBeCalledWith(
+        `heatmap_values should be an array of length 118, one for each element, got ${heatmap_values?.length}`
+      )
     }
   )
 })
