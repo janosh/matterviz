@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { hsl } from 'd3-color'
   import { createEventDispatcher } from 'svelte'
   import type { ChemicalElement, PeriodicTableEvents } from '.'
   import { pretty_num } from './labels'
@@ -13,6 +14,8 @@
   export let style = ``
   export let active = false
   export let href: string | null = null
+  // at what background color lightness text color switches from black to white
+  export let text_color_threshold = 0.6
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -22,6 +25,7 @@
   function payload_event(dom_event: Event) {
     dispatch(dom_event.type, { element, event: dom_event, active })
   }
+  $: text_color = hsl(bg_color).l > text_color_threshold ? `black` : `white`
 </script>
 
 <svelte:element
@@ -32,6 +36,7 @@
   class:active
   class:last-active={$last_element === element}
   style:background-color={bg_color ?? `var(--${category}-bg-color)`}
+  style:color={text_color}
   {style}
   on:mouseenter={payload_event}
   on:mouseleave={payload_event}
