@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { repository } from '../../package.json'
+  import { repository } from '$root/package.json'
   import Icon from '../lib/Icon.svelte'
   import { show_icons } from '../lib/stores'
   import Toggle from '../lib/Toggle.svelte'
