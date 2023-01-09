@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { hsl } from 'd3-color'
   import { createEventDispatcher } from 'svelte'
   import type { ChemicalElement, PeriodicTableEvents } from '.'
   import { pretty_num } from './labels'
@@ -15,7 +14,7 @@
   export let active = false
   export let href: string | null = null
   // at what background color lightness text color switches from black to white
-  export let text_color_threshold = 0.6
+  export let text_color_threshold = 0.7
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -25,11 +24,34 @@
   function payload_event(dom_event: Event) {
     dispatch(dom_event.type, { element, event: dom_event, active })
   }
-  $: text_color = hsl(bg_color).l > text_color_threshold ? `black` : `white`
+
+  function luminance(rgb: string) {
+    // calculate human-perceived lightness from RGB
+    const [r, g, b] = rgb
+      .replace(`rgb(`, ``)
+      .replace(`)`, ``)
+      .split(`,`)
+      .map((v) => parseInt(v) / 255)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b // https://stackoverflow.com/a/596243
+  }
+
+  function get_bg_color(elem: HTMLElement | null): string {
+    // recurse up the DOM tree to find the first non-transparent background color
+    const transparent = `rgba(0, 0, 0, 0)`
+    if (!elem) return `rgba(0, 0, 0, 0)`
+
+    let bg = getComputedStyle(elem).backgroundColor
+    if (bg !== transparent) return bg
+    return get_bg_color(elem.parentElement)
+  }
+
+  let tile: HTMLElement
+  $: text_color = luminance(get_bg_color(tile)) < text_color_threshold ? `white` : `black`
 </script>
 
 <svelte:element
   this={href ? 'a' : 'div'}
+  bind:this={tile}
   {href}
   data-sveltekit-noscroll
   class="element-tile {category}"
@@ -74,9 +96,9 @@
     place-items: center;
     place-content: center;
     border-radius: var(--elem-tile-border-radius, 1pt);
-    color: white;
     width: 100%;
     box-sizing: border-box;
+    color: var(--elem-tile-text-color, white);
   }
   .element-tile span {
     line-height: 1em;

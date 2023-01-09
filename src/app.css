@@ -18,7 +18,15 @@
   --toc-desktop-nav-margin: 0 0 0 1em;
   --toc-active-bg: teal;
 
+  --ghc-color: var(--page-bg);
+  --ghc-bg: white;
+
   --sms-margin: 1em auto;
+  --sms-options-bg: black;
+  --sms-max-width: 22em;
+  --sms-border: 1px dotted teal;
+  --sms-focus-border: 1px dotted cornflowerblue;
+  --sms-active-color: cornflowerblue;
 }
 body {
   background: var(--page-bg);
@@ -26,6 +34,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   margin: auto;
   color: #eee;
+  line-height: 1.5;
 }
 main {
   margin: auto;
@@ -62,10 +71,14 @@ code {
 }
 pre code {
   background-color: transparent;
+  display: inline-block;
 }
 pre {
-  border-radius: 1ex;
-  font-size: 0.7em;
+  border-radius: 4pt;
+  font-size: 8pt;
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 1em;
+  overflow-x: auto;
 }
 blockquote {
   border-left: 3pt solid cornflowerblue;
@@ -87,6 +100,9 @@ button {
 :where(h1, h2, h3, h4, h5, h6) {
   scroll-margin-top: 100px;
 }
+:where(h2, h3, h4, h5, h6) {
+  margin-top: 2em;
+}
 /* style heading anchors added by rehype-autolink-headings, see svelte.config.js */
 :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
   transition: 0.3s;
@@ -103,4 +119,15 @@ aside.toc.desktop {
   top: 3em;
   left: calc(50vw + 50em / 2);
   max-width: 16em;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  min-height: 100px;
+  box-sizing: border-box;
+  margin: 1em auto;
+  border: none;
 }

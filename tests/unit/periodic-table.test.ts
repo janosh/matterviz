@@ -14,15 +14,12 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`has no text content when symbols, names and numbers are disabled`, async () => {
-    new PeriodicTable({
-      target: document.body,
-      props: {
-        show_symbols: false,
-        show_names: false,
-        show_numbers: false,
-        // style: `width: 500px; height: 100px;`,
-      },
-    })
+    const tile_props = {
+      show_symbol: false,
+      show_name: false,
+      show_number: false,
+    }
+    new PeriodicTable({ target: document.body, props: { tile_props } })
 
     const ptable = doc_query(`.periodic-table`)
 
