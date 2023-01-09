@@ -1,0 +1,73 @@
+<label for="color-map">Enter a custom color map in the text area below and see the heatmap update in real time (if it's valid JSON)</label>
+
+```svelte example stackblitz code_above
+<script>
+  import { PeriodicTable } from '$lib'
+
+  const heatmap_values = [...Array(118).keys()]
+  let text = JSON.stringify({ 0: `blue`, 118: `red` }, null, 2)
+  $: color_map = JSON.parse(text)
+</script>
+
+<textarea
+  id="color-map"
+  bind:value={text}
+  placeholder="Define custom color map (must be valid JSON)"
+/>
+
+<PeriodicTable {heatmap_values} {color_map} />
+```
+
+<h2>Materials Project Element Heatmap</h2>
+
+```svelte example stackblitz code_above
+<script>
+  import { PeriodicTable, TableInset, Toggle } from '$lib'
+  import { pretty_num } from '$lib/labels'
+  import mp_elem_counts from './mp-element-counts.json'
+
+  let log = false // log color scale
+  const heatmap_values = Object.values(mp_elem_counts)
+  const color_map = {
+    200: `blue`,
+    35_000: `green`,
+    80_000: `yellow`,
+    150_000: `red`,
+  }
+  let active_element
+</script>
+
+<span>Log color scale <Toggle bind:checked={log} /></span>
+
+<PeriodicTable {heatmap_values} {color_map} {log} bind:active_element>
+  <TableInset slot="inset" grid_row="3">
+    {#if active_element?.name}
+      <strong>
+        {active_element?.name}: {pretty_num(mp_elem_counts[active_element?.symbol])}
+        <!-- compute percent of total -->
+        {#if mp_elem_counts[active_element?.symbol] > 0}
+          {@const total = heatmap_values.reduce((a, b) => a + b, 0)}
+          ({pretty_num((mp_elem_counts[active_element?.symbol] / total) * 100)}%)
+        {/if}
+      </strong>
+    {/if}
+  </TableInset>
+</PeriodicTable>
+
+<style>
+  span {
+    display: flex;
+    gap: 1ex;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%) translateY(100%);
+    z-index: 1;
+  }
+  strong {
+    text-align: center;
+    display: block;
+    margin: auto;
+    place-self: center;
+  }
+</style>
+```

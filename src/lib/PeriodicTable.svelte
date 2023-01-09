@@ -7,9 +7,12 @@
   import ElementPhoto from './ElementPhoto.svelte'
   import ElementTile from './ElementTile.svelte'
 
-  export let show_names = true
-  export let show_numbers = true
-  export let show_symbols = true
+  export let tile_props: {
+    show_name?: boolean
+    show_number?: boolean
+    show_symbol?: boolean
+    text_color_threshold?: number
+  } = {}
   export let show_photo = true
   export let style = ``
   export let disabled = false // disable hover and click events from updating active_element
@@ -68,12 +71,10 @@
             : links[symbol]
           : null}
         style="grid-column: {column}; grid-row: {row};"
-        show_name={show_names}
-        show_number={show_numbers}
-        show_symbol={show_symbols}
         {value}
         bg_color={value != false ? color_scale?.(value) ?? `transparent` : null}
         {active}
+        {...tile_props}
         on:mouseenter={set_active_element(element)}
         on:mouseleave={set_active_element(null)}
         on:click

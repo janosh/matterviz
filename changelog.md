@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+<!-- auto-changelog-above -->
+
+#### [v0.1.4](https://github.com/janosh/periodic-table/compare/v0.1.3...v0.1.4)
+
+> 2023-01-08
+
+- add color-scale + element-tile demo page [`028e1b3`](https://github.com/janosh/periodic-table/commit/028e1b3b49db4c757e142f154d55676e8fb564a5)
+
 #### [v0.1.3](https://github.com/janosh/periodic-table/compare/v0.1.2...v0.1.3)
 
 > 2023-01-08
@@ -9,8 +17,6 @@ All notable changes to this project will be documented in this file. Dates are d
 - pnpm add -D svelte-zoo mdsvexamples [`154b121`](https://github.com/janosh/periodic-table/commit/154b121eafa27b2c9fd856647bb11136a8f9dd29)
 - pnpm add -D d3-color to set ElementTile text_color based on lightness of bg_color [`cc6c399`](https://github.com/janosh/periodic-table/commit/cc6c3995e05e1796ac3398f649d3c9ba8775f688)
 - add tests 'clicking element tile emits event', 'gap prop' and 'setting active_category=%s highlights corresponding element tiles' [`a19ac38`](https://github.com/janosh/periodic-table/commit/a19ac383d776512907ed49824d00b9951a0100ca)
-
-<!-- auto-changelog-above -->
 
 #### [v0.1.2](https://github.com/janosh/periodic-table/compare/v0.1.1...v0.1.2)
 
