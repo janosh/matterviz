@@ -5,7 +5,9 @@ export const prerender = true
 
 export const _demo_routes = Object.keys(import.meta.glob(`./*/+page.{svx,md}`))
   .map((filename) => filename.split(`/`)[1])
-  .filter((name) => ![`contributing`, `changelog`].includes(name))
+  .filter(
+    (name) => ![`contributing`, `changelog`, `acknowledgements`].includes(name)
+  )
 
 if (_demo_routes.length < 2) {
   throw new Error(`Too few demo routes found: ${_demo_routes.length}`)
