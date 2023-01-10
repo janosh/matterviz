@@ -146,8 +146,8 @@ describe(`PeriodicTable`, () => {
     }
   )
 
-  test.each([[[...Array(10).keys()]], [[...Array(119).keys()]]])(
-    `raises error when receiving heatmap values any length other than 0 and 118`,
+  test.each([[[...Array(1000).keys()]], [[...Array(119).keys()]]])(
+    `raises error when receiving more than 118 heatmap values`,
     async (heatmap_values) => {
       console.error = vi.fn()
 
@@ -158,7 +158,8 @@ describe(`PeriodicTable`, () => {
 
       expect(console.error).toHaveBeenCalledOnce()
       expect(console.error).toBeCalledWith(
-        `heatmap_values should be an array of length 118, one for each element, got ${heatmap_values?.length}`
+        `heatmap_values should be an array of length 118 or less, one for each` +
+          `element possibly omitting elements at the end, got ${heatmap_values.length}`
       )
     }
   )

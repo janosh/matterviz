@@ -37,7 +37,7 @@
   <!-- handles non-svx routes index.svelte and +error.svelte -->
   <slot />
 
-  <h2>Live Demos</h2>
+  <h2>More Demos</h2>
 
   <nav>
     {#each _demo_routes as route, idx}

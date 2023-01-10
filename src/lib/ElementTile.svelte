@@ -29,7 +29,6 @@
     // calculate human-perceived lightness from RGB
     const [r, g, b] = rgb
       .replace(`rgb(`, ``)
-      .replace(`)`, ``)
       .split(`,`)
       .map((v) => parseInt(v) / 255)
     return 0.2126 * r + 0.7152 * g + 0.0722 * b // https://stackoverflow.com/a/596243
@@ -46,7 +45,7 @@
   }
 
   let tile: HTMLElement
-  $: text_color = luminance(get_bg_color(tile)) < text_color_threshold ? `white` : `black`
+  $: text_color = luminance(get_bg_color(tile)) > text_color_threshold ? `black` : `white`
 </script>
 
 <svelte:element

@@ -76,18 +76,16 @@
   <meta property="og:title" content={head_title} />
 </svelte:head>
 
-<a href="." class="back">&laquo; home</a>
-
 <main>
   <ElementHeading {element} />
 
-  {#if element?.discoverer || element?.year}
+  {#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) || element?.year}
     <p class="discovery">
       Discovered
-      {#if element?.discoverer}
+      {#if element?.discoverer && !element.discoverer.startsWith(`unknown`)}
         by <strong>{element.discoverer}</strong>
       {/if}
-      {#if typeof element?.year == `number`}
+      {#if typeof element?.year}
         in <strong>{element.year}</strong>
       {/if}
     </p>
@@ -117,9 +115,7 @@
 
   <section class="flex-wrap">
     <PeriodicTable
-      show_names={false}
-      show_numbers={false}
-      show_symbols={false}
+      tile_props={{ show_name: false, show_number: false, show_symbol: false }}
       show_photo={false}
       disabled={true}
       style="width: 100%;  max-width: 350px;"
@@ -181,18 +177,6 @@
 </main>
 
 <style>
-  a.back {
-    padding: 2pt 1ex;
-    border-radius: 4pt;
-    background: rgba(255, 255, 255, 0.1);
-    transition: color 0.3s, background-color 0.3s;
-    position: absolute;
-    top: 2em;
-    left: 2em;
-  }
-  a.back:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
   main {
     margin: auto;
     max-width: 75em;

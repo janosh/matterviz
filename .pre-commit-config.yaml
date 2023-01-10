@@ -26,7 +26,7 @@ repos:
           - prettier
           - prettier-plugin-svelte
           - svelte
-        exclude: ^changelog.md$
+        exclude: ^changelog.md|src/routes/.*\.json$
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.2.2

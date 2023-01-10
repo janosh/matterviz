@@ -32,9 +32,10 @@
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
-  $: if (![0, 118].includes(heatmap_values.length)) {
+  $: if (heatmap_values.length > 118) {
     console.error(
-      `heatmap_values should be an array of length 118, one for each element, got ${heatmap_values.length}`
+      `heatmap_values should be an array of length 118 or less, one for each` +
+        `element possibly omitting elements at the end, got ${heatmap_values.length}`
     )
   }
 
@@ -53,8 +54,8 @@
 
 <svelte:window bind:innerWidth={window_width} />
 
-<div class="periodic-table-container">
-  <div class="periodic-table" {style} style:gap>
+<div class="periodic-table-container" {style}>
+  <div class="periodic-table" style:gap>
     <slot name="inset" />
 
     {#each element_data as element, idx}

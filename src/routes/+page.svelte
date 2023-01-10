@@ -35,7 +35,7 @@
   </a>
 {/if}
 <PeriodicTable
-  show_names={window_width > 1000}
+  tile_props={{ show_name: window_width > 1000 }}
   heatmap_values={$heatmap_key ? element_data.map((el) => el[$heatmap_key]) : []}
   style="margin: 2em auto 4em;"
   bind:color_scale
