@@ -14,10 +14,6 @@
     <Icon icon="fa6-solid:hands-clapping" />Acknowledgements
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
-  <a href="/bohr-atoms">
-    <Icon icon="mdi:atom-variant" />Bohr Atoms
-  </a>
-  <strong>&ensp;&bull;&ensp;</strong>
   <a href="/changelog">
     <Icon icon="octicon:history" />Changelog
   </a>
