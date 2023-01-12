@@ -1,7 +1,6 @@
-import { element_data } from '$lib'
+import { element_data, PeriodicTable } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
-import PeriodicTable from '$lib/PeriodicTable.svelte'
-import PropertySelect from '$site/PropertySelect.svelte'
+import { PropertySelect } from '$site'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, sleep } from '.'
 

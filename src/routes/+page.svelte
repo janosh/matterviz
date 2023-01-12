@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { element_data } from '$lib'
-  import BohrAtom from '$lib/BohrAtom.svelte'
-  import ColorCustomizer from '$lib/ColorCustomizer.svelte'
-  import ElementStats from '$lib/ElementStats.svelte'
+  import {
+    BohrAtom,
+    ColorCustomizer,
+    ElementStats,
+    element_data,
+    PeriodicTable,
+    ScatterPlot,
+    TableInset,
+  } from '$lib'
   import { property_labels } from '$lib/labels'
-  import PeriodicTable from '$lib/PeriodicTable.svelte'
-  import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
-  import TableInset from '$lib/TableInset.svelte'
-  import PropertySelect from '$site/PropertySelect.svelte'
+  import { PropertySelect } from '$site'
   import type { ScaleLinear } from 'd3-scale'
 
   let window_width: number

@@ -1,5 +1,4 @@
-import { element_data } from '$lib'
-import ElementTile from '$lib/ElementTile.svelte'
+import { ElementTile, element_data } from '$lib'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
