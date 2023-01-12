@@ -2,7 +2,7 @@
   import { page } from '$app/stores'
   import { name, repository } from '$root/package.json'
   import { Footer } from '$site'
-  import GitHubCorner from 'svelte-github-corner'
+  import { GitHubCorner } from 'svelte-zoo'
   import '../app.css'
   import { _demo_routes } from './+layout'
 
@@ -30,9 +30,7 @@
     {/each}
   </nav>
 
-  <main>
-    <slot />
-  </main>
+  <slot />
 {:else}
   <!-- handles non-svx routes index.svelte and +error.svelte -->
   <slot />
