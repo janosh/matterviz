@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { element_data } from '$lib'
-  import BohrAtom from '$lib/BohrAtom.svelte'
+  import { BohrAtom, element_data } from '$lib'
 
   let orbital_period = 2
 </script>

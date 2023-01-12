@@ -1,4 +1,4 @@
-import element_data from '$lib/element-data'
+import { element_data } from '$lib'
 import { category_counts as expected_counts } from '$lib/labels'
 import { expect, test } from 'vitest'
 

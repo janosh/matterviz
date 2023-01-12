@@ -4,7 +4,7 @@
   export let style = ``
   export let id = ``
 
-  // normally input type=checkbox toggles on space bar, thids handler also responds to enter
+  // normally input type=checkbox toggles on space bar, this handler also responds to enter
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === `Enter`) {
       checked = !checked

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { pretty_num } from '../lib/labels'
+  import { pretty_num } from '$lib/labels'
 
   export let x_angle = 0
   export let y_angle = 0

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores'
   import { name, repository } from '$root/package.json'
-  import Footer from '$site/Footer.svelte'
+  import { Footer } from '$site'
   import GitHubCorner from 'svelte-github-corner'
   import '../app.css'
   import { _demo_routes } from './+layout'
@@ -24,9 +24,9 @@
   </h1>
 
   <nav>
-    {#each _demo_routes as route, idx}
+    {#each _demo_routes as href, idx}
       {#if idx > 0}<strong>&bull;</strong>{/if}
-      <a href={route} aria-current={is_current(route)}>{route}</a>
+      <a {href} aria-current={is_current(href)}>{href}</a>
     {/each}
   </nav>
 
@@ -40,14 +40,14 @@
   <h2>More Demos</h2>
 
   <nav>
-    {#each _demo_routes as route, idx}
+    {#each _demo_routes as href, idx}
       {#if idx > 0}<strong>&bull;</strong>{/if}
-      <a href={route} aria-current={is_current(route)}>{route}</a>
+      <a {href} aria-current={is_current(href)}>{href}</a>
     {/each}
   </nav>
 {/if}
 
-<Footer demos={_demo_routes} />
+<Footer />
 
 <style>
   h1,

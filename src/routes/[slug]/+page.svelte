@@ -1,16 +1,17 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { element_data } from '$lib'
-  import BohrAtom from '$lib/BohrAtom.svelte'
-  import ElementHeading from '$lib/ElementHeading.svelte'
-  import ElementPhoto from '$lib/ElementPhoto.svelte'
-  import Icon from '$lib/Icon.svelte'
+  import {
+    BohrAtom,
+    ElementHeading,
+    ElementPhoto,
+    element_data,
+    Icon,
+    PeriodicTable,
+    ScatterPlot,
+  } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
-  import PeriodicTable from '$lib/PeriodicTable.svelte'
-  import ScatterPlot from '$lib/ScatterPlot.svelte'
   import { active_element, heatmap_key } from '$lib/stores'
-  import PrevNextElement from '$site/PrevNextElement.svelte'
-  import PropertySelect from '$site/PropertySelect.svelte'
+  import { PrevNextElement, PropertySelect } from '$site'
   import { extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
   import type { PageData } from './$types'
