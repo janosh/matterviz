@@ -1,6 +1,8 @@
 import adapter from '@sveltejs/adapter-static'
 import { mdsvex } from 'mdsvex'
 import examples from 'mdsvexamples'
+import katex from 'rehype-katex-svelte'
+import math from 'remark-math'
 import preprocess from 'svelte-preprocess'
 
 const { default: pkg } = await import(`./package.json`, {
@@ -11,7 +13,8 @@ const defaults = {
   pkg: pkg.name,
   repo: pkg.repository,
 }
-const remarkPlugins = [[examples, { defaults }]]
+const remarkPlugins = [[examples, { defaults }], math]
+const rehypePlugins = [katex]
 
 /** @type {import('@sveltejs/kit').Config} */
 export default {
@@ -19,7 +22,7 @@ export default {
 
   preprocess: [
     preprocess(),
-    mdsvex({ remarkPlugins, extensions: [`.svx`, `.md`] }),
+    mdsvex({ remarkPlugins, rehypePlugins, extensions: [`.svx`, `.md`] }),
   ],
 
   kit: {

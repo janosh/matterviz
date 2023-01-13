@@ -11,6 +11,7 @@
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
   import { PropertySelect } from '$site'
+  import DemoNav from '$site/DemoNav.svelte'
   import type { ScaleLinear } from 'd3-scale'
 
   let window_width: number
@@ -66,10 +67,17 @@
   <ColorCustomizer collapsible={false} />
 {/if}
 
+<h2>More Demos</h2>
+
+<DemoNav />
+
 <style>
   h1 {
     text-align: center;
     font-size: clamp(20pt, 5.5vw, 42pt);
+  }
+  h2 {
+    text-align: center;
   }
   a[href='bohr-atoms'] {
     position: absolute;
