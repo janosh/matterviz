@@ -1,16 +1,9 @@
 <script lang="ts">
   import { page } from '$app/stores'
-  import { name, repository } from '$root/package.json'
+  import { repository } from '$root/package.json'
   import { Footer } from '$site'
   import { GitHubCorner } from 'svelte-zoo'
   import '../app.css'
-  import { _demo_routes } from './+layout'
-
-  $: is_current = (path: string) => {
-    if (path === $page.url.pathname) return `page`
-    if (path !== `/` && $page.url.pathname.includes(path)) return `page`
-    return undefined
-  }
 </script>
 
 <GitHubCorner href={repository} />
@@ -18,60 +11,12 @@
 {#if !$page.error && $page.url.pathname !== `/`}
   <a href="." aria-label="Back to index page">&laquo; home</a>
 {/if}
-{#if _demo_routes.some((route) => $page.url.pathname.endsWith(route))}
-  <h1>
-    <img src="favicon.svg" alt={name} height="50" width="50" />&ensp;Examples
-  </h1>
 
-  <nav>
-    {#each _demo_routes as href, idx}
-      {#if idx > 0}<strong>&bull;</strong>{/if}
-      <a {href} aria-current={is_current(href)}>{href}</a>
-    {/each}
-  </nav>
-
-  <slot />
-{:else}
-  <!-- handles non-svx routes index.svelte and +error.svelte -->
-  <slot />
-
-  <h2>More Demos</h2>
-
-  <nav>
-    {#each _demo_routes as href, idx}
-      {#if idx > 0}<strong>&bull;</strong>{/if}
-      <a {href} aria-current={is_current(href)}>{href}</a>
-    {/each}
-  </nav>
-{/if}
+<slot />
 
 <Footer />
 
 <style>
-  h1,
-  h2 {
-    text-align: center;
-    display: flex;
-    place-content: center;
-    place-items: center;
-  }
-  nav {
-    display: flex;
-    gap: 1em 1ex;
-    place-content: center;
-    margin: 1em auto 3em;
-    max-width: 45em;
-    flex-wrap: wrap;
-  }
-  nav > a {
-    padding: 0 4pt;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 3pt;
-    transition: 0.2s;
-  }
-  nav > a[aria-current='page'] {
-    color: mediumseagreen;
-  }
   a[href='.'] {
     font-size: 15pt;
     position: absolute;
