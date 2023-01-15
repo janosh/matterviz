@@ -29,6 +29,7 @@ export default {
     adapter: adapter(),
 
     alias: {
+      $root: `.`,
       $site: `src/site`,
     },
   },

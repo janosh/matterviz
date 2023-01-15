@@ -18,8 +18,8 @@
   --toc-desktop-nav-margin: 0 0 0 1em;
   --toc-active-bg: teal;
 
-  --ghc-color: var(--page-bg);
-  --ghc-bg: white;
+  --zoo-github-corner-color: var(--page-bg);
+  --zoo-github-corner-bg: white;
 
   --sms-margin: 1em auto;
   --sms-options-bg: black;

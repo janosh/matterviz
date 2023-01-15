@@ -10,8 +10,7 @@
   } from '$lib'
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
-  import { PropertySelect } from '$site'
-  import DemoNav from '$site/DemoNav.svelte'
+  import { DemoNav, PropertySelect } from '$site'
   import type { ScaleLinear } from 'd3-scale'
 
   let window_width: number

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { name } from '$root/package.json'
-  import DemoNav from '$site/DemoNav.svelte'
+  import { DemoNav } from '$site'
 </script>
 
 <h1>

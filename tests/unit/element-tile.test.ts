@@ -19,7 +19,7 @@ describe(`ElementTile`, () => {
     const symbol = doc_query(`.symbol`)
     expect(symbol.textContent).toBe(rand_element.symbol)
 
-    const number = doc_query(`.atomic-number`)
+    const number = doc_query(`.number`)
     expect(number.textContent).toBe(rand_element.number.toString())
   })
 
@@ -85,4 +85,38 @@ describe(`ElementTile`, () => {
       ).toBe(text_color)
     }
   )
+
+  test.each([[true], [false]])(
+    `applies class active when active=true`,
+    async (active) => {
+      new ElementTile({
+        target: document.body,
+        props: { element: rand_element, active },
+      })
+
+      const node = doc_query(`.element-tile`)
+
+      expect(node.classList.contains(`active`)).toBe(active)
+    }
+  )
+
+  describe.each([[`name`], [`number`], [`symbol`]])(`prop=%s`, (prop) => {
+    test.each([[true], [false]])(
+      `show_${prop} toggles ${prop} visibility`,
+      (value) => {
+        new ElementTile({
+          target: document.body,
+          props: { element: rand_element, [`show_${prop}`]: value },
+        })
+
+        if (value) {
+          const span = doc_query(`.${prop}`)
+
+          expect(span.textContent).toBe(`${rand_element[prop]}`)
+        } else {
+          expect(document.querySelector(`.${prop}`)).toBeNull()
+        }
+      }
+    )
+  })
 })
