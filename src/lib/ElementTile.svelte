@@ -66,7 +66,7 @@
   on:keydown={payload_event}
 >
   {#if show_number}
-    <span class="atomic-number">
+    <span class="number">
       {element.number}
     </span>
   {/if}
@@ -109,7 +109,7 @@
   .last-active {
     border: 1px dotted white;
   }
-  .atomic-number {
+  .number {
     font-size: 1.1cqw;
     position: absolute;
     top: 0.3cqw;
