@@ -39,7 +39,7 @@
 <PeriodicTable
   tile_props={{ show_name: window_width > 1000 }}
   heatmap_values={$heatmap_key ? element_data.map((el) => el[$heatmap_key]) : []}
-  style="margin: 2em auto 4em;"
+  style="margin: 2em auto 4em; max-width: 85vw;"
   bind:color_scale
   bind:active_element={$active_element}
   bind:active_category={$active_category}

@@ -51,6 +51,7 @@
     flex-wrap: wrap;
     place-content: center;
     padding: 0;
+    margin: 0 calc((-95vw + 100cqw) / 2);
   }
   li {
     display: inline-block;

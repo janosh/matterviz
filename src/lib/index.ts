@@ -9,7 +9,6 @@ export { default as Icon } from './Icon.svelte'
 export { default, default as PeriodicTable } from './PeriodicTable.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as TableInset } from './TableInset.svelte'
-export { default as Toggle } from './Toggle.svelte'
 
 export type Category =
   | `actinide`

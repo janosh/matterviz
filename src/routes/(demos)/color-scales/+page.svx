@@ -1,4 +1,4 @@
-<label for="color-map">Enter a custom color map in the text area below and see the heatmap update in real time (if it's valid JSON)</label>
+<label for="color-map">Enter a custom color map in the text area below and see the heatmap update in real-time (if it's valid JSON and valid CSS color codes).</label>
 
 ```svelte example stackblitz code_above
 <script>
@@ -22,7 +22,8 @@
 
 ```svelte example stackblitz code_above
 <script>
-  import { PeriodicTable, TableInset, Toggle } from '$lib'
+  import { Toggle } from 'svelte-zoo'
+  import { PeriodicTable, TableInset } from '$lib'
   import { pretty_num } from '$lib/labels'
   import mp_elem_counts from './mp-element-counts.json'
 

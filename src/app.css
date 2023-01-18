@@ -41,6 +41,7 @@ main {
   margin-bottom: 3em;
   width: 100%;
   max-width: 50em;
+  container-type: inline-size;
 }
 a {
   color: cornflowerblue;

@@ -1,7 +1,11 @@
-import { category_counts } from '$lib/labels'
 import { expect, test } from '@playwright/test'
 import element_data from '../src/lib/element-data.ts'
-import { heatmap_keys, heatmap_labels, pretty_num } from '../src/lib/labels.ts'
+import {
+  category_counts,
+  heatmap_keys,
+  heatmap_labels,
+  pretty_num,
+} from '../src/lib/labels.ts'
 
 test.describe(`Periodic Table`, () => {
   test(`in default state`, async ({ page }) => {
