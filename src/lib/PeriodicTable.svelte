@@ -3,9 +3,8 @@
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear, scaleLog } from 'd3-scale'
   import type { Category, ChemicalElement, PeriodicTableEvents } from '.'
+  import { ElementPhoto, ElementTile } from '.'
   import element_data from './element-data'
-  import ElementPhoto from './ElementPhoto.svelte'
-  import ElementTile from './ElementTile.svelte'
 
   export let tile_props: {
     show_name?: boolean

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from './Icon.svelte'
+  import { Icon } from '.'
 
   export let element_name: string | null = null
   // style applies to img and missing_msg div

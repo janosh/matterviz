@@ -1,21 +1,11 @@
-`ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If it's background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color.
+`ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If its background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color.
 
 ```svelte example stackblitz code_above
 <script>
   import { ElementTile, element_data } from '$lib'
 
   const colors = [
-    `red`,
-    `#eee`,
-    `#ddd`,
-    `#cccccc`,
-    `green`,
-    `blue`,
-    `yellow`,
-    `orange`,
-    `purple`,
-    `white`,
-    `lightgray`,
+    `red`, `cornflowerblue`, `rebeccapurple`, `gold`, `green`, `blue`, `yellow`, `orange`, `purple`, `beige`, `pink`, `AliceBlue`, `BlanchedAlmond`, `BurlyWood`, `CadetBlue`, `Chartreuse`, `DarkGoldenRod`, `DeepSkyBlue`, `FireBrick`, `Gainsboro`, `Honeydew`, `LavenderBlush`, `LemonChiffon`, `LightGoldenRodYellow`, `MediumAquamarine`, `MintCream`, `NavajoWhite`, `OldLace`, `OliveDrab`, `PapayaWhip`, `PeachPuff`, `Peru`, `SaddleBrown`, `Thistle`,
   ]
 </script>
 

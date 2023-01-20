@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from 'svelte/transition'
-  import Icon from './Icon.svelte'
+  import { Icon } from '.'
   import { active_category, category_colors, default_category_colors } from './stores'
 
   export let open = false

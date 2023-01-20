@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import ElementHeading from './ElementHeading.svelte'
-  import Icon from './Icon.svelte'
+  import { ElementHeading, Icon } from '.'
   import { pretty_num } from './labels'
 
   export let element: ChemicalElement | null

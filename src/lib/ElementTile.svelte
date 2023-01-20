@@ -98,16 +98,18 @@
     width: 100%;
     box-sizing: border-box;
     color: var(--elem-tile-text-color, white);
+    /* add persistent invisible border so content doesn't move on hover */
+    border: 1px solid transparent;
   }
   .element-tile span {
     line-height: 1em;
   }
   .element-tile.active,
   .element-tile:hover {
-    border: 1px solid white;
+    border: 1px solid;
   }
   .last-active {
-    border: 1px dotted white;
+    border: 1px dotted;
   }
   .number {
     font-size: 1.1cqw;
