@@ -1,4 +1,4 @@
-import { ElementTile, element_data } from '$lib'
+import { ElementTile, element_data, type PeriodicTableEvents } from '$lib'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
@@ -23,26 +23,28 @@ describe(`ElementTile`, () => {
     expect(number.textContent).toBe(rand_element.number.toString())
   })
 
-  test(`forwards mouseenter and mouseleave events`, () => {
+  test.each([
+    [`mouseenter`],
+    [`mouseleave`],
+    [`click`],
+    [`keydown`],
+    [`keyup`],
+  ])(`forwards %s events with payload`, (event_type) => {
     const element_tile = new ElementTile({
       target: document.body,
       props: { element: rand_element },
     })
 
-    const mouseenter = vi.fn()
-    const mouseleave = vi.fn()
+    const spy = vi.fn()
 
-    element_tile.$on(`mouseenter`, mouseenter)
-    element_tile.$on(`mouseleave`, mouseleave)
+    element_tile.$on(event_type as keyof PeriodicTableEvents, spy)
 
     const node = doc_query(`.element-tile`)
-    if (!node) throw new Error(`DOM node not found`)
 
-    node.dispatchEvent(new MouseEvent(`mouseenter`))
-    node.dispatchEvent(new MouseEvent(`mouseleave`))
+    node.dispatchEvent(new MouseEvent(event_type))
 
-    expect(mouseenter).toHaveBeenCalledTimes(1)
-    expect(mouseleave).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith(new CustomEvent(event_type))
   })
 
   test(`applies bg_color as background color`, async () => {

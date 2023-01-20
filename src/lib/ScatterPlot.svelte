@@ -3,10 +3,9 @@
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear } from 'd3-scale'
   import type { ChemicalElement, PlotPoint } from '.'
+  import { Line, ScatterPoint } from '.'
   import element_data from './element-data'
   import { pretty_num } from './labels'
-  import Line from './Line.svelte'
-  import ScatterPoint from './ScatterPoint.svelte'
   import { active_element } from './stores'
 
   export let style = ``
