@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import { extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear, scaleLog } from 'd3-scale'
@@ -49,9 +50,31 @@
   }
 
   let window_width: number
+  function handle_key(event: KeyboardEvent) {
+    if (disabled || !active_element) return
+    if (event.key == `Enter`) return goto(active_element.name.toLowerCase())
+
+    if (![`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`].includes(event.key)) return
+
+    event.preventDefault() // prevent scrolling the page
+    event.stopPropagation()
+
+    // change the active element in the periodic table with arrow keys
+    // TODO doesn't allow navigating to lanthanides and actinides yet
+    const { column, row } = active_element
+    active_element =
+      element_data.find((elem) => {
+        return {
+          ArrowUp: elem.column == column && elem.row == row - 1,
+          ArrowDown: elem.column == column && elem.row == row + 1,
+          ArrowLeft: elem.column == column - 1 && elem.row == row,
+          ArrowRight: elem.column == column + 1 && elem.row == row,
+        }[event.key]
+      }) ?? active_element
+  }
 </script>
 
-<svelte:window bind:innerWidth={window_width} />
+<svelte:window bind:innerWidth={window_width} on:keydown={handle_key} />
 
 <div class="periodic-table-container" {style}>
   <div class="periodic-table" style:gap>

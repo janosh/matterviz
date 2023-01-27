@@ -27,10 +27,9 @@
 <style>
   label {
     display: flex;
+    gap: 6pt;
     place-content: center;
-    position: fixed;
-    bottom: 3pt;
-    left: 3pt;
+    margin: 1em;
   }
   input[type='number'] {
     background: transparent;
