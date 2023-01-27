@@ -10,6 +10,7 @@ test.describe(`Bohr Atoms page`, () => {
   })
 
   test(`SVG elements have expected height`, async ({ page }) => {
+    // happened once that SVGs collapsed to 0 height
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
     const first_svg = await page.$(`ol > li > svg`)
@@ -33,5 +34,12 @@ test.describe(`Bohr Atoms page`, () => {
       (el) => getComputedStyle(el).animationDuration
     )
     expect(toggled_animation_duration).toBe(`0s`)
+  })
+
+  test(`katex works`, async ({ page }) => {
+    await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
+
+    const katex_elements = await page.$$(`.katex`)
+    expect(katex_elements.length).toBeGreaterThan(10)
   })
 })

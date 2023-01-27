@@ -1,9 +1,9 @@
 // data here is a combination of 2 sources
 // https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json
+// https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952
 
 import type { ChemicalElement } from '$lib'
 
-// https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952
 const element_data: ChemicalElement[] = [
   {
     name: `Hydrogen`,

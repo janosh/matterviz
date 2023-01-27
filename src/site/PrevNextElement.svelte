@@ -1,13 +1,27 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import type { ChemicalElement } from '$lib'
   import { ElementPhoto, ElementTile } from '$lib'
   import Icon from '@iconify/svelte'
 
   export let prev: ChemicalElement
   export let next: ChemicalElement
-  const tile_style = `width: 70px; border-radius: 2pt; position: absolute; bottom: 0;border: none !important;`
+  const tile_style = `width: 70px; position: absolute; bottom: 0;`
   const photo_style = `width: 200px; border-radius: 4pt;`
+
+  const goto_options = { replaceState: true, noScroll: true }
+
+  function handle_keyup(event: KeyboardEvent) {
+    const to = {
+      ArrowLeft: prev?.name,
+      ArrowRight: next?.name,
+      Escape: `/`,
+    }[event.key]
+    if (to) goto(to.toLowerCase(), goto_options)
+  }
 </script>
+
+<svelte:window on:keyup={handle_keyup} />
 
 <ul data-sveltekit-noscroll>
   <li>

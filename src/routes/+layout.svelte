@@ -26,6 +26,7 @@
     padding: 1pt 5pt;
     border-radius: 3pt;
     transition: 0.2s;
+    z-index: 1;
   }
   a[href='.']:hover {
     background-color: rgba(255, 255, 255, 0.2);

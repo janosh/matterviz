@@ -24,6 +24,11 @@
   <p class="toggle-icons">
     <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons
   </p>
+  <p>
+    <small>
+      Pro tip: Use arrow keys &thinsp;&larr; &rarr;&thinsp; to navigate between elements.
+    </small>
+  </p>
 </footer>
 
 <style>

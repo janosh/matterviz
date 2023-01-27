@@ -116,7 +116,7 @@
 
   <section class="flex-wrap">
     <PeriodicTable
-      tile_props={{ show_name: false, show_number: false, show_symbol: false }}
+      tile_props={{ show_name: false, show_number: false }}
       show_photo={false}
       disabled={true}
       style="width: 100%;  max-width: 350px;"
