@@ -112,10 +112,7 @@
 
     <slot name="bottom-left-inset">
       {#if show_photo}
-        <ElementPhoto
-          element_name={active_element?.name}
-          style="grid-area: 9/1/span 2/span 2;"
-        />
+        <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2;" />
       {/if}
     </slot>
   </div>

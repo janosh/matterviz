@@ -96,7 +96,7 @@
 
   <section class="viz">
     <ElementPhoto
-      element_name={$active_element?.name}
+      element={$active_element}
       missing_msg={window_width < 900 ? `` : `No image for`}
     />
 

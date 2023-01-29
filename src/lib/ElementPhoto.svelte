@@ -1,23 +1,25 @@
 <script lang="ts">
-  import { Icon } from '.'
+  import { Icon, type ChemicalElement } from '.'
 
-  export let element_name: string | null = null
+  export let element: ChemicalElement
   // style applies to img and missing_msg div
   export let style: string | null = null
   export let missing_msg = `No image for `
 
-  $: src = `https://images-of-elements.com/s/${element_name?.toLowerCase()}.jpg`
+  $: ({ name, number } = element ?? {})
+
+  $: src = `/elements/${number}-${name?.toLowerCase()}.jpg`
   let hidden = false
   $: src, (hidden = false) // reset hidden to false when src changes
 </script>
 
-{#if element_name}
-  <img {src} alt={element_name} on:error={() => (hidden = true)} {style} {hidden} />
+{#if element}
+  <img {src} alt={name} on:error={() => (hidden = true)} {style} {hidden} />
   {#if hidden && missing_msg}
     <div {style}>
       <span>
         <Icon icon="ic:outline-image-not-supported" />{missing_msg}
-        {element_name}
+        {name}
       </span>
     </div>
   {/if}
@@ -31,8 +33,10 @@
   }
   div {
     aspect-ratio: 1;
+    text-align: center;
     display: flex;
-    place-content: center;
+    padding: 3pt;
+    box-sizing: border-box;
     place-items: center;
     background-image: linear-gradient(
       to top left,
@@ -41,7 +45,6 @@
     );
     color: white;
     border-radius: 4pt;
-    overflow: hidden;
     width: 100%;
     container-type: inline-size;
   }

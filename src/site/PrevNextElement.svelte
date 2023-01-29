@@ -30,8 +30,8 @@
         <Icon icon="carbon:previous-filled" inline />
         Previous
       </h3>
+      <ElementPhoto element={prev} style={photo_style} />
       <ElementTile element={prev} style={tile_style} show_name={false} />
-      <ElementPhoto element_name={prev.name} style={photo_style} />
     </a>
   </li>
   <li style="text-align: right;">
@@ -40,8 +40,8 @@
         Next
         <Icon icon="carbon:next-filled" inline />
       </h3>
+      <ElementPhoto element={next} style={photo_style} />
       <ElementTile element={next} style={tile_style} show_name={false} />
-      <ElementPhoto element_name={next.name} style={photo_style} />
     </a>
   </li>
 </ul>
