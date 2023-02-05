@@ -5,15 +5,11 @@
   import Select from 'svelte-multiselect'
 
   export let value: keyof ChemicalElement | null = null
-  export let selected: string[] = []
+  const options = Object.keys(heatmap_labels)
+  export let empty: boolean = false
+  export let selected: string[] = empty ? [] : [options[0]]
 
   $: $heatmap_key = heatmap_labels[value ?? ``] ?? null
 </script>
 
-<Select
-  options={Object.keys(heatmap_labels)}
-  {selected}
-  maxSelect={1}
-  bind:value
-  placeholder="Select a heat map"
-/>
+<Select {options} {selected} maxSelect={1} bind:value placeholder="Select a heat map" />

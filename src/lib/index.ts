@@ -3,6 +3,7 @@ export { default as ColorCustomizer } from './ColorCustomizer.svelte'
 export { default as element_data } from './element-data'
 export { default as ElementHeading } from './ElementHeading.svelte'
 export { default as ElementPhoto } from './ElementPhoto.svelte'
+export { default as ElementScatter } from './ElementScatter.svelte'
 export { default as ElementStats } from './ElementStats.svelte'
 export { default as ElementTile } from './ElementTile.svelte'
 export { default as Icon } from './Icon.svelte'
@@ -72,7 +73,7 @@ export type ChemicalElement = {
   year: number | string
 }
 
-export type PlotPoint = [number, number, ChemicalElement]
+export type Coords = { x: number; y: number }
 
 export type DispatchPayload = CustomEvent<{
   element: ChemicalElement
