@@ -1,6 +1,5 @@
-import { element_data, PeriodicTable } from '$lib'
+import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
-import { PropertySelect } from '$site'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, sleep } from '.'
 
@@ -81,7 +80,7 @@ describe(`PeriodicTable`, () => {
 
     const element_tile = doc_query(`div.element-tile`)
     // hydrogen with lowest mass should be blue (low end of color scale)
-    expect(element_tile.style.backgroundColor).toBe(`rgb(27, 0, 228)`)
+    expect(element_tile.style.backgroundColor).toBe(`rgb(60, 79, 138)`)
   })
 
   test.each([[0], [0.5], [1], [2]])(

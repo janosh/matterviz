@@ -21,7 +21,7 @@
   --zoo-github-corner-color: var(--page-bg);
   --zoo-github-corner-bg: white;
 
-  --sms-margin: 1em auto;
+  --sms-margin: auto;
   --sms-options-bg: black;
   --sms-max-width: 22em;
   --sms-border: 1px dotted teal;

@@ -34,7 +34,11 @@
     return 0.2126 * r + 0.7152 * g + 0.0722 * b // https://stackoverflow.com/a/596243
   }
 
-  function get_bg_color(elem: HTMLElement | null): string {
+  function get_bg_color(
+    elem: HTMLElement | null,
+    bg_color: string | null = null
+  ): string {
+    if (bg_color) return bg_color
     // recurse up the DOM tree to find the first non-transparent background color
     const transparent = `rgba(0, 0, 0, 0)`
     if (!elem) return `rgba(0, 0, 0, 0)`
@@ -45,7 +49,8 @@
   }
 
   let tile: HTMLElement
-  $: text_color = luminance(get_bg_color(tile)) > text_color_threshold ? `black` : `white`
+  $: text_color =
+    luminance(get_bg_color(tile, bg_color)) > text_color_threshold ? `black` : `white`
 </script>
 
 <svelte:element
