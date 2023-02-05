@@ -2,10 +2,10 @@
   import {
     BohrAtom,
     ColorCustomizer,
+    ElementScatter,
     ElementStats,
     element_data,
     PeriodicTable,
-    ScatterPlot,
     TableInset,
   } from '$lib'
   import { property_labels } from '$lib/labels'
@@ -28,7 +28,7 @@
 
 <h1>Periodic Table of Elements</h1>
 
-<PropertySelect />
+<PropertySelect empty />
 
 {#if $last_element && window_width > 1100}
   {@const { shells, name, symbol } = $last_element}
@@ -47,13 +47,13 @@
 >
   <TableInset slot="inset">
     {#if $heatmap_key}
-      <ScatterPlot
+      <ElementScatter
         y_lim={[0, null]}
-        y_values={element_data.map((el) => el[$heatmap_key])}
+        y={element_data.map((el) => el[$heatmap_key])}
         {y_label}
         {y_unit}
-        on_hover_point={(point) => ($active_element = point[2])}
-        x_label_y={42}
+        on:change={(e) => ($active_element = element_data[e.detail.x - 1])}
+        x_label_yshift={42}
         {color_scale}
       />
     {:else}

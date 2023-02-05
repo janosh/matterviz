@@ -2,7 +2,7 @@
   import { Icon, type ChemicalElement } from '.'
 
   export let element: ChemicalElement
-  // style applies to img and missing_msg div
+  // style applies to both img and missing_msg div
   export let style: string | null = null
   export let missing_msg = `No image for `
 
@@ -13,7 +13,7 @@
   $: src, (hidden = false) // reset hidden to false when src changes
 </script>
 
-{#if element}
+{#if name && number}
   <img {src} alt={name} on:error={() => (hidden = true)} {style} {hidden} />
   {#if hidden && missing_msg}
     <div {style}>
@@ -30,6 +30,7 @@
     width: 100%;
     object-fit: cover;
     margin: 0;
+    border-radius: 4pt;
   }
   div {
     aspect-ratio: 1;

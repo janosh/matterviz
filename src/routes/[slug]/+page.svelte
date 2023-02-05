@@ -4,10 +4,10 @@
     BohrAtom,
     ElementHeading,
     ElementPhoto,
+    ElementScatter,
     element_data,
     Icon,
     PeriodicTable,
-    ScatterPlot,
   } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
@@ -100,9 +100,9 @@
       missing_msg={window_width < 900 ? `` : `No image for`}
     />
 
-    <!-- on:mouseleave makes ScatterPlot always show current element unless user actively hovers another element -->
-    <ScatterPlot
-      y_values={scatter_plot_values}
+    <!-- on:mouseleave makes ElementScatter always show current element unless user actively hovers another element -->
+    <ElementScatter
+      y={scatter_plot_values}
       {y_label}
       {y_unit}
       {color_scale}

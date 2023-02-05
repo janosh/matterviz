@@ -1,7 +1,7 @@
 import * as lib from '$lib'
-import IndexPeriodicTable, { PeriodicTable, ScatterPlot } from '$lib'
+import IndexPeriodicTable, { ElementScatter, PeriodicTable } from '$lib'
+import FileElementScatter from '$lib/ElementScatter.svelte'
 import FilePeriodicTable from '$lib/PeriodicTable.svelte'
-import FileScatterPlot from '$lib/ScatterPlot.svelte'
 import { expect, test } from 'vitest'
 
 test(`PeriodicTable is named and default export`, () => {
@@ -9,10 +9,10 @@ test(`PeriodicTable is named and default export`, () => {
   expect(FilePeriodicTable).toBe(PeriodicTable)
 })
 
-test(`ScatterPlot is named export`, () => {
-  expect(FileScatterPlot).toBe(ScatterPlot)
+test(`ElementScatter is named export`, () => {
+  expect(FileElementScatter).toBe(ElementScatter)
 })
 
-test(`lib exports PeriodicTable and ScatterPlot`, () => {
+test(`lib has named component exports`, () => {
   expect(Object.entries(lib).length).toBeGreaterThan(8)
 })

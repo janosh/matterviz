@@ -2,11 +2,9 @@
   import { bisector, extent } from 'd3-array'
   import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear } from 'd3-scale'
-  import type { ChemicalElement, PlotPoint } from '.'
+  import { createEventDispatcher } from 'svelte'
+  import type { Coords } from '.'
   import { Line, ScatterPoint } from '.'
-  import element_data from './element-data'
-  import { pretty_num } from './labels'
-  import { active_element } from './stores'
 
   export let style = ``
   export let x_lim: [number | null, number | null] = [null, null]
@@ -15,26 +13,25 @@
   export let pad_bottom = 30
   export let pad_left = 50
   export let pad_right = 20
-  export let on_hover_point: ((point: PlotPoint) => void) | null = null
-  export let x_label = `Atomic Number`
-  export let x_label_y = 0
+  export let x_label: string = ``
+  export let x_label_yshift = 0
+  export let x: number[] = []
   export let color_scale: ScaleLinear<number, string, never> | null = null
-  // either array of length 118 (one heat value for each element) or object with
-  // element symbol as key and heat value as value
-  export let y_values: number[]
-  export let y_label: string
+  export let y: number[] = []
+  export let y_label: string = ``
   export let y_unit = ``
+  export let tooltip_point: Coords
+  export let hovered = false
 
-  let data_points: PlotPoint[]
-  $: data_points = element_data.map((elem, idx) => [elem.number, y_values[idx], elem])
-
+  const dispatcher = createEventDispatcher()
   const axis_label_offset = { x: 15, y: 20 } // pixels
-
   let width: number
   let height: number
+
+  $: data = x.map((x, idx) => ({ x, y: y[idx] }))
   // determine x/y-range from data but default to x/y-lim if defined
-  $: x_range = extent(data_points, (point) => point[0]).map((x, idx) => x_lim[idx] ?? x)
-  $: y_range = extent(data_points, (point) => point[1]).map((y, idx) => y_lim[idx] ?? y)
+  $: x_range = extent(data, ({ x }) => x).map((x, idx) => x_lim[idx] ?? x)
+  $: y_range = extent(data, ({ y }) => y).map((y, idx) => y_lim[idx] ?? y)
 
   $: x_scale = scaleLinear()
     .domain(x_range)
@@ -44,31 +41,24 @@
     .domain(y_range)
     .range([height - pad_bottom, pad_top])
 
-  let scaled_data: [number, number, string, ChemicalElement][]
+  let scaled_data: [number, number, string][]
   // make sure to apply colorscale to y values before scaling
-  $: scaled_data = data_points
-    .filter(([x, y]) => !(isNaN(x) || isNaN(y) || x === null || y === null))
-    .map(([x, y, elem]) => [x_scale(x), y_scale(y), color_scale?.(y), elem])
+  $: scaled_data = data
+    ?.filter(({ x, y }) => !(isNaN(x) || isNaN(y) || x === null || y === null))
+    .map(({ x, y }) => [x_scale(x), y_scale(y), color_scale?.(y)])
 
-  let tooltip_point: PlotPoint
-  let hovered = false
-  const bisect = bisector((data_point: PlotPoint) => data_point[0]).right
+  const bisect = bisector(({ x }) => x).right
 
-  // update tooltip on hover element tile
-  $: if ($active_element?.number) {
-    hovered = true
-    tooltip_point = data_points[$active_element.number - 1]
-  }
   function on_mouse_move(event: MouseEvent) {
     hovered = true
-    const mouse_coords = [event.offsetX, event.offsetY]
 
     // returns point to right of our current mouse position
-    let arr_idx = bisect(data_points, x_scale.invert(mouse_coords[0]))
 
-    if (arr_idx < data_points.length) {
-      tooltip_point = data_points[arr_idx] // update point
-      if (on_hover_point) on_hover_point(tooltip_point)
+    let idx = bisect(data, x_scale.invert(event.offsetX))
+
+    if (idx < data.length) {
+      tooltip_point = data[idx] // update point
+      dispatcher(`change`, tooltip_point)
     }
   }
 </script>
@@ -80,10 +70,7 @@
       on:mouseleave={() => (hovered = false)}
       on:mouseleave
     >
-      <Line
-        points={scaled_data.map(([x, y]) => [x, y])}
-        origin={[x_scale(x_range[0]), y_scale(y_range[0])]}
-      />
+      <Line points={scaled_data} origin={[x_scale(x_range[0]), y_scale(y_range[0])]} />
       {#each scaled_data as [x, y, fill]}
         <ScatterPoint {x} {y} {fill} />
       {/each}
@@ -96,7 +83,7 @@
             <text y={-pad_bottom + axis_label_offset.x}>{tick}</text>
           </g>
         {/each}
-        <text x={width / 2} y={height + 5 - x_label_y} class="label x">
+        <text x={width / 2} y={height + 5 - x_label_yshift} class="label x">
           {x_label ?? ``}
         </text>
       </g>
@@ -120,19 +107,16 @@
       </g>
 
       {#if tooltip_point}
-        {@const [atomic_num, raw_y] = tooltip_point}
-        {@const [x, y] = [x_scale(atomic_num), y_scale(raw_y)]}
-        <circle cx={x} cy={y} r="5" fill="orange" />
-        {#if hovered}
-          <foreignObject x={x + 5} {y}>
-            <div>
-              <strong>{atomic_num} - {tooltip_point[2].name}</strong>
-              {#if raw_y}
-                <br />{y_label} = {pretty_num(raw_y)} {y_unit ?? ``}
-              {/if}
-            </div>
-          </foreignObject>
-        {/if}
+        {@const { x, y } = tooltip_point}
+        {@const [cx, cy] = [x_scale(x), y_scale(y)]}
+        <circle {cx} {cy} r="5" fill="orange" />
+        <!-- {#if hovered} -->
+        <foreignObject x={cx + 5} y={cy}>
+          <slot name="tooltip" {x} {y}>
+            ({x}, {y})
+          </slot>
+        </foreignObject>
+        <!-- {/if} -->
       {/if}
     </svg>
   {/if}
@@ -143,6 +127,7 @@
     width: 100%;
     height: 100%;
     display: flex;
+    min-height: var(--svt-min-height, 100px);
   }
   svg {
     width: 100%;
@@ -170,12 +155,6 @@
   }
   foreignObject {
     overflow: visible;
-  }
-  foreignObject div {
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 1pt 3pt;
-    width: max-content;
-    box-sizing: border-box;
   }
   text.label {
     text-anchor: middle;
