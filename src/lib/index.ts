@@ -8,6 +8,7 @@ export { default as ElementStats } from './ElementStats.svelte'
 export { default as ElementTile } from './ElementTile.svelte'
 export { default as Icon } from './Icon.svelte'
 export { default as Line } from './Line.svelte'
+export { default as Nucleus } from './Nucleus.svelte'
 export { default, default as PeriodicTable } from './PeriodicTable.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
@@ -51,9 +52,9 @@ export type ChemicalElement = {
   metal: boolean | null
   metalloid: boolean | null
   molar_heat: number | null
-  n_electrons: number
-  n_neutrons: number
-  n_protons: number
+  electrons: number
+  neutrons: number
+  protons: number
   n_shells: number
   n_valence: number
   name: string
