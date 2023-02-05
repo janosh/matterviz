@@ -8,10 +8,11 @@
     element_data,
     Icon,
     PeriodicTable,
+    PropertySelect,
   } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
-  import { PrevNextElement, PropertySelect } from '$site'
+  import { PrevNextElement } from '$site'
   import { extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
   import type { PageData } from './$types'

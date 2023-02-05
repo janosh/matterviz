@@ -1,8 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { extent } from 'd3-array'
-  import type { ScaleLinear } from 'd3-scale'
-  import { scaleLinear, scaleLog } from 'd3-scale'
+  import * as d3sc from 'd3-scale-chromatic'
   import type { Category, ChemicalElement, PeriodicTableEvents } from '.'
   import { ElementPhoto, ElementTile } from '.'
   import element_data from './element-data'
@@ -22,9 +20,8 @@
   // links is either string with element property (name, symbol, number, ...) to use as link,
   // or object with mapping element symbols to link
   export let links: keyof ChemicalElement | Record<string, string> | null = null
-  export let color_map: keyof ChemicalElement | Record<number, string> | null = null
   export let log = false
-  export let color_scale: ScaleLinear<number, string, never> | null = null
+  export let color_scale: string | ((num: number) => string) = `Viridis`
   export let active_element: ChemicalElement | null = null
   export let active_category: Category | null = null
   export let gap = `0.3cqw` // gap between element tiles, default is 0.3% of container width
@@ -39,10 +36,7 @@
     )
   }
 
-  $: color_scale = (log ? scaleLog : scaleLinear)()
-    // .domain(extent(heatmap_values ?? []).map((v) => (log ? Math.max(v, 1) : v)))
-    .domain(color_map ? Object.keys(color_map) : extent(heatmap_values))
-    .range(color_map ? Object.values(color_map) : [`blue`, `red`])
+  $: cmap_max = Math.max(...heatmap_values)
 
   $: set_active_element = (element: ChemicalElement | null) => () => {
     if (disabled) return
@@ -72,13 +66,21 @@
         }[event.key]
       }) ?? active_element
   }
+  $: c_scale =
+    typeof color_scale == `string` ? d3sc[`interpolate${color_scale}`] : color_scale
+
+  $: bg_color = (value: number | false): string | null => {
+    if (!heatmap_values?.length || !c_scale) return null
+    if (!value) return `transparent`
+    return c_scale(log ? Math.log(value) / Math.log(cmap_max) : value / cmap_max)
+  }
 </script>
 
 <svelte:window bind:innerWidth={window_width} on:keydown={handle_key} />
 
 <div class="periodic-table-container" {style}>
   <div class="periodic-table" style:gap>
-    <slot name="inset" />
+    <slot name="inset" {active_element} />
 
     {#each element_data as element, idx}
       {@const { column, row, category, name, symbol } = element}
@@ -95,7 +97,7 @@
           : null}
         style="grid-column: {column}; grid-row: {row};"
         {value}
-        bg_color={value != false ? color_scale?.(value) ?? `transparent` : null}
+        bg_color={bg_color(value)}
         {active}
         {...tile_props}
         on:mouseenter={set_active_element(element)}
@@ -110,7 +112,7 @@
       <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset} />
     {/if}
 
-    <slot name="bottom-left-inset">
+    <slot name="bottom-left-inset" {active_element}>
       {#if show_photo}
         <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2;" />
       {/if}

@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/sveriodic-table",
   "repository": "https://github.com/janosh/sveriodic-table",
   "license": "MIT",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "type": "module",
   "svelte": "index.js",
   "bugs": "https://github.com/janosh/sveriodic-table/issues",
@@ -27,7 +27,8 @@
     "d3-array": "^3.2.2",
     "d3-interpolate-path": "^2.3.0",
     "d3-scale": "^4.0.2",
-    "d3-shape": "^3.2.0"
+    "d3-shape": "^3.2.0",
+    "d3-scale-chromatic": "^3.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.30.0",
@@ -38,6 +39,7 @@
     "@types/d3-color": "^3.1.0",
     "@types/d3-interpolate-path": "^2.0.0",
     "@types/d3-scale": "^4.0.3",
+    "@types/d3-scale-chromatic": "^3.0.0",
     "@types/d3-shape": "^3.1.1",
     "@typescript-eslint/eslint-plugin": "^5.50.0",
     "@typescript-eslint/parser": "^5.50.0",

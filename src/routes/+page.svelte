@@ -2,19 +2,20 @@
   import {
     BohrAtom,
     ColorCustomizer,
+    ColorScaleSelect,
     ElementScatter,
     ElementStats,
     element_data,
     PeriodicTable,
+    PropertySelect,
     TableInset,
   } from '$lib'
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
-  import { DemoNav, PropertySelect } from '$site'
-  import type { ScaleLinear } from 'd3-scale'
+  import { DemoNav } from '$site'
 
   let window_width: number
-  let color_scale: ScaleLinear<number, string, never>
+  let color_scale: string | ((num: number) => string)
 
   $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
 </script>
@@ -29,6 +30,9 @@
 <h1>Periodic Table of Elements</h1>
 
 <PropertySelect empty />
+{#if $heatmap_key}
+  <ColorScaleSelect bind:value={color_scale} selected={[`Viridis`]} />
+{/if}
 
 {#if $last_element && window_width > 1100}
   {@const { shells, name, symbol } = $last_element}

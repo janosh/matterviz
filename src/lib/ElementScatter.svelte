@@ -25,12 +25,12 @@
 
 <ScatterPlot
   {y}
-  x={[...Array(y.length).keys()].map((x) => x + 1)}
-  {...$$props}
+  x={[...Array(y.length + 1).keys()].slice(1)}
   bind:tooltip_point
   bind:hovered
   {x_label}
   on:change
+  {...$$props}
 >
   <div slot="tooltip" let:x let:y>
     <strong>{x} - {element_data[x - 1]?.name}</strong>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { bisector, extent } from 'd3-array'
-  import type { ScaleLinear } from 'd3-scale'
   import { scaleLinear } from 'd3-scale'
+  import * as d3sc from 'd3-scale-chromatic'
   import { createEventDispatcher } from 'svelte'
   import type { Coords } from '.'
   import { Line, ScatterPoint } from '.'
@@ -16,7 +16,7 @@
   export let x_label: string = ``
   export let x_label_yshift = 0
   export let x: number[] = []
-  export let color_scale: ScaleLinear<number, string, never> | null = null
+  export let color_scale: ((num: number) => string) | null = null
   export let y: number[] = []
   export let y_label: string = ``
   export let y_unit = ``
@@ -41,11 +41,15 @@
     .domain(y_range)
     .range([height - pad_bottom, pad_top])
 
+  $: c_scale =
+    typeof color_scale == `string` ? d3sc[`interpolate${color_scale}`] : color_scale
+
   let scaled_data: [number, number, string][]
-  // make sure to apply colorscale to y values before scaling
+  // make sure to apply color_scale to normalized y values (mapped to [0, 1])
+  $: y_unit_scale = scaleLinear().domain(y_range).range([0, 1])
   $: scaled_data = data
     ?.filter(({ x, y }) => !(isNaN(x) || isNaN(y) || x === null || y === null))
-    .map(({ x, y }) => [x_scale(x), y_scale(y), color_scale?.(y)])
+    .map(({ x, y }) => [x_scale(x), y_scale(y), c_scale?.(y_unit_scale(y))])
 
   const bisect = bisector(({ x }) => x).right
 
