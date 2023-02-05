@@ -1,7 +1,7 @@
 <script lang="ts">
   // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
-  export let symbol = `` // usually H, He, etc. but can be anything
-  export let name = `` // usually Hydrogen, Helium, etc. but can be anything
+  export let symbol: string = `` // usually H, He, etc. but can be anything
+  export let name: string = `` // usually Hydrogen, Helium, etc. but can be anything
   export let shells: number[] // e.g. [2, 8, 6] for sulfur
   export let adapt_size = false
   export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
@@ -59,7 +59,7 @@
   {/if}
 
   <!-- electron orbitals -->
-  {#each shells as n_electrons, shell_idx}
+  {#each shells as electrons, shell_idx}
     {@const n = shell_idx + 1}
     {@const shell_radius = _nucleus_props.r + n * shell_width}
     {@const active = n === highlight_shell}
@@ -72,9 +72,9 @@
       />
 
       <!-- electrons -->
-      {#each Array(n_electrons) as _, elec_idx}
-        {@const elec_x = Math.cos((2 * Math.PI * elec_idx) / n_electrons) * shell_radius}
-        {@const elec_y = Math.sin((2 * Math.PI * elec_idx) / n_electrons) * shell_radius}
+      {#each Array(electrons) as _, elec_idx}
+        {@const elec_x = Math.cos((2 * Math.PI * elec_idx) / electrons) * shell_radius}
+        {@const elec_y = Math.sin((2 * Math.PI * elec_idx) / electrons) * shell_radius}
         <circle class="electron" cx={elec_x} cy={elec_y} {..._electron_props}>
           <title>Electron {elec_idx + 1}</title>
         </circle>
