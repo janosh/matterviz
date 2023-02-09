@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { homepage } from '$root/package.json'
   import { Icon, type ChemicalElement } from '.'
 
   export let element: ChemicalElement
@@ -8,13 +9,19 @@
 
   $: ({ name, number } = element ?? {})
 
-  $: src = `/elements/${number}-${name?.toLowerCase()}.jpg`
+  $: file = `elements/${number}-${name?.toLowerCase()}.jpg`
   let hidden = false
-  $: src, (hidden = false) // reset hidden to false when src changes
+  $: file, (hidden = false) // reset hidden to false when src changes
 </script>
 
 {#if name && number}
-  <img {src} alt={name} on:error={() => (hidden = true)} {style} {hidden} />
+  <img
+    src="{homepage}/{file}"
+    alt={name}
+    on:error={() => (hidden = true)}
+    {style}
+    {hidden}
+  />
   {#if hidden && missing_msg}
     <div {style}>
       <span>
