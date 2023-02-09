@@ -2,6 +2,7 @@
   import type { ChemicalElement } from '$lib'
   import {
     BohrAtom,
+    ColorScaleSelect,
     ElementHeading,
     ElementPhoto,
     ElementScatter,
@@ -13,8 +14,6 @@
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
   import { PrevNextElement } from '$site'
-  import { extent } from 'd3-array'
-  import { scaleLinear } from 'd3-scale'
   import type { PageData } from './$types'
 
   export let data: PageData
@@ -64,11 +63,8 @@
   }
 
   $: scatter_plot_values = element_data.map((el) => el[$heatmap_key])
-  $: color_scale = scaleLinear()
-    .domain(extent(scatter_plot_values))
-    .range([`blue`, `red`])
-
   $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
+  let color_scale: string
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -93,8 +89,10 @@
     </p>
   {/if}
 
-  <PropertySelect />
-
+  <label>
+    <PropertySelect minSelect={1} />
+    <ColorScaleSelect bind:value={color_scale} minSelect={1} />
+  </label>
   <section class="viz">
     <ElementPhoto
       element={$active_element}
@@ -246,5 +244,10 @@
   }
   table tr:hover {
     background-color: rgba(150, 150, 255, 0.2);
+  }
+  label {
+    display: flex;
+    place-content: center;
+    gap: 1em;
   }
 </style>

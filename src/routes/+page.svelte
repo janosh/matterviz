@@ -29,10 +29,12 @@
 
 <h1>Periodic Table of Elements</h1>
 
-<PropertySelect empty />
-{#if $heatmap_key}
-  <ColorScaleSelect bind:value={color_scale} selected={[`Viridis`]} />
-{/if}
+<label for="heatmap-select">
+  <PropertySelect empty id="heatmap-select" />
+  {#if $heatmap_key}
+    <ColorScaleSelect bind:value={color_scale} minSelect={1} />
+  {/if}
+</label>
 
 {#if $last_element && window_width > 1100}
   {@const { shells, name, symbol } = $last_element}
@@ -84,7 +86,12 @@
   }
   a[href='bohr-atoms'] {
     position: absolute;
-    top: 8%;
-    right: 10%;
+    top: 2%;
+    left: 2%;
+  }
+  label {
+    display: flex;
+    place-content: center;
+    gap: 1em;
   }
 </style>

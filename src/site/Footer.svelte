@@ -26,7 +26,7 @@
   </p>
   <p>
     <small>
-      Pro tip: Use arrow keys &thinsp;&larr; &rarr;&thinsp; to navigate between elements.
+      Use arrow keys &thinsp;&larr; &rarr;&thinsp; to navigate between elements.
     </small>
   </p>
 </footer>

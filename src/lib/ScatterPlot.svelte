@@ -22,6 +22,7 @@
   export let y_unit = ``
   export let tooltip_point: Coords
   export let hovered = false
+  export let markers: 'line' | 'points' | 'line+points' = `line+points`
 
   const dispatcher = createEventDispatcher()
   const axis_label_offset = { x: 15, y: 20 } // pixels
@@ -74,10 +75,15 @@
       on:mouseleave={() => (hovered = false)}
       on:mouseleave
     >
-      <Line points={scaled_data} origin={[x_scale(x_range[0]), y_scale(y_range[0])]} />
-      {#each scaled_data as [x, y, fill]}
-        <ScatterPoint {x} {y} {fill} />
-      {/each}
+      {#if markers.includes(`line`)}
+        <Line points={scaled_data} origin={[x_scale(x_range[0]), y_scale(y_range[0])]} />
+      {/if}
+
+      {#if markers.includes(`points`)}
+        {#each scaled_data as [x, y, fill]}
+          <ScatterPoint {x} {y} {fill} />
+        {/each}
+      {/if}
 
       <!-- x axis -->
       <g class="x-axis">

@@ -8,8 +8,16 @@
   const options = Object.keys(heatmap_labels)
   export let empty: boolean = false
   export let selected: string[] = empty ? [] : [options[0]]
+  export let minSelect: number = 0
 
   $: $heatmap_key = heatmap_labels[value ?? ``] ?? null
 </script>
 
-<Select {options} {selected} maxSelect={1} bind:value placeholder="Select a heat map" />
+<Select
+  {options}
+  {selected}
+  maxSelect={1}
+  {minSelect}
+  bind:value
+  placeholder="Select a heat map"
+/>
