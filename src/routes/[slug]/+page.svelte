@@ -14,7 +14,7 @@
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
   import { PrevNextElement } from '$site'
-  import type { PageData } from './$types'
+  import type { PageData, Snapshot } from './$types'
 
   export let data: PageData
 
@@ -65,6 +65,12 @@
   $: scatter_plot_values = element_data.map((el) => el[$heatmap_key])
   $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
   let color_scale: string
+  let selected: string[]
+
+  export const snapshot: Snapshot = {
+    capture: () => ({ selected }),
+    restore: (values) => ({ selected } = values),
+  }
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -91,7 +97,7 @@
 
   <label>
     <PropertySelect minSelect={1} />
-    <ColorScaleSelect bind:value={color_scale} minSelect={1} />
+    <ColorScaleSelect bind:value={color_scale} bind:selected minSelect={1} />
   </label>
   <section class="viz">
     <ElementPhoto

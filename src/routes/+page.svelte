@@ -13,11 +13,17 @@
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
   import { DemoNav } from '$site'
+  import type { Snapshot } from './$types'
 
   let window_width: number
-  let color_scale: string | ((num: number) => string)
+  let color_scale: string
 
   $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
+
+  export const snapshot: Snapshot = {
+    capture: () => ({ color_scale }),
+    restore: (values) => ({ color_scale } = values),
+  }
 </script>
 
 <svelte:head>
