@@ -7,13 +7,15 @@
   export let value: keyof ChemicalElement | null = null
   const options = Object.keys(heatmap_labels)
   export let empty: boolean = false
-  export let selected: string[] = empty ? [] : [options[0]]
+  export let selected: string[] = empty ? [] : [options[1]]
   export let minSelect: number = 0
+  export let id: string | null = null
 
   $: $heatmap_key = heatmap_labels[value ?? ``] ?? null
 </script>
 
 <Select
+  {id}
   {options}
   {selected}
   maxSelect={1}
