@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import elements from './lib/element-data.ts'
 
-// run this script with deno run --allow-all src/fetch-elem-images.ts
+// to run this script: deno run --allow-all src/fetch-elem-images.ts
 // requires brew install deno
 
 // make sure the directory exists
