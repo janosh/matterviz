@@ -1,5 +1,6 @@
 <script lang="ts">
   import { BohrAtom, element_data } from '$lib'
+  import { Slider } from 'svelte-zoo'
   import Desc from './desc.md'
 
   let orbital_period = 2
@@ -7,11 +8,14 @@
 
 <Desc />
 
-<label>
-  Electron Orbital Period:
-  <input type="range" bind:value={orbital_period} min={0} max={5} step={0.01} />
-  <input type="number" bind:value={orbital_period} min={0} max={5} />
-</label>
+<Slider
+  label="Electron Orbital Period"
+  bind:value={orbital_period}
+  min={0}
+  max={5}
+  step={0.1}
+  style="place-content: center; margin: 1em;"
+/>
 
 <ol>
   {#each element_data as { shells, symbol, number, name }}
@@ -25,26 +29,6 @@
 </ol>
 
 <style>
-  label {
-    display: flex;
-    gap: 6pt;
-    place-content: center;
-    margin: 1em;
-  }
-  input[type='number'] {
-    background: transparent;
-    color: inherit;
-    border: none;
-    /* text-align: center; */
-    padding: 0 4pt;
-    font-size: large;
-    box-sizing: border-box;
-    width: 2em;
-  }
-  input[type='number']::-webkit-inner-spin-button,
-  input[type='number']::-webkit-outer-spin-button {
-    appearance: none;
-  }
   ol {
     display: flex;
     flex-wrap: wrap;

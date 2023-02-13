@@ -70,17 +70,17 @@ describe(`PeriodicTable`, () => {
     await sleep()
 
     const selected = doc_query(`div.multiselect > ul.selected`)
-    const heatmap_label = `Atomic Radius (Å)`
+    const heatmap_label = `Atomic Mass (u)`
     expect(selected.textContent?.trim()).toBe(heatmap_label)
     const heatmap_key = heatmap_labels[heatmap_label]
 
-    expect(heatmap_key).toBe(`atomic_radius`)
+    expect(heatmap_key).toBe(`atomic_mass`)
     ptable.$set({ heatmap_values: element_data.map((e) => e[heatmap_key]) })
     await sleep()
 
     const element_tile = doc_query(`div.element-tile`)
     // hydrogen with lowest mass should be blue (low end of color scale)
-    expect(element_tile.style.backgroundColor).toBe(`rgb(60, 79, 138)`)
+    expect(element_tile.style.backgroundColor).toBe(`rgb(68, 1, 84)`)
   })
 
   test.each([[0], [0.5], [1], [2]])(
