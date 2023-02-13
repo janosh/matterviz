@@ -93,7 +93,7 @@
   a[href='bohr-atoms'] {
     position: absolute;
     top: 2%;
-    left: 2%;
+    left: 3%;
   }
   label {
     display: flex;

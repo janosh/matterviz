@@ -15,13 +15,13 @@
 
 Interactive Periodic Table component written in Svelte. With scatter plot showing periodicity of elemental properties and Bohr atoms showing electron shell configuration of different elements.
 
-![Screenshot of periodic table](static/2022-08-08-screenshot.png)
+![Screenshot of landing page](static/2023-02-13-landing-page.webp)
 
 ## 📦 &thinsp; Heatmap
 
 Below a screenshot demonstrating the periodicity of elemental properties, the reason it's called periodic table. In this case, you're seeing recurring bumps and valleys in the first ionization energy as a function of atomic number.
 
-![Screenshot of periodic table heatmap](static/2022-08-08-screenshot-heatmap.png)
+![Screenshot of periodic table heatmap](static/2023-02-13-heatmap.webp)
 
 ## ⚛️ &thinsp; Element Details Pages
 
