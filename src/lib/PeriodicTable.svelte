@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation'
   import * as d3sc from 'd3-scale-chromatic'
   import type { Category, ChemicalElement, PeriodicTableEvents } from '.'
-  import { ElementPhoto, ElementTile } from '.'
+  import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '.'
   import element_data from './element-data'
 
   export let tile_props: {
@@ -16,7 +16,7 @@
   export let disabled = false // disable hover and click events from updating active_element
   // either array of length 118 (one heat value for each element) or object with
   // element symbol as key and heat value as value
-  export let heatmap_values: number[] = []
+  export let heatmap_values: Record<ElementSymbol, number> | number[] = []
   // links is either string with element property (name, symbol, number, ...) to use as link,
   // or object with mapping element symbols to link
   export let links: keyof ChemicalElement | Record<string, string> | null = null
@@ -29,14 +29,27 @@
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
-  $: if (heatmap_values.length > 118) {
-    console.error(
-      `heatmap_values should be an array of length 118 or less, one for each` +
-        `element possibly omitting elements at the end, got ${heatmap_values.length}`
+  let heat_values: number[] = []
+
+  $: if (Array.isArray(heatmap_values)) {
+    if (heatmap_values.length > 118) {
+      console.error(
+        `heatmap_values is an array of numbers, length should be 118 or less, one for ` +
+          `each element possibly omitting elements at the end, got ${heatmap_values.length}`
+      )
+    } else heat_values = heatmap_values
+  } else if (typeof heatmap_values == `object`) {
+    const bad_keys = Object.keys(heatmap_values).filter(
+      (key) => !elem_symbols.includes(key)
     )
+    if (bad_keys.length > 0) {
+      console.error(
+        `heatmap_values is an object, keys should be element symbols, got ${bad_keys}`
+      )
+    } else heat_values = elem_symbols.map((symbol) => heatmap_values[symbol])
   }
 
-  $: cmap_max = Math.max(...heatmap_values)
+  $: cmap_max = Math.max(...heat_values)
 
   $: set_active_element = (element: ChemicalElement | null) => () => {
     if (disabled) return
@@ -70,7 +83,7 @@
     typeof color_scale == `string` ? d3sc[`interpolate${color_scale}`] : color_scale
 
   $: bg_color = (value: number | false): string | null => {
-    if (!heatmap_values?.length || !c_scale) return null
+    if (!heat_values?.length || !c_scale) return null
     if (!value) return `transparent`
     return c_scale(log ? Math.log(value) / Math.log(cmap_max) : value / cmap_max)
   }
@@ -84,7 +97,7 @@
 
     {#each element_data as element, idx}
       {@const { column, row, category, name, symbol } = element}
-      {@const value = heatmap_values?.length > 0 && heatmap_values[idx]}
+      {@const value = heat_values[idx]}
       {@const active =
         active_category === category.replaceAll(` `, `-`) ||
         active_element?.name === name}

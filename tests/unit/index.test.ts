@@ -19,3 +19,8 @@ test(`src/lib/icons/index.ts re-exports all icons`, () => {
   )
   expect(Object.keys(lib)).toEqual(expect.arrayContaining(components))
 })
+
+test(`categories and element_symbols are exported`, () => {
+  expect(lib.categories).toHaveLength(8)
+  expect(lib.elem_symbols).toHaveLength(lib.element_data.length)
+})
