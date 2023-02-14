@@ -12,9 +12,8 @@
   let log = true // log color scale
   let data = `MP`
   let color_scale
-  $: heatmap_values = Object.values(data == `WBM` ? wbm_elem_counts : mp_elem_counts)
-  $: total = heatmap_values.reduce((a, b) => a + b, 0)
-
+  $: heatmap_values = data == `WBM` ? wbm_elem_counts : mp_elem_counts
+  $: total = Object.values(heatmap_values).reduce((a, b) => a + b, 0)
 </script>
 
 

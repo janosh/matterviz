@@ -125,7 +125,7 @@ describe(`PeriodicTable`, () => {
     element_tile?.dispatchEvent(new MouseEvent(`click`))
   })
 
-  test.each([[`0`], [`10px`], [`1cqw`]])(`gap prop`, async (gap) => {
+  test.each([[`0`], [`10px`], [`1cqw`]])(`gap prop`, (gap) => {
     new PeriodicTable({ target: document.body, props: { gap } })
     const ptable = doc_query(`.periodic-table`)
     expect(getComputedStyle(ptable).gap).toBe(gap)
@@ -133,7 +133,7 @@ describe(`PeriodicTable`, () => {
 
   test.each(Object.entries(category_counts))(
     `setting active_category=%s highlights corresponding element tiles`,
-    async (active_category, expected_active) => {
+    (active_category, expected_active) => {
       new PeriodicTable({
         target: document.body,
         props: { active_category: active_category.replaceAll(` `, `-`) },
@@ -146,7 +146,7 @@ describe(`PeriodicTable`, () => {
 
   test.each([[[...Array(1000).keys()]], [[...Array(119).keys()]]])(
     `raises error when receiving more than 118 heatmap values`,
-    async (heatmap_values) => {
+    (heatmap_values) => {
       console.error = vi.fn()
 
       new PeriodicTable({
@@ -156,8 +156,27 @@ describe(`PeriodicTable`, () => {
 
       expect(console.error).toHaveBeenCalledOnce()
       expect(console.error).toBeCalledWith(
-        `heatmap_values should be an array of length 118 or less, one for each` +
-          `element possibly omitting elements at the end, got ${heatmap_values.length}`
+        `heatmap_values is an array of numbers, length should be 118 or less, one for ` +
+          `each element possibly omitting elements at the end, got ${heatmap_values.length}`
+      )
+    }
+  )
+
+  test.each([{ foo: 42 }], [{}])(
+    `raises error when heatmap_values is object with unknown element symbols`,
+    (heatmap_values) => {
+      console.error = vi.fn()
+
+      new PeriodicTable({
+        target: document.body,
+        props: { heatmap_values },
+      })
+
+      expect(console.error).toHaveBeenCalledOnce()
+      expect(console.error).toBeCalledWith(
+        `heatmap_values is an object, keys should be element symbols, got ${Object.keys(
+          heatmap_values
+        )}`
       )
     }
   )
