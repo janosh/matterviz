@@ -1,4 +1,5 @@
 export { default as BohrAtom } from './BohrAtom.svelte'
+export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorCustomizer } from './ColorCustomizer.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
 export { default as element_data } from './element-data'
@@ -29,12 +30,12 @@ export const categories = [
   `transition metal`,
 ] as const
 
-export type Category = typeof categories[number]
+export type Category = (typeof categories)[number]
 
 // prettier-ignore
 export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
 
-export type ElementSymbol = typeof elem_symbols[number]
+export type ElementSymbol = (typeof elem_symbols)[number]
 
 export type ChemicalElement = {
   'cpk-hex': string | null
