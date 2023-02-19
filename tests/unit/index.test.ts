@@ -21,6 +21,6 @@ test(`src/lib/icons/index.ts re-exports all icons`, () => {
 })
 
 test(`categories and element_symbols are exported`, () => {
-  expect(lib.categories).toHaveLength(8)
+  expect(lib.categories).toHaveLength(10)
   expect(lib.elem_symbols).toHaveLength(lib.element_data.length)
 })

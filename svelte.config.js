@@ -36,7 +36,7 @@ export default {
     prerender: {
       handleHttpError: ({ path, message }) => {
         // ignore missing element photos
-        if (path.startsWith(`/elements`)) return
+        if (path.startsWith(`/elements/`)) return
 
         // fail the build for other errors
         throw new Error(message)

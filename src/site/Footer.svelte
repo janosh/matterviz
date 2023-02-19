@@ -29,6 +29,13 @@
       Use arrow keys &thinsp;&larr; &rarr;&thinsp; to navigate between elements.
     </small>
   </p>
+  <p>
+    <small>
+      Built with Svelte by
+      <a href="https://github.com/janosh">Janosh</a>
+      &copy; 2022
+    </small>
+  </p>
 </footer>
 
 <style>
