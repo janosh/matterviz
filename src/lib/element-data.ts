@@ -4981,7 +4981,7 @@ const element_data: ChemicalElement[] = [
     covalent_radius: null,
   },
   {
-    name: `Copernicium`,
+    name: `Copernicum`,
     appearance: null,
     atomic_mass: 285,
     category: `transition metal`,
@@ -4992,7 +4992,7 @@ const element_data: ChemicalElement[] = [
     period: 7,
     phase: `Solid`,
     spectral_img: null,
-    summary: `Copernicium is a chemical element with symbol Cn and atomic number 112. It is an extremely radioactive synthetic element that can only be created in a laboratory. The most stable known isotope, copernicium-285, has a half-life of approximately 29 seconds, but it is possible that this copernicium isotope may have a nuclear isomer with a longer half-life, 8.9 min.`,
+    summary: `Copernicum is a chemical element with symbol Cn and atomic number 112. It is an extremely radioactive synthetic element that can only be created in a laboratory. The most stable known isotope, copernicum-285, has a half-life of approximately 29 seconds, but it is possible that this copernicum isotope may have a nuclear isomer with a longer half-life, 8.9 min.`,
     symbol: `Cn`,
     shells: [2, 8, 18, 32, 32, 18, 2],
     electron_configuration: `1s2 2s2 2p6 3s2 3p6 4s2 3d10 4p6 5s2 4d10 5p6 6s2 4f14 5d10 6p6 7s2 5f14 6d10`,

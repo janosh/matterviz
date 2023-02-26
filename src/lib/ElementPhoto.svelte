@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dev } from '$app/environment'
   import { homepage } from '$root/package.json'
   import { Icon, type ChemicalElement } from '.'
 
@@ -16,7 +17,7 @@
 
 {#if name && number}
   <img
-    src="{homepage}/{file}"
+    src="{dev ? '' : homepage}/{file}"
     alt={name}
     on:error={() => (hidden = true)}
     {style}
