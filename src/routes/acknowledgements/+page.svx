@@ -1,19 +1,53 @@
+<script>
+  import img_sources from '../../../static/img-sources.json';
+  import { dev } from '$app/environment'
+  import { homepage } from '$root/package.json'
+</script>
+
+<main>
+
 # 🙏 &thinsp; Acknowledgements
 
 - Element properties in `src/lib/element-data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
 - Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
 - Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.
 
+## Element Images
+
+Big thanks to the element image providers listed below. Each image caption links back to the source website.
+
+<ul class="elem-img">
+{#each Object.entries(img_sources) as [key, href]}
+  {@const [number, name] = key.split('-')}
+  <li>
+    <a href="/{name}"><img src="{dev ? '' : homepage}/elements/{key}.jpg" alt={name}></a>
+    <a {href}>{number} {name}</a>
+  </li>
+{/each}
+</ul>
+</main>
+
 <style>
   h1 {
     text-align: center;
+    margin: 2em;
   }
-  ul {
-    line-height: 3ex;
-    max-width: 50em;
-    margin: 3em auto;
+  ul:first-of-type > li {
+    margin: 1em 0;
   }
-  ul li {
-    margin-bottom: 1em;
+  ul.elem-img {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9em, 1fr));
+    gap: 1em;
+    list-style: none;
+    padding: 0;
+  }
+  ul.elem-img > li {
+    text-transform: capitalize;
+    text-align: center;
+  }
+  ul.elem-img > li > a > img {
+    width: 100%;
+    border-radius: 3pt;
   }
 </style>
