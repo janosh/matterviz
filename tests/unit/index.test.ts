@@ -1,6 +1,7 @@
 import * as lib from '$lib'
 import IndexPeriodicTable, { ElementScatter, PeriodicTable } from '$lib'
 import FileElementScatter from '$lib/ElementScatter.svelte'
+import * as labels from '$lib/labels'
 import FilePeriodicTable from '$lib/PeriodicTable.svelte'
 import { expect, test } from 'vitest'
 
@@ -21,6 +22,6 @@ test(`src/lib/icons/index.ts re-exports all icons`, () => {
 })
 
 test(`categories and element_symbols are exported`, () => {
-  expect(lib.categories).toHaveLength(10)
-  expect(lib.elem_symbols).toHaveLength(lib.element_data.length)
+  expect(labels.categories).toHaveLength(10)
+  expect(labels.elem_symbols).toHaveLength(lib.element_data.length)
 })

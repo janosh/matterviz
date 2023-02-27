@@ -44,6 +44,9 @@
       <ElementTile element={next} style={tile_style} show_name={false} />
     </a>
   </li>
+  <small>
+    You can use arrow keys &thinsp;&larr; &rarr;&thinsp; to navigate between elements.
+  </small>
 </ul>
 
 <style>
@@ -55,6 +58,7 @@
     gap: 2em;
     max-width: 1200px;
     margin: 5em auto 0;
+    position: relative;
   }
   ul li {
     display: flex;
@@ -64,5 +68,18 @@
   }
   ul li a {
     display: grid;
+  }
+  ul:has(li) small {
+    position: absolute;
+    visibility: hidden;
+    opacity: 0;
+    transition: 0.3s;
+    left: 50%;
+    top: 2em;
+    transform: translateX(-50%);
+  }
+  ul:has(li:hover) small {
+    visibility: visible;
+    opacity: 1;
   }
 </style>

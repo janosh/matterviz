@@ -4,12 +4,21 @@ import { describe, expect, test, vi } from 'vitest'
 import { doc_query, sleep } from '.'
 
 describe(`PeriodicTable`, () => {
-  test(`renders element tiles`, async () => {
-    new PeriodicTable({ target: document.body })
+  test.each([
+    [true, 120],
+    [false, 118],
+    [null, 118],
+    [[], 118],
+  ])(
+    `renders element tiles with show_lanth_act_tiles=%s`,
+    async (lanth_act_tiles, expected_tiles) => {
+      const props = lanth_act_tiles == true ? {} : { lanth_act_tiles }
+      new PeriodicTable({ target: document.body, props })
 
-    const element_tiles = document.querySelectorAll(`.element-tile`)
-    expect(element_tiles.length).toBe(118)
-  })
+      const element_tiles = document.querySelectorAll(`.element-tile`)
+      expect(element_tiles.length).toBe(expected_tiles)
+    }
+  )
 
   test(`has no text content when symbols, names and numbers are disabled`, async () => {
     const tile_props = {
