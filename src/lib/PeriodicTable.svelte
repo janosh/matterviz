@@ -2,8 +2,9 @@
   import { goto } from '$app/navigation'
   import * as d3sc from 'd3-scale-chromatic'
   import type { Category, ChemicalElement, PeriodicTableEvents } from '.'
-  import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '.'
+  import { ElementPhoto, ElementTile, type ElementSymbol } from '.'
   import element_data from './element-data'
+  import { elem_symbols } from './labels'
 
   export let tile_props: {
     show_name?: boolean
@@ -26,6 +27,24 @@
   export let active_category: Category | null = null
   export let gap = `0.3cqw` // gap between element tiles, default is 0.3% of container width
   export let inner_transition_metal_offset = 0.5
+  const default_lanth_act_tiles = [
+    {
+      name: `Lanthanides`,
+      symbol: `La-Lu`,
+      number: `57-71`,
+      category: `lanthanide`,
+    },
+    {
+      name: `Actinides`,
+      symbol: `Ac-Lr`,
+      number: `89-103`,
+      category: `actinide`,
+    },
+  ]
+  // show lanthanides and actinides as tiles
+  export let lanth_act_tiles =
+    tile_props?.show_symbol == false ? [] : default_lanth_act_tiles
+  export let lanth_act_style: string = ``
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -120,6 +139,16 @@
         on:mouseleave
       />
     {/each}
+    <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
+    {#each lanth_act_tiles || [] as element, idx}
+      <ElementTile
+        {element}
+        style="opacity: 0.8; grid-column: 3; grid-row: {6 + idx}; {lanth_act_style};"
+        on:mouseenter={() => (active_category = element.category)}
+        on:mouseleave={() => (active_category = null)}
+        symbol_style="font-size: 30cqw;"
+      />
+    {/each}
     {#if inner_transition_metal_offset}
       <!-- provide vertical offset for lanthanides + actinides -->
       <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset} />
@@ -135,7 +164,7 @@
 
 <style>
   .periodic-table-container {
-    /* needed for gap: 0.3cqw; below to work */
+    /* needed for gap: 0.3cqw; to work */
     container-type: inline-size;
   }
   div.periodic-table {

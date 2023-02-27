@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rgb } from 'd3-color'
   import { createEventDispatcher } from 'svelte'
   import type { ChemicalElement, PeriodicTableEvents } from '.'
   import { pretty_num } from './labels'
@@ -6,12 +7,13 @@
 
   export let element: ChemicalElement
   export let bg_color: string | null = null
-  export let show_symbol = true
-  export let show_number = true
-  export let show_name = true
+  export let show_symbol: boolean = true
+  export let show_number: boolean = true
+  export let show_name: boolean = true
   export let value: number | false | undefined = undefined
-  export let style = ``
-  export let active = false
+  export let style: string = ``
+  export let symbol_style: string = ``
+  export let active: boolean = false
   export let href: string | null = null
   // at what background color lightness text color switches from black to white
   export let text_color_threshold = 0.7
@@ -25,13 +27,13 @@
     dispatch(dom_event.type, { element, event: dom_event, active })
   }
 
-  function luminance(rgb: string) {
+  function luminance(clr: string) {
     // calculate human-perceived lightness from RGB
-    const [r, g, b] = rgb
-      .replace(`rgb(`, ``)
-      .split(`,`)
-      .map((v) => parseInt(v) / 255)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b // https://stackoverflow.com/a/596243
+    const { r, g, b } = rgb(clr)
+    // if (![r, g, b].every((c) => c >= 0 && c <= 255)) {
+    //   console.error(`invalid RGB color: ${clr}, parsed to rgb=${r},${g},${b}`)
+    // }
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 // https://stackoverflow.com/a/596243
   }
 
   function get_bg_color(
@@ -76,7 +78,7 @@
     </span>
   {/if}
   {#if show_symbol}
-    <span class="symbol">
+    <span class="symbol" style={symbol_style}>
       {element.symbol}
     </span>
   {/if}
@@ -105,6 +107,7 @@
     color: var(--elem-tile-text-color, white);
     /* add persistent invisible border so content doesn't move on hover */
     border: 1px solid transparent;
+    container-type: inline-size;
   }
   .element-tile span {
     line-height: 1em;
@@ -117,24 +120,24 @@
     border: 1px dotted;
   }
   .number {
-    font-size: 1.1cqw;
+    font-size: 22cqw;
     position: absolute;
-    top: 0.3cqw;
+    top: 6cqw;
     font-weight: lighter;
-    left: 0.3cqw;
+    left: 6cqw;
   }
   .symbol {
-    font-size: 2cqw;
+    font-size: 40cqw;
   }
   span.name,
   span.value {
     position: absolute;
-    bottom: 0.4cqw;
+    bottom: 8cqw;
   }
   span.value {
-    font-size: 0.9cqw;
+    font-size: 18cqw;
   }
   span.name {
-    font-size: 0.6cqw;
+    font-size: 12cqw;
   }
 </style>

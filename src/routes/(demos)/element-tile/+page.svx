@@ -4,13 +4,11 @@
 <script>
   import { ElementTile, element_data } from '$lib'
 
-  const colors = [
-    `red`, `cornflowerblue`, `rebeccapurple`, `gold`, `green`, `blue`, `yellow`, `orange`, `purple`, `beige`, `pink`, `AliceBlue`, `BlanchedAlmond`, `BurlyWood`, `CadetBlue`, `Chartreuse`, `DarkGoldenRod`, `DeepSkyBlue`, `FireBrick`, `Gainsboro`, `Honeydew`, `LavenderBlush`, `LemonChiffon`, `LightGoldenRodYellow`, `MediumAquamarine`, `MintCream`, `NavajoWhite`, `OldLace`, `OliveDrab`, `PapayaWhip`, `PeachPuff`, `Peru`, `SaddleBrown`, `Thistle`,
-  ]
+  const rand_color = () => `hsl(${Math.random() * 360}, ${Math.random() * 50 + 50}%, ${Math.random() * 50 + 50}%)`
 </script>
 
 <ol>
-  {#each colors as bg_color, idx}
+  {#each Array(27).fill(0).map(rand_color) as bg_color, idx}
     <ElementTile {bg_color} element={element_data[idx]} style="width: 4em; margin: 0;" />
   {/each}
 </ol>

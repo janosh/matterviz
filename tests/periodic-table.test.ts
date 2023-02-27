@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import element_data from '../src/lib/element-data.ts'
 import {
+  categories,
   category_counts,
   heatmap_keys,
   heatmap_labels,
@@ -12,11 +13,15 @@ test.describe(`Periodic Table`, () => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     const element_tiles = await page.$$(`.element-tile`)
-    expect(element_tiles).toHaveLength(element_data.length)
+    expect(element_tiles).toHaveLength(element_data.length + 2)
 
-    for (const [category, count] of Object.entries(category_counts)) {
+    for (const category of categories) {
+      let count = category_counts[category] as number
       const css_cls = `.${category.replaceAll(` `, `-`)}`
-      expect(await page.$$(css_cls)).toHaveLength(count as number)
+      // add 1 to expected count since lanthanides and actinides have placeholder
+      // tiles showing where in the periodic table their rows insert
+      if ([`lanthanide`, `actinide`].includes(category)) count += 1
+      expect(await page.$$(css_cls), category).toHaveLength(count as number)
     }
   })
 

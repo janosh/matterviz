@@ -24,18 +24,11 @@
   <p class="toggle-icons">
     <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons
   </p>
-  <p>
-    <small>
-      Use arrow keys &thinsp;&larr; &rarr;&thinsp; to navigate between elements.
-    </small>
-  </p>
-  <p>
-    <small>
-      Built with Svelte by
-      <a href="https://github.com/janosh">Janosh</a>
-      &copy; 2022
-    </small>
-  </p>
+  <small>
+    Built with Svelte by
+    <a href="https://github.com/janosh">Janosh</a>
+    &copy; 2022
+  </small>
 </footer>
 
 <style>
