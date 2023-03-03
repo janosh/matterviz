@@ -1,7 +1,8 @@
+/* eslint-disable no-console */
 import fs from 'node:fs'
 import elements from './lib/element-data.ts'
 
-// to run this script: deno run --allow-all src/fetch-elem-images.ts
+// to run this script: deno run --allow-all src/fetch-elem-images.ts [report|download|re-download]
 // requires brew install deno
 
 // make sure the directory exists
@@ -50,7 +51,12 @@ async function download_elem_image(num_name: string) {
   return url
 }
 
-const action: 'report' | 'download' | 're-download' = `re-download`
+const [action] = Deno.args
+if (![`report`, `download`, `re-download`].includes(action)) {
+  throw new Error(
+    `Usage: deno run --allow-all src/fetch-elem-images.ts [report|download|re-download]`
+  )
+}
 if (action.endsWith(`download`)) console.log(`Downloading images...`)
 if (action === `report`) console.log(`Missing images`)
 
