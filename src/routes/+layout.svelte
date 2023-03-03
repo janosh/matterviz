@@ -1,10 +1,29 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { repository } from '$root/package.json'
   import { Footer } from '$site'
+  import { CmdPalette } from 'svelte-multiselect'
   import { GitHubCorner } from 'svelte-zoo'
   import '../app.css'
+  import { element_data } from '../lib'
+
+  const file_routes = Object.keys(import.meta.glob(`./**/+page.{svx,svelte,md}`)).map(
+    (filename) => {
+      const parts = filename.split(`/`).filter((part) => !part.startsWith(`(`)) // remove hidden route segments
+      return parts.slice(1, -1).join(`/`)
+    }
+  )
+
+  const actions = element_data
+    .map(({ name }) => name)
+    .concat(file_routes.filter((name) => !name.includes(`[slug]`)))
+    .map((name) => {
+      return { label: name, action: () => goto(name.toLowerCase()) }
+    })
 </script>
+
+<CmdPalette {actions} span_style="text-transform: capitalize;" />
 
 <GitHubCorner href={repository} />
 
