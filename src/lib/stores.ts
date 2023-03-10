@@ -49,5 +49,5 @@ export const default_category_colors: Record<string, string> = {
 }
 export const category_colors = session_store<Record<string, string>>(
   `category-colors`,
-  default_category_colors
+  { ...default_category_colors }
 )

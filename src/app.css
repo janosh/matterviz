@@ -1,4 +1,6 @@
 :root {
+  --text-color: #eee;
+
   --page-bg: #090019;
   --diatomic-nonmetal-bg-color: #ff8c00;
   --noble-gas-bg-color: darkorchid;
@@ -14,12 +16,12 @@
 
   --toc-mobile-bg: #1c0e3e;
   --toc-li-padding: 4pt 7pt;
-  --toc-mobile-btn-color: white;
+  --toc-mobile-btn-color: var(--text-color);
   --toc-desktop-nav-margin: 0 0 0 1em;
   --toc-active-bg: teal;
 
   --zoo-github-corner-color: var(--page-bg);
-  --zoo-github-corner-bg: white;
+  --zoo-github-corner-bg: var(--text-color);
 
   --sms-options-bg: rgb(20, 18, 36);
   --sms-max-width: 19em;
@@ -32,7 +34,7 @@ body {
   padding: 6vh 3vw;
   font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   margin: auto;
-  color: #eee;
+  color: var(--text-color);
   line-height: 1.5;
 }
 main {
@@ -49,7 +51,7 @@ a {
 
 button,
 a.btn {
-  color: white;
+  color: var(--text-color);
   cursor: pointer;
   border: none;
   border-radius: 3pt;
@@ -125,7 +127,7 @@ textarea {
   display: block;
   width: 100%;
   background-color: rgba(255, 255, 255, 0.1);
-  color: white;
+  color: var(--text-color);
   min-height: 100px;
   box-sizing: border-box;
   margin: 1em auto;

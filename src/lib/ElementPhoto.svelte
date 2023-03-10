@@ -52,7 +52,7 @@
       rgba(0, 100, 0, 0.5),
       rgba(0, 0, 100, 0.3)
     );
-    color: white;
+    color: var(--text-color);
     border-radius: 4pt;
     width: 100%;
     container-type: inline-size;

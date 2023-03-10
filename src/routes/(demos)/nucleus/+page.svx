@@ -6,9 +6,9 @@
 </script>
 
 <ul>
-  {#each element_data as { protons, neutrons, symbol }}
+  {#each element_data as { protons, neutrons, symbol, name }}
     <li>
-      <span>{symbol}</span>
+      <a href="/{name.toLowerCase()}">{symbol}</a>
       <Nucleus {protons} {neutrons} />
     </li>
   {/each}
@@ -24,9 +24,10 @@
   ul > li {
     position: relative;
   }
-  ul > li > span {
+  ul > li > a {
     position: absolute;
     top: -1em;
+    color: var(--color-text);
   }
 </style>
 ```

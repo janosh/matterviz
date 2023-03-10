@@ -1,7 +1,8 @@
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
+import { tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, sleep } from '.'
+import { doc_query } from '.'
 
 describe(`PeriodicTable`, () => {
   test.each([
@@ -43,11 +44,11 @@ describe(`PeriodicTable`, () => {
     const element_tile = doc_query(`.element-tile`)
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
-    await sleep()
+    await tick()
     expect([...element_tile.classList]).toContain(`active`)
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseleave`))
-    await sleep()
+    await tick()
     expect([...element_tile.classList]).not.toContain(`active`)
   })
 
@@ -60,13 +61,13 @@ describe(`PeriodicTable`, () => {
     const element_tile = document.querySelectorAll(`.element-tile`)[rand_idx]
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
-    await sleep()
+    await tick()
 
     const element_photo = doc_query(`img[alt="${random_element.name}"]`)
     expect(element_photo?.style.gridArea).toBe(`9/1/span 2/span 2`)
 
     element_tile?.dispatchEvent(new MouseEvent(`mouseleave`))
-    await sleep()
+    await tick()
     expect(document.querySelector(`img`)).toBeNull()
   })
 
@@ -76,7 +77,7 @@ describe(`PeriodicTable`, () => {
 
     const li = doc_query(`ul.options > li`)
     li.dispatchEvent(new MouseEvent(`mouseup`))
-    await sleep()
+    await tick()
 
     const selected = doc_query(`div.multiselect > ul.selected`)
     const heatmap_label = `Atomic Mass (u)`
@@ -85,7 +86,7 @@ describe(`PeriodicTable`, () => {
 
     expect(heatmap_key).toBe(`atomic_mass`)
     ptable.$set({ heatmap_values: element_data.map((e) => e[heatmap_key]) })
-    await sleep()
+    await tick()
 
     const element_tile = doc_query(`div.element-tile`)
     // hydrogen with lowest mass should be blue (low end of color scale)
@@ -124,12 +125,12 @@ describe(`PeriodicTable`, () => {
 
     const element_tile = doc_query(`.element-tile`)
     element_tile?.dispatchEvent(new MouseEvent(`click`))
-    await sleep()
+    await tick()
     expect(emitted).toBe(true)
 
     expected_active = true
     element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
-    await sleep()
+    await tick()
 
     element_tile?.dispatchEvent(new MouseEvent(`click`))
   })

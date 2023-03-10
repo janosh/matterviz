@@ -94,7 +94,7 @@
   }
   label > button {
     background: none;
-    color: white;
+    color: var(--text-color);
     opacity: 0;
     transition: 0.3s;
     border-radius: 2pt;
