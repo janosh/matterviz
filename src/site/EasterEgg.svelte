@@ -76,7 +76,7 @@
     bottom: 0;
     right: 0;
     background-color: rgba(255, 255, 255, 0.2);
-    color: white;
+    color: var(--text-color);
     padding: 4pt 6pt;
     border-radius: 1ex 0 0 0;
     cursor: pointer;

@@ -4,7 +4,7 @@
 
 import type { ChemicalElement } from '$lib'
 
-const element_data: ChemicalElement[] = [
+export default [
   {
     name: `Hydrogen`,
     appearance: `colorless gas`,
@@ -5288,6 +5288,4 @@ const element_data: ChemicalElement[] = [
     jmol_color: null,
     covalent_radius: null,
   },
-]
-
-export default element_data
+] satisfies ChemicalElement[]
