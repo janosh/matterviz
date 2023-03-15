@@ -1,5 +1,5 @@
 <script>
-  import img_sources from '../../../static/img-sources.json';
+  import img_sources from '$static/img-sources.json';
   import { dev } from '$app/environment'
   import { homepage } from '$root/package.json'
 </script>
@@ -14,7 +14,7 @@
 
 ## Element Images
 
-Big thanks to the element image providers listed below. Each image caption links back to the source website.
+Big thanks to the element image providers listed below. Each image caption links back to the source website. See [`fetch-elem-images.ts`](https://github.com/janosh/elementari/blob/-/src/fetch-elem-images.ts) for details.
 
 <ul class="elem-img">
 {#each Object.entries(img_sources) as [key, href]}

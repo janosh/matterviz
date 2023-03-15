@@ -114,7 +114,7 @@
   }
   .element-tile.active,
   .element-tile:hover {
-    border: 1px solid;
+    border: var(--elem-tile-hover-border, 1px solid);
   }
   .last-active {
     border: 1px dotted;

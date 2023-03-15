@@ -1,29 +1,38 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
+  import { element_data } from '$lib'
   import { repository } from '$root/package.json'
   import { Footer } from '$site'
+  import { demos } from '$site/stores'
   import { CmdPalette } from 'svelte-multiselect'
   import { GitHubCorner } from 'svelte-zoo'
   import '../app.css'
-  import { element_data } from '../lib'
 
-  const file_routes = Object.keys(import.meta.glob(`./**/+page.{svx,svelte,md}`)).map(
+  const routes = Object.keys(import.meta.glob(`./**/+page.{svx,svelte,md}`)).map(
     (filename) => {
       const parts = filename.split(`/`).filter((part) => !part.startsWith(`(`)) // remove hidden route segments
-      return parts.slice(1, -1).join(`/`)
+      return { route: `/${parts.slice(1, -1).join(`/`)}`, filename }
     }
   )
 
+  if (routes.length < 3) {
+    console.error(`Too few demo routes found: ${routes.length}`)
+  }
+
+  $demos = routes
+    .filter(({ filename }) => filename.includes(`/(demos)/`))
+    .map(({ route }) => route)
+
   const actions = element_data
     .map(({ name }) => name)
-    .concat(file_routes.filter((name) => !name.includes(`[slug]`)))
+    .concat(routes.map(({ route }) => route))
     .map((name) => {
       return { label: name, action: () => goto(name.toLowerCase()) }
     })
 </script>
 
-<CmdPalette {actions} span_style="text-transform: capitalize;" />
+<CmdPalette {actions} placeholder="Go to..." span_style="text-transform: capitalize;" />
 
 <GitHubCorner href={repository} />
 
