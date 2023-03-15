@@ -31,6 +31,7 @@ export default {
     alias: {
       $root: `.`,
       $site: `src/site`,
+      $static: `static`,
     },
 
     prerender: {

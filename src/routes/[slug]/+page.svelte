@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/stores'
   import type { ChemicalElement } from '$lib'
   import {
     BohrAtom,
@@ -13,10 +14,10 @@
   } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
-  import { PrevNextElement } from '$site'
-  import type { PageData, Snapshot } from './$types'
+  import ElementTile from '$root/src/lib/ElementTile.svelte'
+  import { PrevNext } from 'svelte-zoo'
 
-  export let data: PageData
+  export let data
 
   $: [$active_element, element] = [data.element, data.element]
 
@@ -67,7 +68,7 @@
   let color_scale: string
   let selected: string[]
 
-  export const snapshot: Snapshot = {
+  export const snapshot = {
     capture: () => ({ selected }),
     restore: (values) => ({ selected } = values),
   }
@@ -179,7 +180,29 @@
     {/each}
   </section>
 
-  <PrevNextElement prev={data.prev_elem} next={data.next_elem} />
+  <PrevNext
+    items={element_data.map((elem) => [elem.name.toLowerCase(), elem])}
+    current={$page.url.pathname.slice(1)}
+    let:item
+    let:kind
+  >
+    <a href={item.name.toLowerCase()} style="display: flex; flex-direction: column;">
+      <h3>
+        {#if kind == `next`}
+          Next
+          <Icon icon="carbon:next-filled" inline />
+        {:else}
+          <Icon icon="carbon:previous-filled" inline />Previous
+        {/if}
+      </h3>
+      <ElementPhoto element={item} style="width: 200px; border-radius: 4pt;" />
+      <ElementTile
+        element={item}
+        style="width: 70px; position: absolute; bottom: 0;"
+        --elem-tile-hover-border="1px solid transparent"
+      />
+    </a>
+  </PrevNext>
 </main>
 
 <style>

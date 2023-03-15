@@ -1,14 +1,9 @@
 <script lang="ts">
   import { page } from '$app/stores'
+  import { demos } from './stores'
 
-  const routes = Object.keys(
-    // eslint-disable-next-line @typescript-eslint/quotes
-    import.meta.glob('/src/routes/\\(demos\\)/*/+page*.{svx,md,svelte}')
-  ).map((filename) => filename.split(`/`)[4])
+  export let routes = $demos
 
-  if (routes.length < 3) {
-    throw new Error(`Too few demo routes found: ${routes.length}`)
-  }
   $: is_current = (path: string) => {
     if (`/${path}` == $page.url.pathname) return `page`
     return undefined
