@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/elementari",
   "repository": "https://github.com/janosh/elementari",
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/elementari/issues",
@@ -65,8 +65,8 @@
     "svelte-toc": "^0.5.3",
     "svelte-zoo": "^0.4.3",
     "svelte2tsx": "^0.6.10",
-    "typescript": "5.0.1-rc",
-    "vite": "^4.1.4",
+    "typescript": "5.0.2",
+    "vite": "^4.2.0",
     "vitest": "^0.29.3"
   },
   "keywords": [
