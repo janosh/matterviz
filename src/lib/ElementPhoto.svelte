@@ -10,7 +10,7 @@
 
   $: ({ name, number } = element ?? {})
 
-  $: file = `elements/${number}-${name?.toLowerCase()}.jpg`
+  $: file = `elements/${number}-${name?.toLowerCase()}.avif`
   let hidden = false
   $: file, (hidden = false) // reset hidden to false when src changes
 </script>

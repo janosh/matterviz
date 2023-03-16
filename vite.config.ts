@@ -3,6 +3,13 @@ import mdsvexamples from 'mdsvexamples/vite'
 import type { UserConfig } from 'vite'
 import type { UserConfig as VitestConfig } from 'vitest'
 
+const run_script = process.argv.some((arg) =>
+  arg.startsWith(`fetch-elem-images:`)
+)
+if (run_script) {
+  await import(`./src/fetch-elem-images.ts`)
+}
+
 export default {
   plugins: [sveltekit(), mdsvexamples],
 
