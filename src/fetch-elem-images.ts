@@ -1,9 +1,7 @@
 /* eslint-disable no-console */
 import fs from 'node:fs'
+import sharp from 'sharp'
 import elements from './lib/element-data.ts'
-
-// to run this script: deno run --allow-all src/fetch-elem-images.ts [report|download|re-download]
-// requires brew install deno
 
 // make sure the directory exists
 fs.mkdirSync(`./static/elements`, { recursive: true })
@@ -15,7 +13,6 @@ const fallback_urls: Record<string, string> = {
   '107-bohrium': `https://periodiske-system.dk/img/images/lowRes/107.jpg`,
   '108-hassium': `https://i0.wp.com/periodic-table.com/wp-content/uploads/2018/12/Hassium.png?w=225&ssl=1`,
   '109-meitnerium': `https://www.rsc-cdn.org/www.rsc.org/periodic-table/content/Images/Elements/Meitnerium-L.jpg`,
-
   // '109-meitnerium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Meitnerium-2.jpg`, // lower res but but looks more like raw crystal
   '110-darmstadtium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Darmstadtium-2.jpg`,
   '111-roentgenium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Roentgenium-2.jpg`,
@@ -46,15 +43,19 @@ async function download_elem_image(num_name: string) {
   }
 
   const buffer = new Uint8Array(await response.arrayBuffer())
-  fs.writeFileSync(`./static/elements/${num_name}.jpg`, buffer)
+  // fs.writeFileSync(`./static/elements/${num_name}.jpg`, buffer)
+  await sharp(buffer).toFile(`./static/elements/${num_name}.avif`)
 
   return url
 }
 
-const [action] = Deno.args
+const arg = process.argv.find((arg: string) =>
+  arg.startsWith(`fetch-elem-images:`)
+)
+const action = arg?.split(`:`)[1]
 if (![`report`, `download`, `re-download`].includes(action)) {
   throw new Error(
-    `Usage: deno run --allow-all src/fetch-elem-images.ts [report|download|re-download]`
+    `Correct usage: vite [dev] fetch-elem-images:[report|download|re-download], got ${arg}\n`
   )
 }
 if (action.endsWith(`download`)) console.log(`Downloading images...`)
@@ -62,7 +63,7 @@ if (action === `report`) console.log(`Missing images`)
 
 for (const { name, number } of elements) {
   const num_name = `${number}-${name.toLowerCase()}`
-  const have_img = fs.existsSync(`./static/elements/${num_name}.jpg`)
+  const have_img = fs.existsSync(`./static/elements/${num_name}.avif`)
 
   if (!have_img || action === `re-download`) {
     if (action === `report`) {

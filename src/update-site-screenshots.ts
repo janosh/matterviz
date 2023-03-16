@@ -7,21 +7,21 @@ const today = new Date().toISOString().slice(0, 10)
 
 const pages = [
   {
-    url: '/',
+    url: `/`,
     name: `landing-page`,
-    actions: [['hover', 'a[href="selenium"]']],
+    actions: [[`hover`, `a[href="selenium"]`]],
   },
   {
-    url: '/',
+    url: `/`,
     name: `heatmap`,
     actions: [
-      ['click', 'input[placeholder="Select a heat map"]'],
-      ['click', 'ul.options > li:nth-child(2)'],
-      ['click', 'h1'], // close dropdown
-      ['hover', 'a[href="radon"]'],
+      [`click`, `input[placeholder="Select a heat map"]`],
+      [`click`, `ul.options > li:nth-child(2)`],
+      [`click`, `h1`], // close dropdown
+      [`hover`, `a[href="radon"]`],
     ],
   },
-  { url: '/radon', name: `details-page` },
+  { url: `/radon`, name: `details-page` },
 ]
 
 const browser = await puppeteer.launch()
@@ -32,7 +32,7 @@ for (const { url, name, actions = [] } of pages) {
   // increase screenshot resolution
   await page.setViewport({ width: 1200, height: 700, deviceScaleFactor: 3 })
 
-  await page.goto(`http://localhost:3000${url}`, { waitUntil: 'networkidle2' })
+  await page.goto(`http://localhost:3000${url}`, { waitUntil: `networkidle2` })
   for (const [action, selector] of actions) {
     await page.waitForSelector(selector)
     await page[action](selector)
