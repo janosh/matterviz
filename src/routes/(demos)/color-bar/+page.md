@@ -111,10 +111,11 @@ You can make fat and skinny bars:
   style="margin: 2em auto 4em;"
   bind:color_scale
   links="name"
+  lanth_act_tiles={false}
 >
   <TableInset slot="inset" style="place-items: center; padding: 2em;">
     <ColorBar
-      color_scale="Viridis"
+      {color_scale}
       range={heat_range}
       tick_side="bottom"
       --cbar-width="100%"

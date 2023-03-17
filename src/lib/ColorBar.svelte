@@ -27,9 +27,16 @@
   }
 
   $: if (color_scale === null || typeof color_scale == `string`) {
-    color_scale = d3sc[`interpolate${color_scale ?? text}`]
+    const cscale_key = color_scale ?? text
+    color_scale = d3sc[`interpolate${cscale_key}`]
     if (color_scale === undefined) {
-      console.error(`Color scale '${color_scale ?? text}' not found`)
+      const list_valid = Object.keys(d3sc)
+        .map((key) => key.split(`interpolate`)[1])
+        .filter(Boolean)
+        .join(`, `)
+      console.error(
+        `Color scale '${cscale_key}' not found, supported color scale names are ${list_valid}`
+      )
     }
   }
 
@@ -71,7 +78,7 @@
     gap: var(--cbar-gap, 5pt);
     margin: var(--cbar-margin);
     padding: var(--cbar-padding);
-    width: var(--cbar-wrapper-width);
+    width: var(--cbar-width);
   }
   div.colorbar > div {
     position: relative;
