@@ -11,14 +11,16 @@
     TableInset,
   } from '$lib'
   import { property_labels } from '$lib/labels'
-  import { active_category, active_element, heatmap_key, last_element } from '$lib/stores'
+  import { active_category, active_element, last_element } from '$lib/stores'
   import { DemoNav } from '$site'
   import type { Snapshot } from './$types'
 
   let window_width: number
   let color_scale: string
+  let heatmap_key: string | null = null
+  $: heatmap_values = heatmap_key ? element_data.map((el) => el[heatmap_key]) : []
 
-  $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
+  $: [y_label, y_unit] = property_labels[heatmap_key] ?? []
 
   export const snapshot: Snapshot = {
     capture: () => ({ color_scale }),
@@ -35,12 +37,16 @@
 
 <h1>Periodic Table of Elements</h1>
 
-<label for="heatmap-select">
-  <PropertySelect empty id="heatmap-select" />
-  {#if $heatmap_key}
-    <ColorScaleSelect bind:value={color_scale} minSelect={1} />
+<form>
+  <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
+  {#if heatmap_key}
+    <ColorScaleSelect
+      bind:value={color_scale}
+      minSelect={1}
+      cbar_props={{ range: [Math.min(...heatmap_values), Math.max(...heatmap_values)] }}
+    />
   {/if}
-</label>
+</form>
 
 {#if $last_element && window_width > 1100}
   {@const { shells, name, symbol } = $last_element}
@@ -50,7 +56,7 @@
 {/if}
 <PeriodicTable
   tile_props={{ show_name: window_width > 1000 }}
-  heatmap_values={$heatmap_key ? element_data.map((el) => el[$heatmap_key]) : []}
+  {heatmap_values}
   style="margin: 2em auto 4em; max-width: 85vw;"
   bind:color_scale
   bind:active_element={$active_element}
@@ -58,10 +64,10 @@
   links="name"
 >
   <TableInset slot="inset">
-    {#if $heatmap_key}
+    {#if heatmap_key}
       <ElementScatter
         y_lim={[0, null]}
-        y={element_data.map((el) => el[$heatmap_key])}
+        y={element_data.map((el) => el[heatmap_key])}
         {y_label}
         {y_unit}
         on:change={(e) => ($active_element = element_data[e.detail.x - 1])}
@@ -74,7 +80,7 @@
   </TableInset>
 </PeriodicTable>
 
-{#if !$heatmap_key}
+{#if !heatmap_key}
   <ColorCustomizer collapsible={false} />
 {/if}
 
@@ -95,7 +101,7 @@
     top: 2%;
     left: 3%;
   }
-  label {
+  form {
     display: flex;
     place-content: center;
     gap: 1em;

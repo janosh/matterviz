@@ -7,10 +7,12 @@
   export let selected: string[] = [`Viridis`]
   export let minSelect: number = 0
   export let placeholder = `Select a color scale`
+  export let cbar_props: Record<string, unknown> = {}
 
   const options = Object.keys(d3sc)
     .filter((key) => key.startsWith(`interpolate`))
     .map((key) => key.replace(`interpolate`, ``))
+  const wrapper_style = `justify-content: space-between;`
 </script>
 
 <Select
@@ -22,6 +24,6 @@
   {placeholder}
   {...$$props}
 >
-  <ColorBar slot="option" let:option text={option} />
-  <ColorBar slot="selected" let:option text={option} />
+  <ColorBar slot="option" let:option text={option} {...cbar_props} {wrapper_style} />
+  <ColorBar slot="selected" let:option text={option} {...cbar_props} {wrapper_style} />
 </Select>
