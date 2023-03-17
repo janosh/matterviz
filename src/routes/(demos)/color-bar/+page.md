@@ -1,6 +1,26 @@
 `ColorBar.svelte`
 
-ColorBar supports <code>text_side = ['top', 'bottom', 'left', 'right']</code>
+Here's a `ColorBar` with tick labels:
+
+```svelte example stackblitz
+<script>
+  import { ColorBar } from '$lib'
+</script>
+
+{#each [[`Viridis`, `top`, [0, 0.25, 0.5, 0.75, 1]], [`Magma`, `center`, [], [100, 1000]], [`Cividis`, `bottom`, [], [-100, -10]]] as [color_scale, tick_side, tick_labels, range]}
+  <ColorBar
+    text="{color_scale} (tick side={tick_side})"
+    {color_scale}
+    {tick_side}
+    {tick_labels}
+    {range}
+    --cbar-width="100%"
+    --cbar-padding="2em"
+  />
+{/each}
+```
+
+`ColorBar` supports `text_side = ['top', 'bottom', 'left', 'right']`
 
 ```svelte example stackblitz
 <script>
@@ -46,7 +66,7 @@ ColorBar supports <code>text_side = ['top', 'bottom', 'left', 'right']</code>
 </style>
 ```
 
-You can also fat and skinny bars:
+You can make fat and skinny bars:
 
 ```svelte example stackblitz
 <script>
@@ -58,4 +78,58 @@ You can also fat and skinny bars:
 <ColorBar text="Viridis" {wrapper_style} style="width: 10em; height: 1ex;" />
 <br />
 <ColorBar text="Viridis" {wrapper_style} style="width: 3em; height: 2em;" />
+```
+
+`PeriodicTable.svelte` heatmap example with `ColorBar` inside `TableInset`
+
+```svelte example stackblitz code_above
+<script>
+  import {
+    ColorBar,
+    ColorScaleSelect,
+    element_data,
+    PeriodicTable,
+    PropertySelect,
+    TableInset,
+  } from '$lib'
+
+  let color_scale = `Viridis`
+  let heatmap_key
+  $: heatmap_values = heatmap_key
+    ? element_data.map((el) => el[heatmap_key])
+    : []
+  $: heat_range = [Math.min(...heatmap_values), Math.max(...heatmap_values)]
+</script>
+
+<form>
+  <ColorScaleSelect bind:value={color_scale} minSelect={1} />
+  <PropertySelect bind:key={heatmap_key} />
+</form>
+
+<PeriodicTable
+  {heatmap_values}
+  style="margin: 2em auto 4em;"
+  bind:color_scale
+  links="name"
+>
+  <TableInset slot="inset" style="place-items: center; padding: 2em;">
+    <ColorBar
+      color_scale="Viridis"
+      range={heat_range}
+      tick_side="bottom"
+      --cbar-width="100%"
+      --cbar-height="15pt"
+    />
+  </TableInset>
+</PeriodicTable>
+
+<style>
+  form {
+    display: flex;
+    place-items: center;
+    place-content: center;
+    gap: 1em;
+    margin: 2em auto;
+  }
+</style>
 ```

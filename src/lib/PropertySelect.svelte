@@ -10,8 +10,9 @@
   export let selected: string[] = empty ? [] : [options[1]]
   export let minSelect: number = 0
   export let id: string | null = null
+  export let key: string | null = null
 
-  $: $heatmap_key = heatmap_labels[value ?? ``] ?? null
+  $: $heatmap_key = key = heatmap_labels[value ?? ``] ?? null
 </script>
 
 <Select

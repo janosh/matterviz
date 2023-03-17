@@ -96,10 +96,10 @@
     </p>
   {/if}
 
-  <label>
+  <form>
     <PropertySelect minSelect={1} />
     <ColorScaleSelect bind:value={color_scale} bind:selected minSelect={1} />
-  </label>
+  </form>
   <section class="viz">
     <ElementPhoto
       element={$active_element}
@@ -274,7 +274,7 @@
   table tr:hover {
     background-color: rgba(150, 150, 255, 0.2);
   }
-  label {
+  form {
     display: flex;
     place-content: center;
     gap: 1em;
