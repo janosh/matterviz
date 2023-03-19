@@ -1,16 +1,18 @@
 <script lang="ts">
-  export let grid_col = `3 / span 10`
-  export let grid_row = `1 / span 3`
   export let style: string | null = null
+  export let tag: string = `aside` // styles below don't apply if tag is not aside or div
 </script>
 
-<aside style:grid-column={grid_col} style:grid-row={grid_row} {style}>
+<svelte:element this={tag} {style}>
   <slot />
-</aside>
+</svelte:element>
 
 <style>
-  aside {
+  aside,
+  div {
     display: grid;
     box-sizing: border-box;
+    grid-row: 1 / span 3;
+    grid-column: 3 / span 10;
   }
 </style>

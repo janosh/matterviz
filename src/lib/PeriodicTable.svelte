@@ -28,23 +28,14 @@
   export let gap = `0.3cqw` // gap between element tiles, default is 0.3% of container width
   export let inner_transition_metal_offset = 0.5
   const default_lanth_act_tiles = [
-    {
-      name: `Lanthanides`,
-      symbol: `La-Lu`,
-      number: `57-71`,
-      category: `lanthanide`,
-    },
-    {
-      name: `Actinides`,
-      symbol: `Ac-Lr`,
-      number: `89-103`,
-      category: `actinide`,
-    },
+    { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
+    { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
   ]
   // show lanthanides and actinides as tiles
   export let lanth_act_tiles =
     tile_props?.show_symbol == false ? [] : default_lanth_act_tiles
   export let lanth_act_style: string = ``
+  export let color_scale_range: [number | null, number | null] = [null, null]
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -67,8 +58,6 @@
       )
     } else heat_values = elem_symbols.map((symbol) => heatmap_values[symbol])
   }
-
-  $: cmap_max = Math.max(...heat_values)
 
   $: set_active_element = (element: ChemicalElement | null) => () => {
     if (disabled) return
@@ -101,10 +90,16 @@
   $: c_scale =
     typeof color_scale == `string` ? d3sc[`interpolate${color_scale}`] : color_scale
 
+  $: cs_min = color_scale_range[0] ?? Math.min(...heat_values)
+  $: cs_max = color_scale_range[1] ?? Math.max(...heat_values)
+
   $: bg_color = (value: number | false): string | null => {
     if (!heat_values?.length || !c_scale) return null
-    if (!value) return `transparent`
-    return c_scale(log ? Math.log(value) / Math.log(cmap_max) : value / cmap_max)
+    if (!value || (log && value <= 0)) return `transparent`
+    // map value to [0, 1] range
+    if (log) value = Math.log(value - cs_min + 1) / Math.log(cs_max - cs_min + 1)
+    else value = (value - cs_min) / (cs_max - cs_min)
+    return c_scale(value)
   }
 </script>
 
@@ -113,7 +108,6 @@
 <div class="periodic-table-container" {style}>
   <div class="periodic-table" style:gap>
     <slot name="inset" {active_element} />
-
     {#each element_data as element, idx}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[idx]}
