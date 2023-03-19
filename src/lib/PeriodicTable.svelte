@@ -134,6 +134,8 @@
         {...tile_props}
         on:mouseenter={set_active_element(element)}
         on:mouseleave={set_active_element(null)}
+        on:focus={set_active_element(element)}
+        on:blur={set_active_element(null)}
         on:click
         on:mouseenter
         on:mouseleave

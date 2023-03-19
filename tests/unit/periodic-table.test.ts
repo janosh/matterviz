@@ -4,6 +4,9 @@ import { tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
+const mouseenter = new MouseEvent(`mouseenter`)
+const mouseleave = new MouseEvent(`mouseleave`)
+
 describe(`PeriodicTable`, () => {
   test.each([
     [true, 120],
@@ -43,11 +46,11 @@ describe(`PeriodicTable`, () => {
 
     const element_tile = doc_query(`.element-tile`)
 
-    element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
+    element_tile?.dispatchEvent(mouseenter)
     await tick()
     expect([...element_tile.classList]).toContain(`active`)
 
-    element_tile?.dispatchEvent(new MouseEvent(`mouseleave`))
+    element_tile?.dispatchEvent(mouseleave)
     await tick()
     expect([...element_tile.classList]).not.toContain(`active`)
   })
@@ -60,13 +63,13 @@ describe(`PeriodicTable`, () => {
 
     const element_tile = document.querySelectorAll(`.element-tile`)[rand_idx]
 
-    element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
+    element_tile?.dispatchEvent(mouseenter)
     await tick()
 
     const element_photo = doc_query(`img[alt="${random_element.name}"]`)
     expect(element_photo?.style.gridArea).toBe(`9/1/span 2/span 2`)
 
-    element_tile?.dispatchEvent(new MouseEvent(`mouseleave`))
+    element_tile?.dispatchEvent(mouseleave)
     await tick()
     expect(document.querySelector(`img`)).toBeNull()
   })
@@ -129,7 +132,7 @@ describe(`PeriodicTable`, () => {
     expect(emitted).toBe(true)
 
     expected_active = true
-    element_tile?.dispatchEvent(new MouseEvent(`mouseenter`))
+    element_tile?.dispatchEvent(mouseenter)
     await tick()
 
     element_tile?.dispatchEvent(new MouseEvent(`click`))
@@ -190,4 +193,38 @@ describe(`PeriodicTable`, () => {
       )
     }
   )
+
+  test(`element tiles are accessible to keyboard users`, async () => {
+    new PeriodicTable({ target: document.body })
+
+    const element_tiles = document.querySelectorAll(`.element-tile`)
+
+    // Simulate keyboard navigation of the element tiles
+    let activeIndex = 0
+    element_tiles[activeIndex].dispatchEvent(mouseenter)
+    await tick()
+    expect(element_tiles[activeIndex].classList.contains(`active`)).toBe(true)
+    expect(element_tiles[activeIndex].textContent?.trim()).toBe(`1 H Hydrogen`)
+
+    // Press the down arrow key to move to the next row
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
+    await tick()
+    activeIndex += 2
+    expect(element_tiles[activeIndex].classList.contains(`active`)).toBe(true)
+    expect(element_tiles[activeIndex].textContent?.trim()).toBe(`3 Li Lithium`)
+
+    // Press the right arrow key to move to the next column
+    activeIndex += 1
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight` }))
+    await tick()
+    expect(element_tiles[activeIndex].textContent?.trim()).toBe(
+      `4 Be Beryllium`
+    )
+
+    // Press the left arrow key to move back to the previous column
+    activeIndex -= 1
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowLeft` }))
+    await tick()
+    expect(element_tiles[activeIndex].textContent?.trim()).toBe(`3 Li Lithium`)
+  })
 })

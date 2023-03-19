@@ -24,15 +24,15 @@
     .filter(({ filename }) => filename.includes(`/(demos)/`))
     .map(({ route }) => route)
 
-  const actions = element_data
-    .map(({ name }) => name)
-    .concat(routes.map(({ route }) => route))
+  const actions = routes
+    .map(({ route }) => route)
+    .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
     .map((name) => {
-      return { label: name, action: () => goto(name.toLowerCase()) }
+      return { label: name, action: () => goto(name) }
     })
 </script>
 
-<CmdPalette {actions} placeholder="Go to..." span_style="text-transform: capitalize;" />
+<CmdPalette {actions} placeholder="Go to..." />
 
 <GitHubCorner href={repository} />
 
