@@ -53,7 +53,7 @@ describe(`ElementTile`, () => {
       props: { element: rand_element, bg_color: `red` },
     })
 
-    const node = doc_query(`.element-tile`) as HTMLElement
+    const node = doc_query(`.element-tile`)
 
     expect(node.style.backgroundColor).toBe(`red`)
   })
@@ -121,29 +121,26 @@ describe(`ElementTile`, () => {
       }
     )
   })
-  // test(`show_symbol, show_name and show_number props control labels`, async () => {
-  //   // test all 2^3 true/false combinations of show_symbol, show_name, show_number
-  //   for (let idx = 0; idx < 1 << 3; idx++) {
-  //     // const show_name = Boolean(idx & 1)
-  //     const show_name = true
-  //     // const show_number = Boolean(idx & (1 << 1))
-  //     const show_number = true
-  //     const show_symbol = Boolean(idx & (1 << 2))
-  //     // const show_symbol = true
+  test.each([
+    [true, true, true],
+    [false, false, false],
+    [true, false, true],
+    [false, false, true],
+  ])(
+    `props show_symbol = %s, show_number = %s, show_name = %s`,
+    async (show_name, show_number, show_symbol) => {
+      let expected = ``
+      if (show_number) expected += rand_element.number
+      if (show_symbol) expected += ` ${rand_element.symbol}`
+      if (show_name) expected += ` ${rand_element.name}`
+      new ElementTile({
+        target: document.body,
+        props: { element: rand_element, show_symbol, show_name, show_number },
+      })
 
-  //     let expected = ``
-  //     if (show_number) expected += rand_element.number
-  //     if (show_symbol) expected += ` ${rand_element.symbol}`
-  //     if (show_name) expected += `  ${rand_element.name}`
-  //     new ElementTile({
-  //       target: document.body,
-  //       props: { element: rand_element, show_symbol, show_name, show_number },
-  //     })
+      const tile = doc_query(`.element-tile`)
 
-  //     const div = document.querySelector(`.element-tile`)
-  //     console.log(`node.innerHTML`, div.innerHTML)
-
-  //     expect(div.textContent?.trim()).toBe(expected.trim())
-  //   }
-  // })
+      expect(tile.textContent?.trim()).toBe(expected.trim())
+    }
+  )
 })

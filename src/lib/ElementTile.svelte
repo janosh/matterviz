@@ -17,6 +17,7 @@
   export let href: string | null = null
   // at what background color lightness text color switches from black to white
   export let text_color_threshold = 0.7
+  export let text_color: string | null = null
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -51,8 +52,9 @@
   }
 
   let tile: HTMLElement
-  $: text_color =
-    luminance(get_bg_color(tile, bg_color)) > text_color_threshold ? `black` : `white`
+  $: if (text_color_threshold != null)
+    text_color =
+      luminance(get_bg_color(tile, bg_color)) > text_color_threshold ? `black` : `white`
 </script>
 
 <svelte:element

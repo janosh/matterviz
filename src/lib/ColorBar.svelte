@@ -9,7 +9,7 @@
   export let text_style: string | null = null
   export let wrapper_style: string | null = null
   export let tick_labels: (string | number)[] | number = 0
-  export let range: [number, number] = []
+  export let range: [number, number] = [0, 1]
   export let tick_side: 'top' | 'bottom' | 'center' = `bottom`
   // TODO vertical not fully implemented yet
   export let orientation: 'horizontal' | 'vertical' = `horizontal`
