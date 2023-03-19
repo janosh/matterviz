@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+<!-- auto-changelog-above -->
+
+#### [v0.1.4](https://github.com/janosh/elementari/compare/v0.1.1...v0.1.4)
+
+> 19 March 2023
+
+- Add prop color_scale_range to PeriodicTable [`#20`](https://github.com/janosh/elementari/pull/20)
+- Add tick labels to ColorBar [`#19`](https://github.com/janosh/elementari/pull/19)
+- add test 'element tiles are accessible to keyboard users' [`314876a`](https://github.com/janosh/elementari/commit/314876a3dfe3c4ccc3a245c88607169b7a18c7dd)
+- add prop text_color to ElementTile [`79b1eb4`](https://github.com/janosh/elementari/commit/79b1eb4e1e856336b891d31950fda3b4ac66e528)
+- fix error msg on bad color scale names [`c1d0f2a`](https://github.com/janosh/elementari/commit/c1d0f2ac61878d35e7a16754632dc279348f68e7)
+
+> v0.1.2 and v0.1.3 were faulty and have been unpublished.
+
 #### [v0.1.1](https://github.com/janosh/elementari/compare/v0.1.0...v0.1.1)
 
 > 15 March 2023
