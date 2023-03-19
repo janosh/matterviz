@@ -82,4 +82,6 @@ export type PeriodicTableEvents = {
   mouseleave: DispatchPayload
   keyup: DispatchPayload
   keydown: DispatchPayload
+  focus: DispatchPayload
+  blur: DispatchPayload
 }
