@@ -138,6 +138,8 @@
     height: 100%;
     display: flex;
     min-height: var(--svt-min-height, 100px);
+    container-type: inline-size;
+    z-index: 1; /* ensure tooltip renders above ElementTiles */
   }
   svg {
     width: 100%;
@@ -145,9 +147,7 @@
     font-weight: lighter;
     overflow: visible;
     z-index: 1;
-  }
-  g.tick {
-    font-size: clamp(10pt, 1vw, 15pt);
+    font-size: 2.3cqw;
   }
   line {
     stroke: gray;
@@ -156,9 +156,7 @@
   }
   g.x-axis text {
     text-anchor: middle;
-  }
-  g.x-axis text {
-    dominant-baseline: hanging;
+    dominant-baseline: top;
   }
   g.y-axis text {
     dominant-baseline: central;
@@ -168,6 +166,5 @@
   }
   text.label {
     text-anchor: middle;
-    font-size: clamp(11pt, 1.2vw, 16pt);
   }
 </style>
