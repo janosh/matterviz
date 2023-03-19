@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { dev } from '$app/environment'
-  import { homepage } from '$root/package.json'
   import { Icon, type ChemicalElement } from '.'
 
   export let element: ChemicalElement
@@ -17,7 +15,7 @@
 
 {#if name && number}
   <img
-    src="{dev ? '' : homepage}/{file}"
+    src="https://github.com/janosh/elementari/raw/main/static/{file}"
     alt={name}
     on:error={() => (hidden = true)}
     {style}
