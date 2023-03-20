@@ -1,4 +1,7 @@
+import { get } from 'svelte/store'
 import type { Category, ChemicalElement } from '.'
+// .ts ext needed for Playwright to be able to resolve import
+import { precision_store } from './stores.ts'
 
 // TODO add labels and units for all elemental properties
 export const property_labels: Partial<
@@ -41,7 +44,10 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
     })
   )
 
-export const pretty_num = (num: number | null, precision = 2) => {
+export const pretty_num = (
+  num: number | null,
+  precision: number = get(precision_store)
+) => {
   if (num === null) return ``
   if ((Math.abs(num) < 0.01 && Math.abs(num) > 0) || num > 1e6) {
     return num.toExponential(precision)

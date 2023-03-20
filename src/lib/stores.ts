@@ -1,3 +1,4 @@
+import { session_store } from 'svelte-zoo/stores'
 import { writable } from 'svelte/store'
 import type { Category, ChemicalElement } from '.'
 
@@ -11,24 +12,6 @@ active_element.subscribe((el) => {
 })
 
 export const heatmap_key = writable<keyof ChemicalElement | null>(null)
-
-function session_store<T>(name: string, initialValue: T) {
-  if (typeof sessionStorage !== `undefined` && sessionStorage[name]) {
-    initialValue = JSON.parse(sessionStorage[name])
-  }
-
-  const { subscribe, set } = writable(initialValue)
-
-  return {
-    subscribe,
-    set: (val: T) => {
-      if (val !== undefined && typeof sessionStorage !== `undefined`) {
-        sessionStorage[name] = JSON.stringify(val)
-      }
-      set(val)
-    },
-  }
-}
 
 export const show_icons = session_store<boolean>(`show-icons`, true)
 
@@ -51,3 +34,5 @@ export const category_colors = session_store<Record<string, string>>(
   `category-colors`,
   { ...default_category_colors }
 )
+
+export const precision_store = session_store<number>(`elementari-precision`, 2)
