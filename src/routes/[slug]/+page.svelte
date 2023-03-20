@@ -188,12 +188,7 @@
   >
     <a href={item.name.toLowerCase()} style="display: flex; flex-direction: column;">
       <h3>
-        {#if kind == `next`}
-          Next
-          <Icon icon="carbon:next-filled" inline />
-        {:else}
-          <Icon icon="carbon:previous-filled" inline />Previous
-        {/if}
+        {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
       </h3>
       <ElementPhoto element={item} style="width: 200px; border-radius: 4pt;" />
       <ElementTile

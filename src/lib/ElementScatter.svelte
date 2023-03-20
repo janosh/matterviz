@@ -22,8 +22,6 @@
   }
 </script>
 
-<!-- set max-height to ensure ScatterPlot is never taller than 3 Ptable rows
-  so it doesn't stretch the table. assumes Ptable has 18 rows -->
 <ScatterPlot
   {y}
   x={[...Array(y.length + 1).keys()].slice(1)}
@@ -32,7 +30,6 @@
   {x_label}
   on:change
   {...$$props}
-  style="max-height: calc(100cqw / 18 * 3);"
 >
   <div slot="tooltip" let:x let:y>
     {#if $active_element}
@@ -50,6 +47,6 @@
     width: max-content;
     box-sizing: border-box;
     border-radius: 3pt;
-    font-size: 2.3cqw;
+    font-size: min(2.3cqw, 12pt);
   }
 </style>

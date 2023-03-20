@@ -13,6 +13,7 @@
   export let tick_side: 'top' | 'bottom' | 'center' = `bottom`
   // TODO vertical not fully implemented yet
   export let orientation: 'horizontal' | 'vertical' = `horizontal`
+  export let precision: number = 1
 
   $: if (
     tick_labels?.length == 0 ||
@@ -64,7 +65,7 @@
   <div style:background="linear-gradient({grad_dir}, {ramped})" {style}>
     {#each tick_labels || [] as tick_label, idx}
       <span style="left: calc(100% * {idx} / {tick_labels?.length - 1}); {tick_pos}">
-        {pretty_num(tick_label, 1)}
+        {pretty_num(tick_label, precision)}
       </span>
     {/each}
   </div>

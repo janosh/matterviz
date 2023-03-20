@@ -147,7 +147,7 @@
     font-weight: lighter;
     overflow: visible;
     z-index: 1;
-    font-size: 2.3cqw;
+    font-size: min(2.3cqw, 12pt);
   }
   line {
     stroke: gray;
