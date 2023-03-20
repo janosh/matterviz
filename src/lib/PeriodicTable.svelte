@@ -11,6 +11,7 @@
     show_number?: boolean
     show_symbol?: boolean
     text_color_threshold?: number
+    precision?: number
   } = {}
   export let show_photo = true
   export let style = ``

@@ -32,7 +32,7 @@
     "d3-scale-chromatic": "^3.0.0",
     "d3-shape": "^3.2.0",
     "svelte": "^3.57.0",
-    "svelte-multiselect": "^8.5.0"
+    "svelte-multiselect": "^8.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.31.2",
