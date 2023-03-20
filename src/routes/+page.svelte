@@ -63,6 +63,8 @@
   bind:active_category={$active_category}
   links="name"
 >
+  <!-- set max-height to ensure ScatterPlot is never taller than 3 PeriodicTable
+  rows so it doesn't stretch the table. assumes PeriodicTable has 18 rows -->
   <TableInset slot="inset">
     {#if heatmap_key}
       <ElementScatter
@@ -73,6 +75,7 @@
         on:change={(e) => ($active_element = element_data[e.detail.x - 1])}
         x_label_yshift={42}
         {color_scale}
+        style="max-height: calc(100cqw / 10 * 3);"
       />
     {:else}
       <ElementStats --font-size="1vw" element={$last_element} />
