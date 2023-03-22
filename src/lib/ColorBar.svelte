@@ -80,18 +80,19 @@
     margin: var(--cbar-margin);
     padding: var(--cbar-padding);
     width: var(--cbar-width);
+    font-size: var(--cbar-font-size, 10pt);
   }
   div.colorbar > div {
     position: relative;
-    height: var(--cbar-height, 1em);
-    width: var(--cbar-width, 10em);
+    height: var(--cbar-height, 14px);
+    width: var(--cbar-width, 140px);
     border-radius: var(--cbar-border-radius, 2pt);
   }
   div.colorbar > div > span {
     position: absolute;
     transform: translate(-50%);
     font-weight: var(--cbar-tick-label-font-weight, lighter);
-    font-size: var(--cbar-tick-label-font-size, 10pt);
+    font-size: var(--cbar-tick-label-font-size, --cbar-font-size);
     color: var(--cbar-tick-label-color);
     background: var(--cbar-tick-label-bg);
   }
