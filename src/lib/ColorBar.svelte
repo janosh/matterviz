@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { pretty_num } from '$lib/labels'
+  import * as d3 from 'd3-scale'
   import * as d3sc from 'd3-scale-chromatic'
 
   export let text: string | null = null
@@ -13,7 +13,13 @@
   export let tick_side: 'top' | 'bottom' | 'center' = `bottom`
   // TODO vertical not fully implemented yet
   export let orientation: 'horizontal' | 'vertical' = `horizontal`
-  export let precision: number = 1
+  // snap ticks to pretty, more readable values
+  export let snap_ticks: boolean = true
+  // at how many equidistant points to sample the color scale
+  export let ramp_points: number = 10
+  // the new range of the color bar resulting from snapping ticks
+  // https://github.com/d3/d3-scale/issues/86
+  export let nice_range: [number, number] = range
 
   $: if (
     tick_labels?.length == 0 ||
@@ -21,10 +27,17 @@
     range?.length > 0
   ) {
     const n_ticks = Array.isArray(tick_labels) ? 5 : tick_labels
-    tick_labels = [...Array(n_ticks).keys()].map((idx) => {
-      const x = idx / (n_ticks - 1)
-      return range[0] + x * (range[1] - range[0])
-    })
+
+    if (snap_ticks) {
+      const scale = d3.scaleLinear().domain(range).nice(n_ticks)
+      tick_labels = scale.ticks(n_ticks)
+      nice_range = scale.domain()
+    } else {
+      tick_labels = [...Array(n_ticks).keys()].map((idx) => {
+        const x = idx / (n_ticks - 1)
+        return range[0] + x * (range[1] - range[0])
+      })
+    }
   }
 
   $: if (color_scale === null || typeof color_scale == `string`) {
@@ -46,7 +59,9 @@
     vertical: `to bottom`,
   }[orientation]
 
-  $: ramped = [...Array(10).keys()].map((idx) => color_scale?.(idx / 10))
+  $: ramped = [...Array(ramp_points).keys()].map((idx) =>
+    color_scale?.(idx / ramp_points)
+  )
   $: flex_dir = {
     left: `row`,
     right: `row-reverse`,
@@ -61,11 +76,12 @@
 </script>
 
 <div style:flex-direction={flex_dir} style={wrapper_style} class="colorbar">
-  {#if text}<span style={text_style}>{text}</span>{/if}
+  <!-- don't pass unsanitized user input into text! -->
+  {#if text}<span style={text_style}>{@html text}</span>{/if}
   <div style:background="linear-gradient({grad_dir}, {ramped})" {style}>
     {#each tick_labels || [] as tick_label, idx}
       <span style="left: calc(100% * {idx} / {tick_labels?.length - 1}); {tick_pos}">
-        {pretty_num(tick_label, precision)}
+        {tick_label}
       </span>
     {/each}
   </div>

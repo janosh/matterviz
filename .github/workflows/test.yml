@@ -11,44 +11,4 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v3
-
-      - name: Set up node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: |
-          npm install --force
-          npx playwright install chromium
-
-      - name: Run tests
-        id: tests
-        run: npm run test
-
-  release:
-    runs-on: ubuntu-latest
-    needs: tests
-    if: github.event_name == 'release' && needs.tests.result == 'success'
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v3
-
-      - name: Set up node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-          registry-url: https://registry.npmjs.org
-
-      - name: Build package and publish to NPM
-        run: |
-          npm install --force
-          npm run package
-          npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    uses: janosh/workflows/.github/workflows/npm-test-release.yml@main

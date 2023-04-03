@@ -3320,7 +3320,7 @@ export default [
     period: 6,
     phase: `Solid`,
     spectral_img: null,
-    summary: `Tungsten, also known as wolfram, is a chemical element with symbol W and atomic number 74. The word tungsten comes from the Swedish language tung sten, which directly translates to heavy stone. Its name in Swedish is volfram, however, in order to distinguish it from scheelite, which in Swedish is alternatively named tungsten.`,
+    summary: `Tungsten, also known as wolfram, is a chemical element with symbol W and atomic number 74. The word tungsten comes from the Swedish language 'tung sten', which directly translates to heavy stone. Its name in Swedish is volfram, however, in order to distinguish it from scheelite, which in Swedish is alternatively named tungsten.`,
     symbol: `W`,
     shells: [2, 8, 18, 32, 12, 2],
     electron_configuration: `1s2 2s2 2p6 3s2 3p6 4s2 3d10 4p6 5s2 4d10 5p6 6s2 4f14 5d4`,

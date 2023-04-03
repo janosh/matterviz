@@ -5,15 +5,22 @@ Here's a `ColorBar` with tick labels:
 ```svelte example stackblitz
 <script>
   import { ColorBar } from '$lib'
+
+  const bars = [
+    [`Viridis`, `top`, [0, 0.25, 0.5, 0.75, 1]],
+    [`Magma`, `center`, [], [100, 1631]],
+    [`Cividis`, `bottom`, [], [-99.9812, -10]],
+  ]
 </script>
 
-{#each [[`Viridis`, `top`, [0, 0.25, 0.5, 0.75, 1]], [`Magma`, `center`, [], [100, 1000]], [`Cividis`, `bottom`, [], [-100, -10]]] as [color_scale, tick_side, tick_labels, range]}
+{#each bars as [color_scale, tick_side, tick_labels, range]}
   <ColorBar
-    text="{color_scale} (tick side={tick_side})"
+    text="{color_scale}<br>&bull; tick side={tick_side}<br>&bull; range={range}"
     {color_scale}
     {tick_side}
     {tick_labels}
     {range}
+    text_style="white-space: nowrap; padding-right: 1em;"
     --cbar-width="100%"
     --cbar-padding="2em"
   />
@@ -99,6 +106,7 @@ You can make fat and skinny bars:
     ? element_data.map((el) => el[heatmap_key])
     : []
   $: heat_range = [Math.min(...heatmap_values), Math.max(...heatmap_values)]
+  let cs_range = heat_range
 </script>
 
 <form>
@@ -110,6 +118,7 @@ You can make fat and skinny bars:
   {heatmap_values}
   style="margin: 2em auto 4em;"
   bind:color_scale
+  color_scale_range={cs_range ?? heat_range}
   links="name"
   lanth_act_tiles={false}
 >
@@ -117,6 +126,8 @@ You can make fat and skinny bars:
     <ColorBar
       {color_scale}
       range={heat_range}
+      bind:nice_range={cs_range}
+      tick_labels={5}
       tick_side="bottom"
       --cbar-width="100%"
       --cbar-height="15pt"

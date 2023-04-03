@@ -73,11 +73,10 @@ test.describe(`Periodic Table`, () => {
         const heatmap_val = pretty_num(random_element[heatmap_keys.at(-1)])
 
         // make sure heatmap value is displayed correctly
-        const elem_tile = await page.$(
-          `text=${rand_idx + 1} ${random_element.symbol} ${heatmap_val}`,
-          { strict: true }
-        )
-        expect(elem_tile).not.toBeNull()
+        const text = `${rand_idx + 1} ${random_element.symbol} ${heatmap_val}`
+        const elem_tile = await page.$(`text=${text}`, { strict: true })
+        await page.pause()
+        expect(elem_tile, `selector text=${text}`).not.toBeNull()
       }
     })
   })

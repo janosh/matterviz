@@ -18,7 +18,7 @@
   // at what background color lightness text color switches from black to white
   export let text_color_threshold = 0.7
   export let text_color: string | null = null
-  export let precision: number = 2
+  export let precision: string | null = null
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
