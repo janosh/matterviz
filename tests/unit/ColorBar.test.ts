@@ -32,7 +32,7 @@ describe(`ColorBar`, () => {
     expect(cbar_div.style.width).toBe(`200px`)
 
     const tick_labels = document.querySelectorAll(`.colorbar > div > span`)
-    expect(tick_labels.length).toBe(5)
+    expect(tick_labels.length).toBe(6)
 
     const wrapper = doc_query(`.colorbar`)
     expect(wrapper.style.margin).toBe(`10px`)

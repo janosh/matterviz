@@ -21,3 +21,25 @@
   }
 </style>
 ```
+
+Displaying values instead of element names by passing the `value` prop.
+
+```svelte example stackblitz code_above
+<script>
+  import { ElementTile, element_data } from '$lib'
+</script>
+
+<ol>
+  {#each ['red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'black', 'white'] as bg_color, idx}
+    <ElementTile {bg_color} element={element_data[idx]} value={Math.random()} style="width: 4em; margin: 0;" active />
+  {/each}
+</ol>
+
+<style>
+  ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+  }
+</style>
+```

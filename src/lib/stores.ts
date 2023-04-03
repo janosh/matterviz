@@ -34,5 +34,3 @@ export const category_colors = session_store<Record<string, string>>(
   `category-colors`,
   { ...default_category_colors }
 )
-
-export const precision_store = session_store<number>(`elementari-precision`, 2)

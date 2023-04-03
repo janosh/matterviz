@@ -1,7 +1,6 @@
-import { get } from 'svelte/store'
 import type { Category, ChemicalElement } from '.'
 // .ts ext needed for Playwright to be able to resolve import
-import { precision_store } from './stores.ts'
+import { format } from 'd3-format'
 
 // TODO add labels and units for all elemental properties
 export const property_labels: Partial<
@@ -44,16 +43,17 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
     })
   )
 
-export const pretty_num = (
-  num: number | null,
-  precision: number = get(precision_store)
-) => {
+// allow users to import default_precision and change it's items in place to
+// set default number format globally
+export const default_precision: [string, string] = [`,.3~s`, `.3~g`]
+
+export const pretty_num = (num: number, precision?: string) => {
   if (num === null) return ``
-  if ((Math.abs(num) < 0.01 && Math.abs(num) > 0) || num > 1e6) {
-    return num.toExponential(precision)
-  } else {
-    return parseFloat(num.toFixed(precision)).toLocaleString()
+  if (!precision) {
+    const [gt_1_fmt, lt_1_fmt] = default_precision
+    return format(Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt)(num)
   }
+  return format(precision)(num)
 }
 
 export const category_counts: Record<Category, number> = {
