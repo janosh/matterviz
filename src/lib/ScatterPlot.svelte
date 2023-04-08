@@ -20,7 +20,7 @@
   export let y: number[] = []
   export let y_label: string = ``
   export let y_unit = ``
-  export let tooltip_point: Coords
+  export let tooltip_point: Coords | null = null
   export let hovered = false
   export let markers: 'line' | 'points' | 'line+points' = `line+points`
 
