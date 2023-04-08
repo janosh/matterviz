@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. Dates are d
 
 <!-- auto-changelog-above -->
 
+#### [v0.1.5](https://github.com/janosh/elementari/compare/v0.1.4...v0.1.5)
+
+> 4 Apr 2023
+
+- DRY workflows and ColorBar snap tick labels to nice values [`#22`](https://github.com/janosh/elementari/pull/22)
+- Add unit tests for `ColorBar.svelte` [`#21`](https://github.com/janosh/elementari/pull/21)
+- add prop precision: number = 2 to ElementTile [`9847290`](https://github.com/janosh/elementari/commit/9847290ac1344efd30a8a987bf8934e77b7c02a8)
+- add ElementStats.test.ts [`ccc98bf`](https://github.com/janosh/elementari/commit/ccc98bf5d54b80946c429f704c076857b3fff477)
+- add precision prop to ColorBar [`b9bc392`](https://github.com/janosh/elementari/commit/b9bc39247dbb4522704e0f9a000a709a59f141a5)
+
 #### [v0.1.4](https://github.com/janosh/elementari/compare/v0.1.1...v0.1.4)
 
 > 19 March 2023
