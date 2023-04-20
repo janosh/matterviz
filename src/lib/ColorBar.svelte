@@ -1,12 +1,13 @@
 <script lang="ts">
   import * as d3 from 'd3-scale'
   import * as d3sc from 'd3-scale-chromatic'
+  import { pretty_num } from './labels'
 
-  export let text: string | null = null
-  export let color_scale: ((x: number) => string) | string | null = null
-  export let text_side: 'left' | 'right' | 'top' | 'bottom' = `left`
+  export let label: string | null = null
+  export let color_scale: ((x: number) => string) | string | null = `Viridis`
+  export let label_side: 'left' | 'right' | 'top' | 'bottom' = `left`
   export let style: string | null = null
-  export let text_style: string | null = null
+  export let label_style: string | null = null
   export let wrapper_style: string | null = null
   export let tick_labels: (string | number)[] | number = 0
   export let range: [number, number] = [0, 1]
@@ -16,7 +17,7 @@
   // snap ticks to pretty, more readable values
   export let snap_ticks: boolean = true
   // at how many equidistant points to sample the color scale
-  export let ramp_points: number = 10
+  export let steps: number = 50
   // the new range of the color bar resulting from snapping ticks
   // https://github.com/d3/d3-scale/issues/86
   export let nice_range: [number, number] = range
@@ -40,34 +41,31 @@
     }
   }
 
-  $: if (color_scale === null || typeof color_scale == `string`) {
-    const cscale_key = color_scale ?? text
-    color_scale = d3sc[`interpolate${cscale_key}`]
-    if (color_scale === undefined) {
-      const list_valid = Object.keys(d3sc)
-        .map((key) => key.split(`interpolate`)[1])
-        .filter(Boolean)
-        .join(`, `)
+  const valid_color_scale_keys = Object.keys(d3sc)
+    .map((key) => key.split(`interpolate`)[1])
+    .filter(Boolean)
+    .join(`, `)
+
+  $: if (typeof color_scale == `string`) {
+    if (`interpolate${color_scale}` in d3sc) {
+      color_scale = d3sc[`interpolate${color_scale}`]
+    } else {
       console.error(
-        `Color scale '${cscale_key}' not found, supported color scale names are ${list_valid}`
+        `Color scale '${color_scale}' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`
       )
+      color_scale = d3sc.interpolateViridis
     }
   }
 
-  $: grad_dir = {
-    horizontal: `to right`,
-    vertical: `to bottom`,
-  }[orientation]
+  $: grad_dir = { horizontal: `to right`, vertical: `to bottom` }[orientation]
 
-  $: ramped = [...Array(ramp_points).keys()].map((idx) =>
-    color_scale?.(idx / ramp_points)
-  )
+  $: ramped = [...Array(steps).keys()].map((_, idx) => color_scale?.(idx / steps))
   $: flex_dir = {
     left: `row`,
     right: `row-reverse`,
     top: `column`,
     bottom: `column-reverse`,
-  }[text_side]
+  }[label_side]
   $: tick_pos = {
     bottom: `top: 100%`,
     top: `bottom: 100%`,
@@ -76,12 +74,12 @@
 </script>
 
 <div style:flex-direction={flex_dir} style={wrapper_style} class="colorbar">
-  <!-- don't pass unsanitized user input into text! -->
-  {#if text}<span style={text_style}>{@html text}</span>{/if}
+  <!-- don't pass unsanitized user input into label! -->
+  {#if label}<span style={label_style}>{@html label}</span>{/if}
   <div style:background="linear-gradient({grad_dir}, {ramped})" {style}>
     {#each tick_labels || [] as tick_label, idx}
       <span style="left: calc(100% * {idx} / {tick_labels?.length - 1}); {tick_pos}">
-        {tick_label}
+        {pretty_num(tick_label)}
       </span>
     {/each}
   </div>

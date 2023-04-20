@@ -4,7 +4,7 @@ import element_data from '../src/lib/element-data.ts'
 test.describe(`Element detail page`, async () => {
   test(`has periodicity plot`, async ({ page }) => {
     // test any 5 random elements
-    for (const _ of [...Array(5)]) {
+    for (const _ of Array(5)) {
       const rand_idx = Math.floor(Math.random() * element_data.length)
       const random_element = element_data[rand_idx]
 

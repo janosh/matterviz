@@ -64,7 +64,7 @@ test.describe(`Periodic Table`, () => {
         await page.click(`text=${heatmap_label}`)
       }
 
-      for (const _ of [...Array(5)]) {
+      for (const _ of Array(5)) {
         // check 5 random element tiles display the expected heatmap value
 
         const rand_idx = Math.floor(Math.random() * element_data.length)
