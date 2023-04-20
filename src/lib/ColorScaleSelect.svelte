@@ -24,6 +24,20 @@
   {placeholder}
   {...$$props}
 >
-  <ColorBar slot="option" let:option text={option} {...cbar_props} {wrapper_style} />
-  <ColorBar slot="selected" let:option text={option} {...cbar_props} {wrapper_style} />
+  <ColorBar
+    slot="option"
+    let:option
+    label={option}
+    color_scale={option}
+    {...cbar_props}
+    {wrapper_style}
+  />
+  <ColorBar
+    slot="selected"
+    let:option
+    label={option}
+    color_scale={option}
+    {...cbar_props}
+    {wrapper_style}
+  />
 </Select>

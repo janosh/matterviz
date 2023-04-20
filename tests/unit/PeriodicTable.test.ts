@@ -157,7 +157,7 @@ describe(`PeriodicTable`, () => {
     }
   )
 
-  test.each([[[...Array(1000).keys()]], [[...Array(119).keys()]]])(
+  test.each([[[...Array(200).keys()]], [[...Array(119).keys()]]])(
     `raises error when receiving more than 118 heatmap values`,
     (heatmap_values) => {
       console.error = vi.fn()

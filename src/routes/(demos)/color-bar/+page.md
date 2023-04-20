@@ -13,21 +13,23 @@ Here's a `ColorBar` with tick labels:
   ]
 </script>
 
-{#each bars as [color_scale, tick_side, tick_labels, range]}
-  <ColorBar
-    text="{color_scale}<br>&bull; tick side={tick_side}<br>&bull; range={range}"
-    {color_scale}
-    {tick_side}
-    {tick_labels}
-    {range}
-    text_style="white-space: nowrap; padding-right: 1em;"
-    --cbar-width="100%"
-    --cbar-padding="2em"
-  />
-{/each}
+<div style="border: 0.1px dashed white;">
+  {#each bars as [color_scale, tick_side, tick_labels, range, width]}
+    <ColorBar
+      label="{color_scale}<br>&bull; tick side={tick_side}<br>&bull; range={range}"
+      {color_scale}
+      {tick_side}
+      {tick_labels}
+      {range}
+      label_style="white-space: nowrap; padding-right: 1em;"
+      --cbar-width="100%"
+      --cbar-padding="2em"
+    />
+  {/each}
+</div>
 ```
 
-`ColorBar` supports `text_side = ['top', 'bottom', 'left', 'right']`
+`ColorBar` supports `label_side = ['top', 'bottom', 'left', 'right']`
 
 ```svelte example stackblitz
 <script>
@@ -38,15 +40,17 @@ Here's a `ColorBar` with tick labels:
 </script>
 
 <section>
-  {#each [`top`, `bottom`, `left`, `right`] as text_side, idx}
+  {#each [`top`, `bottom`, `left`, `right`] as label_side, idx}
     <ul>
-      <code>{text_side}</code>
+      <code>{label_side}</code>
       {#each names.slice(idx * 5, 5 * idx + 5) as name}
+        {@const color_scale = name.replace(`interpolate`, ``)}
         <li>
           <ColorBar
-            text={name.replace(`interpolate`, ``)}
-            {text_side}
-            text_style="min-width: 5em;"
+            label={color_scale}
+            {color_scale}
+            {label_side}
+            label_style="min-width: 5em;"
           />
         </li>
       {/each}
@@ -82,9 +86,11 @@ You can make fat and skinny bars:
   const wrapper_style = 'place-items: center;'
 </script>
 
-<ColorBar text="Viridis" {wrapper_style} style="width: 10em; height: 1ex;" />
+<ColorBar {wrapper_style} style="width: 10em; height: 1ex;" />
 <br />
-<ColorBar text="Viridis" {wrapper_style} style="width: 3em; height: 2em;" />
+<ColorBar label="Viridis" {wrapper_style} style="width: 3em; height: 2em;" />
+<br />
+<ColorBar {wrapper_style} --cbar-width="8em" --cbar-height="2em" />
 ```
 
 `PeriodicTable.svelte` heatmap example with `ColorBar` inside `TableInset`
