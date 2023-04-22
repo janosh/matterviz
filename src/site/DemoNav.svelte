@@ -5,7 +5,7 @@
   export let routes = $demos
 
   $: is_current = (path: string) => {
-    if (`/${path}` == $page.url.pathname) return `page`
+    if ($page.url.pathname.startsWith(path)) return `page`
     return undefined
   }
 </script>
