@@ -47,6 +47,12 @@
       {pretty_num(alpha)}°, {pretty_num(beta)}°, {pretty_num(gamma)}°
     </span>
   </strong>
+  {#if structure?.charge}
+    <strong>
+      Charge:
+      <span class="value">{pretty_num(structure?.charge)}</span>
+    </strong>
+  {/if}
 </div>
 
 <style>
@@ -55,6 +61,7 @@
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     border-radius: var(--sc-radius, 3pt);
     padding: var(--sc-padding, 1ex 1em);
+    margin: var(--sc-margin, 1em 0);
     gap: var(--sc-gap, 1ex 1em);
     background-color: var(--sc-bg, rgba(255, 255, 255, 0.1));
     font-size: var(--sc-font-size);

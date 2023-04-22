@@ -58,7 +58,6 @@
     hovered = true
 
     // returns point to right of our current mouse position
-
     let idx = bisect(data, x_scale.invert(event.offsetX))
 
     if (idx < data.length) {
