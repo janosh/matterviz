@@ -17,6 +17,14 @@
   export let show_controls: boolean = false
   // TODO whether to make the canvas fill the whole screen
   // export let fullscreen: boolean = false
+  // whether to show the structure's lattice cell as a wireframe
+  export let show_cell: 'surface' | 'wireframe' | null = 'wireframe'
+  // the control panel DOM element
+  export let controls: HTMLElement | null = null
+  // the button to toggle the control panel
+  export let toggle_controls_btn: HTMLButtonElement | null = null
+  // cell opacity
+  export let cell_opacity: number | undefined = undefined
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -24,34 +32,34 @@
     }
   }
 
-  let tooltip = { visible: false, content: '', x: 0, y: 0 }
-
-  function on_mouse_enter(event, position, element) {
-    console.log(`event`, event)
-
-    const { clientX, clientY } = event.detail.event
-    tooltip.visible = true
-    tooltip.content = `${element} - (${position.join(', ')})`
-    tooltip.x = clientX
-    tooltip.y = clientY
-  }
-
-  function on_mouse_leave() {
-    tooltip.visible = false
-  }
-
-  const lattice = structure.lattice.matrix
-
   $: ({ a, b, c } = structure.lattice)
+
+  const on_window_click =
+    (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
+      if (!node || !event.target) return
+
+      if (node && !node.some((n) => n?.contains(event.target as Node))) {
+        cb()
+      }
+    }
 </script>
 
-<svelte:window on:keydown={on_keydown} />
+<svelte:window
+  on:keydown={on_keydown}
+  on:click={on_window_click([controls, toggle_controls_btn], () => {
+    if (show_controls) show_controls = false
+  })}
+/>
 
 <div>
-  <button class="controls-toggle" on:click={() => (show_controls = !show_controls)}>
+  <button
+    class="controls-toggle"
+    on:click={() => (show_controls = !show_controls)}
+    bind:this={toggle_controls_btn}
+  >
     {show_controls ? 'Hide' : 'Show'} controls
   </button>
-  <section class="controls" class:open={show_controls}>
+  <section bind:this={controls} class="controls" class:open={show_controls}>
     <label>
       Atom radius
       <input type="range" min="0.1" max="2" step="0.05" bind:value={atom_radius} />
@@ -60,16 +68,19 @@
       <input type="checkbox" bind:checked={same_size_atoms} />
       Scale atoms according to atomic radius (if false, all atoms have same size)
     </label>
+    <label>
+      Show lattice matrix as
+      <select bind:value={show_cell}>
+        <option value="surface">surface</option>
+        <option value="wireframe">wireframe</option>
+        <option value={null}>none</option>
+      </select>
+    </label>
+    <label>
+      Cell opacity
+      <input type="range" min="0" max="1" step="0.01" bind:value={cell_opacity} />
+    </label>
   </section>
-
-  <div
-    class="tooltip"
-    style="top: {tooltip.y}px; left: {tooltip.x}px; display: {tooltip.visible
-      ? 'block'
-      : 'none'};"
-  >
-    {tooltip.content}
-  </div>
 
   <Canvas>
     <T.PerspectiveCamera makeDefault position={camera_position} fov={zoom}>
@@ -80,15 +91,10 @@
     <T.DirectionalLight position={[-3, 10, -10]} intensity={0.2} />
     <T.AmbientLight intensity={0.2} />
 
-    {#each structure.sites as { xyz: position, species }}
+    {#each structure.sites as { xyz, species }}
       {@const symbol = species[0].element}
       {@const radius = (same_size_atoms ? 1 : atomic_radii[symbol]) * atom_radius}
-      <T.Mesh
-        {position}
-        interactive
-        on:pointerenter={(e) => on_mouse_enter(e, position, symbol)}
-        on:pointerleave={on_mouse_leave}
-      >
+      <T.Mesh position={xyz}>
         <T.SphereGeometry args={[radius, 20, 20]} />
         <T.MeshStandardMaterial
           color="rgb({atomic_colors[symbol].map((x) => Math.floor(x * 255)).join(',')})"
@@ -96,15 +102,16 @@
       </T.Mesh>
     {/each}
 
-    <!-- Render lattice as a cuboid of white lines -->
-    <T.Mesh position={[lattice[0][0] / 2, lattice[1][1] / 2, lattice[2][2] / 2]}>
-      <T.BoxGeometry args={[lattice[0][0], lattice[1][1], lattice[2][2]]} />
-      <T.MeshBasicMaterial transparent opacity={0.2} />
-      <T.LineSegments>
-        <T.EdgesGeometry />
-        <T.LineBasicMaterial color="white" />
-      </T.LineSegments>
-    </T.Mesh>
+    {#if show_cell}
+      <T.Mesh position={[a / 2, b / 2, c / 2]}>
+        <T.BoxGeometry args={[a, b, c]} />
+        <T.MeshBasicMaterial
+          transparent
+          opacity={cell_opacity ?? (show_cell === 'surface' ? 0.2 : 1)}
+          wireframe={show_cell === 'wireframe'}
+        />
+      </T.Mesh>
+    {/if}
   </Canvas>
 </div>
 
@@ -130,7 +137,7 @@
     top: 5pt;
     right: 5pt;
     background-color: rgba(255, 255, 255, 0.2);
-    padding: 2em 5pt 0;
+    padding: 2em 6pt 3pt;
     border-radius: 3pt;
     visibility: hidden;
     opacity: 0;
@@ -141,13 +148,10 @@
     visibility: visible;
     opacity: 1;
   }
-
-  .tooltip {
-    position: absolute;
-    background-color: rgba(0, 0, 0, 0.7);
+  select {
+    margin-left: 5pt;
     color: white;
-    padding: 5px;
-    border-radius: 5px;
-    pointer-events: none;
+    /* transparent */
+    background-color: rgba(255, 255, 255, 0.2);
   }
 </style>

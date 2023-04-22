@@ -25,6 +25,7 @@
     margin: 1em auto 3em;
     max-width: 45em;
     flex-wrap: wrap;
+    font-size: 14pt;
   }
   nav > a {
     padding: 0 4pt;
