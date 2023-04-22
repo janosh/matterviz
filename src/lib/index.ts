@@ -4,7 +4,6 @@ export { default as BohrAtom } from './BohrAtom.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorCustomizer } from './ColorCustomizer.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
-export { default as element_data } from './element-data'
 export { default as ElementHeading } from './ElementHeading.svelte'
 export { default as ElementPhoto } from './ElementPhoto.svelte'
 export { default as ElementScatter } from './ElementScatter.svelte'
@@ -13,11 +12,15 @@ export { default as ElementTile } from './ElementTile.svelte'
 export { default as Icon } from './Icon.svelte'
 export { default as Line } from './Line.svelte'
 export { default as Nucleus } from './Nucleus.svelte'
-export { default, default as PeriodicTable } from './PeriodicTable.svelte'
+export { default as PeriodicTable, default } from './PeriodicTable.svelte'
 export { default as PropertySelect } from './PropertySelect.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
+export { default as Structure } from './Structure.svelte'
+export { default as StructureCard } from './StructureCard.svelte'
 export { default as TableInset } from './TableInset.svelte'
+export { default as element_data } from './element-data'
+export * from './structure'
 
 export type Category = (typeof categories)[number]
 
@@ -26,12 +29,12 @@ export type ElementSymbol = (typeof elem_symbols)[number]
 export type ChemicalElement = {
   'cpk-hex': string | null
   appearance: string
-  atomic_mass: number
-  atomic_radius: number
-  boiling_point: number | null
+  atomic_mass: number // in atomic units (u)
+  atomic_radius: number // in Angstrom (A)
+  boiling_point: number | null // in kelvin (K)
   category: Category
   column: number // aka group, in range 1 - 18
-  covalent_radius: number
+  covalent_radius: number // in Angstrom (A)
   density: number
   discoverer: string
   electron_affinity: number
@@ -41,7 +44,7 @@ export type ChemicalElement = {
   electronegativity: number | null
   first_ionization: number
   ionization_energies: number[]
-  jmol_color: string
+  jmol_color: number[]
   melting_point: number | null
   metal: boolean | null
   metalloid: boolean | null
