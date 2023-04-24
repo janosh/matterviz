@@ -1,5 +1,5 @@
 // Utilities for dealing with pymatgen Structures
-import type { ColorRepresentation } from 'three'
+import { rgb } from 'd3-color'
 import type { ElementSymbol } from '.'
 import element_data from './element-data'
 import { pretty_num } from './labels'
@@ -64,16 +64,23 @@ export function alphabetical_formula(structure: Structure) {
 export const atomic_radii: Record<ElementSymbol, number> = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_radius / 2])
 )
-export const atomic_colors: Record<ElementSymbol, ColorRepresentation> =
-  Object.fromEntries(element_data.map((el) => [el.symbol, el.jmol_color]))
+export const atomic_colors: Record<ElementSymbol, string[]> =
+  Object.fromEntries(
+    element_data.map((el) => [
+      el.symbol,
+      `${rgb(...(el.jmol_color?.map((x) => x * 255) ?? []))}`,
+    ])
+  )
 
 export const atomic_weights = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_mass])
 )
 
-export function density_to_SI(density: number) {
-  // convert atomic units per cubic angstrom to g/cm^3
-  return 1.5 * density
+export function get_elements(structure: Structure): ElementSymbol[] {
+  const elems = structure.sites.flatMap((site) =>
+    site.species.map((sp) => sp.element)
+  )
+  return [...new Set(elems)].sort() // unique elements
 }
 
 // unified atomic mass units (u) per cubic angstrom (Å^3)

@@ -7,7 +7,7 @@
 
   const structs = import.meta.glob('./mp-*.json', { eager: true, as: 'raw' })
 
-  let mp_id = ['mp-1']
+  let mp_id = ['mp-1234']
   $: href = `https://materialsproject.org/materials/${mp_id[0]}`
   $: structure = JSON.parse(structs[`./${mp_id[0]}.json`] ?? '{}')
 </script>
