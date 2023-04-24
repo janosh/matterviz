@@ -4,6 +4,7 @@
 
   export let structure: Structure
   export let title: string = ''
+  export let fallback: string = ''
 
   $: ({ volume, a, b, c, alpha, beta, gamma } = structure?.lattice ?? {})
 </script>
@@ -16,41 +17,49 @@
       </slot>
     </h2>
   {/if}
-  <strong>
-    formula:
-    <span class="value">{alphabetical_formula(structure)}</span>
-  </strong>
-  <strong>
-    Number of atoms:
-    <span class="value">{structure?.sites.length}</span>
-  </strong>
-  <strong>
-    Volume:
-    <span class="value">
-      {pretty_num(volume, '.1f')} Å³
-      <small>
-        &nbsp; ({pretty_num(volume / structure?.sites.length, '.1f')} Å³/atom)
-      </small></span
-    >
-  </strong>
-  <strong>
-    Density:
-    <span class="value">{density(structure)} g/cm³</span>
-  </strong>
-  <strong>
-    Lattice lengths (a, b, c):
-    <span class="value">{pretty_num(a)} Å, {pretty_num(b)} Å, {pretty_num(c)} Å</span>
-  </strong>
-  <strong>
-    Lattice angles (α, β, γ):
-    <span class="value">
-      {pretty_num(alpha)}°, {pretty_num(beta)}°, {pretty_num(gamma)}°
-    </span>
-  </strong>
-  {#if structure?.charge}
+  {#if structure?.sites}
     <strong>
-      Charge:
-      <span class="value">{pretty_num(structure?.charge)}</span>
+      formula:
+      <span class="value">{alphabetical_formula(structure)}</span>
+    </strong>
+    <strong>
+      Number of atoms:
+      <span class="value">{structure?.sites.length}</span>
+    </strong>
+    <strong>
+      Volume:
+      <span class="value">
+        {pretty_num(volume, '.1f')} Å³
+        <small>
+          &nbsp; ({pretty_num(volume / structure?.sites.length, '.1f')} Å³/atom)
+        </small></span
+      >
+    </strong>
+    <strong>
+      Density:
+      <span class="value">{density(structure)} g/cm³</span>
+    </strong>
+    <strong>
+      Lattice lengths (a, b, c):
+      <span class="value">{pretty_num(a)} Å, {pretty_num(b)} Å, {pretty_num(c)} Å</span>
+    </strong>
+    <strong>
+      Lattice angles (α, β, γ):
+      <span class="value">
+        {pretty_num(alpha)}°, {pretty_num(beta)}°, {pretty_num(gamma)}°
+      </span>
+    </strong>
+    {#if structure?.charge}
+      <strong>
+        Charge:
+        <span class="value">{pretty_num(structure?.charge)}</span>
+      </strong>
+    {/if}
+  {:else if fallback}
+    <strong>
+      <slot name="fallback">
+        {fallback}
+      </slot>
     </strong>
   {/if}
 </div>
