@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Canvas, OrbitControls, T } from '@threlte/core'
-  import { atomic_colors, atomic_radii, type Structure } from './structure'
+  import { atomic_colors, atomic_radii, get_elements, type Structure } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: Structure | undefined = undefined
@@ -12,7 +12,7 @@
   // initial camera position from which to render the scene
   export let camera_position: [number, number, number] = [10, 10, 10]
   // zoom level of the camera
-  export let zoom: number = 60
+  export let zoom: number = 1 / 50
   // whether to show the controls panel
   export let show_controls: boolean = false
   // TODO whether to make the canvas fill the whole screen
@@ -25,6 +25,12 @@
   export let toggle_controls_btn: HTMLButtonElement | null = null
   // cell opacity
   export let cell_opacity: number | undefined = undefined
+  // whether to show the lattice vectors
+  export let show_vectors: boolean = true
+  // lattice vector colors
+  export let vector_colors: [string, string, string] = ['red', 'green', 'blue']
+  // lattice vector origin (all arrows start from this point)
+  export let vector_origin: { x: number; y: number; z: number } = { x: -1, y: -1, z: -1 }
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -52,13 +58,15 @@
 />
 
 {#if structure?.sites}
-  <div>
+  <div class="structure">
     <button
       class="controls-toggle"
       on:click={() => (show_controls = !show_controls)}
       bind:this={toggle_controls_btn}
     >
-      {show_controls ? 'Hide' : 'Show'} controls
+      <slot name="controls-toggle" {show_controls}>
+        {show_controls ? 'Close' : 'Controls'}
+      </slot>
     </button>
     <section bind:this={controls} class="controls" class:open={show_controls}>
       <label>
@@ -83,10 +91,14 @@
           <input type="range" min="0" max="1" step="0.05" bind:value={cell_opacity} />
         </label>
       {/if}
+      <label>
+        <input type="checkbox" bind:checked={show_vectors} />
+        Show lattice vectors
+      </label>
     </section>
 
     <Canvas>
-      <T.PerspectiveCamera makeDefault position={camera_position} fov={zoom}>
+      <T.PerspectiveCamera makeDefault position={camera_position} fov={1 / zoom}>
         <OrbitControls enableZoom enablePan target={{ x: a / 2, y: b / 2, z: c / 2 }} />
       </T.PerspectiveCamera>
 
@@ -95,13 +107,11 @@
       <T.AmbientLight intensity={0.2} />
 
       {#each structure?.sites ?? [] as { xyz, species }}
-        {@const symbol = species[0].element}
-        {@const radius = (same_size_atoms ? 1 : atomic_radii[symbol]) * atom_radius}
-        <T.Mesh position={xyz}>
+        {@const elem = species[0].element}
+        {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
+        <T.Mesh position={xyz} transparent opacity={1}>
           <T.SphereGeometry args={[radius, 20, 20]} />
-          <T.MeshStandardMaterial
-            color="rgb({atomic_colors[symbol].map((x) => Math.floor(x * 255)).join(',')})"
-          />
+          <T.MeshStandardMaterial color={atomic_colors[elem]} />
         </T.Mesh>
       {/each}
 
@@ -115,7 +125,23 @@
           />
         </T.Mesh>
       {/if}
+
+      {#if show_vectors}
+        {#each structure?.lattice?.matrix ?? [] as [a, b, c], idx}
+          <T.ArrowHelper
+            args={[{ x: a, y: b, z: c }, vector_origin, 3, vector_colors[idx], 1, 0.5]}
+          />
+        {/each}
+      {/if}
     </Canvas>
+
+    <div class="element-list">
+      {#each get_elements(structure) as elem}
+        <span class="element" style="background-color: {atomic_colors[elem]}">
+          {elem}
+        </span>
+      {/each}
+    </div>
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -124,7 +150,7 @@
 {/if}
 
 <style>
-  div {
+  .structure {
     height: 600px;
     width: 100%;
     background-color: rgba(255, 255, 255, 0.1);
@@ -135,17 +161,17 @@
 
   .controls-toggle {
     position: absolute;
-    top: 5pt;
-    right: 5pt;
-    z-index: 100;
+    z-index: var(--svelte-controls-toggle-z-index, 1);
+    top: var(--svelte-controls-toggle-top, 8pt);
+    right: var(--svelte-controls-toggle-right, 8pt);
   }
   section.controls {
     display: grid;
     position: absolute;
     top: 5pt;
     right: 5pt;
-    background-color: rgba(255, 255, 255, 0.2);
-    padding: 2em 6pt 3pt;
+    background-color: rgba(0, 0, 0, 0.6);
+    padding: 6pt 9pt;
     border-radius: 3pt;
     visibility: hidden;
     opacity: 0;
@@ -159,12 +185,24 @@
   select {
     margin-left: 5pt;
     color: white;
-    /* transparent */
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 0, 0, 0.4);
   }
 
   p.warn {
     font-size: larger;
     text-align: center;
+  }
+
+  .element-list {
+    position: absolute;
+    bottom: var(--struct-elem-list-bottom, 8pt);
+    right: var(--struct-elem-list-right, 8pt);
+    display: flex;
+    gap: 5pt;
+    font-size: var(--struct-elem-list-font-size, 14pt);
+  }
+  .element {
+    padding: 1pt 4pt;
+    border-radius: var(--struct-elem-list-border-radius, 3pt);
   }
 </style>
