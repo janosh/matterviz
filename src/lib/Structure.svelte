@@ -13,6 +13,10 @@
   export let camera_position: [number, number, number] = [10, 10, 10]
   // zoom level of the camera
   export let zoom: number = 1 / 50
+  // zoom speed. set to 0 to disable zooming.
+  export let zoom_speed: number = 0.3
+  // pan speed. set to 0 to disable panning.
+  export let pan_speed: number = 0.3
   // whether to show the controls panel
   export let show_controls: boolean = false
   // TODO whether to make the canvas fill the whole screen
@@ -38,16 +42,24 @@
     }
   }
 
-  $: ({ a, b, c } = structure?.lattice ?? {})
+  $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
 
   const on_window_click =
     (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
-      if (!node || !event.target) return
-
-      if (node && !node.some((n) => n?.contains(event.target as Node))) {
-        cb()
-      }
+      if (!node || !event.target) return // ignore invalid input
+      // ignore clicks inside any of the nodes
+      if (node && node.some((n) => n?.contains(event.target as Node))) return
+      cb() // invoke callback
     }
+
+  const initial_zoom = zoom
+  let orbit_controls: OrbitControls
+  $: orbit_controls?.saveState() // record orbit target for reset
+
+  const reset_camera = () => {
+    zoom = initial_zoom
+    orbit_controls?.reset()
+  }
 </script>
 
 <svelte:window
@@ -59,47 +71,67 @@
 
 {#if structure?.sites}
   <div class="structure">
-    <button
-      class="controls-toggle"
-      on:click={() => (show_controls = !show_controls)}
-      bind:this={toggle_controls_btn}
-    >
-      <slot name="controls-toggle" {show_controls}>
-        {show_controls ? 'Close' : 'Controls'}
-      </slot>
-    </button>
-    <section bind:this={controls} class="controls" class:open={show_controls}>
-      <label>
-        Atom radius
-        <input type="range" min="0.1" max="2" step="0.05" bind:value={atom_radius} />
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={same_size_atoms} />
-        Scale atoms according to atomic radius (if false, all atoms have same size)
-      </label>
-      <label>
-        Show lattice matrix as
-        <select bind:value={show_cell}>
-          <option value="surface">surface</option>
-          <option value="wireframe">wireframe</option>
-          <option value={null}>none</option>
-        </select>
-      </label>
-      {#if show_cell}
+    <div class="controls">
+      <section>
+        <button class="reset-camera" on:click={reset_camera}>Reset</button>
+        <button
+          on:click={() => (show_controls = !show_controls)}
+          bind:this={toggle_controls_btn}
+        >
+          <slot name="controls-toggle" {show_controls}>
+            {show_controls ? 'Close' : 'Controls'}
+          </slot>
+        </button>
+      </section>
+
+      <form bind:this={controls} class="controls" class:open={show_controls}>
         <label>
-          Cell opacity
-          <input type="range" min="0" max="1" step="0.05" bind:value={cell_opacity} />
+          Atom radius
+          <input type="range" min="0.1" max="2" step="0.05" bind:value={atom_radius} />
         </label>
-      {/if}
-      <label>
-        <input type="checkbox" bind:checked={show_vectors} />
-        Show lattice vectors
-      </label>
-    </section>
+        <label>
+          <input type="checkbox" bind:checked={same_size_atoms} />
+          Scale atoms according to atomic radius (if false, all atoms have same size)
+        </label>
+        <label>
+          Show unit cell as
+          <select bind:value={show_cell}>
+            <option value="surface">surface</option>
+            <option value="wireframe">wireframe</option>
+            <option value={null}>none</option>
+          </select>
+        </label>
+        {#if show_cell}
+          <label>
+            Unit cell opacity
+            <input type="range" min="0" max="1" step="0.05" bind:value={cell_opacity} />
+          </label>
+        {/if}
+        <label>
+          <input type="checkbox" bind:checked={show_vectors} />
+          Show lattice vectors
+        </label>
+        <label>
+          Zoom speed
+          <input type="range" min="0" max="2" step="0.01" bind:value={zoom_speed} />
+        </label>
+        <label>
+          Pan speed
+          <input type="range" min="0" max="2" step="0.01" bind:value={pan_speed} />
+        </label>
+      </form>
+    </div>
 
     <Canvas>
       <T.PerspectiveCamera makeDefault position={camera_position} fov={1 / zoom}>
-        <OrbitControls enableZoom enablePan target={{ x: a / 2, y: b / 2, z: c / 2 }} />
+        <OrbitControls
+          enableZoom={zoom_speed > 0}
+          zoomSpeed={zoom_speed}
+          enablePan={pan_speed > 0}
+          panSpeed={pan_speed}
+          target={{ x: a / 2, y: b / 2, z: c / 2 }}
+          bind:controls={orbit_controls}
+        />
       </T.PerspectiveCamera>
 
       <T.DirectionalLight position={[3, 10, 10]} />
@@ -159,26 +191,31 @@
     container-type: inline-size;
   }
 
-  .controls-toggle {
+  .controls {
     position: absolute;
-    z-index: var(--svelte-controls-toggle-z-index, 1);
-    top: var(--svelte-controls-toggle-top, 8pt);
-    right: var(--svelte-controls-toggle-right, 8pt);
+    z-index: var(--controls-z-index, 1);
+    top: var(--controls-top, 8pt);
+    right: var(--controls-right, 8pt);
   }
-  section.controls {
+  .controls > section {
+    display: flex;
+    gap: 1ex;
+  }
+  .controls > form {
     display: grid;
-    position: absolute;
-    top: 5pt;
-    right: 5pt;
+    right: 0;
+    margin-top: 22px;
     background-color: rgba(0, 0, 0, 0.6);
     padding: 6pt 9pt;
     border-radius: 3pt;
     visibility: hidden;
     opacity: 0;
     transition: visibility 0.1s, opacity 0.1s linear;
+    width: 18em;
+    box-sizing: border-box;
     max-width: 40cqw;
   }
-  section.controls.open {
+  .controls > form.open {
     visibility: visible;
     opacity: 1;
   }
