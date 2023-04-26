@@ -1,8 +1,8 @@
 <script lang="ts">
   import { pretty_num } from './labels'
-  import { alphabetical_formula, density, type Structure } from './structure'
+  import { alphabetical_formula, density, type PymatgenStructure } from './structure'
 
-  export let structure: Structure
+  export let structure: PymatgenStructure
   export let title: string = ''
   export let fallback: string = ''
 

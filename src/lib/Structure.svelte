@@ -1,9 +1,14 @@
 <script lang="ts">
   import { Canvas, OrbitControls, T } from '@threlte/core'
-  import { atomic_colors, atomic_radii, get_elements, type Structure } from './structure'
+  import {
+    atomic_colors,
+    atomic_radii,
+    get_elements,
+    type PymatgenStructure,
+  } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
-  export let structure: Structure | undefined = undefined
+  export let structure: PymatgenStructure | undefined = undefined
   // scale factor for atomic radii
   export let atom_radius: number = 0.5
   // whether to use the same radius for all atoms. if not, the radius will be

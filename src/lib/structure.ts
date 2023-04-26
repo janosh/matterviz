@@ -29,13 +29,13 @@ export type Lattice = {
   volume: number
 }
 
-export type Structure = {
+export type PymatgenStructure = {
   charge: number
   lattice: Lattice
   sites: Site[]
 }
 
-export function get_elem_amount(structure: Structure) {
+export function get_elem_amount(structure: PymatgenStructure) {
   const elements: Record<ElementSymbol, number> = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
@@ -50,7 +50,7 @@ export function get_elem_amount(structure: Structure) {
   return elements
 }
 
-export function alphabetical_formula(structure: Structure) {
+export function alphabetical_formula(structure: PymatgenStructure) {
   // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
   const elements = get_elem_amount(structure)
   const formula = []
@@ -76,7 +76,7 @@ export const atomic_weights = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_mass])
 )
 
-export function get_elements(structure: Structure): ElementSymbol[] {
+export function get_elements(structure: PymatgenStructure): ElementSymbol[] {
   const elems = structure.sites.flatMap((site) =>
     site.species.map((sp) => sp.element)
   )
@@ -87,7 +87,7 @@ export function get_elements(structure: Structure): ElementSymbol[] {
 // to grams per cubic centimeter (g/cm^3)
 const uA3_to_gcm3 = 1.66053907
 
-export function density(structure: Structure, prec = `.2f`) {
+export function density(structure: PymatgenStructure, prec = `.2f`) {
   // calculate the density of a pymatgen Structure in
   const elements = get_elem_amount(structure)
   let mass = 0
