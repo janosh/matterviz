@@ -9,3 +9,9 @@ dist
 # screen recordings
 *.mp4
 coverage
+
+# secrets
+.env
+
+# needs server
+/src/routes/api
