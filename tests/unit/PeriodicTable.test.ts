@@ -1,3 +1,4 @@
+import type { Category } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
 import { tick } from 'svelte'
@@ -88,7 +89,9 @@ describe(`PeriodicTable`, () => {
     const heatmap_key = heatmap_labels[heatmap_label]
 
     expect(heatmap_key).toBe(`atomic_mass`)
-    ptable.$set({ heatmap_values: element_data.map((e) => e[heatmap_key]) })
+    ptable.$set({
+      heatmap_values: element_data.map((elem) => elem[heatmap_key]),
+    })
     await tick()
 
     const element_tile = doc_query(`div.element-tile`)
@@ -118,12 +121,12 @@ describe(`PeriodicTable`, () => {
     let expected_active = false
 
     let emitted = false
-    ptable.$on(`click`, (e) => {
+    ptable.$on(`click`, (event) => {
       emitted = true
-      expect(e.detail.element).toBe(element_data[0])
-      expect(e.detail.active).toBe(expected_active)
-      expect(e.detail.event).toBeInstanceOf(MouseEvent)
-      expect(e.detail.event.type).toBe(`click`)
+      expect(event.detail.element).toBe(element_data[0])
+      expect(event.detail.active).toBe(expected_active)
+      expect(event.detail.dom_event).toBeInstanceOf(MouseEvent)
+      expect(event.detail.dom_event.type).toBe(`click`)
     })
 
     const element_tile = doc_query(`.element-tile`)
@@ -149,7 +152,9 @@ describe(`PeriodicTable`, () => {
     (active_category, expected_active) => {
       new PeriodicTable({
         target: document.body,
-        props: { active_category: active_category.replaceAll(` `, `-`) },
+        props: {
+          active_category: active_category.replaceAll(` `, `-`) as Category,
+        },
       })
 
       const active_tiles = document.querySelectorAll(`.element-tile.active`)
@@ -175,13 +180,14 @@ describe(`PeriodicTable`, () => {
     }
   )
 
-  test.each([{ foo: 42 }], [{}])(
-    `raises error when heatmap_values is object with unknown element symbols`,
+  test.each([[{ he: 0 }], [{ foo: 42 }]])(
+    `raises error when heatmap_values=%o is object with unknown element symbols`,
     (heatmap_values) => {
       console.error = vi.fn()
 
       new PeriodicTable({
         target: document.body,
+        // @ts-expect-error testing invalid input
         props: { heatmap_values },
       })
 
