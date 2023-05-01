@@ -26,7 +26,7 @@
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
   const dispatch = createEventDispatcher<PeriodicTableEvents>()
   function payload_event(dom_event: Event) {
-    dispatch(dom_event.type, { element, event: dom_event, active })
+    dispatch(dom_event.type, { element, dom_event, active })
   }
 
   function luminance(clr: string) {

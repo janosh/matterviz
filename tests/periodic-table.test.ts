@@ -49,7 +49,7 @@ test.describe(`Periodic Table`, () => {
       await element_tile.hover()
     }
 
-    expect(logs, logs).toHaveLength(0)
+    expect(logs, logs.join(`\n`)).toHaveLength(0)
   })
 
   test.describe(`in heatmap mode`, () => {

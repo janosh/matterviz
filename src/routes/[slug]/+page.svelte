@@ -7,10 +7,10 @@
     ElementHeading,
     ElementPhoto,
     ElementScatter,
-    element_data,
     Icon,
     PeriodicTable,
     PropertySelect,
+    element_data,
   } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
@@ -18,8 +18,8 @@
   import { PrevNext } from 'svelte-zoo'
 
   export let data
-
-  $: [$active_element, element] = [data.element, data.element]
+  $: ({ element } = data)
+  $: $active_element = element
 
   $: key_vals = Object.keys(property_labels)
     .filter((key) => element[key])
@@ -63,8 +63,10 @@
     Electronegativity: `mdi:electron-framework`,
   }
 
-  $: scatter_plot_values = element_data.map((el) => el[$heatmap_key])
-  $: [y_label, y_unit] = property_labels[$heatmap_key] ?? []
+  $: scatter_plot_values = element_data.map((el) =>
+    $heatmap_key ? el[$heatmap_key] : null
+  )
+  $: [y_label, y_unit] = $heatmap_key ? property_labels[$heatmap_key] ?? [] : []
   let color_scale: string
   let selected: string[]
 
