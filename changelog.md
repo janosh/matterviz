@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file. Dates are d
 
 <!-- auto-changelog-above -->
 
+#### [v0.1.7](https://github.com/janosh/elementari/compare/v0.1.6...v0.1.7)
+
+> 3 May 2023
+
+- Initial support for rendering interactive 3d structures [`#28`](https://github.com/janosh/elementari/pull/28)
+- Rename ColorBar props [`#27`](https://github.com/janosh/elementari/pull/27)
+- handle structure=undefined in Structure and StructureCard component [`3aa160b`](https://github.com/janosh/elementari/commit/3aa160b84371a72413bf5d8484c787c362d428dc)
+- add Structure props zoom_speed, pan_speed [`b2484ed`](https://github.com/janosh/elementari/commit/b2484eda368714f7a5ffb84d3e54002db423bdc1)
+- add option to show cell as surface, wireframe or not at all, add range slider for cell opacity [`072d57a`](https://github.com/janosh/elementari/commit/072d57ab91b495eb8b68d1f1b04efa3468284dc8)
+- add Structure props show_vectors, vector_colors, vector_origin [`a3f4468`](https://github.com/janosh/elementari/commit/a3f44687fe44b5fa518d6d37a2d1dc2e9eb2468a)
+- fix ElementTile dispatch event payload name dom_event [`f557b07`](https://github.com/janosh/elementari/commit/f557b07c8c383908d49adc63c005c5cb469e35ec)
+- Structure add bindable props width, height [`3921f9d`](https://github.com/janosh/elementari/commit/3921f9d067a9e1a840b6dcbca53c27d67b4c7434)
+- rename Structure-&gt;PymatgenStructure [`2009670`](https://github.com/janosh/elementari/commit/20096707f131d46a25a30f662c852f9a942479b3)
+
 #### [v0.1.5](https://github.com/janosh/elementari/compare/v0.1.4...v0.1.5)
 
 > 4 Apr 2023

@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/elementari",
   "repository": "https://github.com/janosh/elementari",
   "license": "MIT",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/elementari/issues",
@@ -33,13 +33,15 @@
     "d3-scale-chromatic": "^3.0.0",
     "d3-shape": "^3.2.0",
     "svelte": "^3.58.0",
-    "svelte-multiselect": "^8.6.1"
+    "svelte-multiselect": "^8.6.1",
+    "@threlte/core": "^5.0.9",
+    "three": "^0.152.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.33.0",
+    "@storybook/svelte": "^7.0.7",
     "@sveltejs/adapter-static": "2.0.2",
     "@sveltejs/package": "^2.0.2",
-    "@threlte/core": "^5.0.9",
     "@threlte/preprocess": "^0.0.2",
     "@types/d3-array": "^3.0.4",
     "@types/d3-color": "^3.1.0",
@@ -70,7 +72,6 @@
     "svelte-toc": "^0.5.5",
     "svelte-zoo": "^0.4.5",
     "svelte2tsx": "^0.6.11",
-    "three": "^0.152.2",
     "typescript": "5.0.4",
     "vite": "^4.3.3",
     "vitest": "^0.30.1"
