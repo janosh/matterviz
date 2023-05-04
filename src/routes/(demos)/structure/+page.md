@@ -5,11 +5,16 @@
   import { Structure, StructureCard } from '$lib'
   import Select from 'svelte-multiselect'
 
-  const structs = import.meta.glob('./mp-*.json', { eager: true, as: 'raw' })
+  const structs = import.meta.glob(`./mp-*.json`, {
+    eager: true,
+    import: `default`,
+  })
 
-  let mp_id = ['mp-1234']
+  let mp_id = [`mp-756175`]
+  let width
+  let height
   $: href = `https://materialsproject.org/materials/${mp_id[0]}`
-  $: structure = JSON.parse(structs[`./${mp_id[0]}.json`] ?? '{}')
+  $: structure = structs[`./${mp_id[0]}.json`] ?? {}
 </script>
 
 <form>
@@ -35,7 +40,8 @@
 <StructureCard {structure}>
   <a slot="title" {href}>{mp_id}</a>
 </StructureCard>
-<Structure {structure} />
+<p>canvas width=<span>{width}</span>, height=<span>{height}</span></p>
+<Structure {structure} bind:width bind:height />
 
 <style>
   form {
@@ -51,6 +57,12 @@
     background: black;
     width: calc(100cqw - 2em);
     z-index: 2;
+  }
+  p {
+    text-align: center;
+  }
+  p > span {
+    color: orange;
   }
 </style>
 ```
