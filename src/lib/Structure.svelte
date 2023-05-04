@@ -1,11 +1,8 @@
 <script lang="ts">
   import { Canvas, OrbitControls, T } from '@threlte/core'
-  import {
-    atomic_colors,
-    atomic_radii,
-    get_elements,
-    type PymatgenStructure,
-  } from './structure'
+  import { Tooltip } from 'svelte-zoo'
+  import type { PymatgenStructure } from './structure'
+  import { atomic_colors, atomic_radii, get_elements } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -21,7 +18,7 @@
   // zoom speed. set to 0 to disable zooming.
   export let zoom_speed: number = 0.3
   // pan speed. set to 0 to disable panning.
-  export let pan_speed: number = 0.3
+  export let pan_speed: number = 1
   // whether to show the controls panel
   export let show_controls: boolean = false
   // TODO whether to make the canvas fill the whole screen
@@ -40,6 +37,10 @@
   export let vector_colors: [string, string, string] = ['red', 'green', 'blue']
   // lattice vector origin (all arrows start from this point)
   export let vector_origin: { x: number; y: number; z: number } = { x: -1, y: -1, z: -1 }
+  // bindable width of the canvas
+  export let width: number = 0
+  // bindable height of the canvas
+  export let height: number = 0
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -75,7 +76,7 @@
 />
 
 {#if structure?.sites}
-  <div class="structure">
+  <div class="structure" bind:clientWidth={width} bind:clientHeight={height}>
     <div class="controls">
       <section>
         <button class="reset-camera" on:click={reset_camera}>Reset</button>
@@ -121,7 +122,9 @@
           <input type="range" min="0" max="2" step="0.01" bind:value={zoom_speed} />
         </label>
         <label>
-          Pan speed
+          <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
+            Pan speed
+          </Tooltip>
           <input type="range" min="0" max="2" step="0.01" bind:value={pan_speed} />
         </label>
       </form>
