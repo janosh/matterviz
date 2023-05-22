@@ -66,3 +66,39 @@
   }
 </style>
 ```
+
+## Multiple Structures in a grid
+
+```svelte example stackblitz code_above hideStyle
+<script>
+  import { Structure } from '$lib'
+
+  const structs = import.meta.glob(`./mp-*.json`, {
+    eager: true,
+    import: `default`,
+  })
+</script>
+
+<ul>
+  {#each Object.entries(structs) as [key, structure]}
+    {@const mp_id = key.split(`/`).at(-1).split(`.`)[0]}
+    <li>
+      <h2>
+        <a href="https://materialsproject.org/materials/{mp_id}">{mp_id}</a>
+      </h2>
+      <Structure {structure} />
+    </li>
+  {/each}
+</ul>
+
+<style>
+  ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1em;
+    list-style: none;
+    padding: 0;
+    text-align: center;
+  }
+</style>
+```

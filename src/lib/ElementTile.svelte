@@ -17,7 +17,8 @@
   // at what background color lightness text color switches from black to white
   export let text_color_threshold = 0.7
   export let text_color: string | null = null
-  export let precision: string | null = null
+  export let precision: string | undefined = undefined
+  export let node: HTMLElement | null = null
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -28,15 +29,14 @@
     dispatch(dom_event.type, { element, dom_event, active })
   }
 
-  let tile: HTMLElement
-  $: if (text_color_threshold != null) {
-    text_color = get_text_color(tile, bg_color, text_color_threshold)
+  $: if (text_color_threshold != null && node) {
+    text_color = get_text_color(node, bg_color, text_color_threshold)
   }
 </script>
 
 <svelte:element
   this={href ? 'a' : 'div'}
-  bind:this={tile}
+  bind:this={node}
   {href}
   data-sveltekit-noscroll
   class="element-tile {category}"

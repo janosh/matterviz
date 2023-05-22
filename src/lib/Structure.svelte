@@ -100,7 +100,7 @@
       <form bind:this={controls} class:open={show_controls}>
         <label>
           Atom radius
-          <input type="range" min="0.1" max="2" step="0.05" bind:value={atom_radius} />
+          <input type="range" min="0.1" max="1" step="0.05" bind:value={atom_radius} />
         </label>
         <label>
           <input type="checkbox" bind:checked={same_size_atoms} />
@@ -231,7 +231,7 @@
     padding: var(--controls-padding, 6pt 9pt);
     border-radius: var(--controls-border-radius, 3pt);
     width: var(--controls-width, 18em);
-    max-width: var(--controls-max-width, 40cqw);
+    max-width: var(--controls-max-width, 90cqw);
     margin: var(--controls-margin, 1ex 0 0 0);
   }
   .controls > form.open {
