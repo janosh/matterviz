@@ -10,18 +10,18 @@ describe(`ElementStats`, () => {
       new ElementStats({ target: document.body, props: { element } })
 
       const atomic_mass = doc_query(`div > section:nth-child(2) > strong`)
-      expect(atomic_mass.textContent.trim()).toBe(
+      expect(atomic_mass.textContent?.trim()).toBe(
         pretty_num(element.atomic_mass)
       )
 
       const density = doc_query(`div > section:nth-child(3) > strong`)
-      expect(density.textContent.trim()).toBe(pretty_num(element.density))
+      expect(density.textContent?.trim()).toBe(pretty_num(element.density))
 
       const phase = doc_query(`div > section:nth-child(4) > strong`)
-      expect(phase.textContent.trim()).toBe(element.phase)
+      expect(phase.textContent?.trim()).toBe(element.phase)
 
       const year = doc_query(`div > section:nth-child(5) > strong`)
-      expect(year.textContent.trim()).toBe(`${element.year}`)
+      expect(year.textContent?.trim()).toBe(`${element.year}`)
     }
   )
 })

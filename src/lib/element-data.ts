@@ -46,7 +46,6 @@ export default [
     specific_heat: 14.304,
     n_shells: 1,
     n_valence: 1,
-    jmol_color: [1.0, 1.0, 1.0],
     covalent_radius: 0.31,
   },
   {
@@ -90,7 +89,6 @@ export default [
     specific_heat: 5.193,
     n_shells: 1,
     n_valence: null,
-    jmol_color: [0.851, 1.0, 1.0],
     covalent_radius: 0.28,
   },
   {
@@ -134,7 +132,6 @@ export default [
     specific_heat: 3.582,
     n_shells: 2,
     n_valence: 1,
-    jmol_color: [0.8, 0.502, 1.0],
     covalent_radius: 1.28,
   },
   {
@@ -178,7 +175,6 @@ export default [
     specific_heat: 1.825,
     n_shells: 2,
     n_valence: 2,
-    jmol_color: [0.761, 1.0, 0.0],
     covalent_radius: 0.96,
   },
   {
@@ -222,7 +218,6 @@ export default [
     specific_heat: 1.026,
     n_shells: 2,
     n_valence: 3,
-    jmol_color: [1.0, 0.71, 0.71],
     covalent_radius: 0.84,
   },
   {
@@ -266,7 +261,6 @@ export default [
     specific_heat: 0.709,
     n_shells: 2,
     n_valence: 4,
-    jmol_color: [0.565, 0.565, 0.565],
     covalent_radius: 0.76,
   },
   {
@@ -310,7 +304,6 @@ export default [
     specific_heat: 1.04,
     n_shells: 2,
     n_valence: 5,
-    jmol_color: [0.188, 0.314, 0.973],
     covalent_radius: 0.71,
   },
   {
@@ -356,7 +349,6 @@ export default [
     specific_heat: 0.918,
     n_shells: 2,
     n_valence: 6,
-    jmol_color: [1.0, 0.051, 0.051],
     covalent_radius: 0.66,
   },
   {
@@ -402,7 +394,6 @@ export default [
     specific_heat: 0.824,
     n_shells: 2,
     n_valence: 7,
-    jmol_color: [0.565, 0.878, 0.314],
     covalent_radius: 0.57,
   },
   {
@@ -449,7 +440,6 @@ export default [
     specific_heat: 1.03,
     n_shells: 2,
     n_valence: 8,
-    jmol_color: [0.702, 0.89, 0.961],
     covalent_radius: 0.58,
   },
   {
@@ -496,7 +486,6 @@ export default [
     specific_heat: 1.228,
     n_shells: 3,
     n_valence: 1,
-    jmol_color: [0.671, 0.361, 0.949],
     covalent_radius: 1.66,
   },
   {
@@ -543,7 +532,6 @@ export default [
     specific_heat: 1.023,
     n_shells: 3,
     n_valence: 2,
-    jmol_color: [0.541, 1.0, 0.0],
     covalent_radius: 1.41,
   },
   {
@@ -590,7 +578,6 @@ export default [
     specific_heat: 0.897,
     n_shells: 3,
     n_valence: 3,
-    jmol_color: [0.749, 0.651, 0.651],
     covalent_radius: 1.21,
   },
   {
@@ -637,7 +624,6 @@ export default [
     specific_heat: 0.705,
     n_shells: 3,
     n_valence: 4,
-    jmol_color: [0.941, 0.784, 0.627],
     covalent_radius: 1.11,
   },
   {
@@ -684,7 +670,6 @@ export default [
     specific_heat: 0.769,
     n_shells: 3,
     n_valence: 5,
-    jmol_color: [1.0, 0.502, 0.0],
     covalent_radius: 1.07,
   },
   {
@@ -731,7 +716,6 @@ export default [
     specific_heat: 0.71,
     n_shells: 3,
     n_valence: 6,
-    jmol_color: [1.0, 1.0, 0.188],
     covalent_radius: 1.05,
   },
   {
@@ -778,7 +762,6 @@ export default [
     specific_heat: 0.479,
     n_shells: 3,
     n_valence: 7,
-    jmol_color: [0.122, 0.941, 0.122],
     covalent_radius: 1.02,
   },
   {
@@ -825,7 +808,6 @@ export default [
     specific_heat: 0.52,
     n_shells: 3,
     n_valence: 8,
-    jmol_color: [0.502, 0.82, 0.89],
     covalent_radius: 1.06,
   },
   {
@@ -872,7 +854,6 @@ export default [
     specific_heat: 0.757,
     n_shells: 4,
     n_valence: 1,
-    jmol_color: [0.561, 0.251, 0.831],
     covalent_radius: 2.03,
   },
   {
@@ -919,7 +900,6 @@ export default [
     specific_heat: 0.647,
     n_shells: 4,
     n_valence: 2,
-    jmol_color: [0.239, 1.0, 0.0],
     covalent_radius: 1.76,
   },
   {
@@ -967,7 +947,6 @@ export default [
     specific_heat: 0.568,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.902, 0.902, 0.902],
     covalent_radius: 1.7,
   },
   {
@@ -1015,7 +994,6 @@ export default [
     specific_heat: 0.523,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.749, 0.761, 0.78],
     covalent_radius: 1.6,
   },
   {
@@ -1063,7 +1041,6 @@ export default [
     specific_heat: 0.489,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.651, 0.651, 0.671],
     covalent_radius: 1.53,
   },
   {
@@ -1111,7 +1088,6 @@ export default [
     specific_heat: 0.449,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.541, 0.6, 0.78],
     covalent_radius: 1.39,
   },
   {
@@ -1159,7 +1135,6 @@ export default [
     specific_heat: 0.479,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.612, 0.478, 0.78],
     covalent_radius: 1.39,
   },
   {
@@ -1207,7 +1182,6 @@ export default [
     specific_heat: 0.449,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.878, 0.4, 0.2],
     covalent_radius: 1.32,
   },
   {
@@ -1255,7 +1229,6 @@ export default [
     specific_heat: 0.421,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.941, 0.565, 0.627],
     covalent_radius: 1.26,
   },
   {
@@ -1303,7 +1276,6 @@ export default [
     specific_heat: 0.444,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.314, 0.816, 0.314],
     covalent_radius: 1.24,
   },
   {
@@ -1351,7 +1323,6 @@ export default [
     specific_heat: 0.385,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.784, 0.502, 0.2],
     covalent_radius: 1.32,
   },
   {
@@ -1398,7 +1369,6 @@ export default [
     specific_heat: 0.388,
     n_shells: 4,
     n_valence: null,
-    jmol_color: [0.49, 0.502, 0.69],
     covalent_radius: 1.22,
   },
   {
@@ -1442,7 +1412,6 @@ export default [
     specific_heat: 0.371,
     n_shells: 4,
     n_valence: 3,
-    jmol_color: [0.761, 0.561, 0.561],
     covalent_radius: 1.22,
   },
   {
@@ -1486,7 +1455,6 @@ export default [
     specific_heat: 0.32,
     n_shells: 4,
     n_valence: 4,
-    jmol_color: [0.4, 0.561, 0.561],
     covalent_radius: 1.2,
   },
   {
@@ -1530,7 +1498,6 @@ export default [
     specific_heat: 0.329,
     n_shells: 4,
     n_valence: 5,
-    jmol_color: [0.741, 0.502, 0.89],
     covalent_radius: 1.19,
   },
   {
@@ -1574,7 +1541,6 @@ export default [
     specific_heat: 0.321,
     n_shells: 4,
     n_valence: 6,
-    jmol_color: [1.0, 0.631, 0.0],
     covalent_radius: 1.2,
   },
   {
@@ -1618,7 +1584,6 @@ export default [
     specific_heat: 0.474,
     n_shells: 4,
     n_valence: 7,
-    jmol_color: [0.651, 0.161, 0.161],
     covalent_radius: 1.2,
   },
   {
@@ -1666,7 +1631,6 @@ export default [
     specific_heat: 0.248,
     n_shells: 4,
     n_valence: 8,
-    jmol_color: [0.361, 0.722, 0.82],
     covalent_radius: 1.16,
   },
   {
@@ -1712,7 +1676,6 @@ export default [
     specific_heat: 0.363,
     n_shells: 5,
     n_valence: 1,
-    jmol_color: [0.439, 0.18, 0.69],
     covalent_radius: 2.2,
   },
   {
@@ -1758,7 +1721,6 @@ export default [
     specific_heat: 0.301,
     n_shells: 5,
     n_valence: 2,
-    jmol_color: [0.0, 1.0, 0.0],
     covalent_radius: 1.95,
   },
   {
@@ -1805,7 +1767,6 @@ export default [
     specific_heat: 0.298,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.58, 1.0, 1.0],
     covalent_radius: 1.9,
   },
   {
@@ -1849,7 +1810,6 @@ export default [
     specific_heat: 0.278,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.58, 0.878, 0.878],
     covalent_radius: 1.75,
   },
   {
@@ -1893,7 +1853,6 @@ export default [
     specific_heat: 0.265,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.451, 0.761, 0.788],
     covalent_radius: 1.64,
   },
   {
@@ -1941,7 +1900,6 @@ export default [
     specific_heat: 0.251,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.329, 0.71, 0.71],
     covalent_radius: 1.54,
   },
   {
@@ -1985,7 +1943,6 @@ export default [
     specific_heat: null,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.231, 0.62, 0.62],
     covalent_radius: 1.47,
   },
   {
@@ -2029,7 +1986,6 @@ export default [
     specific_heat: 0.238,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.141, 0.561, 0.561],
     covalent_radius: 1.46,
   },
   {
@@ -2073,7 +2029,6 @@ export default [
     specific_heat: 0.243,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.039, 0.49, 0.549],
     covalent_radius: 1.42,
   },
   {
@@ -2117,7 +2072,6 @@ export default [
     specific_heat: 0.244,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.0, 0.412, 0.522],
     covalent_radius: 1.39,
   },
   {
@@ -2161,7 +2115,6 @@ export default [
     specific_heat: 0.235,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [0.753, 0.753, 0.753],
     covalent_radius: 1.45,
   },
   {
@@ -2205,7 +2158,6 @@ export default [
     specific_heat: 0.232,
     n_shells: 5,
     n_valence: null,
-    jmol_color: [1.0, 0.851, 0.561],
     covalent_radius: 1.44,
   },
   {
@@ -2249,7 +2201,6 @@ export default [
     specific_heat: 0.233,
     n_shells: 5,
     n_valence: 3,
-    jmol_color: [0.651, 0.459, 0.451],
     covalent_radius: 1.42,
   },
   {
@@ -2293,7 +2244,6 @@ export default [
     specific_heat: 0.228,
     n_shells: 5,
     n_valence: 4,
-    jmol_color: [0.4, 0.502, 0.502],
     covalent_radius: 1.39,
   },
   {
@@ -2337,7 +2287,6 @@ export default [
     specific_heat: 0.207,
     n_shells: 5,
     n_valence: 5,
-    jmol_color: [0.62, 0.388, 0.71],
     covalent_radius: 1.39,
   },
   {
@@ -2381,7 +2330,6 @@ export default [
     specific_heat: 0.202,
     n_shells: 5,
     n_valence: 6,
-    jmol_color: [0.831, 0.478, 0.0],
     covalent_radius: 1.38,
   },
   {
@@ -2425,7 +2373,6 @@ export default [
     specific_heat: 0.214,
     n_shells: 5,
     n_valence: 7,
-    jmol_color: [0.58, 0.0, 0.58],
     covalent_radius: 1.39,
   },
   {
@@ -2469,7 +2416,6 @@ export default [
     specific_heat: 0.158,
     n_shells: 5,
     n_valence: 8,
-    jmol_color: [0.259, 0.62, 0.69],
     covalent_radius: 1.4,
   },
   {
@@ -2513,7 +2459,6 @@ export default [
     specific_heat: 0.242,
     n_shells: 6,
     n_valence: 1,
-    jmol_color: [0.341, 0.09, 0.561],
     covalent_radius: 2.44,
   },
   {
@@ -2557,7 +2502,6 @@ export default [
     specific_heat: 0.204,
     n_shells: 6,
     n_valence: 2,
-    jmol_color: [0.0, 0.788, 0.0],
     covalent_radius: 2.15,
   },
   {
@@ -2601,7 +2545,6 @@ export default [
     specific_heat: 0.195,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.439, 0.831, 1.0],
     covalent_radius: 2.07,
   },
   {
@@ -2645,7 +2588,6 @@ export default [
     specific_heat: 0.192,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [1.0, 1.0, 0.78],
     covalent_radius: 2.04,
   },
   {
@@ -2689,7 +2631,6 @@ export default [
     specific_heat: 0.193,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.851, 1.0, 0.78],
     covalent_radius: 2.03,
   },
   {
@@ -2733,7 +2674,6 @@ export default [
     specific_heat: 0.19,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.78, 1.0, 0.78],
     covalent_radius: 2.01,
   },
   {
@@ -2777,7 +2717,6 @@ export default [
     specific_heat: null,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.639, 1.0, 0.78],
     covalent_radius: 1.99,
   },
   {
@@ -2821,7 +2760,6 @@ export default [
     specific_heat: 0.197,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.561, 1.0, 0.78],
     covalent_radius: 1.98,
   },
   {
@@ -2865,7 +2803,6 @@ export default [
     specific_heat: 0.182,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.38, 1.0, 0.78],
     covalent_radius: 1.98,
   },
   {
@@ -2909,7 +2846,6 @@ export default [
     specific_heat: 0.236,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.271, 1.0, 0.78],
     covalent_radius: 1.96,
   },
   {
@@ -2953,7 +2889,6 @@ export default [
     specific_heat: 0.182,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.188, 1.0, 0.78],
     covalent_radius: 1.94,
   },
   {
@@ -2997,7 +2932,6 @@ export default [
     specific_heat: 0.17,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.122, 1.0, 0.78],
     covalent_radius: 1.92,
   },
   {
@@ -3041,7 +2975,6 @@ export default [
     specific_heat: 0.165,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.0, 1.0, 0.612],
     covalent_radius: 1.92,
   },
   {
@@ -3085,7 +3018,6 @@ export default [
     specific_heat: 0.168,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.0, 0.902, 0.459],
     covalent_radius: 1.89,
   },
   {
@@ -3129,7 +3061,6 @@ export default [
     specific_heat: 0.16,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.0, 0.831, 0.322],
     covalent_radius: 1.9,
   },
   {
@@ -3173,7 +3104,6 @@ export default [
     specific_heat: 0.155,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.0, 0.749, 0.22],
     covalent_radius: 1.87,
   },
   {
@@ -3217,7 +3147,6 @@ export default [
     specific_heat: 0.154,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.0, 0.671, 0.141],
     covalent_radius: 1.87,
   },
   {
@@ -3261,7 +3190,6 @@ export default [
     specific_heat: 0.144,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.302, 0.761, 1.0],
     covalent_radius: 1.75,
   },
   {
@@ -3305,7 +3233,6 @@ export default [
     specific_heat: 0.14,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.302, 0.651, 1.0],
     covalent_radius: 1.7,
   },
   {
@@ -3349,7 +3276,6 @@ export default [
     specific_heat: 0.132,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.129, 0.58, 0.839],
     covalent_radius: 1.62,
   },
   {
@@ -3393,7 +3319,6 @@ export default [
     specific_heat: 0.137,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.149, 0.49, 0.671],
     covalent_radius: 1.51,
   },
   {
@@ -3437,7 +3362,6 @@ export default [
     specific_heat: 0.13,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.149, 0.4, 0.588],
     covalent_radius: 1.44,
   },
   {
@@ -3481,7 +3405,6 @@ export default [
     specific_heat: 0.131,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.09, 0.329, 0.529],
     covalent_radius: 1.41,
   },
   {
@@ -3525,7 +3448,6 @@ export default [
     specific_heat: 0.133,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.816, 0.816, 0.878],
     covalent_radius: 1.36,
   },
   {
@@ -3569,7 +3491,6 @@ export default [
     specific_heat: 0.129,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [1.0, 0.82, 0.137],
     covalent_radius: 1.36,
   },
   {
@@ -3613,7 +3534,6 @@ export default [
     specific_heat: 0.14,
     n_shells: 6,
     n_valence: null,
-    jmol_color: [0.722, 0.722, 0.816],
     covalent_radius: 1.32,
   },
   {
@@ -3657,7 +3577,6 @@ export default [
     specific_heat: 0.129,
     n_shells: 6,
     n_valence: 3,
-    jmol_color: [0.651, 0.329, 0.302],
     covalent_radius: 1.45,
   },
   {
@@ -3701,7 +3620,6 @@ export default [
     specific_heat: 0.129,
     n_shells: 6,
     n_valence: 4,
-    jmol_color: [0.341, 0.349, 0.38],
     covalent_radius: 1.46,
   },
   {
@@ -3745,7 +3663,6 @@ export default [
     specific_heat: 0.122,
     n_shells: 6,
     n_valence: 5,
-    jmol_color: [0.62, 0.31, 0.71],
     covalent_radius: 1.48,
   },
   {
@@ -3789,7 +3706,6 @@ export default [
     specific_heat: null,
     n_shells: 6,
     n_valence: 6,
-    jmol_color: [0.671, 0.361, 0.0],
     covalent_radius: 1.4,
   },
   {
@@ -3833,7 +3749,6 @@ export default [
     specific_heat: null,
     n_shells: 6,
     n_valence: 7,
-    jmol_color: [0.459, 0.31, 0.271],
     covalent_radius: 1.5,
   },
   {
@@ -3877,7 +3792,6 @@ export default [
     specific_heat: 0.094,
     n_shells: 6,
     n_valence: 8,
-    jmol_color: [0.259, 0.51, 0.588],
     covalent_radius: 1.5,
   },
   {
@@ -3921,7 +3835,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 1,
-    jmol_color: [0.259, 0.0, 0.4],
     covalent_radius: 2.6,
   },
   {
@@ -3965,7 +3878,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 2,
-    jmol_color: [0.0, 0.49, 0.0],
     covalent_radius: 2.21,
   },
   {
@@ -4009,7 +3921,6 @@ export default [
     specific_heat: 0.12,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.439, 0.671, 0.98],
     covalent_radius: 2.15,
   },
   {
@@ -4053,7 +3964,6 @@ export default [
     specific_heat: 0.113,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.0, 0.729, 1.0],
     covalent_radius: 2.06,
   },
   {
@@ -4097,7 +4007,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.0, 0.631, 1.0],
     covalent_radius: 2,
   },
   {
@@ -4141,7 +4050,6 @@ export default [
     specific_heat: 0.116,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.0, 0.561, 1.0],
     covalent_radius: 1.96,
   },
   {
@@ -4185,7 +4093,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.0, 0.502, 1.0],
     covalent_radius: 1.9,
   },
   {
@@ -4229,7 +4136,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.0, 0.42, 1.0],
     covalent_radius: 1.87,
   },
   {
@@ -4273,7 +4179,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.329, 0.361, 0.949],
     covalent_radius: 1.8,
   },
   {
@@ -4317,7 +4222,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.471, 0.361, 0.89],
     covalent_radius: 1.69,
   },
   {
@@ -4361,7 +4265,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.541, 0.31, 0.89],
     covalent_radius: null,
   },
   {
@@ -4405,7 +4308,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.631, 0.212, 0.831],
     covalent_radius: null,
   },
   {
@@ -4449,7 +4351,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.702, 0.122, 0.831],
     covalent_radius: null,
   },
   {
@@ -4493,7 +4394,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.702, 0.122, 0.729],
     covalent_radius: null,
   },
   {
@@ -4537,7 +4437,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.702, 0.051, 0.651],
     covalent_radius: null,
   },
   {
@@ -4581,7 +4480,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.741, 0.051, 0.529],
     covalent_radius: null,
   },
   {
@@ -4625,7 +4523,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.78, 0.0, 0.4],
     covalent_radius: null,
   },
   {
@@ -4669,7 +4566,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.8, 0.0, 0.349],
     covalent_radius: null,
   },
   {
@@ -4713,7 +4609,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.82, 0.0, 0.31],
     covalent_radius: null,
   },
   {
@@ -4757,7 +4652,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.851, 0.0, 0.271],
     covalent_radius: null,
   },
   {
@@ -4801,7 +4695,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.878, 0.0, 0.22],
     covalent_radius: null,
   },
   {
@@ -4845,7 +4738,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.902, 0.0, 0.18],
     covalent_radius: null,
   },
   {
@@ -4889,7 +4781,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: [0.922, 0.0, 0.149],
     covalent_radius: null,
   },
   {
@@ -4933,7 +4824,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -4977,7 +4867,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5021,7 +4910,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: null,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5065,7 +4953,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 3,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5109,7 +4996,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 4,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5153,7 +5039,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 5,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5197,7 +5082,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 6,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5241,7 +5125,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 7,
-    jmol_color: null,
     covalent_radius: null,
   },
   {
@@ -5285,7 +5168,6 @@ export default [
     specific_heat: null,
     n_shells: 7,
     n_valence: 8,
-    jmol_color: null,
     covalent_radius: null,
   },
 ] satisfies ChemicalElement[]

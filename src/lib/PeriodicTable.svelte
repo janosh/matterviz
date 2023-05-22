@@ -29,12 +29,26 @@
   export let gap = `0.3cqw` // gap between element tiles, default is 0.3% of container width
   export let inner_transition_metal_offset = 0.5
   const default_lanth_act_tiles = [
-    { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
-    { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
+    {
+      name: `Lanthanides`,
+      symbol: `La-Lu`,
+      number: `57-71`,
+      category: `lanthanide` as const,
+    },
+    {
+      name: `Actinides`,
+      symbol: `Ac-Lr`,
+      number: `89-103`,
+      category: `actinide` as const,
+    },
   ]
   // show lanthanides and actinides as tiles
-  export let lanth_act_tiles =
-    tile_props?.show_symbol == false ? [] : default_lanth_act_tiles
+  export let lanth_act_tiles: {
+    name: string
+    symbol: string
+    number: string
+    category: Category
+  }[] = tile_props?.show_symbol == false ? [] : default_lanth_act_tiles
   export let lanth_act_style: string = ``
   export let color_scale_range: [number | null, number | null] = [null, null]
 

@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { rgb } from 'd3-color'
   import { createEventDispatcher } from 'svelte'
   import type { ChemicalElement, PeriodicTableEvents } from '.'
-  import { pretty_num } from './labels'
+  import { get_text_color, pretty_num } from './labels'
   import { last_element } from './stores'
 
   export let element: ChemicalElement
@@ -29,33 +28,10 @@
     dispatch(dom_event.type, { element, dom_event, active })
   }
 
-  function luminance(clr: string) {
-    // calculate human-perceived lightness from RGB
-    const { r, g, b } = rgb(clr)
-    // if (![r, g, b].every((c) => c >= 0 && c <= 255)) {
-    //   console.error(`invalid RGB color: ${clr}, parsed to rgb=${r},${g},${b}`)
-    // }
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 // https://stackoverflow.com/a/596243
-  }
-
-  function get_bg_color(
-    elem: HTMLElement | null,
-    bg_color: string | null = null
-  ): string {
-    if (bg_color) return bg_color
-    // recurse up the DOM tree to find the first non-transparent background color
-    const transparent = `rgba(0, 0, 0, 0)`
-    if (!elem) return `rgba(0, 0, 0, 0)`
-
-    let bg = getComputedStyle(elem).backgroundColor
-    if (bg !== transparent) return bg
-    return get_bg_color(elem.parentElement)
-  }
-
   let tile: HTMLElement
-  $: if (text_color_threshold != null)
-    text_color =
-      luminance(get_bg_color(tile, bg_color)) > text_color_threshold ? `black` : `white`
+  $: if (text_color_threshold != null) {
+    text_color = get_text_color(tile, bg_color, text_color_threshold)
+  }
 </script>
 
 <svelte:element

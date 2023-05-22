@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file. Dates are d
 
 <!-- auto-changelog-above -->
 
-#### [v0.1.7](https://github.com/janosh/elementari/compare/v0.1.6...v0.1.7)
+#### [v0.1.8](https://github.com/janosh/elementari/compare/v0.1.6...v0.1.8)
 
 > 3 May 2023
 
