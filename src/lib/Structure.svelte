@@ -1,8 +1,11 @@
 <script lang="ts">
   import { Canvas, OrbitControls, T } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
+  import StructureLegend from './StructureLegend.svelte'
+  import { element_color_schemes } from './colors'
+  import { element_colors } from './stores'
   import type { PymatgenStructure } from './structure'
-  import { atomic_colors, atomic_radii, get_elements } from './structure'
+  import { atomic_radii, get_elements } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -41,6 +44,10 @@
   export let width: number = 0
   // bindable height of the canvas
   export let height: number = 0
+  export let reset_text: string = 'Reset view'
+  export let color_scheme: 'Jmol' | 'Vesta' = 'Vesta'
+
+  $: $element_colors = element_color_schemes[color_scheme]
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -79,7 +86,7 @@
   <div class="structure" bind:clientWidth={width} bind:clientHeight={height}>
     <div class="controls">
       <section>
-        <button class="reset-camera" on:click={reset_camera}>Reset</button>
+        <button class="reset-camera" on:click={reset_camera}>{reset_text}</button>
         <button
           on:click={() => (show_controls = !show_controls)}
           bind:this={toggle_controls_btn}
@@ -90,7 +97,7 @@
         </button>
       </section>
 
-      <form bind:this={controls} class="controls" class:open={show_controls}>
+      <form bind:this={controls} class:open={show_controls}>
         <label>
           Atom radius
           <input type="range" min="0.1" max="2" step="0.05" bind:value={atom_radius} />
@@ -127,6 +134,15 @@
           </Tooltip>
           <input type="range" min="0" max="2" step="0.01" bind:value={pan_speed} />
         </label>
+        <!-- color scheme -->
+        <label>
+          Color scheme
+          <select bind:value={color_scheme}>
+            {#each Object.keys(element_color_schemes) as key}
+              <option value={key}>{key}</option>
+            {/each}
+          </select>
+        </label>
       </form>
     </div>
 
@@ -151,7 +167,7 @@
         {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
         <T.Mesh position={xyz} transparent opacity={1}>
           <T.SphereGeometry args={[radius, 20, 20]} />
-          <T.MeshStandardMaterial color={atomic_colors[elem]} />
+          <T.MeshStandardMaterial color={$element_colors[elem]} />
         </T.Mesh>
       {/each}
 
@@ -175,13 +191,7 @@
       {/if}
     </Canvas>
 
-    <div class="element-list">
-      {#each get_elements(structure) as elem}
-        <span class="element" style="background-color: {atomic_colors[elem]}">
-          {elem}
-        </span>
-      {/each}
-    </div>
+    <StructureLegend elements={get_elements(structure)} />
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -207,21 +217,22 @@
   }
   .controls > section {
     display: flex;
+    justify-content: end;
     gap: 1ex;
   }
   .controls > form {
     display: grid;
-    right: 0;
-    margin-top: 22px;
-    background-color: rgba(0, 0, 0, 0.6);
-    padding: 6pt 9pt;
-    border-radius: 3pt;
+    gap: 1ex;
     visibility: hidden;
     opacity: 0;
     transition: visibility 0.1s, opacity 0.1s linear;
-    width: 18em;
     box-sizing: border-box;
-    max-width: 40cqw;
+    background-color: var(--controls-bg, rgba(0, 0, 0, 0.7));
+    padding: var(--controls-padding, 6pt 9pt);
+    border-radius: var(--controls-border-radius, 3pt);
+    width: var(--controls-width, 18em);
+    max-width: var(--controls-max-width, 40cqw);
+    margin: var(--controls-margin, 1ex 0 0 0);
   }
   .controls > form.open {
     visibility: visible;
@@ -236,18 +247,5 @@
   p.warn {
     font-size: larger;
     text-align: center;
-  }
-
-  .element-list {
-    position: absolute;
-    bottom: var(--struct-elem-list-bottom, 8pt);
-    right: var(--struct-elem-list-right, 8pt);
-    display: flex;
-    gap: 5pt;
-    font-size: var(--struct-elem-list-font-size, 14pt);
-  }
-  .element {
-    padding: 1pt 4pt;
-    border-radius: var(--struct-elem-list-border-radius, 3pt);
   }
 </style>

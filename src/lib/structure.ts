@@ -1,5 +1,4 @@
 // Utilities for dealing with pymatgen Structures
-import { rgb } from 'd3-color'
 import type { ElementSymbol } from '.'
 import element_data from './element-data'
 import { pretty_num } from './labels'
@@ -64,13 +63,6 @@ export function alphabetical_formula(structure: PymatgenStructure) {
 export const atomic_radii: Record<ElementSymbol, number> = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_radius / 2])
 )
-export const atomic_colors: Record<ElementSymbol, string[]> =
-  Object.fromEntries(
-    element_data.map((el) => [
-      el.symbol,
-      `${rgb(...(el.jmol_color?.map((x) => x * 255) ?? []))}`,
-    ])
-  )
 
 export const atomic_weights = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_mass])

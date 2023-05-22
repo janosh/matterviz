@@ -102,25 +102,28 @@ describe(`ElementTile`, () => {
     }
   )
 
-  describe.each([[`name`], [`number`], [`symbol`]])(`prop=%s`, (prop) => {
-    test.each([[true], [false]])(
-      `show_${prop} toggles ${prop} visibility`,
-      (value) => {
-        new ElementTile({
-          target: document.body,
-          props: { element: rand_element, [`show_${prop}`]: value },
-        })
+  describe.each([[`name`], [`number`], [`symbol`]] as const)(
+    `prop=%s`,
+    (prop) => {
+      test.each([[true], [false]])(
+        `show_${prop} toggles ${prop} visibility`,
+        (value) => {
+          new ElementTile({
+            target: document.body,
+            props: { element: rand_element, [`show_${prop}`]: value },
+          })
 
-        if (value) {
-          const span = doc_query(`.${prop}`)
+          if (value) {
+            const span = doc_query(`.${prop}`)
 
-          expect(span.textContent).toBe(`${rand_element[prop]}`)
-        } else {
-          expect(document.querySelector(`.${prop}`)).toBeNull()
+            expect(span.textContent).toBe(`${rand_element[prop]}`)
+          } else {
+            expect(document.querySelector(`.${prop}`)).toBeNull()
+          }
         }
-      }
-    )
-  })
+      )
+    }
+  )
   test.each([
     [true, true, true],
     [false, false, false],

@@ -1,5 +1,6 @@
 import type { Category, ChemicalElement } from '.'
 // .ts ext needed for Playwright to be able to resolve import
+import { rgb } from 'd3-color'
 import { format } from 'd3-format'
 
 // TODO add labels and units for all elemental properties
@@ -84,3 +85,37 @@ export const categories = [
 
 // prettier-ignore
 export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
+
+// function combo used to retrieve background color and to compute text color to maximize contrast
+export function luminance(clr: string) {
+  // calculate human-perceived lightness from RGB
+  const { r, g, b } = rgb(clr)
+  // if (![r, g, b].every((c) => c >= 0 && c <= 255)) {
+  //   console.error(`invalid RGB color: ${clr}, parsed to rgb=${r},${g},${b}`)
+  // }
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 // https://stackoverflow.com/a/596243
+}
+
+export function get_bg_color(
+  elem: HTMLElement | null,
+  bg_color: string | null = null
+): string {
+  if (bg_color) return bg_color
+  // recurse up the DOM tree to find the first non-transparent background color
+  const transparent = `rgba(0, 0, 0, 0)`
+  if (!elem) return `rgba(0, 0, 0, 0)`
+
+  const bg = getComputedStyle(elem).backgroundColor
+  if (bg !== transparent) return bg
+  return get_bg_color(elem.parentElement)
+}
+
+export function get_text_color(
+  node: HTMLElement | null,
+  // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails
+  bg_color: string | null = null,
+  text_color_threshold: number = 0.7
+) {
+  const dark_bg = luminance(get_bg_color(node, bg_color)) < text_color_threshold
+  return dark_bg ? `white` : `black`
+}
