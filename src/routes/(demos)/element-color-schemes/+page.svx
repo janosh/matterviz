@@ -1,0 +1,21 @@
+## Element Color Schemes
+
+```svelte example
+<script>
+  import { PeriodicTable } from '$lib'
+  import { element_color_schemes } from '$lib/colors'
+</script>
+
+{#each Object.entries(element_color_schemes) as [id, scheme]}
+  <h3 {id}>{id}</h3>
+  <PeriodicTable color_overrides={scheme} />
+{/each}
+
+<style>
+  h3 {
+    text-align: center;
+    margin: 2em 0 -2em -20cqw;
+    font-size: 5cqw;
+  }
+</style>
+```

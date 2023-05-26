@@ -51,6 +51,7 @@
   }[] = tile_props?.show_symbol == false ? [] : default_lanth_act_tiles
   export let lanth_act_style: string = ``
   export let color_scale_range: [number | null, number | null] = [null, null]
+  export let color_overrides: Record<string, string> = {}
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -138,7 +139,7 @@
           : null}
         style="grid-column: {column}; grid-row: {row};"
         {value}
-        bg_color={bg_color(value)}
+        bg_color={color_overrides[symbol] ?? bg_color(value)}
         {active}
         {...tile_props}
         on:mouseenter={set_active_element(element)}
