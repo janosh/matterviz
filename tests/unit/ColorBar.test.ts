@@ -43,11 +43,11 @@ describe(`ColorBar`, () => {
 
     new ColorBar({
       target: document.body,
-      props: { color_scale: `purposely invalid color scale` },
+      props: { color_scale: `purposely invalid` },
     })
 
     expect(spy).toHaveBeenCalledWith(
-      `Color scale 'purposely invalid color scale' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`
+      `Color scale 'purposely invalid' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`
     )
   })
 })

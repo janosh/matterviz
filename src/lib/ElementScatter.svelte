@@ -10,7 +10,7 @@
   export let x_label = `Atomic Number`
   export let y_label: string = ``
   export let y_unit: string = ``
-  export let tooltip_point: Coords
+  export let tooltip_point: Coords | null = null
   export let hovered: boolean = false
 
   // update tooltip on hover element tile

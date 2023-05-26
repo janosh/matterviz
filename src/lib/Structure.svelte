@@ -23,7 +23,11 @@
   // pan speed. set to 0 to disable panning.
   export let pan_speed: number = 1
   // whether to show the controls panel
-  export let show_controls: boolean = false
+  export let controls_open: boolean = false
+  // only show the buttons when hovering over the canvas on desktop screens
+  // mobile screens don't have hover, so by default the buttons are always
+  // shown on a canvas of width below 500px
+  export let reveal_buttons: boolean | number = 500
   // TODO whether to make the canvas fill the whole screen
   // export let fullscreen: boolean = false
   // whether to show the structure's lattice cell as a wireframe
@@ -46,12 +50,13 @@
   export let height: number = 0
   export let reset_text: string = 'Reset view'
   export let color_scheme: 'Jmol' | 'Vesta' = 'Vesta'
+  export let hovered: boolean = false
 
   $: $element_colors = element_color_schemes[color_scheme]
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
-      show_controls = false
+      controls_open = false
     }
   }
 
@@ -68,6 +73,9 @@
   const initial_zoom = zoom
   let orbit_controls: OrbitControls
   $: orbit_controls?.saveState() // record orbit target for reset
+  $: visible_buttons =
+    reveal_buttons == true ||
+    (typeof reveal_buttons == 'number' && reveal_buttons < width)
 
   const reset_camera = () => {
     zoom = initial_zoom
@@ -78,26 +86,32 @@
 <svelte:window
   on:keydown={on_keydown}
   on:click={on_window_click([controls, toggle_controls_btn], () => {
-    if (show_controls) show_controls = false
+    if (controls_open) controls_open = false
   })}
 />
 
 {#if structure?.sites}
-  <div class="structure" bind:clientWidth={width} bind:clientHeight={height}>
-    <div class="controls">
+  <div
+    class="structure"
+    bind:clientWidth={width}
+    bind:clientHeight={height}
+    on:mouseenter={() => (hovered = true)}
+    on:mouseleave={() => (hovered = false)}
+  >
+    <div class="controls" class:visible={hovered || visible_buttons}>
       <section>
         <button class="reset-camera" on:click={reset_camera}>{reset_text}</button>
         <button
-          on:click={() => (show_controls = !show_controls)}
+          on:click={() => (controls_open = !controls_open)}
           bind:this={toggle_controls_btn}
         >
-          <slot name="controls-toggle" {show_controls}>
-            {show_controls ? 'Close' : 'Controls'}
+          <slot name="controls-toggle" {controls_open}>
+            {controls_open ? 'Close' : 'Controls'}
           </slot>
         </button>
       </section>
 
-      <form bind:this={controls} class:open={show_controls}>
+      <form bind:this={controls} class:open={controls_open}>
         <label>
           Atom radius
           <input type="range" min="0.1" max="1" step="0.05" bind:value={atom_radius} />
@@ -207,6 +221,7 @@
     border-radius: 3pt;
     position: relative;
     container-type: inline-size;
+    --controls-transition-duration: 0.3s;
   }
 
   .controls {
@@ -214,6 +229,27 @@
     z-index: var(--controls-z-index, 1);
     top: var(--controls-top, 8pt);
     right: var(--controls-right, 8pt);
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity var(--controls-transition-duration),
+      visibility var(--controls-transition-duration) linear;
+  }
+
+  .controls.visible {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .structure:hover .controls {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  @media screen and (max-width: 500px) {
+    .controls {
+      visibility: visible;
+      opacity: 1;
+    }
   }
   .controls > section {
     display: flex;
@@ -225,7 +261,8 @@
     gap: 1ex;
     visibility: hidden;
     opacity: 0;
-    transition: visibility 0.1s, opacity 0.1s linear;
+    transition: visibility var(--controls-transition-duration),
+      opacity var(--controls-transition-duration);
     box-sizing: border-box;
     background-color: var(--controls-bg, rgba(0, 0, 0, 0.7));
     padding: var(--controls-padding, 6pt 9pt);
