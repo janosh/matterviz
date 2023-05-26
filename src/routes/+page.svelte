@@ -5,10 +5,10 @@
     ColorScaleSelect,
     ElementScatter,
     ElementStats,
-    element_data,
     PeriodicTable,
     PropertySelect,
     TableInset,
+    element_data,
   } from '$lib'
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, last_element } from '$lib/stores'
@@ -48,21 +48,21 @@
   {/if}
 </form>
 
-{#if $last_element && window_width > 1100}
-  {@const { shells, name, symbol } = $last_element}
-  <a href="bohr-atoms">
-    <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
-  </a>
-{/if}
 <PeriodicTable
   tile_props={{ show_name: window_width > 1000 }}
   {heatmap_values}
-  style="margin: 2em auto 4em; max-width: 85vw;"
+  style="margin: 2em auto 4em; max-width: min(85vw, 1400px);"
   bind:color_scale
   bind:active_element={$active_element}
   bind:active_category={$active_category}
   links="name"
 >
+  {#if $last_element && window_width > 1100}
+    {@const { shells, name, symbol } = $last_element}
+    <a href="bohr-atom">
+      <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
+    </a>
+  {/if}
   <!-- set max-height to ensure ScatterPlot is never taller than 3 PeriodicTable
   rows so it doesn't stretch the table. assumes PeriodicTable has 18 rows -->
   <TableInset slot="inset">
@@ -99,10 +99,9 @@
   h2 {
     text-align: center;
   }
-  a[href='bohr-atoms'] {
+  a[href='bohr-atom'] {
     position: absolute;
-    top: 2%;
-    left: 3%;
+    top: -240px;
   }
   form {
     display: flex;

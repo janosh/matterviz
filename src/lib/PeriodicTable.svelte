@@ -170,6 +170,7 @@
         <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2;" />
       {/if}
     </slot>
+    <slot />
   </div>
 </div>
 
