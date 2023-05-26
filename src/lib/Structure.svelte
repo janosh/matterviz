@@ -104,6 +104,7 @@
         <button
           on:click={() => (controls_open = !controls_open)}
           bind:this={toggle_controls_btn}
+          class="controls-toggle"
         >
           <slot name="controls-toggle" {controls_open}>
             {controls_open ? 'Close' : 'Controls'}

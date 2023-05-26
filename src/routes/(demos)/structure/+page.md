@@ -3,25 +3,21 @@
 ```svelte example stackblitz code_above hideStyle
 <script>
   import { Structure, StructureCard } from '$lib'
+  import { structures } from '$site'
   import Select from 'svelte-multiselect'
-
-  const structs = import.meta.glob(`./mp-*.json`, {
-    eager: true,
-    import: `default`,
-  })
 
   let mp_id = [`mp-756175`]
   let width
   let height
   $: href = `https://materialsproject.org/materials/${mp_id[0]}`
-  $: structure = structs[`./${mp_id[0]}.json`] ?? {}
+  $: structure = structures.find((struct) => struct.id === mp_id[0])
 </script>
 
 <form>
   <label for="select">Select a structure:</label>
   <Select
     id="select"
-    options={Object.keys(structs).map((k) => k.slice(2, -5))}
+    options={structures.map((struct) => struct.id)}
     bind:selected={mp_id}
     maxSelect={1}
     minSelect={1}
@@ -72,19 +68,15 @@
 ```svelte example stackblitz code_above hideStyle
 <script>
   import { Structure } from '$lib'
-
-  const structs = import.meta.glob(`./mp-*.json`, {
-    eager: true,
-    import: `default`,
-  })
+  import { structures } from '$site'
 </script>
 
 <ul>
-  {#each Object.entries(structs) as [key, structure]}
-    {@const mp_id = key.split(`/`).at(-1).split(`.`)[0]}
+  {#each structures as structure}
+    {@const { id } = structure}
     <li>
       <h2>
-        <a href="https://materialsproject.org/materials/{mp_id}">{mp_id}</a>
+        <a href="https://materialsproject.org/materials/{id}">{id}</a>
       </h2>
       <Structure {structure} />
     </li>

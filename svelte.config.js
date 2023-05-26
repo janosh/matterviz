@@ -27,6 +27,11 @@ export default {
     mdsvex({ remarkPlugins, rehypePlugins, extensions: [`.svx`, `.md`] }),
   ],
 
+  compilerOptions: {
+    // enable direct prop access for vitest unit tests
+    accessors: process.env.TEST,
+  },
+
   kit: {
     adapter: adapter(),
 
