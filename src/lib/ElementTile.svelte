@@ -19,6 +19,7 @@
   export let text_color: string | null = null
   export let precision: string | undefined = undefined
   export let node: HTMLElement | null = null
+  export let label: string | null = null
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -67,7 +68,7 @@
     </span>
   {:else if show_name}
     <span class="name">
-      {element.name}
+      {label ?? element.name}
     </span>
   {/if}
 </svelte:element>

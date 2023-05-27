@@ -21,7 +21,7 @@
   export let heatmap_values: Record<ElementSymbol, number> | number[] = []
   // links is either string with element property (name, symbol, number, ...) to use as link,
   // or object with mapping element symbols to link
-  export let links: keyof ChemicalElement | Record<string, string> | null = null
+  export let links: keyof ChemicalElement | Record<ElementSymbol, string> | null = null
   export let log = false
   export let color_scale: string | ((num: number) => string) = `Viridis`
   export let active_element: ChemicalElement | null = null
@@ -51,7 +51,8 @@
   }[] = tile_props?.show_symbol == false ? [] : default_lanth_act_tiles
   export let lanth_act_style: string = ``
   export let color_scale_range: [number | null, number | null] = [null, null]
-  export let color_overrides: Record<string, string> = {}
+  export let color_overrides: Record<ElementSymbol, string> = {}
+  export let labels: Record<ElementSymbol, string> = {}
 
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
@@ -141,6 +142,7 @@
         {value}
         bg_color={color_overrides[symbol] ?? bg_color(value)}
         {active}
+        label={labels[symbol]}
         {...tile_props}
         on:mouseenter={set_active_element(element)}
         on:mouseleave={set_active_element(null)}
