@@ -1,11 +1,16 @@
 <script lang="ts">
   import { Canvas, OrbitControls, T } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
+  import Icon from './Icon.svelte'
   import StructureLegend from './StructureLegend.svelte'
   import { element_color_schemes } from './colors'
   import { element_colors } from './stores'
-  import type { PymatgenStructure } from './structure'
-  import { atomic_radii, get_elements } from './structure'
+  import {
+    alphabetical_formula,
+    atomic_radii,
+    get_elements,
+    type PymatgenStructure,
+  } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -17,7 +22,10 @@
   // initial camera position from which to render the scene
   export let camera_position: [number, number, number] = [10, 10, 10]
   // zoom level of the camera
-  export let zoom: number = 1 / 50
+  export let initial_zoom: number | undefined = undefined
+  export let orbit_controls: OrbitControls | undefined = undefined
+  export let max_zoom: number | undefined = undefined
+  export let min_zoom: number | undefined = undefined
   // zoom speed. set to 0 to disable zooming.
   export let zoom_speed: number = 0.3
   // pan speed. set to 0 to disable panning.
@@ -33,9 +41,9 @@
   // whether to show the structure's lattice cell as a wireframe
   export let show_cell: 'surface' | 'wireframe' | null = 'wireframe'
   // the control panel DOM element
-  export let controls: HTMLElement | null = null
+  export let controls: HTMLElement | undefined = undefined
   // the button to toggle the control panel
-  export let toggle_controls_btn: HTMLButtonElement | null = null
+  export let toggle_controls_btn: HTMLButtonElement | undefined = undefined
   // cell opacity
   export let cell_opacity: number | undefined = undefined
   // whether to show the lattice vectors
@@ -61,7 +69,10 @@
   }
 
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
-
+  $: {
+    const scale = initial_zoom ?? 2400 / (width + height)
+    camera_position = [scale * a, 0.5 * scale * b, scale * c]
+  }
   const on_window_click =
     (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
       if (!node || !event.target) return // ignore invalid input
@@ -70,16 +81,30 @@
       cb() // invoke callback
     }
 
-  const initial_zoom = zoom
-  let orbit_controls: OrbitControls
   $: orbit_controls?.saveState() // record orbit target for reset
   $: visible_buttons =
     reveal_buttons == true ||
     (typeof reveal_buttons == 'number' && reveal_buttons < width)
 
-  const reset_camera = () => {
-    zoom = initial_zoom
-    orbit_controls?.reset()
+  // Function to download data to a file
+  function download(data: string, filename: string, type: string) {
+    const file = new Blob([data], { type: type })
+    const anchor = document.createElement('a')
+    const url = URL.createObjectURL(file)
+    anchor.href = url
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+  function download_json() {
+    if (!structure) alert('No structure to download')
+    const data = JSON.stringify(structure, null, 2)
+    const filename = structure?.id
+      ? `${structure?.id} (${alphabetical_formula(structure)}).json`
+      : `${alphabetical_formula(structure)}.json`
+    download(data, filename, 'application/json')
   }
 </script>
 
@@ -100,7 +125,9 @@
   >
     <div class="controls" class:visible={hovered || visible_buttons}>
       <section>
-        <button class="reset-camera" on:click={reset_camera}>{reset_text}</button>
+        <!-- TODO show only when camera was moved -->
+        <button class="reset-camera" on:click={orbit_controls?.reset}>{reset_text}</button
+        >
         <button
           on:click={() => (controls_open = !controls_open)}
           bind:this={toggle_controls_btn}
@@ -158,11 +185,15 @@
             {/each}
           </select>
         </label>
+        <button type="button" on:click={download_json} title="Download Structure as JSON">
+          <Icon icon="mdi:download" />
+          Download Structure as JSON
+        </button>
       </form>
     </div>
 
     <Canvas>
-      <T.PerspectiveCamera makeDefault position={camera_position} fov={1 / zoom}>
+      <T.PerspectiveCamera makeDefault position={camera_position}>
         <OrbitControls
           enableZoom={zoom_speed > 0}
           zoomSpeed={zoom_speed}
@@ -170,6 +201,8 @@
           panSpeed={pan_speed}
           target={{ x: a / 2, y: b / 2, z: c / 2 }}
           bind:controls={orbit_controls}
+          maxZoom={max_zoom}
+          minZoom={min_zoom}
         />
       </T.PerspectiveCamera>
 
@@ -271,6 +304,10 @@
     width: var(--controls-width, 18em);
     max-width: var(--controls-max-width, 90cqw);
     margin: var(--controls-margin, 1ex 0 0 0);
+  }
+  .controls > form > button {
+    width: max-content;
+    background-color: rgba(255, 255, 255, 0.4);
   }
   .controls > form.open {
     visibility: visible;
