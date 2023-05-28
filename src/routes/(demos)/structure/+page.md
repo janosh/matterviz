@@ -10,7 +10,7 @@
   let width
   let height
   $: href = `https://materialsproject.org/materials/${mp_id[0]}`
-  $: structure = structures.find((struct) => struct.id === mp_id[0])
+  $: structure = structures.find((struct) => struct.id === mp_id[0]) || {}
 </script>
 
 <form>
