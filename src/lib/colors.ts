@@ -127,7 +127,7 @@ export const jmol = {
   Bh: [224, 0, 56],
   Hs: [230, 0, 46],
   Mt: [235, 0, 38],
-} as const // Record<ElementSymbol, [number, number, number]>
+} as const
 
 export const vesta = {
   Ac: [112, 171, 250],
