@@ -29,9 +29,9 @@
     <strong>
       Volume:
       <span class="value">
-        {pretty_num(volume, '.1f')} Å³
+        {pretty_num(volume, `.1f`)} Å³
         <small>
-          &nbsp; ({pretty_num(volume / structure?.sites.length, '.1f')} Å³/atom)
+          &nbsp; ({pretty_num(volume / structure?.sites.length, `.1f`)} Å³/atom)
         </small></span
       >
     </strong>

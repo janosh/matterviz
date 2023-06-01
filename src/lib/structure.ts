@@ -6,18 +6,21 @@ import { pretty_num } from './labels'
 export type Species = {
   element: ElementSymbol
   occu: number
+  oxidation_state: number
 }
+
+export type Vector = [number, number, number]
 
 export type Site = {
   species: Species[]
-  abc: number[]
-  xyz: number[]
+  abc: Vector
+  xyz: Vector
   label: string
   properties: Record<string, unknown>
 }
 
 export type Lattice = {
-  matrix: number[][]
+  matrix: [Vector, Vector, Vector]
   pbc: boolean[]
   a: number
   b: number
