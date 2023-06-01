@@ -1,11 +1,9 @@
 import adapter from '@sveltejs/adapter-static'
-import { preprocessThrelte } from '@threlte/preprocess'
 import { mdsvex } from 'mdsvex'
 import mdsvexamples from 'mdsvexamples'
 import katex from 'rehype-katex-svelte'
 import math from 'remark-math'
 import preprocess from 'svelte-preprocess'
-import seq_preprocessor from 'svelte-sequential-preprocessor'
 
 const { default: pkg } = await import(`./package.json`, {
   assert: { type: `json` },
@@ -23,7 +21,7 @@ export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
   preprocess: [
-    seq_preprocessor([preprocess(), preprocessThrelte()]),
+    preprocess(),
     mdsvex({ remarkPlugins, rehypePlugins, extensions: [`.svx`, `.md`] }),
   ],
 

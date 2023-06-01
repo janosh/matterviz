@@ -7,7 +7,7 @@
   import { element_colors } from './stores'
 
   export let elements: ElementSymbol[] = []
-  export let elem_color_picker_title: string = 'Double click to reset color'
+  export let elem_color_picker_title: string = `Double click to reset color`
   export let labels: HTMLLabelElement[] = []
   export let style: string | null = null
 </script>
@@ -17,6 +17,7 @@
     <Tooltip
       text={element_data.find((el) => el.symbol == elem)?.name}
       --zoo-tooltip-bg="rgba(255, 255, 255, 0.3)"
+      tip_style="font-size: initial; padding: 0 5pt;"
     >
       <label
         bind:this={labels[idx]}

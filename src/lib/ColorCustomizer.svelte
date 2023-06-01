@@ -20,18 +20,18 @@
     on:keyup={(e) => [`Enter`, ` `].includes(e.key) && (open = !open)}
     title={!open && collapsible ? `Click to open color picker` : null}
     style:cursor={collapsible ? `pointer` : `default`}
-    transition:fade|local
+    transition:fade
   >
     <Icon icon="ion:color-palette" />
     Customize Colors
   </h2>
 </slot>
-<div class="grid" transition:fade|local>
+<div class="grid" transition:fade>
   {#if open || !collapsible}
     {#each Object.keys($category_colors) as category}
       <label
         for="{category}-color"
-        transition:fade|local={{ duration: 200 }}
+        transition:fade={{ duration: 200 }}
         on:mouseenter={() => ($active_category = category)}
         on:focus={() => ($active_category = category)}
         on:mouseleave={() => ($active_category = null)}
