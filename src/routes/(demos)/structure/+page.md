@@ -1,3 +1,11 @@
+<script>
+  import { FileDetails } from 'svelte-zoo'
+
+  const files = Object.entries(import.meta.glob('$lib/Structure*', { as: 'raw', eager: true })).map(([path, content]) => {
+    return { title: path, content }
+  })
+</script>
+
 ## `Structure.svelte`
 
 ```svelte example stackblitz code_above hideStyle
@@ -63,6 +71,8 @@
 </style>
 ```
 
+<FileDetails {files} />
+
 ## Multiple Structures in a grid
 
 ```svelte example stackblitz code_above hideStyle
@@ -74,10 +84,9 @@
 <ul>
   {#each structures as structure}
     {@const { id } = structure}
+    {@const href = `https://materialsproject.org/materials/${id}`}
     <li>
-      <h2>
-        <a href="https://materialsproject.org/materials/{id}">{id}</a>
-      </h2>
+      <h2><a {href}>{id}</a></h2>
       <Structure {structure} />
     </li>
   {/each}

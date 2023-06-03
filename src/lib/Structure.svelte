@@ -62,6 +62,7 @@
 
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
   $: {
+    // set camera position based on structure size
     const scale = initial_zoom ?? 2400 / (width + height)
     camera_position = [scale * a, 0.5 * scale * b, scale * c]
   }
@@ -235,6 +236,7 @@
     gap: 1ex;
     visibility: hidden;
     opacity: 0;
+    text-align: var(--controls-text-align, left);
     transition: visibility var(--controls-transition-duration),
       opacity var(--controls-transition-duration);
     box-sizing: border-box;
