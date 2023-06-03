@@ -10,7 +10,7 @@ const pages = [
   {
     url: `/`,
     name: `landing-page`,
-    actions: [[`hover`, `a[href="selenium"]`]],
+    actions: [[`hover`, `a[href*="selenium"]`]],
   },
   {
     url: `/`,
@@ -19,7 +19,7 @@ const pages = [
       [`click`, `input[placeholder="Select a heat map"]`],
       [`click`, `ul.options > li:nth-child(2)`],
       [`click`, `h1`], // close dropdown
-      [`hover`, `a[href="radon"]`],
+      [`hover`, `a[href*="radon"]`],
     ],
   },
   { url: `/radon`, name: `details-page` },

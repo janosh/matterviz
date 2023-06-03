@@ -23,6 +23,10 @@ Below a screenshot demonstrating the periodicity of elemental properties, the re
 
 ![Screenshot of periodic table heatmap](static/2023-02-13-heatmap.webp)
 
+## ⚛️ &thinsp; 3D Structure Viewer
+
+![3D Structure Viewer](https://github.com/janosh/elementari/assets/30958850/72f78ad8-16fc-4eab-84ca-a985ce27e2b1)
+
 ## ⚛️ &thinsp; Element Details Pages
 
 The details page for gold.

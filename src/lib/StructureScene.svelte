@@ -4,7 +4,7 @@
 
   import { pretty_num } from './labels'
   import { element_colors } from './stores'
-  import type { PymatgenStructure, Species } from './structure'
+  import type { PymatgenStructure } from './structure'
   import { atomic_radii } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
@@ -36,8 +36,10 @@
   export let vector_colors: [string, string, string] = [`red`, `green`, `blue`]
   // lattice vector origin (all arrows start from this point)
   export let vector_origin: { x: number; y: number; z: number } = { x: -1, y: -1, z: -1 }
-  export let hovered_atom: { xyz: [number, number, number]; species: Species[] } | null =
-    null
+  export let hovered_site: number | null = null
+  export let active_site: number | null = null
+  export let precision: string = `.3~f`
+  export let hover_show_atom_idx: boolean = true
 
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
 
@@ -57,10 +59,12 @@
   />
 </T.PerspectiveCamera>
 
-<T.DirectionalLight position={[3, 10, 10]} intensity={0.8} />
-<T.AmbientLight intensity={0.2} />
+<T.DirectionalLight position={[3, 10, 10]} intensity={0.6} />
+<T.AmbientLight intensity={0.3} />
 
-{#each structure?.sites ?? [] as { xyz, species }}
+{#each structure?.sites ?? [] as site, idx}
+  {@const { xyz, species } = site}
+  <!-- TODO: sort by occu and color site by max fraction element, maybe not worth the computational cost? -->
   {@const elem = species[0].element}
   {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
   <T.Mesh
@@ -68,28 +72,59 @@
     transparent
     opacity={1}
     on:pointerenter={() => {
-      hovered_atom = { xyz, species }
+      hovered_site = idx
     }}
     on:pointerleave={() => {
-      hovered_atom = null
+      hovered_site = null
+    }}
+    on:click={() => {
+      if (active_site == idx) active_site = null
+      else active_site = idx
     }}
   >
     <T.SphereGeometry args={[radius, 20, 20]} />
     <T.MeshStandardMaterial color={$element_colors[elem]} />
   </T.Mesh>
 {/each}
-{#if hovered_atom}
-  {@const { xyz, species } = hovered_atom}
-  <HTML position={xyz}>
-    <div
-      style="background-color: rgba(0, 0, 0, 0.5); padding: 3pt 1ex; width: max-content;"
-    >
+{#if active_site && structure?.sites?.[active_site]}
+  {@const { xyz, species } = structure?.sites?.[active_site] ?? {}}
+  {@const elem = species[0].element}
+  {@const radius = 1.1 * (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
+  <T.Mesh position={xyz}>
+    <T.SphereGeometry args={[radius, 20, 20]} />
+    <T.MeshStandardMaterial color="white" transparent opacity={0.3} />
+  </T.Mesh>
+{/if}
+
+<!-- highlight active and hovered sites -->
+{#each [[hovered_site, 0.2], [active_site, 0.3]] as [site_idx, opacity]}
+  {@const site = site_idx && structure?.sites?.[site_idx]}
+  {#if site}
+    {@const { xyz, species } = site}
+    {@const elem = species[0].element}
+    {@const radius = 1.1 * (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
+    <T.Mesh position={xyz}>
+      <T.SphereGeometry args={[radius, 20, 20]} />
+      <T.MeshStandardMaterial color="white" transparent {opacity} />
+    </T.Mesh>
+  {/if}
+{/each}
+
+{#if hovered_site}
+  {@const { idx, xyz = [], species = [] } = structure?.sites?.[hovered_site] ?? {}}
+  <HTML position={xyz} pointerEvents="none">
+    <div>
+      {#if hover_show_atom_idx && idx}
+        <small>{idx}</small>
+      {/if}
       {#each species as { element, occu, oxidation_state }}
-        <strong>{element}{oxidation_state ?? ``}</strong>: ({xyz
-          .map((num) => pretty_num(num))
-          .join(`, `)})
-        {occu == 1 ? `` : `occu=${occu}`}
+        {@const oxi_state =
+          oxidation_state &&
+          Math.abs(oxidation_state) + (oxidation_state > 0 ? `+` : `-`)}
+        <strong>{element}{oxi_state ?? ``}</strong>
+        {occu == 1 ? `` : `(occu=${occu})`}
       {/each}
+      ({xyz.map((num) => pretty_num(num, precision)).join(`, `)})
     </div>
   </HTML>
 {/if}
@@ -108,7 +143,18 @@
 {#if show_vectors}
   {#each structure?.lattice?.matrix ?? [] as [a, b, c], idx}
     <T.ArrowHelper
-      args={[{ x: a, y: b, z: c }, vector_origin, 3, vector_colors[idx], 1, 0.5]}
+      args={[{ x: a, y: b, z: c }, vector_origin, 4, vector_colors[idx], 1, 0.3]}
     />
   {/each}
 {/if}
+
+<style>
+  div {
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 1pt 5pt;
+    width: max-content;
+    box-sizing: border-box;
+    border-radius: 5pt;
+    pointer-events: none;
+  }
+</style>

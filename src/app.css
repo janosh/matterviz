@@ -58,11 +58,13 @@ a.btn {
   cursor: pointer;
   border: none;
   border-radius: 3pt;
-  background-color: darkcyan;
+  background-color: teal;
   padding: 2pt 4pt;
-  font-size: 12pt;
-  line-height: initial;
-  transition: background-color 0.2s;
+  transition: 0.2s;
+}
+:is(button, a.btn):hover {
+  background-color: darkcyan;
+  color: white;
 }
 a:hover {
   color: orange;
@@ -97,10 +99,6 @@ blockquote p:first-child {
 }
 blockquote p:last-child {
   margin-bottom: 0;
-}
-button {
-  cursor: pointer;
-  border: none;
 }
 
 :where(h1, h2, h3, h4, h5, h6) {
