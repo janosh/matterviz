@@ -93,3 +93,10 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
   const dens = (uA3_to_gcm3 * mass) / structure.lattice.volume
   return pretty_num(dens, prec)
 }
+
+export function euclidean_dist(p1: Vector, p2: Vector): number {
+  const dx = p1[0] - p2[0]
+  const dy = p1[1] - p2[1]
+  const dz = p1[2] - p2[2]
+  return Math.sqrt(dx * dx + dy * dy + dz * dz)
+}

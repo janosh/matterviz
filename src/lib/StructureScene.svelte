@@ -1,11 +1,10 @@
 <script lang="ts">
   import { T } from '@threlte/core'
   import { HTML, OrbitControls, interactivity } from '@threlte/extras'
-
   import { pretty_num } from './labels'
   import { element_colors } from './stores'
-  import type { PymatgenStructure } from './structure'
-  import { atomic_radii } from './structure'
+  import type { PymatgenStructure, Site } from './structure'
+  import { atomic_radii, euclidean_dist } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -36,12 +35,15 @@
   export let vector_colors: [string, string, string] = [`red`, `green`, `blue`]
   // lattice vector origin (all arrows start from this point)
   export let vector_origin: { x: number; y: number; z: number } = { x: -1, y: -1, z: -1 }
-  export let hovered_site: number | null = null
-  export let active_site: number | null = null
+  export let hovered_idx: number | null = null
+  export let active_idx: number | null = null
+  export let hovered_site: Site | null = null
+  export let active_site: Site | null = null
   export let precision: string = `.3~f`
-  export let hover_show_atom_idx: boolean = true
 
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
+  $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
+  $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
 
   interactivity()
 </script>
@@ -72,33 +74,23 @@
     transparent
     opacity={1}
     on:pointerenter={() => {
-      hovered_site = idx
+      hovered_idx = idx
     }}
     on:pointerleave={() => {
-      hovered_site = null
+      hovered_idx = null
     }}
     on:click={() => {
-      if (active_site == idx) active_site = null
-      else active_site = idx
+      if (active_idx == idx) active_idx = null
+      else active_idx = idx
     }}
   >
     <T.SphereGeometry args={[radius, 20, 20]} />
     <T.MeshStandardMaterial color={$element_colors[elem]} />
   </T.Mesh>
 {/each}
-{#if active_site && structure?.sites?.[active_site]}
-  {@const { xyz, species } = structure?.sites?.[active_site] ?? {}}
-  {@const elem = species[0].element}
-  {@const radius = 1.1 * (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
-  <T.Mesh position={xyz}>
-    <T.SphereGeometry args={[radius, 20, 20]} />
-    <T.MeshStandardMaterial color="white" transparent opacity={0.3} />
-  </T.Mesh>
-{/if}
 
 <!-- highlight active and hovered sites -->
-{#each [[hovered_site, 0.2], [active_site, 0.3]] as [site_idx, opacity]}
-  {@const site = site_idx && structure?.sites?.[site_idx]}
+{#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as { site, opacity }}
   {#if site}
     {@const { xyz, species } = site}
     {@const elem = species[0].element}
@@ -111,20 +103,22 @@
 {/each}
 
 {#if hovered_site}
-  {@const { idx, xyz = [], species = [] } = structure?.sites?.[hovered_site] ?? {}}
-  <HTML position={xyz} pointerEvents="none">
+  <HTML position={hovered_site.xyz} pointerEvents="none">
     <div>
-      {#if hover_show_atom_idx && idx}
-        <small>{idx}</small>
-      {/if}
-      {#each species as { element, occu, oxidation_state }}
+      {#each hovered_site.species ?? [] as { element, occu, oxidation_state }}
         {@const oxi_state =
           oxidation_state &&
           Math.abs(oxidation_state) + (oxidation_state > 0 ? `+` : `-`)}
         <strong>{element}{oxi_state ?? ``}</strong>
         {occu == 1 ? `` : `(occu=${occu})`}
       {/each}
-      ({xyz.map((num) => pretty_num(num, precision)).join(`, `)})
+      ({hovered_site.xyz.map((num) => pretty_num(num, precision)).join(`, `)})
+      <!-- distance from hovered to active site -->
+      <!-- TODO this doesn't handle periodic boundaries yet, so is currently grossly misleading -->
+      {#if active_site && active_site != hovered_site}
+        {@const distance = pretty_num(euclidean_dist(hovered_site.xyz, active_site.xyz))}
+        dist={distance} Å
+      {/if}
     </div>
   </HTML>
 {/if}
