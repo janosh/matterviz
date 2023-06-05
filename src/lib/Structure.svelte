@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Iconify from '@iconify/svelte'
   import { Canvas } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
   import Icon from './Icon.svelte'
@@ -51,6 +52,8 @@
   export let hovered: boolean = false
   export let dragover: boolean = false
   export let allow_file_drop: boolean = true
+  export let tips_modal: HTMLDialogElement | undefined = undefined
+  export let enable_tips: boolean = true
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -152,6 +155,13 @@
           {controls_open ? `Close` : `Controls`}
         </slot>
       </button>
+      {#if enable_tips}
+        <button class="info-icon" on:click={() => tips_modal?.showModal()}>
+          <slot name="tips-icon">
+            <Iconify icon="mdi:information" inline />
+          </slot>
+        </button>
+      {/if}
     </section>
 
     <dialog bind:this={controls} open={controls_open}>
@@ -226,6 +236,23 @@
         {alphabetical_formula(structure)}
       </div>
     </slot>
+
+    {#if enable_tips}
+      <dialog
+        bind:this={tips_modal}
+        on:click={tips_modal?.close}
+        on:keydown={tips_modal?.close}
+        rest
+      >
+        <slot name="tips-modal">
+          <p>Drop a JSON file onto the canvas to load a new structure.</p>
+          <p>
+            Click on an atom to make it active. Then hover another atom to get its
+            distance to the active atom.
+          </p>
+        </slot>
+      </dialog>
+    {/if}
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -301,5 +328,23 @@
   p.warn {
     font-size: larger;
     text-align: center;
+  }
+  dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    padding: 4pt 1em;
+    background-color: rgb(25, 25, 25);
+    color: white;
+    border-radius: 5px;
+    transition: all 0.3s;
+  }
+  dialog::backdrop {
+    background: rgba(0, 0, 0, 0.4);
+  }
+  dialog p {
+    margin: 0;
   }
 </style>
