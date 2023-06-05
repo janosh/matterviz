@@ -9,7 +9,6 @@
     PropertySelect,
     Structure,
     TableInset,
-    alphabetical_formula,
     element_data,
   } from '$lib'
   import { property_labels } from '$lib/labels'
@@ -22,7 +21,7 @@
   let heatmap_key: string | null = null
   $: heatmap_values = heatmap_key ? element_data.map((el) => el[heatmap_key]) : []
   $: href = `https://materialsproject.org/materials/${mp_id[0]}`
-  $: structure = structures.find((struct) => struct.id === mp_id[0]) || {}
+  $: structure = structures.find((struct) => struct.id === mp_id[0])
   let mp_id = [`mp-756175`]
 
   $: [y_label, y_unit] = property_labels[heatmap_key] ?? []
@@ -92,7 +91,7 @@
   <ColorCustomizer collapsible={false} />
 {/if}
 
-<h2 id={mp_id[0]}><a {href}>{mp_id}</a> ({alphabetical_formula(structure)})</h2>
+<h2 id={mp_id[0]}><a {href}>{mp_id}</a></h2>
 <Structure {structure} />
 
 <h2>More Demos</h2>
