@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Canvas } from '@threlte/core'
-
   import { Tooltip } from 'svelte-zoo'
   import Icon from './Icon.svelte'
   import StructureLegend from './StructureLegend.svelte'
@@ -50,6 +49,8 @@
   export let reset_text: string = `Reset view`
   export let color_scheme: 'Jmol' | 'Vesta' = `Vesta`
   export let hovered: boolean = false
+  export let dragover: boolean = false
+  export let allow_file_drop: boolean = true
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -98,6 +99,21 @@
       : `${alphabetical_formula(structure)}.json`
     download(data, filename, `application/json`)
   }
+
+  function on_file_drop(event: DragEvent) {
+    dragover = false
+    if (!allow_file_drop) return
+    const file = event.dataTransfer?.items[0].getAsFile()
+    const reader = new FileReader()
+    reader.onloadend = (event: ProgressEvent<FileReader>) => {
+      try {
+        structure = JSON.parse(event.target.result)
+      } catch (error) {
+        console.error(`Invalid JSON file`, error)
+      }
+    }
+    reader.readAsText(file)
+  }
 </script>
 
 <svelte:window
@@ -114,6 +130,10 @@
     bind:clientHeight={height}
     on:mouseenter={() => (hovered = true)}
     on:mouseleave={() => (hovered = false)}
+    on:drop|preventDefault={on_file_drop}
+    on:dragover|preventDefault={() => allow_file_drop && (dragover = true)}
+    on:dragleave|preventDefault={() => allow_file_drop && (dragover = false)}
+    class:dragover
   >
     <section class:visible={visible_buttons}>
       <!-- TODO show only when camera was moved -->
@@ -200,6 +220,12 @@
     </Canvas>
 
     <StructureLegend elements={get_elements(structure)} />
+
+    <slot name="formula" {structure}>
+      <div class="formula">
+        {alphabetical_formula(structure)}
+      </div>
+    </slot>
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -216,6 +242,16 @@
     position: relative;
     container-type: inline-size;
     --controls-transition-duration: 0.3s;
+  }
+  .structure.dragover {
+    background: rgba(0, 0, 0, 0.7);
+  }
+  div.formula {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    font-size: 1.2em;
+    padding: 1pt 5pt;
   }
 
   section {
