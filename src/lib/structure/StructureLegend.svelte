@@ -1,10 +1,9 @@
 <script lang="ts">
+  import type { Composition } from '$lib'
+  import { element_data, get_text_color } from '$lib'
+  import { default_element_colors } from '$lib/colors'
+  import { element_colors } from '$lib/stores'
   import { Tooltip } from 'svelte-zoo'
-  import type { Composition } from '.'
-  import { element_data } from '.'
-  import { default_element_colors } from './colors'
-  import { get_text_color } from './labels'
-  import { element_colors } from './stores'
 
   export let elements: Composition
   export let elem_color_picker_title: string = `Double click to reset color`

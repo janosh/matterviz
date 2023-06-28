@@ -1,8 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores'
-  import { Structure } from '$lib'
+  import { Structure, StructureCard } from '$lib'
   import { download, fetch_zipped, summary_bucket } from '$lib/api'
-  import StructureCard from '$root/src/lib/StructureCard.svelte'
 
   export let data
 

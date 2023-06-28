@@ -1,7 +1,12 @@
 // Utilities for dealing with pymatgen Structures
-import type { ElementSymbol } from '.'
-import element_data from './element-data'
-import { pretty_num } from './labels'
+import type { ElementSymbol } from '$lib'
+import { pretty_num } from '$lib'
+import element_data from '$lib/element/data'
+
+export { default as Structure } from './Structure.svelte'
+export { default as StructureCard } from './StructureCard.svelte'
+export { default as StructureLegend } from './StructureLegend.svelte'
+export { default as StructureScene } from './StructureScene.svelte'
 
 export type Species = {
   element: ElementSymbol

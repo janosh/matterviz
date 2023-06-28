@@ -7,6 +7,7 @@
     ElementHeading,
     ElementPhoto,
     ElementScatter,
+    ElementTile,
     Icon,
     PeriodicTable,
     PropertySelect,
@@ -14,7 +15,6 @@
   } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
   import { active_element, heatmap_key } from '$lib/stores'
-  import ElementTile from '$root/src/lib/ElementTile.svelte'
   import { PrevNext } from 'svelte-zoo'
 
   export let data

@@ -1,10 +1,10 @@
 <script lang="ts">
+  import type { Coords } from '$lib'
+  import { Line, ScatterPoint } from '$lib'
   import { bisector, extent } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
   import * as d3sc from 'd3-scale-chromatic'
   import { createEventDispatcher } from 'svelte'
-  import type { Coords } from '.'
-  import { Line, ScatterPoint } from '.'
 
   export let style = ``
   export let x_lim: [number | null, number | null] = [null, null]

@@ -1,0 +1,6 @@
+export { default as ColorBar } from './ColorBar.svelte'
+export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
+export { default as ElementScatter } from './ElementScatter.svelte'
+export { default as Line } from './Line.svelte'
+export { default as ScatterPlot } from './ScatterPlot.svelte'
+export { default as ScatterPoint } from './ScatterPoint.svelte'

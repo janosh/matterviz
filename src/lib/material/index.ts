@@ -1,4 +1,4 @@
-import type { PymatgenStructure } from '.'
+import type { PymatgenStructure } from '..'
 
 export type BuilderMeta = {
   emmet_version: string

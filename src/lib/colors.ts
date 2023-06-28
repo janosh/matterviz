@@ -1,5 +1,5 @@
+import type { ElementSymbol } from '$lib'
 import { rgb } from 'd3-color'
-import type { ElementSymbol } from '.'
 
 // color values have to be in hex format since that's the only format
 // <input type="color"> supports

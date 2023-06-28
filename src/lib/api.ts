@@ -3,7 +3,7 @@ export const task_bucket = `https://materialsproject-parsed.s3.amazonaws.com/tas
 export const bonds_bucket = `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28/bonds`
 
 export async function decompress(blob: ReadableStream<Uint8Array> | null) {
-  // @ts-expect-error - TS doesn't know about DecompressionStream yet!
+  // @ts-expect-error - TS doesn't know about DecompressionStream yet
   const unzip = new DecompressionStream(`gzip`)
   const stream = blob.pipeThrough(unzip)
   return await new Response(stream).text()

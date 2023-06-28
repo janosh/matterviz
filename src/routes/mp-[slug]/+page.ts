@@ -1,5 +1,5 @@
 import { fetch_zipped, summary_bucket } from '$lib/api.js'
-import type { SummaryDoc } from '$lib/material-summary.js'
+import type { SummaryDoc } from '$lib/material/index.js'
 
 export const prerender = false
 
