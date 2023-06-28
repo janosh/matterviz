@@ -103,7 +103,7 @@
 
 <h2 id={mp_id[0]} style="margin: 3em 0 1em;"><a {href}>{mp_id}</a></h2>
 
-<Structure {structure} />
+<Structure {structure} auto_rotate={0.5} />
 
 <style>
   h1 {
