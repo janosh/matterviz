@@ -21,7 +21,7 @@ Big thanks to the element image providers listed below. Each image caption links
       {@const [number, name] = key.split(`-`)}
       <li>
         <a href="/{name}">
-          <img src="{dev ? '' : homepage}/elements/{key}.jpg" alt={name} /></a>
+          <img src="{dev ? '' : homepage}/elements/{key}.avif" alt={name} /></a>
         <a {href}>{number} {name}</a>
       </li>
     {/each}

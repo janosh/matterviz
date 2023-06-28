@@ -46,6 +46,7 @@
   viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
   on:click
   on:keyup
+  role="presentation"
   {style}
 >
   <!-- nucleus -->

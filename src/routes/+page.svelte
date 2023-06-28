@@ -13,16 +13,16 @@
   } from '$lib'
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, last_element } from '$lib/stores'
-  import { DemoNav, structures } from '$site'
+  import { structures } from '$site'
   import type { Snapshot } from './$types'
 
   let window_width: number
   let color_scale: string
   let heatmap_key: string | null = null
+  let mp_id = [`mp-756175`]
   $: heatmap_values = heatmap_key ? element_data.map((el) => el[heatmap_key]) : []
   $: href = `https://materialsproject.org/materials/${mp_id[0]}`
   $: structure = structures.find((struct) => struct.id === mp_id[0])
-  let mp_id = [`mp-756175`]
 
   $: [y_label, y_unit] = property_labels[heatmap_key] ?? []
 
@@ -39,7 +39,17 @@
 
 <svelte:window bind:innerWidth={window_width} />
 
-<h1>Periodic Table of Elements</h1>
+<h1>Elementari</h1>
+
+<p style="max-width: 40em; margin: 2em auto 3em; text-align: center;">
+  <code>elementari</code> is a toolkit for building interactive web UIs for materials
+  science: periodic tables, 3d crystal structures (molecules coming soon!), Bohr atoms,
+  nuclei, heatmaps, scatter plots. It's under active development and not yet ready for
+  production use but we appreciate everyone willing to try it out and give feedback! 🙏
+  <br />
+  <br />
+  Check out some of the examples in the navigation bar above.
+</p>
 
 <form>
   <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
@@ -91,12 +101,9 @@
   <ColorCustomizer collapsible={false} />
 {/if}
 
-<h2 id={mp_id[0]}><a {href}>{mp_id}</a></h2>
+<h2 id={mp_id[0]} style="margin: 3em 0 1em;"><a {href}>{mp_id}</a></h2>
+
 <Structure {structure} />
-
-<h2>More Demos</h2>
-
-<DemoNav />
 
 <style>
   h1 {

@@ -1,19 +1,19 @@
 <script lang="ts">
   import { Tooltip } from 'svelte-zoo'
-  import type { ElementSymbol } from '.'
+  import type { Composition } from '.'
   import { element_data } from '.'
   import { default_element_colors } from './colors'
   import { get_text_color } from './labels'
   import { element_colors } from './stores'
 
-  export let elements: ElementSymbol[] = []
+  export let elements: Composition
   export let elem_color_picker_title: string = `Double click to reset color`
   export let labels: HTMLLabelElement[] = []
   export let style: string | null = null
 </script>
 
 <div {style}>
-  {#each elements as elem, idx}
+  {#each Object.entries(elements) as [elem, amt], idx}
     <Tooltip
       text={element_data.find((el) => el.symbol == elem)?.name}
       --zoo-tooltip-bg="rgba(255, 255, 255, 0.3)"
@@ -26,7 +26,7 @@
           ($element_colors[elem] = default_element_colors[elem])}
         style:color={get_text_color(labels[idx])}
       >
-        {elem}
+        {elem}{amt}
         <input
           type="color"
           bind:value={$element_colors[elem]}

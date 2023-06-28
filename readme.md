@@ -1,7 +1,7 @@
 <h1 align="center">
   <img src="static/favicon.svg" alt="Logo" height="60">
   <br>
-  Periodic Table
+  Elementari
 </h1>
 
 <h4 align="center">
@@ -13,13 +13,13 @@
 
 </h4>
 
-Interactive Periodic Table component written in Svelte. With scatter plot showing periodicity of elemental properties and Bohr atoms showing electron shell configuration of different elements.
+`elementari` is a toolkit for building interactive web UIs for materials science: periodic tables, 3d crystal structures (molecules coming soon!), Bohr atoms, nuclei, heatmaps, scatter plots. It's under active development and not yet ready for production use but we appreciate everyone willing to try it out and give feedback! 🙏
 
 ![Screenshot of landing page](static/2023-02-13-landing-page.webp)
 
 ## 📦 &thinsp; Heatmap
 
-Below a screenshot demonstrating the periodicity of elemental properties, the reason it's called periodic table. In this case, you're seeing recurring bumps and valleys in the first ionization energy as a function of atomic number.
+This screenshot demonstrates the periodicity of elemental properties (i.e. why it's called periodic table). In this case, you're seeing recurring bumps and valleys in the first ionization energy as a function of atomic number.
 
 ![Screenshot of periodic table heatmap](static/2023-02-13-heatmap.webp)
 

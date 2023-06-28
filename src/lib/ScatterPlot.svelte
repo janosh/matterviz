@@ -73,6 +73,7 @@
       on:mousemove={on_mouse_move}
       on:mouseleave={() => (hovered = false)}
       on:mouseleave
+      role="img"
     >
       {#if markers.includes(`line`)}
         <Line points={scaled_data} origin={[x_scale(x_range[0]), y_scale(y_range[0])]} />

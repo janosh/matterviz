@@ -31,7 +31,7 @@ export default {
   },
 
   kit: {
-    adapter: adapter(),
+    adapter: adapter({ strict: false }),
 
     alias: {
       $root: `.`,

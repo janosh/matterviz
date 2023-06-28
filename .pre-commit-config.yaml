@@ -26,6 +26,7 @@ repos:
           - prettier
           - prettier-plugin-svelte
           - svelte
+        stages: [commit]
         exclude: ^changelog.md|.*/structures/.*\.json$
 
   - repo: https://github.com/pre-commit/mirrors-eslint
