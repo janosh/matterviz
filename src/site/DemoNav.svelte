@@ -3,6 +3,7 @@
   import { demos } from './stores'
 
   export let routes = $demos
+  export let labels: Record<string, string> = {}
 
   $: is_current = (path: string) => {
     if ($page.url.pathname.startsWith(path)) return `page`
@@ -13,7 +14,7 @@
 <nav>
   {#each routes as href, idx}
     {#if idx > 0}<strong>&bull;</strong>{/if}
-    <a {href} aria-current={is_current(href)}>{href}</a>
+    <a {href} aria-current={is_current(href)}>{labels[href] ?? href}</a>
   {/each}
 </nav>
 
@@ -22,10 +23,10 @@
     display: flex;
     gap: 1em 1ex;
     place-content: center;
-    margin: 1em auto 3em;
+    margin: 1em auto 2em;
+    padding: 1em;
     max-width: 45em;
     flex-wrap: wrap;
-    font-size: 14pt;
   }
   nav > a {
     padding: 0 4pt;

@@ -39,14 +39,14 @@ export type PymatgenStructure = {
 }
 
 export function get_elem_amounts(structure: PymatgenStructure) {
-  const elements: Record<ElementSymbol, number> = {}
+  const elements: Partial<Record<ElementSymbol, number>> = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
-      const { element: el, occu } = species
-      if (el in elements) {
-        elements[el] += occu
+      const { element: elem, occu } = species
+      if (elem in elements) {
+        elements[elem] += occu
       } else {
-        elements[el] = occu
+        elements[elem] = occu
       }
     }
   }

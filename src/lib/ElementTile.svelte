@@ -51,6 +51,8 @@
   on:click={payload_event}
   on:keyup={payload_event}
   on:keydown={payload_event}
+  role="link"
+  tabindex="0"
 >
   {#if show_number}
     <span class="number">

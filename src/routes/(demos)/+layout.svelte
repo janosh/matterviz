@@ -1,13 +1,10 @@
 <script lang="ts">
   import { name } from '$root/package.json'
-  import { DemoNav } from '$site'
 </script>
 
 <h1>
   <img src="favicon.svg" alt={name} height="50" width="50" />&ensp;Examples
 </h1>
-
-<DemoNav />
 
 <main>
   <slot />

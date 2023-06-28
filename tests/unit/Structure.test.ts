@@ -12,7 +12,7 @@ describe(`Structure`, () => {
 
     const dialog = doc_query<HTMLDialogElement>(`dialog`)
     expect(dialog.open).toBe(false)
-    doc_query<HTMLButtonElement>(`button.controls-toggle`).click()
+    doc_query(`button.controls-toggle`).click()
     await tick()
 
     expect(dialog.open).toBe(true)
@@ -21,15 +21,13 @@ describe(`Structure`, () => {
   test(`JSON file download when clicking download button`, async () => {
     window.URL.createObjectURL = vi.fn()
 
-    new Structure({
+    const struct = new Structure({
       target: document.body,
       props: { structure },
     })
     const spy = vi.spyOn(document.body, `appendChild`)
 
-    doc_query<HTMLButtonElement>(
-      `button[title='Download Structure as JSON']`
-    ).click()
+    doc_query(`button[title='${struct.save_json_btn_text}']`).click()
     await tick()
 
     expect(window.URL.createObjectURL).toHaveBeenCalledOnce()

@@ -15,15 +15,16 @@
 </script>
 
 <slot name="title">
-  <h2
-    on:click={() => (open = !open)}
-    on:keyup={(e) => [`Enter`, ` `].includes(e.key) && (open = !open)}
-    title={!open && collapsible ? `Click to open color picker` : null}
-    style:cursor={collapsible ? `pointer` : `default`}
-    transition:fade
-  >
-    <Icon icon="ion:color-palette" />
-    Customize Colors
+  <h2 transition:fade>
+    <button
+      on:click={() => (open = !open)}
+      on:keyup={(e) => [`Enter`, ` `].includes(e.key) && (open = !open)}
+      title={!open && collapsible ? `Click to open color picker` : null}
+      style:cursor={collapsible ? `pointer` : `default`}
+    >
+      <Icon icon="ion:color-palette" />
+      Customize Colors
+    </button>
   </h2>
 </slot>
 <div class="grid" transition:fade>
@@ -89,6 +90,10 @@
   }
   h2 {
     text-align: center;
+  }
+  h2 > button {
+    background: none;
+    font-size: 1.2em;
   }
   label {
     max-width: 16em;

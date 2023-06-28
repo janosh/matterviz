@@ -68,12 +68,14 @@
   .structure-card {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    box-sizing: border-box;
     border-radius: var(--sc-radius, 3pt);
     padding: var(--sc-padding, 1ex 1em);
     margin: var(--sc-margin, 1em 0);
     gap: var(--sc-gap, 1ex 1em);
     background-color: var(--sc-bg, rgba(255, 255, 255, 0.1));
     font-size: var(--sc-font-size);
+    width: var(--sc-width);
   }
   h2 {
     grid-column: 1 / -1;

@@ -86,6 +86,11 @@
   >
     <T.SphereGeometry args={[radius, 20, 20]} />
     <T.MeshStandardMaterial color={$element_colors[elem]} />
+    {#if $$slots[`atom-label`]}
+      <HTML center as="div">
+        <slot name="atom-label" {elem} {radius} {xyz} {species} />
+      </HTML>
+    {/if}
   </T.Mesh>
 {/each}
 

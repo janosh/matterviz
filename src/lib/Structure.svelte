@@ -2,13 +2,15 @@
   import Iconify from '@iconify/svelte'
   import { Canvas } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
+  import type { ElementSymbol } from '.'
   import Icon from './Icon.svelte'
   import StructureLegend from './StructureLegend.svelte'
   import StructureScene from './StructureScene.svelte'
+  import { download } from './api'
   import { element_color_schemes } from './colors'
   import { element_colors } from './stores'
   import type { PymatgenStructure } from './structure'
-  import { alphabetical_formula, get_elements } from './structure'
+  import { alphabetical_formula, get_elem_amounts } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -54,6 +56,11 @@
   export let allow_file_drop: boolean = true
   export let tips_modal: HTMLDialogElement | undefined = undefined
   export let enable_tips: boolean = true
+  export let save_json_btn_text: string = `Save structure to JSON`
+  // boolean or map from element symbols to labels
+  // use slot='atom-label' to include HTML and event handlers
+  export let atom_labels: boolean | Record<ElementSymbol, string | number> = false
+  export let atom_labels_style: string | null = null
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -81,18 +88,6 @@
   $: visible_buttons =
     reveal_buttons == true ||
     (typeof reveal_buttons == `number` && reveal_buttons < width)
-
-  // Function to download data to a file
-  function download(data: string, filename: string, type: string) {
-    const file = new Blob([data], { type: type })
-    const anchor = document.createElement(`a`)
-    const url = URL.createObjectURL(file)
-    anchor.href = url
-    anchor.download = filename
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-  }
 
   function download_json() {
     if (!structure) alert(`No structure to download`)
@@ -137,6 +132,7 @@
     on:dragover|preventDefault={() => allow_file_drop && (dragover = true)}
     on:dragleave|preventDefault={() => allow_file_drop && (dragover = false)}
     class:dragover
+    role="region"
   >
     <section class:visible={visible_buttons}>
       <!-- TODO show only when camera was moved -->
@@ -171,7 +167,12 @@
       </label>
       <label>
         <input type="checkbox" bind:checked={same_size_atoms} />
-        Scale atoms according to atomic radius (if false, all atoms have same size)
+        Scale according to atomic radii
+        <small> (if false, all atoms have same size)</small>
+      </label>
+      <label>
+        <input type="checkbox" bind:checked={atom_labels} />
+        Show atom labels
       </label>
       <label>
         Show unit cell as
@@ -210,9 +211,9 @@
           {/each}
         </select>
       </label>
-      <button type="button" on:click={download_json} title="Download Structure as JSON">
+      <button type="button" on:click={download_json} title={save_json_btn_text}>
         <Icon icon="mdi:download" />
-        Download Structure as JSON
+        {save_json_btn_text}
       </button>
     </dialog>
 
@@ -226,23 +227,33 @@
         {zoom_speed}
         {show_cell}
         {show_vectors}
-      />
+        let:elem
+      >
+        <!-- above let:elem needed to fix false positive eslint no-undef -->
+        <slot slot="atom-label" let:elem>
+          {#if atom_labels}
+            <span class="atom-label" style={atom_labels_style}>
+              <!-- eslint-ignore-next-line no-undef -->
+              {atom_labels === true ? elem : atom_labels[elem]}
+            </span>
+          {/if}
+        </slot>
+      </StructureScene>
     </Canvas>
 
-    <StructureLegend elements={get_elements(structure)} />
+    <StructureLegend elements={get_elem_amounts(structure)} />
 
-    <slot name="formula" {structure}>
-      <div class="formula">
-        {alphabetical_formula(structure)}
-      </div>
-    </slot>
+    <div class="bottom-left">
+      <slot name="bottom-left" {structure} />
+    </div>
 
     {#if enable_tips}
+      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
       <dialog
         bind:this={tips_modal}
         on:click={tips_modal?.close}
         on:keydown={tips_modal?.close}
-        rest
+        role="tooltip"
       >
         <slot name="tips-modal">
           <p>Drop a JSON file onto the canvas to load a new structure.</p>
@@ -273,7 +284,7 @@
   .structure.dragover {
     background: rgba(0, 0, 0, 0.7);
   }
-  div.formula {
+  div.bottom-left {
     position: absolute;
     bottom: 0;
     left: 0;
@@ -329,7 +340,7 @@
     font-size: larger;
     text-align: center;
   }
-  dialog {
+  dialog[role='tooltip'] {
     position: fixed;
     top: 50%;
     left: 50%;
@@ -341,10 +352,15 @@
     border-radius: 5px;
     transition: all 0.3s;
   }
-  dialog::backdrop {
+  dialog[role='tooltip']::backdrop {
     background: rgba(0, 0, 0, 0.4);
   }
-  dialog p {
+  dialog[role='tooltip'] p {
     margin: 0;
+  }
+  .atom-label {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 2pt;
+    padding: 0 3pt;
   }
 </style>
