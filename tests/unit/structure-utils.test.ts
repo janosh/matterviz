@@ -59,3 +59,17 @@ describe.each(structures)(`structure-utils`, (structure) => {
     })
   })
 })
+
+test.each(structures)(`find_image_atoms`, async (structure) => {
+  const result = module.find_image_atoms(structure)
+  // write reference data
+  // fs.writeFileSync(
+  //   `${__dirname}/fixtures/find_image_atoms/${structure.id}.json`,
+  //   JSON.stringify(result)
+  // )
+
+  const { default: expected } = await import(
+    `./fixtures/find_image_atoms/${structure.id}.json`
+  )
+  expect(result).toEqual(expected)
+})
