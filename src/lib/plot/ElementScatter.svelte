@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { ScatterPlot } from '$lib'
-  import { element_data, type Coords } from '.'
-  import { pretty_num } from './labels'
-  import { active_element } from './stores'
+  import { ScatterPlot, element_data, pretty_num, type Coords } from '$lib'
+  import { active_element } from '$lib/stores'
 
   // either array of length 118 (one heat value for each element) or
   // object with element symbol as key and heat value as value

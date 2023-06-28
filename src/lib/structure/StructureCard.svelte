@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { pretty_num } from './labels'
-  import { alphabetical_formula, density, type PymatgenStructure } from './structure'
+  import { pretty_num } from '$lib'
+  import { alphabetical_formula, density, type PymatgenStructure } from '.'
 
   export let structure: PymatgenStructure
   export let title: string = ''

@@ -1,16 +1,16 @@
 <script lang="ts">
+  import { element_color_schemes } from '$lib/colors'
+  import { element_colors } from '$lib/stores'
   import Iconify from '@iconify/svelte'
   import { Canvas } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
-  import type { ElementSymbol } from '.'
-  import Icon from './Icon.svelte'
+  import type { ElementSymbol } from '..'
+  import Icon from '../Icon.svelte'
+  import { download } from '../api'
+  import type { PymatgenStructure } from '../structure'
+  import { alphabetical_formula, get_elem_amounts } from '../structure'
   import StructureLegend from './StructureLegend.svelte'
   import StructureScene from './StructureScene.svelte'
-  import { download } from './api'
-  import { element_color_schemes } from './colors'
-  import { element_colors } from './stores'
-  import type { PymatgenStructure } from './structure'
-  import { alphabetical_formula, get_elem_amounts } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined

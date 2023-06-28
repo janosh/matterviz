@@ -72,7 +72,7 @@
     "svelte-toc": "^0.5.5",
     "svelte-zoo": "^0.4.8",
     "svelte2tsx": "^0.6.16",
-    "typescript": "5.1.3",
+    "typescript": "5.1.5",
     "vite": "^4.3.9",
     "vitest": "^0.32.2"
   },
@@ -88,9 +88,9 @@
     "access": "public"
   },
   "exports": {
-    "./element-data": {
-      "types": "./dist/element-data.d.ts",
-      "default": "./dist/element-data.js"
+    "./element/data": {
+      "types": "./dist/element/data.d.ts",
+      "default": "./dist/element/data.js"
     },
     ".": {
       "types": "./dist/index.d.ts",

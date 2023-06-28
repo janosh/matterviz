@@ -33,9 +33,9 @@ describe(`PeriodicTable`, () => {
     }
     new PeriodicTable({ target: document.body, props: { tile_props } })
 
-    const ptable = doc_query(`.periodic-table`)
+    const table = doc_query(`.periodic-table`)
 
-    expect(ptable?.textContent?.trim()).toBe(``)
+    expect(table?.textContent?.trim()).toBe(``)
 
     // make sure empty tiles are still rendered
     const symbol_tiles = document.querySelectorAll(`.element-tile`)
@@ -76,7 +76,7 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`hooking PeriodicTable up to PropertySelect and selecting heatmap sets element tile background`, async () => {
-    const ptable = new PeriodicTable({ target: document.body })
+    const table = new PeriodicTable({ target: document.body })
     new PropertySelect({ target: document.body })
 
     const li = doc_query(`ul.options > li`)
@@ -89,7 +89,7 @@ describe(`PeriodicTable`, () => {
     const heatmap_key = heatmap_labels[heatmap_label]
 
     expect(heatmap_key).toBe(`atomic_mass`)
-    ptable.$set({
+    table.$set({
       heatmap_values: element_data.map((elem) => elem[heatmap_key]),
     })
     await tick()
@@ -117,11 +117,11 @@ describe(`PeriodicTable`, () => {
   )
 
   test(`clicking element tile emits event`, async () => {
-    const ptable = new PeriodicTable({ target: document.body })
+    const table = new PeriodicTable({ target: document.body })
     let expected_active = false
 
     let emitted = false
-    ptable.$on(`click`, (event) => {
+    table.$on(`click`, (event) => {
       emitted = true
       expect(event.detail.element).toBe(element_data[0])
       expect(event.detail.active).toBe(expected_active)
@@ -143,8 +143,8 @@ describe(`PeriodicTable`, () => {
 
   test.each([[`0`], [`10px`], [`1cqw`]])(`gap prop`, (gap) => {
     new PeriodicTable({ target: document.body, props: { gap } })
-    const ptable = doc_query(`.periodic-table`)
-    expect(getComputedStyle(ptable).gap).toBe(gap)
+    const table = doc_query(`.periodic-table`)
+    expect(getComputedStyle(table).gap).toBe(gap)
   })
 
   test.each(Object.entries(category_counts))(

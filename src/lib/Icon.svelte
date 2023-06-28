@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { show_icons } from '$lib/stores'
   import Icon from '@iconify/svelte'
-  import { show_icons } from './stores'
 </script>
 
 {#if $show_icons}

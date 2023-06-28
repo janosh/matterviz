@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { ColorBar } from '$lib'
   import * as d3sc from 'd3-scale-chromatic'
   import Select from 'svelte-multiselect'
-  import { ColorBar } from '.'
 
   export let value: string | null = null
   export let selected: string[] = [`Viridis`]

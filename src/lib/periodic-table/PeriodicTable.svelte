@@ -1,10 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
+  import type { Category, ChemicalElement, PeriodicTableEvents } from '$lib'
+  import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '$lib'
+  import element_data from '$lib/element/data'
   import * as d3sc from 'd3-scale-chromatic'
-  import type { Category, ChemicalElement, PeriodicTableEvents } from '.'
-  import { ElementPhoto, ElementTile, type ElementSymbol } from '.'
-  import element_data from './element-data'
-  import { elem_symbols } from './labels'
 
   export let tile_props: {
     show_name?: boolean

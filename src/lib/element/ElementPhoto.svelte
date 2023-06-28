@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon, type ChemicalElement } from '.'
+  import { Icon, type ChemicalElement } from '$lib'
 
   export let element: ChemicalElement
   // style applies to both img and missing_msg div

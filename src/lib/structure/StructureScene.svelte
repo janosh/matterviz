@@ -1,4 +1,7 @@
 <script lang="ts">
+  import type { PymatgenStructure, Site } from '$lib'
+  import { atomic_radii, euclidean_dist, find_image_atoms, pretty_num } from '$lib'
+  import { element_colors } from '$lib/stores'
   import { T } from '@threlte/core'
   import {
     HTML,
@@ -7,10 +10,6 @@
     OrbitControls,
     interactivity,
   } from '@threlte/extras'
-  import { pretty_num } from './labels'
-  import { element_colors } from './stores'
-  import type { PymatgenStructure, Site } from './structure'
-  import { atomic_radii, euclidean_dist, find_image_atoms } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined

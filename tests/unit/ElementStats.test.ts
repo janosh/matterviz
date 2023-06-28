@@ -1,5 +1,5 @@
 import { ElementStats, element_data } from '$lib'
-import { pretty_num } from '$root/src/lib/labels'
+import { pretty_num } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '.'
 

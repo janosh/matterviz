@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { pretty_num } from '$lib'
   import * as d3 from 'd3-scale'
   import * as d3sc from 'd3-scale-chromatic'
-  import { pretty_num } from './labels'
 
   export let label: string | null = null
   export let color_scale: ((x: number) => string) | string | null = `Viridis`

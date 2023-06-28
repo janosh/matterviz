@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import fs from 'node:fs'
 import sharp from 'sharp'
-import elements from './lib/element-data.ts'
+import elements from './lib/element/data.js'
 
 // make sure the directory exists
 fs.mkdirSync(`./static/elements`, { recursive: true })

@@ -1,8 +1,8 @@
 <script lang="ts">
+  import type { ChemicalElement, PeriodicTableEvents } from '$lib'
+  import { get_text_color, pretty_num } from '$lib'
+  import { last_element } from '$lib/stores'
   import { createEventDispatcher } from 'svelte'
-  import type { ChemicalElement, PeriodicTableEvents } from '.'
-  import { get_text_color, pretty_num } from './labels'
-  import { last_element } from './stores'
 
   export let element: ChemicalElement
   export let bg_color: string | null = null
