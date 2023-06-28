@@ -1,6 +1,12 @@
 <script lang="ts">
   import { T } from '@threlte/core'
-  import { HTML, OrbitControls, interactivity } from '@threlte/extras'
+  import {
+    HTML,
+    Instance,
+    InstancedMesh,
+    OrbitControls,
+    interactivity,
+  } from '@threlte/extras'
   import { pretty_num } from './labels'
   import { element_colors } from './stores'
   import type { PymatgenStructure, Site } from './structure'
@@ -40,6 +46,7 @@
   export let hovered_site: Site | null = null
   export let active_site: Site | null = null
   export let precision: string = `.3~f`
+  export let auto_rotate: number | boolean = 0
 
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
@@ -58,41 +65,39 @@
     maxZoom={max_zoom}
     minZoom={min_zoom}
     bind:this={orbit_controls}
+    autoRotate={Boolean(auto_rotate)}
+    autoRotateSpeed={auto_rotate}
   />
 </T.PerspectiveCamera>
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={0.6} />
 <T.AmbientLight intensity={0.3} />
 
-{#each structure?.sites ?? [] as site, idx}
-  {@const { xyz, species } = site}
-  <!-- TODO: sort by occu and color site by max fraction element, maybe not worth the computational cost? -->
-  {@const elem = species[0].element}
-  {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
-  <T.Mesh
-    position={xyz}
-    transparent
-    opacity={1}
-    on:pointerenter={() => {
-      hovered_idx = idx
-    }}
-    on:pointerleave={() => {
-      hovered_idx = null
-    }}
-    on:click={() => {
-      if (active_idx == idx) active_idx = null
-      else active_idx = idx
-    }}
-  >
+{#if structure?.sites}
+  <InstancedMesh>
+    {@const elem = structure.sites[0].species[0].element}
+    {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
     <T.SphereGeometry args={[radius, 20, 20]} />
-    <T.MeshStandardMaterial color={$element_colors[elem]} />
-    {#if $$slots[`atom-label`]}
-      <HTML center as="div">
-        <slot name="atom-label" {elem} {radius} {xyz} {species} />
-      </HTML>
-    {/if}
-  </T.Mesh>
-{/each}
+    <T.MeshStandardMaterial />
+    {#each structure.sites as site, idx}
+      {@const { xyz, species } = site}
+      <Instance
+        position={xyz}
+        color={$element_colors[species[0].element]}
+        on:pointerenter={() => {
+          hovered_idx = idx
+        }}
+        on:pointerleave={() => {
+          hovered_idx = null
+        }}
+        on:click={() => {
+          if (active_idx == idx) active_idx = null
+          else active_idx = idx
+        }}
+      />
+    {/each}
+  </InstancedMesh>
+{/if}
 
 <!-- highlight active and hovered sites -->
 {#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as { site, opacity }}
