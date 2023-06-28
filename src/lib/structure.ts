@@ -100,3 +100,53 @@ export function euclidean_dist(p1: Vector, p2: Vector): number {
   const dz = p1[2] - p2[2]
   return Math.sqrt(dx * dx + dy * dy + dz * dz)
 }
+
+function generate_permutations(length: number): number[][] {
+  const result: number[][] = []
+  for (let i = 0; i < Math.pow(2, length); i++) {
+    const binaryString = i.toString(2).padStart(length, `0`)
+    result.push(Array.from(binaryString).map(Number))
+  }
+  return result
+}
+
+export function find_image_atoms(
+  structure: PymatgenStructure,
+  { tolerance = 0.05 }: { tolerance?: number } = {}
+  // fractional tolerance for determining if a site is at the edge of the unit cell
+): Array<[number, Vector]> {
+  const edge_sites: Array<[number, Vector]> = []
+  const permutations = generate_permutations(3)
+
+  structure.sites.forEach((site, idx) => {
+    const abc = site.abc
+    const xyz = site.xyz
+
+    edge_sites.push([idx, xyz])
+
+    // Check if the site is at the edge and determine its image
+    const edges: number[] = [0, 1, 2].filter(
+      (i) => Math.abs(abc[i]) < tolerance || Math.abs(abc[i] - 1) < tolerance
+    )
+
+    const { a, b, c } = structure.lattice
+    if (edges.length > 0) {
+      for (const perm of permutations) {
+        const img_xyz: Vector = xyz.slice()
+        for (const [idx, edge] of edges.entries()) {
+          if (perm[idx] === 1) {
+            // Image atom at the opposite edge
+            if (Math.abs(abc[edge]) < tolerance) {
+              img_xyz[edge] += edge === 0 ? a : edge === 1 ? b : c
+            } else {
+              img_xyz[edge] -= edge === 0 ? a : edge === 1 ? b : c
+            }
+          }
+        }
+        edge_sites.push([idx, img_xyz])
+      }
+    }
+  })
+
+  return edge_sites
+}

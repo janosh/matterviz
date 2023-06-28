@@ -10,7 +10,7 @@
   import { pretty_num } from './labels'
   import { element_colors } from './stores'
   import type { PymatgenStructure, Site } from './structure'
-  import { atomic_radii, euclidean_dist } from './structure'
+  import { atomic_radii, euclidean_dist, find_image_atoms } from './structure'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -79,8 +79,8 @@
     {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
     <T.SphereGeometry args={[radius, 20, 20]} />
     <T.MeshStandardMaterial />
-    {#each structure.sites as site, idx}
-      {@const { xyz, species } = site}
+    {#each find_image_atoms(structure) as [site_idx, xyz], idx}
+      {@const { species } = structure.sites[site_idx]}
       <Instance
         position={xyz}
         color={$element_colors[species[0].element]}
