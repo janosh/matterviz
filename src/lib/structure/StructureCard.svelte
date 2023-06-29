@@ -32,19 +32,19 @@
         {pretty_num(volume, `.1f`)} Å³
         <small>
           &nbsp; ({pretty_num(volume / structure?.sites.length, `.1f`)} Å³/atom)
-        </small></span
-      >
+        </small>
+      </span>
     </strong>
     <strong>
       Density:
       <span class="value">{density(structure)} g/cm³</span>
     </strong>
     <strong>
-      Lattice lengths (a, b, c):
-      <span class="value">{pretty_num(a)} Å, {pretty_num(b)} Å, {pretty_num(c)} Å</span>
+      Lattice lengths a, b, c:
+      <span class="value">{pretty_num(a)}, {pretty_num(b)}, {pretty_num(c)} Å</span>
     </strong>
     <strong>
-      Lattice angles (α, β, γ):
+      Lattice angles α, β, γ:
       <span class="value">
         {pretty_num(alpha)}°, {pretty_num(beta)}°, {pretty_num(gamma)}°
       </span>
