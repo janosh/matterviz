@@ -1,4 +1,6 @@
-import type { PymatgenStructure } from '..'
+import type { PymatgenStructure } from '$lib'
+
+export { default as MaterialCard } from './MaterialCard.svelte'
 
 export type BuilderMeta = {
   emmet_version: string

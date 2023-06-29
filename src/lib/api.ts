@@ -1,6 +1,4 @@
-export const summary_bucket = `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28/summary`
-export const task_bucket = `https://materialsproject-parsed.s3.amazonaws.com/tasks`
-export const bonds_bucket = `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28/bonds`
+export const aws_bucket = `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28`
 
 export async function decompress(blob: ReadableStream<Uint8Array> | null) {
   // @ts-expect-error - TS doesn't know about DecompressionStream yet
@@ -12,20 +10,15 @@ export async function decompress(blob: ReadableStream<Uint8Array> | null) {
 export async function fetch_zipped<T>(
   url: string,
   { unzip = true } = {}
-): Promise<T | Blob | undefined> {
-  try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(
-        `${response.status} ${response.statusText} for ${response.url}`
-      )
-    }
-    if (!unzip) return await response.blob()
-    return JSON.parse(await decompress(response.body))
-  } catch (error) {
-    console.error(error)
-    alert(error.message)
+): Promise<T> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(
+      `${response.status} ${response.statusText} for ${response.url}`
+    )
   }
+  if (!unzip) return await response.blob()
+  return JSON.parse(await decompress(response.body))
 }
 
 // Function to download data to a file

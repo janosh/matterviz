@@ -1,13 +1,13 @@
 <script lang="ts">
   import { page } from '$app/stores'
-  import { Structure, StructureCard } from '$lib'
-  import { download, fetch_zipped, summary_bucket } from '$lib/api'
+  import { MaterialCard, Structure, StructureCard } from '$lib'
+  import { aws_bucket, download, fetch_zipped } from '$lib/api'
 
   export let data
 
   let mp_id: string = `mp-${$page.params.slug}`
   $: href = `https://materialsproject.org/materials/${mp_id}`
-  $: aws_url = `${summary_bucket}/${mp_id}.json.gz`
+  $: aws_url = `${aws_bucket}/summary/${mp_id}.json.gz`
 </script>
 
 <main>
@@ -48,6 +48,7 @@
   <StructureCard structure={data.summary.structure}>
     <a slot="title" {href}>{mp_id}</a>
   </StructureCard>
+  <MaterialCard material={data.summary} />
   <Structure structure={data.summary.structure} />
 </main>
 
