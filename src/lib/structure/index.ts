@@ -3,6 +3,7 @@ import type { ElementSymbol } from '$lib'
 import { pretty_num } from '$lib'
 import element_data from '$lib/element/data'
 
+export { default as Bond } from './Bond.svelte'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
@@ -42,6 +43,8 @@ export type PymatgenStructure = {
   charge: number
   id?: string
 }
+
+export type IdStructure = PymatgenStructure & { id: string }
 
 export function get_elem_amounts(structure: PymatgenStructure) {
   const elements: Partial<Record<ElementSymbol, number>> = {}
@@ -154,4 +157,23 @@ export function find_image_atoms(
   })
 
   return edge_sites
+}
+
+export function symmetrize_structure(
+  ...args: Parameters<typeof find_image_atoms>
+): PymatgenStructure {
+  const edge_sites = find_image_atoms(...args)
+  const structure = args[0]
+
+  const symmetrized_structure: PymatgenStructure = { ...structure }
+  symmetrized_structure.sites = [...structure.sites]
+
+  // add all the image atoms as new sites
+  for (const [site_idx, img_xyz] of edge_sites) {
+    const new_site = structure.sites[site_idx]
+    // copy original site
+    symmetrized_structure.sites.push({ ...new_site, xyz: img_xyz })
+  }
+
+  return symmetrized_structure
 }

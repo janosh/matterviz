@@ -44,17 +44,18 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
     })
   )
 
-// allow users to import default_precision and change it's items in place to
+// allow users to import default_fmt and change it's items in place to
 // set default number format globally
-export const default_precision: [string, string] = [`,.3~s`, `.3~g`]
+export const default_fmt: [string, string] = [`,.3~s`, `.3~g`]
 
-export const pretty_num = (num: number, precision?: string) => {
+// fmt as number only allowed to support [].map(pretty_num) without type error
+export const pretty_num = (num: number, fmt?: string | number) => {
   if (num === null) return ``
-  if (!precision) {
-    const [gt_1_fmt, lt_1_fmt] = default_precision
+  if (!fmt || typeof fmt !== `string`) {
+    const [gt_1_fmt, lt_1_fmt] = default_fmt
     return format(Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt)(num)
   }
-  return format(precision)(num)
+  return format(fmt)(num)
 }
 
 export const category_counts: Record<Category, number> = {

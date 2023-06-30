@@ -8,7 +8,11 @@
   import Icon from '../Icon.svelte'
   import { download } from '../api'
   import type { PymatgenStructure } from '../structure'
-  import { alphabetical_formula, get_elem_amounts } from '../structure'
+  import {
+    alphabetical_formula,
+    get_elem_amounts,
+    symmetrize_structure,
+  } from '../structure'
   import StructureLegend from './StructureLegend.svelte'
   import StructureScene from './StructureScene.svelte'
 
@@ -219,8 +223,8 @@
 
     <Canvas>
       <StructureScene
+        structure={symmetrize_structure(structure)}
         {...$$restProps}
-        {structure}
         {pan_speed}
         {cell_opacity}
         {camera_position}
