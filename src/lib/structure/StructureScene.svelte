@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { PymatgenStructure, Site } from '$lib'
-  import { atomic_radii, euclidean_dist, find_image_atoms, pretty_num } from '$lib'
+  import type { PymatgenStructure, Site, Vector } from '$lib'
+  import { Bond, atomic_radii, euclidean_dist, pretty_num } from '$lib'
   import { element_colors } from '$lib/stores'
   import { T } from '@threlte/core'
   import {
@@ -46,12 +46,27 @@
   export let active_site: Site | null = null
   export let precision: string = `.3~f`
   export let auto_rotate: number | boolean = 0
+  export let bond_radius: number = 0.1 * atom_radius
+  export let bond_opacity: number = 0.5
+  export let bond_color: string = `white`
+  export let max_bond_dist: number = 3
 
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
 
   interactivity()
+
+  let bond_pairs: [Vector, Vector][] = []
+  $: if (structure?.sites) {
+    bond_pairs = []
+    for (const { xyz } of structure.sites) {
+      for (const { xyz: other_xyz } of structure.sites) {
+        const dist = euclidean_dist(xyz, other_xyz)
+        if (dist < max_bond_dist) bond_pairs.push([xyz, other_xyz])
+      }
+    }
+  }
 </script>
 
 <T.PerspectiveCamera makeDefault position={camera_position}>
@@ -78,8 +93,8 @@
     {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
     <T.SphereGeometry args={[radius, 20, 20]} />
     <T.MeshStandardMaterial />
-    {#each find_image_atoms(structure) as [site_idx, xyz], idx}
-      {@const { species } = structure.sites[site_idx]}
+    {#each structure.sites as site, idx}
+      {@const { species, xyz } = site}
       <Instance
         position={xyz}
         color={$element_colors[species[0].element]}
@@ -97,6 +112,14 @@
     {/each}
   </InstancedMesh>
 {/if}
+
+<InstancedMesh>
+  <T.CylinderGeometry args={[bond_radius, bond_radius, 1, 16]} />
+  <T.MeshStandardMaterial opacity={bond_opacity} color={bond_color} />
+  {#each bond_pairs ?? [] as [from, to]}
+    <Bond {from} {to} radius={1} />
+  {/each}
+</InstancedMesh>
 
 <!-- highlight active and hovered sites -->
 {#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as { site, opacity }}

@@ -61,7 +61,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
 })
 
 test.each(structures)(`find_image_atoms`, async (structure) => {
-  const result = module.find_image_atoms(structure)
+  const image_atoms = module.find_image_atoms(structure)
   // write reference data
   // fs.writeFileSync(
   //   `${__dirname}/fixtures/find_image_atoms/${structure.id}.json`,
@@ -71,5 +71,20 @@ test.each(structures)(`find_image_atoms`, async (structure) => {
   const { default: expected } = await import(
     `./fixtures/find_image_atoms/${structure.id}.json`
   )
-  expect(result).toEqual(expected)
+  expect(image_atoms).toEqual(expected)
+})
+test.each(structures)(`symmetrize_structure`, async (structure) => {
+  const orig_len = structure.sites.length
+  const symmetrized = module.symmetrize_structure(structure)
+  const { id } = structure
+  const expected: Record<string, number> = {
+    'mp-1': 12,
+    'mp-2': 40,
+    'mp-1234': 72,
+    'mp-756175': 448,
+  }
+  const msg = `${id} has ${symmetrized.sites.length} sites, expected ${expected[id]}`
+  expect(symmetrized.sites.length, msg).toEqual(expected[id])
+  expect(symmetrized.sites.length, msg).toBeGreaterThan(orig_len)
+  expect(structure.sites.length, msg).toBe(orig_len)
 })

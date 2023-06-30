@@ -45,10 +45,10 @@
       >
     </div>
   </span>
+  <MaterialCard material={data.summary} />
   <StructureCard structure={data.summary.structure}>
     <a slot="title" {href}>{mp_id}</a>
   </StructureCard>
-  <MaterialCard material={data.summary} />
   <Structure structure={data.summary.structure} />
 </main>
 

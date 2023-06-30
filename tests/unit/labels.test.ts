@@ -1,6 +1,6 @@
 import { element_data } from '$lib'
 import {
-  default_precision,
+  default_fmt,
   heatmap_keys,
   pretty_num,
   property_labels,
@@ -34,13 +34,13 @@ test(`pretty_num`, () => {
   expect(pretty_num(-1.14123e-7, `.5~g`)).toBe(`−1.1412e-7`)
 })
 
-test(`default_precision`, () => {
-  expect(default_precision).toEqual([`,.3~s`, `.3~g`])
+test(`default_fmt`, () => {
+  expect(default_fmt).toEqual([`,.3~s`, `.3~g`])
 
   expect(pretty_num(12_345)).toBe(`12.3k`)
-  default_precision[0] = `,.5~s`
+  default_fmt[0] = `,.5~s`
   expect(pretty_num(12_345)).toBe(`12.345k`)
-  default_precision[0] = `,.3~s`
+  default_fmt[0] = `,.3~s`
 })
 
 const element_data_keys = Object.keys(element_data[0])
