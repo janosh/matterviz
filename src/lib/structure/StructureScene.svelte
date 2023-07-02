@@ -31,7 +31,13 @@
   // TODO whether to make the canvas fill the whole screen
   // export let fullscreen: boolean = false
   // whether to show the structure's lattice cell as a wireframe
+  export let show_atoms: boolean = true
+  export let show_bonds: boolean = true
   export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
+  // thickness of the wireframe lines that indicate the lattice's unit cell
+  // due to limitations of OpenGL with WebGL renderer, on most platforms linewidth will be 1 regardless of set value
+  // see https://threejs.org/docs/#api/en/materials/MeshBasicMaterial.wireframe
+  export let cell_line_width: number = 1
   // cell opacity
   export let cell_opacity: number | undefined = undefined
   // whether to show the lattice vectors
@@ -46,7 +52,7 @@
   export let active_site: Site | null = null
   export let precision: string = `.3~f`
   export let auto_rotate: number | boolean = 0
-  export let bond_radius: number = 0.1 * atom_radius
+  export let bond_radius: number | undefined = undefined
   export let bond_opacity: number = 0.5
   export let bond_color: string = `white`
   export let max_bond_dist: number = 3
@@ -67,6 +73,9 @@
       }
     }
   }
+
+  // make bonds reactive to atom_radius unless bond_radius is set
+  $: bond_thickness = bond_radius ?? 0.075 * atom_radius
 </script>
 
 <T.PerspectiveCamera makeDefault position={camera_position}>
@@ -87,14 +96,14 @@
 <T.DirectionalLight position={[3, 10, 10]} intensity={0.6} />
 <T.AmbientLight intensity={0.3} />
 
-{#if structure?.sites}
+{#if show_atoms && structure?.sites}
   <InstancedMesh>
-    {@const elem = structure.sites[0].species[0].element}
-    {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
-    <T.SphereGeometry args={[radius, 20, 20]} />
     <T.MeshStandardMaterial />
+    <T.SphereGeometry args={[1, 20, 20]} />
     {#each structure.sites as site, idx}
       {@const { species, xyz } = site}
+      {@const elem = species[0].element}
+      {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
       <Instance
         position={xyz}
         color={$element_colors[species[0].element]}
@@ -108,18 +117,21 @@
           if (active_idx == idx) active_idx = null
           else active_idx = idx
         }}
+        scale={radius}
       />
     {/each}
   </InstancedMesh>
 {/if}
 
-<InstancedMesh>
-  <T.CylinderGeometry args={[bond_radius, bond_radius, 1, 16]} />
-  <T.MeshStandardMaterial opacity={bond_opacity} color={bond_color} />
-  {#each bond_pairs ?? [] as [from, to]}
-    <Bond {from} {to} radius={1} />
-  {/each}
-</InstancedMesh>
+{#if show_bonds}
+  <InstancedMesh>
+    <T.CylinderGeometry args={[bond_thickness, bond_thickness, 1, 16]} />
+    <T.MeshStandardMaterial opacity={bond_opacity} color={bond_color} />
+    {#each bond_pairs ?? [] as [from, to]}
+      <Bond {from} {to} radius={1} />
+    {/each}
+  </InstancedMesh>
+{/if}
 
 <!-- highlight active and hovered sites -->
 {#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as { site, opacity }}
@@ -162,6 +174,7 @@
       transparent
       opacity={cell_opacity ?? (show_cell == `surface` ? 0.2 : 1)}
       wireframe={show_cell == `wireframe`}
+      wireframeLinewidth={cell_line_width}
     />
   </T.Mesh>
 {/if}

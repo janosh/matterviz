@@ -8,6 +8,7 @@
   export let elements: Composition
   export let elem_color_picker_title: string = `Double click to reset color`
   export let labels: HTMLLabelElement[] = []
+  export let tips_modal: HTMLDialogElement | undefined = undefined
   export let style: string | null = null
 </script>
 
@@ -36,6 +37,22 @@
   {/each}
 </div>
 
+<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+<dialog
+  bind:this={tips_modal}
+  on:click={tips_modal?.close}
+  on:keydown={tips_modal?.close}
+  role="tooltip"
+>
+  <slot name="tips-modal">
+    <p>Drop a JSON file onto the canvas to load a new structure.</p>
+    <p>
+      Click on an atom to make it active. Then hover another atom to get its distance to
+      the active atom.
+    </p>
+  </slot>
+</dialog>
+
 <style>
   div {
     display: flex;
@@ -58,5 +75,42 @@
     top: 0;
     left: 0;
     cursor: pointer;
+  }
+  dialog[role='tooltip'] {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    padding: 4pt 1em;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 5px;
+    transition: all 0.3s;
+    overflow: visible;
+  }
+  /* info icon in top left corner */
+  dialog[role='tooltip']::before {
+    content: '?';
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translate(-50%, -50%);
+    font-size: 20pt;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.8);
+    border-radius: 50%;
+    width: 1em;
+    height: 1em;
+    line-height: 1em;
+    text-align: center;
+    border: 1px solid white;
+    box-sizing: border-box;
+  }
+  dialog[role='tooltip']::backdrop {
+    background: rgba(0, 0, 0, 0.2);
+  }
+  dialog[role='tooltip'] p {
+    margin: 0;
   }
 </style>

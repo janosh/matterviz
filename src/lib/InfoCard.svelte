@@ -24,14 +24,14 @@
       </slot>
     </h2>
   {/if}
-  {#each data as { title, value, unit = '', fmt = default_fmt }}
+  {#each data as { title, value, unit, fmt = default_fmt }}
     <div>
       <span class="title" {title}>
         {@html title}
       </span>
       <strong>
         {@html typeof value == `number` ? pretty_num(value, fmt) : value}
-        {unit}
+        {unit ?? ``}
       </strong>
     </div>
   {:else}

@@ -18,8 +18,6 @@
   // Bohr atom electron orbital period is given by
   // T = (n^3 h^3) / (4pi^2 m K e^4 Z^2) = 1.52 * 10^-16 * n^3 / Z^2 s
   // with n the shell number, Z the atomic number, m the mass of the electron
-  $: Z = shells.reduce((a, b) => a + b, 0)
-
   $: _nucleus_props = {
     r: 20,
     fill: `white`,

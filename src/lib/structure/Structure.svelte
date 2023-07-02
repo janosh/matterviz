@@ -27,6 +27,8 @@
   export let camera_position: [number, number, number] = [10, 10, 10]
   // zoom level of the camera
   export let initial_zoom: number | undefined = undefined
+  // auto rotate speed. set to 0 to disable auto rotation.
+  export let auto_rotate: number = 0
   // zoom speed. set to 0 to disable zooming.
   export let zoom_speed: number = 0.3
   // pan speed. set to 0 to disable panning.
@@ -40,20 +42,23 @@
   // TODO whether to make the canvas fill the whole screen
   // export let fullscreen: boolean = false
   // whether to show the structure's lattice cell as a wireframe
+  export let show_atoms: boolean = true
+  export let show_bonds: boolean = true
+  export let bond_radius: number | undefined = undefined
   export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
+  export let cell_opacity: number | undefined = 0.15
+  export let cell_line_width: number = 1
   // the control panel DOM element
   export let controls: HTMLElement | undefined = undefined
   // the button to toggle the control panel
   export let toggle_controls_btn: HTMLButtonElement | undefined = undefined
-  // cell opacity
-  export let cell_opacity: number | undefined = undefined
   // whether to show the lattice vectors
   export let show_vectors: boolean = true
   // bindable width of the canvas
   export let width: number = 0
   // bindable height of the canvas
   export let height: number = 0
-  export let reset_text: string = `Reset view`
+  // export let reset_text: string = `Reset view`
   export let color_scheme: 'Jmol' | 'Vesta' = `Vesta`
   export let hovered: boolean = false
   export let dragover: boolean = false
@@ -140,12 +145,12 @@
   >
     <section class:visible={visible_buttons}>
       <!-- TODO show only when camera was moved -->
-      <button
+      <!-- <button
         class="reset-camera"
         on:click={() => {
           // TODO implement reset view and controls
         }}>{reset_text}</button
-      >
+      > -->
       <button
         on:click={() => (controls_open = !controls_open)}
         bind:this={toggle_controls_btn}
@@ -164,20 +169,21 @@
       {/if}
     </section>
 
-    <dialog bind:this={controls} open={controls_open}>
-      <label>
-        Atom radius
-        <input type="range" min="0.1" max="1" step="0.05" bind:value={atom_radius} />
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={same_size_atoms} />
-        Scale according to atomic radii
-        <small> (if false, all atoms have same size)</small>
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={atom_labels} />
-        Show atom labels
-      </label>
+    <dialog class="controls" bind:this={controls} open={controls_open}>
+      <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap;">
+        Show <label>
+          <input type="checkbox" bind:checked={show_atoms} />
+          atoms
+        </label>
+        <label>
+          <input type="checkbox" bind:checked={show_bonds} />
+          bonds
+        </label>
+        <label>
+          <input type="checkbox" bind:checked={show_vectors} />
+          lattice vectors
+        </label>
+      </div>
       <label>
         Show unit cell as
         <select bind:value={show_cell}>
@@ -186,25 +192,66 @@
           <option value={null}>none</option>
         </select>
       </label>
+
+      <hr />
+
+      <label>
+        Atom radius
+        <small> (Å)</small>
+        <input type="number" min="0.1" max={1} step={0.05} bind:value={atom_radius} />
+        <input type="range" min="0.1" max={1} step={0.05} bind:value={atom_radius} />
+      </label>
+      <label>
+        <input type="checkbox" bind:checked={same_size_atoms} />
+        <span>
+          Scale sites according to atomic radii
+          <small> (if false, all atoms have same size)</small>
+        </span>
+      </label>
+      <label>
+        Bond radius
+        <input
+          type="number"
+          min={0.001}
+          max={0.1}
+          step={0.001}
+          bind:value={bond_radius}
+        />
+        <input type="range" min="0.001" max="0.1" step={0.001} bind:value={bond_radius} />
+      </label>
+
+      <hr />
+
+      <label>
+        <input type="checkbox" bind:checked={atom_labels} />
+        Show atom labels
+      </label>
       {#if show_cell}
         <label>
           Unit cell opacity
-          <input type="range" min="0" max="1" step="0.05" bind:value={cell_opacity} />
+          <input type="number" min={0} max={1} step={0.05} bind:value={cell_opacity} />
+          <input type="range" min={0} max={1} step={0.05} bind:value={cell_opacity} />
         </label>
       {/if}
+
+      <hr />
+
       <label>
-        <input type="checkbox" bind:checked={show_vectors} />
-        Show lattice vectors
+        Auto rotate speed
+        <input type="number" min={0} max={2} step={0.01} bind:value={auto_rotate} />
+        <input type="range" min={0} max={2} step={0.01} bind:value={auto_rotate} />
       </label>
       <label>
         Zoom speed
-        <input type="range" min="0" max="2" step="0.01" bind:value={zoom_speed} />
+        <input type="number" min={0} max={2} step={0.01} bind:value={zoom_speed} />
+        <input type="range" min={0} max={2} step={0.01} bind:value={zoom_speed} />
       </label>
       <label>
         <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
           Pan speed
         </Tooltip>
-        <input type="range" min="0" max="2" step="0.01" bind:value={pan_speed} />
+        <input type="number" min={0} max={2} step={0.01} bind:value={pan_speed} />
+        <input type="range" min={0} max={2} step={0.01} bind:value={pan_speed} />
       </label>
       <!-- color scheme -->
       <label>
@@ -224,20 +271,25 @@
     <Canvas>
       <StructureScene
         structure={symmetrize_structure(structure)}
-        {...$$restProps}
-        {pan_speed}
-        {cell_opacity}
-        {camera_position}
-        {zoom_speed}
+        {show_atoms}
+        {show_bonds}
         {show_cell}
         {show_vectors}
-        let:elem
+        {...$$restProps}
+        {cell_opacity}
+        {cell_line_width}
+        {bond_radius}
+        {camera_position}
+        {auto_rotate}
+        {pan_speed}
+        {zoom_speed}
+        bind:atom_radius
+        bind:same_size_atoms
       >
         <!-- above let:elem needed to fix false positive eslint no-undef -->
-        <slot slot="atom-label" let:elem>
+        <slot slot="atom-label" name="atom-label" let:elem>
           {#if atom_labels}
             <span class="atom-label" style={atom_labels_style}>
-              <!-- eslint-ignore-next-line no-undef -->
               {atom_labels === true ? elem : atom_labels[elem]}
             </span>
           {/if}
@@ -245,29 +297,11 @@
       </StructureScene>
     </Canvas>
 
-    <StructureLegend elements={get_elem_amounts(structure)} />
+    <StructureLegend elements={get_elem_amounts(structure)} bind:tips_modal />
 
     <div class="bottom-left">
       <slot name="bottom-left" {structure} />
     </div>
-
-    {#if enable_tips}
-      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-      <dialog
-        bind:this={tips_modal}
-        on:click={tips_modal?.close}
-        on:keydown={tips_modal?.close}
-        role="tooltip"
-      >
-        <slot name="tips-modal">
-          <p>Drop a JSON file onto the canvas to load a new structure.</p>
-          <p>
-            Click on an atom to make it active. Then hover another atom to get its
-            distance to the active atom.
-          </p>
-        </slot>
-      </dialog>
-    {/if}
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -305,7 +339,7 @@
     gap: 1ex;
   }
 
-  dialog {
+  dialog.controls {
     position: absolute;
     left: unset;
     background: transparent;
@@ -323,14 +357,40 @@
     background-color: var(--controls-bg, rgba(0, 0, 0, 0.7));
     padding: var(--controls-padding, 6pt 9pt);
     border-radius: var(--controls-border-radius, 3pt);
-    width: var(--controls-width, 18em);
+    width: var(--controls-width, 20em);
     max-width: var(--controls-max-width, 90cqw);
   }
-  dialog[open] {
+  dialog.controls hr {
+    width: 100%;
+    height: 0.5px;
+    border: none;
+    background: gray;
+    margin: 0;
+  }
+  dialog.controls label {
+    display: flex;
+    align-items: center;
+    gap: 4pt;
+  }
+  dialog.controls input[type='range'] {
+    margin-left: auto;
+  }
+  dialog.controls input[type='number'] {
+    background-color: rgba(255, 255, 255, 0.15);
+    width: 2em;
+    text-align: center;
+    border-radius: 3pt;
+    border: none;
+  }
+  input::-webkit-inner-spin-button {
+    display: none;
+  }
+
+  dialog.controls[open] {
     visibility: visible;
     opacity: 1;
   }
-  dialog button {
+  dialog.controls button {
     width: max-content;
     background-color: rgba(255, 255, 255, 0.4);
   }
@@ -343,24 +403,6 @@
   p.warn {
     font-size: larger;
     text-align: center;
-  }
-  dialog[role='tooltip'] {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    margin: 0;
-    padding: 4pt 1em;
-    background-color: rgb(25, 25, 25);
-    color: white;
-    border-radius: 5px;
-    transition: all 0.3s;
-  }
-  dialog[role='tooltip']::backdrop {
-    background: rgba(0, 0, 0, 0.4);
-  }
-  dialog[role='tooltip'] p {
-    margin: 0;
   }
   .atom-label {
     background: rgba(0, 0, 0, 0.4);
