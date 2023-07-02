@@ -53,6 +53,7 @@
   export let color_overrides: Record<ElementSymbol, string> = {}
   export let labels: Record<ElementSymbol, string> = {}
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
   let heat_values: number[] = []

@@ -21,6 +21,7 @@
   export let node: HTMLElement | null = null
   export let label: string | null = null
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
   $: category = element.category.replaceAll(` `, `-`)
@@ -36,7 +37,7 @@
 </script>
 
 <svelte:element
-  this={href ? 'a' : 'div'}
+  this={href ? `a` : `div`}
   bind:this={node}
   {href}
   data-sveltekit-noscroll
