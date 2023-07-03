@@ -253,4 +253,4 @@ export const element_color_schemes = {
   Vesta: vesta_hex,
   Jmol: jmol_hex,
 } as const
-export const default_element_colors = vesta_hex
+export const default_element_colors = { ...vesta_hex }

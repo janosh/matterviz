@@ -63,6 +63,7 @@
 
   interactivity()
 
+  // naive max dist bond strategy
   let bond_pairs: [Vector, Vector][] = []
   $: if (structure?.sites) {
     bond_pairs = []
