@@ -70,6 +70,8 @@
   // use slot='atom-label' to include HTML and event handlers
   export let atom_labels: boolean | Record<ElementSymbol, string | number> = false
   export let atom_labels_style: string | null = null
+  export let bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
+  export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -237,6 +239,24 @@
       <hr />
 
       <label>
+        Bond color mode
+        <select bind:value={bond_color_mode}>
+          <option value="single">Single</option>
+          <option value="split-midpoint">Split Midpoint</option>
+          <option value="gradient" disabled>Gradient (TODO)</option>
+        </select>
+      </label>
+
+      {#if bond_color_mode === `single`}
+        <label>
+          Bond color
+          <input type="color" bind:value={bond_color} />
+        </label>
+      {/if}
+
+      <hr />
+
+      <label>
         Auto rotate speed
         <input type="number" min={0} max={2} step={0.01} bind:value={auto_rotate} />
         <input type="range" min={0} max={2} step={0.01} bind:value={auto_rotate} />
@@ -283,6 +303,8 @@
         {auto_rotate}
         {pan_speed}
         {zoom_speed}
+        {bond_color_mode}
+        {bond_color}
         bind:atom_radius
         bind:same_size_atoms
       >
@@ -311,32 +333,32 @@
 
 <style>
   .structure {
-    height: 600px;
-    width: 100%;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 3pt;
     position: relative;
     container-type: inline-size;
-    --controls-transition-duration: 0.3s;
+    height: var(--struct-height, 500px);
+    width: var(--struct-width);
+    border-radius: var(--struct-border-radius, 3pt);
+    background: var(--struct-bg, rgba(255, 255, 255, 0.1));
+    --struct-controls-transition-duration: 0.3s;
   }
   .structure.dragover {
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--struct-dragover-bg, rgba(0, 0, 0, 0.7));
   }
   div.bottom-left {
     position: absolute;
     bottom: 0;
     left: 0;
-    font-size: 1.2em;
-    padding: 1pt 5pt;
+    font-size: var(--struct-bottom-left-font-size, 1.2em);
+    padding: var(--struct-bottom-left-padding, 1pt 5pt);
   }
 
   section {
     position: absolute;
-    top: 1ex;
-    right: 1ex;
     display: flex;
     justify-content: end;
-    gap: 1ex;
+    top: var(--struct-buttons-top, 1ex);
+    right: var(--struct-buttons-right, 1ex);
+    gap: var(--struct-buttons-gap, 1ex);
   }
 
   dialog.controls {
@@ -345,42 +367,42 @@
     background: transparent;
     border: none;
     display: grid;
-    gap: 1ex;
     visibility: hidden;
     opacity: 0;
-    text-align: var(--controls-text-align, left);
-    transition: visibility var(--controls-transition-duration),
-      opacity var(--controls-transition-duration);
+    gap: var(--struct-controls-gap, 4pt);
+    text-align: var(--struct-controls-text-align, left);
+    transition: visibility var(--struct-controls-transition-duration),
+      opacity var(--struct-controls-transition-duration);
     box-sizing: border-box;
-    top: var(--controls-top, 30pt);
-    right: var(--controls-right, 6pt);
-    background-color: var(--controls-bg, rgba(0, 0, 0, 0.7));
-    padding: var(--controls-padding, 6pt 9pt);
-    border-radius: var(--controls-border-radius, 3pt);
-    width: var(--controls-width, 20em);
-    max-width: var(--controls-max-width, 90cqw);
+    top: var(--struct-controls-top, 30pt);
+    right: var(--struct-controls-right, 6pt);
+    background: var(--struct-controls-bg, rgba(0, 0, 0, 0.7));
+    padding: var(--struct-controls-padding, 6pt 9pt);
+    border-radius: var(--struct-controls-border-radius, 3pt);
+    width: var(--struct-controls-width, 20em);
+    max-width: var(--struct-controls-max-width, 90cqw);
   }
   dialog.controls hr {
-    width: 100%;
-    height: 0.5px;
     border: none;
-    background: gray;
-    margin: 0;
+    background: var(--struct-controls-hr-bg, gray);
+    margin: var(--struct-controls-hr-margin, 0);
+    height: var(--struct-controls-hr-height, 0.5px);
   }
   dialog.controls label {
     display: flex;
     align-items: center;
-    gap: 4pt;
+    gap: var(--struct-controls-label-gap, 4pt);
   }
   dialog.controls input[type='range'] {
     margin-left: auto;
   }
   dialog.controls input[type='number'] {
-    background-color: rgba(255, 255, 255, 0.15);
-    width: 2em;
+    box-sizing: border-box;
     text-align: center;
-    border-radius: 3pt;
-    border: none;
+    border-radius: var(--struct-controls-input-num-border-radius, 3pt);
+    width: var(--struct-controls-input-num-width, 2em);
+    border: var(--struct-controls-input-num-border, none);
+    background: var(--struct-controls-input-num-bg, rgba(255, 255, 255, 0.15));
   }
   input::-webkit-inner-spin-button {
     display: none;
@@ -389,15 +411,16 @@
   dialog.controls[open] {
     visibility: visible;
     opacity: 1;
+    z-index: var(--struct-controls-z-index-open, 100);
   }
   dialog.controls button {
     width: max-content;
-    background-color: rgba(255, 255, 255, 0.4);
+    background: var(--struct-controls-btn-bg, rgba(255, 255, 255, 0.4));
   }
   select {
-    margin-left: 5pt;
-    color: white;
-    background-color: rgba(0, 0, 0, 0.4);
+    margin: var(--struct-controls-select-margin, 0 0 0 5pt);
+    color: var(--struct-controls-select-color, white);
+    background-color: var(--struct-controls-select-bg, rgba(255, 255, 255, 0.1));
   }
 
   p.warn {
@@ -405,8 +428,12 @@
     text-align: center;
   }
   .atom-label {
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 2pt;
-    padding: 0 3pt;
+    background: var(--struct-atom-label-bg, rgba(255, 255, 255, 0.4));
+    border-radius: var(--struct-atom-label-border-radius, 3pt);
+    padding: var(--struct-atom-label-padding, 0 3pt);
+  }
+  input[type='color'] {
+    width: var(--struct-input-color-width, 40px);
+    height: var(--struct-input-color-height, 16px);
   }
 </style>

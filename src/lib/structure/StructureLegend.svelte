@@ -22,8 +22,9 @@
       <label
         bind:this={labels[idx]}
         style="background-color: {$element_colors[elem]}"
-        on:dblclick|preventDefault={() =>
-          ($element_colors[elem] = default_element_colors[elem])}
+        on:dblclick|preventDefault={() => {
+          $element_colors[elem] = default_element_colors[elem]
+        }}
         style:color={get_text_color(labels[idx])}
       >
         {elem}{amt}
