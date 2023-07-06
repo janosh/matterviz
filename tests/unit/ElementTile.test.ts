@@ -83,9 +83,9 @@ describe(`ElementTile`, () => {
 
       expect(
         node.style.color,
-        `got text_color=${node.style.color} for bg_color=${bg_color}, expected ${text_color}`
+        `got text_color=${node.style.color} for bg_color=${bg_color}, expected ${text_color}`,
       ).toBe(text_color)
-    }
+    },
   )
 
   test.each([[true], [false]])(
@@ -99,7 +99,7 @@ describe(`ElementTile`, () => {
       const node = doc_query(`.element-tile`)
 
       expect(node.classList.contains(`active`)).toBe(active)
-    }
+    },
   )
 
   describe.each([[`name`], [`number`], [`symbol`]] as const)(
@@ -120,9 +120,9 @@ describe(`ElementTile`, () => {
           } else {
             expect(document.querySelector(`.${prop}`)).toBeNull()
           }
-        }
+        },
       )
-    }
+    },
   )
   test.each([
     [true, true, true],
@@ -144,6 +144,6 @@ describe(`ElementTile`, () => {
       const tile = doc_query(`.element-tile`)
 
       expect(tile.textContent?.trim()).toBe(expected.trim())
-    }
+    },
   )
 })

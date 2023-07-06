@@ -43,4 +43,4 @@
   }
 </script>
 
-<Instance {position} {rotation} scale={height} {color} />
+<Instance {position} {rotation} scale={[1, height, 1]} {color} />

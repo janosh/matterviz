@@ -7,7 +7,7 @@ export const structures = Object.entries(
   import.meta.glob(`./structures/*.json`, {
     eager: true,
     import: `default`,
-  }) as Record<string, IdStructure>
+  }) as Record<string, IdStructure>,
 ).map(([path, structure]) => {
   const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
   structure.id = id

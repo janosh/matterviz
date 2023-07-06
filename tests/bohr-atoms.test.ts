@@ -25,13 +25,13 @@ test.describe(`Bohr Atoms page`, () => {
     const shell_svg_group = await page.locator(`svg > g.shell >> nth=1`)
 
     const initial_animation_duration = await shell_svg_group.evaluate(
-      (el) => getComputedStyle(el).animationDuration
+      (el) => getComputedStyle(el).animationDuration,
     )
     expect(parseInt(initial_animation_duration)).toBeGreaterThan(0)
 
     await page.fill(`input[type="number"]`, `0`)
     const toggled_animation_duration = await shell_svg_group.evaluate(
-      (el) => getComputedStyle(el).animationDuration
+      (el) => getComputedStyle(el).animationDuration,
     )
     expect(toggled_animation_duration).toBe(`0s`)
   })

@@ -22,7 +22,7 @@ describe(`PeriodicTable`, () => {
 
       const element_tiles = document.querySelectorAll(`.element-tile`)
       expect(element_tiles.length).toBe(expected_tiles)
-    }
+    },
   )
 
   test(`has no text content when symbols, names and numbers are disabled`, async () => {
@@ -113,7 +113,7 @@ describe(`PeriodicTable`, () => {
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
       }
-    }
+    },
   )
 
   test(`clicking element tile emits event`, async () => {
@@ -159,7 +159,7 @@ describe(`PeriodicTable`, () => {
 
       const active_tiles = document.querySelectorAll(`.element-tile.active`)
       expect(active_tiles.length).toBe(expected_active)
-    }
+    },
   )
 
   test.each([[[...Array(200).keys()]], [[...Array(119).keys()]]])(
@@ -175,9 +175,9 @@ describe(`PeriodicTable`, () => {
       expect(console.error).toHaveBeenCalledOnce()
       expect(console.error).toBeCalledWith(
         `heatmap_values is an array of numbers, length should be 118 or less, one for ` +
-          `each element possibly omitting elements at the end, got ${heatmap_values.length}`
+          `each element possibly omitting elements at the end, got ${heatmap_values.length}`,
       )
-    }
+    },
   )
 
   test.each([[{ he: 0 }], [{ foo: 42 }]])(
@@ -194,10 +194,10 @@ describe(`PeriodicTable`, () => {
       expect(console.error).toHaveBeenCalledOnce()
       expect(console.error).toBeCalledWith(
         `heatmap_values is an object, keys should be element symbols, got ${Object.keys(
-          heatmap_values
-        )}`
+          heatmap_values,
+        )}`,
       )
-    }
+    },
   )
 
   test(`element tiles are accessible to keyboard users`, async () => {
@@ -224,7 +224,7 @@ describe(`PeriodicTable`, () => {
     window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight` }))
     await tick()
     expect(element_tiles[activeIndex].textContent?.trim()).toBe(
-      `4 Be Beryllium`
+      `4 Be Beryllium`,
     )
 
     // Press the left arrow key to move back to the previous column

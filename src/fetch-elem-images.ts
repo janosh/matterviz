@@ -31,14 +31,14 @@ async function download_elem_image(num_name: string) {
 
   if (!response.ok) {
     return console.error(
-      `Error downloading image for ${num_name}: ${response.statusText}`
+      `Error downloading image for ${num_name}: ${response.statusText}`,
     )
   }
   // check we got jpg or png mime type
   const content_type = response.headers.get(`content-type`)
   if (!content_type?.startsWith(`image/`)) {
     return console.error(
-      `Error downloading image for ${num_name}: unexpected content type ${content_type}`
+      `Error downloading image for ${num_name}: unexpected content type ${content_type}`,
     )
   }
 
@@ -50,12 +50,12 @@ async function download_elem_image(num_name: string) {
 }
 
 const arg = process.argv.find((arg: string) =>
-  arg.startsWith(`fetch-elem-images:`)
+  arg.startsWith(`fetch-elem-images:`),
 )
 const action = arg?.split(`:`)[1]
 if (![`report`, `download`, `re-download`].includes(action)) {
   throw new Error(
-    `Correct usage: vite [dev] fetch-elem-images:[report|download|re-download], got ${arg}\n`
+    `Correct usage: vite [dev] fetch-elem-images:[report|download|re-download], got ${arg}\n`,
   )
 }
 if (action.endsWith(`download`)) console.log(`Downloading images...`)

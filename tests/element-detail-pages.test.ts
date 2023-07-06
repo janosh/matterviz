@@ -14,7 +14,7 @@ test.describe(`Element detail page`, async () => {
 
       // titles should have dash-separated element number and name
       expect(await page.textContent(`h2`)).toContain(
-        `${random_element.number} - ${random_element.name}`
+        `${random_element.number} - ${random_element.name}`,
       )
 
       // should have brief element description

@@ -9,12 +9,12 @@ export async function decompress(blob: ReadableStream<Uint8Array> | null) {
 
 export async function fetch_zipped<T>(
   url: string,
-  { unzip = true } = {}
+  { unzip = true } = {},
 ): Promise<T> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(
-      `${response.status} ${response.statusText} for ${response.url}`
+      `${response.status} ${response.statusText} for ${response.url}`,
     )
   }
   if (!unzip) return await response.blob()
