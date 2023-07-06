@@ -10,6 +10,7 @@
   export let labels: HTMLLabelElement[] = []
   export let tips_modal: HTMLDialogElement | undefined = undefined
   export let style: string | null = null
+  export let dialog_style: string | null = null
 </script>
 
 <div {style}>
@@ -44,6 +45,7 @@
   on:click={tips_modal?.close}
   on:keydown={tips_modal?.close}
   role="tooltip"
+  style={dialog_style}
 >
   <slot name="tips-modal">
     <p>Drop a JSON file onto the canvas to load a new structure.</p>
@@ -58,15 +60,17 @@
   div {
     display: flex;
     position: absolute;
-    bottom: var(--struct-elem-list-bottom, 8pt);
-    right: var(--struct-elem-list-right, 8pt);
-    gap: var(--struct-elem-list-gap, 8pt);
-    font-size: var(--struct-elem-list-font-size, 16pt);
+    bottom: var(--struct-legend-bottom, 8pt);
+    right: var(--struct-legend-right, 8pt);
+    gap: var(--struct-legend-gap, 8pt);
+    font-size: var(--struct-legend-font-size, 16pt);
   }
+
   div label {
-    padding: 1pt 4pt;
-    border-radius: var(--struct-elem-list-border-radius, 3pt);
+    padding: var(--struct-legend-label-padding, 1pt 4pt);
+    border-radius: var(--struct-legend-label-border-radius, 3pt);
   }
+
   div label input[type='color'] {
     z-index: 1;
     opacity: 0;
@@ -77,41 +81,46 @@
     left: 0;
     cursor: pointer;
   }
+
   dialog[role='tooltip'] {
     position: fixed;
-    top: 50%;
-    left: 50%;
+    top: var(--struct-tooltip-top, 50%);
+    left: var(--struct-tooltip-left, 50%);
     transform: translate(-50%, -50%);
     margin: 0;
-    padding: 4pt 1em;
-    background-color: rgba(0, 0, 0, 0.8);
-    color: white;
-    border-radius: 5px;
+    padding: var(--struct-tooltip-padding, 4pt 1em);
+    background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.8));
+    color: var(--struct-tooltip-color, white);
+    border-radius: var(--struct-tooltip-border-radius, 5px);
     transition: all 0.3s;
     overflow: visible;
   }
+
   /* info icon in top left corner */
   dialog[role='tooltip']::before {
     content: '?';
     position: absolute;
     top: 0;
     left: 0;
-    transform: translate(-50%, -50%);
-    font-size: 20pt;
-    color: white;
-    background-color: rgba(0, 0, 0, 0.8);
-    border-radius: 50%;
-    width: 1em;
-    height: 1em;
-    line-height: 1em;
-    text-align: center;
-    border: 1px solid white;
+    display: flex;
+    place-content: center;
+    place-items: center;
+    transform: var(--struct-tooltip-before-transform, translate(-50%, -50%));
     box-sizing: border-box;
+    font-size: var(--struct-tooltip-before-font-size, 20pt);
+    color: var(--struct-tooltip-before-color, white);
+    background: var(--struct-tooltip-before-bg, rgba(0, 0, 0, 0.8));
+    border-radius: var(--struct-tooltip-before-border-radius, 50%);
+    width: var(--struct-tooltip-before-width, 1em);
+    height: var(--struct-tooltip-before-height, 1em);
+    border: var(--struct-tooltip-before-border, 1px solid white);
   }
+
   dialog[role='tooltip']::backdrop {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--struct-tooltip-backdrop-background, rgba(0, 0, 0, 0.2));
   }
+
   dialog[role='tooltip'] p {
-    margin: 0;
+    margin: var(--struct-tooltip-p-margin, 0);
   }
 </style>

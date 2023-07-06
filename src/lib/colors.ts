@@ -242,11 +242,11 @@ export const vesta = {
 } as const
 
 export const jmol_hex = Object.fromEntries(
-  Object.entries(jmol).map(([key, val]) => [key, rgb(...val).formatHex()])
+  Object.entries(jmol).map(([key, val]) => [key, rgb(...val).formatHex()]),
 ) as Record<ElementSymbol, string>
 
 export const vesta_hex = Object.fromEntries(
-  Object.entries(vesta).map(([key, val]) => [key, rgb(...val).formatHex()])
+  Object.entries(vesta).map(([key, val]) => [key, rgb(...val).formatHex()]),
 ) as Record<ElementSymbol, string>
 
 export const element_color_schemes = {

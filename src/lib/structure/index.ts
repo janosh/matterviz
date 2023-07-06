@@ -73,16 +73,16 @@ export function alphabetical_formula(structure: PymatgenStructure) {
 }
 
 export const atomic_radii: Record<ElementSymbol, number> = Object.fromEntries(
-  element_data.map((el) => [el.symbol, el.atomic_radius / 2])
+  element_data.map((el) => [el.symbol, el.atomic_radius / 2]),
 )
 
 export const atomic_weights = Object.fromEntries(
-  element_data.map((el) => [el.symbol, el.atomic_mass])
+  element_data.map((el) => [el.symbol, el.atomic_mass]),
 )
 
 export function get_elements(structure: PymatgenStructure): ElementSymbol[] {
   const elems = structure.sites.flatMap((site) =>
-    site.species.map((sp) => sp.element)
+    site.species.map((sp) => sp.element),
   )
   return [...new Set(elems)].sort() // unique elements
 }
@@ -120,7 +120,7 @@ function generate_permutations(length: number): number[][] {
 
 export function find_image_atoms(
   structure: PymatgenStructure,
-  { tolerance = 0.05 }: { tolerance?: number } = {}
+  { tolerance = 0.05 }: { tolerance?: number } = {},
   // fractional tolerance for determining if a site is at the edge of the unit cell
 ): Array<[number, Vector]> {
   const edge_sites: Array<[number, Vector]> = []
@@ -134,7 +134,7 @@ export function find_image_atoms(
 
     // Check if the site is at the edge and determine its image
     const edges: number[] = [0, 1, 2].filter(
-      (i) => Math.abs(abc[i]) < tolerance || Math.abs(abc[i] - 1) < tolerance
+      (i) => Math.abs(abc[i]) < tolerance || Math.abs(abc[i] - 1) < tolerance,
     )
 
     const { a, b, c } = structure.lattice

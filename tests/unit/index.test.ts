@@ -15,7 +15,7 @@ test(`ElementScatter is named export`, () => {
 
 test(`src/lib/icons/index.ts re-exports all components`, () => {
   const components = Object.keys(import.meta.glob(`$lib/*.svelte`)).map(
-    (path) => path.split(`/`).pop()?.split(`.`).shift()
+    (path) => path.split(`/`).pop()?.split(`.`).shift(),
   )
   expect(Object.keys(lib)).toEqual(expect.arrayContaining(components))
 })

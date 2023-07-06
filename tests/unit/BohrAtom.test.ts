@@ -38,6 +38,6 @@ describe(`BohrAtom`, () => {
 
       const electron = document.querySelectorAll(`.electron`)
       expect(electron.length).toBe(shells.reduce((a, b) => a + b, 0))
-    }
+    },
   )
 })

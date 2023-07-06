@@ -41,7 +41,7 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
       const [label, unit] = property_labels[key] ?? []
       if (!label) throw `Unexpected missing label ${label}`
       return [label + (unit ? ` (${unit})` : ``), key]
-    })
+    }),
   )
 
 // allow users to import default_fmt and change it's items in place to
@@ -99,7 +99,7 @@ export function luminance(clr: string) {
 
 export function get_bg_color(
   elem: HTMLElement | null,
-  bg_color: string | null = null
+  bg_color: string | null = null,
 ): string {
   if (bg_color) return bg_color
   // recurse up the DOM tree to find the first non-transparent background color
@@ -115,7 +115,7 @@ export function get_text_color(
   node: HTMLElement | null,
   // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails
   bg_color: string | null = null,
-  text_color_threshold: number = 0.7
+  text_color_threshold: number = 0.7,
 ) {
   const dark_bg = luminance(get_bg_color(node, bg_color)) < text_color_threshold
   return dark_bg ? `white` : `black`

@@ -72,6 +72,7 @@
   export let atom_labels_style: string | null = null
   export let bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
   export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
+  export let style: string | null = null
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -85,7 +86,7 @@
   $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
   $: {
     // set camera position based on structure size
-    const scale = initial_zoom ?? 2400 / (width + height)
+    const scale = initial_zoom ?? 1000 / Math.min(width, height)
     camera_position = [scale * a, 0.5 * scale * b, scale * c]
   }
   const on_window_click =
@@ -135,6 +136,9 @@
 {#if structure?.sites}
   <div
     class="structure"
+    class:dragover
+    {style}
+    role="region"
     bind:clientWidth={width}
     bind:clientHeight={height}
     on:mouseenter={() => (hovered = true)}
@@ -142,8 +146,6 @@
     on:drop|preventDefault={on_file_drop}
     on:dragover|preventDefault={() => allow_file_drop && (dragover = true)}
     on:dragleave|preventDefault={() => allow_file_drop && (dragover = false)}
-    class:dragover
-    role="region"
   >
     <section class:visible={visible_buttons}>
       <!-- TODO show only when camera was moved -->
@@ -337,6 +339,8 @@
     container-type: inline-size;
     height: var(--struct-height, 500px);
     width: var(--struct-width);
+    max-width: var(--struct-max-width);
+    min-width: var(--struct-min-width);
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg, rgba(255, 255, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;

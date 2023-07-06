@@ -47,7 +47,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
     test(`should return the unique elements in a given structure`, () => {
       const result = module.get_elements(structure)
       expect(JSON.stringify(result), id).toBe(
-        JSON.stringify(Object.keys(expected.amounts).sort())
+        JSON.stringify(Object.keys(expected.amounts).sort()),
       )
     })
   })
