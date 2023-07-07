@@ -73,6 +73,7 @@
   export let bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
   export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
   export let style: string | null = null
+  export let show_image_atoms: boolean = true
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -187,6 +188,14 @@
           <input type="checkbox" bind:checked={show_vectors} />
           lattice vectors
         </label>
+        <label>
+          <input type="checkbox" bind:checked={show_cell} />
+          unit cell
+        </label>
+        <label>
+          <input type="checkbox" bind:checked={show_image_atoms} />
+          image atoms
+        </label>
       </div>
       <label>
         Show unit cell as
@@ -292,7 +301,7 @@
 
     <Canvas>
       <StructureScene
-        structure={symmetrize_structure(structure)}
+        structure={show_image_atoms ? symmetrize_structure(structure) : structure}
         {show_atoms}
         {show_bonds}
         {show_cell}
@@ -395,7 +404,7 @@
   dialog.controls label {
     display: flex;
     align-items: center;
-    gap: var(--struct-controls-label-gap, 4pt);
+    gap: var(--struct-controls-label-gap, 2pt);
   }
   dialog.controls input[type='range'] {
     margin-left: auto;

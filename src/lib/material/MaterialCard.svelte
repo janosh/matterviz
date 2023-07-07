@@ -3,14 +3,19 @@
   import type { SummaryDoc } from '$lib/material'
 
   export let material: SummaryDoc
-</script>
 
-<InfoCard
-  data={[
-    { title: `Band Gap`, value: material.band_gap, unit: `eV` },
+  $: data = [
+    {
+      title: `Band Gap`,
+      value: material.band_gap,
+      unit: `eV`,
+      tooltip:
+        material.vbm && material.cbm ? `VBM: ${material.vbm}, CBM: ${material.cbm}` : ``,
+    },
     {
       title: `Space Group`,
-      value: `${material.symmetry.number} (${material.symmetry.symbol})`,
+      value: `${material.symmetry.number}`,
+      unit: `(${material.symmetry.symbol})`,
     },
     {
       title: `E<sub>above hull</sub>`,
@@ -24,6 +29,46 @@
     },
     { title: `Experimentally Observed`, value: material.theoretical ? `No` : `Yes` },
     { title: `Total Energy`, value: material.energy_per_atom, unit: `eV/atom` },
-  ]}
-  {...$$restProps}
-/>
+    {
+      title: `Uncorrected Energy`,
+      value: material.uncorrected_energy_per_atom,
+      unit: `eV/atom`,
+      condition: material.uncorrected_energy_per_atom != material.energy_per_atom,
+    },
+    {
+      title: `Last updated`,
+      value: material.last_updated.$date.split(`T`)[0],
+    },
+    {
+      title: `Origins`,
+      value: material.origins,
+      condition: material.origins?.length,
+    },
+    {
+      title: `Database IDs`,
+      value: material.database_IDs.icsd,
+      condition: material.database_IDs?.icsd?.length,
+    },
+  ].filter((itm) => itm?.condition ?? true)
+</script>
+
+<InfoCard {data} {...$$restProps} />
+
+{#if material.task_ids?.length}
+  <p>
+    Task IDs: {@html material.task_ids
+      .filter((id) => id != material.material_id)
+      .map((id) => `<a href="https://materialsproject.org/tasks/${id}">${id}</a>`)
+      .join(`, `)}
+  </p>
+{/if}
+
+<p class="warning">
+  {material.warnings}
+</p>
+
+<style>
+  .warning {
+    color: var(--warning-color, darkred);
+  }
+</style>
