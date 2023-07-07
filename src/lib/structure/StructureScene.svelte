@@ -72,7 +72,7 @@
 
   // naive max dist bond strategy
   let bond_pairs: [Vector, Vector][] = []
-  $: if (structure?.sites) {
+  $: if (structure?.sites && show_bonds) {
     bond_pairs = []
     for (const { xyz } of structure.sites) {
       for (const { xyz: other_xyz } of structure.sites) {

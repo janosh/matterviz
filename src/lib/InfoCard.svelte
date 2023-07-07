@@ -6,6 +6,8 @@
     value: string | number | number[]
     unit?: string
     fmt?: string
+    condition?: boolean
+    tooltip?: string
   }[] = []
   export let title: string = ``
   export let fallback: string = ``
@@ -24,14 +26,16 @@
       </slot>
     </h2>
   {/if}
-  {#each data as { title, value, unit, fmt = default_fmt }}
+  {#each data as { title, value, unit, fmt = default_fmt, tooltip }}
     <div>
       <span class="title" {title}>
         {@html title}
       </span>
-      <strong>
+      <strong title={tooltip ?? null}>
         {@html typeof value == `number` ? pretty_num(value, fmt) : value}
-        {unit ?? ``}
+        {#if unit}
+          <small>{unit}</small>
+        {/if}
       </strong>
     </div>
   {:else}
@@ -76,5 +80,8 @@
     background-color: var(--ic-value-bg, rgba(255, 255, 255, 0.1));
     padding: var(--ic-value-padding, 0 4pt);
     border-radius: var(--ic-value-radius, 3pt);
+  }
+  strong small {
+    font-weight: normal;
   }
 </style>

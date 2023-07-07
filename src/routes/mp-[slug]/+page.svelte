@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { MaterialCard, Structure, StructureCard } from '$lib'
   import { aws_bucket, download, fetch_zipped } from '$lib/api'
@@ -11,45 +12,55 @@
 </script>
 
 <main>
-  <h1>Materials Explorer</h1>
+  <center>
+    <h1>Materials Explorer</h1>
 
-  <input
-    placeholder="Enter MP material ID"
-    bind:value={mp_id}
-    on:keydown={async (event) => {
-      if (event.key === `Enter`) data.summary = await fetch_zipped(aws_url)
-    }}
-  />
-  <button on:click={async () => (data.summary = await fetch_zipped(aws_url))}>
-    Fetch material
-  </button>
-  <span class="download">
-    <button>Save material summary</button>
-    <div>
-      <button
-        on:click={() => {
-          if (!data.summary) return alert(`No data to download`)
-          download(
-            JSON.stringify(data.summary, null, 2),
-            `${mp_id}.json`,
-            `application/json`
-          )
-        }}>JSON</button
-      >
-      <button
-        on:click={async () => {
-          const blob = await fetch_zipped(aws_url, { unzip: false })
-          if (!blob) return
-          download(blob, `${mp_id}.json.gz`, `application/gzip`)
-        }}>Zipped JSON</button
-      >
-    </div>
-  </span>
+    <input
+      placeholder="Enter MP material ID"
+      bind:value={mp_id}
+      on:keydown={async (event) => {
+        if (event.key === `Enter`) {
+          goto(`/${mp_id}`)
+          data.summary = await fetch_zipped(aws_url)
+        }
+      }}
+    />
+    <button
+      on:click={async () => {
+        goto(`/${mp_id}`)
+        data.summary = await fetch_zipped(aws_url)
+      }}
+    >
+      Fetch material
+    </button>
+    <span class="download">
+      <button>Save material summary</button>
+      <div>
+        <button
+          on:click={() => {
+            if (!data.summary) return alert(`No data to download`)
+            download(
+              JSON.stringify(data.summary, null, 2),
+              `${mp_id}.json`,
+              `application/json`
+            )
+          }}>JSON</button
+        >
+        <button
+          on:click={async () => {
+            const blob = await fetch_zipped(aws_url, { unzip: false })
+            if (!blob) return
+            download(blob, `${mp_id}.json.gz`, `application/gzip`)
+          }}>Zipped JSON</button
+        >
+      </div>
+    </span>
+  </center>
   <MaterialCard material={data.summary} />
   <StructureCard structure={data.summary.structure}>
     <a slot="title" {href}>{mp_id}</a>
   </StructureCard>
-  <Structure structure={data.summary.structure} />
+  <Structure structure={data.summary.structure} show_image_atoms={false} />
 </main>
 
 <style>
