@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PymatgenStructure, Site, Vector } from '$lib'
-  import { Bond, atomic_radii, euclidean_dist, pretty_num } from '$lib'
+  import { Bond, Lattice, add, atomic_radii, euclidean_dist, pretty_num } from '$lib'
   import { element_colors } from '$lib/stores'
   import { T } from '@threlte/core'
   import {
@@ -33,19 +33,6 @@
   // whether to show the structure's lattice cell as a wireframe
   export let show_atoms: boolean = true
   export let show_bonds: boolean = true
-  export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
-  // thickness of the wireframe lines that indicate the lattice's unit cell
-  // due to limitations of OpenGL with WebGL renderer, on most platforms linewidth will be 1 regardless of set value
-  // see https://threejs.org/docs/#api/en/materials/MeshBasicMaterial.wireframe
-  export let cell_line_width: number = 1
-  // cell opacity
-  export let cell_opacity: number | undefined = undefined
-  // whether to show the lattice vectors
-  export let show_vectors: boolean = true
-  // lattice vector colors
-  export let vector_colors: [string, string, string] = [`red`, `green`, `blue`]
-  // lattice vector origin (all arrows start from this point)
-  export let vector_origin: { x: number; y: number; z: number } = { x: -1, y: -1, z: -1 }
   export let hovered_idx: number | null = null
   export let active_idx: number | null = null
   export let hovered_site: Site | null = null
@@ -64,20 +51,21 @@
     opacity: 0.5,
   }
 
-  $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
-
   interactivity()
 
   // naive max dist bond strategy
   let bond_pairs: [Vector, Vector][] = []
   $: if (structure?.sites && show_bonds) {
     bond_pairs = []
-    for (const { xyz } of structure.sites) {
-      for (const { xyz: other_xyz } of structure.sites) {
-        const dist = euclidean_dist(xyz, other_xyz)
-        if (dist < max_bond_dist) bond_pairs.push([xyz, other_xyz])
+    for (const { xyz, species } of structure.sites) {
+      for (const { xyz: xyz_2, species: species_2 } of structure.sites) {
+        const dist = euclidean_dist(xyz, xyz_2)
+        if (dist < max_bond_dist) {
+          const [elem, elem_2] = [species[0].element, species_2[0].element]
+          bond_pairs.push([xyz, xyz_2, elem, elem_2, dist])
+        }
       }
     }
   }
@@ -92,7 +80,7 @@
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={[a / 2, b / 2, c / 2]}
+    target={add(...(structure?.lattice?.matrix ?? [])).map((x) => x / 2)}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     bind:this={orbit_controls}
@@ -187,24 +175,8 @@
   </HTML>
 {/if}
 
-{#if show_cell}
-  <T.Mesh position={[a / 2, b / 2, c / 2]}>
-    <T.BoxGeometry args={[a, b, c]} />
-    <T.MeshBasicMaterial
-      transparent
-      opacity={cell_opacity ?? (show_cell == `surface` ? 0.2 : 1)}
-      wireframe={show_cell == `wireframe`}
-      wireframeLinewidth={cell_line_width}
-    />
-  </T.Mesh>
-{/if}
-
-{#if show_vectors}
-  {#each structure?.lattice?.matrix ?? [] as [a, b, c], idx}
-    <T.ArrowHelper
-      args={[{ x: a, y: b, z: c }, vector_origin, 4, vector_colors[idx], 1, 0.3]}
-    />
-  {/each}
+{#if structure?.lattice}
+  <Lattice {...structure?.lattice} {...$$restProps} />
 {/if}
 
 <style>

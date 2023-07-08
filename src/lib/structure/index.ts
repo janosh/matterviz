@@ -4,6 +4,7 @@ import { pretty_num } from '$lib'
 import element_data from '$lib/element/data'
 
 export { default as Bond } from './Bond.svelte'
+export { default as Lattice } from './Lattice.svelte'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
@@ -16,6 +17,7 @@ export type Species = {
 }
 
 export type Vector = [number, number, number]
+export type NdVector = number[]
 
 export type Site = {
   species: Species[]
@@ -25,7 +27,7 @@ export type Site = {
   properties: Record<string, unknown>
 }
 
-export type Lattice = {
+export type PymatgenLattice = {
   matrix: [Vector, Vector, Vector]
   pbc: boolean[]
   a: number
@@ -38,7 +40,7 @@ export type Lattice = {
 }
 
 export type PymatgenStructure = {
-  lattice: Lattice
+  lattice: PymatgenLattice
   sites: Site[]
   charge: number
   id?: string
@@ -176,4 +178,15 @@ export function symmetrize_structure(
   }
 
   return symmetrized_structure
+}
+
+export function add(...vecs: NdVector[]): NdVector {
+  // add up any number of same-length vectors
+  const result = vecs[0].slice()
+  for (const vec of vecs.slice(1)) {
+    for (const [idx, val] of vec.entries()) {
+      result[idx] += val
+    }
+  }
+  return result
 }
