@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.2.0](https://github.com/janosh/elementari/compare/v0.1.8...v0.2.0)
+
+- Add `Lattice.svelte` [`#41`](https://github.com/janosh/elementari/pull/41)
+- Show cylinder between active and hovered sites [`#40`](https://github.com/janosh/elementari/pull/40)
+- Fix structure controls for `atom_radius`, `same_size_atoms` [`#38`](https://github.com/janosh/elementari/pull/38)
+- Add `Bond` component [`#37`](https://github.com/janosh/elementari/pull/37)
+- Split `/src/lib` into submodules [`#36`](https://github.com/janosh/elementari/pull/36)
+- Add materials detail pages [`#35`](https://github.com/janosh/elementari/pull/35)
+- Highlight active and hovered sites in `Structure` [`#34`](https://github.com/janosh/elementari/pull/34)
+- Structure tooltips when hovering atoms [`#33`](https://github.com/janosh/elementari/pull/33)
+- get started with testing Structure.svelte and structure.ts [`#32`](https://github.com/janosh/elementari/pull/32)
+- Structure hide buttons on desktop until hover [`#31`](https://github.com/janosh/elementari/pull/31)
+- Structure grid example [`#30`](https://github.com/janosh/elementari/pull/30)
+- `Structure` allow selecting from different element color schemes + override individual elements [`#29`](https://github.com/janosh/elementari/pull/29)
+- add function find_image_atoms() used in StructureScene to draw images of atoms [`3098d6c`](https://github.com/janosh/elementari/commit/3098d6c7a78eca7d47bda0a7b5da219c575883ff)
+- Structure add prop show_image_atoms, expand MaterialCard to show more attrs, mp-[slug] pages sync material ID with url [`f43dd31`](https://github.com/janosh/elementari/commit/f43dd31960aed20ca454ab9adf70094a57ce7b5c)
+- add Structure control bond_color + make all Structure CSS into variables [`a79ff00`](https://github.com/janosh/elementari/commit/a79ff0093b88b2ad1dd525f8ddd67a3d9278b315)
+- make initial camera_position responsive to crystal size [`5b1e82a`](https://github.com/janosh/elementari/commit/5b1e82abf0e4cc63832ee36e64d17b8344954d03)
+- use InstancedMesh from @threlte/extras for more efficient drawing of crystal sites [`142effb`](https://github.com/janosh/elementari/commit/142effb75f565ce9f0dbedf05bf062112744bb68)
+- add API explorer page (under /api) [`2a7c60e`](https://github.com/janosh/elementari/commit/2a7c60e4feed54f068cdfb787db43990f4772fe6)
+- display distance between active and hovered site in hover tooltip [`9e1af46`](https://github.com/janosh/elementari/commit/9e1af461802a49c844d20ddbc6176abb48784b59)
+- add props [`c586225`](https://github.com/janosh/elementari/commit/c586225b99e5777ef8ec14cfdaa2538f3bbd3a22)
+- drop valid Pymatgen structures as JSON files on Structure.svelte to display them [`7127b18`](https://github.com/janosh/elementari/commit/7127b18312a5deea4c266d42168dd0e623a0ff29)
+- PeriodicTable add prop color_overrides [`1042bf2`](https://github.com/janosh/elementari/commit/1042bf2b49bd79e7932af37362e2f5884a3e3c92)
+- add copy buttons to all code blocks [`7f3fb5c`](https://github.com/janosh/elementari/commit/7f3fb5c8d043309d097a400af7e267436e819880)
+- fix landing page layout broken in last commit [`6f675dd`](https://github.com/janosh/elementari/commit/6f675dd6e5bca4cc244c08963786ee40485abb57)
+
 <!-- auto-changelog-above -->
 
 #### [v0.1.8](https://github.com/janosh/elementari/compare/v0.1.6...v0.1.8)
