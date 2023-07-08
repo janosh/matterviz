@@ -95,11 +95,13 @@
 <style>
   ul {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 1em;
     list-style: none;
     padding: 0;
     text-align: center;
+    width: 90vw;
+    margin-left: calc(50cqw - 45vw);
   }
 </style>
 ```

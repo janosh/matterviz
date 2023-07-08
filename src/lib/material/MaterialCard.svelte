@@ -47,7 +47,7 @@
     {
       title: `Database IDs`,
       value: material.database_IDs.icsd,
-      condition: material.database_IDs?.icsd?.length,
+      condition: material.database_IDs?.icsd?.length ?? false,
     },
   ].filter((itm) => itm?.condition ?? true)
 </script>

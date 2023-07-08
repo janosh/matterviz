@@ -1,11 +1,9 @@
 <script lang="ts">
   import { element_color_schemes } from '$lib/colors'
   import { element_colors } from '$lib/stores'
-  import Iconify from '@iconify/svelte'
   import { Canvas } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
   import type { ElementSymbol } from '..'
-  import Icon from '../Icon.svelte'
   import { download } from '../api'
   import type { PymatgenStructure } from '../structure'
   import {
@@ -88,7 +86,7 @@
   $: {
     // set camera position based on structure size
     const scale = initial_zoom ?? 1000 / Math.min(width, height)
-    camera_position = [scale * a, 0.5 * scale * b, scale * c]
+    camera_position = [scale * a, scale * b, scale * c]
   }
   const on_window_click =
     (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
@@ -167,9 +165,7 @@
       </button>
       {#if enable_tips}
         <button class="info-icon" on:click={() => tips_modal?.showModal()}>
-          <slot name="tips-icon">
-            <Iconify icon="mdi:information" inline />
-          </slot>
+          <slot name="tips-icon">&#9432;</slot>
         </button>
       {/if}
     </section>
@@ -294,8 +290,7 @@
         </select>
       </label>
       <button type="button" on:click={download_json} title={save_json_btn_text}>
-        <Icon icon="mdi:download" />
-        {save_json_btn_text}
+        ⬇ {save_json_btn_text}
       </button>
     </dialog>
 
@@ -389,7 +384,7 @@
     box-sizing: border-box;
     top: var(--struct-controls-top, 30pt);
     right: var(--struct-controls-right, 6pt);
-    background: var(--struct-controls-bg, rgba(0, 0, 0, 0.7));
+    background: var(--struct-controls-bg, rgba(0, 0, 0, 0.8));
     padding: var(--struct-controls-padding, 6pt 9pt);
     border-radius: var(--struct-controls-border-radius, 3pt);
     width: var(--struct-controls-width, 20em);
