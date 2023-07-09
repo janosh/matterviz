@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. Dates are d
 
 #### [v0.2.0](https://github.com/janosh/elementari/compare/v0.1.8...v0.2.0)
 
+> 8 July 2023
+
 - Add `Lattice.svelte` [`#41`](https://github.com/janosh/elementari/pull/41)
 - Show cylinder between active and hovered sites [`#40`](https://github.com/janosh/elementari/pull/40)
 - Fix structure controls for `atom_radius`, `same_size_atoms` [`#38`](https://github.com/janosh/elementari/pull/38)
