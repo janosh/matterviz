@@ -1,5 +1,5 @@
 // Utilities for dealing with pymatgen Structures
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol, Vector } from '$lib'
 import { pretty_num } from '$lib'
 import element_data from '$lib/element/data'
 
@@ -15,9 +15,6 @@ export type Species = {
   occu: number
   oxidation_state: number
 }
-
-export type Vector = [number, number, number]
-export type NdVector = number[]
 
 export type Site = {
   species: Species[]
@@ -104,13 +101,6 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
   return pretty_num(dens, prec)
 }
 
-export function euclidean_dist(p1: Vector, p2: Vector): number {
-  const dx = p1[0] - p2[0]
-  const dy = p1[1] - p2[1]
-  const dz = p1[2] - p2[2]
-  return Math.sqrt(dx * dx + dy * dy + dz * dz)
-}
-
 function generate_permutations(length: number): number[][] {
   const result: number[][] = []
   for (let i = 0; i < Math.pow(2, length); i++) {
@@ -178,15 +168,4 @@ export function symmetrize_structure(
   }
 
   return symmetrized_structure
-}
-
-export function add(...vecs: NdVector[]): NdVector {
-  // add up any number of same-length vectors
-  const result = vecs[0].slice()
-  for (const vec of vecs.slice(1)) {
-    for (const [idx, val] of vec.entries()) {
-      result[idx] += val
-    }
-  }
-  return result
 }
