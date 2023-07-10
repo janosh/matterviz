@@ -2,13 +2,13 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { MaterialCard, Structure, StructureCard } from '$lib'
-  import { aws_bucket, download, fetch_zipped } from '$lib/api'
+  import { download, fetch_zipped, mp_build_bucket } from '$lib/api'
 
   export let data
 
   let mp_id: string = `mp-${$page.params.slug}`
   $: href = `https://materialsproject.org/materials/${mp_id}`
-  $: aws_url = `${aws_bucket}/summary/${mp_id}.json.gz`
+  $: aws_url = `${mp_build_bucket}/summary/${mp_id}.json.gz`
 </script>
 
 <main>
