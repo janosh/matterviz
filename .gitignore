@@ -12,3 +12,6 @@ coverage
 
 # secrets
 .env
+
+# auto-generated
+src/types

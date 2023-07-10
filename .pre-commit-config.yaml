@@ -11,7 +11,6 @@ repos:
       - id: check-symlinks
       - id: check-yaml
       - id: destroyed-symlinks
-      - id: double-quote-string-fixer
       - id: end-of-file-fixer
       - id: forbid-new-submodules
       - id: mixed-line-ending
@@ -27,7 +26,7 @@ repos:
           - prettier-plugin-svelte
           - svelte
         stages: [commit]
-        exclude: ^changelog.md|.*/structures/.*\.json$
+        exclude: ^changelog.md|.*/structures/.*\.json|.py$
 
   - repo: https://github.com/pre-commit/mirrors-eslint
     rev: v8.44.0

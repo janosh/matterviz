@@ -1,6 +1,6 @@
 <script lang="ts">
   import { InfoCard } from '$lib'
-  import type { SummaryDoc } from '$lib/material'
+  import type { SummaryDoc } from '$types'
 
   export let material: SummaryDoc
 
@@ -14,13 +14,15 @@
     },
     {
       title: `Space Group`,
-      value: `${material.symmetry.number}`,
-      unit: `(${material.symmetry.symbol})`,
+      value: `${material.symmetry?.number}`,
+      unit: `(${material.symmetry?.symbol})`,
+      condition: material.symmetry?.number,
     },
     {
       title: `E<sub>above hull</sub>`,
-      value: 1000 * material.energy_above_hull,
+      value: 1000 * (material?.energy_above_hull ?? 0),
       unit: `meV/atom`,
+      condition: material?.energy_above_hull,
     },
     {
       title: `Formation Energy`,
@@ -37,7 +39,7 @@
     },
     {
       title: `Last updated`,
-      value: material.last_updated.$date.split(`T`)[0],
+      value: material.last_updated?.$date.split(`T`)[0],
     },
     {
       title: `Origins`,
