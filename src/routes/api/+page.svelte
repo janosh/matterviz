@@ -64,7 +64,7 @@
       <details>
         <summary><h4>Full Response</h4></summary>
 
-        <pre>{JSON.stringify(data[bucket_name], null, 2)}</pre>
+        <pre>{JSON.stringify(responses[bucket_name], null, 2)}</pre>
       </details>
     </details>
   {/each}
@@ -94,5 +94,8 @@
   }
   details > :not(summary) {
     padding-left: 1em;
+  }
+  pre {
+    font-size: 9.5pt;
   }
 </style>

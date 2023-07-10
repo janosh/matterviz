@@ -31,10 +31,11 @@ export default {
   },
 
   kit: {
-    adapter: adapter({ strict: false }),
+    adapter: adapter({ fallback: `404.html` }),
 
     alias: {
       $root: `.`,
+      $types: `src/types`,
       $site: `src/site`,
       $static: `static`,
     },
