@@ -44,24 +44,29 @@
       value: material.origins,
       condition: material.origins?.length,
     },
-    {
-      title: `Database IDs`,
-      value: material.database_IDs.icsd,
-      condition: material.database_IDs?.icsd?.length ?? false,
-    },
   ].filter((itm) => itm?.condition ?? true)
 </script>
 
 <InfoCard {data} {...$$restProps} />
 
-{#if material.task_ids?.length}
+<details>
+  <summary>Related materials IDs</summary>
+  {#if material.task_ids?.length}
   <p>
-    Task IDs: {@html material.task_ids
-      .filter((id) => id != material.material_id)
-      .map((id) => `<a href="https://materialsproject.org/tasks/${id}">${id}</a>`)
-      .join(`, `)}
+    Task IDs: {#each material.task_ids as id}
+      <a href="https://materialsproject.org/tasks/{id}">{id}</a>
+    {/each}
   </p>
 {/if}
+{#if material.database_IDs.icsd?.length}
+
+<p>
+  ICSD IDs: {#each material.database_IDs.icsd as id}
+    <a href="https://ccdc.cam.ac.uk/structures/Search?Ccdcid={id}&DatabaseToSearch=ICSD">{id}</a>
+  {/each}
+</p>
+{/if}
+</details>
 
 <p class="warning">
   {material.warnings}
@@ -70,5 +75,10 @@
 <style>
   .warning {
     color: var(--warning-color, darkred);
+  }
+  p {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1em;
   }
 </style>

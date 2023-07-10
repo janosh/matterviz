@@ -12,6 +12,3 @@ coverage
 
 # secrets
 .env
-
-# needs server
-/src/routes/api
