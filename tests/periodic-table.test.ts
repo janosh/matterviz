@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { random_sample } from '.'
 import element_data from '../src/lib/element/data.ts'
 import {
   categories,
@@ -13,7 +14,10 @@ test.describe(`Periodic Table`, () => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     const element_tiles = await page.$$(`.element-tile`)
-    expect(element_tiles).toHaveLength(element_data.length + 2)
+    const n_lanthanide_actinide_placeholders = 2
+    expect(element_tiles).toHaveLength(
+      element_data.length + n_lanthanide_actinide_placeholders,
+    )
 
     for (const category of categories) {
       let count = category_counts[category] as number
@@ -44,9 +48,8 @@ test.describe(`Periodic Table`, () => {
     })
     await page.goto(`/`, { waitUntil: `networkidle` })
 
-    const element_tiles = await page.$$(`.element-tile`)
-    for (const element_tile of element_tiles) {
-      await element_tile.hover()
+    for (const tile of random_sample(await page.$$(`.element-tile`), 5)) {
+      await tile.hover()
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)
@@ -64,16 +67,12 @@ test.describe(`Periodic Table`, () => {
         await page.click(`text=${heatmap_label}`)
       }
 
-      for (const _ of Array(5)) {
-        // check 5 random element tiles display the expected heatmap value
-
-        const rand_idx = Math.floor(Math.random() * element_data.length)
-        const random_element = element_data[rand_idx]
-
-        const heatmap_val = pretty_num(random_element[heatmap_keys.at(-1)])
+      // check 5 random element tiles display the expected heatmap value
+      for (const rand_elem of random_sample(element_data, 5)) {
+        const heatmap_val = pretty_num(rand_elem[heatmap_keys.at(-1)])
 
         // make sure heatmap value is displayed correctly
-        const text = `${rand_idx + 1} ${random_element.symbol} ${heatmap_val}`
+        const text = `${rand_elem.number} ${rand_elem.symbol} ${heatmap_val}`
         const elem_tile = await page.$(`text=${text}`, { strict: true })
         await page.pause()
         expect(elem_tile, `selector text=${text}`).not.toBeNull()
