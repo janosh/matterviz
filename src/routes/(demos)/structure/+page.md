@@ -101,7 +101,7 @@
     padding: 0;
     text-align: center;
     width: 90vw;
-    margin-left: calc(50cqw - 45vw);
+    margin: 0 calc(50cqw - 45vw);
   }
 </style>
 ```
