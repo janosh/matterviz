@@ -1,13 +1,14 @@
 <script lang="ts">
   import { ColorBar } from '$lib'
   import * as d3sc from 'd3-scale-chromatic'
+  import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
 
   export let value: string | null = null
   export let selected: string[] = [`Viridis`]
   export let minSelect: number = 0
   export let placeholder = `Select a color scale`
-  export let cbar_props: Record<string, unknown> = {}
+  export let cbar_props: ComponentProps<ColorBar> = {}
 
   const options = Object.keys(d3sc)
     .filter((key) => key.startsWith(`interpolate`))

@@ -46,6 +46,7 @@
   export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
   export let cell_opacity: number | undefined = 0.15
   export let cell_line_width: number = 1
+  export let wrapper: HTMLDivElement | undefined = undefined
   // the control panel DOM element
   export let controls: HTMLElement | undefined = undefined
   // the button to toggle the control panel
@@ -63,7 +64,8 @@
   export let allow_file_drop: boolean = true
   export let tips_modal: HTMLDialogElement | undefined = undefined
   export let enable_tips: boolean = true
-  export let save_json_btn_text: string = `Save structure to JSON`
+  export let save_json_btn_text: string = `⬇ Save as JSON`
+  export let save_png_btn_text: string = `✎ Save as PNG`
   // boolean or map from element symbols to labels
   // use slot='atom-label' to include HTML and event handlers
   export let atom_labels: boolean | Record<ElementSymbol, string | number> = false
@@ -123,6 +125,13 @@
     }
     reader.readAsText(file)
   }
+
+  function download_png() {
+    const canvas = wrapper?.querySelector(`canvas`)
+    canvas?.toBlob((blob) => {
+      download(blob, `scene.png`, `image/png`)
+    })
+  }
 </script>
 
 <svelte:window
@@ -138,6 +147,7 @@
     class:dragover
     {style}
     role="region"
+    bind:this={wrapper}
     bind:clientWidth={width}
     bind:clientHeight={height}
     on:mouseenter={() => (hovered = true)}
@@ -289,12 +299,20 @@
           {/each}
         </select>
       </label>
-      <button type="button" on:click={download_json} title={save_json_btn_text}>
-        ⬇ {save_json_btn_text}
-      </button>
+      <span style="display: flex; gap: 4pt; margin: 3pt 0 0;">
+        <button type="button" on:click={download_json} title={save_json_btn_text}>
+          {save_json_btn_text}
+        </button>
+        <button type=button on:click={download_png} title={save_png_btn_text}>
+          {save_png_btn_text}
+        </button>
+      </span>
+
     </dialog>
 
-    <Canvas>
+    <Canvas rendererParameters={{
+      preserveDrawingBuffer: true
+    }}>
       <StructureScene
         structure={show_image_atoms ? symmetrize_structure(structure) : structure}
         {show_atoms}
@@ -334,7 +352,7 @@
 {:else if structure}
   <p class="warn">No sites found in structure</p>
 {:else}
-  <p class="warn">No pymatgen <code>Structure</code> provided</p>
+  <p class="warn">No structure provided</p>
 {/if}
 
 <style>
@@ -432,7 +450,6 @@
   }
 
   p.warn {
-    font-size: larger;
     text-align: center;
   }
   .atom-label {
