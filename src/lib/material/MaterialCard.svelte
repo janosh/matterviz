@@ -46,7 +46,25 @@
       value: material.origins,
       condition: material.origins?.length,
     },
-  ].filter((itm) => itm?.condition ?? true)
+    {
+      title: `Is magnetic`,
+      value: `${material.is_magnetic ? `yes` : `no`} ${
+        material.is_magnetic ? `(${material.total_magnetization})` : ``
+      }`,
+    },
+    {
+      title: `Voigt bulk modulus`,
+      value: material.k_voigt,
+      unit: `GPa`,
+    },
+    {
+      title: `Voig shear modulus`,
+      value: material.g_voigt,
+      unit: `GPa`,
+    },
+    { title: `Refractive index`, value: material.n },
+    { title: `Ordering`, value: material.ordering },
+  ]
 </script>
 
 <InfoCard {data} {...$$restProps} />
@@ -54,20 +72,20 @@
 <details>
   <summary>Related materials IDs</summary>
   {#if material.task_ids?.length}
-  <p>
-    Task IDs: {#each material.task_ids as id}
-      <a href="https://materialsproject.org/tasks/{id}">{id}</a>
-    {/each}
-  </p>
-{/if}
-{#if material.database_IDs.icsd?.length}
-
-<p>
-  ICSD IDs: {#each material.database_IDs.icsd as id}
-    <a href="https://ccdc.cam.ac.uk/structures/Search?Ccdcid={id}&DatabaseToSearch=ICSD">{id}</a>
-  {/each}
-</p>
-{/if}
+    <p>
+      Task IDs: {#each material.task_ids as id}
+        <a href="https://materialsproject.org/tasks/{id}">{id}</a>
+      {/each}
+    </p>
+  {/if}
+  {#if material.database_IDs?.icsd?.length}
+    <p>
+      ICSD IDs: {#each material.database_IDs.icsd as id}
+        {@const href = `https://ccdc.cam.ac.uk/structures/Search?Ccdcid=${id}&DatabaseToSearch=ICSD`}
+        <a {href}>{id}</a>
+      {/each}
+    </p>
+  {/if}
 </details>
 
 <p class="warning">

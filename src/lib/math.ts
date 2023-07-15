@@ -5,7 +5,7 @@ export function norm(vec: NdVector): number {
   return Math.sqrt(vec.reduce((acc, val) => acc + val ** 2, 0))
 }
 
-export function scale(vec: NdVector, factor: number): NdVector {
+export function scale<T extends Vector>(vec: T, factor: number): T {
   return vec.map((val) => val * factor)
 }
 
@@ -13,7 +13,7 @@ export function euclidean_dist(vec1: Vector, vec2: Vector): number {
   return norm(add(vec1, scale(vec2, -1)))
 }
 
-export function add(...vecs: NdVector[]): NdVector {
+export function add<T extends Vector>(...vecs: T[]): T {
   // add up any number of same-length vectors
   const result = vecs[0].slice()
   for (const vec of vecs.slice(1)) {

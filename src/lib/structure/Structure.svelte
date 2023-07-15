@@ -1,16 +1,17 @@
 <script lang="ts">
+  import type { ElementSymbol, PymatgenStructure, Vector } from '$lib'
+  import {
+    add,
+    alphabetical_formula,
+    get_elem_amounts,
+    scale,
+    symmetrize_structure,
+  } from '$lib'
+  import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
   import { element_colors } from '$lib/stores'
   import { Canvas } from '@threlte/core'
   import { Tooltip } from 'svelte-zoo'
-  import type { ElementSymbol } from '..'
-  import { download } from '../api'
-  import type { PymatgenStructure } from '../structure'
-  import {
-    alphabetical_formula,
-    get_elem_amounts,
-    symmetrize_structure,
-  } from '../structure'
   import StructureLegend from './StructureLegend.svelte'
   import StructureScene from './StructureScene.svelte'
 
@@ -22,7 +23,7 @@
   // determined by the atomic radius of the element
   export let same_size_atoms: boolean = true
   // initial camera position from which to render the scene
-  export let camera_position: [number, number, number] = [10, 10, 10]
+  export let camera_position: Vector = [10, 10, 10]
   // zoom level of the camera
   export let initial_zoom: number | undefined = undefined
   // auto rotate speed. set to 0 to disable auto rotation.
@@ -44,7 +45,7 @@
   export let show_bonds: boolean = true
   export let bond_radius: number | undefined = undefined
   export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
-  export let cell_opacity: number | undefined = 0.15
+  export let cell_opacity: number | undefined = 0.5
   export let cell_line_width: number = 1
   export let wrapper: HTMLDivElement | undefined = undefined
   // the control panel DOM element
@@ -84,11 +85,11 @@
     }
   }
 
-  $: ({ a, b, c } = structure?.lattice ?? { a: 0, b: 0, c: 0 })
   $: {
     // set camera position based on structure size
-    const scale = initial_zoom ?? 1000 / Math.min(width, height)
-    camera_position = [scale * a, scale * b, scale * c]
+    const factor = initial_zoom ?? 700 / Math.min(width, height)
+    const [vec_a, vec_b, vec_c] = structure?.lattice?.matrix ?? [[], [], []]
+    camera_position = scale(add(vec_a, vec_b, vec_c), factor)
   }
   const on_window_click =
     (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
@@ -303,16 +304,13 @@
         <button type="button" on:click={download_json} title={save_json_btn_text}>
           {save_json_btn_text}
         </button>
-        <button type=button on:click={download_png} title={save_png_btn_text}>
+        <button type="button" on:click={download_png} title={save_png_btn_text}>
           {save_png_btn_text}
         </button>
       </span>
-
     </dialog>
 
-    <Canvas rendererParameters={{
-      preserveDrawingBuffer: true
-    }}>
+    <Canvas rendererParameters={{ preserveDrawingBuffer: true }}>
       <StructureScene
         structure={show_image_atoms ? symmetrize_structure(structure) : structure}
         {show_atoms}

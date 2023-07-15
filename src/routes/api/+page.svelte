@@ -51,7 +51,7 @@
       }}
     >
       <summary>
-        <h3>{idx+1}. <code>{bucket_name}</code> bucket</h3>
+        <h3>{idx + 1}. <code>{bucket_name}</code> bucket</h3>
       </summary>
       <details open>
         <summary><h4>Top-level keys</h4> </summary>

@@ -1,12 +1,13 @@
 <script lang="ts">
   import { pretty_num } from '$lib'
+  import type { PropertyOrigin } from '$types'
 
   export let data: {
     title: string
-    value: string | number | number[]
+    value?: string | number | number[] | null | PropertyOrigin
     unit?: string
     fmt?: string
-    condition?: boolean
+    condition?: boolean | number | null
     tooltip?: string
   }[] = []
   export let title: string = ``
@@ -26,7 +27,7 @@
       </slot>
     </h2>
   {/if}
-  {#each data as { title, value, unit, fmt = default_fmt, tooltip }}
+  {#each data.filter((itm) => (!(`condition` in itm) || itm?.condition) && ![undefined, null].includes(itm.value)) as { title, value, unit, fmt = default_fmt, tooltip }}
     <div>
       <span class="title" {title}>
         {@html title}
@@ -53,7 +54,7 @@
     border-radius: var(--ic-radius, 3pt);
     padding: var(--ic-padding, 10pt 12pt);
     margin: var(--ic-margin, 1em 0);
-    gap: var(--ic-gap, 10pt 1em);
+    gap: var(--ic-gap, 10pt 5%);
     background-color: var(--ic-bg, rgba(255, 255, 255, 0.1));
     font-size: var(--ic-font-size);
     width: var(--ic-width);

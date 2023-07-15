@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { Vector } from '$lib'
   import { Instance } from '@threlte/extras'
   import { Euler, Quaternion, Vector3 } from 'three'
 
-  export let from: [number, number, number]
-  export let to: [number, number, number]
+  export let from: Vector = [0, 0, 0]
+  export let to: Vector
   export let offset: number = 0
   export let radius: number = 0.1
   export let color: string = `white`
@@ -19,7 +20,7 @@
     // length of the bond
     const height = delta_vec.length()
     // calculate position
-    let position: [number, number, number]
+    let position: Vector
     if (offset === 0) {
       position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).toArray()
     } else {

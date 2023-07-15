@@ -19,7 +19,7 @@
   // determined by the atomic radius of the element
   export let same_size_atoms: boolean = true
   // initial camera position from which to render the scene
-  export let camera_position: [number, number, number] = [10, 10, 10]
+  export let camera_position: Vector = [10, 10, 10]
   // zoom level of the camera
   export let orbit_controls: OrbitControls | undefined = undefined
   export let max_zoom: number | undefined = undefined
@@ -117,6 +117,17 @@
       />
     {/each}
   </InstancedMesh>
+  <!-- TODO find a performant way of rendering labels for each site -->
+  <!-- {#each structure.sites as site, idx}
+    {@const { species, xyz } = site}
+    {@const elem = species[0].element}
+
+    {#if $$slots[`atom-label`]}
+      <HTML center as="div">
+        <slot name="atom-label" {elem} {xyz} {species} />
+      </HTML>
+    {/if}
+  {/each} -->
 {/if}
 
 {#if show_bonds}

@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { add, type Vector } from '$lib'
+  import { add, scale, type Vector } from '$lib'
   import { T } from '@threlte/core'
-  import { BufferGeometry, Vector3 } from 'three'
+  import { InstancedMesh } from '@threlte/extras'
+  import { BoxGeometry, Matrix4, Vector3 } from 'three'
+  import Bond from './Bond.svelte'
 
   export let matrix: [Vector, Vector, Vector]
   export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
@@ -19,57 +21,44 @@
   // lattice vector origin (all arrows start from this point)
   export let vector_origin: Vector = [-1, -1, -1]
 
-  $: [vec_a, vec_b, vec_c] = matrix
-
-  const origin = [0, 0, 0]
-
-  $: points = [
-    origin,
-    add(origin, vec_a),
-    origin,
-    add(origin, vec_b),
-    origin,
-    add(origin, vec_c),
-    add(origin, vec_a),
-    add(origin, vec_a, vec_b),
-    add(origin, vec_a),
-    add(origin, vec_a, vec_c),
-    add(origin, vec_b),
-    add(origin, vec_b, vec_a),
-    add(origin, vec_b),
-    add(origin, vec_b, vec_c),
-    add(origin, vec_c),
-    add(origin, vec_c, vec_a),
-    add(origin, vec_c),
-    add(origin, vec_c, vec_b),
-    add(origin, vec_a, vec_b),
-    add(origin, vec_a, vec_b, vec_c),
-    add(origin, vec_a, vec_c),
-    add(origin, vec_a, vec_b, vec_c),
-    add(origin, vec_b, vec_c),
-    add(origin, vec_a, vec_b, vec_c),
-  ]
+  $: geometry = new BoxGeometry(1, 1, 1)
+  $: shear_matrix = new Matrix4().makeBasis(
+    ...matrix.map((vec) => new Vector3(...vec, 0))
+  )
+  $: geometry.applyMatrix4(shear_matrix)
+  $: lattice_center = scale(add(...matrix), 0.5)
 </script>
 
 {#if show_cell}
-  <T.LineSegments
-    geometry={new BufferGeometry().setFromPoints(points.map((p) => new Vector3(...p)))}
-  >
-    <T.LineBasicMaterial
+  <T.Mesh {geometry} position={lattice_center}>
+    <T.MeshBasicMaterial
       color={cell_color}
       opacity={cell_opacity}
-      linewidth={cell_line_width}
+      transparent={cell_opacity !== undefined}
+      wireframe={show_cell === `wireframe`}
+      line_width={cell_line_width}
     />
-  </T.LineSegments>
+  </T.Mesh>
 {/if}
 
 {#if show_vectors}
-  {#each matrix as vec, idx}
-    {@const [x, y, z] = vec ?? []}
-    <T.Group position={vector_origin}>
-      <T.ArrowHelper
-        args={[{ x, y, z }, { x: 0, y: 0, z: 0 }, 6, vector_colors[idx], 1, 1, 1]}
-      />
-    </T.Group>
-  {/each}
+  <T.Group position={vector_origin}>
+    <InstancedMesh>
+      <T.CylinderGeometry args={[0.1, 0.1, 1, 16]} />
+
+      <T.MeshStandardMaterial />
+      {#each matrix as vec, idx}
+        <Bond to={scale(vec, 0.5)} color={vector_colors[idx]} />
+      {/each}
+    </InstancedMesh>
+    <InstancedMesh>
+      <T.MeshStandardMaterial />
+      <!-- [thickness, length, radial segments] -->
+      <T.ConeGeometry args={[0.25, 0.12, 16]} />
+
+      {#each matrix as vec, idx}
+        <Bond to={vec} color={vector_colors[idx]} />
+      {/each}
+    </InstancedMesh>
+  </T.Group>
 {/if}
