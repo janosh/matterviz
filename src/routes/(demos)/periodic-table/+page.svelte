@@ -8,7 +8,7 @@
     PeriodicTable,
     PropertySelect,
     TableInset,
-    element_data
+    element_data,
   } from '$lib'
   import { property_labels } from '$lib/labels'
   import { active_category, active_element, last_element } from '$lib/stores'
@@ -29,7 +29,6 @@
 
 <svelte:window bind:innerWidth={window_width} />
 
-
 <form>
   <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
   {#if heatmap_key}
@@ -40,7 +39,6 @@
     />
   {/if}
 </form>
-
 
 <PeriodicTable
   tile_props={{ show_name: window_width > 1000 }}

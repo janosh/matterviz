@@ -1,6 +1,6 @@
 // Utilities for dealing with pymatgen Structures
 import type { ElementSymbol, Vector } from '$lib'
-import { pretty_num } from '$lib'
+import { add, pretty_num, scale } from '$lib'
 import element_data from '$lib/element/data'
 
 export { default as Bond } from './Bond.svelte'
@@ -110,47 +110,47 @@ function generate_permutations(length: number): number[][] {
   return result
 }
 
+// this function finds all atoms needed to make the unit cell symmetrically occupied
 export function find_image_atoms(
   structure: PymatgenStructure,
   { tolerance = 0.05 }: { tolerance?: number } = {},
   // fractional tolerance for determining if a site is at the edge of the unit cell
-): Array<[number, Vector]> {
+): [number, Vector][] {
   const edge_sites: Array<[number, Vector]> = []
   const permutations = generate_permutations(3)
+  const lattice_vecs = structure.lattice.matrix
 
-  structure.sites.forEach((site, idx) => {
+  for (const [idx, site] of structure.sites.entries()) {
     const abc = site.abc
-    const xyz = site.xyz
-
-    edge_sites.push([idx, xyz])
+    edge_sites.push([idx, site.xyz])
 
     // Check if the site is at the edge and determine its image
     const edges: number[] = [0, 1, 2].filter(
       (i) => Math.abs(abc[i]) < tolerance || Math.abs(abc[i] - 1) < tolerance,
     )
 
-    const { a, b, c } = structure.lattice
     if (edges.length > 0) {
       for (const perm of permutations) {
-        const img_xyz: Vector = xyz.slice()
-        for (const [idx, edge] of edges.entries()) {
-          if (perm[idx] === 1) {
+        let img_xyz: Vector = [...site.xyz] // Make a copy of the array
+        for (const edge of edges) {
+          if (perm[edge] === 1) {
             // Image atom at the opposite edge
             if (Math.abs(abc[edge]) < tolerance) {
-              img_xyz[edge] += edge === 0 ? a : edge === 1 ? b : c
+              img_xyz = add(img_xyz, lattice_vecs[edge])
             } else {
-              img_xyz[edge] -= edge === 0 ? a : edge === 1 ? b : c
+              img_xyz = add(img_xyz, scale(lattice_vecs[edge], -1))
             }
           }
         }
         edge_sites.push([idx, img_xyz])
       }
     }
-  })
+  }
 
   return edge_sites
 }
 
+// this function takes a pymatgen Structure and returns a new one with all the image atoms added
 export function symmetrize_structure(
   ...args: Parameters<typeof find_image_atoms>
 ): PymatgenStructure {
