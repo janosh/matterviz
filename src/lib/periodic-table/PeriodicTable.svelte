@@ -4,14 +4,9 @@
   import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '$lib'
   import element_data from '$lib/element/data'
   import * as d3sc from 'd3-scale-chromatic'
+  import type { ComponentProps } from 'svelte'
 
-  export let tile_props: {
-    show_name?: boolean
-    show_number?: boolean
-    show_symbol?: boolean
-    text_color_threshold?: number
-    precision?: number
-  } = {}
+  export let tile_props: ComponentProps<ElementTile> = {}
   export let show_photo = true
   export let style = ``
   export let disabled = false // disable hover and click events from updating active_element
