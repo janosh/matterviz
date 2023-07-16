@@ -13,7 +13,7 @@
   export let cell_color: string = `white`
   export let cell_line_width: number = 1
   // cell opacity
-  export let cell_opacity: number | undefined = undefined
+  export let cell_opacity: number = 1
   // whether to show the lattice vectors
   export let show_vectors: boolean = true
   // lattice vector colors
@@ -43,19 +43,20 @@
 
 {#if show_vectors}
   <T.Group position={vector_origin}>
+    <!-- arrow shafts -->
     <InstancedMesh>
       <T.CylinderGeometry args={[0.1, 0.1, 1, 16]} />
-
       <T.MeshStandardMaterial />
       {#each matrix as vec, idx}
         <Bond to={scale(vec, 0.5)} color={vector_colors[idx]} />
       {/each}
     </InstancedMesh>
+
+    <!-- arrow tips -->
     <InstancedMesh>
       <T.MeshStandardMaterial />
-      <!-- [thickness, length, radial segments] -->
-      <T.ConeGeometry args={[0.25, 0.12, 16]} />
-
+      <!-- args=[thickness, length, radial segments] -->
+      <T.ConeGeometry args={[0.25, 0.12, 32]} />
       {#each matrix as vec, idx}
         <Bond to={vec} color={vector_colors[idx]} />
       {/each}

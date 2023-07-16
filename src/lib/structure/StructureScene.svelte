@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PymatgenStructure, Site, Vector } from '$lib'
+  import type { BondPair, PymatgenStructure, Site, Vector } from '$lib'
   import { Bond, Lattice, add, atomic_radii, euclidean_dist, pretty_num } from '$lib'
   import { element_colors } from '$lib/stores'
   import { T } from '@threlte/core'
@@ -10,6 +10,7 @@
     OrbitControls,
     interactivity,
   } from '@threlte/extras'
+  import * as bonding_strategies from './bonding'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: PymatgenStructure | undefined = undefined
@@ -42,7 +43,8 @@
   export let bond_radius: number | undefined = undefined
   export let bond_opacity: number = 0.5
   export let bond_color: string = `white`
-  export let max_bond_dist: number = 3
+  export let bonding_strategy: keyof typeof bonding_strategies = `nearest_neighbor`
+  export let bonding_options: Record<string, unknown> = {}
   // set to null to disable showing distance between hovered and active sites
   type ActiveHoveredDist = { color: string; width: number; opacity: number }
   export let active_hovered_dist: ActiveHoveredDist | null = {
@@ -55,22 +57,12 @@
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
   interactivity()
 
-  // naive max dist bond strategy
-  let bond_pairs: [Vector, Vector][] = []
+  let bond_pairs: BondPair[]
   $: if (structure?.sites && show_bonds) {
-    bond_pairs = []
-    for (const { xyz, species } of structure.sites) {
-      for (const { xyz: xyz_2, species: species_2 } of structure.sites) {
-        const dist = euclidean_dist(xyz, xyz_2)
-        if (dist < max_bond_dist) {
-          const [elem, elem_2] = [species[0].element, species_2[0].element]
-          bond_pairs.push([xyz, xyz_2, elem, elem_2, dist])
-        }
-      }
-    }
+    bond_pairs = bonding_strategies[bonding_strategy](structure, bonding_options)
   }
 
-  // make bonds reactive to atom_radius unless bond_radius is set
+  // make bond thickness reactive to atom_radius unless bond_radius is set
   $: bond_thickness = bond_radius ?? 0.1 * atom_radius
 </script>
 
@@ -134,9 +126,11 @@
   <InstancedMesh>
     <T.CylinderGeometry args={[bond_thickness, bond_thickness, 1, 16]} />
     <T.MeshStandardMaterial opacity={bond_opacity} color={bond_color} />
-    {#each bond_pairs ?? [] as [from, to]}
-      <Bond {from} {to} radius={1} />
-    {/each}
+    {#key bond_pairs}
+      {#each bond_pairs ?? [] as [from, to]}
+        <Bond {from} {to} radius={1} />
+      {/each}
+    {/key}
   </InstancedMesh>
 {/if}
 
@@ -187,7 +181,7 @@
 {/if}
 
 {#if structure?.lattice}
-  <Lattice {...structure?.lattice} {...$$restProps} />
+  <Lattice matrix={structure?.lattice.matrix} {...$$restProps} />
 {/if}
 
 <style>

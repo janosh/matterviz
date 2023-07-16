@@ -9,6 +9,7 @@ export { default as Structure } from './Structure.svelte'
 export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
+export * as bonding_strategies from './bonding'
 
 export type Species = {
   element: ElementSymbol
@@ -42,6 +43,9 @@ export type PymatgenStructure = {
   charge: number
   id?: string
 }
+
+// [atom_pos_1, atom_pos_2, atom_idx_1, atom_idx_2, bond_length]
+export type BondPair = [Vector, Vector, number, number, number]
 
 export type IdStructure = PymatgenStructure & { id: string }
 
