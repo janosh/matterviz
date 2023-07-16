@@ -45,7 +45,7 @@
   export let show_bonds: boolean = true
   export let bond_radius: number | undefined = undefined
   export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
-  export let cell_opacity: number | undefined = 0.5
+  export let cell_opacity: number | undefined = show_cell == `surface` ? 0.2 : 0.4
   export let cell_line_width: number = 1
   export let wrapper: HTMLDivElement | undefined = undefined
   // the control panel DOM element
@@ -69,8 +69,9 @@
   export let save_png_btn_text: string = `✎ Save as PNG`
   // boolean or map from element symbols to labels
   // use slot='atom-label' to include HTML and event handlers
-  export let atom_labels: boolean | Record<ElementSymbol, string | number> = false
+  export let site_labels: boolean | Record<ElementSymbol, string | number> = false
   export let atom_labels_style: string | null = null
+  export let bonding_strategy: 'max_dist' | 'nearest_neighbor' = `nearest_neighbor`
   export let bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
   export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
   export let style: string | null = null
@@ -196,22 +197,22 @@
           lattice vectors
         </label>
         <label>
-          <input type="checkbox" bind:checked={show_cell} />
-          unit cell
-        </label>
-        <label>
           <input type="checkbox" bind:checked={show_image_atoms} />
           image atoms
         </label>
+        <label>
+          <input type="checkbox" bind:checked={site_labels} />
+          site labels
+        </label>
+        <label>
+          <select bind:value={show_cell}>
+            <option value="surface">surface</option>
+            <option value="wireframe">wireframe</option>
+            <option value={null}>none</option>
+          </select>
+          unit cell as
+        </label>
       </div>
-      <label>
-        Show unit cell as
-        <select bind:value={show_cell}>
-          <option value="surface">surface</option>
-          <option value="wireframe">wireframe</option>
-          <option value={null}>none</option>
-        </select>
-      </label>
 
       <hr />
 
@@ -228,24 +229,9 @@
           <small> (if false, all atoms have same size)</small>
         </span>
       </label>
-      <label>
-        Bond radius
-        <input
-          type="number"
-          min={0.001}
-          max={0.1}
-          step={0.001}
-          bind:value={bond_radius}
-        />
-        <input type="range" min="0.001" max="0.1" step={0.001} bind:value={bond_radius} />
-      </label>
 
       <hr />
 
-      <label>
-        <input type="checkbox" bind:checked={atom_labels} />
-        Show atom labels
-      </label>
       {#if show_cell}
         <label>
           Unit cell opacity
@@ -254,21 +240,47 @@
         </label>
       {/if}
 
-      <hr />
-
-      <label>
-        Bond color mode
-        <select bind:value={bond_color_mode}>
-          <option value="single">Single</option>
-          <option value="split-midpoint">Split Midpoint</option>
-          <option value="gradient" disabled>Gradient (TODO)</option>
-        </select>
-      </label>
-
-      {#if bond_color_mode === `single`}
+      {#if show_bonds}
+        <hr />
         <label>
-          Bond color
-          <input type="color" bind:value={bond_color} />
+          Bonding strategy
+          <select bind:value={bonding_strategy}>
+            <option value="max_dist">Max Distance</option>
+            <option value="nearest_neighbor">Nearest Neighbor</option>
+          </select>
+        </label>
+
+        <label>
+          Bond color mode
+          <select bind:value={bond_color_mode}>
+            <option value="single">Single</option>
+            <option value="split-midpoint">Split Midpoint</option>
+            <option value="gradient" disabled>Gradient (TODO)</option>
+          </select>
+        </label>
+
+        {#if bond_color_mode === `single`}
+          <label>
+            Bond color
+            <input type="color" bind:value={bond_color} />
+          </label>
+        {/if}
+        <label>
+          Bond radius
+          <input
+            type="number"
+            min={0.001}
+            max={0.1}
+            step={0.001}
+            bind:value={bond_radius}
+          />
+          <input
+            type="range"
+            min="0.001"
+            max="0.1"
+            step={0.001}
+            bind:value={bond_radius}
+          />
         </label>
       {/if}
 
@@ -329,12 +341,13 @@
         {bond_color}
         bind:atom_radius
         bind:same_size_atoms
+        {bonding_strategy}
       >
         <!-- above let:elem needed to fix false positive eslint no-undef -->
         <slot slot="atom-label" name="atom-label" let:elem>
-          {#if atom_labels}
+          {#if site_labels}
             <span class="atom-label" style={atom_labels_style}>
-              {atom_labels === true ? elem : atom_labels[elem]}
+              {site_labels === true ? elem : site_labels[elem]}
             </span>
           {/if}
         </slot>
