@@ -6,9 +6,9 @@
   })
 </script>
 
-## `Structure.svelte`
+## Select Structure from Dropdown
 
-```svelte example stackblitz code_above hideStyle
+```svelte example stackblitz
 <script>
   import { Structure, StructureCard } from '$lib'
   import { structures } from '$site'
@@ -41,9 +41,8 @@
   </details>
 </form>
 
-<StructureCard {structure}>
-  <a slot="title" {href}>{mp_id}</a>
-</StructureCard>
+<h3 align='center'><a {href}>{mp_id}</a></h3>
+<StructureCard {structure} />
 <p>canvas width=<span>{width}</span>, height=<span>{height}</span></p>
 <Structure {structure} bind:width bind:height />
 
@@ -75,7 +74,7 @@
 
 ## Multiple Structures in a grid
 
-```svelte example stackblitz code_above hideStyle
+```svelte example stackblitz
 <script>
   import { Structure } from '$lib'
   import { structures } from '$site'

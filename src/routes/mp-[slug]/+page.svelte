@@ -13,7 +13,10 @@
 
 <main>
   <center style="margin: 1em 0;">
-    <h1>Materials Explorer</h1>
+    <h1>
+      Materials Explorer - {data.summary.formula_pretty}
+      <span style="font-weight: lighter;">(<a {href}>{mp_id}</a>)</span>
+    </h1>
 
     <input
       placeholder="Enter MP material ID"
@@ -60,9 +63,7 @@
 
   <MaterialCard material={data.summary} />
 
-  <StructureCard structure={data.summary.structure}>
-    <a slot="title" {href}>{mp_id}</a>
-  </StructureCard>
+  <StructureCard structure={data.summary.structure} />
 
   <h3>
     Crystal description
