@@ -88,3 +88,10 @@ See `DispatchPayload` and `PeriodicTableEvents` in `src/lib/index.ts`
 - Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.
 - Big thanks to all sources of element images. See [`fetch-elem-images.ts`](https://github.com/janosh/elementari/blob/-/src/fetch-elem-images.ts) and [`static/elements`](https://github.com/janosh/elementari/tree/main/static/elements).
 - Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for a lot of great suggestions, UX ideas, helping me learn [`threlte`](https://threlte.xyz) and contributing the [`Bond.svelte`](https://github.com/janosh/elementari/blob/-/src/lib/structure/Bond.svelte) component.
+
+This project would not have been possible as a one-man side project without many fine open-source projects. 🙏 To name just the most important ones:
+
+|           3D graphics           |               2D graphics                |                     Docs                     |               Bundler               |               Testing                |
+| :-----------------------------: | :--------------------------------------: | :------------------------------------------: | :---------------------------------: | :----------------------------------: |
+| [three.js](https://threejs.org) |          [d3](https://d3js.org)          |         [mdsvex](https://mdsvex.com)         |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
+| [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) | [rehype](https://github.com/rehypejs/rehype) | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |

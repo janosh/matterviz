@@ -149,3 +149,20 @@ input[type='color']::-webkit-color-swatch-wrapper {
 input[type='color']::-webkit-color-swatch {
   border: none;
 }
+
+table {
+  display: block;
+  max-width: 100%;
+  overflow: scroll;
+  border-collapse: collapse;
+}
+table :is(td, th) {
+  border: 1px solid gray;
+  padding: 3pt 12pt;
+}
+table.roomy :is(td, th) {
+  padding: 5pt 9pt;
+}
+tbody tr:nth-child(odd) {
+  background: black;
+}

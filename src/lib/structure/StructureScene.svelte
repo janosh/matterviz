@@ -109,19 +109,14 @@
         }}
         scale={radius}
       />
+
+      {#if $$slots[`atom-label`]}
+        <HTML center as="div" position={xyz}>
+          <slot name="atom-label" {elem} {xyz} {species} />
+        </HTML>
+      {/if}
     {/each}
   </InstancedMesh>
-  <!-- TODO find a performant way of rendering labels for each site -->
-  <!-- {#each structure.sites as site, idx}
-    {@const { species, xyz } = site}
-    {@const elem = species[0].element}
-
-    {#if $$slots[`atom-label`]}
-      <HTML center as="div">
-        <slot name="atom-label" {elem} {xyz} {species} />
-      </HTML>
-    {/if}
-  {/each} -->
 {/if}
 
 {#if show_bonds}
@@ -174,9 +169,9 @@
       <!-- distance from hovered to active site -->
       <!-- TODO this doesn't handle periodic boundaries yet, so is currently grossly misleading -->
       {#if active_site && active_site != hovered_site && active_hovered_dist}
-        {@const distance = pretty_num(euclidean_dist(hovered_site.xyz, active_site.xyz))}
+        {@const distance = euclidean_dist(hovered_site.xyz, active_site.xyz)}
         <br />
-        dist={distance} Å (no PBC yet)
+        dist={pretty_num(distance)} Å (no PBC yet)
       {/if}
     </div>
   </HTML>
