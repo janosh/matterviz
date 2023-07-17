@@ -15,7 +15,7 @@
       return { route: `/${parts.slice(1, -1).join(`/`)}`, filename }
     }
   )
-  let mp_id = `/mp-756175`
+  let mp_id = `/mp-1234`
 
   if (routes.length < 3) {
     console.error(`Too few demo routes found: ${routes.length}`)

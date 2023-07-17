@@ -66,7 +66,8 @@
   export let save_png_btn_text: string = `✎ Save as PNG`
   // boolean or map from element symbols to labels
   // use slot='atom-label' to include HTML and event handlers
-  export let site_labels: boolean | Record<ElementSymbol, string | number> = false
+  export let show_site_labels: boolean | Record<ElementSymbol, string | number> =
+    (structure?.sites?.length ?? 0) < 20
   export let atom_labels_style: string | null = null
   export let bonding_strategy: 'max_dist' | 'nearest_neighbor' = `nearest_neighbor`
   export let bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
@@ -214,7 +215,7 @@
           image atoms
         </label>
         <label>
-          <input type="checkbox" bind:checked={site_labels} />
+          <input type="checkbox" bind:checked={show_site_labels} />
           site labels
         </label>
         <label>
@@ -374,11 +375,11 @@
         {bonding_strategy}
         {rotation_damping}
       >
-        <!-- above let:elem needed to fix false positive eslint no-undef -->
         <slot slot="atom-label" name="atom-label" let:elem>
-          {#if site_labels}
+          <!-- let:elem needed to fix false positive eslint no-undef -->
+          {#if show_site_labels}
             <span class="atom-label" style={atom_labels_style}>
-              {site_labels === true ? elem : site_labels[elem]}
+              {show_site_labels === true ? elem : show_site_labels[elem]}
             </span>
           {/if}
         </slot>
@@ -497,9 +498,9 @@
     text-align: center;
   }
   .atom-label {
-    background: var(--struct-atom-label-bg, rgba(255, 255, 255, 0.4));
+    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.2));
     border-radius: var(--struct-atom-label-border-radius, 3pt);
-    padding: var(--struct-atom-label-padding, 0 3pt);
+    padding: var(--struct-atom-label-padding, 1px 6px);
   }
   input[type='color'] {
     width: var(--struct-input-color-width, 40px);
