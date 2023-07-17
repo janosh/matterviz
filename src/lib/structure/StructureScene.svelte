@@ -20,9 +20,10 @@
   // determined by the atomic radius of the element
   export let same_size_atoms: boolean = true
   // initial camera position from which to render the scene
-  export let camera_position: Vector = [10, 10, 10]
+  export let camera_position: Vector = [10, 0, 0]
+  // rotation damping factor (how quickly the rotation comes to rest after mouse release)
+  export let rotation_damping: number = 0.1
   // zoom level of the camera
-  export let orbit_controls: OrbitControls | undefined = undefined
   export let max_zoom: number | undefined = undefined
   export let min_zoom: number | undefined = undefined
   // zoom speed. set to 0 to disable zooming.
@@ -75,9 +76,10 @@
     target={add(...(structure?.lattice?.matrix ?? [])).map((x) => x / 2)}
     maxZoom={max_zoom}
     minZoom={min_zoom}
-    bind:this={orbit_controls}
     autoRotate={Boolean(auto_rotate)}
     autoRotateSpeed={auto_rotate}
+    enableDamping={Boolean(rotation_damping)}
+    dampingFactor={rotation_damping}
   />
 </T.PerspectiveCamera>
 

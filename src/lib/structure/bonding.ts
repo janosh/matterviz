@@ -1,9 +1,10 @@
 import type { BondPair, PymatgenStructure } from '$lib'
 import { euclidean_dist } from '$lib'
 
+// finds all pairs of atoms within the max_bond_dist cutoff
 export function max_dist(
   structure: PymatgenStructure,
-  { max_bond_dist = 3, min_bond_dist = 0.1 } = {} // in Angstroms
+  { max_bond_dist = 3, min_bond_dist = 0.1 } = {}, // in Angstroms
 ): BondPair[] {
   const bonds: BondPair[] = []
 
@@ -23,9 +24,10 @@ export function max_dist(
   return bonds
 }
 
+// finds bonds to sites less than scaling_factor farther away than the nearest neighbor
 export function nearest_neighbor(
   structure: PymatgenStructure,
-  { scaling_factor = 1.1, min_bond_dist = 0.1 } = {} // in Angstroms
+  { scaling_factor = 1.3, min_bond_dist = 0.1 } = {}, // in Angstroms
 ): BondPair[] {
   const num_sites = structure.sites.length
   // Initialize distance matrix with Infinity
@@ -47,7 +49,7 @@ export function nearest_neighbor(
   for (let idx = 0; idx < num_sites; idx++) {
     // Find the minimum distance (ignoring zero)
     const min_dist = Math.min(
-      ...dists[idx].filter((dist) => dist > min_bond_dist)
+      ...dists[idx].filter((dist) => dist > min_bond_dist),
     )
 
     for (let idx_2 = idx + 1; idx_2 < num_sites; idx_2++) {

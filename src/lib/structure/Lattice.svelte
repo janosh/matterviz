@@ -21,45 +21,46 @@
   // lattice vector origin (all arrows start from this point)
   export let vector_origin: Vector = [-1, -1, -1]
 
-  $: geometry = new BoxGeometry(1, 1, 1)
-  $: shear_matrix = new Matrix4().makeBasis(
-    ...matrix.map((vec) => new Vector3(...vec, 0))
-  )
-  $: geometry.applyMatrix4(shear_matrix)
   $: lattice_center = scale(add(...matrix), 0.5)
 </script>
 
-{#if show_cell}
-  <T.Mesh {geometry} position={lattice_center}>
-    <T.MeshBasicMaterial
-      color={cell_color}
-      opacity={cell_opacity}
-      transparent={cell_opacity !== undefined}
-      wireframe={show_cell === `wireframe`}
-      line_width={cell_line_width}
-    />
-  </T.Mesh>
-{/if}
+{#key matrix}
+  {#if show_cell}
+    {@const shear_matrix = new Matrix4().makeBasis(
+      ...matrix.map((vec) => new Vector3(...vec, 0))
+    )}
+    {@const geometry = new BoxGeometry(1, 1, 1).applyMatrix4(shear_matrix)}
+    <T.Mesh {geometry} position={lattice_center}>
+      <T.MeshBasicMaterial
+        color={cell_color}
+        opacity={cell_opacity}
+        transparent={cell_opacity !== undefined}
+        wireframe={show_cell === `wireframe`}
+        line_width={cell_line_width}
+      />
+    </T.Mesh>
+  {/if}
 
-{#if show_vectors}
-  <T.Group position={vector_origin}>
-    <!-- arrow shafts -->
-    <InstancedMesh>
-      <T.CylinderGeometry args={[0.1, 0.1, 1, 16]} />
-      <T.MeshStandardMaterial />
-      {#each matrix as vec, idx}
-        <Bond to={scale(vec, 0.5)} color={vector_colors[idx]} />
-      {/each}
-    </InstancedMesh>
+  {#if show_vectors}
+    <T.Group position={vector_origin}>
+      <!-- arrow shafts -->
+      <InstancedMesh>
+        <T.CylinderGeometry args={[0.1, 0.1, 1, 16]} />
+        <T.MeshStandardMaterial />
+        {#each matrix as vec, idx}
+          <Bond to={scale(vec, 0.5)} color={vector_colors[idx]} />
+        {/each}
+      </InstancedMesh>
 
-    <!-- arrow tips -->
-    <InstancedMesh>
-      <T.MeshStandardMaterial />
-      <!-- args=[thickness, length, radial segments] -->
-      <T.ConeGeometry args={[0.25, 0.12, 32]} />
-      {#each matrix as vec, idx}
-        <Bond to={vec} color={vector_colors[idx]} />
-      {/each}
-    </InstancedMesh>
-  </T.Group>
-{/if}
+      <!-- arrow tips -->
+      <InstancedMesh>
+        <T.MeshStandardMaterial />
+        <!-- args=[thickness, length, radial segments] -->
+        <T.ConeGeometry args={[0.25, 0.12, 32]} />
+        {#each matrix as vec, idx}
+          <Bond to={vec} color={vector_colors[idx]} />
+        {/each}
+      </InstancedMesh>
+    </T.Group>
+  {/if}
+{/key}

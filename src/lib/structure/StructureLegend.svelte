@@ -63,7 +63,7 @@
     bottom: var(--struct-legend-bottom, 8pt);
     right: var(--struct-legend-right, 8pt);
     gap: var(--struct-legend-gap, 8pt);
-    font-size: var(--struct-legend-font-size, 16pt);
+    font-size: var(--struct-legend-font-size, 14pt);
   }
 
   div label {

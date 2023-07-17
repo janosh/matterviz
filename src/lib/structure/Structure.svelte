@@ -1,12 +1,7 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import type { ElementSymbol, PymatgenStructure, Vector } from '$lib'
-  import {
-    add,
-    alphabetical_formula,
-    get_elem_amounts,
-    scale,
-    symmetrize_structure,
-  } from '$lib'
+  import { alphabetical_formula, get_elem_amounts, symmetrize_structure } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
   import { element_colors } from '$lib/stores'
@@ -23,17 +18,19 @@
   // determined by the atomic radius of the element
   export let same_size_atoms: boolean = true
   // initial camera position from which to render the scene
-  export let camera_position: Vector = [10, 10, 10]
-  // zoom level of the camera
-  export let initial_zoom: number | undefined = undefined
+  export let camera_position: Vector = [10, 5, 2 * (structure?.lattice?.c ?? 5)]
   // auto rotate speed. set to 0 to disable auto rotation.
   export let auto_rotate: number = 0
+  // rotation damping factor (how quickly the rotation comes to rest after mouse release)
+  export let rotation_damping: number = 0.1
   // zoom speed. set to 0 to disable zooming.
   export let zoom_speed: number = 0.3
   // pan speed. set to 0 to disable panning.
   export let pan_speed: number = 1
   // whether to show the controls panel
   export let controls_open: boolean = false
+  // canvas background color
+  export let background_color: string = `#ffffff` // must be hex code for <input type='color'>
   // only show the buttons when hovering over the canvas on desktop screens
   // mobile screens don't have hover, so by default the buttons are always
   // shown on a canvas of width below 500px
@@ -86,12 +83,6 @@
     }
   }
 
-  $: {
-    // set camera position based on structure size
-    const factor = initial_zoom ?? 700 / Math.min(width, height)
-    const [vec_a, vec_b, vec_c] = structure?.lattice?.matrix ?? [[], [], []]
-    camera_position = scale(add(vec_a, vec_b, vec_c), factor)
-  }
   const on_window_click =
     (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
       if (!node || !event.target) return // ignore invalid input
@@ -134,6 +125,18 @@
       download(blob, `scene.png`, `image/png`)
     })
   }
+
+  export function toggle_fullscreen() {
+    if (!document.fullscreenElement && wrapper) {
+      wrapper.requestFullscreen().catch(console.error)
+    } else {
+      document.exitFullscreen()
+    }
+  }
+  // set --struct-bg to background_color
+  $: if (browser) {
+    document.documentElement.style.setProperty(`--struct-bg`, `${background_color}20`)
+  }
 </script>
 
 <svelte:window
@@ -166,6 +169,19 @@
           // TODO implement reset view and controls
         }}>{reset_text}</button
       > -->
+      {#if enable_tips}
+        <button class="info-icon" on:click={() => tips_modal?.showModal()}>
+          <slot name="tips-icon">&#9432;</slot>
+        </button>
+      {/if}
+      <button
+        on:click={toggle_fullscreen}
+        class="fullscreen-toggle"
+        title="Toggle fullscreen"
+      >
+        <slot name="fullscreen-toggle">⛶</slot>
+      </button>
+
       <button
         on:click={() => (controls_open = !controls_open)}
         bind:this={toggle_controls_btn}
@@ -175,12 +191,9 @@
           {controls_open ? `Close` : `Controls`}
         </slot>
       </button>
-      {#if enable_tips}
-        <button class="info-icon" on:click={() => tips_modal?.showModal()}>
-          <slot name="tips-icon">&#9432;</slot>
-        </button>
-      {/if}
     </section>
+
+    <StructureLegend elements={get_elem_amounts(structure)} bind:tips_modal />
 
     <dialog class="controls" bind:this={controls} open={controls_open}>
       <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap;">
@@ -284,6 +297,11 @@
         </label>
       {/if}
 
+      <label>
+        Background color
+        <input type="color" bind:value={background_color} />
+      </label>
+
       <hr />
 
       <label>
@@ -302,6 +320,18 @@
         </Tooltip>
         <input type="number" min={0} max={2} step={0.01} bind:value={pan_speed} />
         <input type="range" min={0} max={2} step={0.01} bind:value={pan_speed} />
+      </label>
+      <!-- rotation damping -->
+      <label>
+        <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
+        <input
+          type="number"
+          min={0}
+          max={0.3}
+          step={0.01}
+          bind:value={rotation_damping}
+        />
+        <input type="range" min={0} max={0.3} step={0.01} bind:value={rotation_damping} />
       </label>
       <!-- color scheme -->
       <label>
@@ -342,6 +372,7 @@
         bind:atom_radius
         bind:same_size_atoms
         {bonding_strategy}
+        {rotation_damping}
       >
         <!-- above let:elem needed to fix false positive eslint no-undef -->
         <slot slot="atom-label" name="atom-label" let:elem>
@@ -353,8 +384,6 @@
         </slot>
       </StructureScene>
     </Canvas>
-
-    <StructureLegend elements={get_elem_amounts(structure)} bind:tips_modal />
 
     <div class="bottom-left">
       <slot name="bottom-left" {structure} />
@@ -375,8 +404,12 @@
     max-width: var(--struct-max-width);
     min-width: var(--struct-min-width);
     border-radius: var(--struct-border-radius, 3pt);
-    background: var(--struct-bg, rgba(255, 255, 255, 0.1));
+    background: var(--struct-bg, rgba(0, 255, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;
+  }
+  .structure:fullscreen :global(canvas) {
+    height: 100vh !important;
+    width: 100vw !important;
   }
   .structure.dragover {
     background: var(--struct-dragover-bg, rgba(0, 0, 0, 0.7));
@@ -471,5 +504,6 @@
   input[type='color'] {
     width: var(--struct-input-color-width, 40px);
     height: var(--struct-input-color-height, 16px);
+    margin: var(--struct-input-color-margin, 0 0 0 5pt);
   }
 </style>
