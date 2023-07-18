@@ -7,22 +7,37 @@ const ref_data = {
   'mp-1': {
     amounts: { Cs: 2 },
     density: 1.8,
+    center_of_mass: [1.564, 1.564, 1.564],
   },
   'mp-2': {
     amounts: { Pd: 4 },
     density: 11.76,
+    center_of_mass: [0.979, 0.979, 0.979],
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
+    center_of_mass: [3.535, 3.535, 3.535],
   },
   'mp-30855': {
     amounts: { U: 2, Pt: 6 },
     density: 19.14,
+    center_of_mass: [3.535, 3.535, 3.535],
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.46,
+    center_of_mass: [4.798, 4.798, 4.798],
+  },
+  'mp-1229155': {
+    amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
+    density: 6.11,
+    center_of_mass: [2.282, 3.522, 6.642],
+  },
+  'mp-1229168': {
+    amounts: { Al: 54, Fe: 4, Ni: 8 },
+    density: 3.66,
+    center_of_mass: [1.785, 2.959, 12.51],
   },
 } as const
 
@@ -90,4 +105,12 @@ test.each(structures)(`symmetrize_structure`, async (structure) => {
   expect(symmetrized.sites.length, msg).toEqual(expected)
   expect(symmetrized.sites.length, msg).toBeGreaterThan(orig_len)
   expect(structure.sites.length, msg).toBe(orig_len)
+})
+
+test.each(structures)(`get_center_of_mass for $id`, async (struct) => {
+  const center = module.get_center_of_mass(struct)
+  expect(
+    center.map((val) => Math.round(val * 1e3) / 1e3),
+    struct.id,
+  ).toEqual(ref_data[struct.id].center_of_mass)
 })
