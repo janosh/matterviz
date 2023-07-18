@@ -20,3 +20,14 @@ export const structures = Object.entries(
     )
     return n1.localeCompare(n2)
   })
+
+export const molecules = Object.entries(
+  import.meta.glob(`./molecules/*.json`, {
+    eager: true,
+    import: `default`,
+  }) as Record<string, IdStructure>,
+).map(([path, mol]) => {
+  const name = path.split(`/`).at(-1)?.split(`.`)[0] as string
+  mol.name = name
+  return mol
+})

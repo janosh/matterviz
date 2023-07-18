@@ -49,6 +49,11 @@ export type BondPair = [Vector, Vector, number, number, number]
 
 export type IdStructure = PymatgenStructure & { id: string }
 
+// remove lattice from pymatgen Structure
+export type PymatgenMolecule = Omit<PymatgenStructure, 'lattice'>
+
+export type StructureOrMolecule = PymatgenStructure | PymatgenMolecule
+
 export function get_elem_amounts(structure: PymatgenStructure) {
   const elements: Partial<Record<ElementSymbol, number>> = {}
   for (const site of structure.sites) {
@@ -120,9 +125,10 @@ export function find_image_atoms(
   { tolerance = 0.05 }: { tolerance?: number } = {},
   // fractional tolerance for determining if a site is at the edge of the unit cell
 ): [number, Vector][] {
+  if (!structure.lattice) return []
   const edge_sites: Array<[number, Vector]> = []
   const permutations = generate_permutations(3)
-  const lattice_vecs = structure.lattice.matrix
+  const lattice_vecs = structure.lattice?.matrix
 
   for (const [idx, site] of structure.sites.entries()) {
     const abc = site.abc
@@ -130,7 +136,8 @@ export function find_image_atoms(
 
     // Check if the site is at the edge and determine its image
     const edges: number[] = [0, 1, 2].filter(
-      (i) => Math.abs(abc[i]) < tolerance || Math.abs(abc[i] - 1) < tolerance,
+      (idx) =>
+        Math.abs(abc[idx]) < tolerance || Math.abs(abc[idx] - 1) < tolerance,
     )
 
     if (edges.length > 0) {
@@ -172,4 +179,20 @@ export function symmetrize_structure(
   }
 
   return symmetrized_structure
+}
+
+export function get_center_of_mass(struct_or_mol: StructureOrMolecule): Vector {
+  let center: Vector = [0, 0, 0]
+  let total_weight = 0
+
+  for (const site of struct_or_mol.sites) {
+    // TODO this assumes there's just one species. doesn't handle disordered sites
+    const wt = site.species[0].occu
+
+    center = add(center, scale(site.xyz, wt))
+
+    total_weight += wt
+  }
+
+  return scale(center, 1 / total_weight)
 }

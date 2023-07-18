@@ -1,6 +1,14 @@
 <script lang="ts">
-  import type { BondPair, PymatgenStructure, Site, Vector } from '$lib'
-  import { Bond, Lattice, add, atomic_radii, euclidean_dist, pretty_num } from '$lib'
+  import type { BondPair, Site, StructureOrMolecule, Vector } from '$lib'
+  import {
+    Bond,
+    Lattice,
+    add,
+    atomic_radii,
+    euclidean_dist,
+    pretty_num,
+    scale,
+  } from '$lib'
   import { element_colors } from '$lib/stores'
   import { T } from '@threlte/core'
   import {
@@ -13,7 +21,7 @@
   import * as bonding_strategies from './bonding'
 
   // output of pymatgen.core.Structure.as_dict()
-  export let structure: PymatgenStructure | undefined = undefined
+  export let structure: StructureOrMolecule | undefined = undefined
   // scale factor for atomic radii
   export let atom_radius: number = 0.5
   // whether to use the same radius for all atoms. if not, the radius will be
@@ -68,12 +76,15 @@
 </script>
 
 <T.PerspectiveCamera makeDefault position={camera_position}>
+  <!-- fix the ugly target -->
   <OrbitControls
     enableZoom={zoom_speed > 0}
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={add(...(structure?.lattice?.matrix ?? [])).map((x) => x / 2)}
+    target={structure?.lattice
+      ? scale(add(...(structure?.lattice?.matrix ?? [])), 0.5)
+      : [0, 0, 0]}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     autoRotate={Boolean(auto_rotate)}
@@ -178,7 +189,7 @@
 {/if}
 
 {#if structure?.lattice}
-  <Lattice matrix={structure?.lattice.matrix} {...$$restProps} />
+  <Lattice matrix={structure?.lattice?.matrix} {...$$restProps} />
 {/if}
 
 <style>

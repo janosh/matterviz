@@ -1,6 +1,8 @@
 import type { BondPair, PymatgenStructure } from '$lib'
 import { euclidean_dist } from '$lib'
 
+// TODO add unit tests for these functions
+
 // finds all pairs of atoms within the max_bond_dist cutoff
 export function max_dist(
   structure: PymatgenStructure,

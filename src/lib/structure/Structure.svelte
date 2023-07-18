@@ -1,6 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import type { ElementSymbol, PymatgenStructure, Vector } from '$lib'
+  import type { ElementSymbol, StructureOrMolecule, Vector } from '$lib'
   import { alphabetical_formula, get_elem_amounts, symmetrize_structure } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
@@ -11,7 +11,7 @@
   import StructureScene from './StructureScene.svelte'
 
   // output of pymatgen.core.Structure.as_dict()
-  export let structure: PymatgenStructure | undefined = undefined
+  export let structure: StructureOrMolecule | undefined = undefined
   // scale factor for atomic radii
   export let atom_radius: number = 0.5
   // whether to use the same radius for all atoms. if not, the radius will be
@@ -30,13 +30,13 @@
   // whether to show the controls panel
   export let controls_open: boolean = false
   // canvas background color
-  export let background_color: string = `#ffffff` // must be hex code for <input type='color'>
+  export let background_color: string = `#0000ff` // must be hex code for <input type='color'>
   // only show the buttons when hovering over the canvas on desktop screens
   // mobile screens don't have hover, so by default the buttons are always
   // shown on a canvas of width below 500px
   export let reveal_buttons: boolean | number = 500
-  // TODO whether to make the canvas fill the whole screen
-  // export let fullscreen: boolean = false
+  export let fullscreen: boolean = false
+
   // whether to show the structure's lattice cell as a wireframe
   export let show_atoms: boolean = true
   export let show_bonds: boolean = true
@@ -106,6 +106,7 @@
   }
 
   function on_file_drop(event: DragEvent) {
+    // TODO support dragging CIF files
     dragover = false
     if (!allow_file_drop) return
     const file = event.dataTransfer?.items[0].getAsFile()
@@ -137,6 +138,13 @@
   // set --struct-bg to background_color
   $: if (browser) {
     document.documentElement.style.setProperty(`--struct-bg`, `${background_color}20`)
+
+    // react to changes in the 'fullscreen' property
+    if (fullscreen && !document.fullscreenElement && wrapper) {
+      wrapper.requestFullscreen().catch(console.error)
+    } else if (!fullscreen && document.fullscreenElement) {
+      document.exitFullscreen()
+    }
   }
 </script>
 
@@ -405,7 +413,7 @@
     max-width: var(--struct-max-width);
     min-width: var(--struct-min-width);
     border-radius: var(--struct-border-radius, 3pt);
-    background: var(--struct-bg, rgba(0, 255, 255, 0.1));
+    background: var(--struct-bg, rgba(0, 0, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;
   }
   .structure:fullscreen :global(canvas) {
