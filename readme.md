@@ -89,7 +89,7 @@ See `DispatchPayload` and `PeriodicTableEvents` in `src/lib/index.ts`
 - Big thanks to all sources of element images. See [`fetch-elem-images.ts`](https://github.com/janosh/elementari/blob/-/src/fetch-elem-images.ts) and [`static/elements`](https://github.com/janosh/elementari/tree/main/static/elements).
 - Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for a lot of great suggestions, UX ideas, helping me learn [`threlte`](https://threlte.xyz) and contributing the [`Bond.svelte`](https://github.com/janosh/elementari/blob/-/src/lib/structure/Bond.svelte) component.
 
-This project would not have been possible as a one-man side project without many fine open-source projects. 🙏 To name just the most important ones:
+This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:
 
 |           3D graphics           |               2D graphics                |                     Docs                     |               Bundler               |               Testing                |
 | :-----------------------------: | :--------------------------------------: | :------------------------------------------: | :---------------------------------: | :----------------------------------: |

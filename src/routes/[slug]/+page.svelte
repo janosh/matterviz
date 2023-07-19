@@ -67,12 +67,11 @@
     $heatmap_key ? el[$heatmap_key] : null
   )
   $: [y_label, y_unit] = $heatmap_key ? property_labels[$heatmap_key] ?? [] : []
-  let color_scale: string
-  let selected: string[]
+  let color_scale: string = `Viridis`
 
   export const snapshot = {
-    capture: () => ({ selected }),
-    restore: (values) => ({ selected } = values),
+    capture: () => ({ color_scale }),
+    restore: (values) => ({ color_scale } = values),
   }
 </script>
 
@@ -100,7 +99,7 @@
 
   <form>
     <PropertySelect minSelect={1} />
-    <ColorScaleSelect bind:value={color_scale} bind:selected minSelect={1} />
+    <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} minSelect={1} />
   </form>
   <section class="viz">
     <ElementPhoto

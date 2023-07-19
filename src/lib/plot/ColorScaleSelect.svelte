@@ -23,7 +23,7 @@
   bind:value
   bind:selected
   {placeholder}
-  {...$$props}
+  {...$$restProps}
   let:option
 >
   <ColorBar label={option} color_scale={option} {...cbar_props} {wrapper_style} />
