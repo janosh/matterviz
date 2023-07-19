@@ -4,10 +4,8 @@
   import { molecules } from '$site'
   import Select from 'svelte-multiselect'
 
-  let name = [`water`]
-  let width
-  let height
-  $: molecule = molecules.find((struct) => struct.name === name[0]) || {}
+  let name = `benzene`
+  $: molecule = molecules.find((struct) => struct.name === name) || {}
 </script>
 
 <form>
@@ -15,13 +13,14 @@
   <Select
     id="select"
     options={molecules.map((mol) => mol.name)}
-    bind:selected={name}
+    selected={[name]}
+    bind:value={name}
     maxSelect={1}
     minSelect={1}
   />
 
   <details>
-    <summary>JSON for molecule {name[0]}</summary>
+    <summary>JSON for molecule {name}</summary>
     <pre>
     <code>
     {JSON.stringify(molecule, null, 2)}
@@ -31,7 +30,7 @@
 </form>
 
 <h3 align='center'>{name}</h3>
-<Structure structure={molecule} bind:width bind:height />
+<Structure structure={molecule} />
 
 <style>
   form {

@@ -6,7 +6,8 @@
 
   export let data
 
-  let mp_id: string = `mp-${$page.params.slug}`
+  let input_value = `mp-${$page.params.slug}`
+  $: mp_id = input_value.trim().toLowerCase()
   $: href = `https://materialsproject.org/materials/${mp_id}`
   $: aws_url = `${mp_build_bucket}/summary/${mp_id}.json.gz`
 </script>
@@ -20,7 +21,7 @@
 
     <input
       placeholder="Enter MP material ID"
-      bind:value={mp_id}
+      bind:value={input_value}
       on:keydown={async (event) => {
         if (event.key === `Enter`) {
           goto(`/${mp_id}`)

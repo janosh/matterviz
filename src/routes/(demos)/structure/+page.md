@@ -14,11 +14,11 @@
   import { structures } from '$site'
   import Select from 'svelte-multiselect'
 
-  let mp_id = [`mp-756175`]
+  let mp_id = `mp-756175`
   let width
   let height
-  $: href = `https://materialsproject.org/materials/${mp_id[0]}`
-  $: structure = structures.find((struct) => struct.id === mp_id[0]) || {}
+  $: href = `https://materialsproject.org/materials/${mp_id}`
+  $: structure = structures.find((struct) => struct.id === mp_id) || {}
 </script>
 
 <form>
@@ -26,13 +26,14 @@
   <Select
     id="select"
     options={structures.map((struct) => struct.id)}
-    bind:selected={mp_id}
+    selected={[mp_id]}
+    bind:value={mp_id}
     maxSelect={1}
     minSelect={1}
   />
 
   <details>
-    <summary>JSON for structure {mp_id[0]}</summary>
+    <summary>JSON for structure {mp_id}</summary>
     <pre>
     <code>
     {JSON.stringify(structure, null, 2)}
