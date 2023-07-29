@@ -30,7 +30,7 @@
 </form>
 
 <h3 align='center'>{name}</h3>
-<Structure structure={molecule} />
+<Structure structure={molecule} bonding_strategy="max_dist" bonding_options={{max_bond_dist: 2}} />
 
 <style>
   form {

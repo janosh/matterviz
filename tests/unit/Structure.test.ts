@@ -8,14 +8,17 @@ const structure = structures[0]
 
 describe(`Structure`, () => {
   test(`open control panel when clicking toggle button`, async () => {
-    new Structure({ target: document.body, props: { structure } })
+    const struct = new Structure({
+      target: document.body,
+      props: { structure },
+    })
 
     const dialog = doc_query<HTMLDialogElement>(`dialog`)
     expect(dialog.open).toBe(false)
     doc_query(`button.controls-toggle`).click()
     await tick()
 
-    expect(dialog.open).toBe(true)
+    expect(struct.controls_open).toBe(true)
   })
 
   test(`JSON file download when clicking download button`, async () => {
