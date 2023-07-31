@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Composition } from '$lib'
-  import { element_data, get_text_color } from '$lib'
+  import { choose_bw_for_contrast, element_data } from '$lib'
   import { default_element_colors } from '$lib/colors'
   import { element_colors } from '$lib/stores'
   import { Tooltip } from 'svelte-zoo'
@@ -26,7 +26,7 @@
         on:dblclick|preventDefault={() => {
           $element_colors[elem] = default_element_colors[elem]
         }}
-        style:color={get_text_color(labels[idx])}
+        style:color={choose_bw_for_contrast(labels[idx])}
       >
         {elem}{amt}
         <input

@@ -104,19 +104,20 @@ export function get_bg_color(
   if (bg_color) return bg_color
   // recurse up the DOM tree to find the first non-transparent background color
   const transparent = `rgba(0, 0, 0, 0)`
-  if (!elem) return `rgba(0, 0, 0, 0)`
+  if (!elem) return transparent // if no DOM node, return transparent
 
-  const bg = getComputedStyle(elem).backgroundColor
-  if (bg !== transparent) return bg
-  return get_bg_color(elem.parentElement)
+  const bg = getComputedStyle(elem).backgroundColor // get node background color
+  if (bg !== transparent) return bg // if not transparent, return it
+  return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
 }
 
-export function get_text_color(
+export function choose_bw_for_contrast(
   node: HTMLElement | null,
   // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails
   bg_color: string | null = null,
   text_color_threshold: number = 0.7,
 ) {
-  const dark_bg = luminance(get_bg_color(node, bg_color)) < text_color_threshold
-  return dark_bg ? `white` : `black`
+  const light_bg =
+    luminance(get_bg_color(node, bg_color)) > text_color_threshold
+  return light_bg ? `black` : `white` // white text for dark backgrounds, black for light
 }
