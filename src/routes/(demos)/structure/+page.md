@@ -73,7 +73,9 @@
 
 <FileDetails {files} />
 
-## Multiple Structures in a grid
+## Structures in a grid
+
+Just to show off you can load several without the page getting too slow.
 
 ```svelte example stackblitz
 <script>
@@ -82,7 +84,7 @@
 </script>
 
 <ul>
-  {#each structures as structure}
+  {#each structures.filter(({sites}) => sites.length < 80) as structure}
     {@const { id } = structure}
     {@const href = `https://materialsproject.org/materials/${id}`}
     <li>
@@ -95,7 +97,7 @@
 <style>
   ul {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
     gap: 1em;
     list-style: none;
     padding: 0;

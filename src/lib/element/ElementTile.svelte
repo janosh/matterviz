@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement, PeriodicTableEvents } from '$lib'
-  import { get_text_color, pretty_num } from '$lib'
+  import { choose_bw_for_contrast, pretty_num } from '$lib'
   import { last_element } from '$lib/stores'
   import { createEventDispatcher } from 'svelte'
 
@@ -32,7 +32,7 @@
   }
 
   $: if (text_color_threshold != null && node) {
-    text_color = get_text_color(node, bg_color, text_color_threshold)
+    text_color = choose_bw_for_contrast(node, bg_color, text_color_threshold)
   }
 </script>
 

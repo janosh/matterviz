@@ -62,16 +62,16 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(12em, 1fr));
     place-content: center;
-    gap: 7pt;
-    max-width: 70em;
+    gap: var(--grid-gap, 7pt);
+    max-width: var(--grid-max-width, 70em);
     margin: 2em auto;
     justify-self: center;
   }
   div.grid > label {
-    padding: 1pt 6pt;
+    padding: var(--label-padding, 1pt 6pt);
     display: flex;
     align-items: center;
-    gap: 4pt;
+    gap: var(--label-gap, 4pt);
     border-radius: 3pt;
     text-transform: capitalize;
     font-weight: lighter;
@@ -81,8 +81,10 @@
     background-color: rgba(255, 255, 255, 0.1);
   }
   div.grid > label > input {
-    height: 3em;
-    width: 3em;
+    height: var(--input-color-height, 3em);
+    width: var(--input-color-width, 3em);
+    min-height: var(--input-color-min-height, var(--input-color-height, 3em));
+    min-width: var(--input-color-min-width, var(--input-color-width, 3em));
     border: none;
     background-color: transparent;
     cursor: pointer;
