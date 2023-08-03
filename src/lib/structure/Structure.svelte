@@ -415,6 +415,7 @@
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg, rgba(0, 0, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;
+    overflow: var(--struct-overflow, hidden);
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;

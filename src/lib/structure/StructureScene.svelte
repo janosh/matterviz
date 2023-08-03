@@ -122,7 +122,7 @@
       />
 
       {#if $$slots[`atom-label`]}
-        <HTML center as="div" position={xyz}>
+        <HTML center position={xyz}>
           <slot name="atom-label" {elem} {xyz} {species} />
         </HTML>
       {/if}
