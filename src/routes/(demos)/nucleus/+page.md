@@ -17,9 +17,11 @@
 <style>
   ul {
     list-style: none;
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 2em;
+    margin: 2em 0;
+    padding: 0;
   }
   ul > li {
     position: relative;

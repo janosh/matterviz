@@ -19,8 +19,11 @@
   $: text = { 'dominant-baseline': `middle`, 'text-anchor': `middle`, fill: text_color }
 </script>
 
-<svg width={size} height={size} viewBox="0 0 {size} {size}">
-  <circle r={radius} cx={radius} cy={radius} fill={neutron_color} {stroke} />
+<svg width="100%" height="100%" viewBox="0 0 {size} {size}">
+  <circle r={radius} cx={radius} cy={radius} fill={neutron_color} {stroke}>
+    <title>Neutrons: {neutrons}</title>
+  </circle>
+
   <circle
     r={radius / 2}
     cx={radius}
@@ -29,7 +32,9 @@
     stroke={proton_color}
     stroke-width={radius}
     stroke-dasharray={dash_array}
-  />
+  >
+    <title>Protons: {protons}</title>
+  </circle>
 
   <text
     x={radius + (radius / 2) * Math.cos(Math.PI * -proton_frac)}
