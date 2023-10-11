@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { InfoCard } from '$lib'
+  import { InfoCard, pretty_num, superscript_digits } from '$lib'
   import type { SummaryDoc } from '$types'
+  import SymmetryCard from './SymmetryCard.svelte'
 
   export let material: SummaryDoc
 
@@ -22,14 +23,22 @@
       title: `E<sub>above hull</sub>`,
       value: 1000 * (material?.energy_above_hull ?? 0),
       unit: `meV/atom`,
-      condition: material?.energy_above_hull,
+      condition: `energy_above_hull` in material,
+    },
+    {
+      title: `Predicted stable`,
+      value: material?.energy_above_hull ?? 0 > 0 ? `❌ No` : `✅ Yes`,
+      condition: `energy_above_hull` in material,
     },
     {
       title: `Formation Energy`,
       value: material.formation_energy_per_atom,
       unit: `eV/atom`,
     },
-    { title: `Experimentally Observed`, value: material.theoretical ? `No` : `Yes` },
+    {
+      title: `Experimentally Observed`,
+      value: material.theoretical ? `❌ No` : `✅ Yes`,
+    },
     { title: `Total Energy`, value: material.energy_per_atom, unit: `eV/atom` },
     {
       title: `Uncorrected Energy`,
@@ -47,12 +56,6 @@
       condition: material.origins?.length,
     },
     {
-      title: `Is magnetic`,
-      value: `${material.is_magnetic ? `yes` : `no`} ${
-        material.is_magnetic ? `(${material.total_magnetization})` : ``
-      }`,
-    },
-    {
       title: `Voigt bulk modulus`,
       value: material.k_voigt,
       unit: `GPa`,
@@ -63,14 +66,32 @@
       unit: `GPa`,
     },
     { title: `Refractive index`, value: material.n },
-    { title: `Ordering`, value: material.ordering },
+    {
+      title: `Is magnetic`,
+      value: `${material.is_magnetic ? `yes` : `no`} ${
+        material.is_magnetic
+          ? `(${pretty_num(material.total_magnetization)} µB/f.u.)`
+          : ``
+      }`,
+      tooltip: `µB: Bohr magneton, f.u.: formula unit`,
+    },
+    { title: `Ordering`, value: { NM: `non-magnetic` }[material.ordering] },
+    {
+      title: `Possible oxidation states`,
+      value: superscript_digits(material.possible_species?.join(` `) ?? ``),
+      condition: material.possible_species?.length,
+    },
   ]
 </script>
 
-<InfoCard {data} {...$$restProps} />
+<InfoCard {data} {...$$restProps} title="Material" />
+
+<SymmetryCard {material} />
+
+<slot name="after-symmetry" />
 
 <details>
-  <summary>Related materials IDs</summary>
+  <summary>Related material IDs</summary>
   {#if material.task_ids?.length}
     <p>
       Task IDs: {#each material.task_ids as id}
@@ -99,6 +120,12 @@
   p {
     display: flex;
     flex-wrap: wrap;
-    gap: 0 1em;
+    gap: 1ex 1em;
+    font-size: smaller;
+  }
+  p a {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0 3pt;
+    border-radius: 3pt;
   }
 </style>

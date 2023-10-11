@@ -12,8 +12,7 @@
 </script>
 
 <nav>
-  {#each routes as href, idx}
-    {#if idx > 0}<strong>&bull;</strong>{/if}
+  {#each routes as href (href)}
     <a {href} aria-current={is_current(href)}>{labels[href] ?? href}</a>
   {/each}
 </nav>
@@ -21,7 +20,7 @@
 <style>
   nav {
     display: flex;
-    gap: 1em 1ex;
+    gap: 1em calc(2pt + 1cqw);
     place-content: center;
     margin: 1em auto 2em;
     padding: 1em;

@@ -121,3 +121,23 @@ export function choose_bw_for_contrast(
     luminance(get_bg_color(node, bg_color)) > text_color_threshold
   return light_bg ? `black` : `white` // white text for dark backgrounds, black for light
 }
+
+export const superscript_map = {
+  '0': `⁰`,
+  '1': `¹`,
+  '2': `²`,
+  '3': `³`,
+  '4': `⁴`,
+  '5': `⁵`,
+  '6': `⁶`,
+  '7': `⁷`,
+  '8': `⁸`,
+  '9': `⁹`,
+  '+': `⁺`,
+  '-': `⁻`,
+}
+
+export function superscript_digits(input: string): string {
+  // use replace all signs and digits with their unicode superscript equivalent
+  return input.replace(/[\d+-]/g, (match) => superscript_map[match])
+}

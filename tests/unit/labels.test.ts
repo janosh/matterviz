@@ -4,6 +4,7 @@ import {
   heatmap_keys,
   pretty_num,
   property_labels,
+  superscript_digits,
 } from '$lib/labels'
 import { expect, test } from 'vitest'
 
@@ -52,4 +53,11 @@ test(`heatmap_keys are valid element data keys`, () => {
 test(`property_labels are valid element data keys`, () => {
   const prop_keys = Object.keys(property_labels)
   expect(element_data_keys).toEqual(expect.arrayContaining(prop_keys))
+})
+
+test(`superscript_digits`, () => {
+  expect(superscript_digits(`Cr3+ O2- Ac3+`)).toBe(`Cr³⁺ O²⁻ Ac³⁺`)
+  expect(superscript_digits(`1234567890`)).toBe(`¹²³⁴⁵⁶⁷⁸⁹⁰`)
+  expect(superscript_digits(`+123-456+789-0`)).toBe(`⁺¹²³⁻⁴⁵⁶⁺⁷⁸⁹⁻⁰`)
+  expect(superscript_digits(`No digits here`)).toBe(`No digits here`)
 })

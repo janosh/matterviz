@@ -61,8 +61,8 @@
   }
   h2 {
     grid-column: 1 / -1;
-    margin: 1ex 0;
-    text-align: center;
+    margin: 0;
+    border-bottom: 1px solid var(--ic-title-border-color, rgba(255, 255, 255, 0.3));
   }
   div {
     display: flex;

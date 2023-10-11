@@ -41,13 +41,12 @@ describe(`ColorBar`, () => {
   test(`handles invalid color_scale input`, () => {
     const spy = vi.spyOn(console, `error`)
 
-    new ColorBar({
-      target: document.body,
-      props: { color_scale: `purposely invalid` },
-    })
+    const color_scale = `test invalid`
+    new ColorBar({ target: document.body, props: { color_scale } })
 
     expect(spy).toHaveBeenCalledWith(
-      `Color scale 'purposely invalid' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`,
+      `Color scale '${color_scale}' not found, supported color scale ` +
+        `names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`,
     )
   })
 })
