@@ -53,6 +53,9 @@
       Click on an atom to make it active. Then hover another atom to get its distance to
       the active atom.
     </p>
+    <p>
+      Hold <kbd>shift</kbd> or <kbd>cmd</kbd> or <kbd>ctrl</kbd> and drag to pan the scene.
+    </p>
   </slot>
 </dialog>
 

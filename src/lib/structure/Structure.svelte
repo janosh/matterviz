@@ -106,7 +106,7 @@
   }
 
   function on_file_drop(event: DragEvent) {
-    // TODO support dragging CIF files
+    // TODO support dragging CIF/XYZ files
     dragover = false
     if (!allow_file_drop) return
     const file = event.dataTransfer?.items[0].getAsFile()
@@ -456,7 +456,7 @@
     box-sizing: border-box;
     top: var(--struct-controls-top, 30pt);
     right: var(--struct-controls-right, 6pt);
-    background: var(--struct-controls-bg, rgba(0, 0, 0, 0.8));
+    background: var(--struct-controls-bg, rgba(10, 10, 10, 0.8));
     padding: var(--struct-controls-padding, 6pt 9pt);
     border-radius: var(--struct-controls-border-radius, 3pt);
     width: var(--struct-controls-width, 20em);
@@ -509,7 +509,7 @@
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.2));
     border-radius: var(--struct-atom-label-border-radius, 3pt);
-    padding: var(--struct-atom-label-padding, 1px 6px);
+    padding: var(--struct-atom-label-padding, 0 3px);
   }
   input[type='color'] {
     width: var(--struct-input-color-width, 40px);

@@ -9,7 +9,7 @@
 
 # Elementari
 
-`elementari` is a toolkit for building interactive web UIs for materials science: periodic tables, 3d crystal structures (molecules coming soon!), Bohr atoms, nuclei, heatmaps, scatter plots. It's under active development and not yet ready for production use but we appreciate any feedback from beta testers! 🙏
+`elementari` is a toolkit for building interactive web UIs for materials science: periodic tables, 3d crystal structures (and molecules, though could use some improvements), Bohr atoms, nuclei, heatmaps, scatter plots. It's under active development and not yet ready for production use but we appreciate any feedback from beta testers! 🙏
 
 Check out some of the examples in the navigation bar above.
 

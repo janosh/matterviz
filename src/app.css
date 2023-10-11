@@ -69,12 +69,16 @@ a.btn {
 a:hover {
   color: orange;
 }
-code {
+code,
+kbd {
   overflow-wrap: break-word;
   padding: 1pt 3pt;
   border-radius: 3pt;
   font-size: 1.3em;
   background-color: black;
+}
+kbd {
+  font-size: larger;
 }
 pre code {
   background-color: transparent;

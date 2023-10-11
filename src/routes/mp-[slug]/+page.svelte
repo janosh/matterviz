@@ -62,9 +62,9 @@
   </center>
   <Structure structure={data.summary.structure} />
 
-  <MaterialCard material={data.summary} />
-
-  <StructureCard structure={data.summary.structure} />
+  <MaterialCard material={data.summary}>
+    <StructureCard structure={data.summary.structure} slot="after-symmetry" />
+  </MaterialCard>
 
   <h3>
     Crystal description
