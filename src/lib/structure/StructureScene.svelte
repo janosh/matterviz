@@ -94,8 +94,8 @@
   />
 </T.PerspectiveCamera>
 
-<T.DirectionalLight position={[3, 10, 10]} intensity={0.6} />
-<T.AmbientLight intensity={0.3} />
+<T.DirectionalLight position={[3, 10, 10]} intensity={1} />
+<T.AmbientLight intensity={0.5} />
 
 {#if show_atoms && structure?.sites}
   <InstancedMesh>

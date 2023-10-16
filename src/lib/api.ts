@@ -9,15 +9,16 @@ export async function decompress(blob: ReadableStream<Uint8Array> | null) {
 
 export async function fetch_zipped<T>(
   url: string,
-  { unzip = true } = {},
-): Promise<T> {
+  { unzip = true, fetch = window.fetch } = {},
+): Promise<T | null> {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(
+    console.error(
       `${response.status} ${response.statusText} for ${response.url}`,
     )
+    return null
   }
-  if (!unzip) return await response.blob()
+  if (!unzip) return (await response.blob()) as T
   return JSON.parse(await decompress(response.body))
 }
 
