@@ -49,4 +49,4 @@ repos:
     hooks:
       - id: codespell
         stages: [commit, commit-msg]
-        args: [--ignore-words-list, 'te,ba,nd,ore,claus']
+        args: [--ignore-words-list, 'te,ba,nd,ore,claus', --check-filenames]

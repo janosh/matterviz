@@ -61,6 +61,8 @@
     width: 0.1,
     opacity: 0.5,
   }
+  // field of view of the camera. 50 is THREE.js default
+  export let fov: number = 50
 
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
@@ -75,7 +77,7 @@
   $: bond_thickness = bond_radius ?? 0.1 * atom_radius
 </script>
 
-<T.PerspectiveCamera makeDefault position={camera_position}>
+<T.PerspectiveCamera makeDefault position={camera_position} {fov}>
   <!-- fix the ugly target -->
   <OrbitControls
     enableZoom={zoom_speed > 0}

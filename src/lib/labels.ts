@@ -87,9 +87,8 @@ export const categories = [
 // prettier-ignore
 export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
 
-// function combo used to retrieve background color and to compute text color to maximize contrast
+// calculate human-perceived brightness from RGB color
 export function luminance(clr: string) {
-  // calculate human-perceived lightness from RGB
   const { r, g, b } = rgb(clr)
   // if (![r, g, b].every((c) => c >= 0 && c <= 255)) {
   //   console.error(`invalid RGB color: ${clr}, parsed to rgb=${r},${g},${b}`)
@@ -97,6 +96,7 @@ export function luminance(clr: string) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 // https://stackoverflow.com/a/596243
 }
 
+// get background color of passed DOM node, or recurse up the DOM tree if current node is transparent
 export function get_bg_color(
   elem: HTMLElement | null,
   bg_color: string | null = null,
@@ -111,6 +111,7 @@ export function get_bg_color(
   return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
 }
 
+// pick black or white text color to maximize contrast with background
 export function choose_bw_for_contrast(
   node: HTMLElement | null,
   // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails

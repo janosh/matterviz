@@ -6,7 +6,18 @@ const mp_build_url = `https://materialsproject-build.s3.amazonaws.com?delimiter=
 
 async function fetch_bucket_names() {
   const text = await fetch(mp_build_url).then((res) => res.text())
-  const doc = new window.DOMParser().parseFromString(text, `text/xml`)
+
+  // mock DOMParser when server-rendering
+  if (typeof globalThis.DOMParser === `undefined`) {
+    // eslint-disable-next-line no-global-assign
+    globalThis.DOMParser = class {
+      parseFromString() {
+        return { querySelectorAll: () => [] } // Return a minimal mock object
+      }
+    }
+  }
+
+  const doc = new DOMParser().parseFromString(text, `text/xml`)
   return [...doc.querySelectorAll(`Prefix`)]
     .map((el) => el.textContent?.split(`/`)[2])
     .filter(Boolean)

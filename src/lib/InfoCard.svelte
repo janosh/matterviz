@@ -14,12 +14,13 @@
   export let fallback: string = ``
   export let fmt: string = `.2f`
   export let as: string = `section`
+  export let style: string | null = null
 
   // rename fmt as default_fmt internally
   $: default_fmt = fmt
 </script>
 
-<svelte:element this={as} class="info-card">
+<svelte:element this={as} class="info-card" {style}>
   {#if title || $$slots.title}
     <h2>
       <slot name="title">
