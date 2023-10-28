@@ -9,7 +9,7 @@ export async function decompress(blob: ReadableStream<Uint8Array> | null) {
 
 export async function fetch_zipped<T>(
   url: string,
-  { unzip = true, fetch = window.fetch } = {},
+  { unzip = true } = {},
 ): Promise<T | null> {
   const response = await fetch(url)
   if (!response.ok) {

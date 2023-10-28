@@ -416,6 +416,7 @@
     background: var(--struct-bg, rgba(0, 0, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;
     overflow: var(--struct-overflow, hidden);
+    color: var(--struct-text-color);
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;
@@ -461,6 +462,7 @@
     border-radius: var(--struct-controls-border-radius, 3pt);
     width: var(--struct-controls-width, 20em);
     max-width: var(--struct-controls-max-width, 90cqw);
+    color: var(--struct-controls-text-color);
   }
   dialog.controls hr {
     border: none;
@@ -507,7 +509,7 @@
     text-align: center;
   }
   .atom-label {
-    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.2));
+    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border-radius: var(--struct-atom-label-border-radius, 3pt);
     padding: var(--struct-atom-label-padding, 0 3px);
   }
@@ -515,5 +517,7 @@
     width: var(--struct-input-color-width, 40px);
     height: var(--struct-input-color-height, 16px);
     margin: var(--struct-input-color-margin, 0 0 0 5pt);
+    border: var(--struct-input-color-border, 1px solid rgba(255, 255, 255, 0.05));
+    box-sizing: border-box;
   }
 </style>
