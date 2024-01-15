@@ -74,6 +74,9 @@
   export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
   export let style: string | null = null
   export let show_image_atoms: boolean = true
+  export let directional_light: number = 2
+  export let ambient_light: number = 1.2
+  export let show_full_controls: boolean = false
 
   // interactivity()
   $: $element_colors = element_color_schemes[color_scheme]
@@ -222,6 +225,11 @@
           <input type="checkbox" bind:checked={show_image_atoms} />
           image atoms
         </label>
+        <!-- add a toggle that's to show or hide the full currently visible set of controls. it should be off by default in which case only the controls the user is most likely to need are shown -->
+        <label>
+          <input type="checkbox" bind:checked={show_full_controls} />
+          full controls
+        </label>
         <label>
           <input type="checkbox" bind:checked={show_site_labels} />
           site labels
@@ -252,9 +260,8 @@
         </span>
       </label>
 
-      <hr />
-
-      {#if show_cell}
+      {#if show_full_controls && show_cell}
+        <hr />
         <label>
           Unit cell opacity
           <input type="number" min={0} max={1} step={0.05} bind:value={cell_opacity} />
@@ -313,35 +320,68 @@
 
       <hr />
 
-      <label>
-        Auto rotate speed
-        <input type="number" min={0} max={2} step={0.01} bind:value={auto_rotate} />
-        <input type="range" min={0} max={2} step={0.01} bind:value={auto_rotate} />
-      </label>
-      <label>
-        Zoom speed
-        <input type="number" min={0} max={2} step={0.01} bind:value={zoom_speed} />
-        <input type="range" min={0} max={2} step={0.01} bind:value={zoom_speed} />
-      </label>
-      <label>
-        <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
-          Pan speed
-        </Tooltip>
-        <input type="number" min={0} max={2} step={0.01} bind:value={pan_speed} />
-        <input type="range" min={0} max={2} step={0.01} bind:value={pan_speed} />
-      </label>
-      <!-- rotation damping -->
-      <label>
-        <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
-        <input
-          type="number"
-          min={0}
-          max={0.3}
-          step={0.01}
-          bind:value={rotation_damping}
-        />
-        <input type="range" min={0} max={0.3} step={0.01} bind:value={rotation_damping} />
-      </label>
+      {#if show_full_controls}
+        <label>
+          Auto rotate speed
+          <input type="number" min={0} max={2} step={0.01} bind:value={auto_rotate} />
+          <input type="range" min={0} max={2} step={0.01} bind:value={auto_rotate} />
+        </label>
+        <label>
+          Zoom speed
+          <input type="number" min={0} max={2} step={0.01} bind:value={zoom_speed} />
+          <input type="range" min={0} max={2} step={0.01} bind:value={zoom_speed} />
+        </label>
+        <label>
+          <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
+            Pan speed
+          </Tooltip>
+          <input type="number" min={0} max={2} step={0.01} bind:value={pan_speed} />
+          <input type="range" min={0} max={2} step={0.01} bind:value={pan_speed} />
+        </label>
+        <!-- directional light intensity -->
+        <label>
+          <Tooltip text="intensity of the directional light">Directional light</Tooltip>
+          <input
+            type="number"
+            min={0}
+            max={4}
+            step={0.01}
+            bind:value={directional_light}
+          />
+          <input
+            type="range"
+            min={0}
+            max={4}
+            step={0.01}
+            bind:value={directional_light}
+          />
+        </label>
+        <!-- ambient light intensity -->
+        <label>
+          <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
+          <input type="number" min={0} max={2} step={0.01} bind:value={ambient_light} />
+          <input type="range" min={0} max={2} step={0.01} bind:value={ambient_light} />
+        </label>
+        <!-- rotation damping -->
+        <label>
+          <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
+          <input
+            type="number"
+            min={0}
+            max={0.3}
+            step={0.01}
+            bind:value={rotation_damping}
+          />
+          <input
+            type="range"
+            min={0}
+            max={0.3}
+            step={0.01}
+            bind:value={rotation_damping}
+          />
+        </label>
+      {/if}
+
       <!-- color scheme -->
       <label>
         Color scheme
@@ -382,6 +422,8 @@
         bind:same_size_atoms
         {bonding_strategy}
         {rotation_damping}
+        {directional_light}
+        {ambient_light}
       >
         <slot slot="atom-label" name="atom-label" let:elem>
           <!-- let:elem needed to fix false positive eslint no-undef -->
@@ -407,7 +449,7 @@
 <style>
   .structure {
     position: relative;
-    container-type: inline-size;
+    container-type: size;
     height: var(--struct-height, 500px);
     width: var(--struct-width);
     max-width: var(--struct-max-width);
@@ -452,7 +494,8 @@
     opacity: 0;
     gap: var(--struct-controls-gap, 4pt);
     text-align: var(--struct-controls-text-align, left);
-    transition: visibility var(--struct-controls-transition-duration),
+    transition:
+      visibility var(--struct-controls-transition-duration),
       opacity var(--struct-controls-transition-duration);
     box-sizing: border-box;
     top: var(--struct-controls-top, 30pt);
@@ -463,6 +506,8 @@
     width: var(--struct-controls-width, 20em);
     max-width: var(--struct-controls-max-width, 90cqw);
     color: var(--struct-controls-text-color);
+    overflow: auto;
+    max-height: var(--struct-controls-max-height, calc(100cqh - 3em));
   }
   dialog.controls hr {
     border: none;
