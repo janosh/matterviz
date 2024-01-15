@@ -63,6 +63,8 @@
   }
   // field of view of the camera. 50 is THREE.js default
   export let fov: number = 50
+  export let ambient_light: number = 1.2
+  export let directional_light: number = 2
 
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
@@ -96,8 +98,8 @@
   />
 </T.PerspectiveCamera>
 
-<T.DirectionalLight position={[3, 10, 10]} intensity={1} />
-<T.AmbientLight intensity={0.5} />
+<T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
+<T.AmbientLight intensity={ambient_light} />
 
 {#if show_atoms && structure?.sites}
   <InstancedMesh>

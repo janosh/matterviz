@@ -1,3 +1,5 @@
+"""Generate TypeScript definitions for all Emmet pydantic models."""
+
 import os
 import pkgutil
 import shutil
@@ -6,22 +8,25 @@ from inspect import getmembers, isclass
 import emmet.core as emmet
 from pydantic import BaseModel
 from pydantic2ts import generate_typescript_defs
-from tqdm import tqdm
+
+__author__ = "Janosh Riebesell"
+__date__ = "2024-07-11"
 
 # Set to keep track of written types
 written_types = {"Element"}
 written_files: set[str] = set()
 
 this_dir = os.path.dirname(__file__)
-shutil.rmtree(f"{this_dir}./types", ignore_errors=True)
+if input(f"Delete existing types in {this_dir}/types? [y/n] ").lower() == "y":
+    shutil.rmtree(f"{this_dir}/types", ignore_errors=True)
+os.makedirs(f"{this_dir}/types", exist_ok=True)
 
 modules = pkgutil.walk_packages(
     path=emmet.__path__, prefix=emmet.__name__ + ".", onerror=lambda: None
 )
 modules = list(modules)
 
-# Generate TypeScript definitions for each submodule
-for _, mod_name, _ in tqdm(modules, desc="pydantic2ts"):
+for idx, (mod_path, mod_name, is_pkg) in enumerate(modules):
     if mod_name.startswith("_"):
         continue
     output_file = mod_name.split(".")[-1]
@@ -33,6 +38,7 @@ for _, mod_name, _ in tqdm(modules, desc="pydantic2ts"):
             if issubclass(obj, BaseModel)
         }
         if not models:  # skip modules without Pydantic models
+            print(f"{mod_name}: no pydantic models found {is_pkg=} {mod_path=}")
             continue
 
         # Generate TypeScript definitions for all Pydantic models in the current module
