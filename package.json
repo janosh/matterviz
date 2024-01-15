@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/elementari",
   "repository": "https://github.com/janosh/elementari",
   "license": "MIT",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/elementari/issues",
@@ -19,7 +19,7 @@
     "test": "vitest --run tests/unit/*.ts && playwright test tests/*.ts",
     "test:unit": "vitest tests/unit/*.ts",
     "test:e2e": "playwright test tests/*.ts",
-    "changelog": "npx auto-changelog --package --output changelog.md --unreleased-only --hide-credit --commit-limit false",
+    "changelog": "npx auto-changelog --package --output changelog.md --hide-credit --commit-limit false",
     "update-coverage": "vitest tests/unit --run --coverage && npx istanbul-badges-readme"
   },
   "dependencies": {

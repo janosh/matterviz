@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.2.3](https://github.com/janosh/elementari/compare/v0.2.0...v0.2.3)
+
+> 15 January 2024
+
+- Add props and control sliders for ambient and directional lighting to `Structure` [`#45`](https://github.com/janosh/elementari/pull/45)
+- Add `SymmetryCard.svelte` [`#42`](https://github.com/janosh/elementari/pull/42)
+- add /molecule demo page with initial examples water, methane, benzene [`71ce70b`](https://github.com/janosh/elementari/commit/71ce70b338d0cb80c2b7468fc98f2f5c7f480c61)
+- fix find_image_atoms() for non-cuboid lattices [`9138582`](https://github.com/janosh/elementari/commit/91385820a69f5873815e4a321b37a7a9af33be18)
+- add lib/structure/bonding.ts with max_dist and nearest_neighbor bonding strategies [`f707cf2`](https://github.com/janosh/elementari/commit/f707cf28340541ad4f9c52ae4ba216f7b0eacf61)
+- add lib/math.ts [`58cf060`](https://github.com/janosh/elementari/commit/58cf060e5158793d53d52776d444b7357ccc4c71)
+- Structure add fullscreen button + improve default initial camera_position [`bda2e5f`](https://github.com/janosh/elementari/commit/bda2e5fb7d0fdd12cdb902fdf7a89d61ef4d958d)
+- fix black text color on transparent ElementTiles [`3ace071`](https://github.com/janosh/elementari/commit/3ace071110cf100a65116d60d8dd511d340fe5a0)
+- add src/emmet_pydantic_to_ts.py to auto-convert emmet pydantic models to typescript types [`e4bcc92`](https://github.com/janosh/elementari/commit/e4bcc92ab78565693b19e444c51f53a968b13744)
+- add /api page to inspect AWS Open Data schema [`83bc866`](https://github.com/janosh/elementari/commit/83bc866fcb4f241401f126328313343d8fa1819b)
+- add similar structures and robocrys sections to mp-[slug] page [`d4dce4b`](https://github.com/janosh/elementari/commit/d4dce4b9704318428a9962f5b7e8315ea7f6851e)
+- extract (demos)/periodic-table/+page.svelte from landing page, change landing +page.svelte to +page.md [`cd32144`](https://github.com/janosh/elementari/commit/cd32144874e1eb2398dc30fc1977bf7eeaaf7cfb)
+- fix duplicate bonds in max_dist and nearest_neighbor functions [`14027e3`](https://github.com/janosh/elementari/commit/14027e36af155b40f332f5768c7162ec919b0809)
+- StructureScene add prop fov: number | undefined = undefined [`770ffbf`](https://github.com/janosh/elementari/commit/770ffbf36e8e1aa9d68bfe2cb4f7656d11ec7fbf)
+- rename prop site_labels -&gt; show_site_labels, default to true + fix site site_labels rendering [`ff0336a`](https://github.com/janosh/elementari/commit/ff0336a8a8236e166b5f64dddfc7cdc59331d1f0)
+- add largest MP structure mp-1204603 to demo [`1b0bc6d`](https://github.com/janosh/elementari/commit/1b0bc6d96c0d450f696665d2f3733048d9bda2b5)
+- bump threlte to v6 official release [`45e3dc2`](https://github.com/janosh/elementari/commit/45e3dc2c0a28ffd3d076c3ada986c2c639215757)
+- periodic-table.test.ts don't iterate over full table, do random subset for speed [`be68b6a`](https://github.com/janosh/elementari/commit/be68b6ab27b8d3ab527042859f62f8056bdd94e4)
+- fetch_zipped() only console.error, not raise if !response.ok [`f46cee0`](https://github.com/janosh/elementari/commit/f46cee00e1383c7509334638e4141d7a71955d59)
+
 #### [v0.2.0](https://github.com/janosh/elementari/compare/v0.1.8...v0.2.0)
 
 > 8 July 2023
@@ -31,9 +55,7 @@ All notable changes to this project will be documented in this file. Dates are d
 - add copy buttons to all code blocks [`7f3fb5c`](https://github.com/janosh/elementari/commit/7f3fb5c8d043309d097a400af7e267436e819880)
 - fix landing page layout broken in last commit [`6f675dd`](https://github.com/janosh/elementari/commit/6f675dd6e5bca4cc244c08963786ee40485abb57)
 
-<!-- auto-changelog-above -->
-
-#### [v0.1.8](https://github.com/janosh/elementari/compare/v0.1.6...v0.1.8)
+#### [v0.1.7](https://github.com/janosh/elementari/compare/v0.1.6...v0.1.7)
 
 > 3 May 2023
 
@@ -47,9 +69,9 @@ All notable changes to this project will be documented in this file. Dates are d
 - Structure add bindable props width, height [`3921f9d`](https://github.com/janosh/elementari/commit/3921f9d067a9e1a840b6dcbca53c27d67b4c7434)
 - rename Structure-&gt;PymatgenStructure [`2009670`](https://github.com/janosh/elementari/commit/20096707f131d46a25a30f662c852f9a942479b3)
 
-#### [v0.1.5](https://github.com/janosh/elementari/compare/v0.1.4...v0.1.5)
+#### [v0.1.6](https://github.com/janosh/elementari/compare/v0.1.4...v0.1.6)
 
-> 4 Apr 2023
+> 8 April 2023
 
 - DRY workflows and ColorBar snap tick labels to nice values [`#22`](https://github.com/janosh/elementari/pull/22)
 - Add unit tests for `ColorBar.svelte` [`#21`](https://github.com/janosh/elementari/pull/21)
@@ -71,7 +93,7 @@ All notable changes to this project will be documented in this file. Dates are d
 
 #### [v0.1.1](https://github.com/janosh/elementari/compare/v0.1.0...v0.1.1)
 
-> 15 March 2023
+> 16 March 2023
 
 - AVIF element images [`#18`](https://github.com/janosh/elementari/pull/18)
 - add src/lib/ColorBar.svelte [`1bff50c`](https://github.com/janosh/elementari/commit/1bff50c440466be02d7e47581c1b3e3ad817cb16)
