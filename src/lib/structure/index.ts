@@ -44,15 +44,44 @@ export type PymatgenStructure = {
   id?: string
 }
 
+export type Edge = {
+  to_jimage: [number, number, number]
+  id: number
+  key: number
+}
+
+export type Node = {
+  id: number
+}
+
+export type Graph = {
+  directed: boolean
+  multigraph: boolean
+  graph: [
+    ['edge_weight_name', null] | ['edge_weight_units', null] | ['name', string],
+  ]
+  nodes: Node[]
+  adjacency: Edge[][]
+}
+
+export type StructureGraph = {
+  '@module': string
+  '@class': string
+  structure: PymatgenStructure
+  graphs: Graph[]
+}
+
 // [atom_pos_1, atom_pos_2, atom_idx_1, atom_idx_2, bond_length]
 export type BondPair = [Vector, Vector, number, number, number]
 
 export type IdStructure = PymatgenStructure & { id: string }
+export type StructureWithGraph = IdStructure & { graph: Graph }
 
 // remove lattice from pymatgen Structure
 export type PymatgenMolecule = Omit<PymatgenStructure, 'lattice'>
 
-export type StructureOrMolecule = PymatgenStructure | PymatgenMolecule
+export type Atoms = PymatgenStructure | PymatgenMolecule
+export type AtomsGraph = Atoms & { graph: Graph }
 
 export function get_elem_amounts(structure: PymatgenStructure) {
   const elements: Partial<Record<ElementSymbol, number>> = {}
@@ -111,23 +140,29 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
 }
 
 function generate_permutations(length: number): number[][] {
+  // generate all permutations of 0s and 1s of length `length`
   const result: number[][] = []
-  for (let i = 0; i < Math.pow(2, length); i++) {
-    const binaryString = i.toString(2).padStart(length, `0`)
+  for (let idx = 0; idx < Math.pow(2, length); idx++) {
+    const binaryString = idx.toString(2).padStart(length, `0`)
     result.push(Array.from(binaryString).map(Number))
   }
   return result
 }
 
-// this function finds all atoms needed to make the unit cell symmetrically occupied
 export function find_image_atoms(
   structure: PymatgenStructure,
   { tolerance = 0.05 }: { tolerance?: number } = {},
   // fractional tolerance for determining if a site is at the edge of the unit cell
 ): [number, Vector][] {
+  /*
+    This function finds all atoms on corners and faces of the unit cell needed to make the cell symmetrically occupied.
+    It returns an array of [atom_idx, image_xyz] pairs where atom_idx is the index of
+    the original atom and image_xyz is the position of one of its images.
+  */
   if (!structure.lattice) return []
+
   const edge_sites: Array<[number, Vector]> = []
-  const permutations = generate_permutations(3)
+  const permutations = generate_permutations(3) //  [1, 0, 0], [0, 1, 0], etc.
   const lattice_vecs = structure.lattice?.matrix
 
   for (const [idx, site] of structure.sites.entries()) {
@@ -135,6 +170,7 @@ export function find_image_atoms(
     edge_sites.push([idx, site.xyz])
 
     // Check if the site is at the edge and determine its image
+    // based on whether fractional coordinates are close to 0 or 1
     const edges: number[] = [0, 1, 2].filter(
       (idx) =>
         Math.abs(abc[idx]) < tolerance || Math.abs(abc[idx] - 1) < tolerance,
@@ -142,13 +178,14 @@ export function find_image_atoms(
 
     if (edges.length > 0) {
       for (const perm of permutations) {
-        let img_xyz: Vector = [...site.xyz] // Make a copy of the array
+        let img_xyz: Vector = [...site.xyz] // copy site.xyz
         for (const edge of edges) {
           if (perm[edge] === 1) {
-            // Image atom at the opposite edge
             if (Math.abs(abc[edge]) < tolerance) {
+              // if fractional coordinate is close to 0, add lattice vector to get image location
               img_xyz = add(img_xyz, lattice_vecs[edge])
             } else {
+              // if fractional coordinate is close to 1, subtract lattice vector to get image location
               img_xyz = add(img_xyz, scale(lattice_vecs[edge], -1))
             }
           }
@@ -162,7 +199,7 @@ export function find_image_atoms(
 }
 
 // this function takes a pymatgen Structure and returns a new one with all the image atoms added
-export function symmetrize_structure(
+export function get_pbc_image_sites(
   ...args: Parameters<typeof find_image_atoms>
 ): PymatgenStructure {
   const edge_sites = find_image_atoms(...args)
@@ -181,7 +218,7 @@ export function symmetrize_structure(
   return symmetrized_structure
 }
 
-export function get_center_of_mass(struct_or_mol: StructureOrMolecule): Vector {
+export function get_center_of_mass(struct_or_mol: Atoms): Vector {
   let center: Vector = [0, 0, 0]
   let total_weight = 0
 
