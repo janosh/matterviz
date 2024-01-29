@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import type { ElementSymbol, StructureOrMolecule, Vector } from '$lib'
-  import { alphabetical_formula, get_elem_amounts, symmetrize_structure } from '$lib'
+  import type { Atoms, ElementSymbol, Vector } from '$lib'
+  import { alphabetical_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
   import { element_colors } from '$lib/stores'
@@ -11,7 +11,7 @@
   import StructureScene from './StructureScene.svelte'
 
   // output of pymatgen.core.Structure.as_dict()
-  export let structure: StructureOrMolecule | undefined = undefined
+  export let structure: Atoms | undefined = undefined
   // scale factor for atomic radii
   export let atom_radius: number = 0.5
   // whether to use the same radius for all atoms. if not, the radius will be
@@ -403,7 +403,7 @@
 
     <Canvas rendererParameters={{ preserveDrawingBuffer: true }}>
       <StructureScene
-        structure={show_image_atoms ? symmetrize_structure(structure) : structure}
+        structure={show_image_atoms ? get_pbc_image_sites(structure) : structure}
         {show_atoms}
         {show_bonds}
         {show_cell}

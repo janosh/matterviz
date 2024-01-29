@@ -1,4 +1,4 @@
-import * as module from '$lib/structure'
+import * as struct_utils from '$lib/structure'
 import { structures } from '$site'
 import fs from 'fs'
 import { describe, expect, test } from 'vitest'
@@ -52,7 +52,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
   test.runIf(id in ref_data)(
     `get_elem_amount should return the correct element amounts for a given structure`,
     () => {
-      const result = module.get_elem_amounts(structure)
+      const result = struct_utils.get_elem_amounts(structure)
       expect(JSON.stringify(result), id).toBe(JSON.stringify(expected.amounts))
     },
   )
@@ -60,7 +60,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
   test.runIf(id in ref_data)(
     `get_elements should return the unique elements in a given structure`,
     () => {
-      const result = module.get_elements(structure)
+      const result = struct_utils.get_elements(structure)
       expect(JSON.stringify(result), id).toBe(
         JSON.stringify(Object.keys(expected.amounts).sort()),
       )
@@ -70,14 +70,14 @@ describe.each(structures)(`structure-utils`, (structure) => {
   test.runIf(id in ref_data)(
     `density should return the correct density for a given structure`,
     () => {
-      const result = module.density(structure)
+      const result = struct_utils.density(structure)
       expect(Number(result), id).toBe(expected.density)
     },
   )
 })
 
 test.each(structures)(`find_image_atoms`, async (structure) => {
-  const image_atoms = module.find_image_atoms(structure)
+  const image_atoms = struct_utils.find_image_atoms(structure)
   // write reference data
   // fs.writeFileSync(
   //   `${__dirname}/fixtures/find_image_atoms/${structure.id}.json`,
@@ -91,7 +91,7 @@ test.each(structures)(`find_image_atoms`, async (structure) => {
 
 test.each(structures)(`symmetrize_structure`, async (structure) => {
   const orig_len = structure.sites.length
-  const symmetrized = module.symmetrize_structure(structure)
+  const symmetrized = struct_utils.get_pbc_image_sites(structure)
   const { id } = structure
   const expected = {
     'mp-1': 12,
@@ -108,7 +108,7 @@ test.each(structures)(`symmetrize_structure`, async (structure) => {
 })
 
 test.each(structures)(`get_center_of_mass for $id`, async (struct) => {
-  const center = module.get_center_of_mass(struct)
+  const center = struct_utils.get_center_of_mass(struct)
   const expected = ref_data[struct.id]?.center_of_mass
   if (!expected) return
   expect(

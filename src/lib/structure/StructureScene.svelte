@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BondPair, Site, StructureOrMolecule, Vector } from '$lib'
+  import type { Atoms, BondPair, Site, Vector } from '$lib'
   import {
     Bond,
     Lattice,
@@ -21,7 +21,7 @@
   import * as bonding_strategies from './bonding'
 
   // output of pymatgen.core.Structure.as_dict()
-  export let structure: StructureOrMolecule | undefined = undefined
+  export let structure: Atoms | undefined = undefined
   // scale factor for atomic radii
   export let atom_radius: number = 0.5
   // whether to use the same radius for all atoms. if not, the radius will be

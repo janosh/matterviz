@@ -4,7 +4,7 @@
   export let name: string = `` // usually Hydrogen, Helium, etc. but can be anything
   export let shells: number[] // e.g. [2, 8, 6] for sulfur
   export let adapt_size = false
-  export let shell_width = 15 // TODO SVG is fixed so increasing this will make large atoms overflow
+  export let shell_width = 20 // TODO SVG is fixed so increasing this will make large atoms overflow
   export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270
   export let base_fill = `white`
   export let orbital_period = 3 // time for inner-most electron orbit in seconds, 0 for no motion
@@ -14,6 +14,13 @@
   export let electron_props: Record<string, string | number> = {}
   export let highlight_shell: number | null = null
   export let style = ``
+  // if function, it'll be called with electron index and should return a string
+  export let number_electrons:
+    | boolean
+    | 'hierarchical'
+    | 'sequential'
+    | ((idx: number) => string) = false
+  export let electron_label_props: Record<string, string | number> = {}
 
   // Bohr atom electron orbital period is given by
   // T = (n^3 h^3) / (4pi^2 m K e^4 Z^2) = 1.52 * 10^-16 * n^3 / Z^2 s
@@ -77,6 +84,25 @@
         <circle class="electron" cx={elec_x} cy={elec_y} {..._electron_props}>
           <title>Electron {elec_idx + 1}</title>
         </circle>
+        {#if number_electrons}
+          <text
+            x={elec_x}
+            y={elec_y}
+            {...electron_label_props}
+            transform="rotate({(elec_idx * 360) / electrons} {elec_x} {elec_y})"
+          >
+            {#if typeof number_electrons === `function`}
+              {number_electrons(elec_idx)}
+            {:else if number_electrons === `hierarchical`}
+              {shell_idx + 1}.{elec_idx + 1}
+              <!-- {:else if [`sequential`, true].includes(number_electrons)} -->
+            {:else}
+              {@const nth_electron =
+                shells.slice(0, shell_idx).reduce((a, b) => a + b, 0) + elec_idx + 1}
+              {nth_electron}
+            {/if}
+          </text>
+        {/if}
       {/each}
     </g>
   {/each}
