@@ -110,7 +110,7 @@ export function alphabetical_formula(structure: PymatgenStructure) {
 }
 
 export const atomic_radii: Record<ElementSymbol, number> = Object.fromEntries(
-  element_data.map((el) => [el.symbol, el.atomic_radius / 2]),
+  element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
 )
 
 export const atomic_weights = Object.fromEntries(

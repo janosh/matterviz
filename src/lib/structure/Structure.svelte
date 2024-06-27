@@ -1,32 +1,23 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import type { Atoms, ElementSymbol, Vector } from '$lib'
+  import type { Atoms, ElementSymbol, Lattice } from '$lib'
   import { alphabetical_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
   import { element_colors } from '$lib/stores'
   import { Canvas } from '@threlte/core'
+  import type { ComponentProps } from 'svelte'
   import { Tooltip } from 'svelte-zoo'
   import StructureLegend from './StructureLegend.svelte'
   import StructureScene from './StructureScene.svelte'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: Atoms | undefined = undefined
-  // scale factor for atomic radii
-  export let atom_radius: number = 0.5
-  // whether to use the same radius for all atoms. if not, the radius will be
-  // determined by the atomic radius of the element
-  export let same_size_atoms: boolean = true
-  // initial camera position from which to render the scene
-  export let camera_position: Vector = [10, 5, 2 * (structure?.lattice?.c ?? 5)]
-  // auto rotate speed. set to 0 to disable auto rotation.
-  export let auto_rotate: number = 0
-  // rotation damping factor (how quickly the rotation comes to rest after mouse release)
-  export let rotation_damping: number = 0.1
-  // zoom speed. set to 0 to disable zooming.
-  export let zoom_speed: number = 0.3
-  // pan speed. set to 0 to disable panning.
-  export let pan_speed: number = 1
+
+  // need to set a default atom_radius so it doesn't initialize to 0
+  export let scene_props: ComponentProps<StructureScene> = { atom_radius: 1 } // passed to StructureScene
+  export let lattice_props: ComponentProps<Lattice> = {} // passed to Lattice
+
   // whether to show the controls panel
   export let controls_open: boolean = false
   // canvas background color
@@ -37,20 +28,11 @@
   export let reveal_buttons: boolean | number = 500
   export let fullscreen: boolean = false
 
-  // whether to show the structure's lattice cell as a wireframe
-  export let show_atoms: boolean = true
-  export let show_bonds: boolean = true
-  export let bond_radius: number | undefined = undefined
-  export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
-  export let cell_opacity: number | undefined = show_cell == `surface` ? 0.2 : 0.4
-  export let cell_line_width: number = 1
   export let wrapper: HTMLDivElement | undefined = undefined
   // the control panel DOM element
   export let controls: HTMLElement | undefined = undefined
   // the button to toggle the control panel
   export let toggle_controls_btn: HTMLButtonElement | undefined = undefined
-  // whether to show the lattice vectors
-  export let show_vectors: boolean = true
   // bindable width of the canvas
   export let width: number = 0
   // bindable height of the canvas
@@ -69,13 +51,8 @@
   export let show_site_labels: boolean | Record<ElementSymbol, string | number> =
     (structure?.sites?.length ?? 0) < 20
   export let atom_labels_style: string | null = null
-  export let bonding_strategy: 'max_dist' | 'nearest_neighbor' = `nearest_neighbor`
-  export let bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
-  export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
   export let style: string | null = null
   export let show_image_atoms: boolean = true
-  export let directional_light: number = 2
-  export let ambient_light: number = 1.2
   export let show_full_controls: boolean = false
 
   // interactivity()
@@ -210,15 +187,15 @@
     <dialog class="controls" bind:this={controls} open={controls_open}>
       <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap;">
         Show <label>
-          <input type="checkbox" bind:checked={show_atoms} />
+          <input type="checkbox" bind:checked={scene_props.show_atoms} />
           atoms
         </label>
         <label>
-          <input type="checkbox" bind:checked={show_bonds} />
+          <input type="checkbox" bind:checked={scene_props.show_bonds} />
           bonds
         </label>
         <label>
-          <input type="checkbox" bind:checked={show_vectors} />
+          <input type="checkbox" bind:checked={lattice_props.show_vectors} />
           lattice vectors
         </label>
         <label>
@@ -235,9 +212,9 @@
           site labels
         </label>
         <label>
-          <select bind:value={show_cell}>
-            <option value="surface">surface</option>
+          <select bind:value={lattice_props.show_cell}>
             <option value="wireframe">wireframe</option>
+            <option value="surface">surface</option>
             <option value={null}>none</option>
           </select>
           unit cell as
@@ -249,31 +226,55 @@
       <label>
         Atom radius
         <small> (Å)</small>
-        <input type="number" min="0.1" max={1} step={0.05} bind:value={atom_radius} />
-        <input type="range" min="0.1" max={1} step={0.05} bind:value={atom_radius} />
+        <input
+          type="number"
+          min="0.1"
+          max={1}
+          step={0.05}
+          bind:value={scene_props.atom_radius}
+        />
+        <input
+          type="range"
+          min="0.1"
+          max={1}
+          step={0.05}
+          bind:value={scene_props.atom_radius}
+        />
       </label>
       <label>
-        <input type="checkbox" bind:checked={same_size_atoms} />
+        <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
         <span>
           Scale sites according to atomic radii
           <small> (if false, all atoms have same size)</small>
         </span>
       </label>
 
-      {#if show_full_controls && show_cell}
+      {#if show_full_controls && lattice_props.show_cell}
         <hr />
         <label>
           Unit cell opacity
-          <input type="number" min={0} max={1} step={0.05} bind:value={cell_opacity} />
-          <input type="range" min={0} max={1} step={0.05} bind:value={cell_opacity} />
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            bind:value={lattice_props.cell_opacity}
+          />
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            bind:value={lattice_props.cell_opacity}
+          />
         </label>
       {/if}
 
-      {#if show_bonds}
+      {#if scene_props.show_bonds}
         <hr />
         <label>
           Bonding strategy
-          <select bind:value={bonding_strategy}>
+          <select bind:value={scene_props.bonding_strategy}>
             <option value="max_dist">Max Distance</option>
             <option value="nearest_neighbor">Nearest Neighbor</option>
           </select>
@@ -281,17 +282,17 @@
 
         <label>
           Bond color mode
-          <select bind:value={bond_color_mode}>
+          <select bind:value={scene_props.bond_color_mode}>
             <option value="single">Single</option>
             <option value="split-midpoint">Split Midpoint</option>
             <option value="gradient" disabled>Gradient (TODO)</option>
           </select>
         </label>
 
-        {#if bond_color_mode === `single`}
+        {#if scene_props.bond_color_mode === `single`}
           <label>
             Bond color
-            <input type="color" bind:value={bond_color} />
+            <input type="color" bind:value={scene_props.bond_color} />
           </label>
         {/if}
         <label>
@@ -301,14 +302,14 @@
             min={0.001}
             max={0.1}
             step={0.001}
-            bind:value={bond_radius}
+            bind:value={scene_props.bond_radius}
           />
           <input
             type="range"
             min="0.001"
             max="0.1"
             step={0.001}
-            bind:value={bond_radius}
+            bind:value={scene_props.bond_radius}
           />
         </label>
       {/if}
@@ -323,20 +324,56 @@
       {#if show_full_controls}
         <label>
           Auto rotate speed
-          <input type="number" min={0} max={2} step={0.01} bind:value={auto_rotate} />
-          <input type="range" min={0} max={2} step={0.01} bind:value={auto_rotate} />
+          <input
+            type="number"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.auto_rotate}
+          />
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.auto_rotate}
+          />
         </label>
         <label>
           Zoom speed
-          <input type="number" min={0} max={2} step={0.01} bind:value={zoom_speed} />
-          <input type="range" min={0} max={2} step={0.01} bind:value={zoom_speed} />
+          <input
+            type="number"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.zoom_speed}
+          />
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.zoom_speed}
+          />
         </label>
         <label>
           <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
             Pan speed
           </Tooltip>
-          <input type="number" min={0} max={2} step={0.01} bind:value={pan_speed} />
-          <input type="range" min={0} max={2} step={0.01} bind:value={pan_speed} />
+          <input
+            type="number"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.pan_speed}
+          />
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.pan_speed}
+          />
         </label>
         <!-- directional light intensity -->
         <label>
@@ -346,21 +383,33 @@
             min={0}
             max={4}
             step={0.01}
-            bind:value={directional_light}
+            bind:value={scene_props.directional_light}
           />
           <input
             type="range"
             min={0}
             max={4}
             step={0.01}
-            bind:value={directional_light}
+            bind:value={scene_props.directional_light}
           />
         </label>
         <!-- ambient light intensity -->
         <label>
           <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
-          <input type="number" min={0} max={2} step={0.01} bind:value={ambient_light} />
-          <input type="range" min={0} max={2} step={0.01} bind:value={ambient_light} />
+          <input
+            type="number"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.ambient_light}
+          />
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={0.01}
+            bind:value={scene_props.ambient_light}
+          />
         </label>
         <!-- rotation damping -->
         <label>
@@ -370,14 +419,14 @@
             min={0}
             max={0.3}
             step={0.01}
-            bind:value={rotation_damping}
+            bind:value={scene_props.rotation_damping}
           />
           <input
             type="range"
             min={0}
             max={0.3}
             step={0.01}
-            bind:value={rotation_damping}
+            bind:value={scene_props.rotation_damping}
           />
         </label>
       {/if}
@@ -404,26 +453,8 @@
     <Canvas rendererParameters={{ preserveDrawingBuffer: true }}>
       <StructureScene
         structure={show_image_atoms ? get_pbc_image_sites(structure) : structure}
-        {show_atoms}
-        {show_bonds}
-        {show_cell}
-        {show_vectors}
-        {...$$restProps}
-        {cell_opacity}
-        {cell_line_width}
-        {bond_radius}
-        {camera_position}
-        {auto_rotate}
-        {pan_speed}
-        {zoom_speed}
-        {bond_color_mode}
-        {bond_color}
-        bind:atom_radius
-        bind:same_size_atoms
-        {bonding_strategy}
-        {rotation_damping}
-        {directional_light}
-        {ambient_light}
+        {...scene_props}
+        {lattice_props}
       >
         <slot slot="atom-label" name="atom-label" let:elem>
           <!-- let:elem needed to fix false positive eslint no-undef -->

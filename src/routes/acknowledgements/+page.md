@@ -30,9 +30,10 @@ Big thanks to the element image providers listed below. Each image caption links
     {#each Object.entries(img_sources) as [key, href]}
       {@const [number, name] = key.split(`-`)}
       <li>
-        <a href="/{name}">
-          <img src="{dev ? '' : homepage}/elements/{key}.avif" alt={name} /></a>
         <a {href}>{number} {name}</a>
+        <a href="/{name}">
+          <img src="{dev ? '' : homepage}/elements/{key}.avif" alt={name} />
+        </a>
       </li>
     {/each}
   </ul>

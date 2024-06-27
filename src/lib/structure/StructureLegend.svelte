@@ -56,6 +56,9 @@
     <p>
       Hold <kbd>shift</kbd> or <kbd>cmd</kbd> or <kbd>ctrl</kbd> and drag to pan the scene.
     </p>
+    <p>
+      Click on an element label in the corner to change its color. Double click to reset.
+    </p>
   </slot>
 </dialog>
 
