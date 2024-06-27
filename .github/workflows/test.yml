@@ -14,3 +14,4 @@ jobs:
     uses: janosh/workflows/.github/workflows/npm-test-release.yml@main
     with:
       install-cmd: npm install --force
+      test-cmd: npm run test:unit

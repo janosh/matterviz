@@ -51,7 +51,7 @@
   export let active_site: Site | null = null
   export let precision: string = `.3~f`
   export let auto_rotate: number | boolean = 0 // auto rotate speed. set to 0 to disable auto rotation.
-  export let bond_radius: number | undefined = undefined
+  export let bond_radius: number | undefined = 0.05
   export let bond_opacity: number = 0.5
   export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
   export let bonding_strategy: keyof typeof bonding_strategies = `nearest_neighbor`
@@ -84,7 +84,7 @@
   }
 
   // make bond thickness reactive to atom_radius unless bond_radius is set
-  $: bond_thickness = bond_radius ?? 0.1 * atom_radius
+  $: bond_thickness = bond_radius ?? 0.05 * atom_radius
   const gizmo_defaults: Partial<ComponentProps<Gizmo>> = {
     horizontalPlacement: `left`,
     size: 100,
