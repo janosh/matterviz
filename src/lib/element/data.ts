@@ -3327,7 +3327,7 @@ export default [
     atomic_mass: 190.233,
     category: `transition metal`,
     density: 22.59,
-    discoverer: `Smithson Tennant`,
+    discoverer: `Smithson Tennant`, // codespell:ignore
     molar_heat: 24.7,
     number: 76,
     period: 6,
@@ -3370,7 +3370,7 @@ export default [
     atomic_mass: 192.2173,
     category: `transition metal`,
     density: 22.56,
-    discoverer: `Smithson Tennant`,
+    discoverer: `Smithson Tennant`, // codespell:ignore
     molar_heat: 25.1,
     number: 77,
     period: 6,

@@ -12,23 +12,27 @@
   import { element_colors } from '$lib/stores'
   import { T } from '@threlte/core'
   import {
+    Gizmo,
     HTML,
-    Instance,
     InstancedMesh,
     OrbitControls,
     interactivity,
   } from '@threlte/extras'
+  import type { ComponentProps } from 'svelte'
   import * as bonding_strategies from './bonding'
 
   // output of pymatgen.core.Structure.as_dict()
   export let structure: Atoms | undefined = undefined
   // scale factor for atomic radii
   export let atom_radius: number = 0.5
+  // multiple of atom_radius (actually atom_radius * the element's atomic radius)
+  // to use as distance for the site label(s) (multiple if site is disordered) from the site's center
+  export let label_radius: number = 1
   // whether to use the same radius for all atoms. if not, the radius will be
   // determined by the atomic radius of the element
   export let same_size_atoms: boolean = true
   // initial camera position from which to render the scene
-  export let camera_position: Vector = [10, 0, 0]
+  export let camera_position: Vector = [12, 4, 2 * (structure?.lattice?.c ?? 5)]
   // rotation damping factor (how quickly the rotation comes to rest after mouse release)
   export let rotation_damping: number = 0.1
   // zoom level of the camera
@@ -38,20 +42,18 @@
   export let zoom_speed: number = 0.3
   // pan speed. set to 0 to disable panning.
   export let pan_speed: number = 1
-  // TODO whether to make the canvas fill the whole screen
-  // export let fullscreen: boolean = false
-  // whether to show the structure's lattice cell as a wireframe
   export let show_atoms: boolean = true
   export let show_bonds: boolean = true
+  export let gizmo: boolean | ComponentProps<Gizmo> = true
   export let hovered_idx: number | null = null
   export let active_idx: number | null = null
   export let hovered_site: Site | null = null
   export let active_site: Site | null = null
   export let precision: string = `.3~f`
-  export let auto_rotate: number | boolean = 0
+  export let auto_rotate: number | boolean = 0 // auto rotate speed. set to 0 to disable auto rotation.
   export let bond_radius: number | undefined = undefined
   export let bond_opacity: number = 0.5
-  export let bond_color: string = `white`
+  export let bond_color: string = `#ffffff` // must be hex code for <input type='color'>
   export let bonding_strategy: keyof typeof bonding_strategies = `nearest_neighbor`
   export let bonding_options: Record<string, unknown> = {}
   // set to null to disable showing distance between hovered and active sites
@@ -61,10 +63,16 @@
     width: 0.1,
     opacity: 0.5,
   }
-  // field of view of the camera. 50 is THREE.js default
-  export let fov: number = 50
-  export let ambient_light: number = 1.2
-  export let directional_light: number = 2
+  export let fov: number = 50 // field of view of the camera. 50 is THREE.js default
+  export let ambient_light: number = 1.8
+  export let directional_light: number = 2.5
+  // number of segments in sphere geometry. higher is smoother but more
+  // expensive to render (usually >16, <32)
+  export let sphere_segments: number = 20
+
+  // TODO bond_color_mode to be implemented
+  export const bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
+  export let lattice_props: Omit<ComponentProps<Lattice>, 'matrix'> = {}
 
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
@@ -77,6 +85,13 @@
 
   // make bond thickness reactive to atom_radius unless bond_radius is set
   $: bond_thickness = bond_radius ?? 0.1 * atom_radius
+  const gizmo_defaults: Partial<ComponentProps<Gizmo>> = {
+    horizontalPlacement: `left`,
+    size: 100,
+    paddingX: 10,
+    paddingY: 10,
+    toneMapped: true,
+  } as const
 </script>
 
 <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
@@ -98,40 +113,59 @@
   />
 </T.PerspectiveCamera>
 
+{#if gizmo}
+  <Gizmo {...{ ...gizmo_defaults, ...(typeof gizmo === `boolean` ? {} : gizmo) }} />
+{/if}
+
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />
 
 {#if show_atoms && structure?.sites}
-  <InstancedMesh>
-    <T.MeshStandardMaterial />
-    <T.SphereGeometry args={[1, 20, 20]} />
-    {#each structure.sites as site, idx}
-      {@const { species, xyz } = site}
-      {@const elem = species[0].element}
+  {#each structure.sites as site, site_idx}
+    {@const { species, xyz } = site}
+    {#each species as { element: elem, occu }, spec_idx}
       {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
-      <Instance
-        position={xyz}
-        color={$element_colors[species[0].element]}
-        on:pointerenter={() => {
-          hovered_idx = idx
-        }}
-        on:pointerleave={() => {
-          hovered_idx = null
-        }}
-        on:click={() => {
-          if (active_idx == idx) active_idx = null
-          else active_idx = idx
-        }}
-        scale={radius}
-      />
-
+      {@const start_angle = species
+        .slice(0, spec_idx)
+        .reduce((total, spec) => total + spec.occu, 0)}
+      <T.Mesh position={xyz}>
+        <T.SphereGeometry
+          args={[
+            0.5,
+            sphere_segments,
+            sphere_segments,
+            2 * Math.PI * start_angle,
+            2 * Math.PI * (start_angle + occu),
+          ]}
+        />
+        <T.MeshStandardMaterial
+          color={$element_colors[elem]}
+          on:pointerenter={() => {
+            hovered_idx = site_idx
+          }}
+          on:pointerleave={() => {
+            hovered_idx = null
+          }}
+          on:click={() => {
+            if (active_idx == site_idx) active_idx = null
+            else active_idx = site_idx
+          }}
+          scale={radius}
+        />
+      </T.Mesh>
       {#if $$slots[`atom-label`]}
-        <HTML center position={xyz}>
-          <slot name="atom-label" {elem} {xyz} {species} />
+        <!-- use polar coordinates + offset if site has partial occupancy to move the text to the side of the corresponding sphere slice -->
+        {@const phi = 2 * Math.PI * (start_angle + occu / 2)}
+        {@const pos = add(
+          xyz,
+          scale([Math.cos(phi), 0, Math.sin(phi)], label_radius * radius),
+        )}
+        <HTML center position={pos}>
+          <slot name="atom-label" {elem} xyz={pos} {species} />
         </HTML>
       {/if}
     {/each}
-  </InstancedMesh>
+  {/each}
 {/if}
 
 {#if show_bonds}
@@ -193,7 +227,7 @@
 {/if}
 
 {#if structure?.lattice}
-  <Lattice matrix={structure?.lattice?.matrix} {...$$restProps} />
+  <Lattice matrix={structure?.lattice?.matrix} {...lattice_props} />
 {/if}
 
 <style>

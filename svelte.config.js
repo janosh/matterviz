@@ -6,7 +6,7 @@ import math from 'remark-math'
 import preprocess from 'svelte-preprocess'
 
 const { default: pkg } = await import(`./package.json`, {
-  assert: { type: `json` },
+  with: { type: `json` },
 })
 const defaults = {
   Wrapper: `svelte-zoo/CodeExample.svelte`,
