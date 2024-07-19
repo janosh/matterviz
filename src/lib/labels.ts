@@ -57,6 +57,37 @@ export const pretty_num = (num: number, fmt?: string | number) => {
   }
   return format(fmt)(num)
 }
+export function parse_si_float<T extends string | number | null | undefined>(
+  value: T,
+): T | number | string {
+  // if not string, return as is
+  if (typeof value !== `string`) return value
+  // Remove whitespace and commas
+  const cleaned = value.trim().replace(/(\d),(\d)/g, `$1$2`)
+
+  // Check if the value is a SI-formatted number (e.g., "1.23k", "4.56M", "789µ", "12n")
+  const match = cleaned.match(/^([-+]?\d*\.?\d+)\s*([yzafpnµmkMGTPEZY])?$/i)
+  if (match) {
+    const [, num_part, suffix] = match
+    let multiplier = 1
+    if (suffix) {
+      const suffixes = `yzafpnµm kMGTPEZY`
+      const index = suffixes.indexOf(suffix)
+      if (index !== -1) {
+        multiplier = Math.pow(1000, index - 8)
+      }
+    }
+    return parseFloat(num_part) * multiplier
+  }
+
+  // If it's a number without SI suffix, try parsing it
+  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) {
+    return parseFloat(cleaned)
+  }
+
+  // If the value is not a formatted number, return as is
+  return value
+}
 
 export const category_counts: Record<Category, number> = {
   actinide: 15,
