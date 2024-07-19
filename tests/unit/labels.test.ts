@@ -2,11 +2,12 @@ import { element_data } from '$lib'
 import {
   default_fmt,
   heatmap_keys,
+  parse_si_float,
   pretty_num,
   property_labels,
   superscript_digits,
 } from '$lib/labels'
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 test(`pretty_num`, () => {
   expect(pretty_num(0)).toBe(`0`)
@@ -60,4 +61,49 @@ test(`superscript_digits`, () => {
   expect(superscript_digits(`1234567890`)).toBe(`¹²³⁴⁵⁶⁷⁸⁹⁰`)
   expect(superscript_digits(`+123-456+789-0`)).toBe(`⁺¹²³⁻⁴⁵⁶⁺⁷⁸⁹⁻⁰`)
   expect(superscript_digits(`No digits here`)).toBe(`No digits here`)
+})
+
+describe(`parse_si_float function`, () => {
+  test.each([
+    [`123`, 123], // int
+    [`123.45`, 123.45], // float
+    [`1,234.45`, 1234.45], // with comma
+    [`1,234,567.89`, 1234567.89], // 2 commas
+    [`1k`, 1000],
+    [`1.5k`, 1500],
+    [`2M`, 2000000],
+    [`3.14G`, 3140000000],
+    [`5T`, 5000000000000],
+    [`1m`, 0.001],
+    [`500µ `, 0.0005],
+    [`10n`, 1e-8],
+    [`2p`, 2e-12],
+    [`3f`, 3e-15],
+    [`4a`, 4e-18],
+    [` 5z`, 5e-21], // leading whitespace
+    [`6y`, 6e-24],
+    [`-1.5k`, -1500],
+    [`-500µ`, -0.0005],
+    [`abc`, `abc`],
+    [``, ``],
+    [` 123 `, 123], // leading/trailing whitespace
+    [`-123`, -123],
+    [`1 k`, 1000], // with space
+    [`2 µ`, 0.000002], // with space
+    [`foo`, `foo`],
+    [`123foo`, `123foo`],
+    [-12, -12], // int -> int
+    [124.847321, 124.847321], // float -> float
+    [``, ``], // empty string
+    [undefined, undefined], // undefined
+    [null, null], // null
+    [`123.456.789`, `123.456.789`], // phone number
+  ])(`parseValue(%s) should return %s`, (input, expected) => {
+    const result = parse_si_float(input as string)
+    if (typeof expected === `number`) {
+      expect(result).toBeCloseTo(expected, 15) // Increased precision for very small numbers
+    } else {
+      expect(result).toEqual(expected)
+    }
+  })
 })
