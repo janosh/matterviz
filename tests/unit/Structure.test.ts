@@ -1,20 +1,23 @@
 import { Structure } from '$lib'
 import { structures } from '$site'
 import { tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
 const structure = structures[0]
 
 describe(`Structure`, () => {
-  test(`open control panel when clicking toggle button`, async () => {
-    const struct = new Structure({
+  let struct: Structure
+
+  beforeEach(() => {
+    struct = new Structure({
       target: document.body,
       props: { structure },
     })
+  })
 
-    const dialog = doc_query<HTMLDialogElement>(`dialog`)
-    expect(dialog.open).toBe(false)
+  test(`open control panel when clicking toggle button`, async () => {
+    expect(struct.controls_open).toBe(false)
     doc_query(`button.controls-toggle`).click()
     await tick()
 
@@ -41,5 +44,31 @@ describe(`Structure`, () => {
     spy.mockRestore()
     // @ts-expect-error - function is mocked
     window.URL.createObjectURL.mockRestore()
+  })
+
+  test(`toggle fullscreen mode`, async () => {
+    const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
+    const exitFullscreenMock = vi.fn()
+
+    struct.wrapper = { requestFullscreen: requestFullscreenMock }
+    document.exitFullscreen = exitFullscreenMock
+
+    await struct.toggle_fullscreen()
+    expect(requestFullscreenMock).toHaveBeenCalledOnce()
+
+    // Simulate fullscreen mode
+    Object.defineProperty(document, `fullscreenElement`, {
+      value: struct.wrapper,
+      configurable: true,
+    })
+
+    await struct.toggle_fullscreen()
+    expect(exitFullscreenMock).toHaveBeenCalledOnce()
+
+    // Reset fullscreenElement
+    Object.defineProperty(document, `fullscreenElement`, {
+      value: null,
+      configurable: true,
+    })
   })
 })

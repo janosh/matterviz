@@ -8,36 +8,50 @@ const ref_data = {
     amounts: { Cs: 2 },
     density: 1.8,
     center_of_mass: [1.564, 1.564, 1.564],
+    elements: [`Cs`],
+    formula: `Cs2`,
   },
   'mp-2': {
     amounts: { Pd: 4 },
     density: 11.76,
     center_of_mass: [0.979, 0.979, 0.979],
+    elements: [`Pd`],
+    formula: `Pd4`,
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
     center_of_mass: [3.535, 3.535, 3.535],
+    elements: [`Al`, `Lu`],
+    formula: `Al16 Lu8`,
   },
   'mp-30855': {
     amounts: { U: 2, Pt: 6 },
     density: 19.14,
     center_of_mass: [3.535, 3.535, 3.535],
+    elements: [`Pt`, `U`],
+    formula: `Pt6 U2`,
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.46,
     center_of_mass: [4.798, 4.798, 4.798],
+    elements: [`Bi`, `O`, `Zr`],
+    formula: `Bi16 O56 Zr16`,
   },
   'mp-1229155': {
     amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
     density: 6.11,
     center_of_mass: [2.282, 3.522, 6.642],
+    elements: [`Ag`, `Br`, `Cl`, `Hg`, `S`],
+    formula: `Ag4 Br1 Cl3 Hg4 S4`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
     density: 3.66,
     center_of_mass: [1.785, 2.959, 12.51],
+    elements: [`Al`, `Fe`, `Ni`],
+    formula: `Al54 Fe4 Ni8`,
   },
 } as const
 
@@ -108,11 +122,25 @@ test.each(structures)(`symmetrize_structure`, async (structure) => {
 })
 
 test.each(structures)(`get_center_of_mass for $id`, async (struct) => {
-  const center = struct_utils.get_center_of_mass(struct)
+  const com = struct_utils.get_center_of_mass(struct)
   const expected = ref_data[struct.id]?.center_of_mass
   if (!expected) return
   expect(
-    center.map((val) => Math.round(val * 1e3) / 1e3),
+    com.map((val) => Math.round(val * 1e3) / 1e3),
     struct.id,
   ).toEqual(expected)
+})
+
+test.each(structures)(`alphabetical_formula for $id`, async (struct) => {
+  const formula = struct_utils.alphabetical_formula(struct)
+  const expected = ref_data[struct.id]?.formula
+  if (!expected) return
+  expect(formula, struct.id).toEqual(expected)
+})
+
+test.each(structures)(`get_elements for $id`, async (struct) => {
+  const elements = struct_utils.get_elements(struct)
+  const expected = ref_data[struct.id]?.elements
+  if (!expected) return
+  expect(elements, struct.id).toEqual(expected)
 })
