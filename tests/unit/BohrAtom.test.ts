@@ -1,4 +1,5 @@
 import { BohrAtom } from '$lib'
+import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '.'
 
@@ -12,7 +13,7 @@ describe(`BohrAtom`, () => {
   ])(
     `renders with custom styles and properties`,
     async (symbol, name, shells) => {
-      new BohrAtom({
+      mount(BohrAtom, {
         target: document.body,
         props: {
           symbol,

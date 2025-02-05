@@ -57,16 +57,16 @@
     if (heatmap_values.length > 118) {
       console.error(
         `heatmap_values is an array of numbers, length should be 118 or less, one for ` +
-          `each element possibly omitting elements at the end, got ${heatmap_values.length}`
+          `each element possibly omitting elements at the end, got ${heatmap_values.length}`,
       )
     } else heat_values = heatmap_values
   } else if (typeof heatmap_values == `object`) {
     const bad_keys = Object.keys(heatmap_values).filter(
-      (key) => !elem_symbols.includes(key)
+      (key) => !elem_symbols.includes(key),
     )
     if (bad_keys.length > 0) {
       console.error(
-        `heatmap_values is an object, keys should be element symbols, got ${bad_keys}`
+        `heatmap_values is an object, keys should be element symbols, got ${bad_keys}`,
       )
     } else heat_values = elem_symbols.map((symbol) => heatmap_values[symbol])
   }
@@ -160,7 +160,7 @@
     {/each}
     {#if inner_transition_metal_offset}
       <!-- provide vertical offset for lanthanides + actinides -->
-      <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset} />
+      <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset}></div>
     {/if}
 
     <slot name="bottom-left-inset" {active_element}>

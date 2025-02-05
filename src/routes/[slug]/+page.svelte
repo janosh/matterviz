@@ -64,9 +64,9 @@
   }
 
   $: scatter_plot_values = element_data.map((el) =>
-    $heatmap_key ? el[$heatmap_key] : null
+    $heatmap_key ? el[$heatmap_key] : null,
   )
-  $: [y_label, y_unit] = $heatmap_key ? property_labels[$heatmap_key] ?? [] : []
+  $: [y_label, y_unit] = $heatmap_key ? (property_labels[$heatmap_key] ?? []) : []
   let color_scale: string = `Viridis`
 
   export const snapshot = {
@@ -133,25 +133,29 @@
 
     <table>
       <thead>
-        <th><Icon icon="ic:outline-circle" />Shell</th>
-        <th><Icon icon="mdi:atom-variant" />Electrons</th>
-        <th><Icon icon="mdi:rotate-orbit" />Orbitals</th>
+        <tr>
+          <th><Icon icon="ic:outline-circle" />Shell</th>
+          <th><Icon icon="mdi:atom-variant" />Electrons</th>
+          <th><Icon icon="mdi:rotate-orbit" />Orbitals</th>
+        </tr>
       </thead>
 
-      {#each element.shells as shell_occu, shell_idx}
-        {@const shell_orbitals = element.electron_configuration
-          .split(` `)
-          .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
-          .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
-        <tr
-          on:mouseenter={() => (active_shell = shell_idx + 1)}
-          on:mouseleave={() => (active_shell = null)}
-        >
-          <td>{shell_idx + 1}</td>
-          <td>{shell_occu}</td>
-          <td>{shell_orbitals.join(` + `)}</td>
-        </tr>
-      {/each}
+      <tbody>
+        {#each element.shells as shell_occu, shell_idx}
+          {@const shell_orbitals = element.electron_configuration
+            .split(` `)
+            .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
+            .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
+          <tr
+            on:mouseenter={() => (active_shell = shell_idx + 1)}
+            on:mouseleave={() => (active_shell = null)}
+          >
+            <td>{shell_idx + 1}</td>
+            <td>{shell_occu}</td>
+            <td>{shell_orbitals.join(` + `)}</td>
+          </tr>
+        {/each}
+      </tbody>
     </table>
 
     <BohrAtom

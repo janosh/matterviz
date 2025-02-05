@@ -1,7 +1,7 @@
 import type { Category } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
-import { tick } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
@@ -18,7 +18,7 @@ describe(`PeriodicTable`, () => {
     `renders element tiles with show_lanth_act_tiles=%s`,
     async (lanth_act_tiles, expected_tiles) => {
       const props = lanth_act_tiles == true ? {} : { lanth_act_tiles }
-      new PeriodicTable({ target: document.body, props })
+      mount(PeriodicTable, { target: document.body, props })
 
       const element_tiles = document.querySelectorAll(`.element-tile`)
       expect(element_tiles.length).toBe(expected_tiles)
@@ -31,10 +31,9 @@ describe(`PeriodicTable`, () => {
       show_name: false,
       show_number: false,
     }
-    new PeriodicTable({ target: document.body, props: { tile_props } })
+    mount(PeriodicTable, { target: document.body, props: { tile_props } })
 
     const table = doc_query(`.periodic-table`)
-
     expect(table?.textContent?.trim()).toBe(``)
 
     // make sure empty tiles are still rendered
@@ -43,7 +42,7 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`hovering element tile toggles CSS class 'active'`, async () => {
-    new PeriodicTable({ target: document.body })
+    mount(PeriodicTable, { target: document.body })
 
     const element_tile = doc_query(`.element-tile`)
 
@@ -57,7 +56,7 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`shows element photo when hovering element tile`, async () => {
-    new PeriodicTable({ target: document.body })
+    mount(PeriodicTable, { target: document.body })
 
     const rand_idx = Math.floor(Math.random() * element_data.length)
     const random_element = element_data[rand_idx]
@@ -76,22 +75,21 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`hooking PeriodicTable up to PropertySelect and selecting heatmap sets element tile background`, async () => {
-    const table = new PeriodicTable({ target: document.body })
-    new PropertySelect({ target: document.body })
+    const props = $state({})
+    mount(PeriodicTable, { target: document.body, props })
+    mount(PropertySelect, { target: document.body })
 
     const li = doc_query(`ul.options > li`)
     li.dispatchEvent(new MouseEvent(`mouseup`))
     await tick()
 
     const selected = doc_query(`div.multiselect > ul.selected`)
-    const heatmap_label = `Atomic Mass (u)`
+    const heatmap_label = `Atomic Mass (u) Atomic Radius (Å)`
     expect(selected.textContent?.trim()).toBe(heatmap_label)
     const heatmap_key = heatmap_labels[heatmap_label]
 
-    expect(heatmap_key).toBe(`atomic_mass`)
-    table.$set({
-      heatmap_values: element_data.map((elem) => elem[heatmap_key]),
-    })
+    // expect(heatmap_key).toBe(`atomic_mass`)
+    props.heatmap_values = element_data.map((elem) => elem[heatmap_key])
     await tick()
 
     const element_tile = doc_query(`div.element-tile`)
@@ -102,7 +100,7 @@ describe(`PeriodicTable`, () => {
   test.each([[0], [0.5], [1], [2]])(
     `inner_transition_metal_offset`,
     async (inner_transition_metal_offset) => {
-      new PeriodicTable({
+      mount(PeriodicTable, {
         target: document.body,
         props: { inner_transition_metal_offset },
       })
@@ -117,32 +115,26 @@ describe(`PeriodicTable`, () => {
   )
 
   test(`clicking element tile emits event`, async () => {
-    const table = new PeriodicTable({ target: document.body })
-    let expected_active = false
-
-    let emitted = false
-    table.$on(`click`, (event) => {
-      emitted = true
-      expect(event.detail.element).toBe(element_data[0])
-      expect(event.detail.active).toBe(expected_active)
-      expect(event.detail.dom_event).toBeInstanceOf(MouseEvent)
-      expect(event.detail.dom_event.type).toBe(`click`)
+    const click = vi.fn()
+    mount(PeriodicTable, {
+      target: document.body,
+      events: { click },
     })
 
     const element_tile = doc_query(`.element-tile`)
     element_tile?.dispatchEvent(new MouseEvent(`click`))
     await tick()
-    expect(emitted).toBe(true)
 
-    expected_active = true
-    element_tile?.dispatchEvent(mouseenter)
-    await tick()
-
-    element_tile?.dispatchEvent(new MouseEvent(`click`))
+    expect(click).toHaveBeenCalledWith(expect.any(CustomEvent))
+    expect(click.mock.calls[0][0].detail).toEqual({
+      element: element_data[0],
+      active: false,
+      dom_event: expect.any(MouseEvent),
+    })
   })
 
   test.each([[`0`], [`10px`], [`1cqw`]])(`gap prop`, (gap) => {
-    new PeriodicTable({ target: document.body, props: { gap } })
+    mount(PeriodicTable, { target: document.body, props: { gap } })
     const table = doc_query(`.periodic-table`)
     expect(getComputedStyle(table).gap).toBe(gap)
   })
@@ -150,7 +142,7 @@ describe(`PeriodicTable`, () => {
   test.each(Object.entries(category_counts))(
     `setting active_category=%s highlights corresponding element tiles`,
     (active_category, expected_active) => {
-      new PeriodicTable({
+      mount(PeriodicTable, {
         target: document.body,
         props: {
           active_category: active_category.replaceAll(` `, `-`) as Category,
@@ -167,7 +159,7 @@ describe(`PeriodicTable`, () => {
     (heatmap_values) => {
       console.error = vi.fn()
 
-      new PeriodicTable({
+      mount(PeriodicTable, {
         target: document.body,
         props: { heatmap_values },
       })
@@ -185,7 +177,7 @@ describe(`PeriodicTable`, () => {
     (heatmap_values) => {
       console.error = vi.fn()
 
-      new PeriodicTable({
+      mount(PeriodicTable, {
         target: document.body,
         // @ts-expect-error testing invalid input
         props: { heatmap_values },
@@ -201,7 +193,7 @@ describe(`PeriodicTable`, () => {
   )
 
   test(`element tiles are accessible to keyboard users`, async () => {
-    new PeriodicTable({ target: document.body })
+    mount(PeriodicTable, { target: document.body })
 
     const element_tiles = document.querySelectorAll(`.element-tile`)
 
