@@ -1,5 +1,4 @@
 import type { Category, ChemicalElement } from '$lib'
-// .ts ext needed for Playwright to be able to resolve import
 import { rgb } from 'd3-color'
 import { format } from 'd3-format'
 
