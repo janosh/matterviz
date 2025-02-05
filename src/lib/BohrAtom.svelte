@@ -17,8 +17,8 @@
   // if function, it'll be called with electron index and should return a string
   export let number_electrons:
     | boolean
-    | 'hierarchical'
-    | 'sequential'
+    | `hierarchical`
+    | `sequential`
     | ((idx: number) => string) = false
   export let electron_label_props: Record<string, string | number> = {}
 

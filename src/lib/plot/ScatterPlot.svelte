@@ -2,8 +2,10 @@
   import type { Coords } from '$lib'
   import { Line, ScatterPoint } from '$lib'
   import { bisector, extent } from 'd3-array'
+  import { format } from 'd3-format'
   import { scaleLinear } from 'd3-scale'
   import * as d3sc from 'd3-scale-chromatic'
+  import { timeFormat } from 'd3-time-format'
   import { createEventDispatcher } from 'svelte'
 
   export let style = ``
@@ -22,7 +24,9 @@
   export let y_unit = ``
   export let tooltip_point: Coords | null = null
   export let hovered = false
-  export let markers: 'line' | 'points' | 'line+points' = `line+points`
+  export let markers: `line` | `points` | `line+points` = `line+points`
+  export let x_format: string = ``
+  export let y_format: string = ``
 
   const dispatcher = createEventDispatcher()
   const axis_label_offset = { x: 15, y: 20 } // pixels
@@ -65,6 +69,13 @@
       dispatcher(`change`, tooltip_point)
     }
   }
+
+  const format_value = (value: number, formatter: string) => {
+    if (formatter.startsWith(`%`)) {
+      return timeFormat(formatter)(new Date(value))
+    }
+    return format(formatter)(value)
+  }
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
@@ -90,11 +101,13 @@
         {#each x_scale.ticks() as tick}
           <g class="tick" transform="translate({x_scale(tick)}, {height})">
             <line y1={-height + pad_top} y2={-pad_bottom} />
-            <text y={-pad_bottom + axis_label_offset.x}>{tick}</text>
+            <text y={-pad_bottom + axis_label_offset.x}>
+              {format_value(tick, x_format)}
+            </text>
           </g>
         {/each}
         <text x={width / 2} y={height + 5 - x_label_yshift} class="label x">
-          {x_label ?? ``}
+          {@html x_label ?? ``}
         </text>
       </g>
 
@@ -104,7 +117,7 @@
           <g class="tick" transform="translate(0, {y_scale(tick)})">
             <line x1={pad_left} x2={width - pad_right} />
             <text x={pad_left - axis_label_offset.y}>
-              {tick}
+              {format_value(tick, y_format)}
               {#if y_unit && idx === y_scale.ticks(5).length - 1}
                 &zwnj;&ensp;{y_unit}
               {/if}
@@ -112,18 +125,20 @@
           </g>
         {/each}
         <text x={-height / 2} y={13} transform="rotate(-90)" class="label y">
-          {y_label ?? ``}
+          {@html y_label ?? ``}
         </text>
       </g>
 
       {#if tooltip_point}
         {@const { x, y } = tooltip_point}
         {@const [cx, cy] = [x_scale(x), y_scale(y)]}
+        {@const x_formatted = format_value(x, x_format)}
+        {@const y_formatted = format_value(y, y_format)}
         <circle {cx} {cy} r="5" fill="orange" />
         <!-- {#if hovered} -->
         <foreignObject x={cx + 5} y={cy}>
-          <slot name="tooltip" {x} {y}>
-            ({x}, {y})
+          <slot name="tooltip" {x} {y} {cx} {cy} {x_formatted} {y_formatted}>
+            ({x_formatted}, {y_formatted})
           </slot>
         </foreignObject>
         <!-- {/if} -->

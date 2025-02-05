@@ -9,7 +9,6 @@ async function fetch_bucket_names() {
 
   // mock DOMParser when server-rendering
   if (typeof globalThis.DOMParser === `undefined`) {
-    // eslint-disable-next-line no-global-assign
     globalThis.DOMParser = class {
       parseFromString() {
         return { querySelectorAll: () => [] } // Return a minimal mock object
