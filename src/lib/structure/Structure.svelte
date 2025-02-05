@@ -38,7 +38,7 @@
   // bindable height of the canvas
   export let height: number = 0
   // export let reset_text: string = `Reset view`
-  export let color_scheme: 'Jmol' | 'Vesta' = `Vesta`
+  export let color_scheme: `Jmol` | `Vesta` = `Vesta`
   export let hovered: boolean = false
   export let dragover: boolean = false
   export let allow_file_drop: boolean = true

@@ -71,8 +71,8 @@
   export let sphere_segments: number = 20
 
   // TODO bond_color_mode to be implemented
-  export const bond_color_mode: 'single' | 'split-midpoint' | 'gradient' = `single`
-  export let lattice_props: Omit<ComponentProps<Lattice>, 'matrix'> = {}
+  export const bond_color_mode: `single` | `split-midpoint` | `gradient` = `single`
+  export let lattice_props: Omit<ComponentProps<Lattice>, `matrix`> = {}
 
   $: hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   $: active_site = structure?.sites?.[active_idx ?? -1] ?? null
@@ -97,6 +97,7 @@
 <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
   <!-- fix the ugly target -->
   <OrbitControls
+    position={[0, 0, 0]}
     enableZoom={zoom_speed > 0}
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}

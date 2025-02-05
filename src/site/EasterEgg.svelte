@@ -3,7 +3,7 @@
 
   export let x_angle = 0
   export let y_angle = 0
-  export let auto_rotate: 'x' | 'y' | 'both' | 'none' = `none`
+  export let auto_rotate: `x` | `y` | `both` | `none` = `none`
 
   let show_easter_egg = false
 </script>

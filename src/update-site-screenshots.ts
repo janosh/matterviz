@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import puppeteer from 'https://deno.land/x/puppeteer/mod.ts'
 
 // to run this script: deno run --allow-all src/update-site-screenshots.ts

@@ -6,7 +6,7 @@
   import Bond from './Bond.svelte'
 
   export let matrix: [Vector, Vector, Vector] | undefined = undefined
-  export let show_cell: 'surface' | 'wireframe' | null = `wireframe`
+  export let show_cell: `surface` | `wireframe` | null = `wireframe`
   // thickness of the wireframe lines that indicate the lattice's unit cell
   // due to limitations of OpenGL with WebGL renderer, on most platforms linewidth will be 1 regardless of set value
   // see https://threejs.org/docs/#api/en/materials/MeshBasicMaterial.wireframe

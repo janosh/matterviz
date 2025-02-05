@@ -52,7 +52,7 @@ export type ChemicalElement = {
   number_of_isotopes: number | null
   number: number
   period: number
-  phase: 'Gas' | 'Liquid' | 'Solid'
+  phase: `Gas` | `Liquid` | `Solid`
   radioactive: boolean | null
   row: number // != period for lanthanides and actinides
   shells: number[]

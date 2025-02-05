@@ -58,7 +58,7 @@ export type Graph = {
   directed: boolean
   multigraph: boolean
   graph: [
-    ['edge_weight_name', null] | ['edge_weight_units', null] | ['name', string],
+    [`edge_weight_name`, null] | [`edge_weight_units`, null] | [`name`, string],
   ]
   nodes: Node[]
   adjacency: Edge[][]
@@ -78,7 +78,7 @@ export type IdStructure = PymatgenStructure & { id: string }
 export type StructureWithGraph = IdStructure & { graph: Graph }
 
 // remove lattice from pymatgen Structure
-export type PymatgenMolecule = Omit<PymatgenStructure, 'lattice'>
+export type PymatgenMolecule = Omit<PymatgenStructure, `lattice`>
 
 export type Atoms = PymatgenStructure | PymatgenMolecule
 export type AtomsGraph = Atoms & { graph: Graph }
