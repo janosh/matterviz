@@ -1,7 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite'
 import mdsvexamples from 'mdsvexamples/vite'
-import type { UserConfig } from 'vite'
-import type { UserConfig as VitestConfig } from 'vitest'
+import { defineConfig } from 'vite'
 
 const run_script = process.argv.some((arg) =>
   arg.startsWith(`fetch-elem-images:`),
@@ -10,7 +9,7 @@ if (run_script) {
   await import(`./src/fetch-elem-images.ts`)
 }
 
-export default {
+export default defineConfig(({ mode }) => ({
   plugins: [sveltekit(), mdsvexamples],
 
   test: {
@@ -19,6 +18,7 @@ export default {
     coverage: {
       reporter: [`text`, `json-summary`],
     },
+    setupFiles: `tests/unit/setup.ts`,
   },
 
   server: {
@@ -33,4 +33,8 @@ export default {
   preview: {
     port: 3000,
   },
-} satisfies UserConfig & { test: VitestConfig }
+
+  resolve: {
+    conditions: mode === `test` ? [`browser`] : [],
+  },
+}))

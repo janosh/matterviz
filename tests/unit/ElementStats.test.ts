@@ -1,5 +1,6 @@
 import { ElementStats, element_data } from '$lib'
 import { pretty_num } from '$lib/labels'
+import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '.'
 
@@ -7,7 +8,7 @@ describe(`ElementStats`, () => {
   test.each(element_data.slice(0, 5))(
     `renders the correct properties for chemical element=$symbol`,
     async (element) => {
-      new ElementStats({ target: document.body, props: { element } })
+      mount(ElementStats, { target: document.body, props: { element } })
 
       const atomic_mass = doc_query(`div > section:nth-child(2) > strong`)
       expect(atomic_mass.textContent?.trim()).toBe(

@@ -1,5 +1,5 @@
 import { ScatterPlot } from '$lib'
-import { tick } from 'svelte'
+import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { doc_query } from '.'
 
@@ -13,7 +13,9 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`renders with default props`, async () => {
-    new ScatterPlot({ target: document.querySelector(`div`)! })
+    mount(ScatterPlot, {
+      target: document.querySelector(`div`)!,
+    })
     await tick()
 
     const scatter = doc_query(`.scatter`)
@@ -23,7 +25,7 @@ describe(`ScatterPlot`, () => {
 
   test(`applies custom style`, async () => {
     const style = `height: 300px; background: black;`
-    new ScatterPlot({
+    mount(ScatterPlot, {
       target: document.querySelector(`div`)!,
       props: { style },
     })

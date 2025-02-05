@@ -1,4 +1,4 @@
-import { beforeEach } from 'vitest'
+import { beforeEach, vi } from 'vitest'
 
 beforeEach(() => {
   document.body.innerHTML = ``
@@ -11,8 +11,19 @@ export function doc_query<T extends HTMLElement>(selector: string): T {
 }
 
 // ResizeObserver mock
-global.ResizeObserver = class ResizeObserver {
+globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
+
+globalThis.matchMedia = vi.fn().mockImplementation((query) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: vi.fn(), // deprecated
+  removeListener: vi.fn(), // deprecated
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+}))

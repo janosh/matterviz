@@ -1,4 +1,5 @@
-import { ElementTile, element_data, type PeriodicTableEvents } from '$lib'
+import { ElementTile, element_data } from '$lib'
+import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
@@ -8,7 +9,7 @@ const rand_element = element_data[rand_idx]
 
 describe(`ElementTile`, () => {
   test(`renders element name, symbol and atomic number`, () => {
-    new ElementTile({
+    mount(ElementTile, {
       target: document.body,
       props: { element: rand_element },
     })
@@ -30,14 +31,12 @@ describe(`ElementTile`, () => {
     [`keydown`],
     [`keyup`],
   ])(`forwards %s events with payload`, (event_type) => {
-    const element_tile = new ElementTile({
+    const spy = vi.fn()
+    mount(ElementTile, {
       target: document.body,
       props: { element: rand_element },
+      events: { [event_type]: spy },
     })
-
-    const spy = vi.fn()
-
-    element_tile.$on(event_type as keyof PeriodicTableEvents, spy)
 
     const node = doc_query(`.element-tile`)
 
@@ -48,7 +47,7 @@ describe(`ElementTile`, () => {
   })
 
   test(`applies bg_color as background color`, async () => {
-    new ElementTile({
+    mount(ElementTile, {
       target: document.body,
       props: { element: rand_element, bg_color: `red` },
     })
@@ -74,7 +73,7 @@ describe(`ElementTile`, () => {
   ])(
     `sets text_color based on lightness of bg_color`,
     async (bg_color, text_color) => {
-      new ElementTile({
+      mount(ElementTile, {
         target: document.body,
         props: { element: rand_element, bg_color },
       })
@@ -91,7 +90,7 @@ describe(`ElementTile`, () => {
   test.each([[true], [false]])(
     `applies class active when active=true`,
     async (active) => {
-      new ElementTile({
+      mount(ElementTile, {
         target: document.body,
         props: { element: rand_element, active },
       })
@@ -108,7 +107,7 @@ describe(`ElementTile`, () => {
       test.each([[true], [false]])(
         `show_${prop} toggles ${prop} visibility`,
         (value) => {
-          new ElementTile({
+          mount(ElementTile, {
             target: document.body,
             props: { element: rand_element, [`show_${prop}`]: value },
           })
@@ -136,7 +135,7 @@ describe(`ElementTile`, () => {
       if (show_number) expected += rand_element.number
       if (show_symbol) expected += ` ${rand_element.symbol}`
       if (show_name) expected += ` ${rand_element.name}`
-      new ElementTile({
+      mount(ElementTile, {
         target: document.body,
         props: { element: rand_element, show_symbol, show_name, show_number },
       })

@@ -3,7 +3,7 @@ import { mdsvex } from 'mdsvex'
 import mdsvexamples from 'mdsvexamples'
 import katex from 'rehype-katex-svelte'
 import math from 'remark-math'
-import preprocess from 'svelte-preprocess'
+import { sveltePreprocess } from 'svelte-preprocess'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
@@ -22,13 +22,13 @@ export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
   preprocess: [
-    preprocess(),
+    sveltePreprocess(),
     mdsvex({ remarkPlugins, rehypePlugins, extensions: [`.svx`, `.md`] }),
   ],
 
   compilerOptions: {
     // enable direct prop access for vitest unit tests
-    accessors: process.env.TEST,
+    accessors: Boolean(process.env.TEST),
   },
 
   kit: {

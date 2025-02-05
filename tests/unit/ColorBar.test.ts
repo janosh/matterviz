@@ -1,5 +1,6 @@
 import { ColorBar } from '$lib'
 import * as d3sc from 'd3-scale-chromatic'
+import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
@@ -10,7 +11,7 @@ const valid_color_scale_keys = Object.keys(d3sc)
 
 describe(`ColorBar`, () => {
   test(`renders text, color scale, tick labels, and styles`, () => {
-    new ColorBar({
+    mount(ColorBar, {
       target: document.body,
       props: {
         label: `Test`,
@@ -42,7 +43,7 @@ describe(`ColorBar`, () => {
     const spy = vi.spyOn(console, `error`)
 
     const color_scale = `test invalid`
-    new ColorBar({ target: document.body, props: { color_scale } })
+    mount(ColorBar, { target: document.body, props: { color_scale } })
 
     expect(spy).toHaveBeenCalledWith(
       `Color scale '${color_scale}' not found, supported color scale ` +
