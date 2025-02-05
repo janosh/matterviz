@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.2.4](https://github.com/janosh/elementari/compare/v0.2.3...v0.2.4)
+
+> 5 February 2025
+
+- Couple new unit tests [`#52`](https://github.com/janosh/elementari/pull/52)
+- Add `parse_si_float` inverse function to `pretty_num` in `labels.ts` [`#50`](https://github.com/janosh/elementari/pull/50)
+- Fix and speedup `max_dist` and `nearest_neighbor` bonding algorithms [`#48`](https://github.com/janosh/elementari/pull/48)
+- Support partial site occupancies by rendering atoms as multiple sphere slices [`#46`](https://github.com/janosh/elementari/pull/46)
+- add ScatterPlot date formatting [`01f8180`](https://github.com/janosh/elementari/commit/01f81806b0ab791190bddcfd12e680d966d2f528)
+- define type AtomsGraph and subtypes for (Structure|Molecule)Graph [`85a044c`](https://github.com/janosh/elementari/commit/85a044cdec93c4eedf3f39d340de41ff90053862)
+
 #### [v0.2.3](https://github.com/janosh/elementari/compare/v0.2.0...v0.2.3)
 
 > 15 January 2024
