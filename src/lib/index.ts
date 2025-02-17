@@ -1,14 +1,14 @@
 import type { categories, elem_symbols } from './labels'
 
 export { default as BohrAtom } from './BohrAtom.svelte'
-export { default as Icon } from './Icon.svelte'
-export { default as InfoCard } from './InfoCard.svelte'
-export { default as Nucleus } from './Nucleus.svelte'
 export * from './element'
 export { default as element_data } from './element/data'
+export { default as Icon } from './Icon.svelte'
+export { default as InfoCard } from './InfoCard.svelte'
 export * from './labels'
 export * from './material'
 export * from './math'
+export { default as Nucleus } from './Nucleus.svelte'
 export * from './periodic-table'
 export * from './plot'
 export * from './structure'
@@ -63,7 +63,12 @@ export type ChemicalElement = {
   year: number | string
 }
 
-export type Coords = { x: number; y: number }
+export type Point = {
+  x: number
+  y: number
+  metadata?: { [key: string]: unknown }
+  offset?: { x: number; y: number }
+}
 
 export type DispatchPayload = CustomEvent<{
   element: ChemicalElement
