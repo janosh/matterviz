@@ -1,13 +1,15 @@
 <script lang="ts">
-  import type { Coords } from '$lib'
-  import { Line, ScatterPoint } from '$lib'
+  import type { Point } from '$lib'
+  import { Line } from '$lib'
   import { bisector, extent } from 'd3-array'
   import { format } from 'd3-format'
   import { scaleLinear } from 'd3-scale'
-  import * as d3sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
   import { createEventDispatcher } from 'svelte'
+  import type { DataSeries } from '.'
+  import ScatterPoint from './ScatterPoint.svelte'
 
+  export let series: DataSeries[] = []
   export let style = ``
   export let x_lim: [number | null, number | null] = [null, null]
   export let y_lim: [number | null, number | null] = [null, null]
@@ -17,12 +19,9 @@
   export let pad_right = 20
   export let x_label: string = ``
   export let x_label_yshift = 0
-  export let x: number[] = []
-  export let color_scale: ((num: number) => string) | null = null
-  export let y: number[] = []
   export let y_label: string = ``
   export let y_unit = ``
-  export let tooltip_point: Coords | null = null
+  export let tooltip_point: Point | null = null
   export let hovered = false
   export let markers: `line` | `points` | `line+points` = `line+points`
   export let x_format: string = ``
@@ -33,10 +32,48 @@
   let width: number
   let height: number
 
-  $: data = x.map((x, idx) => ({ x, y: y[idx] }))
-  // determine x/y-range from data but default to x/y-lim if defined
-  $: x_range = extent(data, ({ x }) => x).map((x, idx) => x_lim[idx] ?? x)
-  $: y_range = extent(data, ({ y }) => y).map((y, idx) => y_lim[idx] ?? y)
+  // Create raw data points and determine ranges for all series
+  $: all_points = series.flatMap(({ x: xs, y: ys }) =>
+    xs.map((x, idx) => ({ x, y: ys[idx] })),
+  )
+
+  function get_data_range_with_fallback(
+    points: Point[],
+    get_value: (p: Point) => number,
+    lim: [number | null, number | null],
+  ): [number, number] {
+    const [min, max] = lim
+    const [min_ext, max_ext] = extent(points, get_value)
+    return [min ?? min_ext ?? 0, max ?? max_ext ?? 1]
+  }
+
+  $: x_range = get_data_range_with_fallback(all_points, (point) => point.x, x_lim)
+
+  $: y_range = get_data_range_with_fallback(all_points, (point) => point.y, y_lim)
+
+  // Filter out points outside x_lim and y_lim for each series
+  $: filtered_series = series.map((data_series) => {
+    const { x: xs, y: ys, ...rest } = data_series
+    const points: Point[] = xs.map((x, idx) => ({ x, y: ys[idx], ...rest }))
+
+    return {
+      ...data_series,
+      filtered_data: points.filter((pt) => {
+        const [x_min, x_max] = x_range
+        const [y_min, y_max] = y_range
+        return (
+          pt.x >= x_min &&
+          pt.x <= x_max &&
+          pt.y >= y_min &&
+          pt.y <= y_max &&
+          !isNaN(pt.x) &&
+          !isNaN(pt.y) &&
+          pt.x !== null &&
+          pt.y !== null
+        )
+      }),
+    }
+  })
 
   $: x_scale = scaleLinear()
     .domain(x_range)
@@ -46,53 +83,102 @@
     .domain(y_range)
     .range([height - pad_bottom, pad_top])
 
-  $: c_scale =
-    typeof color_scale == `string` ? d3sc[`interpolate${color_scale}`] : color_scale
-
-  let scaled_data: [number, number, string][]
-  // make sure to apply color_scale to normalized y values (mapped to [0, 1])
-  $: y_unit_scale = scaleLinear().domain(y_range).range([0, 1])
-  $: scaled_data = data
-    ?.filter(({ x, y }) => !(isNaN(x) || isNaN(y) || x === null || y === null))
-    .map(({ x, y }) => [x_scale(x), y_scale(y), c_scale?.(y_unit_scale(y))])
-
-  const bisect = bisector(({ x }) => x).right
+  const bisect = bisector((pt: Point) => pt.x).right
 
   function on_mouse_move(event: MouseEvent) {
     hovered = true
 
-    // returns point to right of our current mouse position
-    let idx = bisect(data, x_scale.invert(event.offsetX))
+    // Find the closest point across all series
+    let closest_point: Point | null = null
+    let min_distance = Infinity
+    let closest_series: DataSeries | null = null
 
-    if (idx < data.length) {
-      tooltip_point = data[idx] // update point
-      dispatcher(`change`, tooltip_point)
+    const mouse_x = x_scale.invert(event.offsetX)
+    const mouse_y = y_scale.invert(event.offsetY)
+
+    for (const data_series of filtered_series) {
+      const idx = bisect(data_series.filtered_data, mouse_x)
+      // Check points on either side of the mouse x position
+      const points = [
+        data_series.filtered_data[Math.max(0, idx - 1)],
+        data_series.filtered_data[Math.min(data_series.filtered_data.length - 1, idx)],
+      ]
+      for (const point of points) {
+        if (!point) continue
+        const dx = point.x - mouse_x
+        const dy = point.y - mouse_y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+        if (distance < min_distance) {
+          min_distance = distance
+          closest_point = point
+          closest_series = data_series
+        }
+      }
     }
+
+    if (closest_point && closest_series) {
+      tooltip_point = closest_point
+      dispatcher(`change`, { ...closest_point, series: closest_series })
+    }
+  }
+
+  function on_mouse_leave() {
+    hovered = false
+    tooltip_point = null
   }
 
   const format_value = (value: number, formatter: string) => {
     if (formatter.startsWith(`%`)) {
       return timeFormat(formatter)(new Date(value))
     }
-    return format(formatter)(value)
+    // First format the number using d3-format
+    const formatted = format(formatter)(value)
+    // Then remove trailing zeros after decimal point and remove decimal point if no decimals
+    return formatted.replace(/\.?0+$/, ``)
   }
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
-    <svg
-      on:mousemove={on_mouse_move}
-      on:mouseleave={() => (hovered = false)}
-      on:mouseleave
-      role="img"
-    >
+    <svg on:mousemove={on_mouse_move} on:mouseleave={on_mouse_leave} role="img">
+      <!-- Zero line -->
+      {#if y_range[0] < 0 && y_range[1] > 0}
+        <line
+          x1={pad_left}
+          x2={width - pad_right}
+          y1={y_scale(0)}
+          y2={y_scale(0)}
+          stroke="gray"
+          stroke-width="0.5"
+          stroke-dasharray="2,2"
+        />
+      {/if}
+
       {#if markers.includes(`line`)}
-        <Line points={scaled_data} origin={[x_scale(x_range[0]), y_scale(y_range[0])]} />
+        {#each filtered_series as series}
+          <Line
+            points={series.filtered_data.map(({ x, y }) => [x_scale(x), y_scale(y)])}
+            origin={[x_scale(x_range[0]), y_scale(y_range[0])]}
+            line_color={series.point_style?.fill}
+            line_width={1}
+            area_color="transparent"
+          />
+        {/each}
       {/if}
 
       {#if markers.includes(`points`)}
-        {#each scaled_data as [x, y, fill]}
-          <ScatterPoint {x} {y} {fill} />
+        {#each filtered_series as series}
+          {#each series.filtered_data as { x, y }}
+            <ScatterPoint
+              x={x_scale(x)}
+              y={y_scale(y)}
+              style={series.point_style ?? {}}
+              hover={series.point_hover ?? {}}
+              label={series.point_label ?? {}}
+              offset={series.point_offset ?? { x: 0, y: 0 }}
+              tween_duration={series.point_tween_duration ?? 600}
+            />
+          {/each}
         {/each}
       {/if}
 
@@ -129,19 +215,17 @@
         </text>
       </g>
 
-      {#if tooltip_point}
-        {@const { x, y } = tooltip_point}
+      {#if tooltip_point && hovered}
+        {@const { x, y, metadata } = tooltip_point}
         {@const [cx, cy] = [x_scale(x), y_scale(y)]}
         {@const x_formatted = format_value(x, x_format)}
         {@const y_formatted = format_value(y, y_format)}
         <circle {cx} {cy} r="5" fill="orange" />
-        <!-- {#if hovered} -->
         <foreignObject x={cx + 5} y={cy}>
-          <slot name="tooltip" {x} {y} {cx} {cy} {x_formatted} {y_formatted}>
+          <slot name="tooltip" {x} {y} {cx} {cy} {x_formatted} {y_formatted} {metadata}>
             ({x_formatted}, {y_formatted})
           </slot>
         </foreignObject>
-        <!-- {/if} -->
       {/if}
     </svg>
   {/if}

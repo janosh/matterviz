@@ -5,7 +5,7 @@ import { doc_query } from '.'
 
 describe(`ScatterPlot`, () => {
   // Add container with dimensions to body before each test
-  const container_style = `width: 800px; height: 600px;`
+  const container_style = `width: 800px; height: 600px; position: relative;`
   beforeEach(() => {
     const container = document.createElement(`div`)
     container.setAttribute(`style`, container_style)
