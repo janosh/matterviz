@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.2.7](https://github.com/janosh/elementari/compare/v0.2.6...v0.2.7)
+
+- allow multiple lines/sets of points in ScatterPlot [`37ecf4e`](https://github.com/janosh/elementari/commit/37ecf4e2f0b2b8329971cd09996d648661565222)
+- update all deps to latest and migrate unit tests to svelte v5 [`4a8b352`](https://github.com/janosh/elementari/commit/4a8b352274a1e071faf8f4320364ee7788e4f447)
+
 #### [v0.2.4](https://github.com/janosh/elementari/compare/v0.2.3...v0.2.4)
 
 > 5 February 2025

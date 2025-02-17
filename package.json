@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/elementari",
   "repository": "https://github.com/janosh/elementari",
   "license": "MIT",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/elementari/issues",
