@@ -40,11 +40,11 @@
 
 <style>
   div {
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 1pt 3pt;
-    width: max-content;
-    box-sizing: border-box;
-    border-radius: 3pt;
-    font-size: min(2.3cqw, 12pt);
+    background-color: var(--scatter-tooltip-bg, rgba(0, 0, 0, 0.7));
+    padding: var(--scatter-tooltip-padding, 1pt 3pt);
+    width: var(--scatter-tooltip-width, max-content);
+    box-sizing: var(--scatter-tooltip-box-sizing, border-box);
+    border-radius: var(--scatter-tooltip-radius, 3pt);
+    font-size: var(--scatter-tooltip-font-size, min(2.3cqw, 12pt));
   }
 </style>

@@ -69,16 +69,16 @@
     bottom: var(--struct-legend-bottom, 8pt);
     right: var(--struct-legend-right, 8pt);
     gap: var(--struct-legend-gap, 8pt);
-    font-size: var(--struct-legend-font-size, 14pt);
+    font-size: var(--struct-legend-font, 14pt);
   }
 
   div label {
-    padding: var(--struct-legend-label-padding, 1pt 4pt);
-    border-radius: var(--struct-legend-label-border-radius, 3pt);
+    padding: var(--struct-legend-pad, 1pt 4pt);
+    border-radius: var(--struct-legend-radius, 3pt);
   }
 
   div label input[type='color'] {
-    z-index: 1;
+    z-index: var(--struct-legend-input-z, 1);
     opacity: 0;
     position: absolute;
     width: 100%;
@@ -90,15 +90,15 @@
 
   dialog[role='tooltip'] {
     position: fixed;
-    top: var(--struct-tooltip-top, 50%);
-    left: var(--struct-tooltip-left, 50%);
+    top: var(--struct-dialog-top, 50%);
+    left: var(--struct-dialog-left, 50%);
     transform: translate(-50%, -50%);
     margin: 0;
-    padding: var(--struct-tooltip-padding, 4pt 1em);
-    background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.8));
-    color: var(--struct-tooltip-color, white);
-    border-radius: var(--struct-tooltip-border-radius, 5px);
-    transition: all 0.3s;
+    padding: var(--struct-dialog-pad, 4pt 1em);
+    background: var(--struct-dialog-bg, rgba(0, 0, 0, 0.8));
+    color: var(--struct-dialog-color, white);
+    border-radius: var(--struct-dialog-radius, 5px);
+    transition: var(--struct-dialog-transition, all 0.3s);
     overflow: visible;
   }
 
@@ -123,10 +123,10 @@
   }
 
   dialog[role='tooltip']::backdrop {
-    background: var(--struct-tooltip-backdrop-background, rgba(0, 0, 0, 0.2));
+    background: var(--struct-dialog-backdrop, rgba(0, 0, 0, 0.2));
   }
 
   dialog[role='tooltip'] p {
-    margin: var(--struct-tooltip-p-margin, 0);
+    margin: var(--struct-dialog-text-margin, 0);
   }
 </style>

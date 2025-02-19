@@ -62,29 +62,29 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(12em, 1fr));
     place-content: center;
-    gap: var(--grid-gap, 7pt);
-    max-width: var(--grid-max-width, 70em);
-    margin: 2em auto;
+    gap: var(--color-grid-gap, 7pt);
+    max-width: var(--color-grid-width, 70em);
+    margin: var(--color-grid-margin, 2em auto);
     justify-self: center;
   }
   div.grid > label {
-    padding: var(--label-padding, 1pt 6pt);
+    padding: var(--color-label-pad, 1pt 6pt);
     display: flex;
     align-items: center;
-    gap: var(--label-gap, 4pt);
-    border-radius: 3pt;
+    gap: var(--color-label-gap, 4pt);
+    border-radius: var(--color-label-radius, 3pt);
     text-transform: capitalize;
     font-weight: lighter;
     cursor: pointer;
   }
   div.grid > label:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--color-label-hover-bg, rgba(255, 255, 255, 0.1));
   }
   div.grid > label > input {
-    height: var(--input-color-height, 3em);
-    width: var(--input-color-width, 3em);
-    min-height: var(--input-color-min-height, var(--input-color-height, 3em));
-    min-width: var(--input-color-min-width, var(--input-color-width, 3em));
+    height: var(--color-input-size, 3em);
+    width: var(--color-input-size, 3em);
+    min-height: var(--color-input-min-size, 3em);
+    min-width: var(--color-input-min-size, 3em);
     border: none;
     background-color: transparent;
     cursor: pointer;
@@ -95,23 +95,23 @@
   }
   h2 > button {
     background: none;
-    font-size: 1.2em;
+    font-size: var(--color-title-size, 1.2em);
   }
   label {
-    max-width: 16em;
+    max-width: var(--color-label-width, 16em);
   }
   label > button {
     background: none;
-    color: var(--text-color);
+    color: var(--color-reset-color, var(--text-color));
     opacity: 0;
-    transition: 0.3s;
-    border-radius: 2pt;
+    transition: var(--color-reset-transition, 0.3s);
+    border-radius: var(--color-reset-radius, 2pt);
     margin-left: auto;
   }
   label:hover > button {
-    opacity: 0.8;
+    opacity: var(--color-reset-hover-opacity, 0.8);
   }
   label > button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: var(--color-reset-hover-bg, rgba(255, 255, 255, 0.2));
   }
 </style>
