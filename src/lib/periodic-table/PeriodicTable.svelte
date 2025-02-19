@@ -182,8 +182,10 @@
     grid-template-columns: repeat(18, 1fr);
     position: relative;
     container-type: inline-size;
+    gap: var(--ptable-gap, 0.3cqw);
   }
   div.spacer {
     grid-row: 8;
+    aspect-ratio: var(--ptable-spacer-ratio, 2);
   }
 </style>

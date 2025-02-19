@@ -236,22 +236,23 @@
     width: 100%;
     height: 100%;
     display: flex;
-    min-height: var(--svt-min-height, 100px);
+    min-height: var(--esp-min-height, 100px);
     container-type: inline-size;
-    z-index: 1; /* ensure tooltip renders above ElementTiles */
+    z-index: var(--esp-z-index, 1); /* ensure tooltip renders above ElementTiles */
   }
   svg {
     width: 100%;
-    fill: white;
-    font-weight: lighter;
+    fill: var(--esp-fill, white);
+    font-weight: var(--esp-font-weight, lighter);
     overflow: visible;
-    z-index: 1;
-    font-size: min(2.3cqw, 12pt);
+    z-index: var(--esp-z-index, 1);
+    /* esp=elementari scatter plot */
+    font-size: var(--esp-font-size);
   }
   line {
-    stroke: gray;
-    stroke-dasharray: 4;
-    stroke-width: 0.4;
+    stroke: var(--esp-grid-stroke, gray);
+    stroke-dasharray: var(--esp-grid-dash, 4);
+    stroke-width: var(--esp-grid-width, 0.4);
   }
   g.x-axis text {
     text-anchor: middle;

@@ -77,15 +77,15 @@
 
 <style>
   circle {
-    transition: all 0.2s;
+    transition: var(--scatter-point-transition, all 0.2s);
   }
   .hover_effect circle:hover {
-    transform: scale(var(--hover-scale));
-    stroke: var(--hover-stroke);
-    stroke-width: var(--hover-stroke-width);
+    transform: scale(var(--scatter-point-hover-scale, 1.5));
+    stroke: var(--scatter-point-hover-stroke, white);
+    stroke-width: var(--scatter-point-hover-stroke-width, 2px);
   }
   text {
-    fill: currentColor;
-    pointer-events: none;
+    fill: var(--scatter-point-text-fill, currentColor);
+    pointer-events: var(--scatter-point-text-events, none);
   }
 </style>

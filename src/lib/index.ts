@@ -59,7 +59,7 @@ export type ChemicalElement = {
   specific_heat: number | null
   spectral_img: string | null
   summary: string
-  symbol: string
+  symbol: ElementSymbol
   year: number | string
 }
 

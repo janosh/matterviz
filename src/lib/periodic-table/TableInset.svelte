@@ -12,8 +12,8 @@
   div {
     display: grid;
     box-sizing: border-box;
-    grid-row: 1 / span 3;
-    grid-column: 3 / span 10;
+    grid-row: var(--ptable-inset-row, 1 / span 3);
+    grid-column: var(--ptable-inset-col, 3 / span 10);
     container-type: inline-size;
   }
 </style>

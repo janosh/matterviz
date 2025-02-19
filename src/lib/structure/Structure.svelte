@@ -498,6 +498,11 @@
   .structure.dragover {
     background: var(--struct-dragover-bg, rgba(0, 0, 0, 0.7));
   }
+  .atom-label {
+    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
+    border-radius: var(--struct-atom-label-border-radius, 3pt);
+    padding: var(--struct-atom-label-padding, 0 3px);
+  }
   div.bottom-left {
     position: absolute;
     bottom: 0;
@@ -583,11 +588,6 @@
 
   p.warn {
     text-align: center;
-  }
-  .atom-label {
-    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
-    border-radius: var(--struct-atom-label-border-radius, 3pt);
-    padding: var(--struct-atom-label-padding, 0 3px);
   }
   input[type='color'] {
     width: var(--struct-input-color-width, 40px);

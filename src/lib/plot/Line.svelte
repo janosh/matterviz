@@ -43,3 +43,9 @@
   fill="none"
 />
 <path d={$tweened_area} style:fill={area_color} style:stroke={area_stroke} />
+
+<style>
+  path {
+    transition: var(--line-transition, all 0.2s);
+  }
+</style>
