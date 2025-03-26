@@ -1,41 +1,56 @@
 <script lang="ts">
   import { ScatterPlot, element_data, pretty_num, type Point } from '$lib'
-  import { active_element } from '$lib/stores'
+  import { selected } from '$lib/state.svelte'
 
-  // either array of length 118 (one heat value for each element) or
-  // object with element symbol as key and heat value as value
-  export let y: number[]
-  export let x_label = `Atomic Number`
-  export let y_label: string = ``
-  export let y_unit: string = ``
-  export let tooltip_point: Point | null = null
-  export let hovered: boolean = false
+  interface Props {
+    // either array of length 118 (one heat value for each element) or
+    // object with element symbol as key and heat value as value
+    y: number[]
+    x_label?: string
+    y_label?: string
+    y_unit?: string
+    tooltip_point?: Point | null
+    hovered?: boolean
+    [key: string]: unknown
+  }
+
+  let {
+    y,
+    x_label = `Atomic Number`,
+    y_label = ``,
+    y_unit = ``,
+    tooltip_point = $bindable(null),
+    hovered = $bindable(false),
+    ...rest
+  }: Props = $props()
 
   // update tooltip on hover element tile
-  $: if ($active_element?.number && !hovered) {
-    tooltip_point = {
-      x: $active_element.number,
-      y: y[$active_element.number - 1],
+  $effect.pre(() => {
+    if (selected.element?.number && !hovered) {
+      tooltip_point = {
+        x: selected.element.number,
+        y: y[selected.element.number - 1],
+      }
     }
-  }
+  })
 </script>
 
 <ScatterPlot
-  {y}
-  x={[...Array(y.length + 1).keys()].slice(1)}
+  series={[{ x: [...Array(y.length + 1).keys()].slice(1), y }]}
   bind:tooltip_point
   bind:hovered
   {x_label}
-  on:change
-  {...$$props}
+  {...rest}
 >
-  <div slot="tooltip" let:x let:y>
-    {#if $active_element}
-      <strong>{x} - {element_data[x - 1]?.name}</strong>
-      <br />{y_label} = {pretty_num(y)}
-      {y_unit ?? ``}
-    {/if}
-  </div>
+  {#snippet tooltip({ x, y })}
+    <div>
+      {#if selected.element}
+        <strong>{x} - {element_data[x - 1]?.name}</strong>
+        <br />{y_label} = {pretty_num(y)}
+        {y_unit ?? ``}
+      {/if}
+    </div>
+  {/snippet}
 </ScatterPlot>
 
 <style>

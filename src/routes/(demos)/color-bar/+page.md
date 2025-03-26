@@ -128,7 +128,8 @@ You can make fat and skinny bars:
   links="name"
   lanth_act_tiles={false}
 >
-  <TableInset slot="inset" style="place-items: center; padding: 2em;">
+  {#snippet inset()}
+  <TableInset  style="place-items: center; padding: 2em;">
     <ColorBar
       {color_scale}
       range={heat_range}
@@ -136,9 +137,10 @@ You can make fat and skinny bars:
       tick_labels={5}
       tick_side="bottom"
       --cbar-width="100%"
-      --cbar-height="15pt"
-    />
-  </TableInset>
+        --cbar-height="15pt"
+      />
+    </TableInset>
+  {/snippet}
 </PeriodicTable>
 
 <style>

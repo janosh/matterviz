@@ -2,12 +2,12 @@
   import { fetch_zipped, mp_build_bucket } from '$lib/api'
   import { url_param_store } from 'svelte-zoo'
 
-  export let data
+  let { data = $bindable() } = $props()
 
   const mp_id = url_param_store(`id`, `mp-1`)
-  $: aws_url = `${mp_build_bucket}/summary/${$mp_id}.json.gz`
+  let aws_url = $derived(`${mp_build_bucket}/summary/${$mp_id}.json.gz`)
 
-  const responses: Record<string, unknown> = {}
+  const responses: Record<string, unknown> = $state({})
 </script>
 
 <main>
@@ -16,35 +16,36 @@
     <input
       placeholder="Enter MP material ID"
       bind:value={$mp_id}
-      on:keydown={async (event) => {
+      onkeydown={async (event) => {
         if (event.key === `Enter`) data.summary = await fetch_zipped(aws_url)
       }}
     />
-    <button on:click={async () => (data.summary = await fetch_zipped(aws_url))}>
+    <button onclick={async () => (data.summary = await fetch_zipped(aws_url))}>
       Fetch material
     </button>
   </center>
 
   <h2>Available AWS Open Data Buckets</h2>
   <ol style="columns: 3;">
-    {#each data.buckets as bucket_name}
+    {#each data.buckets as bucket_name (bucket_name)}
       <li>
         <code>{bucket_name}</code>
       </li>
     {/each}
   </ol>
-  {#each data.buckets as bucket_name, idx}
+  {#each data.buckets as bucket_name, idx (bucket_name)}
     <details
-      on:toggle={async () => {
+      ontoggle={async () => {
         let err = true
         let id = 1
         while (err && id < 20) {
           try {
             responses[bucket_name] = await fetch_zipped(
-              `${mp_build_bucket}/${bucket_name}/mp-${id}.json.gz`
+              `${mp_build_bucket}/${bucket_name}/mp-${id}.json.gz`,
             )
             err = false
-          } catch (err) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          } catch (_error) {
             id++
           }
         }
@@ -56,7 +57,7 @@
       <details open>
         <summary><h4>Top-level keys</h4> </summary>
         <ul>
-          {#each Object.entries(responses[bucket_name] ?? {}) as [key, val]}
+          {#each Object.entries(responses[bucket_name] ?? {}) as [key, val] (key)}
             <li><span class="key">{key}</span>: <small>{typeof val}</small></li>
           {/each}
         </ul>
@@ -88,7 +89,7 @@
   ul li small {
     font-weight: lighter;
   }
-  summary :is(h3, h4) {
+  summary :is(:global(h3, h4)) {
     margin: 1ex;
     display: inline-block;
   }

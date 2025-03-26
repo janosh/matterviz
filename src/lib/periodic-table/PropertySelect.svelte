@@ -1,18 +1,30 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
   import { heatmap_labels } from '$lib/labels'
-  import { heatmap_key } from '$lib/stores'
   import Select from 'svelte-multiselect'
 
-  export let value: keyof ChemicalElement | null = null
   const options = Object.keys(heatmap_labels)
-  export let empty: boolean = false
-  export let selected: string[] = empty ? [] : [options[1]]
-  export let minSelect: number = 0
-  export let id: string | null = null
-  export let key: string | null = null
+  interface Props {
+    value?: keyof ChemicalElement | null
+    empty?: boolean
+    selected?: string[]
+    minSelect?: number
+    id?: string | null
+    key?: string | null
+  }
 
-  $: $heatmap_key = key = heatmap_labels[value ?? ``] ?? null
+  let {
+    value = $bindable(null),
+    empty = false,
+    selected = empty ? [] : [options[1]],
+    minSelect = 0,
+    id = null,
+    key = $bindable(),
+  }: Props = $props()
+
+  $effect.pre(() => {
+    selected.heatmap_key = key = heatmap_labels[value ?? ``] ?? null
+  })
 </script>
 
 <Select

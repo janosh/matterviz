@@ -1,22 +1,44 @@
 <script lang="ts">
-  export let protons: number
-  export let neutrons: number
-  export let radius: number = 4
-  export let size: number = 100
-  export let proton_color: string = `cornflowerblue`
-  export let neutron_color: string = `orange`
-  export let stroke: string = ``
-  export let proton_label: string = ` P`
-  export let neutron_label: string = ` N`
-  export let text_color: string = `white`
-  export let symbol: string = ``
+  interface Props {
+    protons: number
+    neutrons: number
+    radius?: number
+    size?: number
+    proton_color?: string
+    neutron_color?: string
+    stroke?: string
+    proton_label?: string
+    neutron_label?: string
+    text_color?: string
+    symbol?: string
+  }
 
-  $: radius = size / 2
-  $: proton_frac = protons / (protons + neutrons)
-  $: neutron_frac = 1 - proton_frac
-  $: proton_circ = Math.PI * radius * proton_frac
-  $: dash_array = `0 ${Math.PI * radius - proton_circ} ${proton_circ}`
-  $: text = { 'dominant-baseline': `middle`, 'text-anchor': `middle`, fill: text_color }
+  let {
+    protons,
+    neutrons,
+    size = 100,
+    radius = $bindable(size / 2),
+    proton_color = `cornflowerblue`,
+    neutron_color = `orange`,
+    stroke = ``,
+    proton_label = ` P`,
+    neutron_label = ` N`,
+    text_color = `white`,
+    symbol = ``,
+  }: Props = $props()
+
+  $effect(() => {
+    radius = size / 2
+  })
+  let proton_frac = $derived(protons / (protons + neutrons))
+  let neutron_frac = $derived(1 - proton_frac)
+  let proton_circ = $derived(Math.PI * radius * proton_frac)
+  let dash_array = $derived(`0 ${Math.PI * radius - proton_circ} ${proton_circ}`)
+  let text = $derived({
+    'dominant-baseline': `middle`,
+    'text-anchor': `middle`,
+    fill: text_color,
+  })
 </script>
 
 <svg width="100%" height="100%" viewBox="0 0 {size} {size}">

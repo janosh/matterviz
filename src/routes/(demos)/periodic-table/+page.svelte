@@ -11,15 +11,17 @@
     element_data,
   } from '$lib'
   import { property_labels } from '$lib/labels'
-  import { active_category, active_element, last_element } from '$lib/stores'
+  import { selected } from '$lib/state.svelte'
   import type { Snapshot } from './$types'
 
-  let window_width: number
-  let color_scale: string
-  let heatmap_key: string | null = null
-  $: heatmap_values = heatmap_key ? element_data.map((el) => el[heatmap_key]) : []
+  let window_width: number = $state(0)
+  let color_scale: string = $state(``)
+  let heatmap_key: string | null = $state(null)
+  let heatmap_values = $derived(
+    heatmap_key ? element_data.map((el) => el[heatmap_key]) : [],
+  )
 
-  $: [y_label, y_unit] = property_labels[heatmap_key] ?? []
+  let [y_label, y_unit] = $derived(property_labels[heatmap_key] ?? [])
 
   export const snapshot: Snapshot = {
     capture: () => ({ color_scale }),
@@ -45,34 +47,37 @@
   {heatmap_values}
   style="margin: 4em auto; max-width: min(85vw, 1400px);"
   bind:color_scale
-  bind:active_element={$active_element}
-  bind:active_category={$active_category}
+  bind:active_element={selected.element}
+  bind:active_category={selected.category}
   links="name"
 >
-  {#if $last_element && window_width > 1100}
-    {@const { shells, name, symbol } = $last_element}
+  {#if selected.element && window_width > 1100}
+    {@const { shells, name, symbol } = selected.element}
     <a href="bohr-atoms" style="position: absolute; top: -240px; transform: scale(0.8)">
       <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
     </a>
   {/if}
   <!-- set max-height to ensure ScatterPlot is never taller than 3 PeriodicTable
   rows so it doesn't stretch the table. assumes PeriodicTable has 18 rows -->
-  <TableInset slot="inset">
-    {#if heatmap_key}
-      <ElementScatter
-        y_lim={[0, null]}
-        y={element_data.map((el) => el[heatmap_key])}
-        {y_label}
-        {y_unit}
-        on:change={(e) => ($active_element = element_data[e.detail.x - 1])}
-        x_label_yshift={42}
-        {color_scale}
-        style="max-height: calc(100cqw / 10 * 3);"
-      />
-    {:else}
-      <ElementStats element={$last_element} />
-    {/if}
-  </TableInset>
+  {#snippet inset()}
+    <TableInset>
+      {#if heatmap_key}
+        <ElementScatter
+          y_lim={[0, null]}
+          y={element_data.map((el) => el[heatmap_key])}
+          {y_label}
+          {y_unit}
+          onchange={(event: CustomEvent) =>
+            (selected.element = element_data[event.detail.x - 1])}
+          x_label_yshift={42}
+          {color_scale}
+          style="max-height: calc(100cqw / 10 * 3);"
+        />
+      {:else}
+        <ElementStats element={selected.element} />
+      {/if}
+    </TableInset>
+  {/snippet}
 </PeriodicTable>
 
 {#if !heatmap_key}

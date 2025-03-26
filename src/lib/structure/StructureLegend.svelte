@@ -2,19 +2,33 @@
   import type { Composition } from '$lib'
   import { choose_bw_for_contrast, element_data } from '$lib'
   import { default_element_colors } from '$lib/colors'
-  import { element_colors } from '$lib/stores'
+  import { colors } from '$lib/state.svelte'
+  import type { Snippet } from 'svelte'
   import { Tooltip } from 'svelte-zoo'
 
-  export let elements: Composition
-  export let elem_color_picker_title: string = `Double click to reset color`
-  export let labels: HTMLLabelElement[] = []
-  export let tips_modal: HTMLDialogElement | undefined = undefined
-  export let style: string | null = null
-  export let dialog_style: string | null = null
+  interface Props {
+    elements: Composition
+    elem_color_picker_title?: string
+    labels?: HTMLLabelElement[]
+    tips_modal?: HTMLDialogElement | undefined
+    style?: string | null
+    dialog_style?: string | null
+    tips_modal_snippet?: Snippet
+  }
+
+  let {
+    elements,
+    elem_color_picker_title = `Double click to reset color`,
+    labels = $bindable([]),
+    tips_modal = $bindable(undefined),
+    style = null,
+    dialog_style = null,
+    tips_modal_snippet,
+  }: Props = $props()
 </script>
 
 <div {style}>
-  {#each Object.entries(elements) as [elem, amt], idx}
+  {#each Object.entries(elements) as [elem, amt], idx (elem + amt)}
     <Tooltip
       text={element_data.find((el) => el.symbol == elem)?.name}
       --zoo-tooltip-bg="rgba(255, 255, 255, 0.3)"
@@ -22,16 +36,17 @@
     >
       <label
         bind:this={labels[idx]}
-        style="background-color: {$element_colors[elem]}"
-        on:dblclick|preventDefault={() => {
-          $element_colors[elem] = default_element_colors[elem]
+        style="background-color: {colors.element[elem]}"
+        ondblclick={(event) => {
+          event.preventDefault()
+          colors.element[elem] = default_element_colors[elem]
         }}
         style:color={choose_bw_for_contrast(labels[idx])}
       >
         {elem}{amt}
         <input
           type="color"
-          bind:value={$element_colors[elem]}
+          bind:value={colors.element[elem]}
           title={elem_color_picker_title}
         />
       </label>
@@ -39,15 +54,13 @@
   {/each}
 </div>
 
-<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 <dialog
   bind:this={tips_modal}
-  on:click={tips_modal?.close}
-  on:keydown={tips_modal?.close}
-  role="tooltip"
+  onclick={() => tips_modal?.close()}
+  onkeydown={() => tips_modal?.close()}
   style={dialog_style}
 >
-  <slot name="tips-modal">
+  {#if tips_modal_snippet}{@render tips_modal_snippet()}{:else}
     <p>Drop a JSON file onto the canvas to load a new structure.</p>
     <p>
       Click on an atom to make it active. Then hover another atom to get its distance to
@@ -59,7 +72,7 @@
     <p>
       Click on an element label in the corner to change its color. Double click to reset.
     </p>
-  </slot>
+  {/if}
 </dialog>
 
 <style>
@@ -88,7 +101,7 @@
     cursor: pointer;
   }
 
-  dialog[role='tooltip'] {
+  dialog {
     position: fixed;
     top: var(--struct-dialog-top, 50%);
     left: var(--struct-dialog-left, 50%);
@@ -103,7 +116,7 @@
   }
 
   /* info icon in top left corner */
-  dialog[role='tooltip']::before {
+  dialog::before {
     content: '?';
     position: absolute;
     top: 0;
@@ -122,11 +135,11 @@
     border: var(--struct-tooltip-before-border, 1px solid white);
   }
 
-  dialog[role='tooltip']::backdrop {
+  dialog::backdrop {
     background: var(--struct-dialog-backdrop, rgba(0, 0, 0, 0.2));
   }
 
-  dialog[role='tooltip'] p {
+  dialog p {
     margin: var(--struct-dialog-text-margin, 0);
   }
 </style>

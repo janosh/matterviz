@@ -1,8 +1,11 @@
 <script lang="ts">
-  import type { ChemicalElement } from './'
+  import type { ChemicalElement } from '$lib'
 
-  export let element: ChemicalElement
-  export let style = ``
+  interface Props {
+    element: ChemicalElement
+    style?: string
+  }
+  let { element, style = `` }: Props = $props()
 </script>
 
 <h2 {style}>

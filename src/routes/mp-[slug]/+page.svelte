@@ -1,15 +1,15 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { page } from '$app/stores'
+  import { page } from '$app/state'
   import { MaterialCard, Structure, StructureCard, pretty_num } from '$lib'
   import { download, fetch_zipped, mp_build_bucket } from '$lib/api'
 
-  export let data
+  let { data = $bindable() } = $props()
 
-  let input_value = `mp-${$page.params.slug}`
-  $: mp_id = input_value.trim().toLowerCase()
-  $: href = `https://materialsproject.org/materials/${mp_id}`
-  $: aws_url = `${mp_build_bucket}/summary/${mp_id}.json.gz`
+  let input_value = $state(`mp-${page.params.slug}`)
+  let mp_id = $derived(input_value.trim().toLowerCase())
+  let href = $derived(`https://materialsproject.org/materials/${mp_id}`)
+  let aws_url = $derived(`${mp_build_bucket}/summary/${mp_id}.json.gz`)
 </script>
 
 <main>
@@ -22,7 +22,7 @@
     <input
       placeholder="Enter MP material ID"
       bind:value={input_value}
-      on:keydown={async (event) => {
+      onkeydown={async (event) => {
         if (event.key === `Enter`) {
           goto(`/${mp_id}`)
           data.summary = await fetch_zipped(aws_url)
@@ -30,7 +30,7 @@
       }}
     />
     <button
-      on:click={async () => {
+      onclick={async () => {
         goto(`/${mp_id}`)
         data.summary = await fetch_zipped(aws_url)
       }}
@@ -41,17 +41,17 @@
       <button>Save material summary</button>
       <div>
         <button
-          on:click={() => {
+          onclick={() => {
             if (!data.summary) return alert(`No data to download`)
             download(
               JSON.stringify(data.summary, null, 2),
               `${mp_id}.json`,
-              `application/json`
+              `application/json`,
             )
           }}>JSON</button
         >
         <button
-          on:click={async () => {
+          onclick={async () => {
             const blob = await fetch_zipped(aws_url, { unzip: false })
             if (!blob) return
             download(blob, `${mp_id}.json.gz`, `application/gzip`)
@@ -63,7 +63,9 @@
   <Structure structure={data.summary.structure} />
 
   <MaterialCard material={data.summary}>
-    <StructureCard structure={data.summary.structure} slot="after-symmetry" />
+    {#snippet after_symmetry()}
+      <StructureCard structure={data.summary.structure} />
+    {/snippet}
   </MaterialCard>
 
   <h3>
@@ -78,7 +80,7 @@
 
   <h2>Similar structures</h2>
   <ol class="similar-structures">
-    {#each data?.similarity?.sim?.slice(0, 6) ?? [] as { task_id, dissimilarity, formula }}
+    {#each data?.similarity?.sim?.slice(0, 6) ?? [] as { task_id, dissimilarity, formula } (task_id + formula + dissimilarity)}
       <li>
         <strong>
           <a href="https://materialsproject.org/tasks/{task_id}">{task_id}</a>

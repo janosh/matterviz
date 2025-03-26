@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { page } from '$app/stores'
+  import { page } from '$app/state'
+  import { Icon } from '$lib'
   import { homepage, name } from '$root/package.json'
-  import Icon from '@iconify/svelte'
 
-  let online: boolean
+  let online: boolean = $state(true)
 </script>
 
 <svelte:head>
-  <title>Error {$page.status} &bull; {name}</title>
+  <title>Error {page.status} &bull; {name}</title>
 </svelte:head>
 
 <svelte:window bind:online />
 
 <div>
-  <h1>Error {String($page.status).replace(`0`, `😵`)}: {$page.error?.message}</h1>
-  {#if $page.status >= 500}
+  <h1>Error {String(page.status).replace(`0`, `😵`)}: {page.error?.message}</h1>
+  {#if page.status >= 500}
     <p>
       If page reloading doesn't help, please raise an issue on
       <a href="{homepage}/issues" target="_blank" rel="noreferrer">GitHub</a>. Thanks! 🙏

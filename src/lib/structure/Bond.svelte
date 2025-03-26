@@ -3,11 +3,21 @@
   import { Instance } from '@threlte/extras'
   import { Euler, Quaternion, Vector3 } from 'three'
 
-  export let from: Vector = [0, 0, 0]
-  export let to: Vector
-  export let offset: number = 0
-  export let radius: number = 0.1
-  export let color: string = `white`
+  interface Props {
+    from?: Vector;
+    to: Vector;
+    offset?: number;
+    radius?: number;
+    color?: string;
+  }
+
+  let {
+    from = [0, 0, 0],
+    to,
+    offset = 0,
+    radius = 0.1,
+    color = `white`
+  }: Props = $props();
 
   const from_vec = new Vector3(...from)
   const to_vec = new Vector3(...to)

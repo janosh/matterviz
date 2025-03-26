@@ -1,11 +1,17 @@
 <script lang="ts">
   import { InfoCard, pretty_num, superscript_digits } from '$lib'
   import type { SummaryDoc } from '$types'
+  import type { Snippet } from 'svelte'
   import SymmetryCard from './SymmetryCard.svelte'
 
-  export let material: SummaryDoc
+  interface Props {
+    material: SummaryDoc
+    after_symmetry?: Snippet
+    [key: string]: unknown
+  }
+  let { material, after_symmetry, ...rest }: Props = $props()
 
-  $: data = [
+  let data = $derived([
     {
       title: `Band Gap`,
       value: material.band_gap,
@@ -27,7 +33,7 @@
     },
     {
       title: `Predicted stable`,
-      value: material?.energy_above_hull ?? 0 > 0 ? `❌ No` : `✅ Yes`,
+      value: (material?.energy_above_hull ?? 0 > 0) ? `❌ No` : `✅ Yes`,
       condition: `energy_above_hull` in material,
     },
     {
@@ -75,33 +81,33 @@
       }`,
       tooltip: `µB: Bohr magneton, f.u.: formula unit`,
     },
-    { title: `Ordering`, value: { NM: `non-magnetic` }[material.ordering] },
+    { title: `Ordering`, value: { NM: `non-magnetic` }[material.ordering] ?? `unknown` },
     {
       title: `Possible oxidation states`,
       value: superscript_digits(material.possible_species?.join(` `) ?? ``),
       condition: material.possible_species?.length,
     },
-  ]
+  ])
 </script>
 
-<InfoCard {data} {...$$restProps} title="Material" />
+<InfoCard {data} {...rest} title="Material" />
 
 <SymmetryCard {material} />
 
-<slot name="after-symmetry" />
+{@render after_symmetry?.()}
 
 <details>
   <summary>Related material IDs</summary>
   {#if material.task_ids?.length}
     <p>
-      Task IDs: {#each material.task_ids as id}
+      Task IDs: {#each material.task_ids as id (id)}
         <a href="https://materialsproject.org/tasks/{id}">{id}</a>
       {/each}
     </p>
   {/if}
   {#if material.database_IDs?.icsd?.length}
     <p>
-      ICSD IDs: {#each material.database_IDs.icsd as id}
+      ICSD IDs: {#each material.database_IDs.icsd as id (id)}
         {@const href = `https://ccdc.cam.ac.uk/structures/Search?Ccdcid=${id}&DatabaseToSearch=ICSD`}
         <a {href}>{id}</a>
       {/each}

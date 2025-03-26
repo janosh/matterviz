@@ -1,14 +1,17 @@
 <script lang="ts">
-  import { page } from '$app/stores'
-  import { demos } from './stores'
+  import { page } from '$app/state'
+  import { demos } from './state.svelte'
 
-  export let routes = $demos
-  export let labels: Record<string, string> = {}
-
-  $: is_current = (path: string) => {
-    if ($page.url.pathname.startsWith(path)) return `page`
-    return undefined
+  interface Props {
+    routes?: string[]
+    labels?: Record<string, string>
   }
+  let { routes = demos.routes, labels = {} }: Props = $props()
+
+  let is_current = $derived((path: string) => {
+    if (page.url.pathname.startsWith(path)) return `page`
+    return undefined
+  })
 </script>
 
 <nav>

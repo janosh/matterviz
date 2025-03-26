@@ -5,23 +5,35 @@
   import { BoxGeometry, Matrix4, Vector3 } from 'three'
   import Bond from './Bond.svelte'
 
-  export let matrix: [Vector, Vector, Vector] | undefined = undefined
-  export let show_cell: `surface` | `wireframe` | null = `wireframe`
-  // thickness of the wireframe lines that indicate the lattice's unit cell
-  // due to limitations of OpenGL with WebGL renderer, on most platforms linewidth will be 1 regardless of set value
-  // see https://threejs.org/docs/#api/en/materials/MeshBasicMaterial.wireframe
-  export let cell_color: string = `white`
-  export let cell_line_width: number = 1
-  // cell opacity
-  export let cell_opacity: number | undefined = show_cell == `surface` ? 0.2 : 0.4
-  // whether to show the lattice vectors
-  export let show_vectors: boolean = true
-  // lattice vector colors
-  export let vector_colors: [string, string, string] = [`red`, `green`, `blue`]
-  // lattice vector origin (all arrows start from this point)
-  export let vector_origin: Vector = [-1, -1, -1]
+  interface Props {
+    matrix?: [Vector, Vector, Vector] | undefined
+    show_cell?: `surface` | `wireframe` | null
+    // see https://threejs.org/docs/#api/en/materials/MeshBasicMaterial.wireframe
+    cell_color?: string
+    // thickness of the wireframe lines that indicate the lattice's unit cell
+    // due to limitations of OpenGL with WebGL renderer, on most platforms linewidth will be 1 regardless of set value
+    cell_line_width?: number
+    // cell opacity
+    cell_opacity?: number | undefined
+    // whether to show the lattice vectors
+    show_vectors?: boolean
+    // lattice vector colors
+    vector_colors?: [string, string, string]
+    // lattice vector origin (all arrows start from this point)
+    vector_origin?: Vector
+  }
+  let {
+    matrix = undefined,
+    show_cell = `wireframe`,
+    cell_color = `white`,
+    cell_line_width = 1,
+    cell_opacity = show_cell == `surface` ? 0.2 : 0.4,
+    show_vectors = true,
+    vector_colors = [`red`, `green`, `blue`],
+    vector_origin = [-1, -1, -1],
+  }: Props = $props()
 
-  $: lattice_center = scale(add(...(matrix ?? [])), 0.5)
+  let lattice_center = $derived(scale(add(...(matrix ?? [])), 0.5))
 </script>
 
 {#if matrix}
@@ -48,7 +60,7 @@
         <InstancedMesh>
           <T.CylinderGeometry args={[0.1, 0.1, 1, 16]} />
           <T.MeshStandardMaterial />
-          {#each matrix as vec, idx}
+          {#each matrix as vec, idx (vec)}
             <Bond to={scale(vec, 0.5)} color={vector_colors[idx]} />
           {/each}
         </InstancedMesh>
@@ -58,7 +70,7 @@
           <T.MeshStandardMaterial />
           <!-- args=[thickness, length, radial segments] -->
           <T.ConeGeometry args={[0.25, 0.12, 32]} />
-          {#each matrix as vec, idx}
+          {#each matrix as vec, idx (vec)}
             <Bond to={vec} color={vector_colors[idx]} />
           {/each}
         </InstancedMesh>

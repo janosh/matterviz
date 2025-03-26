@@ -1,17 +1,28 @@
 <script lang="ts">
   import type { Point } from '$lib'
   import { cubicOut } from 'svelte/easing'
-  import { tweened } from 'svelte/motion'
+  import { Tween } from 'svelte/motion'
   import type { HoverStyle, LabelStyle, PointStyle } from '.'
 
-  export let x: number
-  export let y: number
+  interface Props {
+    x: number
+    y: number
+    style?: PointStyle
+    hover?: HoverStyle
+    label?: LabelStyle
+    offset?: Point[`offset`]
+    tween_duration?: number
+  }
 
-  export let style: PointStyle = {}
-  export let hover: HoverStyle = {}
-  export let label: LabelStyle = {}
-  export let offset: Point[`offset`] = { x: 0, y: 0 }
-  export let tween_duration = 600
+  let {
+    x,
+    y,
+    style = {},
+    hover = {},
+    label = {},
+    offset = { x: 0, y: 0 },
+    tween_duration = 600,
+  }: Props = $props()
 
   const {
     fill = `gray`,
@@ -38,15 +49,17 @@
   } = label
 
   const tween_params = { duration: tween_duration, easing: cubicOut }
-  const tweened_x = tweened(0, tween_params)
-  const tweened_y = tweened(0, tween_params)
+  const tweened_x = new Tween(0, tween_params)
+  const tweened_y = new Tween(0, tween_params)
 
-  $: tweened_x.set(x + offset.x)
-  $: tweened_y.set(y + offset.y)
+  $effect.pre(() => {
+    tweened_x.target = x + offset.x
+    tweened_y.target = y + offset.y
+  })
 </script>
 
 <g
-  transform="translate({$tweened_x} {$tweened_y})"
+  transform="translate({tweened_x.current} {tweened_y.current})"
   class:hover_effect={hover_enabled}
   style:--hover-scale={hover_scale}
   style:--hover-stroke={hover_stroke}

@@ -20,8 +20,8 @@
   import Select from 'svelte-multiselect'
 
   let mp_id = `Bi2Zr2O7-Fm3m`
-  let width
-  let height
+  let width = 0
+  let height = 0
   $: href = `https://materialsproject.org/materials/${mp_id}`
   $: structure = structures.find((struct) => struct.id === mp_id) || {}
 </script>
