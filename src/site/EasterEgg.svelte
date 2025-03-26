@@ -1,11 +1,18 @@
 <script lang="ts">
   import { pretty_num } from '$lib/labels'
 
-  export let x_angle = 0
-  export let y_angle = 0
-  export let auto_rotate: `x` | `y` | `both` | `none` = `none`
+  interface Props {
+    x_angle?: number
+    y_angle?: number
+    auto_rotate?: `x` | `y` | `both` | `none`
+  }
+  let {
+    x_angle = $bindable(0),
+    y_angle = $bindable(0),
+    auto_rotate = $bindable(`none`),
+  }: Props = $props()
 
-  let show_easter_egg = false
+  let show_easter_egg = $state(false)
 </script>
 
 <div class:visible={show_easter_egg}>
@@ -20,14 +27,19 @@
   </label>
   <section>
     Auto rotate
-    {#each [`x`, `y`, `both`, `none`] as value}
+    {#each [`x`, `y`, `both`, `none`] as value (value)}
       {@const checked = value === `none`}
       <label>
         <input type="radio" bind:group={auto_rotate} {value} {checked} />{value}
       </label>
     {/each}
   </section>
-  <button on:click|stopPropagation={() => (show_easter_egg = !show_easter_egg)}>
+  <button
+    onclick={(event) => {
+      event.stopPropagation()
+      show_easter_egg = !show_easter_egg
+    }}
+  >
     close
   </button>
 </div>

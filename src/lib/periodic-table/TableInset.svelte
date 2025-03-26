@@ -1,10 +1,16 @@
 <script lang="ts">
-  export let style: string | null = null
-  export let tag: string = `aside` // styles below don't apply if tag is not aside or div
+  import type { Snippet } from 'svelte'
+
+  interface Props {
+    style?: string | null
+    tag?: string // styles below don't apply if tag is not aside or div
+    children?: Snippet
+  }
+  let { style = null, tag = `aside`, children }: Props = $props()
 </script>
 
 <svelte:element this={tag} {style}>
-  <slot />
+  {@render children?.()}
 </svelte:element>
 
 <style>

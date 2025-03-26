@@ -2,8 +2,11 @@
   import type { ChemicalElement } from '$lib'
   import { ElementHeading, Icon, pretty_num } from '$lib'
 
-  export let element: ChemicalElement | null
-  export let style = ``
+  interface Props {
+    element: ChemicalElement | null
+    style?: string
+  }
+  let { element, style = `` }: Props = $props()
 
   const icon_phase_map = {
     Solid: `mdi:cube-outline`,

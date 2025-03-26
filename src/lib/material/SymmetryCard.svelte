@@ -2,11 +2,14 @@
   import { InfoCard } from '$lib'
   import type { SummaryDoc } from '$types'
 
-  export let title: string = `Symmetry`
+  interface Props {
+    title?: string
+    material: SummaryDoc
+    [key: string]: unknown
+  }
+  let { title = `Symmetry`, material, ...rest }: Props = $props()
 
-  export let material: SummaryDoc
-
-  $: data = [
+  let data = $derived([
     {
       title: `Crystal System`,
       value: `${material.symmetry?.crystal_system}`,
@@ -23,7 +26,7 @@
       title: `Symbol`,
       value: `${material.symmetry?.symbol}`,
     },
-  ]
+  ])
 </script>
 
-<InfoCard {data} {...$$restProps} {title} />
+<InfoCard {data} {...rest} {title} />

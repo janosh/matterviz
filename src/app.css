@@ -170,3 +170,7 @@ table.roomy :is(td, th) {
 tbody tr:nth-child(odd) {
   background: black;
 }
+
+:where(ul.selected > li button, button.remove-all, button) {
+  background-color: transparent !important;
+}

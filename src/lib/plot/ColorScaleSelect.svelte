@@ -4,11 +4,22 @@
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
 
-  export let value: string | null = null
-  export let selected: string[] = [`Viridis`]
-  export let minSelect: number = 0
-  export let placeholder = `Select a color scale`
-  export let cbar_props: ComponentProps<ColorBar> = {}
+  interface Props {
+    value?: string | null
+    selected?: string[]
+    minSelect?: number
+    placeholder?: string
+    cbar_props?: ComponentProps<typeof ColorBar>
+  }
+
+  let {
+    value = $bindable(null),
+    selected = $bindable([`Viridis`]),
+    minSelect = 0,
+    placeholder = `Select a color scale`,
+    cbar_props = {},
+    ...rest
+  }: Props = $props()
 
   const options = Object.keys(d3sc)
     .filter((key) => key.startsWith(`interpolate`))
@@ -23,8 +34,9 @@
   bind:value
   bind:selected
   {placeholder}
-  {...$$restProps}
-  let:option
+  {...rest}
 >
-  <ColorBar label={option} color_scale={option} {...cbar_props} {wrapper_style} />
+  {#snippet children({ option }: { option: string })}
+    <ColorBar label={option} color_scale={option} {...cbar_props} {wrapper_style} />
+  {/snippet}
 </Select>

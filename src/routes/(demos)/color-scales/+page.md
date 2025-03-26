@@ -26,7 +26,8 @@
 </section>
 
 <PeriodicTable {heatmap_values} {log} {color_scale}>
-  <TableInset slot="inset" style="grid-row: 3;" let:active_element>
+  {#snippet inset({ active_element })}
+  <TableInset  style="grid-row: 3;" >
     {#if active_element?.name}
       <strong>
         {active_element?.name}: {pretty_num(mp_elem_counts[active_element?.symbol])}
@@ -35,8 +36,9 @@
           ({pretty_num((mp_elem_counts[active_element?.symbol] / total) * 100)}%)
         {/if}
       </strong>
-    {/if}
-  </TableInset>
+      {/if}
+    </TableInset>
+  {/snippet}
 </PeriodicTable>
 
 <ColorBar range={extent(heatmap_values)} {color_scale} tick_labels={5} style="width: 100%; margin: 2em 1em;" />

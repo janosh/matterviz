@@ -4,59 +4,95 @@
   import { alphabetical_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
-  import { element_colors } from '$lib/stores'
+  import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
-  import type { ComponentProps } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import { Tooltip } from 'svelte-zoo'
   import StructureLegend from './StructureLegend.svelte'
   import StructureScene from './StructureScene.svelte'
 
-  // output of pymatgen.core.Structure.as_dict()
-  export let structure: Atoms | undefined = undefined
+  interface Props {
+    // output of pymatgen.core.Structure.as_dict()
+    structure?: Atoms | undefined
+    // need to set a default atom_radius so it doesn't initialize to 0
+    scene_props?: ComponentProps<typeof StructureScene> // passed to StructureScene
+    lattice_props?: ComponentProps<typeof Lattice> // passed to Lattice
+    // whether to show the controls panel
+    controls_open?: boolean
+    // canvas background color
+    background_color?: string // must be hex code for <input type='color'>
+    // only show the buttons when hovering over the canvas on desktop screens
+    // mobile screens don't have hover, so by default the buttons are always
+    // shown on a canvas of width below 500px
+    reveal_buttons?: boolean | number
+    fullscreen?: boolean
+    wrapper?: HTMLDivElement | undefined
+    // the control panel DOM element
+    controls?: HTMLElement | undefined
+    // the button to toggle the control panel
+    toggle_controls_btn?: HTMLButtonElement | undefined
+    // bindable width of the canvas
+    width?: number
+    // bindable height of the canvas
+    height?: number
+    // export let reset_text: string = `Reset view`
+    color_scheme?: `Jmol` | `Vesta`
+    hovered?: boolean
+    dragover?: boolean
+    allow_file_drop?: boolean
+    tips_modal?: HTMLDialogElement | undefined
+    enable_tips?: boolean
+    save_json_btn_text?: string
+    save_png_btn_text?: string
+    // boolean or map from element symbols to labels
+    // use atom_label snippet to include HTML and event handlers
+    show_site_labels?: boolean | Record<ElementSymbol, string | number>
+    atom_labels_style?: string | null
+    style?: string | null
+    show_image_atoms?: boolean
+    show_full_controls?: boolean
+    tips_icon?: Snippet
+    fullscreen_toggle?: Snippet
+    controls_toggle?: Snippet<[{ controls_open: boolean }]>
+    bottom_left?: Snippet<[Atoms | undefined]>
+  }
 
-  // need to set a default atom_radius so it doesn't initialize to 0
-  export let scene_props: ComponentProps<StructureScene> = { atom_radius: 1 } // passed to StructureScene
-  export let lattice_props: ComponentProps<Lattice> = {} // passed to Lattice
-
-  // whether to show the controls panel
-  export let controls_open: boolean = false
-  // canvas background color
-  export let background_color: string = `#0000ff` // must be hex code for <input type='color'>
-  // only show the buttons when hovering over the canvas on desktop screens
-  // mobile screens don't have hover, so by default the buttons are always
-  // shown on a canvas of width below 500px
-  export let reveal_buttons: boolean | number = 500
-  export let fullscreen: boolean = false
-
-  export let wrapper: HTMLDivElement | undefined = undefined
-  // the control panel DOM element
-  export let controls: HTMLElement | undefined = undefined
-  // the button to toggle the control panel
-  export let toggle_controls_btn: HTMLButtonElement | undefined = undefined
-  // bindable width of the canvas
-  export let width: number = 0
-  // bindable height of the canvas
-  export let height: number = 0
-  // export let reset_text: string = `Reset view`
-  export let color_scheme: `Jmol` | `Vesta` = `Vesta`
-  export let hovered: boolean = false
-  export let dragover: boolean = false
-  export let allow_file_drop: boolean = true
-  export let tips_modal: HTMLDialogElement | undefined = undefined
-  export let enable_tips: boolean = true
-  export let save_json_btn_text: string = `⬇ Save as JSON`
-  export let save_png_btn_text: string = `✎ Save as PNG`
-  // boolean or map from element symbols to labels
-  // use slot='atom-label' to include HTML and event handlers
-  export let show_site_labels: boolean | Record<ElementSymbol, string | number> =
-    (structure?.sites?.length ?? 0) < 20
-  export let atom_labels_style: string | null = null
-  export let style: string | null = null
-  export let show_image_atoms: boolean = true
-  export let show_full_controls: boolean = false
+  let {
+    structure = $bindable(undefined),
+    scene_props = $bindable({ atom_radius: 1 }),
+    lattice_props = $bindable({}),
+    controls_open = $bindable(false),
+    background_color = $bindable(`#0000ff`),
+    reveal_buttons = 500,
+    fullscreen = false,
+    wrapper = $bindable(undefined),
+    controls = $bindable(undefined),
+    toggle_controls_btn = $bindable(undefined),
+    width = $bindable(0),
+    height = $bindable(0),
+    color_scheme = $bindable(`Vesta`),
+    hovered = $bindable(false),
+    dragover = $bindable(false),
+    allow_file_drop = true,
+    tips_modal = $bindable(undefined),
+    enable_tips = true,
+    save_json_btn_text = `⬇ Save as JSON`,
+    save_png_btn_text = `✎ Save as PNG`,
+    show_site_labels = $bindable((structure?.sites?.length ?? 0) < 20),
+    atom_labels_style = null,
+    style = null,
+    show_image_atoms = $bindable(true),
+    show_full_controls = $bindable(false),
+    tips_icon,
+    fullscreen_toggle,
+    controls_toggle,
+    bottom_left,
+  }: Props = $props()
 
   // interactivity()
-  $: $element_colors = element_color_schemes[color_scheme]
+  $effect.pre(() => {
+    colors.element = element_color_schemes[color_scheme]
+  })
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === `Escape`) {
@@ -65,16 +101,17 @@
   }
 
   const on_window_click =
-    (node: (HTMLElement | null)[], cb: () => void) => (event: MouseEvent) => {
+    (node: (HTMLElement | undefined | null)[], cb: () => void) => (event: MouseEvent) => {
       if (!node || !event.target) return // ignore invalid input
       // ignore clicks inside any of the nodes
       if (node && node.some((n) => n?.contains(event.target as Node))) return
       cb() // invoke callback
     }
 
-  $: visible_buttons =
+  let visible_buttons = $derived(
     reveal_buttons == true ||
-    (typeof reveal_buttons == `number` && reveal_buttons < width)
+      (typeof reveal_buttons == `number` && reveal_buttons < width),
+  )
 
   function download_json() {
     if (!structure) alert(`No structure to download`)
@@ -86,14 +123,20 @@
   }
 
   function on_file_drop(event: DragEvent) {
+    event.preventDefault()
     // TODO support dragging CIF/XYZ files
     dragover = false
     if (!allow_file_drop) return
     const file = event.dataTransfer?.items[0].getAsFile()
+    if (!file) return
+
     const reader = new FileReader()
     reader.onloadend = (event: ProgressEvent<FileReader>) => {
       try {
-        structure = JSON.parse(event.target.result)
+        const result = event.target?.result
+        if (result && typeof result === `string`) {
+          structure = JSON.parse(result)
+        }
       } catch (error) {
         console.error(`Invalid JSON file`, error)
       }
@@ -104,7 +147,9 @@
   function download_png() {
     const canvas = wrapper?.querySelector(`canvas`)
     canvas?.toBlob((blob) => {
-      download(blob, `scene.png`, `image/png`)
+      if (blob) {
+        download(blob, `scene.png`, `image/png`)
+      }
     })
   }
 
@@ -116,21 +161,23 @@
     }
   }
   // set --struct-bg to background_color
-  $: if (browser) {
-    document.documentElement.style.setProperty(`--struct-bg`, `${background_color}20`)
+  $effect(() => {
+    if (browser) {
+      document.documentElement.style.setProperty(`--struct-bg`, `${background_color}20`)
 
-    // react to changes in the 'fullscreen' property
-    if (fullscreen && !document.fullscreenElement && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else if (!fullscreen && document.fullscreenElement) {
-      document.exitFullscreen()
+      // react to changes in the 'fullscreen' property
+      if (fullscreen && !document.fullscreenElement && wrapper) {
+        wrapper.requestFullscreen().catch(console.error)
+      } else if (!fullscreen && document.fullscreenElement) {
+        document.exitFullscreen()
+      }
     }
-  }
+  })
 </script>
 
 <svelte:window
-  on:keydown={on_keydown}
-  on:click={on_window_click([controls, toggle_controls_btn], () => {
+  onkeydown={on_keydown}
+  onclick={on_window_click([controls, toggle_controls_btn], () => {
     if (controls_open) controls_open = false
   })}
 />
@@ -144,41 +191,47 @@
     bind:this={wrapper}
     bind:clientWidth={width}
     bind:clientHeight={height}
-    on:mouseenter={() => (hovered = true)}
-    on:mouseleave={() => (hovered = false)}
-    on:drop|preventDefault={on_file_drop}
-    on:dragover|preventDefault={() => allow_file_drop && (dragover = true)}
-    on:dragleave|preventDefault={() => allow_file_drop && (dragover = false)}
+    onmouseenter={() => (hovered = true)}
+    onmouseleave={() => (hovered = false)}
+    ondrop={on_file_drop}
+    ondragover={(event) => {
+      event.preventDefault()
+      if (allow_file_drop) dragover = true
+    }}
+    ondragleave={(event) => {
+      event.preventDefault()
+      if (allow_file_drop) dragover = false
+    }}
   >
     <section class:visible={visible_buttons}>
       <!-- TODO show only when camera was moved -->
       <!-- <button
         class="reset-camera"
-        on:click={() => {
+        onclick={() => {
           // TODO implement reset view and controls
         }}>{reset_text}</button
       > -->
       {#if enable_tips}
-        <button class="info-icon" on:click={() => tips_modal?.showModal()}>
-          <slot name="tips-icon">&#9432;</slot>
+        <button class="info-icon" onclick={() => tips_modal?.showModal()}>
+          {#if tips_icon}{@render tips_icon()}{:else}&#9432;{/if}
         </button>
       {/if}
       <button
-        on:click={toggle_fullscreen}
+        onclick={toggle_fullscreen}
         class="fullscreen-toggle"
         title="Toggle fullscreen"
       >
-        <slot name="fullscreen-toggle">⛶</slot>
+        {#if fullscreen_toggle}{@render fullscreen_toggle()}{:else}⛶{/if}
       </button>
 
       <button
-        on:click={() => (controls_open = !controls_open)}
+        onclick={() => (controls_open = !controls_open)}
         bind:this={toggle_controls_btn}
         class="controls-toggle"
       >
-        <slot name="controls-toggle" {controls_open}>
+        {#if controls_toggle}{@render controls_toggle({ controls_open })}{:else}
           {controls_open ? `Close` : `Controls`}
-        </slot>
+        {/if}
       </button>
     </section>
 
@@ -435,40 +488,41 @@
       <label>
         Color scheme
         <select bind:value={color_scheme}>
-          {#each Object.keys(element_color_schemes) as key}
+          {#each Object.keys(element_color_schemes) as key (key)}
             <option value={key}>{key}</option>
           {/each}
         </select>
       </label>
       <span style="display: flex; gap: 4pt; margin: 3pt 0 0;">
-        <button type="button" on:click={download_json} title={save_json_btn_text}>
+        <button type="button" onclick={download_json} title={save_json_btn_text}>
           {save_json_btn_text}
         </button>
-        <button type="button" on:click={download_png} title={save_png_btn_text}>
+        <button type="button" onclick={download_png} title={save_png_btn_text}>
           {save_png_btn_text}
         </button>
       </span>
     </dialog>
 
-    <Canvas rendererParameters={{ preserveDrawingBuffer: true }}>
+    <Canvas>
       <StructureScene
         structure={show_image_atoms ? get_pbc_image_sites(structure) : structure}
         {...scene_props}
         {lattice_props}
       >
-        <slot slot="atom-label" name="atom-label" let:elem>
-          <!-- let:elem needed to fix false positive eslint no-undef -->
-          {#if show_site_labels}
+        {#snippet atom_label({ elem })}
+          {#if atom_label}
+            {@render atom_label({ elem })}
+          {:else if show_site_labels}
             <span class="atom-label" style={atom_labels_style}>
               {show_site_labels === true ? elem : show_site_labels[elem]}
             </span>
           {/if}
-        </slot>
+        {/snippet}
       </StructureScene>
     </Canvas>
 
     <div class="bottom-left">
-      <slot name="bottom-left" {structure} />
+      {@render bottom_left?.({ structure })}
     </div>
   </div>
 {:else if structure}

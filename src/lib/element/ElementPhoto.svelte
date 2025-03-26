@@ -1,23 +1,28 @@
 <script lang="ts">
   import { Icon, type ChemicalElement } from '$lib'
 
-  export let element: ChemicalElement
-  // style applies to both img and missing_msg div
-  export let style: string | null = null
-  export let missing_msg = `No image for `
+  interface Props {
+    element: ChemicalElement
+    // style applies to both img and missing_msg div
+    style?: string | null
+    missing_msg?: string
+  }
+  let { element, style = null, missing_msg = `No image for ` }: Props = $props()
 
-  $: ({ name, number } = element ?? {})
+  let { name, number } = $derived(element ?? {})
 
-  $: file = `elements/${number}-${name?.toLowerCase()}.avif`
-  let hidden = false
-  $: file, (hidden = false) // reset hidden to false when src changes
+  let file = $derived(`elements/${number}-${name?.toLowerCase()}.avif`)
+  let hidden = $state(false)
+  $effect.pre(() => {
+    if (file) hidden = false
+  }) // reset hidden to false when file changes
 </script>
 
 {#if name && number}
   <img
     src="https://github.com/janosh/elementari/raw/main/static/{file}"
     alt={name}
-    on:error={() => (hidden = true)}
+    onerror={() => (hidden = true)}
     {style}
     {hidden}
   />

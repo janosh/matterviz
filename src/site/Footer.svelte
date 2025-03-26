@@ -1,8 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
-  import { show_icons } from '$lib/stores'
   import { repository } from '$root/package.json'
-  import { Toggle } from 'svelte-zoo'
 </script>
 
 <footer>
@@ -21,9 +19,6 @@
   <a href="/contributing">
     <Icon icon="octicon:repo-forked" />Contributing
   </a>
-  <p class="toggle-icons">
-    <Toggle bind:checked={$show_icons} style="transform: scale(0.8);" />Icons
-  </p>
   <small>
     Built with Svelte by
     <a href="https://github.com/janosh">Janosh</a>
@@ -35,13 +30,5 @@
   footer {
     margin: 6em 0 2em;
     text-align: center;
-  }
-  p.toggle-icons {
-    display: flex;
-    place-content: center;
-    place-items: center;
-    gap: 3pt;
-    position: relative;
-    z-index: -1;
   }
 </style>

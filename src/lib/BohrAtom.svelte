@@ -1,58 +1,75 @@
 <script lang="ts">
-  // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
-  export let symbol: string = `` // usually H, He, etc. but can be anything
-  export let name: string = `` // usually Hydrogen, Helium, etc. but can be anything
-  export let shells: number[] // e.g. [2, 8, 6] for sulfur
-  export let adapt_size = false
-  export let shell_width = 20 // TODO SVG is fixed so increasing this will make large atoms overflow
-  export let size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270
-  export let base_fill = `white`
-  export let orbital_period = 3 // time for inner-most electron orbit in seconds, 0 for no motion
-  // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
-  export let nucleus_props: Record<string, string | number> = {}
-  export let shell_props: Record<string, string | number> = {}
-  export let electron_props: Record<string, string | number> = {}
-  export let highlight_shell: number | null = null
-  export let style = ``
-  // if function, it'll be called with electron index and should return a string
-  export let number_electrons:
-    | boolean
-    | `hierarchical`
-    | `sequential`
-    | ((idx: number) => string) = false
-  export let electron_label_props: Record<string, string | number> = {}
+  interface Props {
+    // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
+    symbol?: string // usually H, He, etc. but can be anything
+    name?: string // usually Hydrogen, Helium, etc. but can be anything
+    shells: number[]
+    adapt_size?: boolean
+    shell_width?: number // TODO SVG is fixed so increasing this will make large atoms overflow
+    size?: number
+    base_fill?: string
+    orbital_period?: number // time for inner-most electron orbit in seconds, 0 for no motion
+    // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
+    nucleus_props?: Record<string, string | number>
+    shell_props?: Record<string, string | number>
+    electron_props?: Record<string, string | number>
+    highlight_shell?: number | null
+    style?: string
+    // if function, it'll be called with electron index and should return a string
+    number_electrons?: boolean | `hierarchical` | `sequential` | ((idx: number) => string)
+    electron_label_props?: Record<string, string | number>
+    [key: string]: unknown
+  }
+
+  let {
+    symbol = ``,
+    name = ``,
+    shells,
+    adapt_size = false,
+    shell_width = 20,
+    size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270,
+    base_fill = `white`,
+    orbital_period = 3,
+    nucleus_props = {},
+    shell_props = {},
+    electron_props = {},
+    highlight_shell = null,
+    style = ``,
+    number_electrons = false,
+    electron_label_props = {},
+    ...rest
+  }: Props = $props()
 
   // Bohr atom electron orbital period is given by
   // T = (n^3 h^3) / (4pi^2 m K e^4 Z^2) = 1.52 * 10^-16 * n^3 / Z^2 s
   // with n the shell number, Z the atomic number, m the mass of the electron
-  $: _nucleus_props = {
+  let _nucleus_props = $derived({
     r: 20,
     fill: `white`,
     'fill-opacity': `0.3`,
     ...nucleus_props,
-  }
-  $: _shell_props = {
+  })
+  let _shell_props = $derived({
     stroke: `white`,
     'stroke-width': 1,
     fill: `none`,
     ...shell_props,
-  }
-  $: _electron_props = {
+  })
+  let _electron_props = $derived({
     r: 3,
     stroke: `white`,
     'stroke-width': 1,
     fill: `blue`,
     ...electron_props,
-  }
+  })
 </script>
 
 <svg
   fill={base_fill}
   viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
-  on:click
-  on:keyup
   role="presentation"
   {style}
+  {...rest}
 >
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
@@ -65,7 +82,7 @@
   {/if}
 
   <!-- electron orbitals -->
-  {#each shells as electrons, shell_idx}
+  {#each shells as electrons, shell_idx (`${electrons}-${shell_idx}`)}
     {@const n = shell_idx + 1}
     {@const shell_radius = _nucleus_props.r + n * shell_width}
     {@const active = n === highlight_shell}
@@ -78,7 +95,7 @@
       />
 
       <!-- electrons -->
-      {#each Array(electrons) as _, elec_idx}
+      {#each Array(electrons) as _, elec_idx (elec_idx)}
         {@const elec_x = Math.cos((2 * Math.PI * elec_idx) / electrons) * shell_radius}
         {@const elec_y = Math.sin((2 * Math.PI * elec_idx) / electrons) * shell_radius}
         <circle class="electron" cx={elec_x} cy={elec_y} {..._electron_props}>

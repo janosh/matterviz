@@ -1,34 +1,49 @@
 <script lang="ts">
   import { pretty_num } from '$lib'
   import type { PropertyOrigin } from '$types'
+  import type { Snippet } from 'svelte'
 
-  export let data: {
-    title: string
-    value?: string | number | number[] | null | PropertyOrigin
-    unit?: string
+  interface Props {
+    data?: {
+      title: string
+      value?: string | number | number[] | null | PropertyOrigin
+      unit?: string
+      fmt?: string
+      condition?: boolean | number | null
+      tooltip?: string
+    }[]
+    title?: string
+    fallback?: string
     fmt?: string
-    condition?: boolean | number | null
-    tooltip?: string
-  }[] = []
-  export let title: string = ``
-  export let fallback: string = ``
-  export let fmt: string = `.2f`
-  export let as: string = `section`
-  export let style: string | null = null
+    as?: string
+    style?: string | null
+    title_snippet?: Snippet
+    fallback_snippet?: Snippet
+  }
+  let {
+    data = [],
+    title = ``,
+    fallback = ``,
+    fmt = `.2f`,
+    as = `section`,
+    style = null,
+    title_snippet,
+    fallback_snippet,
+  }: Props = $props()
 
   // rename fmt as default_fmt internally
-  $: default_fmt = fmt
+  let default_fmt = $derived(fmt)
 </script>
 
 <svelte:element this={as} class="info-card" {style}>
-  {#if title || $$slots.title}
+  {#if title || title_snippet}
     <h2>
-      <slot name="title">
+      {#if title_snippet}{@render title_snippet()}{:else}
         {@html title}
-      </slot>
+      {/if}
     </h2>
   {/if}
-  {#each data.filter((itm) => (!(`condition` in itm) || itm?.condition) && ![undefined, null].includes(itm.value)) as { title, value, unit, fmt = default_fmt, tooltip }}
+  {#each data.filter((itm) => (!(`condition` in itm) || itm?.condition) && ![undefined, null].includes(itm.value)) as { title, value, unit, fmt = default_fmt, tooltip } (title + value + unit + fmt)}
     <div>
       <span class="title" {title}>
         {@html title}
@@ -41,9 +56,9 @@
       </strong>
     </div>
   {:else}
-    <slot name="fallback">
+    {#if fallback_snippet}{@render fallback_snippet()}{:else}
       {fallback}
-    </slot>
+    {/if}
   {/each}
 </svelte:element>
 

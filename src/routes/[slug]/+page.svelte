@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores'
+  import { page } from '$app/state'
   import type { ChemicalElement } from '$lib'
   import {
     BohrAtom,
@@ -14,36 +14,42 @@
     element_data,
   } from '$lib'
   import { pretty_num, property_labels } from '$lib/labels'
-  import { active_element, heatmap_key } from '$lib/stores'
+  import { selected } from '$lib/state.svelte'
   import { PrevNext } from 'svelte-zoo'
 
-  export let data
-  $: ({ element } = data)
-  $: $active_element = element
+  let { data } = $props()
+  let { element } = $derived(data)
+  $effect(() => {
+    selected.element = element
+  })
 
-  $: key_vals = Object.keys(property_labels)
-    .filter((key) => element[key])
-    .map((key) => {
-      const [label, unit] = property_labels[key]
-      let value = element[key as keyof ChemicalElement]
-      if (typeof value === `number`) {
-        value = pretty_num(value)
-      }
-      if (Array.isArray(value)) value = value.join(`, `)
-      if (unit) {
-        value = `${value} &thinsp;${unit}`
-      }
-      return [label, value]
-    })
+  let key_vals = $derived(
+    Object.keys(property_labels)
+      .filter((key) => element[key])
+      .map((key) => {
+        const [label, unit] = property_labels[key]
+        let value = element[key as keyof ChemicalElement]
+        if (typeof value === `number`) {
+          value = pretty_num(value)
+        }
+        if (Array.isArray(value)) value = value.join(`, `)
+        if (unit) {
+          value = `${value} &thinsp;${unit}`
+        }
+        return [label, value]
+      }),
+  )
 
   // set atomic radius as default heatmap_key
-  $: if (!$heatmap_key) $heatmap_key = `atomic_radius`
+  $effect.pre(() => {
+    if (!selected.heatmap_key) selected.heatmap_key = `atomic_radius`
+  })
 
-  $: head_title = `${element.name} &bull; Periodic Table`
+  let head_title = $derived(`${element.name} &bull; Periodic Table`)
 
-  let orbiting = true
-  let window_width: number
-  let active_shell: number | null = null
+  let orbiting = $state(true)
+  let window_width: number = $state(0)
+  let active_shell: number | null = $state(null)
 
   const icon_property_map = {
     'Atomic Mass': `mdi:weight`,
@@ -63,11 +69,13 @@
     Electronegativity: `mdi:electron-framework`,
   }
 
-  $: scatter_plot_values = element_data.map((el) =>
-    $heatmap_key ? el[$heatmap_key] : null,
+  let scatter_plot_values = $derived(
+    element_data.map((el) => (selected.heatmap_key ? el[selected.heatmap_key] : null)),
   )
-  $: [y_label, y_unit] = $heatmap_key ? (property_labels[$heatmap_key] ?? []) : []
-  let color_scale: string = `Viridis`
+  let [y_label, y_unit] = $derived(
+    selected.heatmap_key ? (property_labels[selected.heatmap_key] ?? []) : [],
+  )
+  let color_scale: string = $state(`Viridis`)
 
   export const snapshot = {
     capture: () => ({ color_scale }),
@@ -102,19 +110,16 @@
     <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} minSelect={1} />
   </form>
   <section class="viz">
-    <ElementPhoto
-      element={$active_element}
-      missing_msg={window_width < 900 ? `` : `No image for`}
-    />
+    <ElementPhoto {element} missing_msg={window_width < 900 ? `` : `No image for`} />
 
-    <!-- on:mouseleave makes ElementScatter always show current element unless user actively hovers another element -->
+    <!-- onmouseleave makes ElementScatter always show current element unless user actively hovers another element -->
     <ElementScatter
       y={scatter_plot_values}
       {y_label}
       {y_unit}
       {color_scale}
       y_lim={[0, null]}
-      on:mouseleave={() => ($active_element = element)}
+      onmouseleave={() => (selected.element = element)}
       style="min-height: min(50vmin, 400px);"
     />
   </section>
@@ -128,7 +133,7 @@
       disabled={true}
       style="width: 100%;  max-width: 350px;"
       links="name"
-      active_element={$active_element}
+      active_element={element}
     />
 
     <table>
@@ -141,14 +146,14 @@
       </thead>
 
       <tbody>
-        {#each element.shells as shell_occu, shell_idx}
+        {#each element.shells as shell_occu, shell_idx (shell_occu + shell_idx)}
           {@const shell_orbitals = element.electron_configuration
             .split(` `)
             .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
             .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
           <tr
-            on:mouseenter={() => (active_shell = shell_idx + 1)}
-            on:mouseleave={() => (active_shell = null)}
+            onmouseenter={() => (active_shell = shell_idx + 1)}
+            onmouseleave={() => (active_shell = null)}
           >
             <td>{shell_idx + 1}</td>
             <td>{shell_occu}</td>
@@ -165,13 +170,13 @@
       adapt_size={true}
       orbital_period={orbiting ? 3 : 0}
       highlight_shell={active_shell}
-      on:click={() => (orbiting = !orbiting)}
+      onclick={() => (orbiting = !orbiting)}
       style="max-width: 300px;"
     />
   </section>
 
   <section class="properties">
-    {#each key_vals as [label, value], idx}
+    {#each key_vals as [label, value], idx (label + value)}
       <!-- skip last item if index is uneven to avoid single dangling item on last row -->
       {#if idx % 2 === 1 || idx < key_vals.length - 1}
         <div>
@@ -187,21 +192,21 @@
 
   <PrevNext
     items={element_data.map((elem) => [elem.name.toLowerCase(), elem])}
-    current={$page.url.pathname.slice(1)}
-    let:item
-    let:kind
+    current={page.url.pathname.slice(1)}
   >
-    <a href={item.name.toLowerCase()} style="display: flex; flex-direction: column;">
-      <h3>
-        {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
-      </h3>
-      <ElementPhoto element={item} style="width: 200px; border-radius: 4pt;" />
-      <ElementTile
-        element={item}
-        style="width: 70px; position: absolute; bottom: 0;"
-        --elem-tile-hover-border="1px solid transparent"
-      />
-    </a>
+    {#snippet children({ item, kind })}
+      <a href={item.name.toLowerCase()} style="display: flex; flex-direction: column;">
+        <h3>
+          {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
+        </h3>
+        <ElementPhoto element={item} style="width: 200px; border-radius: 4pt;" />
+        <ElementTile
+          element={item}
+          style="width: 70px; position: absolute; bottom: 0;"
+          --elem-tile-hover-border="1px solid transparent"
+        />
+      </a>
+    {/snippet}
   </PrevNext>
 </main>
 

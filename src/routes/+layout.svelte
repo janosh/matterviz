@@ -1,19 +1,25 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { page } from '$app/stores'
+  import { page } from '$app/state'
   import { element_data } from '$lib'
   import { repository } from '$root/package.json'
   import { DemoNav, Footer } from '$site'
-  import { demos } from '$site/stores'
+  import { demos } from '$site/state.svelte'
+  import type { Snippet } from 'svelte'
   import { CmdPalette } from 'svelte-multiselect'
   import { CopyButton, GitHubCorner } from 'svelte-zoo'
   import '../app.css'
+
+  interface Props {
+    children?: Snippet
+  }
+  let { children }: Props = $props()
 
   const routes = Object.keys(import.meta.glob(`./**/+page.{svx,svelte,md}`)).map(
     (filename) => {
       const parts = filename.split(`/`).filter((part) => !part.startsWith(`(`)) // remove hidden route segments
       return { route: `/${parts.slice(1, -1).join(`/`)}`, filename }
-    }
+    },
   )
   let mp_id = `/mp-1234`
 
@@ -21,7 +27,7 @@
     console.error(`Too few demo routes found: ${routes.length}`)
   }
 
-  $demos = [
+  demos.routes = [
     ...routes
       .filter(({ filename }) => filename.includes(`/(demos)/`))
       .map(({ route }) => route),
@@ -42,11 +48,11 @@
 
 <DemoNav labels={{ [mp_id]: `/mp-details-pages` }} />
 
-{#if !$page.error && $page.url.pathname !== `/`}
+{#if !page.error && page.url.pathname !== `/`}
   <a href="." aria-label="Back to index page">&laquo; home</a>
 {/if}
 
-<slot />
+{@render children?.()}
 
 <Footer />
 

@@ -5,36 +5,70 @@
   import { format } from 'd3-format'
   import { scaleLinear } from 'd3-scale'
   import { timeFormat } from 'd3-time-format'
-  import { createEventDispatcher } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type { DataSeries } from '.'
   import ScatterPoint from './ScatterPoint.svelte'
 
-  export let series: DataSeries[] = []
-  export let style = ``
-  export let x_lim: [number | null, number | null] = [null, null]
-  export let y_lim: [number | null, number | null] = [null, null]
-  export let pad_top = 5
-  export let pad_bottom = 30
-  export let pad_left = 50
-  export let pad_right = 20
-  export let x_label: string = ``
-  export let x_label_yshift = 0
-  export let y_label: string = ``
-  export let y_unit = ``
-  export let tooltip_point: Point | null = null
-  export let hovered = false
-  export let markers: `line` | `points` | `line+points` = `line+points`
-  export let x_format: string = ``
-  export let y_format: string = ``
+  type TooltipProps = {
+    x: number
+    y: number
+    cx: number
+    cy: number
+    x_formatted: string
+    y_formatted: string
+    metadata?: Record<string, unknown>
+  }
+  interface Props {
+    series?: DataSeries[]
+    style?: string
+    x_lim?: [number | null, number | null]
+    y_lim?: [number | null, number | null]
+    pad_top?: number
+    pad_bottom?: number
+    pad_left?: number
+    pad_right?: number
+    x_label?: string
+    x_label_yshift?: number
+    y_label?: string
+    y_unit?: string
+    tooltip_point?: Point | null
+    hovered?: boolean
+    markers?: `line` | `points` | `line+points`
+    x_format?: string
+    y_format?: string
+    tooltip?: Snippet<[TooltipProps]>
+    change?: (data: Point & { series: DataSeries }) => void
+  }
 
-  const dispatcher = createEventDispatcher()
+  let {
+    series = [],
+    style = ``,
+    x_lim = [null, null],
+    y_lim = [null, null],
+    pad_top = 5,
+    pad_bottom = 30,
+    pad_left = 50,
+    pad_right = 20,
+    x_label = ``,
+    x_label_yshift = 0,
+    y_label = ``,
+    y_unit = ``,
+    tooltip_point = $bindable(null),
+    hovered = $bindable(false),
+    markers = `line+points`,
+    x_format = ``,
+    y_format = ``,
+    tooltip,
+    change = () => {},
+  }: Props = $props()
+
   const axis_label_offset = { x: 15, y: 20 } // pixels
-  let width: number
-  let height: number
+  let width: number = $state(0)
+  let height: number = $state(0)
 
   // Create raw data points and determine ranges for all series
-  $: all_points = series.flatMap(({ x: xs, y: ys }) =>
-    xs.map((x, idx) => ({ x, y: ys[idx] })),
+  let all_points = $derived(
+    series.flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
 
   function get_data_range_with_fallback(
@@ -47,41 +81,51 @@
     return [min ?? min_ext ?? 0, max ?? max_ext ?? 1]
   }
 
-  $: x_range = get_data_range_with_fallback(all_points, (point) => point.x, x_lim)
+  let x_range = $derived(
+    get_data_range_with_fallback(all_points, (point) => point.x, x_lim),
+  )
 
-  $: y_range = get_data_range_with_fallback(all_points, (point) => point.y, y_lim)
+  let y_range = $derived(
+    get_data_range_with_fallback(all_points, (point) => point.y, y_lim),
+  )
 
   // Filter out points outside x_lim and y_lim for each series
-  $: filtered_series = series.map((data_series) => {
-    const { x: xs, y: ys, ...rest } = data_series
-    const points: Point[] = xs.map((x, idx) => ({ x, y: ys[idx], ...rest }))
+  let filtered_series = $derived(
+    series.map((data_series) => {
+      const { x: xs, y: ys, ...rest } = data_series
+      const points: Point[] = xs.map((x, idx) => ({ x, y: ys[idx], ...rest }))
 
-    return {
-      ...data_series,
-      filtered_data: points.filter((pt) => {
-        const [x_min, x_max] = x_range
-        const [y_min, y_max] = y_range
-        return (
-          pt.x >= x_min &&
-          pt.x <= x_max &&
-          pt.y >= y_min &&
-          pt.y <= y_max &&
-          !isNaN(pt.x) &&
-          !isNaN(pt.y) &&
-          pt.x !== null &&
-          pt.y !== null
-        )
-      }),
-    }
-  })
+      return {
+        ...data_series,
+        filtered_data: points.filter((pt) => {
+          const [x_min, x_max] = x_range
+          const [y_min, y_max] = y_range
+          return (
+            pt.x >= x_min &&
+            pt.x <= x_max &&
+            pt.y >= y_min &&
+            pt.y <= y_max &&
+            !isNaN(pt.x) &&
+            !isNaN(pt.y) &&
+            pt.x !== null &&
+            pt.y !== null
+          )
+        }),
+      }
+    }),
+  )
 
-  $: x_scale = scaleLinear()
-    .domain(x_range)
-    .range([pad_left, width - pad_right])
+  let x_scale = $derived(
+    scaleLinear()
+      .domain(x_range)
+      .range([pad_left, width - pad_right]),
+  )
 
-  $: y_scale = scaleLinear()
-    .domain(y_range)
-    .range([height - pad_bottom, pad_top])
+  let y_scale = $derived(
+    scaleLinear()
+      .domain(y_range)
+      .range([height - pad_bottom, pad_top]),
+  )
 
   const bisect = bisector((pt: Point) => pt.x).right
 
@@ -118,7 +162,7 @@
 
     if (closest_point && closest_series) {
       tooltip_point = closest_point
-      dispatcher(`change`, { ...closest_point, series: closest_series })
+      change({ ...closest_point, series: closest_series })
     }
   }
 
@@ -140,7 +184,7 @@
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
-    <svg on:mousemove={on_mouse_move} on:mouseleave={on_mouse_leave} role="img">
+    <svg onmousemove={on_mouse_move} onmouseleave={on_mouse_leave} role="img">
       <!-- Zero line -->
       {#if y_range[0] < 0 && y_range[1] > 0}
         <line
@@ -155,7 +199,7 @@
       {/if}
 
       {#if markers.includes(`line`)}
-        {#each filtered_series as series}
+        {#each filtered_series as series (JSON.stringify(series))}
           <Line
             points={series.filtered_data.map(({ x, y }) => [x_scale(x), y_scale(y)])}
             origin={[x_scale(x_range[0]), y_scale(y_range[0])]}
@@ -167,8 +211,8 @@
       {/if}
 
       {#if markers.includes(`points`)}
-        {#each filtered_series as series}
-          {#each series.filtered_data as { x, y }}
+        {#each filtered_series as series (JSON.stringify(series))}
+          {#each series.filtered_data as { x, y } (JSON.stringify({ x, y }))}
             <ScatterPoint
               x={x_scale(x)}
               y={y_scale(y)}
@@ -184,7 +228,7 @@
 
       <!-- x axis -->
       <g class="x-axis">
-        {#each x_scale.ticks() as tick}
+        {#each x_scale.ticks() as tick (tick)}
           <g class="tick" transform="translate({x_scale(tick)}, {height})">
             <line y1={-height + pad_top} y2={-pad_bottom} />
             <text y={-pad_bottom + axis_label_offset.x}>
@@ -199,7 +243,7 @@
 
       <!-- y axis -->
       <g class="y-axis">
-        {#each y_scale.ticks(5) as tick, idx}
+        {#each y_scale.ticks(5) as tick, idx (tick)}
           <g class="tick" transform="translate(0, {y_scale(tick)})">
             <line x1={pad_left} x2={width - pad_right} />
             <text x={pad_left - axis_label_offset.y}>
@@ -222,9 +266,11 @@
         {@const y_formatted = format_value(y, y_format)}
         <circle {cx} {cy} r="5" fill="orange" />
         <foreignObject x={cx + 5} y={cy}>
-          <slot name="tooltip" {x} {y} {cx} {cy} {x_formatted} {y_formatted} {metadata}>
+          {#if tooltip}
+            {@render tooltip({ x, y, cx, cy, x_formatted, y_formatted, metadata })}
+          {:else}
             ({x_formatted}, {y_formatted})
-          </slot>
+          {/if}
         </foreignObject>
       {/if}
     </svg>

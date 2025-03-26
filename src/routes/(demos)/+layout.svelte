@@ -1,5 +1,11 @@
 <script lang="ts">
   import { name } from '$root/package.json'
+  import type { Snippet } from 'svelte'
+
+  interface Props {
+    children?: Snippet
+  }
+  let { children }: Props = $props()
 </script>
 
 <h1>
@@ -7,7 +13,7 @@
 </h1>
 
 <main>
-  <slot />
+  {@render children?.()}
 </main>
 
 <style>

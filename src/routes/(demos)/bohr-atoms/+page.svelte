@@ -3,7 +3,7 @@
   import { Slider } from 'svelte-zoo'
   import Desc from './desc.md'
 
-  let orbital_period = 2
+  let orbital_period = $state(2)
 </script>
 
 <Desc />
@@ -18,7 +18,7 @@
 />
 
 <ol>
-  {#each element_data as { shells, symbol, number, name }}
+  {#each element_data as { shells, symbol, number, name } (symbol + number + name)}
     <li>
       <strong>
         <a href={name.toLowerCase()}>{number}</a>

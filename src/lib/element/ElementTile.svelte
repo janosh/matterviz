@@ -1,39 +1,58 @@
 <script lang="ts">
   import type { ChemicalElement, PeriodicTableEvents } from '$lib'
   import { choose_bw_for_contrast, pretty_num } from '$lib'
-  import { last_element } from '$lib/stores'
-  import { createEventDispatcher } from 'svelte'
+  import { selected } from '$lib/state.svelte'
 
-  export let element: ChemicalElement
-  export let bg_color: string | null = null
-  export let show_symbol: boolean = true
-  export let show_number: boolean = true
-  export let show_name: boolean = true
-  export let value: number | false | undefined = undefined
-  export let style: string = ``
-  export let symbol_style: string = ``
-  export let active: boolean = false
-  export let href: string | null = null
-  // at what background color lightness text color switches from black to white
-  export let text_color_threshold = 0.7
-  export let text_color: string | null = null
-  export let precision: string | undefined = undefined
-  export let node: HTMLElement | null = null
-  export let label: string | null = null
+  interface Props {
+    element: ChemicalElement
+    bg_color?: string | null
+    show_symbol?: boolean
+    show_number?: boolean
+    show_name?: boolean
+    value?: number | false | undefined
+    style?: string
+    symbol_style?: string
+    active?: boolean
+    href?: string | null
+    // at what background color lightness text color switches from black to white
+    text_color_threshold?: number
+    text_color?: string | null
+    precision?: string | undefined
+    node?: HTMLElement | null
+    label?: string | null
+    [key: string]: unknown
+  }
+
+  let {
+    element,
+    bg_color = null,
+    show_symbol = true,
+    show_number = true,
+    show_name = true,
+    value = undefined,
+    style = ``,
+    symbol_style = ``,
+    active = false,
+    href = null,
+    text_color_threshold = 0.7,
+    text_color = $bindable(null),
+    precision = undefined,
+    node = $bindable(null),
+    label = null,
+    ...rest
+  }: Props = $props()
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
-  $: category = element.category.replaceAll(` `, `-`)
+  let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
-  const dispatch = createEventDispatcher<PeriodicTableEvents>()
-  function payload_event(dom_event: Event) {
-    dispatch(dom_event.type, { element, dom_event, active })
-  }
 
-  $: if (text_color_threshold != null && node) {
-    text_color = choose_bw_for_contrast(node, bg_color, text_color_threshold)
-  }
+  $effect(() => {
+    if (text_color_threshold != null && node) {
+      text_color = choose_bw_for_contrast(node, bg_color, text_color_threshold)
+    }
+  })
 </script>
 
 <svelte:element
@@ -43,17 +62,13 @@
   data-sveltekit-noscroll
   class="element-tile {category}"
   class:active
-  class:last-active={$last_element === element}
+  class:last-active={selected.last_element === element}
   style:background-color={bg_color ?? `var(--${category}-bg-color)`}
   style:color={text_color}
   {style}
-  on:mouseenter={payload_event}
-  on:mouseleave={payload_event}
-  on:click={payload_event}
-  on:keyup={payload_event}
-  on:keydown={payload_event}
   role="link"
   tabindex="0"
+  {...rest}
 >
   {#if show_number}
     <span class="number">
