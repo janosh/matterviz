@@ -2,10 +2,23 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.0](https://github.com/janosh/elementari/compare/v0.2.7...v0.3.0)
+
+> 25 March 2025
+
+- Migrate to Svelte 5 runes syntax [`#55`](https://github.com/janosh/elementari/pull/55)
+- enable external component styling with new CSS custom vars [`29d084a`](https://github.com/janosh/elementari/commit/29d084a30ceed48d684f1f148c617358b39f4de3)
+
 #### [v0.2.7](https://github.com/janosh/elementari/compare/v0.2.6...v0.2.7)
 
-- allow multiple lines/sets of points in ScatterPlot [`37ecf4e`](https://github.com/janosh/elementari/commit/37ecf4e2f0b2b8329971cd09996d648661565222)
+> 17 February 2025
+
+- allow multiple lines/sets of points in ScatterPlot [`c0e37d6`](https://github.com/janosh/elementari/commit/c0e37d6467488dc37ea15b7a4690f62dc8ab5698)
 - update all deps to latest and migrate unit tests to svelte v5 [`4a8b352`](https://github.com/janosh/elementari/commit/4a8b352274a1e071faf8f4320364ee7788e4f447)
+
+#### [v0.2.6](https://github.com/janosh/elementari/compare/v0.2.4...v0.2.6)
+
+> 5 February 2025
 
 #### [v0.2.4](https://github.com/janosh/elementari/compare/v0.2.3...v0.2.4)
 
