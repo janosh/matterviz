@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.1](https://github.com/janosh/elementari/compare/v0.3.0...v0.3.1)
+
+> 3 April 2025
+
+- `ScatterPlot` support custom x/y tick label spacing and formatting [`#56`](https://github.com/janosh/elementari/pull/56)
+
 #### [v0.3.0](https://github.com/janosh/elementari/compare/v0.2.7...v0.3.0)
 
 > 25 March 2025
@@ -49,7 +55,7 @@ All notable changes to this project will be documented in this file. Dates are d
 - extract (demos)/periodic-table/+page.svelte from landing page, change landing +page.svelte to +page.md [`cd32144`](https://github.com/janosh/elementari/commit/cd32144874e1eb2398dc30fc1977bf7eeaaf7cfb)
 - fix duplicate bonds in max_dist and nearest_neighbor functions [`14027e3`](https://github.com/janosh/elementari/commit/14027e36af155b40f332f5768c7162ec919b0809)
 - StructureScene add prop fov: number | undefined = undefined [`770ffbf`](https://github.com/janosh/elementari/commit/770ffbf36e8e1aa9d68bfe2cb4f7656d11ec7fbf)
-- rename prop site_labels -&gt; show_site_labels, default to true + fix site site_labels rendering [`ff0336a`](https://github.com/janosh/elementari/commit/ff0336a8a8236e166b5f64dddfc7cdc59331d1f0)
+- rename prop site_labels -> show_site_labels, default to true + fix site site_labels rendering [`ff0336a`](https://github.com/janosh/elementari/commit/ff0336a8a8236e166b5f64dddfc7cdc59331d1f0)
 - add largest MP structure mp-1204603 to demo [`1b0bc6d`](https://github.com/janosh/elementari/commit/1b0bc6d96c0d450f696665d2f3733048d9bda2b5)
 - bump threlte to v6 official release [`45e3dc2`](https://github.com/janosh/elementari/commit/45e3dc2c0a28ffd3d076c3ada986c2c639215757)
 - periodic-table.test.ts don't iterate over full table, do random subset for speed [`be68b6a`](https://github.com/janosh/elementari/commit/be68b6ab27b8d3ab527042859f62f8056bdd94e4)

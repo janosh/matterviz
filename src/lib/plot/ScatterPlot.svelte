@@ -44,7 +44,6 @@
     x_ticks?: number | TimeInterval // Positive: count, Negative: interval, String: time interval
     y_ticks?: number // Positive: count, Negative: interval
   }
-
   let {
     series = [],
     style = ``,
@@ -99,8 +98,15 @@
   // Filter out points outside x_lim and y_lim for each series
   let filtered_series = $derived(
     series.map((data_series) => {
-      const { x: xs, y: ys, ...rest } = data_series
-      const points: Point[] = xs.map((x, idx) => ({ x, y: ys[idx], ...rest }))
+      const { x: xs, y: ys, metadata: raw_md, ...rest } = data_series
+      const points = xs.map((x, idx) => {
+        const metadata = raw_md
+          ? Array.isArray(raw_md) && raw_md.length > idx
+            ? raw_md[idx]
+            : raw_md
+          : undefined
+        return { x, y: ys[idx], metadata, ...rest }
+      })
 
       return {
         ...data_series,
@@ -353,29 +359,11 @@
         <circle {cx} {cy} r="5" fill="orange" />
         <foreignObject x={cx + 5} y={cy}>
           {#if tooltip}
-            {#if typeof tooltip === `function`}
-              {@const tooltipContent = tooltip({
-                x,
-                y,
-                cx,
-                cy,
-                x_formatted,
-                y_formatted,
-                metadata,
-              })}
-              {#if typeof tooltipContent === `string`}
-                {@html tooltipContent}
-              {:else}
-                <div>{tooltipContent}</div>
-              {/if}
-            {:else}
-              <!-- Handle Snippet type tooltip -->
-              <div>
-                ({x_formatted}, {y_formatted})
-              </div>
-            {/if}
+            {@render tooltip({ x, y, cx, cy, x_formatted, y_formatted, metadata })}
           {:else}
-            ({x_formatted}, {y_formatted})
+            <div style="white-space: nowrap;">
+              x: {x_formatted}, y: {y_formatted}
+            </div>
           {/if}
         </foreignObject>
       {/if}
@@ -388,6 +376,7 @@
     width: 100%;
     height: 100%;
     display: flex;
+    /* esp stands for elementari scatter plot */
     min-height: var(--esp-min-height, 100px);
     container-type: inline-size;
     z-index: var(--esp-z-index, 1); /* ensure tooltip renders above ElementTiles */
@@ -398,7 +387,6 @@
     font-weight: var(--esp-font-weight, lighter);
     overflow: visible;
     z-index: var(--esp-z-index, 1);
-    /* esp=elementari scatter plot */
     font-size: var(--esp-font-size);
   }
   line {
