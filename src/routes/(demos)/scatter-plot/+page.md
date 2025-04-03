@@ -176,8 +176,9 @@ Using time data on the x-axis with custom formatting:
   series={[time_data]}
   markers="line+points"
   x_format="%b %d"
+  y_format=".1f"
   x_ticks={-7}
-  y_ticks={-10}
+  y_ticks={5}
   x_label="Date"
   y_label="Value"
   style="height: 300px; width: 100%;"
@@ -217,14 +218,15 @@ Demonstrating custom tooltips with multiple series:
   markers="line+points"
   change={(event) => (selected_point = event)}
   style="height: 300px; width: 100%;"
-  tooltip={({ x, y, metadata }) => `
-    <div style="background: rgba(0,0,0,0.7); padding: 0.5em; border-radius: 4px;">
-      <strong>${metadata?.name || 'Point'}</strong><br />
-      Series: ${metadata?.series || 'Unknown'}<br />
-      X: ${x}, Y: ${y}
+>
+  {#snippet tooltip({ x, y, metadata })}
+    <div style="white-space: nowrap;">
+      <strong>{metadata?.name || 'Point'}</strong><br />
+      Series: {metadata?.series || 'Unknown'}<br />
+      X: {x}, Y: {y}
     </div>
-  `}
-/>
+  {/snippet}
+</ScatterPlot>
 
 {#if selected_point}
   <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
@@ -287,36 +289,34 @@ This example combines various features of the ScatterPlot component:
     point_style: { fill: 'rgb(50, 205, 50)', radius: 4 }
   }
 
-  let display_mode = 'line+points'
-  let x_tick_interval = -2
-  let y_tick_interval = -1
+  let [display_mode, x_tick_interval, y_tick_interval] = ['line+points', -2, -1]
 </script>
 
 <div style="margin-bottom: 1em;">
   <label>
     Display Mode:
     <select bind:value={display_mode}>
-      <option value="points">Points only</option>
-      <option value="line">Lines only</option>
-      <option value="line+points">Lines and Points</option>
+      {#each [['points', 'Points only'], ['line', 'Lines only'], ['line+points', 'Lines and Points']] as [value, label] (label)}
+        <option {value}>{label}</option>
+      {/each}
     </select>
   </label>
 
   <label style="margin-left: 1em;">
     X-Tick Interval:
     <select bind:value={x_tick_interval}>
-      <option value={-1}>1 unit</option>
-      <option value={-2}>2 units</option>
-      <option value={-5}>5 units</option>
+      {#each [[-1, '1 unit'], [-2, '2 units'], [-5, '5 units']] as [value, label] (label)}
+        <option {value}>{label}</option>
+      {/each}
     </select>
   </label>
 
   <label style="margin-left: 1em;">
     Y-Tick Interval:
     <select bind:value={y_tick_interval}>
-      <option value={-1}>1 unit</option>
-      <option value={-2}>2 units</option>
-      <option value={-5}>5 units</option>
+      {#each [[-1, '1 unit'], [-2, '2 units'], [-5, '5 units']] as [value, label] (label)}
+        <option {value}>{label}</option>
+      {/each}
     </select>
   </label>
 </div>
@@ -331,13 +331,14 @@ This example combines various features of the ScatterPlot component:
   x_label="X Axis"
   y_label="Y Axis"
   style="height: 400px; width: 100%;"
-  tooltip={({ x, y, metadata }) => `
-    <div style="background: rgba(0,0,0,0.8); color: white; padding: 0.5em; border-radius: 4px;">
-      <strong>${metadata?.type || 'Point'} #${metadata?.index ?? ''}</strong><br />
-      (${x.toFixed(2)}, ${y.toFixed(2)})
+>
+  {#snippet tooltip({ x, y, metadata })}
+    <div style="white-space: nowrap;">
+      <strong>{metadata?.type} #{metadata?.index}</strong><br />
+      x: {x.toFixed(2)}, y: {y.toFixed(2)}
     </div>
-  `}
-/>
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Points with Shared Coordinates
@@ -389,15 +390,16 @@ This example demonstrates how points that share the same X or Y coordinates can 
   x_label="X Axis"
   y_label="Y Axis"
   change={(event) => (hovered_point = event)}
-  tooltip={({ x, y, metadata }) => `
-    <div style="background: rgba(0,0,0,0.8); color: white; padding: 0.5em; border-radius: 4px; max-width: 200px;">
-      <strong>${metadata?.label || 'Point'}</strong><br />
-      Coordinates: (${x}, ${y})<br />
-      ID: ${metadata?.id || 'unknown'}
-    </div>
-  `}
   style="height: 350px; width: 100%;"
-/>
+>
+  {#snippet tooltip({ x, y, metadata: { label, id } })}
+    <div style="white-space: nowrap;">
+      <strong>{label}</strong><br />
+      Coordinates: ({x}, {y})<br />
+      ID: {id}
+    </div>
+  {/snippet}
+</ScatterPlot>
 
 {#if hovered_point}
   <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
