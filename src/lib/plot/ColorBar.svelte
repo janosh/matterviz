@@ -75,7 +75,7 @@
         )
         return d3sc.interpolateViridis
       }
-    }
+    } else return color_scale
   })
 
   let grad_dir = $derived({ horizontal: `to right`, vertical: `to bottom` }[orientation])
