@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [sveltekit(), mdsvexamples],
 
   test: {
-    environment: `jsdom`,
+    environment: `happy-dom`,
     css: true,
     coverage: {
       reporter: [`text`, `json-summary`],

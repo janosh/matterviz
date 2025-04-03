@@ -110,7 +110,7 @@ describe(`ScatterPoint`, () => {
     const g = doc_query(`g`)
     const transform = g.getAttribute(`transform`)
     expect(transform).toBe(
-      // TODO should expect next line but translate doesn't seem to happen in JSDOM
+      // TODO should expect next line but translate doesn't seem to happen in happy-dom
       // `translate(${props.x + offset.x} ${props.y + offset.y})`,
       `translate(0 0)`,
     )

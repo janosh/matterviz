@@ -3,7 +3,7 @@ export const mp_build_bucket = `https://materialsproject-build.s3.amazonaws.com/
 export async function decompress(blob: ReadableStream<Uint8Array> | null) {
   // @ts-expect-error - TS doesn't know about DecompressionStream yet
   const unzip = new DecompressionStream(`gzip`)
-  const stream = blob.pipeThrough(unzip)
+  const stream = blob?.pipeThrough(unzip)
   return await new Response(stream).text()
 }
 
@@ -33,6 +33,5 @@ export function download(data: string | Blob, filename: string, type: string) {
   document.body.appendChild(link)
   link.click()
   link.remove()
-  // raises 'is not a function' error in JSDOM
-  // URL.revokeObjectURL(url)
+  URL.revokeObjectURL(url)
 }
