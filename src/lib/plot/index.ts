@@ -15,6 +15,8 @@ export type PointStyle = {
   fill_opacity?: number
   stroke_opacity?: number
   stroke_width?: number
+  marker_type?: string
+  marker_size?: number | null
 }
 
 export type HoverStyle = {
@@ -35,10 +37,10 @@ export type LabelStyle = {
 export type DataSeries<T = unknown> = {
   x: number[]
   y: number[]
-  metadata?: T
-  point_style?: PointStyle
-  point_hover?: HoverStyle
-  point_label?: LabelStyle
-  point_offset?: Point[`offset`]
+  metadata?: T | T[]
+  point_style?: PointStyle | PointStyle[]
+  point_hover?: HoverStyle | HoverStyle[]
+  point_label?: LabelStyle | LabelStyle[]
+  point_offset?: Point[`offset`] | Point[`offset`][]
   point_tween_duration?: number
 }
