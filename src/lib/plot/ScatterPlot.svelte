@@ -98,33 +98,68 @@
   // Filter out points outside x_lim and y_lim for each series
   let filtered_series = $derived(
     series.map((data_series) => {
-      const { x: xs, y: ys, metadata: raw_md, ...rest } = data_series
-      const points = xs.map((x, idx) => {
-        const metadata = raw_md
-          ? Array.isArray(raw_md) && raw_md.length > idx
-            ? raw_md[idx]
-            : raw_md
+      const { x: xs, y: ys, ...rest } = data_series
+
+      // Process each point based on its index
+      const processed_points = xs.map((x, idx) => {
+        // Get the y-value for this point
+        const y = ys[idx]
+
+        // Process properties with proper typing
+        function process_property<T>(
+          prop: T[] | T | undefined,
+          idx: number,
+        ): T | undefined {
+          if (!prop) return undefined
+          if (Array.isArray(prop) && idx < prop.length) return prop[idx]
+          if (!Array.isArray(prop)) return prop
+          return undefined
+        }
+
+        // Process all point properties using the helper function
+        const metadata = rest.metadata
+          ? Array.isArray(rest.metadata) && idx < rest.metadata.length
+            ? (rest.metadata[idx] as Record<string, unknown>)
+            : !Array.isArray(rest.metadata)
+              ? (rest.metadata as Record<string, unknown>)
+              : undefined
           : undefined
-        return { x, y: ys[idx], metadata, ...rest }
+        const point_style = process_property(rest.point_style, idx)
+        const point_hover = process_property(rest.point_hover, idx)
+        const point_label = process_property(rest.point_label, idx)
+        const point_offset = process_property(rest.point_offset, idx)
+
+        // Create the point object with all processed properties
+        return {
+          x,
+          y,
+          metadata,
+          point_style,
+          point_hover,
+          point_label,
+          point_offset,
+          point_tween_duration: rest.point_tween_duration,
+        }
       })
 
-      return {
-        ...data_series,
-        filtered_data: points.filter((pt) => {
-          const [x_min, x_max] = x_range
-          const [y_min, y_max] = y_range
-          return (
-            pt.x >= x_min &&
-            pt.x <= x_max &&
-            pt.y >= y_min &&
-            pt.y <= y_max &&
-            !isNaN(pt.x) &&
-            !isNaN(pt.y) &&
-            pt.x !== null &&
-            pt.y !== null
-          )
-        }),
-      }
+      // Filter points to only include those within the specified ranges
+      const filtered_data = processed_points.filter((pt) => {
+        const [x_min, x_max] = x_range
+        const [y_min, y_max] = y_range
+        const x_is_nan = isNaN(pt.x) || pt.x === null
+        const y_is_nan = isNaN(pt.y) || pt.y === null
+        return (
+          !x_is_nan &&
+          !y_is_nan &&
+          pt.x >= x_min &&
+          pt.x <= x_max &&
+          pt.y >= y_min &&
+          pt.y <= y_max
+        )
+      })
+
+      // Return original series with the processed and filtered data
+      return { ...data_series, filtered_data }
     }),
   )
 
@@ -288,14 +323,18 @@
       {/if}
 
       {#if markers && markers.includes(`line`)}
-        {#each filtered_series ?? [] as series (JSON.stringify(series))}
+        {#each filtered_series ?? [] as series (JSON.stringify( { x: series.x, y: series.y }, ))}
           <Line
-            points={(series?.filtered_data ?? []).map(({ x, y }) => [
-              x_scale(x),
-              y_scale(y),
+            points={(series?.filtered_data ?? []).map((point) => [
+              x_scale(point.x),
+              y_scale(point.y),
             ])}
             origin={[x_scale(x_range?.[0] ?? 0), y_scale(y_range?.[0] ?? 0)]}
-            line_color={series?.point_style?.fill}
+            line_color={typeof series?.point_style === `object` &&
+            series?.point_style?.fill &&
+            typeof series.point_style.fill === `string`
+              ? series.point_style.fill
+              : `rgba(255, 255, 255, 0.5)`}
             line_width={1}
             area_color="transparent"
           />
@@ -303,16 +342,16 @@
       {/if}
 
       {#if markers && markers.includes(`points`)}
-        {#each filtered_series ?? [] as series (JSON.stringify(series))}
-          {#each series?.filtered_data ?? [] as { x, y }, point_idx (`${x}-${y}-${point_idx}`)}
+        {#each filtered_series ?? [] as series (JSON.stringify( { x: series.x, y: series.y }, ))}
+          {#each series?.filtered_data ?? [] as point (JSON.stringify(point))}
             <ScatterPoint
-              x={x_scale(x)}
-              y={y_scale(y)}
-              style={series?.point_style ?? {}}
-              hover={series?.point_hover ?? {}}
-              label={series?.point_label ?? {}}
-              offset={series?.point_offset ?? { x: 0, y: 0 }}
-              tween_duration={series?.point_tween_duration ?? 600}
+              x={x_scale(point.x)}
+              y={y_scale(point.y)}
+              style={point.point_style ?? {}}
+              hover={point.point_hover ?? {}}
+              label={point.point_label ?? {}}
+              offset={point.point_offset ?? { x: 0, y: 0 }}
+              tween_duration={point.point_tween_duration ?? 600}
             />
           {/each}
         {/each}

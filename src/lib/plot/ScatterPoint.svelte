@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { Point } from '$lib'
+  import type { SymbolType } from 'd3-shape'
+  import * as d3Symbols from 'd3-shape'
+  import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import { Tween } from 'svelte/motion'
   import type { HoverStyle, LabelStyle, PointStyle } from '.'
@@ -31,6 +34,8 @@
     stroke_width = 1,
     stroke_opacity = 1,
     fill_opacity = 1,
+    marker_type = `circle`,
+    marker_size = null, // If null, derive from radius
   } = style
 
   const {
@@ -47,6 +52,33 @@
     font_size = `10px`,
     font_family = `sans-serif`,
   } = label
+
+  // Calculate the size based on radius (default D3 circle size is approximately 50 for radius 4)
+  const marker_actual_size = marker_size !== null ? marker_size : Math.pow(radius, 2) * 3
+
+  // Dynamically generate the symbol map from d3Symbols
+  const symbol_map: Record<string, SymbolType> = {}
+
+  // Find all symbol properties in d3Symbols that start with 'symbol'
+  Object.entries(d3Symbols).forEach(([key, value]) => {
+    if (key.startsWith(`symbol`) && typeof value === `object`) {
+      // Convert from camelCase to snake_case for consistency with our naming
+      const snake_key = key.replace(`symbol`, ``).toLowerCase()
+      symbol_map[snake_key] = value as SymbolType
+    }
+  })
+
+  // Generate the path data string for the marker
+  function get_symbol_path(): string {
+    // Get the symbol type from our map or use circle as fallback
+    const symbol_type = symbol_map[marker_type] ?? d3Symbols.symbolCircle
+
+    // Create a symbol generator with the specified type and size
+    return symbol().type(symbol_type).size(marker_actual_size)() || ``
+  }
+
+  // Initialize with actual path data
+  let marker_path_string = $derived.by(get_symbol_path)
 
   const tween_params = { duration: tween_duration, easing: cubicOut }
   const tweened_x = new Tween(0, tween_params)
@@ -65,15 +97,14 @@
   style:--hover-stroke={hover_stroke}
   style:--hover-stroke-width="{hover_stroke_width}px"
 >
-  <circle
-    cx="0"
-    cy="0"
-    r={radius}
+  <path
+    d={marker_path_string}
     {fill}
     {stroke}
     stroke-width={stroke_width}
     style:fill-opacity={fill_opacity}
     style:stroke-opacity={stroke_opacity}
+    class="marker"
   />
   {#if text}
     <text
@@ -89,10 +120,10 @@
 </g>
 
 <style>
-  circle {
+  .marker {
     transition: var(--scatter-point-transition, all 0.2s);
   }
-  .hover_effect circle:hover {
+  .hover_effect .marker:hover {
     transform: scale(var(--scatter-point-hover-scale, 1.5));
     stroke: var(--scatter-point-hover-stroke, white);
     stroke-width: var(--scatter-point-hover-stroke-width, 2px);

@@ -3,6 +3,7 @@
  */
 
 import { ScatterPlot } from '$lib'
+import type { DataSeries, LabelStyle, PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -331,7 +332,7 @@ describe(`ScatterPlot`, () => {
       { x: [10, 20, 30, 40, 50], y: [10, 20, 30] },
       // Valid series with valid data
       { x: [100, 200, 300], y: [10, 20, 30] },
-    ]
+    ] as DataSeries[]
 
     const component = mount(ScatterPlot, {
       target: document.body,
@@ -736,5 +737,254 @@ describe(`ScatterPlot`, () => {
     // and that the mousemove event logic works properly
     // would need to mock additional browser APIs
     // to fully test the point selection logic
+  })
+
+  test(`handles per-point styling and colors`, () => {
+    // Create dataset with individual point styles
+    const series_with_per_point_styles = {
+      x: [1, 2, 3, 4, 5],
+      y: [10, 20, 30, 40, 50],
+      // Array of styles for each point
+      point_style: [
+        { fill: `crimson`, radius: 8, stroke: `darkred`, stroke_width: 2 },
+        { fill: `royalblue`, radius: 6, stroke: `navy`, stroke_width: 1 },
+        { fill: `gold`, radius: 10, stroke: `goldenrod`, stroke_width: 2 },
+        {
+          fill: `mediumseagreen`,
+          radius: 7,
+          stroke: `darkgreen`,
+          stroke_width: 1,
+        },
+        { fill: `purple`, radius: 9, stroke: `indigo`, stroke_width: 2 },
+      ],
+    }
+
+    // Component with per-point styling
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [series_with_per_point_styles],
+        markers: `points`,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test.each([
+    {
+      marker_type: `diamond` as const,
+      series_name: `Series with diamonds`,
+      point_count: 3,
+    },
+    {
+      marker_type: `star` as const,
+      series_name: `Series with stars`,
+      point_count: 3,
+    },
+    {
+      marker_type: `triangle` as const,
+      series_name: `Series with triangles`,
+      point_count: 3,
+    },
+  ])(
+    `renders series with custom marker type: $marker_type`,
+    ({ marker_type, series_name, point_count }) => {
+      // Create a series with the specified marker type for all points
+      const custom_marker_series = {
+        x: Array.from({ length: point_count }, (_, idx) => idx + 1),
+        y: Array.from({ length: point_count }, (_, idx) => (idx + 1) * 10),
+        point_style: {
+          fill: `steelblue`,
+          radius: 8,
+          marker_type,
+          marker_size: 120,
+        },
+        metadata: { name: series_name },
+      }
+
+      const component = mount(ScatterPlot, {
+        target: document.body,
+        props: {
+          series: [custom_marker_series],
+          markers: `points`,
+        },
+      })
+
+      // Verify component mounted
+      expect(component).toBeTruthy()
+      const scatter = document.querySelector(`.scatter`)
+      expect(scatter).toBeTruthy()
+    },
+  )
+
+  test(`renders points with gradient color based on values`, () => {
+    // Generate data with a gradient color scheme based on values
+    const point_count = 20
+    const gradient_data = {
+      x: Array.from({ length: point_count }, (_, idx) => idx + 1),
+      y: Array.from({ length: point_count }, (_, idx) => Math.pow(idx / 2, 2)),
+      // Create a color gradient from blue (low values) to red (high values)
+      point_style: Array.from({ length: point_count }, (_, idx) => {
+        // Calculate color based on position in sequence (HSL where hue 240=blue to 0=red)
+        const hue = 240 - (idx / (point_count - 1)) * 240
+        // Make size increase with value
+        const radius = 3 + (idx / (point_count - 1)) * 5
+
+        return {
+          fill: `hsl(${hue}, 80%, 50%)`,
+          radius,
+          stroke: `white`,
+          stroke_width: 1,
+        }
+      }),
+    }
+
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [gradient_data],
+        markers: `points`,
+        x_label: `Index`,
+        y_label: `Value`,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`renders points with text annotations in different positions`, () => {
+    // Series with different text annotation positions
+    const positions_series = {
+      x: [2, 4, 6, 8, 10],
+      y: [5, 5, 5, 5, 5],
+      point_style: { fill: `steelblue`, radius: 5 },
+      // Different text positions around points
+      point_label: [
+        { text: `Above`, offset_y: -15, offset_x: 0 },
+        { text: `Right`, offset_x: 15, offset_y: 0 },
+        { text: `Below`, offset_y: 15, offset_x: 0 },
+        { text: `Left`, offset_x: -15, offset_y: 0 },
+        { text: `Diagonal`, offset_x: 10, offset_y: -10 },
+      ],
+      metadata: Array.from({ length: 5 }, (_, idx) => ({
+        position: [`Above`, `Right`, `Below`, `Left`, `Diagonal`][idx],
+      })) as Record<string, unknown>[],
+    }
+
+    // Mount the component with explicit point markers
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [positions_series],
+        markers: `points`,
+        x_lim: [0, 12] as [number, number],
+        y_lim: [0, 10] as [number, number],
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+
+    // In the test environment, text elements might not be visible or rendered
+    // due to limitations in happy-dom, so we're just verifying the component mounted
+  })
+
+  test.each([
+    {
+      label_type: `simple labels`,
+      point_label: { text: `Fixed Label`, offset_y: -15 } as LabelStyle,
+    },
+    {
+      label_type: `styled labels`,
+      point_label: {
+        text: `Styled Label`,
+        offset_y: -15,
+        font_size: `14px`,
+        font_family: `serif`,
+        fill: `darkred`,
+      } as LabelStyle,
+    },
+    {
+      label_type: `array of labels`,
+      point_label: [
+        { text: `Point 1`, offset_y: -15 },
+        { text: `Point 2`, offset_y: -15 },
+        { text: `Point 3`, offset_y: -15 },
+      ] as LabelStyle[],
+    },
+  ])(`renders scatter plot with $label_type`, ({ point_label }) => {
+    type DataWithLabels = {
+      x: number[]
+      y: number[]
+      point_style: PointStyle
+      point_label: LabelStyle | LabelStyle[]
+    }
+
+    // Create test data with the provided label type
+    const test_data: DataWithLabels = {
+      x: [1, 2, 3],
+      y: [10, 20, 30],
+      point_style: { fill: `steelblue`, radius: 5 },
+      point_label,
+    }
+
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [test_data],
+        markers: `points`,
+        x_lim: [0, 4] as [number, number],
+        y_lim: [0, 40] as [number, number],
+      },
+    })
+
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`handles complex per-point styling with text annotations`, () => {
+    // Create a series with varied point styles and matching text annotations
+    const styled_series: DataSeries = {
+      x: [1, 2, 3, 4, 5],
+      y: [10, 20, 30, 40, 50],
+      // Per-point styling
+      point_style: [
+        { fill: `crimson`, radius: 8, marker_type: `circle` },
+        { fill: `forestgreen`, radius: 7, marker_type: `diamond` },
+        { fill: `dodgerblue`, radius: 9, marker_type: `star` },
+        { fill: `orange`, radius: 6, marker_type: `triangle` },
+        { fill: `purple`, radius: 10, marker_type: `wye` },
+      ] as PointStyle[],
+      // Matching text annotations
+      point_label: [
+        { text: `Circle`, offset_y: -15 },
+        { text: `Diamond`, offset_y: -15 },
+        { text: `Star`, offset_y: -15 },
+        { text: `Triangle`, offset_y: -15 },
+        { text: `Wye`, offset_y: -15 },
+      ] as LabelStyle[],
+    }
+
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [styled_series],
+        markers: `points`,
+        x_lim: [0, 6] as [number, number],
+        y_lim: [0, 60] as [number, number],
+      },
+    })
+
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
   })
 })
