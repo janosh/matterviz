@@ -647,3 +647,274 @@ const data = {
   ],
 }
 ```
+
+## Log-Scaled Axes
+
+ScatterPlot supports logarithmic scaling for data that spans multiple orders of magnitude.
+
+### X-Axis Log Scale
+
+Visualize exponential growth or data with large ranges on the X-axis:
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Create data with exponential growth on x-axis
+  const x_log_data = {
+    x: [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000],
+    y: [10, 20, 25, 35, 40, 50, 55, 65, 70, 80],
+    point_style: { fill: 'steelblue', radius: 6 },
+    point_label: [
+      { text: '0.1', offset_y: -15 },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      { text: '5000', offset_y: -15 }
+    ]
+  }
+</script>
+
+<div>
+  <h3>Exponential X-Axis Data (Log Scale)</h3>
+  <p>
+    Notice how equally spaced values on a log scale represent equal ratios rather than equal intervals.
+    The distance from 1 to 10 is the same as 10 to 100.
+  </p>
+  <ScatterPlot
+    series={[x_log_data]}
+    x_scale_type="log"
+    y_scale_type="linear"
+    x_label="Log-Scaled X Axis"
+    y_label="Linear Y Axis"
+    markers="line+points"
+    style="height: 350px; width: 100%;"
+  />
+</div>
+```
+
+### Y-Axis Log Scale
+
+Perfect for data with exponential growth on the Y-axis:
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Create data with exponential growth on y-axis
+  const y_log_data = {
+    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    y: [1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000],
+    point_style: { fill: 'orangered', radius: 6 },
+    point_label: [
+      { text: '1', offset_x: 15 },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      { text: '30,000', offset_x: 15 }
+    ]
+  }
+</script>
+
+<div>
+  <h3>Exponential Y-Axis Data (Log Scale)</h3>
+  <p>
+    Y-axis log scaling makes it easy to visualize data that grows exponentially or spans many orders of magnitude.
+    Percentage growth appears as straight lines on a log scale.
+  </p>
+  <ScatterPlot
+    series={[y_log_data]}
+    x_scale_type="linear"
+    y_scale_type="log"
+    x_label="Linear X Axis"
+    y_label="Log-Scaled Y Axis"
+    y_format=".0f"
+    markers="line+points"
+    style="height: 350px; width: 100%;"
+  />
+</div>
+```
+
+### Both Axes Log-Scaled
+
+For comparing data across multiple orders of magnitude on both axes:
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Generate power law relationship data (y = x^2)
+  const power_law_data = {
+    x: [],
+    y: [],
+    point_style: { fill: 'mediumseagreen', radius: 5 }
+  }
+
+  // Add points from 0.1 to 1000 with exponential spacing
+  for (let i = -1; i <= 3; i += 0.25) {
+    const x = Math.pow(10, i);
+    const y = Math.pow(x, 2);  // y = x^2 (power law relationship)
+    power_law_data.x.push(x);
+    power_law_data.y.push(y);
+  }
+
+  // Add another series with a different power law (y = x^0.5)
+  const inverse_power_data = {
+    x: [],
+    y: [],
+    point_style: { fill: 'purple', radius: 5 }
+  }
+
+  // Similar range but with y = sqrt(x)
+  for (let i = -1; i <= 3; i += 0.25) {
+    const x = Math.pow(10, i);
+    const y = Math.pow(x, 0.5);  // y = √x (square root relationship)
+    inverse_power_data.x.push(x);
+    inverse_power_data.y.push(y);
+  }
+</script>
+
+<div>
+  <h3>Power Law Relationships (Both Axes Log-Scaled)</h3>
+  <p>
+    Log-log plots are ideal for power law relationships. A straight line on a log-log plot
+    indicates a power law relationship (y = x^n), with the slope indicating the exponent.
+  </p>
+
+  <div style="display: flex; justify-content: center; margin-bottom: 1em;">
+    <div style="margin: 0 1em; display: flex; align-items: center;">
+      <span style="display: inline-block; width: 12px; height: 12px; background: mediumseagreen; border-radius: 50%; margin-right: 0.5em;"></span>
+      y = x<sup>2</sup>
+    </div>
+    <div style="margin: 0 1em; display: flex; align-items: center;">
+      <span style="display: inline-block; width: 12px; height: 12px; background: purple; border-radius: 50%; margin-right: 0.5em;"></span>
+      y = x<sup>0.5</sup>
+    </div>
+  </div>
+
+  <ScatterPlot
+    series={[power_law_data, inverse_power_data]}
+    x_scale_type="log"
+    y_scale_type="log"
+    x_label="x (log scale)"
+    y_label="y (log scale)"
+    x_format=".1f"
+    y_format=".1f"
+    markers="line+points"
+    style="height: 400px; width: 100%;"
+  />
+</div>
+```
+
+### Scientific Data with Log Scale
+
+This example demonstrates a real-world use case with scientific data spanning many orders of magnitude:
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Typical particle size distribution data
+  const particle_data = {
+    // Particle size in micrometers (µm)
+    x: [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000],
+    // Number of particles detected
+    y: [50000, 30000, 10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 5, 1],
+    point_style: {
+      fill: 'royalblue',
+      radius: 6,
+      stroke: 'darkblue',
+      stroke_width: 1
+    },
+    point_hover: {
+      scale: 1.5,
+      stroke: 'white',
+      stroke_width: 2
+    }
+  }
+
+  let hover_point = null;
+</script>
+
+<div>
+  <h3>Particle Size Distribution (Log-Log Plot)</h3>
+  <p>
+    Scientists often use log-log plots for data spanning multiple orders of magnitude.
+    This example shows a particle size distribution from 0.1µm to 1000µm (1mm).
+  </p>
+
+  <ScatterPlot
+    series={[particle_data]}
+    x_scale_type="log"
+    y_scale_type="log"
+    x_label="Particle Size (µm)"
+    y_label="Particle Count"
+    x_format=".1f"
+    y_format=".0f"
+    markers="line+points"
+    style="height: 400px; width: 100%;"
+    change={(point) => hover_point = point}
+  >
+    {#snippet tooltip({ x, y, x_formatted, y_formatted })}
+      <div style="white-space: nowrap;">
+        <strong>Particle Data</strong><br />
+        Size: {x_formatted} µm<br />
+        Count: {y_formatted} particles
+      </div>
+    {/snippet}
+  </ScatterPlot>
+
+  {#if hover_point}
+    <div style="margin-top: 1em; text-align: center;">
+      A particle size of {hover_point.x.toFixed(1)} µm corresponds to {hover_point.y.toFixed(0)} particles
+    </div>
+  {/if}
+</div>
+```
+
+### Example Code
+
+To create a log-scaled scatter plot, simply add the `x_scale_type` and/or `y_scale_type` props:
+
+```js
+// For X-axis log scale only:
+<ScatterPlot
+  series={data}
+  x_scale_type="log"
+  y_scale_type="linear" // default, can be omitted
+  // other props...
+/>
+
+// For Y-axis log scale only:
+<ScatterPlot
+  series={data}
+  x_scale_type="linear" // default, can be omitted
+  y_scale_type="log"
+  // other props...
+/>
+
+// For both axes log-scaled:
+<ScatterPlot
+  series={data}
+  x_scale_type="log"
+  y_scale_type="log"
+  // other props...
+/>
+```
+
+When using log scales:
+
+- All data points must be positive (>0) as log scales cannot display zero or negative values
+- Non-positive values will be automatically filtered out
+- Log scales are ideal for data spanning multiple orders of magnitude
+- Power law relationships appear as straight lines on log-log plots

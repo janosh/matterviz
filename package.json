@@ -35,7 +35,7 @@
     "d3-scale-chromatic": "^3.1.0",
     "d3-shape": "^3.2.0",
     "highlight.js": "^11.11.1",
-    "svelte": "5.25.6",
+    "svelte": "5.25.7",
     "svelte-multiselect": "11.0.0-rc.1",
     "svelte-zoo": "^0.4.17",
     "three": "^0.175.0"
