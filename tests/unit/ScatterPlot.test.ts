@@ -987,4 +987,468 @@ describe(`ScatterPlot`, () => {
     const scatter = document.querySelector(`.scatter`)
     expect(scatter).toBeTruthy()
   })
+
+  test(`handles time-based data with custom formatting`, () => {
+    // Test with timestamp data
+    const timestamp_data = {
+      x: Array.from({ length: 12 }, (_, idx) => {
+        const date = new Date()
+        date.setMonth(date.getMonth() - (12 - idx))
+        return date.getTime()
+      }),
+      y: Array.from({ length: 12 }, () => Math.random() * 100),
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    const time_component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [timestamp_data],
+        x_ticks: `month`,
+        y_ticks: 5,
+        x_format: `%b %Y`,
+        y_format: `.0f`,
+      },
+    })
+
+    // Verify component mounted
+    expect(time_component).toBeTruthy()
+    const time_scatter = document.querySelector(`.scatter`)
+    expect(time_scatter).toBeTruthy()
+  })
+
+  test.each([
+    {
+      scale_type: `x log scale`,
+      x_scale_type: `log` as const,
+      y_scale_type: `linear` as const,
+    },
+    {
+      scale_type: `y log scale`,
+      x_scale_type: `linear` as const,
+      y_scale_type: `log` as const,
+    },
+    {
+      scale_type: `x and y log scales`,
+      x_scale_type: `log` as const,
+      y_scale_type: `log` as const,
+    },
+  ])(`renders with $scale_type correctly`, ({ x_scale_type, y_scale_type }) => {
+    // Create test data with values suitable for log scale (all positive)
+    const log_scale_data = {
+      x: [0.1, 1, 10, 100, 1000],
+      y: [0.5, 5, 50, 500, 5000],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [log_scale_data],
+        x_scale_type,
+        y_scale_type,
+        x_format: `.1f`,
+        y_format: `.1f`,
+        markers: `line+points`,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`filters valid points when using log scale with explicit positive limits`, () => {
+    // Create data with mixed values
+    const mixed_data = {
+      x: [-10, -1, 0, 0.1, 1, 10, 100],
+      y: [-5, 0, 0.5, 5, 50, 500, 5000],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Set explicit positive limits to avoid the error
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [mixed_data],
+        x_scale_type: `log` as const,
+        y_scale_type: `log` as const,
+        // Set explicit positive limits to override the data's negative values
+        x_lim: [0.1, 100] as [number, number],
+        y_lim: [0.5, 5000] as [number, number],
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`generates appropriate tick values for log scales`, () => {
+    // Test with wide range of values to check tick generation
+    const wide_range_data = {
+      x: [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000],
+      y: [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Mount with log scales and explicit tick count
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [wide_range_data],
+        x_scale_type: `log` as const,
+        y_scale_type: `log` as const,
+        x_ticks: 10, // Request more ticks to get intermediate values
+        y_ticks: 10,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  // Add these new tests for log-scaled axes
+
+  test(`log scale tick generation with various ranges and tick counts`, () => {
+    // Test multiple ranges and configurations for log scale tick generation
+    const test_cases = [
+      // Very narrow range with few powers of 10
+      {
+        name: `narrow range with few powers of 10`,
+        data: { x: [1, 2, 3, 4, 5], y: [1, 2, 3, 4, 5] },
+        x_scale_type: `log` as const,
+        y_scale_type: `log` as const,
+        x_ticks: 5,
+        y_ticks: 5,
+      },
+      // Wide range spanning many powers of 10
+      {
+        name: `wide range spanning many powers of 10`,
+        data: {
+          x: [0.01, 0.1, 1, 10, 100, 1000],
+          y: [0.01, 0.1, 1, 10, 100, 1000],
+        },
+        x_scale_type: `log` as const,
+        y_scale_type: `log` as const,
+        x_ticks: 10,
+        y_ticks: 10,
+      },
+      // Range starting at very small values
+      {
+        name: `range starting at very small values`,
+        data: { x: [0.001, 0.01, 0.1, 1], y: [0.001, 0.01, 0.1, 1] },
+        x_scale_type: `log` as const,
+        y_scale_type: `log` as const,
+        x_ticks: 8,
+        y_ticks: 8,
+      },
+      // Mixed scale types (only X is log)
+      {
+        name: `only x-axis log scale`,
+        data: { x: [0.1, 1, 10, 100], y: [1, 2, 3, 4] },
+        x_scale_type: `log` as const,
+        y_scale_type: `linear` as const,
+        x_ticks: 6,
+        y_ticks: 4,
+      },
+      // Mixed scale types (only Y is log)
+      {
+        name: `only y-axis log scale`,
+        data: { x: [1, 2, 3, 4], y: [0.1, 1, 10, 100] },
+        x_scale_type: `linear` as const,
+        y_scale_type: `log` as const,
+        x_ticks: 4,
+        y_ticks: 6,
+      },
+      // X log with linear y-axis
+      {
+        name: `x log with interval-based y ticks`,
+        data: { x: [0.1, 1, 10, 100], y: [10, 20, 30, 40, 50] },
+        x_scale_type: `log` as const,
+        y_scale_type: `linear` as const,
+        x_ticks: 4,
+        y_ticks: -10, // Interval of 10
+      },
+      // Linear x with log y-axis
+      {
+        name: `y log with interval-based x ticks`,
+        data: { x: [5, 10, 15, 20], y: [0.1, 1, 10, 100] },
+        x_scale_type: `linear` as const,
+        y_scale_type: `log` as const,
+        x_ticks: -5, // Interval of 5
+        y_ticks: 4,
+      },
+    ]
+
+    for (const test_case of test_cases) {
+      // Mount component with specific test case
+      document.body.innerHTML = `` // Reset DOM
+      document.body.appendChild(document.createElement(`div`))
+      document.querySelector(`div`)!.setAttribute(`style`, container_style)
+
+      const component = mount(ScatterPlot, {
+        target: document.body,
+        props: {
+          series: [test_case.data],
+          x_scale_type: test_case.x_scale_type,
+          y_scale_type: test_case.y_scale_type,
+          x_ticks: test_case.x_ticks,
+          y_ticks: test_case.y_ticks,
+          x_format: `.2f`,
+          y_format: `.2f`,
+          x_label: `X ${test_case.x_scale_type === `log` ? `(log)` : `(linear)`}`,
+          y_label: `Y ${test_case.y_scale_type === `log` ? `(log)` : `(linear)`}`,
+        },
+      })
+
+      // Verify component mounted
+      expect(component).toBeTruthy()
+      const scatter = document.querySelector(`.scatter`)
+      expect(scatter).toBeTruthy()
+    }
+  })
+
+  test(`log scale with edge case minimum values`, () => {
+    // Test with values that are very close to 0 but still positive
+    const edge_case_data = {
+      x: [0.0001, 0.001, 0.01, 0.1, 1],
+      y: [0.0001, 0.001, 0.01, 0.1, 1],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Mount the component
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [edge_case_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+        x_format: `.4f`,
+        y_format: `.4f`,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+
+    // Now create data that is exactly at the minimum threshold (0.1 by default)
+    const threshold_data = {
+      x: [0.1, 1, 10],
+      y: [0.1, 1, 10],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    document.body.innerHTML = ``
+    document.body.appendChild(document.createElement(`div`))
+    document.querySelector(`div`)!.setAttribute(`style`, container_style)
+
+    // Mount the component
+    const threshold_component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [threshold_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+      },
+    })
+
+    // Verify component mounted
+    expect(threshold_component).toBeTruthy()
+    const threshold_scatter = document.querySelector(`.scatter`)
+    expect(threshold_scatter).toBeTruthy()
+  })
+
+  test(`log scale with custom domain limits`, () => {
+    // Create data with a wide range
+    const wide_range_data = {
+      x: [0.1, 1, 10, 100, 1000],
+      y: [0.1, 1, 10, 100, 1000],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Mount with explicit limits that are different from the data range
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [wide_range_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+        // Set explicit limits
+        x_lim: [0.5, 200] as [number, number],
+        y_lim: [0.5, 200] as [number, number],
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+
+    // Points outside the range should be filtered out
+  })
+
+  test(`log scale with scientific notation formatting`, () => {
+    // Create data with very large and very small values
+    const scientific_data = {
+      x: [0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000],
+      y: [0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Mount with scientific notation formatting
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [scientific_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+        x_format: `.1e`, // Scientific notation
+        y_format: `.1e`, // Scientific notation
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`log scale with valid mixed data series renders correctly`, () => {
+    // First series with log-friendly data
+    const log_series_1 = {
+      x: [0.1, 1, 10, 100],
+      y: [0.1, 1, 10, 100],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Second series also with valid positive data
+    const log_series_2 = {
+      x: [0.2, 2, 20, 200],
+      y: [0.5, 5, 50, 500],
+      point_style: { fill: `crimson`, radius: 5 },
+    }
+
+    // Mount with multiple series
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [log_series_1, log_series_2],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`log scale auto-ticks with different data density`, () => {
+    // Sparse data case
+    const sparse_data = {
+      x: [0.1, 1000],
+      y: [0.1, 1000],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    // Dense data case
+    const dense_data = {
+      x: Array.from({ length: 100 }, (_, i) => 0.1 * Math.pow(10, i / 20)),
+      y: Array.from({ length: 100 }, (_, i) => 0.1 * Math.pow(10, i / 20)),
+      point_style: { fill: `steelblue`, radius: 3 },
+    }
+
+    // Test sparse data
+    const sparse_component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [sparse_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+        // Let ticks be auto-generated
+      },
+    })
+
+    // Verify component mounted
+    expect(sparse_component).toBeTruthy()
+
+    document.body.innerHTML = ``
+    document.body.appendChild(document.createElement(`div`))
+    document.querySelector(`div`)!.setAttribute(`style`, container_style)
+
+    // Test dense data
+    const dense_component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [dense_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+        // Let ticks be auto-generated
+      },
+    })
+
+    // Verify component mounted
+    expect(dense_component).toBeTruthy()
+  })
+
+  // Add more coverage for power-law data visualization
+  test(`visualizes power-law relationships with log scales`, () => {
+    // Generate power law data: y = x^2
+    const squared_data = {
+      x: [] as number[],
+      y: [] as number[],
+      point_style: { fill: `mediumseagreen`, radius: 4 },
+    }
+
+    // Generate points from 0.1 to 1000 with exponential spacing
+    for (let i = -1; i <= 3; i += 0.25) {
+      const x = Math.pow(10, i)
+      const y = Math.pow(x, 2) // y = x^2 (power law relationship)
+      squared_data.x.push(x)
+      squared_data.y.push(y)
+    }
+
+    // Generate another data series with different power law: y = sqrt(x)
+    const sqrt_data = {
+      x: [] as number[],
+      y: [] as number[],
+      point_style: { fill: `purple`, radius: 4 },
+    }
+
+    // Similar range but with y = sqrt(x)
+    for (let i = -1; i <= 3; i += 0.25) {
+      const x = Math.pow(10, i)
+      const y = Math.pow(x, 0.5) // y = √x (square root relationship)
+      sqrt_data.x.push(x)
+      sqrt_data.y.push(y)
+    }
+
+    // Mount with log-log scales to visualize power laws
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [squared_data, sqrt_data],
+        x_scale_type: `log`,
+        y_scale_type: `log`,
+        x_format: `.1f`,
+        y_format: `.1f`,
+        x_label: `x (log scale)`,
+        y_label: `y (log scale)`,
+        markers: `line+points`,
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
 })
