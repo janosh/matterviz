@@ -2,7 +2,16 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
-#### [v0.3.1](https://github.com/janosh/elementari/compare/v0.3.0...v0.3.1)
+#### [v0.3.3](https://github.com/janosh/elementari/compare/v0.3.3...v0.3.3)
+
+#### [v0.3.3](https://github.com/janosh/elementari/compare/v0.3.2...v0.3.3)
+
+> 5 April 2025
+
+- `ScatterPlot` now supports per-point properties for style, marker type, size and color [`f83c003`](https://github.com/janosh/elementari/commit/f83c0038ec0c09ff702887517012bed6dc4a490b)
+- add x/y axes log-scale support to `ScatterPlot` [`70f8dc4`](https://github.com/janosh/elementari/commit/70f8dc4315e38ad63a76845f6b29a484925434f7)
+
+#### [v0.3.2](https://github.com/janosh/elementari/compare/v0.3.0...v0.3.2)
 
 > 3 April 2025
 
