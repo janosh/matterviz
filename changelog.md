@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
-#### [v0.3.3](https://github.com/janosh/elementari/compare/v0.3.3...v0.3.3)
+#### [v0.3.4](https://github.com/janosh/elementari/compare/v0.3.3...v0.3.4)
+
+> 17 April 2025
+
+- Add `color_scale_type`, `color_scheme`, `color_range` props to `ScatterPlot` for coloring points by numeric values [`#58`](https://github.com/janosh/elementari/pull/58)
 
 #### [v0.3.3](https://github.com/janosh/elementari/compare/v0.3.2...v0.3.3)
 
