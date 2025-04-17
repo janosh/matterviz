@@ -1,12 +1,12 @@
 <script lang="ts">
   import { BohrAtom, element_data } from '$lib'
   import { Slider } from 'svelte-zoo'
-  import Desc from './desc.md'
+  import Description from './bohr-atoms.md'
 
   let orbital_period = $state(2)
 </script>
 
-<Desc />
+<Description />
 
 <Slider
   label="Electron Orbital Period"

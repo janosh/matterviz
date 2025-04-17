@@ -1,6 +1,4 @@
-`ScatterPlot.svelte`
-
-The `ScatterPlot` component allows you to create interactive scatter plots with various features and customizations.
+The `ScatterPlot` component creates versatile interactive scatter plots.
 
 ## Basic Plot with Multiple Display Modes
 
@@ -297,7 +295,7 @@ This example demonstrates how to apply different styles to individual points wit
 </ScatterPlot>
 ```
 
-## Categorized Data and Custom Tick Intervals
+## Categorized Data and Custom Axis Tick Intervals
 
 This example shows categorized data with color coding, custom tick intervals, and demonstrates handling negative values:
 
@@ -738,7 +736,7 @@ Perfect for data with exponential growth on the Y-axis:
     y_scale_type="log"
     x_label="Linear X Axis"
     y_label="Log-Scaled Y Axis"
-    y_format=".0f"
+    y_format="~s"
     markers="line+points"
     style="height: 350px; width: 100%;"
   />
@@ -808,8 +806,8 @@ For comparing data across multiple orders of magnitude on both axes:
     y_scale_type="log"
     x_label="x (log scale)"
     y_label="y (log scale)"
-    x_format=".1f"
-    y_format=".1f"
+    x_format="~s"
+    y_format="~s"
     markers="line+points"
     style="height: 400px; width: 100%;"
   />
@@ -826,10 +824,10 @@ This example demonstrates a real-world use case with scientific data spanning ma
 
   // Typical particle size distribution data
   const particle_data = {
-    // Particle size in micrometers (µm)
-    x: [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000],
-    // Number of particles detected
-    y: [50000, 30000, 10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 5, 1],
+    // Particle size in micrometers (µm) - using non-powers of 10 to test gridlines
+    x: [0.17, 0.42, 0.83, 1.3, 2.7, 4.9, 8.6, 23.4, 47.8, 93.2, 187, 422, 876],
+    // Number of particles detected - also using non-power-of-10 values
+    y: [58423, 32756, 12384, 6290, 2745, 1372, 687, 253, 124, 63, 31, 8, 2],
     point_style: {
       fill: 'royalblue',
       radius: 6,
@@ -859,8 +857,8 @@ This example demonstrates a real-world use case with scientific data spanning ma
     y_scale_type="log"
     x_label="Particle Size (µm)"
     y_label="Particle Count"
-    x_format=".1f"
-    y_format=".0f"
+    x_format="~s"
+    y_format="~s"
     markers="line+points"
     style="height: 400px; width: 100%;"
     change={(point) => hover_point = point}
@@ -882,39 +880,305 @@ This example demonstrates a real-world use case with scientific data spanning ma
 </div>
 ```
 
-### Example Code
+## Combined Interactive Scatter Plot with Custom Controls
 
-To create a log-scaled scatter plot, simply add the `x_scale_type` and/or `y_scale_type` props:
+This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling:
 
-```js
-// For X-axis log scale only:
-<ScatterPlot
-  series={data}
-  x_scale_type="log"
-  y_scale_type="linear" // default, can be omitted
-  // other props...
-/>
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
 
-// For Y-axis log scale only:
-<ScatterPlot
-  series={data}
-  x_scale_type="linear" // default, can be omitted
-  y_scale_type="log"
-  // other props...
-/>
+  // Define categories and colors for data points
+  const categories = ['Group A', 'Group B', 'Group C']
+  const category_colors = ['crimson', 'royalblue', 'mediumseagreen']
 
-// For both axes log-scaled:
-<ScatterPlot
-  series={data}
-  x_scale_type="log"
-  y_scale_type="log"
-  // other props...
-/>
+  // Generate sample data with categories and different marker types
+  const marker_types = ['circle', 'diamond', 'star', 'triangle', 'cross', 'wye']
+
+  // Create three data series with different styling
+  const series_data = categories.map((category, cat_idx) => {
+    const points = 10
+    return {
+      x: Array.from({ length: points }, (_, idx) => idx + 1),
+      y: Array.from({ length: points }, () => 3 + cat_idx * 3 + Math.random() * 2),
+      point_style: Array.from({ length: points }, (_, idx) => ({
+        fill: category_colors[cat_idx],
+        radius: 6 - cat_idx,
+        stroke: 'black',
+        stroke_width: 0.5,
+        marker_type: marker_types[idx % marker_types.length],
+        marker_size: 15 + cat_idx * 5
+      })),
+      metadata: Array.from({ length: points }, (_, idx) => ({
+        category,
+        color: category_colors[cat_idx],
+        marker: marker_types[idx % marker_types.length],
+        idx
+      }))
+    }
+  })
+
+  // Currently selected display mode
+  let display_mode = 'line+points'
+
+  // Toggle series visibility
+  let visible_series = {
+    [categories[0]]: true,
+    [categories[1]]: true,
+    [categories[2]]: true
+  }
+
+  // Controls for random data points
+  let x_tick_interval = -5
+  let y_tick_interval = -5
+
+  // Grid controls
+  let x_grid = true
+  let y_grid = true
+  let grid_color = 'gray'
+  let grid_width = 0.4
+  let grid_dash = '4'
+
+  // Custom axis labels
+  let x_axis_label = "X Axis"
+  let y_axis_label = "Y Value"
+
+  // Selected point tracking
+  let selected_point = null
+
+  // Update series based on visibility toggles
+  $: displayed_series = series_data.filter((_, idx) =>
+    visible_series[categories[idx]])
+
+  // Generate random data points across positive and negative space
+  const sample_count = 40
+  const sample_data = {
+    x: Array(sample_count).fill(0).map(() => (Math.random() * 20) - 10),
+    y: Array(sample_count).fill(0).map(() => (Math.random() * 20) - 10),
+    point_style: {
+      fill: 'goldenrod',
+      radius: 5,
+      stroke: 'black',
+      stroke_width: 0.5
+    },
+    point_hover: {
+      scale: 2,
+      fill: 'orange',
+      stroke: 'white',
+      stroke_width: 2
+    }
+  }
+</script>
+
+<div>
+  <h3>Interactive Multi-Series Plot</h3>
+  <div style="margin-bottom: 1em;">
+    <label>
+      Display Mode:
+      <select bind:value={display_mode}>
+        <option value="points">Points only</option>
+        <option value="line">Lines only</option>
+        <option value="line+points">Lines and Points</option>
+      </select>
+    </label>
+
+    <!-- Legend with toggles -->
+    <div style="display: flex; margin-left: 2em;">
+      {#each categories as category, idx}
+        <label style="margin-right: 1em; display: flex; align-items: center;">
+          <input type="checkbox" bind:checked={visible_series[category]} />
+          <span style="display: inline-block; width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%; margin: 0 0.5em;"></span>
+          {category}
+        </label>
+      {/each}
+    </div>
+  </div>
+
+  <ScatterPlot
+    series={displayed_series}
+    x_label={x_axis_label}
+    y_label={y_axis_label}
+    markers={display_mode}
+    change={(event) => (selected_point = event)}
+    style="height: 400px; width: 100%;"
+  >
+    {#snippet tooltip({ x, y, metadata })}
+      <div style="white-space: nowrap;">
+        <span style="color: {metadata.color};">●</span>
+        <strong>{metadata.category}</strong><br>
+        Point {metadata.idx + 1} ({x}, {y.toFixed(2)})<br>
+        Marker: {metadata.marker}
+      </div>
+    {/snippet}
+  </ScatterPlot>
+
+  {#if selected_point}
+    <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
+      Selected point: ({selected_point.x}, {selected_point.y.toFixed(2)}) from {selected_point.metadata.category}
+    </div>
+  {/if}
+
+  <h3 style="margin-top: 2em;">Random Points with Custom Controls</h3>
+  <div style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 1em;">
+    <label>
+      X-Tick Interval:
+      <select bind:value={x_tick_interval}>
+        <option value={-2}>2 units</option>
+        <option value={-5}>5 units</option>
+        <option value={-10}>10 units</option>
+      </select>
+    </label>
+
+    <label>
+      Y-Tick Interval:
+      <select bind:value={y_tick_interval}>
+        <option value={-2}>2 units</option>
+        <option value={-5}>5 units</option>
+        <option value={-10}>10 units</option>
+      </select>
+    </label>
+
+    <label>
+      <input type="checkbox" bind:checked={x_grid} />
+      X Grid
+    </label>
+
+    <label>
+      <input type="checkbox" bind:checked={y_grid} />
+      Y Grid
+    </label>
+
+
+    <label>
+      Grid Color:
+      <select bind:value={grid_color}>
+        <option value="gray">Gray</option>
+        <option value="lightgray">Light Gray</option>
+        <option value="darkgray">Dark Gray</option>
+        <option value="#aaaaaa">#aaa</option>
+      </select>
+    </label>
+
+    <label>
+      X-Axis Label:
+      <input type="text" bind:value={x_axis_label} style="width: 120px" />
+    </label>
+
+    <label>
+      Y-Axis Label:
+      <input type="text" bind:value={y_axis_label} style="width: 120px" />
+    </label>
+  </div>
+
+  <ScatterPlot
+    series={[sample_data]}
+    x_label={x_axis_label}
+    y_label={y_axis_label}
+    x_lim={[-15, 15]}
+    y_lim={[-15, 15]}
+    x_ticks={x_tick_interval}
+    y_ticks={y_tick_interval}
+    {x_grid}
+    {y_grid}
+    markers="points"
+    style="height: 400px; width: 100%;"
+  >
+    {#snippet tooltip({ x, y })}
+      <div style="white-space: nowrap;">
+        Position: ({x.toFixed(2)}, {y.toFixed(2)})
+      </div>
+    {/snippet}
+  </ScatterPlot>
+</div>
 ```
 
-When using log scales:
+## Color Scaling with Linear and Log Modes
 
-- All data points must be positive (>0) as log scales cannot display zero or negative values
-- Non-positive values will be automatically filtered out
-- Log scales are ideal for data spanning multiple orders of magnitude
-- Power law relationships appear as straight lines on log-log plots
+This example demonstrates how to use `color_values` to apply color mapping to points based on data values, and toggle between linear and log color scales:
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Create data with exponentially increasing values
+  const make_exponential_data = (size, base = 2) => {
+    return {
+      x: Array.from({ length: size }, (_, idx) => idx + 1),
+      y: Array.from({ length: size }, (_, idx) => idx + 1),
+      // Exponential distribution of values (1, 2, 4, 8, 16, 32, etc. for base 2)
+      color_values: Array.from({ length: size }, (_, idx) => Math.pow(base, idx)),
+      // Store metadata for tooltips
+      metadata: Array.from({ length: size }, (_, idx) => ({
+        value: Math.pow(base, idx)
+      })),
+      point_style: {
+        radius: 10,
+        stroke: `black`,
+        stroke_width: 1
+      }
+    }
+  }
+  const data_base2 = make_exponential_data(10, 2)
+
+  // Track which color scale type is active
+  let color_scale_type = `linear`
+
+  // Color scheme options
+  const color_schemes = [
+    `viridis`, `inferno`, `plasma`, `magma`, `cividis`,
+    `turbo`, `warm`, `cool`, `spectral`
+  ]
+  let selected_scheme = `viridis`
+</script>
+
+<div>
+  <div style="margin-bottom: 1em;">
+    <div style="display: flex; gap: 1em; flex-wrap: wrap; align-items: center; margin-bottom: 0.5em;">
+      <div>
+        <strong>Color Scale Type:</strong>
+        {#each ['linear', 'log'] as scale_type}
+          <label style="margin-left: 0.5em;">
+            <input type="radio" name="scale_type" value={scale_type}
+              bind:group={color_scale_type} /> {scale_type}
+          </label>
+        {/each}
+      </div>
+
+      <div>
+        <strong>Color Scheme:</strong>
+        <select bind:value={selected_scheme}>
+          {#each color_schemes as scheme}
+            <option value={scheme}>{scheme}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+
+    <p>
+      <strong>Note:</strong> Using log scale for color values is especially useful when the data has an exponential distribution
+      or spans many orders of magnitude. It helps visualize patterns in the data that would be hard to see with a linear scale.
+    </p>
+  </div>
+
+  <h3>Base-2 Exponential Data</h3>
+  <!-- TODO figure out why ScatterPlot doesn't react to color_scale_type and selected_scheme without #key here -->
+  {#key color_scale_type && selected_scheme}
+    <ScatterPlot
+      series={[data_base2]}
+      x_label="X Position"
+      y_label="Y Position"
+      markers="points"
+      color_scheme={selected_scheme}
+      color_scale_type={color_scale_type}
+      style="height: 300px; width: 100%;"
+    >
+      {#snippet tooltip({ x, y, metadata })}
+        <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
+          <strong>Value: {metadata.value}</strong><br/>
+          2<sup>{x-1}</sup> = {metadata.value}
+        </div>
+      {/snippet}
+    </ScatterPlot>
+  {/key}
+</div>
+```

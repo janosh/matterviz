@@ -56,6 +56,7 @@ export const pretty_num = (num: number, fmt?: string | number) => {
   }
   return format(fmt)(num)
 }
+
 export function parse_si_float<T extends string | number | null | undefined>(
   value: T,
 ): T | number | string {

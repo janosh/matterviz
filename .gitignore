@@ -15,3 +15,6 @@ coverage
 
 # auto-generated
 src/types
+
+# coverage
+test-results

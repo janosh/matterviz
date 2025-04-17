@@ -1,7 +1,7 @@
 import adapter from '@sveltejs/adapter-static'
 import { mdsvex } from 'mdsvex'
 import mdsvexamples from 'mdsvexamples'
-import katex from 'rehype-katex-svelte'
+import katex from 'rehype-katex'
 import math from 'remark-math'
 import { sveltePreprocess } from 'svelte-preprocess'
 

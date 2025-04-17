@@ -5,7 +5,7 @@
   import Select from 'svelte-multiselect'
 
   let name = `benzene`
-  $: molecule = molecules.find((struct) => struct.name === name) || {}
+  let molecule = $derived(molecules.find((struct) => struct.name === name) || {})
 </script>
 
 <form>

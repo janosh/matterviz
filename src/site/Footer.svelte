@@ -31,4 +31,8 @@
     margin: 6em 0 2em;
     text-align: center;
   }
+  footer small {
+    display: block;
+    margin-top: 1em;
+  }
 </style>

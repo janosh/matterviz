@@ -108,10 +108,8 @@ You can make fat and skinny bars:
 
   let color_scale = `Viridis`
   let heatmap_key
-  $: heatmap_values = heatmap_key
-    ? element_data.map((el) => el[heatmap_key])
-    : []
-  $: heat_range = [Math.min(...heatmap_values), Math.max(...heatmap_values)]
+  let heatmap_values = $derived(heatmap_key ? element_data.map((el) => el[heatmap_key]) : [])
+  let heat_range = $derived([Math.min(...heatmap_values), Math.max(...heatmap_values)])
   let cs_range = heat_range
 </script>
 

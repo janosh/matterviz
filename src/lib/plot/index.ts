@@ -43,4 +43,5 @@ export type DataSeries<T = unknown> = {
   point_label?: LabelStyle | LabelStyle[]
   point_offset?: Point[`offset`] | Point[`offset`][]
   point_tween_duration?: number
+  color_values?: number[] // Array of numeric values for color scaling
 }
