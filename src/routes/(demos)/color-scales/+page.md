@@ -11,32 +11,31 @@
   let log = true // log color scale
   let data = `MP`
   let color_scale = 'Viridis'
-  $: heatmap_values = Object.values(data == `WBM` ? wbm_elem_counts : mp_elem_counts)
-  $: total = heatmap_values.reduce((a, b) => a + b, 0)
+  let heatmap_values = $derived(Object.values(data == `WBM` ? wbm_elem_counts : mp_elem_counts))
+  let total = $derived(heatmap_values.reduce((a, b) => a + b, 0))
 </script>
 
 <h2>{data == 'MP' ? 'Materials Project' : 'WBM'} Element Heatmap</h2>
 
-<section>
-  <span>Data set &ensp; <RadioButtons options={[`MP`, `WBM`]} bind:selected={data} /></span>
-
-  <span>Log color scale <Toggle bind:checked={log} /></span>
-
-  <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />
-</section>
-
 <PeriodicTable {heatmap_values} {log} {color_scale}>
   {#snippet inset({ active_element })}
-  <TableInset  style="grid-row: 3;" >
+  <TableInset>
+    <section>
+      <span>Data set &ensp; <RadioButtons options={[`MP`, `WBM`]} bind:selected={data} /></span>
+
+      <span>Log color scale <Toggle bind:checked={log} /></span>
+
+      <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />
+    </section>
+      <strong style="height: 25pt;">
     {#if active_element?.name}
-      <strong>
         {active_element?.name}: {pretty_num(mp_elem_counts[active_element?.symbol])}
         <!-- compute percent of total -->
         {#if mp_elem_counts[active_element?.symbol] > 0}
           ({pretty_num((mp_elem_counts[active_element?.symbol] / total) * 100)}%)
         {/if}
-      </strong>
       {/if}
+      </strong>
     </TableInset>
   {/snippet}
 </PeriodicTable>
@@ -48,10 +47,8 @@
     display: flex;
     flex-direction: column;
     gap: 1ex;
-    position: absolute;
-    left: 40%;
-    transform: translate(-50%, -15%);
-    z-index: 1;
+    place-content: center;
+    place-items: center;
   }
   strong {
     text-align: center;

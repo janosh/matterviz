@@ -89,7 +89,6 @@
     bottom_left,
   }: Props = $props()
 
-  // interactivity()
   $effect.pre(() => {
     colors.element = element_color_schemes[color_scheme]
   })

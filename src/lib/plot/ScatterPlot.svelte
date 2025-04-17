@@ -3,11 +3,24 @@
   import { Line } from '$lib'
   import { extent, range } from 'd3-array'
   import { format } from 'd3-format'
-  import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
+  import {
+    scaleLinear,
+    scaleLog,
+    scaleSequential,
+    scaleSequentialLog,
+    scaleTime,
+  } from 'd3-scale'
+  import * as d3sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
   import type { Snippet } from 'svelte'
   import type { DataSeries } from '.'
   import ScatterPoint from './ScatterPoint.svelte'
+
+  // Extract color scheme interpolate function names from d3-scale-chromatic
+  type D3InterpolateFunc = keyof typeof d3sc & `interpolate${string}`
+  type D3ColorSchemeName = Lowercase<
+    D3InterpolateFunc extends `interpolate${infer Name}` ? Name : never
+  >
 
   type TooltipProps = {
     x: number
@@ -20,19 +33,22 @@
   }
 
   type TimeInterval = `day` | `month` | `year`
+  type ScaleType = `linear` | `log`
 
   interface Props {
     series?: DataSeries[]
     style?: string
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
-    pad_top?: number
-    pad_bottom?: number
-    pad_left?: number
-    pad_right?: number
+    x_range?: [number, number] // Explicit ranges for x and y axes. If provided, this overrides the auto-computed range.
+    y_range?: [number, number] // Use this to set fixed ranges regardless of the data.
+    padding?: { t: number; b: number; l: number; r: number }
     x_label?: string
-    x_label_yshift?: number
+    x_label_shift?: { x: number; y: number } // horizontal and vertical shift of x-axis label in px
+    x_tick_label_shift?: { x: number; y: number } // horizontal and vertical shift of x-axis tick labels in px
     y_label?: string
+    y_label_shift?: { x: number; y: number } // horizontal and vertical shift of y-axis label in px
+    y_tick_label_shift?: { x: number; y: number } // horizontal and vertical shift of y-axis tick labels in px
     y_unit?: string
     tooltip_point?: Point | null
     hovered?: boolean
@@ -43,22 +59,30 @@
     change?: (data: Point & { series: DataSeries }) => void
     x_ticks?: number | TimeInterval // Positive: count, Negative: interval, String: time interval
     y_ticks?: number // Positive: count, Negative: interval
-    x_scale_type?: `linear` | `log` // Type of scale for x-axis
-    y_scale_type?: `linear` | `log` // Type of scale for y-axis
+    x_scale_type?: ScaleType // Type of scale for x-axis
+    y_scale_type?: ScaleType // Type of scale for y-axis
     show_zero_lines?: boolean
+    x_grid?: boolean | Record<string, unknown> // Control x-axis grid lines visibility and styling
+    y_grid?: boolean | Record<string, unknown> // Control y-axis grid lines visibility and styling
+    // Color scaling props
+    color_scale_type?: ScaleType // Type of scale for color mapping
+    color_scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
+    color_range?: [number, number] // Min and max values for color scaling (uses auto detect if not provided)
   }
   let {
     series = [],
     style = ``,
     x_lim = [null, null],
     y_lim = [null, null],
-    pad_top = 5,
-    pad_bottom = 30,
-    pad_left = 50,
-    pad_right = 20,
+    x_range,
+    y_range,
+    padding = { t: 5, b: 70, l: 50, r: 20 },
     x_label = ``,
-    x_label_yshift = 0,
+    x_label_shift = { x: 0, y: -40 },
+    x_tick_label_shift = { x: 0, y: 20 },
     y_label = ``,
+    y_label_shift = { x: 0, y: 0 },
+    y_tick_label_shift = { x: -8, y: 0 },
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
@@ -72,231 +96,216 @@
     x_scale_type = `linear`,
     y_scale_type = `linear`,
     show_zero_lines = true,
+    x_grid = true,
+    y_grid = true,
+    color_scale_type = `linear`,
+    color_scheme = `viridis`,
+    color_range,
   }: Props = $props()
 
-  const axis_label_offset = { x: 25, y: 10 } // pixels
-  let width: number = $state(0)
-  let height: number = $state(0)
+  let width = $state(0)
+  let height = $state(0)
 
-  // Create raw data points and determine ranges for all series
+  // Create raw data points from all series
   let all_points = $derived(
     series
-      .filter((item) => item != null) // Filter out null or undefined series first
+      .filter(Boolean)
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
 
-  function get_data_range_with_fallback(
+  // Compute data color values for color scaling
+  let all_color_values = $derived(
+    series
+      .filter(Boolean)
+      .flatMap(({ color_values }) => color_values?.filter(Boolean) || []),
+  )
+
+  // Helper for computing nice data ranges with D3's nice() function
+  function get_nice_data_range(
     points: Point[],
     get_value: (p: Point) => number,
     lim: [number | null, number | null],
-  ): [number, number] {
+    scale_type: ScaleType,
+    is_time = false,
+  ) {
     const [min, max] = lim
     const [min_ext, max_ext] = extent(points, get_value)
-    return [min ?? min_ext ?? 0, max ?? max_ext ?? 1]
+    const raw_min = min ?? min_ext ?? 0
+    const raw_max = max ?? max_ext ?? 1
+
+    if (is_time || raw_min === raw_max) return [raw_min, raw_max]
+
+    // Use D3's nice() to create pretty boundaries
+    const scale =
+      scale_type === `log`
+        ? scaleLog().domain([Math.max(raw_min, 1e-10), Math.max(raw_max, raw_min * 1.1)])
+        : scaleLinear().domain([raw_min, raw_max])
+
+    scale.nice()
+    return scale.domain()
   }
 
-  let x_range = $derived(
-    get_data_range_with_fallback(all_points, (point) => point.x, x_lim),
+  // Compute auto ranges based on data and limits
+  let auto_x_range = $derived(
+    get_nice_data_range(
+      all_points,
+      (point) => point.x,
+      x_lim,
+      x_scale_type,
+      x_format?.startsWith(`%`) || false,
+    ),
   )
 
-  let y_range = $derived(
-    get_data_range_with_fallback(all_points, (point) => point.y, y_lim),
+  let auto_y_range = $derived(
+    get_nice_data_range(all_points, (point) => point.y, y_lim, y_scale_type, false),
   )
+
+  // Use provided explicit ranges if available, otherwise use auto-computed ranges
+  let effective_x_range = $derived(x_range ?? auto_x_range)
+  let effective_y_range = $derived(y_range ?? auto_y_range)
+  let [x_min, x_max] = $derived(effective_x_range)
+  let [y_min, y_max] = $derived(effective_y_range)
+
+  // Create auto color range
+  let auto_color_range = $derived(
+    all_color_values.length > 0 ? (extent(all_color_values) as [number, number]) : [0, 1],
+  )
+
+  let effective_color_range = $derived(color_range ?? auto_color_range)
+  let [color_min, color_max] = $derived(effective_color_range)
 
   // Validate log scale ranges
   $effect(() => {
     for (const { scale_type, range, axis } of [
-      { scale_type: x_scale_type, range: x_range, axis: `x-axis` },
-      { scale_type: y_scale_type, range: y_range, axis: `y-axis` },
+      { scale_type: x_scale_type, range: effective_x_range, axis: `x` },
+      { scale_type: y_scale_type, range: effective_y_range, axis: `y` },
     ]) {
-      if (scale_type === `log`) {
-        const [min, max] = range
-        if (min <= 0 || max <= 0) {
-          const point = min <= 0 ? `minimum: ${min}` : `maximum: ${max}`
-          throw new Error(`Log scale ${axis} cannot have values <= 0. Current ${point}`)
-        }
+      if (scale_type === `log` && (range[0] <= 0 || range[1] <= 0)) {
+        const point = range[0] <= 0 ? `minimum: ${range[0]}` : `maximum: ${range[1]}`
+        throw new Error(
+          `Log scale ${axis}-axis cannot have values <= 0. Current ${point}`,
+        )
       }
     }
   })
-  let [x_min, x_max] = $derived(x_range)
-  let [y_min, y_max] = $derived(y_range)
 
-  // Create the actual scale functions
+  // Create scale functions
   let x_scale_fn = $derived(
-    x_format.startsWith(`%`)
+    x_format?.startsWith(`%`)
       ? scaleTime()
           .domain([new Date(x_min), new Date(x_max)])
-          .range([pad_left, width - pad_right])
+          .range([padding.l, width - padding.r])
       : x_scale_type === `log`
         ? scaleLog()
             .domain([x_min, x_max])
-            .range([pad_left, width - pad_right])
+            .range([padding.l, width - padding.r])
         : scaleLinear()
             .domain([x_min, x_max])
-            .range([pad_left, width - pad_right]),
+            .range([padding.l, width - padding.r]),
   )
 
   let y_scale_fn = $derived(
     y_scale_type === `log`
       ? scaleLog()
           .domain([y_min, y_max])
-          .range([height - pad_bottom, pad_top])
+          .range([height - padding.b, padding.t])
       : scaleLinear()
           .domain([y_min, y_max])
-          .range([height - pad_bottom, pad_top]),
+          .range([height - padding.b, padding.t]),
   )
 
-  // Filter out points outside x_lim and y_lim for each series
+  // Color scale function
+  let color_scale_fn = $derived.by(() => {
+    const interpolator_name =
+      `interpolate${color_scheme.charAt(0).toUpperCase()}${color_scheme.slice(1).toLowerCase()}` as keyof typeof d3sc
+    const interpolator =
+      typeof d3sc[interpolator_name] === `function`
+        ? d3sc[interpolator_name]
+        : d3sc.interpolateViridis
+
+    return color_scale_type === `log`
+      ? scaleSequentialLog(interpolator).domain([
+          Math.max(color_min, 1e-10),
+          Math.max(color_max, color_min * 1.1),
+        ])
+      : scaleSequential(interpolator).domain([color_min, color_max])
+  })
+
+  // Filter series data to only include points within bounds
   let filtered_series = $derived(
     series.map((data_series) => {
-      const { x: xs, y: ys, ...rest } = data_series
+      if (!data_series)
+        return { filtered_data: [] } as unknown as DataSeries & { filtered_data: Point[] }
 
-      // Process each point based on its index
+      const { x: xs, y: ys, color_values, ...rest } = data_series
+
+      // Process each point with its properties
       const processed_points = xs.map((x, idx) => {
-        // Get the y-value for this point
         const y = ys[idx]
+        const color_value = color_values?.[idx]
 
-        // Process properties with proper typing
-        function process_property<T>(
+        // Helper to process array or scalar properties
+        const process_prop = <T,>(
           prop: T[] | T | undefined,
           idx: number,
-        ): T | undefined {
+        ): T | undefined => {
           if (!prop) return undefined
-          if (Array.isArray(prop) && idx < prop.length) return prop[idx]
-          if (!Array.isArray(prop)) return prop
-          return undefined
+          return Array.isArray(prop) && idx < prop.length
+            ? prop[idx]
+            : !Array.isArray(prop)
+              ? prop
+              : undefined
         }
 
-        // Process all point properties using the helper function
-        const metadata = rest.metadata
-          ? Array.isArray(rest.metadata) && idx < rest.metadata.length
-            ? (rest.metadata[idx] as Record<string, unknown>)
-            : !Array.isArray(rest.metadata)
-              ? (rest.metadata as Record<string, unknown>)
-              : undefined
-          : undefined
-        const point_style = process_property(rest.point_style, idx)
-        const point_hover = process_property(rest.point_hover, idx)
-        const point_label = process_property(rest.point_label, idx)
-        const point_offset = process_property(rest.point_offset, idx)
-
-        // Create the point object with all processed properties
         return {
           x,
           y,
-          metadata,
-          point_style,
-          point_hover,
-          point_label,
-          point_offset,
+          color_value,
+          metadata: process_prop(rest.metadata, idx),
+          point_style: process_prop(rest.point_style, idx),
+          point_hover: process_prop(rest.point_hover, idx),
+          point_label: process_prop(rest.point_label, idx),
+          point_offset: process_prop(rest.point_offset, idx),
           point_tween_duration: rest.point_tween_duration,
         }
       })
 
-      // Filter points to only include those within the specified ranges
-      const filtered_data = processed_points.filter((pt) => {
-        const x_is_nan = isNaN(pt.x) || pt.x === null
-        const y_is_nan = isNaN(pt.y) || pt.y === null
-        // Skip points with NaN values or outside the range
-        return (
-          !x_is_nan &&
-          !y_is_nan &&
+      // Filter to points within the plot bounds
+      const filtered_data = processed_points.filter(
+        (pt) =>
+          !isNaN(pt.x) &&
+          pt.x !== null &&
+          !isNaN(pt.y) &&
+          pt.y !== null &&
           pt.x >= x_min &&
           pt.x <= x_max &&
           pt.y >= y_min &&
-          pt.y <= y_max
-        )
-      })
+          pt.y <= y_max,
+      )
 
-      // Return original series with the processed and filtered data
       return { ...data_series, filtered_data }
     }),
   )
 
-  // Generate x-axis ticks
-  let x_tick_values = $derived(() => {
-    // If width or height is 0, return empty array to avoid errors
-    if (width === 0 || height === 0) return []
-
-    // Time-based ticks (dates)
-    if (x_format.startsWith(`%`)) {
-      const time_scale = scaleTime().domain([new Date(x_min), new Date(x_max)])
-
-      // Determine the appropriate tick count
-      let count = 10 // default
-      if (typeof x_ticks === `number`) {
-        count =
-          x_ticks < 0
-            ? Math.ceil((x_max - x_min) / Math.abs(x_ticks) / 86400000) // Convert to approximate days
-            : x_ticks
-      } else if (typeof x_ticks === `string`) {
-        count =
-          x_ticks === `day` ? 30 : x_ticks === `month` ? 12 : x_ticks === `year` ? 10 : 10
-      }
-
-      // Generate the ticks
-      const ticks = time_scale.ticks(count)
-
-      // Filter based on interval type if specified
-      let filtered = ticks
-      if (typeof x_ticks === `string`) {
-        if (x_ticks === `month`) {
-          filtered = ticks.filter((d) => d.getDate() === 1)
-        } else if (x_ticks === `year`) {
-          filtered = ticks.filter((d) => d.getMonth() === 0 && d.getDate() === 1)
-        }
-      }
-
-      return filtered.map((d) => d.getTime())
-    }
-
-    // Log scale ticks
-    if (x_scale_type === `log`) {
-      return generate_log_ticks(x_min, x_max, x_ticks)
-    }
-
-    // Linear scale with interval
-    if (typeof x_ticks === `number` && x_ticks < 0) {
-      const interval = Math.abs(x_ticks)
-      const start = Math.ceil(x_min / interval) * interval
-      return range(start, x_max + interval * 0.1, interval)
-    }
-    // Default linear ticks
-    return x_scale_fn.ticks(typeof x_ticks === `number` ? x_ticks : undefined)
-  })
-
-  // Generate y-axis ticks
-  let y_tick_values = $derived(() => {
-    // If width or height is 0, return empty array to avoid errors
-    if (width === 0 || height === 0) return []
-
-    // Log scale ticks
-    if (y_scale_type === `log`) {
-      return generate_log_ticks(y_min, y_max, y_ticks)
-    }
-    // Linear scale with interval
-    if (typeof y_ticks === `number` && y_ticks < 0) {
-      const interval = Math.abs(y_ticks)
-      const start = Math.ceil(y_min / interval) * interval
-      return range(start, y_max + interval * 0.1, interval)
-    }
-    // Default linear ticks
-    return y_scale_fn.ticks(typeof y_ticks === `number` && y_ticks > 0 ? y_ticks : 5)
-  })
-
-  // Helper function to generate logarithmic ticks
+  // Generate logarithmic ticks
   function generate_log_ticks(
     min: number,
     max: number,
-    ticks_option: number | TimeInterval | undefined,
+    ticks_option?: number | TimeInterval,
   ): number[] {
+    min = Math.max(min, 1e-10)
+
     const min_power = Math.floor(Math.log10(min))
     const max_power = Math.ceil(Math.log10(max))
 
-    // Generate powers of 10
-    const powers = range(min_power, max_power + 1).map((p) => Math.pow(10, p))
+    const extended_min_power = max_power - min_power <= 2 ? min_power - 1 : min_power
+    const extended_max_power = max_power - min_power <= 2 ? max_power + 1 : max_power
 
-    // For a more detailed tick set, include intermediate values
+    const powers = range(extended_min_power, extended_max_power + 1).map((p) =>
+      Math.pow(10, p),
+    )
+
+    // For narrow ranges, include intermediate values
     if (
       max_power - min_power < 3 &&
       typeof ticks_option === `number` &&
@@ -305,52 +314,128 @@
       const detailed_ticks: number[] = []
       powers.forEach((power) => {
         detailed_ticks.push(power)
-        if (power * 2 <= max) detailed_ticks.push(power * 2)
-        if (power * 5 <= max) detailed_ticks.push(power * 5)
+        if (power * 2 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 2)
+        if (power * 5 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 5)
       })
-      return detailed_ticks.filter((t) => t >= min && t <= max)
+      return detailed_ticks
     }
 
     return powers
   }
 
-  function on_mouse_move(event: MouseEvent) {
-    hovered = true
+  // Generate axis ticks
+  let x_tick_values = $derived(() => {
+    if (!width || !height) return []
 
-    // Find the closest point across all series
-    let closest_point: Point | null = null
-    let min_distance = Infinity
-    let closest_series: DataSeries | null = null
+    // Time-based ticks
+    if (x_format?.startsWith(`%`)) {
+      const time_scale = scaleTime().domain([new Date(x_min), new Date(x_max)])
 
-    // Handle timestamp and regular numeric data differently
-    const mouse_x = x_format.startsWith(`%`)
-      ? (x_scale_fn.invert(event.offsetX) as Date).getTime()
-      : (x_scale_fn.invert(event.offsetX) as number)
-    const mouse_y = y_scale_fn.invert(event.offsetY) as number
+      let count = 10 // default
+      if (typeof x_ticks === `number`) {
+        count =
+          x_ticks < 0
+            ? Math.ceil((x_max - x_min) / Math.abs(x_ticks) / 86400000)
+            : x_ticks
+      } else if (typeof x_ticks === `string`) {
+        count = x_ticks === `day` ? 30 : x_ticks === `month` ? 12 : 10
+      }
 
-    // Use a small tolerance in the x direction (in screen pixels)
-    const x_tolerance = 20 // pixels
-    // Convert screen pixels to data units
-    const x_tolerance_data = Math.abs(
-      (x_format.startsWith(`%`)
-        ? (x_scale_fn.invert(event.offsetX + x_tolerance) as Date).getTime()
-        : (x_scale_fn.invert(event.offsetX + x_tolerance) as number)) - mouse_x,
+      const ticks = time_scale.ticks(count)
+
+      if (typeof x_ticks === `string`) {
+        if (x_ticks === `month`)
+          return ticks.filter((d) => d.getDate() === 1).map((d) => d.getTime())
+        if (x_ticks === `year`)
+          return ticks
+            .filter((d) => d.getMonth() === 0 && d.getDate() === 1)
+            .map((d) => d.getTime())
+      }
+
+      return ticks.map((d) => d.getTime())
+    }
+
+    // Log scale ticks
+    if (x_scale_type === `log`) return generate_log_ticks(x_min, x_max, x_ticks)
+
+    // Linear scale with interval
+    if (typeof x_ticks === `number` && x_ticks < 0) {
+      const interval = Math.abs(x_ticks)
+      const start = Math.ceil(x_min / interval) * interval
+      return range(start, x_max + interval * 0.1, interval)
+    }
+
+    // Default ticks
+    const ticks = x_scale_fn.ticks(typeof x_ticks === `number` ? x_ticks : undefined)
+    return ticks.map(Number)
+  })
+
+  let y_tick_values = $derived(() => {
+    if (!width || !height) return []
+
+    if (y_scale_type === `log`) return generate_log_ticks(y_min, y_max, y_ticks)
+
+    if (typeof y_ticks === `number` && y_ticks < 0) {
+      const interval = Math.abs(y_ticks)
+      const start = Math.ceil(y_min / interval) * interval
+      return range(start, y_max + interval * 0.1, interval)
+    }
+
+    const ticks = y_scale_fn.ticks(
+      typeof y_ticks === `number` && y_ticks > 0 ? y_ticks : 5,
     )
+    return ticks.map(Number)
+  })
 
-    for (const data_series of filtered_series) {
-      const points = data_series.filtered_data
-      for (let idx = 0; idx < points.length; idx++) {
-        const point = points[idx]
-        // First quick check if point is within X tolerance (fast reject)
-        const dx = point.x - mouse_x
-        if (Math.abs(dx) > x_tolerance_data) continue
-        // If within X tolerance, calculate full distance
-        const dy = point.y - mouse_y
+  // Format a value for display
+  function format_value(value: number, formatter: string): string {
+    if (!formatter) return `${value}`
+
+    if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
+
+    const formatted = format(formatter)(value)
+    // Remove trailing zeros after decimal point
+    return formatted.includes(`.`)
+      ? formatted.replace(/(\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
+      : formatted
+  }
+
+  function on_mouse_move(evt: MouseEvent) {
+    if (!tooltip) return
+
+    const svg_box = (evt.currentTarget as SVGElement)?.getBoundingClientRect()
+    if (!svg_box) return
+
+    // Get mouse position relative to SVG
+    const mouse_x_rel = evt.clientX - svg_box.left
+    const mouse_y_rel = evt.clientY - svg_box.top
+
+    // Convert to data values
+    const mouse_x = x_format?.startsWith(`%`)
+      ? new Date(x_scale_fn.invert(mouse_x_rel))
+      : x_scale_fn.invert(mouse_x_rel)
+    const mouse_y = y_scale_fn.invert(mouse_y_rel)
+
+    // Find closest point to mouse
+    let closest_point = null
+    let min_distance = Infinity
+    let closest_series = null
+
+    for (const series_data of filtered_series) {
+      if (!series_data?.filtered_data) continue
+
+      for (const point of series_data.filtered_data) {
+        // Calculate distance to point
+        const dx = x_format?.startsWith(`%`)
+          ? Math.abs(new Date(point.x).getTime() - (mouse_x as Date).getTime()) / 86400000
+          : Math.abs(point.x - (mouse_x as number))
+        const dy = Math.abs(point.y - mouse_y)
         const distance = dx * dx + dy * dy
+
         if (distance < min_distance) {
           min_distance = distance
           closest_point = point
-          closest_series = data_series
+          closest_series = series_data
         }
       }
     }
@@ -365,41 +450,27 @@
     hovered = false
     tooltip_point = null
   }
-
-  const format_value = (value: number, formatter: string) => {
-    if (formatter.startsWith(`%`)) {
-      return timeFormat(formatter)(new Date(value))
-    }
-    // First format the number using d3-format
-    const formatted = format(formatter)(value)
-    // Only remove trailing zeros after a decimal point, not from whole numbers
-    return formatted.includes(`.`)
-      ? formatted.replace(/(\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
-      : formatted
-  }
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
     <svg onmousemove={on_mouse_move} onmouseleave={on_mouse_leave} role="img">
+      <!-- Zero lines -->
       {#if show_zero_lines}
-        <!-- Vertical zero line (only if zero is within range) -->
         {#if x_min <= 0 && x_max >= 0}
           <line
-            y1={pad_top}
-            y2={height - pad_bottom}
-            x1={x_format.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
-            x2={x_format.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
+            y1={padding.t}
+            y2={height - padding.b}
+            x1={x_format?.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
+            x2={x_format?.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
             stroke="gray"
             stroke-width="0.5"
           />
         {/if}
-
-        <!-- Horizontal zero line (only if zero is within range) -->
-        {#if y_range && y_range[0] < 0 && y_range[1] > 0}
+        {#if y_min < 0 && y_max > 0}
           <line
-            x1={pad_left}
-            x2={width - pad_right}
+            x1={padding.l}
+            x2={width - padding.r}
             y1={y_scale_fn(0)}
             y2={y_scale_fn(0)}
             stroke="gray"
@@ -408,41 +479,52 @@
         {/if}
       {/if}
 
-      {#if markers && markers.includes(`line`)}
-        {#each filtered_series ?? [] as series, series_idx (JSON.stringify( { x: series.x, y: series.y, idx: series_idx }, ))}
+      <!-- Lines -->
+      {#if markers?.includes(`line`)}
+        {#each filtered_series ?? [] as series, series_idx (series_idx)}
+          {@const series_color =
+            series.filtered_data?.[0]?.color_value !== undefined
+              ? color_scale_fn(series.filtered_data[0].color_value)
+              : typeof series?.point_style === `object` && series?.point_style?.fill
+                ? series.point_style.fill
+                : `rgba(255, 255, 255, 0.5)`}
+
           <Line
             points={(series?.filtered_data ?? []).map((point) => [
-              x_format.startsWith(`%`)
+              x_format?.startsWith(`%`)
                 ? x_scale_fn(new Date(point.x))
                 : x_scale_fn(point.x),
               y_scale_fn(point.y),
             ])}
             origin={[
-              x_format.startsWith(`%`)
-                ? x_scale_fn(new Date(x_range?.[0] ?? 0))
-                : x_scale_fn(x_range?.[0] ?? 0),
-              y_scale_fn(y_range?.[0] ?? 0),
+              x_format?.startsWith(`%`) ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
+              y_scale_fn(y_min),
             ]}
-            line_color={typeof series?.point_style === `object` &&
-            series?.point_style?.fill &&
-            typeof series.point_style.fill === `string`
-              ? series.point_style.fill
-              : `rgba(255, 255, 255, 0.5)`}
+            line_color={series_color}
             line_width={1}
             area_color="transparent"
           />
         {/each}
       {/if}
 
-      {#if markers && markers.includes(`points`)}
-        {#each filtered_series ?? [] as series, series_idx (JSON.stringify( { x: series.x, y: series.y, idx: series_idx }, ))}
-          {#each series?.filtered_data ?? [] as point, point_idx (JSON.stringify( { ...point, idx: point_idx }, ))}
+      <!-- Points -->
+      {#if markers?.includes(`points`)}
+        {#each filtered_series ?? [] as series, series_idx (series_idx)}
+          {#each series?.filtered_data ?? [] as point, point_idx (point_idx)}
+            {@const point_color =
+              point.color_value !== undefined
+                ? color_scale_fn(point.color_value)
+                : undefined}
+
             <ScatterPoint
-              x={x_format.startsWith(`%`)
+              x={x_format?.startsWith(`%`)
                 ? x_scale_fn(new Date(point.x))
                 : x_scale_fn(point.x)}
               y={y_scale_fn(point.y)}
-              style={point.point_style ?? {}}
+              style={{
+                ...(point.point_style ?? {}),
+                fill: point_color ?? point.point_style?.fill,
+              }}
               hover={point.point_hover ?? {}}
               label={point.point_label ?? {}}
               offset={point.point_offset ?? { x: 0, y: 0 }}
@@ -452,54 +534,96 @@
         {/each}
       {/if}
 
-      <!-- x axis -->
+      <!-- X-axis -->
       <g class="x-axis">
         {#if width > 0 && height > 0}
-          {#each width === 0 || height === 0 ? [] : x_tick_values().map( (v) => Number(v), ) as tick (tick)}
-            <g
-              class="tick"
-              transform="translate({x_format.startsWith(`%`)
-                ? x_scale_fn(new Date(tick))
-                : x_scale_fn(tick)}, {height})"
-            >
-              <line y1={-height + pad_top} y2={-pad_bottom} />
-              <text y={-pad_bottom + axis_label_offset.x}>
-                {format_value(tick, x_format)}
-              </text>
-            </g>
+          {#each x_tick_values() as tick (tick)}
+            {@const tick_pos = x_format?.startsWith(`%`)
+              ? x_scale_fn(new Date(tick))
+              : x_scale_fn(tick)}
+
+            {#if tick_pos >= padding.l && tick_pos <= width - padding.r}
+              <g class="tick" transform="translate({tick_pos}, {height - padding.b})">
+                {#if x_grid}
+                  <line
+                    y1={-(height - padding.b - padding.t)}
+                    y2="0"
+                    {...typeof x_grid === `object` ? x_grid : {}}
+                  />
+                {/if}
+
+                {#if tick >= x_min && tick <= x_max}
+                  {@const { x, y } = x_tick_label_shift}
+                  <text {x} {y}>
+                    {format_value(tick, x_format)}
+                  </text>
+                {/if}
+              </g>
+            {/if}
           {/each}
         {/if}
-        <text x={width / 2} y={height + 20 - x_label_yshift} class="label x">
+
+        <text
+          x={width / 2 + x_label_shift.x}
+          y={height - padding.b - x_label_shift.y}
+          class="label x"
+        >
           {@html x_label ?? ``}
         </text>
       </g>
 
-      <!-- y axis -->
+      <!-- Y-axis -->
       <g class="y-axis">
         {#if width > 0 && height > 0}
-          {#each width === 0 || height === 0 ? [] : y_tick_values().map( (v) => Number(v), ) as tick, idx (tick)}
-            <g class="tick" transform="translate(0, {y_scale_fn(tick)})">
-              <line x1={pad_left} x2={width - pad_right} />
-              <text x={pad_left - axis_label_offset.y} text-anchor="end">
-                {format_value(tick, y_format)}
-                {#if y_unit && idx === 0}
-                  &zwnj;&ensp;{y_unit}
+          {#each y_tick_values() as tick, idx (tick)}
+            {@const tick_pos = y_scale_fn(tick)}
+
+            {#if tick_pos >= padding.t && tick_pos <= height - padding.b}
+              <g class="tick" transform="translate({padding.l}, {tick_pos})">
+                {#if y_grid}
+                  <line
+                    x1="0"
+                    x2={width - padding.l - padding.r}
+                    {...typeof y_grid === `object` ? y_grid : {}}
+                  />
                 {/if}
-              </text>
-            </g>
+
+                {#if tick >= y_min && tick <= y_max}
+                  {@const { x, y } = y_tick_label_shift}
+                  <text {x} {y} text-anchor="end">
+                    {format_value(tick, y_format)}
+                    {#if y_unit && idx === 0}
+                      &zwnj;&ensp;{y_unit}
+                    {/if}
+                  </text>
+                {/if}
+              </g>
+            {/if}
           {/each}
         {/if}
-        <text x={-height / 2} y={-5} transform="rotate(-90)" class="label y">
-          {@html y_label ?? ``}
-        </text>
+
+        {#if height > 0}
+          <text
+            x={-(padding.t + (height - padding.t - padding.b) / 2 + y_label_shift.x)}
+            y={y_label_shift.y}
+            transform="rotate(-90)"
+            class="label y"
+            text-anchor="middle"
+            dominant-baseline="middle"
+          >
+            {@html y_label ?? ``}
+          </text>
+        {/if}
       </g>
 
+      <!-- Tooltip -->
       {#if tooltip_point && hovered}
         {@const { x, y, metadata } = tooltip_point}
-        {@const cx = x_format.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
+        {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
         {@const cy = y_scale_fn(y)}
         {@const x_formatted = format_value(x, x_format)}
         {@const y_formatted = format_value(y, y_format)}
+
         <circle {cx} {cy} r="5" fill="orange" />
         <foreignObject x={cx + 5} y={cy}>
           {#if tooltip}
@@ -520,11 +644,9 @@
     width: 100%;
     height: 100%;
     display: flex;
-    /* esp stands for elementari scatter plot */
     min-height: var(--esp-min-height, 100px);
     container-type: inline-size;
-    z-index: var(--esp-z-index, 1); /* ensure tooltip renders above ElementTiles */
-    margin-block: 2em;
+    z-index: var(--esp-z-index, 1);
   }
   svg {
     width: 100%;
