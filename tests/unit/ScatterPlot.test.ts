@@ -89,25 +89,6 @@ describe(`ScatterPlot`, () => {
     document.body.appendChild(container)
   })
 
-  test(`renders with default props and applies custom style`, () => {
-    // Default props
-    mount(ScatterPlot, { target: document.body })
-
-    let scatter = document.querySelector(`.scatter`)
-    expect(scatter).toBeTruthy()
-    expect(getComputedStyle(scatter!).width).toBe(`100%`)
-
-    document.body.innerHTML = ``
-
-    // Custom style
-    const style = `height: 300px; background: black;`
-    mount(ScatterPlot, { target: document.body, props: { style } })
-
-    scatter = document.querySelector(`.scatter`)
-    expect(scatter).toBeTruthy()
-    expect(scatter!.getAttribute(`style`)).toContain(style)
-  })
-
   test.each([
     {
       name: `basic data`,

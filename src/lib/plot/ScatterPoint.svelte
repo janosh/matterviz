@@ -15,6 +15,8 @@
     label?: LabelStyle
     offset?: Point[`offset`]
     tween_duration?: number
+    origin_x?: number
+    origin_y?: number
   }
 
   let {
@@ -25,6 +27,8 @@
     label = {},
     offset = { x: 0, y: 0 },
     tween_duration = 600,
+    origin_x = 0,
+    origin_y = 0,
   }: Props = $props()
 
   const {
@@ -37,14 +41,12 @@
     marker_type = `circle`,
     marker_size = null, // If null, derive from radius
   } = style
-
   const {
     enabled: hover_enabled = true,
     scale: hover_scale = 1.5,
     stroke: hover_stroke = `white`,
     stroke_width: hover_stroke_width = 2,
   } = hover
-
   const {
     text = ``,
     offset_x = 5,
@@ -81,8 +83,8 @@
   let marker_path_string = $derived.by(get_symbol_path)
 
   const tween_params = { duration: tween_duration, easing: cubicOut }
-  const tweened_x = new Tween(0, tween_params)
-  const tweened_y = new Tween(0, tween_params)
+  const tweened_x = new Tween(origin_x, tween_params)
+  const tweened_y = new Tween(origin_y, tween_params)
 
   $effect.pre(() => {
     tweened_x.target = x + offset.x
