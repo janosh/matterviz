@@ -467,7 +467,7 @@ Using time data on the x-axis with custom formatting:
     series={time_series}
     markers="line+points"
     x_format={date_format}
-    y_format={y_format}
+    {y_format}
     x_ticks={-7}
     y_ticks={5}
     x_label="Date"
@@ -1169,7 +1169,7 @@ This example demonstrates how to use `color_values` to apply color mapping to po
       y_label="Y Position"
       markers="points"
       color_scheme={selected_scheme}
-      color_scale_type={color_scale_type}
+      {color_scale_type}
       style="height: 300px; width: 100%;"
     >
       {#snippet tooltip({ x, y, metadata })}
@@ -1180,5 +1180,104 @@ This example demonstrates how to use `color_values` to apply color mapping to po
       {/snippet}
     </ScatterPlot>
   {/key}
+</div>
+```
+
+## Automatic Color Bar Placement
+
+This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data.
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // State for controlling point density in each quadrant
+  let density_top_left = $state(10);
+  let density_top_right = $state(50);
+  let density_bottom_left = $state(10);
+  let density_bottom_right = $state(10);
+
+  // Function to generate points within a specific quadrant
+  const generate_quadrant_points = (count, x_range, y_range) => {
+    const points = [];
+    for (let i = 0; i < count; i++) {
+      points.push({
+        x: x_range[0] + Math.random() * (x_range[1] - x_range[0]),
+        y: y_range[0] + Math.random() * (y_range[1] - y_range[0]),
+        // Assign a color value (e.g., based on distance from origin)
+        color_value: Math.sqrt(
+          Math.pow(x_range[0] + (x_range[1] - x_range[0]) / 2, 2) +
+          Math.pow(y_range[0] + (y_range[1] - y_range[0]) / 2, 2)
+        ) * Math.random() * 2 // Add some variation
+      });
+    }
+    return points;
+  };
+
+  // Reactive generation of plot data based on densities
+  let plot_series = $derived(() => {
+    const plot_width = 100;
+    const plot_height = 100;
+    const center_x = plot_width / 2;
+    const center_y = plot_height / 2;
+
+    const tl_points = generate_quadrant_points(density_top_left, [0, center_x], [0, center_y]);
+    const tr_points = generate_quadrant_points(density_top_right, [center_x, plot_width], [0, center_y]);
+    const bl_points = generate_quadrant_points(density_bottom_left, [0, center_x], [center_y, plot_height]);
+    const br_points = generate_quadrant_points(density_bottom_right, [center_x, plot_width], [center_y, plot_height]);
+
+    const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points];
+
+    return [{
+      x: all_points.map(p => p.x),
+      y: all_points.map(p => p.y),
+      color_values: all_points.map(p => p.color_value),
+      point_style: {
+        radius: 5,
+        stroke: 'white',
+        stroke_width: 0.5
+      }
+    }];
+  });
+
+  // Style for sliders
+  const slider_style = 'width: 100px; margin-left: 0.5em;';
+</script>
+
+<div>
+  <div style="display: flex; flex-wrap: wrap; gap: 1.5em; margin-bottom: 1em; justify-content: center;">
+    <label>Bottom-Left: {density_top_left}
+      <input type="range" min="0" max="100" bind:value={density_top_left} style={slider_style} />
+    </label>
+    <label>Bottom-Right: {density_top_right}
+      <input type="range" min="0" max="100" bind:value={density_top_right} style={slider_style} />
+    </label>
+    <label>Top-Left: {density_bottom_left}
+      <input type="range" min="0" max="100" bind:value={density_bottom_left} style={slider_style} />
+    </label>
+    <label>Top-Right: {density_bottom_right}
+      <input type="range" min="0" max="100" bind:value={density_bottom_right} style={slider_style} />
+    </label>
+  </div>
+
+  <ScatterPlot
+    series={plot_series()}
+    x_label="X Position"
+    y_label="Y Position"
+    x_lim={[0, 100]}
+    y_lim={[0, 100]}
+    markers="points"
+    color_scheme="turbo"
+    show_color_bar={true}
+    color_bar_label="Value"
+    style="height: 450px; width: 100%;"
+  >
+    {#snippet tooltip({ x, y, metadata, color_value })}
+      <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
+        Point ({x.toFixed(1)}, {y.toFixed(1)})<br/>
+        Value: {color_value?.toFixed(2)}
+      </div>
+    {/snippet}
+  </ScatterPlot>
 </div>
 ```

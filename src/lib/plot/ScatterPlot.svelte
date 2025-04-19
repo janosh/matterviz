@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Point } from '$lib'
-  import { Line } from '$lib'
+  import { ColorBar, Line } from '$lib'
   import { extent, range } from 'd3-array'
   import { format } from 'd3-format'
   import {
@@ -12,7 +12,7 @@
   } from 'd3-scale'
   import * as d3sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
-  import type { Snippet } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { DataSeries } from '.'
   import ScatterPoint from './ScatterPoint.svelte'
 
@@ -34,6 +34,26 @@
 
   type TimeInterval = `day` | `month` | `year`
   type ScaleType = `linear` | `log`
+  // internal point representation that includes extra properties
+  interface InternalPoint extends Point {
+    color_value?: number | null
+    metadata?: Record<string, unknown>
+    point_style?: Record<string, string | number>
+    point_hover?: Record<string, string | number>
+    point_label?: {
+      text?: string
+      style?: Record<string, string | number>
+      position?: `top` | `bottom` | `left` | `right`
+    }
+    point_offset?: { x: number; y: number }
+    point_tween_duration?: number
+  }
+  type QuadrantCounts = {
+    top_left: number
+    top_right: number
+    bottom_left: number
+    bottom_right: number
+  }
 
   interface Props {
     series?: DataSeries[]
@@ -68,6 +88,8 @@
     color_scale_type?: ScaleType // Type of scale for color mapping
     color_scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
     color_range?: [number, number] // Min and max values for color scaling (uses auto detect if not provided)
+    show_color_bar?: boolean // Whether to show the color bar when color scaling is active
+    color_bar?: ComponentProps<typeof ColorBar> | null
   }
   let {
     series = [],
@@ -101,10 +123,21 @@
     color_scale_type = `linear`,
     color_scheme = `viridis`,
     color_range,
+    show_color_bar = true,
+    color_bar = {},
   }: Props = $props()
 
   let width = $state(0)
   let height = $state(0)
+
+  // State for zooming
+  let drag_start_coords = $state<{ x: number; y: number } | null>(null)
+  let drag_current_coords = $state<{ x: number; y: number } | null>(null)
+
+  let initial_x_range = $state<[number, number]>([0, 1])
+  let initial_y_range = $state<[number, number]>([0, 1])
+  let current_x_range = $state<[number, number]>([0, 1])
+  let current_y_range = $state<[number, number]>([0, 1])
 
   // Create raw data points from all series
   let all_points = $derived(
@@ -112,6 +145,10 @@
       .filter(Boolean)
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
+
+  // Calculate plot area center coordinates
+  let plot_center_x = $derived(padding.l + (width - padding.r - padding.l) / 2)
+  let plot_center_y = $derived(padding.t + (height - padding.b - padding.t) / 2)
 
   // Compute data color values for color scaling
   let all_color_values = $derived(
@@ -160,11 +197,30 @@
     get_nice_data_range(all_points, (point) => point.y, y_lim, y_scale_type, false),
   )
 
-  // Use provided explicit ranges if available, otherwise use auto-computed ranges
-  let effective_x_range = $derived(x_range ?? auto_x_range)
-  let effective_y_range = $derived(y_range ?? auto_y_range)
-  let [x_min, x_max] = $derived(effective_x_range)
-  let [y_min, y_max] = $derived(effective_y_range)
+  // Store initial ranges and initialize current ranges
+  $effect(() => {
+    const new_initial_x = x_range ?? auto_x_range
+    const new_initial_y = y_range ?? auto_y_range
+
+    // Only update if the initial range fundamentally changes, force type
+    if (
+      new_initial_x[0] !== initial_x_range[0] ||
+      new_initial_x[1] !== initial_x_range[1]
+    ) {
+      initial_x_range = new_initial_x as [number, number]
+      current_x_range = new_initial_x as [number, number]
+    }
+    if (
+      new_initial_y[0] !== initial_y_range[0] ||
+      new_initial_y[1] !== initial_y_range[1]
+    ) {
+      initial_y_range = new_initial_y as [number, number]
+      current_y_range = new_initial_y as [number, number]
+    }
+  })
+
+  let [x_min, x_max] = $derived(current_x_range) // Use current range for scales/axes
+  let [y_min, y_max] = $derived(current_y_range) // Use current range for scales/axes
 
   // Create auto color range
   let auto_color_range = $derived(
@@ -177,8 +233,8 @@
   // Validate log scale ranges
   $effect(() => {
     for (const { scale_type, range, axis } of [
-      { scale_type: x_scale_type, range: effective_x_range, axis: `x` },
-      { scale_type: y_scale_type, range: effective_y_range, axis: `y` },
+      { scale_type: x_scale_type, range: current_x_range, axis: `x` },
+      { scale_type: y_scale_type, range: current_y_range, axis: `y` },
     ]) {
       if (scale_type === `log` && (range[0] <= 0 || range[1] <= 0)) {
         const point = range[0] <= 0 ? `minimum: ${range[0]}` : `maximum: ${range[1]}`
@@ -231,15 +287,30 @@
       : scaleSequential(interpolator).domain([color_min, color_max])
   })
 
+  // Extract the interpolator function itself for the ColorBar
+  let color_interpolator_fn = $derived.by(() => {
+    const interpolator_name =
+      `interpolate${color_scheme.charAt(0).toUpperCase()}${color_scheme.slice(1).toLowerCase()}` as keyof typeof d3sc
+    return typeof d3sc[interpolator_name] === `function`
+      ? d3sc[interpolator_name]
+      : d3sc.interpolateViridis
+  })
+
   // Filter series data to only include points within bounds
   let filtered_series = $derived(
     series.map((data_series) => {
-      if (!data_series)
-        return { filtered_data: [] } as unknown as DataSeries & { filtered_data: Point[] }
+      if (!data_series) {
+        // Return empty data consistent with DataSeries structure
+        return {
+          x: [],
+          y: [],
+          filtered_data: [],
+        } as unknown as DataSeries & { filtered_data: Point[] }
+      }
 
       const { x: xs, y: ys, color_values, ...rest } = data_series
 
-      // Process each point with its properties
+      // Process points internally, adding properties beyond the base Point type
       const processed_points = xs.map((x, idx) => {
         const y = ys[idx]
         const color_value = color_values?.[idx]
@@ -261,7 +332,7 @@
           x,
           y,
           color_value,
-          metadata: process_prop(rest.metadata, idx),
+          metadata: process_prop(rest.metadata, idx), // Matches InternalPoint.metadata
           point_style: process_prop(rest.point_style, idx),
           point_hover: process_prop(rest.point_hover, idx),
           point_label: process_prop(rest.point_label, idx),
@@ -271,7 +342,8 @@
       })
 
       // Filter to points within the plot bounds
-      const filtered_data = processed_points.filter(
+      // This data contains the extra properties
+      const filtered_data_with_extras = processed_points.filter(
         (pt) =>
           !isNaN(pt.x) &&
           pt.x !== null &&
@@ -283,9 +355,84 @@
           pt.y <= y_max,
       )
 
-      return { ...data_series, filtered_data }
+      // Return structure consistent with DataSeries but acknowledge internal data structure
+      return {
+        ...data_series,
+        filtered_data: filtered_data_with_extras as Point[], // Cast here
+      } as DataSeries & { filtered_data: Point[] }
     }),
   )
+
+  // Calculate point counts per quadrant for color bar placement
+  let quadrant_counts = $derived(() => {
+    const counts: QuadrantCounts = {
+      top_left: 0,
+      top_right: 0,
+      bottom_left: 0,
+      bottom_right: 0,
+    }
+    if (!width || !height) return counts
+
+    for (const data_series of filtered_series) {
+      if (!data_series?.filtered_data) continue
+      for (const point of data_series.filtered_data) {
+        const point_x_coord = x_format?.startsWith(`%`)
+          ? x_scale_fn(new Date(point.x))
+          : x_scale_fn(point.x)
+        const point_y_coord = y_scale_fn(point.y)
+
+        if (point_x_coord < plot_center_x) {
+          if (point_y_coord < plot_center_y) counts.top_left++
+          else counts.bottom_left++
+        } else {
+          if (point_y_coord < plot_center_y) counts.top_right++
+          else counts.bottom_right++
+        }
+      }
+    }
+    return counts
+  })
+
+  // Determine the least dense quadrant
+  let least_dense_quadrant = $derived.by(() => {
+    const counts = quadrant_counts()
+    let min_count = Infinity
+    let best_quadrant: keyof QuadrantCounts = `top_right` // Default
+
+    // Iterate and find the quadrant with the minimum count
+    for (const quadrant of Object.keys(counts) as (keyof QuadrantCounts)[]) {
+      if (counts[quadrant] < min_count) {
+        min_count = counts[quadrant]
+        best_quadrant = quadrant
+      }
+    }
+    return best_quadrant
+  })
+
+  // Calculate automatic position style for the color bar
+  let color_bar_position_style = $derived.by(() => {
+    const margin = 10 // px margin from the corner
+    const { t, l, b, r } = padding
+    switch (least_dense_quadrant) {
+      case `top_left`:
+        return `top: ${t + margin}px; left: ${l + margin}px;`
+      case `bottom_left`:
+        return `bottom: ${b + margin}px; left: ${l + margin}px;`
+      case `bottom_right`:
+        return `bottom: ${b + margin}px; right: ${r + margin}px;`
+      case `top_right`:
+      default: // Default fall-through
+        return `top: ${t + margin}px; right: ${r + margin}px;`
+    }
+  })
+
+  // Determine the data-driven orientation and tick side for the ColorBar
+  let dynamic_tick_side = $derived.by<`top` | `bottom`>(() => {
+    const quadrant = least_dense_quadrant
+    if ((color_bar?.orientation ?? `horizontal`) === `horizontal`)
+      return quadrant.startsWith(`top_`) ? `bottom` : `top`
+    return `bottom` // Default fallback for type safety
+  })
 
   // Generate logarithmic ticks
   function generate_log_ticks(
@@ -400,8 +547,94 @@
       : formatted
   }
 
+  function get_relative_coords(evt: MouseEvent): { x: number; y: number } | null {
+    const svg_box = (evt.currentTarget as SVGElement)?.getBoundingClientRect()
+    if (!svg_box) return null
+    return {
+      x: evt.clientX - svg_box.left,
+      y: evt.clientY - svg_box.top,
+    }
+  }
+
+  function handle_mouse_down(evt: MouseEvent) {
+    const coords = get_relative_coords(evt)
+    if (!coords) return
+    drag_start_coords = coords
+    drag_current_coords = coords // Initialize current coords
+
+    // Prevent text selection during drag
+    evt.preventDefault()
+  }
+
+  function handle_mouse_move(evt: MouseEvent) {
+    find_closest_point(evt)
+    if (!drag_start_coords) return // Exit if not dragging
+
+    const coords = get_relative_coords(evt)
+    if (!coords) return
+    drag_current_coords = coords
+  }
+
+  function handle_mouse_up(_evt: MouseEvent) {
+    if (drag_start_coords && drag_current_coords) {
+      // Use current scales to invert screen coords to data coords
+      const start_data_x_val = x_scale_fn.invert(drag_start_coords.x)
+      const end_data_x_val = x_scale_fn.invert(drag_current_coords.x)
+      const start_data_y_val = y_scale_fn.invert(drag_start_coords.y)
+      const end_data_y_val = y_scale_fn.invert(drag_current_coords.y)
+
+      // Ensure range is not zero and order is correct
+      let x1: number, x2: number
+      if (start_data_x_val instanceof Date && end_data_x_val instanceof Date) {
+        x1 = start_data_x_val.getTime()
+        x2 = end_data_x_val.getTime()
+      } else if (
+        typeof start_data_x_val === `number` &&
+        typeof end_data_x_val === `number`
+      ) {
+        x1 = start_data_x_val
+        x2 = end_data_x_val
+      } else {
+        console.error(`Mismatched types for x-axis zoom calculation`)
+        return // Abort zoom if types are wrong
+      }
+
+      const next_x_range: [number, number] = [Math.min(x1, x2), Math.max(x1, x2)]
+      // Y axis is always number
+      const next_y_range: [number, number] = [
+        Math.min(start_data_y_val, end_data_y_val),
+        Math.max(start_data_y_val, end_data_y_val),
+      ]
+
+      if (next_x_range[0] !== next_x_range[1] && next_y_range[0] !== next_y_range[1]) {
+        current_x_range = next_x_range
+        current_y_range = next_y_range
+      }
+    }
+
+    // Reset states
+    drag_start_coords = null
+    drag_current_coords = null
+    document.body.style.cursor = `default`
+  }
+
+  function handle_mouse_leave() {
+    // Reset drag state if mouse leaves plot area
+    if (drag_start_coords) handle_mouse_up(new MouseEvent(`mouseup`)) // Simulate mouseup
+    hovered = false
+    tooltip_point = null
+  }
+
+  function handle_double_click() {
+    // Reset zoom/pan to initial ranges
+    current_x_range = [...initial_x_range]
+    current_y_range = [...initial_y_range]
+  }
+
+  // --- Tooltip Logic (extracted to function) ---
+
   function on_mouse_move(evt: MouseEvent) {
-    if (!tooltip) return
+    hovered = true
 
     const svg_box = (evt.currentTarget as SVGElement)?.getBoundingClientRect()
     if (!svg_box) return
@@ -417,9 +650,11 @@
     const mouse_y = y_scale_fn.invert(mouse_y_rel)
 
     // Find closest point to mouse
-    let closest_point = null
+    // Internal closest point can hold extra props
+    let closest_point_internal: InternalPoint | null = null
     let min_distance = Infinity
-    let closest_series = null
+    // Type needs to match the complex return type of filtered_series derived
+    let closest_series: (DataSeries & { filtered_data: Point[] }) | null = null
 
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
@@ -434,27 +669,47 @@
 
         if (distance < min_distance) {
           min_distance = distance
-          closest_point = point
+          closest_point_internal = point
           closest_series = series_data
         }
       }
     }
 
-    if (closest_point && closest_series) {
-      tooltip_point = closest_point
-      change({ ...closest_point, series: closest_series })
+    if (closest_point_internal && closest_series) {
+      // Cast to Point for the tooltip prop
+      tooltip_point = closest_point_internal // Already Point-like
+      // Construct object matching change signature
+      const { x, y, metadata } = closest_point_internal
+      // Cast internal point properties to match expected Point structure for change prop
+      change({
+        x,
+        y,
+        metadata: metadata as Record<string, unknown> | undefined,
+        series: closest_series,
+      })
     }
   }
 
-  function on_mouse_leave() {
-    hovered = false
-    tooltip_point = null
+  function find_closest_point(evt: MouseEvent) {
+    const coords = get_relative_coords(evt)
+    if (!coords) return
+    on_mouse_move(evt) // Call the original logic
   }
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
   {#if width && height}
-    <svg onmousemove={on_mouse_move} onmouseleave={on_mouse_leave} role="img">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <svg
+      onmouseenter={() => (hovered = true)}
+      onmousedown={handle_mouse_down}
+      onmousemove={handle_mouse_move}
+      onmouseup={handle_mouse_up}
+      onmouseleave={handle_mouse_leave}
+      ondblclick={handle_double_click}
+      style:cursor="crosshair"
+      role="img"
+    >
       <!-- Zero lines -->
       {#if show_zero_lines}
         {#if x_min <= 0 && x_max >= 0}
@@ -482,11 +737,12 @@
       <!-- Lines -->
       {#if markers?.includes(`line`)}
         {#each filtered_series ?? [] as series, series_idx (series_idx)}
+          {@const first_point = series.filtered_data?.[0] as InternalPoint}
           {@const series_color =
-            series.filtered_data?.[0]?.color_value !== undefined
-              ? color_scale_fn(series.filtered_data[0].color_value)
+            first_point?.color_value != null
+              ? color_scale_fn(first_point.color_value)
               : typeof series?.point_style === `object` && series?.point_style?.fill
-                ? series.point_style.fill
+                ? (series.point_style.fill as string) // Needs casting
                 : `rgba(255, 255, 255, 0.5)`}
 
           <Line
@@ -510,11 +766,9 @@
       <!-- Points -->
       {#if markers?.includes(`points`)}
         {#each filtered_series ?? [] as series, series_idx (series_idx)}
-          {#each series?.filtered_data ?? [] as point, point_idx (point_idx)}
+          {#each (series?.filtered_data ?? []) as InternalPoint[] as point, point_idx (point_idx)}
             {@const point_color =
-              point.color_value !== undefined
-                ? color_scale_fn(point.color_value)
-                : undefined}
+              point.color_value != null ? color_scale_fn(point.color_value) : undefined}
 
             <ScatterPoint
               x={x_format?.startsWith(`%`)
@@ -523,12 +777,14 @@
               y={y_scale_fn(point.y)}
               style={{
                 ...(point.point_style ?? {}),
-                fill: point_color ?? point.point_style?.fill,
+                fill: point_color ?? (point?.point_style?.fill as string | undefined),
               }}
               hover={point.point_hover ?? {}}
               label={point.point_label ?? {}}
               offset={point.point_offset ?? { x: 0, y: 0 }}
               tween_duration={point.point_tween_duration ?? 600}
+              origin_x={plot_center_x}
+              origin_y={plot_center_y}
             />
           {/each}
         {/each}
@@ -627,20 +883,59 @@
         <circle {cx} {cy} r="5" fill="orange" />
         <foreignObject x={cx + 5} y={cy}>
           {#if tooltip}
-            {@render tooltip({ x, y, cx, cy, x_formatted, y_formatted, metadata })}
+            {@render tooltip({
+              x,
+              y,
+              cx,
+              cy,
+              x_formatted,
+              y_formatted,
+              metadata: metadata as Record<string, unknown> | undefined,
+            })}
           {:else}
-            <div style="white-space: nowrap;">
+            <div class="default-tooltip">
               x: {x_formatted}, y: {y_formatted}
             </div>
           {/if}
         </foreignObject>
       {/if}
+
+      <!-- Zoom Selection Rectangle -->
+      {#if drag_start_coords && drag_current_coords}
+        {@const x = Math.min(drag_start_coords.x, drag_current_coords.x)}
+        {@const y = Math.min(drag_start_coords.y, drag_current_coords.y)}
+        {@const rect_width = Math.abs(drag_start_coords.x - drag_current_coords.x)}
+        {@const rect_height = Math.abs(drag_start_coords.y - drag_current_coords.y)}
+        <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
+      {/if}
     </svg>
+
+    <!-- Color Bar -->
+    {#if show_color_bar && all_color_values.length > 0}
+      <ColorBar
+        {...{
+          tick_labels: 4,
+          tick_side: dynamic_tick_side,
+          range: effective_color_range as [number, number],
+          color_scale: color_interpolator_fn,
+          wrapper_style: `position: absolute;
+            ${color_bar_position_style} /* Apply auto positioning (no function call needed in template) */
+            ${color_bar?.wrapper_style ?? ``} /* Add user wrapper style */
+          `,
+          style: `width: 280px; /* Default width */
+            height: 20px; /* Default height */
+            ${color_bar?.style ?? ``} /* Add user inner style */
+          `,
+          ...color_bar,
+        }}
+      />
+    {/if}
   {/if}
 </div>
 
 <style>
   div.scatter {
+    position: relative; /* Needed for absolute positioning of children like ColorBar */
     width: 100%;
     height: 100%;
     display: flex;
@@ -673,5 +968,21 @@
   }
   text.label {
     text-anchor: middle;
+  }
+  .default-tooltip {
+    background: var(--esp-tooltip-bg, rgba(0, 0, 0, 0.7));
+    color: var(--esp-tooltip-color, white);
+    padding: var(--esp-tooltip-padding, 5px);
+    border-radius: var(--esp-tooltip-border-radius, 3px);
+    font-size: var(--esp-tooltip-font-size, 0.8em);
+    /* Ensure background fits content width */
+    width: var(--esp-tooltip-width, max-content);
+    box-sizing: border-box;
+  }
+  .zoom-rect {
+    fill: var(--esp-zoom-rect-fill, rgba(100, 100, 255, 0.2));
+    stroke: var(--esp-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
+    stroke-width: var(--esp-zoom-rect-stroke-width, 1);
+    pointer-events: none; /* Prevent rect from interfering with mouse events */
   }
 </style>

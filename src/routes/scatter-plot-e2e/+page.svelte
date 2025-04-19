@@ -148,6 +148,22 @@
       stroke_width: 1,
     },
   }
+
+  // === Custom Tooltip Data ===
+  const custom_tooltip_data = {
+    x: [1, 2, 3],
+    y: [5, 8, 6],
+    metadata: [{ info: `Point A` }, { info: `Point B` }, { info: `Point C` }],
+    point_style: { fill: `purple`, radius: 6 },
+  }
+
+  // === Bind Hovered Data ===
+  let is_plot_hovered = $state(false)
+  const bind_hovered_data = {
+    x: [10, 20, 30],
+    y: [15, 25, 10],
+    point_style: { fill: `orange`, radius: 5 },
+  }
 </script>
 
 <div class="demo-container">
@@ -324,6 +340,32 @@
       </div>
     </div>
   </section>
+
+  <section class="demo-section" id="custom-tooltip">
+    <h2>Custom Tooltip Example</h2>
+    <div class="demo-plot">
+      <ScatterPlot series={[custom_tooltip_data]} markers="points">
+        {#snippet tooltip(props)}
+          <div class="custom-tooltip">
+            Point Info: <strong>{props.metadata?.info}</strong><br />
+            Coords: ({props.x_formatted}, {props.y_formatted})
+          </div>
+        {/snippet}
+      </ScatterPlot>
+    </div>
+  </section>
+
+  <section class="demo-section" id="bind-hovered">
+    <h2>bind:hovered Example</h2>
+    <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
+    <div class="demo-plot">
+      <ScatterPlot
+        series={[bind_hovered_data]}
+        markers="points"
+        bind:hovered={is_plot_hovered}
+      />
+    </div>
+  </section>
 </div>
 
 <style>
@@ -357,5 +399,13 @@
   :is(h1, h2, h3) {
     text-align: center;
     margin-top: 0;
+  }
+
+  .custom-tooltip {
+    background: lightblue;
+    color: black;
+    padding: 8px;
+    border: 1px solid blue;
+    border-radius: 4px;
   }
 </style>
