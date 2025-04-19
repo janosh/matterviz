@@ -663,18 +663,7 @@ Visualize exponential growth or data with large ranges on the X-axis:
     x: [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000],
     y: [10, 20, 25, 35, 40, 50, 55, 65, 70, 80],
     point_style: { fill: 'steelblue', radius: 6 },
-    point_label: [
-      { text: '0.1', offset_y: -15 },
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      { text: '5000', offset_y: -15 }
-    ]
+    point_label: [{ text: '0.1', offset_y: -15 }, {}, {}, {}, {}, {}, {}, {}, {}, { text: '5000', offset_y: -15 }]
   }
 </script>
 
@@ -709,18 +698,7 @@ Perfect for data with exponential growth on the Y-axis:
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000],
     point_style: { fill: 'orangered', radius: 6 },
-    point_label: [
-      { text: '1', offset_x: 15 },
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      { text: '30,000', offset_x: 15 }
-    ]
+    point_label: [{ text: '1', offset_x: 15 }, {}, {}, {}, {}, {}, {}, {}, {}, { text: '30,000', offset_x: 15 }]
   }
 </script>
 
@@ -1171,6 +1149,7 @@ This example demonstrates how to use `color_values` to apply color mapping to po
       color_scheme={selected_scheme}
       {color_scale_type}
       style="height: 300px; width: 100%;"
+      color_bar={{ label: `Color Bar ${color_scale_type}` }}
     >
       {#snippet tooltip({ x, y, metadata })}
         <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
@@ -1192,13 +1171,10 @@ This example demonstrates how the color bar automatically positions itself in on
   import { ScatterPlot } from '$lib'
 
   // State for controlling point density in each quadrant
-  let density_top_left = $state(10);
-  let density_top_right = $state(50);
-  let density_bottom_left = $state(10);
-  let density_bottom_right = $state(10);
+  let density = $state({top_left: 10, top_right: 50, bottom_left: 10, bottom_right: 10});
 
   // Function to generate points within a specific quadrant
-  const generate_quadrant_points = (count, x_range, y_range) => {
+  const make_quadrant_points = (count, x_range, y_range) => {
     const points = [];
     for (let i = 0; i < count; i++) {
       points.push({
@@ -1215,16 +1191,16 @@ This example demonstrates how the color bar automatically positions itself in on
   };
 
   // Reactive generation of plot data based on densities
-  let plot_series = $derived(() => {
+  let plot_series = $derived.by(() => {
     const plot_width = 100;
     const plot_height = 100;
     const center_x = plot_width / 2;
     const center_y = plot_height / 2;
 
-    const tl_points = generate_quadrant_points(density_top_left, [0, center_x], [0, center_y]);
-    const tr_points = generate_quadrant_points(density_top_right, [center_x, plot_width], [0, center_y]);
-    const bl_points = generate_quadrant_points(density_bottom_left, [0, center_x], [center_y, plot_height]);
-    const br_points = generate_quadrant_points(density_bottom_right, [center_x, plot_width], [center_y, plot_height]);
+    const tl_points = make_quadrant_points(density.top_left, [0, center_x], [0, center_y]);
+    const tr_points = make_quadrant_points(density.top_right, [center_x, plot_width], [0, center_y]);
+    const bl_points = make_quadrant_points(density.bottom_left, [0, center_x], [center_y, plot_height]);
+    const br_points = make_quadrant_points(density.bottom_right, [center_x, plot_width], [center_y, plot_height]);
 
     const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points];
 
@@ -1245,23 +1221,16 @@ This example demonstrates how the color bar automatically positions itself in on
 </script>
 
 <div>
-  <div style="display: flex; flex-wrap: wrap; gap: 1.5em; margin-bottom: 1em; justify-content: center;">
-    <label>Bottom-Left: {density_top_left}
-      <input type="range" min="0" max="100" bind:value={density_top_left} style={slider_style} />
-    </label>
-    <label>Bottom-Right: {density_top_right}
-      <input type="range" min="0" max="100" bind:value={density_top_right} style={slider_style} />
-    </label>
-    <label>Top-Left: {density_bottom_left}
-      <input type="range" min="0" max="100" bind:value={density_bottom_left} style={slider_style} />
-    </label>
-    <label>Top-Right: {density_bottom_right}
-      <input type="range" min="0" max="100" bind:value={density_bottom_right} style={slider_style} />
-    </label>
+  <div style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center;">
+    {#each [['bottom_left', 'Bottom Left'], ['bottom_right', 'Bottom Right'], ['top_left', 'Top Left'], ['top_right', 'Top Right']] as [quadrant, label]}
+      <label>{label}: {density[quadrant]}
+        <input type="range" min="0" max="100" bind:value={density[quadrant]} style={slider_style} />
+      </label>
+    {/each}
   </div>
 
   <ScatterPlot
-    series={plot_series()}
+    series={plot_series}
     x_label="X Position"
     y_label="Y Position"
     x_lim={[0, 100]}
@@ -1269,7 +1238,7 @@ This example demonstrates how the color bar automatically positions itself in on
     markers="points"
     color_scheme="turbo"
     show_color_bar={true}
-    color_bar_label="Value"
+    color_bar={{ label: `Color Bar Title` }}
     style="height: 450px; width: 100%;"
   >
     {#snippet tooltip({ x, y, metadata, color_value })}
