@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
-#### [v0.3.4](https://github.com/janosh/elementari/compare/v0.3.3...v0.3.4)
+#### [v0.3.5](https://github.com/janosh/elementari/compare/v0.3.5...v0.3.5)
+
+> 19 April 2025
+
+- Make `ScatterPlot.svelte` drag-zoomable and add auto-placed `ColorBar` [`#59`](https://github.com/janosh/elementari/pull/59)
+
+#### [v0.3.4](https://github.com/janosh/elementari/compare/v0.3.4...v0.3.4)
 
 > 17 April 2025
 
