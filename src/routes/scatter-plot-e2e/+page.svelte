@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
+  import type { DataSeries, LabelStyle } from '$lib/plot'
 
   // === Basic Example Data ===
   const basic_data = {
@@ -83,8 +84,8 @@
   }
 
   const log_scale_data2 = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [5, 15, 45, 135, 405, 1215, 3645, 10935, 32805, 98415],
+    x: [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000],
+    y: [5, 15, 45, 135, 405, 1215, 3645, 10935, 32805],
     point_style: {
       fill: `tomato`,
       radius: 5,
@@ -136,11 +137,9 @@
   // === Color Scale Data ===
   let color_scale_type = $state(`linear`)
 
-  // Create color gradient data with exponential values
   const color_scale_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    // Create values with exponential distribution (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
     color_values: Array.from({ length: 10 }, (_, idx) => Math.pow(2, idx)),
     point_style: {
       radius: 10,
@@ -164,10 +163,108 @@
     y: [15, 25, 10],
     point_style: { fill: `orange`, radius: 5 },
   }
+
+  // --- Data for Auto Placement Test ---
+  const generate_cluster = (
+    center_x: number,
+    center_y: number,
+    count: number,
+    radius: number,
+    label_prefix: string,
+    auto_placement = true,
+  ) => {
+    const points = {
+      x: [] as number[],
+      y: [] as number[],
+      point_style: [] as object[],
+      point_label: [] as object[],
+    }
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * 2 * Math.PI
+      const dist = Math.random() * radius
+      points.x.push(center_x + Math.cos(angle) * dist)
+      points.y.push(center_y + Math.sin(angle) * dist)
+      points.point_style.push({ fill: `purple`, radius: 5 })
+      points.point_label.push({
+        text: `${label_prefix}-${i + 1}`,
+        auto_placement: auto_placement,
+        font_size: `10px`,
+      })
+    }
+    return points
+  }
+
+  // Dense cluster where labels *should* repel
+  const dense_cluster = generate_cluster(30, 70, 8, 5, `Dense`)
+
+  // Sparse points where labels should *not* repel significantly
+  const sparse_points = {
+    x: [10, 90, 10, 90],
+    y: [10, 10, 90, 90],
+    point_style: { fill: `green`, radius: 6 },
+    point_label: [
+      { text: `Sparse-TL`, auto_placement: true, font_size: `10px`, offset_x: 10 },
+      { text: `Sparse-TR`, auto_placement: true, font_size: `10px`, offset_x: -40 },
+      { text: `Sparse-BL`, auto_placement: true, font_size: `10px`, offset_y: -15 },
+      { text: `Sparse-BR`, auto_placement: true, font_size: `10px` },
+    ],
+  }
+
+  // Single point test
+  const single_point = {
+    x: [50],
+    y: [50],
+    point_style: { fill: `orange`, radius: 7 },
+    point_label: [{ text: `Single`, auto_placement: true, font_size: `10px` }],
+  }
+
+  const auto_placement_series_data: DataSeries[] = [
+    {
+      x: [...dense_cluster.x, ...sparse_points.x, ...single_point.x],
+      y: [...dense_cluster.y, ...sparse_points.y, ...single_point.y],
+      point_style: [
+        ...dense_cluster.point_style,
+        ...(Array.isArray(sparse_points.point_style)
+          ? sparse_points.point_style
+          : [sparse_points.point_style]),
+        ...(Array.isArray(single_point.point_style)
+          ? single_point.point_style
+          : [single_point.point_style]),
+      ],
+      point_label: [
+        ...dense_cluster.point_label,
+        ...(Array.isArray(sparse_points.point_label)
+          ? sparse_points.point_label
+          : [sparse_points.point_label]),
+        ...(Array.isArray(single_point.point_label)
+          ? single_point.point_label
+          : [single_point.point_label]),
+      ],
+    },
+  ]
+
+  let enable_auto_placement = $state(true)
+
+  let auto_placement_test_series = $derived.by(() => {
+    return auto_placement_series_data.map((series) => ({
+      ...series,
+      point_label: (Array.isArray(series.point_label)
+        ? series.point_label
+        : series.point_label
+          ? [series.point_label]
+          : []
+      ).map((lbl): LabelStyle => {
+        return {
+          ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+          auto_placement: enable_auto_placement,
+        }
+      }),
+    }))
+  })
 </script>
 
 <div class="demo-container">
-  <h1>ScatterPlot Component Examples</h1>
+  <h1>ScatterPlot Component E2E Test Page</h1>
 
   <section class="demo-section" id="basic-example">
     <h2>Basic Example</h2>
@@ -176,8 +273,6 @@
         series={[basic_data]}
         x_label="X Axis"
         y_label="Y Axis"
-        x_format=".0f"
-        y_format=".0f"
         markers="line+points"
       />
     </div>
@@ -192,8 +287,6 @@
           series={[points_data]}
           x_label="X Axis"
           y_label="Y Axis (Points)"
-          x_format=".0f"
-          y_format=".0f"
           markers="points"
         />
       </div>
@@ -203,8 +296,6 @@
           series={[line_data]}
           x_label="X Axis"
           y_label="Y Axis (Line)"
-          x_format=".0f"
-          y_format=".0f"
           markers="line"
         />
       </div>
@@ -214,8 +305,6 @@
           series={[line_points_data]}
           x_label="X Axis"
           y_label="Y Axis (Line+Points)"
-          x_format=".0f"
-          y_format=".0f"
           markers="line+points"
         />
       </div>
@@ -231,8 +320,8 @@
           series={[wide_range_data]}
           x_label="X Axis"
           y_label="Y Axis"
-          x_format=".0f"
-          y_format=".0f"
+          x_lim={[-1100, 1100]}
+          y_lim={[-550, 550]}
           markers="line+points"
         />
       </div>
@@ -242,8 +331,8 @@
           series={[small_range_data]}
           x_label="X Axis"
           y_label="Y Axis"
-          x_format=".0f"
-          y_format=".0f"
+          x_lim={[0, 0.0006]}
+          y_lim={[0, 0.00006]}
           markers="line+points"
         />
       </div>
@@ -259,8 +348,8 @@
           series={[log_scale_data]}
           x_label="X Axis (Linear)"
           y_label="Y Axis (Log)"
-          x_format=".0f"
-          y_format=".0f"
+          x_lim={[-1100, 1100]}
+          y_lim={[1, 6000]}
           markers="line+points"
           y_scale_type="log"
         />
@@ -272,6 +361,8 @@
           x_label="X Axis (Log)"
           y_label="Y Axis (Linear)"
           y_format="~s"
+          x_format="~s"
+          x_lim={[0.01, 1100]}
           markers="line+points"
           x_scale_type="log"
         />
@@ -288,8 +379,6 @@
           series={[rainbow_data]}
           x_label="X Axis"
           y_label="Y Axis"
-          x_format=".0f"
-          y_format=".0f"
           markers="points"
         />
       </div>
@@ -299,8 +388,6 @@
           series={[multi_series_data1, multi_series_data2]}
           x_label="X Axis"
           y_label="Y Axis"
-          x_format=".0f"
-          y_format=".0f"
           markers="line+points"
         />
       </div>
@@ -330,11 +417,10 @@
             series={[color_scale_data]}
             x_label="X Axis"
             y_label="Y Axis"
-            x_format=".0f"
-            y_format=".0f"
             markers="points"
             color_scheme="viridis"
             color_scale_type={color_scale_type as `linear` | `log`}
+            show_color_bar={true}
           />
         {/key}
       </div>
@@ -366,46 +452,94 @@
       />
     </div>
   </section>
+
+  <section
+    class="demo-section"
+    id="label-auto-placement-test"
+    style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px;"
+  >
+    <h2>Label Auto Placement Test</h2>
+    <label>
+      <input type="checkbox" bind:checked={enable_auto_placement} />
+      Enable Auto Placement
+    </label>
+    {#key enable_auto_placement}
+      <ScatterPlot
+        series={auto_placement_test_series}
+        x_label="X"
+        y_label="Y"
+        x_lim={[0, 100]}
+        y_lim={[0, 100]}
+        markers="points"
+        style="height: 450px; width: 100%;"
+      />
+    {/key}
+  </section>
 </div>
 
 <style>
   .demo-container {
     max-width: 1200px;
-    margin: 0 auto;
+    margin: 20px auto;
     padding: 20px;
+    font-family: sans-serif;
   }
 
   .demo-section {
-    margin-bottom: 60px;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px dashed #eee;
+  }
+  .demo-section:last-child {
+    border-bottom: none;
   }
 
   .demo-row {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
-    justify-content: center;
+    justify-content: space-around;
   }
 
   .demo-plot {
-    flex: 1;
+    flex: 1 1 45%;
     min-width: 350px;
-    height: 300px;
+    height: 350px;
     border: 1px solid #ccc;
     box-sizing: border-box;
     border-radius: 8px;
+    padding: 10px;
     margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
   }
 
-  :is(h1, h2, h3) {
-    text-align: center;
+  .demo-plot h3 {
     margin-top: 0;
+    margin-bottom: 10px;
+    text-align: center;
+    font-size: 1em;
+  }
+
+  :global(.demo-plot .scatter) {
+    flex-grow: 1;
+  }
+
+  :is(h1, h2) {
+    text-align: center;
+    margin-bottom: 1em;
   }
 
   .custom-tooltip {
-    background: lightblue;
-    color: black;
-    padding: 8px;
-    border: 1px solid blue;
-    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 8px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+
+  label {
+    margin-right: 1em;
   }
 </style>

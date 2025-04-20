@@ -1,7 +1,14 @@
 <script lang="ts">
   import type { Point } from '$lib'
   import { ColorBar, Line } from '$lib'
+  import type { DataSeries, InternalPoint, PlotPoint } from '$lib/plot'
   import { extent, range } from 'd3-array'
+  import {
+    forceCollide,
+    forceLink,
+    forceSimulation,
+    type SimulationNodeDatum,
+  } from 'd3-force'
   import { format } from 'd3-format'
   import {
     scaleLinear,
@@ -13,7 +20,6 @@
   import * as d3sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
   import type { ComponentProps, Snippet } from 'svelte'
-  import type { DataSeries } from '.'
   import ScatterPoint from './ScatterPoint.svelte'
 
   // Extract color scheme interpolate function names from d3-scale-chromatic
@@ -30,29 +36,48 @@
     x_formatted: string
     y_formatted: string
     metadata?: Record<string, unknown>
+    color_value?: number | null
+    label?: string | null
   }
 
   type TimeInterval = `day` | `month` | `year`
   type ScaleType = `linear` | `log`
-  // internal point representation that includes extra properties
-  interface InternalPoint extends Point {
-    color_value?: number | null
-    metadata?: Record<string, unknown>
-    point_style?: Record<string, string | number>
-    point_hover?: Record<string, string | number>
-    point_label?: {
-      text?: string
-      style?: Record<string, string | number>
-      position?: `top` | `bottom` | `left` | `right`
-    }
-    point_offset?: { x: number; y: number }
-    point_tween_duration?: number
-  }
   type QuadrantCounts = {
     top_left: number
     top_right: number
     bottom_left: number
     bottom_right: number
+  }
+
+  // Type for nodes used in the d3-force simulation for label placement
+  interface LabelNode extends SimulationNodeDatum {
+    id: string // unique identifier, e.g., series_idx-point_idx
+    anchor_x: number // Original x coordinate of the point (scaled)
+    anchor_y: number // Original y coordinate of the point (scaled)
+    point_node: InternalPoint // Reference to the original data point
+    label_width: number // Estimated width for collision
+    label_height: number // Estimated height for collision
+    // x, y, vx, vy are added by d3-force
+  }
+
+  // Configuration for the label auto-placement simulation
+  interface LabelPlacementConfig {
+    collision_strength: number // Strength of the collision force (prevents overlap)
+    link_strength: number // Strength of the link force (pulls label to point)
+    link_distance: number // Target distance for the link force
+    placement_ticks: number // Number of simulation ticks to run
+  }
+
+  // Type for anchor nodes used in simulation, now including point radius
+  interface AnchorNode extends SimulationNodeDatum {
+    id: string
+    fx: number
+    fy: number
+    point_radius: number // Radius of the corresponding scatter point
+    show_color_bar?: boolean // Whether to show the color bar when color scaling is active
+    color_bar?: ComponentProps<typeof ColorBar> | null
+    // Label auto-placement simulation parameters
+    label_placement_config?: Partial<LabelPlacementConfig>
   }
 
   interface Props {
@@ -70,15 +95,15 @@
     y_label_shift?: { x: number; y: number } // horizontal and vertical shift of y-axis label in px
     y_tick_label_shift?: { x: number; y: number } // horizontal and vertical shift of y-axis tick labels in px
     y_unit?: string
-    tooltip_point?: Point | null
+    tooltip_point?: InternalPoint | null
     hovered?: boolean
     markers?: `line` | `points` | `line+points`
     x_format?: string
     y_format?: string
-    tooltip?: Snippet<[TooltipProps]>
+    tooltip?: Snippet<[PlotPoint & TooltipProps]>
     change?: (data: Point & { series: DataSeries }) => void
-    x_ticks?: number | TimeInterval // Positive: count, Negative: interval, String: time interval
-    y_ticks?: number // Positive: count, Negative: interval
+    x_ticks?: number | TimeInterval // tick count or string (day/month/year). Negative number: interval.
+    y_ticks?: number // tick count. Negative number: interval.
     x_scale_type?: ScaleType // Type of scale for x-axis
     y_scale_type?: ScaleType // Type of scale for y-axis
     show_zero_lines?: boolean
@@ -87,9 +112,11 @@
     // Color scaling props
     color_scale_type?: ScaleType // Type of scale for color mapping
     color_scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
-    color_range?: [number, number] // Min and max values for color scaling (uses auto detect if not provided)
+    color_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
     show_color_bar?: boolean // Whether to show the color bar when color scaling is active
     color_bar?: ComponentProps<typeof ColorBar> | null
+    // Label auto-placement simulation parameters
+    label_placement_config?: Partial<LabelPlacementConfig>
   }
   let {
     series = [],
@@ -125,12 +152,13 @@
     color_range,
     show_color_bar = true,
     color_bar = {},
+    label_placement_config = {},
   }: Props = $props()
 
   let width = $state(0)
   let height = $state(0)
 
-  // State for zooming
+  // State for rectangle zoom selection
   let drag_start_coords = $state<{ x: number; y: number } | null>(null)
   let drag_current_coords = $state<{ x: number; y: number } | null>(null)
 
@@ -138,6 +166,9 @@
   let initial_y_range = $state<[number, number]>([0, 1])
   let current_x_range = $state<[number, number]>([0, 1])
   let current_y_range = $state<[number, number]>([0, 1])
+
+  // State to hold the calculated label positions after simulation
+  let label_positions = $state<Record<string, { x: number; y: number }>>({})
 
   // Create raw data points from all series
   let all_points = $derived(
@@ -224,7 +255,13 @@
 
   // Create auto color range
   let auto_color_range = $derived(
-    all_color_values.length > 0 ? (extent(all_color_values) as [number, number]) : [0, 1],
+    // Ensure we only calculate extent on actual numbers, filtering out nulls/undefined
+    all_color_values.length > 0
+      ? (extent(all_color_values.filter((val): val is number => val != null)) as [
+          number,
+          number,
+        ])
+      : [0, 1],
   )
 
   let effective_color_range = $derived(color_range ?? auto_color_range)
@@ -296,71 +333,74 @@
       : d3sc.interpolateViridis
   })
 
-  // Filter series data to only include points within bounds
+  // Filter series data to only include points within bounds and augment with internal data
   let filtered_series = $derived(
-    series.map((data_series) => {
-      if (!data_series) {
-        // Return empty data consistent with DataSeries structure
-        return {
-          x: [],
-          y: [],
-          filtered_data: [],
-        } as unknown as DataSeries & { filtered_data: Point[] }
-      }
-
-      const { x: xs, y: ys, color_values, ...rest } = data_series
-
-      // Process points internally, adding properties beyond the base Point type
-      const processed_points = xs.map((x, idx) => {
-        const y = ys[idx]
-        const color_value = color_values?.[idx]
-
-        // Helper to process array or scalar properties
-        const process_prop = <T,>(
-          prop: T[] | T | undefined,
-          idx: number,
-        ): T | undefined => {
-          if (!prop) return undefined
-          return Array.isArray(prop) && idx < prop.length
-            ? prop[idx]
-            : !Array.isArray(prop)
-              ? prop
-              : undefined
+    series
+      .map((data_series, series_idx) => {
+        if (!data_series) {
+          // Return empty data consistent with DataSeries structure
+          return {
+            x: [],
+            y: [],
+            filtered_data: [],
+          } as unknown as DataSeries & { filtered_data: InternalPoint[] }
         }
 
+        const { x: xs, y: ys, color_values, ...rest } = data_series
+
+        // Process points internally, adding properties beyond the base Point type
+        const processed_points: InternalPoint[] = xs.map((x, point_idx) => {
+          const y = ys[point_idx]
+          const color_value = color_values?.[point_idx]
+
+          // Helper to process array or scalar properties
+          const process_prop = <T,>(
+            prop: T[] | T | undefined,
+            point_idx: number,
+          ): T | undefined => {
+            if (!prop) return undefined
+            // If prop is an array, return the element at the point_idx, otherwise return the prop itself (scalar apply-to-all)
+            // prop[point_idx] can be undefined if point_idx out of bounds
+            return Array.isArray(prop) ? prop[point_idx] : prop
+          }
+
+          return {
+            x,
+            y,
+            color_value,
+            metadata: process_prop(rest.metadata, point_idx),
+            point_style: process_prop(rest.point_style, point_idx),
+            point_hover: process_prop(rest.point_hover, point_idx),
+            point_label: process_prop(rest.point_label, point_idx),
+            point_offset: process_prop(rest.point_offset, point_idx),
+            point_tween_duration: rest.point_tween_duration,
+            series_idx,
+            point_idx,
+          }
+        })
+
+        // Filter to points within the plot bounds
+        // This data contains the extra properties
+        const filtered_data_with_extras = processed_points.filter(
+          (pt) =>
+            !isNaN(pt.x) &&
+            pt.x !== null &&
+            !isNaN(pt.y) &&
+            pt.y !== null &&
+            pt.x >= x_min &&
+            pt.x <= x_max &&
+            pt.y >= y_min &&
+            pt.y <= y_max,
+        )
+
+        // Return structure consistent with DataSeries but acknowledge internal data structure (filtered_data)
         return {
-          x,
-          y,
-          color_value,
-          metadata: process_prop(rest.metadata, idx), // Matches InternalPoint.metadata
-          point_style: process_prop(rest.point_style, idx),
-          point_hover: process_prop(rest.point_hover, idx),
-          point_label: process_prop(rest.point_label, idx),
-          point_offset: process_prop(rest.point_offset, idx),
-          point_tween_duration: rest.point_tween_duration,
-        }
+          ...data_series,
+          filtered_data: filtered_data_with_extras as InternalPoint[],
+        } as DataSeries & { filtered_data: InternalPoint[] }
       })
-
-      // Filter to points within the plot bounds
-      // This data contains the extra properties
-      const filtered_data_with_extras = processed_points.filter(
-        (pt) =>
-          !isNaN(pt.x) &&
-          pt.x !== null &&
-          !isNaN(pt.y) &&
-          pt.y !== null &&
-          pt.x >= x_min &&
-          pt.x <= x_max &&
-          pt.y >= y_min &&
-          pt.y <= y_max,
-      )
-
-      // Return structure consistent with DataSeries but acknowledge internal data structure
-      return {
-        ...data_series,
-        filtered_data: filtered_data_with_extras as Point[], // Cast here
-      } as DataSeries & { filtered_data: Point[] }
-    }),
+      // Filter out series that might be completely empty after point filtering
+      .filter((series_data) => series_data.filtered_data.length > 0),
   )
 
   // Calculate point counts per quadrant for color bar placement
@@ -620,7 +660,7 @@
 
   function handle_mouse_leave() {
     // Reset drag state if mouse leaves plot area
-    if (drag_start_coords) handle_mouse_up(new MouseEvent(`mouseup`)) // Simulate mouseup
+    if (drag_start_coords) handle_mouse_up(new MouseEvent(`mouseup`)) // Simulate mouseup to finalize zoom if needed
     hovered = false
     tooltip_point = null
   }
@@ -654,15 +694,15 @@
     let closest_point_internal: InternalPoint | null = null
     let min_distance = Infinity
     // Type needs to match the complex return type of filtered_series derived
-    let closest_series: (DataSeries & { filtered_data: Point[] }) | null = null
+    let closest_series: (DataSeries & { filtered_data: InternalPoint[] }) | null = null
 
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
 
       for (const point of series_data.filtered_data) {
-        // Calculate distance to point
+        // Calculate distance to point (data coordinates)
         const dx = x_format?.startsWith(`%`)
-          ? Math.abs(new Date(point.x).getTime() - (mouse_x as Date).getTime()) / 86400000
+          ? Math.abs(new Date(point.x).getTime() - (mouse_x as Date).getTime()) / 86400000 // Normalize time diff
           : Math.abs(point.x - (mouse_x as number))
         const dy = Math.abs(point.y - mouse_y)
         const distance = dx * dx + dy * dy
@@ -676,25 +716,140 @@
     }
 
     if (closest_point_internal && closest_series) {
-      // Cast to Point for the tooltip prop
-      tooltip_point = closest_point_internal // Already Point-like
+      tooltip_point = closest_point_internal
       // Construct object matching change signature
-      const { x, y, metadata } = closest_point_internal
-      // Cast internal point properties to match expected Point structure for change prop
-      change({
-        x,
-        y,
-        metadata: metadata as Record<string, unknown> | undefined,
-        series: closest_series,
-      })
+      const { x, y, metadata } = closest_point_internal // Extract base Point props
+      // Call change handler with closest point's data
+      change({ x, y, metadata, series: closest_series })
     }
   }
 
   function find_closest_point(evt: MouseEvent) {
     const coords = get_relative_coords(evt)
     if (!coords) return
-    on_mouse_move(evt) // Call the original logic
+    on_mouse_move(evt) // Call tooltip/hover logic
   }
+
+  // Merge user config with defaults before the effect that uses it
+  let effective_label_config = $derived({
+    collision_strength: 1.1,
+    link_strength: 0.8,
+    link_distance: 10,
+    placement_ticks: 120,
+    ...label_placement_config,
+  })
+
+  $effect(() => {
+    // Explicitly access reactive dependencies to ensure the effect re-runs
+    const current_config = effective_label_config
+    const current_series = filtered_series
+    const current_x_scale = x_scale_fn
+    const current_y_scale = y_scale_fn
+
+    if (!width || !height) return
+
+    // 1. Collect nodes for simulation (only those with auto_placement)
+    const nodes_to_simulate: LabelNode[] = []
+    const anchor_nodes: AnchorNode[] = []
+    const links: { source: string; target: string }[] = []
+
+    current_series.forEach((series_data) => {
+      series_data.filtered_data.forEach((point) => {
+        if (point.point_label?.auto_placement && point.point_label.text) {
+          const anchor_x = x_format?.startsWith(`%`)
+            ? current_x_scale(new Date(point.x))
+            : current_x_scale(point.x)
+          const anchor_y = current_y_scale(point.y)
+
+          const id = `${point.series_idx}-${point.point_idx}`
+
+          // Estimate label size (simple approximation)
+          const label_width = point.point_label.text.length * 6 + 10 // Approx 6px per char + padding
+          const label_height = 14 // Approx font height + padding
+
+          const label_node: LabelNode = {
+            id,
+            anchor_x,
+            anchor_y,
+            point_node: point,
+            label_width,
+            label_height,
+            x: anchor_x + (point.point_label.offset_x ?? 5), // Start at default offset
+            y: anchor_y + (point.point_label.offset_y ?? 0),
+          }
+          nodes_to_simulate.push(label_node)
+
+          // Create a fixed anchor node for the link force
+          const fixed_anchor_id = `anchor-${id}`
+          // Get the radius for the point, default if not specified
+          const point_radius = point.point_style?.radius ?? 3 // Default radius 3
+          anchor_nodes.push({
+            id: fixed_anchor_id,
+            fx: anchor_x,
+            fy: anchor_y,
+            point_radius,
+          })
+
+          // Link label to its fixed anchor
+          links.push({ source: id, target: fixed_anchor_id })
+        }
+      })
+    })
+
+    if (nodes_to_simulate.length === 0) {
+      label_positions = {}
+      return // No labels to place
+    }
+
+    // Combine nodes for the simulation
+    const all_simulation_nodes: (LabelNode | AnchorNode)[] = [
+      ...nodes_to_simulate,
+      ...anchor_nodes,
+    ]
+
+    // 2. Setup and run the simulation
+    const simulation = forceSimulation(all_simulation_nodes)
+      .force(
+        `link`,
+        forceLink(links)
+          .id((d) => (d as { id: string }).id)
+          .distance(current_config.link_distance)
+          .strength(current_config.link_strength),
+      ) // Cast d to ensure id exists
+      .force(
+        `collide`,
+        forceCollide()
+          .radius((d_node) => {
+            const node_as_label = d_node as LabelNode
+            const node_as_anchor = d_node as AnchorNode // Use defined AnchorNode type
+
+            if (node_as_label.label_width) {
+              const size =
+                Math.max(node_as_label.label_width, node_as_label.label_height) / 2
+              // Check if it's a LabelNode via a unique property
+              // Collision radius based on label dimensions
+              return size + 2 // +2 buffer
+            } else if (node_as_anchor.point_radius !== undefined) {
+              // Check if it's our AnchorNode
+              // Collision radius based on the point's visual radius
+              return node_as_anchor.point_radius + 2 // +2 buffer
+            }
+            return 0 // Should not happen if nodes are constructed correctly
+          })
+          .strength(current_config.collision_strength),
+      )
+      .stop()
+
+    // Run simulation for a fixed number of ticks
+    simulation.tick(current_config.placement_ticks)
+
+    // 3. Store the final positions
+    const new_positions: Record<string, { x: number; y: number }> = {}
+    nodes_to_simulate.forEach((node) => {
+      new_positions[node.id] = { x: node.x!, y: node.y! }
+    })
+    label_positions = new_positions
+  })
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
@@ -742,7 +897,7 @@
             first_point?.color_value != null
               ? color_scale_fn(first_point.color_value)
               : typeof series?.point_style === `object` && series?.point_style?.fill
-                ? (series.point_style.fill as string) // Needs casting
+                ? (series.point_style.fill as string)
                 : `rgba(255, 255, 255, 0.5)`}
 
           <Line
@@ -766,9 +921,24 @@
       <!-- Points -->
       {#if markers?.includes(`points`)}
         {#each filtered_series ?? [] as series, series_idx (series_idx)}
-          {#each (series?.filtered_data ?? []) as InternalPoint[] as point, point_idx (point_idx)}
+          {#each series.filtered_data as point, point_idx (point_idx)}
             {@const point_color =
               point.color_value != null ? color_scale_fn(point.color_value) : undefined}
+
+            {@const label_id = `${point.series_idx}-${point.point_idx}`}
+            {@const calculated_label_pos = label_positions[label_id]}
+            {@const label_style = point.point_label ?? {}}
+            {@const final_label = calculated_label_pos
+              ? {
+                  ...label_style,
+                  offset_x:
+                    calculated_label_pos.x -
+                    (x_format?.startsWith(`%`)
+                      ? x_scale_fn(new Date(point.x))
+                      : x_scale_fn(point.x)),
+                  offset_y: calculated_label_pos.y - y_scale_fn(point.y),
+                }
+              : label_style}
 
             <ScatterPoint
               x={x_format?.startsWith(`%`)
@@ -780,7 +950,7 @@
                 fill: point_color ?? (point?.point_style?.fill as string | undefined),
               }}
               hover={point.point_hover ?? {}}
-              label={point.point_label ?? {}}
+              label={final_label}
               offset={point.point_offset ?? { x: 0, y: 0 }}
               tween_duration={point.point_tween_duration ?? 600}
               origin_x={plot_center_x}
@@ -874,12 +1044,12 @@
 
       <!-- Tooltip -->
       {#if tooltip_point && hovered}
-        {@const { x, y, metadata } = tooltip_point}
+        {@const { x, y, metadata, color_value, point_label } = tooltip_point}
         {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
         {@const cy = y_scale_fn(y)}
         {@const x_formatted = format_value(x, x_format)}
         {@const y_formatted = format_value(y, y_format)}
-
+        {@const label = point_label?.text ?? null}
         <circle {cx} {cy} r="5" fill="orange" />
         <foreignObject x={cx + 5} y={cy}>
           {#if tooltip}
@@ -891,10 +1061,12 @@
               x_formatted,
               y_formatted,
               metadata: metadata as Record<string, unknown> | undefined,
+              color_value,
+              label,
             })}
           {:else}
             <div class="default-tooltip">
-              x: {x_formatted}, y: {y_formatted}
+              {label} - x: {x_formatted}, y: {y_formatted}
             </div>
           {/if}
         </foreignObject>
@@ -919,7 +1091,7 @@
           range: effective_color_range as [number, number],
           color_scale: color_interpolator_fn,
           wrapper_style: `position: absolute;
-            ${color_bar_position_style} /* Apply auto positioning (no function call needed in template) */
+            ${color_bar_position_style} /* Apply auto positioning */
             ${color_bar?.wrapper_style ?? ``} /* Add user wrapper style */
           `,
           style: `width: 280px; /* Default width */
