@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.7](https://github.com/janosh/elementari/compare/v0.3.6...v0.3.7)
+
+> 20 April 2025
+
+- smarter `ColorBar.svelte` with better auto number of ticks and tick_side logic (primary/secondary/inside) [`e13bf4a`](https://github.com/janosh/elementari/commit/e13bf4aae902bfb106373f072cac06a2216fe1a6)
+
 #### [v0.3.6](https://github.com/janosh/elementari/compare/v0.3.5...v0.3.6)
 
 > 19 April 2025
