@@ -12,18 +12,17 @@
     id?: string | null
     key?: string | null
   }
-
   let {
     value = $bindable(null),
     empty = false,
     selected = empty ? [] : [options[1]],
     minSelect = 0,
     id = null,
-    key = $bindable(),
+    key = $bindable(``),
   }: Props = $props()
 
   $effect.pre(() => {
-    selected.heatmap_key = key = heatmap_labels[value ?? ``] ?? null
+    key = heatmap_labels[value ?? ``] ?? null
   })
 </script>
 

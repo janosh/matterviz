@@ -12,8 +12,11 @@
     wrapper_style?: string | null
     tick_labels?: (string | number)[] | number
     range?: [number, number]
-    // tick_side refers to the side of the bar where the labels are placed
-    tick_side?: `left` | `right` | `top` | `bottom`
+    // tick_side determines tick placement relative to orientation:
+    // 'primary'   = bottom (horizontal) / right (vertical), outside the bar
+    // 'secondary' = top (horizontal) / left (vertical), outside the bar
+    // 'inside'    = centered within the bar, hiding first/last
+    tick_side?: `primary` | `secondary` | `inside`
     orientation?: `horizontal` | `vertical`
     // snap ticks to pretty, more readable values
     snap_ticks?: boolean
@@ -35,49 +38,99 @@
     snap_ticks = true,
     steps = 50,
     nice_range = $bindable(range),
-    // Default label_side depends on orientation
-    label_side = orientation === `vertical` ? `left` : `left`,
-    // Default tick side depends on orientation
-    tick_side = orientation === `vertical` ? `right` : `bottom`,
+    // Capture user-provided value, no default here
+    label_side = undefined,
+    // Default tick side/position
+    tick_side = `primary`,
   }: Props = $props()
 
-  let n_ticks = $derived(
+  // Derive the actual label_side, applying default logic if user didn't provide one
+  let actual_label_side = $derived.by(() => {
+    if (label_side !== undefined) return label_side // Use user-provided value if available
+
+    // Calculate default based on orientation and tick_side
+    if (tick_side === `inside`) return `left` // Default to left if ticks are inside
+
+    // If ticks are primary (bottom), default label to top
+    // If ticks are secondary (top), default label to bottom
+    if (orientation === `horizontal`) return tick_side === `primary` ? `top` : `bottom`
+    // orientation === `vertical`
+    // If ticks are primary (right), default label to left
+    // If ticks are secondary (left), default label to right
+    else return tick_side === `primary` ? `left` : `right`
+  })
+
+  // Calculate the originally requested number of ticks
+  let requested_n_ticks = $derived(
     Array.isArray(tick_labels)
       ? tick_labels.length
       : typeof tick_labels === `number`
         ? tick_labels
-        : 5,
+        : 5, // Default requested ticks
+  )
+
+  // Determine the actual number of ticks to generate
+  let actual_n_ticks = $derived(
+    tick_side === `inside` && typeof tick_labels === `number`
+      ? Math.max(requested_n_ticks, 5) // Ensure at least 5 ticks for 'inside' if requested as number
+      : requested_n_ticks,
+  )
+
+  // Recalculate scale whenever inputs change for snapping
+  let scale_for_ticks = $derived(
+    snap_ticks && !Array.isArray(tick_labels)
+      ? d3.scaleLinear().domain(range).nice(actual_n_ticks)
+      : d3.scaleLinear().domain(range),
   )
 
   let ticks_array: number[] = $derived.by(() => {
-    const num_ticks = n_ticks
+    // Use actual_n_ticks when generating based on a number
+    const num_ticks_to_generate = Array.isArray(tick_labels)
+      ? requested_n_ticks // Not applicable here, handled below
+      : actual_n_ticks // Use the adjusted count
 
     // Determine if labels are provided explicitly
     if (Array.isArray(tick_labels)) {
       // If labels are strings, attempt conversion, filter out NaNs
+      // User provided specific ticks, use them directly regardless of count
       return tick_labels.map(Number).filter((n) => !isNaN(n))
     }
 
-    // Generate ticks based on range and count
+    // Use the pre-calculated scale for tick generation
+    const scale = scale_for_ticks
+
+    // Generate ticks based on range and the actual count
     if (snap_ticks) {
-      const scale = d3.scaleLinear().domain(range).nice(num_ticks)
-      return scale.ticks(num_ticks)
+      // Generate ticks using the potentially 'niced' scale
+      return scale.ticks(num_ticks_to_generate)
     } else {
-      return [...Array(num_ticks).keys()].map((idx) => {
-        const x = idx / (num_ticks - 1)
-        return range[0] + x * (range[1] - range[0])
+      // Handle cases with 0 or 1 tick requested
+      if (num_ticks_to_generate <= 0) return []
+      if (num_ticks_to_generate === 1) return [range[0]]
+
+      // Generate exactly num_ticks_to_generate evenly spaced ticks using the scale's domain
+      const current_domain = scale.domain() // Use the calculated scale's domain
+      return [...Array(num_ticks_to_generate).keys()].map((idx) => {
+        const x = idx / (num_ticks_to_generate - 1)
+        return current_domain[0] + x * (current_domain[1] - current_domain[0])
       })
     }
   })
 
-  // Update nice_range when ticks are recalculated due to snapping
+  // Update nice_range binding when snapping ticks
   $effect.pre(() => {
     if (snap_ticks && !Array.isArray(tick_labels)) {
-      const scale = d3.scaleLinear().domain(range).nice(n_ticks)
-      const domain = scale.domain()
+      // Use the derived scale to get the niced domain
+      const domain = scale_for_ticks.domain()
       // Ensure domain has two elements before assigning
-      if (domain.length === 2) nice_range = domain as [number, number]
-    } else nice_range = range // Use original range if not snapping or labels provided
+      if (domain.length === 2) {
+        nice_range = domain as [number, number]
+      } else {
+        nice_range = range // Fallback
+      }
+    } else {
+      nice_range = range // Use original range if not snapping or labels provided
+    }
   })
 
   const valid_color_scale_keys = Object.keys(d3sc)
@@ -109,14 +162,11 @@
     ),
   )
 
-  // Determine wrapper flex-direction based on label_side
+  // Determine wrapper flex-direction based on the actual label_side
   let wrapper_flex_dir = $derived(
-    {
-      left: `row`,
-      right: `row-reverse`,
-      top: `column`,
-      bottom: `column-reverse`,
-    }[label_side],
+    { left: `row`, right: `row-reverse`, top: `column`, bottom: `column-reverse` }[
+      actual_label_side
+    ],
   )
 
   // CSS variables for bar width/height based on orientation
@@ -126,37 +176,90 @@
     background: linear-gradient(${grad_dir}, ${ramped});
   `)
 
-  // Label styles, including rotation for vertical orientation
-  let current_label_style = $derived(`
-    ${orientation === `vertical` ? `transform: rotate(-90deg); white-space: nowrap;` : ``}
-    ${label_style ?? ``}
-  `)
+  // Calculate additional margin for the main label if it overlaps with ticks
+  let label_overlap_margin_style = $derived.by(() => {
+    // Overlap only possible if ticks are outside and on the same side as the label
+    if (tick_side === `inside`) return ``
+
+    // Determine the concrete side the outside ticks are on
+    const concrete_outside_tick_side =
+      orientation === `horizontal`
+        ? tick_side === `primary`
+          ? `bottom`
+          : `top`
+        : tick_side === `primary`
+          ? `right`
+          : `left`
+
+    if (actual_label_side !== concrete_outside_tick_side) return ``
+
+    const offset = `var(--cbar-label-overlap-offset, 1em)`
+
+    switch (actual_label_side) {
+      case `top`:
+        return `margin-bottom: ${offset};`
+      case `bottom`:
+        return `margin-top: ${offset};`
+      case `left`:
+        return `margin-right: ${offset};`
+      case `right`:
+        return `margin-left: ${offset};`
+      default:
+        return ``
+    }
+  })
+
+  // Label styles
+  let current_label_style = $derived.by(() => {
+    const rotate_style =
+      orientation === `vertical` &&
+      (actual_label_side === `left` || actual_label_side === `right`)
+        ? `transform: rotate(-90deg); white-space: nowrap;`
+        : ``
+    return `${rotate_style} ${label_overlap_margin_style} ${label_style ?? ``}`.trim()
+  })
 </script>
 
 <div style:flex-direction={wrapper_flex_dir} style={wrapper_style} class="colorbar">
   {#if label}<span style={current_label_style} class="label">{@html label}</span>{/if}
   <div style="{bar_dynamic_style} {style ?? ``}" class="bar">
-    {#each ticks_array as tick_label (tick_label)}
+    {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as tick_label (tick_label)}
       {@const position_percent =
-        (100 * (tick_label - nice_range[0])) / (nice_range[1] - nice_range[0])}
+        // Use the derived scale's domain for positioning
+        (100 * (tick_label - scale_for_ticks.domain()[0])) /
+        (scale_for_ticks.domain()[1] - scale_for_ticks.domain()[0])}
 
       <!-- Inline style for tick positioning based on orientation and tick_side -->
       {@const tick_inline_style = `
         position: absolute;
         ${
           orientation === `horizontal`
-            ? `
-          left: ${position_percent}%;
-          transform: translateX(-50%);
-          ${tick_side === `top` ? `bottom: 100%;` : ``}
-          ${tick_side === `bottom` ? `top: 100%;` : ``}
-        `
-            : `
-          top: ${position_percent}%;
-          transform: translateY(-50%);
-          ${tick_side === `left` ? `right: 100%;` : ``}
-          ${tick_side === `right` ? `left: 100%;` : ``}
-        `
+            ? /* Horizontal bar */
+              tick_side === `inside`
+              ? /* Inside ticks */ `
+                left: ${position_percent}%;
+                top: 50%; /* Center vertically */
+                transform: translate(-50%, -50%); /* Center horizontally and vertically */
+              `
+              : /* Outside ticks (primary/secondary) */ `
+                left: ${position_percent}%;
+                transform: translateX(-50%);
+                ${tick_side === `primary` ? `top: 100%;` : ``} /* primary = bottom */
+                ${tick_side === `secondary` ? `bottom: 100%;` : ``} /* secondary = top */
+              `
+            : /* Vertical bar */
+              tick_side === `inside`
+              ? /* Inside ticks */ `
+                top: ${position_percent}%;
+                left: 50%; /* Center horizontally */
+                transform: translate(-50%, -50%); /* Center vertically and horizontally */
+              `
+              : /* Outside ticks (primary/secondary) */ `
+                top: ${position_percent}%;
+                transform: translateY(-50%);
+                ${tick_side === `primary` ? `left: 100%;` : ``} /* primary = right */
+                ${tick_side === `secondary` ? `right: 100%;` : ``} /* secondary = left */
+              `
         }
       `}
 
@@ -172,7 +275,8 @@
     display: flex;
     box-sizing: border-box;
     place-items: center;
-    gap: var(--cbar-gap, 5pt);
+    /* Reduced default gap */
+    gap: var(--cbar-gap, 0);
     margin: var(--cbar-margin);
     padding: var(--cbar-padding);
     width: var(--cbar-width, auto);

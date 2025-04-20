@@ -1,13 +1,13 @@
-import { expect, test } from '@playwright/test'
-import { random_sample } from '.'
-import element_data from '../src/lib/element/data.ts'
+import element_data from '$lib/element/data'
 import {
   categories,
   category_counts,
   heatmap_keys,
   heatmap_labels,
   pretty_num,
-} from '../src/lib/labels.ts'
+} from '$lib/labels'
+import { expect, test } from '@playwright/test'
+import { random_sample } from '.'
 
 test.describe(`Periodic Table`, () => {
   test(`in default state`, async ({ page }) => {

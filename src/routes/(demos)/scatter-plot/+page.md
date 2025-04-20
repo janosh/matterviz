@@ -1148,7 +1148,6 @@ This example demonstrates how the color bar automatically positions itself in on
     y_lim={[0, 100]}
     markers="points+text"
     color_scheme="turbo"
-    show_color_bar={true}
     color_bar={{ label: `Color Bar Title` }}
     style="height: 450px; width: 100%;"
   >
@@ -1312,10 +1311,9 @@ This example shows how to place the color bar vertically on the right side of th
       x_lim={[0, 100]}
       y_lim={[0, 100]}
       markers="points"
-      padding={plot_padding}
       color_scheme={selected_scheme}
       {color_scale_type}
-      show_color_bar={true}
+      padding={plot_padding}
       color_bar={{
         orientation: `vertical`,
         label: `Value (${color_scale_type})`,
@@ -1328,10 +1326,7 @@ This example shows how to place the color bar vertically on the right side of th
           /* Set height directly for the wrapper */
           height: calc(100% - ${plot_padding.t + plot_padding.b}px); /* Fill vertical space */
         `,
-        style: `
-          width: 15px;
-          height: 100%;
-        `,
+        style: `width: 15px; height: 100%;`,
       }}
       style="height: 400px; width: 100%;"
     >

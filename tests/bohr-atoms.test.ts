@@ -1,5 +1,5 @@
+import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
-import element_data from '../src/lib/element/data'
 
 test.describe(`Bohr Atoms page`, () => {
   test(`lists all elements`, async ({ page }) => {

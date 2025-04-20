@@ -87,16 +87,16 @@
     y_lim?: [number | null, number | null]
     x_range?: [number, number] // Explicit ranges for x and y axes. If provided, this overrides the auto-computed range.
     y_range?: [number, number] // Use this to set fixed ranges regardless of the data.
-    padding?: { t: number; b: number; l: number; r: number }
+    padding?: { t?: number; b?: number; l?: number; r?: number }
     x_label?: string
-    x_label_shift?: { x: number; y: number } // horizontal and vertical shift of x-axis label in px
-    x_tick_label_shift?: { x: number; y: number } // horizontal and vertical shift of x-axis tick labels in px
+    x_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis label in px
+    x_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis tick labels in px
     y_label?: string
-    y_label_shift?: { x: number; y: number } // horizontal and vertical shift of y-axis label in px
-    y_tick_label_shift?: { x: number; y: number } // horizontal and vertical shift of y-axis tick labels in px
+    y_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis label in px
+    y_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis tick labels in px
     y_unit?: string
-    tooltip_point?: InternalPoint | null
-    hovered?: boolean
+    tooltip_point?: InternalPoint | null // Point being hovered over, to display in tooltip (bindable)
+    hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
     markers?: `line` | `points` | `line+points`
     x_format?: string
     y_format?: string
@@ -113,8 +113,9 @@
     color_scale_type?: ScaleType // Type of scale for color mapping
     color_scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
     color_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
-    show_color_bar?: boolean // Whether to show the color bar when color scaling is active
-    color_bar?: ComponentProps<typeof ColorBar> | null
+    // Props for the ColorBar component, plus an optional 'margin' for auto-placement.
+    // Set to null or undefined to hide the color bar.
+    color_bar?: (ComponentProps<typeof ColorBar> & { margin?: number }) | null
     // Label auto-placement simulation parameters
     label_placement_config?: Partial<LabelPlacementConfig>
   }
@@ -125,7 +126,7 @@
     y_lim = [null, null],
     x_range,
     y_range,
-    padding = { t: 5, b: 70, l: 50, r: 20 },
+    padding = {},
     x_label = ``,
     x_label_shift = { x: 0, y: -40 },
     x_tick_label_shift = { x: 0, y: 20 },
@@ -150,7 +151,6 @@
     color_scale_type = `linear`,
     color_scheme = `viridis`,
     color_range,
-    show_color_bar = true,
     color_bar = {},
     label_placement_config = {},
   }: Props = $props()
@@ -176,10 +176,11 @@
       .filter(Boolean)
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
+  let pad = $derived({ t: 5, b: 70, l: 50, r: 20, ...padding })
 
   // Calculate plot area center coordinates
-  let plot_center_x = $derived(padding.l + (width - padding.r - padding.l) / 2)
-  let plot_center_y = $derived(padding.t + (height - padding.b - padding.t) / 2)
+  let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
+  let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
 
   // Compute data color values for color scaling
   let all_color_values = $derived(
@@ -287,24 +288,24 @@
     x_format?.startsWith(`%`)
       ? scaleTime()
           .domain([new Date(x_min), new Date(x_max)])
-          .range([padding.l, width - padding.r])
+          .range([pad.l, width - pad.r])
       : x_scale_type === `log`
         ? scaleLog()
             .domain([x_min, x_max])
-            .range([padding.l, width - padding.r])
+            .range([pad.l, width - pad.r])
         : scaleLinear()
             .domain([x_min, x_max])
-            .range([padding.l, width - padding.r]),
+            .range([pad.l, width - pad.r]),
   )
 
   let y_scale_fn = $derived(
     y_scale_type === `log`
       ? scaleLog()
           .domain([y_min, y_max])
-          .range([height - padding.b, padding.t])
+          .range([height - pad.b, pad.t])
       : scaleLinear()
           .domain([y_min, y_max])
-          .range([height - padding.b, padding.t]),
+          .range([height - pad.b, pad.t]),
   )
 
   // Color scale function
@@ -451,8 +452,8 @@
 
   // Calculate automatic position style for the color bar
   let color_bar_position_style = $derived.by(() => {
-    const margin = 10 // px margin from the corner
-    const { t, l, b, r } = padding
+    const margin = color_bar?.margin ?? 10 // Use margin from prop, default 10
+    const { t, l, b, r } = pad
     switch (least_dense_quadrant) {
       case `top_left`:
         return `top: ${t + margin}px; left: ${l + margin}px;`
@@ -464,14 +465,6 @@
       default: // Default fall-through
         return `top: ${t + margin}px; right: ${r + margin}px;`
     }
-  })
-
-  // Determine the data-driven orientation and tick side for the ColorBar
-  let dynamic_tick_side = $derived.by<`top` | `bottom`>(() => {
-    const quadrant = least_dense_quadrant
-    if ((color_bar?.orientation ?? `horizontal`) === `horizontal`)
-      return quadrant.startsWith(`top_`) ? `bottom` : `top`
-    return `bottom` // Default fallback for type safety
   })
 
   // Generate logarithmic ticks
@@ -869,8 +862,8 @@
       {#if show_zero_lines}
         {#if x_min <= 0 && x_max >= 0}
           <line
-            y1={padding.t}
-            y2={height - padding.b}
+            y1={pad.t}
+            y2={height - pad.b}
             x1={x_format?.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
             x2={x_format?.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
             stroke="gray"
@@ -879,8 +872,8 @@
         {/if}
         {#if y_min < 0 && y_max > 0}
           <line
-            x1={padding.l}
-            x2={width - padding.r}
+            x1={pad.l}
+            x2={width - pad.r}
             y1={y_scale_fn(0)}
             y2={y_scale_fn(0)}
             stroke="gray"
@@ -968,11 +961,11 @@
               ? x_scale_fn(new Date(tick))
               : x_scale_fn(tick)}
 
-            {#if tick_pos >= padding.l && tick_pos <= width - padding.r}
-              <g class="tick" transform="translate({tick_pos}, {height - padding.b})">
+            {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
+              <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
                 {#if x_grid}
                   <line
-                    y1={-(height - padding.b - padding.t)}
+                    y1={-(height - pad.b - pad.t)}
                     y2="0"
                     {...typeof x_grid === `object` ? x_grid : {}}
                   />
@@ -990,8 +983,8 @@
         {/if}
 
         <text
-          x={width / 2 + x_label_shift.x}
-          y={height - padding.b - x_label_shift.y}
+          x={width / 2 + (x_label_shift.x ?? 0)}
+          y={height - pad.b - (x_label_shift.y ?? 0)}
           class="label x"
         >
           {@html x_label ?? ``}
@@ -1004,12 +997,12 @@
           {#each y_tick_values() as tick, idx (tick)}
             {@const tick_pos = y_scale_fn(tick)}
 
-            {#if tick_pos >= padding.t && tick_pos <= height - padding.b}
-              <g class="tick" transform="translate({padding.l}, {tick_pos})">
+            {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
+              <g class="tick" transform="translate({pad.l}, {tick_pos})">
                 {#if y_grid}
                   <line
                     x1="0"
-                    x2={width - padding.l - padding.r}
+                    x2={width - pad.l - pad.r}
                     {...typeof y_grid === `object` ? y_grid : {}}
                   />
                 {/if}
@@ -1030,7 +1023,7 @@
 
         {#if height > 0}
           <text
-            x={-(padding.t + (height - padding.t - padding.b) / 2 + y_label_shift.x)}
+            x={-(pad.t + (height - pad.t - pad.b) / 2 + (y_label_shift.x ?? 0))}
             y={y_label_shift.y}
             transform="rotate(-90)"
             class="label y"
@@ -1052,23 +1045,14 @@
         {@const label = point_label?.text ?? null}
         <circle {cx} {cy} r="5" fill="orange" />
         <foreignObject x={cx + 5} y={cy}>
-          {#if tooltip}
-            {@render tooltip({
-              x,
-              y,
-              cx,
-              cy,
-              x_formatted,
-              y_formatted,
-              metadata: metadata as Record<string, unknown> | undefined,
-              color_value,
-              label,
-            })}
-          {:else}
-            <div class="default-tooltip">
+          <div class="tooltip">
+            {#if tooltip}
+              {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
+              {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
+            {:else}
               {label} - x: {x_formatted}, y: {y_formatted}
-            </div>
-          {/if}
+            {/if}
+          </div>
         </foreignObject>
       {/if}
 
@@ -1083,21 +1067,19 @@
     </svg>
 
     <!-- Color Bar -->
-    {#if show_color_bar && all_color_values.length > 0}
+    {#if color_bar && all_color_values.length > 0}
       <ColorBar
         {...{
           tick_labels: 4,
-          tick_side: dynamic_tick_side,
+          tick_align: `primary`,
           range: effective_color_range as [number, number],
           color_scale: color_interpolator_fn,
           wrapper_style: `position: absolute;
             ${color_bar_position_style} /* Apply auto positioning */
             ${color_bar?.wrapper_style ?? ``} /* Add user wrapper style */
           `,
-          style: `width: 280px; /* Default width */
-            height: 20px; /* Default height */
-            ${color_bar?.style ?? ``} /* Add user inner style */
-          `,
+          // user-overridable inner style
+          style: `width: 280px; height: 20px; ${color_bar?.style ?? ``}`,
           ...color_bar,
         }}
       />
@@ -1141,7 +1123,7 @@
   text.label {
     text-anchor: middle;
   }
-  .default-tooltip {
+  .tooltip {
     background: var(--esp-tooltip-bg, rgba(0, 0, 0, 0.7));
     color: var(--esp-tooltip-color, white);
     padding: var(--esp-tooltip-padding, 5px);

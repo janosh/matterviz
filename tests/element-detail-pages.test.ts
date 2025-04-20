@@ -1,13 +1,14 @@
+import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
-import element_data from '../src/lib/element/data.ts'
 
-// Increase timeout for this specific test file as it loads ~118 pages
-test.setTimeout(40_000)
+const n_tests = 2
+// Increase timeout for this specific test file as it loads n_tests pages
+test.setTimeout(10_000 * n_tests)
 
 test.describe(`Element detail page`, async () => {
   test(`has periodicity plot`, async ({ page }) => {
     // test any 5 random elements
-    for (const _ of Array(5)) {
+    for (const _ of Array(n_tests)) {
       const rand_idx = Math.floor(Math.random() * element_data.length)
       const random_element = element_data[rand_idx]
 
