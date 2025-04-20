@@ -315,7 +315,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     page,
   }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
-    const tooltip_locator = plot_locator.locator(`.default-tooltip`)
+    const tooltip_locator = plot_locator.locator(`.tooltip`)
 
     // Stricter: Provide specific regex for default tooltip format
     await check_tooltip(

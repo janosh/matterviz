@@ -24,7 +24,6 @@
   const options = Object.keys(d3sc)
     .filter((key) => key.startsWith(`interpolate`))
     .map((key) => key.replace(`interpolate`, ``))
-  const wrapper_style = `justify-content: space-between;`
 </script>
 
 <Select
@@ -37,6 +36,13 @@
   {...rest}
 >
   {#snippet children({ option }: { option: string })}
-    <ColorBar label={option} color_scale={option} {...cbar_props} {wrapper_style} />
+    <ColorBar
+      label={option}
+      color_scale={option}
+      tick_labels={0}
+      label_side="left"
+      wrapper_style="min-width: 18em;"
+      {...cbar_props}
+    />
   {/snippet}
 </Select>
