@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 import element_data from '../src/lib/element/data.ts'
 
+// Increase timeout for this specific test file as it loads ~118 pages
+test.setTimeout(40_000)
+
 test.describe(`Element detail page`, async () => {
   test(`has periodicity plot`, async ({ page }) => {
     // test any 5 random elements

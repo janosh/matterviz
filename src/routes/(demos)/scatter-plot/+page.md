@@ -173,17 +173,17 @@ Demonstrate various point styles, custom tooltips, and hover effects:
   series_with_styles.forEach((series, series_idx) => {
     // Create a metadata array with empty objects except for the first one
     series.metadata = Array(point_count).fill({}).map((_, idx) => {
-      return idx === 0 ? { firstPoint: true, seriesName: series.point_label.text } : {};
-    });
+      return idx === 0 ? { firstPoint: true, seriesName: series.point_label.text } : {}
+    })
 
     // Only show label on the first point of each series
     if (series.point_label) {
       // ScatterPoint doesn't accept functions for the text property,
       // so we'll clear the text for all points and manually handle
       // the first point label with metadata
-      series.point_label.text = '';
+      series.point_label.text = ''
     }
-  });
+  })
 
   // Selected point tracking for demo
   let selected_point = null
@@ -228,40 +228,40 @@ This example demonstrates how to apply different styles to individual points wit
   import { ScatterPlot } from '$lib'
 
   // Create a dataset with points arranged in a spiral pattern
-  const point_count = 40;
+  const point_count = 40
   const spiral_data = {
     x: [],
     y: [],
     point_style: [], // Array of styles for each point
     metadata: []     // Store angle for each point
-  };
+  }
 
   // Generate points in a spiral pattern
   for (let idx = 0; idx < point_count; idx++) {
     // Calculate angle and radius for spiral
-    const angle = idx * 0.5;
-    const radius = 1 + idx * 0.3;
+    const angle = idx * 0.5
+    const radius = 1 + idx * 0.3
 
     // Convert to cartesian coordinates
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
+    const x = Math.cos(angle) * radius
+    const y = Math.sin(angle) * radius
 
-    spiral_data.x.push(x);
-    spiral_data.y.push(y);
+    spiral_data.x.push(x)
+    spiral_data.y.push(y)
 
     // Store angle in metadata
-    spiral_data.metadata.push({ angle, radius });
+    spiral_data.metadata.push({ angle, radius })
 
     // Create unique style for each point
     // Change color gradually along the spiral
-    const hue = (idx / point_count) * 360;
+    const hue = (idx / point_count) * 360
 
     // Change size dramatically from tiny to huge
     const size_factor = 1 + idx / 5; // More aggressive size increase
 
     // Alternate marker types
-    const marker_types = ['circle', 'diamond', 'star', 'triangle', 'cross', 'wye'];
-    const marker_idx = idx % marker_types.length;
+    const marker_types = ['circle', 'diamond', 'star', 'triangle', 'cross', 'wye']
+    const marker_idx = idx % marker_types.length
 
     // Create the point style
     spiral_data.point_style.push({
@@ -271,7 +271,7 @@ This example demonstrates how to apply different styles to individual points wit
       stroke_width: 1 + idx / 20, // Gradually thicker stroke
       marker_type: marker_types[marker_idx],
       marker_size: 20 + size_factor * 25 // More dramatic size progression
-    });
+    })
   }
 </script>
 
@@ -304,7 +304,7 @@ This example shows categorized data with color coding, custom tick intervals, an
   import { ScatterPlot } from '$lib'
 
   // Define categories
-  const categories = ['Category A', 'Category B', 'Category C', 'Category D'];
+  const categories = ['Category A', 'Category B', 'Category C', 'Category D']
 
   // Define colors for each category
   const category_colors = [
@@ -312,12 +312,12 @@ This example shows categorized data with color coding, custom tick intervals, an
     'royalblue',
     'goldenrod',
     'mediumseagreen'
-  ];
+  ]
 
   // Generate sample data points with categories
-  const sample_count = 40;
+  const sample_count = 40
   const sample_data = Array(sample_count).fill(0).map(() => {
-    const category_idx = Math.floor(Math.random() * categories.length);
+    const category_idx = Math.floor(Math.random() * categories.length)
     // Generate points across positive and negative coordinate space
     return {
       x: (Math.random() * 20) - 10, // Range from -10 to 10
@@ -325,11 +325,11 @@ This example shows categorized data with color coding, custom tick intervals, an
       category: categories[category_idx],
       color: category_colors[category_idx]
     }
-  });
+  })
 
   // Group data by category to create series
   const series_data = categories.map((category, idx) => {
-    const points = sample_data.filter(d => d.category === category);
+    const points = sample_data.filter(d => d.category === category)
 
     return {
       x: points.map(p => p.x),
@@ -344,12 +344,12 @@ This example shows categorized data with color coding, custom tick intervals, an
         category: p.category,
         color: p.color
       }))
-    };
-  });
+    }
+  })
 
   // Tick interval settings
-  let x_tick_interval = -5;
-  let y_tick_interval = -5;
+  let x_tick_interval = -5
+  let y_tick_interval = -5
 </script>
 
 <div>
@@ -439,8 +439,8 @@ Using time data on the x-axis with custom formatting:
   ]
 
   // Format options
-  let date_format = '%b %d';
-  let y_format = '.1f';
+  let date_format = '%b %d'
+  let y_format = '.1f'
 </script>
 
 <div>
@@ -522,7 +522,7 @@ This example demonstrates how points with identical coordinates can still be ind
     ]
   }
 
-  let hovered_point = null;
+  let hovered_point = null
 </script>
 
 <ScatterPlot
@@ -738,10 +738,10 @@ For comparing data across multiple orders of magnitude on both axes:
 
   // Add points from 0.1 to 1000 with exponential spacing
   for (let i = -1; i <= 3; i += 0.25) {
-    const x = Math.pow(10, i);
+    const x = Math.pow(10, i)
     const y = Math.pow(x, 2);  // y = x^2 (power law relationship)
-    power_law_data.x.push(x);
-    power_law_data.y.push(y);
+    power_law_data.x.push(x)
+    power_law_data.y.push(y)
   }
 
   // Add another series with a different power law (y = x^0.5)
@@ -753,10 +753,10 @@ For comparing data across multiple orders of magnitude on both axes:
 
   // Similar range but with y = sqrt(x)
   for (let i = -1; i <= 3; i += 0.25) {
-    const x = Math.pow(10, i);
+    const x = Math.pow(10, i)
     const y = Math.pow(x, 0.5);  // y = √x (square root relationship)
-    inverse_power_data.x.push(x);
-    inverse_power_data.y.push(y);
+    inverse_power_data.x.push(x)
+    inverse_power_data.y.push(y)
   }
 </script>
 
@@ -819,7 +819,7 @@ This example demonstrates a real-world use case with scientific data spanning ma
     }
   }
 
-  let hover_point = null;
+  let hover_point = null
 </script>
 
 <div>
@@ -1070,98 +1070,6 @@ This example combines multiple features including different display modes, custo
 </div>
 ```
 
-## Color Scaling with Linear and Log Modes
-
-This example demonstrates how to use `color_values` to apply color mapping to points based on data values, and toggle between linear and log color scales:
-
-```svelte example stackblitz
-<script>
-  import { ScatterPlot } from '$lib'
-
-  // Create data with exponentially increasing values
-  const make_exponential_data = (size, base = 2) => {
-    return {
-      x: Array.from({ length: size }, (_, idx) => idx + 1),
-      y: Array.from({ length: size }, (_, idx) => idx + 1),
-      // Exponential distribution of values (1, 2, 4, 8, 16, 32, etc. for base 2)
-      color_values: Array.from({ length: size }, (_, idx) => Math.pow(base, idx)),
-      // Store metadata for tooltips
-      metadata: Array.from({ length: size }, (_, idx) => ({
-        value: Math.pow(base, idx)
-      })),
-      point_style: {
-        radius: 10,
-        stroke: `black`,
-        stroke_width: 1
-      }
-    }
-  }
-  const data_base2 = make_exponential_data(10, 2)
-
-  // Track which color scale type is active
-  let color_scale_type = `linear`
-
-  // Color scheme options
-  const color_schemes = [
-    `viridis`, `inferno`, `plasma`, `magma`, `cividis`,
-    `turbo`, `warm`, `cool`, `spectral`
-  ]
-  let selected_scheme = `viridis`
-</script>
-
-<div>
-  <div style="margin-bottom: 1em;">
-    <div style="display: flex; gap: 1em; flex-wrap: wrap; align-items: center; margin-bottom: 0.5em;">
-      <div>
-        <strong>Color Scale Type:</strong>
-        {#each ['linear', 'log'] as scale_type}
-          <label style="margin-left: 0.5em;">
-            <input type="radio" name="scale_type" value={scale_type}
-              bind:group={color_scale_type} /> {scale_type}
-          </label>
-        {/each}
-      </div>
-
-      <div>
-        <strong>Color Scheme:</strong>
-        <select bind:value={selected_scheme}>
-          {#each color_schemes as scheme}
-            <option value={scheme}>{scheme}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-
-    <p>
-      <strong>Note:</strong> Using log scale for color values is especially useful when the data has an exponential distribution
-      or spans many orders of magnitude. It helps visualize patterns in the data that would be hard to see with a linear scale.
-    </p>
-  </div>
-
-  <h3>Base-2 Exponential Data</h3>
-  <!-- TODO figure out why ScatterPlot doesn't react to color_scale_type and selected_scheme without #key here -->
-  {#key color_scale_type && selected_scheme}
-    <ScatterPlot
-      series={[data_base2]}
-      x_label="X Position"
-      y_label="Y Position"
-      markers="points"
-      color_scheme={selected_scheme}
-      {color_scale_type}
-      style="height: 300px; width: 100%;"
-      color_bar={{ label: `Color Bar ${color_scale_type}` }}
-    >
-      {#snippet tooltip({ x, y, metadata })}
-        <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
-          <strong>Value: {metadata.value}</strong><br/>
-          2<sup>{x-1}</sup> = {metadata.value}
-        </div>
-      {/snippet}
-    </ScatterPlot>
-  {/key}
-</div>
-```
-
 ## Automatic Color Bar Placement
 
 This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data.
@@ -1171,60 +1079,63 @@ This example demonstrates how the color bar automatically positions itself in on
   import { ScatterPlot } from '$lib'
 
   // State for controlling point density in each quadrant
-  let density = $state({top_left: 10, top_right: 50, bottom_left: 10, bottom_right: 10});
+  let density = $state({top_left: 10, top_right: 50, bottom_left: 10, bottom_right: 10})
 
   // Function to generate points within a specific quadrant
   const make_quadrant_points = (count, x_range, y_range) => {
-    const points = [];
-    for (let i = 0; i < count; i++) {
+    const points = []
+    for (let idx = 0; idx < count; idx++) {
+      const x_val = x_range[0] + Math.random() * (x_range[1] - x_range[0])
+      const y_val = y_range[0] + Math.random() * (y_range[1] - y_range[0])
+      // Assign a color value (e.g., based on distance from origin)
+      const color_val = Math.sqrt(
+        Math.pow(x_range[0] + (x_range[1] - x_range[0]) / 2, 2) +
+        Math.pow(y_range[0] + (y_range[1] - y_range[0]) / 2, 2)
+      ) * Math.random() * 2 // Add some variation
+
       points.push({
-        x: x_range[0] + Math.random() * (x_range[1] - x_range[0]),
-        y: y_range[0] + Math.random() * (y_range[1] - y_range[0]),
-        // Assign a color value (e.g., based on distance from origin)
-        color_value: Math.sqrt(
-          Math.pow(x_range[0] + (x_range[1] - x_range[0]) / 2, 2) +
-          Math.pow(y_range[0] + (y_range[1] - y_range[0]) / 2, 2)
-        ) * Math.random() * 2 // Add some variation
-      });
+        x: x_val,
+        y: y_val,
+        color_value: color_val,
+        label: color_val.toFixed(1)
+      })
     }
-    return points;
-  };
+    return points
+  }
 
   // Reactive generation of plot data based on densities
   let plot_series = $derived.by(() => {
-    const plot_width = 100;
-    const plot_height = 100;
-    const center_x = plot_width / 2;
-    const center_y = plot_height / 2;
+    const plot_width = 100
+    const plot_height = 100
+    const center_x = plot_width / 2
+    const center_y = plot_height / 2
 
-    const tl_points = make_quadrant_points(density.top_left, [0, center_x], [0, center_y]);
-    const tr_points = make_quadrant_points(density.top_right, [center_x, plot_width], [0, center_y]);
-    const bl_points = make_quadrant_points(density.bottom_left, [0, center_x], [center_y, plot_height]);
-    const br_points = make_quadrant_points(density.bottom_right, [center_x, plot_width], [center_y, plot_height]);
+    const tl_points = make_quadrant_points(density.bottom_left, [0, center_x], [0, center_y])
+    const tr_points = make_quadrant_points(density.bottom_right, [center_x, plot_width], [0, center_y])
+    const bl_points = make_quadrant_points(density.top_left, [0, center_x], [center_y, plot_height])
+    const br_points = make_quadrant_points(density.top_right, [center_x, plot_width], [center_y, plot_height])
 
-    const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points];
+    const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points]
 
     return [{
       x: all_points.map(p => p.x),
       y: all_points.map(p => p.y),
       color_values: all_points.map(p => p.color_value),
+      point_label: all_points.map(p => ({ text: p.label, offset_y: -10, font_size: '14px' })),
       point_style: {
         radius: 5,
         stroke: 'white',
         stroke_width: 0.5
       }
-    }];
-  });
-
-  // Style for sliders
-  const slider_style = 'width: 100px; margin-left: 0.5em;';
+    }]
+  })
 </script>
 
 <div>
   <div style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center;">
-    {#each [['bottom_left', 'Bottom Left'], ['bottom_right', 'Bottom Right'], ['top_left', 'Top Left'], ['top_right', 'Top Right']] as [quadrant, label]}
+    {#each [['top_left', 'Top Left'], ['top_right', 'Top Right'], ['bottom_left', 'Bottom Left'], ['bottom_right', 'Bottom Right']] as [quadrant, label]}
       <label>{label}: {density[quadrant]}
-        <input type="range" min="0" max="100" bind:value={density[quadrant]} style={slider_style} />
+        <input type="range" min="0" max="100" bind:value={density[quadrant]} style="width: 100px; margin-left: 0.5em;" />
       </label>
     {/each}
   </div>
@@ -1235,7 +1146,7 @@ This example demonstrates how the color bar automatically positions itself in on
     y_label="Y Position"
     x_lim={[0, 100]}
     y_lim={[0, 100]}
-    markers="points"
+    markers="points+text"
     color_scheme="turbo"
     show_color_bar={true}
     color_bar={{ label: `Color Bar Title` }}
@@ -1243,10 +1154,194 @@ This example demonstrates how the color bar automatically positions itself in on
   >
     {#snippet tooltip({ x, y, metadata, color_value })}
       <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
-        Point ({x.toFixed(1)}, {y.toFixed(1)})<br/>
+        Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
         Value: {color_value?.toFixed(2)}
       </div>
     {/snippet}
   </ScatterPlot>
+</div>
+```
+
+## Automatic Label Placement (Repel Mode)
+
+When points are clustered closely together, manually positioning labels can become tedious and result in overlaps. The `ScatterPlot` component offers an automatic label placement feature using a force simulation (`d3-force`). This feature intelligently positions labels to minimize overlaps while keeping them close to their corresponding data points.
+
+To enable this feature, set `auto_placement: true` within the `point_label` object for the desired points.
+
+This example demonstrates automatic placement with several clusters of points:
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Function to generate a cluster of points
+  const generate_cluster = (center_x, center_y, count, radius, label_prefix) => {
+    const points = {
+      x: [],
+      y: [],
+      point_style: [],
+      point_label: []
+    }
+    for (let idx = 0; idx < count; idx++) {
+      const angle = Math.random() * 2 * Math.PI
+      const dist = Math.random() * radius
+      points.x.push(center_x + Math.cos(angle) * dist)
+      points.y.push(center_y + Math.sin(angle) * dist)
+      points.point_style.push({ fill: 'rebeccapurple', radius: 9 })
+      points.point_label.push({
+        text: `${label_prefix}-${idx + 1}`,
+        auto_placement: true, // Enable auto-placement
+        font_size: '14px' // Increased font size
+      })
+    }
+    return points
+  }
+
+  // Generate multiple clusters
+  const cluster1 = generate_cluster(20, 80, 8, 5, 'C1')
+  const cluster2 = generate_cluster(80, 20, 10, 8, 'C2')
+  const cluster3 = generate_cluster(50, 50, 12, 10, 'C3')
+  const cluster4 = generate_cluster(15, 15, 6, 4, 'C4')
+
+  // Combine into a single series for simplicity in this demo
+  const combined_series = {
+    x: [...cluster1.x, ...cluster2.x, ...cluster3.x, ...cluster4.x],
+    y: [...cluster1.y, ...cluster2.y, ...cluster3.y, ...cluster4.y],
+    point_style: [...cluster1.point_style, ...cluster2.point_style, ...cluster3.point_style, ...cluster4.point_style],
+    point_label: [...cluster1.point_label, ...cluster2.point_label, ...cluster3.point_label, ...cluster4.point_label]
+  }
+
+  let auto_place_enabled = true;
+</script>
+
+<div>
+  <label style="margin-bottom: 1em; display: block;">
+    <input type="checkbox" bind:checked={auto_place_enabled} />
+    Enable Automatic Label Placement
+  </label>
+
+  <!-- Use #key to force re-render when auto_place_enabled changes -->
+  {#key auto_place_enabled}
+    <ScatterPlot
+      series={[ { ...combined_series, point_label: combined_series.point_label.map(lbl => ({ ...lbl, auto_placement: auto_place_enabled })) } ]}
+      x_label="X Position"
+      y_label="Y Position"
+      x_lim={[0, 100]}
+      y_lim={[0, 100]}
+      markers="points"
+      style="height: 500px; width: 100%;"
+    />
+  {/key}
+</div>
+```
+
+Try toggling the checkbox to see the difference between manual (default) offset and automatic placement.
+
+## External Vertical Color Bar with Dynamic Controls
+
+This example shows how to place the color bar vertically on the right side of the plot, outside the main plotting area, and make it span the full height available. It also demonstrates how to dynamically change the color scheme and toggle between linear and log color scales.
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Generate data where color value relates to y-value
+  const point_count = 50
+  const vertical_color_data = {
+    x: Array.from({ length: point_count }, (_, idx) => (idx / point_count) * 90 + 5), // Range 5 to 95
+    y: Array.from({ length: point_count }, () => Math.random() * 90 + 5), // Range 5 to 95
+    // Color value based on the y-coordinate
+    color_values: Array.from({ length: point_count }, (_, idx) => idx * 2), // Values from 0 to 98
+    point_style: {
+      radius: 6,
+      stroke: `black`,
+      stroke_width: 0.5,
+    },
+    metadata: Array.from({ length: point_count }, (_, idx) => ({
+      value: idx * 2,
+    })),
+  }
+
+  // Adjust right padding to make space for the external color bar
+  const plot_padding = { t: 20, b: 50, l: 60, r: 70 } // Increased right padding
+
+  // --- Color Scaling Controls ---
+  // Track which color scale type is active
+  let color_scale_type = `linear`
+
+  // Color scheme options
+  const color_schemes = [
+    `viridis`, `inferno`, `plasma`, `magma`, `cividis`,
+    `turbo`, `warm`, `cool`, `spectral`
+  ]
+  let selected_scheme = `cool` // Default matches original example
+</script>
+
+<div>
+  <div style="margin-bottom: 1em; display: flex; gap: 1em; flex-wrap: wrap; align-items: center;">
+    <div>
+      <strong>Color Scale Type:</strong>
+      {#each ['linear', 'log'] as scale_type}
+        <label style="margin-left: 0.5em;">
+          <input type="radio" name="scale_type" value={scale_type}
+            bind:group={color_scale_type} /> {scale_type}
+        </label>
+      {/each}
+    </div>
+
+    <div>
+      <strong>Color Scheme:</strong>
+      <select bind:value={selected_scheme}>
+        {#each color_schemes as scheme}
+          <option value={scheme}>{scheme}</option>
+        {/each}
+      </select>
+    </div>
+  </div>
+
+  <p>
+    The color bar is positioned vertically to the right, outside the plot.
+    The plot's right padding is increased to prevent overlap. Use the controls above to change the color scheme and scale type.
+  </p>
+
+  {#key color_scale_type && selected_scheme}
+    <ScatterPlot
+      series={[vertical_color_data]}
+      x_label="X Position"
+      y_label="Y Position"
+      x_lim={[0, 100]}
+      y_lim={[0, 100]}
+      markers="points"
+      padding={plot_padding}
+      color_scheme={selected_scheme}
+      {color_scale_type}
+      show_color_bar={true}
+      color_bar={{
+        orientation: `vertical`,
+        label: `Value (${color_scale_type})`,
+        tick_side: `right`,
+        wrapper_style: `
+          position: absolute;
+          /* Position outside the plot area using padding values */
+          right: 10px; /* Distance from the container's right edge */
+          top: ${plot_padding.t}px; /* Align with top padding */
+          /* Set height directly for the wrapper */
+          height: calc(100% - ${plot_padding.t + plot_padding.b}px); /* Fill vertical space */
+        `,
+        style: `
+          width: 15px;
+          height: 100%;
+        `,
+      }}
+      style="height: 400px; width: 100%;"
+    >
+      {#snippet tooltip({ x, y, metadata, color_value })}
+        <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
+          Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
+          Value: {color_value?.toFixed(1)}
+        </div>
+      {/snippet}
+    </ScatterPlot>
+  {/key}
 </div>
 ```

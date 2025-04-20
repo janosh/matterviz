@@ -1,11 +1,10 @@
 <script lang="ts">
   import type { Point } from '$lib'
-  import type { SymbolType } from 'd3-shape'
+  import type { HoverStyle, LabelStyle, PointStyle } from '$lib/plot'
   import * as d3Symbols from 'd3-shape'
-  import { symbol } from 'd3-shape'
+  import { type SymbolType, symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import { Tween } from 'svelte/motion'
-  import type { HoverStyle, LabelStyle, PointStyle } from '.'
 
   interface Props {
     x: number
