@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.8](https://github.com/janosh/elementari/compare/v0.3.8...v0.3.8)
+
+#### [v0.3.8](https://github.com/janosh/elementari/compare/v0.3.7...v0.3.8)
+
+> 25 April 2025
+
+- `PlotLegend.svelte` [`#61`](https://github.com/janosh/elementari/pull/61)
+
 #### [v0.3.7](https://github.com/janosh/elementari/compare/v0.3.6...v0.3.7)
 
 > 20 April 2025
