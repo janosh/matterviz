@@ -20,7 +20,12 @@ describe(`ScatterPoint`, () => {
     })
     const path = doc_query(`path`)
     expect(path).toBeTruthy()
-    expect(path.getAttribute(`fill`)).toBe(`gray`) // Check default fill
+    expect(path.getAttribute(`fill`)).toBe(null) // Check no default fill, should be passed via CSS var --point-fill-color
+    expect(path.getAttribute(`fill-opacity`)).toBe(null)
+    expect(path.getAttribute(`stroke`)).toBe(`transparent`)
+    expect(path.getAttribute(`stroke-width`)).toBe(`1`)
+    expect(path.getAttribute(`stroke-opacity`)).toBe(null)
+    expect(path.getAttribute(`d`)).toBeTruthy()
   })
 
   test(`applies custom point styles`, async () => {
@@ -37,7 +42,6 @@ describe(`ScatterPoint`, () => {
       props: { x: 100, y: 100, style },
     })
     const path = doc_query(`path`)
-    expect(path.getAttribute(`fill`)).toBe(style.fill)
     expect(path.getAttribute(`stroke`)).toBe(style.stroke)
     expect(path.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
     expect(path.style.fillOpacity).toBe(String(style.fill_opacity))
@@ -66,7 +70,6 @@ describe(`ScatterPoint`, () => {
     })
     const element = doc_query(`path`)
     expect(element).toBeTruthy()
-    expect(element.getAttribute(`fill`)).toBe(style.fill)
     expect(element.getAttribute(`stroke`)).toBe(style.stroke)
     expect(element.getAttribute(`stroke-width`)).toBe(
       String(style.stroke_width),
@@ -117,7 +120,6 @@ describe(`ScatterPoint`, () => {
       })
       const path = doc_query(`path`)
       expect(path).toBeTruthy()
-      expect(path.getAttribute(`fill`)).toBe(color)
       expect(path.style.fillOpacity).toBe(String(opacity))
     },
   )

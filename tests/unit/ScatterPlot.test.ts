@@ -1,85 +1,35 @@
-/**
- * @vitest-environment happy-dom
- */
-
 import { ScatterPlot } from '$lib'
 import type { DataSeries, LabelStyle, PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+// Helper to simulate mouse events
+function simulate_mouse_event(
+  element: Element | null,
+  event_type: string,
+  coords = { x: 400, y: 300 },
+) {
+  if (!element) return
+
+  const event = new MouseEvent(event_type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: coords.x,
+    clientY: coords.y,
+  })
+
+  // Define offsetX and offsetY properties
+  Object.defineProperties(event, {
+    offsetX: { value: coords.x },
+    offsetY: { value: coords.y },
+  })
+
+  element.dispatchEvent(event)
+}
 
 describe(`ScatterPlot`, () => {
   // Add container with dimensions to body before each test
   const container_style = `width: 800px; height: 600px; position: relative;`
-
-  // Mock ResizeObserver for Svelte 5
-  beforeAll(() => {
-    // Mock ResizeObserver
-    globalThis.ResizeObserver = class ResizeObserver {
-      callback: ResizeObserverCallback
-
-      constructor(callback: ResizeObserverCallback) {
-        this.callback = callback
-      }
-
-      observe(target: Element) {
-        const dom_rect = {
-          width: 800,
-          height: 600,
-          top: 0,
-          left: 0,
-          bottom: 600,
-          right: 800,
-          x: 0,
-          y: 0,
-        }
-        // Simulate initial size reporting
-        this.callback(
-          [{ target, contentRect: dom_rect } as ResizeObserverEntry],
-          this as unknown as ResizeObserver,
-        )
-      }
-
-      unobserve() {}
-      disconnect() {}
-    }
-
-    // Mock getBoundingClientRect for SVG elements
-    Element.prototype.getBoundingClientRect = vi.fn(() => ({
-      width: 800,
-      height: 600,
-      top: 0,
-      left: 0,
-      bottom: 600,
-      right: 800,
-      x: 0,
-      y: 0,
-      toJSON: () => {},
-    }))
-  })
-
-  // Helper to simulate mouse events
-  function simulate_mouse_event(
-    element: Element | null,
-    event_type: string,
-    coords = { x: 400, y: 300 },
-  ) {
-    if (!element) return
-
-    const event = new MouseEvent(event_type, {
-      bubbles: true,
-      cancelable: true,
-      clientX: coords.x,
-      clientY: coords.y,
-    })
-
-    // Define offsetX and offsetY properties
-    Object.defineProperties(event, {
-      offsetX: { value: coords.x },
-      offsetY: { value: coords.y },
-    })
-
-    element.dispatchEvent(event)
-  }
 
   beforeEach(() => {
     // Reset document state
@@ -96,11 +46,11 @@ describe(`ScatterPlot`, () => {
         x: [1, 2, 3, 4, 5],
         y: [5, 3, 8, 2, 7],
         point_style: { fill: `steelblue`, radius: 5 },
-        metadata: { label: `Series 1` } as Record<string, unknown>,
+        metadata: { label: `Series 1` },
       },
-      x_lim: [null, null] as [number | null, number | null],
-      y_lim: [null, null] as [number | null, number | null],
-      markers: `points` as const,
+      x_lim: [null, null],
+      y_lim: [null, null],
+      markers: `points`,
     },
     {
       name: `data with y limits`,
@@ -108,11 +58,11 @@ describe(`ScatterPlot`, () => {
         x: [1, 2, 3, 4, 5],
         y: [5, 3, 20, 2, 7],
         point_style: { fill: `steelblue`, radius: 5 },
-        metadata: { label: `Series 2` } as Record<string, unknown>,
+        metadata: { label: `Series 2` },
       },
-      x_lim: [null, null] as [number | null, number | null],
-      y_lim: [0, 10] as [number | null, number | null],
-      markers: `line` as const,
+      x_lim: [null, null],
+      y_lim: [0, 10],
+      markers: `line`,
     },
     {
       name: `data with x limits`,
@@ -120,25 +70,19 @@ describe(`ScatterPlot`, () => {
         x: [0, 1, 2, 3, 10],
         y: [5, 3, 8, 2, 7],
         point_style: { fill: `steelblue`, radius: 5 },
-        metadata: { label: `Series 3` } as Record<string, unknown>,
+        metadata: { label: `Series 3` },
       },
-      x_lim: [0, 5] as [number | null, number | null],
-      y_lim: [null, null] as [number | null, number | null],
-      markers: `line+points` as const,
+      x_lim: [0, 5],
+      y_lim: [null, null],
+      markers: `line+points`,
     },
-  ])(
+  ] as const)(
     `renders with different configurations: $name`,
     ({ data, x_lim, y_lim, markers }) => {
+      const [x_label, y_label] = [`X Axis`, `Y Axis`]
       const component = mount(ScatterPlot, {
         target: document.body,
-        props: {
-          series: [data],
-          x_label: `X Axis`,
-          y_label: `Y Axis`,
-          x_lim,
-          y_lim,
-          markers,
-        },
+        props: { series: [data], x_label, y_label, x_lim, y_lim, markers },
       })
 
       // Verify component mounted
@@ -153,14 +97,14 @@ describe(`ScatterPlot`, () => {
       x: [1, 2, 3],
       y: [5, 3, 8],
       point_style: { fill: `steelblue`, radius: 4 },
-      metadata: { label: `Series A` } as Record<string, unknown>,
+      metadata: { label: `Series A` },
     }
 
     const series_b = {
       x: [1, 2, 3],
       y: [2, 5, 3],
       point_style: { fill: `orangered`, radius: 4 },
-      metadata: { label: `Series B` } as Record<string, unknown>,
+      metadata: { label: `Series B` },
     }
 
     // Test with multiple series
@@ -280,7 +224,7 @@ describe(`ScatterPlot`, () => {
       x: [1, 2, 3, 4, 5],
       y: [10, 20, 30, 40, 50],
       point_style: { fill: `steelblue`, radius: 5 },
-      metadata: { label: `Test Data` } as Record<string, unknown>,
+      metadata: { label: `Test Data` },
     }
 
     const component = mount(ScatterPlot, {
@@ -320,8 +264,8 @@ describe(`ScatterPlot`, () => {
       props: {
         series: comprehensive_test_data,
         // Test multiple edge cases together
-        x_lim: [null, null] as [number | null, number | null],
-        y_lim: [null, null] as [number | null, number | null],
+        x_lim: [null, null],
+        y_lim: [null, null],
         markers: `line+points`,
       },
     })
@@ -337,8 +281,8 @@ describe(`ScatterPlot`, () => {
       props: {
         series: [{ x: [1, 2, 3], y: [4, 5, 6] }],
         // Set limits that will filter out all data points
-        x_lim: [100, 200] as [number, number],
-        y_lim: [100, 200] as [number, number],
+        x_lim: [100, 200],
+        y_lim: [100, 200],
       },
     })
 
@@ -487,7 +431,7 @@ describe(`ScatterPlot`, () => {
       { value: 1234.5, format: `,.0f`, expected: `1,235` }, // With thousands separator
     ]
 
-    formats.forEach(({ value, format }) => {
+    for (const { value, format } of formats) {
       const component = mount(ScatterPlot, {
         target: document.body,
         props: {
@@ -497,22 +441,22 @@ describe(`ScatterPlot`, () => {
           hovered: true,
         },
       })
-
       expect(component).toBeTruthy()
-    })
+      // TODO: Add actual assertions for numeric format specifiers
+    }
 
     // Test time format specifiers
     const now = new Date()
     const timestamp = now.getTime()
 
     const time_formats = [
-      { format: `%Y`, description: `year only` },
-      { format: `%b %Y`, description: `month and year` },
-      { format: `%B %d, %Y`, description: `full date` },
-      { format: `%H:%M`, description: `time only` },
+      `%Y`, // year only
+      `%b %Y`, // month and year
+      `%B %d, %Y`, // full date
+      `%H:%M`, // time only
     ]
 
-    time_formats.forEach(({ format }) => {
+    for (const format of time_formats) {
       const component = mount(ScatterPlot, {
         target: document.body,
         props: {
@@ -522,9 +466,9 @@ describe(`ScatterPlot`, () => {
           hovered: true,
         },
       })
-
       expect(component).toBeTruthy()
-    })
+      // TODO: Add actual assertions for time format specifiers
+    }
   })
 
   test(`handles negative x_ticks with date data without memory issues`, () => {
@@ -540,7 +484,7 @@ describe(`ScatterPlot`, () => {
       }),
       y: Array.from({ length: 90 }, () => Math.random() * 100),
       point_style: { fill: `steelblue`, radius: 3 },
-      metadata: { type: `time-series` } as Record<string, unknown>,
+      metadata: { type: `time-series` },
     }
 
     const component = mount(ScatterPlot, {
@@ -579,7 +523,7 @@ describe(`ScatterPlot`, () => {
         { id: `h1` },
         { id: `h2` },
         { id: `h3` },
-      ] as Record<string, unknown>[],
+      ],
     }
 
     // Mock change function that will record the points it's called with
@@ -654,16 +598,13 @@ describe(`ScatterPlot`, () => {
       metadata: Array.from({ length: 7 }, (_, idx) => ({
         id: `point-${idx}`,
         label: `Point ${idx}`,
-      })) as Record<string, unknown>[],
+      })),
     }
 
     // Mount the component with duplicate coordinate data
     const component = mount(ScatterPlot, {
       target: document.body,
-      props: {
-        series: [duplicate_coords_data],
-        markers: `points`,
-      },
+      props: { series: [duplicate_coords_data], markers: `points` },
     })
 
     // Verify component mounted successfully
@@ -685,7 +626,7 @@ describe(`ScatterPlot`, () => {
       metadata: Array.from({ length: 5 }, (_, idx) => ({
         id: `point-${idx}`,
         y_value: idx + 1,
-      })) as Record<string, unknown>[],
+      })),
     }
 
     // Track points that have been selected on hover
@@ -762,17 +703,17 @@ describe(`ScatterPlot`, () => {
 
   test.each([
     {
-      marker_type: `diamond` as const,
+      marker_type: `diamond`,
       series_name: `Series with diamonds`,
       point_count: 3,
     },
     {
-      marker_type: `star` as const,
+      marker_type: `star`,
       series_name: `Series with stars`,
       point_count: 3,
     },
     {
-      marker_type: `triangle` as const,
+      marker_type: `triangle`,
       series_name: `Series with triangles`,
       point_count: 3,
     },
@@ -861,7 +802,7 @@ describe(`ScatterPlot`, () => {
       ],
       metadata: Array.from({ length: 5 }, (_, idx) => ({
         position: [`Above`, `Right`, `Below`, `Left`, `Diagonal`][idx],
-      })) as Record<string, unknown>[],
+      })),
     }
 
     // Mount the component with explicit point markers
@@ -870,8 +811,8 @@ describe(`ScatterPlot`, () => {
       props: {
         series: [positions_series],
         markers: `points`,
-        x_lim: [0, 12] as [number, number],
-        y_lim: [0, 10] as [number, number],
+        x_lim: [0, 12],
+        y_lim: [0, 10],
       },
     })
 
@@ -885,7 +826,7 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       label_type: `simple labels`,
-      point_label: { text: `Fixed Label`, offset_y: -15 } as LabelStyle,
+      point_label: { text: `Fixed Label`, offset_y: -15 },
     },
     {
       label_type: `styled labels`,
@@ -895,7 +836,7 @@ describe(`ScatterPlot`, () => {
         font_size: `14px`,
         font_family: `serif`,
         fill: `darkred`,
-      } as LabelStyle,
+      },
     },
     {
       label_type: `array of labels`,
@@ -903,7 +844,7 @@ describe(`ScatterPlot`, () => {
         { text: `Point 1`, offset_y: -15 },
         { text: `Point 2`, offset_y: -15 },
         { text: `Point 3`, offset_y: -15 },
-      ] as LabelStyle[],
+      ],
     },
   ])(`renders scatter plot with $label_type`, ({ point_label }) => {
     type DataWithLabels = {
@@ -926,8 +867,8 @@ describe(`ScatterPlot`, () => {
       props: {
         series: [test_data],
         markers: `points`,
-        x_lim: [0, 4] as [number, number],
-        y_lim: [0, 40] as [number, number],
+        x_lim: [0, 4],
+        y_lim: [0, 40],
       },
     })
 
@@ -948,7 +889,7 @@ describe(`ScatterPlot`, () => {
         { fill: `dodgerblue`, radius: 9, marker_type: `star` },
         { fill: `orange`, radius: 6, marker_type: `triangle` },
         { fill: `purple`, radius: 10, marker_type: `wye` },
-      ] as PointStyle[],
+      ],
       // Matching text annotations
       point_label: [
         { text: `Circle`, offset_y: -15 },
@@ -956,7 +897,7 @@ describe(`ScatterPlot`, () => {
         { text: `Star`, offset_y: -15 },
         { text: `Triangle`, offset_y: -15 },
         { text: `Wye`, offset_y: -15 },
-      ] as LabelStyle[],
+      ],
     }
 
     const component = mount(ScatterPlot, {
@@ -964,8 +905,8 @@ describe(`ScatterPlot`, () => {
       props: {
         series: [styled_series],
         markers: `points`,
-        x_lim: [0, 6] as [number, number],
-        y_lim: [0, 60] as [number, number],
+        x_lim: [0, 6],
+        y_lim: [0, 60],
       },
     })
 
@@ -1006,18 +947,18 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       scale_type: `x log scale`,
-      x_scale_type: `log` as const,
-      y_scale_type: `linear` as const,
+      x_scale_type: `log`,
+      y_scale_type: `linear`,
     },
     {
       scale_type: `y log scale`,
-      x_scale_type: `linear` as const,
-      y_scale_type: `log` as const,
+      x_scale_type: `linear`,
+      y_scale_type: `log`,
     },
     {
       scale_type: `x and y log scales`,
-      x_scale_type: `log` as const,
-      y_scale_type: `log` as const,
+      x_scale_type: `log`,
+      y_scale_type: `log`,
     },
   ])(`renders with $scale_type correctly`, ({ x_scale_type, y_scale_type }) => {
     // Create test data with values suitable for log scale (all positive)
@@ -1058,11 +999,11 @@ describe(`ScatterPlot`, () => {
       target: document.body,
       props: {
         series: [mixed_data],
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `log`,
+        y_scale_type: `log`,
         // Set explicit positive limits to override the data's negative values
-        x_lim: [0.1, 100] as [number, number],
-        y_lim: [0.5, 5000] as [number, number],
+        x_lim: [0.1, 100],
+        y_lim: [0.5, 5000],
       },
     })
 
@@ -1085,8 +1026,8 @@ describe(`ScatterPlot`, () => {
       target: document.body,
       props: {
         series: [wide_range_data],
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `log`,
+        y_scale_type: `log`,
         x_ticks: 10, // Request more ticks to get intermediate values
         y_ticks: 10,
       },
@@ -1107,8 +1048,8 @@ describe(`ScatterPlot`, () => {
       {
         name: `narrow range with few powers of 10`,
         data: { x: [1, 2, 3, 4, 5], y: [1, 2, 3, 4, 5] },
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `log`,
+        y_scale_type: `log`,
         x_ticks: 5,
         y_ticks: 5,
       },
@@ -1119,8 +1060,8 @@ describe(`ScatterPlot`, () => {
           x: [0.01, 0.1, 1, 10, 100, 1000],
           y: [0.01, 0.1, 1, 10, 100, 1000],
         },
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `log`,
+        y_scale_type: `log`,
         x_ticks: 10,
         y_ticks: 10,
       },
@@ -1128,8 +1069,8 @@ describe(`ScatterPlot`, () => {
       {
         name: `range starting at very small values`,
         data: { x: [0.001, 0.01, 0.1, 1], y: [0.001, 0.01, 0.1, 1] },
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `log`,
+        y_scale_type: `log`,
         x_ticks: 8,
         y_ticks: 8,
       },
@@ -1137,8 +1078,8 @@ describe(`ScatterPlot`, () => {
       {
         name: `only x-axis log scale`,
         data: { x: [0.1, 1, 10, 100], y: [1, 2, 3, 4] },
-        x_scale_type: `log` as const,
-        y_scale_type: `linear` as const,
+        x_scale_type: `log`,
+        y_scale_type: `linear`,
         x_ticks: 6,
         y_ticks: 4,
       },
@@ -1146,8 +1087,8 @@ describe(`ScatterPlot`, () => {
       {
         name: `only y-axis log scale`,
         data: { x: [1, 2, 3, 4], y: [0.1, 1, 10, 100] },
-        x_scale_type: `linear` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `linear`,
+        y_scale_type: `log`,
         x_ticks: 4,
         y_ticks: 6,
       },
@@ -1155,8 +1096,8 @@ describe(`ScatterPlot`, () => {
       {
         name: `x log with interval-based y ticks`,
         data: { x: [0.1, 1, 10, 100], y: [10, 20, 30, 40, 50] },
-        x_scale_type: `log` as const,
-        y_scale_type: `linear` as const,
+        x_scale_type: `log`,
+        y_scale_type: `linear`,
         x_ticks: 4,
         y_ticks: -10, // Interval of 10
       },
@@ -1164,8 +1105,8 @@ describe(`ScatterPlot`, () => {
       {
         name: `y log with interval-based x ticks`,
         data: { x: [5, 10, 15, 20], y: [0.1, 1, 10, 100] },
-        x_scale_type: `linear` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `linear`,
+        y_scale_type: `log`,
         x_ticks: -5, // Interval of 5
         y_ticks: 4,
       },
@@ -1267,8 +1208,8 @@ describe(`ScatterPlot`, () => {
         x_scale_type: `log`,
         y_scale_type: `log`,
         // Set explicit limits
-        x_lim: [0.5, 200] as [number, number],
-        y_lim: [0.5, 200] as [number, number],
+        x_lim: [0.5, 200],
+        y_lim: [0.5, 200],
       },
     })
 
@@ -1389,8 +1330,8 @@ describe(`ScatterPlot`, () => {
   test(`visualizes power-law relationships with log scales`, () => {
     // Generate power law data: y = x^2
     const squared_data = {
-      x: [] as number[],
-      y: [] as number[],
+      x: [],
+      y: [],
       point_style: { fill: `mediumseagreen`, radius: 4 },
     }
 
@@ -1404,8 +1345,8 @@ describe(`ScatterPlot`, () => {
 
     // Generate another data series with different power law: y = sqrt(x)
     const sqrt_data = {
-      x: [] as number[],
-      y: [] as number[],
+      x: [],
+      y: [],
       point_style: { fill: `purple`, radius: 4 },
     }
 
@@ -1561,18 +1502,18 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       name: `x min only specified`,
-      x_range: [1, 100] as [number, number],
+      x_range: [1, 100],
       y_range: undefined,
     },
     {
       name: `y min only specified`,
       x_range: undefined,
-      y_range: [1, 100] as [number, number],
+      y_range: [1, 100],
     },
     {
       name: `all ranges specified`,
-      x_range: [1, 100] as [number, number],
-      y_range: [1, 100] as [number, number],
+      x_range: [1, 100],
+      y_range: [1, 100],
     },
   ])(`handles $name correctly`, (test_case) => {
     // Create test data
@@ -2035,35 +1976,35 @@ describe(`ScatterPlot`, () => {
     const test_cases = [
       {
         name: `linear x, linear y`,
-        x_scale_type: `linear` as const,
-        y_scale_type: `linear` as const,
+        x_scale_type: `linear`,
+        y_scale_type: `linear`,
       },
       {
         name: `log x, linear y`,
-        x_scale_type: `log` as const,
-        y_scale_type: `linear` as const,
+        x_scale_type: `log`,
+        y_scale_type: `linear`,
       },
       {
         name: `linear x, log y`,
-        x_scale_type: `linear` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `linear`,
+        y_scale_type: `log`,
       },
       {
         name: `log x, log y`,
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
+        x_scale_type: `log`,
+        y_scale_type: `log`,
       },
     ]
 
-    for (const test_case of test_cases) {
+    for (const { x_scale_type, y_scale_type } of test_cases) {
       document.body.innerHTML = ``
       document.body.appendChild(document.createElement(`div`))
       document.querySelector(`div`)!.setAttribute(`style`, container_style)
 
       // Create test data appropriate for the scale type
       const data = {
-        x: test_case.x_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
-        y: test_case.y_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
+        x: x_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
+        y: y_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
         point_style: { fill: `steelblue`, radius: 5 },
       }
 
@@ -2073,13 +2014,7 @@ describe(`ScatterPlot`, () => {
 
       const component = mount(ScatterPlot, {
         target: document.body,
-        props: {
-          series: [data],
-          x_scale_type: test_case.x_scale_type,
-          y_scale_type: test_case.y_scale_type,
-          x_grid,
-          y_grid,
-        },
+        props: { series: [data], x_scale_type, y_scale_type, x_grid, y_grid },
       })
 
       // Verify component mounted
@@ -2349,35 +2284,23 @@ describe(`ScatterPlot`, () => {
     const test_cases = [
       {
         name: `linear x, linear y`,
-        x_scale_type: `linear` as const,
-        y_scale_type: `linear` as const,
+        x_scale_type: `linear`,
+        y_scale_type: `linear`,
       },
-      {
-        name: `log x, linear y`,
-        x_scale_type: `log` as const,
-        y_scale_type: `linear` as const,
-      },
-      {
-        name: `linear x, log y`,
-        x_scale_type: `linear` as const,
-        y_scale_type: `log` as const,
-      },
-      {
-        name: `log x, log y`,
-        x_scale_type: `log` as const,
-        y_scale_type: `log` as const,
-      },
+      { name: `log x, linear y`, x_scale_type: `log`, y_scale_type: `linear` },
+      { name: `linear x, log y`, x_scale_type: `linear`, y_scale_type: `log` },
+      { name: `log x, log y`, x_scale_type: `log`, y_scale_type: `log` },
     ]
 
-    for (const test_case of test_cases) {
+    for (const { x_scale_type, y_scale_type } of test_cases) {
       document.body.innerHTML = ``
       document.body.appendChild(document.createElement(`div`))
       document.querySelector(`div`)!.setAttribute(`style`, container_style)
 
       // Create test data appropriate for the scale type
       const data = {
-        x: test_case.x_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
-        y: test_case.y_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
+        x: x_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
+        y: y_scale_type === `log` ? [1, 10, 100] : [10, 20, 30],
         point_style: { fill: `steelblue`, radius: 5 },
       }
 
@@ -2387,13 +2310,7 @@ describe(`ScatterPlot`, () => {
 
       const component = mount(ScatterPlot, {
         target: document.body,
-        props: {
-          series: [data],
-          x_scale_type: test_case.x_scale_type,
-          y_scale_type: test_case.y_scale_type,
-          x_grid,
-          y_grid,
-        },
+        props: { series: [data], x_scale_type, y_scale_type, x_grid, y_grid },
       })
 
       // Verify component mounted

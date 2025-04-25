@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ColorBar } from '$lib'
-  import * as d3sc from 'd3-scale-chromatic'
+  import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
 
@@ -21,7 +21,7 @@
     ...rest
   }: Props = $props()
 
-  const options = Object.keys(d3sc)
+  const options = Object.keys(d3_sc)
     .filter((key) => key.startsWith(`interpolate`))
     .map((key) => key.replace(`interpolate`, ``))
 </script>

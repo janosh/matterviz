@@ -8,9 +8,9 @@
   import wbm_elem_counts from './wbm-element-counts.json'
   import { extent } from 'd3-array'
 
-  let log = true // log color scale
-  let data = `MP`
-  let color_scale = 'Viridis'
+  let log = $state(true) // log color scale
+  let data = $state(`MP`)
+  let color_scale = $state(`Viridis`)
   let heatmap_values = $derived(Object.values(data == `WBM` ? wbm_elem_counts : mp_elem_counts))
   let total = $derived(heatmap_values.reduce((a, b) => a + b, 0))
 </script>

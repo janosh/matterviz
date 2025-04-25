@@ -1,5 +1,11 @@
-import type { ElementSymbol } from '$lib'
 import { rgb } from 'd3-color'
+import * as d3_sc from 'd3-scale-chromatic'
+
+// Extract color scheme interpolate function names from d3-scale-chromatic
+export type D3InterpolateFunc = keyof typeof d3_sc & `interpolate${string}`
+export type D3ColorSchemeName = Lowercase<
+  D3InterpolateFunc extends `interpolate${infer Name}` ? Name : never
+>
 
 // color values have to be in hex format since that's the only format
 // <input type="color"> supports
@@ -241,13 +247,19 @@ export const vesta = {
   Zr: [0, 255, 0],
 } as const
 
-export const jmol_hex = Object.fromEntries(
-  Object.entries(jmol).map(([key, val]) => [key, rgb(...val).formatHex()]),
-) as Record<ElementSymbol, string>
+type RGBColor = readonly [number, number, number]
 
-export const vesta_hex = Object.fromEntries(
-  Object.entries(vesta).map(([key, val]) => [key, rgb(...val).formatHex()]),
-) as Record<ElementSymbol, string>
+function rgb_scheme_to_hex(obj: Record<string, RGBColor>) {
+  return Object.fromEntries(
+    Object.entries(obj).map(([key, val]: [string, RGBColor]) => [
+      key,
+      rgb(...val).formatHex(),
+    ]),
+  )
+}
+
+export const vesta_hex = rgb_scheme_to_hex(vesta)
+export const jmol_hex = rgb_scheme_to_hex(jmol)
 
 export const element_color_schemes = {
   Vesta: vesta_hex,

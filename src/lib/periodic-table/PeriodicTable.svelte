@@ -3,7 +3,7 @@
   import type { Category, ChemicalElement, PeriodicTableEvents } from '$lib'
   import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '$lib'
   import element_data from '$lib/element/data'
-  import * as d3sc from 'd3-scale-chromatic'
+  import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
 
   const default_lanth_act_tiles = [
@@ -129,7 +129,7 @@
   }
   let color_scale_fn = $derived(
     typeof color_scale == `string`
-      ? d3sc[`interpolate${color_scale}` as keyof typeof d3sc]
+      ? d3_sc[`interpolate${color_scale}` as keyof typeof d3_sc]
       : color_scale,
   )
 

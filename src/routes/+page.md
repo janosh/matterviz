@@ -4,7 +4,7 @@
   import TableDemo from './(demos)/periodic-table/+page.svelte'
 
   let mp_id = `mp-756175`
-  $: structure = structures.find((struct) => struct.id === mp_id)
+  let structure = $derived(structures.find((struct) => struct.id === mp_id))
 </script>
 
 # Elementari
