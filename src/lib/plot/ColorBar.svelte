@@ -1,7 +1,7 @@
 <script lang="ts">
   import { pretty_num } from '$lib'
   import * as d3 from 'd3-scale'
-  import * as d3sc from 'd3-scale-chromatic'
+  import * as d3_sc from 'd3-scale-chromatic'
 
   interface Props {
     label?: string | null
@@ -133,7 +133,7 @@
     }
   })
 
-  const valid_color_scale_keys = Object.keys(d3sc)
+  const valid_color_scale_keys = Object.keys(d3_sc)
     .map((key) => key.split(`interpolate`)[1])
     .filter(Boolean)
     .join(`, `)
@@ -142,13 +142,13 @@
     if (typeof color_scale == `string`) {
       const interpolator_key = `interpolate${color_scale}`
       // Check more safely if the key exists
-      if (interpolator_key in d3sc) {
-        return d3sc[interpolator_key as keyof typeof d3sc]
+      if (interpolator_key in d3_sc) {
+        return d3_sc[interpolator_key as keyof typeof d3_sc]
       } else {
         console.error(
           `Color scale '${color_scale}' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`,
         )
-        return d3sc.interpolateViridis
+        return d3_sc.interpolateViridis
       }
     } else return color_scale
   })
@@ -157,9 +157,12 @@
 
   // Generate color stops for the gradient background
   let ramped = $derived(
-    [...Array(steps).keys()].map((_, idx) =>
-      (color_scale_fn as (t: number) => string)?.(idx / steps),
-    ),
+    [...Array(steps).keys()].map((_, idx) => {
+      const t = idx / (steps - 1) // Normalized position along the bar (0 to 1)
+      const [min_val, max_val] = scale_for_ticks.domain()
+      const data_value = min_val + t * (max_val - min_val)
+      return (color_scale_fn as (x: number) => string)?.(data_value) ?? `transparent`
+    }),
   )
 
   // Determine wrapper flex-direction based on the actual label_side
@@ -173,7 +176,7 @@
   let bar_dynamic_style = $derived(`
     --cbar-width: ${orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 14px)`};
     --cbar-height: ${orientation === `vertical` ? `100%` : `var(--cbar-thickness, 14px)`};
-    background: linear-gradient(${grad_dir}, ${ramped});
+    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)});
   `)
 
   // Calculate additional margin for the main label if it overlaps with ticks
@@ -195,27 +198,27 @@
 
     const offset = `var(--cbar-label-overlap-offset, 1em)`
 
-    switch (actual_label_side) {
-      case `top`:
-        return `margin-bottom: ${offset};`
-      case `bottom`:
-        return `margin-top: ${offset};`
-      case `left`:
-        return `margin-right: ${offset};`
-      case `right`:
-        return `margin-left: ${offset};`
-      default:
-        return ``
-    }
+    const side_map = { top: `bottom`, bottom: `top`, left: `right`, right: `left` }
+    const margin_side = side_map[actual_label_side]
+    return `margin-${margin_side}: ${offset};`
   })
 
   // Label styles
   let current_label_style = $derived.by(() => {
-    const rotate_style =
+    let rotate_style = ``
+    if (
       orientation === `vertical` &&
       (actual_label_side === `left` || actual_label_side === `right`)
-        ? `transform: rotate(-90deg); white-space: nowrap;`
-        : ``
+    ) {
+      if (actual_label_side === `right`) {
+        // Label on the left (primary) side
+        rotate_style = `transform: rotate(90deg) translate(-50%); transform-origin: left bottom;`
+      } else {
+        // Label on the right (secondary) side
+        rotate_style = `transform: rotate(-90deg) translate(50%); transform-origin: right bottom;`
+      }
+    }
+
     return `${rotate_style} ${label_overlap_margin_style} ${label_style ?? ``}`.trim()
   })
 </script>
@@ -296,6 +299,7 @@
   span.label {
     text-align: center;
     padding: var(--cbar-label-padding, 0 5px);
+    transform: var(--cbar-label-transform);
   }
   span.tick-label {
     position: absolute;

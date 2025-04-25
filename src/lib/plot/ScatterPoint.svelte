@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Point } from '$lib'
   import type { HoverStyle, LabelStyle, PointStyle } from '$lib/plot'
-  import * as d3Symbols from 'd3-shape'
+  import * as d3_symbols from 'd3-shape'
   import { type SymbolType, symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import { Tween } from 'svelte/motion'
@@ -17,7 +17,6 @@
     origin_x?: number
     origin_y?: number
   }
-
   let {
     x,
     y,
@@ -31,14 +30,13 @@
   }: Props = $props()
 
   const {
-    fill = `gray`,
     radius = 2,
     stroke = `transparent`,
     stroke_width = 1,
     stroke_opacity = 1,
     fill_opacity = 1,
     marker_type = `circle`,
-    marker_size = null, // If null, derive from radius
+    marker_size = null, // if null, derive from radius
   } = style
   const {
     enabled: hover_enabled = true,
@@ -54,32 +52,23 @@
     font_family = `sans-serif`,
   } = label
 
-  // Calculate the size based on radius (default D3 circle size is approximately 50 for radius 4)
-  const marker_actual_size = marker_size !== null ? marker_size : Math.pow(radius, 2) * 3
-
-  // Dynamically generate the symbol map from d3Symbols
   const symbol_map: Record<string, SymbolType> = {}
 
-  // Find all symbol properties in d3Symbols that start with 'symbol'
-  Object.entries(d3Symbols).forEach(([key, value]) => {
+  Object.entries(d3_symbols).forEach(([key, value]) => {
     if (key.startsWith(`symbol`) && typeof value === `object`) {
-      // Convert from camelCase to snake_case for consistency with our naming
+      // Convert camelCase to snake_case used internally
       const snake_key = key.replace(`symbol`, ``).toLowerCase()
       symbol_map[snake_key] = value as SymbolType
     }
   })
 
-  // Generate the path data string for the marker
   function get_symbol_path(): string {
-    // Get the symbol type from our map or use circle as fallback
-    const symbol_type = symbol_map[marker_type] ?? d3Symbols.symbolCircle
-
-    // Create a symbol generator with the specified type and size
-    return symbol().type(symbol_type).size(marker_actual_size)() || ``
+    const symbol_type = symbol_map[marker_type] ?? d3_symbols.symbolCircle
+    const size = marker_size ?? Math.pow(radius, 2) * 3
+    return symbol().type(symbol_type).size(size)() || ``
   }
 
-  // Initialize with actual path data
-  let marker_path_string = $derived.by(get_symbol_path)
+  let marker_path = $derived.by(get_symbol_path)
 
   const tween_params = { duration: tween_duration, easing: cubicOut }
   const tweened_x = new Tween(origin_x, tween_params)
@@ -99,8 +88,7 @@
   style:--hover-stroke-width="{hover_stroke_width}px"
 >
   <path
-    d={marker_path_string}
-    {fill}
+    d={marker_path}
     {stroke}
     stroke-width={stroke_width}
     style:fill-opacity={fill_opacity}
@@ -128,6 +116,9 @@
     transform: scale(var(--scatter-point-hover-scale, 1.5));
     stroke: var(--scatter-point-hover-stroke, white);
     stroke-width: var(--scatter-point-hover-stroke-width, 2px);
+  }
+  path {
+    fill: var(--point-fill-color);
   }
   text {
     fill: var(--scatter-point-text-fill, currentColor);

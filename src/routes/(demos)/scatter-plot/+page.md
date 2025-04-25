@@ -12,31 +12,31 @@ A simple scatter plot showing different display modes (points, lines, or both):
   const basic_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [5, 7, 2, 8, 4, 9, 3, 6, 8, 5],
-    point_style: { fill: 'steelblue', radius: 5 }
+    point_style: { fill: 'steelblue', radius: 5 },
+    label: 'Basic Data'
   }
 
   // Multiple series data
   const second_series = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [2, 4, 6, 3, 7, 5, 8, 4, 6, 9],
-    point_style: { fill: 'orangered', radius: 4 }
+    point_style: { fill: 'orangered', radius: 4 },
+    label: 'Second Series'
   }
 
   // Currently selected display mode
-  let display_mode = 'line+points'
+  let display_mode = $state('line+points')
 </script>
 
 <div>
-  <div style="margin-bottom: 1em;">
-    <label>
-      Display Mode:
-      <select bind:value={display_mode}>
-        <option value="points">Points only</option>
-        <option value="line">Lines only</option>
-        <option value="line+points">Lines and Points</option>
-      </select>
-    </label>
-  </div>
+  <label style="margin-bottom: 1em; display: block;">
+    Display Mode:
+    <select bind:value={display_mode}>
+      {#each [['points', 'Points only'], ['line', 'Lines only'], ['line+points', 'Lines and Points']] as [value, label] (value)}
+        <option value={value}>{label}</option>
+      {/each}
+    </select>
+  </label>
 
   <ScatterPlot
     series={[basic_data, second_series]}
@@ -165,12 +165,16 @@ Demonstrate various point styles, custom tooltips, and hover effects:
         text: 'Glowing microdots',
         offset_y: -20,
         font_size: '12px'
-      }
+      },
+      label: 'Glowing microdots'
     }
   ]
 
   // Only show labels for the first point in each series
   series_with_styles.forEach((series, series_idx) => {
+    if (!series.label) {
+      series.label = series.point_label?.text || `Style ${series_idx + 1}`;
+    }
     // Create a metadata array with empty objects except for the first one
     series.metadata = Array(point_count).fill({}).map((_, idx) => {
       return idx === 0 ? { firstPoint: true, seriesName: series.point_label.text } : {}
@@ -226,6 +230,7 @@ This example demonstrates how to apply different styles to individual points wit
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
+  import { marker_types } from '$lib/plot'
 
   // Create a dataset with points arranged in a spiral pattern
   const point_count = 40
@@ -251,17 +256,10 @@ This example demonstrates how to apply different styles to individual points wit
 
     // Store angle in metadata
     spiral_data.metadata.push({ angle, radius })
-
-    // Create unique style for each point
     // Change color gradually along the spiral
     const hue = (idx / point_count) * 360
-
     // Change size dramatically from tiny to huge
     const size_factor = 1 + idx / 5; // More aggressive size increase
-
-    // Alternate marker types
-    const marker_types = ['circle', 'diamond', 'star', 'triangle', 'cross', 'wye']
-    const marker_idx = idx % marker_types.length
 
     // Create the point style
     spiral_data.point_style.push({
@@ -269,7 +267,7 @@ This example demonstrates how to apply different styles to individual points wit
       radius: 1 + size_factor * 3, // Much larger variation in size
       stroke: 'white',
       stroke_width: 1 + idx / 20, // Gradually thicker stroke
-      marker_type: marker_types[marker_idx],
+      marker_type: marker_types[idx % marker_types.length],
       marker_size: 20 + size_factor * 25 // More dramatic size progression
     })
   }
@@ -343,34 +341,26 @@ This example shows categorized data with color coding, custom tick intervals, an
       metadata: points.map(p => ({
         category: p.category,
         color: p.color
-      }))
+      })),
+      label: category
     }
   })
 
   // Tick interval settings
-  let x_tick_interval = -5
-  let y_tick_interval = -5
+  const ticks = $state({ x: -5, y: -5 })
 </script>
 
 <div>
-  <div style="margin-bottom: 1em;">
-    <label>
-      X-Tick Interval:
-      <select bind:value={x_tick_interval}>
-        <option value={-2}>2 units</option>
-        <option value={-5}>5 units</option>
-        <option value={-10}>10 units</option>
+  {#each Object.keys(ticks) as axis (axis)}
+    <label style="display: inline-block; margin: 1em;">
+      {axis} Tick Interval:
+      <select bind:value={ticks[axis]}>
+      {#each [2, 5, 10] as num (num)}
+        <option value={-num}>{num} units</option>
+      {/each}
       </select>
     </label>
-    <label style="margin-left: 1em;">
-      Y-Tick Interval:
-      <select bind:value={y_tick_interval}>
-        <option value={-2}>2 units</option>
-        <option value={-5}>5 units</option>
-        <option value={-10}>10 units</option>
-      </select>
-    </label>
-  </div>
+  {/each}
 
   <ScatterPlot
     series={series_data}
@@ -378,8 +368,8 @@ This example shows categorized data with color coding, custom tick intervals, an
     y_label="Y Value"
     x_lim={[-15, 15]}
     y_lim={[-15, 15]}
-    x_ticks={x_tick_interval}
-    y_ticks={y_tick_interval}
+    x_ticks={ticks.x}
+    y_ticks={ticks.y}
     markers="points"
     style="height: 400px; width: 100%;"
   >
@@ -428,12 +418,14 @@ Using time data on the x-axis with custom formatting:
       x: dates,
       y: values1,
       point_style: { fill: 'steelblue', radius: 4 },
+      label: 'Series A',
       metadata: Array.from({ length: 30 }, (_, idx) => ({ series: 'Series A', day: idx }))
     },
     {
       x: dates,
       y: values2,
       point_style: { fill: 'orangered', radius: 4 },
+      label: 'Series B',
       metadata: Array.from({ length: 30 }, (_, idx) => ({ series: 'Series B', day: idx }))
     }
   ]
@@ -448,17 +440,17 @@ Using time data on the x-axis with custom formatting:
     <label>
       Date Format:
       <select bind:value={date_format}>
-        <option value="%b %d">Month Day (Jan 01)</option>
-        <option value="%Y-%m-%d">YYYY-MM-DD</option>
-        <option value="%d/%m">DD/MM</option>
+        {#each [['%b %d', 'Month Day (Jan 01)'], ['%Y-%m-%d', 'YYYY-MM-DD'], ['%d/%m', 'DD/MM']] as [value, label] (value)}
+          <option value={value}>{label}</option>
+        {/each}
       </select>
     </label>
     <label style="margin-left: 1em;">
       Y-Value Format:
       <select bind:value={y_format}>
-        <option value=".1f">1 decimal</option>
-        <option value=".2f">2 decimals</option>
-        <option value="d">Integer</option>
+        {#each [['.1f', '1 decimal'], ['.2f', '2 decimals'], ['d', 'Integer']] as [value, label] (value)}
+          <option value={value}>{label}</option>
+        {/each}
       </select>
     </label>
   </div>
@@ -473,6 +465,7 @@ Using time data on the x-axis with custom formatting:
     x_label="Date"
     y_label="Value"
     style="height: 350px; width: 100%;"
+    legend={{ layout: `horizontal`, n_items: 3, wrapper_style: `max-width: none; justify-content: center;` }}
   >
     {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
       <div style="white-space: nowrap;">
@@ -646,215 +639,135 @@ const data = {
 }
 ```
 
-## Log-Scaled Axes
+## Interactive Log-Scaled Axes
 
-ScatterPlot supports logarithmic scaling for data that spans multiple orders of magnitude.
-
-### X-Axis Log Scale
-
-Visualize exponential growth or data with large ranges on the X-axis:
+ScatterPlot supports logarithmic scaling for data that spans multiple orders of magnitude. This example combines multiple datasets and allows you to dynamically switch between linear and logarithmic scales for both the X and Y axes using the checkboxes below. Observe how the appearance of the data changes, particularly for power-law relationships which appear as straight lines on log-log plots.
 
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
 
-  // Create data with exponential growth on x-axis
-  const x_log_data = {
-    x: [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000],
-    y: [10, 20, 25, 35, 40, 50, 55, 65, 70, 80],
-    point_style: { fill: 'steelblue', radius: 6 },
-    point_label: [{ text: '0.1', offset_y: -15 }, {}, {}, {}, {}, {}, {}, {}, {}, { text: '5000', offset_y: -15 }]
+  const point_count = 50;
+
+  // Series 1: Exponential Decay
+  const decay_data = {
+    x: [],
+    y: [],
+    point_style: { fill: 'coral', radius: 4 },
+    label: 'Exponential Decay',
+    metadata: []
+  };
+  for (let idx = 0; idx < point_count; idx++) {
+    const x_val = 0.1 + (idx / (point_count - 1)) * 10; // x from 0.1 to 10.1
+    const y_val = 10000 * Math.exp(-0.5 * x_val);
+    decay_data.x.push(x_val);
+    // Ensure y is not exactly 0 for log scale, clamp to a small positive value
+    decay_data.y.push(Math.max(y_val, 1e-9));
+    decay_data.metadata.push({ series: 'Exponential Decay' });
   }
-</script>
 
-<div>
-  <h3>Exponential X-Axis Data (Log Scale)</h3>
-  <p>
-    Notice how equally spaced values on a log scale represent equal ratios rather than equal intervals.
-    The distance from 1 to 10 is the same as 10 to 100.
-  </p>
-  <ScatterPlot
-    series={[x_log_data]}
-    x_scale_type="log"
-    y_scale_type="linear"
-    x_label="Log-Scaled X Axis"
-    y_label="Linear Y Axis"
-    markers="line+points"
-    style="height: 350px; width: 100%;"
-  />
-</div>
-```
-
-### Y-Axis Log Scale
-
-Perfect for data with exponential growth on the Y-axis:
-
-```svelte example stackblitz
-<script>
-  import { ScatterPlot } from '$lib'
-
-  // Create data with exponential growth on y-axis
-  const y_log_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000],
-    point_style: { fill: 'orangered', radius: 6 },
-    point_label: [{ text: '1', offset_x: 15 }, {}, {}, {}, {}, {}, {}, {}, {}, { text: '30,000', offset_x: 15 }]
+  // Series 2: Logarithmic Sine Wave
+  const log_sine_data = {
+    x: [],
+    y: [],
+    point_style: { fill: 'deepskyblue', radius: 4 },
+    label: 'Log Sine Wave',
+    metadata: []
+  };
+  for (let idx = 0; idx < point_count * 2; idx++) { // More points for smoother curve
+    const x_val = Math.pow(10, -1 + (idx / (point_count * 2 - 1)) * 4); // x from 0.1 to 1000 log-spaced
+    const y_val = 500 + 400 * Math.sin(Math.log10(x_val) * 5);
+    log_sine_data.x.push(x_val);
+    log_sine_data.y.push(Math.max(y_val, 1e-9)); // Clamp potential near-zero y
+    log_sine_data.metadata.push({ series: 'Log Sine Wave' });
   }
-</script>
 
-<div>
-  <h3>Exponential Y-Axis Data (Log Scale)</h3>
-  <p>
-    Y-axis log scaling makes it easy to visualize data that grows exponentially or spans many orders of magnitude.
-    Percentage growth appears as straight lines on a log scale.
-  </p>
-  <ScatterPlot
-    series={[y_log_data]}
-    x_scale_type="linear"
-    y_scale_type="log"
-    x_label="Linear X Axis"
-    y_label="Log-Scaled Y Axis"
-    y_format="~s"
-    markers="line+points"
-    style="height: 350px; width: 100%;"
-  />
-</div>
-```
-
-### Both Axes Log-Scaled
-
-For comparing data across multiple orders of magnitude on both axes:
-
-```svelte example stackblitz
-<script>
-  import { ScatterPlot } from '$lib'
-
-  // Generate power law relationship data (y = x^2)
+  // Series 4: Power Law (y = x^2)
   const power_law_data = {
     x: [],
     y: [],
-    point_style: { fill: 'mediumseagreen', radius: 5 }
+    point_style: { fill: 'mediumseagreen', radius: 5 },
+    label: 'y = x^2',
+    metadata: []
+  }
+  for (let idx = -1; idx <= 3; idx += 0.25) {
+    const x_val = Math.pow(10, idx)
+    const y_val = Math.pow(x_val, 2);  // y = x^2
+    power_law_data.x.push(x_val);
+    power_law_data.y.push(Math.max(y_val, 1e-9)); // Clamp y
+    power_law_data.metadata.push({ series: 'y = x^2' });
   }
 
-  // Add points from 0.1 to 1000 with exponential spacing
-  for (let i = -1; i <= 3; i += 0.25) {
-    const x = Math.pow(10, i)
-    const y = Math.pow(x, 2);  // y = x^2 (power law relationship)
-    power_law_data.x.push(x)
-    power_law_data.y.push(y)
-  }
-
-  // Add another series with a different power law (y = x^0.5)
+  // Series 5: Inverse Power Law (y = x^0.5)
   const inverse_power_data = {
     x: [],
     y: [],
-    point_style: { fill: 'purple', radius: 5 }
+    point_style: { fill: 'purple', radius: 5 },
+    label: 'y = x^0.5',
+    metadata: []
+  }
+  for (let idx = -1; idx <= 3; idx += 0.25) {
+    const x_val = Math.pow(10, idx)
+    const y_val = Math.pow(x_val, 0.5); // y = √x
+    inverse_power_data.x.push(x_val);
+    inverse_power_data.y.push(Math.max(y_val, 1e-9)); // Clamp y
+    inverse_power_data.metadata.push({ series: 'y = x^0.5' });
   }
 
-  // Similar range but with y = sqrt(x)
-  for (let i = -1; i <= 3; i += 0.25) {
-    const x = Math.pow(10, i)
-    const y = Math.pow(x, 0.5);  // y = √x (square root relationship)
-    inverse_power_data.x.push(x)
-    inverse_power_data.y.push(y)
-  }
+  // Combine all series
+  const all_series = [decay_data, log_sine_data, power_law_data, inverse_power_data]
+
+  // State for controlling scale types
+  let x_is_log = $state(false)
+  let y_is_log = $state(false)
+
+  // Derived scale types based on state
+  let x_scale_type = $derived(x_is_log ? `log` : `linear`)
+  let y_scale_type = $derived(y_is_log ? `log` : `linear`)
+
+  // Reactive limits based on scale type to avoid log(0) issues and accommodate data
+  let x_lim = $derived(x_is_log ? [0.1, 1000] : [null, 1000])
+  let y_lim = $derived(y_is_log ? [0.1, 10000] : [null, 10000])
+
 </script>
 
 <div>
-  <h3>Power Law Relationships (Both Axes Log-Scaled)</h3>
-  <p>
-    Log-log plots are ideal for power law relationships. A straight line on a log-log plot
-    indicates a power law relationship (y = x^n), with the slope indicating the exponent.
-  </p>
-
-  <div style="display: flex; justify-content: center; margin-bottom: 1em;">
-    <div style="margin: 0 1em; display: flex; align-items: center;">
-      <span style="display: inline-block; width: 12px; height: 12px; background: mediumseagreen; border-radius: 50%; margin-right: 0.5em;"></span>
-      y = x<sup>2</sup>
-    </div>
-    <div style="margin: 0 1em; display: flex; align-items: center;">
-      <span style="display: inline-block; width: 12px; height: 12px; background: purple; border-radius: 50%; margin-right: 0.5em;"></span>
-      y = x<sup>0.5</sup>
-    </div>
+  <div style="display: flex; justify-content: center; gap: 2em; margin-bottom: 1em;">
+    <label>
+      <input type="checkbox" bind:checked={x_is_log} />
+      Log X-Axis
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={y_is_log} />
+      Log Y-Axis
+    </label>
   </div>
 
-  <ScatterPlot
-    series={[power_law_data, inverse_power_data]}
-    x_scale_type="log"
-    y_scale_type="log"
-    x_label="x (log scale)"
-    y_label="y (log scale)"
-    x_format="~s"
-    y_format="~s"
-    markers="line+points"
-    style="height: 400px; width: 100%;"
-  />
-</div>
-```
 
-### Scientific Data with Log Scale
-
-This example demonstrates a real-world use case with scientific data spanning many orders of magnitude:
-
-```svelte example stackblitz
-<script>
-  import { ScatterPlot } from '$lib'
-
-  // Typical particle size distribution data
-  const particle_data = {
-    // Particle size in micrometers (µm) - using non-powers of 10 to test gridlines
-    x: [0.17, 0.42, 0.83, 1.3, 2.7, 4.9, 8.6, 23.4, 47.8, 93.2, 187, 422, 876],
-    // Number of particles detected - also using non-power-of-10 values
-    y: [58423, 32756, 12384, 6290, 2745, 1372, 687, 253, 124, 63, 31, 8, 2],
-    point_style: {
-      fill: 'royalblue',
-      radius: 6,
-      stroke: 'darkblue',
-      stroke_width: 1
-    },
-    point_hover: {
-      scale: 1.5,
-      stroke: 'white',
-      stroke_width: 2
-    }
-  }
-
-  let hover_point = null
-</script>
-
-<div>
-  <h3>Particle Size Distribution (Log-Log Plot)</h3>
-  <p>
-    Scientists often use log-log plots for data spanning multiple orders of magnitude.
-    This example shows a particle size distribution from 0.1µm to 1000µm (1mm).
-  </p>
-
-  <ScatterPlot
-    series={[particle_data]}
-    x_scale_type="log"
-    y_scale_type="log"
-    x_label="Particle Size (µm)"
-    y_label="Particle Count"
-    x_format="~s"
-    y_format="~s"
-    markers="line+points"
-    style="height: 400px; width: 100%;"
-    change={(point) => hover_point = point}
-  >
-    {#snippet tooltip({ x, y, x_formatted, y_formatted })}
-      <div style="white-space: nowrap;">
-        <strong>Particle Data</strong><br />
-        Size: {x_formatted} µm<br />
-        Count: {y_formatted} particles
-      </div>
-    {/snippet}
-  </ScatterPlot>
-
-  {#if hover_point}
-    <div style="margin-top: 1em; text-align: center;">
-      A particle size of {hover_point.x.toFixed(1)} µm corresponds to {hover_point.y.toFixed(0)} particles
-    </div>
-  {/if}
+  <!-- Use #key to ensure plot redraws correctly when scale types change -->
+  {#key [x_scale_type, y_scale_type]}
+    <ScatterPlot
+      series={all_series}
+      {x_scale_type}
+      {y_scale_type}
+      {x_lim}
+      {y_lim}
+      x_label="X Axis ({x_scale_type})"
+      y_label="Y Axis ({y_scale_type})"
+      x_format="~s"
+      y_format="~s"
+      markers="line+points"
+      style="height: 400px; width: 100%;"
+    >
+      {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
+        <div style="white-space: nowrap;">
+          <strong>{metadata.label ?? metadata.series}</strong><br/>
+          X: {x_formatted || x.toPrecision(3)}<br/>
+          Y: {y_formatted || y.toPrecision(3)}
+        </div>
+      {/snippet}
+    </ScatterPlot>
+  {/key}
 </div>
 ```
 
@@ -876,57 +789,55 @@ This example combines multiple features including different display modes, custo
   // Create three data series with different styling
   const series_data = categories.map((category, cat_idx) => {
     const points = 10
+    const marker_type_for_series = marker_types[cat_idx % marker_types.length];
     return {
       x: Array.from({ length: points }, (_, idx) => idx + 1),
       y: Array.from({ length: points }, () => 3 + cat_idx * 3 + Math.random() * 2),
-      point_style: Array.from({ length: points }, (_, idx) => ({
+      point_style: {
         fill: category_colors[cat_idx],
         radius: 6 - cat_idx,
         stroke: 'black',
         stroke_width: 0.5,
-        marker_type: marker_types[idx % marker_types.length],
-        marker_size: 15 + cat_idx * 5
-      })),
+        marker_type: marker_type_for_series,
+        marker_size: 40 + cat_idx * 5
+      },
       metadata: Array.from({ length: points }, (_, idx) => ({
         category,
         color: category_colors[cat_idx],
-        marker: marker_types[idx % marker_types.length],
+        marker: marker_type_for_series,
         idx
-      }))
+      })),
+      label: category
     }
   })
 
   // Currently selected display mode
-  let display_mode = 'line+points'
+  let display_mode = $state('line+points')
 
   // Toggle series visibility
-  let visible_series = {
+  let visible_series = $state({
     [categories[0]]: true,
     [categories[1]]: true,
     [categories[2]]: true
-  }
+  })
 
   // Controls for random data points
-  let x_tick_interval = -5
-  let y_tick_interval = -5
+  let ticks = $state({ x: -5, y: -5 })
 
   // Grid controls
-  let x_grid = true
-  let y_grid = true
-  let grid_color = 'gray'
-  let grid_width = 0.4
-  let grid_dash = '4'
+  let grid = $state({ x: true, y: true })
+  let grid_color = $state('gray')
+  let grid_width = $state(0.4)
+  let grid_dash = $state('4')
 
   // Custom axis labels
-  let x_axis_label = "X Axis"
-  let y_axis_label = "Y Value"
+  let axis_labels = $state({ x: "X Axis", y: "Y Value" })
 
   // Selected point tracking
-  let selected_point = null
+  let selected_point = $state(null)
 
   // Update series based on visibility toggles
-  $: displayed_series = series_data.filter((_, idx) =>
-    visible_series[categories[idx]])
+  let displayed_series = $derived(series_data.filter((_, idx) => visible_series[categories[idx]]))
 
   // Generate random data points across positive and negative space
   const sample_count = 40
@@ -974,11 +885,12 @@ This example combines multiple features including different display modes, custo
 
   <ScatterPlot
     series={displayed_series}
-    x_label={x_axis_label}
-    y_label={y_axis_label}
+    x_label={axis_labels.x}
+    y_label={axis_labels.y}
     markers={display_mode}
     change={(event) => (selected_point = event)}
     style="height: 400px; width: 100%;"
+    legend={null}
   >
     {#snippet tooltip({ x, y, metadata })}
       <div style="white-space: nowrap;">
@@ -998,34 +910,23 @@ This example combines multiple features including different display modes, custo
 
   <h3 style="margin-top: 2em;">Random Points with Custom Controls</h3>
   <div style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 1em;">
-    <label>
-      X-Tick Interval:
-      <select bind:value={x_tick_interval}>
-        <option value={-2}>2 units</option>
-        <option value={-5}>5 units</option>
-        <option value={-10}>10 units</option>
-      </select>
-    </label>
+    {#each Object.keys(ticks) as axis (axis)}
+      <label>
+        {axis} Tick Interval:
+        <select bind:value={ticks[axis]}>
+          {#each [2, 5, 10] as num (num)}
+            <option value={-num}>{num} units</option>
+          {/each}
+        </select>
+      </label>
+    {/each}
 
-    <label>
-      Y-Tick Interval:
-      <select bind:value={y_tick_interval}>
-        <option value={-2}>2 units</option>
-        <option value={-5}>5 units</option>
-        <option value={-10}>10 units</option>
-      </select>
-    </label>
-
-    <label>
-      <input type="checkbox" bind:checked={x_grid} />
-      X Grid
-    </label>
-
-    <label>
-      <input type="checkbox" bind:checked={y_grid} />
-      Y Grid
-    </label>
-
+    {#each Object.keys(grid) as axis (axis)}
+      <label>
+        <input type="checkbox" bind:checked={grid[axis]} />
+        {axis} Grid
+      </label>
+    {/each}
 
     <label>
       Grid Color:
@@ -1037,27 +938,24 @@ This example combines multiple features including different display modes, custo
       </select>
     </label>
 
-    <label>
-      X-Axis Label:
-      <input type="text" bind:value={x_axis_label} style="width: 120px" />
-    </label>
-
-    <label>
-      Y-Axis Label:
-      <input type="text" bind:value={y_axis_label} style="width: 120px" />
-    </label>
+    {#each Object.keys(axis_labels) as axis (axis)}
+      <label>
+        {axis} Label:
+        <input type="text" bind:value={axis_labels[axis]} style="width: 120px" />
+      </label>
+    {/each}
   </div>
 
   <ScatterPlot
     series={[sample_data]}
-    x_label={x_axis_label}
-    y_label={y_axis_label}
+    x_label={axis_labels.x}
+    y_label={axis_labels.y}
     x_lim={[-15, 15]}
     y_lim={[-15, 15]}
-    x_ticks={x_tick_interval}
-    y_ticks={y_tick_interval}
-    {x_grid}
-    {y_grid}
+    x_ticks={ticks.x}
+    y_ticks={ticks.y}
+    x_grid={grid.x}
+    y_grid={grid.y}
     markers="points"
     style="height: 400px; width: 100%;"
   >
@@ -1154,7 +1052,7 @@ This example demonstrates how the color bar automatically positions itself in on
     {#snippet tooltip({ x, y, metadata, color_value })}
       <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
         Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
-        Value: {color_value?.toFixed(2)}
+        Color value: {color_value?.toFixed(2)}
       </div>
     {/snippet}
   </ScatterPlot>
@@ -1266,14 +1164,14 @@ This example shows how to place the color bar vertically on the right side of th
 
   // --- Color Scaling Controls ---
   // Track which color scale type is active
-  let color_scale_type = `linear`
+  let color_scale_type = $state(`linear`)
 
   // Color scheme options
   const color_schemes = [
     `viridis`, `inferno`, `plasma`, `magma`, `cividis`,
     `turbo`, `warm`, `cool`, `spectral`
   ]
-  let selected_scheme = `cool` // Default matches original example
+  let selected_scheme = $state(`cool`) // Default matches original example
 </script>
 
 <div>
@@ -1298,45 +1196,41 @@ This example shows how to place the color bar vertically on the right side of th
     </div>
   </div>
 
-  <p>
-    The color bar is positioned vertically to the right, outside the plot.
-    The plot's right padding is increased to prevent overlap. Use the controls above to change the color scheme and scale type.
-  </p>
+  The color bar is positioned vertically to the right, outside the plot.
+  The plot's right padding is increased to prevent overlap. Use the controls above to change the color scheme and scale type.
 
-  {#key color_scale_type && selected_scheme}
-    <ScatterPlot
-      series={[vertical_color_data]}
-      x_label="X Position"
-      y_label="Y Position"
-      x_lim={[0, 100]}
-      y_lim={[0, 100]}
-      markers="points"
-      color_scheme={selected_scheme}
-      {color_scale_type}
-      padding={plot_padding}
-      color_bar={{
-        orientation: `vertical`,
-        label: `Value (${color_scale_type})`,
-        tick_side: `right`,
-        wrapper_style: `
-          position: absolute;
-          /* Position outside the plot area using padding values */
-          right: 10px; /* Distance from the container's right edge */
-          top: ${plot_padding.t}px; /* Align with top padding */
-          /* Set height directly for the wrapper */
-          height: calc(100% - ${plot_padding.t + plot_padding.b}px); /* Fill vertical space */
-        `,
-        style: `width: 15px; height: 100%;`,
-      }}
-      style="height: 400px; width: 100%;"
-    >
-      {#snippet tooltip({ x, y, metadata, color_value })}
-        <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
-          Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
-          Value: {color_value?.toFixed(1)}
-        </div>
-      {/snippet}
-    </ScatterPlot>
-  {/key}
+  <ScatterPlot
+    series={[vertical_color_data]}
+    x_label="X Position"
+    y_label="Y Position"
+    x_lim={[0, 100]}
+    y_lim={[0, 100]}
+    markers="points"
+    color_scheme={selected_scheme}
+    {color_scale_type}
+    padding={plot_padding}
+    color_bar={{
+      orientation: `vertical`,
+      label: `Color Bar Title (${color_scale_type})`,
+      tick_side: `primary`,
+      wrapper_style: `
+        position: absolute;
+        /* Position outside the plot area using padding values */
+        right: 10px; /* Distance from the container's right edge */
+        top: ${plot_padding.t}px; /* Align with top padding */
+        /* Set height directly for the wrapper */
+        height: calc(100% - ${plot_padding.t + plot_padding.b}px); /* Fill vertical space */
+      `,
+      style: `width: 15px; height: 100%;`,
+    }}
+    style="height: 400px;"
+  >
+    {#snippet tooltip({ x, y, metadata, color_value })}
+      <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
+        Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
+        Color value: {color_value?.toFixed(1)}
+      </div>
+    {/snippet}
+  </ScatterPlot>
 </div>
 ```

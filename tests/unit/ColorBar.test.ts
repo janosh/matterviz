@@ -1,10 +1,10 @@
 import { ColorBar } from '$lib'
-import * as d3sc from 'd3-scale-chromatic'
+import * as d3_sc from 'd3-scale-chromatic'
 import { mount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
 
-const valid_color_scale_keys = Object.keys(d3sc)
+const valid_color_scale_keys = Object.keys(d3_sc)
   .map((key) => key.split(`interpolate`)[1])
   .filter(Boolean)
   .join(`, `)
@@ -87,7 +87,7 @@ describe(`ColorBar Vertical`, () => {
     expect(label_span.textContent).toBe(`Test Vertical Default`)
     // Check rotation via attribute due to happy-dom issues
     expect(label_span.getAttribute(`style`)).toContain(
-      `transform: rotate(-90deg);`,
+      `transform: rotate(-90deg) translate(50%); transform-origin: right bottom;`,
     )
 
     const cbar_div = doc_query(`.colorbar > div.bar`)

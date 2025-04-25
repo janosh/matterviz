@@ -261,6 +261,16 @@
       }),
     }))
   })
+
+  // Legend test data
+  const legend_single_series: DataSeries[] = [
+    { x: [1, 2], y: [3, 4], metadata: { label: `Single Series` } },
+  ]
+  const legend_multi_series: DataSeries[] = [
+    { x: [1, 2], y: [3, 4], metadata: { label: `Series A` } },
+    { x: [1, 2], y: [1, 2], metadata: { label: `Series B` } },
+  ]
+  const legend_zero_series: DataSeries[] = []
 </script>
 
 <div class="demo-container">
@@ -412,17 +422,15 @@
             </label>
           {/each}
         </div>
-        {#key color_scale_type}
-          <ScatterPlot
-            series={[color_scale_data]}
-            x_label="X Axis"
-            y_label="Y Axis"
-            markers="points"
-            color_scheme="viridis"
-            color_scale_type={color_scale_type as `linear` | `log`}
-            show_color_bar={true}
-          />
-        {/key}
+        <ScatterPlot
+          series={[color_scale_data]}
+          x_label="X Axis"
+          y_label="Y Axis"
+          markers="points"
+          color_scheme="viridis"
+          color_scale_type={color_scale_type as `linear` | `log`}
+          color_bar={{}}
+        />
       </div>
     </div>
   </section>
@@ -474,6 +482,32 @@
         style="height: 450px; width: 100%;"
       />
     {/key}
+  </section>
+
+  <section id="legend-tests">
+    <h2>Legend Rendering Tests</h2>
+    <div class="plot-grid">
+      <div id="legend-single-default" class="plot-container">
+        <h3>Single Series (Default Legend) - No Legend Expected</h3>
+        <ScatterPlot series={legend_single_series} />
+      </div>
+      <div id="legend-single-null" class="plot-container">
+        <h3>Single Series (legend=null) - No Legend Expected</h3>
+        <ScatterPlot series={legend_single_series} legend={null} />
+      </div>
+      <div id="legend-single-config" class="plot-container">
+        <h3>Single Series (Configured Legend) - Legend Expected</h3>
+        <ScatterPlot series={legend_single_series} legend={{ layout: `horizontal` }} />
+      </div>
+      <div id="legend-multi-default" class="plot-container">
+        <h3>Multi Series (Default Legend) - Legend Expected</h3>
+        <ScatterPlot series={legend_multi_series} />
+      </div>
+      <div id="legend-zero" class="plot-container">
+        <h3>Zero Series - No Legend Expected</h3>
+        <ScatterPlot series={legend_zero_series} />
+      </div>
+    </div>
   </section>
 </div>
 

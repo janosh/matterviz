@@ -4,7 +4,7 @@
   import { molecules } from '$site'
   import Select from 'svelte-multiselect'
 
-  let name = `benzene`
+  let name = $state(`benzene`)
   let molecule = $derived(molecules.find((struct) => struct.name === name) || {})
 </script>
 
