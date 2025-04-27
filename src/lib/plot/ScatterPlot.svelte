@@ -38,7 +38,7 @@
   import ScatterPoint from './ScatterPoint.svelte'
 
   interface Props {
-    series?: DataSeries[]
+    series?: readonly DataSeries[]
     style?: string
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -82,6 +82,8 @@
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
     legend?: LegendConfig | null // Configuration for the legend
+    point_tween?: TweenedOptions<{ x: number; y: number }>
+    line_tween?: TweenedOptions<string>
   }
   let {
     series = [],
@@ -119,6 +121,8 @@
     label_placement_config = {},
     hover_config = {},
     legend = {}, // Default legend config
+    point_tween,
+    line_tween,
   }: Props = $props()
 
   let width = $state(0)
@@ -204,23 +208,17 @@
 
   // Store initial ranges and initialize current ranges
   $effect(() => {
-    const new_initial_x = x_range ?? auto_x_range
-    const new_initial_y = y_range ?? auto_y_range
+    const new_init_x = x_range ?? auto_x_range
+    const new_init_y = y_range ?? auto_y_range
 
     // Only update if the initial range fundamentally changes, force type
-    if (
-      new_initial_x[0] !== initial_x_range[0] ||
-      new_initial_x[1] !== initial_x_range[1]
-    ) {
-      initial_x_range = new_initial_x as [number, number]
-      current_x_range = new_initial_x as [number, number]
+    if (new_init_x[0] !== initial_x_range[0] || new_init_x[1] !== initial_x_range[1]) {
+      initial_x_range = new_init_x as [number, number]
+      current_x_range = new_init_x as [number, number]
     }
-    if (
-      new_initial_y[0] !== initial_y_range[0] ||
-      new_initial_y[1] !== initial_y_range[1]
-    ) {
-      initial_y_range = new_initial_y as [number, number]
-      current_y_range = new_initial_y as [number, number]
+    if (new_init_y[0] !== initial_y_range[0] || new_init_y[1] !== initial_y_range[1]) {
+      initial_y_range = new_init_y as [number, number]
+      current_y_range = new_init_y as [number, number]
     }
   })
 
@@ -347,7 +345,6 @@
             point_hover: process_prop(rest.point_hover, point_idx),
             point_label: process_prop(rest.point_label, point_idx),
             point_offset: process_prop(rest.point_offset, point_idx),
-            point_tween_duration: rest.point_tween_duration,
             series_idx,
             point_idx,
             series_visible: true, // Mark points from visible series
@@ -608,7 +605,7 @@
       if (typeof x_ticks === `number`) {
         count =
           x_ticks < 0
-            ? Math.ceil((x_max - x_min) / Math.abs(x_ticks) / 86400000)
+            ? Math.ceil((x_max - x_min) / Math.abs(x_ticks) / 86_400_000)
             : x_ticks
       } else if (typeof x_ticks === `string`) {
         count = x_ticks === `day` ? 30 : x_ticks === `month` ? 12 : 10
@@ -1049,6 +1046,20 @@
       }
     })
   })
+
+  // Helper function to convert data coordinates to potentially non-finite screen coordinates
+  function get_screen_coords(point: Point): [number, number] {
+    const screen_x = x_format?.startsWith(`%`)
+      ? x_scale_fn(new Date(point.x))
+      : x_scale_fn(point.x)
+
+    const y_val = point.y
+    const min_domain_y = y_scale_type === `log` ? y_scale_fn.domain()[0] : -Infinity
+    const safe_y_val = y_scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
+    const screen_y = y_scale_fn(safe_y_val) // This might be non-finite
+
+    return [screen_x, screen_y]
+  }
 </script>
 
 <div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
@@ -1104,12 +1115,10 @@
                     : `rgba(255, 255, 255, 0.5)`}
 
               <Line
-                points={(series_data?.filtered_data ?? []).map((point) => [
-                  x_format?.startsWith(`%`)
-                    ? x_scale_fn(new Date(point.x))
-                    : x_scale_fn(point.x),
-                  y_scale_fn(point.y),
-                ])}
+                points={(series_data?.filtered_data ?? [])
+                  .map(get_screen_coords)
+                  // Filter bad data before passing to Line component
+                  .filter((pt) => isFinite(pt[0]) && isFinite(pt[1]))}
                 origin={[
                   x_format?.startsWith(`%`)
                     ? x_scale_fn(new Date(x_min))
@@ -1119,6 +1128,7 @@
                 line_color={series_color}
                 line_width={1}
                 area_color="transparent"
+                {line_tween}
               />
             {/if}
           </g>
@@ -1148,20 +1158,24 @@
                     }
                   : label_style}
                 {@const color_value = color_values?.[point_idx]}
+                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point)}
+                {@const screen_x = isFinite(raw_screen_x)
+                  ? raw_screen_x
+                  : x_scale_fn.range()[0]}
+                {@const screen_y = isFinite(raw_screen_y)
+                  ? raw_screen_y
+                  : y_scale_fn.range()[0]}
                 <ScatterPoint
-                  x={x_format?.startsWith(`%`)
-                    ? x_scale_fn(new Date(point.x))
-                    : x_scale_fn(point.x)}
-                  y={y_scale_fn(point.y)}
+                  x={screen_x}
+                  y={screen_y}
                   style={{
                     ...(point.point_style ?? {}),
                   }}
                   hover={point.point_hover ?? {}}
                   label={final_label}
                   offset={point.point_offset ?? { x: 0, y: 0 }}
-                  tween_duration={point.point_tween_duration ?? 600}
-                  origin_x={plot_center_x}
-                  origin_y={plot_center_y}
+                  {point_tween}
+                  origin={{ x: plot_center_x, y: plot_center_y }}
                   --point-fill-color={(color_value != null
                     ? color_scale_fn(color_value)
                     : undefined) ?? point.point_style?.fill}

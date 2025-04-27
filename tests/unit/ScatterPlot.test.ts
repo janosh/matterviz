@@ -1,6 +1,8 @@
 import { ScatterPlot } from '$lib'
-import type { DataSeries, LabelStyle, PointStyle } from '$lib/plot'
+import type { DataSeries, LabelStyle, MarkerType, PointStyle } from '$lib/plot'
+import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
+import { cubicOut } from 'svelte/easing'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Helper to simulate mouse events
@@ -82,7 +84,14 @@ describe(`ScatterPlot`, () => {
       const [x_label, y_label] = [`X Axis`, `Y Axis`]
       const component = mount(ScatterPlot, {
         target: document.body,
-        props: { series: [data], x_label, y_label, x_lim, y_lim, markers },
+        props: {
+          series: [{ ...data, x: [...data.x], y: [...data.y] } as DataSeries], // Cast series
+          x_label,
+          y_label,
+          x_lim: x_lim as [number | null, number | null],
+          y_lim: y_lim as [number | null, number | null],
+          markers,
+        },
       })
 
       // Verify component mounted
@@ -701,23 +710,39 @@ describe(`ScatterPlot`, () => {
     expect(scatter).toBeTruthy()
   })
 
-  test.each([
+  test.each<{
+    marker_type: MarkerType
+    series_name: string
+    point_count: number
+  }>([
     {
       marker_type: `diamond`,
       series_name: `Series with diamonds`,
       point_count: 3,
     },
-    {
-      marker_type: `star`,
-      series_name: `Series with stars`,
-      point_count: 3,
-    },
+    { marker_type: `star`, series_name: `Series with stars`, point_count: 3 },
     {
       marker_type: `triangle`,
       series_name: `Series with triangles`,
       point_count: 3,
     },
-  ])(
+    { marker_type: `wye`, series_name: `Series with wyes`, point_count: 3 },
+    {
+      marker_type: `cross`,
+      series_name: `Series with crosses`,
+      point_count: 3,
+    },
+    {
+      marker_type: `square`,
+      series_name: `Series with squares`,
+      point_count: 3,
+    },
+    {
+      marker_type: `circle`,
+      series_name: `Series with circles`,
+      point_count: 3,
+    },
+  ] as const)(
     `renders series with custom marker type: $marker_type`,
     ({ marker_type, series_name, point_count }) => {
       // Create a series with the specified marker type for all points
@@ -960,31 +985,49 @@ describe(`ScatterPlot`, () => {
       x_scale_type: `log`,
       y_scale_type: `log`,
     },
-  ])(`renders with $scale_type correctly`, ({ x_scale_type, y_scale_type }) => {
-    // Create test data with values suitable for log scale (all positive)
-    const log_scale_data = {
-      x: [0.1, 1, 10, 100, 1000],
-      y: [0.5, 5, 50, 500, 5000],
-      point_style: { fill: `steelblue`, radius: 5 },
-    }
+    {
+      scale_type: `log x, linear y`,
+      x_scale_type: `log`,
+      y_scale_type: `linear`,
+    },
+    {
+      scale_type: `linear x, log y`,
+      x_scale_type: `linear`,
+      y_scale_type: `log`,
+    },
+    {
+      scale_type: `log x, log y`,
+      x_scale_type: `log`,
+      y_scale_type: `log`,
+    },
+  ] as const)(
+    `renders with $scale_type correctly`,
+    ({ x_scale_type, y_scale_type }) => {
+      // Create test data with values suitable for log scale (all positive)
+      const log_scale_data: DataSeries = {
+        x: x_scale_type === `log` ? [0.1, 1, 10, 100, 1000] : [1, 2, 3, 4, 5],
+        y: y_scale_type === `log` ? [0.5, 5, 50, 500, 5000] : [1, 2, 3, 4, 5],
+        point_style: { fill: `steelblue`, radius: 5 },
+      }
 
-    const component = mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [log_scale_data],
-        x_scale_type,
-        y_scale_type,
-        x_format: `.1f`,
-        y_format: `.1f`,
-        markers: `line+points`,
-      },
-    })
+      const component = mount(ScatterPlot, {
+        target: document.body,
+        props: {
+          series: [log_scale_data],
+          x_scale_type,
+          y_scale_type,
+          x_format: `.1f`,
+          y_format: `.1f`,
+          markers: `line+points`,
+        },
+      })
 
-    // Verify component mounted
-    expect(component).toBeTruthy()
-    const scatter = document.querySelector(`.scatter`)
-    expect(scatter).toBeTruthy()
-  })
+      // Verify component mounted
+      expect(component).toBeTruthy()
+      const scatter = document.querySelector(`.scatter`)
+      expect(scatter).toBeTruthy()
+    },
+  )
 
   test(`filters valid points when using log scale with explicit positive limits`, () => {
     // Create data with mixed values
@@ -1013,23 +1056,91 @@ describe(`ScatterPlot`, () => {
     expect(scatter).toBeTruthy()
   })
 
-  test(`generates appropriate tick values for log scales`, () => {
-    // Test with wide range of values to check tick generation
-    const wide_range_data = {
-      x: [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000],
-      y: [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000],
-      point_style: { fill: `steelblue`, radius: 5 },
-    }
+  test.each([
+    // Very narrow range with few powers of 10
+    {
+      name: `narrow range with few powers of 10`,
+      data: { x: [1, 2, 3, 4, 5], y: [1, 2, 3, 4, 5] },
+      x_scale_type: `log`,
+      y_scale_type: `log`,
+      x_ticks: 5,
+      y_ticks: 5,
+    },
+    // Wide range spanning many powers of 10
+    {
+      name: `wide range spanning many powers of 10`,
+      data: {
+        x: [0.01, 0.1, 1, 10, 100, 1000],
+        y: [0.01, 0.1, 1, 10, 100, 1000],
+      },
+      x_scale_type: `log`,
+      y_scale_type: `log`,
+      x_ticks: 10,
+      y_ticks: 10,
+    },
+    // Range starting at very small values
+    {
+      name: `range starting at very small values`,
+      data: { x: [0.001, 0.01, 0.1, 1], y: [0.001, 0.01, 0.1, 1] },
+      x_scale_type: `log`,
+      y_scale_type: `log`,
+      x_ticks: 8,
+      y_ticks: 8,
+    },
+    // Mixed scale types (only X is log)
+    {
+      name: `only x-axis log scale`,
+      data: { x: [0.1, 1, 10, 100], y: [1, 2, 3, 4] },
+      x_scale_type: `log`,
+      y_scale_type: `linear`,
+      x_ticks: 6,
+      y_ticks: 4,
+    },
+    // Mixed scale types (only Y is log)
+    {
+      name: `only y-axis log scale`,
+      data: { x: [1, 2, 3, 4], y: [0.1, 1, 10, 100] },
+      x_scale_type: `linear`,
+      y_scale_type: `log`,
+      x_ticks: 4,
+      y_ticks: 6,
+    },
+    // X log with linear y-axis
+    {
+      name: `x log with interval-based y ticks`,
+      data: { x: [0.1, 1, 10, 100], y: [10, 20, 30, 40, 50] },
+      x_scale_type: `log`,
+      y_scale_type: `linear`,
+      x_ticks: 4,
+      y_ticks: -10, // Interval of 10
+    },
+    // Linear x with log y-axis
+    {
+      name: `y log with interval-based x ticks`,
+      data: { x: [5, 10, 15, 20], y: [0.1, 1, 10, 100] },
+      x_scale_type: `linear`,
+      y_scale_type: `log`,
+      x_ticks: -5, // Interval of 5
+      y_ticks: 4,
+    },
+  ] as const)(`log scale tick generation: $name`, (test_case) => {
+    // Mount component with specific test case
+    document.body.innerHTML = `` // Reset DOM
+    document.body.appendChild(document.createElement(`div`))
+    document.querySelector(`div`)!.setAttribute(`style`, container_style)
 
-    // Mount with log scales and explicit tick count
     const component = mount(ScatterPlot, {
       target: document.body,
       props: {
-        series: [wide_range_data],
-        x_scale_type: `log`,
-        y_scale_type: `log`,
-        x_ticks: 10, // Request more ticks to get intermediate values
-        y_ticks: 10,
+        series: [test_case.data],
+        x_scale_type: test_case.x_scale_type,
+        y_scale_type: test_case.y_scale_type,
+        x_ticks: test_case.x_ticks,
+        y_ticks: test_case.y_ticks,
+        x_format: `.2f`,
+        y_format: `.2f`,
+        x_label: `X ${test_case.x_scale_type === `log` ? `(log)` : `(linear)`}`,
+        y_label: `Y ${test_case.y_scale_type === `log` ? `(log)` : `(linear)`}`,
       },
     })
 
@@ -1037,107 +1148,6 @@ describe(`ScatterPlot`, () => {
     expect(component).toBeTruthy()
     const scatter = document.querySelector(`.scatter`)
     expect(scatter).toBeTruthy()
-  })
-
-  // Add these new tests for log-scaled axes
-
-  test(`log scale tick generation with various ranges and tick counts`, () => {
-    // Test multiple ranges and configurations for log scale tick generation
-    const test_cases = [
-      // Very narrow range with few powers of 10
-      {
-        name: `narrow range with few powers of 10`,
-        data: { x: [1, 2, 3, 4, 5], y: [1, 2, 3, 4, 5] },
-        x_scale_type: `log`,
-        y_scale_type: `log`,
-        x_ticks: 5,
-        y_ticks: 5,
-      },
-      // Wide range spanning many powers of 10
-      {
-        name: `wide range spanning many powers of 10`,
-        data: {
-          x: [0.01, 0.1, 1, 10, 100, 1000],
-          y: [0.01, 0.1, 1, 10, 100, 1000],
-        },
-        x_scale_type: `log`,
-        y_scale_type: `log`,
-        x_ticks: 10,
-        y_ticks: 10,
-      },
-      // Range starting at very small values
-      {
-        name: `range starting at very small values`,
-        data: { x: [0.001, 0.01, 0.1, 1], y: [0.001, 0.01, 0.1, 1] },
-        x_scale_type: `log`,
-        y_scale_type: `log`,
-        x_ticks: 8,
-        y_ticks: 8,
-      },
-      // Mixed scale types (only X is log)
-      {
-        name: `only x-axis log scale`,
-        data: { x: [0.1, 1, 10, 100], y: [1, 2, 3, 4] },
-        x_scale_type: `log`,
-        y_scale_type: `linear`,
-        x_ticks: 6,
-        y_ticks: 4,
-      },
-      // Mixed scale types (only Y is log)
-      {
-        name: `only y-axis log scale`,
-        data: { x: [1, 2, 3, 4], y: [0.1, 1, 10, 100] },
-        x_scale_type: `linear`,
-        y_scale_type: `log`,
-        x_ticks: 4,
-        y_ticks: 6,
-      },
-      // X log with linear y-axis
-      {
-        name: `x log with interval-based y ticks`,
-        data: { x: [0.1, 1, 10, 100], y: [10, 20, 30, 40, 50] },
-        x_scale_type: `log`,
-        y_scale_type: `linear`,
-        x_ticks: 4,
-        y_ticks: -10, // Interval of 10
-      },
-      // Linear x with log y-axis
-      {
-        name: `y log with interval-based x ticks`,
-        data: { x: [5, 10, 15, 20], y: [0.1, 1, 10, 100] },
-        x_scale_type: `linear`,
-        y_scale_type: `log`,
-        x_ticks: -5, // Interval of 5
-        y_ticks: 4,
-      },
-    ]
-
-    for (const test_case of test_cases) {
-      // Mount component with specific test case
-      document.body.innerHTML = `` // Reset DOM
-      document.body.appendChild(document.createElement(`div`))
-      document.querySelector(`div`)!.setAttribute(`style`, container_style)
-
-      const component = mount(ScatterPlot, {
-        target: document.body,
-        props: {
-          series: [test_case.data],
-          x_scale_type: test_case.x_scale_type,
-          y_scale_type: test_case.y_scale_type,
-          x_ticks: test_case.x_ticks,
-          y_ticks: test_case.y_ticks,
-          x_format: `.2f`,
-          y_format: `.2f`,
-          x_label: `X ${test_case.x_scale_type === `log` ? `(log)` : `(linear)`}`,
-          y_label: `Y ${test_case.y_scale_type === `log` ? `(log)` : `(linear)`}`,
-        },
-      })
-
-      // Verify component mounted
-      expect(component).toBeTruthy()
-      const scatter = document.querySelector(`.scatter`)
-      expect(scatter).toBeTruthy()
-    }
   })
 
   test(`log scale with edge case minimum values`, () => {
@@ -1330,8 +1340,8 @@ describe(`ScatterPlot`, () => {
   test(`visualizes power-law relationships with log scales`, () => {
     // Generate power law data: y = x^2
     const squared_data = {
-      x: [],
-      y: [],
+      x: [0],
+      y: [0],
       point_style: { fill: `mediumseagreen`, radius: 4 },
     }
 
@@ -1345,8 +1355,8 @@ describe(`ScatterPlot`, () => {
 
     // Generate another data series with different power law: y = sqrt(x)
     const sqrt_data = {
-      x: [],
-      y: [],
+      x: [0],
+      y: [0],
       point_style: { fill: `purple`, radius: 4 },
     }
 
@@ -1502,18 +1512,18 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       name: `x min only specified`,
-      x_range: [1, 100],
+      x_range: [1, 100] as [number, number],
       y_range: undefined,
     },
     {
       name: `y min only specified`,
       x_range: undefined,
-      y_range: [1, 100],
+      y_range: [1, 100] as [number, number],
     },
     {
       name: `all ranges specified`,
-      x_range: [1, 100],
-      y_range: [1, 100],
+      x_range: [1, 100] as [number, number],
+      y_range: [1, 100] as [number, number],
     },
   ])(`handles $name correctly`, (test_case) => {
     // Create test data
@@ -1910,7 +1920,7 @@ describe(`ScatterPlot`, () => {
       x: [10, 20, 30, 40, 50],
       y: [10, 20, 30, 40, 50],
       point_style: { fill: `steelblue`, radius: 5 },
-    }
+    } as DataSeries
 
     const component = mount(ScatterPlot, {
       target: document.body,
@@ -1936,7 +1946,7 @@ describe(`ScatterPlot`, () => {
       x: [10, 20, 30, 40, 50],
       y: [10, 20, 30, 40, 50],
       point_style: { fill: `steelblue`, radius: 5 },
-    }
+    } as DataSeries
 
     // Define custom grid styling
     const x_grid_style = {
@@ -1971,32 +1981,14 @@ describe(`ScatterPlot`, () => {
     // but we can verify the component renders without errors with custom grid styling
   })
 
-  test(`x_grid and y_grid work correctly with different scale types`, () => {
-    // Test grid rendering with different scale type combinations
-    const test_cases = [
-      {
-        name: `linear x, linear y`,
-        x_scale_type: `linear`,
-        y_scale_type: `linear`,
-      },
-      {
-        name: `log x, linear y`,
-        x_scale_type: `log`,
-        y_scale_type: `linear`,
-      },
-      {
-        name: `linear x, log y`,
-        x_scale_type: `linear`,
-        y_scale_type: `log`,
-      },
-      {
-        name: `log x, log y`,
-        x_scale_type: `log`,
-        y_scale_type: `log`,
-      },
-    ]
-
-    for (const { x_scale_type, y_scale_type } of test_cases) {
+  test.each([
+    { name: `linear x and y`, x_scale_type: `linear`, y_scale_type: `linear` },
+    { name: `log x, linear y`, x_scale_type: `log`, y_scale_type: `linear` },
+    { name: `linear x, log y`, x_scale_type: `linear`, y_scale_type: `log` },
+    { name: `log x, log y`, x_scale_type: `log`, y_scale_type: `log` },
+  ])(
+    `x_grid and y_grid work correctly with scale type: $name`,
+    ({ x_scale_type, y_scale_type }) => {
       document.body.innerHTML = ``
       document.body.appendChild(document.createElement(`div`))
       document.querySelector(`div`)!.setAttribute(`style`, container_style)
@@ -2021,8 +2013,8 @@ describe(`ScatterPlot`, () => {
       expect(component).toBeTruthy()
       const scatter = document.querySelector(`.scatter`)
       expect(scatter).toBeTruthy()
-    }
-  })
+    },
+  )
 
   test(`x_grid and y_grid interact correctly with other props`, () => {
     // Create test data
@@ -2279,20 +2271,16 @@ describe(`ScatterPlot`, () => {
     // but we can verify the component renders without errors with custom grid styling
   })
 
-  test(`x_grid and y_grid work correctly with different scale types`, () => {
-    // Test grid rendering with different scale type combinations
-    const test_cases = [
-      {
-        name: `linear x, linear y`,
-        x_scale_type: `linear`,
-        y_scale_type: `linear`,
-      },
-      { name: `log x, linear y`, x_scale_type: `log`, y_scale_type: `linear` },
-      { name: `linear x, log y`, x_scale_type: `linear`, y_scale_type: `log` },
-      { name: `log x, log y`, x_scale_type: `log`, y_scale_type: `log` },
-    ]
+  test.each([
+    { name: `linear x and y`, x_scale_type: `linear`, y_scale_type: `linear` },
+    { name: `log x, linear y`, x_scale_type: `log`, y_scale_type: `linear` },
+    { name: `linear x, log y`, x_scale_type: `linear`, y_scale_type: `log` },
+    { name: `log x, log y`, x_scale_type: `log`, y_scale_type: `log` },
+  ] as const)(
+    `x_grid and y_grid work correctly with different scale types: $name`,
+    ({ x_scale_type, y_scale_type }) => {
+      // Test grid rendering with different scale type combinations
 
-    for (const { x_scale_type, y_scale_type } of test_cases) {
       document.body.innerHTML = ``
       document.body.appendChild(document.createElement(`div`))
       document.querySelector(`div`)!.setAttribute(`style`, container_style)
@@ -2317,8 +2305,8 @@ describe(`ScatterPlot`, () => {
       expect(component).toBeTruthy()
       const scatter = document.querySelector(`.scatter`)
       expect(scatter).toBeTruthy()
-    }
-  })
+    },
+  )
 
   test(`x_grid and y_grid interact correctly with other props`, () => {
     // Create test data
@@ -2357,5 +2345,40 @@ describe(`ScatterPlot`, () => {
     expect(component).toBeTruthy()
     const scatter = document.querySelector(`.scatter`)
     expect(scatter).toBeTruthy()
+  })
+
+  test(`passes custom line_tween and point_tween options to children`, () => {
+    const test_data: DataSeries = {
+      x: [1, 2, 3],
+      y: [10, 20, 30],
+      point_style: { fill: `steelblue`, radius: 5 },
+    }
+
+    const custom_line_tween = {
+      duration: 500,
+      easing: cubicOut,
+      interpolate: interpolatePath,
+    }
+    const custom_point_tween = {
+      duration: 700,
+      easing: cubicOut,
+    }
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [test_data],
+        markers: `line+points`,
+        line_tween: custom_line_tween,
+        point_tween: custom_point_tween,
+      },
+    })
+
+    // Verify component mounts without errors
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+
+    // Direct assertion of tween options in children is difficult in unit tests.
+    // This test primarily ensures ScatterPlot accepts the props and renders.
   })
 })

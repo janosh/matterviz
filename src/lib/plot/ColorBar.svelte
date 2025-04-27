@@ -2,15 +2,17 @@
   import { pretty_num } from '$lib'
   import * as d3 from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
+  import { timeFormat } from 'd3-time-format'
 
   interface Props {
-    label?: string | null
+    title?: string | null
     color_scale?: ((x: number) => string) | string | null
-    label_side?: `left` | `right` | `top` | `bottom`
+    title_side?: `left` | `right` | `top` | `bottom`
     style?: string | null
-    label_style?: string | null
+    title_style?: string | null
     wrapper_style?: string | null
     tick_labels?: (string | number)[] | number
+    tick_format?: string
     range?: [number, number]
     // tick_side determines tick placement relative to orientation:
     // 'primary'   = bottom (horizontal) / right (vertical), outside the bar
@@ -27,26 +29,27 @@
     nice_range?: [number, number]
   }
   let {
-    label = null,
+    title = null,
     color_scale = $bindable(`Viridis`),
     style = null,
-    label_style = null,
+    title_style = null,
     wrapper_style = null,
     tick_labels = $bindable(4),
+    tick_format = undefined,
     range = [0, 1],
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
     nice_range = $bindable(range),
     // Capture user-provided value, no default here
-    label_side = undefined,
+    title_side = undefined,
     // Default tick side/position
     tick_side = `primary`,
   }: Props = $props()
 
-  // Derive the actual label_side, applying default logic if user didn't provide one
-  let actual_label_side = $derived.by(() => {
-    if (label_side !== undefined) return label_side // Use user-provided value if available
+  // Derive the actual title_side, applying default logic if user didn't provide one
+  let actual_title_side = $derived.by(() => {
+    if (title_side !== undefined) return title_side // Use user-provided value if available
 
     // Calculate default based on orientation and tick_side
     if (tick_side === `inside`) return `left` // Default to left if ticks are inside
@@ -165,10 +168,10 @@
     }),
   )
 
-  // Determine wrapper flex-direction based on the actual label_side
+  // Determine wrapper flex-direction based on the actual title_side
   let wrapper_flex_dir = $derived(
     { left: `row`, right: `row-reverse`, top: `column`, bottom: `column-reverse` }[
-      actual_label_side
+      actual_title_side
     ],
   )
 
@@ -194,23 +197,22 @@
           ? `right`
           : `left`
 
-    if (actual_label_side !== concrete_outside_tick_side) return ``
+    if (actual_title_side !== concrete_outside_tick_side) return ``
 
     const offset = `var(--cbar-label-overlap-offset, 1em)`
 
     const side_map = { top: `bottom`, bottom: `top`, left: `right`, right: `left` }
-    const margin_side = side_map[actual_label_side]
+    const margin_side = side_map[actual_title_side]
     return `margin-${margin_side}: ${offset};`
   })
 
-  // Label styles
-  let current_label_style = $derived.by(() => {
+  let actual_title_style = $derived.by(() => {
     let rotate_style = ``
     if (
       orientation === `vertical` &&
-      (actual_label_side === `left` || actual_label_side === `right`)
+      (actual_title_side === `left` || actual_title_side === `right`)
     ) {
-      if (actual_label_side === `right`) {
+      if (actual_title_side === `right`) {
         // Label on the left (primary) side
         rotate_style = `transform: rotate(90deg) translate(-50%); transform-origin: left bottom;`
       } else {
@@ -219,12 +221,12 @@
       }
     }
 
-    return `${rotate_style} ${label_overlap_margin_style} ${label_style ?? ``}`.trim()
+    return `${rotate_style} ${label_overlap_margin_style} ${title_style ?? ``}`.trim()
   })
 </script>
 
 <div style:flex-direction={wrapper_flex_dir} style={wrapper_style} class="colorbar">
-  {#if label}<span style={current_label_style} class="label">{@html label}</span>{/if}
+  {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
   <div style="{bar_dynamic_style} {style ?? ``}" class="bar">
     {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as tick_label (tick_label)}
       {@const position_percent =
@@ -236,38 +238,26 @@
       {@const tick_inline_style = `
         position: absolute;
         ${
+          /* Base positioning transform */
           orientation === `horizontal`
-            ? /* Horizontal bar */
+            ? tick_side === `inside`
+              ? /* Horizontal + Inside: Center vertically, translate horizontally */
+                `left: ${position_percent}%; top: 50%; transform: translate(-50%, -50%);`
+              : /* Horizontal + Outside: Translate horizontally, position top/bottom */
+                `left: ${position_percent}%; transform: translateX(-50%); ${tick_side === `primary` ? `top: 100%;` : ``} ${tick_side === `secondary` ? `bottom: 100%;` : ``}`
+            : /* Vertical orientation */
               tick_side === `inside`
-              ? /* Inside ticks */ `
-                left: ${position_percent}%;
-                top: 50%; /* Center vertically */
-                transform: translate(-50%, -50%); /* Center horizontally and vertically */
-              `
-              : /* Outside ticks (primary/secondary) */ `
-                left: ${position_percent}%;
-                transform: translateX(-50%);
-                ${tick_side === `primary` ? `top: 100%;` : ``} /* primary = bottom */
-                ${tick_side === `secondary` ? `bottom: 100%;` : ``} /* secondary = top */
-              `
-            : /* Vertical bar */
-              tick_side === `inside`
-              ? /* Inside ticks */ `
-                top: ${position_percent}%;
-                left: 50%; /* Center horizontally */
-                transform: translate(-50%, -50%); /* Center vertically and horizontally */
-              `
-              : /* Outside ticks (primary/secondary) */ `
-                top: ${position_percent}%;
-                transform: translateY(-50%);
-                ${tick_side === `primary` ? `left: 100%;` : ``} /* primary = right */
-                ${tick_side === `secondary` ? `right: 100%;` : ``} /* secondary = left */
-              `
+              ? /* Vertical + Inside: Center horizontally, translate vertically */
+                `top: ${position_percent}%; left: 50%; transform: translate(-50%, -50%);`
+              : /* Vertical + Outside: Translate vertically, position left/right */
+                `top: ${position_percent}%; transform: translateY(-50%); ${tick_side === `primary` ? `left: 100%;` : ``} ${tick_side === `secondary` ? `right: 100%;` : ``}`
         }
       `}
 
       <span style={tick_inline_style} class="tick-label">
-        {pretty_num(tick_label)}
+        {tick_format
+          ? timeFormat(tick_format)(new Date(tick_label))
+          : pretty_num(tick_label)}
       </span>
     {/each}
   </div>

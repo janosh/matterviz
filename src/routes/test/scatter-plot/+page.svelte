@@ -271,6 +271,19 @@
     { x: [1, 2], y: [1, 2], metadata: { label: `Series B` } },
   ]
   const legend_zero_series: DataSeries[] = []
+
+  // === Linear-to-Log Transition Test Data ===
+  let lin_log_y_scale_type = $state<`linear` | `log`>(`linear`)
+  const lin_log_transition_data = {
+    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    y: [100, 50, 10, 1, 0.1, 0.01, 0.001, 1e-4, 1e-6, 1e-8], // Include values very close to zero
+    point_style: {
+      fill: `darkcyan`,
+      radius: 5,
+      stroke: `white`,
+      stroke_width: 1,
+    },
+  }
 </script>
 
 <div class="demo-container">
@@ -507,6 +520,37 @@
         <h3>Zero Series - No Legend Expected</h3>
         <ScatterPlot series={legend_zero_series} />
       </div>
+    </div>
+  </section>
+
+  <section class="demo-section" id="lin-log-transition">
+    <h2>Linear-to-Log Scale Transition Test</h2>
+    <p>
+      Test switching between linear and log scales. Values near zero previously caused NaN
+      errors during the tweening animation.
+    </p>
+    <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em;">
+      {#each [`linear`, `log`] as scale_type (scale_type)}
+        <label>
+          <input
+            type="radio"
+            name="lin_log_y_scale_type"
+            value={scale_type}
+            bind:group={lin_log_y_scale_type}
+          />
+          {scale_type} y-axis
+        </label>
+      {/each}
+    </div>
+    <div class="demo-plot" style="height: 400px;">
+      <ScatterPlot
+        series={[lin_log_transition_data]}
+        x_label="X Axis (Linear)"
+        y_label="Y Axis"
+        markers="line+points"
+        y_scale_type={lin_log_y_scale_type}
+        y_lim={lin_log_y_scale_type === `log` ? [1e-9, null] : [null, null]}
+      />
     </div>
   </section>
 </div>

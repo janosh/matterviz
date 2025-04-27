@@ -4,7 +4,7 @@
   import * as d3_symbols from 'd3-shape'
   import { type SymbolType, symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenedOptions } from 'svelte/motion'
 
   interface Props {
     x: number
@@ -13,9 +13,8 @@
     hover?: HoverStyle
     label?: LabelStyle
     offset?: Point[`offset`]
-    tween_duration?: number
-    origin_x?: number
-    origin_y?: number
+    point_tween?: TweenedOptions<{ x: number; y: number }>
+    origin?: { x: number; y: number }
   }
   let {
     x,
@@ -24,9 +23,8 @@
     hover = {},
     label = {},
     offset = { x: 0, y: 0 },
-    tween_duration = 600,
-    origin_x = 0,
-    origin_y = 0,
+    point_tween,
+    origin = { x: 0, y: 0 },
   }: Props = $props()
 
   const {
@@ -53,7 +51,6 @@
   } = label
 
   const symbol_map: Record<string, SymbolType> = {}
-
   Object.entries(d3_symbols).forEach(([key, value]) => {
     if (key.startsWith(`symbol`) && typeof value === `object`) {
       // Convert camelCase to snake_case used internally
@@ -70,18 +67,17 @@
 
   let marker_path = $derived.by(get_symbol_path)
 
-  const tween_params = { duration: tween_duration, easing: cubicOut }
-  const tweened_x = new Tween(origin_x, tween_params)
-  const tweened_y = new Tween(origin_y, tween_params)
+  const default_tween = { duration: 600, easing: cubicOut }
+  // Single tween for {x, y} coordinates
+  const tweened_coords = new Tween(origin, { ...default_tween, ...point_tween })
 
   $effect.pre(() => {
-    tweened_x.target = x + offset.x
-    tweened_y.target = y + offset.y
+    tweened_coords.target = { x: x + offset.x, y: y + offset.y }
   })
 </script>
 
 <g
-  transform="translate({tweened_x.current} {tweened_y.current})"
+  transform="translate({tweened_coords.current.x} {tweened_coords.current.y})"
   class:hover_effect={hover_enabled}
   style:--hover-scale={hover_scale}
   style:--hover-stroke={hover_stroke}

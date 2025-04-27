@@ -17,12 +17,12 @@ Here's a `ColorBar` with tick labels, using the new `tick_align` prop:
 <div style="border: 0.1px dashed white;">
   {#each bars as [color_scale, tick_align, tick_labels, range, align_desc]}
     <ColorBar
-      label="{color_scale}<br>&bull; tick align={align_desc}<br>&bull; range={range}"
+      title="{color_scale}<br>&bull; tick align={align_desc}<br>&bull; range={range}"
       {color_scale}
       {tick_align}
       {tick_labels}
       {range}
-      label_style="white-space: nowrap; padding-right: 1em;"
+      title_style="white-space: nowrap; padding-right: 1em;"
       --cbar-width="100%"
       --cbar-padding="2em"
     />
@@ -41,7 +41,7 @@ You can make fat and skinny bars:
 
 <ColorBar {wrapper_style} style="width: 10em; height: 1ex;" />
 <br />
-<ColorBar label="Viridis" {wrapper_style} style="width: 3em; height: 2em;" />
+<ColorBar title="Viridis" {wrapper_style} style="width: 3em; height: 2em;" />
 <br />
 <ColorBar {wrapper_style} --cbar-width="8em" --cbar-height="2em" />
 ```
@@ -82,7 +82,7 @@ You can make fat and skinny bars:
   <TableInset  style="place-items: center; padding: 2em;">
     <ColorBar
       {color_scale}
-      label={heatmap_key}
+      title={heatmap_key}
       range={heat_range}
       tick_labels={5}
       tick_align="primary"
@@ -103,32 +103,32 @@ You can make fat and skinny bars:
 </style>
 ```
 
-Example demonstrating `label_side` and `tick_align` interaction:
+Example demonstrating `title_side` and `tick_align` interaction:
 
 ```svelte example stackblitz
 <script>
   import { ColorBar } from '$lib'
 
-  const label_sides = [`top`, `bottom`, `left`, `right`]
+  const title_sides = [`top`, `bottom`, `left`, `right`]
   const tick_sides = [`primary`, `secondary`, `inside`]
 </script>
 
 <section>
-  {#each label_sides as label_side, l_idx}
+  {#each title_sides as title_side, l_idx}
     {#each tick_sides as tick_side, t_idx}
       {@const orientation =
-        label_side === `top` || label_side === `bottom` ? `horizontal` : `vertical`}
+        title_side === `top` || title_side === `bottom` ? `horizontal` : `vertical`}
       {@const bar_style = orientation === `horizontal` ? `width: 150px; height: 20px;` : `width: 20px; height: 150px;`}
       {@const num_ticks = l_idx + t_idx + 2}
       {@const current_range = [l_idx * 10, (l_idx + 1) * 10 + t_idx * 20]}
       <div>
-        <code>label={label_side}<br />tick={tick_side}</code>
+        <code>title={title_side}<br />tick={tick_side}</code>
         <ColorBar
-          {label_side}
+          {title_side}
           {tick_side}
           {orientation}
           style={bar_style}
-          label="Label"
+          title="Label"
           tick_labels={num_ticks}
           range={current_range}
           --cbar-tick-overlap-offset="10px"
@@ -162,4 +162,43 @@ Example demonstrating `label_side` and `tick_align` interaction:
     text-align: center;
   }
 </style>
+```
+
+## Date/Time Ranges
+
+You can format tick labels for date/time ranges by providing a D3 format string via the `tick_format` prop. The color bar accepts ranges as milliseconds since the epoch (standard JavaScript `Date.getTime()`).
+
+```svelte example stackblitz
+<script>
+  import { ColorBar } from '$lib'
+
+  // Example date range (e.g., start and end of 2024)
+  const date_range = [
+    new Date(2024, 0, 1).getTime(), // Jan 1, 2024
+    new Date(2024, 11, 31).getTime(), // Dec 31, 2024
+  ]
+</script>
+
+<div style="display: flex; column; gap: 2em; align-items: center;">
+  <ColorBar
+    title="Year 2024 (YYYY-MM-DD)"
+    range={date_range}
+    tick_format="%Y-%m-%d"
+    tick_labels={2} />
+
+  <ColorBar
+    title="Year 2024 (Month Day)"
+    range={date_range}
+    style="width: 500px;"
+    tick_format="%b %d"
+    tick_labels={7} />
+
+  <ColorBar
+    title="Year 2024 (Vertical - Mmm DD, YY)"
+    range={date_range}
+    tick_format="%b %d, '%y"
+    tick_labels={4}
+    orientation="vertical"
+    wrapper_style="height: 200px;" />
+</div>
 ```

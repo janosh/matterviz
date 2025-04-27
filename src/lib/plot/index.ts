@@ -64,13 +64,13 @@ export interface PlotPoint extends Point {
   point_hover?: HoverStyle
   point_label?: LabelStyle
   point_offset?: { x: number; y: number } // Individual point offset (distinct from label offset)
-  point_tween_duration?: number
+  point_tween?: TweenedOptions<{ x: number; y: number }>
 }
 
 // Define the structure for a data series in the plot
 export interface DataSeries {
-  x: number[]
-  y: number[]
+  x: readonly number[]
+  y: readonly number[]
   // Optional marker display type override for this specific series
   markers?: `line` | `points` | `line+points`
   color_values?: (number | null)[] | null
@@ -79,7 +79,7 @@ export interface DataSeries {
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
   point_offset?: { x: number; y: number }[] | { x: number; y: number } // Can be array or single object
-  point_tween_duration?: number
+  point_tween?: TweenedOptions<{ x: number; y: number }>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
 }
