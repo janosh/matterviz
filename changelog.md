@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
-#### [v0.3.8](https://github.com/janosh/elementari/compare/v0.3.8...v0.3.8)
+#### [v0.3.9](https://github.com/janosh/elementari/compare/v0.3.8...v0.3.9)
+
+> 27 April 2025
+
+- `ScatterPlot` allow custom tween easing and interpolation functions + fix NaNs in interpolated ScatterPoint coords when tweening between linear/log scaled [`#62`](https://github.com/janosh/elementari/pull/62)
 
 #### [v0.3.8](https://github.com/janosh/elementari/compare/v0.3.7...v0.3.8)
 
