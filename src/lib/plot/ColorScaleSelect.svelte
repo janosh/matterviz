@@ -37,10 +37,10 @@
 >
   {#snippet children({ option }: { option: string })}
     <ColorBar
-      label={option}
+      title={option}
       color_scale={option}
       tick_labels={0}
-      label_side="left"
+      title_side="left"
       wrapper_style="min-width: 18em;"
       {...cbar_props}
     />

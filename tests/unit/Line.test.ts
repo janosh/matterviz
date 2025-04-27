@@ -1,5 +1,7 @@
 import { Line } from '$lib'
+import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
+import { sineIn } from 'svelte/easing'
 import { beforeEach, describe, expect, test } from 'vitest'
 
 describe(`Line`, () => {
@@ -89,8 +91,9 @@ describe(`Line`, () => {
     ] as [number, number][]
     mount(Line, {
       target: target_div,
-      props: { points: points_3, origin, tween_duration: 0 },
+      props: { points: points_3, origin, line_tween: { duration: 0 } },
     })
+
     const paths_3 = target_div.querySelectorAll(`path`)
     expect(paths_3[0].getAttribute(`d`)).toMatch(/^M0,100C.*100,0.*C.*200,100$/)
 
@@ -104,8 +107,9 @@ describe(`Line`, () => {
     ] as [number, number][]
     mount(Line, {
       target: target_div, // Reuse the cleaned div
-      props: { points: points_2, origin, tween_duration: 0 },
+      props: { points: points_2, origin, line_tween: { duration: 0 } },
     })
+
     const paths_2 = target_div.querySelectorAll(`path`)
     expect(paths_2[0].getAttribute(`d`)).toMatch(/^M0,100L100,0$/)
   })
@@ -119,7 +123,7 @@ describe(`Line`, () => {
 
     mount(Line, {
       target: target_div,
-      props: { points, origin, tween_duration: 0 },
+      props: { points, origin, line_tween: { duration: 0 } },
     })
 
     const area_path = target_div.querySelectorAll(`path`)[1]
@@ -164,12 +168,37 @@ describe(`Line`, () => {
 
     mount(Line, {
       target: target_div,
-      props: { points, origin, tween_duration: 0 },
+      props: { points, origin, line_tween: { duration: 0 } },
     })
 
     const paths = target_div.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
     expect(paths[0].getAttribute(`d`)).toMatch(/^M50,50Z?$/)
     expect(paths[1].getAttribute(`d`)).toMatch(/^M50,50Z?L50,100L50,100Z$/)
+  })
+
+  test(`applies custom tween options (easing, interpolate)`, () => {
+    const points: [number, number][] = [
+      [10, 10],
+      [50, 50],
+    ]
+    const origin: [number, number] = [0, 100]
+
+    const custom_tween = {
+      duration: 500,
+      easing: sineIn, // Custom easing function
+      interpolate: interpolatePath, // Custom interpolator for paths
+    }
+
+    const component = mount(Line, {
+      target: target_div,
+      props: { points, origin, line_tween: custom_tween },
+    })
+
+    expect(component).toBeTruthy() // Primary check: Component mounts without error
+    const paths = target_div.querySelectorAll(`path`)
+    expect(paths.length).toBe(2)
+    // Further checks on internal tween state are difficult in unit tests,
+    // but mounting confirms the props were accepted.
   })
 })
