@@ -262,6 +262,86 @@
     }))
   })
 
+  // === Automatic Color Bar Placement Data ===
+  let auto_placement_density = $state({
+    top_left: 10,
+    top_right: 50,
+    bottom_left: 10,
+    bottom_right: 10,
+  })
+
+  // Function to generate points within a specific quadrant for the demo
+  const make_quadrant_points = (
+    count: number,
+    x_range: [number, number],
+    y_range: [number, number],
+  ) => {
+    const points = []
+    for (let idx = 0; idx < count; idx++) {
+      const x_val = x_range[0] + Math.random() * (x_range[1] - x_range[0])
+      const y_val = y_range[0] + Math.random() * (y_range[1] - y_range[0])
+      // Assign a color value (e.g., based on distance from origin)
+      const center_x = x_range[0] + (x_range[1] - x_range[0]) / 2
+      const center_y = y_range[0] + (y_range[1] - y_range[0]) / 2
+      const color_val = Math.sqrt(center_x ** 2 + center_y ** 2) * Math.random() * 2 // Add some variation
+
+      points.push({
+        x: x_val,
+        y: y_val,
+        color_value: color_val,
+        // label: color_val.toFixed(1),
+      })
+    }
+    return points
+  }
+
+  // Reactive generation of plot data based on densities for the demo
+  let auto_placement_plot_series = $derived.by(() => {
+    const plot_width = 100
+    const plot_height = 100
+    const center_x = plot_width / 2
+    const center_y = plot_height / 2
+
+    // Note: The demo markdown had reversed y-axis quadrants mapping (e.g. density.bottom_left -> [0, center_y])
+    // Correcting here for standard Cartesian mapping
+    const tl_points = make_quadrant_points(
+      auto_placement_density.top_left,
+      [0, center_x],
+      [center_y, plot_height],
+    )
+    const tr_points = make_quadrant_points(
+      auto_placement_density.top_right,
+      [center_x, plot_width],
+      [center_y, plot_height],
+    )
+    const bl_points = make_quadrant_points(
+      auto_placement_density.bottom_left,
+      [0, center_x],
+      [0, center_y],
+    )
+    const br_points = make_quadrant_points(
+      auto_placement_density.bottom_right,
+      [center_x, plot_width],
+      [0, center_y],
+    )
+
+    const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points]
+
+    return [
+      {
+        x: all_points.map((p) => p.x),
+        y: all_points.map((p) => p.y),
+        color_values: all_points.map((p) => p.color_value),
+        // point_label: all_points.map(p => ({ text: p.label, offset_y: -10, font_size: '14px' })),
+        point_style: {
+          radius: 5,
+          stroke: `white`,
+          stroke_width: 0.5,
+        },
+      },
+    ]
+  })
+
   // Legend test data
   const legend_single_series: DataSeries[] = [
     { x: [1, 2], y: [3, 4], metadata: { label: `Single Series` } },
@@ -495,6 +575,52 @@
         style="height: 450px; width: 100%;"
       />
     {/key}
+  </section>
+
+  <section class="demo-section" id="auto-colorbar-placement">
+    <h2>Automatic Color Bar Placement</h2>
+    <p>
+      This example demonstrates how the color bar automatically positions itself based on
+      point density.
+    </p>
+    <div
+      style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center; margin-bottom: 1em;"
+    >
+      {#each [[`top_left`, `Top Left`], [`top_right`, `Top Right`], [`bottom_left`, `Bottom Left`], [`bottom_right`, `Bottom Right`]] as const as [quadrant, label] (label)}
+        <label>
+          {label}: {auto_placement_density[quadrant]}
+          <input
+            type="range"
+            min="0"
+            max="100"
+            bind:value={auto_placement_density[quadrant]}
+            style="width: 100px; margin-left: 0.5em;"
+          />
+        </label>
+      {/each}
+    </div>
+
+    <div class="demo-plot" style="height: 450px;">
+      <ScatterPlot
+        series={auto_placement_plot_series}
+        x_label="X Position"
+        y_label="Y Position"
+        x_lim={[0, 100]}
+        y_lim={[0, 100]}
+        markers="points"
+        color_scheme="turbo"
+        color_bar={{ title: `Color Bar Title` }}
+      >
+        {#snippet tooltip({ x, y, color_value })}
+          <div
+            style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;"
+          >
+            Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
+            Color value: {color_value?.toFixed(2)}
+          </div>
+        {/snippet}
+      </ScatterPlot>
+    </div>
   </section>
 
   <section id="legend-tests">

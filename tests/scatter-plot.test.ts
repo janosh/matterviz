@@ -277,7 +277,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     return { ticks, range }
   }
 
-  test(`zooms correctly on drag and resets on double-click`, async ({
+  test(`zooms correctly inside and outside plot area and resets, tooltip appears during drag`, async ({
     page,
   }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
@@ -285,8 +285,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const x_axis = plot_locator.locator(`g.x-axis`)
     const y_axis = plot_locator.locator(`g.y-axis`)
     const zoom_rect = plot_locator.locator(`rect.zoom-rect`)
+    const tooltip = plot_locator.locator(`div.tooltip`)
 
-    // 1. Wait for axes to be ready and get initial state
+    // Capture console errors
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+    // Capture page errors (uncaught exceptions)
+    const page_errors: Error[] = []
+    page.on(`pageerror`, (error) => page_errors.push(error))
+
+    // --- 1. Get initial state ---
     await x_axis
       .locator(`.tick text`)
       .first()
@@ -303,48 +313,105 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(initial_x.range).toBeGreaterThan(0)
     expect(initial_y.range).toBeGreaterThan(0)
 
-    // 2. Perform zoom drag
-    const svg_box = await svg.boundingBox()
+    // --- 2. Perform zoom drag INSIDE plot area ---
+    let svg_box = await svg.boundingBox()
     expect(svg_box).toBeTruthy()
-    const start_x = svg_box!.x + svg_box!.width * 0.3
-    const start_y = svg_box!.y + svg_box!.height * 0.7
-    const end_x = svg_box!.x + svg_box!.width * 0.7
-    const end_y = svg_box!.y + svg_box!.height * 0.3
+    let start_x = svg_box!.x + svg_box!.width * 0.3
+    let start_y = svg_box!.y + svg_box!.height * 0.7
+    let end_x = svg_box!.x + svg_box!.width * 0.7
+    let end_y = svg_box!.y + svg_box!.height * 0.3
 
     await page.mouse.move(start_x, start_y)
     await page.mouse.down()
-    await page.mouse.move(end_x, end_y, { steps: 5 }) // Smooth move
 
-    // Check zoom rectangle is visible and has dimensions during drag
+    // --- 2b. Move mouse during drag, check tooltip --- //
+    // Estimate coordinates for point (x=5, y=20)
+    // x=5 is roughly 40-50% across the x-axis [1, 10]
+    // y=20 is roughly 60-70% up the y-axis [10, 28]
+    const target_point_x = svg_box!.x + svg_box!.width * 0.45
+    const target_point_y = svg_box!.y + svg_box!.height * (1 - 0.65) // Y is inverted
+
+    // Move over the target point area
+    await page.mouse.move(target_point_x, target_point_y, { steps: 10 })
+    // Tooltip should appear during drag over a point
+    await expect(tooltip).toBeVisible({ timeout: 1000 })
+    await expect(tooltip).toContainText(`x: 5`) // Check tooltip content for x=5
+    await expect(tooltip).toContainText(`y: 20`) // Check tooltip content for y=20
+
+    // Move to the final zoom corner
+    await page.mouse.move(end_x, end_y, { steps: 5 })
+
     await expect(zoom_rect).toBeVisible()
     const rect_box = await zoom_rect.boundingBox()
-    expect(rect_box).toBeTruthy()
     expect(rect_box!.width).toBeGreaterThan(0)
     expect(rect_box!.height).toBeGreaterThan(0)
 
     await page.mouse.up()
-    await expect(zoom_rect).not.toBeVisible() // Rect disappears after mouse up
+    await expect(zoom_rect).not.toBeVisible()
 
-    // 3. Verify ticks have changed and range decreased (zoomed)
-    const zoomed_x = await get_tick_range(x_axis)
-    const zoomed_y = await get_tick_range(y_axis)
-    expect(zoomed_x.ticks).not.toEqual(initial_x.ticks)
-    expect(zoomed_y.ticks).not.toEqual(initial_y.ticks)
-    expect(zoomed_x.range).toBeLessThan(initial_x.range)
-    expect(zoomed_y.range).toBeLessThan(initial_y.range)
-    expect(zoomed_x.range).toBeGreaterThan(0) // Range still positive
-    expect(zoomed_y.range).toBeGreaterThan(0)
+    // --- 3. Verify INSIDE zoom state ---
+    const zoomed_inside_x = await get_tick_range(x_axis)
+    const zoomed_inside_y = await get_tick_range(y_axis)
+    expect(zoomed_inside_x.ticks).not.toEqual(initial_x.ticks)
+    expect(zoomed_inside_y.ticks).not.toEqual(initial_y.ticks)
+    expect(zoomed_inside_x.range).toBeLessThan(initial_x.range)
+    expect(zoomed_inside_y.range).toBeLessThan(initial_y.range)
+    expect(zoomed_inside_x.range).toBeGreaterThan(0)
+    expect(zoomed_inside_y.range).toBeGreaterThan(0)
 
-    // 4. Double-click to reset zoom
+    // --- 4. Perform zoom drag OUTSIDE plot area (from current zoomed state) ---
+    svg_box = await svg.boundingBox() // Get bounds again, might have changed slightly
+    expect(svg_box).toBeTruthy()
+    // Start inside the *current* view (e.g., bottom-right of the zoomed area)
+    start_x = svg_box!.x + svg_box!.width * 0.8
+    start_y = svg_box!.y + svg_box!.height * 0.8
+    // End significantly outside the original top-left
+    end_x = initial_x.ticks[0] - 50 // Using initial axis range info for context
+    end_y = initial_y.ticks[0] - 50
+
+    await page.mouse.move(start_x, start_y)
+    await page.mouse.down()
+
+    // Move towards edge and outside
+    await page.mouse.move(svg_box!.x + 5, svg_box!.y + 5, { steps: 5 })
+    await expect(zoom_rect).toBeVisible()
+    const rect_box_inside = await zoom_rect.boundingBox()
+    expect(rect_box_inside!.width).toBeGreaterThan(0)
+
+    await page.mouse.move(end_x, end_y, { steps: 5 })
+    await expect(zoom_rect).toBeVisible()
+    const rect_box_outside = await zoom_rect.boundingBox()
+    expect(rect_box_outside!.width).toBeGreaterThan(rect_box_inside!.width)
+    expect(rect_box_outside!.height).toBeGreaterThan(rect_box_inside!.height)
+
+    await page.mouse.up() // Release mouse outside
+    await expect(zoom_rect).not.toBeVisible()
+
+    // --- 5. Verify OUTSIDE zoom state ---
+    const zoomed_outside_x = await get_tick_range(x_axis)
+    const zoomed_outside_y = await get_tick_range(y_axis)
+
+    // Check it changed from the *previous* zoomed state
+    expect(zoomed_outside_x.ticks).not.toEqual(zoomed_inside_x.ticks)
+    expect(zoomed_outside_y.ticks).not.toEqual(zoomed_inside_y.ticks)
+
+    // Check range is valid and different from zoomed-in state
+    expect(zoomed_outside_x.range).toBeGreaterThan(0)
+    expect(zoomed_outside_y.range).toBeGreaterThan(0)
+    expect(zoomed_outside_y.range).not.toBeCloseTo(zoomed_inside_y.range)
+
+    // --- 6. Double-click to reset zoom: Verify ticks and ranges have reset to initial state ---
     await svg.dblclick()
-
-    // 5. Verify ticks and ranges have reset
     const reset_x = await get_tick_range(x_axis)
     const reset_y = await get_tick_range(y_axis)
     expect(reset_x.ticks).toEqual(initial_x.ticks)
     expect(reset_y.ticks).toEqual(initial_y.ticks)
-    expect(reset_x.range).toBeCloseTo(initial_x.range) // Use toBeCloseTo for float precision
+    expect(reset_x.range).toBeCloseTo(initial_x.range)
     expect(reset_y.range).toBeCloseTo(initial_y.range)
+
+    // --- 7. Check for errors during the test --- //
+    expect(page_errors).toHaveLength(0)
+    expect(console_errors).toHaveLength(0)
   })
 
   // --- Label Auto Placement Tests ---
@@ -631,5 +698,108 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Assert no errors occurred during transitions
     expect(page_errors).toHaveLength(0)
     expect(console_errors).toHaveLength(0)
+  })
+})
+
+// --- Automatic Color Bar Placement Tests ---
+test.describe(`Automatic Color Bar Placement`, () => {
+  // Helper to set density sliders
+  async function set_density(
+    page: Page,
+    section_locator: Locator,
+    densities: { tl: number; tr: number; bl: number; br: number },
+  ): Promise<void> {
+    const set_slider = async (label_text: string, value: number) => {
+      const input_locator = section_locator.locator(
+        `label:has-text('${label_text}') input`,
+      )
+      await input_locator.evaluate((el, val) => {
+        const input = el as HTMLInputElement
+        input.value = val.toString()
+        // Dispatch events to simulate user interaction and trigger Svelte updates
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      }, value)
+    }
+
+    await set_slider(`Top Left`, densities.tl)
+    await set_slider(`Top Right`, densities.tr)
+    await set_slider(`Bottom Left`, densities.bl)
+    await set_slider(`Bottom Right`, densities.br)
+
+    // Wait a short time for Svelte reactivity and tweening
+    await page.waitForTimeout(500) // Allow time for tween
+  }
+
+  // Helper to get the transform style of the color bar wrapper
+  async function get_colorbar_transform(
+    section_locator: Locator,
+  ): Promise<string> {
+    const colorbar_wrapper = section_locator.locator(
+      `div.colorbar[style*='position: absolute']`,
+    )
+    await colorbar_wrapper.waitFor({ state: `visible`, timeout: 1000 })
+    const transform = await colorbar_wrapper.evaluate((el) => {
+      // Get computed style to resolve the final transform value
+      return window.getComputedStyle(el).transform
+    })
+    // Normalize matrix to simpler translate for easier comparison
+    if (transform.startsWith(`matrix`)) {
+      // Basic parsing for translate values from matrix(1, 0, 0, 1, tx, ty)
+      const parts = transform.match(/matrix\((.+)\)/)
+      if (parts && parts[1]) {
+        const values = parts[1].split(`,`).map((s) => parseFloat(s.trim()))
+        if (values.length === 6) {
+          const tx = values[4]
+          const ty = values[5]
+          if (Math.abs(tx) < 1 && Math.abs(ty) < 1) return `` // Effectively (0, 0)
+          if (Math.abs(tx) > 1 && Math.abs(ty) < 1)
+            return `translateX(${tx < 0 ? `-100%` : `100%`})` // Approximate
+          if (Math.abs(tx) < 1 && Math.abs(ty) > 1)
+            return `translateY(${ty < 0 ? `-100%` : `100%`})` // Approximate
+          if (Math.abs(tx) > 1 && Math.abs(ty) > 1)
+            return `translate(${tx < 0 ? `-100%` : `100%`}, ${ty < 0 ? `-100%` : `100%`})` // Approximate
+        }
+      }
+    } else if (transform === `none`) {
+      return ``
+    }
+    // Return original if not a simple matrix or none
+    return transform
+  }
+
+  test.beforeEach(async ({ page }) => {
+    // Assuming the demo is on the scatter-plot test page
+    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+  })
+
+  test(`colorbar moves to top-left when least dense`, async ({ page }) => {
+    const section = page.locator(`#auto-colorbar-placement`)
+    await set_density(page, section, { tl: 0, tr: 50, bl: 50, br: 50 })
+    const transform = await get_colorbar_transform(section)
+    expect(transform).toBe(``) // Expect no transform for top-left
+  })
+
+  test(`colorbar moves to top-right when least dense`, async ({ page }) => {
+    const section = page.locator(`#auto-colorbar-placement`)
+    await set_density(page, section, { tl: 50, tr: 0, bl: 50, br: 50 })
+    const transform = await get_colorbar_transform(section)
+    expect(transform).toContain(`translateX(-100%)`) // Expect X transform for top-right
+    expect(transform).not.toContain(`translateY`) // Should not have Y transform
+  })
+
+  test(`colorbar moves to bottom-left when least dense`, async ({ page }) => {
+    const section = page.locator(`#auto-colorbar-placement`)
+    await set_density(page, section, { tl: 50, tr: 50, bl: 0, br: 50 })
+    const transform = await get_colorbar_transform(section)
+    expect(transform).toContain(`translateY(-100%)`) // Expect Y transform for bottom-left
+    expect(transform).not.toContain(`translateX`) // Should not have X transform
+  })
+
+  test(`colorbar moves to bottom-right when least dense`, async ({ page }) => {
+    const section = page.locator(`#auto-colorbar-placement`)
+    await set_density(page, section, { tl: 50, tr: 50, bl: 50, br: 0 })
+    const transform = await get_colorbar_transform(section)
+    expect(transform).toContain(`translate(-100%, -100%)`) // Expect X and Y transform
   })
 })
