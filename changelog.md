@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.10](https://github.com/janosh/elementari/compare/v0.3.9...v0.3.10)
+
+> 28 April 2025
+
+- Fix ScatterPlot zoom [`#63`](https://github.com/janosh/elementari/pull/63)
+
 #### [v0.3.9](https://github.com/janosh/elementari/compare/v0.3.8...v0.3.9)
 
 > 27 April 2025
