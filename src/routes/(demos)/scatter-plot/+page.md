@@ -1029,11 +1029,18 @@ This example demonstrates how the color bar automatically positions itself in on
   })
 </script>
 
-<div>
+<div id="auto-colorbar-placement">
   <div style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center;">
     {#each [['top_left', 'Top Left'], ['top_right', 'Top Right'], ['bottom_left', 'Bottom Left'], ['bottom_right', 'Bottom Right']] as [quadrant, label]}
       <label>{label}: {density[quadrant]}
-        <input type="range" min="0" max="100" bind:value={density[quadrant]} style="width: 100px; margin-left: 0.5em;" />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={density[quadrant]}
+          onchange={(evt) => (density[quadrant] = evt.target.value)}
+          style="width: 100px; margin-left: 0.5em;"
+        />
       </label>
     {/each}
   </div>
@@ -1046,7 +1053,7 @@ This example demonstrates how the color bar automatically positions itself in on
     y_lim={[0, 100]}
     markers="points+text"
     color_scheme="turbo"
-    color_bar={{ label: `Color Bar Title` }}
+    color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
     style="height: 450px; width: 100%;"
   >
     {#snippet tooltip({ x, y, metadata, color_value })}
@@ -1210,8 +1217,8 @@ This example shows how to place the color bar vertically on the right side of th
     {color_scale_type}
     padding={plot_padding}
     color_bar={{
+      title: `Color Bar Title (${color_scale_type})`,
       orientation: `vertical`,
-      label: `Color Bar Title (${color_scale_type})`,
       tick_side: `primary`,
       wrapper_style: `
         position: absolute;

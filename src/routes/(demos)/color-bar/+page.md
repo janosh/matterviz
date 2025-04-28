@@ -5,26 +5,24 @@ Here's a `ColorBar` with tick labels, using the new `tick_align` prop:
 ```svelte example stackblitz
 <script>
   import { ColorBar } from '$lib'
-
-  const bars = [
-    // [color_scale, tick_align, tick_labels, range, label_text]
-    [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1], `bottom/right (primary)`],
-    [`Magma`, `secondary`, [], [100, 1631], `top/left (secondary)`],
-    [`Cividis`, `primary`, [], [-99.9812, -10], `bottom/right (primary)`],
-  ]
 </script>
 
 <div style="border: 0.1px dashed white;">
-  {#each bars as [color_scale, tick_align, tick_labels, range, align_desc]}
+  {#each [
+    // [color_scale, tick_align, tick_labels, range, label_text]
+    [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]],
+    [`Magma`, `secondary`, 10, [100, 1631]],
+    [`Cividis`, `primary`, 4, [-99.9812, -10]],
+  ] as [color_scale, tick_align, tick_labels, range]}
     <ColorBar
-      title="{color_scale}<br>&bull; tick align={align_desc}<br>&bull; range={range}"
+      title="color_scale={color_scale} &emsp; tick_align={tick_align} &emsp; range={range}"
       {color_scale}
       {tick_align}
       {tick_labels}
       {range}
-      title_style="white-space: nowrap; padding-right: 1em;"
-      --cbar-width="100%"
-      --cbar-padding="2em"
+      tick_format=".2f"
+      title_style="padding: 1em;"
+      --cbar-padding="3em"
     />
   {/each}
 </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { pretty_num } from '$lib'
+  import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
@@ -255,9 +256,15 @@
       `}
 
       <span style={tick_inline_style} class="tick-label">
-        {tick_format
-          ? timeFormat(tick_format)(new Date(tick_label))
-          : pretty_num(tick_label)}
+        {#if tick_format}
+          {#if tick_format.startsWith(`%`)}
+            {timeFormat(tick_format)(new Date(tick_label))}
+          {:else}
+            {format(tick_format)(tick_label)}
+          {/if}
+        {:else}
+          {pretty_num(tick_label)}
+        {/if}
       </span>
     {/each}
   </div>

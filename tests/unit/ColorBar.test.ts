@@ -290,6 +290,93 @@ describe(`ColorBar Date/Time Formatting`, () => {
   })
 })
 
+describe(`ColorBar Numeric Formatting`, () => {
+  test(`formats ticks correctly using numeric d3-format (e.g., '.1f')`, () => {
+    mount(ColorBar, {
+      target: document.body,
+      props: {
+        range: [0, 10],
+        tick_format: `.1f`, // Format to one decimal place
+        tick_labels: 6, // Request 6 ticks (0, 2, 4, 6, 8, 10)
+        snap_ticks: true, // Use nice range
+      },
+    })
+
+    const tick_label_spans = document.querySelectorAll(
+      `.colorbar > div.bar > span.tick-label`,
+    )
+    expect(tick_label_spans.length).toBe(6)
+    expect(tick_label_spans[0].textContent).toBe(`0.0`)
+    expect(tick_label_spans[1].textContent).toBe(`2.0`)
+    expect(tick_label_spans[2].textContent).toBe(`4.0`)
+    expect(tick_label_spans[3].textContent).toBe(`6.0`)
+    expect(tick_label_spans[4].textContent).toBe(`8.0`)
+    expect(tick_label_spans[5].textContent).toBe(`10.0`)
+  })
+
+  test(`formats ticks with percentage format ('p')`, () => {
+    mount(ColorBar, {
+      target: document.body,
+      props: {
+        range: [0, 1],
+        tick_format: `.0%`, // Format as percentage with no decimals
+        tick_labels: 5, // Request 5 ticks (0, 0.25, 0.5, 0.75, 1)
+        snap_ticks: false, // Use exact range
+      },
+    })
+
+    const tick_label_spans = document.querySelectorAll(
+      `.colorbar > div.bar > span.tick-label`,
+    )
+    expect(tick_label_spans.length).toBe(5)
+    expect(tick_label_spans[0].textContent).toBe(`0%`)
+    expect(tick_label_spans[1].textContent).toBe(`25%`)
+    expect(tick_label_spans[2].textContent).toBe(`50%`)
+    expect(tick_label_spans[3].textContent).toBe(`75%`)
+    expect(tick_label_spans[4].textContent).toBe(`100%`)
+  })
+
+  test(`falls back to pretty_num when tick_format is undefined`, () => {
+    mount(ColorBar, {
+      target: document.body,
+      props: {
+        range: [0.1234, 5.6789],
+        tick_format: undefined, // Explicitly undefined
+        tick_labels: 3,
+        snap_ticks: false,
+      },
+    })
+
+    const tick_label_spans = document.querySelectorAll(
+      `.colorbar > div.bar > span.tick-label`,
+    )
+    expect(tick_label_spans.length).toBe(3)
+    // Check pretty_num's formatting
+    expect(tick_label_spans[0].textContent).toBe(`0.123`)
+    expect(tick_label_spans[1].textContent).toBe(`2.9`)
+    expect(tick_label_spans[2].textContent).toBe(`5.68`)
+  })
+
+  test(`falls back to pretty_num when tick_format is null`, () => {
+    // Test with null (should behave same as undefined)
+    mount(ColorBar, {
+      target: document.body,
+      props: {
+        range: [1000, 5000],
+        tick_format: undefined, // Use undefined as null is not assignable
+        tick_labels: 2,
+        snap_ticks: false,
+      },
+    })
+    const tick_label_spans = document.querySelectorAll(
+      `.colorbar > div.bar > span.tick-label`,
+    )
+    expect(tick_label_spans.length).toBe(2) // Should be 2 ticks
+    expect(tick_label_spans[0].textContent).toBe(`1k`) // Assuming pretty_num uses 'k' suffix
+    expect(tick_label_spans[1].textContent).toBe(`5k`)
+  })
+})
+
 describe(`ColorBar Other Features`, () => {
   test(`uses explicit tick_labels array`, () => {
     const explicit_ticks = [10, 25, 50, 75, 90]

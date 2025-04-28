@@ -88,7 +88,6 @@ export interface DataSeries {
 export interface InternalPoint extends PlotPoint {
   series_idx: number // Index of the series this point belongs to
   point_idx: number // Index of the point within its series
-  // Inherits all properties from PlotPoint
 }
 
 export type TooltipProps = {
@@ -129,6 +128,7 @@ export interface LabelPlacementConfig {
   link_strength: number // Strength of the link force (pulls label to point)
   link_distance: number // Target distance for the link force
   placement_ticks: number // Number of simulation ticks to run
+  link_distance_range?: [number | null, number | null] // Optional [min, max] range for distance between label and anchor
 }
 export type HoverConfig = {
   threshold_px: number // Max screen distance (pixels) to trigger hover
@@ -158,3 +158,26 @@ export type LegendConfig = Omit<
 
 // Define Sides locally if not exported from $lib/colors
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
+
+// Define grid cell identifiers
+export const cells_3x3 = [
+  `top-left`,
+  `top-center`,
+  `top-right`,
+  `middle-left`,
+  `middle-center`,
+  `middle-right`,
+  `bottom-left`,
+  `bottom-center`,
+  `bottom-right`,
+] as const
+export const corner_cells = [
+  `top-left`,
+  `top-right`,
+  `bottom-left`,
+  `bottom-right`,
+] as const
+
+// Define the structure for GridCell and GridCellCounts for 3x3 grid
+export type Cell3x3 = (typeof cells_3x3)[number]
+export type Corner = (typeof corner_cells)[number]
