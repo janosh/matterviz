@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { Point } from '$lib'
-  import type { HoverStyle, LabelStyle, PointStyle } from '$lib/plot'
+  import type { HoverStyle, LabelStyle, Point, PointStyle, XyObj } from '$lib/plot'
   import * as d3_symbols from 'd3-shape'
   import { type SymbolType, symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
@@ -13,8 +12,8 @@
     hover?: HoverStyle
     label?: LabelStyle
     offset?: Point[`offset`]
-    point_tween?: TweenedOptions<{ x: number; y: number }>
-    origin?: { x: number; y: number }
+    point_tween?: TweenedOptions<XyObj>
+    origin?: XyObj
   }
   let {
     x,
@@ -27,29 +26,6 @@
     origin = { x: 0, y: 0 },
   }: Props = $props()
 
-  const {
-    radius = 2,
-    stroke = `transparent`,
-    stroke_width = 1,
-    stroke_opacity = 1,
-    fill_opacity = 1,
-    marker_type = `circle`,
-    marker_size = null, // if null, derive from radius
-  } = style
-  const {
-    enabled: hover_enabled = true,
-    scale: hover_scale = 1.5,
-    stroke: hover_stroke = `white`,
-    stroke_width: hover_stroke_width = 2,
-  } = hover
-  const {
-    text = ``,
-    offset_x = 5,
-    offset_y = 0,
-    font_size = `10px`,
-    font_family = `sans-serif`,
-  } = label
-
   const symbol_map: Record<string, SymbolType> = {}
   Object.entries(d3_symbols).forEach(([key, value]) => {
     if (key.startsWith(`symbol`) && typeof value === `object`) {
@@ -60,8 +36,9 @@
   })
 
   function get_symbol_path(): string {
-    const symbol_type = symbol_map[marker_type] ?? d3_symbols.symbolCircle
-    const size = marker_size ?? Math.pow(radius, 2) * 3
+    const symbol_type =
+      symbol_map[style.marker_type ?? `circle`] ?? d3_symbols.symbolCircle
+    const size = style.marker_size ?? Math.pow(style.radius ?? 2, 2) * 3
     return symbol().type(symbol_type).size(size)() || ``
   }
 
@@ -78,28 +55,28 @@
 
 <g
   transform="translate({tweened_coords.current.x} {tweened_coords.current.y})"
-  class:hover_effect={hover_enabled}
-  style:--hover-scale={hover_scale}
-  style:--hover-stroke={hover_stroke}
-  style:--hover-stroke-width="{hover_stroke_width}px"
+  class:hover_effect={hover.enabled}
+  style:--hover-scale={hover.scale ?? 1.5}
+  style:--hover-stroke={hover.stroke ?? `white`}
+  style:--hover-stroke-width="{hover.stroke_width ?? 2}px"
 >
   <path
     d={marker_path}
-    {stroke}
-    stroke-width={stroke_width}
-    style:fill-opacity={fill_opacity}
-    style:stroke-opacity={stroke_opacity}
+    stroke={style.stroke ?? `transparent`}
+    stroke-width={style.stroke_width ?? 1}
+    style:fill-opacity={style.fill_opacity}
+    style:stroke-opacity={style.stroke_opacity}
     class="marker"
   />
-  {#if text}
+  {#if label.text}
     <text
-      x={offset_x}
-      y={offset_y}
-      style:font-size={font_size}
-      style:font-family={font_family}
+      x={label?.offset?.x ?? 10}
+      y={label?.offset?.y ?? 0}
+      style:font-size={label?.font_size ?? `10px`}
+      style:font-family={label?.font_family ?? `sans-serif`}
       dominant-baseline="middle"
     >
-      {text}
+      {label.text}
     </text>
   {/if}
 </g>

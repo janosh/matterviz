@@ -1,5 +1,5 @@
 import { ScatterPlot } from '$lib'
-import type { DataSeries, LabelStyle, MarkerType, PointStyle } from '$lib/plot'
+import type { DataSeries, MarkerType } from '$lib/plot'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
 import { cubicOut } from 'svelte/easing'
@@ -819,11 +819,11 @@ describe(`ScatterPlot`, () => {
       point_style: { fill: `steelblue`, radius: 5 },
       // Different text positions around points
       point_label: [
-        { text: `Above`, offset_y: -15, offset_x: 0 },
-        { text: `Right`, offset_x: 15, offset_y: 0 },
-        { text: `Below`, offset_y: 15, offset_x: 0 },
-        { text: `Left`, offset_x: -15, offset_y: 0 },
-        { text: `Diagonal`, offset_x: 10, offset_y: -10 },
+        { text: `Above`, offset: { x: 0, y: -15 } },
+        { text: `Right`, offset: { x: 15, y: 0 } },
+        { text: `Below`, offset: { x: 0, y: 15 } },
+        { text: `Left`, offset: { x: -15, y: 0 } },
+        { text: `Diagonal`, offset: { x: 10, y: -10 } },
       ],
       metadata: Array.from({ length: 5 }, (_, idx) => ({
         position: [`Above`, `Right`, `Below`, `Left`, `Diagonal`][idx],
@@ -851,13 +851,13 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       label_type: `simple labels`,
-      point_label: { text: `Fixed Label`, offset_y: -15 },
+      point_label: { text: `Fixed Label`, offset: { x: 0, y: -15 } },
     },
     {
       label_type: `styled labels`,
       point_label: {
         text: `Styled Label`,
-        offset_y: -15,
+        offset: { x: 0, y: -15 },
         font_size: `14px`,
         font_family: `serif`,
         fill: `darkred`,
@@ -866,21 +866,14 @@ describe(`ScatterPlot`, () => {
     {
       label_type: `array of labels`,
       point_label: [
-        { text: `Point 1`, offset_y: -15 },
-        { text: `Point 2`, offset_y: -15 },
-        { text: `Point 3`, offset_y: -15 },
+        { text: `Point 1`, offset: { x: 0, y: -15 } },
+        { text: `Point 2`, offset: { x: 0, y: -15 } },
+        { text: `Point 3`, offset: { x: 0, y: -15 } },
       ],
     },
   ])(`renders scatter plot with $label_type`, ({ point_label }) => {
-    type DataWithLabels = {
-      x: number[]
-      y: number[]
-      point_style: PointStyle
-      point_label: LabelStyle | LabelStyle[]
-    }
-
     // Create test data with the provided label type
-    const test_data: DataWithLabels = {
+    const test_data = {
       x: [1, 2, 3],
       y: [10, 20, 30],
       point_style: { fill: `steelblue`, radius: 5 },
@@ -917,11 +910,11 @@ describe(`ScatterPlot`, () => {
       ],
       // Matching text annotations
       point_label: [
-        { text: `Circle`, offset_y: -15 },
-        { text: `Diamond`, offset_y: -15 },
-        { text: `Star`, offset_y: -15 },
-        { text: `Triangle`, offset_y: -15 },
-        { text: `Wye`, offset_y: -15 },
+        { text: `Circle`, offset: { x: 0, y: -15 } },
+        { text: `Diamond`, offset: { x: 0, y: -15 } },
+        { text: `Star`, offset: { x: 0, y: -15 } },
+        { text: `Triangle`, offset: { x: 0, y: -15 } },
+        { text: `Wye`, offset: { x: 0, y: -15 } },
       ],
     }
 

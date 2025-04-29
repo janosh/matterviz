@@ -166,8 +166,7 @@ describe(`ScatterPoint`, () => {
   test(`renders point label`, async () => {
     const label = {
       text: `Test Point`,
-      offset_x: 10,
-      offset_y: 5,
+      offset: { x: 10, y: 5 },
       font_size: `12px`,
       font_family: `Arial`,
     }
@@ -177,8 +176,8 @@ describe(`ScatterPoint`, () => {
     })
     const text = doc_query(`text`)
     expect(text.textContent).toBe(label.text)
-    expect(text.getAttribute(`x`)).toBe(String(label.offset_x))
-    expect(text.getAttribute(`y`)).toBe(String(label.offset_y))
+    expect(text.getAttribute(`x`)).toBe(String(label.offset.x))
+    expect(text.getAttribute(`y`)).toBe(String(label.offset.y))
     expect(text.style.fontSize).toBe(label.font_size)
     expect(text.style.fontFamily).toBe(label.font_family)
   })
@@ -228,17 +227,12 @@ describe(`ScatterPoint`, () => {
   })
 
   test(`renders with different text annotation positions`, async () => {
-    type PositionTestCase = {
-      position: string
-      offset_x: number
-      offset_y: number
-    }
-    const positions: PositionTestCase[] = [
-      { position: `above`, offset_x: 0, offset_y: -15 },
-      { position: `right`, offset_x: 15, offset_y: 0 },
-      { position: `below`, offset_x: 0, offset_y: 15 },
-      { position: `left`, offset_x: -15, offset_y: 0 },
-    ]
+    const positions = [
+      { position: `above`, offset: { x: 0, y: -15 } },
+      { position: `right`, offset: { x: 15, y: 0 } },
+      { position: `below`, offset: { x: 0, y: 15 } },
+      { position: `left`, offset: { x: -15, y: 0 } },
+    ] as const
 
     for (const pos of positions) {
       // Re-create container in loop to isolate tests
@@ -249,8 +243,7 @@ describe(`ScatterPoint`, () => {
 
       const label = {
         text: `Point ${pos.position}`,
-        offset_x: pos.offset_x,
-        offset_y: pos.offset_y,
+        offset: pos.offset,
       }
       mount(ScatterPoint, {
         target: document.querySelector(`div`)!,
@@ -258,25 +251,17 @@ describe(`ScatterPoint`, () => {
       })
       const text = doc_query(`text`)
       expect(text.textContent).toBe(label.text)
-      expect(text.getAttribute(`x`)).toBe(String(pos.offset_x))
-      expect(text.getAttribute(`y`)).toBe(String(pos.offset_y))
+      expect(text.getAttribute(`x`)).toBe(String(pos.offset.x))
+      expect(text.getAttribute(`y`)).toBe(String(pos.offset.y))
     }
   })
 
-  test(`applies custom font styling to text annotations`, async () => {
-    type FontTestCase = { name: string; size: string; family: string }
-    const font_cases: FontTestCase[] = [
-      { name: `large serif`, size: `18px`, family: `serif` },
-      { name: `small mono`, size: `10px`, family: `monospace` },
-    ]
-
-    for (const font of font_cases) {
-      // Re-create container in loop to isolate tests
-      document.body.innerHTML = ``
-      const container = document.createElement(`div`)
-      container.setAttribute(`style`, container_style)
-      document.body.appendChild(container)
-
+  test.each([
+    { name: `large serif`, size: `18px`, family: `serif` },
+    { name: `small mono`, size: `10px`, family: `monospace` },
+  ] as const)(
+    `applies custom font styling to text annotations`,
+    async (font) => {
       const label = {
         text: `${font.name} text`,
         font_size: font.size,
@@ -291,8 +276,8 @@ describe(`ScatterPoint`, () => {
       expect(text.style.fontSize).toBe(font.size)
       expect(text.style.fontFamily).toBe(font.family)
       // Note: happy-dom doesn't reliably support font-weight via style property
-    }
-  })
+    },
+  )
 
   describe(`Tween Behavior`, () => {
     beforeEach(() => {
