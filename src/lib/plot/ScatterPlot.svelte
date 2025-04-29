@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { Point } from '$lib'
   import { cells_3x3, ColorBar, corner_cells, Line, marker_types } from '$lib'
   import type { D3ColorSchemeName } from '$lib/colors'
   import type {
@@ -15,11 +14,13 @@
     LineType,
     MarkerType,
     PlotPoint,
+    Point,
     PointStyle,
     ScaleType,
     Sides,
     TimeInterval,
     TooltipProps,
+    XyObj,
   } from '$lib/plot'
   import PlotLegend from '$lib/plot/PlotLegend.svelte'
   import { extent, range } from 'd3-array'
@@ -76,14 +77,14 @@
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
           margin?: number | Sides
-          tween?: TweenedOptions<{ x: number; y: number }>
+          tween?: TweenedOptions<XyObj>
         })
       | null
     // Label auto-placement simulation parameters
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
     legend?: LegendConfig | null // Configuration for the legend
-    point_tween?: TweenedOptions<{ x: number; y: number }>
+    point_tween?: TweenedOptions<XyObj>
     line_tween?: TweenedOptions<string>
   }
   let {
@@ -132,8 +133,8 @@
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
   // State for rectangle zoom selection
-  let drag_start_coords = $state<{ x: number; y: number } | null>(null)
-  let drag_current_coords = $state<{ x: number; y: number } | null>(null)
+  let drag_start_coords = $state<XyObj | null>(null)
+  let drag_current_coords = $state<XyObj | null>(null)
 
   let initial_x_range = $state<[number, number]>([0, 1])
   let initial_y_range = $state<[number, number]>([0, 1])
@@ -143,7 +144,7 @@
   let previous_series_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
 
   // State to hold the calculated label positions after simulation
-  let label_positions = $state<Record<string, { x: number; y: number }>>({})
+  let label_positions = $state<Record<string, XyObj>>({})
 
   // State for initial (non-responsive) legend placement
   let initial_legend_cell = $state<Cell3x3 | null>(null)
@@ -789,7 +790,7 @@
       : formatted
   }
 
-  function get_relative_coords(evt: MouseEvent): { x: number; y: number } | null {
+  function get_relative_coords(evt: MouseEvent): XyObj | null {
     const svg_box = (evt.currentTarget as SVGElement)?.getBoundingClientRect()
     if (!svg_box) return null
     return { x: evt.clientX - svg_box.left, y: evt.clientY - svg_box.top }
@@ -1008,8 +1009,8 @@
             point_node: point,
             label_width,
             label_height,
-            x: anchor_x + (point.point_label.offset_x ?? 5), // Start at default offset
-            y: anchor_y + (point.point_label.offset_y ?? 0),
+            x: anchor_x + (point.point_label.offset?.x ?? 5), // Start at default offset
+            y: anchor_y + (point.point_label.offset?.y ?? 0),
           }
           nodes_to_simulate.push(label_node)
 
@@ -1251,12 +1252,14 @@
                 {@const final_label = calculated_label_pos
                   ? {
                       ...label_style,
-                      offset_x:
-                        calculated_label_pos.x -
-                        (x_format?.startsWith(`%`)
-                          ? x_scale_fn(new Date(point.x))
-                          : x_scale_fn(point.x)),
-                      offset_y: calculated_label_pos.y - y_scale_fn(point.y),
+                      offset: {
+                        x:
+                          calculated_label_pos.x -
+                          (x_format?.startsWith(`%`)
+                            ? x_scale_fn(new Date(point.x))
+                            : x_scale_fn(point.x)),
+                        y: calculated_label_pos.y - y_scale_fn(point.y),
+                      },
                     }
                   : label_style}
                 {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point)}

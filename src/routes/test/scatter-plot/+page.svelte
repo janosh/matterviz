@@ -332,7 +332,7 @@
         x: all_points.map((p) => p.x),
         y: all_points.map((p) => p.y),
         color_values: all_points.map((p) => p.color_value),
-        // point_label: all_points.map(p => ({ text: p.label, offset_y: -10, font_size: '14px' })),
+        // point_label: all_points.map(p => ({ text: p.label, offset: { x: 0, y: -10 }, font_size: '14px' })),
         point_style: {
           radius: 5,
           stroke: `white`,

@@ -1,4 +1,3 @@
-import type { Point } from '$lib'
 import { ColorBar } from '$lib'
 import { type SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps } from 'svelte'
@@ -11,7 +10,11 @@ export { default as ElementScatter } from './ElementScatter.svelte'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
+
 export { default as ScatterPoint } from './ScatterPoint.svelte'
+
+export type XyObj = { x: number; y: number }
+export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Define available marker types based on d3-shape symbols
 export const marker_types = [
@@ -27,6 +30,13 @@ export type MarkerType = (typeof marker_types)[number]
 
 export const line_types = [`solid`, `dashed`, `dotted`] as const
 export type LineType = (typeof line_types)[number]
+
+export type Point = {
+  x: number
+  y: number
+  metadata?: { [key: string]: unknown }
+  offset?: XyObj
+}
 
 export interface PointStyle {
   fill?: string
@@ -49,8 +59,7 @@ export interface HoverStyle {
 
 export interface LabelStyle {
   text?: string
-  offset_x?: number // Default offset if auto_placement is false
-  offset_y?: number // Default offset if auto_placement is false
+  offset?: XyObj // Replace offset_x and offset_y with a single offset object
   font_size?: string
   font_family?: string
   auto_placement?: boolean // Enable/disable auto-placement
@@ -63,8 +72,8 @@ export interface PlotPoint extends Point {
   point_style?: PointStyle
   point_hover?: HoverStyle
   point_label?: LabelStyle
-  point_offset?: { x: number; y: number } // Individual point offset (distinct from label offset)
-  point_tween?: TweenedOptions<{ x: number; y: number }>
+  point_offset?: XyObj // Individual point offset (distinct from label offset)
+  point_tween?: TweenedOptions<XyObj>
 }
 
 // Define the structure for a data series in the plot
@@ -78,8 +87,8 @@ export interface DataSeries {
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
-  point_offset?: { x: number; y: number }[] | { x: number; y: number } // Can be array or single object
-  point_tween?: TweenedOptions<{ x: number; y: number }>
+  point_offset?: XyObj[] | XyObj // Can be array or single object
+  point_tween?: TweenedOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
 }
@@ -152,12 +161,9 @@ export type LegendConfig = Omit<
   `series_data` | `on_toggle`
 > & {
   margin?: number | Sides
-  tween?: TweenedOptions<{ x: number; y: number }>
+  tween?: TweenedOptions<XyObj>
   responsive?: boolean // Allow legend to move if density changes (default: false)
 }
-
-// Define Sides locally if not exported from $lib/colors
-export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Define grid cell identifiers
 export const cells_3x3 = [

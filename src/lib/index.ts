@@ -63,13 +63,6 @@ export type ChemicalElement = {
   year: number | string
 }
 
-export type Point = {
-  x: number
-  y: number
-  metadata?: { [key: string]: unknown }
-  offset?: { x: number; y: number }
-}
-
 export type DispatchPayload = CustomEvent<{
   element: ChemicalElement
   active: boolean // whether the event target tile is currently active

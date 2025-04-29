@@ -1,3 +1,4 @@
+import type { XyObj } from '$lib/plot'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 test.describe(`ScatterPlot Component Tests`, () => {
@@ -419,11 +420,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
   // Helper function to get label positions based on the parent group's transform
   const get_label_positions = async (
     plot_locator: Locator,
-  ): Promise<Record<string, { x: number; y: number }>> => {
+  ): Promise<Record<string, XyObj>> => {
     await plot_locator.waitFor({ state: `visible` })
     await plot_locator.page().waitForTimeout(200) // Allow layout stabilization
 
-    const positions: Record<string, { x: number; y: number }> = {}
+    const positions: Record<string, XyObj> = {}
     const markers = await plot_locator.locator(`path.marker`).all() // Find marker paths
 
     for (const marker of markers) {
