@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.11](https://github.com/janosh/elementari/compare/v0.3.10...v0.3.11)
+
+> 30 April 2025
+
+- ScatterPlot add dynamic size scaling of points based on observed value range in series [`62cc6fc`](https://github.com/janosh/elementari/commit/62cc6fc1a95675d91b2b29200bb8ee3d70752c1f)
+- breaking: ScatterPlot and ScatterPoint use single offset object for labels, replacing offset_x and offset_y [`072c3ac`](https://github.com/janosh/elementari/commit/072c3ac3e44c468ae4cde95e3d79bf2d2b7fc782)
+
 #### [v0.3.10](https://github.com/janosh/elementari/compare/v0.3.9...v0.3.10)
 
 > 28 April 2025
