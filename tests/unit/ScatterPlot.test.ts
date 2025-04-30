@@ -1,5 +1,5 @@
 import { ScatterPlot } from '$lib'
-import type { DataSeries, MarkerType } from '$lib/plot'
+import type { DataSeries, MarkerType, ScaleType } from '$lib/plot'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
 import { cubicOut } from 'svelte/easing'
@@ -2048,8 +2048,7 @@ describe(`ScatterPlot`, () => {
     expect(scatter).toBeTruthy()
   })
 
-  // --- Tests for Color Bar Integration --- //
-
+  // --- Test Color Bar Integration ---
   test(`color bar renders when color_bar prop is an object and data has color values`, () => {
     const data_with_color = {
       x: [1, 2, 3],
@@ -2291,7 +2290,13 @@ describe(`ScatterPlot`, () => {
 
       const component = mount(ScatterPlot, {
         target: document.body,
-        props: { series: [data], x_scale_type, y_scale_type, x_grid, y_grid },
+        props: {
+          series: [data],
+          x_scale_type: x_scale_type as ScaleType, // Cast to ScaleType
+          y_scale_type: y_scale_type as ScaleType, // Cast to ScaleType
+          x_grid,
+          y_grid,
+        },
       })
 
       // Verify component mounted
@@ -2374,4 +2379,109 @@ describe(`ScatterPlot`, () => {
     // Direct assertion of tween options in children is difficult in unit tests.
     // This test primarily ensures ScatterPlot accepts the props and renders.
   })
+
+  // --- Test Point Sizing ---
+  test.each([
+    { scale: `linear`, type: `linear` as ScaleType },
+    { scale: `log`, type: `log` as ScaleType },
+  ])(`renders points with size scaled by values ($scale scale)`, ({ type }) => {
+    // Generate data with size values suitable for the scale type
+    const size_values = type === `log` ? [1, 10, 100] : [1, 5, 10]
+    const data_with_size = {
+      x: [1, 2, 3],
+      y: [10, 20, 30],
+      size_values: size_values,
+      point_style: { fill: `steelblue` }, // Base style
+    }
+
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [data_with_size],
+        markers: `points`,
+        size_scale: { type },
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+  })
+
+  test(`uses size_scale.radius_range and size_scale.value_range props correctly`, () => {
+    const data_with_size = {
+      x: [1, 2, 3, 4, 5],
+      y: [10, 20, 30, 40, 50],
+      size_values: [0, 25, 50, 75, 100], // Values from 0 to 100
+      point_style: { fill: `seagreen` },
+    }
+
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [data_with_size],
+        markers: `points`,
+        size_scale: {
+          radius_range: [5, 20],
+          value_range: [0, 100],
+          type: `linear`,
+        },
+      },
+    })
+
+    // Verify component mounted
+    expect(component).toBeTruthy()
+    const scatter = document.querySelector(`.scatter`)
+    expect(scatter).toBeTruthy()
+    // We can't easily verify exact radius in unit tests, but ensure rendering works
+  })
+
+  test.each([
+    {
+      name: `Series with null/undefined size values`,
+      x: [1, 2, 3],
+      y: [10, 15, 20],
+      size_values: [1, null, null], // Use null instead of undefined
+      point_style: { fill: `blue`, radius: 3 },
+    },
+    {
+      name: `Series with empty size values array`,
+      x: [4, 5],
+      y: [25, 30],
+      size_values: [],
+      point_style: { fill: `red`, radius: 4 },
+    },
+    {
+      name: `Series with a single size value`,
+      x: [6],
+      y: [35],
+      size_values: [50],
+      point_style: { fill: `green` },
+    },
+    {
+      name: `Series with all same size values`,
+      x: [7, 8, 9],
+      y: [40, 45, 50],
+      size_values: [10, 10, 10],
+      point_style: { fill: `purple` },
+    },
+  ] as const)(
+    `handles edge cases for size scaling (empty, nulls, single value)`,
+    ({ x, y, size_values, point_style }) => {
+      const component = mount(ScatterPlot, {
+        target: document.body,
+        props: {
+          series: [{ x, y, size_values, point_style }],
+          markers: `points`,
+          size_scale: { radius_range: [2, 8] },
+        },
+      })
+
+      // Verify component mounted without errors
+      expect(component).toBeTruthy()
+      const scatter = document.querySelector(`.scatter`)
+      expect(scatter).toBeTruthy()
+    },
+  )
 })

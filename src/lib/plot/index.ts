@@ -83,6 +83,7 @@ export interface DataSeries {
   // Optional marker display type override for this specific series
   markers?: `line` | `points` | `line+points`
   color_values?: (number | null)[] | null
+  size_values?: readonly (number | null)[] | null
   metadata?: Record<string, unknown>[] | Record<string, unknown> // Can be array or single object
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
@@ -97,6 +98,7 @@ export interface DataSeries {
 export interface InternalPoint extends PlotPoint {
   series_idx: number // Index of the series this point belongs to
   point_idx: number // Index of the point within its series
+  size_value?: number | null // Size value for the point
 }
 
 export type TooltipProps = {

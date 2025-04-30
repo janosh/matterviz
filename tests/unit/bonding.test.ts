@@ -68,14 +68,13 @@ describe(`Bonding Functions Performance Tests`, () => {
   }
 })
 
-// Helper function to create a simple structure
-const make_struct = (sites: number[][]): PymatgenStructure => ({
+const make_simple_struct = (sites: number[][]): PymatgenStructure => ({
   sites: sites.map((xyz) => ({ xyz })),
 })
 
 describe(`max_dist function`, () => {
   test(`should return correct bonds for a simple structure`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [1, 0, 0],
       [0, 1, 0],
@@ -92,7 +91,7 @@ describe(`max_dist function`, () => {
   })
 
   test(`should not return bonds shorter than min_bond_dist`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [0.3, 0, 0],
     ])
@@ -101,7 +100,7 @@ describe(`max_dist function`, () => {
   })
 
   test(`should not return bonds longer than max_bond_dist`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [2, 0, 0],
     ])
@@ -113,7 +112,7 @@ describe(`max_dist function`, () => {
   })
 
   test(`should handle empty structures`, () => {
-    const structure = make_struct([])
+    const structure = make_simple_struct([])
     const bonds = max_dist(structure)
     expect(bonds).toHaveLength(0)
   })
@@ -121,7 +120,7 @@ describe(`max_dist function`, () => {
 
 describe(`nearest_neighbor function`, () => {
   test(`should return correct bonds for a simple structure`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [1, 0, 0],
       [0, 1, 0],
@@ -139,7 +138,7 @@ describe(`nearest_neighbor function`, () => {
   })
 
   test(`should not return bonds shorter than min_bond_dist`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [0.05, 0, 0],
       [1, 0, 0],
@@ -153,7 +152,7 @@ describe(`nearest_neighbor function`, () => {
   })
 
   test(`should handle structures with multiple equidistant nearest neighbors`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [1, 0, 0],
       [0, 1, 0],
@@ -170,13 +169,13 @@ describe(`nearest_neighbor function`, () => {
   })
 
   test(`should handle empty structures`, () => {
-    const structure = make_struct([])
+    const structure = make_simple_struct([])
     const bonds = nearest_neighbor(structure)
     expect(bonds).toHaveLength(0)
   })
 
   test(`should respect the scaling_factor`, () => {
-    const structure = make_struct([
+    const structure = make_simple_struct([
       [0, 0, 0],
       [1, 0, 0],
       [0, 1, 0],

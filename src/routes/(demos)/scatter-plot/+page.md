@@ -223,74 +223,100 @@ Demonstrate various point styles, custom tooltips, and hover effects:
 {/if}
 ```
 
-## Per-Point Custom Styling with Marker Symbols
+## Per-Point Custom Styling with Marker Symbols and Sizing
 
-This example demonstrates how to apply different styles to individual points within a single series, including different marker symbols:
+This example demonstrates how to apply different styles _and sizes_ to individual points within a single series, including different marker symbols. The size of each point is determined by its distance from the center of the spiral, controlled by the `size_values` prop.
 
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
   import { marker_types } from '$lib/plot'
 
-  // Create a dataset with points arranged in a spiral pattern
+  let size_scale = $state({ radius_range: [2, 15], type: 'linear' }) // [min_radius, max_radius]
   const point_count = 40
-  const spiral_data = {
-    x: [],
-    y: [],
-    point_style: [], // Array of styles for each point
-    metadata: []     // Store angle for each point
-  }
 
-  // Generate points in a spiral pattern
-  for (let idx = 0; idx < point_count; idx++) {
-    // Calculate angle and radius for spiral
-    const angle = idx * 0.5
-    const radius = 1 + idx * 0.3
+  // Create a dataset with points arranged in a spiral pattern
+  const spiral_data = $derived.by(() => {
+    const data = {
+      x: [],
+      y: [],
+      size_values: [],
+      point_style: [],
+      metadata: [] // Store angle for each point
+    }
 
-    // Convert to cartesian coordinates
-    const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius
+    // Generate points in a spiral pattern
+    for (let idx = 0; idx < point_count; idx++) {
+      // Calculate angle and radius for spiral
+      const angle = idx * 0.5
+      const radius = 1 + idx * 0.3
 
-    spiral_data.x.push(x)
-    spiral_data.y.push(y)
+      // Convert to cartesian coordinates
+      const x = Math.cos(angle) * radius
+      const y = Math.sin(angle) * radius
 
-    // Store angle in metadata
-    spiral_data.metadata.push({ angle, radius })
-    // Change color gradually along the spiral
-    const hue = (idx / point_count) * 360
-    // Change size dramatically from tiny to huge
-    const size_factor = 1 + idx / 5; // More aggressive size increase
+      data.x.push(x)
+      data.y.push(y)
+      data.size_values.push(radius) // Use spiral radius for sizing
 
-    // Create the point style
-    spiral_data.point_style.push({
-      fill: `hsl(${hue}, 80%, 50%)`,
-      radius: 1 + size_factor * 3, // Much larger variation in size
-      stroke: 'white',
-      stroke_width: 1 + idx / 20, // Gradually thicker stroke
-      marker_type: marker_types[idx % marker_types.length],
-      marker_size: 20 + size_factor * 25 // More dramatic size progression
-    })
-  }
+      // Store angle in metadata
+      data.metadata.push({ angle, radius })
+      // Change color gradually along the spiral
+      const hue = (idx / point_count) * 360
+      // Change marker type based on index
+      const marker_type = marker_types[idx % marker_types.length]
+
+      // Create the point style (radius is now controlled by size_values)
+      data.point_style.push({
+        fill: `hsl(${hue}, 80%, 50%)`,
+        stroke: 'white',
+        stroke_width: 1 + idx / 20, // Gradually thicker stroke
+        marker_type: marker_type,
+      })
+    }
+    return data
+  })
 </script>
 
-<ScatterPlot
-  series={[spiral_data]}
-  x_label="X Axis"
-  y_label="Y Axis"
-  x_lim={[-15, 15]}
-  y_lim={[-15, 15]}
-  markers="points"
-  style="height: 500px; width: 100%;"
->
-  {#snippet tooltip({ x, y, metadata })}
-    <div style="white-space: nowrap;">
-      <strong>Spiral Point</strong><br>
-      Position: ({x.toFixed(2)}, {y.toFixed(2)})<br>
-      Angle: {metadata.angle.toFixed(2)} rad<br>
-      Radius: {metadata.radius.toFixed(2)}
-    </div>
-  {/snippet}
-</ScatterPlot>
+<div id="point-sizing">
+  <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center;">
+    <label>
+      Min Size (px):
+      <input type="number" bind:value={size_scale.radius_range[0]} min="0.5" max="10" step="0.5" style="width: 50px;">
+    </label>
+    <label>
+      Max Size (px):
+      <input type="number" bind:value={size_scale.radius_range[1]} min="5" max="30" step="1" style="width: 50px;">
+    </label>
+    <label>
+      Size Scale:
+      <select bind:value={size_scale.type}>
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+    </label>
+  </div>
+
+  <ScatterPlot
+    series={[spiral_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    x_lim={[-15, 15]}
+    y_lim={[-15, 15]}
+    markers="points"
+    {size_scale}
+    style="height: 500px; width: 100%;"
+  >
+    {#snippet tooltip({ x, y, metadata })}
+      <div style="white-space: nowrap;">
+        <strong>Spiral Point</strong><br>
+        Position: ({x.toFixed(2)}, {y.toFixed(2)})<br>
+        Angle: {metadata.angle.toFixed(2)} rad<br>
+        Value (Radius): {metadata.radius.toFixed(2)}
+      </div>
+    {/snippet}
+  </ScatterPlot>
+</div>
 ```
 
 ## Categorized Data and Custom Axis Tick Intervals
@@ -338,16 +364,12 @@ This example shows categorized data with color coding, custom tick intervals, an
         stroke: 'black',
         stroke_width: 0.5
       },
-      metadata: points.map(p => ({
-        category: p.category,
-        color: p.color
-      })),
+      metadata: points.map(p => ({ category: p.category, color: p.color })),
       label: category
     }
   })
 
-  // Tick interval settings
-  const ticks = $state({ x: -5, y: -5 })
+  const ticks = $state({ x: -5, y: -5 }) // Tick interval settings
 </script>
 
 <div>
@@ -646,6 +668,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
+  import { marker_types } from '$lib/plot'
 
   const point_count = 50;
 
@@ -653,7 +676,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   const decay_data = {
     x: [],
     y: [],
-    point_style: { fill: 'coral', radius: 4 },
+    size_values: [],
+    point_style: { fill: 'coral' },
     label: 'Exponential Decay',
     metadata: []
   };
@@ -662,7 +686,9 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const y_val = 10000 * Math.exp(-0.5 * x_val);
     decay_data.x.push(x_val);
     // Ensure y is not exactly 0 for log scale, clamp to a small positive value
-    decay_data.y.push(Math.max(y_val, 1e-9));
+    const safe_y_val = Math.max(y_val, 1e-9);
+    decay_data.y.push(safe_y_val);
+    decay_data.size_values.push(safe_y_val);
     decay_data.metadata.push({ series: 'Exponential Decay' });
   }
 
@@ -670,7 +696,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   const log_sine_data = {
     x: [],
     y: [],
-    point_style: { fill: 'deepskyblue', radius: 4 },
+    size_values: [],
+    point_style: { fill: 'deepskyblue' },
     label: 'Log Sine Wave',
     metadata: []
   };
@@ -678,7 +705,9 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, -1 + (idx / (point_count * 2 - 1)) * 4); // x from 0.1 to 1000 log-spaced
     const y_val = 500 + 400 * Math.sin(Math.log10(x_val) * 5);
     log_sine_data.x.push(x_val);
-    log_sine_data.y.push(Math.max(y_val, 1e-9)); // Clamp potential near-zero y
+    const safe_y_val = Math.max(y_val, 1e-9); // Clamp potential near-zero y
+    log_sine_data.y.push(safe_y_val);
+    log_sine_data.size_values.push(safe_y_val);
     log_sine_data.metadata.push({ series: 'Log Sine Wave' });
   }
 
@@ -686,7 +715,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   const power_law_data = {
     x: [],
     y: [],
-    point_style: { fill: 'mediumseagreen', radius: 5 },
+    size_values: [],
+    point_style: { fill: 'mediumseagreen' },
     label: 'y = x^2',
     metadata: []
   }
@@ -694,7 +724,9 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, idx)
     const y_val = Math.pow(x_val, 2);  // y = x^2
     power_law_data.x.push(x_val);
-    power_law_data.y.push(Math.max(y_val, 1e-9)); // Clamp y
+    const safe_y_val = Math.max(y_val, 1e-9); // Clamp y
+    power_law_data.y.push(safe_y_val);
+    power_law_data.size_values.push(safe_y_val);
     power_law_data.metadata.push({ series: 'y = x^2' });
   }
 
@@ -702,7 +734,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   const inverse_power_data = {
     x: [],
     y: [],
-    point_style: { fill: 'purple', radius: 5 },
+    size_values: [],
+    point_style: { fill: 'purple' },
     label: 'y = x^0.5',
     metadata: []
   }
@@ -710,7 +743,9 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, idx)
     const y_val = Math.pow(x_val, 0.5); // y = √x
     inverse_power_data.x.push(x_val);
-    inverse_power_data.y.push(Math.max(y_val, 1e-9)); // Clamp y
+    const safe_y_val = Math.max(y_val, 1e-9); // Clamp y
+    inverse_power_data.y.push(safe_y_val);
+    inverse_power_data.size_values.push(safe_y_val);
     inverse_power_data.metadata.push({ series: 'y = x^0.5' });
   }
 
@@ -720,6 +755,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   // State for controlling scale types
   let x_is_log = $state(false)
   let y_is_log = $state(false)
+  // State for size controls
+  let size_scale = $state({ radius_range: [2, 8], type: 'linear', value_range: [1, 1000] })
 
   // Derived scale types based on state
   let x_scale_type = $derived(x_is_log ? `log` : `linear`)
@@ -743,6 +780,23 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     </label>
   </div>
 
+  <div style="display: flex; justify-content: center; gap: 2em; margin-bottom: 1em;">
+    <label>
+      Min Size (px):
+      <input type="number" bind:value={size_scale.radius_range[0]} min="0.5" max="10" step="0.5" style="width: 50px;">
+    </label>
+    <label>
+      Max Size (px):
+      <input type="number" bind:value={size_scale.radius_range[1]} min="5" max="30" step="1" style="width: 50px;">
+    </label>
+    <label>
+      Size Scale:
+      <select bind:value={size_scale.type}>
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+    </label>
+  </div>
 
   <!-- Use #key to ensure plot redraws correctly when scale types change -->
   {#key [x_scale_type, y_scale_type]}
@@ -754,6 +808,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
       {y_lim}
       x_label="X Axis ({x_scale_type})"
       y_label="Y Axis ({y_scale_type})"
+      {size_scale}
       x_format="~s"
       y_format="~s"
       markers="line+points"
@@ -1052,7 +1107,7 @@ This example demonstrates how the color bar automatically positions itself in on
     x_lim={[0, 100]}
     y_lim={[0, 100]}
     markers="points+text"
-    color_scheme="turbo"
+    color_scale={{ scheme: `turbo` }}
     color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
     style="height: 450px; width: 100%;"
   >
@@ -1169,16 +1224,8 @@ This example shows how to place the color bar vertically on the right side of th
   // Adjust right padding to make space for the external color bar
   const plot_padding = { t: 20, b: 50, l: 60, r: 70 } // Increased right padding
 
-  // --- Color Scaling Controls ---
-  // Track which color scale type is active
-  let color_scale_type = $state(`linear`)
-
-  // Color scheme options
-  const color_schemes = [
-    `viridis`, `inferno`, `plasma`, `magma`, `cividis`,
-    `turbo`, `warm`, `cool`, `spectral`
-  ]
-  let selected_scheme = $state(`cool`) // Default matches original example
+  // Color Scaling Controls
+  let color_scale = $state({ type: `linear`, scheme: `cool` }) // Track which color scale type is active
 </script>
 
 <div>
@@ -1188,15 +1235,17 @@ This example shows how to place the color bar vertically on the right side of th
       {#each ['linear', 'log'] as scale_type}
         <label style="margin-left: 0.5em;">
           <input type="radio" name="scale_type" value={scale_type}
-            bind:group={color_scale_type} /> {scale_type}
+            bind:group={color_scale.type} /> {scale_type}
         </label>
       {/each}
     </div>
 
     <div>
       <strong>Color Scheme:</strong>
-      <select bind:value={selected_scheme}>
-        {#each color_schemes as scheme}
+      <select bind:value={color_scale.scheme}>
+        {#each [
+          `viridis`, `inferno`, `plasma`, `magma`, `cividis`, `turbo`, `warm`, `cool`, `spectral`
+        ] as scheme}
           <option value={scheme}>{scheme}</option>
         {/each}
       </select>
@@ -1213,11 +1262,10 @@ This example shows how to place the color bar vertically on the right side of th
     x_lim={[0, 100]}
     y_lim={[0, 100]}
     markers="points"
-    color_scheme={selected_scheme}
-    {color_scale_type}
+    {color_scale}
     padding={plot_padding}
     color_bar={{
-      title: `Color Bar Title (${color_scale_type})`,
+      title: `Color Bar Title (${color_scale.type})`,
       orientation: `vertical`,
       tick_side: `primary`,
       wrapper_style: `

@@ -25,7 +25,6 @@
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
   }
-
   let {
     series_data = [],
     layout = `vertical`,

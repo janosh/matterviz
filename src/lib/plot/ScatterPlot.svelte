@@ -68,11 +68,17 @@
     show_zero_lines?: boolean
     x_grid?: boolean | Record<string, unknown> // Control x-axis grid lines visibility and styling
     y_grid?: boolean | Record<string, unknown> // Control y-axis grid lines visibility and styling
-    // Color scaling props
-    color_scale_type?: ScaleType // Type of scale for color mapping
-    color_scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
-    color_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
-    // Props for the ColorBar component, plus an optional 'margin' for auto-placement.
+    color_scale?: {
+      type?: ScaleType // Type of scale for color mapping
+      scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
+      value_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
+    }
+    size_scale?: {
+      type?: ScaleType // Type of scale for size mapping
+      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g., [2, 10])
+      value_range?: [number, number] // Min/max for size scaling (auto detected if not provided)
+    }
+    // Props for the ColorBar component, plus an optional 'margin' used for plot corner distance when auto placing
     // Set to null or undefined to hide the color bar.
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
@@ -116,13 +122,12 @@
     show_zero_lines = true,
     x_grid = true,
     y_grid = true,
-    color_scale_type = `linear`,
-    color_scheme = `viridis`,
-    color_range,
+    color_scale = { type: `linear`, scheme: `viridis`, value_range: undefined },
     color_bar = {},
+    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
     label_placement_config = {},
     hover_config = {},
-    legend = {}, // Default legend config
+    legend = {},
     point_tween,
     line_tween,
   }: Props = $props()
@@ -150,24 +155,15 @@
   let initial_legend_cell = $state<Cell3x3 | null>(null)
   let is_initial_legend_placement_calculated = $state(false)
 
-  // Helper function to normalize margin prop
   function normalize_margin(margin: number | Sides | undefined): Required<Sides> {
-    const defaults = { t: 10, l: 10, b: 10, r: 10 } // Default margin 10
-    if (typeof margin === `number`) {
-      return { t: margin, l: margin, b: margin, r: margin }
-    }
-    return { ...defaults, ...margin }
+    if (typeof margin === `number`) return { t: margin, l: margin, b: margin, r: margin }
+    return { t: 30, l: 80, b: 80, r: 50, ...margin }
   }
 
-  // Helper function to calculate placement styles based on grid cell
-  function get_placement_styles(
+  function get_placement_styles( //  based on grid cell
     cell: Cell3x3 | null,
     item_type: `legend` | `colorbar`,
-  ): {
-    left: number
-    top: number
-    transform: string
-  } {
+  ): { left: number; top: number; transform: string } {
     if (!cell || !width || !height) return { left: 0, top: 0, transform: `` }
 
     const effective_pad = { t: 0, b: 0, l: 0, r: 0, ...padding }
@@ -329,18 +325,54 @@
           .range([height - pad.b, pad.t]),
   )
 
+  // Size scale function
+  let size_scale_fn = $derived.by(() => {
+    const [min_radius, max_radius] = size_scale.radius_range ?? [2, 10]
+    // Calculate all size values directly here
+    const current_all_size_values = series
+      .filter(Boolean)
+      .flatMap(({ size_values }) => size_values?.filter(Boolean) || [])
+
+    // Calculate auto size range directly here
+    const current_auto_size_range =
+      current_all_size_values.length > 0
+        ? extent(current_all_size_values.filter((val): val is number => val != null))
+        : [0, 1]
+
+    const [min_val, max_val] =
+      size_scale.value_range ?? (current_auto_size_range as [number, number])
+
+    // Ensure domain is valid, especially for log scale
+    const safe_min_val = min_val ?? 0
+    const safe_max_val = max_val ?? (safe_min_val > 0 ? safe_min_val * 1.1 : 1) // Handle zero/single value case
+
+    return size_scale.type === `log`
+      ? scaleLog()
+          .domain([
+            Math.max(safe_min_val, 1e-10),
+            Math.max(safe_max_val, safe_min_val * 1.1),
+          ])
+          .range([min_radius, max_radius])
+          .clamp(true) // Prevent sizes outside the specified pixel range
+      : scaleLinear()
+          .domain([safe_min_val, safe_max_val])
+          .range([min_radius, max_radius])
+          .clamp(true) // Prevent sizes outside the specified pixel range
+  })
+
   // Color scale function
   let color_scale_fn = $derived.by(() => {
     const interpolator_name =
-      `interpolate${color_scheme.charAt(0).toUpperCase()}${color_scheme.slice(1).toLowerCase()}` as keyof typeof d3_sc
+      `interpolate${color_scale.scheme?.charAt(0).toUpperCase()}${color_scale.scheme?.slice(1).toLowerCase()}` as keyof typeof d3_sc
     const interpolator =
       typeof d3_sc[interpolator_name] === `function`
         ? d3_sc[interpolator_name]
         : d3_sc.interpolateViridis
 
-    const [min_val, max_val] = color_range ?? (auto_color_range as [number, number])
+    const [min_val, max_val] =
+      color_scale.value_range ?? (auto_color_range as [number, number])
 
-    return color_scale_type === `log`
+    return color_scale.type === `log`
       ? scaleSequentialLog(interpolator).domain([
           Math.max(min_val, 1e-10),
           Math.max(max_val, min_val * 1.1),
@@ -370,12 +402,13 @@
           } as unknown as DataSeries & { filtered_data: InternalPoint[] }
         }
 
-        const { x: xs, y: ys, color_values, ...rest } = data_series
+        const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
 
         // Process points internally, adding properties beyond the base Point type
         const processed_points: InternalPoint[] = xs.map((x, point_idx) => {
           const y = ys[point_idx]
           const color_value = color_values?.[point_idx]
+          const size_value = size_values?.[point_idx] // Get size value for the point
 
           // Helper to process array or scalar properties
           const process_prop = <T,>(
@@ -399,6 +432,7 @@
             point_offset: process_prop(rest.point_offset, point_idx),
             series_idx,
             point_idx,
+            size_value,
           }
         })
 
@@ -907,9 +941,7 @@
     current_y_range = [...initial_y_range]
   }
 
-  // --- Tooltip Logic (extracted to function) ---
-
-  // Helper function to find the closest point and update the tooltip state
+  // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number): void {
     if (!width || !height) return
 
@@ -1136,8 +1168,8 @@
     }
   }
 
-  // Helper function to convert data coordinates to potentially non-finite screen coordinates
   function get_screen_coords(point: Point): [number, number] {
+    // convert data coordinates to potentially non-finite screen coordinates
     const screen_x = x_format?.startsWith(`%`)
       ? x_scale_fn(new Date(point.x))
       : x_scale_fn(point.x)
@@ -1274,6 +1306,11 @@
                   y={screen_y}
                   style={{
                     ...(point.point_style ?? {}),
+                    // Override radius if size_value and scale function are available
+                    radius:
+                      point.size_value != null
+                        ? size_scale_fn(point.size_value)
+                        : point.point_style?.radius,
                   }}
                   hover={point.point_hover ?? {}}
                   label={final_label}
@@ -1405,11 +1442,12 @@
 
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0 && color_bar_cell}
+      {@const { value_range = auto_color_range as [number, number] } = color_scale}
       <ColorBar
         {...{
           tick_labels: 4,
           tick_align: `primary`,
-          range: color_range ?? auto_color_range,
+          range: value_range?.every((val) => val != null) ? value_range : undefined,
           color_scale: color_scale_fn,
           wrapper_style: `
             position: absolute;

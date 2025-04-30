@@ -204,8 +204,8 @@ describe(`ScatterPoint`, () => {
     expect(g.classList.contains(`hover_effect`)).toBe(true)
     expect(g.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
     // Check default stroke/width applied if not specified
-    expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(`white`) // Default hover stroke
-    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`2px`) // Default hover stroke width
+    expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(`white`)
+    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`2px`)
   })
 
   test(`handles empty label configuration`, async () => {
