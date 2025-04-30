@@ -894,24 +894,34 @@ This example combines multiple features including different display modes, custo
   // Update series based on visibility toggles
   let displayed_series = $derived(series_data.filter((_, idx) => visible_series[categories[idx]]))
 
-  // Generate random data points across positive and negative space
-  const sample_count = 40
-  const sample_data = {
-    x: Array(sample_count).fill(0).map(() => (Math.random() * 20) - 10),
-    y: Array(sample_count).fill(0).map(() => (Math.random() * 20) - 10),
-    point_style: {
-      fill: 'goldenrod',
-      radius: 5,
-      stroke: 'black',
-      stroke_width: 0.5
-    },
-    point_hover: {
-      scale: 2,
-      fill: 'orange',
-      stroke: 'white',
-      stroke_width: 2
+  // Generate random data points across positive and negative space for multiple series
+  const series_count = 3
+  const random_series = $derived.by(() => {
+    const output = []
+    for (let s_idx = 0; s_idx < series_count; s_idx++) {
+      const sample_count = 20 + Math.floor(Math.random() * 20) // Varying number of points
+      output.push({
+        x: Array(sample_count).fill(0).map(() => (Math.random() * 20) - 10),
+        y: Array(sample_count).fill(0).map(() => (Math.random() * 20) - 10),
+        point_style: {
+          fill: category_colors[s_idx % category_colors.length], // Use category colors
+          radius: 4 + s_idx, // Slightly different sizes
+          stroke: 'black',
+          stroke_width: 0.5,
+          marker_type: marker_types[(s_idx + 3) % marker_types.length] // Different markers
+        },
+        point_hover: {
+          scale: 1.5 + s_idx * 0.5, // Different hover scales
+          fill: 'orange',
+          stroke: 'white',
+          stroke_width: 2
+        },
+        label: `Random Series ${s_idx + 1}`, // Add labels for legend
+        metadata: Array(sample_count).fill(0).map((_, p_idx) => ({ series: `Series ${s_idx + 1}`, point: p_idx }))
+      })
     }
-  }
+    return output
+  })
 </script>
 
 <div>
@@ -963,7 +973,7 @@ This example combines multiple features including different display modes, custo
     </div>
   {/if}
 
-  <h3 style="margin-top: 2em;">Random Points with Custom Controls</h3>
+  <h3 style="margin-top: 2em;">Random Points with Custom Controls and External Legend</h3>
   <div style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 1em;">
     {#each Object.keys(ticks) as axis (axis)}
       <label>
@@ -1002,7 +1012,7 @@ This example combines multiple features including different display modes, custo
   </div>
 
   <ScatterPlot
-    series={[sample_data]}
+    series={random_series}
     x_label={axis_labels.x}
     y_label={axis_labels.y}
     x_lim={[-15, 15]}
@@ -1010,13 +1020,25 @@ This example combines multiple features including different display modes, custo
     x_ticks={ticks.x}
     y_ticks={ticks.y}
     x_grid={grid.x}
-    y_grid={grid.y}
     markers="points"
-    style="height: 400px; width: 100%;"
+    style="height: 400px; width: 100%; position: relative;"
+    legend={{
+      wrapper_style: `
+        position: absolute;
+        top: 3pt;
+        left: 100%;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 5px 5px 5px 0;
+        border-radius: 3px;
+        border: none;
+      `
+    }}
   >
-    {#snippet tooltip({ x, y })}
+    {#snippet tooltip({ x, y, metadata })}
       <div style="white-space: nowrap;">
-        Position: ({x.toFixed(2)}, {y.toFixed(2)})
+        <strong>{metadata.series}</strong><br/>
+        Position: ({x.toFixed(2)}, {y.toFixed(2)})<br/>
+        Point Index: {metadata.point}
       </div>
     {/snippet}
   </ScatterPlot>
