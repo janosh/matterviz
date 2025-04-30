@@ -203,7 +203,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(first_marker_for_stroke).toHaveAttribute(`stroke-width`, `2`)
   })
 
-  // Helper function to click radio buttons reliably, bypassing potential visibility issues
+  // click radio buttons reliably, bypassing potential visibility issues
   const click_radio = async (page: Page, selector: string): Promise<void> => {
     await page.evaluate((sel) => {
       const radio = document.querySelector(sel) as HTMLInputElement
@@ -258,7 +258,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(hover_status).toHaveText(`false`) // Playwright waits for state change
   })
 
-  // Helper function to get tick values as numbers and calculate range
+  // get tick values as numbers and calculate range
   const get_tick_range = async (
     axis_locator: Locator,
   ): Promise<{ ticks: number[]; range: number }> => {
@@ -416,8 +416,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   // --- Label Auto Placement Tests ---
-
-  // Helper function to get label positions based on the parent group's transform
+  // get label positions based on the parent group's transform
   const get_label_positions = async (
     plot_locator: Locator,
   ): Promise<Record<string, XyObj>> => {
@@ -802,5 +801,276 @@ test.describe(`Automatic Color Bar Placement`, () => {
     await set_density(page, section, { tl: 50, tr: 50, bl: 50, br: 0 })
     const transform = await get_colorbar_transform(section)
     expect(transform).toContain(`translate(-100%, -100%)`) // Expect X and Y transform
+  })
+})
+
+// --- Point Sizing Tests ---
+// Helper to get marker bounding box
+const get_marker_bbox = async (
+  plot_locator: Locator,
+  index: number,
+): Promise<{ x: number; y: number; width: number; height: number } | null> => {
+  const marker_locator = plot_locator.locator(`path.marker`).nth(index)
+  await marker_locator.waitFor({ state: `visible`, timeout: 1000 })
+  return marker_locator.boundingBox()
+}
+
+// Helper to get bbox area
+const get_bbox_area = (
+  bbox: { x: number; y: number; width: number; height: number } | null,
+): number => {
+  return bbox ? bbox.width * bbox.height : 0
+}
+
+// Helper to check and return marker sizes and relationships
+const check_marker_sizes = async (
+  plot_locator: Locator,
+  first_idx: number,
+  intermediate_idx: number,
+  last_idx: number,
+): Promise<{
+  first_area: number
+  intermediate_area: number
+  last_area: number
+  ratio_last_first: number
+  ratio_inter_first: number
+}> => {
+  const bbox_first = await get_marker_bbox(plot_locator, first_idx)
+  const bbox_intermediate = await get_marker_bbox(
+    plot_locator,
+    intermediate_idx,
+  )
+  const bbox_last = await get_marker_bbox(plot_locator, last_idx)
+
+  const first_area = get_bbox_area(bbox_first)
+  const intermediate_area = get_bbox_area(bbox_intermediate)
+  const last_area = get_bbox_area(bbox_last)
+
+  // Assert basic ordering
+  expect(first_area).toBeGreaterThan(0)
+  expect(intermediate_area).toBeGreaterThan(first_area)
+  expect(last_area).toBeGreaterThan(intermediate_area)
+
+  const ratio_last_first = last_area / first_area
+  const ratio_inter_first = intermediate_area / first_area
+
+  expect(ratio_inter_first).toBeGreaterThan(1)
+  expect(ratio_last_first).toBeGreaterThan(ratio_inter_first)
+
+  return {
+    first_area,
+    intermediate_area,
+    last_area,
+    ratio_last_first,
+    ratio_inter_first,
+  }
+}
+
+test.describe(`Point Sizing`, () => {
+  const section_selector = `#point-sizing`
+  const plot_selector = `${section_selector} .scatter`
+  const min_size_input_selector = `${section_selector} input[type="number"][aria-label*="Min Size"]`
+  const max_size_input_selector = `${section_selector} input[type="number"][aria-label*="Max Size"]`
+  const scale_select_selector = `${section_selector} select[aria-label*="Size Scale"]`
+  const first_marker_idx = 0
+  const intermediate_marker_idx = 19
+  const last_marker_idx = 39
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    await page
+      .locator(section_selector)
+      .waitFor({ state: `visible`, timeout: 30000 })
+    await page
+      .locator(`${plot_selector} path.marker`)
+      .first()
+      .waitFor({ state: `visible` })
+  })
+
+  test(`markers scale correctly with linear size controls`, async ({
+    page,
+  }) => {
+    const plot_locator = page.locator(plot_selector)
+    const min_input = page.locator(min_size_input_selector)
+    const max_input = page.locator(max_size_input_selector)
+
+    // --- Initial State (Linear, min=2, max=15) ---
+    await expect(min_input).toHaveValue(`2`)
+    await expect(max_input).toHaveValue(`15`)
+    await expect(page.locator(scale_select_selector)).toHaveValue(`linear`)
+    const initial_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+
+    // --- Increase Max Size (Linear, min=2, max=30) ---
+    await max_input.fill(`30`)
+    await page.waitForTimeout(200)
+    const increased_max_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+    expect(increased_max_sizes.last_area).toBeGreaterThan(
+      initial_sizes.last_area,
+    )
+    expect(increased_max_sizes.intermediate_area).toBeGreaterThan(
+      initial_sizes.intermediate_area,
+    )
+    expect(increased_max_sizes.first_area).toBeCloseTo(
+      initial_sizes.first_area,
+      0,
+    )
+    expect(increased_max_sizes.ratio_last_first).toBeGreaterThan(
+      initial_sizes.ratio_last_first,
+    )
+    expect(increased_max_sizes.ratio_inter_first).toBeGreaterThan(
+      initial_sizes.ratio_inter_first,
+    )
+
+    // --- Increase Min Size (Linear, min=5, max=30) ---
+    await min_input.fill(`5`)
+    await page.waitForTimeout(200)
+    const increased_min_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+    expect(increased_min_sizes.first_area).toBeGreaterThan(
+      increased_max_sizes.first_area,
+    )
+    expect(increased_min_sizes.intermediate_area).toBeGreaterThan(
+      increased_max_sizes.intermediate_area,
+    )
+    expect(increased_min_sizes.last_area).toBeLessThanOrEqual(
+      increased_max_sizes.last_area,
+    )
+    expect(increased_min_sizes.ratio_last_first).toBeLessThan(
+      increased_max_sizes.ratio_last_first,
+    )
+    expect(increased_min_sizes.ratio_inter_first).toBeLessThan(
+      increased_max_sizes.ratio_inter_first,
+    )
+  })
+
+  test(`markers scale correctly with log size controls`, async ({ page }) => {
+    const plot_locator = page.locator(plot_selector)
+    const scale_select = page.locator(scale_select_selector)
+    const max_input = page.locator(max_size_input_selector)
+
+    // --- Switch to Log Scale (Log, min=2, max=15) ---
+    await scale_select.selectOption(`log`)
+    await expect(scale_select).toHaveValue(`log`)
+    await page.waitForTimeout(200)
+    const initial_log_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+
+    // --- Increase Max Size (Log, min=2, max=30) ---
+    await max_input.fill(`30`)
+    await expect(max_input).toHaveValue(`30`)
+    await page.waitForTimeout(200)
+    const increased_max_log_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+    expect(increased_max_log_sizes.last_area).toBeGreaterThan(
+      initial_log_sizes.last_area,
+    )
+    expect(increased_max_log_sizes.intermediate_area).toBeGreaterThan(
+      initial_log_sizes.intermediate_area,
+    )
+    expect(increased_max_log_sizes.first_area).toBeCloseTo(
+      initial_log_sizes.first_area,
+      0,
+    )
+    expect(increased_max_log_sizes.ratio_last_first).toBeGreaterThan(
+      initial_log_sizes.ratio_last_first,
+    )
+    expect(increased_max_log_sizes.ratio_inter_first).toBeGreaterThan(
+      initial_log_sizes.ratio_inter_first,
+    )
+  })
+
+  test(`relative marker sizes change predictably on scale type transition`, async ({
+    page,
+  }) => {
+    const plot_locator = page.locator(plot_selector)
+    const scale_select = page.locator(scale_select_selector)
+
+    // --- Get Initial Linear Sizes ---
+    await expect(page.locator(min_size_input_selector)).toHaveValue(`2`)
+    await expect(page.locator(max_size_input_selector)).toHaveValue(`15`)
+    await expect(scale_select).toHaveValue(`linear`)
+    const linear_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+
+    // --- Switch to Log Scale ---
+    await scale_select.selectOption(`log`)
+    await expect(scale_select).toHaveValue(`log`)
+    await page.waitForTimeout(200)
+
+    // --- Get Log Sizes ---
+    const log_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+
+    // Compare Linear vs Log
+    expect(log_sizes.first_area).toBeCloseTo(linear_sizes.first_area, 0)
+    expect(log_sizes.last_area).toBeCloseTo(linear_sizes.last_area, 0)
+    expect(log_sizes.intermediate_area).not.toBeCloseTo(
+      linear_sizes.intermediate_area,
+      0,
+    )
+    expect(log_sizes.ratio_inter_first).not.toBeCloseTo(
+      linear_sizes.ratio_inter_first,
+      1,
+    )
+    const log_ratio_last_inter =
+      log_sizes.last_area / log_sizes.intermediate_area
+    const linear_ratio_last_inter =
+      linear_sizes.last_area / linear_sizes.intermediate_area
+    expect(log_ratio_last_inter).not.toBeCloseTo(linear_ratio_last_inter, 1)
+    expect(log_ratio_last_inter).toBeLessThan(linear_ratio_last_inter) // Log compresses larger values
+
+    // --- Switch back to Linear Scale ---
+    await scale_select.selectOption(`linear`)
+    await expect(scale_select).toHaveValue(`linear`)
+    await page.waitForTimeout(200)
+
+    // --- Get Final Linear Sizes ---
+    const final_linear_sizes = await check_marker_sizes(
+      plot_locator,
+      first_marker_idx,
+      intermediate_marker_idx,
+      last_marker_idx,
+    )
+
+    // Verify return to original linear sizes
+    expect(final_linear_sizes.first_area).toBeCloseTo(
+      linear_sizes.first_area,
+      0,
+    )
+    expect(final_linear_sizes.intermediate_area).toBeCloseTo(
+      linear_sizes.intermediate_area,
+      0,
+    )
+    expect(final_linear_sizes.last_area).toBeCloseTo(linear_sizes.last_area, 0)
   })
 })

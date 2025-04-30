@@ -42,9 +42,7 @@
     snap_ticks = true,
     steps = 50,
     nice_range = $bindable(range),
-    // Capture user-provided value, no default here
-    title_side = undefined,
-    // Default tick side/position
+    title_side = undefined, // no default here, depends on orientation and tick_side
     tick_side = `primary`,
   }: Props = $props()
 
@@ -70,7 +68,7 @@
       ? tick_labels.length
       : typeof tick_labels === `number`
         ? tick_labels
-        : 5, // Default requested ticks
+        : 5,
   )
 
   // Determine the actual number of ticks to generate

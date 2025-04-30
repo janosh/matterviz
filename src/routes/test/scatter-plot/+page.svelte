@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
-  import type { DataSeries, LabelStyle } from '$lib/plot'
+  import type { DataSeries, LabelStyle, PointStyle } from '$lib/plot'
+  import { marker_types } from '$lib/plot'
 
   // === Basic Example Data ===
   const basic_data = {
@@ -135,7 +136,7 @@
   }
 
   // === Color Scale Data ===
-  let color_scale_type = $state(`linear`)
+  let color_scale = $state({ type: `linear` as const })
 
   const color_scale_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -285,12 +286,7 @@
       const center_y = y_range[0] + (y_range[1] - y_range[0]) / 2
       const color_val = Math.sqrt(center_x ** 2 + center_y ** 2) * Math.random() * 2 // Add some variation
 
-      points.push({
-        x: x_val,
-        y: y_val,
-        color_value: color_val,
-        // label: color_val.toFixed(1),
-      })
+      points.push({ x: x_val, y: y_val, color_value: color_val })
     }
     return points
   }
@@ -333,11 +329,7 @@
         y: all_points.map((p) => p.y),
         color_values: all_points.map((p) => p.color_value),
         // point_label: all_points.map(p => ({ text: p.label, offset: { x: 0, y: -10 }, font_size: '14px' })),
-        point_style: {
-          radius: 5,
-          stroke: `white`,
-          stroke_width: 0.5,
-        },
+        point_style: { radius: 5, stroke: `white`, stroke_width: 0.5 },
       },
     ]
   })
@@ -357,13 +349,56 @@
   const lin_log_transition_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [100, 50, 10, 1, 0.1, 0.01, 0.001, 1e-4, 1e-6, 1e-8], // Include values very close to zero
-    point_style: {
-      fill: `darkcyan`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
+    point_style: { fill: `darkcyan`, radius: 5, stroke: `white`, stroke_width: 1 },
   }
+
+  // === Point Sizing Data (copied from demo page) ===
+  let size_scale = $state({ radius_range: [2, 15], type: `linear` })
+
+  // Create a dataset with points arranged in a spiral pattern
+  const point_count = 40
+
+  // Reactive generation of spiral data based on controls
+  let spiral_data = $derived.by(() => {
+    const data = {
+      x: [] as number[],
+      y: [] as number[],
+      size_values: [] as number[], // Array for size scaling
+      point_style: [] as PointStyle[], // Explicitly type as PointStyle[]
+      metadata: [] as Record<string, unknown>[], // Explicitly type as Record<string, unknown>[]
+    }
+
+    // Generate points in a spiral pattern
+    for (let idx = 0; idx < point_count; idx++) {
+      // Calculate angle and radius for spiral
+      const angle = idx * 0.5
+      const radius = 1 + idx * 0.3
+
+      // Convert to cartesian coordinates
+      const x = Math.cos(angle) * radius
+      const y = Math.sin(angle) * radius
+
+      data.x.push(x)
+      data.y.push(y)
+      data.size_values.push(radius) // Use spiral radius for sizing
+
+      // Store angle in metadata
+      data.metadata.push({ angle, radius } as Record<string, unknown>) // Cast pushed object
+      // Change color gradually along the spiral
+      const hue = (idx / point_count) * 360
+      // Change marker type based on index
+      const marker_type = marker_types[idx % marker_types.length]
+
+      // Create the point style (radius is now controlled by size_values)
+      data.point_style.push({
+        fill: `hsl(${hue}, 80%, 50%)`,
+        stroke: `white`,
+        stroke_width: 1 + idx / 20, // Gradually thicker stroke
+        marker_type: marker_type,
+      } as PointStyle) // Cast pushed object
+    }
+    return data as DataSeries // Cast return value to satisfy the derived type
+  })
 </script>
 
 <div class="demo-container">
@@ -505,12 +540,7 @@
         <div style="display: flex; justify-content: center; gap: 1em;">
           {#each [`linear`, `log`] as scale_type (scale_type)}
             <label>
-              <input
-                type="radio"
-                name="color_scale_type"
-                value={scale_type}
-                bind:group={color_scale_type}
-              />
+              <input type="radio" value={scale_type} bind:group={color_scale.type} />
               {scale_type}
             </label>
           {/each}
@@ -520,8 +550,7 @@
           x_label="X Axis"
           y_label="Y Axis"
           markers="points"
-          color_scheme="viridis"
-          color_scale_type={color_scale_type as `linear` | `log`}
+          {color_scale}
           color_bar={{}}
         />
       </div>
@@ -608,7 +637,7 @@
         x_lim={[0, 100]}
         y_lim={[0, 100]}
         markers="points"
-        color_scheme="turbo"
+        color_scale={{ scheme: `turbo` }}
         color_bar={{ title: `Color Bar Title` }}
       >
         {#snippet tooltip({ x, y, color_value })}
@@ -679,6 +708,66 @@
       />
     </div>
   </section>
+
+  <!-- Added Point Sizing Example -->
+  <h2>Point Sizing Test</h2>
+  <div id="point-sizing">
+    <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center;">
+      <label>
+        Min Size (px):
+        <input
+          type="number"
+          bind:value={size_scale.radius_range[0]}
+          min="0.5"
+          max="10"
+          step="0.5"
+          style="width: 50px;"
+          aria-label="Min Size (px)"
+        />
+      </label>
+      <label>
+        Max Size (px):
+        <input
+          type="number"
+          bind:value={size_scale.radius_range[1]}
+          min="5"
+          max="30"
+          step="1"
+          style="width: 50px;"
+          aria-label="Max Size (px)"
+        />
+      </label>
+      <label>
+        Size Scale:
+        <select bind:value={size_scale.type} aria-label="Size Scale">
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+        </select>
+      </label>
+    </div>
+
+    <ScatterPlot
+      series={[spiral_data]}
+      x_label="X Axis"
+      y_label="Y Axis"
+      x_lim={[-15, 15]}
+      y_lim={[-15, 15]}
+      markers="points"
+      {size_scale}
+      style="height: 500px; width: 100%;"
+    >
+      {#snippet tooltip({ x, y, metadata })}
+        <div style="white-space: nowrap;">
+          <strong>Spiral Point</strong><br />
+          Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
+          {#if metadata}
+            Angle: {(metadata.angle as number).toFixed(2)} rad<br />
+            Value (Radius): {(metadata.radius as number).toFixed(2)}
+          {/if}
+        </div>
+      {/snippet}
+    </ScatterPlot>
+  </div>
 </div>
 
 <style>
