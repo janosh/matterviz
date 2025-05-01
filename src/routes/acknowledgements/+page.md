@@ -1,7 +1,7 @@
 <script>
   import img_sources from '$static/img-sources.json';
   import { dev } from '$app/environment'
-  import { homepage } from '$root/package.json'
+  import pkg from '$root/package.json'
 </script>
 
 <main>
@@ -32,7 +32,7 @@ Big thanks to the element image providers listed below. Each image caption links
       <li>
         <a {href}>{number} {name}</a>
         <a href="/{name}">
-          <img src="{dev ? '' : homepage}/elements/{key}.avif" alt={name} />
+          <img src="{dev ? '' : pkg.homepage}/elements/{key}.avif" alt={name} />
         </a>
       </li>
     {/each}

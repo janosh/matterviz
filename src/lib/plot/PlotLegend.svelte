@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { LineType, MarkerType } from '$lib/plot'
 
-  // Define the structure for each item passed to the legend
+  // attributes for each item passed to the legend
   interface LegendItem {
     label: string
     visible: boolean
@@ -13,13 +13,12 @@
       line_color?: string
     }
   }
-
   type Layout = `horizontal` | `vertical`
 
   interface Props {
     series_data: LegendItem[] // Use the simplified LegendItem type
     layout?: Layout
-    n_items?: number // Number of columns for horizontal, rows for vertical
+    layout_tracks?: number // Number of columns for horizontal, rows for vertical
     wrapper_style?: string
     item_style?: string
     on_toggle?: (series_idx: number) => void
@@ -28,7 +27,7 @@
   let {
     series_data = [],
     layout = `vertical`,
-    n_items = 1, // Default to 1 column/row
+    layout_tracks = 1, // Default to 1 column/row
     wrapper_style = ``,
     item_style = ``,
     on_toggle = () => {},
@@ -50,12 +49,12 @@
   let grid_template_style = $derived.by(() => {
     if (layout === `horizontal`) {
       // n_items defines columns
-      return `grid-template-columns: repeat(${n_items}, auto);`
+      return `grid-template-columns: repeat(${layout_tracks}, auto);`
     } else {
       // n_items defines rows (less common for legends, usually 1 column)
       // If vertical, usually just one column, n_items might not be intuitive.
       // Let's assume vertical always means 1 column unless n_items forces rows.
-      return `grid-template-rows: repeat(${n_items}, auto); grid-template-columns: auto;`
+      return `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`
     }
   })
 </script>

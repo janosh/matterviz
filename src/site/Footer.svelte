@@ -1,10 +1,10 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
-  import { repository } from '$root/package.json'
+  import { Icon } from '$lib'
+  import pkg from '$root/package.json'
 </script>
 
 <footer>
-  <a href="{repository}/blob/main/license">
+  <a href="{pkg.repository}/blob/main/license">
     <Icon icon="octicon:law" />License
   </a>
   <strong>&ensp;&bull;&ensp;</strong>

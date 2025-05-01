@@ -196,7 +196,7 @@ describe(`PlotLegend`, () => {
       props: {
         series_data: default_series_data,
         layout: `horizontal`,
-        n_items: 3, // 3 columns
+        layout_tracks: 3, // 3 columns
       },
     })
 
@@ -211,7 +211,7 @@ describe(`PlotLegend`, () => {
       props: {
         series_data: default_series_data,
         layout: `vertical`,
-        n_items: 2, // Request 2 rows (uncommon, implies 1 column over 2 rows)
+        layout_tracks: 2, // Request 2 rows (uncommon, implies 1 column over 2 rows)
       },
     })
 
