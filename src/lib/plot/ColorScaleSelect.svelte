@@ -9,7 +9,7 @@
     selected?: string[]
     minSelect?: number
     placeholder?: string
-    cbar_props?: ComponentProps<typeof ColorBar>
+    colorbar?: ComponentProps<typeof ColorBar>
   }
 
   let {
@@ -17,7 +17,7 @@
     selected = $bindable([`Viridis`]),
     minSelect = 0,
     placeholder = `Select a color scale`,
-    cbar_props = {},
+    colorbar = {},
     ...rest
   }: Props = $props()
 
@@ -42,7 +42,7 @@
       tick_labels={0}
       title_side="left"
       wrapper_style="min-width: 18em;"
-      {...cbar_props}
+      {...colorbar}
     />
   {/snippet}
 </Select>

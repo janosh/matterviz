@@ -2120,8 +2120,7 @@ describe(`ScatterPlot`, () => {
       color_values: [1, 5, 10],
       point_style: { radius: 5 },
     }
-
-    const custom_color_bar_props = {
+    const custom_colorbar = {
       label: `Test Label`,
       orientation: `vertical`,
       tick_align: `secondary`,
@@ -2131,12 +2130,9 @@ describe(`ScatterPlot`, () => {
 
     mount(ScatterPlot, {
       target: document.body,
-      props: {
-        series: [data_with_color],
-        color_bar: custom_color_bar_props, // Pass custom props
-      },
+      props: { series: [data_with_color], color_bar: custom_colorbar },
     })
-    // Test passes if mounting does not throw an error
+    // TODO test more than mounting does not throw an error
   })
 
   test(`color_bar margin property is accessible within ScatterPlot`, () => {

@@ -37,7 +37,7 @@
     <ColorScaleSelect
       bind:value={color_scale}
       minSelect={1}
-      cbar_props={{ range: [Math.min(...heatmap_values), Math.max(...heatmap_values)] }}
+      colorbar={{ range: [Math.min(...heatmap_values), Math.max(...heatmap_values)] }}
     />
   {/if}
 </form>

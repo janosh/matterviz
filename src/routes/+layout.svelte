@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { element_data } from '$lib'
-  import { repository } from '$root/package.json'
+  import pkg from '$root/package.json'
   import { DemoNav, Footer } from '$site'
   import { demos } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
@@ -43,7 +43,7 @@
 </script>
 
 <CmdPalette {actions} placeholder="Go to..." />
-<GitHubCorner href={repository} />
+<GitHubCorner href={pkg.repository} />
 <CopyButton global />
 
 <DemoNav labels={{ [mp_id]: `/mp-details-pages` }} />

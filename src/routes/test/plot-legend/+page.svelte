@@ -120,7 +120,7 @@
     <PlotLegend
       {series_data}
       layout={legend_layout}
-      n_items={legend_n_items}
+      layout_tracks={legend_n_items}
       wrapper_style={legend_wrapper_style}
       item_style={legend_item_style}
       on_toggle={handle_toggle}

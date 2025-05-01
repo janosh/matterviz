@@ -1,5 +1,5 @@
 <script>
-  import DemoNav from '$site/DemoNav.svelte'
+  import { DemoNav } from '$site'
   import { page } from '$app/state'
 
   const routes = Object.keys(import.meta.glob(`./**/+page.{svx,svelte,md}`)).map(
