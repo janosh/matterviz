@@ -22,7 +22,7 @@
     TooltipProps,
     XyObj,
   } from '$lib/plot'
-  import PlotLegend from '$lib/plot/PlotLegend.svelte'
+  import { PlotLegend } from '$lib/plot'
   import { extent, range } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
   import { format } from 'd3-format'
@@ -92,6 +92,7 @@
     legend?: LegendConfig | null // Configuration for the legend
     point_tween?: TweenedOptions<XyObj>
     line_tween?: TweenedOptions<string>
+    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g., 0.05 = 5%)
   }
   let {
     series = [],
@@ -101,6 +102,7 @@
     x_range,
     y_range,
     padding = {},
+    range_padding = 0.05, // Default padding factor
     x_label = ``,
     x_label_shift = { x: 0, y: -40 },
     x_tick_label_shift = { x: 0, y: 20 },
@@ -240,19 +242,63 @@
     lim: [number | null, number | null],
     scale_type: ScaleType,
     is_time = false,
+    padding_factor: number,
   ) {
-    const [min, max] = lim
+    const [min_lim, max_lim] = lim
     const [min_ext, max_ext] = extent(points, get_value)
-    const raw_min = min ?? min_ext ?? 0
-    const raw_max = max ?? max_ext ?? 1
+    let data_min = min_lim ?? min_ext ?? 0
+    let data_max = max_lim ?? max_ext ?? 1
 
-    if (is_time || raw_min === raw_max) return [raw_min, raw_max]
+    // Apply padding *only if* limits were NOT provided
+    if (min_lim === null && max_lim === null && points.length > 0) {
+      if (data_min !== data_max) {
+        // Apply percentage padding based on scale type if there's a range
+        const span = data_max - data_min
+        if (is_time) {
+          const padding_ms = span * padding_factor
+          data_min = data_min - padding_ms
+          data_max = data_max + padding_ms
+        } else if (scale_type === `log`) {
+          const log_min = Math.log10(Math.max(data_min, 1e-10))
+          const log_max = Math.log10(Math.max(data_max, 1e-10))
+          const log_span = log_max - log_min
+          data_min = Math.pow(10, log_min - log_span * padding_factor)
+          data_max = Math.pow(10, log_max + log_span * padding_factor)
+        } else {
+          // Linear scale
+          const padding_abs = span * padding_factor
+          data_min = data_min - padding_abs
+          data_max = data_max + padding_abs
+        }
+      } else {
+        // Handle single data point case with fixed relative padding
+        if (is_time) {
+          const one_day = 86_400_000 // milliseconds in a day
+          data_min = data_min - one_day
+          data_max = data_max + one_day
+        } else if (scale_type === `log`) {
+          data_min = Math.max(1e-10, data_min / 1.1) // 10% multiplicative padding
+          data_max = data_max * 1.1
+        } else {
+          const padding_abs = data_min === 0 ? 1 : Math.abs(data_min * 0.1) // 10% additive padding, or 1 if value is 0
+          data_min = data_min - padding_abs
+          data_max = data_max + padding_abs
+        }
+      }
+    }
+
+    // If time or no range after padding, return the (potentially padded) domain directly
+    if (is_time || data_min === data_max) return [data_min, data_max]
 
     // Use D3's nice() to create pretty boundaries
+    // Create the scale with the *padded* data domain
     const scale =
       scale_type === `log`
-        ? scaleLog().domain([Math.max(raw_min, 1e-10), Math.max(raw_max, raw_min * 1.1)])
-        : scaleLinear().domain([raw_min, raw_max])
+        ? scaleLog().domain([
+            Math.max(data_min, 1e-10),
+            Math.max(data_max, data_min * 1.1),
+          ]) // Ensure log domain > 0
+        : scaleLinear().domain([data_min, data_max])
 
     scale.nice()
     return scale.domain()
@@ -266,11 +312,19 @@
       x_lim,
       x_scale_type,
       x_format?.startsWith(`%`) || false,
+      range_padding,
     ),
   )
 
   let auto_y_range = $derived(
-    get_nice_data_range(all_points, (point) => point.y, y_lim, y_scale_type, false),
+    get_nice_data_range(
+      all_points,
+      (point) => point.y,
+      y_lim,
+      y_scale_type,
+      false,
+      range_padding,
+    ),
   )
 
   // Store initial ranges and initialize current ranges
@@ -1202,30 +1256,43 @@
       <!-- Zero lines -->
       {#if show_zero_lines}
         {#if x_min <= 0 && x_max >= 0}
-          <line
-            y1={pad.t}
-            y2={height - pad.b}
-            x1={x_format?.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
-            x2={x_format?.startsWith(`%`) ? x_scale_fn(new Date(0)) : x_scale_fn(0)}
-            stroke="gray"
-            stroke-width="0.5"
-          />
+          {@const zero_x_pos = x_format?.startsWith(`%`)
+            ? x_scale_fn(new Date(0))
+            : x_scale_fn(0)}
+          {#if isFinite(zero_x_pos)}
+            <line
+              y1={pad.t}
+              y2={height - pad.b}
+              x1={zero_x_pos}
+              x2={zero_x_pos}
+              stroke="gray"
+              stroke-width="0.5"
+            />
+          {/if}
         {/if}
-        {#if y_min < 0 && y_max > 0}
-          <line
-            x1={pad.l}
-            x2={width - pad.r}
-            y1={y_scale_fn(0)}
-            y2={y_scale_fn(0)}
-            stroke="gray"
-            stroke-width="0.5"
-          />
+        {#if y_scale_type === `linear` && y_min < 0 && y_max > 0}
+          {@const zero_y_pos = y_scale_fn(0)}
+          {#if isFinite(zero_y_pos)}
+            <line
+              x1={pad.l}
+              x2={width - pad.r}
+              y1={zero_y_pos}
+              y2={zero_y_pos}
+              stroke="gray"
+              stroke-width="0.5"
+            />
+          {/if}
         {/if}
       {/if}
 
       <defs>
         <clipPath id="plot-area-clip">
-          <rect x={pad.l} y={pad.t} {width} height={height + pad.b} />
+          <rect
+            x={pad.l}
+            y={pad.t}
+            width={width - pad.l - pad.r}
+            height={height - pad.t - pad.b}
+          />
         </clipPath>
       </defs>
 
@@ -1331,27 +1398,30 @@
       <g class="x-axis">
         {#if width > 0 && height > 0}
           {#each x_tick_values() as tick (tick)}
-            {@const tick_pos = x_format?.startsWith(`%`)
+            {@const tick_pos_raw = x_format?.startsWith(`%`)
               ? x_scale_fn(new Date(tick))
               : x_scale_fn(tick)}
+            {#if isFinite(tick_pos_raw)}
+              // Check if tick position is finite
+              {@const tick_pos = tick_pos_raw}
+              {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
+                <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
+                  {#if x_grid}
+                    <line
+                      y1={-(height - pad.b - pad.t)}
+                      y2="0"
+                      {...typeof x_grid === `object` ? x_grid : {}}
+                    />
+                  {/if}
 
-            {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
-              <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                {#if x_grid}
-                  <line
-                    y1={-(height - pad.b - pad.t)}
-                    y2="0"
-                    {...typeof x_grid === `object` ? x_grid : {}}
-                  />
-                {/if}
-
-                {#if tick >= x_min && tick <= x_max}
-                  {@const { x, y } = x_tick_label_shift}
-                  <text {x} {y}>
-                    {format_value(tick, x_format)}
-                  </text>
-                {/if}
-              </g>
+                  {#if tick >= x_min && tick <= x_max}
+                    {@const { x, y } = x_tick_label_shift}
+                    <text {x} {y}>
+                      {format_value(tick, x_format)}
+                    </text>
+                  {/if}
+                </g>
+              {/if}
             {/if}
           {/each}
         {/if}
@@ -1369,28 +1439,31 @@
       <g class="y-axis">
         {#if width > 0 && height > 0}
           {#each y_tick_values() as tick, idx (tick)}
-            {@const tick_pos = y_scale_fn(tick)}
+            {@const tick_pos_raw = y_scale_fn(tick)}
+            {#if isFinite(tick_pos_raw)}
+              // Check if tick position is finite
+              {@const tick_pos = tick_pos_raw}
+              {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
+                <g class="tick" transform="translate({pad.l}, {tick_pos})">
+                  {#if y_grid}
+                    <line
+                      x1="0"
+                      x2={width - pad.l - pad.r}
+                      {...typeof y_grid === `object` ? y_grid : {}}
+                    />
+                  {/if}
 
-            {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-              <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                {#if y_grid}
-                  <line
-                    x1="0"
-                    x2={width - pad.l - pad.r}
-                    {...typeof y_grid === `object` ? y_grid : {}}
-                  />
-                {/if}
-
-                {#if tick >= y_min && tick <= y_max}
-                  {@const { x, y } = y_tick_label_shift}
-                  <text {x} {y} text-anchor="end">
-                    {format_value(tick, y_format)}
-                    {#if y_unit && idx === 0}
-                      &zwnj;&ensp;{y_unit}
-                    {/if}
-                  </text>
-                {/if}
-              </g>
+                  {#if tick >= y_min && tick <= y_max}
+                    {@const { x, y } = y_tick_label_shift}
+                    <text {x} {y} text-anchor="end">
+                      {format_value(tick, y_format)}
+                      {#if y_unit && idx === 0}
+                        &zwnj;&ensp;{y_unit}
+                      {/if}
+                    </text>
+                  {/if}
+                </g>
+              {/if}
             {/if}
           {/each}
         {/if}

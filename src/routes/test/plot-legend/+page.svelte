@@ -1,20 +1,6 @@
 <script lang="ts">
-  import type { MarkerType } from '$lib/plot'
-  import PlotLegend from '$lib/plot/PlotLegend.svelte'
-  // import { Bumper } from '$lib' // Removed Bumper import
-
-  // Define the structure for each item passed to the legend
-  interface LegendItem {
-    label: string
-    visible: boolean
-    series_idx: number
-    display_style: {
-      marker_shape?: MarkerType
-      marker_color?: string
-      line_type?: `solid` | `dashed` | `dotted`
-      line_color?: string
-    }
-  }
+  import type { LegendItem } from '$lib/plot'
+  import { PlotLegend } from '$lib/plot'
 
   let series_data: LegendItem[] = $state([
     {

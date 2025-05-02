@@ -1,16 +1,16 @@
 import * as lib from '$lib'
 import { ElementScatter, PeriodicTable } from '$lib'
 import * as labels from '$lib/labels'
-import FilePeriodicTable from '$lib/periodic-table/PeriodicTable.svelte'
-import FileElementScatter from '$lib/plot/ElementScatter.svelte'
+import DirectImportPeriodicTable from '$lib/periodic-table/PeriodicTable.svelte'
+import DirectImportElementScatter from '$lib/plot/ElementScatter.svelte'
 import { expect, test } from 'vitest'
 
 test(`PeriodicTable is named and default export`, () => {
-  expect(FilePeriodicTable).toBe(PeriodicTable)
+  expect(DirectImportPeriodicTable).toBe(PeriodicTable)
 })
 
 test(`ElementScatter is named export`, () => {
-  expect(FileElementScatter).toBe(ElementScatter)
+  expect(DirectImportElementScatter).toBe(ElementScatter)
 })
 
 test(`src/lib/icons/index.ts re-exports all components`, () => {

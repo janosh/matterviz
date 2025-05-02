@@ -103,9 +103,25 @@
       "svelte": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./colors": {
+      "types": "./dist/colors.d.ts",
+      "default": "./dist/colors.js"
+    },
     "./labels": {
       "types": "./dist/labels.d.ts",
       "default": "./dist/labels.js"
+    },
+    "./math": {
+      "types": "./dist/math.d.ts",
+      "default": "./dist/math.js"
+    },
+    "./periodic-table": {
+      "types": "./dist/periodic-table.d.ts",
+      "default": "./dist/periodic-table.js"
+    },
+    "./plot": {
+      "types": "./dist/plot.d.ts",
+      "default": "./dist/plot.js"
     },
     "./stores": {
       "types": "./dist/stores.d.ts",
