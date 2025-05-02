@@ -125,14 +125,9 @@
       // Use the derived scale to get the niced domain
       const domain = scale_for_ticks.domain()
       // Ensure domain has two elements before assigning
-      if (domain.length === 2) {
-        nice_range = domain as [number, number]
-      } else {
-        nice_range = range // Fallback
-      }
-    } else {
-      nice_range = range // Use original range if not snapping or labels provided
-    }
+      if (domain.length === 2) nice_range = domain as [number, number]
+      else nice_range = range // Fallback
+    } else nice_range = range // Use original range if not snapping or labels provided
   })
 
   const valid_color_scale_keys = Object.keys(d3_sc)

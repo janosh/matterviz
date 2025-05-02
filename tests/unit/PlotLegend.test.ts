@@ -1,22 +1,8 @@
 // @vitest-environment happy-dom
-import type { MarkerType } from '$lib/plot'
-import PlotLegend from '$lib/plot/PlotLegend.svelte'
+import { PlotLegend, type LegendItem } from '$lib/plot'
 import { mount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '.'
-
-// Define the structure for each item passed to the legend
-interface LegendItem {
-  label: string
-  visible: boolean
-  series_idx: number
-  display_style: {
-    marker_shape?: MarkerType
-    marker_color?: string
-    line_type?: `solid` | `dashed` | `dotted`
-    line_color?: string
-  }
-}
 
 const default_series_data: LegendItem[] = [
   {

@@ -1,23 +1,9 @@
 <script lang="ts">
-  import type { LineType, MarkerType } from '$lib/plot'
-
-  // attributes for each item passed to the legend
-  interface LegendItem {
-    label: string
-    visible: boolean
-    series_idx: number
-    display_style: {
-      marker_shape?: MarkerType // Allow various shapes
-      marker_color?: string
-      line_type?: LineType // Allow various styles
-      line_color?: string
-    }
-  }
-  type Layout = `horizontal` | `vertical`
+  import type { LegendItem } from '$lib/plot'
 
   interface Props {
     series_data: LegendItem[] // Use the simplified LegendItem type
-    layout?: Layout
+    layout?: `horizontal` | `vertical`
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
     wrapper_style?: string
     item_style?: string

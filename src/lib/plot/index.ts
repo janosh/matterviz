@@ -189,3 +189,16 @@ export const corner_cells = [
 // Define the structure for GridCell and GridCellCounts for 3x3 grid
 export type Cell3x3 = (typeof cells_3x3)[number]
 export type Corner = (typeof corner_cells)[number]
+
+// attributes for each item passed to the legend
+export interface LegendItem {
+  label: string
+  visible: boolean
+  series_idx: number
+  display_style: {
+    marker_shape?: MarkerType // Allow various shapes
+    marker_color?: string
+    line_type?: LineType // Allow various styles
+    line_color?: string
+  }
+}
