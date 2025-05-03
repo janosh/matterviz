@@ -34,4 +34,6 @@
   {minSelect}
   bind:value
   placeholder="Select a heat map"
+  style="font-size: 1.2em;"
+  inputStyle="padding: 3pt 6pt;"
 />

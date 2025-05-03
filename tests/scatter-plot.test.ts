@@ -944,8 +944,9 @@ test.describe(`Point Sizing`, () => {
     expect(increased_min_sizes.intermediate_area).toBeGreaterThan(
       increased_max_sizes.intermediate_area,
     )
-    expect(increased_min_sizes.last_area).toBeLessThanOrEqual(
+    expect(increased_min_sizes.last_area).toBeCloseTo(
       increased_max_sizes.last_area,
+      0,
     )
     expect(increased_min_sizes.ratio_last_first).toBeLessThan(
       increased_max_sizes.ratio_last_first,
@@ -1070,5 +1071,58 @@ test.describe(`Point Sizing`, () => {
       0,
     )
     expect(final_linear_sizes.last_area).toBeCloseTo(linear_sizes.last_area, 0)
+  })
+})
+
+// --- Line Style Tests --- //
+test.describe(`Line Styling`, () => {
+  const section = `#line-styling-test`
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    await page.locator(section).waitFor({ state: `visible` })
+  })
+
+  test(`renders solid, dashed, and custom dashed lines correctly`, async ({
+    page,
+  }) => {
+    const solid_plot = page.locator(`${section} #solid-line .scatter`)
+    const dashed_plot = page.locator(`${section} #dashed-line .scatter`)
+    const custom_plot = page.locator(`${section} #custom-dash .scatter`)
+
+    // Check solid lines (no stroke-dasharray)
+    const solid_line_1 = solid_plot.locator(
+      `g[data-series-idx='0'] path[fill='none']`,
+    )
+    const solid_line_2 = solid_plot.locator(
+      `g[data-series-idx='1'] path[fill='none']`,
+    )
+    await expect(solid_line_1).toBeVisible()
+    await expect(solid_line_2).toBeVisible()
+    expect(await solid_line_1.getAttribute(`stroke-dasharray`)).toBeNull()
+    expect(await solid_line_2.getAttribute(`stroke-dasharray`)).toBeNull()
+    await page.waitForTimeout(100) // Add small delay before checking attributes
+    await expect(solid_line_1).toHaveAttribute(`stroke`, `steelblue`) // Should be steelblue from point_style fallback
+    await expect(solid_line_2).toHaveAttribute(`stroke`, `steelblue`) // Explicit line_style color
+    await expect(solid_line_1).toHaveAttribute(`stroke-width`, `2`) // Default width
+    await expect(solid_line_2).toHaveAttribute(`stroke-width`, `2`) // Explicit line_style width
+
+    // Check dashed line
+    const dashed_line = dashed_plot.locator(
+      `g[data-series-idx='0'] path[fill='none']`,
+    )
+    await expect(dashed_line).toBeVisible()
+    await expect(dashed_line).toHaveAttribute(`stroke-dasharray`, `5 2`)
+    await expect(dashed_line).toHaveAttribute(`stroke`, `crimson`)
+    await expect(dashed_line).toHaveAttribute(`stroke-width`, `3`)
+
+    // Check custom dashed line
+    const custom_line = custom_plot.locator(
+      `g[data-series-idx='0'] path[fill='none']`,
+    )
+    await expect(custom_line).toBeVisible()
+    await expect(custom_line).toHaveAttribute(`stroke-dasharray`, `10 5 2 5`)
+    await expect(custom_line).toHaveAttribute(`stroke`, `forestgreen`)
+    await expect(custom_line).toHaveAttribute(`stroke-width`, `1`)
   })
 })

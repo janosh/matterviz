@@ -174,3 +174,9 @@ tbody tr:nth-child(odd) {
 :where(ul.selected > li button, button.remove-all, button) {
   background-color: transparent !important;
 }
+
+.full-bleed {
+  --margin: 5vw;
+  width: calc(100vw - 2 * var(--margin));
+  margin-left: calc(-50vw + 50% + var(--margin));
+}

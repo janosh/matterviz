@@ -1974,13 +1974,17 @@ describe(`ScatterPlot`, () => {
     // but we can verify the component renders without errors with custom grid styling
   })
 
-  test.each([
+  test.each<{
+    name: string
+    x_scale_type: ScaleType
+    y_scale_type: ScaleType
+  }>([
     { name: `linear x and y`, x_scale_type: `linear`, y_scale_type: `linear` },
     { name: `log x, linear y`, x_scale_type: `log`, y_scale_type: `linear` },
     { name: `linear x, log y`, x_scale_type: `linear`, y_scale_type: `log` },
     { name: `log x, log y`, x_scale_type: `log`, y_scale_type: `log` },
   ])(
-    `x_grid and y_grid work correctly with scale type: $name`,
+    `x_grid and y_grid work correctly with different scale types: $name`,
     ({ x_scale_type, y_scale_type }) => {
       document.body.innerHTML = ``
       document.body.appendChild(document.createElement(`div`))
@@ -2288,8 +2292,8 @@ describe(`ScatterPlot`, () => {
         target: document.body,
         props: {
           series: [data],
-          x_scale_type: x_scale_type as ScaleType, // Cast to ScaleType
-          y_scale_type: y_scale_type as ScaleType, // Cast to ScaleType
+          x_scale_type,
+          y_scale_type,
           x_grid,
           y_grid,
         },

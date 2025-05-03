@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cells_3x3, ColorBar, corner_cells, Line, marker_types } from '$lib'
-  import type { D3ColorSchemeName } from '$lib/colors'
+  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import type {
     AnchorNode,
     Cell3x3,
@@ -70,7 +70,7 @@
     y_grid?: boolean | Record<string, unknown> // Control y-axis grid lines visibility and styling
     color_scale?: {
       type?: ScaleType // Type of scale for color mapping
-      scheme?: D3ColorSchemeName // Color scheme from d3-scale-chromatic
+      scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
       value_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
     }
     size_scale?: {
@@ -124,7 +124,11 @@
     show_zero_lines = true,
     x_grid = true,
     y_grid = true,
-    color_scale = { type: `linear`, scheme: `viridis`, value_range: undefined },
+    color_scale = {
+      type: `linear`,
+      scheme: `interpolateViridis`,
+      value_range: undefined,
+    },
     color_bar = {},
     size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
     label_placement_config = {},
@@ -416,11 +420,10 @@
 
   // Color scale function
   let color_scale_fn = $derived.by(() => {
-    const interpolator_name =
-      `interpolate${color_scale.scheme?.charAt(0).toUpperCase()}${color_scale.scheme?.slice(1).toLowerCase()}` as keyof typeof d3_sc
+    const color_func_name = color_scale.scheme as keyof typeof d3_sc
     const interpolator =
-      typeof d3_sc[interpolator_name] === `function`
-        ? d3_sc[interpolator_name]
+      typeof d3_sc[color_func_name] === `function`
+        ? d3_sc[color_func_name]
         : d3_sc.interpolateViridis
 
     const [min_val, max_val] =
@@ -625,13 +628,15 @@
 
       // Check line_style
       if (series_markers?.includes(`line`)) {
-        // Use marker color for line if available and points are also shown, otherwise use default line color
         display_style.line_color =
-          display_style.marker_color && series_markers.includes(`points`)
+          data_series?.line_style?.stroke ??
+          (display_style.marker_color && series_markers.includes(`points`)
             ? display_style.marker_color
-            : `black`
-        // TODO: Infer line type from line_style prop if added later
-        display_style.line_type = `solid`
+            : `black`) // Default line color
+        // Map stroke_dasharray to LineType if needed, default to solid
+        display_style.line_type = data_series?.line_style?.stroke_dasharray
+          ? `dashed`
+          : `solid`
       } else {
         // If no line marker, explicitly remove line style for legend
         display_style.line_type = undefined
@@ -1306,13 +1311,7 @@
               {@const first_point_style = Array.isArray(series_data.point_style)
                 ? series_data.point_style[0]
                 : series_data.point_style}
-              {@const series_color =
-                first_color_value != null
-                  ? color_scale_fn(first_color_value)
-                  : first_point_style?.fill
-                    ? first_point_style.fill
-                    : `rgba(255, 255, 255, 0.5)`}
-
+              {@const line_style = series_data.line_style ?? {}}
               {@const all_line_points = series_data.x.map((x, idx) => ({
                 x,
                 y: series_data.y[idx],
@@ -1328,8 +1327,13 @@
                     : x_scale_fn(x_min),
                   y_scale_fn(y_min),
                 ]}
-                line_color={series_color}
-                line_width={1}
+                line_color={line_style.stroke ??
+                  first_point_style?.fill ??
+                  (first_color_value != null
+                    ? color_scale_fn(first_color_value)
+                    : `rgba(255, 255, 255, 0.5)`)}
+                line_width={line_style.stroke_width ?? 2}
+                stroke_dasharray={line_style.stroke_dasharray}
                 area_color="transparent"
                 {line_tween}
               />

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScatterPlot, element_data, pretty_num, type Point } from '$lib'
+  import { ScatterPlot, element_data, pretty_num, type InternalPoint } from '$lib'
   import { selected } from '$lib/state.svelte'
 
   interface Props {
@@ -8,12 +8,12 @@
     y: number[]
     x_label?: string
     y_label?: string
-    y_unit?: string
-    tooltip_point?: Point | null
+    y_unit?: string | null
+    tooltip_point?: InternalPoint | null
     hovered?: boolean
+    y_format?: string
     [key: string]: unknown
   }
-
   let {
     y,
     x_label = `Atomic Number`,
@@ -21,6 +21,7 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
+    y_format = `~s`,
     ...rest
   }: Props = $props()
 
@@ -30,36 +31,32 @@
       tooltip_point = {
         x: selected.element.number,
         y: y[selected.element.number - 1],
+        series_idx: 0,
+        point_idx: selected.element.number - 1,
       }
     }
   })
 </script>
 
 <ScatterPlot
-  series={[{ x: [...Array(y.length + 1).keys()].slice(1), y }]}
+  series={[
+    {
+      x: [...Array(y.length + 1).keys()].slice(1),
+      y,
+      color_values: y,
+      point_style: { radius: 4 },
+    },
+  ]}
   bind:tooltip_point
   bind:hovered
   {x_label}
+  {y_label}
+  {y_format}
+  color_bar={null}
   {...rest}
 >
   {#snippet tooltip({ x, y })}
-    <div>
-      {#if selected.element}
-        <strong>{x} - {element_data[x - 1]?.name}</strong>
-        <br />{y_label} = {pretty_num(y)}
-        {y_unit ?? ``}
-      {/if}
-    </div>
+    <strong>{x} - {element_data[x - 1]?.name}</strong><br />
+    {y_label} = {pretty_num(y, y_format)}{y_unit ?? ``}
   {/snippet}
 </ScatterPlot>
-
-<style>
-  div {
-    background-color: var(--scatter-tooltip-bg, rgba(0, 0, 0, 0.7));
-    padding: var(--scatter-tooltip-padding, 1pt 3pt);
-    width: var(--scatter-tooltip-width, max-content);
-    box-sizing: var(--scatter-tooltip-box-sizing, border-box);
-    border-radius: var(--scatter-tooltip-radius, 3pt);
-    font-size: var(--scatter-tooltip-font-size, min(2.3cqw, 12pt));
-  }
-</style>
