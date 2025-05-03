@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.12](https://github.com/janosh/elementari/compare/v0.3.11...v0.3.12)
+
+> 3 May 2025
+
+- fix missing colors, math, plot, periodic-table exports in package.json + add range_padding prop to ScatterPlot [`73e1af4`](https://github.com/janosh/elementari/commit/73e1af45deeb3de261202e3e64e7dc865747dbf6)
+- `ColorScaleSelect.svelte` add prop `options: D3InterpolateName[]` [`2783ed2`](https://github.com/janosh/elementari/commit/2783ed2f0482fcacf7beb22d1174a24d96fe83f4)
+- breaking: rename `cbar_props` to `colorbar` in `ColorScaleSelect` + `n_items` with `layout_tracks` in `PlotLegend` [`4f5c927`](https://github.com/janosh/elementari/commit/4f5c927966bf8214134b7fa110e8372efb91a5ab)
+
 #### [v0.3.11](https://github.com/janosh/elementari/compare/v0.3.10...v0.3.11)
 
 > 30 April 2025
