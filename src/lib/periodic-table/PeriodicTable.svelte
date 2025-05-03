@@ -5,6 +5,7 @@
   import element_data from '$lib/element/data'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { D3InterpolateName } from '../colors'
 
   const default_lanth_act_tiles = [
     {
@@ -24,6 +25,7 @@
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     style?: string
+    class?: string
     disabled?: boolean // disable hover and click events from updating active_element
     // either array of length 118 (one heat value for each element) or object with
     // element symbol as key and heat value as value
@@ -32,7 +34,7 @@
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
     log?: boolean
-    color_scale?: string | ((num: number) => string)
+    color_scale?: D3InterpolateName | ((num: number) => string)
     active_element?: ChemicalElement | null
     active_category?: Category | null
     gap?: string // gap between element tiles, default is 0.3% of container width
@@ -57,11 +59,12 @@
     tile_props,
     show_photo = true,
     style = ``,
+    class: class_name = ``,
     disabled = false,
     heatmap_values = [],
     links = null,
     log = false,
-    color_scale = $bindable(`Viridis`),
+    color_scale = $bindable(`interpolateViridis`),
     active_element = $bindable(null),
     active_category = $bindable(null),
     gap = `0.3cqw`,
@@ -128,9 +131,7 @@
       }) ?? active_element
   }
   let color_scale_fn = $derived(
-    typeof color_scale == `string`
-      ? d3_sc[`interpolate${color_scale}` as keyof typeof d3_sc]
-      : color_scale,
+    typeof color_scale == `string` ? d3_sc[color_scale] : color_scale,
   )
 
   let cs_min = $derived(color_scale_range[0] ?? Math.min(...heat_values))
@@ -148,7 +149,7 @@
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
-<div class="periodic-table-container" {style}>
+<div class="periodic-table-container {class_name}" {style}>
   <div class="periodic-table" style:gap>
     {@render inset?.({ active_element })}
     {#each element_data as element (element.number)}

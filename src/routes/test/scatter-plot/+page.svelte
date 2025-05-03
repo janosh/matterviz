@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
-  import type { DataSeries, LabelStyle, PointStyle } from '$lib/plot'
+  import type { DataSeries, LabelStyle, PointStyle, ScaleType } from '$lib/plot'
   import { marker_types } from '$lib/plot'
 
   // === Basic Example Data ===
@@ -352,8 +352,11 @@
     point_style: { fill: `darkcyan`, radius: 5, stroke: `white`, stroke_width: 1 },
   }
 
-  // === Point Sizing Data (copied from demo page) ===
-  let size_scale = $state({ radius_range: [2, 15], type: `linear` })
+  // === Point Sizing Data ===
+  let size_scale = $state({
+    radius_range: [2, 15] as [number, number],
+    type: `linear` as ScaleType,
+  })
 
   // Create a dataset with points arranged in a spiral pattern
   const point_count = 40
@@ -399,6 +402,55 @@
     }
     return data as DataSeries // Cast return value to satisfy the derived type
   })
+
+  // --- Line Styling Test Data ---
+  const xs = [1, 2, 3, 4]
+  const ys = [10, 15, 12, 18]
+  const line_styling_test_cases = [
+    {
+      id: `solid-line`,
+      series: [
+        {
+          x: xs,
+          y: ys,
+          point_style: { fill: `steelblue` },
+          markers: `line`,
+        },
+        {
+          x: xs,
+          y: ys,
+          line_style: { stroke: `steelblue`, stroke_width: 2 },
+          markers: `line`,
+        },
+      ],
+    },
+    {
+      id: `dashed-line`,
+      series: [
+        {
+          x: xs,
+          y: ys,
+          line_style: { stroke: `crimson`, stroke_width: 3, stroke_dasharray: `5 2` },
+          markers: `line`,
+        },
+      ],
+    },
+    {
+      id: `custom-dash`,
+      series: [
+        {
+          x: xs,
+          y: ys,
+          line_style: {
+            stroke: `forestgreen`,
+            stroke_width: 1,
+            stroke_dasharray: `10 5 2 5`,
+          },
+          markers: `line`,
+        },
+      ],
+    },
+  ] as const
 </script>
 
 <div class="demo-container">
@@ -562,10 +614,8 @@
     <div class="demo-plot">
       <ScatterPlot series={[custom_tooltip_data]} markers="points">
         {#snippet tooltip(props)}
-          <div class="custom-tooltip">
-            Point Info: <strong>{props.metadata?.info}</strong><br />
-            Coords: ({props.x_formatted}, {props.y_formatted})
-          </div>
+          Point Info: <strong>{props.metadata?.info}</strong><br />
+          Coords: ({props.x_formatted}, {props.y_formatted})
         {/snippet}
       </ScatterPlot>
     </div>
@@ -637,16 +687,12 @@
         x_lim={[0, 100]}
         y_lim={[0, 100]}
         markers="points"
-        color_scale={{ scheme: `turbo` }}
+        color_scale={{ scheme: `Turbo` }}
         color_bar={{ title: `Color Bar Title` }}
       >
         {#snippet tooltip({ x, y, color_value })}
-          <div
-            style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;"
-          >
-            Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
-            Color value: {color_value?.toFixed(2)}
-          </div>
+          Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
+          Color value: {color_value?.toFixed(2)}
         {/snippet}
       </ScatterPlot>
     </div>
@@ -757,17 +803,27 @@
       style="height: 500px; width: 100%;"
     >
       {#snippet tooltip({ x, y, metadata })}
-        <div style="white-space: nowrap;">
-          <strong>Spiral Point</strong><br />
-          Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
-          {#if metadata}
-            Angle: {(metadata.angle as number).toFixed(2)} rad<br />
-            Value (Radius): {(metadata.radius as number).toFixed(2)}
-          {/if}
-        </div>
+        <strong>Spiral Point</strong><br />
+        Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
+        {#if metadata}
+          Angle: {(metadata.angle as number).toFixed(2)} rad<br />
+          Value (Radius): {(metadata.radius as number).toFixed(2)}
+        {/if}
       {/snippet}
     </ScatterPlot>
   </div>
+
+  <section>
+    <h2>Line Styling Test</h2>
+    <div id="line-styling-test">
+      {#each line_styling_test_cases as { id, series } (id)}
+        <section {id}>
+          <h3>{id}</h3>
+          <ScatterPlot {series} x_label="X Axis" y_label="Y Axis" />
+        </section>
+      {/each}
+    </div>
+  </section>
 </div>
 
 <style>
@@ -821,15 +877,6 @@
   :is(h1, h2) {
     text-align: center;
     margin-bottom: 1em;
-  }
-
-  .custom-tooltip {
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 5px 8px;
-    border-radius: 3px;
-    font-size: 0.9em;
-    white-space: nowrap;
   }
 
   label {

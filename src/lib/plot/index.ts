@@ -92,6 +92,11 @@ export interface DataSeries {
   point_tween?: TweenedOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
+  line_style?: {
+    stroke?: string
+    stroke_width?: number
+    stroke_dasharray?: string
+  }
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data

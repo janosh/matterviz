@@ -1224,7 +1224,7 @@ This example shows how to place the color bar vertically on the right side of th
 
 ```svelte example stackblitz
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ColorScaleSelect, ScatterPlot } from '$lib'
 
   // Generate data where color value relates to y-value
   const point_count = 50
@@ -1247,7 +1247,7 @@ This example shows how to place the color bar vertically on the right side of th
   const plot_padding = { t: 20, b: 50, l: 60, r: 70 } // Increased right padding
 
   // Color Scaling Controls
-  let color_scale = $state({ type: `linear`, scheme: `cool` }) // Track which color scale type is active
+  let color_scale = $state({ type: `linear`, scheme: `interpolateCool` }) // Track which color scale type is active
 </script>
 
 <div>
@@ -1262,16 +1262,7 @@ This example shows how to place the color bar vertically on the right side of th
       {/each}
     </div>
 
-    <div>
-      <strong>Color Scheme:</strong>
-      <select bind:value={color_scale.scheme}>
-        {#each [
-          `viridis`, `inferno`, `plasma`, `magma`, `cividis`, `turbo`, `warm`, `cool`, `spectral`
-        ] as scheme}
-          <option value={scheme}>{scheme}</option>
-        {/each}
-      </select>
-    </div>
+    <ColorScaleSelect bind:value={color_scale.scheme} selected={[color_scale.scheme]} />
   </div>
 
   The color bar is positioned vertically to the right, outside the plot.

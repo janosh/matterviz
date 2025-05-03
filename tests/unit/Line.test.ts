@@ -29,7 +29,7 @@ describe(`Line`, () => {
       },
       expected_area: {
         fill: `rgba(255, 255, 255, 0.1)`,
-        stroke: ``, // Default area_stroke is null -> empty string style
+        stroke: null, // Default area_stroke is null
       },
     },
     {
@@ -48,6 +48,22 @@ describe(`Line`, () => {
       expected_area: {
         fill: `blue`,
         stroke: `green`,
+      },
+    },
+    {
+      name: `custom dash array`,
+      props: {
+        stroke_dasharray: `4 2`,
+      },
+      expected_line: {
+        stroke: `rgba(255, 255, 255, 0.5)`,
+        strokeWidth: `2`,
+        fill: `none`,
+        strokeDasharray: `4 2`,
+      },
+      expected_area: {
+        fill: `rgba(255, 255, 255, 0.1)`,
+        stroke: null,
       },
     },
   ])(`renders with $name`, ({ props, expected_line, expected_area }) => {
@@ -72,12 +88,17 @@ describe(`Line`, () => {
 
     // Assert line styles
     expect(line_path.getAttribute(`fill`)).toBe(expected_line.fill)
-    expect(line_path.style.stroke).toBe(expected_line.stroke)
-    expect(line_path.style.strokeWidth).toBe(expected_line.strokeWidth)
+    expect(line_path.getAttribute(`stroke`)).toBe(expected_line.stroke)
+    expect(line_path.getAttribute(`stroke-width`)).toBe(
+      expected_line.strokeWidth,
+    )
+    expect(line_path.getAttribute(`stroke-dasharray`)).toBe(
+      expected_line.strokeDasharray ?? null,
+    )
 
-    // Assert area styles
-    expect(area_path.style.fill).toBe(expected_area.fill)
-    expect(area_path.style.stroke).toBe(expected_area.stroke)
+    // Assert area styles using getAttribute
+    expect(area_path.getAttribute(`fill`)).toBe(expected_area.fill)
+    expect(area_path.getAttribute(`stroke`)).toBe(expected_area.stroke ?? null)
   })
 
   test(`calculates line path correctly for 2 and 3 points`, () => {

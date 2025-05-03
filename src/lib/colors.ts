@@ -2,10 +2,9 @@ import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 
 // Extract color scheme interpolate function names from d3-scale-chromatic
-export type D3InterpolateFunc = keyof typeof d3_sc & `interpolate${string}`
-export type D3ColorSchemeName = Lowercase<
-  D3InterpolateFunc extends `interpolate${infer Name}` ? Name : never
->
+export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
+export type D3ColorSchemeName =
+  D3InterpolateName extends `interpolate${infer Name}` ? Name : never
 
 // color values have to be in hex format since that's the only format
 // <input type="color"> supports

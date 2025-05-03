@@ -13,6 +13,7 @@
     area_color?: string
     area_stroke?: string | null
     line_tween?: TweenedOptions<string>
+    stroke_dasharray?: string | null
   }
   let {
     points,
@@ -22,6 +23,7 @@
     area_color = `rgba(255, 255, 255, 0.1)`,
     area_stroke = null,
     line_tween = {},
+    stroke_dasharray = null,
   }: Props = $props()
 
   const lineGenerator = line()
@@ -48,11 +50,12 @@
 
 <path
   d={tweened_line.current}
-  style:stroke={line_color}
-  style:stroke-width={line_width}
+  stroke={line_color}
+  stroke-width={line_width}
+  stroke-dasharray={stroke_dasharray}
   fill="none"
 />
-<path d={tweened_area.current} style:fill={area_color} style:stroke={area_stroke} />
+<path d={tweened_area.current} fill={area_color} stroke={area_stroke} />
 
 <style>
   path {

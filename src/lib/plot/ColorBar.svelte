@@ -4,6 +4,7 @@
   import * as d3 from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
+  import type { D3InterpolateName } from '../colors'
 
   interface Props {
     title?: string | null
@@ -31,7 +32,7 @@
   }
   let {
     title = null,
-    color_scale = $bindable(`Viridis`),
+    color_scale = $bindable(`interpolateViridis`),
     style = null,
     title_style = null,
     wrapper_style = null,
@@ -137,16 +138,16 @@
 
   let color_scale_fn = $derived.by(() => {
     if (typeof color_scale == `string`) {
-      const interpolator_key = `interpolate${color_scale}`
-      // Check more safely if the key exists
-      if (interpolator_key in d3_sc) {
-        return d3_sc[interpolator_key as keyof typeof d3_sc]
-      } else {
-        console.error(
-          `Color scale '${color_scale}' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`,
-        )
-        return d3_sc.interpolateViridis
-      }
+      if (color_scale.startsWith(`interpolate`) && color_scale in d3_sc)
+        return d3_sc[color_scale as D3InterpolateName]
+
+      const func_name = `interpolate${color_scale}`
+      if (func_name in d3_sc) return d3_sc[func_name as D3InterpolateName]
+
+      console.error(
+        `Color scale '${color_scale}' not found, supported color scale names are ${valid_color_scale_keys}. Falling back on 'Viridis'.`,
+      )
+      return d3_sc.interpolateViridis
     } else return color_scale
   })
 
