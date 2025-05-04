@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => ({
       reporter: [`text`, `json-summary`],
     },
     setupFiles: `tests/unit/setup.ts`,
+    include: [`tests/unit/**/*.test.ts`],
   },
 
   server: {

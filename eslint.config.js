@@ -21,7 +21,7 @@ export default [
     languageOptions: { ecmaVersion: 2020 },
   },
   {
-    files: [`**/*.svelte`],
+    files: [`**/*.svelte`, `**/*.svelte.ts`],
     languageOptions: {
       parserOptions: {
         parser: tslint.parser,

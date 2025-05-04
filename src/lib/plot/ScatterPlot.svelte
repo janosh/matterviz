@@ -1,18 +1,17 @@
 <script lang="ts">
-  import { cells_3x3, ColorBar, corner_cells, Line, marker_types } from '$lib'
+  import { cells_3x3, ColorBar, corner_cells, Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import type {
     AnchorNode,
     Cell3x3,
     Corner,
+    D3SymbolName,
     DataSeries,
     HoverConfig,
     InternalPoint,
     LabelNode,
     LabelPlacementConfig,
     LegendConfig,
-    LineType,
-    MarkerType,
     PlotPoint,
     Point,
     PointStyle,
@@ -22,7 +21,7 @@
     TooltipProps,
     XyObj,
   } from '$lib/plot'
-  import { PlotLegend } from '$lib/plot'
+  import { LOG_MIN_EPS, PlotLegend } from '$lib/plot'
   import { extent, range } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
   import { format } from 'd3-format'
@@ -299,7 +298,7 @@
     const scale =
       scale_type === `log`
         ? scaleLog().domain([
-            Math.max(data_min, 1e-10),
+            Math.max(data_min, LOG_MIN_EPS),
             Math.max(data_max, data_min * 1.1),
           ]) // Ensure log domain > 0
         : scaleLinear().domain([data_min, data_max])
@@ -407,7 +406,7 @@
     return size_scale.type === `log`
       ? scaleLog()
           .domain([
-            Math.max(safe_min_val, 1e-10),
+            Math.max(safe_min_val, LOG_MIN_EPS),
             Math.max(safe_max_val, safe_min_val * 1.1),
           ])
           .range([min_radius, max_radius])
@@ -431,7 +430,7 @@
 
     return color_scale.type === `log`
       ? scaleSequentialLog(interpolator).domain([
-          Math.max(min_val, 1e-10),
+          Math.max(min_val, LOG_MIN_EPS),
           Math.max(max_val, min_val * 1.1),
         ])
       : scaleSequential(interpolator).domain([min_val, max_val])
@@ -577,15 +576,14 @@
 
       // Explicitly define the type for display_style matching PlotLegend expectations
       type LegendDisplayStyle = {
-        marker_shape?: MarkerType
-        marker_color?: string
-        line_type?: LineType
+        symbol_type?: D3SymbolName
+        symbol_color?: string
         line_color?: string
+        line_dash?: string
       }
       const display_style: LegendDisplayStyle = {
-        marker_shape: `circle`, // Default marker shape
-        marker_color: `black`, // Default marker color
-        line_type: `solid`, // Default line type
+        symbol_type: `Circle` as D3SymbolName, // Default marker shape (Capitalized)
+        symbol_color: `black`, // Default marker color
         line_color: `black`, // Default line color
       }
 
@@ -599,47 +597,43 @@
       if (series_markers?.includes(`points`)) {
         if (first_point_style) {
           // Assign shape only if it's one of the allowed types, else default to circle
-          let final_shape: MarkerType = `circle` // Default shape
-          const shape_from_style = first_point_style.shape
-          if (shape_from_style && marker_types.includes(shape_from_style as MarkerType)) {
-            final_shape = shape_from_style as MarkerType // Cast validated shape
+          let final_shape: D3SymbolName = `Circle` // Default shape
+          if (symbol_names.includes(first_point_style.shape as D3SymbolName)) {
+            final_shape = first_point_style.shape as D3SymbolName
           }
-          display_style.marker_shape = final_shape
+          display_style.symbol_type = final_shape
 
-          display_style.marker_color =
-            first_point_style.fill ?? display_style.marker_color // Use default if nullish
+          display_style.symbol_color =
+            first_point_style.fill ?? display_style.symbol_color // Use default if nullish
           if (first_point_style.stroke) {
             // Use stroke color if fill is none or transparent
             if (
-              !display_style.marker_color ||
-              display_style.marker_color === `none` ||
-              display_style.marker_color.startsWith(`rgba(`, 0) // Check if transparent
+              !display_style.symbol_color ||
+              display_style.symbol_color === `none` ||
+              display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
             ) {
-              display_style.marker_color = first_point_style.stroke
+              display_style.symbol_color = first_point_style.stroke
             }
           }
         }
-        // else: keep default display_style.marker_shape/color if no point_style
+        // else: keep default display_style.symbol_type/color if no point_style
       } else {
         // If no points marker, explicitly remove marker style for legend
-        display_style.marker_shape = undefined
-        display_style.marker_color = undefined
+        display_style.symbol_type = undefined
+        display_style.symbol_color = undefined
       }
 
       // Check line_style
       if (series_markers?.includes(`line`)) {
         display_style.line_color =
           data_series?.line_style?.stroke ??
-          (display_style.marker_color && series_markers.includes(`points`)
-            ? display_style.marker_color
+          (display_style.symbol_color && series_markers.includes(`points`)
+            ? display_style.symbol_color
             : `black`) // Default line color
-        // Map stroke_dasharray to LineType if needed, default to solid
-        display_style.line_type = data_series?.line_style?.stroke_dasharray
-          ? `dashed`
-          : `solid`
+        display_style.line_dash = data_series?.line_style?.line_dash
       } else {
         // If no line marker, explicitly remove line style for legend
-        display_style.line_type = undefined
+        display_style.line_dash = undefined
         display_style.line_color = undefined
       }
 
@@ -1333,7 +1327,7 @@
                     ? color_scale_fn(first_color_value)
                     : `rgba(255, 255, 255, 0.5)`)}
                 line_width={line_style.stroke_width ?? 2}
-                stroke_dasharray={line_style.stroke_dasharray}
+                line_dash={line_style.line_dash}
                 area_color="transparent"
                 {line_tween}
               />
@@ -1519,13 +1513,20 @@
 
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0 && color_bar_cell}
-      {@const { value_range = auto_color_range as [number, number] } = color_scale}
+      {@const effective_color_domain = (color_scale.value_range ?? auto_color_range) as [
+        number,
+        number,
+      ]}
       <ColorBar
         {...{
           tick_labels: 4,
           tick_align: `primary`,
-          range: value_range?.every((val) => val != null) ? value_range : undefined,
-          color_scale: color_scale_fn,
+          color_scale_fn,
+          color_scale_domain: effective_color_domain,
+          scale_type: color_scale.type,
+          range: effective_color_domain?.every((val) => val != null)
+            ? effective_color_domain
+            : undefined,
           wrapper_style: `
             position: absolute;
             left: ${tweened_colorbar_coords.current.x}px;

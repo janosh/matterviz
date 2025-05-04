@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { HoverStyle, LabelStyle, Point, PointStyle, XyObj } from '$lib/plot'
+  import { symbol_map } from '$lib/plot'
   import * as d3_symbols from 'd3-shape'
-  import { type SymbolType, symbol } from 'd3-shape'
+  import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
@@ -26,19 +27,10 @@
     origin = { x: 0, y: 0 },
   }: Props = $props()
 
-  const symbol_map: Record<string, SymbolType> = {}
-  Object.entries(d3_symbols).forEach(([key, value]) => {
-    if (key.startsWith(`symbol`) && typeof value === `object`) {
-      // Convert camelCase to snake_case used internally
-      const snake_key = key.replace(`symbol`, ``).toLowerCase()
-      symbol_map[snake_key] = value as SymbolType
-    }
-  })
-
   function get_symbol_path(): string {
     const symbol_type =
-      symbol_map[style.marker_type ?? `circle`] ?? d3_symbols.symbolCircle
-    const size = style.marker_size ?? Math.pow(style.radius ?? 2, 2) * 3
+      symbol_map[style.symbol_type ?? `Circle`] ?? d3_symbols.symbolCircle
+    const size = style.symbol_size ?? Math.PI * Math.pow(style.radius ?? 2, 2)
     return symbol().type(symbol_type).size(size)() || ``
   }
 

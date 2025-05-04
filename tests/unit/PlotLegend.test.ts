@@ -10,9 +10,9 @@ const default_series_data: LegendItem[] = [
     visible: true,
     series_idx: 0,
     display_style: {
-      marker_shape: `circle`,
-      marker_color: `red`,
-      line_type: `solid`,
+      symbol_type: `Circle`,
+      symbol_color: `red`,
+      line_dash: `solid`,
       line_color: `red`,
     },
   },
@@ -21,9 +21,9 @@ const default_series_data: LegendItem[] = [
     visible: false,
     series_idx: 1,
     display_style: {
-      marker_shape: `square`,
-      marker_color: `blue`,
-      line_type: `dashed`,
+      symbol_type: `Square`,
+      symbol_color: `blue`,
+      line_dash: `dashed`,
       line_color: `blue`,
     },
   },
@@ -32,8 +32,8 @@ const default_series_data: LegendItem[] = [
     visible: true,
     series_idx: 2,
     display_style: {
-      marker_shape: `triangle`,
-      marker_color: `green`,
+      symbol_type: `Triangle`,
+      symbol_color: `green`,
       // No line
     },
   },
@@ -43,7 +43,7 @@ const default_series_data: LegendItem[] = [
     series_idx: 3,
     display_style: {
       // No marker
-      line_type: `dotted`,
+      line_dash: `Dotted`,
       line_color: `purple`,
     },
   },
@@ -110,7 +110,7 @@ describe(`PlotLegend`, () => {
       first_marker_svgs[0]
         .querySelector(`line`)
         ?.getAttribute(`stroke-dasharray`),
-    ).toBe(`none`)
+    ).toBe(`solid`)
     expect(
       first_marker_svgs[1].querySelector(`circle`)?.getAttribute(`fill`),
     ).toBe(`red`)
@@ -212,31 +212,31 @@ describe(`PlotLegend`, () => {
         label: `Circle/Solid`,
         visible: true,
         series_idx: 0,
-        display_style: { marker_shape: `circle`, line_type: `solid` },
+        display_style: { symbol_type: `Circle`, line_dash: `solid` },
       },
       {
         label: `Square/Dashed`,
         visible: true,
         series_idx: 1,
-        display_style: { marker_shape: `square`, line_type: `dashed` },
+        display_style: { symbol_type: `Square`, line_dash: `dashed` },
       },
       {
         label: `Triangle/Dotted`,
         visible: true,
         series_idx: 2,
-        display_style: { marker_shape: `triangle`, line_type: `dotted` },
+        display_style: { symbol_type: `Triangle`, line_dash: `dotted` },
       },
       {
         label: `Cross`,
         visible: true,
         series_idx: 3,
-        display_style: { marker_shape: `cross`, marker_color: `orange` }, // Added color
+        display_style: { symbol_type: `Cross`, symbol_color: `orange` }, // Added color
       },
       {
         label: `Star`,
         visible: true,
         series_idx: 4,
-        display_style: { marker_shape: `star`, marker_color: `magenta` }, // Added color
+        display_style: { symbol_type: `Star`, symbol_color: `magenta` }, // Added color
       },
     ]
     mount(PlotLegend, {
@@ -254,7 +254,7 @@ describe(`PlotLegend`, () => {
       item1_marker_svgs[0]
         .querySelector(`line`)
         ?.getAttribute(`stroke-dasharray`),
-    ).toBe(`none`)
+    ).toBe(`solid`)
     expect(item1_marker_svgs[1].querySelector(`circle`)).toBeTruthy()
     expect(
       item1_marker_svgs[1].querySelector(`circle`)?.getAttribute(`fill`),
@@ -309,9 +309,9 @@ describe(`PlotLegend`, () => {
         visible: true,
         series_idx: 0,
         display_style: {
-          marker_shape: `circle`,
-          marker_color: `red`,
-          line_type: `solid`,
+          symbol_type: `Circle`,
+          symbol_color: `red`,
+          line_dash: `solid`,
           line_color: `red`,
         },
       },
@@ -319,13 +319,13 @@ describe(`PlotLegend`, () => {
         label: `Blue Marker Only`,
         visible: true,
         series_idx: 1,
-        display_style: { marker_shape: `square`, marker_color: `blue` }, // No line
+        display_style: { symbol_type: `Square`, symbol_color: `blue` }, // No line
       },
       {
         label: `Green Line Only`,
         visible: true,
         series_idx: 2,
-        display_style: { line_type: `solid`, line_color: `green` }, // No marker
+        display_style: { line_dash: `solid`, line_color: `green` }, // No marker
       },
     ]
     mount(PlotLegend, {

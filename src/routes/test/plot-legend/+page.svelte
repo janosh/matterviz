@@ -8,9 +8,9 @@
       visible: true,
       series_idx: 0,
       display_style: {
-        marker_shape: `circle`,
-        marker_color: `crimson`,
-        line_type: `solid`,
+        symbol_type: `Circle`,
+        symbol_color: `crimson`,
+        line_dash: `solid`,
         line_color: `crimson`,
       },
     },
@@ -19,9 +19,9 @@
       visible: true,
       series_idx: 1,
       display_style: {
-        marker_shape: `square`,
-        marker_color: `steelblue`,
-        line_type: `dashed`,
+        symbol_type: `Square`,
+        symbol_color: `steelblue`,
+        line_dash: `dashed`,
         line_color: `steelblue`,
       },
     },
@@ -30,8 +30,8 @@
       visible: false, // Initially hidden
       series_idx: 2,
       display_style: {
-        marker_shape: `triangle`,
-        marker_color: `darkorange`,
+        symbol_type: `Triangle`,
+        symbol_color: `darkorange`,
         // No line
       },
     },
@@ -41,7 +41,7 @@
       series_idx: 3,
       display_style: {
         // No marker
-        line_type: `dotted`,
+        line_dash: `Dotted`,
         line_color: `darkviolet`,
       },
     },
@@ -143,6 +143,26 @@
       Last Isolated Index: {last_isolated_idx ?? `null`}
     </p>
   </div>
+</div>
+
+<h2>Custom Style Test Case</h2>
+<div
+  id="custom-style-legend"
+  style="
+    --plot-legend-background-color: rgb(10, 20, 30);
+    --plot-legend-item-padding: 1px;
+    --plot-legend-item-color: rgb(255, 255, 0);
+    padding: 5px; /* Apply padding directly to wrapper for test */
+    border: 1px solid red; /* Visual aid */
+    max-width: 200px; /* Ensure it wraps if needed */"
+>
+  <PlotLegend
+    series_data={series_data.slice(0, 2)}
+    layout="horizontal"
+    layout_tracks={2}
+    on_toggle={() => {}}
+    on_double_click={() => {}}
+  />
 </div>
 
 <style>

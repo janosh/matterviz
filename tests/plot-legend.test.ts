@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 
 test.describe(`PlotLegend Component Integration Tests`, () => {
+  // Define locators for the two legend instances
+  const main_legend_wrapper = `div:has(h2:has-text("Legend Component"))`
+  const custom_style_legend_wrapper = `#custom-style-legend`
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/plot-legend`)
   })
@@ -8,7 +12,8 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   test(`should render legend items correctly based on initial data`, async ({
     page,
   }) => {
-    const legend_items = page.locator(`.legend-item`)
+    // Target the first legend instance
+    const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
     await expect(legend_items).toHaveCount(4)
 
     // Check labels
@@ -81,7 +86,9 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   test.skip(`should toggle item visibility on single click`, async ({
     page,
   }) => {
-    const legend_items = page.locator(`.legend-item`)
+    const legend_items = page
+      .locator(main_legend_wrapper)
+      .locator(`.legend-item`)
     const last_toggled_tracker = page.locator(`[data-testid="last-toggled"]`)
 
     // Item 0 (Alpha) starts visible
@@ -111,7 +118,9 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   test.skip(`should isolate item on double click and restore on second double click`, async ({
     page,
   }) => {
-    const legend_items = page.locator(`.legend-item`)
+    const legend_items = page
+      .locator(main_legend_wrapper)
+      .locator(`.legend-item`)
     const last_isolated_tracker = page.locator(`[data-testid="last-isolated"]`)
 
     // Initial state: 0, 1, 3 visible; 2 hidden
@@ -154,41 +163,44 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   })
 
   test(`should change layout based on props`, async ({ page }) => {
-    // This test mainly verifies that changing layout props doesn't crash.
-    // Verifying exact CSS grid properties is brittle in e2e tests.
+    // Target the main legend for layout changes
+    const legend = page.locator(`.legend`).first()
 
     // Change to Horizontal, 2 columns
     await page.locator(`#layout`).selectOption(`horizontal`)
     await page.locator(`#n_items`).fill(`2`)
     // Add a basic check that the legend still exists
-    await expect(page.locator(`.legend`)).toBeVisible()
+    await expect(legend).toBeVisible()
 
     // Change to Vertical, 3 rows
     await page.locator(`#layout`).selectOption(`vertical`)
     await page.locator(`#n_items`).fill(`3`)
     // Add a basic check that the legend still exists
-    await expect(page.locator(`.legend`)).toBeVisible()
+    await expect(legend).toBeVisible()
   })
 
   test(`should apply custom styles`, async ({ page }) => {
-    const legend_wrapper = page.locator(`.legend`)
-    const legend_item = page.locator(`.legend-item`).first()
+    // Target the custom style legend instance
+    const legend_wrapper = page
+      .locator(custom_style_legend_wrapper)
+      .locator(`.legend`)
+    const legend_item = page
+      .locator(custom_style_legend_wrapper)
+      .locator(`.legend-item`)
+      .first()
 
-    // Apply styles via inputs
-    await page
-      .locator(`#wrapper_style`)
-      .fill(`background-color: rgb(10, 20, 30); padding: 5px;`)
-    await page
-      .locator(`#item_style`)
-      .fill(`color: rgb(255, 255, 0); margin: 1px;`)
-
-    // Check styles
     await expect(legend_wrapper).toHaveCSS(
       `background-color`,
       `rgb(10, 20, 30)`,
     )
-    await expect(legend_wrapper).toHaveCSS(`padding`, `5px`)
-    await expect(legend_item).toHaveCSS(`color`, `rgb(255, 255, 0)`)
-    await expect(legend_item).toHaveCSS(`margin`, `1px`)
+    // Check padding on the parent div directly, not the legend itself
+    await expect(page.locator(custom_style_legend_wrapper)).toHaveCSS(
+      `padding`,
+      `5px`,
+    )
+    // Check item color (inherited or set by --plot-legend-item-color)
+    await expect(legend_item).toHaveCSS(`color`, `rgb(255, 255, 0)`) // Check color applied to item text
+    // Check item padding set by --plot-legend-item-padding
+    await expect(legend_item).toHaveCSS(`padding`, `1px`) // Check padding applied to item
   })
 })

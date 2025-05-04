@@ -43,7 +43,7 @@ A simple scatter plot showing different display modes (points, lines, or both):
     x_label="X Axis"
     y_label="Y Value"
     markers={display_mode}
-    style="height: 300px; width: 100%;"
+    style="height: 300px;"
   />
 </div>
 ```
@@ -200,16 +200,14 @@ Demonstrate various point styles, custom tooltips, and hover effects:
   y_lim={[0, 12]}
   markers="points"
   change={(event) => (selected_point = event)}
-  style="height: 400px; width: 100%;"
+  style="height: 400px;"
 >
   {#snippet tooltip({ x, y, metadata })}
-    <div style="white-space: nowrap;">
-      {#if metadata?.firstPoint}
-        <strong>{metadata.seriesName}</strong>
-      {:else}
-        Point at ({x}, {y})
-      {/if}
-    </div>
+    {#if metadata?.firstPoint}
+      <strong>{metadata.seriesName}</strong>
+    {:else}
+      Point at ({x}, {y})
+    {/if}
   {/snippet}
 </ScatterPlot>
 
@@ -230,7 +228,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
-  import { marker_types } from '$lib/plot'
+  import { symbol_names } from '$lib/plot'
 
   let size_scale = $state({ radius_range: [2, 15], type: 'linear' }) // [min_radius, max_radius]
   const point_count = 40
@@ -264,14 +262,14 @@ This example demonstrates how to apply different styles _and sizes_ to individua
       // Change color gradually along the spiral
       const hue = (idx / point_count) * 360
       // Change marker type based on index
-      const marker_type = marker_types[idx % marker_types.length]
+      const symbol_type = symbol_names[idx % symbol_names.length]
 
       // Create the point style (radius is now controlled by size_values)
       data.point_style.push({
         fill: `hsl(${hue}, 80%, 50%)`,
         stroke: 'white',
         stroke_width: 1 + idx / 20, // Gradually thicker stroke
-        marker_type: marker_type,
+        symbol_type,
       })
     }
     return data
@@ -305,15 +303,13 @@ This example demonstrates how to apply different styles _and sizes_ to individua
     y_lim={[-15, 15]}
     markers="points"
     {size_scale}
-    style="height: 500px; width: 100%;"
+    style="height: 500px;"
   >
     {#snippet tooltip({ x, y, metadata })}
-      <div style="white-space: nowrap;">
-        <strong>Spiral Point</strong><br>
-        Position: ({x.toFixed(2)}, {y.toFixed(2)})<br>
-        Angle: {metadata.angle.toFixed(2)} rad<br>
-        Value (Radius): {metadata.radius.toFixed(2)}
-      </div>
+      <strong>Spiral Point</strong><br>
+      Position: ({x.toFixed(2)}, {y.toFixed(2)})<br>
+      Angle: {metadata.angle.toFixed(2)} rad<br>
+      Value (Radius): {metadata.radius.toFixed(2)}
     {/snippet}
   </ScatterPlot>
 </div>
@@ -393,14 +389,12 @@ This example shows categorized data with color coding, custom tick intervals, an
     x_ticks={ticks.x}
     y_ticks={ticks.y}
     markers="points"
-    style="height: 400px; width: 100%;"
+    style="height: 400px;"
   >
     {#snippet tooltip({ x, y, metadata })}
-      <div style="white-space: nowrap;">
-        <span style="color: {metadata.color};">●</span>
-        <strong>{metadata.category}</strong><br>
-        Position: ({x.toFixed(2)}, {y.toFixed(2)})
-      </div>
+      <span style="color: {metadata.color};">●</span>
+      <strong>{metadata.category}</strong><br>
+      Position: ({x.toFixed(2)}, {y.toFixed(2)})
     {/snippet}
   </ScatterPlot>
 
@@ -486,15 +480,13 @@ Using time data on the x-axis with custom formatting:
     y_ticks={5}
     x_label="Date"
     y_label="Value"
-    style="height: 350px; width: 100%;"
+    style="height: 350px;"
     legend={{ layout: `horizontal`, n_items: 3, wrapper_style: `max-width: none; justify-content: center;` }}
   >
     {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
-      <div style="white-space: nowrap;">
-        <strong>{metadata?.series}</strong><br />
-        Date: {x_formatted}<br />
-        Value: {y_formatted}
-      </div>
+      <strong>{metadata?.series}</strong><br />
+      Date: {x_formatted}<br />
+      Value: {y_formatted}
     {/snippet}
   </ScatterPlot>
 </div>
@@ -549,15 +541,13 @@ This example demonstrates how points with identical coordinates can still be ind
   x_label="X Axis"
   y_label="Y Axis"
   change={(event) => (hovered_point = event)}
-  style="height: 350px; width: 100%;"
+  style="height: 350px;"
 >
   {#snippet tooltip({ x, y, metadata })}
     {@const { label, id } = metadata}
-    <div style="white-space: nowrap;">
-      <strong>{label}</strong><br />
-      Coordinates: ({x}, {y})<br />
-      ID: {id}
-    </div>
+    <strong>{label}</strong><br />
+    Coordinates: ({x}, {y})<br />
+    ID: {id}
   {/snippet}
 </ScatterPlot>
 
@@ -599,7 +589,7 @@ This example shows how to add permanent text labels to your scatter points:
   x_lim={[0, 10]}
   y_lim={[0, 10]}
   markers="points"
-  style="height: 350px; width: 100%;"
+  style="height: 350px;"
 />
 ```
 
@@ -633,7 +623,7 @@ You can position labels in different directions relative to each point:
   x_lim={[0, 10]}
   y_lim={[0, 6]}
   markers="points"
-  style="height: 350px; width: 100%;"
+  style="height: 350px;"
 />
 ```
 
@@ -668,7 +658,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
-  import { marker_types } from '$lib/plot'
+  import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
 
   const point_count = 50;
 
@@ -686,7 +676,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const y_val = 10000 * Math.exp(-0.5 * x_val);
     decay_data.x.push(x_val);
     // Ensure y is not exactly 0 for log scale, clamp to a small positive value
-    const safe_y_val = Math.max(y_val, 1e-9);
+    const safe_y_val = Math.max(y_val, LOG_MIN_EPS);
     decay_data.y.push(safe_y_val);
     decay_data.size_values.push(safe_y_val);
     decay_data.metadata.push({ series: 'Exponential Decay' });
@@ -705,7 +695,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, -1 + (idx / (point_count * 2 - 1)) * 4); // x from 0.1 to 1000 log-spaced
     const y_val = 500 + 400 * Math.sin(Math.log10(x_val) * 5);
     log_sine_data.x.push(x_val);
-    const safe_y_val = Math.max(y_val, 1e-9); // Clamp potential near-zero y
+    const safe_y_val = Math.max(y_val, LOG_MIN_EPS); // Clamp potential near-zero y
     log_sine_data.y.push(safe_y_val);
     log_sine_data.size_values.push(safe_y_val);
     log_sine_data.metadata.push({ series: 'Log Sine Wave' });
@@ -724,7 +714,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, idx)
     const y_val = Math.pow(x_val, 2);  // y = x^2
     power_law_data.x.push(x_val);
-    const safe_y_val = Math.max(y_val, 1e-9); // Clamp y
+    const safe_y_val = Math.max(y_val, LOG_MIN_EPS); // Clamp y
     power_law_data.y.push(safe_y_val);
     power_law_data.size_values.push(safe_y_val);
     power_law_data.metadata.push({ series: 'y = x^2' });
@@ -743,7 +733,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, idx)
     const y_val = Math.pow(x_val, 0.5); // y = √x
     inverse_power_data.x.push(x_val);
-    const safe_y_val = Math.max(y_val, 1e-9); // Clamp y
+    const safe_y_val = Math.max(y_val, LOG_MIN_EPS); // Clamp y
     inverse_power_data.y.push(safe_y_val);
     inverse_power_data.size_values.push(safe_y_val);
     inverse_power_data.metadata.push({ series: 'y = x^0.5' });
@@ -812,14 +802,12 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
       x_format="~s"
       y_format="~s"
       markers="line+points"
-      style="height: 400px; width: 100%;"
+      style="height: 400px;"
     >
       {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
-        <div style="white-space: nowrap;">
-          <strong>{metadata.label ?? metadata.series}</strong><br/>
-          X: {x_formatted || x.toPrecision(3)}<br/>
-          Y: {y_formatted || y.toPrecision(3)}
-        </div>
+        <strong>{metadata.label ?? metadata.series}</strong><br/>
+        X: {x_formatted || x.toPrecision(3)}<br/>
+        Y: {y_formatted || y.toPrecision(3)}
       {/snippet}
     </ScatterPlot>
   {/key}
@@ -833,18 +821,16 @@ This example combines multiple features including different display modes, custo
 ```svelte example stackblitz
 <script>
   import { ScatterPlot } from '$lib'
+  import { symbol_names } from '$lib/plot'
 
   // Define categories and colors for data points
   const categories = ['Group A', 'Group B', 'Group C']
   const category_colors = ['crimson', 'royalblue', 'mediumseagreen']
 
-  // Generate sample data with categories and different marker types
-  const marker_types = ['circle', 'diamond', 'star', 'triangle', 'cross', 'wye']
-
   // Create three data series with different styling
   const series_data = categories.map((category, cat_idx) => {
     const points = 10
-    const marker_type_for_series = marker_types[cat_idx % marker_types.length];
+    const marker_type_for_series = symbol_names[cat_idx % symbol_names.length];
     return {
       x: Array.from({ length: points }, (_, idx) => idx + 1),
       y: Array.from({ length: points }, () => 3 + cat_idx * 3 + Math.random() * 2),
@@ -853,8 +839,8 @@ This example combines multiple features including different display modes, custo
         radius: 6 - cat_idx,
         stroke: 'black',
         stroke_width: 0.5,
-        marker_type: marker_type_for_series,
-        marker_size: 40 + cat_idx * 5
+        symbol_type: marker_type_for_series,
+        symbol_size: 40 + cat_idx * 5
       },
       metadata: Array.from({ length: points }, (_, idx) => ({
         category,
@@ -908,7 +894,7 @@ This example combines multiple features including different display modes, custo
           radius: 4 + s_idx, // Slightly different sizes
           stroke: 'black',
           stroke_width: 0.5,
-          marker_type: marker_types[(s_idx + 3) % marker_types.length] // Different markers
+          symbol_type: symbol_names[(s_idx + 3) % symbol_names.length]
         },
         point_hover: {
           scale: 1.5 + s_idx * 0.5, // Different hover scales
@@ -954,16 +940,14 @@ This example combines multiple features including different display modes, custo
     y_label={axis_labels.y}
     markers={display_mode}
     change={(event) => (selected_point = event)}
-    style="height: 400px; width: 100%;"
+    style="height: 400px;"
     legend={null}
   >
     {#snippet tooltip({ x, y, metadata })}
-      <div style="white-space: nowrap;">
-        <span style="color: {metadata.color};">●</span>
-        <strong>{metadata.category}</strong><br>
-        Point {metadata.idx + 1} ({x}, {y.toFixed(2)})<br>
-        Marker: {metadata.marker}
-      </div>
+      <span style="color: {metadata.color};">●</span>
+      <strong>{metadata.category}</strong><br>
+      Point {metadata.idx + 1} ({x}, {y.toFixed(2)})<br>
+      Marker: {metadata.marker}
     {/snippet}
   </ScatterPlot>
 
@@ -1021,7 +1005,7 @@ This example combines multiple features including different display modes, custo
     y_ticks={ticks.y}
     x_grid={grid.x}
     markers="points"
-    style="height: 400px; width: 100%; position: relative;"
+    style="height: 400px; position: relative;"
     legend={{
       wrapper_style: `
         position: absolute;
@@ -1035,11 +1019,9 @@ This example combines multiple features including different display modes, custo
     }}
   >
     {#snippet tooltip({ x, y, metadata })}
-      <div style="white-space: nowrap;">
-        <strong>{metadata.series}</strong><br/>
-        Position: ({x.toFixed(2)}, {y.toFixed(2)})<br/>
-        Point Index: {metadata.point}
-      </div>
+      <strong>{metadata.series}</strong><br/>
+      Position: ({x.toFixed(2)}, {y.toFixed(2)})<br/>
+      Point Index: {metadata.point}
     {/snippet}
   </ScatterPlot>
 </div>
@@ -1128,16 +1110,16 @@ This example demonstrates how the color bar automatically positions itself in on
     y_label="Y Position"
     x_lim={[0, 100]}
     y_lim={[0, 100]}
+    x_format=".2"
+    y_format=".2"
     markers="points+text"
     color_scale={{ scheme: `turbo` }}
     color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
-    style="height: 450px; width: 100%;"
+    style="height: 450px;"
   >
-    {#snippet tooltip({ x, y, metadata, color_value })}
-      <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
-        Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
-        Color value: {color_value?.toFixed(2)}
-      </div>
+    {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
+      Point ({x_formatted}, {y_formatted})<br />
+      Color value: {color_value?.toFixed(2)}
     {/snippet}
   </ScatterPlot>
 </div>
@@ -1210,7 +1192,7 @@ This example demonstrates automatic placement with several clusters of points:
       x_lim={[0, 100]}
       y_lim={[0, 100]}
       markers="points"
-      style="height: 500px; width: 100%;"
+      style="height: 500px;"
     />
   {/key}
 </div>
@@ -1274,6 +1256,8 @@ This example shows how to place the color bar vertically on the right side of th
     y_label="Y Position"
     x_lim={[0, 100]}
     y_lim={[0, 100]}
+    x_format=".2"
+    y_format=".2"
     markers="points"
     {color_scale}
     padding={plot_padding}
@@ -1293,11 +1277,9 @@ This example shows how to place the color bar vertically on the right side of th
     }}
     style="height: 400px;"
   >
-    {#snippet tooltip({ x, y, metadata, color_value })}
-      <div style="white-space: nowrap; padding: 0.25em; background: rgba(0,0,0,0.7); color: white;">
-        Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
-        Color value: {color_value?.toFixed(1)}
-      </div>
+    {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
+      Point ({x_formatted}, {y_formatted})<br />
+      Color value: {color_value?.toFixed(1)}
     {/snippet}
   </ScatterPlot>
 </div>

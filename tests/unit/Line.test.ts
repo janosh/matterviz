@@ -52,9 +52,7 @@ describe(`Line`, () => {
     },
     {
       name: `custom dash array`,
-      props: {
-        stroke_dasharray: `4 2`,
-      },
+      props: { line_dash: `4 2` },
       expected_line: {
         stroke: `rgba(255, 255, 255, 0.5)`,
         strokeWidth: `2`,
