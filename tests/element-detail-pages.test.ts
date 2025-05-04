@@ -16,7 +16,6 @@ test.describe(`Element detail page`, async () => {
         waitUntil: `networkidle`,
       })
 
-      // titles should have dash-separated element number and name
       expect(await page.textContent(`h2`)).toContain(
         `${random_element.number} - ${random_element.name}`,
       )
