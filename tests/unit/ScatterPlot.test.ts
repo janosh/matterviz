@@ -1,5 +1,5 @@
 import { ScatterPlot } from '$lib'
-import type { DataSeries, MarkerType, ScaleType } from '$lib/plot'
+import type { D3SymbolName, DataSeries, ScaleType } from '$lib/plot'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
 import { cubicOut } from 'svelte/easing'
@@ -710,41 +710,17 @@ describe(`ScatterPlot`, () => {
     expect(scatter).toBeTruthy()
   })
 
-  test.each<{
-    marker_type: MarkerType
-    series_name: string
-    point_count: number
-  }>([
-    {
-      marker_type: `diamond`,
-      series_name: `Series with diamonds`,
-      point_count: 3,
-    },
-    { marker_type: `star`, series_name: `Series with stars`, point_count: 3 },
-    {
-      marker_type: `triangle`,
-      series_name: `Series with triangles`,
-      point_count: 3,
-    },
-    { marker_type: `wye`, series_name: `Series with wyes`, point_count: 3 },
-    {
-      marker_type: `cross`,
-      series_name: `Series with crosses`,
-      point_count: 3,
-    },
-    {
-      marker_type: `square`,
-      series_name: `Series with squares`,
-      point_count: 3,
-    },
-    {
-      marker_type: `circle`,
-      series_name: `Series with circles`,
-      point_count: 3,
-    },
+  test.each<[D3SymbolName, string, number]>([
+    [`Diamond`, `Series with diamonds`, 3],
+    [`Star`, `Series with stars`, 3],
+    [`Triangle`, `Series with triangles`, 3],
+    [`Wye`, `Series with wyes`, 3],
+    [`Cross`, `Series with crosses`, 3],
+    [`Square`, `Series with squares`, 3],
+    [`Circle`, `Series with circles`, 3],
   ] as const)(
-    `renders series with custom marker type: $marker_type`,
-    ({ marker_type, series_name, point_count }) => {
+    `renders series with custom marker type: $symbol_type`,
+    ([symbol_type, series_name, point_count]) => {
       // Create a series with the specified marker type for all points
       const custom_marker_series = {
         x: Array.from({ length: point_count }, (_, idx) => idx + 1),
@@ -752,18 +728,15 @@ describe(`ScatterPlot`, () => {
         point_style: {
           fill: `steelblue`,
           radius: 8,
-          marker_type,
-          marker_size: 120,
+          symbol_type,
+          symbol_size: 120,
         },
         metadata: { name: series_name },
       }
 
       const component = mount(ScatterPlot, {
         target: document.body,
-        props: {
-          series: [custom_marker_series],
-          markers: `points`,
-        },
+        props: { series: [custom_marker_series], markers: `points` },
       })
 
       // Verify component mounted
@@ -902,11 +875,11 @@ describe(`ScatterPlot`, () => {
       y: [10, 20, 30, 40, 50],
       // Per-point styling
       point_style: [
-        { fill: `crimson`, radius: 8, marker_type: `circle` },
-        { fill: `forestgreen`, radius: 7, marker_type: `diamond` },
-        { fill: `dodgerblue`, radius: 9, marker_type: `star` },
-        { fill: `orange`, radius: 6, marker_type: `triangle` },
-        { fill: `purple`, radius: 10, marker_type: `wye` },
+        { fill: `crimson`, radius: 8, symbol_type: `Circle` },
+        { fill: `forestgreen`, radius: 7, symbol_type: `Diamond` },
+        { fill: `dodgerblue`, radius: 9, symbol_type: `Star` },
+        { fill: `orange`, radius: 6, symbol_type: `Triangle` },
+        { fill: `purple`, radius: 10, symbol_type: `Wye` },
       ],
       // Matching text annotations
       point_label: [
@@ -1889,8 +1862,8 @@ describe(`ScatterPlot`, () => {
     },
     {
       grid_config: `custom grid styling`,
-      x_grid: { stroke: `red`, stroke_width: 1, stroke_dasharray: `2` },
-      y_grid: { stroke: `blue`, stroke_width: 1, stroke_dasharray: `2` },
+      x_grid: { stroke: `red`, stroke_width: 1, line_dash: `2` },
+      y_grid: { stroke: `blue`, stroke_width: 1, line_dash: `2` },
     },
     {
       grid_config: `x-grid only`,
@@ -1945,14 +1918,14 @@ describe(`ScatterPlot`, () => {
     const x_grid_style = {
       stroke: `crimson`,
       stroke_width: 2,
-      stroke_dasharray: `5,3`,
+      line_dash: `5,3`,
       opacity: 0.7,
     }
 
     const y_grid_style = {
       stroke: `forestgreen`,
       stroke_width: 1.5,
-      stroke_dasharray: `3,2`,
+      line_dash: `3,2`,
       opacity: 0.5,
     }
 
@@ -1998,8 +1971,8 @@ describe(`ScatterPlot`, () => {
       }
 
       // Custom grid styling
-      const x_grid = { stroke: `rgba(255, 0, 0, 0.5)`, stroke_dasharray: `4` }
-      const y_grid = { stroke: `rgba(0, 0, 255, 0.5)`, stroke_dasharray: `4` }
+      const x_grid = { stroke: `rgba(255, 0, 0, 0.5)`, line_dash: `4` }
+      const y_grid = { stroke: `rgba(0, 0, 255, 0.5)`, line_dash: `4` }
 
       const component = mount(ScatterPlot, {
         target: document.body,
@@ -2022,8 +1995,8 @@ describe(`ScatterPlot`, () => {
     }
 
     // Define custom grid styling
-    const x_grid = { stroke: `red`, stroke_dasharray: `4` }
-    const y_grid = { stroke: `blue`, stroke_dasharray: `4` }
+    const x_grid = { stroke: `red`, line_dash: `4` }
+    const y_grid = { stroke: `blue`, line_dash: `4` }
 
     // Mount with multiple props that might interact with grid
     const component = mount(ScatterPlot, {
@@ -2178,8 +2151,8 @@ describe(`ScatterPlot`, () => {
     },
     {
       grid_config: `custom grid styling`,
-      x_grid: { stroke: `red`, stroke_width: 1, stroke_dasharray: `2` },
-      y_grid: { stroke: `blue`, stroke_width: 1, stroke_dasharray: `2` },
+      x_grid: { stroke: `red`, stroke_width: 1, line_dash: `2` },
+      y_grid: { stroke: `blue`, stroke_width: 1, line_dash: `2` },
     },
     {
       grid_config: `x-grid only`,
@@ -2234,14 +2207,14 @@ describe(`ScatterPlot`, () => {
     const x_grid_style = {
       stroke: `crimson`,
       stroke_width: 2,
-      stroke_dasharray: `5,3`,
+      line_dash: `5,3`,
       opacity: 0.7,
     }
 
     const y_grid_style = {
       stroke: `forestgreen`,
       stroke_width: 1.5,
-      stroke_dasharray: `3,2`,
+      line_dash: `3,2`,
       opacity: 0.5,
     }
 
@@ -2285,8 +2258,8 @@ describe(`ScatterPlot`, () => {
       }
 
       // Custom grid styling
-      const x_grid = { stroke: `rgba(255, 0, 0, 0.5)`, stroke_dasharray: `4` }
-      const y_grid = { stroke: `rgba(0, 0, 255, 0.5)`, stroke_dasharray: `4` }
+      const x_grid = { stroke: `rgba(255, 0, 0, 0.5)`, line_dash: `4` }
+      const y_grid = { stroke: `rgba(0, 0, 255, 0.5)`, line_dash: `4` }
 
       const component = mount(ScatterPlot, {
         target: document.body,
@@ -2315,8 +2288,8 @@ describe(`ScatterPlot`, () => {
     }
 
     // Define custom grid styling
-    const x_grid = { stroke: `red`, stroke_dasharray: `4` }
-    const y_grid = { stroke: `blue`, stroke_dasharray: `4` }
+    const x_grid = { stroke: `red`, line_dash: `4` }
+    const y_grid = { stroke: `blue`, line_dash: `4` }
 
     // Mount with multiple props that might interact with grid
     const component = mount(ScatterPlot, {

@@ -1,31 +1,29 @@
 `ColorBar.svelte`
 
-Here's a `ColorBar` with tick labels, using the new `tick_align` prop:
+Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 
 ```svelte example stackblitz
 <script>
   import { ColorBar } from '$lib'
 </script>
 
-<div style="border: 0.1px dashed white;">
-  {#each [
-    // [color_scale, tick_align, tick_labels, range, label_text]
-    [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]],
-    [`Magma`, `secondary`, 10, [100, 1631]],
-    [`Cividis`, `primary`, 4, [-99.9812, -10]],
-  ] as [color_scale, tick_align, tick_labels, range]}
-    <ColorBar
-      title="color_scale={color_scale} &emsp; tick_align={tick_align} &emsp; range={range}"
-      {color_scale}
-      {tick_align}
-      {tick_labels}
-      {range}
-      tick_format=".2f"
-      title_style="padding: 1em;"
-      --cbar-padding="3em"
-    />
-  {/each}
-</div>
+{#each [
+  // [color_scale, tick_side, tick_labels, range, label_text]
+  [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]],
+  [`Magma`, `secondary`, 10, [100, 1631]],
+  [`Cividis`, `primary`, 4, [-99.9812, -10]],
+] as [color_scale, tick_side, tick_labels, range]}
+  <ColorBar
+    title="color_scale={color_scale} &emsp; tick_side={tick_side} &emsp; range={range}"
+    {color_scale}
+    {tick_side}
+    {tick_labels}
+    {range}
+    tick_format=".4"
+    title_style="padding: 3pt;"
+    --cbar-padding="3em"
+  />
+{/each}
 ```
 
 You can make fat and skinny bars:
@@ -34,14 +32,15 @@ You can make fat and skinny bars:
 <script>
   import { ColorBar } from '$lib'
 
-  const wrapper_style = 'place-items: center;'
+  const wrapper_style = 'margin: auto;'
 </script>
 
-<ColorBar {wrapper_style} style="width: 10em; height: 1ex;" />
+<ColorBar {wrapper_style} style="width: 10em; height: 8pt;" />
 <br />
-<ColorBar title="Viridis" {wrapper_style} style="width: 3em; height: 2em;" />
+<ColorBar title="Viridis" {wrapper_style} style="width: 4em; height: 2em;" tick_labels={2} />
 <br />
-<ColorBar {wrapper_style} --cbar-width="8em" --cbar-height="2em" />
+<ColorBar {wrapper_style} --cbar-width="10em" --cbar-height="2em" tick_labels={3} />
+<br />
 ```
 
 `PeriodicTable.svelte` heatmap example with `ColorBar` inside `TableInset`
@@ -73,9 +72,7 @@ You can make fat and skinny bars:
   style="margin: 2em auto 4em;"
   bind:color_scale
   color_scale_range={heat_range}
-  links="name"
-  lanth_act_tiles={false}
->
+  links="name">
   {#snippet inset()}
   <TableInset  style="place-items: center; padding: 2em;">
     <ColorBar
@@ -83,7 +80,7 @@ You can make fat and skinny bars:
       title={heatmap_key}
       range={heat_range}
       tick_labels={5}
-      tick_align="primary"
+      tick_side="primary"
       --cbar-width="calc(100% - 2em)"
       />
     </TableInset>
@@ -101,7 +98,7 @@ You can make fat and skinny bars:
 </style>
 ```
 
-Example demonstrating `title_side` and `tick_align` interaction:
+Example demonstrating `title_side` and `tick_side` interaction:
 
 ```svelte example stackblitz
 <script>
@@ -140,20 +137,16 @@ Example demonstrating `title_side` and `tick_align` interaction:
 <style>
   section {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Adjusted minmax */
-    gap: 2.5em; /* Increased gap slightly */
-    margin-top: 2em;
-    align-items: center; /* Align items vertically */
-    justify-items: center; /* Center items horizontally */
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 2em;
+    place-items: center;
   }
   section > div {
-    border: 1px solid #ccc;
     padding: 1em;
-    display: flex;
-    flex-direction: column;
-    gap: 1em; /* Increased gap */
+    display: grid;
+    gap: 1em;
     align-items: center;
-    min-height: 200px; /* Ensure consistent div height */
+    height: 200px;
   }
   code {
     font-size: 0.8em;
@@ -179,24 +172,73 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
 <div style="display: flex; column; gap: 2em; align-items: center;">
   <ColorBar
-    title="Year 2024 (YYYY-MM-DD)"
+    title="YYYY-MM-DD"
     range={date_range}
     tick_format="%Y-%m-%d"
-    tick_labels={2} />
+    style="width: 200px; margin-left: 3em;"
+    tick_labels={2}
+  />
 
   <ColorBar
-    title="Year 2024 (Month Day)"
+    title="Month Day"
     range={date_range}
-    style="width: 500px;"
+    style="width: 500px; margin-left: 3em;"
     tick_format="%b %d"
-    tick_labels={7} />
+    tick_labels={7}
+  />
 
   <ColorBar
-    title="Year 2024 (Vertical - Mmm DD, YY)"
+    title="Vertical - Mmm DD, YY"
     range={date_range}
     tick_format="%b %d, '%y"
     tick_labels={4}
     orientation="vertical"
-    wrapper_style="height: 200px;" />
+    style="height: 200px;"
+  />
+</div>
+```
+
+## Large Value Ranges (Linear and Log)
+
+Demonstrating the color bar with large numeric ranges, using both linear and logarithmic scales (`scale_type='log'`). Log scales require a positive range (both min and max > 0). Scientific notation is used for tick labels via `tick_format='.0e'`.
+
+```svelte example stackblitz
+<script>
+  import { ColorBar } from '$lib'
+</script>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0;">
+  <ColorBar
+    title="Large Linear Range (0 to 1e6)"
+    range={[0, 1e6]}
+    tick_labels={5}
+    tick_format=".1s" />
+
+  <ColorBar
+    title="Large Log Range (1 to 1e9)"
+    range={[1, 1e9]}
+    scale_type="log"
+    style="width: 400px;"
+    tick_labels={10} />
+
+  <ColorBar
+    title="Vertical Log Range (10 to 1e7)"
+    range={[10, 1e7]}
+    scale_type="log"
+    orientation="vertical" />
+
+  <ColorBar
+    title="Vertical Linear Range<br>(10 to 1e7) with line breaks"
+    title_style="margin: 1em;"
+    range={[10, 1e7]}
+    orientation="vertical" />
+
+  <ColorBar
+    title="Small Log Range (0.01 to 100)"
+    range={[0.01, 100]}
+    scale_type="log"
+    tick_format=".3"
+    style="width: 400px;"
+    tick_labels={5} />
 </div>
 ```

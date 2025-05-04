@@ -1,7 +1,9 @@
-import { ColorBar } from '$lib'
-import { type SimulationNodeDatum } from 'd3-force'
+import type { SimulationNodeDatum } from 'd3-force'
+import type { SymbolType } from 'd3-shape'
+import * as d3_symbols from 'd3-shape'
 import type { ComponentProps } from 'svelte'
 import { type TweenedOptions } from 'svelte/motion'
+import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
 
 export { default as ColorBar } from './ColorBar.svelte'
@@ -10,23 +12,35 @@ export { default as ElementScatter } from './ElementScatter.svelte'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
-
 export { default as ScatterPoint } from './ScatterPoint.svelte'
 
 export type XyObj = { x: number; y: number }
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
-// Define available marker types based on d3-shape symbols
-export const marker_types = [
-  `circle`,
-  `cross`,
-  `diamond`,
-  `square`,
-  `star`,
-  `triangle`,
-  `wye`,
-] as const
-export type MarkerType = (typeof marker_types)[number]
+export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
+export type D3SymbolName = Exclude<
+  D3Symbol extends `symbol${infer Name}` ? Name : never,
+  ``
+>
+
+export const symbol_names = [
+  ...d3_symbols.symbolsFill,
+  ...d3_symbols.symbolsStroke,
+].map((sym) => {
+  // Attempt to find the key associated with this symbol function object
+  for (const key in d3_symbols) {
+    if (
+      Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
+      d3_symbols[key as keyof typeof d3_symbols] === sym
+    ) {
+      if (key.match(/symbol[A-Z]/)) return key.substring(6)
+    }
+  }
+}) as D3SymbolName[]
+
+export const symbol_map = Object.fromEntries(
+  symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
+) as Record<D3SymbolName, SymbolType>
 
 export const line_types = [`solid`, `dashed`, `dotted`] as const
 export type LineType = (typeof line_types)[number]
@@ -45,8 +59,8 @@ export interface PointStyle {
   stroke_width?: number
   stroke_opacity?: number
   fill_opacity?: number
-  marker_type?: MarkerType
-  marker_size?: number | null // Optional override for marker size
+  symbol_type?: D3SymbolName
+  symbol_size?: number | null // Optional override for marker size
   shape?: string // Add optional shape (string for flexibility)
 }
 
@@ -95,7 +109,7 @@ export interface DataSeries {
   line_style?: {
     stroke?: string
     stroke_width?: number
-    stroke_dasharray?: string
+    line_dash?: string
   }
 }
 
@@ -201,9 +215,12 @@ export interface LegendItem {
   visible: boolean
   series_idx: number
   display_style: {
-    marker_shape?: MarkerType // Allow various shapes
-    marker_color?: string
-    line_type?: LineType // Allow various styles
+    symbol_type?: D3SymbolName
+    symbol_color?: string
     line_color?: string
+    line_dash?: string
   }
 }
+
+// Small value to substitute for non-positive minimum in log scales
+export const LOG_MIN_EPS = 1e-9

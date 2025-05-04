@@ -34,18 +34,18 @@
   bind:value
   bind:selected
   {placeholder}
+  liOptionStyle="padding: 3pt 6pt;"
   {...rest}
 >
   {#snippet children({ option }: { option: D3InterpolateName })}
-    {@const display_name = option.replace(/^interpolate/, ``)}
     <ColorBar
-      title={display_name}
-      color_scale={display_name}
+      title={option.replace(/^interpolate/, ``)}
+      color_scale={option}
       tick_labels={0}
       title_side="left"
       wrapper_style="min-width: 18em;"
+      title_style="width: 6em; font-size: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;"
       {...colorbar}
-      range={[0, 1]}
     />
   {/snippet}
 </Select>

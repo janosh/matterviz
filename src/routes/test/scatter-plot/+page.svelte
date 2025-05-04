@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
   import type { DataSeries, LabelStyle, PointStyle, ScaleType } from '$lib/plot'
-  import { marker_types } from '$lib/plot'
+  import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
 
   // === Basic Example Data ===
   const basic_data = {
@@ -390,14 +390,14 @@
       // Change color gradually along the spiral
       const hue = (idx / point_count) * 360
       // Change marker type based on index
-      const marker_type = marker_types[idx % marker_types.length]
+      const symbol_type = symbol_names[idx % symbol_names.length]
 
       // Create the point style (radius is now controlled by size_values)
       data.point_style.push({
         fill: `hsl(${hue}, 80%, 50%)`,
         stroke: `white`,
         stroke_width: 1 + idx / 20, // Gradually thicker stroke
-        marker_type: marker_type,
+        symbol_type,
       } as PointStyle) // Cast pushed object
     }
     return data as DataSeries // Cast return value to satisfy the derived type
@@ -430,7 +430,7 @@
         {
           x: xs,
           y: ys,
-          line_style: { stroke: `crimson`, stroke_width: 3, stroke_dasharray: `5 2` },
+          line_style: { stroke: `crimson`, stroke_width: 3, line_dash: `5 2` },
           markers: `line`,
         },
       ],
@@ -444,7 +444,7 @@
           line_style: {
             stroke: `forestgreen`,
             stroke_width: 1,
-            stroke_dasharray: `10 5 2 5`,
+            line_dash: `10 5 2 5`,
           },
           markers: `line`,
         },
@@ -750,13 +750,13 @@
         y_label="Y Axis"
         markers="line+points"
         y_scale_type={lin_log_y_scale_type}
-        y_lim={lin_log_y_scale_type === `log` ? [1e-9, null] : [null, null]}
+        y_lim={lin_log_y_scale_type === `log` ? [LOG_MIN_EPS, null] : [null, null]}
       />
     </div>
   </section>
 
   <!-- Added Point Sizing Example -->
-  <h2>Point Sizing Test</h2>
+  <h2>Point Sizing Test with Spiral Data</h2>
   <div id="point-sizing">
     <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center;">
       <label>

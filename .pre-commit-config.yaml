@@ -1,6 +1,6 @@
 ci:
   autoupdate_schedule: quarterly
-  skip: [eslint]
+  skip: [prettier, eslint]
 
 default_stages: [pre-commit]
 

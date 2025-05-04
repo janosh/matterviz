@@ -65,7 +65,7 @@
     >
       <span class="legend-marker">
         <!-- Line segment -->
-        {#if series.display_style.line_type}
+        {#if series.display_style.line_dash}
           <svg width="20" height="10" viewBox="0 0 20 10">
             <line
               x1="0"
@@ -74,52 +74,47 @@
               y2="5"
               stroke={series.display_style.line_color ?? `currentColor`}
               stroke-width="2"
-              stroke-dasharray={series.display_style.line_type === `dashed`
-                ? `4 2`
-                : series.display_style.line_type === `dotted`
-                  ? `1 3`
-                  : `none`}
+              stroke-dasharray={series.display_style.line_dash ?? `none`}
             />
           </svg>
         {/if}
 
         <!-- Marker symbol -->
-        {#if series.display_style.marker_shape}
+        {#if series.display_style.symbol_type}
           <svg width="10" height="10" viewBox="0 0 10 10">
-            {#if series.display_style.marker_shape === `circle`}
+            {#if series.display_style.symbol_type === `Circle`}
               <circle
                 cx="5"
                 cy="5"
                 r="4"
-                fill={series.display_style.marker_color ?? `currentColor`}
+                fill={series.display_style.symbol_color ?? `currentColor`}
               />
-            {:else if series.display_style.marker_shape === `square`}
+            {:else if series.display_style.symbol_type === `Square`}
               <rect
                 x="1"
                 y="1"
                 width="8"
                 height="8"
-                fill={series.display_style.marker_color ?? `currentColor`}
+                fill={series.display_style.symbol_color ?? `currentColor`}
               />
-            {:else if series.display_style.marker_shape === `triangle`}
+            {:else if series.display_style.symbol_type === `Triangle`}
               <polygon
                 points="5,1 9,9 1,9"
-                fill={series.display_style.marker_color ?? `currentColor`}
+                fill={series.display_style.symbol_color ?? `currentColor`}
               />
-            {:else if series.display_style.marker_shape === `cross`}
+            {:else if series.display_style.symbol_type === `Cross`}
               <path
                 d="M2 2 L8 8 M2 8 L8 2"
-                stroke={series.display_style.marker_color ?? `currentColor`}
+                stroke={series.display_style.symbol_color ?? `currentColor`}
                 stroke-width="2"
                 fill="none"
               />
-            {:else if series.display_style.marker_shape === `star`}
+            {:else if series.display_style.symbol_type === `Star`}
               <polygon
                 points="5,0 6.1,3.5 9.8,4.1 7.4,6.7 7.9,10 5,8.3 2.1,10 2.6,6.7 0.2,4.1 3.9,3.5"
-                fill={series.display_style.marker_color ?? `currentColor`}
+                fill={series.display_style.symbol_color ?? `currentColor`}
               />
             {/if}
-            <!-- Ensure marker is centered; will rely on flex alignment in CSS -->
           </svg>
         {/if}
       </span>
@@ -148,6 +143,7 @@
     padding: var(--plot-legend-item-padding, 0 5px);
     opacity: var(--plot-legend-item-opacity, 1);
     transition: var(--plot-legend-item-transition, opacity 0.3s ease);
+    color: var(--plot-legend-item-color, inherit);
   }
   .legend-item.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);

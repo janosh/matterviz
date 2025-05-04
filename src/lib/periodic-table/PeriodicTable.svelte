@@ -54,7 +54,6 @@
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     children?: Snippet
   }
-
   let {
     tile_props,
     show_photo = true,

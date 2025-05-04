@@ -1,4 +1,4 @@
-import { ScatterPoint } from '$lib'
+import { ScatterPoint, symbol_names } from '$lib'
 import type { PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
 import { bounceIn } from 'svelte/easing'
@@ -49,37 +49,33 @@ describe(`ScatterPoint`, () => {
     expect(path.style.strokeOpacity).toBe(String(style.stroke_opacity))
   })
 
-  test.each([
-    { marker_type: `circle` as const },
-    { marker_type: `diamond` as const },
-    { marker_type: `star` as const },
-    { marker_type: `triangle` as const },
-    { marker_type: `cross` as const },
-    { marker_type: `wye` as const },
-  ])(`renders $marker_type marker correctly`, async ({ marker_type }) => {
-    const style: PointStyle = {
-      fill: `purple`,
-      stroke: `green`,
-      stroke_width: 1.5,
-      radius: 6,
-      marker_type,
-      marker_size: 100,
-    }
-    mount(ScatterPoint, {
-      target: document.querySelector(`div`)!,
-      props: { x: 100, y: 100, style },
-    })
-    const element = doc_query(`path`)
-    expect(element).toBeTruthy()
-    expect(element.getAttribute(`stroke`)).toBe(style.stroke)
-    expect(element.getAttribute(`stroke-width`)).toBe(
-      String(style.stroke_width),
-    )
-    expect(element.getAttribute(`d`)).toBeTruthy() // Verify path data exists
-  })
+  test.each(symbol_names)(
+    `renders $symbol_type marker correctly`,
+    async (symbol_type) => {
+      const style: PointStyle = {
+        fill: `purple`,
+        stroke: `green`,
+        stroke_width: 1.5,
+        radius: 6,
+        symbol_type,
+        symbol_size: 100,
+      }
+      mount(ScatterPoint, {
+        target: document.querySelector(`div`)!,
+        props: { x: 100, y: 100, style },
+      })
+      const element = doc_query(`path`)
+      expect(element).toBeTruthy()
+      expect(element.getAttribute(`stroke`)).toBe(style.stroke)
+      expect(element.getAttribute(`stroke-width`)).toBe(
+        String(style.stroke_width),
+      )
+      expect(element.getAttribute(`d`)).toBeTruthy() // Verify path data exists
+    },
+  )
 
-  test(`derives marker size from radius when marker_size is null`, async () => {
-    const style: PointStyle = { radius: 8, marker_size: null }
+  test(`derives marker size from radius when symbol_size is null`, async () => {
+    const style: PointStyle = { radius: 8, symbol_size: null }
     mount(ScatterPoint, {
       target: document.querySelector(`div`)!,
       props: { x: 100, y: 100, style },
