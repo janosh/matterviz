@@ -137,7 +137,7 @@ describe(`PlotLegend`, () => {
       second_marker_svgs[0]
         .querySelector(`line`)
         ?.getAttribute(`stroke-dasharray`),
-    ).toBe(`4 2`)
+    ).toBe(`dashed`)
     expect(
       second_marker_svgs[1].querySelector(`rect`)?.getAttribute(`fill`),
     ).toBe(`blue`)
@@ -167,7 +167,7 @@ describe(`PlotLegend`, () => {
       fourth_marker_svgs[0]
         .querySelector(`line`)
         ?.getAttribute(`stroke-dasharray`),
-    ).toBe(`1 3`)
+    ).toBe(`Dotted`)
 
     // Check item with empty display_style (FIXED assertion)
     const fifth_item = items[4]
@@ -267,7 +267,7 @@ describe(`PlotLegend`, () => {
       item2_marker_svgs[0]
         .querySelector(`line`)
         ?.getAttribute(`stroke-dasharray`),
-    ).toBe(`4 2`)
+    ).toBe(`dashed`)
     expect(item2_marker_svgs[1].querySelector(`rect`)).toBeTruthy()
     expect(
       item2_marker_svgs[1].querySelector(`rect`)?.getAttribute(`fill`),
@@ -280,7 +280,7 @@ describe(`PlotLegend`, () => {
       item3_marker_svgs[0]
         .querySelector(`line`)
         ?.getAttribute(`stroke-dasharray`),
-    ).toBe(`1 3`)
+    ).toBe(`dotted`)
     expect(item3_marker_svgs[1].querySelector(`polygon`)).toBeTruthy() // triangle
     expect(
       item3_marker_svgs[1].querySelector(`polygon`)?.getAttribute(`fill`),

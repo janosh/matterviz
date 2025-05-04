@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.13](https://github.com/janosh/elementari/compare/v0.3.13...v0.3.13)
+
+#### [v0.3.13](https://github.com/janosh/elementari/compare/v0.3.12...v0.3.13)
+
+> 4 May 2025
+
+- `ColorBar.svelte` add props for scale_type: linear | log and color_scale_fn [`75d5e85`](https://github.com/janosh/elementari/commit/75d5e8502b71ed58e2e3fafb1001d3f4a0ff8834)
+
 #### [v0.3.12](https://github.com/janosh/elementari/compare/v0.3.11...v0.3.12)
 
 > 3 May 2025
