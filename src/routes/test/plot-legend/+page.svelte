@@ -28,22 +28,20 @@
     {
       label: `Gamma`,
       visible: false, // Initially hidden
-      series_idx: 2,
-      display_style: {
-        symbol_type: `Triangle`,
-        symbol_color: `darkorange`,
-        // No line
-      },
+      series_idx: 2, // No line
+      display_style: { symbol_type: `Triangle`, symbol_color: `darkorange` },
     },
     {
       label: `Delta`,
       visible: true,
-      series_idx: 3,
-      display_style: {
-        // No marker
-        line_dash: `Dotted`,
-        line_color: `darkviolet`,
-      },
+      series_idx: 3, // No marker
+      display_style: { line_dash: `Dotted`, line_color: `darkviolet` },
+    },
+    {
+      label: `Epsilon`, // Added for testing line-only, no dash
+      visible: true,
+      series_idx: 4, // No marker
+      display_style: { line_color: `purple` }, // Solid line by default with no dash specified
     },
   ])
 
@@ -62,9 +60,7 @@
 
     // Update the visibility of the toggled series
     series_data = series_data.map((item) => {
-      if (item.series_idx === toggled_idx) {
-        return { ...item, visible: !item.visible }
-      }
+      if (item.series_idx === toggled_idx) return { ...item, visible: !item.visible }
       return item
     })
   }

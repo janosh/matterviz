@@ -141,12 +141,10 @@
   const color_scale_data = {
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    color_values: Array.from({ length: 10 }, (_, idx) => Math.pow(2, idx)),
-    point_style: {
-      radius: 10,
-      stroke: `black`,
-      stroke_width: 1,
-    },
+    color_values: Array(10)
+      .fill(0)
+      .map((_, idx) => Math.pow(2, idx)),
+    point_style: { radius: 10, stroke: `black`, stroke_width: 1 },
   }
 
   // === Custom Tooltip Data ===
@@ -204,9 +202,9 @@
     y: [10, 10, 90, 90],
     point_style: { fill: `green`, radius: 6 },
     point_label: [
-      { text: `Sparse-TL`, auto_placement: true, font_size: `10px`, offset_x: 10 },
-      { text: `Sparse-TR`, auto_placement: true, font_size: `10px`, offset_x: -40 },
-      { text: `Sparse-BL`, auto_placement: true, font_size: `10px`, offset_y: -15 },
+      { text: `Sparse-TL`, auto_placement: true, font_size: `10px`, offset: { x: 10 } },
+      { text: `Sparse-TR`, auto_placement: true, font_size: `10px`, offset: { x: -40 } },
+      { text: `Sparse-BL`, auto_placement: true, font_size: `10px`, offset: { y: -15 } },
       { text: `Sparse-BR`, auto_placement: true, font_size: `10px` },
     ],
   }
@@ -254,12 +252,12 @@
         : series.point_label
           ? [series.point_label]
           : []
-      ).map((lbl): LabelStyle => {
-        return {
+      ).map(
+        (lbl): LabelStyle => ({
           ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
           auto_placement: enable_auto_placement,
-        }
-      }),
+        }),
+      ),
     }))
   })
 
@@ -403,54 +401,31 @@
     return data as DataSeries // Cast return value to satisfy the derived type
   })
 
-  // --- Line Styling Test Data ---
-  const xs = [1, 2, 3, 4]
-  const ys = [10, 15, 12, 18]
-  const line_styling_test_cases = [
-    {
-      id: `solid-line`,
-      series: [
-        {
-          x: xs,
-          y: ys,
-          point_style: { fill: `steelblue` },
-          markers: `line`,
-        },
-        {
-          x: xs,
-          y: ys,
-          line_style: { stroke: `steelblue`, stroke_width: 2 },
-          markers: `line`,
-        },
-      ],
-    },
-    {
-      id: `dashed-line`,
-      series: [
-        {
-          x: xs,
-          y: ys,
-          line_style: { stroke: `crimson`, stroke_width: 3, line_dash: `5 2` },
-          markers: `line`,
-        },
-      ],
-    },
-    {
-      id: `custom-dash`,
-      series: [
-        {
-          x: xs,
-          y: ys,
-          line_style: {
-            stroke: `forestgreen`,
-            stroke_width: 1,
-            line_dash: `10 5 2 5`,
-          },
-          markers: `line`,
-        },
-      ],
-    },
-  ] as const
+  // === Line Style Data ===
+  const solid_line_data_1 = {
+    x: [1, 2, 3, 4, 5],
+    y: [2, 4, 3, 5, 4],
+    point_style: { fill: `steelblue` }, // Needed for line color fallback
+    label: `Solid Line 1`, // Add unique label for key
+  }
+  const solid_line_data_2 = {
+    x: [1, 2, 3, 4, 5],
+    y: [6, 8, 7, 9, 8],
+    line_style: { stroke: `steelblue`, stroke_width: 2 }, // Explicit style
+    label: `Solid Line 2`, // Add unique label for key
+  }
+  const dashed_line_data = {
+    x: [1, 2, 3, 4, 5],
+    y: [10, 12, 11, 13, 12],
+    line_style: { stroke: `crimson`, stroke_width: 3, line_dash: `5 2` },
+    label: `Dashed Line`, // Add unique label for key
+  }
+  const custom_dash_data = {
+    x: [1, 2, 3, 4, 5],
+    y: [14, 16, 15, 17, 16],
+    line_style: { stroke: `forestgreen`, stroke_width: 1, line_dash: `10 5 2 5` },
+    label: `Custom Dash Line`, // Add unique label for key
+  }
 </script>
 
 <div class="demo-container">
@@ -816,12 +791,84 @@
   <section>
     <h2>Line Styling Test</h2>
     <div id="line-styling-test">
-      {#each line_styling_test_cases as { id, series } (id)}
-        <section {id}>
-          <h3>{id}</h3>
-          <ScatterPlot {series} x_label="X Axis" y_label="Y Axis" />
-        </section>
-      {/each}
+      <section id="solid-line-plot">
+        <h3>Solid Lines</h3>
+        <ScatterPlot
+          series={[solid_line_data_1, solid_line_data_2]}
+          x_label="X Axis"
+          y_label="Y Axis"
+          markers="line"
+        />
+      </section>
+      <section id="dashed-line-plot">
+        <h3>Dashed Line</h3>
+        <ScatterPlot
+          series={[dashed_line_data]}
+          x_label="X Axis"
+          y_label="Y Axis"
+          markers="line"
+        />
+      </section>
+      <section id="custom-dash-plot">
+        <h3>Custom Dashed Line</h3>
+        <ScatterPlot
+          series={[custom_dash_data]}
+          x_label="X Axis"
+          y_label="Y Axis"
+          markers="line"
+        />
+      </section>
+    </div>
+  </section>
+
+  <!-- Added Tooltip Precedence Test -->
+  <section id="tooltip-precedence-test">
+    <h2>Tooltip Background Color Precedence Test</h2>
+    <div class="plot-grid">
+      <div id="fill-plot" class="plot-container">
+        <h3>Fill Color Precedence (Purple)</h3>
+        <ScatterPlot
+          series={[{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }]}
+          hover_config={{ threshold_px: 100 }}
+        />
+      </div>
+      <div id="stroke-plot" class="plot-container">
+        <h3>Stroke Color Precedence (Orange)</h3>
+        <ScatterPlot
+          series={[
+            {
+              x: [1],
+              y: [1],
+              point_style: {
+                fill: `transparent`,
+                stroke: `orange`,
+                stroke_width: 2,
+                radius: 8,
+              },
+            },
+          ]}
+          hover_config={{ threshold_px: 100 }}
+        />
+      </div>
+      <div id="line-plot" class="plot-container">
+        <h3>Line Color Precedence (Green)</h3>
+        <ScatterPlot
+          series={[
+            {
+              x: [1],
+              y: [1],
+              point_style: {
+                fill: `transparent`,
+                stroke: `transparent`,
+                radius: 8,
+              },
+              line_style: { stroke: `green`, stroke_width: 3 },
+              markers: `line+points`, // Need line+points for hover to work on the point
+            },
+          ]}
+          hover_config={{ threshold_px: 100 }}
+        />
+      </div>
     </div>
   </section>
 </div>

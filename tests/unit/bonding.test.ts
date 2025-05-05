@@ -7,11 +7,13 @@ import { describe, expect, test } from 'vitest'
 const ci_max_time_multiplier = process.env.CI ? 5 : 1.5
 
 // Function to generate a random structure
-function make_rand_structure(numAtoms: number) {
+function make_rand_structure(n_atoms: number) {
   return {
-    sites: Array.from({ length: numAtoms }, () => ({
-      xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10],
-    })),
+    sites: Array(n_atoms)
+      .fill(0)
+      .map(() => ({
+        xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10],
+      })),
   } as PymatgenStructure
 }
 

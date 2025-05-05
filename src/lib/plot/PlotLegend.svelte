@@ -65,7 +65,7 @@
     >
       <span class="legend-marker">
         <!-- Line segment -->
-        {#if series.display_style.line_dash}
+        {#if series.display_style.line_color}
           <svg width="20" height="10" viewBox="0 0 20 10">
             <line
               x1="0"
