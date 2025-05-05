@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
-#### [v0.3.13](https://github.com/janosh/elementari/compare/v0.3.13...v0.3.13)
+#### [v0.3.14](https://github.com/janosh/elementari/compare/v0.3.13...v0.3.14)
+
+> 5 May 2025
+
+- auto-pick bw text color for max contrast in ScatterPlot legend and tooltip [`6a57dbc`](https://github.com/janosh/elementari/commit/6a57dbcc2050c6a3c52e924b2cddf0c1b786d4b2)
 
 #### [v0.3.13](https://github.com/janosh/elementari/compare/v0.3.12...v0.3.13)
 

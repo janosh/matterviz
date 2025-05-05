@@ -148,10 +148,11 @@ describe(`ScatterPoint`, () => {
     const hover = { enabled: true, scale: 2, stroke: `white`, stroke_width: 3 }
     mount(ScatterPoint, {
       target: document.querySelector(`div`)!,
-      props: { x: 100, y: 100, hover },
+      props: { x: 100, y: 100, hover, is_hovered: true },
     })
     const g = doc_query(`g`)
-    expect(g.classList.contains(`hover_effect`)).toBe(true)
+    const path = doc_query(`path.marker`)
+    expect(path.classList.contains(`is-hovered`)).toBe(true)
     expect(g.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
     expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(hover.stroke)
     expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(
@@ -194,14 +195,14 @@ describe(`ScatterPoint`, () => {
     const hover = { enabled: true, scale: 1.5 }
     mount(ScatterPoint, {
       target: document.querySelector(`div`)!,
-      props: { x: 100, y: 100, hover },
+      props: { x: 100, y: 100, hover, is_hovered: true },
     })
     const g = doc_query(`g`)
-    expect(g.classList.contains(`hover_effect`)).toBe(true)
+    const path = doc_query(`path.marker`)
+    expect(path.classList.contains(`is-hovered`)).toBe(true)
     expect(g.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
-    // Check default stroke/width applied if not specified
     expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(`white`)
-    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`2px`)
+    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`0px`)
   })
 
   test(`handles empty label configuration`, async () => {
