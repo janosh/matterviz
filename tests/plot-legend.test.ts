@@ -14,7 +14,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   }) => {
     // Target the first legend instance
     const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
-    await expect(legend_items).toHaveCount(4)
+    await expect(legend_items).toHaveCount(5)
 
     // Check labels
     await expect(legend_items.nth(0).locator(`.legend-label`)).toHaveText(
@@ -29,6 +29,9 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await expect(legend_items.nth(3).locator(`.legend-label`)).toHaveText(
       `Delta`,
     )
+    await expect(legend_items.nth(4).locator(`.legend-label`)).toHaveText(
+      `Epsilon`,
+    )
 
     // Check initial visibility and ARIA state
     await expect(legend_items.nth(0)).not.toHaveClass(/hidden/)
@@ -39,6 +42,8 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await expect(legend_items.nth(2)).toHaveAttribute(`aria-pressed`, `false`)
     await expect(legend_items.nth(3)).not.toHaveClass(/hidden/)
     await expect(legend_items.nth(3)).toHaveAttribute(`aria-pressed`, `true`)
+    await expect(legend_items.nth(4)).not.toHaveClass(/hidden/)
+    await expect(legend_items.nth(4)).toHaveAttribute(`aria-pressed`, `true`)
 
     // Check marker presence/absence and specific types (spot checks)
     // Alpha (line + circle)
@@ -81,6 +86,17 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await expect(
       legend_items.nth(3).locator(`.legend-marker line`),
     ).toHaveCount(1)
+
+    // Epsilon (line only, no dash) - NEW TEST
+    await expect(
+      legend_items.nth(4).locator(`.legend-marker > svg`),
+    ).toHaveCount(1)
+    await expect(
+      legend_items.nth(4).locator(`.legend-marker line`), // Check specifically for the line SVG
+    ).toHaveAttribute(`stroke`, `purple`) // Verify color
+    await expect(
+      legend_items.nth(4).locator(`.legend-marker line`),
+    ).toHaveAttribute(`stroke-dasharray`, `none`) // Verify solid line style
   })
 
   test.skip(`should toggle item visibility on single click`, async ({
@@ -202,5 +218,31 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await expect(legend_item).toHaveCSS(`color`, `rgb(255, 255, 0)`) // Check color applied to item text
     // Check item padding set by --plot-legend-item-padding
     await expect(legend_item).toHaveCSS(`padding`, `1px`) // Check padding applied to item
+  })
+
+  test(`should display correct line colors in legend markers`, async ({
+    page,
+  }) => {
+    const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
+    const expected_colors = [
+      `crimson`,
+      `steelblue`,
+      undefined,
+      `darkviolet`,
+      `purple`,
+    ]
+
+    for (let idx = 0; idx < expected_colors.length; idx++) {
+      const expected_color = expected_colors[idx]
+      const line_marker = legend_items.nth(idx).locator(`.legend-marker line`)
+
+      if (expected_color) {
+        await expect(line_marker).toHaveCount(1)
+        await expect(line_marker).toHaveAttribute(`stroke`, expected_color)
+      } else {
+        // Item 2 (Gamma) should not have a line
+        await expect(line_marker).toHaveCount(0)
+      }
+    }
   })
 })

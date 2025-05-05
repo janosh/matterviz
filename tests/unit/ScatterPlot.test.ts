@@ -169,12 +169,16 @@ describe(`ScatterPlot`, () => {
 
     // Test with timestamp data
     const timestamp_data = {
-      x: Array.from({ length: 12 }, (_, i) => {
-        const date = new Date()
-        date.setMonth(date.getMonth() - (12 - i))
-        return date.getTime()
-      }),
-      y: Array.from({ length: 12 }, () => Math.random() * 100),
+      x: Array(12)
+        .fill(0)
+        .map((_, i) => {
+          const date = new Date()
+          date.setMonth(date.getMonth() - (12 - i))
+          return date.getTime()
+        }),
+      y: Array(12)
+        .fill(0)
+        .map(() => Math.random() * 100),
       point_style: { fill: `steelblue`, radius: 5 },
     }
 
@@ -486,12 +490,16 @@ describe(`ScatterPlot`, () => {
     start_date.setDate(start_date.getDate() - 90)
 
     const time_data = {
-      x: Array.from({ length: 90 }, (_, idx) => {
-        const date = new Date(start_date)
-        date.setDate(date.getDate() + idx)
-        return date.getTime()
-      }),
-      y: Array.from({ length: 90 }, () => Math.random() * 100),
+      x: Array(90)
+        .fill(0)
+        .map((_, idx) => {
+          const date = new Date(start_date)
+          date.setDate(date.getDate() + idx)
+          return date.getTime()
+        }),
+      y: Array(90)
+        .fill(0)
+        .map(() => Math.random() * 100),
       point_style: { fill: `steelblue`, radius: 3 },
       metadata: { type: `time-series` },
     }
@@ -604,10 +612,9 @@ describe(`ScatterPlot`, () => {
       y: [5, 5, 5, 5, 10, 10, 10],
       point_style: { fill: `steelblue`, radius: 6 },
       // Each point has unique metadata
-      metadata: Array.from({ length: 7 }, (_, idx) => ({
-        id: `point-${idx}`,
-        label: `Point ${idx}`,
-      })),
+      metadata: Array(7)
+        .fill(0)
+        .map((_, idx) => ({ id: `point-${idx}`, label: `Point ${idx}` })),
     }
 
     // Mount the component with duplicate coordinate data
@@ -632,10 +639,9 @@ describe(`ScatterPlot`, () => {
       y: [1, 2, 3, 4, 5],
       point_style: { fill: `steelblue`, radius: 6 },
       // Each point has unique metadata
-      metadata: Array.from({ length: 5 }, (_, idx) => ({
-        id: `point-${idx}`,
-        y_value: idx + 1,
-      })),
+      metadata: Array(5)
+        .fill(0)
+        .map((_, idx) => ({ id: `point-${idx}`, y_value: idx + 1 })),
     }
 
     // Track points that have been selected on hover
@@ -723,8 +729,12 @@ describe(`ScatterPlot`, () => {
     ([symbol_type, series_name, point_count]) => {
       // Create a series with the specified marker type for all points
       const custom_marker_series = {
-        x: Array.from({ length: point_count }, (_, idx) => idx + 1),
-        y: Array.from({ length: point_count }, (_, idx) => (idx + 1) * 10),
+        x: Array(point_count)
+          .fill(0)
+          .map((_, idx) => idx + 1),
+        y: Array(point_count)
+          .fill(0)
+          .map((_, idx) => (idx + 1) * 10),
         point_style: {
           fill: `steelblue`,
           radius: 8,
@@ -750,22 +760,24 @@ describe(`ScatterPlot`, () => {
     // Generate data with a gradient color scheme based on values
     const point_count = 20
     const gradient_data = {
-      x: Array.from({ length: point_count }, (_, idx) => idx + 1),
-      y: Array.from({ length: point_count }, (_, idx) => Math.pow(idx / 2, 2)),
+      x: Array(point_count)
+        .fill(0)
+        .map((_, idx) => idx + 1),
+      y: Array(point_count)
+        .fill(0)
+        .map((_, idx) => Math.pow(idx / 2, 2)),
       // Create a color gradient from blue (low values) to red (high values)
-      point_style: Array.from({ length: point_count }, (_, idx) => {
-        // Calculate color based on position in sequence (HSL where hue 240=blue to 0=red)
-        const hue = 240 - (idx / (point_count - 1)) * 240
-        // Make size increase with value
-        const radius = 3 + (idx / (point_count - 1)) * 5
+      point_style: Array(point_count)
+        .fill(0)
+        .map((_, idx) => {
+          // Calculate color based on position in sequence (HSL where hue 240=blue to 0=red)
+          const hue = 240 - (idx / (point_count - 1)) * 240
+          // Make size increase with value
+          const radius = 3 + (idx / (point_count - 1)) * 5
 
-        return {
-          fill: `hsl(${hue}, 80%, 50%)`,
-          radius,
-          stroke: `white`,
-          stroke_width: 1,
-        }
-      }),
+          const fill = `hsl(${hue}, 80%, 50%)`
+          return { radius, fill, stroke: `white`, stroke_width: 1 }
+        }),
     }
 
     const component = mount(ScatterPlot, {
@@ -798,9 +810,11 @@ describe(`ScatterPlot`, () => {
         { text: `Left`, offset: { x: -15, y: 0 } },
         { text: `Diagonal`, offset: { x: 10, y: -10 } },
       ],
-      metadata: Array.from({ length: 5 }, (_, idx) => ({
-        position: [`Above`, `Right`, `Below`, `Left`, `Diagonal`][idx],
-      })),
+      metadata: Array(5)
+        .fill(0)
+        .map((_, idx) => ({
+          position: [`Above`, `Right`, `Below`, `Left`, `Diagonal`][idx],
+        })),
     }
 
     // Mount the component with explicit point markers
@@ -909,12 +923,16 @@ describe(`ScatterPlot`, () => {
   test(`handles time-based data with custom formatting`, () => {
     // Test with timestamp data
     const timestamp_data = {
-      x: Array.from({ length: 12 }, (_, idx) => {
-        const date = new Date()
-        date.setMonth(date.getMonth() - (12 - idx))
-        return date.getTime()
-      }),
-      y: Array.from({ length: 12 }, () => Math.random() * 100),
+      x: Array(12)
+        .fill(0)
+        .map((_, idx) => {
+          const date = new Date()
+          date.setMonth(date.getMonth() - (12 - idx))
+          return date.getTime()
+        }),
+      y: Array(12)
+        .fill(0)
+        .map(() => Math.random() * 100),
       point_style: { fill: `steelblue`, radius: 5 },
     }
 
@@ -1264,8 +1282,12 @@ describe(`ScatterPlot`, () => {
 
     // Dense data case
     const dense_data = {
-      x: Array.from({ length: 100 }, (_, i) => 0.1 * Math.pow(10, i / 20)),
-      y: Array.from({ length: 100 }, (_, i) => 0.1 * Math.pow(10, i / 20)),
+      x: Array(100)
+        .fill(0)
+        .map((_, i) => 0.1 * Math.pow(10, i / 20)),
+      y: Array(100)
+        .fill(0)
+        .map((_, i) => 0.1 * Math.pow(10, i / 20)),
       point_style: { fill: `steelblue`, radius: 3 },
     }
 
@@ -1912,7 +1934,7 @@ describe(`ScatterPlot`, () => {
       x: [10, 20, 30, 40, 50],
       y: [10, 20, 30, 40, 50],
       point_style: { fill: `steelblue`, radius: 5 },
-    } as DataSeries
+    }
 
     // Define custom grid styling
     const x_grid_style = {

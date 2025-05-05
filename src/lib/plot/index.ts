@@ -69,11 +69,12 @@ export interface HoverStyle {
   scale?: number
   stroke?: string
   stroke_width?: number
+  brightness?: number
 }
 
 export interface LabelStyle {
   text?: string
-  offset?: XyObj // Replace offset_x and offset_y with a single offset object
+  offset?: XyObj
   font_size?: string
   font_family?: string
   auto_placement?: boolean // Enable/disable auto-placement

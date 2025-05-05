@@ -35,6 +35,9 @@
   bind:selected
   {placeholder}
   liOptionStyle="padding: 3pt 6pt;"
+  liSelectedStyle="width: 100%;"
+  ulSelectedStyle="display: contents;"
+  inputStyle="min-width: 0;"
   {...rest}
 >
   {#snippet children({ option }: { option: D3InterpolateName })}
@@ -43,7 +46,7 @@
       color_scale={option}
       tick_labels={0}
       title_side="left"
-      wrapper_style="min-width: 18em;"
+      wrapper_style="width: 100%;"
       title_style="width: 6em; font-size: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;"
       {...colorbar}
     />

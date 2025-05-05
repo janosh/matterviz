@@ -15,6 +15,7 @@
     offset?: Point[`offset`]
     point_tween?: TweenedOptions<XyObj>
     origin?: XyObj
+    is_hovered?: boolean
   }
   let {
     x,
@@ -25,8 +26,10 @@
     offset = { x: 0, y: 0 },
     point_tween,
     origin = { x: 0, y: 0 },
+    is_hovered = false,
   }: Props = $props()
 
+  // get the SVG path data as 'd' attribute
   function get_symbol_path(): string {
     const symbol_type =
       symbol_map[style.symbol_type ?? `Circle`] ?? d3_symbols.symbolCircle
@@ -36,9 +39,9 @@
 
   let marker_path = $derived.by(get_symbol_path)
 
-  const default_tween = { duration: 600, easing: cubicOut }
+  const default_tween_props: TweenedOptions<XyObj> = { duration: 600, easing: cubicOut }
   // Single tween for {x, y} coordinates
-  const tweened_coords = new Tween(origin, { ...default_tween, ...point_tween })
+  const tweened_coords = new Tween(origin, { ...default_tween_props, ...point_tween })
 
   $effect.pre(() => {
     tweened_coords.target = { x: x + offset.x, y: y + offset.y }
@@ -47,10 +50,10 @@
 
 <g
   transform="translate({tweened_coords.current.x} {tweened_coords.current.y})"
-  class:hover_effect={hover.enabled}
   style:--hover-scale={hover.scale ?? 1.5}
   style:--hover-stroke={hover.stroke ?? `white`}
-  style:--hover-stroke-width="{hover.stroke_width ?? 2}px"
+  style:--hover-stroke-width="{hover.stroke_width ?? 0}px"
+  style:--hover-brightness={hover.brightness ?? 1.2}
 >
   <path
     d={marker_path}
@@ -58,7 +61,9 @@
     stroke-width={style.stroke_width ?? 1}
     style:fill-opacity={style.fill_opacity}
     style:stroke-opacity={style.stroke_opacity}
+    style:fill="var(--point-fill-color, {style.fill ?? `black`})"
     class="marker"
+    class:is-hovered={is_hovered && (hover.enabled ?? true)}
   />
   {#if label.text}
     <text
@@ -66,7 +71,9 @@
       y={label?.offset?.y ?? 0}
       style:font-size={label?.font_size ?? `10px`}
       style:font-family={label?.font_family ?? `sans-serif`}
+      style:fill="var(--scatter-point-label-fill, currentColor)"
       dominant-baseline="middle"
+      class="label-text"
     >
       {label.text}
     </text>
@@ -77,16 +84,13 @@
   .marker {
     transition: var(--scatter-point-transition, all 0.2s);
   }
-  .hover_effect .marker:hover {
-    transform: scale(var(--scatter-point-hover-scale, 1.5));
-    stroke: var(--scatter-point-hover-stroke, white);
-    stroke-width: var(--scatter-point-hover-stroke-width, 2px);
+  .marker.is-hovered {
+    transform: scale(var(--hover-scale));
+    stroke: var(--hover-stroke);
+    stroke-width: var(--hover-stroke-width);
+    filter: brightness(var(--hover-brightness));
   }
-  path {
-    fill: var(--point-fill-color);
-  }
-  text {
-    fill: var(--scatter-point-text-fill, currentColor);
-    pointer-events: var(--scatter-point-text-events, none);
+  .label-text {
+    pointer-events: var(--scatter-point-label-pointer-events, none);
   }
 </style>

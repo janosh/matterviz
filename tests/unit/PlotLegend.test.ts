@@ -212,19 +212,31 @@ describe(`PlotLegend`, () => {
         label: `Circle/Solid`,
         visible: true,
         series_idx: 0,
-        display_style: { symbol_type: `Circle`, line_dash: `solid` },
+        display_style: {
+          symbol_type: `Circle`,
+          line_dash: `solid`,
+          line_color: `currentColor`,
+        },
       },
       {
         label: `Square/Dashed`,
         visible: true,
         series_idx: 1,
-        display_style: { symbol_type: `Square`, line_dash: `dashed` },
+        display_style: {
+          symbol_type: `Square`,
+          line_dash: `dashed`,
+          line_color: `currentColor`,
+        },
       },
       {
         label: `Triangle/Dotted`,
         visible: true,
         series_idx: 2,
-        display_style: { symbol_type: `Triangle`, line_dash: `dotted` },
+        display_style: {
+          symbol_type: `Triangle`,
+          line_dash: `dotted`,
+          line_color: `currentColor`,
+        },
       },
       {
         label: `Cross`,

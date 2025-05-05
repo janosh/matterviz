@@ -33,7 +33,7 @@ A simple scatter plot showing different display modes (points, lines, or both):
     Display Mode:
     <select bind:value={display_mode}>
       {#each [['points', 'Points only'], ['line', 'Lines only'], ['line+points', 'Lines and Points']] as [value, label] (value)}
-        <option value={value}>{label}</option>
+        <option {value}>{label}</option>
       {/each}
     </select>
   </label>
@@ -58,7 +58,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
 
   // Generate data for demonstration
   const point_count = 10
-  const x_values = Array.from({ length: point_count }, (_, idx) => idx + 1)
+  const x_values = Array(point_count).fill(0).map((_, idx) => idx + 1)
 
   // Create series with different point styles
   const series_with_styles = [
@@ -72,16 +72,8 @@ Demonstrate various point styles, custom tooltips, and hover effects:
         stroke: 'darkred',
         stroke_width: 3
       },
-      point_hover: {
-        scale: 1.3,
-        stroke: 'gold',
-        stroke_width: 4
-      },
-      point_label: {
-        text: 'Giant red',
-        offset_y: -20,
-        font_size: '12px'
-      }
+      point_hover: { scale: 1.3, stroke: 'gold', stroke_width: 4 },
+      point_label: { text: 'Giant red', offset: { y: -20 }, font_size: '12px' }
     },
     // Medium green semi-transparent points with dramatic hover effect
     {
@@ -99,21 +91,17 @@ Demonstrate various point styles, custom tooltips, and hover effects:
         stroke: 'lime',
         stroke_width: 2
       },
-      point_label: {
-        text: 'Growing green',
-        offset_y: -20,
-        font_size: '12px'
-      }
+      point_label: { text: 'Growing green', offset: { y: -20 }, font_size: '12px' }
     },
     // Outline-only points (hollow) with color change on hover
     {
       x: x_values,
       y: Array(point_count).fill(6),
       point_style: {
-        fill: 'white',
-        fill_opacity: 0.1,
+        fill: 'purple',
+        fill_opacity: 0.4,
         radius: 6,
-        stroke: 'purple',
+        stroke: 'indigo',
         stroke_width: 2
       },
       point_hover: {
@@ -121,11 +109,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
         stroke: 'magenta', // Different color on hover
         stroke_width: 3
       },
-      point_label: {
-        text: 'Color-changing hollow',
-        offset_y: -20,
-        font_size: '12px'
-      }
+      point_label: { text: 'Color-changing hollow', offset: { y: -20 }, font_size: '12px' }
     },
     // Tiny points with extreme hover growth
     {
@@ -140,11 +124,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
         stroke: 'red',
         stroke_width: 2
       },
-      point_label: {
-        text: 'Exploding dots',
-        offset_y: -20,
-        font_size: '12px'
-      }
+      point_label: { text: 'Exploding dots', offset: { y: -20 }, font_size: '12px' }
     },
     // Micro dots with custom glow effect
     {
@@ -161,11 +141,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
         stroke: 'cyan',
         stroke_width: 8 // Creates a glow effect
       },
-      point_label: {
-        text: 'Glowing microdots',
-        offset_y: -20,
-        font_size: '12px'
-      },
+      point_label: { text: 'Glowing microdots', offset: { y: -20 }, font_size: '12px' },
       label: 'Glowing microdots'
     }
   ]
@@ -176,9 +152,8 @@ Demonstrate various point styles, custom tooltips, and hover effects:
       series.label = series.point_label?.text || `Style ${series_idx + 1}`;
     }
     // Create a metadata array with empty objects except for the first one
-    series.metadata = Array(point_count).fill({}).map((_, idx) => {
-      return idx === 0 ? { firstPoint: true, seriesName: series.point_label.text } : {}
-    })
+    series.metadata = Array(point_count).fill({}).map((_, idx) =>
+      ({ series_name: series.point_label.text }))
 
     // Only show label on the first point of each series
     if (series.point_label) {
@@ -189,8 +164,8 @@ Demonstrate various point styles, custom tooltips, and hover effects:
     }
   })
 
-  // Selected point tracking for demo
-  let selected_point = null
+  // Hovered point tracking for demo
+  let hovered_point = null
 </script>
 
 <ScatterPlot
@@ -199,25 +174,21 @@ Demonstrate various point styles, custom tooltips, and hover effects:
   y_label="Point Style Examples"
   y_lim={[0, 12]}
   markers="points"
-  change={(event) => (selected_point = event)}
+  change={(point) => (hovered_point = point)}
   style="height: 400px;"
 >
   {#snippet tooltip({ x, y, metadata })}
-    {#if metadata?.firstPoint}
-      <strong>{metadata.seriesName}</strong>
-    {:else}
-      Point at ({x}, {y})
-    {/if}
+    <strong>{metadata.series_name}</strong>
+    Point at ({x}, {y})
   {/snippet}
 </ScatterPlot>
 
-{#if selected_point}
-  <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
-    Selected point: ({selected_point.x}, {selected_point.y})
-    {#if selected_point.metadata?.firstPoint}
-      - {selected_point.metadata.seriesName}
-    {/if}
-  </div>
+Hovered point:
+{#if hovered_point}
+  {@const { x, y, metadata } = hovered_point}
+  ({x}, {y}) in '{metadata.series_name}'
+{:else}
+  None
 {/if}
 ```
 
@@ -230,57 +201,71 @@ This example demonstrates how to apply different styles _and sizes_ to individua
   import { ScatterPlot } from '$lib'
   import { symbol_names } from '$lib/plot'
 
+  let show_labels = $state(true)
+  let label_size = $state(14)
   let size_scale = $state({ radius_range: [2, 15], type: 'linear' }) // [min_radius, max_radius]
+
   const point_count = 40
 
-  // Create a dataset with points arranged in a spiral pattern
-  const spiral_data = $derived.by(() => {
-    const data = {
-      x: [],
-      y: [],
-      size_values: [],
-      point_style: [],
-      metadata: [] // Store angle for each point
+  let spiral_data = $state({ x: [], y: [], size_values: [], point_style: [], point_label: [], metadata: [] })
+
+  // Generate initial points (run once)
+  for (let idx = 0; idx < point_count; idx++) {
+    // Calculate angle and radius for spiral
+    const angle = idx * 0.5
+    const radius = 1 + idx * 0.3
+
+    // Convert to cartesian coordinates
+    const x = Math.cos(angle) * radius
+    const y = Math.sin(angle) * radius
+
+    spiral_data.x.push(x)
+    spiral_data.y.push(y)
+    spiral_data.size_values.push(radius) // Use spiral radius for sizing
+
+    // Store angle in metadata
+    spiral_data.metadata.push({ angle, radius })
+    // Change color gradually along the spiral
+    const hue = (idx / point_count) * 360
+    // Change marker type based on index
+    const symbol_type = symbol_names[idx % symbol_names.length]
+
+    // Create the point style (initial radius will be updated by effect)
+    spiral_data.point_style.push({
+      fill: `hsl(${hue}, 80%, 50%)`,
+      stroke: 'white',
+      stroke_width: 1 + idx / 20, // Gradually thicker stroke
+      symbol_type,
+      radius: 5, // Set fixed initial radius
+    })
+    spiral_data.point_label.push({ text: `P${idx}`, offset: { x: 10 }, })
+  }
+
+  // Store the initially generated labels separately
+  const initial_point_labels = spiral_data.point_label
+
+  // Effect to update point styles and labels based on controls
+  $effect(() => {
+    for (const pt_label of spiral_data.point_label) {
+      pt_label.font_size = `${label_size}px`
     }
+  })
 
-    // Generate points in a spiral pattern
-    for (let idx = 0; idx < point_count; idx++) {
-      // Calculate angle and radius for spiral
-      const angle = idx * 0.5
-      const radius = 1 + idx * 0.3
-
-      // Convert to cartesian coordinates
-      const x = Math.cos(angle) * radius
-      const y = Math.sin(angle) * radius
-
-      data.x.push(x)
-      data.y.push(y)
-      data.size_values.push(radius) // Use spiral radius for sizing
-
-      // Store angle in metadata
-      data.metadata.push({ angle, radius })
-      // Change color gradually along the spiral
-      const hue = (idx / point_count) * 360
-      // Change marker type based on index
-      const symbol_type = symbol_names[idx % symbol_names.length]
-
-      // Create the point style (radius is now controlled by size_values)
-      data.point_style.push({
-        fill: `hsl(${hue}, 80%, 50%)`,
-        stroke: 'white',
-        stroke_width: 1 + idx / 20, // Gradually thicker stroke
-        symbol_type,
-      })
-    }
-    return data
+  $effect(() => {
+    if (show_labels) spiral_data.point_label = initial_point_labels
+    else spiral_data.point_label = [] // Assign empty array to hide all labels
   })
 </script>
 
 <div id="point-sizing">
-  <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center;">
+  <div style="display: flex; flex-wrap: wrap; gap: 1em 2em; margin-bottom: 1em; align-items: center;">
     <label>
-      Min Size (px):
-      <input type="number" bind:value={size_scale.radius_range[0]} min="0.5" max="10" step="0.5" style="width: 50px;">
+      Label Size: {label_size}
+      <input type="range" bind:value={label_size} min="8" max="20">
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={show_labels}>
+      Show Labels
     </label>
     <label>
       Max Size (px):
@@ -392,7 +377,6 @@ This example shows categorized data with color coding, custom tick intervals, an
     style="height: 400px;"
   >
     {#snippet tooltip({ x, y, metadata })}
-      <span style="color: {metadata.color};">●</span>
       <strong>{metadata.category}</strong><br>
       Position: ({x.toFixed(2)}, {y.toFixed(2)})
     {/snippet}
@@ -419,15 +403,15 @@ Using time data on the x-axis with custom formatting:
   import { ScatterPlot } from '$lib'
 
   // Generate dates for the past 30 days
-  const dates = Array.from({ length: 30 }, (_, idx) => {
+  const dates = Array(30).fill(0).map((_, idx) => {
     const date = new Date()
     date.setDate(date.getDate() - (30 - idx))
     return date.getTime()
   })
 
   // Random data values for multiple series
-  const values1 = Array.from({ length: 30 }, () => Math.random() * 100)
-  const values2 = Array.from({ length: 30 }, () => Math.random() * 70 + 30)
+  const values1 = Array(30).fill(0).map(() => Math.random() * 100)
+  const values2 = Array(30).fill(0).map(() => Math.random() * 70 + 30)
 
   const time_series = [
     {
@@ -435,14 +419,14 @@ Using time data on the x-axis with custom formatting:
       y: values1,
       point_style: { fill: 'steelblue', radius: 4 },
       label: 'Series A',
-      metadata: Array.from({ length: 30 }, (_, idx) => ({ series: 'Series A', day: idx }))
+      metadata: Array(30).fill(0).map((_, idx) => ({ series: 'Series A', day: idx }))
     },
     {
       x: dates,
       y: values2,
       point_style: { fill: 'orangered', radius: 4 },
       label: 'Series B',
-      metadata: Array.from({ length: 30 }, (_, idx) => ({ series: 'Series B', day: idx }))
+      metadata: Array(30).fill(0).map((_, idx) => ({ series: 'Series B', day: idx }))
     }
   ]
 
@@ -452,24 +436,22 @@ Using time data on the x-axis with custom formatting:
 </script>
 
 <div>
-  <div style="margin-bottom: 1em;">
-    <label>
-      Date Format:
-      <select bind:value={date_format}>
-        {#each [['%b %d', 'Month Day (Jan 01)'], ['%Y-%m-%d', 'YYYY-MM-DD'], ['%d/%m', 'DD/MM']] as [value, label] (value)}
-          <option value={value}>{label}</option>
-        {/each}
-      </select>
-    </label>
-    <label style="margin-left: 1em;">
-      Y-Value Format:
-      <select bind:value={y_format}>
-        {#each [['.1f', '1 decimal'], ['.2f', '2 decimals'], ['d', 'Integer']] as [value, label] (value)}
-          <option value={value}>{label}</option>
-        {/each}
-      </select>
-    </label>
-  </div>
+  <label>
+    Date Format:
+    <select bind:value={date_format}>
+      {#each [['%b %d', 'Month Day (Jan 01)'], ['%Y-%m-%d', 'YYYY-MM-DD'], ['%d/%m', 'DD/MM']] as [value, label] (value)}
+        <option {value}>{label}</option>
+      {/each}
+    </select>
+  </label>
+  <label style="margin-left: 1em;">
+    Y-Value Format:
+    <select bind:value={y_format}>
+      {#each [['.1f', '1 decimal'], ['.2f', '2 decimals'], ['d', 'Integer']] as [value, label] (value)}
+        <option {value}>{label}</option>
+      {/each}
+    </select>
+  </label>
 
   <ScatterPlot
     series={time_series}
@@ -502,15 +484,8 @@ This example demonstrates how points with identical coordinates can still be ind
 
   // Create points with shared X or Y coordinates
   const shared_coords_data = {
-    // Points with same X values (vertical line)
-    x: [5, 5, 5, 5, 5,
-    // Points with same Y values (horizontal line)
-       1, 2, 3, 4, 5,
-    // Some random points
-       7, 8, 9, 7, 9],
-    y: [1, 2, 3, 4, 5,
-       3, 3, 3, 3, 3,
-       1, 2, 3, 4, 5],
+    x: [5, 5, 5, 5, 5, 1, 2, 3, 4, 5, 7, 8, 9, 7, 9],
+    y: [1, 2, 3, 4, 5, 3, 3, 3, 3, 3, 1, 2, 3, 4, 5],
     point_style: { fill: 'steelblue', radius: 6 },
     // Add distinct metadata for each point to identify them
     metadata: [
@@ -540,7 +515,7 @@ This example demonstrates how points with identical coordinates can still be ind
   y_ticks={1}
   x_label="X Axis"
   y_label="Y Axis"
-  change={(event) => (hovered_point = event)}
+  change={(point) => (hovered_point = point)}
   style="height: 350px;"
 >
   {#snippet tooltip({ x, y, metadata })}
@@ -551,10 +526,12 @@ This example demonstrates how points with identical coordinates can still be ind
   {/snippet}
 </ScatterPlot>
 
+<strong>Currently hovered:</strong>
 {#if hovered_point}
-  <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
-    <strong>Currently hovering:</strong> {hovered_point.metadata?.label || 'Unknown point'} at ({hovered_point.x}, {hovered_point.y})
-  </div>
+  {@const { x, y, metadata } = hovered_point}
+  {metadata?.label || 'Unknown point'} at ({x}, {y})
+{:else}
+  nothing
 {/if}
 ```
 
@@ -573,11 +550,11 @@ This example shows how to add permanent text labels to your scatter points:
     point_style: { fill: 'steelblue', radius: 6 },
     // Add text labels to each point
     point_label: [
-      { text: 'Point A', offset_y: -15 },
-      { text: 'Point B', offset_y: 15 },
-      { text: 'Point C', offset_y: -15 },
-      { text: 'Point D', offset_y: -15 },
-      { text: 'Point E', offset_y: 15 }
+      { text: 'Point A', offset: { y: -15 } },
+      { text: 'Point B', offset: { y: 15 } },
+      { text: 'Point C', offset: { y: -15 } },
+      { text: 'Point D', offset: { y: -15 } },
+      { text: 'Point E', offset: { y: 15 } }
     ]
   }
 </script>
@@ -607,11 +584,11 @@ You can position labels in different directions relative to each point:
     point_style: { fill: 'goldenrod', radius: 5 },
     // Different positions for labels
     point_label: [
-      { text: 'Above', offset_y: -15, offset_x: 0 },
-      { text: 'Right', offset_x: 15, offset_y: 0 },
-      { text: 'Below', offset_y: 15, offset_x: 0 },
-      { text: 'Left', offset_x: -30, offset_y: 0 },
-      { text: 'Diagonal', offset_x: 10, offset_y: -10 }
+      { text: 'Above', offset: { y: -15, x: 0 } },
+      { text: 'Right', offset: { x: 15, y: 0 } },
+      { text: 'Below', offset: { y: 15, x: 0 } },
+      { text: 'Left', offset: { x: -30, y: 0 } },
+      { text: 'Diagonal', offset: { x: 10, y: -10 } }
     ]
   }
 </script>
@@ -625,30 +602,6 @@ You can position labels in different directions relative to each point:
   markers="points"
   style="height: 350px;"
 />
-```
-
-### Example Code
-
-Here's how to add text annotations to your scatter points:
-
-```js
-// Data with text labels
-const data = {
-  x: [1, 3, 5, 7, 9],
-  y: [2, 5, 3, 7, 4],
-  point_style: {
-    fill: 'steelblue',
-    radius: 6,
-  },
-  // Add text labels to each point
-  point_label: [
-    { text: 'Point A', offset_y: -15, font_size: '14px' },
-    { text: 'Point B', offset_y: -15, font_size: '14px' },
-    { text: 'Point C', offset_y: -15, font_size: '14px' },
-    { text: 'Point D', offset_y: -15, font_size: '14px' },
-    { text: 'Point E', offset_y: -15, font_size: '14px' },
-  ],
-}
 ```
 
 ## Interactive Log-Scaled Axes
@@ -830,29 +783,25 @@ This example combines multiple features including different display modes, custo
   // Create three data series with different styling
   const series_data = categories.map((category, cat_idx) => {
     const points = 10
-    const marker_type_for_series = symbol_names[cat_idx % symbol_names.length];
+    const symbol = symbol_names[cat_idx % symbol_names.length];
     return {
-      x: Array.from({ length: points }, (_, idx) => idx + 1),
-      y: Array.from({ length: points }, () => 3 + cat_idx * 3 + Math.random() * 2),
+      x: Array(points).fill(0).map((_, idx) => idx + 1),
+      y: Array(points).fill(0).map(() => 3 + cat_idx * 3 + Math.random() * 2),
       point_style: {
         fill: category_colors[cat_idx],
         radius: 6 - cat_idx,
         stroke: 'black',
         stroke_width: 0.5,
-        symbol_type: marker_type_for_series,
+        symbol_type: symbol,
         symbol_size: 40 + cat_idx * 5
       },
-      metadata: Array.from({ length: points }, (_, idx) => ({
-        category,
-        color: category_colors[cat_idx],
-        marker: marker_type_for_series,
-        idx
+      metadata: Array(points).fill(0).map((_, idx) => ({
+        category, color: category_colors[cat_idx], symbol, idx
       })),
       label: category
     }
   })
 
-  // Currently selected display mode
   let display_mode = $state('line+points')
 
   // Toggle series visibility
@@ -874,8 +823,8 @@ This example combines multiple features including different display modes, custo
   // Custom axis labels
   let axis_labels = $state({ x: "X Axis", y: "Y Value" })
 
-  // Selected point tracking
-  let selected_point = $state(null)
+  // Hovered point tracking
+  let hovered_point = $state(null)
 
   // Update series based on visibility toggles
   let displayed_series = $derived(series_data.filter((_, idx) => visible_series[categories[idx]]))
@@ -912,26 +861,24 @@ This example combines multiple features including different display modes, custo
 
 <div>
   <h3>Interactive Multi-Series Plot</h3>
-  <div style="margin-bottom: 1em;">
-    <label>
-      Display Mode:
-      <select bind:value={display_mode}>
-        <option value="points">Points only</option>
-        <option value="line">Lines only</option>
-        <option value="line+points">Lines and Points</option>
-      </select>
-    </label>
+  <label>
+    Display Mode:
+    <select bind:value={display_mode}>
+      <option value="points">Points only</option>
+      <option value="line">Lines only</option>
+      <option value="line+points">Lines and Points</option>
+    </select>
+  </label>
 
-    <!-- Legend with toggles -->
-    <div style="display: flex; margin-left: 2em;">
-      {#each categories as category, idx}
-        <label style="margin-right: 1em; display: flex; align-items: center;">
-          <input type="checkbox" bind:checked={visible_series[category]} />
-          <span style="display: inline-block; width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%; margin: 0 0.5em;"></span>
-          {category}
-        </label>
-      {/each}
-    </div>
+  <!-- Legend with toggles -->
+  <div style="display: flex; margin-left: 2em;">
+    {#each categories as category, idx}
+      <label style="margin-right: 1em; display: flex; align-items: center;">
+        <input type="checkbox" bind:checked={visible_series[category]} />
+        <span style="display: inline-block; width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%; margin: 0 0.5em;"></span>
+        {category}
+      </label>
+    {/each}
   </div>
 
   <ScatterPlot
@@ -939,22 +886,22 @@ This example combines multiple features including different display modes, custo
     x_label={axis_labels.x}
     y_label={axis_labels.y}
     markers={display_mode}
-    change={(event) => (selected_point = event)}
+    change={(point) => (hovered_point = point)}
     style="height: 400px;"
     legend={null}
   >
     {#snippet tooltip({ x, y, metadata })}
-      <span style="color: {metadata.color};">●</span>
       <strong>{metadata.category}</strong><br>
       Point {metadata.idx + 1} ({x}, {y.toFixed(2)})<br>
-      Marker: {metadata.marker}
+      Symbol: {metadata.symbol}
     {/snippet}
   </ScatterPlot>
 
-  {#if selected_point}
-    <div style="margin-top: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;">
-      Selected point: ({selected_point.x}, {selected_point.y.toFixed(2)}) from {selected_point.metadata.category}
-    </div>
+  {#if hovered_point}
+    {@const { x, y, metadata } = hovered_point}
+    Hovered point: ({x}, {y.toFixed(2)}) from '{metadata.category}'
+  {:else}
+    No point hovered
   {/if}
 
   <h3 style="margin-top: 2em;">Random Points with Custom Controls and External Legend</h3>
@@ -1211,18 +1158,16 @@ This example shows how to place the color bar vertically on the right side of th
   // Generate data where color value relates to y-value
   const point_count = 50
   const vertical_color_data = {
-    x: Array.from({ length: point_count }, (_, idx) => (idx / point_count) * 90 + 5), // Range 5 to 95
-    y: Array.from({ length: point_count }, () => Math.random() * 90 + 5), // Range 5 to 95
+    x: Array(point_count).fill(0).map((_, idx) => (idx / point_count) * 90 + 5), // Range 5 to 95
+    y: Array(point_count).fill(0).map(() => Math.random() * 90 + 5), // Range 5 to 95
     // Color value based on the y-coordinate
-    color_values: Array.from({ length: point_count }, (_, idx) => idx * 2), // Values from 0 to 98
+    color_values: Array(point_count).fill(0).map((_, idx) => idx * 2), // Values from 0 to 98
     point_style: {
       radius: 6,
       stroke: `black`,
       stroke_width: 0.5,
     },
-    metadata: Array.from({ length: point_count }, (_, idx) => ({
-      value: idx * 2,
-    })),
+    metadata: Array(point_count).fill(0).map((_, idx) => ({ value: idx * 2 })),
   }
 
   // Adjust right padding to make space for the external color bar
@@ -1283,4 +1228,104 @@ This example shows how to place the color bar vertically on the right side of th
     {/snippet}
   </ScatterPlot>
 </div>
+```
+
+## Line Clipping with Fixed Ranges
+
+This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Observe how the lines originating and ending outside the plot area are correctly cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
+
+```svelte example stackblitz
+<script>
+  import { ScatterPlot } from '$lib'
+
+  // Define fixed plot limits
+  const x_limits = [-5, 5]
+  const y_limits = [-5, 5]
+
+  // Function to generate a line that extends beyond the limits
+  const generate_line = (start_x, start_y, end_x, end_y, steps, label) => {
+    const line = { x: [], y: [], label }
+    for (let idx = 0; idx <= steps; idx++) {
+      const t = idx / steps
+      line.x.push(start_x + (end_x - start_x) * t)
+      line.y.push(start_y + (end_y - start_y) * t)
+    }
+    return line
+  }
+
+  // Function to generate a curved line (parabola)
+  const generate_parabola = (start_x, end_x, curvature, vertical_shift, steps, label) => {
+    const curve = { x: [], y: [], label };
+    for (let idx = 0; idx <= steps; idx++) {
+      const x = start_x + (end_x - start_x) * (idx / steps);
+      // Simple downward-opening parabola: y = -curvature * x^2 + shift
+      curve.x.push(x);
+      curve.y.push(-curvature * x * x + vertical_shift);
+    }
+    return curve;
+  }
+
+  // Function to generate a curved line (sine wave)
+  const generate_sine_wave = (start_x, end_x, amplitude, frequency, vertical_shift, steps, label) => {
+    const wave = { x: [], y: [], label };
+    for (let idx = 0; idx <= steps; idx++) {
+      const x = start_x + (end_x - start_x) * (idx / steps);
+      wave.x.push(x);
+      wave.y.push(amplitude * Math.sin(frequency * x) + vertical_shift);
+    }
+    return wave;
+  }
+
+  // Create lines that cross all boundaries
+  const clipping_series = [
+    // Line crossing left and right boundaries
+    generate_line(-10, 0, 10, 0, 20, 'Left-Right'),
+    // Line crossing top and bottom boundaries
+    generate_line(0, -10, 0, 10, 20, 'Top-Bottom'),
+    // Diagonal line crossing top-left and bottom-right
+    generate_line(-10, 10, 10, -10, 20, 'TopLeft-BottomRight'),
+    // Diagonal line crossing bottom-left and top-right
+    generate_line(-10, -10, 10, 10, 20, 'BottomLeft-TopRight'),
+    // Line completely outside (should not be visible)
+    generate_line(15, 15, 20, 20, 5, 'Outside'),
+    // Line starting inside, ending outside (top-right)
+    generate_line(2, 2, 15, 15, 10, 'Inside-TopRight'),
+    // Line starting outside (bottom-left), ending inside
+    generate_line(-15, -15, -2, -2, 10, 'BottomLeft-Inside'),
+    // Parabola opening downwards, exiting bottom
+    generate_parabola(-10, 10, 0.2, 0, 40, 'Parabola (Bottom Exit)'),
+    // Sine wave mostly below the bottom edge
+    generate_sine_wave(-10, 10, 4, 1, -6, 50, 'Sine Wave (Below Bottom)'),
+    // Parabola starting inside, exiting bottom-right
+    generate_parabola(-2, 10, 0.15, 4, 30, 'Parabola (Inside-BottomRight Exit)'),
+  ]
+
+  // Add some basic styling
+  clipping_series.forEach((series_data, idx) => {
+    series_data.line_style = {
+      stroke: `hsl(${idx * 60}, 70%, 50%)`,
+      stroke_width: 2
+    }
+  })
+</script>
+
+<ScatterPlot
+  series={clipping_series}
+  x_lim={x_limits}
+  y_lim={y_limits}
+  x_label="X Axis (Fixed Range)"
+  y_label="Y Axis (Fixed Range)"
+  markers="line"
+  style="height: 400px;"
+  show_zero_lines={true}
+  padding={{ l: 150 }}
+  legend={{
+    wrapper_style: `
+      position: absolute;
+      right: 0;
+      transform: translateX(100%);
+      max-width: 400px;
+    `
+  }}
+/>
 ```

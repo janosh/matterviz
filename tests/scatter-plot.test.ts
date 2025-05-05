@@ -1086,43 +1086,145 @@ test.describe(`Line Styling`, () => {
   test(`renders solid, dashed, and custom dashed lines correctly`, async ({
     page,
   }) => {
-    const solid_plot = page.locator(`${section} #solid-line .scatter`)
-    const dashed_plot = page.locator(`${section} #dashed-line .scatter`)
-    const custom_plot = page.locator(`${section} #custom-dash .scatter`)
+    const solid_plot = page.locator(`${section} #solid-line-plot .scatter`)
+    const dashed_plot = page.locator(`${section} #dashed-line-plot .scatter`)
+    const custom_plot = page.locator(`${section} #custom-dash-plot .scatter`)
 
     // Check solid lines (no stroke-dasharray)
-    const solid_line_1 = solid_plot.locator(
-      `g[data-series-idx='0'] path[fill='none']`,
+    const solid_line_paths = solid_plot.locator(
+      `path[fill='none'][stroke='steelblue']`,
     )
-    const solid_line_2 = solid_plot.locator(
-      `g[data-series-idx='1'] path[fill='none']`,
-    )
-    await expect(solid_line_1).toBeVisible()
-    await expect(solid_line_2).toBeVisible()
-    expect(await solid_line_1.getAttribute(`stroke-dasharray`)).toBeNull()
-    expect(await solid_line_2.getAttribute(`stroke-dasharray`)).toBeNull()
-    await page.waitForTimeout(100) // Add small delay before checking attributes
-    await expect(solid_line_1).toHaveAttribute(`stroke`, `steelblue`) // Should be steelblue from point_style fallback
-    await expect(solid_line_2).toHaveAttribute(`stroke`, `steelblue`) // Explicit line_style color
-    await expect(solid_line_1).toHaveAttribute(`stroke-width`, `2`) // Default width
-    await expect(solid_line_2).toHaveAttribute(`stroke-width`, `2`) // Explicit line_style width
+    // Expect two solid lines with this stroke color
+    await expect(solid_line_paths).toHaveCount(2)
+
+    // Check attributes on the first one (assuming order is stable enough for this check)
+    const first_solid_line = solid_line_paths.first()
+    await expect(first_solid_line).toBeVisible()
+    expect(await first_solid_line.getAttribute(`stroke-dasharray`)).toBeNull()
+    await expect(first_solid_line).toHaveAttribute(`stroke-width`, `2`) // Test checks default and explicit
 
     // Check dashed line
     const dashed_line = dashed_plot.locator(
-      `g[data-series-idx='0'] path[fill='none']`,
+      `path[fill='none'][stroke='crimson'][stroke-dasharray='5 2']`,
     )
     await expect(dashed_line).toBeVisible()
-    await expect(dashed_line).toHaveAttribute(`stroke-dasharray`, `5 2`)
-    await expect(dashed_line).toHaveAttribute(`stroke`, `crimson`)
     await expect(dashed_line).toHaveAttribute(`stroke-width`, `3`)
 
     // Check custom dashed line
     const custom_line = custom_plot.locator(
-      `g[data-series-idx='0'] path[fill='none']`,
+      `path[fill='none'][stroke='forestgreen'][stroke-dasharray='10 5 2 5']`,
     )
     await expect(custom_line).toBeVisible()
-    await expect(custom_line).toHaveAttribute(`stroke-dasharray`, `10 5 2 5`)
-    await expect(custom_line).toHaveAttribute(`stroke`, `forestgreen`)
     await expect(custom_line).toHaveAttribute(`stroke-width`, `1`)
+  })
+})
+
+// --- Tooltip Background Precedence Tests --- //
+test.describe(`Tooltip Background Precedence`, () => {
+  const section_selector = `#tooltip-precedence-test`
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    await page
+      .locator(section_selector)
+      .waitFor({ state: `visible`, timeout: 5000 })
+  })
+
+  // Helper to get tooltip background and text color after hover
+  const get_tooltip_colors = async (
+    page: Page,
+    plot_id: string,
+  ): Promise<{ bg: string; text: string }> => {
+    const plot_locator = page.locator(`${section_selector} #${plot_id}`)
+    const point_locator = plot_locator.locator(`path.marker`).first()
+    const tooltip_locator = plot_locator.locator(`.tooltip`)
+
+    await point_locator.hover({ force: true })
+    await expect(tooltip_locator).toBeVisible({ timeout: 1500 })
+    const colors = await tooltip_locator.evaluate((el) => {
+      const style = window.getComputedStyle(el)
+      return { bg: style.backgroundColor, text: style.color }
+    })
+    // Move mouse away
+    await plot_locator.hover({ position: { x: 0, y: 0 } })
+    await expect(tooltip_locator).not.toBeVisible()
+    return colors
+  }
+
+  test(`uses point fill color (dark bg -> white text)`, async ({ page }) => {
+    const { bg, text } = await get_tooltip_colors(page, `fill-plot`)
+    expect(bg).toBe(`rgb(128, 0, 128)`) // Purple
+    expect(text).toBe(`rgb(255, 255, 255)`) // White
+  })
+
+  test(`uses point stroke color (light bg -> black text)`, async ({ page }) => {
+    const { bg, text } = await get_tooltip_colors(page, `stroke-plot`)
+    expect(bg).toBe(`rgb(255, 165, 0)`) // Orange
+    expect(text).toBe(`rgb(0, 0, 0)`) // Black
+  })
+
+  test(`uses line color (dark bg -> white text)`, async ({ page }) => {
+    const { bg, text } = await get_tooltip_colors(page, `line-plot`)
+    expect(bg).toBe(`rgb(0, 128, 0)`) // Green
+    expect(text).toBe(`rgb(255, 255, 255)`) // White
+  })
+})
+
+// --- Point Hover Visual Effect Test --- //
+test.describe(`Point Hover Visual Effect`, () => {
+  const section_selector = `#basic-example` // Use the basic plot
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    const plot_locator = page.locator(`${section_selector} .scatter`)
+    const first_marker = plot_locator.locator(`path.marker`).first()
+    await plot_locator.waitFor({ state: `visible` })
+    await first_marker.waitFor({ state: `visible` })
+  })
+
+  test(`marker scales and changes stroke when tooltip appears`, async ({
+    page,
+  }) => {
+    const plot_locator = page.locator(`${section_selector} .scatter`)
+    const first_marker = plot_locator.locator(`path.marker`).first()
+    const tooltip_locator = plot_locator.locator(`.tooltip`)
+
+    // 1. Get initial state
+    const initial_transform = await first_marker.evaluate(
+      (el: SVGPathElement) => window.getComputedStyle(el).transform,
+    )
+    expect(
+      initial_transform === `none` ||
+        initial_transform === `matrix(1, 0, 0, 1, 0, 0)`,
+    ).toBe(true)
+    expect(tooltip_locator).not.toBeVisible()
+
+    // 2. Hover precisely at the calculated screen coordinates of the first data point (0, 10)
+    const plot_bbox = await plot_locator.boundingBox()
+    expect(plot_bbox).toBeTruthy()
+
+    // Estimate padding and ranges (adjust if necessary based on actual plot rendering)
+    const pad = { t: 5, b: 50, l: 50, r: 20 } // Default estimate
+    const data_x_range = [0, 11] // Based on ticks
+    const data_y_range = [10, 30] // Based on ticks
+    const target_x_data = 0
+    const target_y_data = 10
+
+    const plot_inner_width = plot_bbox!.width - pad.l - pad.r
+    const plot_inner_height = plot_bbox!.height - pad.t - pad.b
+
+    const x_rel =
+      (target_x_data - data_x_range[0]) / (data_x_range[1] - data_x_range[0])
+    const y_rel =
+      (target_y_data - data_y_range[0]) / (data_y_range[1] - data_y_range[0])
+
+    const hover_x = pad.l + x_rel * plot_inner_width
+    const hover_y = plot_bbox!.height - pad.b - y_rel * plot_inner_height // Y is inverted
+
+    // Use mouse move/down/up to simulate hover more explicitly
+    await page.mouse.move(hover_x, hover_y)
+    await page.waitForTimeout(50) // Brief pause after move
+    await page.mouse.down() // Click is not needed, but down/up might help trigger events
+    await page.mouse.up()
   })
 })

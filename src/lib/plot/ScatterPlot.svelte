@@ -1,6 +1,7 @@
 <script lang="ts">
   import { cells_3x3, ColorBar, corner_cells, Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import { luminance } from '$lib/labels'
   import type {
     AnchorNode,
     Cell3x3,
@@ -21,7 +22,7 @@
     TooltipProps,
     XyObj,
   } from '$lib/plot'
-  import { LOG_MIN_EPS, PlotLegend } from '$lib/plot'
+  import { LOG_MIN_EPS, PlotLegend, ScatterPoint } from '$lib/plot'
   import { extent, range } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
   import { format } from 'd3-format'
@@ -36,7 +37,6 @@
   import { timeFormat } from 'd3-time-format'
   import type { ComponentProps, Snippet } from 'svelte'
   import { Tween, type TweenedOptions } from 'svelte/motion'
-  import ScatterPoint from './ScatterPoint.svelte'
 
   interface Props {
     series?: readonly DataSeries[]
@@ -59,7 +59,7 @@
     x_format?: string
     y_format?: string
     tooltip?: Snippet<[PlotPoint & TooltipProps]>
-    change?: (data: Point & { series: DataSeries }) => void
+    change?: (data: (Point & { series: DataSeries }) | null) => void
     x_ticks?: number | TimeInterval // tick count or string (day/month/year). Negative number: interval.
     y_ticks?: number // tick count. Negative number: interval.
     x_scale_type?: ScaleType // Type of scale for x-axis
@@ -233,9 +233,7 @@
 
   // Compute data color values for color scaling
   let all_color_values = $derived(
-    series
-      .filter(Boolean)
-      .flatMap(({ color_values }) => color_values?.filter(Boolean) || []),
+    series.filter(Boolean).flatMap((srs) => srs.color_values?.filter(Boolean) || []),
   )
 
   // Helper for computing nice data ranges with D3's nice() function
@@ -1043,6 +1041,7 @@
     } else {
       // No point close enough or no points at all
       tooltip_point = null
+      change(null)
     }
   }
 
@@ -1290,14 +1289,14 @@
             x={pad.l}
             y={pad.t}
             width={width - pad.l - pad.r}
-            height={height - pad.t - pad.b}
+            height={height + pad.b}
           />
         </clipPath>
       </defs>
 
       <!-- Lines -->
       {#if markers?.includes(`line`)}
-        {#each filtered_series ?? [] as series_data, series_idx (series_data.label ?? JSON.stringify(series_data))}
+        {#each filtered_series ?? [] as series_data, series_idx ([...series_data.x, ...series_data.y])}
           {@const series_markers = series_data.markers ?? markers}
           <g data-series-idx={series_idx} clip-path="url(#plot-area-clip)">
             {#if series_markers?.includes(`line`)}
@@ -1342,7 +1341,7 @@
           {@const series_markers = series_data.markers ?? markers}
           <g data-series-idx={series_idx}>
             {#if series_markers?.includes(`points`)}
-              {#each series_data.filtered_data as point (JSON.stringify(point))}
+              {#each series_data.filtered_data as point ([point.x, point.y])}
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
                 {@const label_style = point.point_label ?? {}}
@@ -1369,6 +1368,9 @@
                 <ScatterPoint
                   x={screen_x}
                   y={screen_y}
+                  is_hovered={tooltip_point !== null &&
+                    point.series_idx === tooltip_point.series_idx &&
+                    point.point_idx === tooltip_point.point_idx}
                   style={{
                     ...(point.point_style ?? {}),
                     // Override radius if size_value and scale function are available
@@ -1482,20 +1484,80 @@
 
       <!-- Tooltip -->
       {#if tooltip_point && hovered}
-        {@const { x, y, metadata, color_value, point_label } = tooltip_point}
+        {@const { x, y, metadata, color_value, point_label, point_style, series_idx } =
+          tooltip_point}
+        {@const hovered_series = series[series_idx]}
+        {@const series_markers = hovered_series?.markers ?? markers}
+        {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
+          !color ||
+          color === `none` ||
+          color === `transparent` ||
+          (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}
+
+        {@const tooltip_bg_color = (() => {
+          // 1. Check color from scale
+          const scale_color =
+            color_value != null ? color_scale_fn(color_value) : undefined
+          if (!is_transparent_or_none(scale_color)) return scale_color
+
+          // 2. Check color from point fill
+          const fill_color = point_style?.fill
+          if (!is_transparent_or_none(fill_color)) return fill_color
+
+          // 3. Check color from point stroke (only if points are visible)
+          if (series_markers?.includes(`points`)) {
+            const stroke_color = point_style?.stroke
+            if (!is_transparent_or_none(stroke_color)) return stroke_color
+          }
+
+          // 4. Check color from line style (only if line is visible)
+          if (series_markers?.includes(`line`)) {
+            // Replicate the precedence logic used for the actual line rendering
+            const line_style = hovered_series?.line_style ?? {}
+            const first_point_style = Array.isArray(hovered_series?.point_style)
+              ? hovered_series?.point_style[0]
+              : hovered_series?.point_style
+            const first_color_value = hovered_series?.color_values?.[0]
+
+            let line_color_candidate = line_style.stroke // Line style stroke first
+            if (is_transparent_or_none(line_color_candidate))
+              line_color_candidate = first_point_style?.fill // Fallback to first point fill
+            if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
+              line_color_candidate = color_scale_fn(first_color_value) // Fallback to first point color scale
+            // Final fallback within line logic: if points are *also* shown, use the point stroke
+            if (
+              is_transparent_or_none(line_color_candidate) &&
+              series_markers.includes(`points`)
+            )
+              line_color_candidate = first_point_style?.stroke
+
+            if (!is_transparent_or_none(line_color_candidate)) return line_color_candidate
+          }
+
+          // 5. Final fallback
+          return `rgba(0, 0, 0, 0.7)`
+        })()}
+
         {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
         {@const cy = y_scale_fn(y)}
         {@const x_formatted = format_value(x, x_format)}
         {@const y_formatted = format_value(y, y_format)}
         {@const label = point_label?.text ?? null}
-        <circle {cx} {cy} r="5" fill="orange" />
+
+        {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
+        {@const tooltip_text_color = tooltip_lum > 0.5 ? `black` : `white`}
+
         <foreignObject x={cx + 5} y={cy}>
-          <div class="tooltip">
+          <div
+            class="tooltip"
+            style:background-color={tooltip_bg_color}
+            style:color="var(--esp-tooltip-color, {tooltip_text_color})"
+          >
             {#if tooltip}
               {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
               {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
             {:else}
-              {label} - x: {x_formatted}, y: {y_formatted}
+              {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
             {/if}
           </div>
         </foreignObject>
@@ -1577,7 +1639,7 @@
   svg {
     width: 100%;
     fill: var(--esp-fill, white);
-    font-weight: var(--esp-font-weight, lighter);
+    font-weight: var(--esp-font-weight);
     overflow: visible;
     z-index: var(--esp-z-index, 1);
     font-size: var(--esp-font-size);
@@ -1601,9 +1663,8 @@
     text-anchor: middle;
   }
   .tooltip {
-    background: var(--esp-tooltip-bg, rgba(0, 0, 0, 0.7));
     color: var(--esp-tooltip-color, white);
-    padding: var(--esp-tooltip-padding, 5px);
+    padding: var(--esp-tooltip-padding, 1px 4px);
     border-radius: var(--esp-tooltip-border-radius, 3px);
     font-size: var(--esp-tooltip-font-size, 0.8em);
     /* Ensure background fits content width */
