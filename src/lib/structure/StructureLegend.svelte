@@ -83,13 +83,12 @@
     right: var(--struct-legend-right, 8pt);
     gap: var(--struct-legend-gap, 8pt);
     font-size: var(--struct-legend-font, 14pt);
+    filter: grayscale(10%) brightness(0.8) saturate(0.8);
   }
-
   div label {
     padding: var(--struct-legend-pad, 1pt 4pt);
     border-radius: var(--struct-legend-radius, 3pt);
   }
-
   div label input[type='color'] {
     z-index: var(--struct-legend-input-z, 1);
     opacity: 0;
@@ -100,7 +99,6 @@
     left: 0;
     cursor: pointer;
   }
-
   dialog {
     position: fixed;
     top: var(--struct-dialog-top, 50%);
@@ -114,7 +112,6 @@
     transition: var(--struct-dialog-transition, all 0.3s);
     overflow: visible;
   }
-
   /* info icon in top left corner */
   dialog::before {
     content: '?';
@@ -134,11 +131,9 @@
     height: var(--struct-tooltip-before-height, 1em);
     border: var(--struct-tooltip-before-border, 1px solid white);
   }
-
   dialog::backdrop {
     background: var(--struct-dialog-backdrop, rgba(0, 0, 0, 0.2));
   }
-
   dialog p {
     margin: var(--struct-dialog-text-margin, 0);
   }

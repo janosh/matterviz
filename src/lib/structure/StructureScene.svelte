@@ -9,7 +9,7 @@
     pretty_num,
     scale,
   } from '$lib'
-  import { selected } from '$lib/state.svelte'
+  import { colors } from '$lib/state.svelte'
   import { T } from '@threlte/core'
   import {
     Gizmo,
@@ -19,13 +19,12 @@
     interactivity,
   } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
+  import { type Snippet } from 'svelte'
   import * as bonding_strategies from './bonding'
 
   // set to null to disable showing distance between hovered and active sites
   type ActiveHoveredDist = { color: string; width: number; opacity: number }
 
-  // TODO bond_color_mode to be implemented
-  export const bond_color_mode: `single` | `split-midpoint` | `gradient` = `single`
   interface Props {
     // output of pymatgen.core.Structure.as_dict()
     structure?: Atoms | undefined
@@ -33,7 +32,7 @@
     atom_radius?: number
     // multiple of atom_radius (actually atom_radius * the element's atomic radius)
     // to use as distance for the site label(s) (multiple if site is disordered) from the site's center
-    label_radius?: number
+    // label_radius?: number
     // whether to use the same radius for all atoms. if not, the radius will be
     // determined by the atomic radius of the element
     same_size_atoms?: boolean
@@ -56,10 +55,12 @@
     hovered_site?: Site | null
     active_site?: Site | null
     precision?: string
-    auto_rotate?: number | boolean // auto rotate speed. set to 0 to disable auto rotation.
+    auto_rotate?: number // auto rotate speed. set to 0 to disable auto rotation.
     bond_radius?: number | undefined
     bond_opacity?: number
     bond_color?: string // must be hex code for <input type='color'>
+    // TODO implement bond_color_mode
+    // bond_color_mode?: `single` | `split-midpoint` | `gradient`
     bonding_strategy?: keyof typeof bonding_strategies
     bonding_options?: Record<string, unknown>
     active_hovered_dist?: ActiveHoveredDist | null
@@ -70,14 +71,14 @@
     // expensive to render (usually >16, <32)
     sphere_segments?: number
     lattice_props?: Omit<ComponentProps<typeof Lattice>, `matrix`>
+    atom_label?: Snippet<[Site]>
   }
-
   let {
     structure = undefined,
     atom_radius = 0.5,
-    label_radius = 1,
+    // label_radius = 1,
     same_size_atoms = true,
-    camera_position = [12, 4, 2 * (structure?.lattice?.c ?? 5)],
+    camera_position = [0, 0, 0],
     rotation_damping = 0.1,
     max_zoom = undefined,
     min_zoom = undefined,
@@ -97,16 +98,13 @@
     bond_color = `#ffffff`,
     bonding_strategy = `nearest_neighbor`,
     bonding_options = {},
-    active_hovered_dist = {
-      color: `green`,
-      width: 0.1,
-      opacity: 0.5,
-    },
+    active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
     fov = 50,
     ambient_light = 1.8,
     directional_light = 2.5,
     sphere_segments = 20,
     lattice_props = {},
+    atom_label,
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
@@ -117,21 +115,20 @@
   $effect.pre(() => {
     active_site = structure?.sites?.[active_idx ?? -1] ?? null
   })
+  let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
   $effect.pre(() => {
-    if (structure?.sites && show_bonds) {
+    if (camera_position.every((val) => val === 0)) {
+      camera_position = [12, 4, 2.2 * (lattice?.c ?? 5)]
+    }
+  })
+  $effect.pre(() => {
+    if (structure && show_bonds) {
       bond_pairs = bonding_strategies[bonding_strategy](structure, bonding_options)
     }
   })
 
   // make bond thickness reactive to atom_radius unless bond_radius is set
   let bond_thickness = $derived(bond_radius ?? 0.05 * atom_radius)
-  const gizmo_defaults: Partial<ComponentProps<typeof Gizmo>> = {
-    horizontalPlacement: `left`,
-    size: 100,
-    paddingX: 10,
-    paddingY: 10,
-    toneMapped: true,
-  } as const
 </script>
 
 <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
@@ -142,9 +139,7 @@
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={structure?.lattice
-      ? scale(add(...(structure?.lattice?.matrix ?? [])), 0.5)
-      : [0, 0, 0]}
+    target={lattice ? scale(add(...lattice.matrix), 0.5) : [0, 0, 0]}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     autoRotate={Boolean(auto_rotate)}
@@ -155,16 +150,16 @@
 </T.PerspectiveCamera>
 
 {#if gizmo}
-  <Gizmo {...{ ...gizmo_defaults, ...(typeof gizmo === `boolean` ? {} : gizmo) }} />
+  <Gizmo size={100} {...typeof gizmo === `boolean` ? {} : gizmo} />
 {/if}
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />
 
 {#if show_atoms && structure?.sites}
-  {#each structure.sites as site, site_idx (`${site.abc}-${site.xyz}`)}
+  {#each structure.sites as site, site_idx (JSON.stringify({ site, site_idx }))}
     {@const { species, xyz } = site}
-    {#each species as { element: elem, occu }, spec_idx (`${elem}-${occu}`)}
+    {#each species as { element: elem, occu }, spec_idx ([elem, occu])}
       {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
       {@const start_angle = species
         .slice(0, spec_idx)
@@ -180,13 +175,9 @@
           ]}
         />
         <T.MeshStandardMaterial
-          color={selected.element?.[elem]}
-          onpointerenter={() => {
-            hovered_idx = site_idx
-          }}
-          onpointerleave={() => {
-            hovered_idx = null
-          }}
+          color={colors.element?.[elem]}
+          onpointerenter={() => (hovered_idx = site_idx)}
+          onpointerleave={() => (hovered_idx = null)}
           onclick={() => {
             if (active_idx == site_idx) active_idx = null
             else active_idx = site_idx
@@ -194,19 +185,22 @@
           scale={radius}
         />
       </T.Mesh>
-      {#if structure}
-        <!-- use polar coordinates + offset if site has partial occupancy to move the text to the side of the corresponding sphere slice -->
+      <!-- use polar coordinates + offset if site has partial occupancy to move the text to the side of the corresponding sphere slice -->
+      <!-- TODO fix render multiple labels for disordered sites
         {@const phi = 2 * Math.PI * (start_angle + occu / 2)}
-        {@const pos = add(
-          xyz,
-          scale([Math.cos(phi), 0, Math.sin(phi)], label_radius * radius),
-        )}
-        <HTML center position={pos}>
-          {#snippet atom_label({ elem })}
-            {@render atom_label?.({ elem, xyz: pos, species })}
-          {/snippet}
-        </HTML>
-      {/if}
+      {@const pos = add(
+        xyz,
+        scale([Math.cos(phi), 0, Math.sin(phi)], label_radius * radius),
+      )} -->
+      <HTML center position={xyz}>
+        {#if atom_label}
+          {@render atom_label(site)}
+        {:else}
+          <span class="atom-label">
+            {@html species.map((sp) => sp.element).join(`&nbsp;`)}
+          </span>
+        {/if}
+      </HTML>
     {/each}
   {/each}
 {/if}
@@ -267,8 +261,8 @@
   </HTML>
 {/if}
 
-{#if structure?.lattice}
-  <Lattice matrix={structure?.lattice?.matrix} {...lattice_props} />
+{#if lattice}
+  <Lattice matrix={lattice.matrix} {...lattice_props} />
 {/if}
 
 <style>
@@ -279,5 +273,10 @@
     border-radius: var(--struct-tooltip-border-radius, 5pt);
     background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.5));
     padding: var(--struct-tooltip-padding, 1pt 5pt);
+  }
+  .atom-label {
+    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
+    border-radius: var(--struct-atom-label-border-radius, 3pt);
+    padding: var(--struct-atom-label-padding, 0 3px);
   }
 </style>

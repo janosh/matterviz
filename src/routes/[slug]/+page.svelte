@@ -18,27 +18,26 @@
   import { PrevNext } from 'svelte-zoo'
 
   let { data } = $props()
-  let { element } = $derived(data)
+  let { element } = data
   $effect(() => {
-    selected.element = element
+    selected.element = data.element
   })
 
   let key_vals = $derived(
     Object.keys(property_labels)
-      .filter((key) => element[key])
+      .filter((key) => element[key as keyof ChemicalElement])
       .map((key) => {
-        const [label, unit] = property_labels[key]
+        const [label, unit] = property_labels[key as keyof ChemicalElement] ?? []
         let value = element[key as keyof ChemicalElement]
-        if (typeof value === `number`) {
-          value = pretty_num(value)
-        }
+        // if value is number, pretty format it
+        if (typeof value === `number`) value = pretty_num(value)
+        // array to string
         if (Array.isArray(value)) value = value.join(`, `)
-        if (unit) {
-          value = `${value} &thinsp;${unit}`
-        }
+        // if value has a unit, append it
+        if (unit) value = `${value} &thinsp;${unit}`
         return [label, value]
       }),
-  )
+  ) as [string, string][]
 
   // set atomic radius as default heatmap_key
   $effect.pre(() => {
@@ -67,7 +66,7 @@
     'Specific Heat': `mdi:fire`,
     Density: `ion:scale-outline`,
     Electronegativity: `mdi:electron-framework`,
-  }
+  } as const
 
   let scatter_plot_values = $derived(
     element_data.map((el) => (selected.heatmap_key ? el[selected.heatmap_key] : null)),
@@ -176,7 +175,7 @@
   </section>
 
   <section class="properties">
-    {#each key_vals as [label, value], idx (label + value)}
+    {#each key_vals as [label, value], idx ([label, value])}
       <!-- skip last item if index is uneven to avoid single dangling item on last row -->
       {#if idx % 2 === 1 || idx < key_vals.length - 1}
         <div>
