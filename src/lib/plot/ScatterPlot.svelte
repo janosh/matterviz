@@ -92,6 +92,10 @@
     point_tween?: TweenedOptions<XyObj>
     line_tween?: TweenedOptions<string>
     range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g., 0.05 = 5%)
+    point_events?: Record<
+      string,
+      (payload: { point: InternalPoint; event: Event }) => void
+    >
   }
   let {
     series = [],
@@ -135,6 +139,7 @@
     legend = {},
     point_tween,
     line_tween,
+    point_events,
   }: Props = $props()
 
   let width = $state(0)
@@ -1387,6 +1392,14 @@
                   --point-fill-color={(point.color_value != null
                     ? color_scale_fn(point.color_value)
                     : undefined) ?? point.point_style?.fill}
+                  {...point_events &&
+                    Object.fromEntries(
+                      // bind the event handler to the point
+                      Object.entries(point_events).map(([event_name, handler]) => [
+                        event_name,
+                        (event: Event) => handler({ point, event }),
+                      ]),
+                    )}
                 />
               {/each}
             {/if}

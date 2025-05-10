@@ -1,6 +1,12 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
-  import type { DataSeries, LabelStyle, PointStyle, ScaleType } from '$lib/plot'
+  import type {
+    DataSeries,
+    InternalPoint,
+    LabelStyle,
+    PointStyle,
+    ScaleType,
+  } from '$lib/plot'
   import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
 
   // === Basic Example Data ===
@@ -426,6 +432,22 @@
     line_style: { stroke: `forestgreen`, stroke_width: 1, line_dash: `10 5 2 5` },
     label: `Custom Dash Line`, // Add unique label for key
   }
+
+  // --- Point Event Test State ---
+  let last_clicked_point_id = $state<string | null>(null)
+  let last_double_clicked_point_id = $state<string | null>(null)
+
+  function handle_point_click({ point }: { point: InternalPoint }) {
+    last_clicked_point_id = `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+  }
+
+  function handle_point_double_click({ point }: { point: InternalPoint }) {
+    last_double_clicked_point_id = `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+  }
+
+  const point_event_data: DataSeries[] = [
+    { x: [1, 2, 3], y: [2, 4, 1], point_style: { fill: `teal`, radius: 8 } },
+  ]
 </script>
 
 <div class="demo-container">
@@ -871,6 +893,29 @@
       </div>
     </div>
   </section>
+
+  <!-- Point Event Test -->
+  <div id="point-event-test" class="test-section">
+    <h2>Point Event Test</h2>
+    <p>Clicking a point should update the text below.</p>
+    <ScatterPlot
+      series={point_event_data}
+      x_label="X"
+      y_label="Y"
+      markers="points"
+      point_events={{
+        onclick: handle_point_click,
+        ondblclick: handle_point_double_click,
+      }}
+      style="height: 300px; border: 1px solid #eee;"
+    />
+    <p data-testid="last-clicked-point">
+      Last Clicked Point: {last_clicked_point_id ?? `none`}
+    </p>
+    <p data-testid="last-double-clicked-point">
+      Last Double-Clicked Point: {last_double_clicked_point_id ?? `none`}
+    </p>
+  </div>
 </div>
 
 <style>

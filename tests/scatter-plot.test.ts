@@ -1228,3 +1228,52 @@ test.describe(`Point Hover Visual Effect`, () => {
     await page.mouse.up()
   })
 })
+
+// --- Point Event Tests --- //
+test.describe(`Point Event Handling`, () => {
+  const section_selector = `#point-event-test`
+  const plot_selector = `${section_selector} .scatter`
+  const clicked_text_selector = `${section_selector} [data-testid="last-clicked-point"]`
+  const double_clicked_text_selector = `${section_selector} [data-testid="last-double-clicked-point"]`
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    const plot_locator = page.locator(plot_selector)
+    await plot_locator.waitFor({ state: `visible` })
+    await plot_locator
+      .locator(`path.marker`)
+      .first()
+      .waitFor({ state: `visible` })
+  })
+
+  test(`handles single and double click events on points`, async ({ page }) => {
+    const plot_locator = page.locator(plot_selector)
+    const first_marker_path = plot_locator.locator(`path.marker`).first()
+    // Target the parent group of the path for clicking
+    const first_marker_clickable_element = first_marker_path.locator(`..`)
+    const clicked_text = page.locator(clicked_text_selector)
+    const double_clicked_text = page.locator(double_clicked_text_selector)
+
+    // Initial state
+    await expect(clicked_text).toContainText(`Last Clicked Point: none`)
+    await expect(double_clicked_text).toContainText(
+      `Last Double-Clicked Point: none`,
+    )
+
+    // Simulate single click by dispatching the event directly to the clickable element.
+    // This approach was chosen as Playwright's .click() was not registering consistently.
+    await first_marker_clickable_element.dispatchEvent(`click`)
+    await expect(clicked_text).toContainText(
+      `Last Clicked Point: Point: series 0, index 0 (x=1, y=2)`,
+    )
+    // Double click text should remain none after a single click.
+    await expect(double_clicked_text).toContainText(
+      `Last Double-Clicked Point: none`,
+    )
+
+    await first_marker_clickable_element.dispatchEvent(`dblclick`)
+    await expect(double_clicked_text).toContainText(
+      `Last Double-Clicked Point: DblClick: series 0, index 0 (x=1, y=2)`,
+    )
+  })
+})

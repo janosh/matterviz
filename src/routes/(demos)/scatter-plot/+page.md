@@ -13,7 +13,8 @@ A simple scatter plot showing different display modes (points, lines, or both):
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [5, 7, 2, 8, 4, 9, 3, 6, 8, 5],
     point_style: { fill: 'steelblue', radius: 5 },
-    label: 'Basic Data'
+    label: 'Basic Data',
+    metadata: Array(10).fill(0).map((_, idx) => ({ id: `P${idx+1}`, series_label: 'Basic Data' }))
   }
 
   // Multiple series data
@@ -21,14 +22,34 @@ A simple scatter plot showing different display modes (points, lines, or both):
     x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     y: [2, 4, 6, 3, 7, 5, 8, 4, 6, 9],
     point_style: { fill: 'orangered', radius: 4 },
-    label: 'Second Series'
+    label: 'Second Series',
+    metadata: Array(10).fill(0).map((_, idx) => ({ id: `S${idx+1}`, series_label: 'Second Series' }))
   }
 
   // Currently selected display mode
   let display_mode = $state('line+points')
+  let clicked_point_info = $state('No point clicked yet.')
+  let double_clicked_point_info = $state('No point double-clicked yet.')
+
+  // It's good practice to type event handlers if you know the structure
+  function handle_point_click({ point }) {
+    const { x, y, metadata, series_idx, point_idx } = point
+    clicked_point_info = `Clicked: Point (${x}, ${y}), Series: '${metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)}', Point Index: ${point_idx}`
+    if (metadata) {
+      clicked_point_info += `, Metadata ID: ${metadata.id}`
+    }
+  }
+
+  function handle_point_double_click({ point }) {
+    const { x, y, metadata, series_idx, point_idx } = point
+    double_clicked_point_info = `Double-clicked: Point (${x}, ${y}), Series: '${metadata?.series_label ?? (series_idx === 0 ? basic_data.label : second_series.label)}', Point Index: ${point_idx}`
+    if (metadata) {
+      double_clicked_point_info += `, Metadata ID: ${metadata.id}`
+    }
+  }
 </script>
 
-<div>
+<div id="basic-example-container">
   <label style="margin-bottom: 1em; display: block;">
     Display Mode:
     <select bind:value={display_mode}>
@@ -43,8 +64,15 @@ A simple scatter plot showing different display modes (points, lines, or both):
     x_label="X Axis"
     y_label="Y Value"
     markers={display_mode}
+    point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
     style="height: 300px;"
   />
+  <div id="basic-plot-click-display" style="margin-top: 1em; padding: 1ex 1em; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px;">
+    {clicked_point_info}
+  </div>
+  <div id="basic-plot-double-click-display" style="margin-top: 1em; padding: 1ex 1em; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px;">
+    {double_clicked_point_info}
+  </div>
 </div>
 ```
 
