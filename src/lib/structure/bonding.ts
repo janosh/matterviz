@@ -1,9 +1,9 @@
-import type { BondPair, PymatgenStructure } from '$lib'
+import type { Atoms, BondPair } from '$lib'
 
 export type BondingAlgo = typeof max_dist | typeof nearest_neighbor
 
 export function max_dist(
-  structure: PymatgenStructure,
+  structure: Atoms,
   { max_bond_dist = 3, min_bond_dist = 0.4 } = {}, // in Angstroms
 ): BondPair[] {
   // finds all pairs of atoms within the max_bond_dist cutoff
@@ -33,7 +33,7 @@ export function max_dist(
 }
 
 export function nearest_neighbor(
-  structure: PymatgenStructure,
+  structure: Atoms,
   { scaling_factor = 1.2, min_bond_dist = 0.1 } = {}, // in Angstroms
 ): BondPair[] {
   // finds bonds to sites less than scaling_factor farther away than the nearest neighbor

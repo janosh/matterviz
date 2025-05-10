@@ -27,15 +27,11 @@ export default defineConfig(({ mode }) => ({
     port: 3000,
   },
 
-  ssr: {
-    noExternal: [`three`],
-  },
-
   preview: {
     port: 3000,
   },
 
   resolve: {
-    conditions: mode === `test` ? [`browser`] : [],
+    conditions: mode === `test` ? [`browser`] : undefined,
   },
 }))

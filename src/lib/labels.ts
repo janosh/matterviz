@@ -21,7 +21,7 @@ export const property_labels: Partial<
   number: [`Atomic Number`, null],
   shells: [`Electron Shell Occupations`, null],
   specific_heat: [`Specific Heat`, `J/(g K)`],
-}
+} as const
 
 export const heatmap_keys: (keyof ChemicalElement)[] = [
   `atomic_mass`,

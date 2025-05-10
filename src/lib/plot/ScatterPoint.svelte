@@ -16,6 +16,7 @@
     point_tween?: TweenedOptions<XyObj>
     origin?: XyObj
     is_hovered?: boolean
+    [key: string]: unknown
   }
   let {
     x,
@@ -27,6 +28,7 @@
     point_tween,
     origin = { x: 0, y: 0 },
     is_hovered = false,
+    ...rest
   }: Props = $props()
 
   // get the SVG path data as 'd' attribute
@@ -54,6 +56,7 @@
   style:--hover-stroke={hover.stroke ?? `white`}
   style:--hover-stroke-width="{hover.stroke_width ?? 0}px"
   style:--hover-brightness={hover.brightness ?? 1.2}
+  {...rest}
 >
   <path
     d={marker_path}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import type { Atoms, ElementSymbol, Lattice } from '$lib'
+  import type { Atoms, Lattice } from '$lib'
   import { alphabetical_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
@@ -46,20 +46,18 @@
     save_png_btn_text?: string
     // boolean or map from element symbols to labels
     // use atom_label snippet to include HTML and event handlers
-    show_site_labels?: boolean | Record<ElementSymbol, string | number>
-    atom_labels_style?: string | null
+    show_site_labels?: boolean
     style?: string | null
     show_image_atoms?: boolean
     show_full_controls?: boolean
     tips_icon?: Snippet
     fullscreen_toggle?: Snippet
     controls_toggle?: Snippet<[{ controls_open: boolean }]>
-    bottom_left?: Snippet<[Atoms | undefined]>
+    bottom_left?: Snippet<[{ structure: Atoms }]>
   }
-
   let {
     structure = $bindable(undefined),
-    scene_props = $bindable({ atom_radius: 1 }),
+    scene_props = $bindable({ atom_radius: 1, show_atoms: true }),
     lattice_props = $bindable({}),
     controls_open = $bindable(false),
     background_color = $bindable(`#0000ff`),
@@ -79,7 +77,6 @@
     save_json_btn_text = `⬇ Save as JSON`,
     save_png_btn_text = `✎ Save as PNG`,
     show_site_labels = $bindable((structure?.sites?.length ?? 0) < 20),
-    atom_labels_style = null,
     style = null,
     show_image_atoms = $bindable(true),
     show_full_controls = $bindable(false),
@@ -113,7 +110,10 @@
   )
 
   function download_json() {
-    if (!structure) alert(`No structure to download`)
+    if (!structure) {
+      alert(`No structure to download`)
+      return
+    }
     const data = JSON.stringify(structure, null, 2)
     const filename = structure?.id
       ? `${structure?.id} (${alphabetical_formula(structure)}).json`
@@ -504,20 +504,12 @@
 
     <Canvas>
       <StructureScene
-        structure={show_image_atoms ? get_pbc_image_sites(structure) : structure}
+        structure={show_image_atoms && structure && `lattice` in structure
+          ? get_pbc_image_sites(structure)
+          : structure}
         {...scene_props}
         {lattice_props}
-      >
-        {#snippet atom_label({ elem })}
-          {#if atom_label}
-            {@render atom_label({ elem })}
-          {:else if show_site_labels}
-            <span class="atom-label" style={atom_labels_style}>
-              {show_site_labels === true ? elem : show_site_labels[elem]}
-            </span>
-          {/if}
-        {/snippet}
-      </StructureScene>
+      />
     </Canvas>
 
     <div class="bottom-left">
@@ -551,11 +543,6 @@
   .structure.dragover {
     background: var(--struct-dragover-bg, rgba(0, 0, 0, 0.7));
   }
-  .atom-label {
-    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
-    border-radius: var(--struct-atom-label-border-radius, 3pt);
-    padding: var(--struct-atom-label-padding, 0 3px);
-  }
   div.bottom-left {
     position: absolute;
     bottom: 0;
@@ -571,6 +558,7 @@
     top: var(--struct-buttons-top, 1ex);
     right: var(--struct-buttons-right, 1ex);
     gap: var(--struct-buttons-gap, 1ex);
+    z-index: 2;
   }
 
   dialog.controls {

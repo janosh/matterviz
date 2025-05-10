@@ -4,12 +4,12 @@ import { add, pretty_num, scale } from '$lib'
 import element_data from '$lib/element/data'
 
 export { default as Bond } from './Bond.svelte'
+export * as bonding_strategies from './bonding'
 export { default as Lattice } from './Lattice.svelte'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
-export * as bonding_strategies from './bonding'
 
 export type Species = {
   element: ElementSymbol
@@ -27,7 +27,7 @@ export type Site = {
 
 export type PymatgenLattice = {
   matrix: [Vector, Vector, Vector]
-  pbc: boolean[]
+  pbc: [boolean, boolean, boolean]
   a: number
   b: number
   c: number
@@ -50,17 +50,13 @@ export type Edge = {
   key: number
 }
 
-export type Node = {
-  id: number
-}
-
 export type Graph = {
   directed: boolean
   multigraph: boolean
   graph: [
     [`edge_weight_name`, null] | [`edge_weight_units`, null] | [`name`, string],
   ]
-  nodes: Node[]
+  nodes: { id: number }[]
   adjacency: Edge[][]
 }
 
@@ -83,7 +79,7 @@ export type PymatgenMolecule = Omit<PymatgenStructure, `lattice`>
 export type Atoms = PymatgenStructure | PymatgenMolecule
 export type AtomsGraph = Atoms & { graph: Graph }
 
-export function get_elem_amounts(structure: PymatgenStructure) {
+export function get_elem_amounts(structure: Atoms) {
   const elements: Partial<Record<ElementSymbol, number>> = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
@@ -98,7 +94,7 @@ export function get_elem_amounts(structure: PymatgenStructure) {
   return elements
 }
 
-export function alphabetical_formula(structure: PymatgenStructure) {
+export function alphabetical_formula(structure: Atoms) {
   // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
   const elements = get_elem_amounts(structure)
   const formula = []
@@ -117,7 +113,7 @@ export const atomic_weights = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_mass]),
 )
 
-export function get_elements(structure: PymatgenStructure): ElementSymbol[] {
+export function get_elements(structure: Atoms): ElementSymbol[] {
   const elems = structure.sites.flatMap((site) =>
     site.species.map((sp) => sp.element),
   )
