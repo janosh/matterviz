@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.3.15](https://github.com/janosh/elementari/compare/v0.3.14...v0.3.15)
+
+> 10 May 2025
+
+- fix Structure.svelte uncaught error lifecycle_outside_component thrown inside threlte &lt;Canvas&gt; [`65c3ce5`](https://github.com/janosh/elementari/commit/65c3ce59c8a8464b842da3331053024f3da62d3e)
+- add `point_events` prop to ScatterPlot.svelte to pass click event handlers to scatter points [`4ab7c3a`](https://github.com/janosh/elementari/commit/4ab7c3a9ca2fa6b58d2f7a941da22f3e53c67f53)
+
 #### [v0.3.14](https://github.com/janosh/elementari/compare/v0.3.13...v0.3.14)
 
 > 5 May 2025
