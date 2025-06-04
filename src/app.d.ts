@@ -1,7 +1,7 @@
 /// <reference types="@sveltejs/kit" />
 
+import type { PymatgenStructure } from './lib/structure'
+
 declare module '$site/structures/mp-*.json' {
-  import type { PymatgenStructure } from '$lib'
-  const test_structure: PymatgenStructure
-  export default test_structure
+  export default PymatgenStructure
 }

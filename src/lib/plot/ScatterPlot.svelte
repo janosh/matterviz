@@ -155,7 +155,7 @@
   let initial_y_range = $state<[number, number]>([0, 1])
   let current_x_range = $state<[number, number]>([0, 1])
   let current_y_range = $state<[number, number]>([0, 1])
-  let series_visibility = $state<boolean[]>([])
+  let series_visibility = $state<boolean[]>(series.map((s) => s?.visible ?? true))
   let previous_series_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
 
   // State to hold the calculated label positions after simulation
@@ -218,11 +218,6 @@
 
     return { left: target_x, top: target_y, transform }
   }
-
-  // Initialize series visibility state based on input prop
-  $effect(() => {
-    series_visibility = series.map((s) => s?.visible ?? true)
-  })
 
   // Create raw data points from all series
   let all_points = $derived(

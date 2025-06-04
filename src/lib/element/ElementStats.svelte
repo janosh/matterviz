@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { ElementHeading, Icon, pretty_num } from '$lib'
+  import { ElementHeading, Icon, format_num } from '$lib'
 
   interface Props {
     element: ChemicalElement | null
@@ -29,7 +29,7 @@
       </p>
       <strong>
         <Icon icon="mdi:weight" />
-        {pretty_num(element.atomic_mass)}
+        {format_num(element.atomic_mass)}
       </strong>
     </section>
     <section>
@@ -39,7 +39,7 @@
       </p>
       <strong>
         <Icon icon="ion:scale-outline" />
-        {pretty_num(element.density)}
+        {format_num(element.density)}
       </strong>
     </section>
     <section>

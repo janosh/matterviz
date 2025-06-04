@@ -13,7 +13,7 @@
     PropertySelect,
     element_data,
   } from '$lib'
-  import { pretty_num, property_labels } from '$lib/labels'
+  import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import { PrevNext } from 'svelte-zoo'
 
@@ -30,7 +30,7 @@
         const [label, unit] = property_labels[key as keyof ChemicalElement] ?? []
         let value = element[key as keyof ChemicalElement]
         // if value is number, pretty format it
-        if (typeof value === `number`) value = pretty_num(value)
+        if (typeof value === `number`) value = format_num(value)
         // array to string
         if (Array.isArray(value)) value = value.join(`, `)
         // if value has a unit, append it

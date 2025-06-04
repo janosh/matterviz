@@ -1,7 +1,7 @@
 ```svelte example stackblitz
 <script>
   import { ColorBar, ColorScaleSelect, PeriodicTable, TableInset } from '$lib'
-  import { pretty_num } from '$lib/labels'
+  import { format_num } from '$lib/labels'
   import { RadioButtons } from 'svelte-zoo'
   import mp_elem_counts from './mp-element-counts.json'
   import wbm_elem_counts from './wbm-element-counts.json'
@@ -31,10 +31,10 @@
       </section>
       <strong style="height: 25pt;">
         {#if active_element?.name}
-          {active_element?.name}: {pretty_num(mp_elem_counts[active_element?.symbol])}
+          {active_element?.name}: {format_num(mp_elem_counts[active_element?.symbol])}
           <!-- compute percent of total -->
           {#if mp_elem_counts[active_element?.symbol] > 0}
-            ({pretty_num((mp_elem_counts[active_element?.symbol] / total) * 100)}%)
+            ({format_num((mp_elem_counts[active_element?.symbol] / total) * 100)}%)
           {/if}
         {/if}
       </strong>

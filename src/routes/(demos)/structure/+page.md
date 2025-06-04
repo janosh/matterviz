@@ -80,7 +80,7 @@
 
 ## Structures in a grid
 
-Just to show off you can load several without the page getting too slow.
+To demonstrate you can load multiple structures while maintaining good page load times.
 
 ```svelte example stackblitz
 <script>
@@ -102,7 +102,7 @@ Just to show off you can load several without the page getting too slow.
 <style>
   ul {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
     gap: 1em;
     list-style: none;
     padding: 0;

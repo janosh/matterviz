@@ -47,8 +47,8 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
 // set default number format globally
 export const default_fmt: [string, string] = [`,.3~s`, `.3~g`]
 
-// fmt as number only allowed to support [].map(pretty_num) without type error
-export const pretty_num = (num: number, fmt?: string | number) => {
+// fmt as number only allowed to support [].map(format_num) without type error
+export const format_num = (num: number, fmt?: string | number) => {
   if (num === null) return ``
   if (!fmt || typeof fmt !== `string`) {
     const [gt_1_fmt, lt_1_fmt] = default_fmt

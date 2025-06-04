@@ -57,9 +57,10 @@ You can make fat and skinny bars:
   } from '$lib'
 
   let color_scale = $state(`interpolateCividis`)
-  let [heatmap_key, heat_label] = $state([``, ``])
+  let heatmap_key = $state(``)
+  let heat_label = $state(``)
   let heatmap_values = $derived(heatmap_key ? element_data.map((el) => el[heatmap_key]) : [])
-  let heat_range = $derived(heatmap_key ? [Math.min(...heatmap_values), Math.max(...heatmap_values)] : [0,1])
+  let heat_range = $derived(heatmap_key ? [Math.min(...heatmap_values), Math.max(...heatmap_values)] : [0, 1])
 </script>
 
 <form>

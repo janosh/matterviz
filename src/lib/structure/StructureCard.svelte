@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { pretty_num } from '$lib'
+  import { format_num } from '$lib'
   import { alphabetical_formula, density, type PymatgenStructure } from '.'
   import InfoCard from '../InfoCard.svelte'
 
@@ -21,12 +21,12 @@
     { title: `Density`, value: density(structure), unit: `g/cm³` },
     {
       title: `Lattice lengths a, b, c`,
-      value: [a, b, c].map(pretty_num).join(`, `),
+      value: [a, b, c].map(format_num).join(`, `),
       unit: `Å`,
     },
     {
       title: `Lattice angles α, β, γ`,
-      value: [alpha, beta, gamma].map(pretty_num).join(`°, `) + `°`,
+      value: [alpha, beta, gamma].map(format_num).join(`°, `) + `°`,
     },
     // { title: 'Charge', value: structure?.charge },
   ]}

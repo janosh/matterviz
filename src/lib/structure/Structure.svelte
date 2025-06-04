@@ -50,14 +50,14 @@
     style?: string | null
     show_image_atoms?: boolean
     show_full_controls?: boolean
-    tips_icon?: Snippet
-    fullscreen_toggle?: Snippet
+    tips_icon?: Snippet<[]>
+    fullscreen_toggle?: Snippet<[]>
     controls_toggle?: Snippet<[{ controls_open: boolean }]>
     bottom_left?: Snippet<[{ structure: Atoms }]>
   }
   let {
     structure = $bindable(undefined),
-    scene_props = $bindable({ atom_radius: 1, show_atoms: true }),
+    scene_props = $bindable({ atom_radius: 1, show_atoms: true, auto_rotate: 0 }),
     lattice_props = $bindable({}),
     controls_open = $bindable(false),
     background_color = $bindable(`#0000ff`),
@@ -76,7 +76,7 @@
     enable_tips = true,
     save_json_btn_text = `⬇ Save as JSON`,
     save_png_btn_text = `✎ Save as PNG`,
-    show_site_labels = $bindable((structure?.sites?.length ?? 0) < 20),
+    show_site_labels = $bindable(false),
     style = null,
     show_image_atoms = $bindable(true),
     show_full_controls = $bindable(false),
@@ -86,14 +86,17 @@
     bottom_left,
   }: Props = $props()
 
+  // Ensure scene_props always has some defaults merged in
+  $effect.pre(() => {
+    scene_props = { atom_radius: 1, show_atoms: true, auto_rotate: 0, ...scene_props }
+  })
+
   $effect.pre(() => {
     colors.element = element_color_schemes[color_scheme]
   })
 
   function on_keydown(event: KeyboardEvent) {
-    if (event.key === `Escape`) {
-      controls_open = false
-    }
+    if (event.key === `Escape`) controls_open = false
   }
 
   const on_window_click =
@@ -333,20 +336,9 @@
         </label>
 
         <label>
-          Bond color mode
-          <select bind:value={scene_props.bond_color_mode}>
-            <option value="single">Single</option>
-            <option value="split-midpoint">Split Midpoint</option>
-            <option value="gradient" disabled>Gradient (TODO)</option>
-          </select>
+          Bond color
+          <input type="color" bind:value={scene_props.bond_color} />
         </label>
-
-        {#if scene_props.bond_color_mode === `single`}
-          <label>
-            Bond color
-            <input type="color" bind:value={scene_props.bond_color} />
-          </label>
-        {/if}
         <label>
           Bond radius
           <input
@@ -508,6 +500,7 @@
           ? get_pbc_image_sites(structure)
           : structure}
         {...scene_props}
+        {show_site_labels}
         {lattice_props}
       />
     </Canvas>
@@ -535,6 +528,7 @@
     --struct-controls-transition-duration: 0.3s;
     overflow: var(--struct-overflow, hidden);
     color: var(--struct-text-color);
+    pointer-events: none;
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;
@@ -549,6 +543,7 @@
     left: 0;
     font-size: var(--struct-bottom-left-font-size, 1.2em);
     padding: var(--struct-bottom-left-padding, 1pt 5pt);
+    pointer-events: none;
   }
 
   section {
@@ -559,6 +554,11 @@
     right: var(--struct-buttons-right, 1ex);
     gap: var(--struct-buttons-gap, 1ex);
     z-index: 2;
+    pointer-events: none;
+  }
+
+  section button {
+    pointer-events: auto;
   }
 
   dialog.controls {
@@ -636,5 +636,9 @@
     margin: var(--struct-input-color-margin, 0 0 0 5pt);
     border: var(--struct-input-color-border, 1px solid rgba(255, 255, 255, 0.05));
     box-sizing: border-box;
+  }
+
+  .structure :global(canvas) {
+    pointer-events: auto;
   }
 </style>

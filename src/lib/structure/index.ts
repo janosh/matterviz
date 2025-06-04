@@ -1,6 +1,6 @@
 // Utilities for dealing with pymatgen Structures
 import type { ElementSymbol, Vector } from '$lib'
-import { add, pretty_num, scale } from '$lib'
+import { add, format_num, scale } from '$lib'
 import element_data from '$lib/element/data'
 
 export { default as Bond } from './Bond.svelte'
@@ -132,7 +132,7 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
     mass += amt * atomic_weights[el]
   }
   const dens = (uA3_to_gcm3 * mass) / structure.lattice.volume
-  return pretty_num(dens, prec)
+  return format_num(dens, prec)
 }
 
 function generate_permutations(length: number): number[][] {

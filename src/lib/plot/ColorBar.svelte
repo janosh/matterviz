@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LOG_MIN_EPS, pretty_num } from '$lib'
+  import { LOG_MIN_EPS, format_num } from '$lib'
   import { luminance } from '$lib/labels'
   import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
@@ -428,7 +428,7 @@
             {format(tick_format)(tick_label)}
           {/if}
         {:else}
-          {pretty_num(tick_label)}
+          {format_num(tick_label)}
         {/if}
       </span>
     {/each}
