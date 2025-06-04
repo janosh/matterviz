@@ -1,6 +1,6 @@
+import elements from '$lib/element/data'
 import fs from 'node:fs'
 import sharp from 'sharp'
-import elements from './lib/element/data'
 
 // make sure the directory exists
 fs.mkdirSync(`./static/elements`, { recursive: true })

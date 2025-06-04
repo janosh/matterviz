@@ -254,10 +254,10 @@
           {@const oxi_str =
             oxi_state && Math.abs(oxi_state) + (oxi_state > 0 ? `+` : `-`)}
           {#if idx > 0}
-            +
+            &thinsp;
           {/if}
           {#if occu !== 1}
-            <span class="occupancy">{format_num(occu, `.3f`)}</span>
+            <span class="occupancy">{format_num(occu, `.3~f`)}</span>
           {/if}
           <strong>{element}{oxi_str ?? ``}</strong>
         {/each}

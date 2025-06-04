@@ -84,7 +84,7 @@
     gap: var(--struct-legend-gap, 8pt);
     font-size: var(--struct-legend-font, 14pt);
     filter: grayscale(10%) brightness(0.8) saturate(0.8);
-    pointer-events: none;
+    z-index: var(--struct-legend-z-index, 1);
   }
   div label {
     padding: var(--struct-legend-pad, 1pt 4pt);

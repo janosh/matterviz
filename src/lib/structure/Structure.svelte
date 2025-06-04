@@ -60,7 +60,7 @@
     scene_props = $bindable({ atom_radius: 1, show_atoms: true, auto_rotate: 0 }),
     lattice_props = $bindable({}),
     controls_open = $bindable(false),
-    background_color = $bindable(`#0000ff`),
+    background_color = $bindable(`#ffffff`),
     reveal_buttons = 500,
     fullscreen = false,
     wrapper = $bindable(undefined),
@@ -164,9 +164,14 @@
   }
   // set --struct-bg to background_color
   $effect(() => {
-    if (browser) {
-      document.documentElement.style.setProperty(`--struct-bg`, `${background_color}20`)
+    if (browser && wrapper && background_color) {
+      wrapper.style.setProperty(`--struct-bg`, `${background_color}10`)
+    }
+  })
 
+  // react to changes in the 'fullscreen' property
+  $effect(() => {
+    if (browser) {
       // react to changes in the 'fullscreen' property
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
@@ -524,7 +529,7 @@
     max-width: var(--struct-max-width);
     min-width: var(--struct-min-width);
     border-radius: var(--struct-border-radius, 3pt);
-    background: var(--struct-bg, rgba(0, 0, 255, 0.1));
+    background: var(--struct-bg, rgba(255, 255, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;
     overflow: var(--struct-overflow, hidden);
     color: var(--struct-text-color);
