@@ -49,7 +49,7 @@ test.describe(`Structure Component Tests`, () => {
 
     await background_color_input.fill(`#ff0000`) // Change to red
 
-    const expected_alpha = 0.063 // Rounded from 16 / 255 (hex '10' appended to color)
+    const expected_alpha = 0.1 // Default background_opacity value
     // Wait specifically for the target element's style to change to what we expect
     await expect(structure_div).toHaveCSS(
       `background-color`,
@@ -346,5 +346,302 @@ test.describe(`Structure Component Tests`, () => {
       (el) => getComputedStyle(el).backgroundColor,
     )
     expect(reset_bg_color).not.toBe(new_bg_color)
+  })
+
+  test(`controls panel stays open when interacting with control inputs`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const controls_open_status = page.locator(
+      `[data-testid="controls-open-status"]`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Verify initial state
+    await expect(controls_open_status).toContainText(`false`)
+    await expect(controls_dialog).not.toHaveAttribute(`open`)
+
+    // Open controls panel using the test page checkbox (we know this works)
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+
+    // Verify the controls are now open
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    // Test that controls are accessible and panel stays open when interacting
+    // Use corrected label text (with leading spaces as shown in debug output)
+    const show_atoms_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /^ atoms$/ })
+    const show_atoms_checkbox = show_atoms_label.locator(
+      `input[type="checkbox"]`,
+    )
+    await expect(show_atoms_checkbox).toBeVisible()
+
+    // Test various control interactions to ensure panel stays open
+    await show_atoms_checkbox.click()
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    const show_bonds_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /^ bonds$/ })
+    const show_bonds_checkbox = show_bonds_label.locator(
+      `input[type="checkbox"]`,
+    )
+    await expect(show_bonds_checkbox).toBeVisible()
+    await show_bonds_checkbox.click()
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    const show_vectors_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /lattice vectors/ })
+    const show_vectors_checkbox = show_vectors_label.locator(
+      `input[type="checkbox"]`,
+    )
+    await expect(show_vectors_checkbox).toBeVisible()
+    await show_vectors_checkbox.click()
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    // Test select dropdown
+    const cell_select = controls_dialog.locator(`select`).first()
+    await expect(cell_select).toBeVisible()
+    await cell_select.selectOption(`surface`)
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    // Test number input
+    const atom_radius_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Atom radius/ })
+    const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
+    await expect(atom_radius_input).toBeVisible()
+    await atom_radius_input.fill(`0.8`)
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    // Test range input
+    const atom_radius_range = atom_radius_label.locator(`input[type="range"]`)
+    await expect(atom_radius_range).toBeVisible()
+    await atom_radius_range.fill(`0.6`)
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    // Test color input
+    const background_color_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Background color/ })
+    const background_color_input =
+      background_color_label.locator(`input[type="color"]`)
+    await expect(background_color_input).toBeVisible()
+    await background_color_input.fill(`#00ff00`)
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
+    await expect(controls_dialog).toHaveAttribute(`open`)
+
+    // Note: We don't test the download buttons as they may close the panel due to download behavior
+    // The important thing is that normal control inputs (checkboxes, selects, inputs) keep the panel open
+  })
+
+  test(`control inputs have intended effects on structure`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const canvas = structure_component.locator(`canvas`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Open controls panel using test page checkbox
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+
+    // Wait for dialog to be visible
+    await expect(controls_dialog).toHaveAttribute(`open`, ``, { timeout: 2000 })
+
+    // Test atom radius change affects rendering
+    const atom_radius_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Atom radius/ })
+    const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
+
+    await expect(atom_radius_input).toBeVisible()
+    const initial_screenshot = await canvas.screenshot()
+    await atom_radius_input.fill(`0.3`)
+    await page.waitForTimeout(500) // Wait for re-render
+
+    const after_radius_change = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_radius_change)).toBe(false)
+
+    // Test background color change
+    const background_color_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Background color/ })
+    const background_color_input =
+      background_color_label.locator(`input[type="color"]`)
+    const structure_div = structure_component
+
+    await expect(background_color_input).toBeVisible()
+    await background_color_input.fill(`#ff0000`)
+    await page.waitForTimeout(300)
+
+    // Check that CSS variable is updated
+    const expected_alpha = 0.1 // Default background_opacity value
+    await expect(structure_div).toHaveCSS(
+      `background-color`,
+      `rgba(255, 0, 0, ${expected_alpha})`,
+      { timeout: 1000 },
+    )
+
+    // Test show atoms checkbox
+    const show_atoms_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /^ atoms$/ })
+    const show_atoms_checkbox = show_atoms_label.locator(
+      `input[type="checkbox"]`,
+    )
+
+    await expect(show_atoms_checkbox).toBeVisible()
+    await show_atoms_checkbox.uncheck()
+    await page.waitForTimeout(300)
+
+    const after_hide_atoms = await canvas.screenshot()
+    expect(after_radius_change.equals(after_hide_atoms)).toBe(false)
+
+    // Re-enable atoms for next test
+    await show_atoms_checkbox.check()
+    await page.waitForTimeout(300)
+  })
+
+  test(`controls panel closes only on escape and outside clicks`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_toggle_button = structure_component.locator(
+      `button.controls-toggle`,
+    )
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const controls_open_status = page.locator(
+      `[data-testid="controls-open-status"]`,
+    )
+    const canvas = structure_component.locator(`canvas`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Open controls panel using test page checkbox
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+    await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
+
+    // Test that clicking on the canvas DOES close the panel (it's an outside click)
+    await canvas.click({ position: { x: 100, y: 100 } })
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`false`)
+    await expect(controls_dialog).not.toHaveAttribute(`open`)
+
+    // Re-open for toggle button test
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+    await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
+
+    // Test that clicking controls toggle button does close the panel
+    await controls_toggle_button.click()
+    await page.waitForTimeout(200)
+    await expect(controls_open_status).toContainText(`false`)
+    await expect(controls_dialog).not.toHaveAttribute(`open`)
+
+    // Re-open for escape key test using test page checkbox
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+    await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
+
+    // Test escape key closes the panel
+    await page.keyboard.press(`Escape`)
+    await page.waitForTimeout(200)
+    await expect(controls_open_status).toContainText(`false`)
+    await expect(controls_dialog).not.toHaveAttribute(`open`)
+
+    // Re-open for outside click test using test page checkbox
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+    await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
+
+    // Test clicking outside the controls and toggle button closes the panel
+    await page.locator(`body`).click({ position: { x: 10, y: 10 } })
+    await page.waitForTimeout(200)
+    await expect(controls_open_status).toContainText(`false`)
+    await expect(controls_dialog).not.toHaveAttribute(`open`)
+  })
+
+  test(`bond controls appear when bonds are enabled`, async ({ page }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Open controls panel using test page checkbox
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+
+    // Wait for dialog to be visible
+    await expect(controls_dialog).toHaveAttribute(`open`, ``, { timeout: 2000 })
+
+    // Enable bonds
+    const show_bonds_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /^ bonds$/ })
+    const show_bonds_checkbox = show_bonds_label.locator(
+      `input[type="checkbox"]`,
+    )
+    await expect(show_bonds_checkbox).toBeVisible()
+    await show_bonds_checkbox.check()
+    await page.waitForTimeout(500) // Wait for conditional controls to appear
+
+    // Check that bond-specific controls appear
+    const bonding_strategy_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Bonding strategy/ })
+    const bond_color_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Bond color/ })
+    const bond_radius_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Bond radius/ })
+
+    await expect(bonding_strategy_label).toBeVisible()
+    await expect(bond_color_label).toBeVisible()
+    await expect(bond_radius_label).toBeVisible()
+
+    // Test bond color change
+    const bond_color_input = bond_color_label.locator(`input[type="color"]`)
+    await bond_color_input.fill(`#00ff00`)
+    await page.waitForTimeout(100)
+
+    // Panel should still be open
+    const controls_open_status = page.locator(
+      `[data-testid="controls-open-status"]`,
+    )
+    await expect(controls_open_status).toContainText(`true`)
+
+    // Test bonding strategy change
+    const bonding_strategy_select = bonding_strategy_label.locator(`select`)
+    await bonding_strategy_select.selectOption(`nearest_neighbor`)
+    await page.waitForTimeout(100)
+    await expect(controls_open_status).toContainText(`true`)
   })
 })

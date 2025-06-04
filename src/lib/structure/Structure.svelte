@@ -21,6 +21,8 @@
     controls_open?: boolean
     // canvas background color
     background_color?: string // must be hex code for <input type='color'>
+    // background color opacity (0-1)
+    background_opacity?: number
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
@@ -61,6 +63,7 @@
     lattice_props = $bindable({}),
     controls_open = $bindable(false),
     background_color = $bindable(`#ffffff`),
+    background_opacity = $bindable(0.1),
     reveal_buttons = 500,
     fullscreen = false,
     wrapper = $bindable(undefined),
@@ -165,7 +168,11 @@
   // set --struct-bg to background_color
   $effect(() => {
     if (browser && wrapper && background_color) {
-      wrapper.style.setProperty(`--struct-bg`, `${background_color}10`)
+      // Convert opacity (0-1) to hex alpha value (00-FF)
+      const alpha_hex = Math.round(background_opacity * 255)
+        .toString(16)
+        .padStart(2, `0`)
+      wrapper.style.setProperty(`--struct-bg`, `${background_color}${alpha_hex}`)
     }
   })
 
@@ -309,8 +316,23 @@
         </span>
       </label>
 
-      {#if show_full_controls && lattice_props.show_cell}
-        <hr />
+      <label>
+        Background color
+        <input type="color" bind:value={background_color} />
+      </label>
+      <label>
+        Background opacity
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={background_opacity}
+        />
+        <input type="range" min={0} max={1} step={0.05} bind:value={background_opacity} />
+      </label>
+
+      {#if lattice_props.show_cell}
         <label>
           Unit cell opacity
           <input
@@ -329,46 +351,6 @@
           />
         </label>
       {/if}
-
-      {#if scene_props.show_bonds}
-        <hr />
-        <label>
-          Bonding strategy
-          <select bind:value={scene_props.bonding_strategy}>
-            <option value="max_dist">Max Distance</option>
-            <option value="nearest_neighbor">Nearest Neighbor</option>
-          </select>
-        </label>
-
-        <label>
-          Bond color
-          <input type="color" bind:value={scene_props.bond_color} />
-        </label>
-        <label>
-          Bond radius
-          <input
-            type="number"
-            min={0.001}
-            max={0.1}
-            step={0.001}
-            bind:value={scene_props.bond_radius}
-          />
-          <input
-            type="range"
-            min="0.001"
-            max="0.1"
-            step={0.001}
-            bind:value={scene_props.bond_radius}
-          />
-        </label>
-      {/if}
-
-      <label>
-        Background color
-        <input type="color" bind:value={background_color} />
-      </label>
-
-      <hr />
 
       {#if show_full_controls}
         <label>
@@ -476,6 +458,40 @@
             max={0.3}
             step={0.01}
             bind:value={scene_props.rotation_damping}
+          />
+        </label>
+      {/if}
+
+      <hr />
+
+      {#if scene_props.show_bonds}
+        <label>
+          Bonding strategy
+          <select bind:value={scene_props.bonding_strategy}>
+            <option value="max_dist">Max Distance</option>
+            <option value="nearest_neighbor">Nearest Neighbor</option>
+          </select>
+        </label>
+
+        <label>
+          Bond color
+          <input type="color" bind:value={scene_props.bond_color} />
+        </label>
+        <label>
+          Bond radius
+          <input
+            type="number"
+            min={0.001}
+            max={0.1}
+            step={0.001}
+            bind:value={scene_props.bond_radius}
+          />
+          <input
+            type="range"
+            min="0.001"
+            max="0.1"
+            step={0.001}
+            bind:value={scene_props.bond_radius}
           />
         </label>
       {/if}
@@ -620,7 +636,8 @@
   dialog.controls[open] {
     visibility: visible;
     opacity: 1;
-    z-index: var(--struct-controls-z-index-open, 100);
+    z-index: var(--struct-controls-z-index, 1);
+    pointer-events: auto;
   }
   dialog.controls button {
     width: max-content;

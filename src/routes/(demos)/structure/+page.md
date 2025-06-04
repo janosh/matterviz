@@ -78,37 +78,52 @@
 
 <FileDetails {files} />
 
-## Structures in a grid
+## Different Crystal Systems
 
-To demonstrate you can load multiple structures while maintaining good page load times.
+Showcasing structures with different crystal systems.
 
 ```svelte example stackblitz
 <script>
-  import { Structure } from '$lib'
+  import { Structure, crystal_systems } from '$lib'
   import { structures } from '$site'
 </script>
 
-<ul>
-  {#each structures.filter(({sites}) => sites.length < 80) as structure}
+<ul class="crystal-systems">
+  {#each structures.filter(struct => crystal_systems.some(system => struct.id.includes(system))) as structure}
     {@const { id } = structure}
-    {@const href = `https://materialsproject.org/materials/${id}`}
+    {@const href = `https://materialsproject.org/materials/${id.split('-')[0]}-${id.split('-')[1]}`}
+    {@const crystal_system = id.split('-').at(-1) || 'unknown'}
     <li>
-      <h2><a {href}>{id}</a></h2>
-      <Structure {structure} />
+      <h3><a {href}>{id.split('-')[0]}-{id.split('-')[1]}</a></h3>
+      <p class="crystal-system">Crystal System: <strong>{crystal_system}</strong></p>
+      <Structure {structure} style="--struct-height: 400px;" />
     </li>
   {/each}
 </ul>
 
 <style>
-  ul {
+  ul.crystal-systems {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
-    gap: 1em;
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    gap: 1.5em;
     list-style: none;
     padding: 0;
     text-align: center;
-    width: 90vw;
-    margin: 0 calc(50cqw - 45vw);
+    width: 95vw;
+    margin: 2em calc(50cqw - 47.5vw);
+  }
+  .crystal-system {
+    margin: 0.5em 0;
+    font-size: 0.9em;
+    color: var(--text-color-secondary, #666);
+  }
+  .crystal-system strong {
+    color: var(--text-color-primary, #333);
+    text-transform: capitalize;
+  }
+  ul.crystal-systems h3 {
+    margin: 0.5em 0;
+    font-size: 1.1em;
   }
 </style>
 ```

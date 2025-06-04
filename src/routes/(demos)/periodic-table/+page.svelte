@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ChemicalElement } from '$lib'
   import {
     BohrAtom,
     ColorCustomizer,
@@ -12,23 +13,63 @@
   } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { property_labels } from '$lib/labels'
+  import type { ScaleContext } from '$lib/periodic-table/PeriodicTable.svelte'
   import { selected } from '$lib/state.svelte'
   import type { Snapshot } from './$types'
 
   let window_width: number = $state(0)
   let color_scale: D3InterpolateName = $state(`interpolateViridis`)
   let heatmap_key: string | null = $state(null)
-  let heatmap_values = $derived(
-    heatmap_key ? element_data.map((el) => el[heatmap_key]) : [],
-  )
 
-  let [y_label, y_unit] = $derived(property_labels[heatmap_key] ?? [])
+  // Extract shared logic for mapping element values
+  let get_element_value = $derived((el: ChemicalElement) => {
+    if (!heatmap_key) return 0
+    const value = el[heatmap_key as keyof typeof el]
+    return typeof value === `number` ? value : 0
+  })
+
+  let heatmap_values = $derived(heatmap_key ? element_data.map(get_element_value) : [])
+
+  let [y_label, y_unit] = $derived(
+    heatmap_key
+      ? (property_labels[heatmap_key as keyof typeof property_labels] ?? [])
+      : [],
+  )
 
   export const snapshot: Snapshot = {
     capture: () => ({ color_scale }),
     restore: (values) => ({ color_scale } = values),
   }
 </script>
+
+{#snippet custom_tooltip({
+  element,
+  value,
+  active,
+  scale_context,
+}: {
+  element: ChemicalElement
+  value: number
+  active: boolean
+  scale_context: ScaleContext
+})}
+  <div class:active>
+    <strong>{element.name}</strong>
+    {#if active}<span class="active-indicator">★</span>{/if}
+    <br />
+    <small>{element.symbol} • {element.number}</small>
+    <br />
+    <em>{heatmap_key}: {value || `N/A`}</em>
+    <br />
+    <small class="position">Position: {element.column},{element.row}</small>
+    {#if heatmap_key && value}
+      <br />
+      <small class="scale-info">
+        Range: {scale_context.min.toFixed(1)} - {scale_context.max.toFixed(1)}
+      </small>
+    {/if}
+  </div>
+{/snippet}
 
 <svelte:window bind:innerWidth={window_width} />
 
@@ -48,6 +89,7 @@
     bind:active_element={selected.element}
     bind:active_category={selected.category}
     links="name"
+    tooltip={heatmap_key ? custom_tooltip : true}
   >
     {#if selected.element && window_width > 1100}
       {@const { shells, name, symbol } = selected.element}
@@ -55,14 +97,12 @@
         <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
       </a>
     {/if}
-    <!-- set max-height to ensure ScatterPlot is never taller than 3 PeriodicTable
-    rows so it doesn't stretch the table. assumes PeriodicTable has 18 rows -->
     {#snippet inset()}
       <TableInset>
         {#if heatmap_key}
           <ElementScatter
             y_lim={[0, null]}
-            y={element_data.map((el) => el[heatmap_key])}
+            y={heatmap_values}
             {y_label}
             {y_unit}
             onchange={(event: CustomEvent) =>
@@ -88,5 +128,26 @@
     display: flex;
     place-content: center;
     gap: 1em;
+  }
+
+  /* Enhanced tooltip styles */
+  :global(.tooltip .active-indicator) {
+    color: gold;
+    margin-left: 0.25em;
+  }
+
+  :global(.tooltip .position) {
+    opacity: 0.7;
+    font-style: italic;
+  }
+
+  :global(.tooltip .scale-info) {
+    opacity: 0.8;
+    color: #ccc;
+  }
+
+  :global(.tooltip div.active) {
+    border-left: 3px solid gold;
+    padding-left: 0.5em;
   }
 </style>

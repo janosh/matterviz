@@ -78,3 +78,14 @@ export type PeriodicTableEvents = {
   focus: DispatchPayload
   blur: DispatchPayload
 }
+
+export const crystal_systems = [
+  `triclinic`,
+  `monoclinic`,
+  `orthorhombic`,
+  `tetragonal`,
+  `trigonal`,
+  `hexagonal`,
+  `cubic`,
+] as const
+export type CrystalSystem = (typeof crystal_systems)[number]

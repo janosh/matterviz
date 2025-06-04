@@ -66,6 +66,9 @@
     sphere_segments?: number
     lattice_props?: Omit<ComponentProps<typeof Lattice>, `matrix`>
     atom_label?: Snippet<[Site]>
+    // whether the camera is currently being moved (rotation, panning, zooming)
+    // can be bound to from parent component to monitor camera interaction state
+    camera_is_moving?: boolean
   }
   let {
     structure = undefined,
@@ -100,9 +103,11 @@
     sphere_segments = 20,
     lattice_props = {},
     atom_label,
+    camera_is_moving = $bindable(false),
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
+
   interactivity()
   $effect.pre(() => {
     hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
@@ -141,6 +146,14 @@
     autoRotateSpeed={auto_rotate}
     enableDamping={Boolean(rotation_damping)}
     dampingFactor={rotation_damping}
+    onstart={() => {
+      camera_is_moving = true
+      // Clear any existing hover state to immediately hide tooltips
+      hovered_idx = null
+    }}
+    onend={() => {
+      camera_is_moving = false
+    }}
   >
     {#if gizmo}
       <Gizmo size={100} {...typeof gizmo === `boolean` ? {} : gizmo} />
@@ -245,7 +258,7 @@
 {/if}
 
 <!-- hovered site tooltip -->
-{#if hovered_site}
+{#if hovered_site && !camera_is_moving}
   <HTML position={hovered_site.xyz} pointerEvents="none">
     <div class="tooltip">
       <!-- Element names with occupancies for disordered sites -->
