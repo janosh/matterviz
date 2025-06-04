@@ -61,6 +61,9 @@ a.btn {
   background-color: teal;
   padding: 2pt 4pt;
   transition: 0.2s;
+  /* TODO remove 2 lines below, just here as temp fix for svelte-zoo CodeExample SVG icons */
+  line-height: 1;
+  align-items: center;
 }
 :is(button, a.btn):hover {
   background-color: darkcyan;

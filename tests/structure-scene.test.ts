@@ -255,6 +255,54 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
+  // Test disordered site tooltip formatting
+  test(`formats disordered site tooltips without trailing zeros and proper separators`, async ({
+    page,
+  }) => {
+    const canvas = page.locator(`#structure-wrapper canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    const positions = [
+      { x: 200, y: 200 },
+      { x: 300, y: 250 },
+      { x: 400, y: 200 },
+      { x: 250, y: 300 },
+      { x: 350, y: 150 },
+    ]
+
+    for (const position of positions) {
+      await canvas.hover({ position })
+      await page.waitForTimeout(100)
+
+      const tooltip = page.locator(`.tooltip:has(.coordinates)`)
+      if (await tooltip.isVisible()) {
+        const occupancy_spans = tooltip.locator(`.occupancy`)
+        const occupancy_count = await occupancy_spans.count()
+
+        if (occupancy_count > 0) {
+          // Test occupancy formatting: no trailing zeros, valid decimals
+          for (let idx = 0; idx < occupancy_count; idx++) {
+            const occupancy_text = await occupancy_spans.nth(idx).textContent()
+            expect(occupancy_text).not.toMatch(/\..*0+$/) // No trailing zeros
+            expect(occupancy_text).toMatch(/^0\.\d*[1-9]$|^1$/) // Valid format
+          }
+
+          // Test species separation: thin space, not plus signs
+          if (occupancy_count > 1) {
+            const elements_text = await tooltip
+              .locator(`.elements`)
+              .textContent()
+            expect(elements_text).not.toMatch(/\s\+\s/) // No plus separators
+            expect(elements_text).toMatch(/\u2009/) // Thin space separator
+          }
+          break
+        }
+      }
+    }
+
+    expect(console_errors).toHaveLength(0)
+  })
+
   // Combined rapid interaction and performance test
   test(`handles rapid interactions and maintains performance`, async ({
     page,

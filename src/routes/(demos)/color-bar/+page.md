@@ -59,8 +59,12 @@ You can make fat and skinny bars:
   let color_scale = $state(`interpolateCividis`)
   let heatmap_key = $state(``)
   let heat_label = $state(``)
-  let heatmap_values = $derived(heatmap_key ? element_data.map((el) => el[heatmap_key]) : [])
-  let heat_range = $derived(heatmap_key ? [Math.min(...heatmap_values), Math.max(...heatmap_values)] : [0, 1])
+  let heatmap_values = $derived(
+    heatmap_key ? element_data.map((el) => el[heatmap_key]) : [],
+  )
+  let heat_range = $derived(
+    heatmap_key ? [Math.min(...heatmap_values), Math.max(...heatmap_values)] : [0, 1],
+  )
 </script>
 
 <form>
@@ -73,16 +77,17 @@ You can make fat and skinny bars:
   style="margin: 2em auto 4em;"
   bind:color_scale
   color_scale_range={heat_range}
-  links="name">
+  links="name"
+>
   {#snippet inset()}
-  <TableInset  style="place-items: center; padding: 2em;">
-    <ColorBar
-      {color_scale}
-      title={heat_label}
-      range={heat_range}
-      tick_labels={5}
-      tick_side="primary"
-      --cbar-width="calc(100% - 2em)"
+    <TableInset style="place-items: center; padding: 2em;">
+      <ColorBar
+        {color_scale}
+        title={heat_label}
+        range={heat_range}
+        tick_labels={5}
+        tick_side="primary"
+        --cbar-width="calc(100% - 2em)"
       />
     </TableInset>
   {/snippet}
@@ -208,31 +213,37 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
   import { ColorBar } from '$lib'
 </script>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0;">
+<div
+  style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0;"
+>
   <ColorBar
     title="Large Linear Range (0 to 1e6)"
     range={[0, 1e6]}
     tick_labels={5}
-    tick_format=".1s" />
+    tick_format=".1s"
+  />
 
   <ColorBar
     title="Large Log Range (1 to 1e9)"
     range={[1, 1e9]}
     scale_type="log"
     style="width: 400px;"
-    tick_labels={10} />
+    tick_labels={10}
+  />
 
   <ColorBar
     title="Vertical Log Range (10 to 1e7)"
     range={[10, 1e7]}
     scale_type="log"
-    orientation="vertical" />
+    orientation="vertical"
+  />
 
   <ColorBar
     title="Vertical Linear Range<br>(10 to 1e7) with line breaks"
     title_style="margin: 1em;"
     range={[10, 1e7]}
-    orientation="vertical" />
+    orientation="vertical"
+  />
 
   <ColorBar
     title="Small Log Range (0.01 to 100)"
@@ -240,6 +251,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
     scale_type="log"
     tick_format=".3"
     style="width: 400px;"
-    tick_labels={5} />
+    tick_labels={5}
+  />
 </div>
 ```

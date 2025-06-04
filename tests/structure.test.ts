@@ -49,7 +49,7 @@ test.describe(`Structure Component Tests`, () => {
 
     await background_color_input.fill(`#ff0000`) // Change to red
 
-    const expected_alpha = 0.125 // Rounded from 32 / 255
+    const expected_alpha = 0.063 // Rounded from 16 / 255 (hex '10' appended to color)
     // Wait specifically for the target element's style to change to what we expect
     await expect(structure_div).toHaveCSS(
       `background-color`,
@@ -303,5 +303,48 @@ test.describe(`Structure Component Tests`, () => {
 
       expect(initial_screenshot.equals(after_screenshot)).toBe(false)
     }
+  })
+
+  test(`element color legend allows color changes via color picker`, async ({
+    page,
+  }) => {
+    const structure_wrapper = page.locator(`#structure-wrapper`)
+    await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
+    await page.waitForTimeout(500) // Wait for structure to fully load
+
+    // Find element legend labels and validate count
+    const legend_labels = structure_wrapper.locator(`div label`)
+    const legend_count = await legend_labels.count()
+    expect(legend_count).toBeGreaterThan(0)
+
+    // Test first element legend label
+    const first_label = legend_labels.first()
+    await expect(first_label).toBeVisible()
+
+    // Test color picker functionality
+    const color_input = first_label.locator(`input[type="color"]`)
+    await expect(color_input).toBeAttached()
+
+    const initial_bg_color = await first_label.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    )
+
+    await color_input.fill(`#ff0000`)
+    await page.waitForTimeout(300)
+
+    const new_bg_color = await first_label.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    )
+    expect(new_bg_color).not.toBe(initial_bg_color)
+    expect(new_bg_color).toMatch(/rgb\(255,\s*0,\s*0\)/)
+
+    // Test double-click reset
+    await first_label.dblclick({ force: true })
+    await page.waitForTimeout(200)
+
+    const reset_bg_color = await first_label.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    )
+    expect(reset_bg_color).not.toBe(new_bg_color)
   })
 })

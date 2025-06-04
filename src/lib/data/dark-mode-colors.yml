@@ -1,0 +1,111 @@
+# Dark mode color scheme optimized for dark backgrounds
+# Bright, high-contrast colors that maintain readability on dark themes
+H: [255, 220, 220] # Bright Pink
+He: [180, 200, 255] # Bright Light Blue
+Li: [255, 180, 255] # Bright Magenta
+Be: [180, 255, 180] # Bright Light Green
+B: [255, 200, 150] # Bright Peach
+C: [200, 200, 200] # Light Grey
+N: [120, 180, 255] # Bright Blue
+O: [255, 100, 100] # Bright Red
+F: [100, 255, 100] # Bright Green
+Ne: [255, 150, 255] # Bright Pink
+Na: [255, 255, 100] # Bright Yellow
+Mg: [150, 255, 150] # Bright Lime
+Al: [180, 200, 255] # Bright Sky Blue
+Si: [255, 180, 100] # Bright Orange
+P: [255, 150, 200] # Bright Pink
+S: [255, 255, 150] # Bright Yellow
+Cl: [100, 255, 150] # Bright Green
+Ar: [200, 200, 255] # Bright Lavender
+K: [255, 100, 255] # Bright Magenta
+Ca: [150, 255, 200] # Bright Mint
+Sc: [255, 200, 255] # Bright Light Pink
+Ti: [100, 200, 255] # Bright Sky Blue
+V: [255, 120, 120] # Bright Red
+Cr: [120, 255, 120] # Bright Green
+Mn: [255, 120, 255] # Bright Magenta
+Fe: [255, 180, 80] # Bright Orange
+Co: [80, 150, 255] # Bright Blue
+Ni: [200, 255, 200] # Bright Light Green
+Cu: [255, 150, 80] # Bright Copper
+Zn: [180, 180, 255] # Bright Light Blue
+Ga: [200, 255, 150] # Bright Lime
+Ge: [200, 180, 255] # Bright Lavender
+As: [150, 255, 100] # Bright Green
+Se: [255, 255, 100] # Bright Yellow
+Br: [255, 120, 80] # Bright Orange-Red
+Kr: [255, 180, 255] # Bright Pink
+Rb: [255, 80, 255] # Bright Magenta
+Sr: [100, 255, 100] # Bright Green
+Y: [180, 255, 255] # Bright Cyan
+Zr: [120, 255, 200] # Bright Teal
+Nb: [150, 200, 255] # Bright Sky Blue
+Mo: [100, 200, 200] # Bright Teal
+Tc: [120, 200, 200] # Bright Teal
+Ru: [100, 180, 255] # Bright Blue
+Rh: [80, 200, 255] # Bright Sky Blue
+Pd: [200, 200, 255] # Bright Light Blue
+Ag: [255, 255, 255] # Bright White
+Cd: [255, 255, 150] # Bright Cream
+In: [200, 180, 255] # Bright Lavender
+Sn: [180, 180, 255] # Bright Light Blue
+Sb: [255, 150, 255] # Bright Pink
+Te: [255, 200, 100] # Bright Gold
+I: [255, 100, 255] # Bright Magenta
+Xe: [150, 200, 255] # Bright Sky Blue
+Cs: [255, 100, 200] # Bright Pink
+Ba: [100, 255, 150] # Bright Green
+La: [150, 255, 150] # Bright Light Green
+Ce: [255, 255, 200] # Bright Cream
+Pr: [200, 255, 180] # Bright Light Green
+Nd: [180, 255, 180] # Bright Light Green
+Pm: [160, 255, 180] # Bright Mint
+Sm: [150, 255, 180] # Bright Mint
+Eu: [140, 255, 180] # Bright Seafoam
+Gd: [130, 255, 180] # Bright Seafoam
+Tb: [120, 255, 180] # Bright Mint
+Dy: [110, 255, 180] # Bright Mint
+Ho: [100, 255, 160] # Bright Green
+Er: [90, 255, 150] # Bright Green
+Tm: [80, 255, 140] # Bright Green
+Yb: [70, 255, 130] # Bright Green
+Lu: [60, 255, 120] # Bright Green
+Hf: [120, 180, 255] # Bright Sky Blue
+Ta: [110, 170, 255] # Bright Blue
+W: [100, 160, 255] # Bright Blue
+Re: [90, 170, 255] # Bright Blue
+Os: [80, 160, 255] # Bright Blue
+Ir: [70, 150, 255] # Bright Blue
+Pt: [220, 220, 255] # Bright Silver
+Au: [255, 220, 100] # Bright Gold
+Hg: [200, 200, 255] # Bright Silver
+Tl: [255, 180, 180] # Bright Pink
+Pb: [180, 180, 200] # Bright Grey
+Bi: [255, 150, 255] # Bright Pink
+Po: [255, 200, 150] # Bright Peach
+At: [255, 150, 150] # Bright Pink
+Rn: [180, 200, 255] # Bright Sky Blue
+Fr: [255, 120, 200] # Bright Pink
+Ra: [120, 255, 120] # Bright Green
+Ac: [150, 200, 255] # Bright Sky Blue
+Th: [130, 190, 255] # Bright Blue
+Pa: [120, 180, 255] # Bright Blue
+U: [110, 170, 255] # Bright Blue
+Np: [100, 160, 255] # Bright Blue
+Pu: [90, 150, 255] # Bright Blue
+Am: [100, 140, 255] # Bright Blue-Purple
+Cm: [150, 140, 255] # Bright Purple
+Bk: [170, 140, 255] # Bright Purple
+Cf: [190, 140, 255] # Bright Purple
+Es: [210, 140, 255] # Bright Purple
+Fm: [230, 140, 255] # Bright Purple
+Md: [250, 140, 255] # Bright Purple-Pink
+No: [255, 140, 230] # Bright Pink
+Lr: [255, 140, 200] # Bright Pink
+Rf: [255, 160, 180] # Bright Pink
+Db: [255, 180, 160] # Bright Peach
+Sg: [255, 200, 140] # Bright Orange
+Bh: [255, 220, 120] # Bright Yellow
+Hs: [255, 240, 100] # Bright Yellow
+Mt: [255, 255, 80] # Bright Yellow

@@ -1,0 +1,110 @@
+# Pastel color scheme aiming for high contrast between elements
+H: [255, 204, 204] # Light Pinkish Red
+He: [224, 255, 255] # Light Cyan
+Li: [255, 182, 193] # Light Pink
+Be: [210, 245, 210] # Pale Green
+B: [255, 223, 186] # Peach
+C: [200, 200, 200] # Light Grey
+N: [173, 216, 230] # Light Blue
+O: [255, 179, 179] # Light Red
+F: [180, 238, 180] # Pale Mint Green
+Ne: [255, 210, 230] # Pale Pink/Lavender
+Na: [255, 235, 150] # Pale Yellow
+Mg: [190, 250, 190] # Light Lime Green
+Al: [211, 211, 211] # Light Silver/Grey
+Si: [240, 230, 140] # Khaki/Pale Gold
+P: [255, 190, 120] # Light Orange/Apricot
+S: [255, 255, 180] # Pale Yellow
+Cl: [150, 245, 150] # Light Sea Green
+Ar: [230, 230, 250] # Lavender
+K: [255, 180, 220] # Light Orchid
+Ca: [160, 240, 160] # Light Pistachio
+Sc: [220, 220, 180] # Pale Olive
+Ti: [190, 210, 220] # Pale Blue-Grey
+V: [255, 200, 200] # Pale Pink-Red
+Cr: [180, 220, 180] # Pale Sage Green
+Mn: [230, 200, 230] # Pale Lilac
+Fe: [220, 180, 140] # Light Tan
+Co: [200, 200, 255] # Pale Cornflower Blue
+Ni: [210, 225, 210] # Very Pale Green-Grey
+Cu: [255, 200, 170] # Light Copper/Salmon
+Zn: [200, 220, 230] # Pale Bluish Grey
+Ga: [255, 210, 210] # Pale Rosy Pink
+Ge: [210, 210, 190] # Pale Beige
+As: [220, 190, 220] # Pale Mauve
+Se: [180, 240, 210] # Pale Aqua Green
+Br: [255, 190, 190] # Light Coral
+Kr: [240, 220, 255] # Pale Lavender Blue
+Rb: [255, 170, 210] # Light Magenta Pink
+Sr: [170, 255, 170] # Light Mint
+Y: [210, 255, 225] # Very Pale Aqua
+Zr: [190, 230, 230] # Pale Cyan-Grey
+Nb: [225, 225, 190] # Pale Yellow-Beige
+Mo: [200, 230, 200] # Pale Grey-Green
+Tc: [230, 210, 230] # Pale Purple-Grey
+Ru: [215, 215, 240] # Pale Periwinkle
+Rh: [240, 215, 215] # Pale Pinkish Grey
+Pd: [220, 220, 220] # Very Light Grey
+Ag: [230, 230, 230] # Very Light Grey (Silver)
+Cd: [255, 240, 200] # Pale Cream
+In: [200, 210, 220] # Pale Blue Steel
+Sn: [210, 210, 210] # Light Grey
+Sb: [220, 200, 210] # Pale Pinkish Mauve
+Te: [190, 240, 190] # Pale Yellow-Green
+I: [240, 190, 240] # Pale Magenta
+Xe: [210, 240, 255] # Very Pale Sky Blue
+Cs: [255, 160, 200] # Light Deep Pink
+Ba: [150, 255, 150] # Light Bright Green
+La: [190, 255, 210] # Pale Celadon
+Ce: [255, 255, 220] # Pale Cream Yellow
+Pr: [210, 255, 210] # Very Pale Green
+Nd: [220, 255, 220] # Lightest Green
+Pm: [185, 255, 220] # Pale Mint
+Sm: [175, 255, 220] # Light Aqua Mint
+Eu: [165, 255, 220] # Pale Seafoam
+Gd: [155, 255, 220] # Light Seafoam
+Tb: [145, 255, 220] # Mint Seafoam
+Dy: [135, 255, 220] # Aqua Seafoam
+Ho: [125, 255, 200] # Light Mint Green
+Er: [115, 245, 200] # Pale Spring Green
+Tm: [105, 235, 180] # Light Spring
+Yb: [95, 225, 160] # Pale Lime
+Lu: [85, 215, 140] # Light Lime
+Hf: [180, 220, 255] # Pale Sky Blue
+Ta: [170, 210, 255] # Light Sky Blue
+W: [160, 200, 255] # Pale Blue
+Re: [150, 190, 245] # Light Blue
+Os: [140, 180, 235] # Pale Periwinkle
+Ir: [130, 170, 225] # Light Periwinkle
+Pt: [220, 220, 230] # Light Platinum Grey
+Au: [255, 240, 180] # Pale Gold
+Hg: [230, 230, 240] # Very Pale Blue-Grey
+Tl: [240, 200, 200] # Pale Rose
+Pb: [200, 200, 200] # Light Grey
+Bi: [210, 180, 210] # Pale Plum
+Po: [220, 200, 160] # Pale Tan
+At: [200, 160, 160] # Pale Brown
+Rn: [210, 230, 245] # Very Pale Blue
+Fr: [255, 150, 180] # Light Rose
+Ra: [140, 255, 140] # Bright Pale Green
+Ac: [170, 200, 255] # Pale Blue
+Th: [160, 210, 255] # Light Blue
+Pa: [150, 200, 255] # Pale Blue
+U: [140, 190, 255] # Light Blue
+Np: [130, 180, 255] # Pale Blue
+Pu: [120, 170, 255] # Light Blue
+Am: [110, 160, 245] # Pale Blue
+Cm: [180, 160, 235] # Pale Purple
+Bk: [190, 170, 245] # Light Purple
+Cf: [200, 180, 255] # Pale Lavender
+Es: [210, 190, 255] # Light Lavender
+Fm: [220, 200, 255] # Pale Lavender
+Md: [230, 210, 255] # Very Pale Lavender
+No: [240, 220, 255] # Lightest Lavender
+Lr: [250, 200, 200] # Pale Pink
+Rf: [255, 190, 190] # Light Pink
+Db: [255, 200, 180] # Pale Peach
+Sg: [255, 210, 170] # Light Peach
+Bh: [255, 220, 160] # Pale Yellow
+Hs: [255, 230, 150] # Light Yellow
+Mt: [255, 240, 140] # Pale Gold
