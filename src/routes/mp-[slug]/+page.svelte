@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { MaterialCard, Structure, StructureCard, pretty_num } from '$lib'
+  import { MaterialCard, Structure, StructureCard, format_num } from '$lib'
   import { download, fetch_zipped, mp_build_bucket } from '$lib/api'
 
   let { data = $bindable() } = $props()
@@ -86,7 +86,7 @@
           <a href="https://materialsproject.org/tasks/{task_id}">{task_id}</a>
         </strong><span>{formula}</span>
         <br />
-        <small>dissimilarity: {pretty_num(dissimilarity)}</small>
+        <small>dissimilarity: {format_num(dissimilarity)}</small>
       </li>
     {:else}
       <li>No similar structures found</li>

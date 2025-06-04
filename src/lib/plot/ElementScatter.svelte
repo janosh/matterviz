@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScatterPlot, element_data, pretty_num, type InternalPoint } from '$lib'
+  import { ScatterPlot, element_data, format_num, type InternalPoint } from '$lib'
   import { selected } from '$lib/state.svelte'
 
   interface Props {
@@ -57,6 +57,6 @@
 >
   {#snippet tooltip({ x, y })}
     <strong>{x} - {element_data[x - 1]?.name}</strong><br />
-    {y_label} = {pretty_num(y, y_format)}{y_unit ?? ``}
+    {y_label} = {format_num(y, y_format)}{y_unit ?? ``}
   {/snippet}
 </ScatterPlot>

@@ -6,5 +6,6 @@ export default {
     port: 3005,
     reuseExistingServer: true,
   },
-  timeout: 20_000, // Global timeout per test
+  workers: 8,
+  timeout: 15_000, // Global timeout per test
 } satisfies PlaywrightTestConfig

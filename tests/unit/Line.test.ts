@@ -220,4 +220,34 @@ describe(`Line`, () => {
     // Further checks on internal tween state are difficult in unit tests,
     // but mounting confirms the props were accepted.
   })
+
+  test(`passes additional props to path elements`, () => {
+    const points: [number, number][] = [
+      [10, 10],
+      [50, 50],
+    ]
+    const origin: [number, number] = [0, 100]
+    const rest_props = {
+      'data-testid': `custom-line`,
+      'aria-label': `line chart element`,
+    }
+
+    mount(Line, {
+      target: target_div,
+      props: { points, origin, ...rest_props },
+    })
+
+    const paths = target_div.querySelectorAll(`path`)
+    expect(paths.length).toBe(2)
+
+    // Check that both paths received the rest props
+    paths.forEach((path_element) => {
+      expect(path_element.getAttribute(`data-testid`)).toBe(
+        rest_props[`data-testid`],
+      )
+      expect(path_element.getAttribute(`aria-label`)).toBe(
+        rest_props[`aria-label`],
+      )
+    })
+  })
 })

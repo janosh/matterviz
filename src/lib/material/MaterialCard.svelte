@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { InfoCard, pretty_num, superscript_digits } from '$lib'
+  import { InfoCard, format_num, superscript_digits } from '$lib'
   import type { SummaryDoc } from '$types'
   import type { Snippet } from 'svelte'
   import SymmetryCard from './SymmetryCard.svelte'
@@ -76,7 +76,7 @@
       title: `Is magnetic`,
       value: `${material.is_magnetic ? `yes` : `no`} ${
         material.is_magnetic
-          ? `(${pretty_num(material.total_magnetization)} µB/f.u.)`
+          ? `(${format_num(material.total_magnetization)} µB/f.u.)`
           : ``
       }`,
       tooltip: `µB: Bohr magneton, f.u.: formula unit`,

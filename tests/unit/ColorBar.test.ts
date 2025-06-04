@@ -374,7 +374,7 @@ describe(`ColorBar Numeric Formatting`, () => {
     expect(tick_label_spans[4].textContent).toBe(`100%`)
   })
 
-  test(`falls back to pretty_num when tick_format is undefined`, () => {
+  test(`falls back to format_num when tick_format is undefined`, () => {
     mount(ColorBar, {
       target: document.body,
       props: {
@@ -389,13 +389,13 @@ describe(`ColorBar Numeric Formatting`, () => {
       `.colorbar > div.bar > span.tick-label`,
     )
     expect(tick_label_spans.length).toBe(3)
-    // Check pretty_num's formatting
+    // Check format_num's formatting
     expect(tick_label_spans[0].textContent).toBe(`0.123`)
     expect(tick_label_spans[1].textContent).toBe(`2.9`)
     expect(tick_label_spans[2].textContent).toBe(`5.68`)
   })
 
-  test(`falls back to pretty_num when tick_format is null`, () => {
+  test(`falls back to format_num when tick_format is null`, () => {
     // Test with null (should behave same as undefined)
     mount(ColorBar, {
       target: document.body,
@@ -410,7 +410,7 @@ describe(`ColorBar Numeric Formatting`, () => {
       `.colorbar > div.bar > span.tick-label`,
     )
     expect(tick_label_spans.length).toBe(2) // Should be 2 ticks
-    expect(tick_label_spans[0].textContent).toBe(`1k`) // Assuming pretty_num uses 'k' suffix
+    expect(tick_label_spans[0].textContent).toBe(`1k`) // Assuming format_num uses 'k' suffix
     expect(tick_label_spans[1].textContent).toBe(`5k`)
   })
 })

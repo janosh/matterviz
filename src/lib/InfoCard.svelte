@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { pretty_num } from '$lib'
+  import { format_num } from '$lib'
   import type { PropertyOrigin } from '$types'
   import type { Snippet } from 'svelte'
 
@@ -19,6 +19,7 @@
     style?: string | null
     title_snippet?: Snippet
     fallback_snippet?: Snippet
+    [key: string]: unknown
   }
   let {
     data = [],
@@ -29,13 +30,14 @@
     style = null,
     title_snippet,
     fallback_snippet,
+    ...rest
   }: Props = $props()
 
   // rename fmt as default_fmt internally
   let default_fmt = $derived(fmt)
 </script>
 
-<svelte:element this={as} class="info-card" {style}>
+<svelte:element this={as} class="info-card" {style} {...rest}>
   {#if title || title_snippet}
     <h2>
       {#if title_snippet}{@render title_snippet()}{:else}
@@ -49,7 +51,7 @@
         {@html title}
       </span>
       <strong title={tooltip ?? null}>
-        {@html typeof value == `number` ? pretty_num(value, fmt) : value}
+        {@html typeof value == `number` ? format_num(value, fmt) : value}
         {#if unit}
           <small>{unit}</small>
         {/if}

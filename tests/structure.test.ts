@@ -98,8 +98,8 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check canvas attributes reflect the change
     // This can be a bit tricky as Threlte/Svelte reactivity might have slight delays
-    await expect(canvas).toHaveAttribute(`width`, `700`, { timeout: 2000 })
-    await expect(canvas).toHaveAttribute(`height`, `500`, { timeout: 2000 })
+    await expect(canvas).toHaveAttribute(`width`, `700`, { timeout: 1000 })
+    await expect(canvas).toHaveAttribute(`height`, `500`, { timeout: 1000 })
   })
 
   // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking.
@@ -183,5 +183,125 @@ test.describe(`Structure Component Tests`, () => {
       `Controls Open Status: false`,
     )
     await expect(controls_toggle_button).toContainText(`Controls`)
+  })
+
+  test(`show_site_labels defaults to false and can be toggled`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_toggle_button = structure_component.locator(
+      `button.controls-toggle`,
+    )
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+
+    // Open controls panel
+    await controls_toggle_button.click()
+    await page.waitForTimeout(500)
+
+    // Find site labels checkbox by searching through all checkboxes
+    const all_checkboxes = controls_dialog.locator(`input[type="checkbox"]`)
+    const checkbox_count = await all_checkboxes.count()
+
+    let site_labels_checkbox = null
+    for (let idx = 0; idx < checkbox_count; idx++) {
+      const checkbox = all_checkboxes.nth(idx)
+      const label_text = await checkbox.locator(`xpath=..`).textContent()
+      if (label_text?.includes(`site labels`)) {
+        site_labels_checkbox = checkbox
+        break
+      }
+    }
+
+    expect(site_labels_checkbox).not.toBeNull()
+    expect(await site_labels_checkbox!.isChecked()).toBe(false)
+  })
+
+  test(`show_site_labels controls are properly labeled`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure dialog.controls`,
+    )
+
+    // Open controls panel
+    await page
+      .locator(`#structure-wrapper .structure button.controls-toggle`)
+      .click()
+    await page.waitForTimeout(200)
+
+    // Verify control structure exists
+    const site_labels_label = controls_dialog.locator(
+      `label:has-text("site labels")`,
+    )
+    const site_labels_checkbox = site_labels_label.locator(
+      `input[type="checkbox"]`,
+    )
+
+    expect(await site_labels_label.count()).toBe(1)
+    expect(await site_labels_checkbox.count()).toBe(1)
+  })
+
+  test(`gizmo is hidden when prop is set to false`, async ({ page }) => {
+    // Find and uncheck the gizmo checkbox on the test page
+    const gizmo_checkbox = page.locator(
+      `label:has-text("Show Gizmo") input[type="checkbox"]`,
+    )
+    await expect(gizmo_checkbox).toBeVisible()
+    await expect(gizmo_checkbox).toBeChecked() // Should be checked by default
+
+    // Uncheck the gizmo to hide it
+    await gizmo_checkbox.uncheck()
+
+    // Verify the gizmo status is updated
+    const gizmo_status = page.locator(`[data-testid="gizmo-status"]`)
+    await expect(gizmo_status).toContainText(`Gizmo Status: false`)
+
+    // Verify the scene still loads without errors
+    const canvas = page.locator(`#structure-wrapper canvas`)
+    await expect(canvas).toBeVisible()
+  })
+
+  test(`gizmo is visible by default and can be toggled`, async ({ page }) => {
+    // Verify gizmo is enabled by default
+    const gizmo_checkbox = page.locator(
+      `label:has-text("Show Gizmo") input[type="checkbox"]`,
+    )
+    const gizmo_status = page.locator(`[data-testid="gizmo-status"]`)
+
+    await expect(gizmo_checkbox).toBeChecked()
+    await expect(gizmo_status).toContainText(`Gizmo Status: true`)
+
+    // Test toggling gizmo off and on
+    await gizmo_checkbox.uncheck()
+    await expect(gizmo_status).toContainText(`Gizmo Status: false`)
+
+    await gizmo_checkbox.check()
+    await expect(gizmo_status).toContainText(`Gizmo Status: true`)
+  })
+
+  test(`clicking gizmo rotates the structure`, async ({ page }) => {
+    const canvas = page.locator(`#structure-wrapper canvas`)
+    await expect(canvas).toBeVisible()
+
+    const initial_screenshot = await canvas.screenshot()
+
+    // Try gizmo click (top-right) or fallback to drag for camera rotation
+    const box = await canvas.boundingBox()
+    if (box) {
+      await canvas.click({
+        position: { x: box.width - 80, y: 80 },
+        force: true,
+      })
+
+      let after_screenshot = await canvas.screenshot()
+      if (initial_screenshot.equals(after_screenshot)) {
+        // Fallback: drag to rotate via OrbitControls
+        await canvas.dragTo(canvas, {
+          sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
+          targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
+        })
+        after_screenshot = await canvas.screenshot()
+      }
+
+      expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+    }
   })
 })

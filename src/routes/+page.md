@@ -23,7 +23,7 @@ Care was taken to make this interactive periodic table responsive to different s
 
 The 3d structure viewer is built on the declarative Svelte [THREE.js](https://threejs.org) wrapper [`threlte`](https://threlte.xyz). It gets Svelte-compiled for great performance (even on supercells with 100+ atoms), is split up into `Bond`, `Lattice`, `Scene` and `Site` components for easy extensibility. You can pass various click, drag and touch event handlers for rich interactivity as well as inject custom HTML into tooltips using child components. This one shows the [Materials Project](https://materialsproject.org) structure for [{mp_id}](https://materialsproject.org/materials/{mp_id}).
 
-<Structure {structure} auto_rotate={0.5} />
+<Structure {structure} scene_props={{ auto_rotate: 0.5 }} />
 
 <style>
   h1 {

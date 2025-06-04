@@ -2,9 +2,9 @@ import element_data from '$lib/element/data'
 import {
   categories,
   category_counts,
+  format_num,
   heatmap_keys,
   heatmap_labels,
-  pretty_num,
 } from '$lib/labels'
 import { expect, test } from '@playwright/test'
 import { random_sample } from '.'
@@ -69,7 +69,7 @@ test.describe(`Periodic Table`, () => {
 
       // check 5 random element tiles display the expected heatmap value
       for (const rand_elem of random_sample(element_data, 5)) {
-        const heatmap_val = pretty_num(rand_elem[heatmap_keys.at(-1)])
+        const heatmap_val = format_num(rand_elem[heatmap_keys.at(-1)])
 
         // make sure heatmap value is displayed correctly
         const text = `${rand_elem.number} ${rand_elem.symbol} ${heatmap_val}`

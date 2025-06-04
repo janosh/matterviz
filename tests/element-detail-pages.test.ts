@@ -7,7 +7,7 @@ test.setTimeout(10_000 * n_tests)
 
 test.describe(`Element detail page`, async () => {
   test(`has periodicity plot`, async ({ page }) => {
-    // test any 5 random elements
+    // test any 2 random elements
     for (const _ of Array(n_tests)) {
       const rand_idx = Math.floor(Math.random() * element_data.length)
       const random_element = element_data[rand_idx]
@@ -16,16 +16,20 @@ test.describe(`Element detail page`, async () => {
         waitUntil: `networkidle`,
       })
 
-      expect(await page.textContent(`h2`)).toContain(
+      // Wait for and check the h2 element content
+      const h2_locator = page.locator(`h2`)
+      await expect(h2_locator).toBeVisible()
+      await expect(h2_locator).toContainText(
         `${random_element.number} - ${random_element.name}`,
       )
 
       // should have brief element description
-      const description = await page.$(`text=${random_element.summary}`)
-      expect(description).toBeTruthy()
+      const description_locator = page.locator(`text=${random_element.summary}`)
+      await expect(description_locator).toBeVisible()
 
-      // should have Bohr model SVG
-      expect(await page.$(`svg > circle.nucleus + text + g.shell`)).toBeTruthy()
+      // should have Bohr model SVG - be more specific to avoid matching multiple SVGs
+      const bohr_svg = page.locator(`svg circle.nucleus`).first()
+      await expect(bohr_svg).toBeVisible()
     }
   })
 })

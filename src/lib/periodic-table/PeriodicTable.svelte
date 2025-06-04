@@ -24,8 +24,6 @@
   interface Props {
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
-    style?: string
-    class?: string
     disabled?: boolean // disable hover and click events from updating active_element
     // either array of length 118 (one heat value for each element) or object with
     // element symbol as key and heat value as value
@@ -53,12 +51,11 @@
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     children?: Snippet
+    [key: string]: unknown
   }
   let {
     tile_props,
     show_photo = true,
-    style = ``,
-    class: class_name = ``,
     disabled = false,
     heatmap_values = [],
     links = null,
@@ -76,6 +73,7 @@
     inset,
     bottom_left_inset,
     children,
+    ...rest
   }: Props = $props()
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -148,7 +146,7 @@
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
-<div class="periodic-table-container {class_name}" {style}>
+<div class="periodic-table-container" {...rest}>
   <div class="periodic-table" style:gap>
     {@render inset?.({ active_element })}
     {#each element_data as element (element.number)}

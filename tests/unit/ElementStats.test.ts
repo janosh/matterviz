@@ -1,5 +1,5 @@
 import { ElementStats, element_data } from '$lib'
-import { pretty_num } from '$lib/labels'
+import { format_num } from '$lib/labels'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '.'
@@ -12,11 +12,11 @@ describe(`ElementStats`, () => {
 
       const atomic_mass = doc_query(`div > section:nth-child(2) > strong`)
       expect(atomic_mass.textContent?.trim()).toBe(
-        pretty_num(element.atomic_mass),
+        format_num(element.atomic_mass),
       )
 
       const density = doc_query(`div > section:nth-child(3) > strong`)
-      expect(density.textContent?.trim()).toBe(pretty_num(element.density))
+      expect(density.textContent?.trim()).toBe(format_num(element.density))
 
       const phase = doc_query(`div > section:nth-child(4) > strong`)
       expect(phase.textContent?.trim()).toBe(element.phase)

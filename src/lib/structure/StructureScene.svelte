@@ -1,14 +1,7 @@
 <script lang="ts">
   import type { Atoms, BondPair, Site, Vector } from '$lib'
-  import {
-    Bond,
-    Lattice,
-    add,
-    atomic_radii,
-    euclidean_dist,
-    pretty_num,
-    scale,
-  } from '$lib'
+  import { Bond, Lattice, add, atomic_radii, euclidean_dist, scale } from '$lib'
+  import { format_num } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import { T } from '@threlte/core'
   import {
@@ -49,6 +42,7 @@
     pan_speed?: number
     show_atoms?: boolean
     show_bonds?: boolean
+    show_site_labels?: boolean
     gizmo?: boolean | ComponentProps<typeof Gizmo>
     hovered_idx?: number | null
     active_idx?: number | null
@@ -86,6 +80,7 @@
     pan_speed = 1,
     show_atoms = true,
     show_bonds = true,
+    show_site_labels = false,
     gizmo = true,
     hovered_idx = $bindable(null),
     active_idx = $bindable(null),
@@ -146,12 +141,12 @@
     autoRotateSpeed={auto_rotate}
     enableDamping={Boolean(rotation_damping)}
     dampingFactor={rotation_damping}
-  />
+  >
+    {#if gizmo}
+      <Gizmo size={100} {...typeof gizmo === `boolean` ? {} : gizmo} />
+    {/if}
+  </OrbitControls>
 </T.PerspectiveCamera>
-
-{#if gizmo}
-  <Gizmo size={100} {...typeof gizmo === `boolean` ? {} : gizmo} />
-{/if}
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />
@@ -159,31 +154,38 @@
 {#if show_atoms && structure?.sites}
   {#each structure.sites as site, site_idx (JSON.stringify({ site, site_idx }))}
     {@const { species, xyz } = site}
+    {@const site_radius = same_size_atoms
+      ? atom_radius
+      : species.reduce((sum, spec) => sum + spec.occu * atomic_radii[spec.element], 0) *
+        atom_radius}
     {#each species as { element: elem, occu }, spec_idx ([elem, occu])}
-      {@const radius = (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
       {@const start_angle = species
         .slice(0, spec_idx)
         .reduce((total, spec) => total + spec.occu, 0)}
-      <T.Mesh position={xyz}>
+      <T.Mesh
+        position={xyz}
+        scale={site_radius}
+        onpointerenter={(_event: PointerEvent) => {
+          hovered_idx = site_idx
+        }}
+        onpointerleave={(_event: PointerEvent) => {
+          hovered_idx = null
+        }}
+        onclick={(_event: MouseEvent) => {
+          if (active_idx == site_idx) active_idx = null
+          else active_idx = site_idx
+        }}
+      >
         <T.SphereGeometry
           args={[
             0.5,
             sphere_segments,
             sphere_segments,
             2 * Math.PI * start_angle,
-            2 * Math.PI * (start_angle + occu),
+            2 * Math.PI * occu,
           ]}
         />
-        <T.MeshStandardMaterial
-          color={colors.element?.[elem]}
-          onpointerenter={() => (hovered_idx = site_idx)}
-          onpointerleave={() => (hovered_idx = null)}
-          onclick={() => {
-            if (active_idx == site_idx) active_idx = null
-            else active_idx = site_idx
-          }}
-          scale={radius}
-        />
+        <T.MeshStandardMaterial color={colors.element?.[elem]} />
       </T.Mesh>
       <!-- use polar coordinates + offset if site has partial occupancy to move the text to the side of the corresponding sphere slice -->
       <!-- TODO fix render multiple labels for disordered sites
@@ -192,15 +194,17 @@
         xyz,
         scale([Math.cos(phi), 0, Math.sin(phi)], label_radius * radius),
       )} -->
-      <HTML center position={xyz}>
-        {#if atom_label}
-          {@render atom_label(site)}
-        {:else}
-          <span class="atom-label">
-            {@html species.map((sp) => sp.element).join(`&nbsp;`)}
-          </span>
-        {/if}
-      </HTML>
+      {#if show_site_labels}
+        <HTML center position={xyz}>
+          {#if atom_label}
+            {@render atom_label(site)}
+          {:else}
+            <span class="atom-label">
+              {@html species.map((sp) => sp.element).join(`&nbsp;`)}
+            </span>
+          {/if}
+        </HTML>
+      {/if}
     {/each}
   {/each}
 {/if}
@@ -219,10 +223,12 @@
 {#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as { site, opacity } (opacity)}
   {#if site}
     {@const { xyz, species } = site}
-    {@const elem = species[0].element}
-    {@const radius = 1.1 * (same_size_atoms ? 1 : atomic_radii[elem]) * atom_radius}
-    <T.Mesh position={xyz}>
-      <T.SphereGeometry args={[radius, 20, 20]} />
+    {@const highlight_radius = same_size_atoms
+      ? atom_radius
+      : species.reduce((sum, spec) => sum + spec.occu * atomic_radii[spec.element], 0) *
+        atom_radius}
+    <T.Mesh position={xyz} scale={1.02 * highlight_radius}>
+      <T.SphereGeometry args={[0.5, 20, 20]} />
       <T.MeshStandardMaterial color="white" transparent {opacity} />
     </T.Mesh>
   {/if}
@@ -242,20 +248,39 @@
 {#if hovered_site}
   <HTML position={hovered_site.xyz} pointerEvents="none">
     <div class="tooltip">
-      {#each hovered_site.species ?? [] as { element, occu, oxidation_state } (element + occu + oxidation_state)}
-        {@const oxi_state =
-          oxidation_state &&
-          Math.abs(oxidation_state) + (oxidation_state > 0 ? `+` : `-`)}
-        <strong>{element}{oxi_state ?? ``}</strong>
-        {occu == 1 ? `` : `(occu=${occu})`}
-      {/each}
-      ({hovered_site.xyz.map((num) => pretty_num(num, precision)).join(`, `)})
+      <!-- Element names with occupancies for disordered sites -->
+      <div class="elements">
+        {#each hovered_site.species ?? [] as { element, occu, oxidation_state: oxi_state }, idx ([element, occu, oxi_state])}
+          {@const oxi_str =
+            oxi_state && Math.abs(oxi_state) + (oxi_state > 0 ? `+` : `-`)}
+          {#if idx > 0}
+            +
+          {/if}
+          {#if occu !== 1}
+            <span class="occupancy">{format_num(occu, `.3f`)}</span>
+          {/if}
+          <strong>{element}{oxi_str ?? ``}</strong>
+        {/each}
+      </div>
+
+      <!-- Fractional coordinates -->
+      <div class="coordinates">
+        abc: ({hovered_site.abc.map((num) => format_num(num, precision)).join(`, `)})
+      </div>
+
+      <!-- Cartesian coordinates -->
+      <div class="coordinates">
+        xyz: ({hovered_site.xyz.map((num) => format_num(num, precision)).join(`, `)}) Å
+      </div>
+
       <!-- distance from hovered to active site -->
       <!-- TODO this doesn't handle periodic boundaries yet, so is currently grossly misleading -->
       {#if active_site && active_site != hovered_site && active_hovered_dist}
         {@const distance = euclidean_dist(hovered_site.xyz, active_site.xyz)}
-        <br />
-        dist={pretty_num(distance)} Å (no PBC yet)
+        <div class="distance">
+          <strong>dist:</strong>
+          {format_num(distance, precision)} Å (no PBC yet)
+        </div>
       {/if}
     </div>
   </HTML>
@@ -273,7 +298,29 @@
     border-radius: var(--struct-tooltip-border-radius, 5pt);
     background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.5));
     padding: var(--struct-tooltip-padding, 1pt 5pt);
+    text-align: left;
+    color: var(--struct-tooltip-text-color);
+    font-family: var(--struct-tooltip-font-family);
+    font-size: var(--struct-tooltip-font-size);
+    line-height: var(--struct-tooltip-line-height);
   }
+
+  div.tooltip .elements {
+    margin-bottom: var(--struct-tooltip-elements-margin);
+  }
+
+  div.tooltip .occupancy {
+    font-size: var(--struct-tooltip-occu-font-size);
+    opacity: var(--struct-tooltip-occu-opacity);
+    margin-right: var(--struct-tooltip-occu-margin);
+  }
+
+  div.tooltip .coordinates,
+  div.tooltip .distance {
+    font-size: var(--struct-tooltip-coords-font-size);
+    margin: var(--struct-tooltip-coords-margin);
+  }
+
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border-radius: var(--struct-atom-label-border-radius, 3pt);

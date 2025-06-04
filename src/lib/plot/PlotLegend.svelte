@@ -9,6 +9,7 @@
     item_style?: string
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
+    [key: string]: unknown
   }
   let {
     series_data = [],
@@ -18,6 +19,7 @@
     item_style = ``,
     on_toggle = () => {},
     on_double_click = () => {},
+    ...rest
   }: Props = $props()
 
   function handle_click(event: MouseEvent, series_idx: number) {
@@ -45,7 +47,7 @@
   })
 </script>
 
-<div class="legend" style="{wrapper_style} {grid_template_style}">
+<div class="legend" style="{wrapper_style} {grid_template_style}" {...rest}>
   {#each series_data as series (series.series_idx)}
     <div
       class="legend-item {series.visible ? `` : `hidden`}"

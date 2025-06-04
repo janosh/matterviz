@@ -114,7 +114,7 @@ All notable changes to this project will be documented in this file. Dates are d
 > 5 February 2025
 
 - Couple new unit tests [`#52`](https://github.com/janosh/elementari/pull/52)
-- Add `parse_si_float` inverse function to `pretty_num` in `labels.ts` [`#50`](https://github.com/janosh/elementari/pull/50)
+- Add `parse_si_float` inverse function to `format_num` in `labels.ts` [`#50`](https://github.com/janosh/elementari/pull/50)
 - Fix and speedup `max_dist` and `nearest_neighbor` bonding algorithms [`#48`](https://github.com/janosh/elementari/pull/48)
 - Support partial site occupancies by rendering atoms as multiple sphere slices [`#46`](https://github.com/janosh/elementari/pull/46)
 - add ScatterPlot date formatting [`01f8180`](https://github.com/janosh/elementari/commit/01f81806b0ab791190bddcfd12e680d966d2f528)
@@ -274,7 +274,7 @@ All notable changes to this project will be documented in this file. Dates are d
 - add vitest unit tests [`fad1b3a`](https://github.com/janosh/elementari/commit/fad1b3a90176bdb5ffd45168adc81f943fd2dbb8)
 - add contributing.md [`3033f6e`](https://github.com/janosh/elementari/commit/3033f6e6b30856f66adaee689ea5f6f432ffa644)
 - add tests 'clicking element tile emits event', 'gap prop' and 'setting active_category=%s highlights corresponding element tiles' [`36e757d`](https://github.com/janosh/elementari/commit/36e757d29ee47a3db015c8de433b148ba5a23ccc)
-- fix pretty_num() raising TypeError: Cannot read properties of null (reading 'toExponential') [`fa81d29`](https://github.com/janosh/elementari/commit/fa81d2977296d1a9159b5873e1079cb8f5138b77)
+- fix format_num() raising TypeError: Cannot read properties of null (reading 'toExponential') [`fa81d29`](https://github.com/janosh/elementari/commit/fa81d2977296d1a9159b5873e1079cb8f5138b77)
 - use src/(routes|lib)/index.ts convenience imports internally [`35f7fbe`](https://github.com/janosh/elementari/commit/35f7fbe8e1019d0813f2fcd5cbf5f364b9174bdb)
 - move heatmap + color_scale to svelte stores [`0bb686b`](https://github.com/janosh/elementari/commit/0bb686b05399d63829ec27d57ff7b95b1f7ef790)
 - allow navigating periodic table and detail pages with arrow keys [`8ffef5b`](https://github.com/janosh/elementari/commit/8ffef5b4e02578b18eaf4d4eb2999a2d40b93508)

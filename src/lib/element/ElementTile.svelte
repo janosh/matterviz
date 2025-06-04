@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement, PeriodicTableEvents } from '$lib'
-  import { choose_bw_for_contrast, pretty_num } from '$lib'
+  import { choose_bw_for_contrast, format_num } from '$lib'
   import { selected } from '$lib/state.svelte'
 
   interface Props {
@@ -82,7 +82,7 @@
   {/if}
   {#if value}
     <span class="value">
-      {pretty_num(value, precision)}
+      {format_num(value, precision)}
     </span>
   {:else if show_name}
     <span class="name">
