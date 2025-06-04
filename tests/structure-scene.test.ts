@@ -1,12 +1,11 @@
+import type { XyObj } from '$root/src/lib'
 import { expect, test, type Page } from '@playwright/test'
 
 // Cached atom position to avoid repeated searches
-let cached_atom_position: { x: number; y: number } | null = null
+let cached_atom_position: XyObj | null = null
 
 // Helper function to try multiple positions to find a hoverable atom (optimized)
-async function find_hoverable_atom(
-  page: Page,
-): Promise<{ x: number; y: number } | null> {
+async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
   const canvas = page.locator(`#structure-wrapper canvas`)
 
   // Use cached position if available
