@@ -67,7 +67,7 @@
     bonding_strategy?: keyof typeof bonding_strategies
     bonding_options?: Record<string, unknown>
     active_hovered_dist?: ActiveHoveredDist | null
-    fov?: number // field of view of the camera. 50 is THREE.js default
+    fov?: number // field of view of the camera. smaller values reduce perspective distortion
     ambient_light?: number
     directional_light?: number
     // number of segments in sphere geometry. higher is smoother but more
@@ -106,7 +106,7 @@
     bonding_strategy = `nearest_neighbor`,
     bonding_options = {},
     active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
-    fov = 50,
+    fov = 10,
     ambient_light = 1.8,
     directional_light = 2.5,
     sphere_segments = 20,
@@ -126,8 +126,14 @@
   })
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
   $effect.pre(() => {
-    if (camera_position.every((val) => val === 0)) {
-      camera_position = [12, 4, 2.2 * (lattice?.c ?? 5)]
+    if (camera_position.every((val) => val === 0) && structure) {
+      // Simple approach: use sum of lattice dimensions as size estimate
+      const size = lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10
+      const distance = size * (70 / fov)
+
+      camera_position[0] = distance
+      camera_position[1] = distance * 0.3
+      camera_position[2] = distance * 0.8
     }
   })
   $effect.pre(() => {
@@ -178,7 +184,7 @@
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={lattice ? scale(add(...lattice.matrix), 0.5) : [0, 0, 0]}
+    target={lattice ? (scale(add(...lattice.matrix), 0.5) as Vector) : [0, 0, 0]}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     autoRotate={Boolean(auto_rotate)}
@@ -208,8 +214,10 @@
     {@const { species, xyz } = site}
     {@const site_radius = same_size_atoms
       ? atom_radius
-      : species.reduce((sum, spec) => sum + spec.occu * atomic_radii[spec.element], 0) *
-        atom_radius}
+      : species.reduce(
+          (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
+          0,
+        ) * atom_radius}
     {#each species as { element: elem, occu }, spec_idx ([elem, occu])}
       {@const start_angle = species
         .slice(0, spec_idx)
@@ -277,8 +285,10 @@
     {@const { xyz, species } = site}
     {@const highlight_radius = same_size_atoms
       ? atom_radius
-      : species.reduce((sum, spec) => sum + spec.occu * atomic_radii[spec.element], 0) *
-        atom_radius}
+      : species.reduce(
+          (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
+          0,
+        ) * atom_radius}
     <T.Mesh position={xyz} scale={1.02 * highlight_radius}>
       <T.SphereGeometry args={[0.5, 20, 20]} />
       <T.MeshStandardMaterial color="white" transparent {opacity} />

@@ -3,6 +3,13 @@ import type { ElementSymbol, Vector } from '$lib'
 import { add, format_num, scale } from '$lib'
 import element_data from '$lib/element/data'
 
+export const CELL_DEFAULTS = {
+  edge_opacity: 0.4,
+  surface_opacity: 0.05,
+  color: `#ffffff`,
+  line_width: 1.5,
+} as const
+
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
 export { default as Lattice } from './Lattice.svelte'
@@ -85,7 +92,7 @@ export function get_elem_amounts(structure: Atoms) {
     for (const species of site.species) {
       const { element: elem, occu } = species
       if (elem in elements) {
-        elements[elem] += occu
+        elements[elem]! += occu
       } else {
         elements[elem] = occu
       }
@@ -98,20 +105,20 @@ export function alphabetical_formula(structure: Atoms) {
   // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
   const elements = get_elem_amounts(structure)
   const formula = []
-  for (const el of Object.keys(elements).sort()) {
-    const amount = elements[el]
+  for (const el of Object.keys(elements).sort() as ElementSymbol[]) {
+    const amount = elements[el]!
     formula.push(`${el}${amount}`)
   }
   return formula.join(` `)
 }
 
-export const atomic_radii: Record<ElementSymbol, number> = Object.fromEntries(
-  element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
-)
+export const atomic_radii: Partial<Record<ElementSymbol, number>> =
+  Object.fromEntries(
+    element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
+  )
 
-export const atomic_weights = Object.fromEntries(
-  element_data.map((el) => [el.symbol, el.atomic_mass]),
-)
+export const atomic_weights: Partial<Record<ElementSymbol, number>> =
+  Object.fromEntries(element_data.map((el) => [el.symbol, el.atomic_mass]))
 
 export function get_elements(structure: Atoms): ElementSymbol[] {
   const elems = structure.sites.flatMap((site) =>
@@ -129,7 +136,11 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
   const elements = get_elem_amounts(structure)
   let mass = 0
   for (const [el, amt] of Object.entries(elements)) {
-    mass += amt * atomic_weights[el]
+    const element = el as ElementSymbol
+    const weight = atomic_weights[element]
+    if (weight !== undefined) {
+      mass += amt * weight
+    }
   }
   const dens = (uA3_to_gcm3 * mass) / structure.lattice.volume
   return format_num(dens, prec)
@@ -148,10 +159,10 @@ function generate_permutations(length: number): number[][] {
 export function find_image_atoms(
   structure: PymatgenStructure,
   { tolerance = 0.05 }: { tolerance?: number } = {},
-  // fractional tolerance for determining if a site is at the edge of the unit cell
+  // fractional tolerance for determining if a site is at the edge of the cell
 ): [number, Vector][] {
   /*
-    This function finds all atoms on corners and faces of the unit cell needed to make the cell symmetrically occupied.
+    This function finds all atoms on corners and faces of the cell needed to make the cell symmetrically occupied.
     It returns an array of [atom_idx, image_xyz] pairs where atom_idx is the index of
     the original atom and image_xyz is the position of one of its images.
   */
@@ -179,10 +190,12 @@ export function find_image_atoms(
           if (perm[edge] === 1) {
             if (Math.abs(abc[edge]) < tolerance) {
               // if fractional coordinate is close to 0, add lattice vector to get image location
-              img_xyz = add(img_xyz, lattice_vecs[edge])
+              const sum = add(img_xyz, lattice_vecs[edge])
+              img_xyz = [sum[0], sum[1], sum[2]] as Vector
             } else {
               // if fractional coordinate is close to 1, subtract lattice vector to get image location
-              img_xyz = add(img_xyz, scale(lattice_vecs[edge], -1))
+              const diff = add(img_xyz, scale(lattice_vecs[edge], -1))
+              img_xyz = [diff[0], diff[1], diff[2]] as Vector
             }
           }
         }
@@ -222,10 +235,16 @@ export function get_center_of_mass(struct_or_mol: Atoms): Vector {
     // TODO this assumes there's just one species. doesn't handle disordered sites
     const wt = site.species[0].occu
 
-    center = add(center, scale(site.xyz, wt))
+    const scaled_pos = scale(site.xyz, wt)
+    center = [
+      center[0] + scaled_pos[0],
+      center[1] + scaled_pos[1],
+      center[2] + scaled_pos[2],
+    ] as Vector
 
     total_weight += wt
   }
 
-  return scale(center, 1 / total_weight)
+  const result = scale(center, 1 / total_weight)
+  return [result[0], result[1], result[2]] as Vector
 }

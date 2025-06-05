@@ -799,7 +799,7 @@
   }
 
   // Generate axis ticks
-  let x_tick_values = $derived(() => {
+  let x_tick_values = $derived.by(() => {
     if (!width || !height) return []
 
     // Time-based ticks
@@ -845,7 +845,7 @@
     return ticks.map(Number)
   })
 
-  let y_tick_values = $derived(() => {
+  let y_tick_values = $derived.by(() => {
     if (!width || !height) return []
 
     if (y_scale_type === `log`) return generate_log_ticks(y_min, y_max, y_ticks)
@@ -1405,7 +1405,7 @@
       <!-- X-axis -->
       <g class="x-axis">
         {#if width > 0 && height > 0}
-          {#each x_tick_values() as tick (tick)}
+          {#each x_tick_values as tick (tick)}
             {@const tick_pos_raw = x_format?.startsWith(`%`)
               ? x_scale_fn(new Date(tick))
               : x_scale_fn(tick)}
@@ -1446,7 +1446,7 @@
       <!-- Y-axis -->
       <g class="y-axis">
         {#if width > 0 && height > 0}
-          {#each y_tick_values() as tick, idx (tick)}
+          {#each y_tick_values as tick, idx (tick)}
             {@const tick_pos_raw = y_scale_fn(tick)}
             {#if isFinite(tick_pos_raw)}
               // Check if tick position is finite

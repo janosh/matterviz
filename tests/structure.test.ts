@@ -412,10 +412,13 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_open_status).toContainText(`true`)
     await expect(controls_dialog).toHaveAttribute(`open`)
 
-    // Test select dropdown
-    const cell_select = controls_dialog.locator(`select`).first()
-    await expect(cell_select).toBeVisible()
-    await cell_select.selectOption(`surface`)
+    // Test color scheme select dropdown (this still exists)
+    const color_scheme_select = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Color scheme/ })
+      .locator(`select`)
+    await expect(color_scheme_select).toBeVisible()
+    await color_scheme_select.selectOption(`Jmol`)
     await page.waitForTimeout(100)
     await expect(controls_open_status).toContainText(`true`)
     await expect(controls_dialog).toHaveAttribute(`open`)
@@ -643,5 +646,184 @@ test.describe(`Structure Component Tests`, () => {
     await bonding_strategy_select.selectOption(`nearest_neighbor`)
     await page.waitForTimeout(100)
     await expect(controls_open_status).toContainText(`true`)
+  })
+
+  test(`dual opacity controls for unit cell edges and surfaces work correctly`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const canvas = structure_component.locator(`canvas`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Open controls panel using test page checkbox
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+
+    // Wait for dialog to be visible
+    await expect(controls_dialog).toHaveAttribute(`open`, ``, { timeout: 2000 })
+
+    // Find the new opacity controls
+    const edge_opacity_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Cell edges opacity/ })
+    const surface_opacity_label = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Cell surfaces opacity/ })
+
+    await expect(edge_opacity_label).toBeVisible()
+    await expect(surface_opacity_label).toBeVisible()
+
+    // Test edge opacity slider
+    const edge_opacity_range = edge_opacity_label.locator(`input[type="range"]`)
+    const edge_opacity_number =
+      edge_opacity_label.locator(`input[type="number"]`)
+
+    await expect(edge_opacity_range).toBeVisible()
+    await expect(edge_opacity_number).toBeVisible()
+
+    const initial_screenshot = await canvas.screenshot()
+
+    // Change edge opacity to maximum
+    await edge_opacity_range.fill(`1`)
+    await page.waitForTimeout(300)
+
+    const after_edge_change = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_edge_change)).toBe(false)
+
+    // Test surface opacity slider
+    const surface_opacity_range =
+      surface_opacity_label.locator(`input[type="range"]`)
+    const surface_opacity_number =
+      surface_opacity_label.locator(`input[type="number"]`)
+
+    await expect(surface_opacity_range).toBeVisible()
+    await expect(surface_opacity_number).toBeVisible()
+
+    // Change surface opacity to visible level
+    await surface_opacity_range.fill(`0.5`)
+    await page.waitForTimeout(300)
+
+    const after_surface_change = await canvas.screenshot()
+    expect(after_edge_change.equals(after_surface_change)).toBe(false)
+
+    // Test that number inputs are synchronized with range inputs
+    await edge_opacity_number.fill(`0.5`)
+    await page.waitForTimeout(100)
+    expect(await edge_opacity_range.inputValue()).toBe(`0.5`)
+
+    await surface_opacity_number.fill(`0.2`)
+    await page.waitForTimeout(100)
+    expect(await surface_opacity_range.inputValue()).toBe(`0.2`)
+
+    // Panel should remain open throughout
+    const controls_open_status = page.locator(
+      `[data-testid="controls-open-status"]`,
+    )
+    await expect(controls_open_status).toContainText(`true`)
+  })
+
+  test(`opacity controls affect rendering independently`, async ({ page }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const canvas = structure_component.locator(`canvas`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Open controls panel
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+    await expect(controls_dialog).toHaveAttribute(`open`, ``, { timeout: 2000 })
+
+    const edge_opacity_range = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Cell edges opacity/ })
+      .locator(`input[type="range"]`)
+
+    const surface_opacity_range = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Cell surfaces opacity/ })
+      .locator(`input[type="range"]`)
+
+    // Test edges only (surfaces off)
+    await edge_opacity_range.fill(`0.8`)
+    await surface_opacity_range.fill(`0`)
+    await page.waitForTimeout(500)
+    const edges_only_screenshot = await canvas.screenshot()
+
+    // Test surfaces only (edges off)
+    await edge_opacity_range.fill(`0`)
+    await surface_opacity_range.fill(`0.3`)
+    await page.waitForTimeout(500)
+    const surfaces_only_screenshot = await canvas.screenshot()
+
+    // Test both visible
+    await edge_opacity_range.fill(`0.6`)
+    await surface_opacity_range.fill(`0.2`)
+    await page.waitForTimeout(500)
+    const both_visible_screenshot = await canvas.screenshot()
+
+    // Test neither visible
+    await edge_opacity_range.fill(`0`)
+    await surface_opacity_range.fill(`0`)
+    await page.waitForTimeout(500)
+    const neither_visible_screenshot = await canvas.screenshot()
+
+    // All four states should produce different visual outputs
+    expect(edges_only_screenshot.equals(surfaces_only_screenshot)).toBe(false)
+    expect(edges_only_screenshot.equals(both_visible_screenshot)).toBe(false)
+    expect(edges_only_screenshot.equals(neither_visible_screenshot)).toBe(false)
+    expect(surfaces_only_screenshot.equals(both_visible_screenshot)).toBe(false)
+    expect(surfaces_only_screenshot.equals(neither_visible_screenshot)).toBe(
+      false,
+    )
+    expect(both_visible_screenshot.equals(neither_visible_screenshot)).toBe(
+      false,
+    )
+  })
+
+  test(`opacity controls have proper validation and limits`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`dialog.controls`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    // Open controls panel
+    await test_page_controls_checkbox.check()
+    await page.waitForTimeout(500)
+    await expect(controls_dialog).toHaveAttribute(`open`, ``, { timeout: 2000 })
+
+    const edge_opacity_number = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Cell edges opacity/ })
+      .locator(`input[type="number"]`)
+
+    const surface_opacity_number = controls_dialog
+      .locator(`label`)
+      .filter({ hasText: /Cell surfaces opacity/ })
+      .locator(`input[type="number"]`)
+
+    // Check input attributes for proper validation
+    await expect(edge_opacity_number).toHaveAttribute(`min`, `0`)
+    await expect(edge_opacity_number).toHaveAttribute(`max`, `1`)
+    await expect(edge_opacity_number).toHaveAttribute(`step`, `0.05`)
+
+    await expect(surface_opacity_number).toHaveAttribute(`min`, `0`)
+    await expect(surface_opacity_number).toHaveAttribute(`max`, `1`)
+    await expect(surface_opacity_number).toHaveAttribute(`step`, `0.05`)
+
+    // Test setting values within valid range
+    await edge_opacity_number.fill(`0.75`)
+    await surface_opacity_number.fill(`0.25`)
+    await page.waitForTimeout(100)
+
+    expect(await edge_opacity_number.inputValue()).toBe(`0.75`)
+    expect(await surface_opacity_number.inputValue()).toBe(`0.25`)
   })
 })

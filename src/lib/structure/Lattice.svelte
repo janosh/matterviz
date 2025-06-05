@@ -1,31 +1,27 @@
+<!-- Export default values for use in other components -->
 <script lang="ts">
   import { add, scale, type Vector } from '$lib'
   import { T } from '@threlte/core'
   import { InstancedMesh } from '@threlte/extras'
   import { BoxGeometry, EdgesGeometry, Euler, Matrix4, Quaternion, Vector3 } from 'three'
-  import Bond from './Bond.svelte'
+  import { Bond, CELL_DEFAULTS } from '.'
 
   interface Props {
     matrix?: [Vector, Vector, Vector] | undefined
-    show_cell?: `surface` | `wireframe` | null
     cell_color?: string
-    // thickness of the wireframe lines that indicate the lattice's unit cell
-    cell_line_width?: number
-    // cell opacity
-    cell_opacity?: number | undefined
-    // whether to show the lattice vectors
-    show_vectors?: boolean
-    // lattice vector colors
-    vector_colors?: [string, string, string]
-    // lattice vector origin (all arrows start from this point)
-    vector_origin?: Vector
+    cell_line_width?: number // thickness of the cell edges
+    cell_edge_opacity?: number // opacity of the cell edges
+    cell_surface_opacity?: number // opacity of the cell surfaces
+    show_vectors?: boolean // whether to show the lattice vectors
+    vector_colors?: [string, string, string] // lattice vector colors
+    vector_origin?: Vector // lattice vector origin (all arrows start from this point)
   }
   let {
     matrix = undefined,
-    show_cell = `wireframe`,
-    cell_color = `white`,
-    cell_line_width = 1.5,
-    cell_opacity = show_cell == `surface` ? 0.2 : 0.4,
+    cell_color = CELL_DEFAULTS.color,
+    cell_line_width = CELL_DEFAULTS.line_width,
+    cell_edge_opacity = CELL_DEFAULTS.edge_opacity,
+    cell_surface_opacity = CELL_DEFAULTS.surface_opacity,
     show_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] as Vector,
@@ -75,50 +71,52 @@
 
 {#if matrix}
   {#key matrix}
-    {#if show_cell}
-      {@const shear_matrix = new Matrix4().makeBasis(
-        new Vector3(...matrix[0]),
-        new Vector3(...matrix[1]),
-        new Vector3(...matrix[2]),
-      )}
-      {@const box_geometry = new BoxGeometry(1, 1, 1).applyMatrix4(shear_matrix)}
+    {@const shear_matrix = new Matrix4().makeBasis(
+      new Vector3(...matrix[0]),
+      new Vector3(...matrix[1]),
+      new Vector3(...matrix[2]),
+    )}
+    {@const box_geometry = new BoxGeometry(1, 1, 1).applyMatrix4(shear_matrix)}
 
-      {#if show_cell === `wireframe`}
-        {@const edges_geometry = new EdgesGeometry(box_geometry)}
-        {@const edge_segments = get_edge_segments(edges_geometry)}
+    <!-- Render wireframe edges if edge opacity > 0 -->
+    {#if cell_edge_opacity > 0}
+      {@const edges_geometry = new EdgesGeometry(box_geometry)}
+      {@const edge_segments = get_edge_segments(edges_geometry)}
 
-        <!-- Use cylinders for thick wireframe lines -->
-        <T.Group position={lattice_center}>
-          {#each edge_segments as [start, end], idx (idx)}
-            {@const { position, rotation, length } = get_cylinder_transform(start, end)}
-            <T.Mesh {position} {rotation}>
-              <T.CylinderGeometry
-                args={[cell_line_width * 0.01, cell_line_width * 0.01, length, 8]}
-              />
-              <T.MeshBasicMaterial
-                color={cell_color}
-                opacity={cell_opacity}
-                transparent={cell_opacity !== undefined && cell_opacity < 1}
-              />
-            </T.Mesh>
-          {/each}
-        </T.Group>
-      {:else}
-        <T.Mesh geometry={box_geometry} position={lattice_center}>
-          <T.MeshBasicMaterial
-            color={cell_color}
-            opacity={cell_opacity}
-            transparent={cell_opacity !== undefined}
-          />
-        </T.Mesh>
-      {/if}
+      <!-- Use cylinders for thick wireframe lines -->
+      <T.Group position={lattice_center}>
+        {#each edge_segments as [start, end], idx (idx)}
+          {@const { position, rotation, length } = get_cylinder_transform(start, end)}
+          <T.Mesh {position} {rotation}>
+            <T.CylinderGeometry
+              args={[cell_line_width * 0.01, cell_line_width * 0.01, length, 8]}
+            />
+            <T.MeshStandardMaterial
+              color={cell_color}
+              opacity={cell_edge_opacity}
+              transparent
+            />
+          </T.Mesh>
+        {/each}
+      </T.Group>
+    {/if}
+
+    <!-- Render transparent surfaces if surface opacity > 0 -->
+    {#if cell_surface_opacity > 0}
+      <T.Mesh geometry={box_geometry} position={lattice_center}>
+        <T.MeshStandardMaterial
+          color={cell_color}
+          opacity={cell_surface_opacity}
+          transparent
+        />
+      </T.Mesh>
     {/if}
 
     {#if show_vectors}
       <T.Group position={vector_origin}>
         <!-- arrow shafts -->
         <InstancedMesh>
-          <T.CylinderGeometry args={[0.1, 0.1, 1, 16]} />
+          <T.CylinderGeometry args={[0.05, 0.05, 1, 16]} />
           <T.MeshStandardMaterial />
           {#each matrix as vec, idx (vec)}
             <Bond to={scale(vec, 0.5) as Vector} color={vector_colors[idx]} />
@@ -129,7 +127,7 @@
         <InstancedMesh>
           <T.MeshStandardMaterial />
           <!-- args=[thickness, length, radial segments] -->
-          <T.ConeGeometry args={[0.25, 0.12, 32]} />
+          <T.ConeGeometry args={[0.15, 0.08, 32]} />
           {#each matrix as vec, idx (vec)}
             <Bond to={vec} color={vector_colors[idx]} />
           {/each}
