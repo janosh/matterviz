@@ -32,11 +32,6 @@ export const default_category_colors: Record<string, string> = {
 export type RGBColor = readonly [number, number, number]
 export type ElementColorScheme = Record<(typeof elem_symbols)[number], RGBColor>
 
-/**
- * Convert RGB color scheme object to hex format
- * @param obj - Object with element symbols as keys and RGB arrays as values
- * @returns Object with element symbols as keys and hex color strings as values
- */
 function rgb_scheme_to_hex(
   obj: Record<string, RGBColor>,
 ): Record<string, string> {
