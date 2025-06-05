@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { format_num } from '$lib'
+  import { format_num, InfoCard } from '$lib'
   import { alphabetical_formula, density, type PymatgenStructure } from '.'
-  import InfoCard from '../InfoCard.svelte'
 
   interface Props {
     structure: PymatgenStructure

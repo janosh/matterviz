@@ -477,9 +477,9 @@ test.describe(`StructureScene Component Tests`, () => {
         const event = new CustomEvent(`setLatticeProps`, {
           detail: {
             cell_color: `#ff0000`,
-            cell_opacity: 0.8,
+            cell_edge_opacity: 0.8,
+            cell_surface_opacity: 0.1,
             cell_line_width: 2,
-            show_cell: `wireframe`,
           },
         })
         window.dispatchEvent(event)
@@ -520,7 +520,10 @@ test.describe(`StructureScene Component Tests`, () => {
     for (const opacity of test_opacities) {
       await page.evaluate((test_opacity) => {
         const event = new CustomEvent(`setLatticeProps`, {
-          detail: { cell_opacity: test_opacity },
+          detail: {
+            cell_edge_opacity: test_opacity,
+            cell_surface_opacity: test_opacity * 0.2,
+          },
         })
         window.dispatchEvent(event)
       }, opacity)
@@ -533,55 +536,80 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Test wireframe vs surface mode differences with EdgesGeometry
-  test(`wireframe and surface cell modes render differently`, async ({
+  // Test dual opacity controls allow flexible edge/surface combinations
+  test(`dual opacity controls allow flexible edge and surface combinations`, async ({
     page,
   }) => {
     const console_errors = setup_console_monitoring(page)
     const canvas = page.locator(`#structure-wrapper canvas`)
 
-    // Take baseline screenshot with wireframe
+    // Test edges only (surface opacity = 0)
     await page.evaluate(() => {
       const event = new CustomEvent(`setLatticeProps`, {
         detail: {
-          show_cell: `wireframe`,
+          cell_edge_opacity: 0.8,
+          cell_surface_opacity: 0,
           cell_color: `#ffffff`,
-          cell_opacity: 0.6,
         },
       })
       window.dispatchEvent(event)
     })
     await page.waitForTimeout(1000)
-    const wireframe_screenshot = await canvas.screenshot()
+    const edges_only_screenshot = await canvas.screenshot()
 
-    // Switch to surface mode
+    // Test surfaces only (edge opacity = 0)
     await page.evaluate(() => {
       const event = new CustomEvent(`setLatticeProps`, {
         detail: {
-          show_cell: `surface`,
+          cell_edge_opacity: 0,
+          cell_surface_opacity: 0.4,
           cell_color: `#ffffff`,
-          cell_opacity: 0.6,
         },
       })
       window.dispatchEvent(event)
     })
     await page.waitForTimeout(1000)
-    const surface_screenshot = await canvas.screenshot()
+    const surfaces_only_screenshot = await canvas.screenshot()
 
-    // Switch to no cell
+    // Test both visible with different opacities
     await page.evaluate(() => {
       const event = new CustomEvent(`setLatticeProps`, {
-        detail: { show_cell: null },
+        detail: {
+          cell_edge_opacity: 0.6,
+          cell_surface_opacity: 0.3,
+          cell_color: `#ffffff`,
+        },
       })
       window.dispatchEvent(event)
     })
     await page.waitForTimeout(1000)
-    const no_cell_screenshot = await canvas.screenshot()
+    const both_visible_screenshot = await canvas.screenshot()
 
-    // Verify all three modes produce different visual outputs
-    expect(wireframe_screenshot.equals(surface_screenshot)).toBe(false)
-    expect(wireframe_screenshot.equals(no_cell_screenshot)).toBe(false)
-    expect(surface_screenshot.equals(no_cell_screenshot)).toBe(false)
+    // Test neither visible (both opacity = 0)
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0,
+          cell_surface_opacity: 0,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const neither_visible_screenshot = await canvas.screenshot()
+
+    // Verify all four combinations produce different visual outputs
+    expect(edges_only_screenshot.equals(surfaces_only_screenshot)).toBe(false)
+    expect(edges_only_screenshot.equals(both_visible_screenshot)).toBe(false)
+    expect(edges_only_screenshot.equals(neither_visible_screenshot)).toBe(false)
+    expect(surfaces_only_screenshot.equals(both_visible_screenshot)).toBe(false)
+    expect(surfaces_only_screenshot.equals(neither_visible_screenshot)).toBe(
+      false,
+    )
+    expect(both_visible_screenshot.equals(neither_visible_screenshot)).toBe(
+      false,
+    )
 
     expect(console_errors).toHaveLength(0)
   })
@@ -597,9 +625,9 @@ test.describe(`StructureScene Component Tests`, () => {
     await page.evaluate(() => {
       const event = new CustomEvent(`setLatticeProps`, {
         detail: {
-          show_cell: `wireframe`,
           cell_color: `#ffffff`,
-          cell_opacity: 1.0,
+          cell_edge_opacity: 1.0,
+          cell_surface_opacity: 0,
           cell_line_width: 3,
         },
       })
@@ -644,9 +672,9 @@ test.describe(`StructureScene Component Tests`, () => {
       await page.evaluate((test_width) => {
         const event = new CustomEvent(`setLatticeProps`, {
           detail: {
-            show_cell: `wireframe`,
             cell_color: `#ffffff`,
-            cell_opacity: 1.0,
+            cell_edge_opacity: 1.0,
+            cell_surface_opacity: 0,
             cell_line_width: test_width,
           },
         })
@@ -659,6 +687,169 @@ test.describe(`StructureScene Component Tests`, () => {
     }
 
     // Verify no errors occurred even if visual changes are limited by WebGL
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test dual opacity controls for edges and surfaces
+  test(`edge and surface opacity controls work independently`, async ({
+    page,
+  }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Set baseline with both edges and surfaces visible
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0.8,
+          cell_surface_opacity: 0.3,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const both_visible_screenshot = await canvas.screenshot()
+
+    // Test edges only (surface opacity = 0)
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0.8,
+          cell_surface_opacity: 0,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const edges_only_screenshot = await canvas.screenshot()
+
+    // Test surfaces only (edge opacity = 0)
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0,
+          cell_surface_opacity: 0.3,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const surfaces_only_screenshot = await canvas.screenshot()
+
+    // Test neither visible (both opacity = 0)
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0,
+          cell_surface_opacity: 0,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const neither_visible_screenshot = await canvas.screenshot()
+
+    // Verify all four modes produce different visual outputs
+    expect(both_visible_screenshot.equals(edges_only_screenshot)).toBe(false)
+    expect(both_visible_screenshot.equals(surfaces_only_screenshot)).toBe(false)
+    expect(both_visible_screenshot.equals(neither_visible_screenshot)).toBe(
+      false,
+    )
+    expect(edges_only_screenshot.equals(surfaces_only_screenshot)).toBe(false)
+    expect(edges_only_screenshot.equals(neither_visible_screenshot)).toBe(false)
+    expect(surfaces_only_screenshot.equals(neither_visible_screenshot)).toBe(
+      false,
+    )
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test opacity range validation
+  test(`opacity values are clamped to valid range`, async ({ page }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Test extreme values
+    const test_values = [-0.5, 0, 0.5, 1, 1.5]
+
+    for (const opacity of test_values) {
+      await page.evaluate((test_opacity) => {
+        const event = new CustomEvent(`setLatticeProps`, {
+          detail: {
+            cell_edge_opacity: test_opacity,
+            cell_surface_opacity: test_opacity,
+            cell_color: `#ffffff`,
+          },
+        })
+        window.dispatchEvent(event)
+      }, opacity)
+
+      await page.waitForTimeout(500)
+      const opacity_screenshot = await canvas.screenshot()
+      expect(opacity_screenshot.length).toBeGreaterThan(1000)
+    }
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test that opacity values can be set independently and produce expected results
+  test(`independent opacity controls work correctly across different values`, async ({
+    page,
+  }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Test low edge opacity, no surfaces
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0.2,
+          cell_surface_opacity: 0,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const low_edge_screenshot = await canvas.screenshot()
+
+    // Test high edge opacity, no surfaces
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0.9,
+          cell_surface_opacity: 0,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const high_edge_screenshot = await canvas.screenshot()
+
+    // Test no edges, low surface opacity
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          cell_edge_opacity: 0,
+          cell_surface_opacity: 0.2,
+          cell_color: `#ffffff`,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const low_surface_screenshot = await canvas.screenshot()
+
+    // Verify different opacity levels produce different visual outputs
+    expect(low_edge_screenshot.equals(high_edge_screenshot)).toBe(false)
+    expect(low_edge_screenshot.equals(low_surface_screenshot)).toBe(false)
+    expect(high_edge_screenshot.equals(low_surface_screenshot)).toBe(false)
+
     expect(console_errors).toHaveLength(0)
   })
 })

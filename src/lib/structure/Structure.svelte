@@ -8,8 +8,7 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { Tooltip } from 'svelte-zoo'
-  import StructureLegend from './StructureLegend.svelte'
-  import StructureScene from './StructureScene.svelte'
+  import { CELL_DEFAULTS, StructureLegend, StructureScene } from '.'
 
   interface Props {
     // output of pymatgen.core.Structure.as_dict()
@@ -60,7 +59,13 @@
   let {
     structure = $bindable(undefined),
     scene_props = $bindable({ atom_radius: 1, show_atoms: true, auto_rotate: 0 }),
-    lattice_props = $bindable({}),
+    lattice_props = $bindable({
+      cell_edge_opacity: CELL_DEFAULTS.edge_opacity,
+      cell_surface_opacity: CELL_DEFAULTS.surface_opacity,
+      cell_color: CELL_DEFAULTS.color,
+      cell_line_width: CELL_DEFAULTS.line_width,
+      show_vectors: true,
+    }),
     controls_open = $bindable(false),
     background_color = $bindable(`#ffffff`),
     background_opacity = $bindable(0.1),
@@ -252,6 +257,7 @@
     <StructureLegend elements={get_elem_amounts(structure)} bind:tips_modal />
 
     <dialog class="controls" bind:this={controls} open={controls_open}>
+      <!-- Visibility Controls -->
       <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap;">
         Show <label>
           <input type="checkbox" bind:checked={scene_props.show_atoms} />
@@ -262,37 +268,25 @@
           bonds
         </label>
         <label>
-          <input type="checkbox" bind:checked={lattice_props.show_vectors} />
-          lattice vectors
-        </label>
-        <label>
           <input type="checkbox" bind:checked={show_image_atoms} />
           image atoms
-        </label>
-        <!-- add a toggle that's to show or hide the full currently visible set of controls. it should be off by default in which case only the controls the user is most likely to need are shown -->
-        <label>
-          <input type="checkbox" bind:checked={show_full_controls} />
-          full controls
         </label>
         <label>
           <input type="checkbox" bind:checked={show_site_labels} />
           site labels
         </label>
         <label>
-          <select bind:value={lattice_props.show_cell}>
-            <option value="wireframe">wireframe</option>
-            <option value="surface">surface</option>
-            <option value={null}>none</option>
-          </select>
-          unit cell as
+          <input type="checkbox" bind:checked={show_full_controls} />
+          full controls
         </label>
       </div>
 
       <hr />
 
-      <label>
-        Atom radius
-        <small> (Å)</small>
+      <!-- Atom Controls -->
+      <h4 class="section-heading">Atoms</h4>
+      <label class="slider-control">
+        Radius <small>(Å)</small>
         <input
           type="number"
           min="0.1"
@@ -311,46 +305,83 @@
       <label>
         <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
         <span>
-          Scale sites according to atomic radii
-          <small> (if false, all atoms have same size)</small>
+          Scale according to atomic radii
+          <small> (if false, all atoms same size)</small>
         </span>
       </label>
 
+      <!-- Cell Controls -->
+      <h4 class="section-heading">Cell</h4>
       <label>
-        Background color
-        <input type="color" bind:value={background_color} />
+        <input type="checkbox" bind:checked={lattice_props.show_vectors} />
+        lattice vectors
       </label>
-      <label>
-        Background opacity
-        <input
-          type="number"
-          min={0}
-          max={1}
-          step={0.05}
-          bind:value={background_opacity}
-        />
-        <input type="range" min={0} max={1} step={0.05} bind:value={background_opacity} />
-      </label>
-
-      {#if lattice_props.show_cell}
-        <label>
-          Unit cell opacity
+      <div class="control-row">
+        <label class="compact">
+          Color
+          <input type="color" bind:value={lattice_props.cell_color} />
+        </label>
+        <label class="slider-control">
+          Edge opacity
           <input
             type="number"
             min={0}
             max={1}
             step={0.05}
-            bind:value={lattice_props.cell_opacity}
+            bind:value={lattice_props.cell_edge_opacity}
           />
           <input
             type="range"
             min={0}
             max={1}
             step={0.05}
-            bind:value={lattice_props.cell_opacity}
+            bind:value={lattice_props.cell_edge_opacity}
           />
         </label>
-      {/if}
+      </div>
+      <label class="slider-control">
+        Surface opacity
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={lattice_props.cell_surface_opacity}
+        />
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={lattice_props.cell_surface_opacity}
+        />
+      </label>
+
+      <!-- Background Controls -->
+      <h4 class="section-heading">Background</h4>
+      <div class="control-row">
+        <label class="compact">
+          Color
+          <input type="color" bind:value={background_color} />
+        </label>
+        <label class="slider-control">
+          Opacity
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            bind:value={background_opacity}
+          />
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            bind:value={background_opacity}
+          />
+        </label>
+      </div>
 
       {#if show_full_controls}
         <label>
@@ -617,14 +648,21 @@
   }
   dialog.controls input[type='range'] {
     margin-left: auto;
+    width: var(--struct-controls-input-range-width, 100px);
+    flex-shrink: 0;
+  }
+  .slider-control input[type='range'] {
+    margin-left: 0;
   }
   dialog.controls input[type='number'] {
     box-sizing: border-box;
     text-align: center;
     border-radius: var(--struct-controls-input-num-border-radius, 3pt);
-    width: var(--struct-controls-input-num-width, 2em);
+    width: var(--struct-controls-input-num-width, 2.2em);
     border: var(--struct-controls-input-num-border, none);
     background: var(--struct-controls-input-num-bg, rgba(255, 255, 255, 0.15));
+    margin-right: 3pt;
+    flex-shrink: 0;
   }
   input::-webkit-inner-spin-button {
     display: none;
@@ -645,7 +683,6 @@
     color: var(--struct-controls-select-color, white);
     background-color: var(--struct-controls-select-bg, rgba(255, 255, 255, 0.1));
   }
-
   p.warn {
     text-align: center;
   }
@@ -656,8 +693,27 @@
     border: var(--struct-input-color-border, 1px solid rgba(255, 255, 255, 0.05));
     box-sizing: border-box;
   }
-
   .structure :global(canvas) {
     pointer-events: auto;
+  }
+  .section-heading {
+    margin: 8pt 0 2pt;
+    font-size: 0.9em;
+    color: var(--text-muted, #ccc);
+  }
+  .control-row {
+    display: flex;
+    gap: 4pt;
+    align-items: flex-start;
+  }
+  .control-row label {
+    min-width: 0;
+  }
+  .control-row label.compact {
+    flex: 0 0 auto;
+    margin-right: 8pt;
+  }
+  .control-row label.slider-control {
+    flex: 1;
   }
 </style>
