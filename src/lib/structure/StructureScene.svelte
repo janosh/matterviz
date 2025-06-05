@@ -1,6 +1,15 @@
 <script lang="ts">
   import type { Atoms, BondPair, Site, Vector } from '$lib'
-  import { Bond, Lattice, add, atomic_radii, euclidean_dist, scale } from '$lib'
+  import {
+    Bond,
+    Lattice,
+    add,
+    atomic_radii,
+    element_data,
+    euclidean_dist,
+    pbc_dist,
+    scale,
+  } from '$lib'
   import { format_num } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import { T } from '@threlte/core'
@@ -129,6 +138,36 @@
 
   // make bond thickness reactive to atom_radius unless bond_radius is set
   let bond_thickness = $derived(bond_radius ?? 0.05 * atom_radius)
+
+  // Create modest gizmo options with balanced colors
+  let gizmo_options = $derived.by(() => {
+    const axis_options = Object.fromEntries(
+      [
+        [`x`, `#d75555`, `#e66666`], // red
+        [`y`, `#55b855`, `#66c966`], // green
+        [`z`, `#5555d7`, `#6666e6`], // blue
+        [`nx`, `#b84444`, `#cc5555`], // darker red
+        [`ny`, `#44a044`, `#55b155`], // darker green
+        [`nz`, `#4444b8`, `#5555c9`], // darker blue
+      ].map(([axis, color, hover_color]) => [
+        axis,
+        {
+          color,
+          labelColor: `#555555`,
+          opacity: axis.startsWith(`n`) ? 0.7 : 0.85,
+          hover: {
+            color: hover_color,
+            labelColor: `#222222`,
+            opacity: axis.startsWith(`n`) ? 0.85 : 0.95,
+          },
+        },
+      ]),
+    )
+
+    const default_options = { size: 100, background: { enabled: false }, ...axis_options }
+
+    return { ...default_options, ...(typeof gizmo === `boolean` ? {} : gizmo) }
+  })
 </script>
 
 <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
@@ -156,7 +195,7 @@
     }}
   >
     {#if gizmo}
-      <Gizmo size={100} {...typeof gizmo === `boolean` ? {} : gizmo} />
+      <Gizmo {...gizmo_options} />
     {/if}
   </OrbitControls>
 </T.PerspectiveCamera>
@@ -266,6 +305,8 @@
         {#each hovered_site.species ?? [] as { element, occu, oxidation_state: oxi_state }, idx ([element, occu, oxi_state])}
           {@const oxi_str =
             oxi_state && Math.abs(oxi_state) + (oxi_state > 0 ? `+` : `-`)}
+          {@const element_name =
+            element_data.find((elem) => elem.symbol === element)?.name ?? ``}
           {#if idx > 0}
             &thinsp;
           {/if}
@@ -273,6 +314,9 @@
             <span class="occupancy">{format_num(occu, `.3~f`)}</span>
           {/if}
           <strong>{element}{oxi_str ?? ``}</strong>
+          {#if element_name}
+            <span class="elem-name">{element_name}</span>
+          {/if}
         {/each}
       </div>
 
@@ -287,12 +331,17 @@
       </div>
 
       <!-- distance from hovered to active site -->
-      <!-- TODO this doesn't handle periodic boundaries yet, so is currently grossly misleading -->
       {#if active_site && active_site != hovered_site && active_hovered_dist}
-        {@const distance = euclidean_dist(hovered_site.xyz, active_site.xyz)}
+        {@const direct_distance = euclidean_dist(hovered_site.xyz, active_site.xyz)}
+        {@const pbc_distance = lattice
+          ? pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
+          : direct_distance}
         <div class="distance">
           <strong>dist:</strong>
-          {format_num(distance, precision)} Å (no PBC yet)
+          {format_num(pbc_distance, precision)} Å{lattice ? ` (PBC)` : ``}
+          {#if lattice && Math.abs(pbc_distance - direct_distance) > 0.1}
+            <small> | direct: {format_num(direct_distance, precision)} Å</small>
+          {/if}
         </div>
       {/if}
     </div>
@@ -307,7 +356,6 @@
   div.tooltip {
     width: max-content;
     box-sizing: border-box;
-    pointer-events: none;
     border-radius: var(--struct-tooltip-border-radius, 5pt);
     background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.5));
     padding: var(--struct-tooltip-padding, 1pt 5pt);
@@ -326,6 +374,13 @@
     font-size: var(--struct-tooltip-occu-font-size);
     opacity: var(--struct-tooltip-occu-opacity);
     margin-right: var(--struct-tooltip-occu-margin);
+  }
+
+  div.tooltip .elem-name {
+    font-size: var(--struct-tooltip-elem-name-font-size, 0.85em);
+    opacity: var(--struct-tooltip-elem-name-opacity, 0.7);
+    margin: var(--struct-tooltip-elem-name-margin, 0 0 0 0.3em);
+    font-weight: var(--struct-tooltip-elem-name-font-weight, normal);
   }
 
   div.tooltip .coordinates,

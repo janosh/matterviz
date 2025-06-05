@@ -89,7 +89,6 @@
   div label {
     padding: var(--struct-legend-pad, 1pt 4pt);
     border-radius: var(--struct-legend-radius, 3pt);
-    pointer-events: auto;
   }
   div label input[type='color'] {
     z-index: var(--struct-legend-input-z, 1);

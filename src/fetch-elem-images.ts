@@ -53,9 +53,7 @@ const arg = process.argv.find((arg: string) =>
 )
 const action = arg?.split(`:`)[1]
 if (![`report`, `download`, `re-download`].includes(action)) {
-  throw new Error(
-    `Correct usage: vite [dev] fetch-elem-images:[report|download|re-download], got ${arg}\n`,
-  )
+  throw `Correct usage: vite [dev] fetch-elem-images:[report|download|re-download], got ${arg}\n`
 }
 if (action.endsWith(`download`)) console.log(`Downloading images...`)
 if (action === `report`) console.log(`Missing images`)

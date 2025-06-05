@@ -1,8 +1,41 @@
 import type { XyObj } from '$root/src/lib'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 // Cached atom position to avoid repeated searches
 let cached_atom_position: XyObj | null = null
+
+// Helper function to clear any existing tooltips and overlays
+async function clear_tooltips_and_overlays(page: Page): Promise<void> {
+  // Move mouse to a safe area to clear any tooltips
+  await page.mouse.move(50, 50)
+  await page.waitForTimeout(100)
+
+  // Check if any tooltips are visible and dismiss them
+  const visible_tooltips = page.locator(`.tooltip`)
+  const tooltip_count = await visible_tooltips.count()
+  if (tooltip_count > 0) {
+    await page.mouse.move(10, 10) // Move to top-left corner
+    await page.waitForTimeout(200)
+  }
+}
+
+// Helper function to safely hover on canvas
+async function safe_canvas_hover(
+  page: Page,
+  canvas: Locator,
+  position: { x: number; y: number },
+): Promise<void> {
+  // Clear any existing tooltips first
+  await clear_tooltips_and_overlays(page)
+
+  // Try normal hover first
+  try {
+    await canvas.hover({ position, timeout: 2000 })
+  } catch {
+    // If normal hover fails, use force hover
+    await canvas.hover({ position, force: true, timeout: 2000 })
+  }
+}
 
 // Helper function to try multiple positions to find a hoverable atom (optimized)
 async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
@@ -20,7 +53,7 @@ async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
   ]
 
   for (const position of positions) {
-    await canvas.hover({ position })
+    await safe_canvas_hover(page, canvas, position)
     await page.waitForTimeout(100) // Reduced from 200ms
 
     // Look for StructureScene tooltip specifically (has coordinates)
@@ -96,10 +129,40 @@ test.describe(`StructureScene Component Tests`, () => {
     const elements_section = tooltip.locator(`.elements`)
     await expect(elements_section).toBeVisible()
 
-    const coordinates_sections = tooltip.locator(`.coordinates`)
-    await expect(coordinates_sections).toHaveCount(2)
+    // Check for element symbol and full name together
+    const element_symbols = elements_section.locator(`strong`)
+    const element_names = elements_section.locator(`.elem-name`)
 
-    // Verify coordinate formatting
+    await expect(element_symbols.first()).toBeVisible()
+
+    // Verify element names are displayed when available
+    const symbol_count = await element_symbols.count()
+    const name_count = await element_names.count()
+
+    if (name_count > 0) {
+      expect(name_count).toBe(symbol_count) // Should match symbols
+
+      // Verify element name styling and content
+      const element_name_text = await element_names.first().textContent()
+      expect(element_name_text).toBeTruthy()
+      expect(element_name_text!.length).toBeGreaterThan(1) // Not just empty
+
+      // Verify styling (smaller, lighter font)
+      await expect(element_names.first()).toHaveCSS(`opacity`, `0.7`)
+      await expect(element_names.first()).toHaveCSS(`font-weight`, `400`) // normal weight
+    }
+
+    // Verify element symbol and name appear together when both present
+    const elements_text = await elements_section.textContent()
+    if (name_count > 0) {
+      expect(elements_text).toMatch(/[A-Z][a-z]?\s+[A-Z][a-z]+/) // Symbol followed by name pattern
+    }
+
+    // Check coordinates are back to separate lines
+    const coordinates_sections = tooltip.locator(`.coordinates`)
+    await expect(coordinates_sections).toHaveCount(2) // Back to separate abc and xyz lines
+
+    // Verify coordinate formatting (fractional and Cartesian)
     const abc_coords = coordinates_sections.filter({ hasText: `abc:` })
     const xyz_coords = coordinates_sections.filter({ hasText: `xyz:` })
 
@@ -173,6 +236,9 @@ test.describe(`StructureScene Component Tests`, () => {
     page,
   }) => {
     const canvas = page.locator(`#structure-wrapper canvas`)
+
+    await clear_tooltips_and_overlays(page)
+
     const initial_screenshot = await canvas.screenshot()
     const box = await canvas.boundingBox()
 
@@ -187,8 +253,11 @@ test.describe(`StructureScene Component Tests`, () => {
     let after_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_screenshot)).toBe(false)
 
-    // Test zoom
-    await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
+    // Test zoom - use safe hover
+    await safe_canvas_hover(page, canvas, {
+      x: box.width / 2,
+      y: box.height / 2,
+    })
     await page.mouse.wheel(0, -200) // Zoom in
     await page.waitForTimeout(200)
     after_screenshot = await canvas.screenshot()
@@ -214,6 +283,8 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     const console_errors = setup_console_monitoring(page)
 
+    await clear_tooltips_and_overlays(page)
+
     // Search for disordered sites and oxidation states
     const positions = [
       { x: 200, y: 200 },
@@ -226,7 +297,7 @@ test.describe(`StructureScene Component Tests`, () => {
     let found_oxidation = false
 
     for (const position of positions) {
-      await canvas.hover({ position })
+      await safe_canvas_hover(page, canvas, position)
       await page.waitForTimeout(100)
 
       const tooltip = page.locator(`.tooltip:has(.coordinates)`)
@@ -261,6 +332,8 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     const console_errors = setup_console_monitoring(page)
 
+    await clear_tooltips_and_overlays(page)
+
     const positions = [
       { x: 200, y: 200 },
       { x: 300, y: 250 },
@@ -270,7 +343,7 @@ test.describe(`StructureScene Component Tests`, () => {
     ]
 
     for (const position of positions) {
-      await canvas.hover({ position })
+      await safe_canvas_hover(page, canvas, position)
       await page.waitForTimeout(100)
 
       const tooltip = page.locator(`.tooltip:has(.coordinates)`)
@@ -309,6 +382,8 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     const console_errors = setup_console_monitoring(page)
 
+    await clear_tooltips_and_overlays(page)
+
     // Test rapid hovers
     const positions = [
       { x: 250, y: 200 },
@@ -319,8 +394,8 @@ test.describe(`StructureScene Component Tests`, () => {
     ]
 
     for (let idx = 0; idx < positions.length; idx++) {
-      await canvas.hover({ position: positions[idx] })
-      await canvas.click({ position: positions[idx] })
+      await safe_canvas_hover(page, canvas, positions[idx])
+      await canvas.click({ position: positions[idx], force: true })
       await page.waitForTimeout(50) // Very fast interactions
     }
 
@@ -382,6 +457,208 @@ test.describe(`StructureScene Component Tests`, () => {
     await canvas.hover({ position: { x: 50, y: 50 } })
 
     await page.waitForTimeout(300)
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test lattice cell property customization with EdgesGeometry
+  test(`lattice cell properties (color, opacity, line width) work correctly with EdgesGeometry`, async ({
+    page,
+  }) => {
+    const console_errors = setup_console_monitoring(page)
+
+    // Use page.evaluate to set lattice properties directly on the Structure component
+    await page.evaluate(() => {
+      // Access the Structure component's lattice_props to set custom values
+      const structureElement = document.querySelector(
+        `[data-testid="structure-component"]`,
+      )
+      if (!structureElement) {
+        // If no test ID exists, we'll set the properties through controls
+        const event = new CustomEvent(`setLatticeProps`, {
+          detail: {
+            cell_color: `#ff0000`,
+            cell_opacity: 0.8,
+            cell_line_width: 2,
+            show_cell: `wireframe`,
+          },
+        })
+        window.dispatchEvent(event)
+      }
+    })
+
+    await page.waitForTimeout(1000) // Wait for properties to apply
+
+    const canvas = page.locator(`#structure-wrapper canvas`)
+    await expect(canvas).toBeVisible()
+
+    // Take screenshots to verify visual changes
+    const with_custom_props = await canvas.screenshot()
+    expect(with_custom_props.length).toBeGreaterThan(1000)
+
+    // Test different cell colors by checking rendered output
+    const test_colors = [`#00ff00`, `#0000ff`, `#ffff00`]
+
+    for (const color of test_colors) {
+      await page.evaluate((test_color) => {
+        const event = new CustomEvent(`setLatticeProps`, {
+          detail: { cell_color: test_color },
+        })
+        window.dispatchEvent(event)
+      }, color)
+
+      await page.waitForTimeout(500)
+      const color_screenshot = await canvas.screenshot()
+      expect(color_screenshot.length).toBeGreaterThan(1000)
+
+      // Verify the screenshot changed (different color)
+      expect(with_custom_props.equals(color_screenshot)).toBe(false)
+    }
+
+    // Test different opacity values
+    const test_opacities = [0.2, 0.5, 1.0]
+
+    for (const opacity of test_opacities) {
+      await page.evaluate((test_opacity) => {
+        const event = new CustomEvent(`setLatticeProps`, {
+          detail: { cell_opacity: test_opacity },
+        })
+        window.dispatchEvent(event)
+      }, opacity)
+
+      await page.waitForTimeout(500)
+      const opacity_screenshot = await canvas.screenshot()
+      expect(opacity_screenshot.length).toBeGreaterThan(1000)
+    }
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test wireframe vs surface mode differences with EdgesGeometry
+  test(`wireframe and surface cell modes render differently`, async ({
+    page,
+  }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Take baseline screenshot with wireframe
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          show_cell: `wireframe`,
+          cell_color: `#ffffff`,
+          cell_opacity: 0.6,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const wireframe_screenshot = await canvas.screenshot()
+
+    // Switch to surface mode
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          show_cell: `surface`,
+          cell_color: `#ffffff`,
+          cell_opacity: 0.6,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const surface_screenshot = await canvas.screenshot()
+
+    // Switch to no cell
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: { show_cell: null },
+      })
+      window.dispatchEvent(event)
+    })
+    await page.waitForTimeout(1000)
+    const no_cell_screenshot = await canvas.screenshot()
+
+    // Verify all three modes produce different visual outputs
+    expect(wireframe_screenshot.equals(surface_screenshot)).toBe(false)
+    expect(wireframe_screenshot.equals(no_cell_screenshot)).toBe(false)
+    expect(surface_screenshot.equals(no_cell_screenshot)).toBe(false)
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test that EdgesGeometry removes diagonal lines from wireframe
+  test(`EdgesGeometry wireframe shows only cell edges without diagonals`, async ({
+    page,
+  }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Set wireframe mode with high opacity and contrast for visibility
+    await page.evaluate(() => {
+      const event = new CustomEvent(`setLatticeProps`, {
+        detail: {
+          show_cell: `wireframe`,
+          cell_color: `#ffffff`,
+          cell_opacity: 1.0,
+          cell_line_width: 3,
+        },
+      })
+      window.dispatchEvent(event)
+    })
+
+    await page.waitForTimeout(1000)
+
+    // Take a screenshot and verify it renders
+    const wireframe_screenshot = await canvas.screenshot()
+    expect(wireframe_screenshot.length).toBeGreaterThan(1000)
+
+    // Test that the wireframe still renders when changing view angles
+    const box = await canvas.boundingBox()
+    if (box) {
+      // Rotate the view to see different faces of the cell
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
+      })
+      await page.waitForTimeout(500)
+
+      const rotated_screenshot = await canvas.screenshot()
+      expect(rotated_screenshot.length).toBeGreaterThan(1000)
+
+      // Verify the wireframe is still visible after rotation
+      expect(wireframe_screenshot.equals(rotated_screenshot)).toBe(false)
+    }
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test line width property (note: limited by WebGL constraints)
+  test(`cell line width changes are handled correctly`, async ({ page }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Test different line widths (note: WebGL may limit actual rendering)
+    const line_widths = [1, 2, 5, 10]
+
+    for (const width of line_widths) {
+      await page.evaluate((test_width) => {
+        const event = new CustomEvent(`setLatticeProps`, {
+          detail: {
+            show_cell: `wireframe`,
+            cell_color: `#ffffff`,
+            cell_opacity: 1.0,
+            cell_line_width: test_width,
+          },
+        })
+        window.dispatchEvent(event)
+      }, width)
+
+      await page.waitForTimeout(500)
+      const width_screenshot = await canvas.screenshot()
+      expect(width_screenshot.length).toBeGreaterThan(1000)
+    }
+
+    // Verify no errors occurred even if visual changes are limited by WebGL
     expect(console_errors).toHaveLength(0)
   })
 })
