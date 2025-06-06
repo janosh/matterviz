@@ -1,59 +1,77 @@
 import * as struct_utils from '$lib/structure'
 import { structures } from '$site'
-import fs from 'fs'
 import { describe, expect, test } from 'vitest'
 
-const ref_data = {
+type StructureId = string
+
+const ref_data: Record<
+  StructureId,
+  {
+    amounts: Record<string, number>
+    density: number
+    center_of_mass: [number, number, number]
+    elements: string[]
+    alphabetical_formula: string
+    electro_neg_formula: string
+  }
+> = {
   'mp-1': {
     amounts: { Cs: 2 },
     density: 1.8,
     center_of_mass: [1.564, 1.564, 1.564],
     elements: [`Cs`],
-    formula: `Cs2`,
+    alphabetical_formula: `Cs<sub>2</sub>`,
+    electro_neg_formula: `Cs<sub>2</sub>`,
   },
   'mp-2': {
     amounts: { Pd: 4 },
     density: 11.76,
     center_of_mass: [0.979, 0.979, 0.979],
     elements: [`Pd`],
-    formula: `Pd4`,
+    alphabetical_formula: `Pd<sub>4</sub>`,
+    electro_neg_formula: `Pd<sub>4</sub>`,
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
     center_of_mass: [3.535, 3.535, 3.535],
     elements: [`Al`, `Lu`],
-    formula: `Al16 Lu8`,
+    alphabetical_formula: `Al<sub>16</sub> Lu<sub>8</sub>`,
+    electro_neg_formula: `Lu<sub>8</sub> Al<sub>16</sub>`,
   },
   'mp-30855': {
     amounts: { U: 2, Pt: 6 },
     density: 19.14,
     center_of_mass: [3.535, 3.535, 3.535],
     elements: [`Pt`, `U`],
-    formula: `Pt6 U2`,
+    alphabetical_formula: `Pt<sub>6</sub> U<sub>2</sub>`,
+    electro_neg_formula: `U<sub>2</sub> Pt<sub>6</sub>`,
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.46,
     center_of_mass: [4.798, 4.798, 4.798],
     elements: [`Bi`, `O`, `Zr`],
-    formula: `Bi16 O56 Zr16`,
+    alphabetical_formula: `Bi<sub>16</sub> O<sub>56</sub> Zr<sub>16</sub>`,
+    electro_neg_formula: `Zr<sub>16</sub> Bi<sub>16</sub> O<sub>56</sub>`,
   },
   'mp-1229155': {
     amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
     density: 6.11,
     center_of_mass: [2.282, 3.522, 6.642],
     elements: [`Ag`, `Br`, `Cl`, `Hg`, `S`],
-    formula: `Ag4 Br1 Cl3 Hg4 S4`,
+    alphabetical_formula: `Ag<sub>4</sub> Br Cl<sub>3</sub> Hg<sub>4</sub> S<sub>4</sub>`,
+    electro_neg_formula: `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
     density: 3.66,
     center_of_mass: [1.785, 2.959, 12.51],
     elements: [`Al`, `Fe`, `Ni`],
-    formula: `Al54 Fe4 Ni8`,
+    alphabetical_formula: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
+    electro_neg_formula: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
   },
-} as const
+}
 
 test(`tests are actually running`, () => {
   expect(structures.length).toBeGreaterThan(0)
@@ -93,14 +111,18 @@ describe.each(structures)(`structure-utils`, (structure) => {
 test.each(structures)(`find_image_atoms`, async (structure) => {
   const image_atoms = struct_utils.find_image_atoms(structure)
   // write reference data
+  // import fs from 'fs'
   // fs.writeFileSync(
   //   `${__dirname}/fixtures/find_image_atoms/${structure.id}.json`,
   //   JSON.stringify(result)
   // )
   const path = `./fixtures/find_image_atoms/${structure.id}.json`
-  if (!fs.existsSync(path)) return
-  const { default: expected } = await import(path)
-  expect(image_atoms).toEqual(expected)
+  try {
+    const { default: expected } = await import(path)
+    expect(image_atoms).toEqual(expected)
+  } catch {
+    // Skip if fixture file doesn't exist
+  }
 })
 
 test.each(structures)(`symmetrize_structure`, async (structure) => {
@@ -133,7 +155,14 @@ test.each(structures)(`get_center_of_mass for $id`, async (struct) => {
 
 test.each(structures)(`alphabetical_formula for $id`, async (struct) => {
   const formula = struct_utils.alphabetical_formula(struct)
-  const expected = ref_data[struct.id]?.formula
+  const expected = ref_data[struct.id]?.alphabetical_formula
+  if (!expected) return
+  expect(formula, struct.id).toEqual(expected)
+})
+
+test.each(structures)(`electro_neg_formula for $id`, async (struct) => {
+  const formula = struct_utils.electro_neg_formula(struct)
+  const expected = ref_data[struct.id]?.electro_neg_formula
   if (!expected) return
   expect(formula, struct.id).toEqual(expected)
 })

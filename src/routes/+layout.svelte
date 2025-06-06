@@ -21,18 +21,14 @@
       return { route: `/${parts.slice(1, -1).join(`/`)}`, filename }
     },
   )
-  let mp_id = `/mp-1234`
 
   if (routes.length < 3) {
     console.error(`Too few demo routes found: ${routes.length}`)
   }
 
-  demos.routes = [
-    ...routes
-      .filter(({ filename }) => filename.includes(`/(demos)/`))
-      .map(({ route }) => route),
-    mp_id,
-  ]
+  demos.routes = routes
+    .filter(({ filename }) => filename.includes(`/(demos)/`))
+    .map(({ route }) => route)
 
   const actions = routes
     .map(({ route }) => route)
@@ -46,7 +42,7 @@
 <GitHubCorner href={pkg.repository} />
 <CopyButton global />
 
-<DemoNav labels={{ [mp_id]: `/mp-details-pages` }} />
+<DemoNav />
 
 {#if !page.error && page.url.pathname !== `/`}
   <a href="." aria-label="Back to index page">&laquo; home</a>

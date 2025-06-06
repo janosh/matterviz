@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num, InfoCard } from '$lib'
-  import { alphabetical_formula, density, type PymatgenStructure } from '.'
+  import { density, electro_neg_formula, type PymatgenStructure } from '.'
 
   interface Props {
     structure: PymatgenStructure
@@ -14,7 +14,7 @@
 
 <InfoCard
   data={[
-    { title: `Formula`, value: alphabetical_formula(structure) },
+    { title: `Formula`, value: electro_neg_formula(structure) },
     { title: `Number of atoms`, value: structure?.sites?.length, fmt: `.0f` },
     { title: `Volume`, value: volume, unit: `Å³` },
     { title: `Density`, value: density(structure), unit: `g/cm³` },
