@@ -1,4 +1,4 @@
-import type { XyObj } from '$root/src/lib'
+import type { XyObj } from '$lib'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 // Cached atom position to avoid repeated searches

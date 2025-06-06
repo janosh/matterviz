@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import type { Atoms, Lattice } from '$lib'
-  import { alphabetical_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
+  import { electro_neg_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
@@ -55,6 +55,8 @@
     fullscreen_toggle?: Snippet<[]>
     controls_toggle?: Snippet<[{ controls_open: boolean }]>
     bottom_left?: Snippet<[{ structure: Atoms }]>
+    // Generic callback for when files are dropped - receives raw content and filename
+    on_file_drop?: (content: string, filename: string) => void
   }
   let {
     structure = $bindable(undefined),
@@ -92,6 +94,7 @@
     fullscreen_toggle,
     controls_toggle,
     bottom_left,
+    on_file_drop,
   }: Props = $props()
 
   // Ensure scene_props always has some defaults merged in
@@ -127,29 +130,37 @@
     }
     const data = JSON.stringify(structure, null, 2)
     const filename = structure?.id
-      ? `${structure?.id} (${alphabetical_formula(structure)}).json`
-      : `${alphabetical_formula(structure)}.json`
+      ? `${structure?.id} (${electro_neg_formula(structure)}).json`
+      : `${electro_neg_formula(structure)}.json`
     download(data, filename, `application/json`)
   }
 
-  function on_file_drop(event: DragEvent) {
+  function handle_file_drop(event: DragEvent) {
     event.preventDefault()
-    // TODO support dragging CIF/XYZ files
     dragover = false
     if (!allow_file_drop) return
-    const file = event.dataTransfer?.items[0].getAsFile()
+
+    const drag_data_json = event.dataTransfer?.getData(`application/json`)
+    if (drag_data_json) {
+      try {
+        const file_info = JSON.parse(drag_data_json)
+        if (file_info.name && file_info.content) {
+          on_file_drop?.(file_info.content, file_info.name)
+          return
+        }
+      } catch {
+        // Not our format, continue to file handling
+      }
+    }
+
+    // Handle regular file drops
+    const file = event.dataTransfer?.files[0]
     if (!file) return
 
     const reader = new FileReader()
-    reader.onloadend = (event: ProgressEvent<FileReader>) => {
-      try {
-        const result = event.target?.result
-        if (result && typeof result === `string`) {
-          structure = JSON.parse(result)
-        }
-      } catch (error) {
-        console.error(`Invalid JSON file`, error)
-      }
+    reader.onload = (event: ProgressEvent<FileReader>) => {
+      const content = event.target?.result as string
+      if (content) on_file_drop?.(content, file.name)
     }
     reader.readAsText(file)
   }
@@ -212,7 +223,7 @@
     bind:clientHeight={height}
     onmouseenter={() => (hovered = true)}
     onmouseleave={() => (hovered = false)}
-    ondrop={on_file_drop}
+    ondrop={handle_file_drop}
     ondragover={(event) => {
       event.preventDefault()
       if (allow_file_drop) dragover = true
@@ -232,7 +243,8 @@
       > -->
       {#if enable_tips}
         <button class="info-icon" onclick={() => tips_modal?.showModal()}>
-          {#if tips_icon}{@render tips_icon()}{:else}&#9432;{/if}
+          {#if tips_icon}{@render tips_icon()}{:else}<svg><use href="#icon-info" /></svg
+            >{/if}
         </button>
       {/if}
       <button
@@ -240,9 +252,10 @@
         class="fullscreen-toggle"
         title="Toggle fullscreen"
       >
-        {#if fullscreen_toggle}{@render fullscreen_toggle()}{:else}⛶{/if}
+        {#if fullscreen_toggle}{@render fullscreen_toggle()}{:else}
+          <svg><use href="#icon-fullscreen" /></svg>
+        {/if}
       </button>
-
       <button
         onclick={() => (controls_open = !controls_open)}
         bind:this={toggle_controls_btn}

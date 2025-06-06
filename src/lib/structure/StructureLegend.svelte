@@ -61,16 +61,19 @@
   style={dialog_style}
 >
   {#if tips_modal_snippet}{@render tips_modal_snippet()}{:else}
-    <p>Drop a JSON file onto the canvas to load a new structure.</p>
+    <p>
+      Drop a POSCAR, XYZ or pymatgen JSON file onto the canvas to load a new structure.
+    </p>
     <p>
       Click on an atom to make it active. Then hover another atom to get its distance to
-      the active atom.
+      the active atom (with PBC and direct).
     </p>
     <p>
       Hold <kbd>shift</kbd> or <kbd>cmd</kbd> or <kbd>ctrl</kbd> and drag to pan the scene.
     </p>
     <p>
-      Click on an element label in the corner to change its color. Double click to reset.
+      Click on an element label in the color legend to change its color. Double click to
+      reset.
     </p>
   {/if}
 </dialog>

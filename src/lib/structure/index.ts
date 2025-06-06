@@ -101,15 +101,40 @@ export function get_elem_amounts(structure: Atoms) {
   return elements
 }
 
-export function alphabetical_formula(structure: Atoms) {
-  // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
+export function format_chemical_formula(
+  structure: Atoms,
+  sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
+): string {
+  // concatenate elements in a pymatgen Structure followed by their amount
   const elements = get_elem_amounts(structure)
   const formula = []
-  for (const el of Object.keys(elements).sort() as ElementSymbol[]) {
+  for (const el of sort_fn(Object.keys(elements) as ElementSymbol[])) {
     const amount = elements[el]!
-    formula.push(`${el}${amount}`)
+    if (amount === 1) formula.push(el)
+    else formula.push(`${el}<sub>${amount}</sub>`)
   }
   return formula.join(` `)
+}
+
+export function alphabetical_formula(structure: Atoms): string {
+  // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
+  return format_chemical_formula(structure, (symbols) => symbols.sort())
+}
+
+export function electro_neg_formula(structure: Atoms): string {
+  // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
+  return format_chemical_formula(structure, (symbols) => {
+    return symbols.sort((el1, el2) => {
+      const elec_neg1 =
+        element_data.find((el) => el.symbol === el1)?.electronegativity ?? 0
+      const elec_neg2 =
+        element_data.find((el) => el.symbol === el2)?.electronegativity ?? 0
+
+      // Sort by electronegativity (ascending), then alphabetically for ties
+      if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
+      return el1.localeCompare(el2)
+    })
+  })
 }
 
 export const atomic_radii: Partial<Record<ElementSymbol, number>> =

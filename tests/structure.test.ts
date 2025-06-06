@@ -827,3 +827,238 @@ test.describe(`Structure Component Tests`, () => {
     expect(await surface_opacity_number.inputValue()).toBe(`0.25`)
   })
 })
+
+test.describe(`File Drop Functionality Tests`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await page.goto(`/`, { waitUntil: `load` })
+    // Wait for the structure component to be initialized
+    await page.waitForSelector(`.structure canvas`, { timeout: 5000 })
+  })
+
+  test(`drops POSCAR file onto structure viewer and updates structure`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`.structure`)
+    const canvas = structure_component.locator(`canvas`)
+
+    // Take initial screenshot to compare later
+    const initial_screenshot = await canvas.screenshot()
+
+    // Create a simple POSCAR file content
+    const poscar_content = `BaTiO3 tetragonal
+1.0
+4.0 0.0 0.0
+0.0 4.0 0.0
+0.0 0.0 4.1
+Ba Ti O
+1 1 3
+Direct
+0.0 0.0 0.0
+0.5 0.5 0.5
+0.5 0.5 0.0
+0.5 0.0 0.5
+0.0 0.5 0.5`
+
+    // Create a file and simulate drop
+    const data_transfer = await page.evaluateHandle((content) => {
+      const dt = new DataTransfer()
+      const file = new File([content], `test.poscar`, { type: `text/plain` })
+      dt.items.add(file)
+      return dt
+    }, poscar_content)
+
+    // Simulate dragover and drop events
+    await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
+    await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+
+    // Wait for structure to update
+    await page.waitForTimeout(1000)
+
+    // Take screenshot after drop to verify change
+    const after_drop_screenshot = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+  })
+
+  test(`drops XYZ file onto structure viewer and updates structure`, async ({
+    page,
+  }) => {
+    const structure_component = page.locator(`.structure`)
+    const canvas = structure_component.locator(`canvas`)
+
+    // Take initial screenshot
+    const initial_screenshot = await canvas.screenshot()
+
+    // Create a simple XYZ file content (cyclohexane molecule)
+    const xyz_content = `18
+Cyclohexane molecule
+C    1.261   -0.728    0.000
+C    0.000   -1.456    0.000
+C   -1.261   -0.728    0.000
+C   -1.261    0.728    0.000
+C    0.000    1.456    0.000
+C    1.261    0.728    0.000
+H    2.178   -1.258    0.000
+H    2.178    1.258    0.000
+H    0.000   -2.516    0.000
+H   -2.178   -1.258    0.000
+H   -2.178    1.258    0.000
+H    0.000    2.516    0.000
+H    1.261   -0.728    0.890
+H    1.261   -0.728   -0.890
+H   -1.261   -0.728    0.890
+H   -1.261   -0.728   -0.890
+H    1.261    0.728    0.890
+H    1.261    0.728   -0.890`
+
+    // Create file and simulate drop
+    const data_transfer = await page.evaluateHandle((content) => {
+      const dt = new DataTransfer()
+      const file = new File([content], `cyclohexane.xyz`, {
+        type: `text/plain`,
+      })
+      dt.items.add(file)
+      return dt
+    }, xyz_content)
+
+    // Simulate drop
+    await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
+    await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+
+    // Wait for structure to update
+    await page.waitForTimeout(1000)
+
+    // Verify structure changed
+    const after_drop_screenshot = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+  })
+
+  test(`drops JSON structure file and updates structure`, async ({ page }) => {
+    const structure_component = page.locator(`.structure`)
+    const canvas = structure_component.locator(`canvas`)
+
+    // Take initial screenshot
+    const initial_screenshot = await canvas.screenshot()
+
+    // Create a simple JSON structure (NaCl)
+    const json_content = JSON.stringify(
+      {
+        sites: [
+          { xyz: [0, 0, 0], element: `Na` },
+          { xyz: [0.5, 0.5, 0.5], element: `Cl` },
+        ],
+        lattice: {
+          matrix: [
+            [2.8, 0, 0],
+            [0, 2.8, 0],
+            [0, 0, 2.8],
+          ],
+          a: 2.8,
+          b: 2.8,
+          c: 2.8,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 21.952,
+        },
+        charge: 0,
+      },
+      null,
+      2,
+    )
+
+    // Create file and simulate drop
+    const data_transfer = await page.evaluateHandle((content) => {
+      const dt = new DataTransfer()
+      const file = new File([content], `nacl.json`, {
+        type: `application/json`,
+      })
+      dt.items.add(file)
+      return dt
+    }, json_content)
+
+    // Simulate drop
+    await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
+    await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+
+    // Wait for structure to update
+    await page.waitForTimeout(1000)
+
+    // Verify structure changed
+    const after_drop_screenshot = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+  })
+
+  test(`drag and drop from file carousel updates structure`, async ({
+    page,
+  }) => {
+    const file_carousel = page.locator(`.file-carousel`)
+    const structure_component = page.locator(`.structure`)
+    const canvas = structure_component.locator(`canvas`)
+
+    // Wait for file carousel to load
+    await page.waitForSelector(`.file-item`, { timeout: 5000 })
+
+    // Take initial screenshot
+    const initial_screenshot = await canvas.screenshot()
+
+    // Find a file item to drag (look for one with crystal icon)
+    const crystal_file = file_carousel
+      .locator(`.file-item`)
+      .filter({ hasText: `🔷` })
+      .first()
+    await expect(crystal_file).toBeVisible()
+
+    // Perform drag and drop from carousel to structure viewer
+    await crystal_file.dragTo(canvas)
+
+    // Wait for structure to update
+    await page.waitForTimeout(1000)
+
+    // Verify structure changed
+    const after_drag_screenshot = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_drag_screenshot)).toBe(false)
+
+    // Verify the content preview updated (should show the file content)
+    const content_preview = page.locator(`.content-preview`)
+    const preview_content = await content_preview.inputValue()
+    expect(preview_content.length).toBeGreaterThan(0)
+    expect(preview_content).not.toBe(`No structure loaded`)
+  })
+
+  test(`drag and drop from file carousel shows correct file content in preview`, async ({
+    page,
+  }) => {
+    const file_carousel = page.locator(`.file-carousel`)
+    const content_preview = page.locator(`.content-preview`)
+    const structure_component = page.locator(`.structure`)
+    const canvas = structure_component.locator(`canvas`)
+
+    // Wait for file carousel to load
+    await page.waitForSelector(`.file-item`, { timeout: 5000 })
+
+    // Find a specific file (look for a POSCAR file)
+    const poscar_file = file_carousel
+      .locator(`.file-item`)
+      .filter({ hasText: `.poscar` })
+      .first()
+    await expect(poscar_file).toBeVisible()
+
+    // Get the filename for verification
+    const filename = await poscar_file.locator(`.file-name`).textContent()
+
+    // Drag the file to the structure viewer
+    await poscar_file.dragTo(canvas)
+
+    // Wait for update
+    await page.waitForTimeout(1000)
+
+    // Verify content preview shows file content
+    const preview_content = await content_preview.inputValue()
+    expect(preview_content.length).toBeGreaterThan(0)
+
+    // For POSCAR files, should contain typical POSCAR content
+    if (filename?.includes(`.poscar`)) {
+      expect(preview_content).toMatch(/\d+\.\d+/) // Should contain lattice parameters
+    }
+  })
+})
