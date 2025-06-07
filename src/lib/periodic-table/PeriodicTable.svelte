@@ -31,9 +31,9 @@
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
-    // either array of length 118 (one heat value for each element) or object with
+    // either array of numbers (can be partial, missing elements default to 0) or object with
     // element symbol as key and heat value as value
-    heatmap_values?: Record<ElementSymbol, number> | number[]
+    heatmap_values?: Partial<Record<ElementSymbol, number>> | number[]
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
@@ -118,7 +118,8 @@
           `heatmap_values is an object, keys should be element symbols, got ${bad_keys}`,
         )
         return []
-      } else return elem_symbols.map((symbol) => heatmap_values[symbol] ?? 0)
+      }
+      return elem_symbols.map((symbol) => heatmap_values[symbol] ?? 0)
     }
     return []
   })
@@ -204,7 +205,7 @@
     {@render inset?.({ active_element })}
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
-      {@const value = heat_values[element.number - 1] ?? 0}
+      {@const value = heat_values[element.number - 1]}
       {@const active =
         active_category === category.replaceAll(` `, `-`) ||
         active_element?.name === name}
@@ -258,7 +259,7 @@
     {#if tooltip_visible && tooltip_element && tooltip !== false}
       <div class="tooltip" style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px;">
         {#if typeof tooltip == `function`}
-          {@const tooltip_value = heat_values[tooltip_element.number - 1] ?? 0}
+          {@const tooltip_value = heat_values[tooltip_element.number - 1]}
           {@render tooltip({
             element: tooltip_element,
             value: tooltip_value,

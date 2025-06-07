@@ -1,18 +1,25 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import type { Atoms, Lattice } from '$lib'
-  import { electro_neg_formula, get_elem_amounts, get_pbc_image_sites } from '$lib'
+  import type { AnyStructure, Lattice } from '$lib'
+  import { get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
+  import * as exports from '$lib/io/export'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { Tooltip } from 'svelte-zoo'
+  import { Vector2, WebGLRenderer } from 'three'
   import { CELL_DEFAULTS, StructureLegend, StructureScene } from '.'
+
+  // Type for canvas with custom renderer property
+  interface CanvasWithRenderer extends HTMLCanvasElement {
+    __customRenderer?: WebGLRenderer
+  }
 
   interface Props {
     // output of pymatgen.core.Structure.as_dict()
-    structure?: Atoms | undefined
+    structure?: AnyStructure | undefined
     // need to set a default atom_radius so it doesn't initialize to 0
     scene_props?: ComponentProps<typeof StructureScene> // passed to StructureScene
     lattice_props?: ComponentProps<typeof Lattice> // passed to Lattice
@@ -36,7 +43,7 @@
     width?: number
     // bindable height of the canvas
     height?: number
-    // export let reset_text: string = `Reset view`
+    reset_text?: string
     color_scheme?: `Jmol` | `Vesta`
     hovered?: boolean
     dragover?: boolean
@@ -45,18 +52,20 @@
     enable_tips?: boolean
     save_json_btn_text?: string
     save_png_btn_text?: string
+    save_xyz_btn_text?: string
+    png_dpi?: number // PNG export DPI (dots per inch) - 72 is standard web resolution, 150+ is print quality
     // boolean or map from element symbols to labels
     // use atom_label snippet to include HTML and event handlers
     show_site_labels?: boolean
-    style?: string | null
     show_image_atoms?: boolean
     show_full_controls?: boolean
     tips_icon?: Snippet<[]>
     fullscreen_toggle?: Snippet<[]>
     controls_toggle?: Snippet<[{ controls_open: boolean }]>
-    bottom_left?: Snippet<[{ structure: Atoms }]>
+    bottom_left?: Snippet<[{ structure: AnyStructure }]>
     // Generic callback for when files are dropped - receives raw content and filename
     on_file_drop?: (content: string, filename: string) => void
+    [key: string]: unknown
   }
   let {
     structure = $bindable(undefined),
@@ -78,6 +87,7 @@
     toggle_controls_btn = $bindable(undefined),
     width = $bindable(0),
     height = $bindable(0),
+    reset_text = `Reset camera`,
     color_scheme = $bindable(`Vesta`),
     hovered = $bindable(false),
     dragover = $bindable(false),
@@ -86,8 +96,9 @@
     enable_tips = true,
     save_json_btn_text = `⬇ Save as JSON`,
     save_png_btn_text = `✎ Save as PNG`,
+    save_xyz_btn_text = `📄 Save as XYZ`,
+    png_dpi = $bindable(150),
     show_site_labels = $bindable(false),
-    style = null,
     show_image_atoms = $bindable(true),
     show_full_controls = $bindable(false),
     tips_icon,
@@ -95,6 +106,7 @@
     controls_toggle,
     bottom_left,
     on_file_drop,
+    ...rest
   }: Props = $props()
 
   // Ensure scene_props always has some defaults merged in
@@ -123,16 +135,21 @@
       (typeof reveal_buttons == `number` && reveal_buttons < width),
   )
 
-  function download_json() {
-    if (!structure) {
-      alert(`No structure to download`)
-      return
-    }
-    const data = JSON.stringify(structure, null, 2)
-    const filename = structure?.id
-      ? `${structure?.id} (${electro_neg_formula(structure)}).json`
-      : `${electro_neg_formula(structure)}.json`
-    download(data, filename, `application/json`)
+  // Track if camera has ever been moved from initial position
+  let camera_has_moved = $state(false)
+  let camera_is_moving = $state(false)
+  // Reset tracking when structure changes
+  $effect(() => {
+    if (structure) camera_has_moved = false
+  })
+  // Set camera_has_moved to true when camera starts moving
+  $effect(() => {
+    if (camera_is_moving) camera_has_moved = true
+  })
+  function reset_camera() {
+    // Reset camera position to trigger automatic positioning
+    scene_props.camera_position = [0, 0, 0]
+    camera_has_moved = false
   }
 
   function handle_file_drop(event: DragEvent) {
@@ -166,12 +183,67 @@
   }
 
   function download_png() {
-    const canvas = wrapper?.querySelector(`canvas`)
-    canvas?.toBlob((blob) => {
-      if (blob) {
-        download(blob, `scene.png`, `image/png`)
-      }
-    })
+    const canvas = wrapper?.querySelector(`canvas`) as CanvasWithRenderer
+    if (!canvas) {
+      alert(`Canvas not found`)
+      return
+    }
+
+    // Convert DPI to multiplier (72 DPI is baseline web resolution)
+    const resolution_multiplier = png_dpi / 72
+    const renderer = canvas.__customRenderer
+
+    if (resolution_multiplier <= 1.1 || !renderer) {
+      // Direct capture at current resolution (if DPI is close to 72 or renderer not available)
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const filename = exports.generate_structure_filename(structure, `png`)
+          download(blob, filename, `image/png`)
+        } else {
+          alert(`Failed to generate PNG - canvas may be empty`)
+        }
+      }, `image/png`)
+      return
+    }
+
+    // Temporarily modify the renderer's pixel ratio for high-res capture
+    const original_pixel_ratio = renderer.getPixelRatio()
+    const original_size = renderer.getSize(new Vector2())
+
+    try {
+      // Set higher pixel ratio to increase rendering resolution
+      renderer.setPixelRatio(resolution_multiplier)
+
+      // Force the canvas to update its resolution
+      renderer.setSize(original_size.width, original_size.height, false)
+
+      // Wait for the next render cycle to complete at higher resolution
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          // Capture the high-resolution render
+          canvas.toBlob((blob) => {
+            // Restore original settings immediately
+            renderer.setPixelRatio(original_pixel_ratio)
+            renderer.setSize(original_size.width, original_size.height, false)
+
+            if (blob) {
+              const filename = exports.generate_structure_filename(structure, `png`)
+              download(blob, filename, `image/png`)
+            } else {
+              alert(`Failed to generate high-resolution PNG`)
+            }
+          }, `image/png`)
+        }, 150) // Allow time for re-render at new resolution
+      })
+    } catch (error) {
+      console.error(`Error during high-res rendering:`, error)
+      // Restore original settings
+      renderer.setPixelRatio(original_pixel_ratio)
+      renderer.setSize(original_size.width, original_size.height, false)
+      alert(
+        `Failed to render at high resolution: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 
   export function toggle_fullscreen() {
@@ -181,6 +253,7 @@
       document.exitFullscreen()
     }
   }
+
   // set --struct-bg to background_color
   $effect(() => {
     if (browser && wrapper && background_color) {
@@ -216,7 +289,6 @@
   <div
     class="structure"
     class:dragover
-    {style}
     role="region"
     bind:this={wrapper}
     bind:clientWidth={width}
@@ -226,21 +298,22 @@
     ondrop={handle_file_drop}
     ondragover={(event) => {
       event.preventDefault()
-      if (allow_file_drop) dragover = true
+      if (!allow_file_drop) return
+      dragover = true
     }}
     ondragleave={(event) => {
       event.preventDefault()
-      if (allow_file_drop) dragover = false
+      dragover = false
     }}
+    {...rest}
   >
     <section class:visible={visible_buttons}>
-      <!-- TODO show only when camera was moved -->
-      <!-- <button
-        class="reset-camera"
-        onclick={() => {
-          // TODO implement reset view and controls
-        }}>{reset_text}</button
-      > -->
+      {#if camera_has_moved}
+        <button class="reset-camera" onclick={reset_camera} title={reset_text}>
+          <!-- Target/Focus icon for reset camera -->
+          <svg><use href="#icon-reset" /></svg>
+        </button>
+      {/if}
       {#if enable_tips}
         <button class="info-icon" onclick={() => tips_modal?.showModal()}>
           {#if tips_icon}{@render tips_icon()}{:else}<svg><use href="#icon-info" /></svg
@@ -253,16 +326,21 @@
         title="Toggle fullscreen"
       >
         {#if fullscreen_toggle}{@render fullscreen_toggle()}{:else}
-          <svg><use href="#icon-fullscreen" /></svg>
+          <svg style="transform: scale(0.9);"><use href="#icon-fullscreen" /></svg>
         {/if}
       </button>
       <button
         onclick={() => (controls_open = !controls_open)}
         bind:this={toggle_controls_btn}
         class="controls-toggle"
+        title={controls_open ? `Close controls` : `Open controls`}
       >
-        {#if controls_toggle}{@render controls_toggle({ controls_open })}{:else}
-          {controls_open ? `Close` : `Controls`}
+        {#if controls_toggle}{@render controls_toggle({
+            controls_open,
+          })}{:else if controls_open}
+          <svg><use href="#icon-x" /></svg>
+        {:else}
+          <svg><use href="#icon-settings" /></svg>
         {/if}
       </button>
     </section>
@@ -302,15 +380,15 @@
         Radius <small>(Å)</small>
         <input
           type="number"
-          min="0.1"
-          max={1}
+          min="0.2"
+          max={2}
           step={0.05}
           bind:value={scene_props.atom_radius}
         />
         <input
           type="range"
-          min="0.1"
-          max={1}
+          min="0.2"
+          max={2}
           step={0.05}
           bind:value={scene_props.atom_radius}
         />
@@ -358,14 +436,14 @@
           type="number"
           min={0}
           max={1}
-          step={0.05}
+          step={0.01}
           bind:value={lattice_props.cell_surface_opacity}
         />
         <input
           type="range"
           min={0}
           max={1}
-          step={0.05}
+          step={0.01}
           bind:value={lattice_props.cell_surface_opacity}
         />
       </label>
@@ -383,14 +461,14 @@
             type="number"
             min={0}
             max={1}
-            step={0.05}
+            step={0.02}
             bind:value={background_opacity}
           />
           <input
             type="range"
             min={0}
             max={1}
-            step={0.05}
+            step={0.02}
             bind:value={background_opacity}
           />
         </label>
@@ -418,16 +496,16 @@
           Zoom speed
           <input
             type="number"
-            min={0}
-            max={2}
-            step={0.01}
+            min={0.1}
+            max={0.8}
+            step={0.02}
             bind:value={scene_props.zoom_speed}
           />
           <input
             type="range"
-            min={0}
-            max={2}
-            step={0.01}
+            min={0.1}
+            max={0.8}
+            step={0.02}
             bind:value={scene_props.zoom_speed}
           />
         </label>
@@ -473,16 +551,16 @@
           <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
           <input
             type="number"
-            min={0}
-            max={2}
-            step={0.01}
+            min={0.5}
+            max={3}
+            step={0.05}
             bind:value={scene_props.ambient_light}
           />
           <input
             type="range"
-            min={0}
-            max={2}
-            step={0.01}
+            min={0.5}
+            max={3}
+            step={0.05}
             bind:value={scene_props.ambient_light}
           />
         </label>
@@ -525,16 +603,16 @@
           Bond radius
           <input
             type="number"
-            min={0.001}
-            max={0.1}
-            step={0.001}
+            min={0.01}
+            max={0.12}
+            step={0.005}
             bind:value={scene_props.bond_radius}
           />
           <input
             type="range"
-            min="0.001"
-            max="0.1"
-            step={0.001}
+            min="0.01"
+            max="0.12"
+            step={0.005}
             bind:value={scene_props.bond_radius}
           />
         </label>
@@ -549,17 +627,56 @@
           {/each}
         </select>
       </label>
-      <span style="display: flex; gap: 4pt; margin: 3pt 0 0;">
-        <button type="button" onclick={download_json} title={save_json_btn_text}>
+      <span
+        style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap;"
+      >
+        <button
+          type="button"
+          onclick={() => exports.export_json(structure)}
+          title={save_json_btn_text}
+        >
           {save_json_btn_text}
         </button>
-        <button type="button" onclick={download_png} title={save_png_btn_text}>
+        <button
+          type="button"
+          onclick={() => exports.export_xyz(structure)}
+          title={save_xyz_btn_text}
+        >
+          {save_xyz_btn_text}
+        </button>
+        <button
+          type="button"
+          onclick={download_png}
+          title="{save_png_btn_text} (${png_dpi} DPI)"
+        >
           {save_png_btn_text}
         </button>
+        <small style="margin-left: 4pt;">DPI:</small>
+        <input
+          type="number"
+          min={72}
+          max={300}
+          step={25}
+          bind:value={png_dpi}
+          style="width: 3.5em;"
+          title="Export resolution in dots per inch"
+        />
       </span>
     </dialog>
 
-    <Canvas>
+    <Canvas
+      createRenderer={(canvas) => {
+        const renderer = new WebGLRenderer({
+          canvas,
+          preserveDrawingBuffer: true,
+          antialias: true,
+          alpha: true,
+        })
+        // Store renderer reference for high-res export
+        ;(canvas as CanvasWithRenderer).__customRenderer = renderer
+        return renderer
+      }}
+    >
       <StructureScene
         structure={show_image_atoms && structure && `lattice` in structure
           ? get_pbc_image_sites(structure)
@@ -567,6 +684,7 @@
         {...scene_props}
         {show_site_labels}
         {lattice_props}
+        bind:camera_is_moving
       />
     </Canvas>
 
@@ -615,12 +733,17 @@
     justify-content: end;
     top: var(--struct-buttons-top, 1ex);
     right: var(--struct-buttons-right, 1ex);
-    gap: var(--struct-buttons-gap, 1ex);
+    gap: var(--struct-buttons-gap, 3pt);
     z-index: 2;
   }
 
   section button {
     pointer-events: auto;
+  }
+  section button svg {
+    pointer-events: none;
+    width: 20px;
+    height: 20px;
   }
 
   dialog.controls {

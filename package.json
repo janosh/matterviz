@@ -64,7 +64,6 @@
     "eslint-plugin-svelte": "^3.9.1",
     "happy-dom": "^17.6.1",
     "hastscript": "^9.0.1",
-    "iconify-icon": "^3.0.0",
     "mdsvex": "^0.12.6",
     "mdsvexamples": "^0.5.0",
     "prettier": "^3.5.3",

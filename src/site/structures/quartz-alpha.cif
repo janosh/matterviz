@@ -1,0 +1,22 @@
+data_quartz_alpha
+_chemical_name_mineral                 'Quartz'
+_chemical_formula_sum                  'Si O2'
+_cell_length_a                         4.916
+_cell_length_b                         4.916
+_cell_length_c                         5.405
+_cell_angle_alpha                      90
+_cell_angle_beta                       90
+_cell_angle_gamma                      120
+_space_group_name_H-M_alt              'P 31 2 1'
+_space_group_IT_number                 152
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Si1  Si  0.470  0.000  0.000  1.000
+O1   O   0.410  0.270  0.120  1.000
+O2   O   0.410  0.140  0.880  1.000

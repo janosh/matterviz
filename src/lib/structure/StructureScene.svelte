@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Atoms, BondPair, Site, Vector } from '$lib'
+  import type { AnyStructure, BondPair, Site, Vector } from '$lib'
   import {
     Bond,
     Lattice,
@@ -29,7 +29,7 @@
 
   interface Props {
     // output of pymatgen.core.Structure.as_dict()
-    structure?: Atoms | undefined
+    structure?: AnyStructure | undefined
     // scale factor for atomic radii
     atom_radius?: number
     // multiple of atom_radius (actually atom_radius * the element's atomic radius)
@@ -222,7 +222,7 @@
       {@const start_angle = species
         .slice(0, spec_idx)
         .reduce((total, spec) => total + spec.occu, 0)}
-      <T.Mesh
+      <T.Group
         position={xyz}
         scale={site_radius}
         onpointerenter={(_event: PointerEvent) => {
@@ -236,17 +236,38 @@
           else active_idx = site_idx
         }}
       >
-        <T.SphereGeometry
-          args={[
-            0.5,
-            sphere_segments,
-            sphere_segments,
-            2 * Math.PI * start_angle,
-            2 * Math.PI * occu,
-          ]}
-        />
-        <T.MeshStandardMaterial color={colors.element?.[elem]} />
-      </T.Mesh>
+        <!-- Main partial sphere -->
+        <T.Mesh>
+          <T.SphereGeometry
+            args={[
+              0.5,
+              sphere_segments,
+              sphere_segments,
+              2 * Math.PI * start_angle,
+              2 * Math.PI * occu,
+            ]}
+          />
+          <T.MeshStandardMaterial color={colors.element?.[elem]} />
+        </T.Mesh>
+
+        <!-- Cap the open surfaces with flat circles if partial occupancy -->
+        {#if occu < 1}
+          {@const start_phi = 2 * Math.PI * start_angle}
+          {@const end_phi = 2 * Math.PI * (start_angle + occu)}
+
+          <!-- Start cap - positioned at the start angle -->
+          <T.Mesh rotation={[0, start_phi, 0]}>
+            <T.CircleGeometry args={[0.5, sphere_segments]} />
+            <T.MeshStandardMaterial color={colors.element?.[elem]} side={2} />
+          </T.Mesh>
+
+          <!-- End cap - positioned at the end angle -->
+          <T.Mesh rotation={[0, end_phi, 0]}>
+            <T.CircleGeometry args={[0.5, sphere_segments]} />
+            <T.MeshStandardMaterial color={colors.element?.[elem]} side={2} />
+          </T.Mesh>
+        {/if}
+      </T.Group>
       <!-- use polar coordinates + offset if site has partial occupancy to move the text to the side of the corresponding sphere slice -->
       <!-- TODO fix render multiple labels for disordered sites
         {@const phi = 2 * Math.PI * (start_angle + occu / 2)}

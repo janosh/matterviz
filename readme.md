@@ -45,7 +45,7 @@ Import the `PeriodicTable` component and pass it some heatmap values:
 
 ```svelte
 <script>
-  import PeriodicTable from 'elementari'
+  import { PeriodicTable } from 'elementari'
 
   const heatmap_values = { H: 10, He: 4, Li: 8, Fe: 3, O: 24 }
 </script>

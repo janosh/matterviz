@@ -4,7 +4,6 @@
   import { colors, selected } from '$lib/state.svelte'
   import type { Snippet } from 'svelte'
   import { fade } from 'svelte/transition'
-  import { Icon } from '..'
 
   interface Props {
     open?: boolean
@@ -30,7 +29,7 @@
       title={!open && collapsible ? `Click to open color picker` : null}
       style:cursor={collapsible ? `pointer` : `default`}
     >
-      <Icon icon="ion:color-palette" />
+      <svg><use href="#icon-color-palette" /></svg>
       Customize Colors
     </button>
   </h2>

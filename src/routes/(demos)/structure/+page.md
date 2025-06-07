@@ -94,7 +94,7 @@ Showcasing structures with different crystal systems.
     {@const crystal_system = id.split('-').at(-1) || 'unknown'}
     <li>
       <h3><a {href}>{id.split('-')[0]}-{id.split('-')[1]}</a></h3>
-      <p class="crystal-system">Crystal System: <strong>{crystal_system}</strong></p>
+      <p class="crystal-system">Crystal System <strong>{crystal_system}</strong></p>
       <Structure {structure} style="--struct-height: 400px;" />
     </li>
   {/each}
@@ -114,10 +114,10 @@ Showcasing structures with different crystal systems.
   .crystal-system {
     margin: 0.5em 0;
     font-size: 0.9em;
-    color: var(--text-color-secondary, #666);
+    color: var(--text-color-secondary, #888);
   }
   .crystal-system strong {
-    color: var(--text-color-primary, #333);
+    color: var(--text-color-primary, #999);
     text-transform: capitalize;
   }
   ul.crystal-systems h3 {

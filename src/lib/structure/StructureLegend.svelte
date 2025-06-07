@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Composition } from '$lib'
-  import { choose_bw_for_contrast, element_data } from '$lib'
+  import { choose_bw_for_contrast, element_data, format_num } from '$lib'
   import { default_element_colors } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
   import type { Snippet } from 'svelte'
@@ -14,6 +14,7 @@
     style?: string | null
     dialog_style?: string | null
     tips_modal_snippet?: Snippet
+    amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
   }
 
   let {
@@ -24,6 +25,7 @@
     style = null,
     dialog_style = null,
     tips_modal_snippet,
+    amount_format = `.3~f`,
   }: Props = $props()
 </script>
 
@@ -43,7 +45,7 @@
         }}
         style:color={choose_bw_for_contrast(labels[idx])}
       >
-        {elem}{amt}
+        {elem}{format_num(amt, amount_format)}
         <input
           type="color"
           bind:value={colors.element[elem]}
@@ -62,7 +64,8 @@
 >
   {#if tips_modal_snippet}{@render tips_modal_snippet()}{:else}
     <p>
-      Drop a POSCAR, XYZ or pymatgen JSON file onto the canvas to load a new structure.
+      Drop a POSCAR, XYZ, CIF or pymatgen JSON file onto the canvas to load a new
+      structure.
     </p>
     <p>
       Click on an atom to make it active. Then hover another atom to get its distance to
