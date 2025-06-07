@@ -3,13 +3,6 @@ import type { ElementSymbol, Vector } from '$lib'
 import { add, format_num, scale } from '$lib'
 import element_data from '$lib/element/data'
 
-export const CELL_DEFAULTS = {
-  edge_opacity: 0.4,
-  surface_opacity: 0.05,
-  color: `#ffffff`,
-  line_width: 1.5,
-} as const
-
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
 export { default as Lattice } from './Lattice.svelte'
@@ -17,6 +10,13 @@ export { default as Structure } from './Structure.svelte'
 export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
+
+export const CELL_DEFAULTS = {
+  edge_opacity: 0.4,
+  surface_opacity: 0.05,
+  color: `#ffffff`,
+  line_width: 1.5,
+} as const
 
 export type Species = {
   element: ElementSymbol
@@ -44,12 +44,8 @@ export type PymatgenLattice = {
   volume: number
 }
 
-export type PymatgenStructure = {
-  lattice: PymatgenLattice
-  sites: Site[]
-  charge: number
-  id?: string
-}
+export type PymatgenMolecule = { sites: Site[]; charge: number; id?: string }
+export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
 
 export type Edge = {
   to_jimage: [number, number, number]
@@ -80,13 +76,10 @@ export type BondPair = [Vector, Vector, number, number, number]
 export type IdStructure = PymatgenStructure & { id: string }
 export type StructureWithGraph = IdStructure & { graph: Graph }
 
-// remove lattice from pymatgen Structure
-export type PymatgenMolecule = Omit<PymatgenStructure, `lattice`>
+export type AnyStructure = PymatgenStructure | PymatgenMolecule
+export type AnyStructureGraph = AnyStructure & { graph: Graph }
 
-export type Atoms = PymatgenStructure | PymatgenMolecule
-export type AtomsGraph = Atoms & { graph: Graph }
-
-export function get_elem_amounts(structure: Atoms) {
+export function get_elem_amounts(structure: AnyStructure) {
   const elements: Partial<Record<ElementSymbol, number>> = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
@@ -102,7 +95,7 @@ export function get_elem_amounts(structure: Atoms) {
 }
 
 export function format_chemical_formula(
-  structure: Atoms,
+  structure: AnyStructure,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
 ): string {
   // concatenate elements in a pymatgen Structure followed by their amount
@@ -116,12 +109,12 @@ export function format_chemical_formula(
   return formula.join(` `)
 }
 
-export function alphabetical_formula(structure: Atoms): string {
+export function alphabetical_formula(structure: AnyStructure): string {
   // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
   return format_chemical_formula(structure, (symbols) => symbols.sort())
 }
 
-export function electro_neg_formula(structure: Atoms): string {
+export function electro_neg_formula(structure: AnyStructure): string {
   // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) => {
     return symbols.sort((el1, el2) => {
@@ -145,7 +138,7 @@ export const atomic_radii: Partial<Record<ElementSymbol, number>> =
 export const atomic_weights: Partial<Record<ElementSymbol, number>> =
   Object.fromEntries(element_data.map((el) => [el.symbol, el.atomic_mass]))
 
-export function get_elements(structure: Atoms): ElementSymbol[] {
+export function get_elements(structure: AnyStructure): ElementSymbol[] {
   const elems = structure.sites.flatMap((site) =>
     site.species.map((sp) => sp.element),
   )
@@ -252,7 +245,7 @@ export function get_pbc_image_sites(
   return symmetrized_structure
 }
 
-export function get_center_of_mass(struct_or_mol: Atoms): Vector {
+export function get_center_of_mass(struct_or_mol: AnyStructure): Vector {
   let center: Vector = [0, 0, 0]
   let total_weight = 0
 

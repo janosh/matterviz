@@ -1,23 +1,22 @@
 <script lang="ts">
-  import { Icon } from '$lib'
   import pkg from '$root/package.json'
 </script>
 
 <footer>
   <a href="{pkg.repository}/blob/main/license">
-    <Icon icon="octicon:law" />License
+    <svg><use href="#icon-license" /></svg> License
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/acknowledgements">
-    <Icon icon="fa6-solid:hands-clapping" />Acknowledgements
+    <svg><use href="#icon-hands-clapping" /></svg> Acknowledgements
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/changelog">
-    <Icon icon="octicon:history" />Changelog
+    <svg><use href="#icon-changelog" /></svg> Changelog
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/contributing">
-    <Icon icon="octicon:repo-forked" />Contributing
+    <svg><use href="#icon-repo-fork" /></svg> Contributing
   </a>
   <small>
     Built with Svelte by

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Structure } from '$lib'
-  import { parse_structure_file, type ParsedStructure } from '$lib/parsers'
-  import type { Atoms, PymatgenStructure } from '$lib/structure'
+  import { parse_structure_file } from '$lib/io/parse'
+  import type { AnyStructure, PymatgenStructure } from '$lib/structure'
   import { structures } from '$site'
   import TableDemo from './(demos)/periodic-table/+page.svelte'
 
@@ -13,14 +13,14 @@
     structure_type: `crystal` | `molecule` | `unknown`
   }
 
-  const structure_files_raw = import.meta.glob(`$site/structures/*.{poscar,xyz}`, {
+  const structure_files_raw = import.meta.glob(`$site/structures/*.{poscar,xyz,cif}`, {
     eager: true,
     query: `?raw`,
     import: `default`,
   }) as Record<string, string>
 
   let mp_id: string = `mp-756175`
-  let structure: Atoms | undefined = $derived(
+  let structure: AnyStructure | undefined = $derived(
     structures.find((struct) => struct.id === mp_id),
   )
 
@@ -53,16 +53,23 @@
       }
     }
 
+    // for now,CIF files always represent crystals with lattice
+    if (filename.toLowerCase().endsWith(`.cif`)) return `crystal`
+
     // POSCAR files always represent crystals with lattice
     if (filename.toLowerCase().includes(`poscar`) || filename === `POSCAR`) {
       return `crystal`
     }
 
-    // XYZ files: parse to check for lattice info
+    // XYZ files: try to detect lattice info from content
     if (filename.endsWith(`.xyz`)) {
       try {
-        const parsed: ParsedStructure | null = parse_structure_file(content, filename)
-        return parsed?.lattice ? `crystal` : `molecule`
+        // Simple heuristic: check for lattice information in XYZ comment line
+        const lines = content.trim().split(/\r?\n/)
+        if (lines.length >= 2 && lines[1].includes(`Lattice=`)) {
+          return `crystal`
+        }
+        return `molecule`
       } catch {
         return `unknown`
       }
@@ -96,21 +103,71 @@
   let is_dragging: boolean = $state(false)
   let last_loaded_file_content: string = $state(``)
   let last_loaded_filename: string = $state(``)
+  let active_structure_filter = $state<string | null>(null)
+  let active_format_filter = $state<string | null>(null)
+  let editable_content: string = $state(``)
+  let parsing_error: string = $state(``)
+  let is_user_editing: boolean = $state(false)
 
-  // Set initial filename based on the default structure
+  // Filter files based on active filters
+  let filtered_files = $derived(
+    sample_files.filter((file) => {
+      if (active_structure_filter) return file.structure_type === active_structure_filter
+      if (active_format_filter) return file.type.toLowerCase() === active_format_filter
+      return true
+    }),
+  )
+
+  const toggle_filter = (type: `structure` | `format`, filter: string) => {
+    if (type === `structure`) {
+      active_structure_filter = active_structure_filter === filter ? null : filter
+      active_format_filter = null
+    } else {
+      active_format_filter = active_format_filter === filter ? null : filter
+      active_structure_filter = null
+    }
+  }
+
+  // Auto-update textarea content when structure changes (but not during editing)
+  $effect(() => {
+    if (is_user_editing) return
+
+    const new_content = (() => {
+      if (is_dragging && dragged_file_content) return dragged_file_content
+      if (last_loaded_file_content) return last_loaded_file_content
+      if (structure) return JSON.stringify(structure, null, 2)
+      return `No structure loaded`
+    })()
+
+    if (new_content !== editable_content) {
+      editable_content = new_content
+      parsing_error = ``
+    }
+  })
+
+  // Set initial filename for new structures
   $effect(() => {
     if (structure?.id && !last_loaded_filename) {
       last_loaded_filename = `${structure.id}.json`
     }
   })
 
-  // Show either dragged content, last loaded file content, or current structure content
-  let displayed_content: string = $derived.by(() => {
-    if (is_dragging && dragged_file_content) return dragged_file_content
-    if (last_loaded_file_content) return last_loaded_file_content
-    if (structure) return JSON.stringify(structure, null, 2)
-    return `No structure loaded`
-  })
+  // Debounced parsing function
+  let parse_timeout: number
+  const parse_user_content = () => {
+    clearTimeout(parse_timeout)
+    parse_timeout = setTimeout(() => {
+      if (!editable_content || editable_content === `No structure loaded`) return
+
+      try {
+        parsing_error = ``
+        const filename = last_loaded_filename || `structure.json`
+        handle_structure_file_drop(editable_content, filename)
+      } catch (error) {
+        parsing_error = `Parsing error: ${error instanceof Error ? error.message : String(error)}`
+      }
+    }, 500)
+  }
 
   const handle_drag_start = (file: FileInfo, event: DragEvent) => {
     is_dragging = true
@@ -151,7 +208,7 @@
 
       // Try to parse as JSON first
       try {
-        const parsed_json: Atoms = JSON.parse(content)
+        const parsed_json: AnyStructure = JSON.parse(content)
         structure = parsed_json
         last_loaded_file_content = content
         last_loaded_filename = filename
@@ -160,11 +217,11 @@
         // Not JSON, try other formats
       }
 
-      // Try to parse as structure file (POSCAR, XYZ, etc.)
+      // Try to parse as structure file (POSCAR, XYZ, CIF, etc.)
       const parsed_struct = parse_structure_file(content, filename)
       if (parsed_struct) {
         // Convert ParsedStructure to the expected format
-        const converted_structure: Atoms = {
+        const converted_structure: AnyStructure = {
           sites: parsed_struct.sites,
           charge: 0,
           ...(parsed_struct.lattice && {
@@ -187,11 +244,11 @@
         last_loaded_filename = filename
       } else {
         console.error(`Failed to parse structure file: ${filename}`)
-        alert(`Failed to parse structure file. Supported formats: JSON, POSCAR, XYZ`)
+        parsing_error = `Failed to parse structure file. Supported formats: JSON, POSCAR, XYZ, CIF`
       }
     } catch (error) {
       console.error(`Error processing file:`, error)
-      alert(`Error processing file: ${error}`)
+      parsing_error = `Error processing file: ${error}`
     }
   }
 </script>
@@ -234,18 +291,59 @@
 <h2>Try dragging files onto the structure viewer</h2>
 
 <p>
-  Or drag a local <code>extXYZ</code>, <code>POSCAR</code> or <code>pymatgen</code> JSON files
-  onto the structure viewer.
+  You can now edit the structure content in the textarea below. Changes will automatically
+  update the 3D viewer. Or drag a local <code>extXYZ</code>, <code>POSCAR</code>,
+  <code>CIF</code>
+  or
+  <code>pymatgen</code> JSON files onto the structure viewer. You can also edit the structure
+  content in the textarea below. Changes will automatically update the 3D viewer.
 </p>
 
-<div class="files-and-content">
+<div class="files-and-textearea">
   <div class="file-carousel">
-    {#each sample_files as file (file.name)}
+    <div class="legend">
+      {#each [[`structure`, `crystal`, `🔷 Crystal`], [`structure`, `molecule`, `🧬 Molecule`], [`format`, `cif`, `CIF`], [`format`, `xyz`, `XYZ`], [`format`, `poscar`, `POSCAR`], [`format`, `json`, `JSON`]] as [filter_type, key, label], idx ([filter_type, key, label])}
+        {@const is_active =
+          filter_type === `structure`
+            ? active_structure_filter === key
+            : active_format_filter === key}
+        {@const is_format = filter_type === `format`}
+        {#if idx === 2}&emsp;{/if}
+        <span
+          class="legend-item"
+          class:format-item={is_format}
+          class:active={is_active}
+          onclick={() => toggle_filter(filter_type as `structure` | `format`, key)}
+          onkeydown={(e) =>
+            (e.key === `Enter` || e.key === ` `) &&
+            toggle_filter(filter_type as `structure` | `format`, key)}
+          role="button"
+          tabindex="0"
+          title="Filter to show only {is_format ? `${label} files` : `${key} structures`}"
+        >
+          {#if is_format}<span class="format-circle {key}-color"></span>{/if}
+          {label}
+        </span>
+      {/each}
+      {#if active_structure_filter || active_format_filter}
+        <button
+          class="clear-filter"
+          onclick={() => {
+            active_structure_filter = null
+            active_format_filter = null
+          }}
+          title="Clear all filters"
+        >
+          ✕
+        </button>
+      {/if}
+    </div>
+    {#each filtered_files as file (file.name)}
       {@const icon = { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[
         file.structure_type
       ]}
       <div
-        class="file-item"
+        class="file-item {file.type.toLowerCase()}-file"
         class:active={file.name === last_loaded_filename}
         draggable="true"
         ondragstart={(event) => handle_drag_start(file, event)}
@@ -266,12 +364,23 @@
     {/each}
   </div>
 
-  <textarea
-    readonly
-    value={displayed_content}
-    placeholder="Structure content will appear here..."
-    class="content-preview"
-  ></textarea>
+  <div class="textarea-container">
+    <textarea
+      bind:value={editable_content}
+      onfocus={() => (is_user_editing = true)}
+      onblur={() => setTimeout(() => (is_user_editing = false), 1000)}
+      oninput={() => {
+        is_user_editing = true
+        parse_user_content()
+      }}
+      placeholder="Structure content will appear here..."
+      class="content-preview"
+      class:error={parsing_error}
+    ></textarea>
+    {#if parsing_error}
+      <div class="parsing-error">{parsing_error}</div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -287,7 +396,7 @@
     margin: 2em auto 3em;
     text-align: center;
   }
-  .files-and-content {
+  .files-and-textearea {
     display: flex;
     gap: 2em;
     max-width: 1400px;
@@ -298,6 +407,74 @@
     flex-wrap: wrap;
     gap: 0.5em;
     flex: 1;
+    align-content: start;
+  }
+  .legend {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    font-size: 0.6em;
+    opacity: 0.8;
+    margin: 0 0 0.5em;
+  }
+  .legend-item {
+    cursor: pointer;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+  }
+  .legend-item:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  .legend-item.active {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    font-weight: bold;
+  }
+  .clear-filter {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-sizing: border-box;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: inherit;
+    transition: all 0.2s ease;
+    width: 1.5em;
+    height: 1.5em;
+    display: flex;
+    justify-content: center;
+  }
+  .clear-filter:hover {
+    background: rgba(255, 100, 100, 0.2);
+    border-color: rgba(255, 100, 100, 0.5);
+    color: #ff6666;
+  }
+  .format-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+  }
+  .format-circle {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .cif-color {
+    background-color: rgba(100, 149, 237, 0.8);
+  }
+  .xyz-color {
+    background-color: rgba(50, 205, 50, 0.8);
+  }
+  .poscar-color {
+    background-color: rgba(255, 140, 0, 0.8);
+  }
+  .json-color {
+    background-color: rgba(138, 43, 226, 0.8);
   }
   .file-item {
     display: flex;
@@ -310,11 +487,6 @@
     transition: all 0.2s ease;
     gap: 0.5em;
   }
-  .file-item:hover {
-    border-color: #007acc;
-    background: rgba(0, 122, 204, 0.2);
-    transform: translateY(-1px);
-  }
   .file-item.active {
     border-color: #00ff00;
     background: rgba(0, 255, 0, 0.15);
@@ -322,6 +494,27 @@
   }
   .file-item:active {
     cursor: grabbing;
+  }
+  .file-item:hover {
+    border-color: #007acc;
+    background: rgba(0, 122, 204, 0.2);
+    filter: brightness(1.1);
+  }
+  .cif-file {
+    background: rgba(100, 149, 237, 0.08);
+    border-color: rgba(100, 149, 237, 0.2);
+  }
+  .xyz-file {
+    background: rgba(50, 205, 50, 0.08);
+    border-color: rgba(50, 205, 50, 0.2);
+  }
+  .poscar-file {
+    background: rgba(255, 140, 0, 0.08);
+    border-color: rgba(255, 140, 0, 0.2);
+  }
+  .json-file {
+    background: rgba(138, 43, 226, 0.08);
+    border-color: rgba(138, 43, 226, 0.2);
   }
   .drag-handle {
     display: flex;
@@ -339,8 +532,11 @@
     font-size: 0.7em;
     line-height: 1.1;
   }
-  textarea.content-preview {
+  .textarea-container {
     flex: 1;
+    position: relative;
+  }
+  textarea.content-preview {
     margin: 0;
     border-radius: 5pt;
     font-size: 0.75rem;
@@ -348,10 +544,34 @@
     resize: none;
     box-sizing: border-box;
     padding: 6pt 9pt;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    min-height: 300px;
+    height: 100%;
+  }
+  textarea.content-preview:focus {
+    outline: none;
+    border-color: rgba(0, 122, 204, 0.6);
+    background: rgba(255, 255, 255, 0.08);
+  }
+  textarea.content-preview.error {
+    border-color: rgba(255, 100, 100, 0.6);
+    background: rgba(255, 100, 100, 0.05);
+  }
+  .parsing-error {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    right: 4px;
+    background: rgba(255, 100, 100, 0.9);
+    color: white;
+    font-size: 0.65rem;
+    padding: 4px 6px;
+    border-radius: 3px;
+    z-index: 10;
   }
 
   @media (max-width: 768px) {
-    .files-and-content {
+    .files-and-textearea {
       flex-direction: column;
       gap: 1rem;
       min-height: 400px;
@@ -359,6 +579,22 @@
     .file-carousel {
       max-height: 200px;
       gap: 0.3rem;
+    }
+    .legend {
+      font-size: 0.5em;
+      margin-bottom: 0.3em;
+      gap: 0.6em;
+    }
+    .legend-item {
+      padding: 0.1em 0.3em;
+    }
+    .clear-filter {
+      width: 1.5em;
+      height: 1.5em;
+    }
+    .format-circle {
+      width: 6px;
+      height: 6px;
     }
     .file-item {
       min-height: 32px;

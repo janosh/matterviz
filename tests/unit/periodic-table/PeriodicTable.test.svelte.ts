@@ -3,7 +3,7 @@ import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '.'
+import { doc_query } from '..'
 
 const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)

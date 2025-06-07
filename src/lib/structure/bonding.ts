@@ -1,9 +1,9 @@
-import type { Atoms, BondPair } from '$lib'
+import type { AnyStructure, BondPair } from '$lib'
 
 export type BondingAlgo = typeof max_dist | typeof nearest_neighbor
 
 export function max_dist(
-  structure: Atoms,
+  structure: AnyStructure,
   { max_bond_dist = 3, min_bond_dist = 0.4 } = {}, // in Angstroms
 ): BondPair[] {
   // finds all pairs of atoms within the max_bond_dist cutoff
@@ -12,19 +12,23 @@ export function max_dist(
   const max_bond_dist_sq = max_bond_dist ** 2
   const min_bond_dist_sq = min_bond_dist ** 2
 
-  for (let i = 0; i < structure.sites.length; i++) {
-    const { xyz: xyz1 } = structure.sites[i]
+  for (let site_idx = 0; site_idx < structure.sites.length; site_idx++) {
+    const { xyz: xyz1 } = structure.sites[site_idx]
 
-    for (let j = i + 1; j < structure.sites.length; j++) {
-      const { xyz: xyz2 } = structure.sites[j]
+    for (
+      let other_site_idx = site_idx + 1;
+      other_site_idx < structure.sites.length;
+      other_site_idx++
+    ) {
+      const { xyz: xyz2 } = structure.sites[other_site_idx]
 
       const dist_sq = euclidean_dist_sq(xyz1, xyz2)
       if (dist_sq <= max_bond_dist_sq && dist_sq >= min_bond_dist_sq) {
         const dist = Math.sqrt(dist_sq)
-        const bond_key = `${i},${j}`
+        const bond_key = `${site_idx},${other_site_idx}`
         if (!bond_set.has(bond_key)) {
           bond_set.add(bond_key)
-          bonds.push([xyz1, xyz2, i, j, dist])
+          bonds.push([xyz1, xyz2, site_idx, other_site_idx, dist])
         }
       }
     }
@@ -33,7 +37,7 @@ export function max_dist(
 }
 
 export function nearest_neighbor(
-  structure: Atoms,
+  structure: AnyStructure,
   { scaling_factor = 1.2, min_bond_dist = 0.1 } = {}, // in Angstroms
 ): BondPair[] {
   // finds bonds to sites less than scaling_factor farther away than the nearest neighbor
@@ -46,35 +50,45 @@ export function nearest_neighbor(
   const nearest_distances = new Array(num_sites).fill(Infinity)
 
   // First pass: find nearest neighbor distances
-  for (let i = 0; i < num_sites; i++) {
-    const { xyz: xyz1 } = structure.sites[i]
+  for (let site_idx = 0; site_idx < num_sites; site_idx++) {
+    const { xyz: xyz1 } = structure.sites[site_idx]
 
-    for (let j = i + 1; j < num_sites; j++) {
-      const { xyz: xyz2 } = structure.sites[j]
+    for (
+      let other_site_idx = site_idx + 1;
+      other_site_idx < num_sites;
+      other_site_idx++
+    ) {
+      const { xyz: xyz2 } = structure.sites[other_site_idx]
       const dist_sq = euclidean_dist_sq(xyz1, xyz2)
 
       if (dist_sq >= min_bond_dist_sq) {
-        if (dist_sq < nearest_distances[i]) nearest_distances[i] = dist_sq
-        if (dist_sq < nearest_distances[j]) nearest_distances[j] = dist_sq
+        if (dist_sq < nearest_distances[site_idx])
+          nearest_distances[site_idx] = dist_sq
+        if (dist_sq < nearest_distances[other_site_idx])
+          nearest_distances[other_site_idx] = dist_sq
       }
     }
   }
 
   // Second pass: add bonds within scaled distance
-  for (let i = 0; i < num_sites; i++) {
-    const { xyz: xyz1 } = structure.sites[i]
-    const max_dist_sq = nearest_distances[i] * scaling_factor ** 2
+  for (let site_idx = 0; site_idx < num_sites; site_idx++) {
+    const { xyz: xyz1 } = structure.sites[site_idx]
+    const max_dist_sq = nearest_distances[site_idx] * scaling_factor ** 2
 
-    for (let j = i + 1; j < num_sites; j++) {
-      const { xyz: xyz2 } = structure.sites[j]
+    for (
+      let other_site_idx = site_idx + 1;
+      other_site_idx < num_sites;
+      other_site_idx++
+    ) {
+      const { xyz: xyz2 } = structure.sites[other_site_idx]
       const dist_sq = euclidean_dist_sq(xyz1, xyz2)
 
       if (dist_sq >= min_bond_dist_sq && dist_sq <= max_dist_sq) {
         const dist = Math.sqrt(dist_sq)
-        const bond_key = `${i},${j}`
+        const bond_key = `${site_idx},${other_site_idx}`
         if (!bond_set.has(bond_key)) {
           bond_set.add(bond_key)
-          bonds.push([xyz1, xyz2, i, j, dist])
+          bonds.push([xyz1, xyz2, site_idx, other_site_idx, dist])
         }
       }
     }
@@ -86,5 +100,8 @@ export function nearest_neighbor(
 // redundant functionality-wise with euclidean_dist from $lib/math.ts but needed for performance
 // makes bonding algos 2-3x faster
 function euclidean_dist_sq(vec_a: number[], vec_b: number[]): number {
-  return vec_a.reduce((sum, _, i) => sum + (vec_a[i] - vec_b[i]) ** 2, 0)
+  return vec_a.reduce(
+    (sum, _, coord_idx) => sum + (vec_a[coord_idx] - vec_b[coord_idx]) ** 2,
+    0,
+  )
 }

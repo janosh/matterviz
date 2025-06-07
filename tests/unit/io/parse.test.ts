@@ -1,4 +1,9 @@
-import { parse_poscar, parse_structure_file, parse_xyz } from '$lib/parsers'
+import {
+  parse_cif,
+  parse_poscar,
+  parse_structure_file,
+  parse_xyz,
+} from '$lib/io/parse'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
@@ -8,7 +13,7 @@ import scientific_notation_poscar from '$site/structures/scientific-notation.pos
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 describe(`POSCAR Parser`, () => {
   it.each([
@@ -74,6 +79,35 @@ describe(`POSCAR Parser`, () => {
       expect(result!.sites[1].species[0].element).toBe(expected.elements[1])
     }
   })
+
+  it.each([
+    {
+      name: `too few coordinates`,
+      content: `Test\n1.0\n3.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`,
+      expected_error: `Invalid lattice vector on line 3: expected 3 coordinates, got 2`,
+    },
+    {
+      name: `too many coordinates`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0 5.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`,
+      expected_error: `Invalid lattice vector on line 4: expected 3 coordinates, got 4`,
+    },
+  ])(
+    `should reject lattice vectors with $name`,
+    ({ content, expected_error }) => {
+      const console_error_spy = vi
+        .spyOn(console, `error`)
+        .mockImplementation(() => {})
+
+      const result = parse_poscar(content)
+      expect(result).toBeNull()
+      expect(console_error_spy).toHaveBeenCalledWith(
+        `Error parsing POSCAR file:`,
+        expected_error,
+      )
+
+      console_error_spy.mockRestore()
+    },
+  )
 })
 
 describe(`XYZ Parser`, () => {
@@ -225,5 +259,70 @@ describe(`Auto-detection & Error Handling`, () => {
   ])(`should handle errors gracefully`, ({ parser, content }) => {
     const result = parser(content)
     expect(result).toBeNull()
+  })
+})
+
+describe(`CIF Parser`, () => {
+  const quartz_cif = `data_quartz_alpha
+_chemical_name_mineral                 'Quartz'
+_chemical_formula_sum                  'Si O2'
+_cell_length_a                         4.916
+_cell_length_b                         4.916
+_cell_length_c                         5.405
+_cell_angle_alpha                      90
+_cell_angle_beta                       90
+_cell_angle_gamma                      120
+_space_group_name_H-M_alt              'P 31 2 1'
+_space_group_IT_number                 152
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Si1  Si  0.470  0.000  0.000  1.000
+O1   O   0.410  0.270  0.120  1.000
+O2   O   0.410  0.140  0.880  1.000`
+
+  it(`should parse CIF format correctly`, () => {
+    const result = parse_cif(quartz_cif)
+    expect(result).toBeTruthy()
+    expect(result!.sites).toHaveLength(3)
+
+    // Check lattice parameters
+    expect(result!.lattice).toBeTruthy()
+    expect(result!.lattice!.a).toBeCloseTo(4.916, 3)
+    expect(result!.lattice!.b).toBeCloseTo(4.916, 3)
+    expect(result!.lattice!.c).toBeCloseTo(5.405, 3)
+    expect(result!.lattice!.alpha).toBe(90)
+    expect(result!.lattice!.beta).toBe(90)
+    expect(result!.lattice!.gamma).toBe(120)
+
+    // Check sites
+    expect(result!.sites[0].species[0].element).toBe(`Si`)
+    expect(result!.sites[0].abc).toEqual([0.47, 0.0, 0.0])
+    expect(result!.sites[0].label).toBe(`Si1`)
+
+    expect(result!.sites[1].species[0].element).toBe(`O`)
+    expect(result!.sites[1].abc).toEqual([0.41, 0.27, 0.12])
+    expect(result!.sites[1].label).toBe(`O1`)
+
+    expect(result!.sites[2].species[0].element).toBe(`O`)
+    expect(result!.sites[2].abc).toEqual([0.41, 0.14, 0.88])
+    expect(result!.sites[2].label).toBe(`O2`)
+  })
+
+  it(`should detect CIF format by extension`, () => {
+    const result = parse_structure_file(quartz_cif, `quartz.cif`)
+    expect(result).toBeTruthy()
+    expect(result!.sites).toHaveLength(3)
+  })
+
+  it(`should detect CIF format by content`, () => {
+    const result = parse_structure_file(quartz_cif)
+    expect(result).toBeTruthy()
+    expect(result!.sites).toHaveLength(3)
   })
 })

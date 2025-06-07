@@ -184,14 +184,14 @@
       point_style: [] as object[],
       point_label: [] as object[],
     }
-    for (let i = 0; i < count; i++) {
+    for (let data_idx = 0; data_idx < count; data_idx++) {
       const angle = Math.random() * 2 * Math.PI
       const dist = Math.random() * radius
       points.x.push(center_x + Math.cos(angle) * dist)
       points.y.push(center_y + Math.sin(angle) * dist)
       points.point_style.push({ fill: `purple`, radius: 5 })
       points.point_label.push({
-        text: `${label_prefix}-${i + 1}`,
+        text: `${label_prefix}-${data_idx + 1}`,
         auto_placement: auto_placement,
         font_size: `10px`,
       })

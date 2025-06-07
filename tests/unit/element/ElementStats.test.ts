@@ -2,7 +2,7 @@ import { ElementStats, element_data } from '$lib'
 import { format_num } from '$lib/labels'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '.'
+import { doc_query } from '..'
 
 describe(`ElementStats`, () => {
   test.each(element_data.slice(0, 5))(

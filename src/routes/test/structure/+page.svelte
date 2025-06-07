@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Atoms } from '$lib'
+  import type { AnyStructure } from '$lib'
   import Structure from '$lib/structure/Structure.svelte'
   import initial_structure from '$site/structures/mp-1.json'
 
-  let test_structure = $state(initial_structure as unknown as Atoms)
+  let test_structure = $state(initial_structure as unknown as AnyStructure)
 
   let controls_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })

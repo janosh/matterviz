@@ -8,7 +8,6 @@
     ElementPhoto,
     ElementScatter,
     ElementTile,
-    Icon,
     PeriodicTable,
     PropertySelect,
     element_data,
@@ -18,10 +17,28 @@
   import { PrevNext } from 'svelte-zoo'
 
   let { data } = $props()
-  let { element } = data
+  let element = $derived(data.element)
   $effect(() => {
-    selected.element = data.element
+    selected.element = element
   })
+
+  const icon_property_map = {
+    'Atomic Mass': `#icon-weight`,
+    'Atomic Number': `#icon-info`,
+    'Atomic Radius': `#icon-atom`,
+    'Atomic Volume': `#icon-solid`,
+    'Boiling Point': `#icon-gas`,
+    'Covalent Radius': `#icon-orbit`,
+    'Electron Affinity': `#icon-atom`,
+    'Electron Valency': `#icon-atom`,
+    'First Ionization Energy': `#icon-arrow-up`,
+    'Ionization Energies': `#icon-arrow-up`,
+    'Melting Point': `#icon-liquid`,
+    'Number of Shells': `#icon-electron-shells`,
+    'Specific Heat': `#icon-arrow-up`,
+    Density: `#icon-scale`,
+    Electronegativity: `#icon-atom`,
+  } as const
 
   let key_vals = $derived(
     Object.keys(property_labels)
@@ -35,9 +52,12 @@
         if (Array.isArray(value)) value = value.join(`, `)
         // if value has a unit, append it
         if (unit) value = `${value} &thinsp;${unit}`
-        return [label, value]
+
+        const icon =
+          label && label in icon_property_map ? icon_property_map[label] : `#icon-info`
+        return [label, value, icon] as const
       }),
-  ) as [string, string][]
+  )
 
   // set atomic radius as default heatmap_key
   $effect.pre(() => {
@@ -49,24 +69,6 @@
   let orbiting = $state(true)
   let window_width: number = $state(0)
   let active_shell: number | null = $state(null)
-
-  const icon_property_map = {
-    'Atomic Mass': `mdi:weight`,
-    'Atomic Number': `mdi:periodic-table`,
-    'Atomic Radius': `mdi:atom`,
-    'Atomic Volume': `mdi:cube-outline`,
-    'Boiling Point': `mdi:gas-cylinder`,
-    'Covalent Radius': `mdi:atom`,
-    'Electron Affinity': `mdi:electron-framework`,
-    'Electron Valency': `mdi:atom-variant`,
-    'First Ionization Energy': `simple-line-icons:energy`,
-    'Ionization Energies': `mdi:flash`,
-    'Melting Point': `mdi:water-outline`,
-    'Number of Shells': `ic:baseline-wifi-tethering`,
-    'Specific Heat': `mdi:fire`,
-    Density: `ion:scale-outline`,
-    Electronegativity: `mdi:electron-framework`,
-  } as const
 
   let scatter_plot_values = $derived(
     element_data.map((el) => (selected.heatmap_key ? el[selected.heatmap_key] : null)),
@@ -138,9 +140,9 @@
     <table>
       <thead>
         <tr>
-          <th><Icon icon="ic:outline-circle" />Shell</th>
-          <th><Icon icon="mdi:atom-variant" />Electrons</th>
-          <th><Icon icon="mdi:rotate-orbit" />Orbitals</th>
+          <th><svg><use href="#icon-circle" /></svg>&nbsp;Shell</th>
+          <th><svg><use href="#icon-atom" /></svg>&nbsp;Electrons</th>
+          <th><svg><use href="#icon-orbit" /></svg>&nbsp;Orbitals</th>
         </tr>
       </thead>
 
@@ -175,12 +177,12 @@
   </section>
 
   <section class="properties">
-    {#each key_vals as [label, value], idx ([label, value])}
+    {#each key_vals as [label, value, icon], idx ([label, value, icon])}
       <!-- skip last item if index is uneven to avoid single dangling item on last row -->
       {#if idx % 2 === 1 || idx < key_vals.length - 1}
         <div>
           <strong>
-            <Icon icon={icon_property_map[label]} />
+            <svg><use href={icon} /></svg>
             {@html value}
           </strong>
           <small>{label}</small>
@@ -194,7 +196,10 @@
     current={page.url.pathname.slice(1)}
   >
     {#snippet children({ item, kind })}
-      <a href={item.name.toLowerCase()} style="display: flex; flex-direction: column;">
+      <a
+        href={item.name.toLowerCase()}
+        style="display: flex; flex-direction: column; position: relative;"
+      >
         <h3>
           {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
         </h3>
@@ -218,7 +223,6 @@
     margin: 2em auto;
     display: grid;
     gap: 2em;
-    place-items: center;
   }
   @media (min-width: 700px) {
     section.viz {

@@ -1334,8 +1334,8 @@ describe(`ScatterPlot`, () => {
     }
 
     // Generate points from 0.1 to 1000 with exponential spacing
-    for (let i = -1; i <= 3; i += 0.25) {
-      const x = Math.pow(10, i)
+    for (let exp_val = -1; exp_val <= 3; exp_val += 0.25) {
+      const x = Math.pow(10, exp_val)
       const y = Math.pow(x, 2) // y = x^2 (power law relationship)
       squared_data.x.push(x)
       squared_data.y.push(y)
@@ -1349,8 +1349,8 @@ describe(`ScatterPlot`, () => {
     }
 
     // Similar range but with y = sqrt(x)
-    for (let i = -1; i <= 3; i += 0.25) {
-      const x = Math.pow(10, i)
+    for (let exp_val = -1; exp_val <= 3; exp_val += 0.25) {
+      const x = Math.pow(10, exp_val)
       const y = Math.pow(x, 0.5) // y = √x (square root relationship)
       sqrt_data.x.push(x)
       sqrt_data.y.push(y)

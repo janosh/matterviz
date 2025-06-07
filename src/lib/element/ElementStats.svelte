@@ -1,18 +1,12 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { ElementHeading, Icon, format_num } from '$lib'
+  import { ElementHeading, format_num } from '$lib'
 
   interface Props {
     element: ChemicalElement | null
     style?: string
   }
   let { element, style = `` }: Props = $props()
-
-  const icon_phase_map = {
-    Solid: `mdi:cube-outline`,
-    Liquid: `mdi:water-outline`,
-    Gas: `mdi:gas-cylinder`,
-  }
 </script>
 
 {#if element}
@@ -28,7 +22,7 @@
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
       <strong>
-        <Icon icon="mdi:weight" />
+        <svg><use href="#icon-weight" /></svg>
         {format_num(element.atomic_mass)}
       </strong>
     </section>
@@ -38,21 +32,21 @@
         <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
       <strong>
-        <Icon icon="ion:scale-outline" />
+        <svg><use href="#icon-scale" /></svg>
         {format_num(element.density)}
       </strong>
     </section>
     <section>
       <p>Phase</p>
       <strong>
-        <Icon icon={icon_phase_map[element.phase]} />
+        <svg><use href="#icon-{element.phase.toLowerCase()}" /></svg>
         {element.phase}</strong
       >
     </section>
     <section>
       <p>Year of Discovery</p>
       <strong>
-        <Icon icon="material-symbols:event-available" />
+        <svg><use href="#icon-calendar" /></svg>
         {element.year}
       </strong>
     </section>
