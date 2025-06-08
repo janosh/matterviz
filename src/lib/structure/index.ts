@@ -18,6 +18,14 @@ export const CELL_DEFAULTS = {
   line_width: 1.5,
 } as const
 
+export const BOND_DEFAULTS = {
+  thickness: 0.25,
+  offset: 0,
+  color: `white`,
+  from_color: `white`,
+  to_color: `white`,
+} as const
+
 export type Species = {
   element: ElementSymbol
   occu: number

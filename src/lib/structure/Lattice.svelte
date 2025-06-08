@@ -8,7 +8,8 @@
 
   interface Props {
     matrix?: [Vector, Vector, Vector] | undefined
-    cell_color?: string
+    cell_edge_color?: string
+    cell_surface_color?: string
     cell_line_width?: number // thickness of the cell edges
     cell_edge_opacity?: number // opacity of the cell edges
     cell_surface_opacity?: number // opacity of the cell surfaces
@@ -18,7 +19,8 @@
   }
   let {
     matrix = undefined,
-    cell_color = CELL_DEFAULTS.color,
+    cell_edge_color = CELL_DEFAULTS.color,
+    cell_surface_color = CELL_DEFAULTS.color,
     cell_line_width = CELL_DEFAULTS.line_width,
     cell_edge_opacity = CELL_DEFAULTS.edge_opacity,
     cell_surface_opacity = CELL_DEFAULTS.surface_opacity,
@@ -92,7 +94,7 @@
               args={[cell_line_width * 0.01, cell_line_width * 0.01, length, 8]}
             />
             <T.MeshStandardMaterial
-              color={cell_color}
+              color={cell_edge_color}
               opacity={cell_edge_opacity}
               transparent
             />
@@ -105,7 +107,7 @@
     {#if cell_surface_opacity > 0}
       <T.Mesh geometry={box_geometry} position={lattice_center}>
         <T.MeshStandardMaterial
-          color={cell_color}
+          color={cell_surface_color}
           opacity={cell_surface_opacity}
           transparent
         />

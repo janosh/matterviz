@@ -11,6 +11,7 @@
     minSelect?: number
     id?: string | null
     key?: string | null
+    [key: string]: unknown
   }
   let {
     value = $bindable(null),
@@ -19,6 +20,7 @@
     minSelect = 0,
     id = null,
     key = $bindable(``),
+    ...rest
   }: Props = $props()
 
   $effect.pre(() => {
@@ -34,6 +36,6 @@
   {minSelect}
   bind:value
   placeholder="Select a heat map"
-  style="font-size: 1.2em;"
   inputStyle="padding: 3pt 6pt;"
+  {...rest}
 />

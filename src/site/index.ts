@@ -2,6 +2,7 @@ import type { IdStructure } from '../lib'
 
 export { default as DemoNav } from './DemoNav.svelte'
 export { default as Footer } from './Footer.svelte'
+export { default as PeriodicTableControls } from './PeriodicTableControls.svelte'
 
 export const structures = Object.entries(
   import.meta.glob(`./structures/*.json`, {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AnyStructure, BondPair, Site, Vector } from '$lib'
   import {
+    BOND_DEFAULTS,
     Bond,
     Lattice,
     add,
@@ -59,8 +60,7 @@
     active_site?: Site | null
     precision?: string
     auto_rotate?: number // auto rotate speed. set to 0 to disable auto rotation.
-    bond_radius?: number | undefined
-    bond_opacity?: number
+    bond_thickness?: number // thickness of bond cylinder geometry
     bond_color?: string // must be hex code for <input type='color'>
     // TODO implement bond_color_mode
     // bond_color_mode?: `single` | `split-midpoint` | `gradient`
@@ -83,7 +83,7 @@
     structure = undefined,
     atom_radius = 0.5,
     // label_radius = 1,
-    same_size_atoms = true,
+    same_size_atoms = false,
     camera_position = [0, 0, 0],
     rotation_damping = 0.1,
     max_zoom = undefined,
@@ -100,8 +100,7 @@
     active_site = $bindable(null),
     precision = `.3~f`,
     auto_rotate = 0,
-    bond_radius = 0.05,
-    bond_opacity = 0.5,
+    bond_thickness = BOND_DEFAULTS.thickness,
     bond_color = `#ffffff`,
     bonding_strategy = `nearest_neighbor`,
     bonding_options = {},
@@ -141,9 +140,6 @@
       bond_pairs = bonding_strategies[bonding_strategy](structure, bonding_options)
     }
   })
-
-  // make bond thickness reactive to atom_radius unless bond_radius is set
-  let bond_thickness = $derived(bond_radius ?? 0.05 * atom_radius)
 
   // Create modest gizmo options with balanced colors
   let gizmo_options = $derived.by(() => {
@@ -291,13 +287,28 @@
 {/if}
 
 {#if show_bonds}
-  <InstancedMesh>
-    <T.CylinderGeometry args={[bond_thickness, bond_thickness, 1, 16]} />
-    <T.MeshStandardMaterial opacity={bond_opacity} color={bond_color} />
-    {#each bond_pairs as [from, to] (`${from}-${to}`)}
-      <Bond {from} {to} radius={1} />
-    {/each}
-  </InstancedMesh>
+  {#each bond_pairs as [from, to, idx_a, idx_b] ([from, to, idx_a, idx_b])}
+    {@const site_a = structure?.sites[idx_a]}
+    {@const site_b = structure?.sites[idx_b]}
+    {@const get_majority_color = (site: typeof site_a) => {
+      if (!site?.species || site.species.length === 0) return bond_color
+      // Find species with highest occupancy
+      const majority_species = site.species.reduce((max, spec) =>
+        spec.occu > max.occu ? spec : max,
+      )
+      return colors.element?.[majority_species.element] || bond_color
+    }}
+    {@const from_color = get_majority_color(site_a)}
+    {@const to_color = get_majority_color(site_b)}
+    <Bond
+      {from}
+      {to}
+      thickness={bond_thickness}
+      {from_color}
+      {to_color}
+      color={bond_color}
+    />
+  {/each}
 {/if}
 
 <!-- highlight active and hovered sites -->
@@ -323,7 +334,7 @@
   <InstancedMesh>
     <T.CylinderGeometry args={[width, width, 1, 16]} />
     <T.MeshStandardMaterial {opacity} {color} />
-    <Bond from={active_site.xyz} to={hovered_site.xyz} radius={1} />
+    <Bond from={active_site.xyz} to={hovered_site.xyz} thickness={0.7} />
   </InstancedMesh>
 {/if}
 

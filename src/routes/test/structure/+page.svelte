@@ -12,7 +12,8 @@
 
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
-    cell_color: `white`,
+    cell_edge_color: `white`,
+    cell_surface_color: `white`,
     cell_edge_opacity: 0.4,
     cell_surface_opacity: 0.01, // Very subtle surface visibility
     cell_line_width: 1.5,
@@ -24,8 +25,11 @@
     if (typeof window !== `undefined`) {
       const url_params = new URLSearchParams(window.location.search)
 
-      if (url_params.has(`cell_color`)) {
-        lattice_props.cell_color = url_params.get(`cell_color`) || `white`
+      if (url_params.has(`cell_edge_color`)) {
+        lattice_props.cell_edge_color = url_params.get(`cell_edge_color`) || `white`
+      }
+      if (url_params.has(`cell_surface_color`)) {
+        lattice_props.cell_surface_color = url_params.get(`cell_surface_color`) || `white`
       }
       if (url_params.has(`cell_edge_opacity`)) {
         const opacity = parseFloat(url_params.get(`cell_edge_opacity`) || `0.4`)
@@ -48,7 +52,10 @@
       const handle_lattice_props = (event: Event) => {
         const customEvent = event as CustomEvent
         const { detail } = customEvent
-        if (detail.cell_color !== undefined) lattice_props.cell_color = detail.cell_color
+        if (detail.cell_edge_color !== undefined)
+          lattice_props.cell_edge_color = detail.cell_edge_color
+        if (detail.cell_surface_color !== undefined)
+          lattice_props.cell_surface_color = detail.cell_surface_color
         if (detail.cell_edge_opacity !== undefined)
           lattice_props.cell_edge_opacity = detail.cell_edge_opacity
         if (detail.cell_surface_opacity !== undefined)

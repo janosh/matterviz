@@ -2,7 +2,6 @@
   import type { ChemicalElement } from '$lib'
   import {
     BohrAtom,
-    ColorCustomizer,
     ColorScaleSelect,
     ElementScatter,
     ElementStats,
@@ -15,11 +14,25 @@
   import { property_labels } from '$lib/labels'
   import type { ScaleContext } from '$lib/periodic-table/PeriodicTable.svelte'
   import { selected } from '$lib/state.svelte'
+  import { PeriodicTableControls } from '$site'
   import type { Snapshot } from './$types'
 
   let window_width: number = $state(0)
   let color_scale: D3InterpolateName = $state(`interpolateViridis`)
   let heatmap_key: string | null = $state(null)
+
+  // Appearance control state
+  let tile_gap: string = $state(`0.3cqw`)
+  let symbol_font_size: number = $state(40)
+  let number_font_size: number = $state(22)
+  let name_font_size: number = $state(12)
+  let value_font_size: number = $state(18)
+  let tooltip_font_size: number = $state(14)
+  let tooltip_bg_color: string = $state(`rgba(0, 0, 0, 0.8)`)
+  let tooltip_text_color: string = $state(`white`)
+  let tile_border_radius: number = $state(1)
+  let inner_transition_offset: number = $state(0.5)
+  let tile_font_color: string = $state(`#ffffff`)
 
   // Extract shared logic for mapping element values
   let get_element_value = $derived((el: ChemicalElement) => {
@@ -82,14 +95,16 @@
   </form>
 
   <PeriodicTable
-    tile_props={{ show_name: window_width > 1000 }}
+    tile_props={{ show_name: window_width > 1000, text_color: tile_font_color }}
     {heatmap_values}
-    style="margin-block: 2em;"
     bind:color_scale
     bind:active_element={selected.element}
     bind:active_category={selected.category}
     links="name"
     tooltip={heatmap_key ? custom_tooltip : true}
+    gap={tile_gap}
+    inner_transition_metal_offset={inner_transition_offset}
+    style="margin: 2em auto; max-width: 1200px;"
   >
     {#if selected.element && window_width > 1100}
       {@const { shells, name, symbol } = selected.element}
@@ -118,9 +133,19 @@
     {/snippet}
   </PeriodicTable>
 
-  {#if !heatmap_key}
-    <ColorCustomizer collapsible={false} />
-  {/if}
+  <PeriodicTableControls
+    bind:tile_gap
+    bind:symbol_font_size
+    bind:number_font_size
+    bind:name_font_size
+    bind:value_font_size
+    bind:tooltip_font_size
+    bind:tooltip_bg_color
+    bind:tooltip_text_color
+    bind:tile_border_radius
+    bind:inner_transition_offset
+    bind:tile_font_color
+  />
 </div>
 
 <style>
@@ -128,26 +153,5 @@
     display: flex;
     place-content: center;
     gap: 1em;
-  }
-
-  /* Enhanced tooltip styles */
-  :global(.tooltip .active-indicator) {
-    color: gold;
-    margin-left: 0.25em;
-  }
-
-  :global(.tooltip .position) {
-    opacity: 0.7;
-    font-style: italic;
-  }
-
-  :global(.tooltip .scale-info) {
-    opacity: 0.8;
-    color: #ccc;
-  }
-
-  :global(.tooltip div.active) {
-    border-left: 3px solid gold;
-    padding-left: 0.5em;
   }
 </style>

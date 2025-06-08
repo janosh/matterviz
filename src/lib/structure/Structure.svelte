@@ -2,20 +2,15 @@
   import { browser } from '$app/environment'
   import type { AnyStructure, Lattice } from '$lib'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib'
-  import { download } from '$lib/api'
   import { element_color_schemes } from '$lib/colors'
   import * as exports from '$lib/io/export'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
+  import Select from 'svelte-multiselect'
   import { Tooltip } from 'svelte-zoo'
-  import { Vector2, WebGLRenderer } from 'three'
-  import { CELL_DEFAULTS, StructureLegend, StructureScene } from '.'
-
-  // Type for canvas with custom renderer property
-  interface CanvasWithRenderer extends HTMLCanvasElement {
-    __customRenderer?: WebGLRenderer
-  }
+  import { WebGLRenderer } from 'three'
+  import { BOND_DEFAULTS, CELL_DEFAULTS, StructureLegend, StructureScene } from '.'
 
   interface Props {
     // output of pymatgen.core.Structure.as_dict()
@@ -73,7 +68,8 @@
     lattice_props = $bindable({
       cell_edge_opacity: CELL_DEFAULTS.edge_opacity,
       cell_surface_opacity: CELL_DEFAULTS.surface_opacity,
-      cell_color: CELL_DEFAULTS.color,
+      cell_edge_color: CELL_DEFAULTS.color,
+      cell_surface_color: CELL_DEFAULTS.color,
       cell_line_width: CELL_DEFAULTS.line_width,
       show_vectors: true,
     }),
@@ -111,12 +107,40 @@
 
   // Ensure scene_props always has some defaults merged in
   $effect.pre(() => {
-    scene_props = { atom_radius: 1, show_atoms: true, auto_rotate: 0, ...scene_props }
+    scene_props = {
+      atom_radius: 1,
+      show_atoms: true,
+      auto_rotate: 0,
+      bond_thickness: BOND_DEFAULTS.thickness,
+      ...scene_props,
+    }
   })
 
   $effect.pre(() => {
     colors.element = element_color_schemes[color_scheme]
   })
+
+  // Color scheme selection state
+  let color_scheme_selected = $state([color_scheme])
+  $effect(() => {
+    if (color_scheme_selected.length > 0) {
+      color_scheme = color_scheme_selected[0] as `Jmol` | `Vesta`
+    }
+  })
+
+  // Helper function to get example set of colors from an element color scheme
+  function get_representative_colors(scheme_name: string): string[] {
+    const scheme =
+      element_color_schemes[scheme_name as keyof typeof element_color_schemes]
+    if (!scheme) return []
+
+    // Get colors for common elements: H, C, N, O, Fe, Ca, Si, Al
+    const sample_elements = [`H`, `C`, `N`, `O`, `Fe`, `Ca`, `Si`, `Al`]
+    return sample_elements
+      .slice(0, 4) // Take first 4
+      .map((el) => scheme[el] || scheme.H || `#cccccc`)
+      .filter(Boolean)
+  }
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === `Escape`) controls_open = false
@@ -180,70 +204,6 @@
       if (content) on_file_drop?.(content, file.name)
     }
     reader.readAsText(file)
-  }
-
-  function download_png() {
-    const canvas = wrapper?.querySelector(`canvas`) as CanvasWithRenderer
-    if (!canvas) {
-      alert(`Canvas not found`)
-      return
-    }
-
-    // Convert DPI to multiplier (72 DPI is baseline web resolution)
-    const resolution_multiplier = png_dpi / 72
-    const renderer = canvas.__customRenderer
-
-    if (resolution_multiplier <= 1.1 || !renderer) {
-      // Direct capture at current resolution (if DPI is close to 72 or renderer not available)
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const filename = exports.generate_structure_filename(structure, `png`)
-          download(blob, filename, `image/png`)
-        } else {
-          alert(`Failed to generate PNG - canvas may be empty`)
-        }
-      }, `image/png`)
-      return
-    }
-
-    // Temporarily modify the renderer's pixel ratio for high-res capture
-    const original_pixel_ratio = renderer.getPixelRatio()
-    const original_size = renderer.getSize(new Vector2())
-
-    try {
-      // Set higher pixel ratio to increase rendering resolution
-      renderer.setPixelRatio(resolution_multiplier)
-
-      // Force the canvas to update its resolution
-      renderer.setSize(original_size.width, original_size.height, false)
-
-      // Wait for the next render cycle to complete at higher resolution
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          // Capture the high-resolution render
-          canvas.toBlob((blob) => {
-            // Restore original settings immediately
-            renderer.setPixelRatio(original_pixel_ratio)
-            renderer.setSize(original_size.width, original_size.height, false)
-
-            if (blob) {
-              const filename = exports.generate_structure_filename(structure, `png`)
-              download(blob, filename, `image/png`)
-            } else {
-              alert(`Failed to generate high-resolution PNG`)
-            }
-          }, `image/png`)
-        }, 150) // Allow time for re-render at new resolution
-      })
-    } catch (error) {
-      console.error(`Error during high-res rendering:`, error)
-      // Restore original settings
-      renderer.setPixelRatio(original_pixel_ratio)
-      renderer.setSize(original_size.width, original_size.height, false)
-      alert(
-        `Failed to render at high resolution: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
   }
 
   export function toggle_fullscreen() {
@@ -400,6 +360,32 @@
           <small> (if false, all atoms same size)</small>
         </span>
       </label>
+      <label style="align-items: flex-start;">
+        Color scheme
+        <Select
+          options={Object.keys(element_color_schemes)}
+          maxSelect={1}
+          minSelect={1}
+          bind:selected={color_scheme_selected}
+          liOptionStyle="padding: 3pt 6pt;"
+          style="width: 10em; border: none;"
+        >
+          {#snippet children({ option })}
+            {@const style = `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
+            <div {style}>
+              {option}
+              <div style="display: flex; gap: 3pt;">
+                {#each get_representative_colors(String(option)) as color (color)}
+                  {@const style = `width: 15px; height: 15px; border-radius: 2px; background: {color};`}
+                  <div {style}></div>
+                {/each}
+              </div>
+            </div>
+          {/snippet}
+        </Select>
+      </label>
+
+      <hr />
 
       <!-- Cell Controls -->
       <h4 class="section-heading">Cell</h4>
@@ -407,46 +393,33 @@
         <input type="checkbox" bind:checked={lattice_props.show_vectors} />
         lattice vectors
       </label>
-      <div class="control-row">
-        <label class="compact">
-          Color
-          <input type="color" bind:value={lattice_props.cell_color} />
-        </label>
-        <label class="slider-control">
-          Edge opacity
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.05}
-            bind:value={lattice_props.cell_edge_opacity}
-          />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            bind:value={lattice_props.cell_edge_opacity}
-          />
-        </label>
-      </div>
-      <label class="slider-control">
-        Surface opacity
-        <input
-          type="number"
-          min={0}
-          max={1}
-          step={0.01}
-          bind:value={lattice_props.cell_surface_opacity}
-        />
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          bind:value={lattice_props.cell_surface_opacity}
-        />
-      </label>
+      {#each [{ label: `Edge color`, color_prop: `cell_edge_color` as const, opacity_prop: `cell_edge_opacity` as const, step: 0.05 }, { label: `Surface color`, color_prop: `cell_surface_color` as const, opacity_prop: `cell_surface_opacity` as const, step: 0.01 }] as { label, color_prop, opacity_prop, step } (label)}
+        <div class="control-row">
+          <label class="compact">
+            {label}
+            <input type="color" bind:value={lattice_props[color_prop]} />
+          </label>
+          <label class="slider-control">
+            opacity
+            <input
+              type="number"
+              min={0}
+              max={1}
+              {step}
+              bind:value={lattice_props[opacity_prop]}
+            />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              {step}
+              bind:value={lattice_props[opacity_prop]}
+            />
+          </label>
+        </div>
+      {/each}
+
+      <hr />
 
       <!-- Background Controls -->
       <h4 class="section-heading">Background</h4>
@@ -475,6 +448,8 @@
       </div>
 
       {#if show_full_controls}
+        <!-- Camera Controls -->
+        <h4 class="section-heading">Camera</h4>
         <label>
           Auto rotate speed
           <input
@@ -528,43 +503,6 @@
             bind:value={scene_props.pan_speed}
           />
         </label>
-        <!-- directional light intensity -->
-        <label>
-          <Tooltip text="intensity of the directional light">Directional light</Tooltip>
-          <input
-            type="number"
-            min={0}
-            max={4}
-            step={0.01}
-            bind:value={scene_props.directional_light}
-          />
-          <input
-            type="range"
-            min={0}
-            max={4}
-            step={0.01}
-            bind:value={scene_props.directional_light}
-          />
-        </label>
-        <!-- ambient light intensity -->
-        <label>
-          <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
-          <input
-            type="number"
-            min={0.5}
-            max={3}
-            step={0.05}
-            bind:value={scene_props.ambient_light}
-          />
-          <input
-            type="range"
-            min={0.5}
-            max={3}
-            step={0.05}
-            bind:value={scene_props.ambient_light}
-          />
-        </label>
-        <!-- rotation damping -->
         <label>
           <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
           <input
@@ -582,6 +520,45 @@
             bind:value={scene_props.rotation_damping}
           />
         </label>
+
+        <hr />
+
+        <!-- Lighting Controls -->
+        <h4 class="section-heading">Lighting</h4>
+        <label>
+          <Tooltip text="intensity of the directional light">Directional light</Tooltip>
+          <input
+            type="number"
+            min={0}
+            max={4}
+            step={0.01}
+            bind:value={scene_props.directional_light}
+          />
+          <input
+            type="range"
+            min={0}
+            max={4}
+            step={0.01}
+            bind:value={scene_props.directional_light}
+          />
+        </label>
+        <label>
+          <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
+          <input
+            type="number"
+            min={0.5}
+            max={3}
+            step={0.05}
+            bind:value={scene_props.ambient_light}
+          />
+          <input
+            type="range"
+            min={0.5}
+            max={3}
+            step={0.05}
+            bind:value={scene_props.ambient_light}
+          />
+        </label>
       {/if}
 
       <hr />
@@ -592,6 +569,7 @@
           <select bind:value={scene_props.bonding_strategy}>
             <option value="max_dist">Max Distance</option>
             <option value="nearest_neighbor">Nearest Neighbor</option>
+            <option value="vdw_radius_based">Van der Waals Radii</option>
           </select>
         </label>
 
@@ -600,33 +578,24 @@
           <input type="color" bind:value={scene_props.bond_color} />
         </label>
         <label>
-          Bond radius
+          Bond thickness
           <input
             type="number"
             min={0.01}
             max={0.12}
             step={0.005}
-            bind:value={scene_props.bond_radius}
+            bind:value={scene_props.bond_thickness}
           />
           <input
             type="range"
             min="0.01"
             max="0.12"
             step={0.005}
-            bind:value={scene_props.bond_radius}
+            bind:value={scene_props.bond_thickness}
           />
         </label>
       {/if}
 
-      <!-- color scheme -->
-      <label>
-        Color scheme
-        <select bind:value={color_scheme}>
-          {#each Object.keys(element_color_schemes) as key (key)}
-            <option value={key}>{key}</option>
-          {/each}
-        </select>
-      </label>
       <span
         style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap;"
       >
@@ -646,7 +615,10 @@
         </button>
         <button
           type="button"
-          onclick={download_png}
+          onclick={() => {
+            const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
+            exports.export_png(canvas, structure, png_dpi)
+          }}
           title="{save_png_btn_text} (${png_dpi} DPI)"
         >
           {save_png_btn_text}
@@ -673,7 +645,7 @@
           alpha: true,
         })
         // Store renderer reference for high-res export
-        ;(canvas as CanvasWithRenderer).__customRenderer = renderer
+        ;(canvas as exports.CanvasWithRenderer).__customRenderer = renderer
         return renderer
       }}
     >
@@ -726,6 +698,12 @@
     font-size: var(--struct-bottom-left-font-size, 1.2em);
     padding: var(--struct-bottom-left-padding, 1pt 5pt);
   }
+  button {
+    background-color: transparent;
+  }
+  button:hover {
+    background-color: transparent !important;
+  }
 
   section {
     position: absolute;
@@ -769,7 +747,7 @@
     max-width: var(--struct-controls-max-width, 90cqw);
     color: var(--struct-controls-text-color);
     overflow: auto;
-    max-height: var(--struct-controls-max-height, calc(100cqh - 3em));
+    max-height: var(--struct-controls-max-height, calc(100vh - 3em));
   }
   dialog.controls hr {
     border: none;
@@ -798,6 +776,7 @@
     border: var(--struct-controls-input-num-border, none);
     background: var(--struct-controls-input-num-bg, rgba(255, 255, 255, 0.15));
     margin-right: 3pt;
+    margin-left: var(--struct-controls-input-num-margin-left, 6pt);
     flex-shrink: 0;
   }
   input::-webkit-inner-spin-button {
@@ -812,7 +791,7 @@
   }
   dialog.controls button {
     width: max-content;
-    background: var(--struct-controls-btn-bg, rgba(255, 255, 255, 0.4));
+    background-color: var(--struct-controls-btn-bg, rgba(255, 255, 255, 0.2));
   }
   select {
     margin: var(--struct-controls-select-margin, 0 0 0 5pt);

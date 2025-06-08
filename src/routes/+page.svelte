@@ -291,12 +291,10 @@
 <h2>Try dragging files onto the structure viewer</h2>
 
 <p>
-  You can now edit the structure content in the textarea below. Changes will automatically
-  update the 3D viewer. Or drag a local <code>extXYZ</code>, <code>POSCAR</code>,
-  <code>CIF</code>
-  or
-  <code>pymatgen</code> JSON files onto the structure viewer. You can also edit the structure
-  content in the textarea below. Changes will automatically update the 3D viewer.
+  Either from the set of example files or drag a local <code>extXYZ</code>,
+  <code>POSCAR</code>, <code>CIF</code> or <code>pymatgen</code> JSON files onto the structure
+  viewer. You can also edit the structure content in the textarea below. Changes will automatically
+  update the 3D viewer.
 </p>
 
 <div class="files-and-textearea">

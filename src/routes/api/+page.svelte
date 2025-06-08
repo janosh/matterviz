@@ -89,7 +89,7 @@
   ul li small {
     font-weight: lighter;
   }
-  summary :is(:global(h3, h4)) {
+  summary :is(h3, h4) {
     margin: 1ex;
     display: inline-block;
   }

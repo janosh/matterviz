@@ -962,10 +962,6 @@
     font-size: 1em;
   }
 
-  :global(.demo-plot .scatter) {
-    flex-grow: 1;
-  }
-
   :is(h1, h2) {
     text-align: center;
     margin-bottom: 1em;
