@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChemicalElement } from '$lib'
+  import type { Category, ChemicalElement } from '$lib'
   import {
     BohrAtom,
     ColorScaleSelect,
@@ -12,7 +12,7 @@
   } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { property_labels } from '$lib/labels'
-  import type { ScaleContext } from '$lib/periodic-table/PeriodicTable.svelte'
+  import type { ScaleContext } from '$lib/periodic-table'
   import { selected } from '$lib/state.svelte'
   import { PeriodicTableControls } from '$site'
   import type { Snapshot } from './$types'
@@ -34,6 +34,13 @@
   let inner_transition_offset: number = $state(0.5)
   let tile_font_color: string = $state(`#ffffff`)
 
+  // Missing color demo periodic table
+  let missing_heatmap_key: string | null = $state(`atomic_mass`)
+  let missing_color: string = $state(`#666666`)
+  let missing_use_category: boolean = $state(false)
+  let missing_active_element: ChemicalElement | null = $state(null)
+  let missing_active_category: Category | null = $state(null)
+
   // Extract shared logic for mapping element values
   let get_element_value = $derived((el: ChemicalElement) => {
     if (!heatmap_key) return 0
@@ -42,6 +49,26 @@
   })
 
   let heatmap_values = $derived(heatmap_key ? element_data.map(get_element_value) : [])
+
+  // Missing color demo derived values
+  let missing_get_element_value = $derived((el: ChemicalElement) => {
+    if (!missing_heatmap_key) return 0
+    const value = el[missing_heatmap_key as keyof typeof el]
+    return typeof value === `number` ? value : 0
+  })
+
+  let missing_heatmap_values = $derived.by(() => {
+    if (!missing_heatmap_key) return []
+
+    const full_values = element_data.map(missing_get_element_value)
+
+    // Always show partial data for demo (every 3rd element)
+    return full_values.map((value, idx) => (idx % 3 === 0 ? value : 0))
+  })
+
+  let missing_computed_color = $derived(
+    missing_use_category ? `element-category` : missing_color,
+  )
 
   let [y_label, y_unit] = $derived(
     heatmap_key
@@ -104,6 +131,7 @@
     tooltip={heatmap_key ? custom_tooltip : true}
     gap={tile_gap}
     inner_transition_metal_offset={inner_transition_offset}
+    show_photo
     style="margin: 2em auto; max-width: 1200px;"
   >
     {#if selected.element && window_width > 1100}
@@ -148,10 +176,75 @@
   />
 </div>
 
+<!-- Second Periodic Table - Missing Color Demo -->
+<h2>Missing Color Demo</h2>
+<p>
+  The <code>missing_color</code> prop is used to control how missing values in heatmap data
+  are displayed.
+</p>
+
+<PeriodicTable
+  tile_props={{ show_name: window_width > 800, text_color: tile_font_color }}
+  heatmap_values={missing_heatmap_values}
+  missing_color={missing_computed_color}
+  bind:color_scale
+  bind:active_element={missing_active_element}
+  bind:active_category={missing_active_category}
+  links="name"
+  tooltip={true}
+  gap={tile_gap}
+  style="margin: 1em auto; max-width: 1000px;"
+>
+  {#snippet inset()}
+    <TableInset>
+      <div class="missing-color-controls-inline">
+        <label>
+          <input
+            type="checkbox"
+            bind:checked={missing_use_category}
+            disabled={!missing_heatmap_values?.length}
+          />
+          Use element category colors
+        </label>
+
+        <label>
+          Missing color:
+          <input
+            type="color"
+            bind:value={missing_color}
+            disabled={missing_use_category || !missing_heatmap_values?.length}
+          />
+        </label>
+      </div>
+    </TableInset>
+  {/snippet}
+</PeriodicTable>
+
 <style>
   form {
     display: flex;
     place-content: center;
     gap: 1em;
+  }
+  .missing-color-controls-inline {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .missing-color-controls-inline label {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+  .missing-color-controls-inline input[type='checkbox'] {
+    margin: 0;
+  }
+  .missing-color-controls-inline input[type='color'] {
+    width: 2.5em;
+    height: 1.8em;
   }
 </style>

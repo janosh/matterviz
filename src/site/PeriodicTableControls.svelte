@@ -27,7 +27,6 @@
     tooltip_line_height?: number
     tooltip_text_align?: string
   }
-
   let {
     tile_gap = $bindable(`0.3cqw`),
     symbol_font_size = $bindable(40),
@@ -216,66 +215,63 @@
 </script>
 
 <div class="controls-grid">
-  <div class="controls-section category-colors">
-    <div class="section-header">
-      <h3>Element Category Colors</h3>
+  <section class="category-colors">
+    <h3>
+      Element Category Colors
       {#if category_colors_modified}
         <button class="section-reset-btn" onclick={reset_category_colors}>reset</button>
       {/if}
-    </div>
-    <div class="color-grid">
-      {#each Object.keys(colors.category) as category (category)}
-        <label
-          class="color-label"
-          for="{category}-color"
-          onmouseenter={() => (selected.category = category as Category)}
-          onfocus={() => (selected.category = category as Category)}
-          onmouseleave={() => (selected.category = null)}
-          onblur={() => (selected.category = null)}
-        >
-          <input
-            type="color"
-            id="{category}-color"
-            bind:value={colors.category[category]}
-          />
-          <span>{category.replaceAll(`-`, ` `)}</span>
-          {#if colors.category[category] !== default_category_colors[category]}
-            <button
-              onclick={(event) => {
-                event.preventDefault()
-                colors.category[category] = default_category_colors[category]
-              }}
-            >
-              reset
-            </button>
-          {/if}
-        </label>
-      {/each}
-    </div>
-  </div>
+    </h3>
+    {#each Object.keys(colors.category) as category (category)}
+      <label
+        for="{category}-color"
+        onmouseenter={() => (selected.category = category as Category)}
+        onfocus={() => (selected.category = category as Category)}
+        onmouseleave={() => (selected.category = null)}
+        onblur={() => (selected.category = null)}
+      >
+        <input
+          type="color"
+          id="{category}-color"
+          bind:value={colors.category[category]}
+        />
+        <span>{category.replaceAll(`-`, ` `)}</span>
+        {#if colors.category[category] !== default_category_colors[category]}
+          <button
+            onclick={(event) => {
+              event.preventDefault()
+              colors.category[category] = default_category_colors[category]
+            }}
+          >
+            reset
+          </button>
+        {/if}
+      </label>
+    {/each}
+  </section>
 
-  <div class="controls-section">
-    <div class="section-header">
-      <h3>Element Tiles</h3>
+  <section>
+    <h3>
+      Element Tiles
       {#if tiles_modified}
         <button class="section-reset-btn" onclick={reset_tiles}>reset</button>
       {/if}
-    </div>
+    </h3>
 
-    <label class="control-row">
+    <label>
       <span>Gap between tiles</span>
       <input type="text" bind:value={tile_gap} placeholder="0.3cqw" />
       <button onclick={() => reset_property(`tile_gap`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Border radius (pt)</span>
       <input type="range" min="0" max="10" step="0.5" bind:value={tile_border_radius} />
       <input type="number" min="0" max="10" step="0.5" bind:value={tile_border_radius} />
       <button onclick={() => reset_property(`tile_border_radius`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Inner transition offset</span>
       <input
         type="range"
@@ -294,7 +290,7 @@
       <button onclick={() => reset_property(`inner_transition_offset`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Transition duration (s)</span>
       <input
         type="range"
@@ -313,57 +309,57 @@
       <button onclick={() => reset_property(`tile_transition_duration`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Hover border width (px)</span>
       <input type="range" min="0" max="5" step="1" bind:value={hover_border_width} />
       <input type="number" min="0" max="5" step="1" bind:value={hover_border_width} />
       <button onclick={() => reset_property(`hover_border_width`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Font color</span>
       <input type="color" bind:value={tile_font_color} />
       <button onclick={() => reset_property(`tile_font_color`)}>reset</button>
     </label>
-  </div>
+  </section>
 
-  <div class="controls-section">
-    <div class="section-header">
-      <h3>Font Sizes (cqw)</h3>
+  <section>
+    <h3>
+      Font Sizes
       {#if fonts_modified}
         <button class="section-reset-btn" onclick={reset_fonts}>reset</button>
       {/if}
-    </div>
+    </h3>
 
-    <label class="control-row">
+    <label>
       <span>Symbol size</span>
       <input type="range" min="20" max="80" step="2" bind:value={symbol_font_size} />
       <input type="number" min="20" max="80" step="2" bind:value={symbol_font_size} />
       <button onclick={() => reset_property(`symbol_font_size`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Number size</span>
       <input type="range" min="10" max="40" step="1" bind:value={number_font_size} />
       <input type="number" min="10" max="40" step="1" bind:value={number_font_size} />
       <button onclick={() => reset_property(`number_font_size`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Name size</span>
       <input type="range" min="6" max="24" step="1" bind:value={name_font_size} />
       <input type="number" min="6" max="24" step="1" bind:value={name_font_size} />
       <button onclick={() => reset_property(`name_font_size`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Value size</span>
       <input type="range" min="10" max="30" step="1" bind:value={value_font_size} />
       <input type="number" min="10" max="30" step="1" bind:value={value_font_size} />
       <button onclick={() => reset_property(`value_font_size`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Symbol weight</span>
       <input
         type="range"
@@ -382,7 +378,7 @@
       <button onclick={() => reset_property(`symbol_font_weight`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Number weight</span>
       <input
         type="range"
@@ -400,49 +396,49 @@
       />
       <button onclick={() => reset_property(`number_font_weight`)}>reset</button>
     </label>
-  </div>
+  </section>
 
-  <div class="controls-section">
-    <div class="section-header">
-      <h3>Tooltip</h3>
+  <section>
+    <h3>
+      Tooltip
       {#if tooltip_modified}
         <button class="section-reset-btn" onclick={reset_tooltip}>reset</button>
       {/if}
-    </div>
+    </h3>
 
-    <label class="control-row">
+    <label>
       <span>Font size (px)</span>
       <input type="range" min="8" max="24" step="1" bind:value={tooltip_font_size} />
       <input type="number" min="8" max="24" step="1" bind:value={tooltip_font_size} />
       <button onclick={() => reset_property(`tooltip_font_size`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Background color</span>
       <input type="color" bind:value={tooltip_bg_color} />
       <button onclick={() => reset_property(`tooltip_bg_color`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Text color</span>
       <input type="color" bind:value={tooltip_text_color} />
       <button onclick={() => reset_property(`tooltip_text_color`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Border radius (px)</span>
       <input type="range" min="0" max="20" step="1" bind:value={tooltip_border_radius} />
       <input type="number" min="0" max="20" step="1" bind:value={tooltip_border_radius} />
       <button onclick={() => reset_property(`tooltip_border_radius`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Padding</span>
       <input type="text" bind:value={tooltip_padding} placeholder="4px 6px" />
       <button onclick={() => reset_property(`tooltip_padding`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Line height</span>
       <input type="range" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
       <input
@@ -455,7 +451,7 @@
       <button onclick={() => reset_property(`tooltip_line_height`)}>reset</button>
     </label>
 
-    <label class="control-row">
+    <label>
       <span>Text align</span>
       <select bind:value={tooltip_text_align}>
         <option value="left">Left</option>
@@ -464,51 +460,41 @@
       </select>
       <button onclick={() => reset_property(`tooltip_text_align`)}>reset</button>
     </label>
-  </div>
+  </section>
 </div>
 
 <style>
   .controls-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: var(--appearance-controls-gap, 1.5em);
-    max-width: var(--appearance-controls-width, 100%);
-    margin: var(--appearance-controls-margin, 1em auto);
-    padding: var(--appearance-controls-padding, 0 1em);
-    box-sizing: border-box;
-    overflow-x: auto;
+    gap: 1.5em;
+    margin: 1em auto;
+    padding: 0 1em;
   }
 
-  .controls-section {
-    background: var(--appearance-controls-section-bg, rgba(255, 255, 255, 0.02));
-    border-radius: var(--appearance-controls-section-radius, 6px);
-    padding: var(--appearance-controls-section-padding, 0.75em);
-    border: var(
-      --appearance-controls-section-border,
-      1px solid rgba(255, 255, 255, 0.05)
-    );
+  section {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    padding: 0.75em;
+    border: 1px solid rgba(255, 255, 255, 0.05);
   }
 
-  .section-header {
+  section h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.8em;
+    margin: 0 0 0.8em 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     padding-bottom: 0.3em;
-  }
-
-  .section-header h3 {
-    margin: 0;
-    font-size: var(--appearance-controls-h3-size, 1.1em);
-    color: var(--appearance-controls-h3-color, var(--text-color));
+    font-size: 1.1em;
+    color: var(--text-color);
   }
 
   .section-reset-btn {
-    background: var(--appearance-controls-btn-bg, rgba(255, 255, 255, 0.1));
-    color: var(--appearance-controls-btn-color, var(--text-color));
-    border: var(--appearance-controls-btn-border, 1px solid rgba(255, 255, 255, 0.2));
-    border-radius: var(--appearance-controls-btn-radius, 3px);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
     padding: 2px 8px;
     font-size: 0.75em;
     cursor: pointer;
@@ -518,92 +504,87 @@
 
   .section-reset-btn:hover {
     opacity: 1;
-    background: var(--appearance-controls-btn-hover-bg, rgba(255, 255, 255, 0.2));
+    background: rgba(255, 255, 255, 0.2);
   }
 
-  .control-row {
+  section > label {
     display: flex;
     align-items: center;
-    gap: var(--appearance-controls-row-gap, 0.5em);
-    margin: var(--appearance-controls-row-margin, 0.6em 0);
-    font-size: var(--appearance-controls-row-font-size, 0.9em);
-    min-width: 0;
+    gap: 0.5em;
+    margin: 0.6em 0;
+    font-size: 0.9em;
     flex-wrap: wrap;
   }
 
-  .control-row span {
-    flex: 0 0 auto;
-    min-width: var(--appearance-controls-label-width, 100px);
-    font-weight: var(--appearance-controls-label-weight, 500);
+  section > label > span {
+    min-width: 100px;
+    font-weight: 500;
     font-size: 0.85em;
   }
 
-  .control-row input[type='range'] {
+  section > label input[type='range'] {
     flex: 1;
-    margin: var(--appearance-controls-range-margin, 0 0.3em);
+    margin: 0 0.3em;
   }
 
-  .control-row input[type='number'] {
-    width: var(--appearance-controls-number-width, 60px);
-    padding: var(--appearance-controls-number-padding, 2px 4px);
-    border: var(--appearance-controls-number-border, 1px solid rgba(255, 255, 255, 0.2));
-    border-radius: var(--appearance-controls-number-radius, 3px);
-    background: var(--appearance-controls-number-bg, rgba(255, 255, 255, 0.1));
-    color: var(--appearance-controls-number-color, var(--text-color));
+  section > label input[type='number'] {
+    width: 60px;
+    padding: 2px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
   }
 
-  .control-row input[type='text'] {
+  section > label input[type='text'] {
     flex: 1;
-    padding: var(--appearance-controls-text-padding, 4px 6px);
-    border: var(--appearance-controls-text-border, 1px solid rgba(255, 255, 255, 0.2));
-    border-radius: var(--appearance-controls-text-radius, 3px);
-    background: var(--appearance-controls-text-bg, rgba(255, 255, 255, 0.1));
-    color: var(--appearance-controls-text-color, var(--text-color));
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
   }
 
-  .control-row input[type='color'] {
-    width: var(--appearance-controls-color-width, 40px);
-    height: var(--appearance-controls-color-height, 30px);
-    border-radius: var(--appearance-controls-color-radius, 3px);
-    border: var(--appearance-controls-color-border, 1px solid rgba(255, 255, 255, 0.2));
-    background: transparent;
+  section > label input[type='color'] {
+    width: 40px;
+    height: 30px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
     cursor: pointer;
   }
 
-  .control-row select {
+  section > label select {
     flex: 1;
-    padding: var(--appearance-controls-select-padding, 4px 6px);
-    border: var(--appearance-controls-select-border, 1px solid rgba(255, 255, 255, 0.2));
-    border-radius: var(--appearance-controls-select-radius, 3px);
-    background: var(--appearance-controls-select-bg, rgba(255, 255, 255, 0.1));
-    color: var(--appearance-controls-select-color, var(--text-color));
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
     cursor: pointer;
   }
 
-  .control-row button {
-    background: var(--appearance-controls-btn-bg, rgba(255, 255, 255, 0.1));
-    color: var(--appearance-controls-btn-color, var(--text-color));
-    border: var(--appearance-controls-btn-border, 1px solid rgba(255, 255, 255, 0.2));
-    border-radius: var(--appearance-controls-btn-radius, 3px);
-    padding: var(--appearance-controls-btn-padding, 3px 6px);
-    font-size: var(--appearance-controls-btn-font-size, 0.8em);
+  section > label button {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    padding: 3px 6px;
+    font-size: 0.8em;
     cursor: pointer;
     opacity: 0.7;
-    transition: var(--appearance-controls-btn-transition, opacity 0.2s);
+    transition: opacity 0.2s;
   }
 
-  .control-row button:hover {
+  section > label button:hover {
     opacity: 1;
-    background: var(--appearance-controls-btn-hover-bg, rgba(255, 255, 255, 0.2));
+    background: rgba(255, 255, 255, 0.2);
   }
 
-  .color-grid {
+  .category-colors {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.5em;
   }
 
-  .color-label {
+  .category-colors label {
     display: flex;
     align-items: center;
     gap: 0.4em;
@@ -615,29 +596,27 @@
     transition: background-color 0.2s;
   }
 
-  .color-label:hover {
+  .category-colors label:hover {
     background-color: rgba(255, 255, 255, 0.1);
   }
 
-  .color-label input[type='color'] {
+  .category-colors input[type='color'] {
     width: 20px;
     height: 20px;
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    background: transparent;
     cursor: pointer;
   }
 
-  .color-label span {
+  .category-colors span {
     flex: 1;
-    font-weight: 400;
   }
 
-  .color-label button {
-    background: var(--appearance-controls-btn-bg, rgba(255, 255, 255, 0.1));
-    color: var(--appearance-controls-btn-color, var(--text-color));
-    border: var(--appearance-controls-btn-border, 1px solid rgba(255, 255, 255, 0.2));
-    border-radius: var(--appearance-controls-btn-radius, 3px);
+  .category-colors button {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
     padding: 2px 6px;
     font-size: 0.75em;
     cursor: pointer;
@@ -645,8 +624,8 @@
     transition: opacity 0.2s;
   }
 
-  .color-label button:hover {
+  .category-colors button:hover {
     opacity: 1;
-    background: var(--appearance-controls-btn-hover-bg, rgba(255, 255, 255, 0.2));
+    background: rgba(255, 255, 255, 0.2);
   }
 </style>

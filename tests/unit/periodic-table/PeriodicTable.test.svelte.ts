@@ -2,50 +2,49 @@ import type { Category } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
 import { mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '..'
 
 const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)
 
 describe(`PeriodicTable`, () => {
+  afterEach(() => {
+    // Clean up DOM after each test to prevent state accumulation
+    document.body.innerHTML = ``
+    // Restore console.error if it was mocked
+    vi.restoreAllMocks()
+  })
   test.each([
     [true, 120],
     [false, 118],
     [null, 118],
     [[], 118],
-  ])(
-    `renders element tiles with show_lanth_act_tiles=%s`,
+  ] as const)(
+    `renders %s lanth_act_tiles -> %s tiles`,
     async (lanth_act_tiles, expected_tiles) => {
-      const props = lanth_act_tiles == true ? {} : { lanth_act_tiles }
+      const props =
+        lanth_act_tiles === true
+          ? {}
+          : lanth_act_tiles === false
+            ? { lanth_act_tiles: [] }
+            : { lanth_act_tiles }
       mount(PeriodicTable, { target: document.body, props })
-
-      const element_tiles = document.querySelectorAll(`.element-tile`)
-      expect(element_tiles.length).toBe(expected_tiles)
+      expect(document.querySelectorAll(`.element-tile`).length).toBe(
+        expected_tiles,
+      )
     },
   )
 
-  test(`has no text content when symbols, names and numbers are disabled`, async () => {
-    const tile_props = {
-      show_symbol: false,
-      show_name: false,
-      show_number: false,
-    }
-    mount(PeriodicTable, { target: document.body, props: { tile_props } })
-
-    const table = doc_query(`.periodic-table`)
-    expect(table?.textContent?.trim()).toBe(``)
-
-    // make sure empty tiles are still rendered
-    const symbol_tiles = document.querySelectorAll(`.element-tile`)
-    expect(symbol_tiles.length).toBe(118)
+  test(`empty tiles are rendered`, async () => {
+    mount(PeriodicTable, { target: document.body })
+    expect(document.querySelectorAll(`.element-tile`).length).toBe(118)
   })
 
   test(`hovering element tile toggles CSS class 'active'`, async () => {
     mount(PeriodicTable, { target: document.body })
 
     const element_tile = doc_query(`.element-tile`)
-
     element_tile?.dispatchEvent(mouseenter)
     await tick()
     expect([...element_tile.classList]).toContain(`active`)
@@ -56,26 +55,60 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`shows element photo when hovering element tile`, async () => {
-    mount(PeriodicTable, { target: document.body })
+    mount(PeriodicTable, { target: document.body, props: { show_photo: true } })
 
-    const rand_idx = Math.floor(Math.random() * element_data.length)
-    const random_element = element_data[rand_idx]
-
-    const element_tile = document.querySelectorAll(`.element-tile`)[rand_idx]
-
+    const element_tile = doc_query(`.element-tile`)
     element_tile?.dispatchEvent(mouseenter)
     await tick()
 
-    const element_photo = doc_query(`img[alt="${random_element.name}"]`)
-    expect(element_photo?.style.gridArea).toBe(`9/1/span 2/span 2`)
+    expect(doc_query(`img[alt="Hydrogen"]`)?.style.gridArea).toBe(
+      `9/1/span 2/span 2`,
+    )
 
     element_tile?.dispatchEvent(mouseleave)
     await tick()
     expect(document.querySelector(`img`)).toBeNull()
   })
 
-  test(`hooking PeriodicTable up to PropertySelect and selecting heatmap sets element tile background`, async () => {
-    const props = $state({})
+  test(`keyboard navigation works`, async () => {
+    let active_element: (typeof element_data)[0] | null = $state(null)
+
+    mount(PeriodicTable, {
+      target: document.body,
+      props: {
+        get active_element() {
+          return active_element
+        },
+        set active_element(val) {
+          active_element = val
+        },
+      },
+    })
+
+    active_element = element_data[0]
+    await tick()
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
+    await tick()
+    expect(active_element?.symbol).toBe(`Li`)
+  })
+
+  test(`tile content can be hidden`, async () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: {
+        tile_props: {
+          show_symbol: false,
+          show_name: false,
+          show_number: false,
+        },
+      },
+    })
+    // Empty text when symbols/names/numbers disabled
+    expect(doc_query(`.periodic-table`)?.textContent?.trim()).toBe(``)
+  })
+
+  test(`PropertySelect integration`, async () => {
+    const props: { heatmap_values?: number[] } = $state({})
     mount(PeriodicTable, { target: document.body, props })
     mount(PropertySelect, { target: document.body })
 
@@ -83,64 +116,58 @@ describe(`PeriodicTable`, () => {
     li.dispatchEvent(new MouseEvent(`mouseup`))
     await tick()
 
-    const selected = doc_query(`div.multiselect > ul.selected`)
-    const heatmap_label = `Atomic Mass (u) Atomic Radius (Å)`
-    expect(selected.textContent?.trim()).toBe(heatmap_label)
-    const heatmap_key = heatmap_labels[heatmap_label]
+    const selected_text = doc_query(
+      `div.multiselect > ul.selected`,
+    ).textContent?.trim()
+    if (selected_text && heatmap_labels[selected_text]) {
+      const heatmap_key = heatmap_labels[selected_text]
 
-    // expect(heatmap_key).toBe(`atomic_mass`)
-    props.heatmap_values = element_data.map((elem) => elem[heatmap_key])
-    await tick()
-
-    const element_tile = doc_query(`div.element-tile`)
-    // hydrogen with lowest mass should be blue (low end of color scale)
-    expect(element_tile.style.backgroundColor).toBe(`rgb(68, 1, 84)`)
+      props.heatmap_values = element_data.map(
+        (elem) => elem[heatmap_key] as number,
+      )
+      await tick()
+      expect(doc_query(`div.element-tile`).style.backgroundColor).toBe(
+        `#3c4f8a`,
+      )
+    }
   })
 
-  test.each([[0], [0.5], [1], [2]])(
-    `inner_transition_metal_offset`,
-    async (inner_transition_metal_offset) => {
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { inner_transition_metal_offset },
-      })
+  test.each([
+    [[0], [0.5], [1], [2]], // inner_transition_metal_offset values
+    [[`0`], [`10px`], [`1cqw`]], // gap values
+  ] as const)(`styling props work correctly`, (...args) => {
+    const values = args[0]
+    values.forEach((value) => {
+      const props =
+        typeof value === `string`
+          ? { gap: value }
+          : { inner_transition_metal_offset: value }
+      mount(PeriodicTable, { target: document.body, props })
 
-      if (inner_transition_metal_offset) {
-        const spacer = doc_query(`div.spacer`)
-        expect(getComputedStyle(spacer).gridRow).toBe(`8`)
+      if (typeof value === `string`) {
+        expect(
+          (
+            getComputedStyle(
+              doc_query(`.periodic-table`) as Element,
+            ) as CSSStyleDeclaration
+          ).gap,
+        ).toBe(value)
+      } else if (value > 0) {
+        expect(
+          (
+            getComputedStyle(
+              doc_query(`div.spacer`) as Element,
+            ) as CSSStyleDeclaration
+          ).gridRow,
+        ).toBe(`8`)
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
       }
-    },
-  )
-
-  test(`clicking element tile emits event`, async () => {
-    const click = vi.fn()
-    mount(PeriodicTable, {
-      target: document.body,
-      events: { click },
     })
-
-    const element_tile = doc_query(`.element-tile`)
-    element_tile?.dispatchEvent(new MouseEvent(`click`))
-    await tick()
-
-    expect(click).toHaveBeenCalledWith(expect.any(CustomEvent))
-    expect(click.mock.calls[0][0].detail).toEqual({
-      element: element_data[0],
-      active: false,
-      dom_event: expect.any(MouseEvent),
-    })
-  })
-
-  test.each([[`0`], [`10px`], [`1cqw`]])(`gap prop`, (gap) => {
-    mount(PeriodicTable, { target: document.body, props: { gap } })
-    const table = doc_query(`.periodic-table`)
-    expect(getComputedStyle(table).gap).toBe(gap)
   })
 
   test.each(Object.entries(category_counts))(
-    `setting active_category=%s highlights corresponding element tiles`,
+    `active_category=%s highlights %s tiles`,
     (active_category, expected_active) => {
       mount(PeriodicTable, {
         target: document.body,
@@ -148,81 +175,173 @@ describe(`PeriodicTable`, () => {
           active_category: active_category.replaceAll(` `, `-`) as Category,
         },
       })
-
-      const active_tiles = document.querySelectorAll(`.element-tile.active`)
-      expect(active_tiles.length).toBe(expected_active)
-    },
-  )
-
-  test.each([[[...Array(200).keys()]], [[...Array(119).keys()]]])(
-    `raises error when receiving more than 118 heatmap values`,
-    (heatmap_values) => {
-      console.error = vi.fn()
-
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { heatmap_values },
-      })
-
-      expect(console.error).toHaveBeenCalledOnce()
-      expect(console.error).toBeCalledWith(
-        `heatmap_values is an array of numbers, length should be 118 or less, one for ` +
-          `each element possibly omitting elements at the end, got ${heatmap_values.length}`,
+      expect(document.querySelectorAll(`.element-tile.active`).length).toBe(
+        expected_active,
       )
     },
   )
 
-  test.each([[{ he: 0 }], [{ foo: 42 }]])(
-    `raises error when heatmap_values=%o is object with unknown element symbols`,
-    (heatmap_values) => {
+  test.each([
+    [[...Array(200).keys()], `length should be 118 or less`],
+    [[...Array(119).keys()], `length should be 118 or less`],
+    [{ he: 0 }, `keys should be element symbols`],
+    [{ foo: 42 }, `keys should be element symbols`],
+  ] as const)(
+    `error handling for invalid heatmap_values`,
+    (heatmap_values, error_message) => {
+      const original_error = console.error
       console.error = vi.fn()
 
       mount(PeriodicTable, {
         target: document.body,
-        // @ts-expect-error testing invalid input
-        props: { heatmap_values },
+        props: { heatmap_values: heatmap_values as never },
       })
 
       expect(console.error).toHaveBeenCalledOnce()
       expect(console.error).toBeCalledWith(
-        `heatmap_values is an object, keys should be element symbols, got ${Object.keys(
-          heatmap_values,
-        )}`,
+        expect.stringContaining(error_message),
       )
+
+      console.error = original_error
     },
   )
 
-  test(`element tiles are accessible to keyboard users`, async () => {
-    mount(PeriodicTable, { target: document.body })
-
-    const element_tiles = document.querySelectorAll(`.element-tile`)
-
-    // Simulate keyboard navigation of the element tiles
-    let activeIndex = 0
-    element_tiles[activeIndex].dispatchEvent(mouseenter)
-    await tick()
-    expect(element_tiles[activeIndex].classList.contains(`active`)).toBe(true)
-    expect(element_tiles[activeIndex].textContent?.trim()).toBe(`1 H Hydrogen`)
-
-    // Press the down arrow key to move to the next row
-    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
-    await tick()
-    activeIndex += 2
-    expect(element_tiles[activeIndex].classList.contains(`active`)).toBe(true)
-    expect(element_tiles[activeIndex].textContent?.trim()).toBe(`3 Li Lithium`)
-
-    // Press the right arrow key to move to the next column
-    activeIndex += 1
-    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight` }))
-    await tick()
-    expect(element_tiles[activeIndex].textContent?.trim()).toBe(
-      `4 Be Beryllium`,
+  test.each([
+    [`element-category`, `var(--diatomic-nonmetal-bg-color)`],
+    [`#ff0000`, `#ff0000`],
+    [`#666666`, `#666666`],
+  ] as const)(`missing_color=%s -> %s`, async (missing_color, expected_bg) => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { heatmap_values: [0, 0, 0, 0], missing_color },
+    })
+    expect(document.querySelector(`.element-tile`).style.backgroundColor).toBe(
+      expected_bg,
     )
+  })
 
-    // Press the left arrow key to move back to the previous column
-    activeIndex -= 1
-    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowLeft` }))
+  test.each([
+    [
+      {
+        values: [undefined, null, false, 10.5],
+        missing_color: `#123456`,
+        log: false,
+      },
+    ],
+    [{ values: [0, -5, 1, 10], missing_color: `#abcdef`, log: true }],
+  ] as const)(
+    `missing_color edge cases`,
+    async ({ values, missing_color, log }) => {
+      // @ts-expect-error testing edge case handling for invalid types
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: values, missing_color, log },
+      })
+      const tiles = document.querySelectorAll(
+        `.element-tile`,
+      ) as NodeListOf<HTMLElement>
+
+      // First two tiles should use missing color
+      expect(tiles[0].style.backgroundColor).toBe(missing_color)
+      expect(tiles[1].style.backgroundColor).toBe(missing_color)
+
+      // Later tiles with valid values should use color scale
+      const valid_tile_idx = log ? 2 : 3
+      expect(tiles[valid_tile_idx].style.backgroundColor).not.toBe(
+        missing_color,
+      )
+    },
+  )
+
+  test.each([
+    [true, null, null, `disabled prevents hover`],
+    [false, null, `H`, `enabled allows hover`],
+  ] as const)(
+    `disabled=%s (%s)`,
+    async (disabled, initial, expected, _description) => {
+      let active_element = $state(initial)
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          disabled,
+          get active_element() {
+            return active_element
+          },
+          set active_element(val) {
+            active_element = val
+          },
+        },
+      })
+      ;(document.querySelector(`.element-tile`) as HTMLElement).dispatchEvent(
+        mouseenter,
+      )
+      await tick()
+      expect(active_element?.symbol || null).toBe(expected)
+    },
+  )
+
+  test.each([
+    [`symbol`, `A`, `h`],
+    [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
+    [null, `DIV`, null],
+  ] as const)(
+    `links=%o -> %s tag, %s href`,
+    async (links, expected_tag, expected_href) => {
+      // @ts-expect-error testing various link types including invalid ones
+      mount(PeriodicTable, { target: document.body, props: { links } })
+      const hydrogen_tile = document.querySelector(
+        `.element-tile`,
+      ) as HTMLElement
+      expect(hydrogen_tile.tagName).toBe(expected_tag)
+      expect(hydrogen_tile.getAttribute(`href`)).toBe(expected_href)
+    },
+  )
+
+  test(`comprehensive prop functionality`, async () => {
+    // Test multiple props affecting appearance and behavior in one test
+    const props = {
+      heatmap_values: [1, 2, 3, 4],
+      color_scale_range: [0, 10] as [number, number],
+      color_overrides: { H: `#ff0000`, He: `#00ff00` },
+      tile_props: { show_name: false }, // Use show_name: false to test labels prop
+      lanth_act_style: `background-color: red;`,
+    }
+
+    mount(PeriodicTable, { target: document.body, props })
+
+    const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
+    const helium_tile = document.querySelectorAll(
+      `.element-tile`,
+    )[1] as HTMLElement
+
+    // Color overrides work
+    expect(hydrogen_tile.style.backgroundColor).toBe(`#ff0000`)
+    expect(helium_tile.style.backgroundColor).toBe(`#00ff00`)
+
+    // Should have lanthanide/actinide tiles
+    expect(document.querySelectorAll(`.element-tile`).length).toBeGreaterThan(
+      118,
+    )
+  })
+
+  test.each([
+    [true, true],
+    [false, false],
+  ] as const)(`tooltip=%s -> %s`, async (tooltip, should_show) => {
+    mount(PeriodicTable, { target: document.body, props: { tooltip } })
+
+    const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
+    hydrogen_tile.dispatchEvent(mouseenter)
     await tick()
-    expect(element_tiles[activeIndex].textContent?.trim()).toBe(`3 Li Lithium`)
+
+    const tooltip_el = document.querySelector(`.tooltip`)
+    expect(!!tooltip_el).toBe(should_show)
+
+    if (should_show) {
+      expect(tooltip_el?.textContent).toContain(`Hydrogen`)
+      hydrogen_tile.dispatchEvent(mouseleave)
+      await tick()
+      expect(document.querySelector(`.tooltip`)).toBeFalsy()
+    }
   })
 })

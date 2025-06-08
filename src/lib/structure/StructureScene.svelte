@@ -128,7 +128,7 @@
     if (camera_position.every((val) => val === 0) && structure) {
       // Simple approach: use sum of lattice dimensions as size estimate
       const size = lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10
-      const distance = size * (70 / fov)
+      const distance = size * (65 / fov)
 
       camera_position[0] = distance
       camera_position[1] = distance * 0.3
