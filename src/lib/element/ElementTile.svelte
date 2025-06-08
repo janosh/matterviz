@@ -22,7 +22,6 @@
     label?: string | null
     [key: string]: unknown
   }
-
   let {
     element,
     bg_color = null,
@@ -47,12 +46,6 @@
 
   let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
-
-  $effect(() => {
-    if (text_color_threshold != null && node) {
-      text_color = choose_bw_for_contrast(node, bg_color, text_color_threshold)
-    }
-  })
 </script>
 
 <svelte:element
@@ -64,7 +57,7 @@
   class:active
   class:last-active={selected.last_element === element}
   style:background-color={bg_color ?? `var(--${category}-bg-color)`}
-  style:color={text_color}
+  style:color={text_color ?? choose_bw_for_contrast(node, bg_color, text_color_threshold)}
   {style}
   role="link"
   tabindex="0"
@@ -94,7 +87,7 @@
 <style>
   .element-tile {
     position: relative;
-    transition: background-color 0.4s;
+    transition: background-color var(--elem-tile-transition-duration, 0.4s);
     aspect-ratio: 1;
     display: flex;
     place-items: center;
@@ -102,7 +95,7 @@
     border-radius: var(--elem-tile-border-radius, 1pt);
     width: 100%;
     box-sizing: border-box;
-    color: var(--elem-tile-text-color, white);
+    color: var(--elem-tile-text-color);
     /* add persistent invisible border so content doesn't move on hover */
     border: 1px solid transparent;
     container-type: inline-size;
@@ -112,20 +105,21 @@
   }
   .element-tile.active,
   .element-tile:hover {
-    border: var(--elem-tile-hover-border, 1px solid);
+    border: var(--elem-tile-hover-border-width, 1px) solid;
   }
   .last-active {
     border: 1px dotted;
   }
   .number {
-    font-size: 22cqw;
+    font-size: var(--elem-number-font-size, 22cqw);
     position: absolute;
     top: 6cqw;
-    font-weight: lighter;
+    font-weight: var(--elem-number-font-weight, 300);
     left: 6cqw;
   }
   .symbol {
-    font-size: 40cqw;
+    font-size: var(--elem-symbol-font-size, 40cqw);
+    font-weight: var(--elem-symbol-font-weight, 400);
   }
   span.name,
   span.value {
@@ -133,9 +127,9 @@
     bottom: 8cqw;
   }
   span.value {
-    font-size: 18cqw;
+    font-size: var(--elem-value-font-size, 18cqw);
   }
   span.name {
-    font-size: 12cqw;
+    font-size: var(--elem-name-font-size, 12cqw);
   }
 </style>

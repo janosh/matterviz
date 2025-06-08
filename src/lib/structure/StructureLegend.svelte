@@ -43,7 +43,7 @@
           event.preventDefault()
           colors.element[elem] = default_element_colors[elem]
         }}
-        style:color={choose_bw_for_contrast(labels[idx])}
+        style:color={choose_bw_for_contrast(labels[idx], null, 0.55)}
       >
         {elem}{format_num(amt, amount_format)}
         <input

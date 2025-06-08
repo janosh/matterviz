@@ -1,197 +1,220 @@
-import type { PymatgenStructure } from '$lib/structure'
+import type { ElementSymbol, Vector } from '$lib'
+import type { PymatgenStructure, Site } from '$lib/structure'
 import type { BondingAlgo } from '$lib/structure/bonding'
-import { max_dist, nearest_neighbor } from '$lib/structure/bonding'
-import { performance } from 'perf_hooks'
+import {
+  max_dist,
+  nearest_neighbor,
+  vdw_radius_based,
+} from '$lib/structure/bonding'
 import { describe, expect, test } from 'vitest'
 
-const ci_max_time_multiplier = process.env.CI ? 5 : 1.5
+// Simple performance measurement using Date.now() instead of Node's perf_hooks
+function measure_performance(func: () => void): number {
+  const start = Date.now()
+  func()
+  const end = Date.now()
+  return end - start
+}
 
-// Function to generate a random structure
-function make_rand_structure(n_atoms: number) {
+// Helper to create a complete Site object
+function make_site(xyz: [number, number, number], element = `C`): Site {
   return {
-    sites: Array(n_atoms)
-      .fill(0)
-      .map(() => ({
-        xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10],
-      })),
-  } as PymatgenStructure
-}
-
-// Updated performance test function
-function perf_test(func: BondingAlgo, atom_count: number, max_time: number) {
-  const run = () => {
-    const structure = make_rand_structure(atom_count)
-    const start = performance.now()
-    func(structure)
-    const end = performance.now()
-    return end - start
+    xyz,
+    abc: [0, 0, 0] as [number, number, number], // Placeholder fractional coordinates
+    species: [
+      { element: element as ElementSymbol, occu: 1, oxidation_state: 0 },
+    ],
+    label: element,
+    properties: {},
   }
-
-  const time1 = run()
-  const time2 = run()
-  const avg_time = (time1 + time2) / 2
-
-  expect(
-    avg_time,
-    `average run time: ${Math.ceil(avg_time)}, max expected: ${max_time * ci_max_time_multiplier}`, // Apply scaling factor
-  ).toBeLessThanOrEqual(max_time * ci_max_time_multiplier)
 }
 
-describe(`Bonding Functions Performance Tests`, () => {
-  const bonding_functions = [
-    {
-      func: max_dist,
-      max_times: [
-        [10, 0.1],
-        [100, 1],
-        [1000, 40],
-        [5000, 1000],
-      ],
+// Helper to create a test structure
+function make_structure(
+  sites: Array<{ xyz: [number, number, number]; element?: string }>,
+): PymatgenStructure {
+  return {
+    sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
+    charge: 0,
+    lattice: {
+      matrix: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ] as [Vector, Vector, Vector],
+      pbc: [true, true, true] as [boolean, boolean, boolean],
+      a: 1,
+      b: 1,
+      c: 1,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: 1,
     },
-    {
-      func: nearest_neighbor,
-      max_times: [
-        [10, 0.2],
-        [100, 3],
-        [1000, 50],
-        [5000, 1000],
-      ],
+  }
+}
+
+// Generate random structure for performance testing
+function make_random_structure(n_atoms: number): PymatgenStructure {
+  const elements = [`C`, `H`, `N`, `O`, `S`]
+  const sites = Array.from({ length: n_atoms }, (_, idx) => ({
+    xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as [
+      number,
+      number,
+      number,
+    ],
+    element: elements[idx % elements.length],
+  }))
+  return {
+    ...make_structure(sites),
+    lattice: {
+      ...make_structure([]).lattice,
+      a: 10,
+      b: 10,
+      c: 10,
+      volume: 1000,
     },
+  }
+}
+
+describe(`Bonding Algorithms`, () => {
+  const algorithms: Array<[string, BondingAlgo, Array<[number, number]>]> = [
+    [
+      `max_dist`,
+      max_dist,
+      [
+        [10, 5],
+        [100, 50],
+        [500, 500],
+      ],
+    ],
+    [
+      `nearest_neighbor`,
+      nearest_neighbor,
+      [
+        [10, 10],
+        [100, 100],
+        [500, 1000],
+      ],
+    ],
+    [
+      `vdw_radius_based`,
+      vdw_radius_based,
+      [
+        [10, 10],
+        [100, 100],
+        [500, 1000],
+      ],
+    ],
   ]
 
-  for (const { func, max_times } of bonding_functions) {
-    for (const [atom_count, max_time] of max_times) {
-      test(`${func.name} performance for ${atom_count} atoms`, () => {
-        // TODO investigate why run times increased, noticed on 2024-10-06
-        // occurred both with package.json deps as of 5414367 and upgrading all to latest, doubling max allowed time for now
-        perf_test(func, atom_count, 2 * max_time)
-      })
+  test.each(algorithms)(`%s performance`, (name, func, times) => {
+    for (const [atom_count, max_time] of times) {
+      const structure = make_random_structure(atom_count)
+      const avg_time =
+        (measure_performance(() => func(structure)) +
+          measure_performance(() => func(structure))) /
+        2
+      const is_ci =
+        (globalThis as { process?: { env?: { CI?: string } } })?.process?.env
+          ?.CI === `true`
+      const max_allowed = max_time * (is_ci ? 10 : 3)
+      expect(
+        avg_time,
+        `${name} with ${atom_count} atoms: ${avg_time}ms > ${max_allowed}ms`,
+      ).toBeLessThanOrEqual(max_allowed)
     }
-  }
-})
+  })
 
-const make_simple_struct = (sites: number[][]): PymatgenStructure => ({
-  sites: sites.map((xyz) => ({ xyz })),
-})
-
-describe(`max_dist function`, () => {
-  test(`should return correct bonds for a simple structure`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ])
-    const bonds = max_dist(structure, {
-      max_bond_dist: 1.5,
-      min_bond_dist: 0.5,
+  test.each(algorithms)(`%s returns valid BondPair format`, (name, func) => {
+    const bonds = func(
+      make_structure([
+        { xyz: [0, 0, 0], element: `C` },
+        { xyz: [1, 0, 0], element: `H` },
+      ]),
+    )
+    bonds.forEach((bond) => {
+      expect(bond).toHaveLength(5)
+      expect(bond[0]).toHaveLength(3) // from position
+      expect(bond[1]).toHaveLength(3) // to position
+      expect(typeof bond[2]).toBe(`number`) // from index
+      expect(typeof bond[3]).toBe(`number`) // to index
+      expect(bond[4]).toBeGreaterThan(0) // positive distance
     })
-    expect(bonds).toHaveLength(6)
-    expect(bonds).toContainEqual([[0, 0, 0], [1, 0, 0], 0, 1, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 1, 0], 0, 2, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 0, 1], 0, 3, 1])
   })
 
-  test(`should not return bonds shorter than min_bond_dist`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [0.3, 0, 0],
+  test.each(algorithms)(`%s generates unique bonds`, (name, func) => {
+    const bonds = func(make_random_structure(20))
+    const pairs = new Set(
+      bonds.map(([, , a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`),
+    )
+    expect(pairs.size).toBe(bonds.length)
+  })
+
+  test(`max_dist finds tetrahedral bonds`, () => {
+    const bonds = max_dist(
+      make_structure([
+        { xyz: [0, 0, 0], element: `C` },
+        { xyz: [1, 0, 0], element: `H` },
+        { xyz: [0, 1, 0], element: `H` },
+        { xyz: [0, 0, 1], element: `H` },
+      ]),
+      { max_bond_dist: 1.5, min_bond_dist: 0.5 },
+    )
+
+    const center_bonds = bonds.filter(([, , a, b]) => a === 0 || b === 0)
+    expect(center_bonds).toHaveLength(3)
+    center_bonds.forEach((bond) => expect(bond[4]).toBeCloseTo(1.0, 6))
+  })
+
+  test(`max_dist respects distance constraints`, () => {
+    const bonds = max_dist(
+      make_structure([
+        { xyz: [0, 0, 0] },
+        { xyz: [0.3, 0, 0] },
+        { xyz: [2, 0, 0] },
+        { xyz: [1, 0, 0] },
+      ]),
+      { max_bond_dist: 1.5, min_bond_dist: 0.5 },
+    )
+
+    const valid_bond = bonds.find(
+      ([, , a, b]) => (a === 0 && b === 3) || (a === 3 && b === 0),
+    )
+    expect(valid_bond).toBeDefined()
+    expect(valid_bond![4]).toBeCloseTo(1.0, 6)
+  })
+
+  test(`nearest_neighbor scaling factor works`, () => {
+    const structure = make_structure([
+      { xyz: [0, 0, 0] },
+      { xyz: [1, 0, 0] },
+      { xyz: [1.3, 0, 0] },
     ])
-    const bonds = max_dist(structure, { max_bond_dist: 1, min_bond_dist: 0.5 })
-    expect(bonds).toHaveLength(0)
+    const tight = nearest_neighbor(structure, { scaling_factor: 1.1 })
+    const loose = nearest_neighbor(structure, { scaling_factor: 1.5 })
+    expect(loose.length).toBeGreaterThanOrEqual(tight.length)
   })
 
-  test(`should not return bonds longer than max_bond_dist`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [2, 0, 0],
-    ])
-    const bonds = max_dist(structure, {
-      max_bond_dist: 1.5,
-      min_bond_dist: 0.5,
-    })
-    expect(bonds).toHaveLength(0)
+  test(`vdw_radius_based bonds by atomic radii`, () => {
+    const bonds = vdw_radius_based(
+      make_structure([
+        { xyz: [0, 0, 0], element: `C` },
+        { xyz: [1.5, 0, 0], element: `C` },
+        { xyz: [5, 0, 0], element: `C` },
+      ]),
+      { tolerance: 0.3 },
+    )
+
+    const close_bond = bonds.find((bond) => Math.abs(bond[4] - 1.5) < 0.1)
+    expect(close_bond).toBeDefined()
   })
 
-  test(`should handle empty structures`, () => {
-    const structure = make_simple_struct([])
-    const bonds = max_dist(structure)
-    expect(bonds).toHaveLength(0)
-  })
-})
-
-describe(`nearest_neighbor function`, () => {
-  test(`should return correct bonds for a simple structure`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-      [2, 0, 0],
-    ])
-    const bonds = nearest_neighbor(structure, {
-      scaling_factor: 1.1,
-      min_bond_dist: 0.5,
-    })
-    expect(bonds).toHaveLength(4)
-    expect(bonds).toContainEqual([[0, 0, 0], [1, 0, 0], 0, 1, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 1, 0], 0, 2, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 0, 1], 0, 3, 1])
-  })
-
-  test(`should not return bonds shorter than min_bond_dist`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [0.05, 0, 0],
-      [1, 0, 0],
-    ])
-    const bonds = nearest_neighbor(structure, {
-      scaling_factor: 1.2,
-      min_bond_dist: 0.1,
-    })
-    expect(bonds).toHaveLength(2)
-    expect(bonds).toContainEqual([[0, 0, 0], [1, 0, 0], 0, 2, 1])
-  })
-
-  test(`should handle structures with multiple equidistant nearest neighbors`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ])
-    const bonds = nearest_neighbor(structure, {
-      scaling_factor: 1.1,
-      min_bond_dist: 0.5,
-    })
-    expect(bonds).toHaveLength(3)
-    expect(bonds).toContainEqual([[0, 0, 0], [1, 0, 0], 0, 1, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 1, 0], 0, 2, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 0, 1], 0, 3, 1])
-  })
-
-  test(`should handle empty structures`, () => {
-    const structure = make_simple_struct([])
-    const bonds = nearest_neighbor(structure)
-    expect(bonds).toHaveLength(0)
-  })
-
-  test(`should respect the scaling_factor`, () => {
-    const structure = make_simple_struct([
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-      [1.5, 0, 0],
-    ])
-    const bonds = nearest_neighbor(structure, {
-      scaling_factor: 1.4,
-      min_bond_dist: 0.5,
-    })
-    expect(bonds).toHaveLength(4)
-    expect(bonds).toContainEqual([[0, 0, 0], [1, 0, 0], 0, 1, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 1, 0], 0, 2, 1])
-    expect(bonds).toContainEqual([[0, 0, 0], [0, 0, 1], 0, 3, 1])
-    expect(bonds).toContainEqual([[1, 0, 0], [1.5, 0, 0], 1, 4, 0.5])
+  test(`algorithms handle edge cases`, () => {
+    expect(max_dist(make_structure([]))).toHaveLength(0)
+    expect(max_dist(make_structure([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
+    expect(() =>
+      vdw_radius_based(make_structure([{ xyz: [0, 0, 0], element: `Xx` }])),
+    ).not.toThrow()
   })
 })

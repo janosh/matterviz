@@ -2,7 +2,7 @@
 import { PlotLegend, type LegendItem } from '$lib/plot'
 import { mount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '.'
+import { doc_query } from '..'
 
 const default_series_data: LegendItem[] = [
   {

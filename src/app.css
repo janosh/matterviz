@@ -58,7 +58,6 @@ a.btn {
   cursor: pointer;
   border: none;
   border-radius: 3pt;
-  background-color: teal;
   padding: 2pt 4pt;
   transition: 0.2s;
   /* TODO remove 2 lines below, just here as temp fix for svelte-zoo CodeExample SVG icons */
@@ -174,7 +173,7 @@ tbody tr:nth-child(odd) {
   background: black;
 }
 
-:where(ul.selected > li button, button.remove-all, button) {
+:where(ul.selected > li button, button.remove-all) {
   background-color: transparent !important;
 }
 

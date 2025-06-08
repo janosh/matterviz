@@ -3,7 +3,7 @@ import type { PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
 import { bounceIn } from 'svelte/easing'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '.'
+import { doc_query } from '..'
 
 describe(`ScatterPoint`, () => {
   const container_style = `width: 800px; height: 600px;`

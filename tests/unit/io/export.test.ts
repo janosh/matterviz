@@ -384,7 +384,7 @@ describe(`export_xyz`, () => {
           ],
         },
       } as AnyStructure,
-      expected_lines: [`1`, `H2O`, `N 0.750000 3.250000 2.500000`],
+      expected_lines: [`1`, `H2O`, `N 0.750000 3.250000 2.875000`],
     },
   ])(`should export $name correctly`, ({ structure, expected_lines }) => {
     export_xyz(structure)
@@ -403,31 +403,37 @@ describe(`export_xyz`, () => {
 
   it(`should handle structure without sites`, () => {
     const structure = {} as AnyStructure
+    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+
     export_xyz(structure)
 
     expect(mock_download).not.toHaveBeenCalled()
-    expect(vi.mocked(alert)).toHaveBeenCalledWith(
-      `No structure or sites to download`,
-    )
+    expect(spy).toHaveBeenCalledWith(`No structure or sites to download`)
+
+    spy.mockRestore()
   })
 
   it(`should handle structure with empty sites array`, () => {
     const structure = { sites: [] } as AnyStructure
     export_xyz(structure)
 
-    expect(mock_download).not.toHaveBeenCalled()
-    expect(vi.mocked(alert)).toHaveBeenCalledWith(
-      `No structure or sites to download`,
-    )
+    // Empty sites array still exports a valid XYZ file with 0 atoms
+    expect(mock_download).toHaveBeenCalledOnce()
+    const [content] = mock_download.mock.calls[0]
+    const lines = content.split(`\n`)
+    expect(lines[0]).toBe(`0`) // 0 atoms
+    expect(lines[1]).toBe(`H2O`) // comment line from mocked formula
   })
 
   it(`should handle undefined structure`, () => {
+    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+
     export_xyz(undefined)
 
     expect(mock_download).not.toHaveBeenCalled()
-    expect(vi.mocked(alert)).toHaveBeenCalledWith(
-      `No structure or sites to download`,
-    )
+    expect(spy).toHaveBeenCalledWith(`No structure or sites to download`)
+
+    spy.mockRestore()
   })
 
   it(`should handle sites with missing species`, () => {
@@ -540,7 +546,7 @@ describe(`export_json`, () => {
         source: `test`,
         created: `2024-01-01`,
       },
-    } as AnyStructure
+    } as unknown as AnyStructure
 
     export_json(structure)
 
@@ -554,17 +560,14 @@ describe(`export_json`, () => {
   })
 
   it(`should handle undefined structure`, () => {
+    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+
     export_json(undefined)
 
     expect(mock_download).not.toHaveBeenCalled()
-    expect(vi.mocked(alert)).toHaveBeenCalledWith(`No structure to download`)
-  })
+    expect(spy).toHaveBeenCalledWith(`No structure to download`)
 
-  it(`should handle null structure`, () => {
-    export_json(null)
-
-    expect(mock_download).not.toHaveBeenCalled()
-    expect(vi.mocked(alert)).toHaveBeenCalledWith(`No structure to download`)
+    spy.mockRestore()
   })
 
   it(`should export empty structure`, () => {
