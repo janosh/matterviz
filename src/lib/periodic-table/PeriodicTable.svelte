@@ -5,13 +5,8 @@
   import element_data from '$lib/element/data'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { ScaleContext } from '.'
   import type { D3InterpolateName } from '../colors'
-
-  export type ScaleContext = {
-    min: number
-    max: number
-    color_scale: D3InterpolateName | ((num: number) => string)
-  }
 
   const default_lanth_act_tiles = [
     {
@@ -54,6 +49,9 @@
     color_scale_range?: [number | null, number | null]
     color_overrides?: Partial<Record<ElementSymbol, string>>
     labels?: Partial<Record<ElementSymbol, string>>
+    // background color for elements missing from heatmap_values
+    // "element-category" falls back to element category default color
+    missing_color?: string
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
@@ -74,7 +72,7 @@
   }
   let {
     tile_props,
-    show_photo = true,
+    show_photo = false,
     disabled = false,
     heatmap_values = [],
     links = null,
@@ -89,6 +87,7 @@
     color_scale_range = [null, null],
     color_overrides = {},
     labels = {},
+    missing_color = `element-category`,
     inset,
     bottom_left_inset,
     tooltip = false,
@@ -188,14 +187,32 @@
     color_scale_range[1] ?? (heat_values.length ? Math.max(...heat_values) : 1),
   )
 
-  let bg_color = $derived((value: number | false): string | null => {
-    if (!heat_values?.length || !color_scale_fn) return null
-    if (!value || (log && value <= 0)) return `transparent`
-    // map value to [0, 1] range
-    if (log) value = Math.log(value - cs_min + 1) / Math.log(cs_max - cs_min + 1)
-    else value = (value - cs_min) / (cs_max - cs_min)
-    return color_scale_fn?.(value)
-  })
+  let bg_color = $derived(
+    (value: number | false, element?: ChemicalElement): string | null => {
+      // Return missing color for zero/invalid values or when no heatmap data
+      if (
+        !value ||
+        value === 0 ||
+        (log && value <= 0) ||
+        !heat_values?.length ||
+        !color_scale_fn
+      ) {
+        // Use missing color for zero/missing values or when no heatmap data
+        if (missing_color === `element-category` && element) {
+          return `var(--${element.category.replaceAll(` `, `-`)}-bg-color)`
+        }
+        return missing_color
+      }
+
+      // map value to [0, 1] range
+      const span = cs_max - cs_min
+      if (span === 0) return color_scale_fn?.(0.5) // midpoint when all values equal
+
+      if (log) value = Math.log(value - cs_min + 1) / Math.log(span + 1)
+      else value = (value - cs_min) / span
+      return color_scale_fn?.(value)
+    },
+  )
 </script>
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
@@ -218,7 +235,7 @@
           : null}
         style="grid-column: {column}; grid-row: {row};"
         {value}
-        bg_color={color_overrides[symbol] ?? bg_color(value)}
+        bg_color={color_overrides[symbol] ?? bg_color(value, element)}
         {active}
         label={labels[symbol]}
         {...tile_props}
@@ -266,7 +283,9 @@
             active:
               active_category === tooltip_element.category.replaceAll(` `, `-`) ||
               active_element?.name === tooltip_element.name,
-            bg_color: color_overrides[tooltip_element.symbol] ?? bg_color(tooltip_value),
+            bg_color:
+              color_overrides[tooltip_element.symbol] ??
+              bg_color(tooltip_value, tooltip_element),
             scale_context: { min: cs_min, max: cs_max, color_scale },
           })}
         {:else}
@@ -284,6 +303,19 @@
   .periodic-table-container {
     /* needed for gap: 0.3cqw; to work */
     container-type: inline-size;
+
+    /* Default category colors - can be overridden by user */
+    --diatomic-nonmetal-bg-color: #ff8c00;
+    --noble-gas-bg-color: darkorchid;
+    --alkali-metal-bg-color: darkgreen;
+    --alkaline-earth-metal-bg-color: darkslateblue;
+    --metalloid-bg-color: darkgoldenrod;
+    --polyatomic-nonmetal-bg-color: brown;
+    --transition-metal-bg-color: #571e6c;
+    --post-transition-metal-bg-color: #938d4a;
+    --lanthanide-bg-color: #58748e;
+    --actinide-bg-color: cornflowerblue;
+    --experimental-bg-color: gray;
   }
   div.periodic-table {
     display: grid;

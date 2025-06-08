@@ -3,6 +3,7 @@
   import type { AnyStructure, Lattice } from '$lib'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib'
   import { element_color_schemes } from '$lib/colors'
+  import { decompress_file } from '$lib/io/decompress'
   import * as exports from '$lib/io/export'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
@@ -176,7 +177,7 @@
     camera_has_moved = false
   }
 
-  function handle_file_drop(event: DragEvent) {
+  async function handle_file_drop(event: DragEvent) {
     event.preventDefault()
     dragover = false
     if (!allow_file_drop) return
@@ -198,12 +199,12 @@
     const file = event.dataTransfer?.files[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (event: ProgressEvent<FileReader>) => {
-      const content = event.target?.result as string
-      if (content) on_file_drop?.(content, file.name)
+    try {
+      const { content, filename } = await decompress_file(file)
+      if (content) on_file_drop?.(content, filename)
+    } catch (error) {
+      console.error(`Failed to read file:`, error)
     }
-    reader.readAsText(file)
   }
 
   export function toggle_fullscreen() {
