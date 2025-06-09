@@ -5,10 +5,8 @@ export type BondingAlgo =
   | typeof nearest_neighbor
   | typeof vdw_radius_based
 
-/**
- * Efficient distance-based bonding algorithm using squared distances and unique bond IDs.
- * Finds all bonds within the specified distance range.
- */
+// Efficient distance-based bonding algorithm using squared distances and unique bond IDs.
+// Finds all bonds within the specified distance range.
 export function max_dist(
   structure: AnyStructure,
   { max_bond_dist = 3, min_bond_dist = 0.4 } = {}, // in Angstroms
@@ -45,10 +43,8 @@ export function max_dist(
   return bonds
 }
 
-/**
- * Optimized nearest neighbor bonding with proper duplicate prevention.
- * Uses spatial hashing for better O(n) performance on large structures.
- */
+// Optimized nearest neighbor bonding with proper duplicate prevention.
+// Uses spatial hashing for better O(n) performance on large structures.
 export function nearest_neighbor(
   structure: AnyStructure,
   { scaling_factor = 1.8, min_bond_dist = 0.4 } = {}, // in Angstroms
@@ -107,10 +103,8 @@ export function nearest_neighbor(
   return bonds
 }
 
-/**
- * Van der Waals radius-based bonding algorithm.
- * Uses atomic radii to determine reasonable bonding distances.
- */
+// Van der Waals radius-based bonding algorithm.
+// Uses atomic radii to determine reasonable bonding distances.
 export function vdw_radius_based(
   structure: AnyStructure,
   {

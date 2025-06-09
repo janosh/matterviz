@@ -29,7 +29,7 @@ repos:
           - prettier-plugin-svelte
           - svelte
         stages: [pre-commit]
-        exclude: ^changelog.md|.*/(structures|molecules)/.*\.json|.py$
+        exclude: ^changelog.md|.*/(structures|molecules|colors)/.*\.json|.py$
 
   - repo: https://github.com/pre-commit/mirrors-eslint
     rev: v9.28.0

@@ -11,7 +11,7 @@
   })
 </script>
 
-## Select Structure from Dropdown
+# Structure
 
 ```svelte example stackblitz
 <script>

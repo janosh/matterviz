@@ -4,7 +4,7 @@ import { elem_symbols, type ElementSymbol, type Site, type Vector } from '$lib'
 function matrix_inverse_3x3(
   matrix: [Vector, Vector, Vector],
 ): [Vector, Vector, Vector] {
-  /** Calculate the inverse of a 3x3 matrix */
+  // Calculate the inverse of a 3x3 matrix
   const [[a, b, c], [d, e, f], [g, h, i]] = matrix
 
   const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
@@ -38,7 +38,7 @@ function matrix_vector_multiply(
   matrix: [Vector, Vector, Vector],
   vector: Vector,
 ): Vector {
-  /** Multiply a 3x3 matrix by a 3D vector */
+  // Multiply a 3x3 matrix by a 3D vector
   return [
     matrix[0][0] * vector[0] +
       matrix[0][1] * vector[1] +
@@ -55,7 +55,7 @@ function matrix_vector_multiply(
 function transpose_matrix(
   matrix: [Vector, Vector, Vector],
 ): [Vector, Vector, Vector] {
-  /** Transpose a 3x3 matrix */
+  // Transpose a 3x3 matrix
   return [
     [matrix[0][0], matrix[1][0], matrix[2][0]],
     [matrix[0][1], matrix[1][1], matrix[2][1]],
@@ -127,9 +127,7 @@ function parse_coordinate_line(line: string): number[] {
   return tokens.slice(0, 3).map(parse_coordinate)
 }
 
-/**
- * Calculate lattice parameters from lattice vectors
- */
+// Calculate lattice parameters from lattice vectors
 function calculate_lattice_parameters(matrix: [Vector, Vector, Vector]) {
   const [a_vec, b_vec, c_vec] = matrix
 
@@ -156,9 +154,7 @@ function calculate_lattice_parameters(matrix: [Vector, Vector, Vector]) {
   return { a, b, c, alpha, beta, gamma, volume }
 }
 
-/**
- * Validate element symbol and provide fallback
- */
+// Validate element symbol and provide fallback
 function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Clean symbol (remove suffixes like _pv, /hash)
   const clean_symbol = symbol.split(/[_/]/)[0]

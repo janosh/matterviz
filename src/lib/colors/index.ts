@@ -1,12 +1,12 @@
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
-import alloy_colors from './data/alloy-colors.yml'
-import dark_mode_colors from './data/dark-mode-colors.yml'
-import jmol_colors from './data/jmol-colors.yml'
-import muted_colors from './data/muted-colors.yml'
-import pastel_colors from './data/pastel-colors.yml'
-import vesta_colors from './data/vesta-colors.yml'
+import alloy_colors from './alloy-colors.json'
+import dark_mode_colors from './dark-mode-colors.json'
+import jmol_colors from './jmol-colors.json'
 import type { elem_symbols } from './labels'
+import muted_colors from './muted-colors.json'
+import pastel_colors from './pastel-colors.json'
+import vesta_colors from './vesta-colors.json'
 
 // Extract color scheme interpolate function names from d3-scale-chromatic
 export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`

@@ -12,7 +12,6 @@
     text_color?: string
     symbol?: string
   }
-
   let {
     protons,
     neutrons,

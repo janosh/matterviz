@@ -8,9 +8,7 @@ const EXPECTED_ELEMENTS = Array.from(
   (_, idx) => elem_symbols[idx],
 )
 
-/**
- * Test if a string is a valid hex color
- */
+// Test if a string is a valid hex color
 function is_valid_hex_color(color: string): boolean {
   const hex_regex = /^#[0-9A-Fa-f]{6}$/
   return hex_regex.test(color)

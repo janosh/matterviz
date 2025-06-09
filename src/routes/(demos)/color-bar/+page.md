@@ -1,4 +1,4 @@
-`ColorBar.svelte`
+# Color Bar
 
 Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 
