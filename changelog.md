@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.4.0](https://github.com/janosh/elementari/compare/v0.3.15...v0.4.0)
+
+> 8 June 2025
+
+- `PeriodicTable.svelte` add `missing_color` prop + support dragging compressed files onto `Structure` canvas [`#72`](https://github.com/janosh/elementari/pull/72)
+- Color bonds as linear gradient between connected element colors, fix `ElementTile` not using user-set `text_color` [`#71`](https://github.com/janosh/elementari/pull/71)
+- Add drag-and-drop CIF file support to `Structure.svelte` [`#70`](https://github.com/janosh/elementari/pull/70)
+- Support dragging `POSCAR` + `(ext)XYZ` files onto the Structure viewer [`#68`](https://github.com/janosh/elementari/pull/68)
+- `Lattice` replace wireframe with `EdgesGeometry` cylinders and add PBC distance calculation in `Structure` hover tooltip (prev. direct only) [`#67`](https://github.com/janosh/elementari/pull/67)
+- Add `PeriodicTable` element tile tooltip and more `Structure` UI controls [`#66`](https://github.com/janosh/elementari/pull/66)
+- More element color schemes [`#65`](https://github.com/janosh/elementari/pull/65)
+- `Structure` fixes [`#64`](https://github.com/janosh/elementari/pull/64)
+- Lattice.svelte show both cell edges and surfaces with independent opacity controls [`11c4987`](https://github.com/janosh/elementari/commit/11c4987bfbb375c0c97ee822e28a2e0bc198689d)
+
 #### [v0.3.15](https://github.com/janosh/elementari/compare/v0.3.14...v0.3.15)
 
 > 10 May 2025
