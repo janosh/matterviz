@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 // Import types from the library
-import type { Composition } from '$lib'
+import type { CompositionType } from '$lib'
 
 // Import the actual parsing functions from the production module
 import {
@@ -78,7 +78,7 @@ describe(`standalone composition parsing`, () => {
         `Invalid atomic number: 999`,
       )
       expect(() =>
-        convert_symbols_to_atomic_numbers({ Xx: 1 } as Composition),
+        convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType),
       ).toThrow(`Invalid element symbol: Xx`)
     })
   })

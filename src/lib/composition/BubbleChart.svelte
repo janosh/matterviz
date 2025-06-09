@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Composition, ElementSymbol } from '$lib'
+  import type { CompositionType, ElementSymbol } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import { choose_bw_for_contrast } from '$lib/labels'
   import type { HierarchyCircularNode } from 'd3-hierarchy'
@@ -22,7 +22,7 @@
   }
 
   interface Props {
-    composition: Composition
+    composition: CompositionType
     size?: number
     padding?: number
     show_labels?: boolean

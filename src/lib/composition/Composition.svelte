@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Composition } from '$lib'
+  import type { CompositionType } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import type { Snippet } from 'svelte'
   import BarChart from './BarChart.svelte'
@@ -8,7 +8,7 @@
   import PieChart from './PieChart.svelte'
 
   interface Props {
-    input: string | Composition
+    input: string | CompositionType
     mode?: `pie` | `bubble` | `bar`
     size?: number
     width?: number
@@ -19,8 +19,8 @@
     show_percentages?: boolean
     color_scheme?: keyof typeof element_color_schemes
     interactive?: boolean
-    on_composition_change?: (composition: Composition) => void
-    center_content?: Snippet<[{ composition: Composition; total_atoms: number }]>
+    on_composition_change?: (composition: CompositionType) => void
+    center_content?: Snippet<[{ composition: CompositionType; total_atoms: number }]>
     style?: string
     class?: string
     [key: string]: unknown
@@ -44,7 +44,7 @@
     ...rest
   }: Props = $props()
 
-  let composition: Composition = $derived.by(() => {
+  let composition: CompositionType = $derived.by(() => {
     try {
       const parsed = parse_composition_input(input)
       return parsed

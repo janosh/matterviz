@@ -1,19 +1,19 @@
-import type { Composition } from '$lib'
+import type { CompositionType } from '$lib'
 import { describe, expect, test, vi } from 'vitest'
 
 // Mock composition parsing utilities
 vi.mock(`$lib/composition/parse`, () => ({
-  composition_to_percentages: vi.fn((comp: Composition) => {
+  composition_to_percentages: vi.fn((comp: CompositionType) => {
     const total = Object.values(comp).reduce((sum, val) => sum + (val || 0), 0)
-    const percentages: Composition = {}
+    const percentages: CompositionType = {}
     for (const [element, amount] of Object.entries(comp)) {
       if (typeof amount === `number`) {
-        percentages[element as keyof Composition] = (amount / total) * 100
+        percentages[element as keyof CompositionType] = (amount / total) * 100
       }
     }
     return percentages
   }),
-  get_total_atoms: vi.fn((comp: Composition) =>
+  get_total_atoms: vi.fn((comp: CompositionType) =>
     Object.values(comp).reduce((sum, val) => sum + (val || 0), 0),
   ),
 }))

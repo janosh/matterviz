@@ -1,4 +1,4 @@
-import type { Composition } from '$lib'
+import type { CompositionType } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import StructureLegend from '$lib/structure/StructureLegend.svelte'
@@ -7,7 +7,12 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import { doc_query } from '..'
 
 describe(`StructureLegend Component`, () => {
-  const mock_elements: Composition = { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }
+  const mock_elements: CompositionType = {
+    Fe: 2,
+    O: 3,
+    H: 1.5,
+    C: 12.123456789,
+  }
 
   beforeEach(() => {
     colors.element = { ...default_element_colors }
@@ -113,7 +118,7 @@ describe(`StructureLegend Component`, () => {
     [{}, 0, undefined], // Empty elements
     [{ Fe: 0 }, 1, `Fe0`], // Zero amount
     [{ Fe: 0.0001 }, 1, `Fe0`], // Very small decimal (trimmed by .3~f format)
-    [{ Xx: 1 } as Composition, 1, `Xx1`], // Non-existent element
+    [{ Xx: 1 } as CompositionType, 1, `Xx1`], // Non-existent element
   ])(
     `handles edge cases correctly`,
     (elements, expected_count, expected_text) => {

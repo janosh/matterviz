@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/elementari",
   "repository": "https://github.com/janosh/elementari",
   "license": "MIT",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/elementari/issues",
@@ -105,6 +105,10 @@
       "svelte": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./composition": {
+      "types": "./dist/composition.d.ts",
+      "default": "./dist/composition.js"
+    },
     "./colors": {
       "types": "./dist/colors.d.ts",
       "default": "./dist/colors.js"
@@ -124,10 +128,6 @@
     "./plot": {
       "types": "./dist/plot.d.ts",
       "default": "./dist/plot.js"
-    },
-    "./stores": {
-      "types": "./dist/stores.d.ts",
-      "default": "./dist/stores.js"
     }
   },
   "types": "./dist/index.d.ts",

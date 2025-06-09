@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. Dates are displayed in UTC.
 
+#### [v0.4.1](https://github.com/janosh/elementari/compare/v0.4.0...v0.4.1)
+
+> 9 June 2025
+
+- Add new `lib/composition` module with `PieChart`/`BubbleChart`/`BarChart` components for rendering chemical formulae [`#73`](https://github.com/janosh/elementari/pull/73)
+
 #### [v0.4.0](https://github.com/janosh/elementari/compare/v0.3.15...v0.4.0)
 
 > 8 June 2025

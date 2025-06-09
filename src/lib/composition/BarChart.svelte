@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num, type Composition, type ElementSymbol } from '$lib'
+  import { format_num, type CompositionType, type ElementSymbol } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import { choose_bw_for_contrast } from '$lib/labels'
   import type { Snippet } from 'svelte'
@@ -26,7 +26,7 @@
   }
 
   interface Props {
-    composition: Composition
+    composition: CompositionType
     width?: number
     height?: number
     segment_gap?: number

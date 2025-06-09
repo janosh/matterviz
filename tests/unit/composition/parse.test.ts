@@ -1,4 +1,4 @@
-import type { Composition, ElementSymbol } from '$lib'
+import type { CompositionType, ElementSymbol } from '$lib'
 import {
   atomic_number_to_element_symbol,
   composition_to_percentages,
@@ -103,7 +103,7 @@ describe(`atomic number utilities`, () => {
 
   test(`should throw error for invalid element symbols in conversion`, () => {
     expect(() =>
-      convert_symbols_to_atomic_numbers({ Xx: 1 } as Composition),
+      convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType),
     ).toThrow(`Invalid element symbol: Xx`)
   })
 })
@@ -306,7 +306,7 @@ describe(`composition_to_percentages`, () => {
 
     test(`should throw error for unknown elements`, () => {
       expect(() =>
-        composition_to_percentages({ Xx: 1 } as Composition, true),
+        composition_to_percentages({ Xx: 1 } as CompositionType, true),
       ).toThrow(`Unknown element: Xx`)
     })
 
@@ -410,7 +410,7 @@ describe(`parse_composition_input`, () => {
 
 describe(`edge cases and error handling`, () => {
   test(`should handle very large compositions`, () => {
-    const large_composition: Composition = {}
+    const large_composition: CompositionType = {}
     for (let idx = 1; idx <= 50; idx++) {
       const symbol = atomic_number_to_element_symbol(idx)
       if (symbol) {
