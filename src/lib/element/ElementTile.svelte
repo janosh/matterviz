@@ -45,7 +45,7 @@
   type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
   let category = $derived(element.category.replaceAll(` `, `-`))
-  // background color defaults to category color (initialized in colors.ts, user editable in ColorCustomizer.ts)
+  // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
 </script>
 
 <svelte:element

@@ -13,7 +13,6 @@
     from_color?: string // color of atom 1
     to_color?: string // color of atom 2
   }
-
   let {
     from = [0, 0, 0],
     to,

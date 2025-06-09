@@ -1,4 +1,4 @@
-The `ScatterPlot` component creates versatile interactive scatter plots.
+# Scatter Plot
 
 ## Basic Plot with Multiple Display Modes
 

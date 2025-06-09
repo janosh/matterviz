@@ -20,7 +20,6 @@
     electron_label_props?: Record<string, string | number>
     [key: string]: unknown
   }
-
   let {
     symbol = ``,
     name = ``,

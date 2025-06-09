@@ -12,7 +12,7 @@
 </main>
 
 <style>
-  main :global(h2) {
+  main :global(:is(h1, h2, h3)) {
     text-align: center;
   }
 </style>

@@ -16,7 +16,6 @@
     tips_modal_snippet?: Snippet
     amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
   }
-
   let {
     elements,
     elem_color_picker_title = `Double click to reset color`,

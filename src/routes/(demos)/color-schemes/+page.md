@@ -2,7 +2,7 @@
   import pkg from '$root/package.json'
 </script>
 
-## Element Color Schemes
+# Element Color Schemes
 
 ```svelte example
 <script>
