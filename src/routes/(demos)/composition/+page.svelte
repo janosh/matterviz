@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Composition as CompositionType } from '$lib'
+  import type { CompositionType } from '$lib'
   import {
     BubbleChart,
     Composition,

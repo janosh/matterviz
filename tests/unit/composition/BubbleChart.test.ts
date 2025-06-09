@@ -1,9 +1,9 @@
-import type { Composition } from '$lib'
+import type { CompositionType } from '$lib'
 import { describe, expect, test, vi } from 'vitest'
 
 // Mock composition parsing utilities
 vi.mock(`$lib/composition/parse`, () => ({
-  get_total_atoms: vi.fn((comp: Composition) =>
+  get_total_atoms: vi.fn((comp: CompositionType) =>
     Object.values(comp).reduce((sum, val) => sum + (val || 0), 0),
   ),
 }))

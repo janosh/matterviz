@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Composition } from '$lib'
+  import type { CompositionType } from '$lib'
   import { choose_bw_for_contrast, element_data, format_num } from '$lib'
   import { default_element_colors } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
@@ -7,7 +7,7 @@
   import { Tooltip } from 'svelte-zoo'
 
   interface Props {
-    elements: Composition
+    elements: CompositionType
     elem_color_picker_title?: string
     labels?: HTMLLabelElement[]
     tips_modal?: HTMLDialogElement | undefined

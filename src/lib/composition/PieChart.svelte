@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num, type Composition, type ElementSymbol } from '$lib'
+  import { format_num, type CompositionType, type ElementSymbol } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import { choose_bw_for_contrast } from '$lib/labels'
   import type { Snippet } from 'svelte'
@@ -13,7 +13,7 @@
   const MAX_ANGLE_FOR_FULL_SCALE = 120 // degrees
 
   interface Props {
-    composition: Composition
+    composition: CompositionType
     size?: number
     stroke_width?: number
     inner_radius?: number
@@ -21,7 +21,7 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: keyof typeof element_color_schemes
-    center_content?: Snippet<[{ composition: Composition; total_atoms: number }]>
+    center_content?: Snippet<[{ composition: CompositionType; total_atoms: number }]>
     segment_content?: Snippet<
       [
         {
