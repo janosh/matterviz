@@ -445,7 +445,7 @@
     margin: var(--cbar-margin);
     padding: var(--cbar-padding);
     width: var(--cbar-width, auto);
-    font-size: var(--cbar-font-size, 10pt);
+    font-size: var(--cbar-font-size, 9pt);
     /* align-items based on title side for vertical layout */
     align-items: var(--cbar-wrapper-align-items);
   }
@@ -483,11 +483,11 @@
   }
   .tick-label.horizontal.tick-primary {
     top: 100%; /* Position below bar */
-    margin-top: var(--cbar-tick-offset, 0.1em);
+    margin-top: var(--cbar-tick-offset, 0);
   }
   .tick-label.horizontal.tick-secondary {
     bottom: 100%; /* Position above bar */
-    margin-bottom: var(--cbar-tick-offset, 0.1em);
+    margin-bottom: var(--cbar-tick-offset, 0);
   }
   .tick-label.horizontal.tick-inside {
     top: 50%; /* Center vertically */
@@ -500,11 +500,11 @@
   }
   .tick-label.vertical.tick-primary {
     left: 100%; /* Position right of bar */
-    padding-left: var(--cbar-tick-offset, 4pt);
+    padding-left: var(--cbar-tick-offset, 0);
   }
   .tick-label.vertical.tick-secondary {
     right: 100%; /* Position left of bar */
-    padding-right: var(--cbar-tick-offset, 4pt);
+    padding-right: var(--cbar-tick-offset, 0);
   }
   .tick-label.vertical.tick-inside {
     left: 50%; /* Center horizontally */

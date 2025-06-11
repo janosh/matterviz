@@ -20,6 +20,7 @@
 
   /* darken browser form controls like input[type='color'] */
   color-scheme: dark;
+  --max-text-width: 40em;
 }
 body {
   background: var(--page-bg);

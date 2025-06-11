@@ -1,11 +1,10 @@
 <script lang="ts">
   import { fetch_zipped, mp_build_bucket } from '$lib/api'
-  import { url_param_store } from 'svelte-zoo'
 
   let { data = $bindable() } = $props()
 
-  const mp_id = url_param_store(`id`, `mp-1`)
-  let aws_url = $derived(`${mp_build_bucket}/summary/${$mp_id}.json.gz`)
+  let mp_id = $state(`mp-1`)
+  let aws_url = $derived(`${mp_build_bucket}/summary/${mp_id}.json.gz`)
 
   const responses: Record<string, unknown> = $state({})
 </script>
@@ -15,7 +14,7 @@
   <center>
     <input
       placeholder="Enter MP material ID"
-      bind:value={$mp_id}
+      bind:value={mp_id}
       onkeydown={async (event) => {
         if (event.key === `Enter`) data.summary = await fetch_zipped(aws_url)
       }}
