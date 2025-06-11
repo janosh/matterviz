@@ -2,8 +2,7 @@
   import { Structure } from '$lib'
   import { parse_structure_file } from '$lib/io/parse'
   import type { AnyStructure, PymatgenStructure } from '$lib/structure'
-  import { structures } from '$site'
-  import TableDemo from './(demos)/periodic-table/+page.svelte'
+  import { PeriodicTableDemo, structures } from '$site'
 
   interface FileInfo {
     name: string
@@ -153,7 +152,7 @@
   })
 
   // Debounced parsing function
-  let parse_timeout: number
+  let parse_timeout: ReturnType<typeof setTimeout>
   const parse_user_content = () => {
     clearTimeout(parse_timeout)
     parse_timeout = setTimeout(() => {
@@ -253,7 +252,7 @@
   }
 </script>
 
-<h1>Elementari</h1>
+<h1 style="margin: 0;">Elementari</h1>
 
 <p>
   <code>elementari</code> is a toolkit for building interactive web UIs for materials science:
@@ -261,26 +260,7 @@
   plots. Check out some of the examples in the navigation bar above.
 </p>
 
-<h2>Periodic Table</h2>
-
-<TableDemo />
-
 <h2>Structure Viewer</h2>
-
-<p>
-  The 3d structure viewer is built on the declarative <a href="https://threejs.org"
-    >three.js</a
-  >
-  wrapper <a href="https://threlte.xyz"><code>threlte</code></a>. It gets Svelte-compiled
-  for great performance (even on supercells with 100+ atoms), is split up into
-  <code>Bond</code>, <code>Lattice</code>, <code>Scene</code> and <code>Site</code>
-  components for easy extensibility. You can pass various click, drag and touch event handlers
-  for rich interactivity as well as inject custom HTML into tooltips using child components.
-  This one shows the
-  <a href="https://materialsproject.org">Materials Project</a>
-  structure for <a href="https://materialsproject.org/materials/{mp_id}">{mp_id}</a> but you
-  can select others below.
-</p>
 
 <Structure
   {structure}
@@ -381,6 +361,25 @@
   </div>
 </div>
 
+<p>
+  The 3d structure viewer is built on the declarative <a href="https://threejs.org"
+    >three.js</a
+  >
+  wrapper <a href="https://threlte.xyz"><code>threlte</code></a>. It gets Svelte-compiled
+  for great performance (even on supercells with 100+ atoms), is split up into
+  <code>Bond</code>, <code>Lattice</code>, <code>Scene</code> and <code>Site</code>
+  components for easy extensibility. You can pass various click, drag and touch event handlers
+  for rich interactivity as well as inject custom HTML into tooltips using child components.
+  This one shows the
+  <a href="https://materialsproject.org">Materials Project</a>
+  structure for <a href="https://materialsproject.org/materials/{mp_id}">{mp_id}</a> but you
+  can select others below.
+</p>
+
+<h2>Periodic Table</h2>
+
+<PeriodicTableDemo />
+
 <style>
   h1 {
     text-align: center;
@@ -390,8 +389,8 @@
     text-align: center;
   }
   p {
-    max-width: 40em;
-    margin: 2em auto 3em;
+    max-width: var(--max-text-width);
+    margin: 1em auto;
     text-align: center;
   }
   .files-and-textearea {

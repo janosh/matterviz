@@ -4,6 +4,84 @@
 
 # Element Color Schemes
 
+## Multi-Scheme Comparison
+
+Compare three element color palettes side by side using horizontal bars within each element tile.
+
+```svelte example
+<script>
+  import { PeriodicTable, TableInset, element_data } from '$lib'
+  import { element_color_schemes } from '$lib/colors'
+
+  // Create multi-scheme color data - each element gets an array of 3 colors
+  const multi_scheme_colors = element_data.map((el) => [
+    element_color_schemes.Jmol[el.symbol] ?? '#666666',
+    element_color_schemes.Vesta[el.symbol] ?? '#666666',
+    element_color_schemes.Alloy[el.symbol] ?? '#666666'
+  ])
+</script>
+
+<PeriodicTable
+  tile_props={{ show_name: false, show_number: false }}
+  heatmap_values={multi_scheme_colors}
+  tooltip={false}
+  style="margin: 1em auto; max-width: 800px;"
+>
+  {#snippet inset()}
+    <TableInset>
+      <div class="scheme-legend">
+        <div class="legend-item">
+          <div class="color-sample jmol"></div>
+          <span>Top: Jmol/CPK</span>
+        </div>
+        <div class="legend-item">
+          <div class="color-sample vesta"></div>
+          <span>Middle: VESTA</span>
+        </div>
+        <div class="legend-item">
+          <div class="color-sample alloy"></div>
+          <span>Bottom: Alloy</span>
+        </div>
+      </div>
+    </TableInset>
+  {/snippet}
+</PeriodicTable>
+
+<style>
+  .scheme-legend {
+    display: flex;
+    gap: 2em;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 0.5em;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-size: 0.9em;
+  }
+  .color-sample {
+    width: 20px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  .color-sample.jmol {
+    background: linear-gradient(90deg, #ff1493, #00ff00, #1e90ff);
+  }
+  .color-sample.vesta {
+    background: linear-gradient(90deg, #ff6347, #32cd32, #4169e1);
+  }
+  .color-sample.alloy {
+    background: linear-gradient(90deg, #ff4500, #ffd700, #00ced1);
+  }
+</style>
+```
+
+## Individual Color Schemes
+
 ```svelte example
 <script>
   import { PeriodicTable } from '$lib'
@@ -35,7 +113,7 @@
     margin: 2em 0 -2em -20cqw;
   }
   h3 {
-    font-size: 5cqw;
+    font-size: 1.5rem;
   }
   .subtitle {
     max-width: 50cqw;

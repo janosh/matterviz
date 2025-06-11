@@ -1,34 +1,42 @@
+<!--
+PeriodicTable.svelte - Interactive Periodic Table Component
+
+NEW FEATURE: Multi-value heatmaps
+- Pass arrays of 1-4 values per element in heatmap_values
+- 2 values: diagonal split (top-left triangle, bottom-right triangle)
+- 3 values: horizontal bars (top, middle, bottom)
+- 4 values: quadrants (top-left, top-right, bottom-left, bottom-right)
+
+Example usage:
+- Single values: heatmap_values={[1, 2, 3, ...]} or heatmap_values={{H: 1, He: 2, ...}}
+- Multi values: heatmap_values={[[1,2], [3,4,5], [6,7,8,9], ...]} or heatmap_values={{H: [1,2], He: [3,4,5], ...}}
+-->
+
 <script lang="ts">
   import { goto } from '$app/navigation'
   import type { Category, ChemicalElement, PeriodicTableEvents, XyObj } from '$lib'
   import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '$lib'
+  import { is_color } from '$lib/colors'
   import element_data from '$lib/element/data'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { ScaleContext } from '.'
   import type { D3InterpolateName } from '../colors'
 
-  const default_lanth_act_tiles = [
-    {
-      name: `Lanthanides`,
-      symbol: `La-Lu`,
-      number: `57-71`,
-      category: `lanthanide` as const,
-    },
-    {
-      name: `Actinides`,
-      symbol: `Ac-Lr`,
-      number: `89-103`,
-      category: `actinide` as const,
-    },
-  ]
+  const default_f_block_inset_tiles = [
+    { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
+    { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
+  ] as const
   interface Props {
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
-    // either array of numbers (can be partial, missing elements default to 0) or object with
+    // either array of numbers/colors (can be partial, missing elements default to 0) or object with
     // element symbol as key and heat value as value
-    heatmap_values?: Partial<Record<ElementSymbol, number>> | number[]
+    // NEW: each value can now be a single number/color or array of 1-4 numbers/colors for multi-segment display
+    heatmap_values?:
+      | Partial<Record<ElementSymbol, number | number[] | string | string[]>>
+      | (number | number[] | string | string[])[]
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Record<ElementSymbol, string> | null
@@ -52,6 +60,8 @@
     // background color for elements missing from heatmap_values
     // "element-category" falls back to element category default color
     missing_color?: string
+    // control the layout of multi-value splits for all tiles
+    split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
@@ -59,7 +69,7 @@
           [
             {
               element: ChemicalElement
-              value: number
+              value: number | number[] | string | string[]
               active: boolean
               bg_color: string | null
               scale_context: ScaleContext
@@ -82,12 +92,15 @@
     active_category = $bindable(null),
     gap = `0.3cqw`,
     inner_transition_metal_offset = 0.5,
-    lanth_act_tiles = tile_props?.show_symbol == false ? [] : default_lanth_act_tiles,
+    lanth_act_tiles = tile_props?.show_symbol == false
+      ? []
+      : [...default_f_block_inset_tiles],
     lanth_act_style = ``,
     color_scale_range = [null, null],
     color_overrides = {},
     labels = {},
     missing_color = `element-category`,
+    split_layout = undefined,
     inset,
     bottom_left_inset,
     tooltip = false,
@@ -103,7 +116,7 @@
     if (Array.isArray(heatmap_values)) {
       if (heatmap_values.length > 118) {
         console.error(
-          `heatmap_values is an array of numbers, length should be 118 or less, one for ` +
+          `heatmap_values is an array of numbers/arrays, length should be 118 or less, one for ` +
             `each element possibly omitting elements at the end, got ${heatmap_values.length}`,
         )
         return []
@@ -181,14 +194,35 @@
   )
 
   let cs_min = $derived(
-    color_scale_range[0] ?? (heat_values.length ? Math.min(...heat_values) : 0),
+    color_scale_range[0] ??
+      (heat_values.length
+        ? Math.min(
+            ...heat_values.flat().filter((v): v is number => typeof v === `number`),
+          )
+        : 0),
   )
   let cs_max = $derived(
-    color_scale_range[1] ?? (heat_values.length ? Math.max(...heat_values) : 1),
+    color_scale_range[1] ??
+      (heat_values.length
+        ? Math.max(
+            ...heat_values.flat().filter((v): v is number => typeof v === `number`),
+          )
+        : 1),
   )
 
   let bg_color = $derived(
-    (value: number | false, element?: ChemicalElement): string | null => {
+    (
+      value: number | number[] | string | string[] | false,
+      element?: ChemicalElement,
+    ): string | null => {
+      if (Array.isArray(value)) {
+        // For arrays, return the color of the first value (used as fallback)
+        return bg_color(value[0], element)
+      }
+
+      // If it's already a color string, return it directly
+      if (is_color(value)) return value as string
+
       // Return missing color for zero/invalid values or when no heatmap data
       if (
         !value ||
@@ -208,9 +242,25 @@
       const span = cs_max - cs_min
       if (span === 0) return color_scale_fn?.(0.5) // midpoint when all values equal
 
-      if (log) value = Math.log(value - cs_min + 1) / Math.log(span + 1)
-      else value = (value - cs_min) / span
-      return color_scale_fn?.(value)
+      if (log) value = Math.log((value as number) - cs_min + 1) / Math.log(span + 1)
+      else value = ((value as number) - cs_min) / span
+      return color_scale_fn?.(value as number)
+    },
+  )
+
+  let bg_colors = $derived(
+    (
+      value: number | number[] | string | string[] | false,
+      element?: ChemicalElement,
+    ): (string | null)[] => {
+      if (!Array.isArray(value)) return []
+
+      return value.map((v) => {
+        // If it's already a color string, return it directly
+        if (is_color(v)) return v as string
+        // Otherwise, map it through the color scale
+        return bg_color(v as number, element)
+      })
     },
   )
 </script>
@@ -236,6 +286,7 @@
         style="grid-column: {column}; grid-row: {row};"
         {value}
         bg_color={color_overrides[symbol] ?? bg_color(value, element)}
+        bg_colors={Array.isArray(value) ? bg_colors(value, element) : []}
         {active}
         label={labels[symbol]}
         {...tile_props}
@@ -249,6 +300,7 @@
         }}
         onfocus={set_active_element(element)}
         onblur={set_active_element(null)}
+        {split_layout}
       />
     {/each}
     <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
@@ -291,6 +343,14 @@
         {:else}
           {tooltip_element.name}<br />
           <small>{tooltip_element.symbol} • {tooltip_element.number}</small>
+          {#if Array.isArray(heat_values[tooltip_element.number - 1])}
+            <br />
+            <small
+              >Values: {(heat_values[tooltip_element.number - 1] as number[]).join(
+                `, `,
+              )}</small
+            >
+          {/if}
         {/if}
       </div>
     {/if}

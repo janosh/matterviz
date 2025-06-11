@@ -3,7 +3,7 @@ import { expect, test, type Locator } from '@playwright/test'
 test.describe(`ColorBar Component Tests`, () => {
   // Navigate to the test page before each test
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/colorbar`, { waitUntil: `load` })
+    await page.goto(`/test/colorbar`, { waitUntil: `networkidle` })
     await page.waitForSelector(`h1`) // Wait for page heading
   })
 
@@ -69,9 +69,9 @@ test.describe(`ColorBar Component Tests`, () => {
     await expect(ticks.first()).toHaveText(/^-10$|^−10$/)
     await expect(ticks.last()).toHaveText(`10`)
     await expect(ticks.first()).toHaveCSS(`right`, `14px`) // Default thickness
-    // Check padding less strictly due to potential rounding (4pt default ~ 5.33px)
+    // Check padding - should be 0 by default (no --cbar-tick-offset set)
     const padding_right = await get_style(ticks.first(), `padding-right`)
-    expect(parseFloat(padding_right)).toBeCloseTo(5.3, 0) // Allow 0 decimal places difference
+    expect(parseFloat(padding_right)).toBe(0)
     // Check transform indirectly
     const tick_transform = await get_style(ticks.first(), `transform`)
     expect(tick_transform).toContain(`matrix`)

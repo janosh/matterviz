@@ -283,27 +283,37 @@ test.describe(`Structure Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     await expect(canvas).toBeVisible()
 
+    // Wait for the structure to fully load and render
+    await page.waitForTimeout(1000)
+
     const initial_screenshot = await canvas.screenshot()
 
     // Try gizmo click (top-right) or fallback to drag for camera rotation
     const box = await canvas.boundingBox()
     if (box) {
-      await canvas.click({
-        position: { x: box.width - 80, y: 80 },
-        force: true,
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 100, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 100, y: box.height / 2 },
       })
 
-      let after_screenshot = await canvas.screenshot()
-      if (initial_screenshot.equals(after_screenshot)) {
-        // Fallback: drag to rotate via OrbitControls
-        await canvas.dragTo(canvas, {
-          sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
-          targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
-        })
-        after_screenshot = await canvas.screenshot()
-      }
+      // Wait for animation to complete
+      await page.waitForTimeout(500)
 
-      expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+      const after_screenshot = await canvas.screenshot()
+
+      // If no change, try a different drag pattern
+      if (initial_screenshot.equals(after_screenshot)) {
+        await canvas.dragTo(canvas, {
+          sourcePosition: { x: box.width / 2, y: box.height / 2 - 100 },
+          targetPosition: { x: box.width / 2, y: box.height / 2 + 100 },
+        })
+
+        await page.waitForTimeout(500)
+        const final_screenshot = await canvas.screenshot()
+        expect(initial_screenshot.equals(final_screenshot)).toBe(false)
+      } else {
+        expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+      }
     }
   })
 

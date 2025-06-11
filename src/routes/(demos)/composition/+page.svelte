@@ -200,7 +200,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 1rem;
-    margin-top: 1rem;
+    margin-top: 1em;
   }
   .chart-demo {
     display: flex;
@@ -211,6 +211,9 @@
     background: var(--card-bg, rgba(255, 255, 255, 0.05));
     border-radius: 8px;
     border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
+  }
+  .chart-demo h3 {
+    margin: 0 0 1ex;
   }
   p {
     color: var(--text-muted, #aaa);

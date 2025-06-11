@@ -184,8 +184,11 @@
         class:hovered={hovered_element === segment.element}
         onmouseenter={() => interactive && (hovered_element = segment.element)}
         onmouseleave={() => interactive && (hovered_element = null)}
-        role={interactive ? `button` : undefined}
-        tabindex={interactive ? 0 : undefined}
+        {...interactive && {
+          role: `button`,
+          tabindex: 0,
+          'aria-label': `${segment.element}: ${segment.amount} ${segment.amount === 1 ? `atom` : `atoms`} (${segment.percentage.toFixed(1)}%)`,
+        }}
       >
         <title>
           {segment.element}: {segment.amount}

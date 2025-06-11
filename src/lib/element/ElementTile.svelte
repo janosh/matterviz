@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { ChemicalElement, PeriodicTableEvents } from '$lib'
   import { choose_bw_for_contrast, format_num } from '$lib'
+  import { default_category_colors, is_color } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
+
+  type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
 
   interface Props {
     element: ChemicalElement
@@ -9,7 +12,7 @@
     show_symbol?: boolean
     show_number?: boolean
     show_name?: boolean
-    value?: number | false | undefined
+    value?: number | number[] | string | string[] | false | undefined
     style?: string
     symbol_style?: string
     active?: boolean
@@ -20,13 +23,18 @@
     precision?: string | undefined
     node?: HTMLElement | null
     label?: string | null
+    // array of background colors for multi-segment tiles
+    bg_colors?: (string | null)[]
+    show_values?: boolean // explicitly control whether to show values when colors are passed
+    // control the layout of multi-value splits
+    split_layout?: SplitLayout
     [key: string]: unknown
   }
   let {
     element,
     bg_color = null,
     show_symbol = true,
-    show_number = true,
+    show_number = undefined, // auto-determine based on multi-value splits
     show_name = true,
     value = undefined,
     style = ``,
@@ -38,6 +46,9 @@
     precision = undefined,
     node = $bindable(null),
     label = null,
+    bg_colors = [],
+    show_values = undefined,
+    split_layout = undefined, // auto-determine based on value count if not specified
     ...rest
   }: Props = $props()
 
@@ -46,6 +57,131 @@
 
   let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
+
+  let fallback_bg_color = $derived(
+    bg_color ?? default_category_colors[category] ?? `var(--${category}-bg-color)`,
+  )
+  let contrast_bg_color = $derived(bg_color ?? default_category_colors[category])
+
+  // Determine if we should show the atomic number - default to false for multi-value splits to avoid overlap
+  const should_show_number = $derived.by(() => {
+    if (show_number !== undefined) return show_number
+    // Auto-hide number for multi-value splits to prevent overlap with value labels
+    if (Array.isArray(value) && value.length > 1) return false
+    return true // default to true for single values
+  })
+
+  // Helper function to format values appropriately
+  const format_value = (val: string | number): string => {
+    if (is_color(val)) {
+      return show_values === true ? val.toString() : ``
+    }
+
+    // Handle numeric values
+    if (typeof val === `number`) return format_num(val, precision)
+
+    // Handle string values - check if it's a numeric string
+    if (typeof val === `string`) {
+      const parsed_num = parseFloat(val)
+      if (!isNaN(parsed_num) && isFinite(parsed_num)) {
+        return format_num(parsed_num, precision)
+      }
+      // If show_values is true, return the string as-is to preserve non-numeric strings
+      return show_values === true ? val : ``
+    }
+
+    return ``
+  }
+
+  // Determine if we should show values - default to false if any array element is a color
+  const should_show_values = $derived.by(() => {
+    if (show_values !== undefined) return show_values
+    if (Array.isArray(value)) {
+      return !value.some((v) => is_color(v))
+    }
+    return !is_color(value)
+  })
+
+  // Determine the actual layout to use based on value count and split_layout prop
+  const actual_layout = $derived.by(() => {
+    if (!Array.isArray(value)) return null
+
+    if (split_layout) return split_layout
+
+    // Auto-determine layout based on value count (backwards compatibility)
+    const layout_map = { 2: `diagonal`, 3: `horizontal`, 4: `quadrant` } as const
+    if (value.length in layout_map)
+      return layout_map[value.length as keyof typeof layout_map]
+    console.error(`Only 2, 3, or 4 values are supported for split_layout`)
+    return null
+  })
+
+  // Get the appropriate CSS classes for segments and positions based on layout
+  const layout_config = $derived.by(() => {
+    if (!Array.isArray(value) || !actual_layout) return null
+
+    const count = value.length
+
+    switch (actual_layout) {
+      case `diagonal`:
+        return count === 2
+          ? {
+              segments: [`diagonal-top`, `diagonal-bottom`],
+              positions: [`top-left`, `bottom-right`],
+            }
+          : null
+
+      case `horizontal`:
+        return count === 3
+          ? {
+              segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
+              positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
+            }
+          : null
+
+      case `vertical`:
+        return count === 3
+          ? {
+              segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
+              positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
+            }
+          : null
+
+      case `triangular`:
+        return count === 4
+          ? {
+              segments: [
+                `triangle-top`,
+                `triangle-right`,
+                `triangle-bottom`,
+                `triangle-left`,
+              ],
+              positions: [
+                `triangle-top-pos`,
+                `triangle-right-pos`,
+                `triangle-bottom-pos`,
+                `triangle-left-pos`,
+              ],
+            }
+          : null
+
+      case `quadrant`:
+        return count === 4
+          ? {
+              segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
+              positions: [
+                `value-quadrant-tl`,
+                `value-quadrant-tr`,
+                `value-quadrant-bl`,
+                `value-quadrant-br`,
+              ],
+            }
+          : null
+
+      default:
+        return null
+    }
+  })
 </script>
 
 <svelte:element
@@ -56,14 +192,17 @@
   class="element-tile {category}"
   class:active
   class:last-active={selected.last_element === element}
-  style:background-color={bg_color ?? `var(--${category}-bg-color)`}
-  style:color={text_color ?? choose_bw_for_contrast(node, bg_color, text_color_threshold)}
+  style:background-color={Array.isArray(value) && bg_colors?.length > 1
+    ? `transparent`
+    : fallback_bg_color}
+  style:color={text_color ??
+    choose_bw_for_contrast(node, contrast_bg_color, text_color_threshold)}
   {style}
   role="link"
   tabindex="0"
   {...rest}
 >
-  {#if show_number}
+  {#if should_show_number}
     <span class="number">
       {element.number}
     </span>
@@ -73,14 +212,49 @@
       {element.symbol}
     </span>
   {/if}
-  {#if value}
-    <span class="value">
-      {format_num(value, precision)}
-    </span>
+  {#if value && should_show_values}
+    {#if Array.isArray(value) && layout_config}
+      <!-- Multi-value positioning using layout config -->
+      {#each value as val, idx (idx)}
+        {#if val && format_value(val)}
+          <span
+            class="value multi-value {layout_config.positions[idx]}"
+            style:color={bg_colors?.[idx]
+              ? choose_bw_for_contrast(null, bg_colors[idx], text_color_threshold)
+              : null}
+          >
+            {format_value(val)}
+          </span>
+        {/if}
+      {/each}
+    {:else if Array.isArray(value)}
+      <!-- Fallback for other array lengths -->
+      <span class="value"
+        >{value
+          .map((v) => format_value(v))
+          .filter((v) => v)
+          .join(` / `)}</span
+      >
+    {:else}
+      <!-- Single value -->
+      <span class="value">{format_value(value)}</span>
+    {/if}
   {:else if show_name}
     <span class="name">
       {label ?? element.name}
     </span>
+  {/if}
+
+  <!-- Multi-segment backgrounds for heatmap arrays -->
+  {#if Array.isArray(value) && bg_colors && bg_colors.length > 1 && layout_config}
+    {#each bg_colors as bg_color, idx (idx)}
+      {#if layout_config.segments[idx]}
+        <div
+          class="segment {layout_config.segments[idx]}"
+          style:background-color={bg_color}
+        ></div>
+      {/if}
+    {/each}
   {/if}
 </svelte:element>
 
@@ -92,16 +266,19 @@
     display: flex;
     place-items: center;
     place-content: center;
-    border-radius: var(--elem-tile-border-radius, 1pt);
-    width: 100%;
+    border-radius: var(--elem-tile-border-radius, 4pt);
     box-sizing: border-box;
     color: var(--elem-tile-text-color);
     /* add persistent invisible border so content doesn't move on hover */
     border: 1px solid transparent;
     container-type: inline-size;
+    overflow: hidden;
+    width: var(--elem-tile-width);
+    height: var(--elem-tile-height);
   }
   .element-tile span {
     line-height: 1em;
+    z-index: 10;
   }
   .element-tile.active,
   .element-tile:hover {
@@ -131,5 +308,207 @@
   }
   span.name {
     font-size: var(--elem-name-font-size, 12cqw);
+  }
+
+  /* Multi-value positioning */
+  .multi-value {
+    position: absolute;
+    font-size: var(--elem-multi-value-font-size, 14cqw);
+    font-weight: 600;
+  }
+
+  /* 2-value diagonal positions */
+  .top-left {
+    top: 4cqw;
+    left: 4cqw;
+  }
+  .bottom-right {
+    bottom: 4cqw;
+    right: 4cqw;
+  }
+
+  /* 3-value horizontal bar positions */
+  .bar-top-left {
+    top: 8cqw;
+    left: 4cqw;
+  }
+  .bar-middle-right {
+    top: calc(50% - 7cqw);
+    right: 4cqw;
+  }
+  .bar-bottom-left {
+    bottom: 8cqw;
+    left: 4cqw;
+  }
+
+  /* 3-value vertical bar positions */
+  .bar-left-top {
+    top: 4cqw;
+    left: 8cqw;
+  }
+  .bar-middle-bottom {
+    bottom: 4cqw;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .bar-right-top {
+    top: 4cqw;
+    right: 8cqw;
+  }
+
+  /* 4-value triangular positions (tips meet in center) */
+  .triangle-top-pos {
+    top: 3cqw;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .triangle-right-pos {
+    top: calc(50% - 7cqw);
+    right: 3cqw;
+  }
+  .triangle-bottom-pos {
+    bottom: 3cqw;
+    left: 50%;
+    transform: translate(-50%, 2px);
+  }
+  .triangle-left-pos {
+    top: calc(50% - 7cqw);
+    left: 3cqw;
+  }
+
+  /* 4-value quadrant positions */
+  .value-quadrant-tl {
+    top: 4cqw;
+    left: 4cqw;
+  }
+  .value-quadrant-tr {
+    top: 4cqw;
+    right: 4cqw;
+  }
+  .value-quadrant-bl {
+    bottom: 4cqw;
+    left: 4cqw;
+  }
+  .value-quadrant-br {
+    bottom: 4cqw;
+    right: 4cqw;
+  }
+
+  /* Multi-segment backgrounds */
+  .segment {
+    position: absolute;
+    z-index: 1;
+  }
+
+  /* Diagonal split (2 values) */
+  .diagonal-top {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+  }
+  .diagonal-bottom {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  }
+
+  /* Horizontal bars (3 values) */
+  .horizontal-top {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 33.33%;
+  }
+  .horizontal-middle {
+    top: 33.33%;
+    left: 0;
+    width: 100%;
+    height: 33.33%;
+  }
+  .horizontal-bottom {
+    top: 66.66%;
+    left: 0;
+    width: 100%;
+    height: 33.34%;
+  }
+
+  /* Vertical bars (3 values) */
+  .vertical-left {
+    top: 0;
+    left: 0;
+    width: 33.33%;
+    height: 100%;
+  }
+  .vertical-middle {
+    top: 0;
+    left: 33.33%;
+    width: 33.33%;
+    height: 100%;
+  }
+  .vertical-right {
+    top: 0;
+    left: 66.66%;
+    width: 33.34%;
+    height: 100%;
+  }
+
+  /* Triangular segments (4 values) - tips meet in center */
+  .triangle-top {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(0 0, 100% 0, 50% 50%);
+  }
+  .triangle-right {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(100% 0, 100% 100%, 50% 50%);
+  }
+  .triangle-bottom {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(100% 100%, 0 100%, 50% 50%);
+  }
+  .triangle-left {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(0 100%, 0 0, 50% 50%);
+  }
+
+  /* Four quadrants (4 values) */
+  .quadrant-tl {
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 50%;
+  }
+  .quadrant-tr {
+    top: 0;
+    right: 0;
+    width: 50%;
+    height: 50%;
+  }
+  .quadrant-bl {
+    bottom: 0;
+    left: 0;
+    width: 50%;
+    height: 50%;
+  }
+  .quadrant-br {
+    bottom: 0;
+    right: 0;
+    width: 50%;
+    height: 50%;
   }
 </style>

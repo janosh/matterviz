@@ -1,9 +1,9 @@
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
+import type { elem_symbols } from '../labels'
 import alloy_colors from './alloy-colors.json'
 import dark_mode_colors from './dark-mode-colors.json'
 import jmol_colors from './jmol-colors.json'
-import type { elem_symbols } from './labels'
 import muted_colors from './muted-colors.json'
 import pastel_colors from './pastel-colors.json'
 import vesta_colors from './vesta-colors.json'
@@ -29,17 +29,19 @@ export const default_category_colors: Record<string, string> = {
   actinide: `#6495ed`, // cornflowerblue
 }
 
-export type RGBColor = readonly [number, number, number]
+export type RGBColor = [number, number, number]
 export type ElementColorScheme = Record<(typeof elem_symbols)[number], RGBColor>
 
 function rgb_scheme_to_hex(
-  obj: Record<string, RGBColor>,
+  obj: Record<string, number[]>,
 ): Record<string, string> {
   const result: Record<string, string> = {}
   for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
+    if (Object.hasOwn(obj, key)) {
       const val = obj[key]
-      result[key] = rgb(...val).formatHex()
+      if (val.length >= 3) {
+        result[key] = rgb(val[0], val[1], val[2]).formatHex()
+      }
     }
   }
   return result
@@ -62,3 +64,13 @@ export const element_color_schemes = {
 } as const
 
 export const default_element_colors = { ...vesta_hex }
+
+// Helper function to detect if a value is a color string
+export const is_color = (val: unknown): val is string => {
+  if (typeof val !== `string`) return false
+  // Check for hex colors, rgb/rgba, hsl/hsla, color(), var(), and named colors
+  // Exclude incomplete function prefixes like 'rgb', 'hsl', 'var', 'color'
+  return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i.test(
+    val.toString().trim(),
+  )
+}

@@ -14,6 +14,7 @@
   } from '$lib'
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
+  import pkg from '$root/package.json'
   import { PrevNext } from 'svelte-zoo'
 
   let { data } = $props()
@@ -64,7 +65,7 @@
     if (!selected.heatmap_key) selected.heatmap_key = `atomic_radius`
   })
 
-  let head_title = $derived(`${element.name} &bull; Periodic Table`)
+  let head_title = $derived(`${element.name} • ${pkg.name}`)
 
   let orbiting = $state(true)
   let window_width: number = $state(0)
@@ -196,16 +197,17 @@
     current={page.url.pathname.slice(1)}
   >
     {#snippet children({ item, kind })}
+      {@const element = item[1] as ChemicalElement}
       <a
-        href={item.name.toLowerCase()}
+        href={element.name.toLowerCase()}
         style="display: flex; flex-direction: column; position: relative;"
       >
         <h3>
           {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
         </h3>
-        <ElementPhoto element={item} style="width: 200px; border-radius: 4pt;" />
+        <ElementPhoto {element} style="width: 200px; border-radius: 4pt;" />
         <ElementTile
-          element={item}
+          {element}
           style="width: 70px; position: absolute; bottom: 0;"
           --elem-tile-hover-border="1px solid transparent"
         />
@@ -239,7 +241,7 @@
   }
   p {
     text-align: center;
-    max-width: 40em;
+    max-width: var(--max-text-width);
     margin: 3em auto;
     font-weight: 200;
   }
