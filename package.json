@@ -23,7 +23,7 @@
     "update-coverage": "vitest tests/unit --run --coverage && npx istanbul-badges-readme"
   },
   "dependencies": {
-    "@sveltejs/kit": "^2.21.4",
+    "@sveltejs/kit": "^2.21.5",
     "@threlte/core": "8.0.4",
     "@threlte/extras": "^9.2.1",
     "@types/d3-force": "^3.0.10",
@@ -38,8 +38,9 @@
     "d3-scale": "^4.0.2",
     "d3-scale-chromatic": "^3.1.0",
     "d3-shape": "^3.2.0",
+    "h5wasm": "^0.8.1",
     "highlight.js": "^11.11.1",
-    "svelte": "5.33.19",
+    "svelte": "5.34.1",
     "svelte-multiselect": "11.1.1",
     "svelte-zoo": "^0.4.19",
     "three": "^0.177.0"
@@ -62,7 +63,7 @@
     "@types/three": "^0.177.0",
     "@vitest/coverage-v8": "^3.2.3",
     "d3-time-format": "^4.1.0",
-    "eslint": "^9.28.0",
+    "eslint": "^9.29.0",
     "eslint-plugin-svelte": "^3.9.2",
     "happy-dom": "^18.0.1",
     "hastscript": "^9.0.1",

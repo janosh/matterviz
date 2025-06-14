@@ -712,7 +712,7 @@
       </div>
       <div id="legend-multi-default" class="plot-container">
         <h3>Multi Series (Default Legend) - Legend Expected</h3>
-        <ScatterPlot series={legend_multi_series} />
+        <ScatterPlot series={legend_multi_series} legend={{ draggable: true }} />
       </div>
       <div id="legend-zero" class="plot-container">
         <h3>Zero Series - No Legend Expected</h3>

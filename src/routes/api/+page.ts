@@ -1,5 +1,5 @@
 import { fetch_zipped, mp_build_bucket } from '$lib/api'
-import type { SummaryDoc } from '$lib/material/index'
+import type { SummaryDoc } from '$lib/material'
 
 export const ssr = false
 const mp_build_url = `https://materialsproject-build.s3.amazonaws.com?delimiter=%2F&prefix=collections%2F2022-10-28%2F`

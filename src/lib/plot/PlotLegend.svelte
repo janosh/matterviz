@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LegendItem } from '$lib/plot'
+  import { onDestroy } from 'svelte'
 
   interface Props {
     series_data: LegendItem[] // Use the simplified LegendItem type
@@ -9,6 +10,10 @@
     item_style?: string
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
+    on_drag_start?: (event: MouseEvent) => void
+    on_drag?: (event: MouseEvent) => void
+    on_drag_end?: (event: MouseEvent) => void
+    draggable?: boolean
     [key: string]: unknown
   }
   let {
@@ -19,8 +24,29 @@
     item_style = ``,
     on_toggle = () => {},
     on_double_click = () => {},
+    on_drag_start = () => {},
+    on_drag = () => {},
+    on_drag_end = () => {},
+    draggable = true,
     ...rest
   }: Props = $props()
+
+  let is_dragging = $state(false)
+  let drag_start_coords = $state<{ x: number; y: number } | null>(null)
+
+  // Cleanup function prevents memory leaks on component destroy (remove event listeners and reset styles)
+  function cleanup_drag_listeners() {
+    if (is_dragging) {
+      // Remove global event listeners
+      window.removeEventListener(`mousemove`, handle_window_mouse_move)
+      window.removeEventListener(`mouseup`, handle_window_mouse_up)
+
+      // Reset cursor and text selection
+      document.body.style.cursor = `default`
+      document.body.style.userSelect = `auto`
+    }
+  }
+  onDestroy(cleanup_drag_listeners)
 
   function handle_click(event: MouseEvent, series_idx: number) {
     event.preventDefault() // Prevent any default browser behavior
@@ -32,6 +58,46 @@
     event.preventDefault()
     event.stopPropagation()
     on_double_click(series_idx)
+  }
+
+  function handle_legend_mouse_down(event: MouseEvent) {
+    if (!draggable) return
+
+    // Only start drag if clicking on empty areas (not on legend items)
+    const target = event.target as HTMLElement
+    if (target.closest(`.legend-item`)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    is_dragging = true
+    drag_start_coords = { x: event.clientX, y: event.clientY }
+
+    on_drag_start(event)
+
+    // Add global event listeners
+    window.addEventListener(`mousemove`, handle_window_mouse_move)
+    window.addEventListener(`mouseup`, handle_window_mouse_up)
+  }
+
+  function handle_window_mouse_move(event: MouseEvent) {
+    if (!is_dragging || !drag_start_coords) return
+
+    event.preventDefault()
+    on_drag(event)
+  }
+
+  function handle_window_mouse_up(event: MouseEvent) {
+    if (!is_dragging) return
+
+    is_dragging = false
+    drag_start_coords = null
+
+    on_drag_end(event)
+
+    // Remove global event listeners
+    window.removeEventListener(`mousemove`, handle_window_mouse_move)
+    window.removeEventListener(`mouseup`, handle_window_mouse_up)
   }
 
   let grid_template_style = $derived.by(() => {
@@ -47,7 +113,12 @@
   })
 </script>
 
-<div class="legend" style="{wrapper_style} {grid_template_style}" {...rest}>
+<div
+  class="legend {draggable ? `draggable` : ``} {is_dragging ? `is-dragging` : ``}"
+  style="{wrapper_style} {grid_template_style}"
+  onmousedown={handle_legend_mouse_down}
+  {...rest}
+>
   {#each series_data as series (series.series_idx)}
     <div
       class="legend-item {series.visible ? `` : `hidden`}"
@@ -120,7 +191,7 @@
           </svg>
         {/if}
       </span>
-      <span class="legend-label">{series.label}</span>
+      <span class="legend-label">{@html series.label}</span>
     </div>
   {/each}
 </div>
@@ -128,21 +199,31 @@
 <style>
   .legend {
     display: grid;
-    gap: 5px 10px; /* row-gap column-gap */
+    gap: 1px 6px; /* row-gap column-gap */
     background-color: var(--plot-legend-background-color, rgba(0, 0, 0, 0.2));
-    border: var(--plot-legend-border, 1px solid rgba(255, 255, 255, 0.4));
+    border: var(--plot-legend-border, 1px solid rgba(255, 255, 255, 0.2));
     border-radius: var(--plot-legend-border-radius, 3px);
-    font-size: var(--plot-legend-font-size, 0.9em);
+    font-size: var(--plot-legend-font-size, 0.8em);
     max-width: var(--plot-legend-max-width);
     z-index: var(--plot-legend-z-index, 2);
     box-sizing: border-box;
+  }
+  .legend.draggable {
+    cursor: grab;
+  }
+  .legend.draggable:active {
+    cursor: grabbing;
+  }
+  .legend.is-dragging {
+    cursor: move;
+    user-select: none;
   }
   .legend-item {
     display: flex;
     align-items: center;
     cursor: pointer;
     white-space: nowrap;
-    padding: var(--plot-legend-item-padding, 0 5px);
+    padding: var(--plot-legend-item-padding, 3px 6px);
     opacity: var(--plot-legend-item-opacity, 1);
     transition: var(--plot-legend-item-transition, opacity 0.3s ease);
     color: var(--plot-legend-item-color, inherit);
@@ -162,7 +243,7 @@
     align-items: center; /* Vertically center items */
     justify-content: center; /* Horizontally center items */
     width: var(--plot-legend-marker-width, 25px); /* Fixed width for alignment */
-    margin: var(--plot-legend-marker-margin, 0 5px 0 0);
+    margin: var(--plot-legend-marker-margin, 0 3px 0 0);
     /* Prevent extra space from svg */
     line-height: var(--plot-legend-marker-line-height, 0);
   }

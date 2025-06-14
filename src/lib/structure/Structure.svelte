@@ -61,6 +61,8 @@
     bottom_left?: Snippet<[{ structure: AnyStructure }]>
     // Generic callback for when files are dropped - receives raw content and filename
     on_file_drop?: (content: string, filename: string) => void
+    // Maximum size for text data to prevent UI freezes (bytes)
+    max_text_size?: number
     [key: string]: unknown
   }
   let {
@@ -103,6 +105,7 @@
     controls_toggle,
     bottom_left,
     on_file_drop,
+    max_text_size = 5 * 1024 * 1024, // 5 MB default
     ...rest
   }: Props = $props()
 
@@ -182,20 +185,44 @@
     dragover = false
     if (!allow_file_drop) return
 
-    const drag_data_json = event.dataTransfer?.getData(`application/json`)
-    if (drag_data_json) {
+    // Check for our custom internal file format first
+    const internal_data = event.dataTransfer?.getData(`application/x-elementari-file`)
+    if (internal_data) {
       try {
-        const file_info = JSON.parse(drag_data_json)
-        if (file_info.name && file_info.content) {
-          on_file_drop?.(file_info.content, file_info.name)
+        const file_info = JSON.parse(internal_data)
+        if (file_info.content && file_info.content.length > max_text_size) {
+          console.warn(`Internal file data too large: ${file_info.content.length} bytes`)
           return
         }
-      } catch {
-        // Not our format, continue to file handling
+        try {
+          on_file_drop?.(file_info.content, file_info.name)
+        } catch (error) {
+          console.error(`Failed to process internal file data:`, error)
+        }
+        return
+      } catch (error) {
+        console.warn(`Failed to parse internal file data:`, error)
       }
     }
 
-    // Handle regular file drops
+    // Check for plain text data (fallback)
+    const text_data = event.dataTransfer?.getData(`text/plain`)
+    if (text_data) {
+      if (text_data.length > max_text_size) {
+        console.warn(
+          `Text data too large: ${text_data.length} bytes (max: ${max_text_size})`,
+        )
+        return
+      }
+      try {
+        on_file_drop?.(text_data, `structure.json`)
+      } catch (error) {
+        console.error(`Failed to process text data:`, error)
+      }
+      return
+    }
+
+    // Handle actual file drops from file system
     const file = event.dataTransfer?.files[0]
     if (!file) return
 
@@ -676,9 +703,9 @@
     position: relative;
     container-type: size;
     height: var(--struct-height, 500px);
-    width: var(--struct-width);
-    max-width: var(--struct-max-width);
-    min-width: var(--struct-min-width);
+    width: var(--struct-width, 100%);
+    max-width: var(--struct-max-width, 100%);
+    min-width: var(--struct-min-width, 300px);
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg, rgba(255, 255, 255, 0.1));
     --struct-controls-transition-duration: 0.3s;

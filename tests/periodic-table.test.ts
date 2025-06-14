@@ -268,15 +268,9 @@ test.describe(`Periodic Table`, () => {
       },
       {
         idx: 2,
-        type: `horizontal`,
-        segments: [`horizontal-top`],
-        positions: [`bar-top-left`, `bar-middle-right`],
-      },
-      {
-        idx: 3,
         type: `quadrant`,
         segments: [`quadrant-tl`],
-        positions: [`quad-top-left`, `quad-bottom-right`],
+        positions: [`value-quadrant-tl`, `value-quadrant-br`],
       },
     ]
 

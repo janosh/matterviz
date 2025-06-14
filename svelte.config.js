@@ -35,10 +35,9 @@ export default {
     adapter: adapter({ fallback: `404.html` }),
 
     alias: {
+      $site: `src/site`,
       $root: `.`,
       $types: `src/types`,
-      $site: `src/site`,
-      $static: `static`,
     },
 
     prerender: {
