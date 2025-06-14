@@ -2,9 +2,8 @@
 <script lang="ts">
   import { add, scale, type Vector } from '$lib'
   import { T } from '@threlte/core'
-  import { InstancedMesh } from '@threlte/extras'
   import { BoxGeometry, EdgesGeometry, Euler, Matrix4, Quaternion, Vector3 } from 'three'
-  import { Bond, CELL_DEFAULTS } from '.'
+  import { CELL_DEFAULTS } from '.'
 
   interface Props {
     matrix?: [Vector, Vector, Vector] | undefined
@@ -116,24 +115,39 @@
 
     {#if show_vectors}
       <T.Group position={vector_origin}>
-        <!-- arrow shafts -->
-        <InstancedMesh>
-          <T.CylinderGeometry args={[0.05, 0.05, 1, 16]} />
-          <T.MeshStandardMaterial />
-          {#each matrix as vec, idx (vec)}
-            <Bond to={scale(vec, 0.5) as Vector} color={vector_colors[idx]} />
-          {/each}
-        </InstancedMesh>
+        {#each matrix as vec, idx (vec)}
+          {@const shaft_end = scale(vec, 0.9) as Vector}
+          <!-- Shaft goes to 90% of vector length -->
+          {@const tip_position = scale(vec, 0.9) as Vector}
+          <!-- Tip positioned at 90% of vector length -->
+          {@const quaternion = new Quaternion().setFromUnitVectors(
+            new Vector3(0, 1, 0),
+            new Vector3(...vec).normalize(),
+          )}
+          {@const rotation = new Euler().setFromQuaternion(quaternion).toArray()}
 
-        <!-- arrow tips -->
-        <InstancedMesh>
-          <T.MeshStandardMaterial />
-          <!-- args=[thickness, length, radial segments] -->
-          <T.ConeGeometry args={[0.15, 0.08, 32]} />
-          {#each matrix as vec, idx (vec)}
-            <Bond to={vec} color={vector_colors[idx]} />
-          {/each}
-        </InstancedMesh>
+          <!-- arrow shaft -->
+          {@const shaft_direction = new Vector3(...shaft_end)}
+          {@const shaft_length = shaft_direction.length()}
+          {@const shaft_midpoint = scale(shaft_end, 0.5) as Vector}
+          {@const shaft_quaternion = new Quaternion().setFromUnitVectors(
+            new Vector3(0, 1, 0),
+            shaft_direction.normalize(),
+          )}
+          {@const shaft_rotation = new Euler()
+            .setFromQuaternion(shaft_quaternion)
+            .toArray()}
+          <T.Mesh position={shaft_midpoint} rotation={shaft_rotation}>
+            <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />
+            <T.MeshStandardMaterial color={vector_colors[idx]} />
+          </T.Mesh>
+
+          <!-- arrow tip -->
+          <T.Mesh position={tip_position} {rotation}>
+            <T.ConeGeometry args={[0.15, 0.3, 32]} />
+            <T.MeshStandardMaterial color={vector_colors[idx]} />
+          </T.Mesh>
+        {/each}
       </T.Group>
     {/if}
   {/key}

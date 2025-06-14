@@ -40,17 +40,20 @@ export type Site = {
   properties: Record<string, unknown>
 }
 
+export const lattice_param_keys = [
+  `a`,
+  `b`,
+  `c`,
+  `alpha`,
+  `beta`,
+  `gamma`,
+] as const
+
 export type PymatgenLattice = {
   matrix: [Vector, Vector, Vector]
   pbc: [boolean, boolean, boolean]
-  a: number
-  b: number
-  c: number
-  alpha: number
-  beta: number
-  gamma: number
   volume: number
-}
+} & { [key in (typeof lattice_param_keys)[number]]: number }
 
 export type PymatgenMolecule = { sites: Site[]; charge: number; id?: string }
 export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }

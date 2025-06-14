@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Vector } from '$lib'
   import { T } from '@threlte/core'
-  import { Instance } from '@threlte/extras'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
   interface Props {
@@ -96,7 +95,8 @@
   </T.Mesh>
 {:else}
   <!-- Fallback to solid color -->
-  <Instance {position} {rotation} scale={[thickness, height, thickness]} {color}>
+  <T.Mesh {position} {rotation} scale={[thickness, height, thickness]}>
     <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
-  </Instance>
+    <T.MeshStandardMaterial {color} />
+  </T.Mesh>
 {/if}

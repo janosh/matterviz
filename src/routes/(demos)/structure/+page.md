@@ -95,7 +95,7 @@ Showcasing structures with different crystal systems.
     <li>
       <h3><a {href}>{id.split('-')[0]}-{id.split('-')[1]}</a></h3>
       <p class="crystal-system">Crystal System <strong>{crystal_system}</strong></p>
-      <Structure {structure} style="--struct-height: 400px;" />
+      <Structure {structure} />
     </li>
   {/each}
 </ul>

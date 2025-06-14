@@ -11,6 +11,8 @@ export * from './math'
 export { default as Nucleus } from './Nucleus.svelte'
 export * from './periodic-table'
 export * from './plot'
+export { default as Spinner } from './Spinner.svelte'
+
 export * from './structure'
 
 export type Category = (typeof categories)[number]
@@ -89,3 +91,24 @@ export const crystal_systems = [
   `cubic`,
 ] as const
 export type CrystalSystem = (typeof crystal_systems)[number]
+
+// Helper function to escape HTML special characters to prevent XSS
+export function escape_html(unsafe_string: string): string {
+  return unsafe_string
+    .replaceAll(`&`, `&amp;`)
+    .replaceAll(`<`, `&lt;`)
+    .replaceAll(`>`, `&gt;`)
+    .replaceAll(`"`, `&quot;`)
+    .replaceAll(`'`, `&#39;`)
+}
+
+// Simplified binary detection
+export function is_binary(content: string): boolean {
+  return (
+    content.includes(`\0`) ||
+    (content.match(/[\u0000-\u0008\u000E-\u001F\u007F-\u00FF]/g) || []).length /
+      content.length >
+      0.1 ||
+    (content.match(/[\u0020-\u007E]/g) || []).length / content.length < 0.7
+  )
+}

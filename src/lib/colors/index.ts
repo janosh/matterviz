@@ -74,3 +74,17 @@ export const is_color = (val: unknown): val is string => {
     val.toString().trim(),
   )
 }
+
+// Color series for e.g. line plots
+export const plot_colors = [
+  `#63b3ed`,
+  `#68d391`,
+  `#fbd38d`,
+  `#fc8181`,
+  `#d6bcfa`,
+  `#4fd1c7`,
+  `#f687b3`,
+  `#fed7d7`,
+  `#bee3f8`,
+  `#c6f6d5`,
+] as const

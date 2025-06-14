@@ -714,7 +714,7 @@ Direct
   test(`drops XYZ file onto structure viewer and updates structure`, async ({
     page,
   }) => {
-    const structure_component = page.locator(`.structure`)
+    const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
     // Take initial screenshot
@@ -765,7 +765,7 @@ H    1.261    0.728   -0.890`
   })
 
   test(`drops JSON structure file and updates structure`, async ({ page }) => {
-    const structure_component = page.locator(`.structure`)
+    const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
     // Take initial screenshot
@@ -824,7 +824,7 @@ H    1.261    0.728   -0.890`
     page,
   }) => {
     const file_carousel = page.locator(`.file-carousel`)
-    const structure_component = page.locator(`.structure`)
+    const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
     // Wait for file carousel to load
@@ -859,7 +859,7 @@ H    1.261    0.728   -0.890`
   }) => {
     const file_carousel = page.locator(`.file-carousel`)
     const content_preview = page.locator(`.content-preview`)
-    const structure_component = page.locator(`.structure`)
+    const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
     // Wait for file carousel to load

@@ -167,9 +167,71 @@ export const superscript_map = {
   '9': `⁹`,
   '+': `⁺`,
   '-': `⁻`,
-}
+} as const
 
 export function superscript_digits(input: string): string {
   // use replace all signs and digits with their unicode superscript equivalent
-  return input.replace(/[\d+-]/g, (match) => superscript_map[match])
+  return input.replace(
+    /[\d+-]/g,
+    (match) => superscript_map[match as keyof typeof superscript_map] ?? match,
+  )
+}
+
+// Trajectory property labels: controls how properties are displayed in trajectory plots
+export const trajectory_labels: Record<string, string> = {
+  // Energy properties
+  energy: `Energy (eV)`,
+  energy_per_atom: `Energy per atom (eV/atom)`,
+  potential_energy: `Potential energy (eV)`,
+  kinetic_energy: `Kinetic energy (eV)`,
+  total_energy: `Total energy (eV)`,
+
+  // Force properties
+  force_max: `F<sub>max</sub> (eV/Å)`,
+  force_norm: `F<sub>norm</sub> (eV/Å)`,
+  'Force Max': `Force Max (eV/Å)`,
+  'Force RMS': `Force RMS (eV/Å)`,
+
+  // Structural properties
+  volume: `Volume (Å³)`,
+  Volume: `Cell Volume (Å³)`,
+  density: `Density (g/cm³)`,
+
+  // Thermodynamic properties
+  temperature: `Temperature (K)`,
+  pressure: `Pressure (GPa)`,
+  stress_max: `σ<sub>max</sub> (GPa)`,
+}
+
+// Helper function to get property label with unit for trajectory plotting
+export function get_label_with_unit(
+  key: string,
+  property_labels?: Record<string, string>,
+  units?: Record<string, string>,
+): string {
+  // First check if we have an explicit label mapping
+  if (property_labels?.[key]) {
+    return property_labels[key]
+  }
+
+  // Fallback to old units approach for backward compatibility
+  const lower_key = key.toLowerCase()
+  const unit = units?.[lower_key] || units?.[key] || ``
+
+  // Special formatting for force properties
+  if (lower_key === `force_max` || key === `Force Max`)
+    return unit ? `F<sub>max</sub> (${unit})` : `F<sub>max</sub>`
+
+  if (lower_key === `force_norm` || key === `Force RMS`)
+    return unit ? `F<sub>norm</sub> (${unit})` : `F<sub>norm</sub>`
+
+  if (lower_key === `stress_max`)
+    return unit ? `σ<sub>max</sub> (${unit})` : `σ<sub>max</sub>`
+
+  if (lower_key === `temperature`)
+    return unit ? `Temperature (${unit})` : `Temperature`
+
+  // Capitalize the key name for all other properties
+  const capitalized_key = key.charAt(0).toUpperCase() + key.slice(1)
+  return unit ? `${capitalized_key} (${unit})` : capitalized_key
 }

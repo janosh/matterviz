@@ -14,13 +14,7 @@
   import { format_num } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import { T } from '@threlte/core'
-  import {
-    Gizmo,
-    HTML,
-    InstancedMesh,
-    OrbitControls,
-    interactivity,
-  } from '@threlte/extras'
+  import { Gizmo, HTML, OrbitControls, interactivity } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet } from 'svelte'
   import * as bonding_strategies from './bonding'
@@ -330,12 +324,8 @@
 
 <!-- cylinder between active and hovered site to indicate measured distance -->
 {#if active_site && hovered_site && active_hovered_dist}
-  {@const { color, width, opacity } = active_hovered_dist}
-  <InstancedMesh>
-    <T.CylinderGeometry args={[width, width, 1, 16]} />
-    <T.MeshStandardMaterial {opacity} {color} />
-    <Bond from={active_site.xyz} to={hovered_site.xyz} thickness={0.7} />
-  </InstancedMesh>
+  {@const { color, width } = active_hovered_dist}
+  <Bond from={active_site.xyz} to={hovered_site.xyz} thickness={width} {color} />
 {/if}
 
 <!-- hovered site tooltip -->
@@ -346,7 +336,9 @@
       <div class="elements">
         {#each hovered_site.species ?? [] as { element, occu, oxidation_state: oxi_state }, idx ([element, occu, oxi_state])}
           {@const oxi_str =
-            oxi_state && Math.abs(oxi_state) + (oxi_state > 0 ? `+` : `-`)}
+            oxi_state != null && oxi_state !== 0
+              ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
+              : ``}
           {@const element_name =
             element_data.find((elem) => elem.symbol === element)?.name ?? ``}
           {#if idx > 0}
@@ -355,7 +347,7 @@
           {#if occu !== 1}
             <span class="occupancy">{format_num(occu, `.3~f`)}</span>
           {/if}
-          <strong>{element}{oxi_str ?? ``}</strong>
+          <strong>{element}{@html oxi_str}</strong>
           {#if element_name}
             <span class="elem-name">{element_name}</span>
           {/if}
