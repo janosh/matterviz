@@ -13,7 +13,7 @@
   <div {style}>
     <ElementHeading
       {element}
-      style="font-size: min(3vw, 3em); grid-column: 1/-1; margin: auto 0 0;"
+      style="font-size: min(3vw, 3em); grid-column: 1/-1; margin: auto 0 0"
     />
 
     <section>
@@ -22,8 +22,7 @@
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
       <strong>
-        <svg><use href="#icon-weight" /></svg>
-        {format_num(element.atomic_mass)}
+        <svg><use href="#icon-weight" /></svg> {format_num(element.atomic_mass)}
       </strong>
     </section>
     <section>
@@ -32,27 +31,24 @@
         <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
       <strong>
-        <svg><use href="#icon-scale" /></svg>
-        {format_num(element.density)}
+        <svg><use href="#icon-scale" /></svg> {format_num(element.density)}
       </strong>
     </section>
     <section>
       <p>Phase</p>
       <strong>
         <svg><use href="#icon-{element.phase.toLowerCase()}" /></svg>
-        {element.phase}</strong
-      >
+        {element.phase}</strong>
     </section>
     <section>
       <p>Year of Discovery</p>
       <strong>
-        <svg><use href="#icon-calendar" /></svg>
-        {element.year}
+        <svg><use href="#icon-calendar" /></svg> {element.year}
       </strong>
     </section>
   </div>
 {:else}
-  <h3 style="text-align: center;">Try hovering an element!</h3>
+  <h3 style="text-align: center">Try hovering an element!</h3>
 {/if}
 
 <style>

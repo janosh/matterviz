@@ -1,4 +1,4 @@
-import { ElementTile, element_data } from '$lib'
+import { element_data, ElementTile } from '$lib'
 import { default_category_colors } from '$lib/colors'
 import { mount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -61,11 +61,13 @@ describe(`ElementTile`, () => {
   })
 
   describe(`show_* props`, () => {
-    test.each([
-      [`show_name`, `name`],
-      [`show_symbol`, `symbol`],
-      [`show_number`, `number`],
-    ] as const)(`%s prop controls %s visibility`, (prop, selector) => {
+    test.each(
+      [
+        [`show_name`, `name`],
+        [`show_symbol`, `symbol`],
+        [`show_number`, `number`],
+      ] as const,
+    )(`%s prop controls %s visibility`, (prop, selector) => {
       // Test showing
       mount(ElementTile, {
         target: document.body,
@@ -432,9 +434,7 @@ describe(`ElementTile`, () => {
   describe(`edge cases`, () => {
     test(`handles elements with spaces in category names`, () => {
       // Find an element with a space in its category name
-      const element_with_space = element_data.find((el) =>
-        el.category.includes(` `),
-      )
+      const element_with_space = element_data.find((el) => el.category.includes(` `))
       if (element_with_space) {
         mount(ElementTile, {
           target: document.body,
@@ -511,10 +511,10 @@ describe(`ElementTile`, () => {
         })
 
         segments.forEach((cls) =>
-          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
         )
         positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy()
         )
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(
           `transparent`,
@@ -560,10 +560,10 @@ describe(`ElementTile`, () => {
         })
 
         segments.forEach((cls) =>
-          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
         )
         positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy()
         )
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(
           `transparent`,
@@ -618,9 +618,7 @@ describe(`ElementTile`, () => {
         props: {
           element: rand_element,
           value,
-          bg_colors: Array.isArray(value)
-            ? value.map(() => `#ff0000`)
-            : undefined,
+          bg_colors: Array.isArray(value) ? value.map(() => `#ff0000`) : undefined,
           bg_color: !Array.isArray(value) ? `#ff0000` : undefined,
         },
       })

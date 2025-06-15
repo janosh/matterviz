@@ -4,13 +4,13 @@
   import {
     BohrAtom,
     ColorScaleSelect,
+    element_data,
     ElementHeading,
     ElementPhoto,
     ElementScatter,
     ElementTile,
     PeriodicTable,
     PropertySelect,
-    element_data,
   } from '$lib'
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
@@ -54,8 +54,9 @@
         // if value has a unit, append it
         if (unit) value = `${value} &thinsp;${unit}`
 
-        const icon =
-          label && label in icon_property_map ? icon_property_map[label] : `#icon-info`
+        const icon = label && label in icon_property_map
+          ? icon_property_map[label]
+          : `#icon-info`
         return [label, value, icon] as const
       }),
   )
@@ -72,7 +73,9 @@
   let active_shell: number | null = $state(null)
 
   let scatter_plot_values = $derived(
-    element_data.map((el) => (selected.heatmap_key ? el[selected.heatmap_key] : null)),
+    element_data.map((
+      el,
+    ) => (selected.heatmap_key ? el[selected.heatmap_key] : null)),
   )
   let [y_label, y_unit] = $derived(
     selected.heatmap_key ? (property_labels[selected.heatmap_key] ?? []) : [],
@@ -95,7 +98,8 @@
 <main>
   <ElementHeading {element} />
 
-  {#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) || element?.year}
+  {#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) ||
+      element?.year}
     <p class="discovery">
       Discovered
       {#if element?.discoverer && !element.discoverer.startsWith(`unknown`)}
@@ -122,7 +126,7 @@
       {color_scale}
       y_lim={[0, null]}
       onmouseleave={() => (selected.element = element)}
-      style="min-height: min(50vmin, 400px);"
+      style="min-height: min(50vmin, 400px)"
     />
   </section>
 
@@ -133,7 +137,7 @@
       tile_props={{ show_name: false, show_number: false }}
       show_photo={false}
       disabled={true}
-      style="width: 100%;  max-width: 350px;"
+      style="width: 100%; max-width: 350px"
       links="name"
       active_element={element}
     />
@@ -152,7 +156,9 @@
           {@const shell_orbitals = element.electron_configuration
             .split(` `)
             .filter((orbital) => orbital.startsWith(`${shell_idx + 1}`))
-            .map((orbital) => `${orbital.substring(2)} in ${orbital.substring(0, 2)}`)}
+            .map((orbital) =>
+              `${orbital.substring(2)} in ${orbital.substring(0, 2)}`
+            )}
           <tr
             onmouseenter={() => (active_shell = shell_idx + 1)}
             onmouseleave={() => (active_shell = null)}
@@ -173,7 +179,7 @@
       orbital_period={orbiting ? 3 : 0}
       highlight_shell={active_shell}
       onclick={() => (orbiting = !orbiting)}
-      style="max-width: 300px;"
+      style="max-width: 300px"
     />
   </section>
 
@@ -200,15 +206,15 @@
       {@const element = item[1] as ChemicalElement}
       <a
         href={element.name.toLowerCase()}
-        style="display: flex; flex-direction: column; position: relative;"
+        style="display: flex; flex-direction: column; position: relative"
       >
         <h3>
           {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
         </h3>
-        <ElementPhoto {element} style="width: 200px; border-radius: 4pt;" />
+        <ElementPhoto {element} style="width: 200px; border-radius: 4pt" />
         <ElementTile
           {element}
-          style="width: 70px; position: absolute; bottom: 0;"
+          style="width: 70px; position: absolute; bottom: 0"
           --elem-tile-hover-border="1px solid transparent"
         />
       </a>

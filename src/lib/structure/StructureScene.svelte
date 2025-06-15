@@ -1,20 +1,20 @@
 <script lang="ts">
   import type { AnyStructure, BondPair, Site, Vector } from '$lib'
   import {
-    BOND_DEFAULTS,
-    Bond,
-    Lattice,
     add,
     atomic_radii,
+    Bond,
+    BOND_DEFAULTS,
     element_data,
     euclidean_dist,
+    Lattice,
     pbc_dist,
     scale,
   } from '$lib'
   import { format_num } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import { T } from '@threlte/core'
-  import { Gizmo, HTML, OrbitControls, interactivity } from '@threlte/extras'
+  import { Gizmo, HTML, interactivity, OrbitControls } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet } from 'svelte'
   import * as bonding_strategies from './bonding'
@@ -117,7 +117,9 @@
   $effect.pre(() => {
     active_site = structure?.sites?.[active_idx ?? -1] ?? null
   })
-  let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
+  let lattice = $derived(
+    structure && `lattice` in structure ? structure.lattice : null,
+  )
   $effect.pre(() => {
     if (camera_position.every((val) => val === 0) && structure) {
       // Simple approach: use sum of lattice dimensions as size estimate
@@ -160,7 +162,11 @@
       ]),
     )
 
-    const default_options = { size: 100, background: { enabled: false }, ...axis_options }
+    const default_options = {
+      size: 100,
+      background: { enabled: false },
+      ...axis_options,
+    }
 
     return { ...default_options, ...(typeof gizmo === `boolean` ? {} : gizmo) }
   })
@@ -202,16 +208,14 @@
 {#if show_atoms && structure?.sites}
   {#each structure.sites as site, site_idx (JSON.stringify({ site, site_idx }))}
     {@const { species, xyz } = site}
-    {@const site_radius = same_size_atoms
-      ? atom_radius
-      : species.reduce(
-          (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
-          0,
-        ) * atom_radius}
+    {@const site_radius = same_size_atoms ? atom_radius : species.reduce(
+    (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
+    0,
+  ) * atom_radius}
     {#each species as { element: elem, occu }, spec_idx ([elem, occu])}
       {@const start_angle = species
-        .slice(0, spec_idx)
-        .reduce((total, spec) => total + spec.occu, 0)}
+    .slice(0, spec_idx)
+    .reduce((total, spec) => total + spec.occu, 0)}
       <T.Group
         position={xyz}
         scale={site_radius}
@@ -285,13 +289,13 @@
     {@const site_a = structure?.sites[idx_a]}
     {@const site_b = structure?.sites[idx_b]}
     {@const get_majority_color = (site: typeof site_a) => {
-      if (!site?.species || site.species.length === 0) return bond_color
-      // Find species with highest occupancy
-      const majority_species = site.species.reduce((max, spec) =>
-        spec.occu > max.occu ? spec : max,
-      )
-      return colors.element?.[majority_species.element] || bond_color
-    }}
+    if (!site?.species || site.species.length === 0) return bond_color
+    // Find species with highest occupancy
+    const majority_species = site.species.reduce((max, spec) =>
+      spec.occu > max.occu ? spec : max
+    )
+    return colors.element?.[majority_species.element] || bond_color
+  }}
     {@const from_color = get_majority_color(site_a)}
     {@const to_color = get_majority_color(site_b)}
     <Bond
@@ -306,15 +310,16 @@
 {/if}
 
 <!-- highlight active and hovered sites -->
-{#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as { site, opacity } (opacity)}
+{#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as
+  { site, opacity }
+  (opacity)
+}
   {#if site}
     {@const { xyz, species } = site}
-    {@const highlight_radius = same_size_atoms
-      ? atom_radius
-      : species.reduce(
-          (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
-          0,
-        ) * atom_radius}
+    {@const highlight_radius = same_size_atoms ? atom_radius : species.reduce(
+    (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
+    0,
+  ) * atom_radius}
     <T.Mesh position={xyz} scale={1.02 * highlight_radius}>
       <T.SphereGeometry args={[0.5, 20, 20]} />
       <T.MeshStandardMaterial color="white" transparent {opacity} />
@@ -334,13 +339,17 @@
     <div class="tooltip">
       <!-- Element names with occupancies for disordered sites -->
       <div class="elements">
-        {#each hovered_site.species ?? [] as { element, occu, oxidation_state: oxi_state }, idx ([element, occu, oxi_state])}
-          {@const oxi_str =
-            oxi_state != null && oxi_state !== 0
-              ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
-              : ``}
-          {@const element_name =
-            element_data.find((elem) => elem.symbol === element)?.name ?? ``}
+        {#each hovered_site.species ?? [] as
+          { element, occu, oxidation_state: oxi_state },
+          idx
+          ([element, occu, oxi_state])
+        }
+          {@const oxi_str = oxi_state != null && oxi_state !== 0
+          ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
+          : ``}
+          {@const element_name = element_data.find((elem) =>
+          elem.symbol === element
+        )?.name ?? ``}
           {#if idx > 0}
             &thinsp;
           {/if}
@@ -368,8 +377,8 @@
       {#if active_site && active_site != hovered_site && active_hovered_dist}
         {@const direct_distance = euclidean_dist(hovered_site.xyz, active_site.xyz)}
         {@const pbc_distance = lattice
-          ? pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
-          : direct_distance}
+        ? pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
+        : direct_distance}
         <div class="distance">
           <strong>dist:</strong>
           {format_num(pbc_distance, precision)} Å{lattice ? ` (PBC)` : ``}

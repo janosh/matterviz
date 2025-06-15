@@ -33,15 +33,18 @@
 
   // get the SVG path data as 'd' attribute
   function get_symbol_path(): string {
-    const symbol_type =
-      symbol_map[style.symbol_type ?? `Circle`] ?? d3_symbols.symbolCircle
+    const symbol_type = symbol_map[style.symbol_type ?? `Circle`] ??
+      d3_symbols.symbolCircle
     const size = style.symbol_size ?? Math.PI * Math.pow(style.radius ?? 2, 2)
     return symbol().type(symbol_type).size(size)() || ``
   }
 
   let marker_path = $derived.by(get_symbol_path)
 
-  const default_tween_props: TweenedOptions<XyObj> = { duration: 600, easing: cubicOut }
+  const default_tween_props: TweenedOptions<XyObj> = {
+    duration: 600,
+    easing: cubicOut,
+  }
   // Single tween for {x, y} coordinates
   const tweened_coords = new Tween(origin, { ...default_tween_props, ...point_tween })
 

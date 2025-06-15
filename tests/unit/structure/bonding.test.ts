@@ -1,11 +1,7 @@
 import type { ElementSymbol, Vector } from '$lib'
 import type { PymatgenStructure, Site } from '$lib/structure'
 import type { BondingAlgo } from '$lib/structure/bonding'
-import {
-  max_dist,
-  nearest_neighbor,
-  vdw_radius_based,
-} from '$lib/structure/bonding'
+import { max_dist, nearest_neighbor, vdw_radius_based } from '$lib/structure/bonding'
 import { describe, expect, test } from 'vitest'
 
 // Simple performance measurement using Date.now() instead of Node's perf_hooks
@@ -78,55 +74,29 @@ function make_random_structure(n_atoms: number): PymatgenStructure {
 }
 
 describe(`Bonding Algorithms`, () => {
-  const algorithms: Array<[string, BondingAlgo, Array<[number, number]>]> = [
-    [
-      `max_dist`,
-      max_dist,
-      [
-        [10, 5],
-        [100, 50],
-        [500, 500],
-      ],
-    ],
-    [
-      `nearest_neighbor`,
-      nearest_neighbor,
-      [
-        [10, 10],
-        [100, 100],
-        [500, 1000],
-      ],
-    ],
-    [
-      `vdw_radius_based`,
-      vdw_radius_based,
-      [
-        [10, 10],
-        [100, 100],
-        [500, 1000],
-      ],
-    ],
-  ]
+  const algorithms: Array<[BondingAlgo, Array<[number, number]>]> = [
+    [max_dist, [[10, 5], [100, 50], [500, 500]]],
+    [nearest_neighbor, [[10, 10], [100, 100], [500, 1000]]],
+    [vdw_radius_based, [[10, 10], [100, 100], [500, 1000]]],
+  ] as const
 
-  test.each(algorithms)(`%s performance`, (name, func, times) => {
+  test.each(algorithms)(`%s performance`, (func, times) => {
     for (const [atom_count, max_time] of times) {
       const structure = make_random_structure(atom_count)
-      const avg_time =
-        (measure_performance(() => func(structure)) +
-          measure_performance(() => func(structure))) /
+      const avg_time = (measure_performance(() => func(structure)) +
+        measure_performance(() => func(structure))) /
         2
-      const is_ci =
-        (globalThis as { process?: { env?: { CI?: string } } })?.process?.env
-          ?.CI === `true`
+      const is_ci = (globalThis as { process?: { env?: { CI?: string } } })?.process?.env
+        ?.CI === `true`
       const max_allowed = max_time * (is_ci ? 10 : 3)
       expect(
         avg_time,
-        `${name} with ${atom_count} atoms: ${avg_time}ms > ${max_allowed}ms`,
+        `${func.name} with ${atom_count} atoms: ${avg_time}ms > ${max_allowed}ms`,
       ).toBeLessThanOrEqual(max_allowed)
     }
   })
 
-  test.each(algorithms)(`%s returns valid BondPair format`, (name, func) => {
+  test.each(algorithms)(`returns valid BondPair format`, (func) => {
     const bonds = func(
       make_structure([
         { xyz: [0, 0, 0], element: `C` },
@@ -143,7 +113,7 @@ describe(`Bonding Algorithms`, () => {
     })
   })
 
-  test.each(algorithms)(`%s generates unique bonds`, (name, func) => {
+  test.each(algorithms)(`generates unique bonds`, (func) => {
     const bonds = func(make_random_structure(20))
     const pairs = new Set(
       bonds.map(([, , a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`),
@@ -181,8 +151,8 @@ describe(`Bonding Algorithms`, () => {
     const valid_bond = bonds.find(
       ([, , a, b]) => (a === 0 && b === 3) || (a === 3 && b === 0),
     )
-    expect(valid_bond).toBeDefined()
-    expect(valid_bond![4]).toBeCloseTo(1.0, 6)
+    if (!valid_bond) throw `No valid bond found`
+    expect(valid_bond[4]).toBeCloseTo(1.0, 6)
   })
 
   test(`nearest_neighbor scaling factor works`, () => {
@@ -213,8 +183,7 @@ describe(`Bonding Algorithms`, () => {
   test(`algorithms handle edge cases`, () => {
     expect(max_dist(make_structure([]))).toHaveLength(0)
     expect(max_dist(make_structure([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
-    expect(() =>
-      vdw_radius_based(make_structure([{ xyz: [0, 0, 0], element: `Xx` }])),
-    ).not.toThrow()
+    expect(() => vdw_radius_based(make_structure([{ xyz: [0, 0, 0], element: `Xx` }])))
+      .not.toThrow()
   })
 })

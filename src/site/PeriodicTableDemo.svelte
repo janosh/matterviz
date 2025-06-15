@@ -4,12 +4,12 @@
     BohrAtom,
     ColorBar,
     ColorScaleSelect,
+    element_data,
     ElementScatter,
     ElementStats,
     PeriodicTable,
     PropertySelect,
     TableInset,
-    element_data,
   } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { property_labels } from '$lib/labels'
@@ -48,7 +48,9 @@
     return typeof value === `number` ? value : 0
   })
 
-  let heatmap_values = $derived(heatmap_key ? element_data.map(get_element_value) : [])
+  let heatmap_values = $derived(
+    heatmap_key ? element_data.map(get_element_value) : [],
+  )
 
   // Missing color demo derived values
   let missing_get_element_value = $derived((el: ChemicalElement) => {
@@ -108,13 +110,17 @@
 
   let electronegativity_range = $derived([
     Math.min(
-      ...element_data.map((el) => (el.electronegativity || 0) * 100).filter((e) => e > 0),
+      ...element_data.map((el) => (el.electronegativity || 0) * 100).filter((e) =>
+        e > 0
+      ),
     ),
     Math.max(...element_data.map((el) => (el.electronegativity || 0) * 100)),
   ] as [number, number])
 
   let covalent_radius_range = $derived([
-    Math.min(...element_data.map((el) => el.covalent_radius || 0).filter((r) => r > 0)),
+    Math.min(
+      ...element_data.map((el) => el.covalent_radius || 0).filter((r) => r > 0),
+    ),
     Math.max(...element_data.map((el) => el.covalent_radius || 0)),
   ] as [number, number])
 
@@ -180,18 +186,7 @@
     gap={tile_gap}
     inner_transition_metal_offset={inner_transition_offset}
     show_photo
-    style="
-      margin: 2em auto;
-      max-width: 1200px;
-      --elem-tile-border-radius: {tile_border_radius}pt;
-      --elem-symbol-font-size: {symbol_font_size}cqw;
-      --elem-number-font-size: {number_font_size}cqw;
-      --elem-name-font-size: {name_font_size}cqw;
-      --elem-value-font-size: {value_font_size}cqw;
-      --tooltip-font-size: {tooltip_font_size}px;
-      --tooltip-bg: {tooltip_bg_color};
-      --tooltip-color: {tooltip_text_color};
-    "
+    style="margin: 2em auto; max-width: 1200px; --elem-tile-border-radius: {tile_border_radius}pt; --elem-symbol-font-size: {symbol_font_size}cqw; --elem-number-font-size: {number_font_size}cqw; --elem-name-font-size: {name_font_size}cqw; --elem-value-font-size: {value_font_size}cqw; --tooltip-font-size: {tooltip_font_size}px; --tooltip-bg: {tooltip_bg_color}; --tooltip-color: {tooltip_text_color}"
   >
     {#if selected.element && window_width > 1100}
       {@const { shells, name, symbol } = selected.element}
@@ -207,11 +202,12 @@
             y={heatmap_values}
             {y_label}
             {y_unit}
-            onchange={(event: CustomEvent) =>
-              (selected.element = element_data[event.detail.x - 1])}
+            onchange={(
+              event: CustomEvent,
+            ) => (selected.element = element_data[event.detail.x - 1])}
             x_label_yshift={42}
             color_scale={{ scheme: color_scale }}
-            style="max-height: calc(100cqw / 10 * 3);"
+            style="max-height: calc(100cqw / 10 * 3)"
           />
         {:else}
           <ElementStats element={selected.element} />
@@ -244,16 +240,15 @@
 
 <h3>2-fold Split (Diagonal)</h3>
 <p>
-  Each element shows two values as diagonal triangles: <strong
-    >top-left = atomic mass</strong
-  >, <strong>bottom-right = density</strong>.
+  Each element shows two values as diagonal triangles: <strong>top-left = atomic
+    mass</strong>, <strong>bottom-right = density</strong>.
 </p>
 <PeriodicTable
   tile_props={{ show_name: false, show_number: false }}
   heatmap_values={two_fold_data}
   color_scale="interpolateRdYlBu"
   tooltip
-  style="margin: 1em auto; max-width: 800px;"
+  style="margin: 1em auto; max-width: 800px"
 >
   {#snippet inset()}
     <TableInset>
@@ -264,7 +259,7 @@
             color_scale="interpolateRdYlBu"
             range={atomic_mass_range}
             orientation="horizontal"
-            style="width: 180px; height: 12px;"
+            style="width: 180px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -275,7 +270,7 @@
             color_scale="interpolateRdYlBu"
             range={density_range}
             orientation="horizontal"
-            style="width: 180px; height: 12px;"
+            style="width: 180px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -298,7 +293,7 @@
   color_scale="interpolateViridis"
   split_layout="quadrant"
   tooltip
-  style="margin: 1em auto; max-width: 800px;"
+  style="margin: 1em auto; max-width: 800px"
 >
   {#snippet inset()}
     <TableInset>
@@ -309,7 +304,7 @@
             color_scale="interpolateViridis"
             range={atomic_radius_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px;"
+            style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -320,7 +315,7 @@
             color_scale="interpolateViridis"
             range={electronegativity_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px;"
+            style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -331,7 +326,7 @@
             color_scale="interpolateViridis"
             range={covalent_radius_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px;"
+            style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -342,7 +337,7 @@
             color_scale="interpolateViridis"
             range={electron_affinity_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px;"
+            style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -354,8 +349,8 @@
 
 <h2>Missing Color Demo</h2>
 <p>
-  The <code>missing_color</code> prop is used to control how missing values in heatmap data
-  are displayed.
+  The <code>missing_color</code> prop is used to control how missing values in heatmap
+  data are displayed.
 </p>
 
 <PeriodicTable
@@ -368,7 +363,7 @@
   links="name"
   tooltip
   gap={tile_gap}
-  style="margin: 1em auto; max-width: 1000px;"
+  style="margin: 1em auto; max-width: 1000px"
 >
   {#snippet inset()}
     <TableInset>

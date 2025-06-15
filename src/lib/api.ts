@@ -1,4 +1,6 @@
-export const mp_build_bucket = `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28`
+// TODO update to get MP details pages working again
+export const mp_build_bucket =
+  `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28`
 
 export async function decompress(blob: ReadableStream<Uint8Array> | null) {
   const unzip = new DecompressionStream(`gzip`)

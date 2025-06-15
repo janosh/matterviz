@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, type Locator, test } from '@playwright/test'
 
 test.describe(`ColorBar Component Tests`, () => {
   // Navigate to the test page before each test
@@ -8,12 +8,12 @@ test.describe(`ColorBar Component Tests`, () => {
   })
 
   // Helper to check computed style
-  async function get_style(
+  function get_style(
     locator: Locator,
     property: string,
   ): Promise<string> {
     return locator.evaluate(
-      (el, prop) => window.getComputedStyle(el).getPropertyValue(prop),
+      (el, prop) => globalThis.getComputedStyle(el).getPropertyValue(prop),
       property,
     )
   }

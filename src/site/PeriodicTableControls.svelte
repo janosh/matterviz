@@ -126,21 +126,29 @@
     else if (prop === `value_font_size`) value_font_size = default_value as number
     else if (prop === `tooltip_font_size`) tooltip_font_size = default_value as number
     else if (prop === `tooltip_bg_color`) tooltip_bg_color = default_value as string
-    else if (prop === `tooltip_text_color`) tooltip_text_color = default_value as string
-    else if (prop === `tile_border_radius`) tile_border_radius = default_value as number
-    else if (prop === `inner_transition_offset`)
+    else if (prop === `tooltip_text_color`) {
+      tooltip_text_color = default_value as string
+    } else if (prop === `tile_border_radius`) {
+      tile_border_radius = default_value as number
+    } else if (prop === `inner_transition_offset`) {
       inner_transition_offset = default_value as number
-    else if (prop === `tile_font_color`) tile_font_color = default_value as string
-    else if (prop === `tile_transition_duration`)
+    } else if (prop === `tile_font_color`) tile_font_color = default_value as string
+    else if (prop === `tile_transition_duration`) {
       tile_transition_duration = default_value as number
-    else if (prop === `hover_border_width`) hover_border_width = default_value as number
-    else if (prop === `symbol_font_weight`) symbol_font_weight = default_value as number
-    else if (prop === `number_font_weight`) number_font_weight = default_value as number
-    else if (prop === `tooltip_border_radius`)
+    } else if (prop === `hover_border_width`) {
+      hover_border_width = default_value as number
+    } else if (prop === `symbol_font_weight`) {
+      symbol_font_weight = default_value as number
+    } else if (prop === `number_font_weight`) {
+      number_font_weight = default_value as number
+    } else if (prop === `tooltip_border_radius`) {
       tooltip_border_radius = default_value as number
-    else if (prop === `tooltip_padding`) tooltip_padding = default_value as string
-    else if (prop === `tooltip_line_height`) tooltip_line_height = default_value as number
-    else if (prop === `tooltip_text_align`) tooltip_text_align = default_value as string
+    } else if (prop === `tooltip_padding`) tooltip_padding = default_value as string
+    else if (prop === `tooltip_line_height`) {
+      tooltip_line_height = default_value as number
+    } else if (prop === `tooltip_text_align`) {
+      tooltip_text_align = default_value as string
+    }
   }
 
   // Check if settings in each section have been modified from defaults

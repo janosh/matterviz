@@ -46,9 +46,11 @@
   </details>
 </form>
 
-<h3 align='center'>{formula}</h3>
+<h3 align="center">{formula}</h3>
 <StructureCard {structure} />
-<p>canvas width=<span>{width}</span>, height=<span>{height}</span></p>
+<p>
+  canvas width=<span>{width}</span>, height=<span>{height}</span>
+</p>
 <Structure {structure} bind:width bind:height />
 
 <style>
@@ -83,17 +85,21 @@ Showcasing structures with different crystal systems.
 
 ```svelte example stackblitz
 <script>
-  import { Structure, crystal_systems } from '$lib'
+  import { crystal_systems, Structure } from '$lib'
   import { structures } from '$site'
 </script>
 
 <ul class="crystal-systems">
-  {#each structures.filter(struct => crystal_systems.some(system => struct.id.includes(system))) as structure}
-    {@const { id } = structure}
-    {@const href = `https://materialsproject.org/materials/${id.split('-')[0]}-${id.split('-')[1]}`}
-    {@const crystal_system = id.split('-').at(-1) || 'unknown'}
+  {#each structures.filter((struct) =>
+      crystal_systems.some((system) => struct.id.includes(system))
+    ) as
+    structure
+  }
+    {@const mp_id = structure.id.split(`-`).slice(0, 2).join(`-`)}
+    {@const href = `https://materialsproject.org/materials/${mp_id}`}
+    {@const crystal_system = structure.id.split(`-`).at(-1) || 'unknown'}
     <li>
-      <h3><a {href}>{id.split('-')[0]}-{id.split('-')[1]}</a></h3>
+      <h3><a {href}>{mp_id}</a></h3>
       <p class="crystal-system">Crystal System <strong>{crystal_system}</strong></p>
       <Structure {structure} />
     </li>

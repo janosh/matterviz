@@ -11,6 +11,7 @@ import {
   parse_xyz_trajectory,
 } from '$lib/trajectory/parse'
 import { readFileSync } from 'fs'
+import process from 'node:process'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { gunzipSync } from 'zlib'
@@ -154,12 +155,12 @@ describe(`VASP XDATCAR Parser`, () => {
     expect(() =>
       parse_vasp_xdatcar(
         `line1\ninvalid_scale\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10`,
-      ),
+      )
     ).toThrow(`Invalid scale factor`)
     expect(() =>
       parse_vasp_xdatcar(
         `line1\n1.0\ninvalid lattice\nline4\nline5\nline6\nline7\nline8\nline9\nline10`,
-      ),
+      )
     ).toThrow(`Invalid lattice vector`)
   })
 
@@ -196,9 +197,7 @@ Direct configuration=     2
     expect(first_frame.structure.sites[3].species[0].element).toBe(`Si`)
 
     // Verify coordinates
-    expect(first_frame.structure.sites[0].abc).toEqual([
-      0.492382, 0.424713, 0.083372,
-    ])
+    expect(first_frame.structure.sites[0].abc).toEqual([0.492382, 0.424713, 0.083372])
   })
 })
 
@@ -602,7 +601,14 @@ describe(`Torch-sim HDF5 Parser`, () => {
       (() => {
         const buffer = new ArrayBuffer(16)
         new Uint8Array(buffer).set([
-          0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a,
+          0x89,
+          0x48,
+          0x44,
+          0x46,
+          0x0d,
+          0x0a,
+          0x1a,
+          0x0a,
         ])
         return buffer
       })(),

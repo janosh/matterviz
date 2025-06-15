@@ -16,7 +16,7 @@
   }
   let {
     options = Object.keys(d3_sc).filter((key) =>
-      key.startsWith(`interpolate`),
+      key.startsWith(`interpolate`)
     ) as D3InterpolateName[],
     value = $bindable(``),
     selected = $bindable([``]),

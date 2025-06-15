@@ -26,8 +26,8 @@ describe.skip(`Structure`, () => {
     expect(struct.$state.controls_open).toBe(true)
   })
 
-  test(`JSON file download when clicking download button`, async () => {
-    window.URL.createObjectURL = vi.fn()
+  test(`JSON file download when clicking download button`, () => {
+    globalThis.URL.createObjectURL = vi.fn()
 
     mount(Structure, {
       target: document.body,
@@ -41,7 +41,7 @@ describe.skip(`Structure`, () => {
 
     spy.mockRestore()
     // @ts-expect-error - function is mocked
-    window.URL.createObjectURL.mockRestore()
+    globalThis.URL.createObjectURL.mockRestore()
   })
 
   test(`toggle fullscreen mode`, async () => {
@@ -82,9 +82,7 @@ test(`pbc_dist with realistic structure scenarios`, () => {
   // Two atoms: one at origin, one at (0.5, 0.5, 0.5) in fractional coordinates
   // which corresponds to center of unit cell in Cartesian
   const atom1_xyz: Vector = [0.0, 0.0, 0.0]
-  const atom2_xyz: Vector = [
-    3.1284650614394, 3.1284650614393996, 3.1284650614394,
-  ]
+  const atom2_xyz: Vector = [3.1284650614394, 3.1284650614393996, 3.1284650614394]
 
   const direct_dist = euclidean_dist(atom1_xyz, atom2_xyz)
   const pbc_distance = pbc_dist(atom1_xyz, atom2_xyz, cubic_lattice_matrix)
@@ -97,9 +95,7 @@ test(`pbc_dist with realistic structure scenarios`, () => {
   // Test case 2: Create artificial scenario with atoms at opposite corners
   // Atom at (0.1, 0.1, 0.1) and (5.9, 5.9, 5.9) - very close to opposite corners
   const corner1: Vector = [0.1, 0.1, 0.1]
-  const corner2: Vector = [
-    6.156930122878799, 6.156930122878799, 6.156930122878799,
-  ] // 0.9 fractional
+  const corner2: Vector = [6.156930122878799, 6.156930122878799, 6.156930122878799] // 0.9 fractional
 
   const corner_direct = euclidean_dist(corner1, corner2)
   const corner_pbc = pbc_dist(corner1, corner2, cubic_lattice_matrix)

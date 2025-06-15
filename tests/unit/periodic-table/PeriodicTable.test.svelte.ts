@@ -15,12 +15,9 @@ describe(`PeriodicTable`, () => {
     // Restore console.error if it was mocked
     vi.restoreAllMocks()
   })
-  test.each([
-    [true, 120],
-    [false, 118],
-  ] as const)(
+  test.each([[true, 120], [false, 118]] as const)(
     `renders lanth_act_tiles=%s -> %s tiles`,
-    async (show_lanth_act, expected_tiles) => {
+    (show_lanth_act, expected_tiles) => {
       const props = show_lanth_act ? {} : { lanth_act_tiles: [] }
       mount(PeriodicTable, { target: document.body, props })
       expect(document.querySelectorAll(`.element-tile`).length).toBe(
@@ -29,7 +26,7 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test(`empty tiles are rendered`, async () => {
+  test(`empty tiles are rendered`, () => {
     mount(PeriodicTable, { target: document.body })
     expect(document.querySelectorAll(`.element-tile`).length).toBe(120)
   })
@@ -80,12 +77,12 @@ describe(`PeriodicTable`, () => {
 
     active_element = element_data[0]
     await tick()
-    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
+    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
     await tick()
     expect(active_element?.symbol).toBe(`Li`)
   })
 
-  test(`tile content can be hidden`, async () => {
+  test(`tile content can be hidden`, () => {
     mount(PeriodicTable, {
       target: document.body,
       props: {
@@ -127,16 +124,17 @@ describe(`PeriodicTable`, () => {
     }
   })
 
-  test.each([
-    [[0], [0.5], [1], [2]], // inner_transition_metal_offset values
-    [[`0`], [`10px`], [`1cqw`]], // gap values
-  ] as const)(`styling props work correctly`, (...args) => {
+  test.each(
+    [
+      [[0], [0.5], [1], [2]], // inner_transition_metal_offset values
+      [[`0`], [`10px`], [`1cqw`]], // gap values
+    ] as const,
+  )(`styling props work correctly`, (...args) => {
     const values = args[0]
     values.forEach((value) => {
-      const props =
-        typeof value === `string`
-          ? { gap: value }
-          : { inner_transition_metal_offset: value }
+      const props = typeof value === `string`
+        ? { gap: value }
+        : { inner_transition_metal_offset: value }
       mount(PeriodicTable, { target: document.body, props })
 
       if (typeof value === `string`) {
@@ -176,12 +174,14 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test.each([
-    [[...Array(200).keys()], `length should be 118 or less`],
-    [[...Array(119).keys()], `length should be 118 or less`],
-    [{ he: 0 }, `keys should be element symbols`],
-    [{ foo: 42 }, `keys should be element symbols`],
-  ] as const)(
+  test.each(
+    [
+      [[...Array(200).keys()], `length should be 118 or less`],
+      [[...Array(119).keys()], `length should be 118 or less`],
+      [{ he: 0 }, `keys should be element symbols`],
+      [{ foo: 42 }, `keys should be element symbols`],
+    ] as const,
+  )(
     `error handling for invalid heatmap_values`,
     (heatmap_values, error_message) => {
       const original_error = console.error
@@ -201,11 +201,13 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test.each([
-    [`element-category`, `var(--diatomic-nonmetal-bg-color)`],
-    [`#ff0000`, `#ff0000`],
-    [`#666666`, `#666666`],
-  ] as const)(`missing_color=%s -> %s`, async (missing_color, expected_bg) => {
+  test.each(
+    [
+      [`element-category`, `var(--diatomic-nonmetal-bg-color)`],
+      [`#ff0000`, `#ff0000`],
+      [`#666666`, `#666666`],
+    ] as const,
+  )(`missing_color=%s -> %s`, (missing_color, expected_bg) => {
     mount(PeriodicTable, {
       target: document.body,
       props: { heatmap_values: [0, 0, 0, 0], missing_color },
@@ -214,18 +216,14 @@ describe(`PeriodicTable`, () => {
     expect(tile?.style.backgroundColor).toBe(expected_bg)
   })
 
-  test.each([
+  test.each(
     [
-      {
-        values: [undefined, null, false, 10.5],
-        missing_color: `#123456`,
-        log: false,
-      },
-    ],
-    [{ values: [0, -5, 1, 10], missing_color: `#abcdef`, log: true }],
-  ] as const)(
+      [{ values: [undefined, null, false, 10.5], missing_color: `#123456`, log: false }],
+      [{ values: [0, -5, 1, 10], missing_color: `#abcdef`, log: true }],
+    ] as const,
+  )(
     `missing_color edge cases`,
-    async ({ values, missing_color, log }) => {
+    ({ values, missing_color, log }) => {
       mount(PeriodicTable, {
         target: document.body,
         props: { heatmap_values: values as never, missing_color, log },
@@ -246,10 +244,12 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test.each([
-    [true, null, null, `disabled prevents hover`],
-    [false, null, `H`, `enabled allows hover`],
-  ] as const)(
+  test.each(
+    [
+      [true, null, null, `disabled prevents hover`],
+      [false, null, `H`, `enabled allows hover`],
+    ] as const,
+  )(
     `disabled=%s (%s)`,
     async (disabled, initial, expected, _description) => {
       let active_element = $state<ChemicalElement | null>(initial)
@@ -273,14 +273,15 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test.each([
-    [`symbol`, `A`, `h`],
-    [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
-    [null, `DIV`, null],
-  ] as const)(
+  test.each(
+    [
+      [`symbol`, `A`, `h`],
+      [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
+      [null, `DIV`, null],
+    ] as const,
+  )(
     `links=%o -> %s tag, %s href`,
-    async (links, expected_tag, expected_href) => {
-      // @ts-expect-error testing various link types including invalid ones
+    (links, expected_tag, expected_href) => {
       mount(PeriodicTable, { target: document.body, props: { links } })
       const hydrogen_tile = document.querySelector(
         `.element-tile`,
@@ -290,7 +291,7 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test(`comprehensive prop functionality`, async () => {
+  test(`comprehensive prop functionality`, () => {
     // Test multiple props affecting appearance and behavior in one test
     const props = {
       heatmap_values: [1, 2, 3, 4],
@@ -317,26 +318,26 @@ describe(`PeriodicTable`, () => {
     )
   })
 
-  test.each([
-    [true, true],
-    [false, false],
-  ] as const)(`tooltip=%s -> %s`, async (tooltip, should_show) => {
-    mount(PeriodicTable, { target: document.body, props: { tooltip } })
+  test.each([[true, true], [false, false]] as const)(
+    `tooltip=%s -> %s`,
+    async (tooltip, should_show) => {
+      mount(PeriodicTable, { target: document.body, props: { tooltip } })
 
-    const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
-    hydrogen_tile.dispatchEvent(mouseenter)
-    await tick()
-
-    const tooltip_el = document.querySelector(`.tooltip`)
-    expect(!!tooltip_el).toBe(should_show)
-
-    if (should_show) {
-      expect(tooltip_el?.textContent).toContain(`Hydrogen`)
-      hydrogen_tile.dispatchEvent(mouseleave)
+      const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
+      hydrogen_tile.dispatchEvent(mouseenter)
       await tick()
-      expect(document.querySelector(`.tooltip`)).toBeFalsy()
-    }
-  })
+
+      const tooltip_el = document.querySelector(`.tooltip`)
+      expect(!!tooltip_el).toBe(should_show)
+
+      if (should_show) {
+        expect(tooltip_el?.textContent).toContain(`Hydrogen`)
+        hydrogen_tile.dispatchEvent(mouseleave)
+        await tick()
+        expect(document.querySelector(`.tooltip`)).toBeFalsy()
+      }
+    },
+  )
 
   describe(`multi-value heatmaps`, () => {
     test.each([
@@ -363,7 +364,7 @@ describe(`PeriodicTable`, () => {
       },
     ])(
       `renders $values.0.length-value arrays with proper segments`,
-      async ({ values, segments }) => {
+      ({ values, segments }) => {
         mount(PeriodicTable, {
           target: document.body,
           props: {
@@ -438,7 +439,7 @@ describe(`PeriodicTable`, () => {
         [`rgb(255, 0, 0)`, `var(--blue)`],
         `detected formats`,
       ],
-    ])(`single colors (%s)`, async (heatmap_values, expected_colors, _type) => {
+    ])(`single colors (%s)`, (heatmap_values, expected_colors, _type) => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
@@ -480,7 +481,7 @@ describe(`PeriodicTable`, () => {
         [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
         `four colors`,
       ],
-    ])(`multi-color arrays (%s)`, async (heatmap_values, segments, _desc) => {
+    ])(`multi-color arrays (%s)`, (heatmap_values, segments, _desc) => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
@@ -490,7 +491,7 @@ describe(`PeriodicTable`, () => {
       })
 
       segments.forEach((cls) =>
-        expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
+        expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
       )
 
       const multi_tiles = document.querySelectorAll(
@@ -500,7 +501,7 @@ describe(`PeriodicTable`, () => {
       expect(document.querySelectorAll(`.segment`).length).toBeGreaterThan(0)
     })
 
-    test(`mixed types in heatmap`, async () => {
+    test(`mixed types in heatmap`, () => {
       const mixed = [`#ff0000`, [10, 20], [`#00ff00`, `#0000ff`], 42]
       mount(PeriodicTable, {
         target: document.body,
@@ -528,7 +529,7 @@ describe(`PeriodicTable`, () => {
         `show_values displays colors as text`,
         { tile_props: { show_values: true } },
       ],
-    ])(`%s`, async (_desc, extra_props) => {
+    ])(`%s`, (_desc, extra_props) => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
@@ -561,9 +562,7 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      const tiles = document.querySelectorAll(
-        `.element-tile`,
-      ) as NodeListOf<HTMLElement>
+      const tiles = document.querySelectorAll(`.element-tile`) as NodeListOf<HTMLElement>
 
       // Single color tooltip
       tiles[0].dispatchEvent(mouseenter)

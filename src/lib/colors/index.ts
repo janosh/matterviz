@@ -10,8 +10,9 @@ import vesta_colors from './vesta-colors.json'
 
 // Extract color scheme interpolate function names from d3-scale-chromatic
 export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
-export type D3ColorSchemeName =
-  D3InterpolateName extends `interpolate${infer Name}` ? Name : never
+export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
+  ? Name
+  : never
 
 // color values have to be in hex format since that's the only format
 // <input type="color"> supports
@@ -70,9 +71,10 @@ export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   // Check for hex colors, rgb/rgba, hsl/hsla, color(), var(), and named colors
   // Exclude incomplete function prefixes like 'rgb', 'hsl', 'var', 'color'
-  return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i.test(
-    val.toString().trim(),
-  )
+  return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i
+    .test(
+      val.toString().trim(),
+    )
 }
 
 // Color series for e.g. line plots

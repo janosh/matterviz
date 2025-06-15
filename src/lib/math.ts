@@ -84,14 +84,14 @@ function matrix_vector_multiply(
   /** Multiply a 3x3 matrix by a 3D vector */
   return [
     matrix[0][0] * vector[0] +
-      matrix[0][1] * vector[1] +
-      matrix[0][2] * vector[2],
+    matrix[0][1] * vector[1] +
+    matrix[0][2] * vector[2],
     matrix[1][0] * vector[0] +
-      matrix[1][1] * vector[1] +
-      matrix[1][2] * vector[2],
+    matrix[1][1] * vector[1] +
+    matrix[1][2] * vector[2],
     matrix[2][0] * vector[0] +
-      matrix[2][1] * vector[1] +
-      matrix[2][2] * vector[2],
+    matrix[2][1] * vector[1] +
+    matrix[2][2] * vector[2],
   ]
 }
 
@@ -153,9 +153,7 @@ export function dot(
     if (mat1[0].length !== vec2.length) {
       throw `Number of columns in matrix must be equal to number of elements in vector`
     }
-    return mat1.map((row) =>
-      row.reduce((sum, val, index) => sum + val * vec2[index], 0),
-    )
+    return mat1.map((row) => row.reduce((sum, val, index) => sum + val * vec2[index], 0))
   }
 
   // Handle the case where both inputs are matrices
@@ -166,9 +164,7 @@ export function dot(
       throw `Number of columns in first matrix must be equal to number of rows in second matrix`
     }
     return mat1.map((row, i) =>
-      mat2[0].map((_, j) =>
-        row.reduce((sum, _, k) => sum + mat1[i][k] * mat2[k][j], 0),
-      ),
+      mat2[0].map((_, j) => row.reduce((sum, _, k) => sum + mat1[i][k] * mat2[k][j], 0))
     )
   }
 

@@ -10,14 +10,14 @@ Compare three element color palettes side by side using horizontal bars within e
 
 ```svelte example
 <script>
-  import { PeriodicTable, TableInset, element_data } from '$lib'
+  import { element_data, PeriodicTable, TableInset } from '$lib'
   import { element_color_schemes } from '$lib/colors'
 
   // Create multi-scheme color data - each element gets an array of 3 colors
   const multi_scheme_colors = element_data.map((el) => [
     element_color_schemes.Jmol[el.symbol] ?? '#666666',
     element_color_schemes.Vesta[el.symbol] ?? '#666666',
-    element_color_schemes.Alloy[el.symbol] ?? '#666666'
+    element_color_schemes.Alloy[el.symbol] ?? '#666666',
   ])
 </script>
 
@@ -25,7 +25,7 @@ Compare three element color palettes side by side using horizontal bars within e
   tile_props={{ show_name: false, show_number: false }}
   heatmap_values={multi_scheme_colors}
   tooltip={false}
-  style="margin: 1em auto; max-width: 800px;"
+  style="margin: 1em auto; max-width: 800px"
 >
   {#snippet inset()}
     <TableInset>
@@ -89,17 +89,24 @@ Compare three element color palettes side by side using horizontal bars within e
   import { elem_symbols } from '$lib/labels'
 
   const subtitles = {
-    Vesta: 'From the <a href="https://jp-minerals.org/vesta/en/" target="_blank" rel="noopener">VESTA</a> crystallographic visualization software',
-    Jmol: 'From the <a href="http://jmol.sourceforge.net/" target="_blank" rel="noopener">Jmol</a> molecular visualizer, based on <a href="https://en.wikipedia.org/wiki/CPK_coloring" target="_blank" rel="noopener">CPK coloring</a> (Corey-Pauling-Koltun)',
-    Alloy: 'Custom high-contrast scheme optimized for contrast between elements commonly co-occurring in metal alloys',
+    Vesta:
+      'From the <a href="https://jp-minerals.org/vesta/en/" target="_blank" rel="noopener">VESTA</a> crystallographic visualization software',
+    Jmol:
+      'From the <a href="http://jmol.sourceforge.net/" target="_blank" rel="noopener">Jmol</a> molecular visualizer, based on <a href="https://en.wikipedia.org/wiki/CPK_coloring" target="_blank" rel="noopener">CPK coloring</a> (Corey-Pauling-Koltun)',
+    Alloy:
+      'Custom high-contrast scheme optimized for contrast between elements commonly co-occurring in metal alloys',
     Pastel: 'Custom pastel scheme with bright, less saturated colors',
-    Muted: 'Custom desaturated scheme for reduced visual strain but still trying to maintain some contrast',
-    'Dark Mode': 'Custom bright colors optimized for dark backgrounds and dark theme interfaces',
+    Muted:
+      'Custom desaturated scheme for reduced visual strain but still trying to maintain some contrast',
+    'Dark Mode':
+      'Custom bright colors optimized for dark backgrounds and dark theme interfaces',
   }
 </script>
 
 {#each Object.entries(element_color_schemes) as [id, scheme]}
-  {@const color_overrides = Object.fromEntries(elem_symbols.map(((key) => [key, scheme[key] ?? 'transparent'])))}
+  {@const color_overrides = Object.fromEntries(
+    elem_symbols.map((key) => [key, scheme[key] ?? 'transparent']),
+  )}
   <section>
     <h3 {id}>{id}</h3>
     <p class="subtitle">{@html subtitles[id]}</p>

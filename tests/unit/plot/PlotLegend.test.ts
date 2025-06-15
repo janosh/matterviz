@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { PlotLegend, type LegendItem } from '$lib/plot'
+import { type LegendItem, PlotLegend } from '$lib/plot'
 import { mount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '..'
@@ -100,8 +100,7 @@ describe(`PlotLegend`, () => {
     expect(first_item.querySelector(`.legend-label`)?.textContent).toBe(
       `Series 1`,
     )
-    const first_marker_svgs =
-      first_item.querySelectorAll(`.legend-marker > svg`)
+    const first_marker_svgs = first_item.querySelectorAll(`.legend-marker > svg`)
     expect(first_marker_svgs.length).toBe(2) // line + marker
     expect(
       first_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`),
@@ -127,8 +126,7 @@ describe(`PlotLegend`, () => {
     expect(second_item.querySelector(`.legend-label`)?.textContent).toBe(
       `Series 2`,
     )
-    const second_marker_svgs =
-      second_item.querySelectorAll(`.legend-marker > svg`)
+    const second_marker_svgs = second_item.querySelectorAll(`.legend-marker > svg`)
     expect(second_marker_svgs.length).toBe(2) // line + marker
     expect(
       second_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`),
@@ -145,8 +143,7 @@ describe(`PlotLegend`, () => {
     // Check item with only marker
     const third_item = items[2]
     expect(third_item.getAttribute(`aria-pressed`)).toBe(`true`)
-    const third_marker_svgs =
-      third_item.querySelectorAll(`.legend-marker > svg`)
+    const third_marker_svgs = third_item.querySelectorAll(`.legend-marker > svg`)
     expect(third_marker_svgs.length).toBe(1) // Only marker shape svg
     expect(third_marker_svgs[0].querySelector(`polygon`)).toBeTruthy() // triangle
     expect(
@@ -156,8 +153,7 @@ describe(`PlotLegend`, () => {
     // Check item with only line
     const fourth_item = items[3]
     expect(fourth_item.getAttribute(`aria-pressed`)).toBe(`true`)
-    const fourth_marker_svgs =
-      fourth_item.querySelectorAll(`.legend-marker > svg`)
+    const fourth_marker_svgs = fourth_item.querySelectorAll(`.legend-marker > svg`)
     expect(fourth_marker_svgs.length).toBe(1) // Only line svg
     expect(fourth_marker_svgs[0].querySelector(`line`)).toBeTruthy() // line
     expect(
@@ -379,15 +375,11 @@ describe(`PlotLegend`, () => {
       props: { series_data: default_series_data, on_toggle: mock_toggle },
     })
 
-    const items = document.querySelectorAll(`.legend-item`)
-
-    // Click first item
-    ;(items[0] as HTMLElement).click()
+    const items = document.querySelectorAll(`.legend-item`) as NodeListOf<HTMLElement>
+    items[0].click() // Click first item
     expect(mock_toggle).toHaveBeenCalledTimes(1)
     expect(mock_toggle).toHaveBeenCalledWith(0) // series_idx 0
-
-    // Click third item
-    ;(items[2] as HTMLElement).click()
+    items[2].click() // Click third item
     expect(mock_toggle).toHaveBeenCalledTimes(2)
     expect(mock_toggle).toHaveBeenCalledWith(2) // series_idx 2
   })

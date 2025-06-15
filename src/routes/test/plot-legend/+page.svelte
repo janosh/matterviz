@@ -70,8 +70,8 @@
     last_isolated_idx = double_clicked_idx
 
     const visible_count = series_data.filter((item) => item.visible).length
-    const is_currently_isolated =
-      visible_count === 1 && series_data[double_clicked_idx]?.visible
+    const is_currently_isolated = visible_count === 1 &&
+      series_data[double_clicked_idx]?.visible
 
     if (is_currently_isolated && previous_visibility) {
       // Restore previous visibility state
@@ -96,8 +96,8 @@
 
 <h1>PlotLegend Integration Test Page</h1>
 
-<div style="display: flex; gap: 20px; align-items: flex-start;">
-  <div style="border: 1px solid #ccc; padding: 10px; min-width: 200px;">
+<div style="display: flex; gap: 20px; align-items: flex-start">
+  <div style="border: 1px solid #ccc; padding: 10px; min-width: 200px">
     <h2>Legend Component</h2>
     <PlotLegend
       {series_data}
@@ -110,7 +110,7 @@
     />
   </div>
 
-  <div style="border: 1px solid #ccc; padding: 10px;">
+  <div style="border: 1px solid #ccc; padding: 10px">
     <h2>Controls</h2>
     <label for="layout">Layout:</label>
     <select bind:value={legend_layout} id="layout">
@@ -129,7 +129,8 @@
 
     <label for="item_style">Item Style:</label>
     <input type="text" bind:value={legend_item_style} id="item_style" />
-    <br /><br />
+    <br />
+    <br />
 
     <h2>State Trackers</h2>
     <p data-testid="last-toggled">
@@ -144,13 +145,7 @@
 <h2>Custom Style Test Case</h2>
 <div
   id="custom-style-legend"
-  style="
-    --plot-legend-background-color: rgb(10, 20, 30);
-    --plot-legend-item-padding: 1px;
-    --plot-legend-item-color: rgb(255, 255, 0);
-    padding: 5px; /* Apply padding directly to wrapper for test */
-    border: 1px solid red; /* Visual aid */
-    max-width: 200px; /* Ensure it wraps if needed */"
+  style="--plot-legend-background-color: rgb(10, 20, 30); --plot-legend-item-padding: 1px; --plot-legend-item-color: rgb(255, 255, 0); padding: 5px; border: 1px solid red; max-width: 200px"
 >
   <PlotLegend
     series_data={series_data.slice(0, 2)}

@@ -29,8 +29,7 @@ export function generate_structure_filename(
     structure.symmetry &&
     typeof structure.symmetry === `object` &&
     `space_group_symbol` in structure.symmetry
-  )
-    parts.push(String(structure.symmetry.space_group_symbol))
+  ) parts.push(String(structure.symmetry.space_group_symbol))
 
   // Add lattice system if available
   if (
@@ -38,8 +37,7 @@ export function generate_structure_filename(
     structure.lattice &&
     typeof structure.lattice === `object` &&
     `lattice_system` in structure.lattice
-  )
-    parts.push(String(structure.lattice.lattice_system))
+  ) parts.push(String(structure.lattice.lattice_system))
 
   // Add number of sites
   if (structure.sites?.length) parts.push(`${structure.sites.length}sites`)
@@ -69,10 +67,9 @@ export function export_xyz(structure?: AnyStructure): void {
     if (structure.id) comment_parts.push(structure.id)
     const formula = electro_neg_formula(structure)
     if (formula && formula !== `Unknown`) comment_parts.push(formula)
-    const comment =
-      comment_parts.length > 0
-        ? comment_parts.join(` `)
-        : `Generated from structure`
+    const comment = comment_parts.length > 0
+      ? comment_parts.join(` `)
+      : `Generated from structure`
     lines.push(comment)
 
     // Atom lines: element symbol followed by x, y, z coordinates
@@ -112,14 +109,14 @@ export function export_xyz(structure?: AnyStructure): void {
         ) {
           coords = [
             a * lattice.matrix[0][0] +
-              b * lattice.matrix[1][0] +
-              c * lattice.matrix[2][0],
+            b * lattice.matrix[1][0] +
+            c * lattice.matrix[2][0],
             a * lattice.matrix[0][1] +
-              b * lattice.matrix[1][1] +
-              c * lattice.matrix[2][1],
+            b * lattice.matrix[1][1] +
+            c * lattice.matrix[2][1],
             a * lattice.matrix[0][2] +
-              b * lattice.matrix[1][2] +
-              c * lattice.matrix[2][2],
+            b * lattice.matrix[1][2] +
+            c * lattice.matrix[2][2],
           ]
         } else {
           coords = [0, 0, 0] // fallback
@@ -229,7 +226,9 @@ export function export_png(
       renderer.setSize(original_size.width, original_size.height, false)
       if (browser) {
         console.warn(
-          `Failed to render at high resolution: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to render at high resolution: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         )
       }
     }

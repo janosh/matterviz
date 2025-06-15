@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
 test.describe(`Lattice Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

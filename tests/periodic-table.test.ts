@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-await-in-loop
 import element_data from '$lib/element/data'
 import {
   categories,
@@ -6,8 +7,8 @@ import {
   heatmap_keys,
   heatmap_labels,
 } from '$lib/labels'
-import { expect, test, type Page } from '@playwright/test'
-import { random_sample } from '.'
+import { expect, type Page, test } from '@playwright/test'
+import { random_sample } from './index'
 
 test.describe(`Periodic Table`, () => {
   // SKIPPED: Server-side rendering error prevents page load
@@ -48,8 +49,7 @@ test.describe(`Periodic Table`, () => {
       if (
         msg.type() === `error` &&
         !msg.text().startsWith(`Failed to load resource:`)
-      )
-        logs.push(msg.text())
+      ) logs.push(msg.text())
     })
     await page.goto(`/`, { waitUntil: `networkidle` })
 
@@ -72,9 +72,7 @@ test.describe(`Periodic Table`, () => {
       await page.waitForTimeout(100)
     }
 
-    test(`shows default tooltip on element hover when no heatmap is selected`, async ({
-      page,
-    }) => {
+    test(`shows default tooltip on element hover when no heatmap is selected`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       await get_element_tile(page, `H`).hover()
@@ -85,9 +83,7 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toContainText(`H • 1`)
     })
 
-    test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({
-      page,
-    }) => {
+    test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
       await page.waitForSelector(`div.multiselect`)
 
@@ -139,8 +135,9 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toBeVisible()
       const new_box = await tooltip.boundingBox()
       expect(new_box).not.toBeNull()
+      if (!initial_box || !new_box) throw new Error(`Tooltip bounding box not found`)
 
-      expect(new_box!.x).not.toBe(initial_box!.x)
+      expect(new_box.x).not.toBe(initial_box.x)
     })
 
     test(`tooltip disappears when mouse leaves element`, async ({ page }) => {
@@ -162,9 +159,7 @@ test.describe(`Periodic Table`, () => {
     ]
 
     for (const element of test_elements) {
-      test(`tooltip shows correct content for ${element.name}`, async ({
-        page,
-      }) => {
+      test(`tooltip shows correct content for ${element.name}`, async ({ page }) => {
         await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
         await clear_tooltip(page)
@@ -187,9 +182,7 @@ test.describe(`Periodic Table`, () => {
       })
     }
 
-    test(`tooltip works with different heatmap properties`, async ({
-      page,
-    }) => {
+    test(`tooltip works with different heatmap properties`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       const test_properties = [`Atomic mass`, `Boiling point`]
@@ -275,25 +268,24 @@ test.describe(`Periodic Table`, () => {
     ]
 
     for (const { idx, type, segments, positions } of test_cases) {
-      test(`renders ${type} split segments and positioning correctly`, async ({
-        page,
-      }) => {
+      test(`renders ${type} split segments and positioning correctly`, async ({ page }) => {
         await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
         const table = page.locator(`.periodic-table`).nth(idx)
         const tile = table.locator(`.element-tile`).first()
 
         // Verify segments and positions are rendered
-        for (const segment of segments) {
+        const segment_checks = segments.map(async (segment) => {
           await expect(
             table.locator(`.segment.${segment}`).first(),
           ).toBeVisible()
-        }
-        for (const position of positions) {
+        })
+        const position_checks = positions.map(async (position) => {
           await expect(
             table.locator(`.multi-value.${position}`).first(),
           ).toBeVisible()
-        }
+        })
+        await Promise.all([...segment_checks, ...position_checks])
 
         // Check colors are distinct and valid
         if (idx === 1) {
@@ -312,9 +304,7 @@ test.describe(`Periodic Table`, () => {
       })
     }
 
-    test(`multi-value examples integration and visual bounds`, async ({
-      page,
-    }) => {
+    test(`multi-value examples integration and visual bounds`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // Verify examples section exists

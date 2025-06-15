@@ -40,7 +40,8 @@
     const parts: string[] = clean_filename.split(/[-_]/)
     if (parts.length > 1) {
       const mid_point: number = Math.ceil(parts.length / 2)
-      return parts.slice(0, mid_point).join(`-`) + `\n` + parts.slice(mid_point).join(`-`)
+      return parts.slice(0, mid_point).join(`-`) + `\n` +
+        parts.slice(mid_point).join(`-`)
     }
 
     // Fallback: break in the middle
@@ -49,14 +50,19 @@
   }
 
   // Unified file loader utility
-  async function load_file_from_url(url: string, filename: string): Promise<FileInfo> {
+  async function load_file_from_url(
+    url: string,
+    filename: string,
+  ): Promise<FileInfo> {
     const response = await fetch(url)
     if (!response.ok) {
-      throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`)
+      throw new Error(
+        `Failed to fetch file: ${response.status} ${response.statusText}`,
+      )
     }
 
-    const is_binary =
-      filename.toLowerCase().endsWith(`.h5`) || filename.toLowerCase().endsWith(`.hdf5`)
+    const is_binary = filename.toLowerCase().endsWith(`.h5`) ||
+      filename.toLowerCase().endsWith(`.hdf5`)
 
     if (is_binary) {
       const buffer = await response.arrayBuffer()
@@ -165,7 +171,8 @@
           layout: `horizontal`,
           layout_tracks: 2,
         },
-        style: `background: var(--traj-plot-bg, #2d3748); color: var(--traj-plot-text, #e2e8f0);`,
+        style:
+          `background: var(--traj-plot-bg, #2d3748); color: var(--traj-plot-text, #e2e8f0);`,
       }}
       spinner_props={{
         style: `background: rgba(0, 0, 0, 0.1); color: white;`,
@@ -174,7 +181,7 @@
   {/each}
 </div>
 
-<p style="margin: 2em auto;">
+<p style="margin: 2em auto">
   Drag any of these trajectory files onto the second viewer above to load them:
 </p>
 <div class="trajectory-files-section">

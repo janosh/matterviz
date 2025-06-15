@@ -1,5 +1,5 @@
 import type { XyObj } from '$lib/plot'
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 test.describe(`ScatterPlot Component Tests`, () => {
   // Navigate to the test page before each test
@@ -217,9 +217,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }, selector)
   }
 
-  test(`handles color scaling with both linear and log modes`, async ({
-    page,
-  }) => {
+  test(`handles color scaling with both linear and log modes`, async ({ page }) => {
     const section = page.locator(`#color-scale`)
     await expect(section).toBeVisible()
 
@@ -284,9 +282,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     return { ticks, range }
   }
 
-  test(`zooms correctly inside and outside plot area and resets, tooltip appears during drag`, async ({
-    page,
-  }) => {
+  test(`zooms correctly inside and outside plot area and resets, tooltip appears during drag`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
     const svg = plot_locator.locator(`svg[role='img']`)
     const x_axis = plot_locator.locator(`g.x-axis`)
@@ -321,11 +317,12 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // --- 2. Perform zoom drag INSIDE plot area ---
     let svg_box = await svg.boundingBox()
-    expect(svg_box).toBeTruthy()
-    let start_x = svg_box!.x + svg_box!.width * 0.3
-    let start_y = svg_box!.y + svg_box!.height * 0.7
-    let end_x = svg_box!.x + svg_box!.width * 0.7
-    let end_y = svg_box!.y + svg_box!.height * 0.3
+    if (!svg_box) throw `SVG box not found`
+
+    let start_x = svg_box.x + svg_box.width * 0.3
+    let start_y = svg_box.y + svg_box.height * 0.7
+    let end_x = svg_box.x + svg_box.width * 0.7
+    let end_y = svg_box.y + svg_box.height * 0.3
 
     await page.mouse.move(start_x, start_y)
     await page.mouse.down()
@@ -334,8 +331,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Estimate coordinates for point (x=5, y=20)
     // x=5 is roughly 40-50% across the x-axis [0, 11]
     // y=20 is roughly 50% up the y-axis [10, 30]
-    const target_point_x = svg_box!.x + svg_box!.width * 0.45
-    const target_point_y = svg_box!.y + svg_box!.height * (1 - 0.5) // Y=20 is 50% up the [10, 30] range
+    const target_point_x = svg_box.x + svg_box.width * 0.45
+    const target_point_y = svg_box.y + svg_box.height * (1 - 0.5) // Y=20 is 50% up the [10, 30] range
 
     // Move over the target point area
     await page.mouse.move(target_point_x, target_point_y, { steps: 10 })
@@ -346,8 +343,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     await expect(zoom_rect).toBeVisible()
     const rect_box = await zoom_rect.boundingBox()
-    expect(rect_box!.width).toBeGreaterThan(0)
-    expect(rect_box!.height).toBeGreaterThan(0)
+    if (!rect_box) throw `Rect box not found`
+    expect(rect_box.width).toBeGreaterThan(0)
+    expect(rect_box.height).toBeGreaterThan(0)
 
     await page.mouse.up()
     await expect(zoom_rect).not.toBeVisible()
@@ -364,10 +362,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // --- 4. Perform zoom drag OUTSIDE plot area (from current zoomed state) ---
     svg_box = await svg.boundingBox() // Get bounds again, might have changed slightly
-    expect(svg_box).toBeTruthy()
+    if (!svg_box) throw `SVG box not found`
     // Start inside the *current* view (e.g., bottom-right of the zoomed area)
-    start_x = svg_box!.x + svg_box!.width * 0.8
-    start_y = svg_box!.y + svg_box!.height * 0.8
+    start_x = svg_box.x + svg_box.width * 0.8
+    start_y = svg_box.y + svg_box.height * 0.8
     // End significantly outside the original top-left
     end_x = initial_x.ticks[0] - 50 // Using initial axis range info for context
     end_y = initial_y.ticks[0] - 50
@@ -376,16 +374,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.mouse.down()
 
     // Move towards edge and outside
-    await page.mouse.move(svg_box!.x + 5, svg_box!.y + 5, { steps: 5 })
+    await page.mouse.move(svg_box.x + 5, svg_box.y + 5, { steps: 5 })
     await expect(zoom_rect).toBeVisible()
     const rect_box_inside = await zoom_rect.boundingBox()
-    expect(rect_box_inside!.width).toBeGreaterThan(0)
+    if (!rect_box_inside) throw `Rect box inside not found`
+    expect(rect_box_inside.width).toBeGreaterThan(0)
 
     await page.mouse.move(end_x, end_y, { steps: 5 })
     await expect(zoom_rect).toBeVisible()
     const rect_box_outside = await zoom_rect.boundingBox()
-    expect(rect_box_outside!.width).toBeGreaterThan(rect_box_inside!.width)
-    expect(rect_box_outside!.height).toBeGreaterThan(rect_box_inside!.height)
+    if (!rect_box_outside) throw `Rect box outside not found`
+    expect(rect_box_outside.width).toBeGreaterThan(rect_box_inside.width)
+    expect(rect_box_outside.height).toBeGreaterThan(rect_box_inside.height)
 
     await page.mouse.up() // Release mouse outside
     await expect(zoom_rect).not.toBeVisible()
@@ -428,7 +428,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const positions: Record<string, XyObj> = {}
     const markers = await plot_locator.locator(`path.marker`).all() // Find marker paths
 
-    for (const marker of markers) {
+    // Process markers in parallel
+    const marker_promises = markers.map(async (marker) => {
       const parent_group = marker.locator(`..`) // Get parent <g>
       const label_text_element = parent_group.locator(`text`) // Find text within the group
       const label_text_content = await label_text_element.textContent()
@@ -440,21 +441,26 @@ test.describe(`ScatterPlot Component Tests`, () => {
             /translate\(([^\s,]+)\s*,?\s*([^\)]+)\)/,
           )
           if (match) {
-            positions[label_text_content] = {
-              x: parseFloat(match[1]),
-              y: parseFloat(match[2]),
+            return {
+              label: label_text_content,
+              position: { x: parseFloat(match[1]), y: parseFloat(match[2]) },
             }
           }
         }
       }
+      return null
+    })
+
+    const marker_results = await Promise.all(marker_promises)
+
+    for (const result of marker_results) { // Add valid results to positions
+      if (result) positions[result.label] = result.position
     }
     return positions
   }
 
   // TODO: Fix this test - label positioning logic or timing might be flaky
-  test.skip(`label auto-placement repositions labels in dense clusters`, async ({
-    page,
-  }) => {
+  test.skip(`label auto-placement repositions labels in dense clusters`, async ({ page }) => {
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
     const checkbox = section.locator(`input[type="checkbox"]`)
@@ -474,7 +480,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Verify positions are different for dense cluster labels
     const dense_labels = Object.keys(positions_auto).filter((key) =>
-      key.startsWith(`Dense-`),
+      key.startsWith(`Dense-`)
     )
     expect(dense_labels.length).toBeGreaterThan(1)
 
@@ -498,9 +504,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(moved_count).toBeGreaterThan(dense_labels.length / 2)
   })
 
-  test(`label auto-placement does not significantly move sparse labels`, async ({
-    page,
-  }) => {
+  test(`label auto-placement does not significantly move sparse labels`, async ({ page }) => {
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
     const checkbox = section.locator(`input[type="checkbox"]`)
@@ -518,7 +522,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Verify positions are similar for sparse labels
     const sparse_labels = Object.keys(positions_auto).filter((key) =>
-      key.startsWith(`Sparse-`),
+      key.startsWith(`Sparse-`)
     )
     expect(sparse_labels.length).toBe(4)
 
@@ -540,25 +544,19 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test.describe(`Legend Rendering`, () => {
     const legend_selector = `.legend`
 
-    test(`legend does NOT render for single series by default`, async ({
-      page,
-    }) => {
+    test(`legend does NOT render for single series by default`, async ({ page }) => {
       const legend_section = page.locator(`#legend-tests`)
       const plot = legend_section.locator(`#legend-single-default`)
       await expect(plot.locator(legend_selector)).toHaveCount(0)
     })
 
-    test(`legend does NOT render when legend prop is null`, async ({
-      page,
-    }) => {
+    test(`legend does NOT render when legend prop is null`, async ({ page }) => {
       const legend_section = page.locator(`#legend-tests`)
       const plot = legend_section.locator(`#legend-single-null`)
       await expect(plot.locator(legend_selector)).toHaveCount(0)
     })
 
-    test(`legend renders for single series when explicitly configured`, async ({
-      page,
-    }) => {
+    test(`legend renders for single series when explicitly configured`, async ({ page }) => {
       const plot_locator = page.locator(`#legend-single-config`)
       await expect(plot_locator).toBeVisible()
       const legend_locator = plot_locator.locator(legend_selector)
@@ -613,9 +611,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await expect(legend_item).not.toHaveClass(/hidden/)
     })
 
-    test(`double click isolates/restores series visibility`, async ({
-      page,
-    }) => {
+    test(`double click isolates/restores series visibility`, async ({ page }) => {
       const plot_locator = page.locator(`#legend-multi-default .scatter`)
       const series_a_item = plot_locator
         .locator(`.legend-item >> text=Series A`)
@@ -664,12 +660,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const plot_bbox = await plot_locator.boundingBox()
       const legend_bbox = await legend_locator.boundingBox()
 
-      expect(plot_bbox).toBeTruthy()
-      expect(legend_bbox).toBeTruthy()
+      if (!plot_bbox || !legend_bbox) throw `Bounding boxes are null`
 
       // Calculate relative position within plot
-      const relative_x = (legend_bbox!.x - plot_bbox!.x) / plot_bbox!.width
-      const relative_y = (legend_bbox!.y - plot_bbox!.y) / plot_bbox!.height
+      const relative_x = (legend_bbox.x - plot_bbox.x) / plot_bbox.width
+      const relative_y = (legend_bbox.y - plot_bbox.y) / plot_bbox.height
 
       // Legend should be positioned in a corner (close to 0 or 1 for both x and y)
       const is_left_edge = relative_x < 0.3
@@ -677,8 +672,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const is_top_edge = relative_y < 0.3
       const is_bottom_edge = relative_y > 0.7
 
-      const is_in_corner =
-        (is_left_edge || is_right_edge) && (is_top_edge || is_bottom_edge)
+      const is_in_corner = (is_left_edge || is_right_edge) &&
+        (is_top_edge || is_bottom_edge)
 
       // Verify legend is positioned in a corner, not in the middle
       expect(is_in_corner).toBe(true)
@@ -698,9 +693,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(plot_bbox).toBeTruthy()
       expect(legend_bbox).toBeTruthy()
 
+      if (!plot_bbox || !legend_bbox) throw new Error(`Bounding boxes are null`)
+
       // Calculate relative position within plot
-      const relative_x = (legend_bbox!.x - plot_bbox!.x) / plot_bbox!.width
-      const relative_y = (legend_bbox!.y - plot_bbox!.y) / plot_bbox!.height
+      const relative_x = (legend_bbox.x - plot_bbox.x) / plot_bbox.width
+      const relative_y = (legend_bbox.y - plot_bbox.y) / plot_bbox.height
 
       // For the multi-series test data, the lines run through the middle
       // So legend should NOT be positioned in the center area
@@ -742,11 +739,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Get legend bounding box for drag calculations
       const legend_bbox = await legend_locator.boundingBox()
-      expect(legend_bbox).toBeTruthy()
+      if (!legend_bbox) throw `Legend bounding box is null`
 
       // Calculate drag start point (try to find empty space in legend)
-      const drag_start_x = legend_bbox!.x + 10 // Left edge area
-      const drag_start_y = legend_bbox!.y + 5 // Top area
+      const drag_start_x = legend_bbox.x + 10 // Left edge area
+      const drag_start_y = legend_bbox.y + 5 // Top area
 
       // Calculate drag end point (move legend to different position)
       const drag_end_x = drag_start_x + 80
@@ -800,9 +797,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await expect(legend_locator.locator(`.legend-item`)).toHaveCount(2)
     })
 
-    test(`legend drag does not interfere with legend item clicks`, async ({
-      page,
-    }) => {
+    test(`legend drag does not interfere with legend item clicks`, async ({ page }) => {
       const plot_locator = page.locator(`#legend-multi-default .scatter`)
       const legend_locator = plot_locator.locator(`.legend`)
       const series_a_item = plot_locator
@@ -841,11 +836,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Get legend bounding box
       const legend_bbox = await legend_locator.boundingBox()
-      expect(legend_bbox).toBeTruthy()
+      if (!legend_bbox) throw `Legend bounding box is null`
 
       // Move mouse to empty area of legend (not on legend items)
-      const hover_x = legend_bbox!.x + 10
-      const hover_y = legend_bbox!.y + 5
+      const hover_x = legend_bbox.x + 10
+      const hover_y = legend_bbox.y + 5
 
       await page.mouse.move(hover_x, hover_y)
 
@@ -854,16 +849,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Check if legend has draggable styling - should be 'grab' for draggable legends
       const cursor_style = await legend_locator.evaluate((el) => {
-        return window.getComputedStyle(el).cursor
+        return globalThis.getComputedStyle(el).cursor
       })
 
       // Draggable legends should have grab cursor (as defined in PlotLegend.svelte CSS)
       expect(cursor_style).toBe(`grab`)
     })
 
-    test(`legend position is constrained within plot bounds`, async ({
-      page,
-    }) => {
+    test(`legend position is constrained within plot bounds`, async ({ page }) => {
       const plot_locator = page.locator(`#legend-multi-default .scatter`)
       const legend_locator = plot_locator.locator(`.legend`)
 
@@ -872,11 +865,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Get legend bounding box
       const legend_bbox = await legend_locator.boundingBox()
-      expect(legend_bbox).toBeTruthy()
+      if (!legend_bbox) throw `Legend bounding box is null`
 
       // Try to drag legend far to the right and down
-      const drag_start_x = legend_bbox!.x + 10
-      const drag_start_y = legend_bbox!.y + 5
+      const drag_start_x = legend_bbox.x + 10
+      const drag_start_y = legend_bbox.y + 5
 
       // Attempt to drag far to the right and down
       const drag_end_x = drag_start_x + 500
@@ -901,9 +894,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Log positions for debugging
     })
 
-    test(`legend maintains manual position after plot updates`, async ({
-      page,
-    }) => {
+    test(`legend maintains manual position after plot updates`, async ({ page }) => {
       const plot_locator = page.locator(`#legend-multi-default .scatter`)
       const legend_locator = plot_locator.locator(`.legend`)
       const series_a_item = plot_locator
@@ -915,10 +906,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Drag legend to new position
       const legend_bbox = await legend_locator.boundingBox()
-      expect(legend_bbox).toBeTruthy()
+      if (!legend_bbox) throw `Legend bounding box is null`
 
-      const drag_start_x = legend_bbox!.x + legend_bbox!.width / 2
-      const drag_start_y = legend_bbox!.y + 5
+      const drag_start_x = legend_bbox.x + legend_bbox.width / 2
+      const drag_start_y = legend_bbox.y + 5
       const drag_end_x = drag_start_x + 80
       const drag_end_y = drag_start_y + 40
 
@@ -934,8 +925,12 @@ test.describe(`ScatterPlot Component Tests`, () => {
             const current_position = await get_legend_position(plot_locator)
             return (
               Math.abs(
-                current_position.x - (legend_bbox!.x + legend_bbox!.width / 2),
-              ) > 5 || Math.abs(current_position.y - (legend_bbox!.y + 5)) > 5
+                  current_position.x -
+                    ((legend_bbox?.x ?? 0) + (legend_bbox?.width ?? 0) / 2),
+                ) > 5 ||
+              Math.abs(
+                  current_position.y - ((legend_bbox?.y ?? 0) + 5),
+                ) > 5
             )
           },
           {
@@ -969,9 +964,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
   })
 
-  test(`no console errors or rendering issues on linear-log scale transition`, async ({
-    page,
-  }) => {
+  test(`no console errors or rendering issues on linear-log scale transition`, async ({ page }) => {
     const section = page.locator(`#lin-log-transition`)
     const plot_locator = section.locator(`.scatter`)
     const svg = plot_locator.locator(`svg[role='img']`)
@@ -1060,7 +1053,7 @@ test.describe(`Automatic Color Bar Placement`, () => {
     await colorbar_wrapper.waitFor({ state: `visible`, timeout: 1000 })
     const transform = await colorbar_wrapper.evaluate((el) => {
       // Get computed style to resolve the final transform value
-      return window.getComputedStyle(el).transform
+      return globalThis.getComputedStyle(el).transform
     })
     // Normalize matrix to simpler translate for easier comparison
     if (transform.startsWith(`matrix`)) {
@@ -1072,12 +1065,15 @@ test.describe(`Automatic Color Bar Placement`, () => {
           const tx = values[4]
           const ty = values[5]
           if (Math.abs(tx) < 1 && Math.abs(ty) < 1) return `` // Effectively (0, 0)
-          if (Math.abs(tx) > 1 && Math.abs(ty) < 1)
+          if (Math.abs(tx) > 1 && Math.abs(ty) < 1) {
             return `translateX(${tx < 0 ? `-100%` : `100%`})` // Approximate
-          if (Math.abs(tx) < 1 && Math.abs(ty) > 1)
+          }
+          if (Math.abs(tx) < 1 && Math.abs(ty) > 1) {
             return `translateY(${ty < 0 ? `-100%` : `100%`})` // Approximate
-          if (Math.abs(tx) > 1 && Math.abs(ty) > 1)
+          }
+          if (Math.abs(tx) > 1 && Math.abs(ty) > 1) {
             return `translate(${tx < 0 ? `-100%` : `100%`}, ${ty < 0 ? `-100%` : `100%`})` // Approximate
+          }
         }
       }
     } else if (transform === `none`) {
@@ -1188,8 +1184,10 @@ const check_marker_sizes = async (
 test.describe(`Point Sizing`, () => {
   const section_selector = `#point-sizing`
   const plot_selector = `${section_selector} .scatter`
-  const min_size_input_selector = `${section_selector} input[type="number"][aria-label*="Min Size"]`
-  const max_size_input_selector = `${section_selector} input[type="number"][aria-label*="Max Size"]`
+  const min_size_input_selector =
+    `${section_selector} input[type="number"][aria-label*="Min Size"]`
+  const max_size_input_selector =
+    `${section_selector} input[type="number"][aria-label*="Max Size"]`
   const scale_select_selector = `${section_selector} select[aria-label*="Size Scale"]`
   const first_marker_idx = 0
   const intermediate_marker_idx = 19
@@ -1206,9 +1204,7 @@ test.describe(`Point Sizing`, () => {
       .waitFor({ state: `visible` })
   })
 
-  test(`markers scale correctly with linear size controls`, async ({
-    page,
-  }) => {
+  test(`markers scale correctly with linear size controls`, async ({ page }) => {
     const plot_locator = page.locator(plot_selector)
     const min_input = page.locator(min_size_input_selector)
     const max_input = page.locator(max_size_input_selector)
@@ -1322,9 +1318,7 @@ test.describe(`Point Sizing`, () => {
   })
 
   // SKIPPED: Floating-point precision differences in calculations
-  test.skip(`relative marker sizes change predictably on scale type transition`, async ({
-    page,
-  }) => {
+  test.skip(`relative marker sizes change predictably on scale type transition`, async ({ page }) => {
     const plot_locator = page.locator(plot_selector)
     const scale_select = page.locator(scale_select_selector)
 
@@ -1363,10 +1357,9 @@ test.describe(`Point Sizing`, () => {
       linear_sizes.ratio_inter_first,
       1,
     )
-    const log_ratio_last_inter =
-      log_sizes.last_area / log_sizes.intermediate_area
-    const linear_ratio_last_inter =
-      linear_sizes.last_area / linear_sizes.intermediate_area
+    const log_ratio_last_inter = log_sizes.last_area / log_sizes.intermediate_area
+    const linear_ratio_last_inter = linear_sizes.last_area /
+      linear_sizes.intermediate_area
     expect(log_ratio_last_inter).not.toBeCloseTo(linear_ratio_last_inter, 1)
     expect(log_ratio_last_inter).toBeLessThan(linear_ratio_last_inter) // Log compresses larger values
 
@@ -1405,9 +1398,7 @@ test.describe(`Line Styling`, () => {
     await page.locator(section).waitFor({ state: `visible` })
   })
 
-  test(`renders solid, dashed, and custom dashed lines correctly`, async ({
-    page,
-  }) => {
+  test(`renders solid, dashed, and custom dashed lines correctly`, async ({ page }) => {
     const solid_plot = page.locator(`${section} #solid-line-plot .scatter`)
     const dashed_plot = page.locator(`${section} #dashed-line-plot .scatter`)
     const custom_plot = page.locator(`${section} #custom-dash-plot .scatter`)
@@ -1464,7 +1455,7 @@ test.describe(`Tooltip Background Precedence`, () => {
     await point_locator.hover({ force: true })
     await expect(tooltip_locator).toBeVisible({ timeout: 1500 })
     const colors = await tooltip_locator.evaluate((el) => {
-      const style = window.getComputedStyle(el)
+      const style = globalThis.getComputedStyle(el)
       return { bg: style.backgroundColor, text: style.color }
     })
     // Move mouse away
@@ -1504,16 +1495,14 @@ test.describe(`Point Hover Visual Effect`, () => {
     await first_marker.waitFor({ state: `visible` })
   })
 
-  test(`marker scales and changes stroke when tooltip appears`, async ({
-    page,
-  }) => {
+  test(`marker scales and changes stroke when tooltip appears`, async ({ page }) => {
     const plot_locator = page.locator(`${section_selector} .scatter`)
     const first_marker = plot_locator.locator(`path.marker`).first()
     const tooltip_locator = plot_locator.locator(`.tooltip`)
 
     // 1. Get initial state
     const initial_transform = await first_marker.evaluate(
-      (el: SVGPathElement) => window.getComputedStyle(el).transform,
+      (el: SVGPathElement) => globalThis.getComputedStyle(el).transform,
     )
     expect(
       initial_transform === `none` ||
@@ -1532,16 +1521,14 @@ test.describe(`Point Hover Visual Effect`, () => {
     const target_x_data = 0
     const target_y_data = 10
 
-    const plot_inner_width = plot_bbox!.width - pad.l - pad.r
-    const plot_inner_height = plot_bbox!.height - pad.t - pad.b
+    const plot_inner_width = (plot_bbox?.width ?? 0) - pad.l - pad.r
+    const plot_inner_height = (plot_bbox?.height ?? 0) - pad.t - pad.b
 
-    const x_rel =
-      (target_x_data - data_x_range[0]) / (data_x_range[1] - data_x_range[0])
-    const y_rel =
-      (target_y_data - data_y_range[0]) / (data_y_range[1] - data_y_range[0])
+    const x_rel = (target_x_data - data_x_range[0]) / (data_x_range[1] - data_x_range[0])
+    const y_rel = (target_y_data - data_y_range[0]) / (data_y_range[1] - data_y_range[0])
 
     const hover_x = pad.l + x_rel * plot_inner_width
-    const hover_y = plot_bbox!.height - pad.b - y_rel * plot_inner_height // Y is inverted
+    const hover_y = (plot_bbox?.height ?? 0) - pad.b - y_rel * plot_inner_height // Y is inverted
 
     // Use mouse move/down/up to simulate hover more explicitly
     await page.mouse.move(hover_x, hover_y)
@@ -1556,7 +1543,8 @@ test.describe(`Point Event Handling`, () => {
   const section_selector = `#point-event-test`
   const plot_selector = `${section_selector} .scatter`
   const clicked_text_selector = `${section_selector} [data-testid="last-clicked-point"]`
-  const double_clicked_text_selector = `${section_selector} [data-testid="last-double-clicked-point"]`
+  const double_clicked_text_selector =
+    `${section_selector} [data-testid="last-double-clicked-point"]`
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/scatter-plot`, { waitUntil: `load` })

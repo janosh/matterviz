@@ -84,7 +84,7 @@ describe(`ColorBar Vertical`, () => {
     )
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
-    const computed_style = window.getComputedStyle(cbar_div)
+    const computed_style = globalThis.getComputedStyle(cbar_div)
     expect(computed_style.width).toBe(`14px`) // Check computed value of --cbar-thickness
     expect(computed_style.height).not.toBe(`14px`)
 
@@ -246,15 +246,17 @@ describe(`ColorBar tick_side='inside'`, () => {
 })
 
 describe(`ColorBar title_side Default Logic`, () => {
-  test.each([
-    // [orientation, tick_side, expected_flex_dir]
-    [`horizontal`, `primary`, `column`],
-    [`horizontal`, `secondary`, `column-reverse`],
-    [`vertical`, `primary`, `row`],
-    [`vertical`, `secondary`, `row-reverse`],
-    [`horizontal`, `inside`, `row`],
-    [`vertical`, `inside`, `row`],
-  ] as const)(
+  test.each(
+    [
+      // [orientation, tick_side, expected_flex_dir]
+      [`horizontal`, `primary`, `column`],
+      [`horizontal`, `secondary`, `column-reverse`],
+      [`vertical`, `primary`, `row`],
+      [`vertical`, `secondary`, `row-reverse`],
+      [`horizontal`, `inside`, `row`],
+      [`vertical`, `inside`, `row`],
+    ] as const,
+  )(
     `orientation=%s, tick_side=%s -> defaults title flex-direction to %s`,
     (orientation, tick_side, expected_flex_dir) => {
       mount(ColorBar, {

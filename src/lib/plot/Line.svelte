@@ -40,7 +40,11 @@
     line_path ? `${line_path}L${x_max},${ymin}L${x_min},${ymin}Z` : ``,
   )
 
-  const default_tween = { duration: 300, easing: linear, interpolate: interpolatePath }
+  const default_tween = {
+    duration: 300,
+    easing: linear,
+    interpolate: interpolatePath,
+  }
   const tweened_line = new Tween(``, { ...default_tween, ...line_tween })
   const tweened_area = new Tween(``, { ...default_tween, ...line_tween })
 

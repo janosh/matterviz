@@ -10,6 +10,7 @@ import { parse_torch_sim_hdf5 } from '$lib/trajectory/parse'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
+import process from 'node:process'
 
 // Helper to read binary test files (for HDF5)
 function read_binary_test_file(filename: string): ArrayBuffer {
@@ -356,7 +357,7 @@ describe(`Default Plotting Behavior`, () => {
     }
 
     const frame_data = trajectory_frames.map((frame) =>
-      full_data_extractor(frame, trajectory),
+      full_data_extractor(frame, trajectory)
     )
 
     // Should have volume in all frames
@@ -406,7 +407,7 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     const trajectory = await parse_torch_sim_hdf5(hdf5_content)
 
     const all_frame_data = trajectory.frames.map((frame) =>
-      full_data_extractor(frame, trajectory),
+      full_data_extractor(frame, trajectory)
     )
 
     expect(all_frame_data).toHaveLength(20)

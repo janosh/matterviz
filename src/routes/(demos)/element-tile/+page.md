@@ -2,14 +2,17 @@
 
 ```svelte example stackblitz code_above
 <script>
-  import { ElementTile, element_data } from '$lib'
+  import { element_data, ElementTile } from '$lib'
 
-  const rand_color = () => `hsl(${Math.random() * 360}, ${Math.random() * 50 + 50}%, ${Math.random() * 50 + 50}%)`
+  const rand_color = () =>
+    `hsl(${Math.random() * 360}, ${Math.random() * 50 + 50}%, ${
+      Math.random() * 50 + 50
+    }%)`
 </script>
 
 <ol>
   {#each Array(27).fill(0).map(rand_color) as bg_color, idx}
-    <ElementTile {bg_color} element={element_data[idx]} style="width: 4em; margin: 0;" />
+    <ElementTile {bg_color} element={element_data[idx]} style="width: 4em; margin: 0" />
   {/each}
 </ol>
 
@@ -26,12 +29,20 @@ Displaying values instead of element names by passing the `value` prop.
 
 ```svelte example stackblitz code_above
 <script>
-  import { ElementTile, element_data } from '$lib'
+  import { element_data, ElementTile } from '$lib'
+
+  const bg_colors = 'red green blue yellow cyan magenta black white'.split()
 </script>
 
 <ol>
-  {#each ['red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'black', 'white'] as bg_color, idx}
-    <ElementTile {bg_color} element={element_data[idx]} value={Math.random()} style="width: 4em; margin: 0;" active />
+  {#each bg_colors as bg_color, idx}
+    <ElementTile
+      {bg_color}
+      element={element_data[idx]}
+      value={Math.random()}
+      style="width: 4em; margin: 0"
+      active
+    />
   {/each}
 </ol>
 
@@ -50,34 +61,76 @@ ElementTile supports displaying multiple values per tile with different split la
 
 ```svelte example stackblitz code_above
 <script>
-  import { ElementTile, element_data } from '$lib'
+  import { element_data, ElementTile } from '$lib'
 
   const values = {
     two: [1.2, 2.5],
     three: [1.2, 2.5, 0.8],
-    four: [1.2, 2.5, 0.8, 3.1]
+    four: [1.2, 2.5, 0.8, 3.1],
   }
   const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24']
-  const tile_style = "width: 5em; height: 5em;"
+  const tile_style = 'width: 5em; height: 5em;'
 </script>
 
 <h4>Auto-determined Layouts</h4>
-<p>When <code>split_layout</code> is not specified, the layout is automatically chosen based on the number of values.</p>
+<p>
+  When <code>split_layout</code> is not specified, the layout is automatically chosen
+  based on the number of values.
+</p>
 <div class="examples">
-  <ElementTile element={element_data[0]} value={values.two} bg_colors={colors.slice(0, 2)} style={tile_style} />
-  <ElementTile element={element_data[1]} value={values.three} bg_colors={colors.slice(0, 3)} style={tile_style} />
-  <ElementTile element={element_data[2]} value={values.four} bg_colors={colors} style={tile_style} />
+  <ElementTile
+    element={element_data[0]}
+    value={values.two}
+    bg_colors={colors.slice(0, 2)}
+    style={tile_style}
+  />
+  <ElementTile
+    element={element_data[1]}
+    value={values.three}
+    bg_colors={colors.slice(0, 3)}
+    style={tile_style}
+  />
+  <ElementTile
+    element={element_data[2]}
+    value={values.four}
+    bg_colors={colors}
+    style={tile_style}
+  />
 </div>
 
 <h4>Explicit Layout Control</h4>
 <div class="examples">
   <!-- 3 values: horizontal vs vertical -->
-  <ElementTile element={element_data[3]} value={values.three} bg_colors={colors.slice(0, 3)} split_layout="horizontal" style={tile_style} />
-  <ElementTile element={element_data[4]} value={values.three} bg_colors={colors.slice(0, 3)} split_layout="vertical" style={tile_style} />
+  <ElementTile
+    element={element_data[3]}
+    value={values.three}
+    bg_colors={colors.slice(0, 3)}
+    split_layout="horizontal"
+    style={tile_style}
+  />
+  <ElementTile
+    element={element_data[4]}
+    value={values.three}
+    bg_colors={colors.slice(0, 3)}
+    split_layout="vertical"
+    style={tile_style}
+  />
 
   <!-- 4 values: triangular vs quadrant -->
-  <ElementTile element={element_data[5]} value={values.four} bg_colors={colors} split_layout="triangular" style={tile_style} />
-  <ElementTile element={element_data[6]} value={values.four} bg_colors={colors} split_layout="quadrant" style={tile_style} />
+  <ElementTile
+    element={element_data[5]}
+    value={values.four}
+    bg_colors={colors}
+    split_layout="triangular"
+    style={tile_style}
+  />
+  <ElementTile
+    element={element_data[6]}
+    value={values.four}
+    bg_colors={colors}
+    split_layout="quadrant"
+    style={tile_style}
+  />
 </div>
 
 <style>

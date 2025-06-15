@@ -18,7 +18,12 @@
 
 <h2>{data == 'MP' ? 'Materials Project' : 'WBM'} Element Occurrence Counts</h2>
 
-<PeriodicTable {heatmap_values} log={log_scale} {color_scale} bind:color_scale_range={nice_range}>
+<PeriodicTable
+  {heatmap_values}
+  log={log_scale}
+  {color_scale}
+  bind:color_scale_range={nice_range}
+>
   {#snippet inset({ active_element })}
     <TableInset>
       <section>
@@ -29,7 +34,7 @@
         <span>Log color scale <input type="checkbox" bind:checked={log_scale} /></span>
         <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />
       </section>
-      <strong style="height: 25pt;">
+      <strong style="height: 25pt">
         {#if active_element?.name}
           {active_element?.name}: {format_num(mp_elem_counts[active_element?.symbol])}
           <!-- compute percent of total -->
@@ -43,11 +48,11 @@
 </PeriodicTable>
 
 <ColorBar
-  range={[1, Math.max(...heatmap_values) ]}
+  range={[1, Math.max(...heatmap_values)]}
   {color_scale}
   bind:nice_range
   scale_type={log_scale ? `log` : `linear`}
-  style="width: 100%; margin: 4em 1em;"
+  style="width: 100%; margin: 4em 1em"
 />
 
 <style>

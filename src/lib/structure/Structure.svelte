@@ -11,7 +11,7 @@
   import Select from 'svelte-multiselect'
   import { Tooltip } from 'svelte-zoo'
   import { WebGLRenderer } from 'three'
-  import { BOND_DEFAULTS, CELL_DEFAULTS, StructureLegend, StructureScene } from '.'
+  import { BOND_DEFAULTS, CELL_DEFAULTS, StructureLegend, StructureScene } from './index'
 
   interface Props {
     // output of pymatgen.core.Structure.as_dict()

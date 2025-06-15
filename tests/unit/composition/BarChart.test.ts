@@ -21,7 +21,7 @@ vi.mock(`$lib/composition/parse`, () => ({
     Object.values(comp).reduce(
       (sum: number, val: number) => sum + (val || 0),
       0,
-    ),
+    )
   ),
 }))
 
@@ -93,7 +93,7 @@ describe(`BarChart component`, () => {
     expect(module.default).toBeDefined()
   })
 
-  test(`renders container with correct dimensions`, async () => {
+  test(`renders container with correct dimensions`, () => {
     mount(BarChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, width: 300, height: 60 },
@@ -105,7 +105,7 @@ describe(`BarChart component`, () => {
     expect(container?.getAttribute(`style`)).toContain(`--bar-height: 60px`)
   })
 
-  test(`renders segments for each element`, async () => {
+  test(`renders segments for each element`, () => {
     mount(BarChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1, C: 1 }, width: 300, height: 60 },
@@ -114,7 +114,7 @@ describe(`BarChart component`, () => {
     expect(document.querySelectorAll(`.bar-segment`)).toHaveLength(3)
   })
 
-  test(`handles interactive mode`, async () => {
+  test(`handles interactive mode`, () => {
     mount(BarChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, interactive: true },
@@ -130,7 +130,7 @@ describe(`BarChart component`, () => {
     [true, `outer corners only`],
   ])(
     `applies border radius correctly when outer_corners_only is %s`,
-    async (outer_corners_only) => {
+    (outer_corners_only) => {
       mount(BarChart, {
         target: document.body,
         props: {
@@ -147,7 +147,7 @@ describe(`BarChart component`, () => {
     },
   )
 
-  test(`handles segment gaps and labels`, async () => {
+  test(`handles segment gaps and labels`, () => {
     mount(BarChart, {
       target: document.body,
       props: {

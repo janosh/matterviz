@@ -320,7 +320,7 @@ All notable changes to this project will be documented in this file. Dates are d
 - add script src/update-site-screenshots.ts [`b70e8bd`](https://github.com/janosh/elementari/commit/b70e8bd1e8b3f5237e1186fe1ef13d0dc896b64b)
 - add src/lib/PropertySelect.svelte used byindex.svelte and [slug].svelte [`2654347`](https://github.com/janosh/elementari/commit/2654347ebfe27ba9bac11e04dc8e3ad7c6371d53)
 - incl logo in readme heading, update deps, fix error page offline warning [`415e788`](https://github.com/janosh/elementari/commit/415e788d62d2e770d961cedb6f8e2f82ae9c72e9)
-- simplify svg coords in BohrAtom.svelte by placing origin in <svg> center [`3511ca4`](https://github.com/janosh/elementari/commit/3511ca445975f2f9654a4d02eba9c05cf1ca94f7)
+- simplify svg coords in BohrAtom.svelte by placing origin in `<svg>` center [`3511ca4`](https://github.com/janosh/elementari/commit/3511ca445975f2f9654a4d02eba9c05cf1ca94f7)
 - move d3-array, d3-interpolate-path, d3-shape, d3-scale, @iconify/svelte from package devDeps to deps [`f901471`](https://github.com/janosh/elementari/commit/f90147114cb46112222e2a8d89e22144e2081f90)
 - add src/routes/bohr-atoms.svelte [`b77abe8`](https://github.com/janosh/elementari/commit/b77abe868e9c4fe62831c19380ffb5158b1a0f92)
 - use new SvelteKit snapshot feature to restore color scale on browser back navigation [`edf121d`](https://github.com/janosh/elementari/commit/edf121debc2a02c455a46af134802e5ea96fa3d4)

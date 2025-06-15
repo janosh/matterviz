@@ -1,11 +1,11 @@
 import {
+  type CompressionFormat,
   decompress_data,
   decompress_file,
   decompress_gzip,
   detect_compression_format,
   is_compressed_file,
   remove_compression_extension,
-  type CompressionFormat,
 } from '$lib/io/decompress'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 

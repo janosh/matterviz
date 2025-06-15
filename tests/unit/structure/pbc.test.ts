@@ -19,9 +19,7 @@ test(`pbc_dist basic functionality`, () => {
 
   // Corner atoms - dramatic PBC improvement
   const corner1: Vector = [0.1, 0.1, 0.1]
-  const corner2: Vector = [
-    6.156930122878799, 6.156930122878799, 6.156930122878799,
-  ]
+  const corner2: Vector = [6.156930122878799, 6.156930122878799, 6.156930122878799]
   const corner_direct = euclidean_dist(corner1, corner2)
   const corner_pbc = pbc_dist(corner1, corner2, cubic_lattice)
   expect(corner_pbc).toBeCloseTo(0.346, 3)
@@ -195,7 +193,7 @@ test(`pbc_dist symmetry equivalence`, () => {
   ]
 
   const equiv_distances = equiv_cases.map(({ pos1, pos2 }) =>
-    pbc_dist(pos1 as Vector, pos2 as Vector, sym_lattice),
+    pbc_dist(pos1 as Vector, pos2 as Vector, sym_lattice)
   )
 
   // All should be equal (0.2 Å)

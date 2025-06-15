@@ -24,7 +24,7 @@
 
 <h1>ColorBar Component Playwright Tests</h1>
 
-<div id="horizontal-primary" style="margin-bottom: 40px; width: 300px;">
+<div id="horizontal-primary" style="margin-bottom: 40px; width: 300px">
   <h2>Horizontal, Primary Ticks, Top Title</h2>
   <ColorBar
     title="Temperature (°C)"
@@ -36,7 +36,7 @@
   />
 </div>
 
-<div id="vertical-secondary" style="margin-bottom: 40px; height: 300px;">
+<div id="vertical-secondary" style="margin-bottom: 40px; height: 300px">
   <h2>Vertical, Secondary Ticks, Right Title</h2>
   <ColorBar
     orientation="vertical"
@@ -49,7 +49,7 @@
   />
 </div>
 
-<div id="horizontal-inside" style="margin-bottom: 40px; width: 300px;">
+<div id="horizontal-inside" style="margin-bottom: 40px; width: 300px">
   <h2>Horizontal, Inside Ticks, Turbo Scale</h2>
   <ColorBar
     title="Intensity"
@@ -62,7 +62,7 @@
   />
 </div>
 
-<div id="vertical-log" style="margin-bottom: 40px; height: 300px;">
+<div id="vertical-log" style="margin-bottom: 40px; height: 300px">
   <h2>Vertical, Inside Ticks, Log Scale</h2>
   <ColorBar
     orientation="vertical"
@@ -75,7 +75,7 @@
   />
 </div>
 
-<div id="horizontal-date" style="margin-bottom: 40px; width: 400px;">
+<div id="horizontal-date" style="margin-bottom: 40px; width: 400px">
   <h2>Horizontal, Date Ticks</h2>
   <ColorBar
     title="Timestamp"
@@ -88,7 +88,7 @@
   />
 </div>
 
-<div id="vertical-no-snap" style="margin-bottom: 40px; height: 250px;">
+<div id="vertical-no-snap" style="margin-bottom: 40px; height: 250px">
   <h2>Vertical, No Snap, Numeric Format</h2>
   <ColorBar
     orientation="vertical"
@@ -102,20 +102,20 @@
   />
 </div>
 
-<div id="horizontal-custom-styles" style="margin-bottom: 40px; width: 350px;">
+<div id="horizontal-custom-styles" style="margin-bottom: 40px; width: 350px">
   <h2>Horizontal, Custom Styles</h2>
   <ColorBar
     title="Custom Styled"
     color_scale="Warm"
     range={[0, 5]}
     tick_labels={6}
-    style="border: 2px solid red; border-radius: 0;"
+    style="border: 2px solid red; border-radius: 0"
     title_style="color: blue; font-style: italic;"
     wrapper_style="background-color: lightgrey; padding: 10px;"
   />
 </div>
 
-<div id="vertical-custom-fn" style="margin-bottom: 40px; height: 300px;">
+<div id="vertical-custom-fn" style="margin-bottom: 40px; height: 300px">
   <h2>Vertical, Custom Scale Function & Domain</h2>
   <ColorBar
     orientation="vertical"
@@ -128,7 +128,7 @@
   />
 </div>
 
-<div id="horizontal-nice-range" style="margin-bottom: 40px; width: 300px;">
+<div id="horizontal-nice-range" style="margin-bottom: 40px; width: 300px">
   <h2>Horizontal, Bind Nice Range (Snap=true)</h2>
   <ColorBar
     title="Nice Range Output"

@@ -224,7 +224,7 @@
 
 <section id="empty-state">
   <h2>Empty State</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       bind:trajectory={empty_trajectory}
       bind:current_step_idx={current_step}
@@ -235,7 +235,7 @@
 
 <section id="loaded-trajectory">
   <h2>Loaded Trajectory</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       bind:trajectory={loaded_trajectory}
       bind:current_step_idx={current_step}
@@ -249,7 +249,7 @@
 
 <section id="vertical-layout">
   <h2>Vertical Layout</h2>
-  <div style="height: 500px; border: 1px solid #ccc;">
+  <div style="height: 500px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
       layout="vertical"
@@ -261,7 +261,7 @@
 
 <section id="no-controls">
   <h2>No Controls</h2>
-  <div style="height: 300px; border: 1px solid #ccc;">
+  <div style="height: 300px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
       show_controls={false}
@@ -272,7 +272,7 @@
 
 <section id="error-state">
   <h2>Error State (will show error after mount)</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       bind:trajectory={error_trajectory}
       trajectory_url="/non-existent-trajectory.json"
@@ -283,7 +283,7 @@
 
 <section id="custom-extractor">
   <h2>Custom Data Extractor</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
       data_extractor={(frame: TrajectoryFrame) => ({
@@ -297,7 +297,7 @@
 
 <section id="custom-properties">
   <h2>Custom Property Labels and Units</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
       property_labels={{ energy: `Total Energy`, force_max: `Max Force` }}
@@ -309,14 +309,14 @@
 
 <section id="negative-step-labels">
   <h2>Negative Step Labels (Spacing-based)</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer trajectory={test_trajectory} step_labels={-1} layout="horizontal" />
   </div>
 </section>
 
 <section id="array-step-labels">
   <h2>Array Step Labels (Exact positions)</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
       step_labels={[0, 2]}
@@ -327,16 +327,18 @@
 
 <section id="trajectory-url">
   <h2>Trajectory URL Loading</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer trajectory_url="/test-trajectory.json" allow_file_drop={true} />
   </div>
 </section>
 
 <section id="custom-controls">
   <h2>Custom Trajectory Controls</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer trajectory={test_trajectory} layout="horizontal">
-      {#snippet trajectory_controls({ current_step_idx, total_frames, on_step_change })}
+      {#snippet trajectory_controls(
+        { current_step_idx, total_frames, on_step_change },
+      )}
         <div class="custom-trajectory-controls">
           <button onclick={() => on_step_change(0)}>First</button>
           <span>Step {current_step_idx + 1} of {total_frames}</span>
@@ -349,7 +351,7 @@
 
 <section id="error-snippet">
   <h2>Custom Error Snippet</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer trajectory={undefined} trajectory_url="/non-existent-file.json">
       {#snippet error_snippet({ error_message, on_dismiss })}
         <div class="custom-error">
@@ -364,14 +366,14 @@
 
 <section id="constant-values">
   <h2>Constant Values (Plot Hidden)</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer trajectory={constant_trajectory} layout="horizontal" />
   </div>
 </section>
 
 <section id="dual-axis">
   <h2>Dual Y-Axis Configuration</h2>
-  <div style="height: 400px; border: 1px solid #ccc;">
+  <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={dual_axis_trajectory}
       data_extractor={(frame: TrajectoryFrame) => ({

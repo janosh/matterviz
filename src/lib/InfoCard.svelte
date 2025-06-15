@@ -45,7 +45,13 @@
       {/if}
     </h2>
   {/if}
-  {#each data.filter((itm) => (!(`condition` in itm) || itm?.condition) && ![undefined, null].includes(itm.value)) as { title, value, unit, fmt = default_fmt, tooltip } (title + value + unit + fmt)}
+  {#each data.filter((itm) =>
+      (!(`condition` in itm) || itm?.condition) &&
+      ![undefined, null].includes(itm.value)
+    ) as
+    { title, value, unit, fmt = default_fmt, tooltip }
+    (title + value + unit + fmt)
+  }
     <div>
       <span class="title" {title}>
         {@html title}

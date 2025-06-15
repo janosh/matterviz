@@ -34,8 +34,8 @@ export const heatmap_keys: (keyof ChemicalElement)[] = [
   `first_ionization`,
 ]
 
-export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> =
-  Object.fromEntries(
+export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> = Object
+  .fromEntries(
     heatmap_keys.map((key) => {
       const [label, unit] = property_labels[key] ?? []
       if (!label) throw `Unexpected missing label ${label}`
@@ -115,7 +115,7 @@ export const categories = [
   `transition metal`,
 ] as const
 
-// prettier-ignore
+// deno-fmt-ignore-next-line
 export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
 
 // calculate human-perceived brightness from RGB color
@@ -149,8 +149,7 @@ export function choose_bw_for_contrast(
   bg_color: string | null = null,
   text_color_threshold: number = 0.7,
 ) {
-  const light_bg =
-    luminance(get_bg_color(node, bg_color)) > text_color_threshold
+  const light_bg = luminance(get_bg_color(node, bg_color)) > text_color_threshold
   return light_bg ? `black` : `white` // white text for dark backgrounds, black for light
 }
 
@@ -219,17 +218,21 @@ export function get_label_with_unit(
   const unit = units?.[lower_key] || units?.[key] || ``
 
   // Special formatting for force properties
-  if (lower_key === `force_max` || key === `Force Max`)
+  if (lower_key === `force_max` || key === `Force Max`) {
     return unit ? `F<sub>max</sub> (${unit})` : `F<sub>max</sub>`
+  }
 
-  if (lower_key === `force_norm` || key === `Force RMS`)
+  if (lower_key === `force_norm` || key === `Force RMS`) {
     return unit ? `F<sub>norm</sub> (${unit})` : `F<sub>norm</sub>`
+  }
 
-  if (lower_key === `stress_max`)
+  if (lower_key === `stress_max`) {
     return unit ? `σ<sub>max</sub> (${unit})` : `σ<sub>max</sub>`
+  }
 
-  if (lower_key === `temperature`)
+  if (lower_key === `temperature`) {
     return unit ? `Temperature (${unit})` : `Temperature`
+  }
 
   // Capitalize the key name for all other properties
   const capitalized_key = key.charAt(0).toUpperCase() + key.slice(1)

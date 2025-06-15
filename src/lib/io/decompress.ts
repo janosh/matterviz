@@ -36,7 +36,7 @@ export async function decompress_data(
   format: CompressionFormat,
 ): Promise<string> {
   if (!(`DecompressionStream` in window)) {
-    throw new Error(`DecompressionStream API not supported`)
+    throw `DecompressionStream API not supported`
   }
 
   try {
@@ -51,15 +51,14 @@ export async function decompress_data(
       stream.pipeThrough(new DecompressionStream(format)),
     ).text()
   } catch (error) {
-    throw new Error(`Failed to decompress ${format} file: ${error}`)
+    throw `Failed to decompress ${format} file: ${error}`
   }
 }
 
 // Legacy compatibility
-export const decompress_gzip = (data: ArrayBuffer) =>
-  decompress_data(data, `gzip`)
+export const decompress_gzip = (data: ArrayBuffer) => decompress_data(data, `gzip`)
 
-export async function decompress_file(
+export function decompress_file(
   file: File,
 ): Promise<{ content: string; filename: string }> {
   const compressed = is_compressed_file(file.name)
@@ -70,12 +69,11 @@ export async function decompress_file(
     reader.onload = async (event) => {
       try {
         const result = event.target?.result
-        if (!result) throw new Error(`Failed to read file`)
+        if (!result) throw `Failed to read file`
 
         if (compressed) {
           const format = detect_compression_format(file.name)
-          if (!format)
-            throw new Error(`Unsupported compression format: ${file.name}`)
+          if (!format) throw `Unsupported compression format: ${file.name}`
 
           const content = await decompress_data(result as ArrayBuffer, format)
           resolve({
