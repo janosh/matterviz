@@ -180,15 +180,17 @@ export interface AnchorNode extends SimulationNodeDatum {
 }
 
 // Type for PlotLegend props forwarded from ScatterPlot props
-export type LegendConfig = Omit<
-  ComponentProps<typeof PlotLegend>,
-  `series_data` | `on_toggle` | `on_drag_start` | `on_drag` | `on_drag_end`
-> & {
-  margin?: number | Sides
-  tween?: TweenedOptions<XyObj>
-  responsive?: boolean // Allow legend to move if density changes (default: false)
-  draggable?: boolean // Allow legend to be dragged (default: true)
-}
+export type LegendConfig =
+  & Omit<
+    ComponentProps<typeof PlotLegend>,
+    `series_data` | `on_toggle` | `on_drag_start` | `on_drag` | `on_drag_end`
+  >
+  & {
+    margin?: number | Sides
+    tween?: TweenedOptions<XyObj>
+    responsive?: boolean // Allow legend to move if density changes (default: false)
+    draggable?: boolean // Allow legend to be dragged (default: true)
+  }
 
 // Define grid cell identifiers
 export const cells_3x3 = [

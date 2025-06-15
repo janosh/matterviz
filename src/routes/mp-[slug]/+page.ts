@@ -3,7 +3,7 @@ import type { RobocrystallogapherDoc, SimilarityDoc, SummaryDoc } from '$types'
 
 export const prerender = false
 
-export const load = async ({ params }) => {
+export const load = ({ params }) => {
   const file = `mp-${params.slug}.json.gz`
   const summary_url = `${mp_build_bucket}/summary/${file}`
   const similarity_url = `${mp_build_bucket}/similarity/${file}`

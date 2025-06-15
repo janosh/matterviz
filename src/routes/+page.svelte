@@ -6,15 +6,15 @@
   import { FileCarousel, PeriodicTableDemo, structures } from '$site'
   import { onMount } from 'svelte'
 
-  const structure_files_raw = import.meta.glob(`$site/structures/*.{poscar,xyz,cif}`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  }) as Record<string, string>
+  const structure_files_raw = import.meta.glob(
+    `$site/structures/*.{poscar,xyz,cif}`,
+    { eager: true, query: `?raw`, import: `default` },
+  ) as Record<string, string>
 
   // Structure viewer state as arrays
   const mp_id = `mp-756175`
-  const cif_file_content = structure_files_raw[`/src/site/structures/Li4Fe3Mn1(PO4)4.cif`]
+  const cif_file_content =
+    structure_files_raw[`/src/site/structures/Li4Fe3Mn1(PO4)4.cif`]
 
   let viewer_structures = $state<(AnyStructure | undefined)[]>([undefined, undefined])
   let active_files = $state<string[]>([`${mp_id}.json`, `Li4Fe3Mn1(PO4)4.cif`])
@@ -47,7 +47,8 @@
     const parts: string[] = filename.split(/[-_]/)
     if (parts.length > 1) {
       const mid_point: number = Math.ceil(parts.length / 2)
-      return parts.slice(0, mid_point).join(`-`) + `\n` + parts.slice(mid_point).join(`-`)
+      return parts.slice(0, mid_point).join(`-`) + `\n` +
+        parts.slice(mid_point).join(`-`)
     }
 
     // Fallback: break in the middle
@@ -97,7 +98,9 @@
   // Create file objects from glob imports and structures
   const sample_files: FileInfo[] = [
     // Non-JSON files from glob import
-    ...Object.entries(structure_files_raw).map(([path, content]: [string, string]) => ({
+    ...Object.entries(structure_files_raw).map((
+      [path, content]: [string, string],
+    ) => ({
       name: path.split(`/`).pop() as string,
       content: content,
     })),
@@ -161,7 +164,9 @@
         const filename = last_loaded_filename || `structure.json`
         structure_handlers[0](editable_content, filename)
       } catch (error) {
-        parsing_error = `Parsing error: ${error instanceof Error ? error.message : String(error)}`
+        parsing_error = `Parsing error: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       }
     }, 500)
   }
@@ -179,12 +184,12 @@
       const parsed = parse_structure_file(content, filename)
       return parsed
         ? {
-            sites: parsed.sites,
-            charge: 0,
-            ...(parsed.lattice && {
-              lattice: { ...parsed.lattice, pbc: [true, true, true] },
-            }),
-          }
+          sites: parsed.sites,
+          charge: 0,
+          ...(parsed.lattice && {
+            lattice: { ...parsed.lattice, pbc: [true, true, true] },
+          }),
+        }
         : null
     }
   }
@@ -208,15 +213,18 @@
     }
 
   // Create handlers for each viewer
-  const structure_handlers = [create_file_drop_handler(0), create_file_drop_handler(1)]
+  const structure_handlers = [
+    create_file_drop_handler(0),
+    create_file_drop_handler(1),
+  ]
 </script>
 
-<h1 style="margin: 0;">Elementari</h1>
+<h1 style="margin: 0">Elementari</h1>
 
 <p>
-  <code>elementari</code> is a toolkit for building interactive web UIs for materials science:
-  periodic tables, 3d crystal structures (and molecules), Bohr atoms, nuclei, heatmaps, scatter
-  plots. Check out some of the examples in the navigation bar above.
+  <code>elementari</code> is a toolkit for building interactive web UIs for materials
+  science: periodic tables, 3d crystal structures (and molecules), Bohr atoms, nuclei,
+  heatmaps, scatter plots. Check out some of the examples in the navigation bar above.
 </p>
 
 <h2>Structure Viewers</h2>
@@ -229,7 +237,7 @@
         {structure}
         scene_props={{ auto_rotate: 0.5 }}
         on_file_drop={structure_handlers[idx]}
-        style="--struct-height: 400px;"
+        style="--struct-height: 400px"
       />
     </div>
   {/each}
@@ -239,9 +247,9 @@
 
 <p>
   Either from the set of example files or drag a local <code>extXYZ</code>,
-  <code>POSCAR</code>, <code>CIF</code>, <code>pymatgen</code> JSON files, or compressed versions
-  of these files onto either structure viewer. You can also edit the structure content in the
-  textarea below. Changes will automatically update both 3D viewers.
+  <code>POSCAR</code>, <code>CIF</code>, <code>pymatgen</code> JSON files, or compressed
+  versions of these files onto either structure viewer. You can also edit the structure
+  content in the textarea below. Changes will automatically update both 3D viewers.
 </p>
 
 <div class="files-and-textearea">
@@ -268,14 +276,13 @@
 
 <p>
   The 3d structure viewer is built on the declarative <a href="https://threejs.org"
-    >three.js</a
-  >
+  >three.js</a>
   wrapper <a href="https://threlte.xyz"><code>threlte</code></a>. It gets Svelte-compiled
   for great performance (even on supercells with 100+ atoms), is split up into
   <code>Bond</code>, <code>Lattice</code>, <code>Scene</code> and <code>Site</code>
-  components for easy extensibility. You can pass various click, drag and touch event handlers
-  for rich interactivity as well as inject custom HTML into tooltips using child components.
-  These show
+  components for easy extensibility. You can pass various click, drag and touch event
+  handlers for rich interactivity as well as inject custom HTML into tooltips using child
+  components. These show
   <a href="https://materialsproject.org">Materials Project</a>
   structure for <a href="https://materialsproject.org/materials/{mp_id}">{mp_id}</a>
   and a lithium iron manganese phosphate structure from a CIF file.

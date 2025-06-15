@@ -25,7 +25,7 @@
   </center>
 
   <h2>Available AWS Open Data Buckets</h2>
-  <ol style="columns: 3;">
+  <ol style="columns: 3">
     {#each data.buckets as bucket_name (bucket_name)}
       <li>
         <code>{bucket_name}</code>
@@ -54,10 +54,12 @@
         <h3>{idx + 1}. <code>{bucket_name}</code> bucket</h3>
       </summary>
       <details open>
-        <summary><h4>Top-level keys</h4> </summary>
+        <summary><h4>Top-level keys</h4></summary>
         <ul>
           {#each Object.entries(responses[bucket_name] ?? {}) as [key, val] (key)}
-            <li><span class="key">{key}</span>: <small>{typeof val}</small></li>
+            <li>
+              <span class="key">{key}</span>: <small>{typeof val}</small>
+            </li>
           {/each}
         </ul>
       </details>

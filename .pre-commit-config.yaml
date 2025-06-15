@@ -1,6 +1,6 @@
 ci:
   autoupdate_schedule: quarterly
-  skip: [prettier, eslint]
+  skip: [deno-fmt, deno-lint]
 
 default_stages: [pre-commit]
 
@@ -19,33 +19,18 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
+  - repo: local
     hooks:
-      - id: prettier
-        args: [--write] # edit files in-place
-        additional_dependencies:
-          - prettier
-          - prettier-plugin-svelte
-          - svelte
-        stages: [pre-commit]
-        exclude: ^changelog.md|.*/(structures|molecules|colors)/.*\.json|.py$
-
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.28.0
-    hooks:
-      - id: eslint
-        types: [file]
-        args: [--fix]
-        files: \.(js|ts|svelte)$
-        additional_dependencies:
-          - eslint
-          - eslint-plugin-svelte
-          - svelte
-          - globals
-          - typescript
-          - typescript-eslint
-          - '@stylistic/eslint-plugin'
+      - id: deno-fmt
+        name: Deno format
+        entry: deno fmt
+        files: \.(ts|js|svelte)$
+        language: system
+      - id: deno-lint
+        name: Deno lint
+        entry: deno lint
+        files: \.(ts|js|svelte)$
+        language: system
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
@@ -54,3 +39,12 @@ repos:
         stages: [pre-commit, commit-msg]
         args:
           [--ignore-words-list, 'te,ba,nd,ore,claus,manuel', --check-filenames]
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+      - id: markdownlint
+        # MD013: line too long
+        # MD033: no inline HTML
+        # MD041: first line in a file should be a top-level heading
+        args: [--disable, MD013, MD033, MD041, '--']

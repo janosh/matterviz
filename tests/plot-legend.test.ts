@@ -9,9 +9,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await page.goto(`/test/plot-legend`)
   })
 
-  test(`should render legend items correctly based on initial data`, async ({
-    page,
-  }) => {
+  test(`should render legend items correctly based on initial data`, async ({ page }) => {
     // Target the first legend instance
     const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
     await expect(legend_items).toHaveCount(5)
@@ -99,9 +97,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     ).toHaveAttribute(`stroke-dasharray`, `none`) // Verify solid line style
   })
 
-  test.skip(`should toggle item visibility on single click`, async ({
-    page,
-  }) => {
+  test.skip(`should toggle item visibility on single click`, async ({ page }) => {
     const legend_items = page
       .locator(main_legend_wrapper)
       .locator(`.legend-item`)
@@ -131,9 +127,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await expect(last_toggled_tracker).toHaveText(`Last Toggled Index: 2`)
   })
 
-  test.skip(`should isolate item on double click and restore on second double click`, async ({
-    page,
-  }) => {
+  test.skip(`should isolate item on double click and restore on second double click`, async ({ page }) => {
     const legend_items = page
       .locator(main_legend_wrapper)
       .locator(`.legend-item`)
@@ -220,9 +214,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     await expect(legend_item).toHaveCSS(`padding`, `1px`) // Check padding applied to item
   })
 
-  test(`should display correct line colors in legend markers`, async ({
-    page,
-  }) => {
+  test(`should display correct line colors in legend markers`, async ({ page }) => {
     const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
     const expected_colors = [
       `crimson`,
@@ -232,8 +224,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
       `purple`,
     ]
 
-    for (let idx = 0; idx < expected_colors.length; idx++) {
-      const expected_color = expected_colors[idx]
+    const promises = expected_colors.map(async (expected_color, idx) => {
       const line_marker = legend_items.nth(idx).locator(`.legend-marker line`)
 
       if (expected_color) {
@@ -243,6 +234,8 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
         // Item 2 (Gamma) should not have a line
         await expect(line_marker).toHaveCount(0)
       }
-    }
+    })
+
+    await Promise.all(promises)
   })
 })

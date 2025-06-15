@@ -125,51 +125,47 @@ test.each(structures)(`find_image_atoms`, async (structure) => {
   }
 })
 
-test.each(structures)(`symmetrize_structure`, async (structure) => {
+test.each(structures)(`symmetrize_structure`, (structure) => {
   const orig_len = structure.sites.length
   const symmetrized = struct_utils.get_pbc_image_sites(structure)
   const { id } = structure
-  const expected = {
-    'mp-1': 12,
-    'mp-2': 40,
-    'mp-1234': 72,
-    'mp-756175': 448,
-  }[id]
+  const struct_size_map = { 'mp-1': 12, 'mp-2': 40, 'mp-1234': 72, 'mp-756175': 448 }
+  const expected_n_sites = struct_size_map[id as keyof typeof struct_size_map]
   // No ref data for id
-  if (!expected) return
-  const msg = `${id} has ${symmetrized.sites.length} sites, expected ${expected}`
-  expect(symmetrized.sites.length, msg).toEqual(expected)
+  if (!expected_n_sites) return
+  const msg = `${id} has ${symmetrized.sites.length} sites, expected ${expected_n_sites}`
+  expect(symmetrized.sites.length, msg).toEqual(expected_n_sites)
   expect(symmetrized.sites.length, msg).toBeGreaterThan(orig_len)
   expect(structure.sites.length, msg).toBe(orig_len)
 })
 
-test.each(structures)(`get_center_of_mass for $id`, async (struct) => {
+test.each(structures)(`get_center_of_mass for $id`, (struct) => {
   const com = struct_utils.get_center_of_mass(struct)
-  const expected = ref_data[struct.id]?.center_of_mass
-  if (!expected) return
+  const expected_com = ref_data[struct.id]?.center_of_mass
+  if (!expected_com) return
   expect(
     com.map((val) => Math.round(val * 1e3) / 1e3),
     struct.id,
-  ).toEqual(expected)
+  ).toEqual(expected_com)
 })
 
-test.each(structures)(`alphabetical_formula for $id`, async (struct) => {
+test.each(structures)(`alphabetical_formula for $id`, (struct) => {
   const formula = struct_utils.alphabetical_formula(struct)
-  const expected = ref_data[struct.id]?.alphabetical_formula
-  if (!expected) return
-  expect(formula, struct.id).toEqual(expected)
+  const expected_formula = ref_data[struct.id]?.alphabetical_formula
+  if (!expected_formula) return
+  expect(formula, struct.id).toEqual(expected_formula)
 })
 
-test.each(structures)(`electro_neg_formula for $id`, async (struct) => {
+test.each(structures)(`electro_neg_formula for $id`, (struct) => {
   const formula = struct_utils.electro_neg_formula(struct)
-  const expected = ref_data[struct.id]?.electro_neg_formula
-  if (!expected) return
-  expect(formula, struct.id).toEqual(expected)
+  const expected_formula = ref_data[struct.id]?.electro_neg_formula
+  if (!expected_formula) return
+  expect(formula, struct.id).toEqual(expected_formula)
 })
 
-test.each(structures)(`get_elements for $id`, async (struct) => {
+test.each(structures)(`get_elements for $id`, (struct) => {
   const elements = struct_utils.get_elements(struct)
-  const expected = ref_data[struct.id]?.elements
-  if (!expected) return
-  expect(elements, struct.id).toEqual(expected)
+  const expected_elements = ref_data[struct.id]?.elements
+  if (!expected_elements) return
+  expect(elements, struct.id).toEqual(expected_elements)
 })

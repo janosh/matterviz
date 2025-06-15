@@ -26,7 +26,7 @@ Note that the last two cells are empty because there were only 8 items in the li
 
 Big thanks to the element image providers listed below. Each image caption links back to the source website. See [`fetch-elem-images.ts`](https://github.com/janosh/elementari/blob/-/src/fetch-elem-images.ts) for details.
 
-  <ul class="elem-img">
+<ul class="elem-img">
     {#each Object.entries(img_sources) as [key, href]}
       {@const [number, name] = key.split(`-`)}
       <li>

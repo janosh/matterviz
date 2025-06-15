@@ -240,8 +240,7 @@ export async function parse_torch_sim_hdf5(
       if (!atomic_numbers_dataset) {
         throw new Error(`Missing atomic_numbers dataset`)
       }
-      const atomic_numbers_data =
-        atomic_numbers_dataset.to_array() as number[][]
+      const atomic_numbers_data = atomic_numbers_dataset.to_array() as number[][]
       const atom_numbers = atomic_numbers_data[0] // First (and only) row
 
       const elements = atom_numbers.map((num: number) => {
@@ -309,15 +308,15 @@ export async function parse_torch_sim_hdf5(
           // Get the lattice matrix for this frame
           const lattice_matrix = cells?.[frame_idx]
             ? (cells[frame_idx].map((row) => row.slice() as Vector) as [
-                Vector,
-                Vector,
-                Vector,
-              ])
+              Vector,
+              Vector,
+              Vector,
+            ])
             : ([
-                [1, 0, 0],
-                [0, 1, 0],
-                [0, 0, 1],
-              ] as [Vector, Vector, Vector])
+              [1, 0, 0],
+              [0, 1, 0],
+              [0, 0, 1],
+            ] as [Vector, Vector, Vector])
 
           // Calculate lattice parameters
           const a = Math.sqrt(
@@ -338,8 +337,8 @@ export async function parse_torch_sim_hdf5(
 
           const volume = Math.abs(
             lattice_matrix[0][0] *
-              (lattice_matrix[1][1] * lattice_matrix[2][2] -
-                lattice_matrix[1][2] * lattice_matrix[2][1]) +
+                (lattice_matrix[1][1] * lattice_matrix[2][2] -
+                  lattice_matrix[1][2] * lattice_matrix[2][1]) +
               lattice_matrix[0][1] *
                 (lattice_matrix[1][2] * lattice_matrix[2][0] -
                   lattice_matrix[1][0] * lattice_matrix[2][2]) +
@@ -348,34 +347,31 @@ export async function parse_torch_sim_hdf5(
                   lattice_matrix[1][1] * lattice_matrix[2][0]),
           )
 
-          const alpha =
-            (Math.acos(
-              (lattice_matrix[1][0] * lattice_matrix[2][0] +
-                lattice_matrix[1][1] * lattice_matrix[2][1] +
-                lattice_matrix[1][2] * lattice_matrix[2][2]) /
-                (b * c),
-            ) *
-              180) /
+          const alpha = (Math.acos(
+            (lattice_matrix[1][0] * lattice_matrix[2][0] +
+              lattice_matrix[1][1] * lattice_matrix[2][1] +
+              lattice_matrix[1][2] * lattice_matrix[2][2]) /
+              (b * c),
+          ) *
+            180) /
             Math.PI
 
-          const beta =
-            (Math.acos(
-              (lattice_matrix[0][0] * lattice_matrix[2][0] +
-                lattice_matrix[0][1] * lattice_matrix[2][1] +
-                lattice_matrix[0][2] * lattice_matrix[2][2]) /
-                (a * c),
-            ) *
-              180) /
+          const beta = (Math.acos(
+            (lattice_matrix[0][0] * lattice_matrix[2][0] +
+              lattice_matrix[0][1] * lattice_matrix[2][1] +
+              lattice_matrix[0][2] * lattice_matrix[2][2]) /
+              (a * c),
+          ) *
+            180) /
             Math.PI
 
-          const gamma =
-            (Math.acos(
-              (lattice_matrix[0][0] * lattice_matrix[1][0] +
-                lattice_matrix[0][1] * lattice_matrix[1][1] +
-                lattice_matrix[0][2] * lattice_matrix[1][2]) /
-                (a * b),
-            ) *
-              180) /
+          const gamma = (Math.acos(
+            (lattice_matrix[0][0] * lattice_matrix[1][0] +
+              lattice_matrix[0][1] * lattice_matrix[1][1] +
+              lattice_matrix[0][2] * lattice_matrix[1][2]) /
+              (a * b),
+          ) *
+            180) /
             Math.PI
 
           // Create sites array in the expected format
@@ -384,14 +380,14 @@ export async function parse_torch_sim_hdf5(
             const inv_matrix = invert_3x3_matrix(lattice_matrix)
             const abc: Vector = [
               xyz_pos[0] * inv_matrix[0][0] +
-                xyz_pos[1] * inv_matrix[0][1] +
-                xyz_pos[2] * inv_matrix[0][2],
+              xyz_pos[1] * inv_matrix[0][1] +
+              xyz_pos[2] * inv_matrix[0][2],
               xyz_pos[0] * inv_matrix[1][0] +
-                xyz_pos[1] * inv_matrix[1][1] +
-                xyz_pos[2] * inv_matrix[1][2],
+              xyz_pos[1] * inv_matrix[1][1] +
+              xyz_pos[2] * inv_matrix[1][2],
               xyz_pos[0] * inv_matrix[2][0] +
-                xyz_pos[1] * inv_matrix[2][1] +
-                xyz_pos[2] * inv_matrix[2][2],
+              xyz_pos[1] * inv_matrix[2][1] +
+              xyz_pos[2] * inv_matrix[2][2],
             ]
 
             return {
@@ -431,12 +427,12 @@ export async function parse_torch_sim_hdf5(
             volume,
             ...(potential_energies &&
               frame_idx < potential_energies.length && {
-                energy: potential_energies[frame_idx],
-              }),
+              energy: potential_energies[frame_idx],
+            }),
             ...(kinetic_energies &&
               frame_idx < kinetic_energies.length && {
-                kinetic_energy: kinetic_energies[frame_idx],
-              }),
+              kinetic_energy: kinetic_energies[frame_idx],
+            }),
           }
 
           return {
@@ -497,8 +493,7 @@ function invert_3x3_matrix(
 ): [Vector, Vector, Vector] {
   const [[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]] = matrix
 
-  const det =
-    a11 * (a22 * a33 - a23 * a32) -
+  const det = a11 * (a22 * a33 - a23 * a32) -
     a12 * (a21 * a33 - a23 * a31) +
     a13 * (a21 * a32 - a22 * a31)
 
@@ -533,8 +528,7 @@ export function is_torch_sim_hdf5(
   filename?: string,
 ): boolean {
   // Check filename extension first
-  const has_hdf5_extension =
-    filename &&
+  const has_hdf5_extension = filename &&
     (filename.toLowerCase().endsWith(`.h5`) ||
       filename.toLowerCase().endsWith(`.hdf5`))
 
@@ -612,26 +606,23 @@ export function parse_vasp_xdatcar(content: string): Trajectory {
       a_vec[2] * (b_vec[0] * c_vec[1] - b_vec[1] * c_vec[0]),
   )
 
-  const alpha =
-    (Math.acos(
-      (b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]) /
-        (b * c),
-    ) *
-      180) /
+  const alpha = (Math.acos(
+    (b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]) /
+      (b * c),
+  ) *
+    180) /
     Math.PI
-  const beta =
-    (Math.acos(
-      (a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]) /
-        (a * c),
-    ) *
-      180) /
+  const beta = (Math.acos(
+    (a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]) /
+      (a * c),
+  ) *
+    180) /
     Math.PI
-  const gamma =
-    (Math.acos(
-      (a_vec[0] * b_vec[0] + a_vec[1] * b_vec[1] + a_vec[2] * b_vec[2]) /
-        (a * b),
-    ) *
-      180) /
+  const gamma = (Math.acos(
+    (a_vec[0] * b_vec[0] + a_vec[1] * b_vec[1] + a_vec[2] * b_vec[2]) /
+      (a * b),
+  ) *
+    180) /
     Math.PI
 
   const lattice = {
@@ -712,14 +703,14 @@ export function parse_vasp_xdatcar(content: string): Trajectory {
       // Convert fractional to Cartesian coordinates
       const xyz: Vector = [
         abc[0] * lattice_vectors[0][0] +
-          abc[1] * lattice_vectors[1][0] +
-          abc[2] * lattice_vectors[2][0],
+        abc[1] * lattice_vectors[1][0] +
+        abc[2] * lattice_vectors[2][0],
         abc[0] * lattice_vectors[0][1] +
-          abc[1] * lattice_vectors[1][1] +
-          abc[2] * lattice_vectors[2][1],
+        abc[1] * lattice_vectors[1][1] +
+        abc[2] * lattice_vectors[2][1],
         abc[0] * lattice_vectors[0][2] +
-          abc[1] * lattice_vectors[1][2] +
-          abc[2] * lattice_vectors[2][2],
+        abc[1] * lattice_vectors[1][2] +
+        abc[2] * lattice_vectors[2][2],
       ]
 
       sites.push({
@@ -782,9 +773,7 @@ export function is_vasp_xdatcar(content: string, filename?: string): boolean {
   if (lines.length < 10) return false
 
   // Look for "Direct configuration=" pattern which is unique to XDATCAR
-  const has_config_pattern = lines.some((line) =>
-    line.includes(`Direct configuration=`),
-  )
+  const has_config_pattern = lines.some((line) => line.includes(`Direct configuration=`))
 
   // Check if second line is a number (scale factor)
   const second_line_is_number = !isNaN(parseFloat(lines[1]))
@@ -848,8 +837,8 @@ export function parse_xyz_trajectory(content: string): Trajectory {
     const step = step_match
       ? parseInt(step_match[1])
       : frame_match
-        ? parseInt(frame_match[1])
-        : frames.length
+      ? parseInt(frame_match[1])
+      : frames.length
 
     if (energy_match) {
       frame_metadata.energy = parseFloat(energy_match[1])
@@ -953,8 +942,7 @@ export function is_xyz_trajectory(content: string, filename?: string): boolean {
               if (parts.length >= 4) {
                 const first_token = parts[0]
                 const coords = parts.slice(1, 4)
-                const is_element =
-                  isNaN(parseInt(first_token)) && first_token.length <= 3
+                const is_element = isNaN(parseInt(first_token)) && first_token.length <= 3
                 const are_coords = coords.every(
                   (coord) => !isNaN(parseFloat(coord)),
                 )
@@ -1047,7 +1035,7 @@ export function parse_pymatgen_trajectory(
         const forces = forces_obj.data as number[][]
         if (forces.length > 0) {
           const force_magnitudes = forces.map((force: number[]) =>
-            Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2),
+            Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
           )
           metadata.force_max = Math.max(...force_magnitudes)
           metadata.force_rms = Math.sqrt(
@@ -1363,7 +1351,9 @@ u.atoms.write('${filename.replace(`.dcd`, `.xyz`)}', frames='all')`,
     return `
       <div class="unsupported-format">
         <h4>🚫 Unsupported Format: Binary File</h4>
-        <p>The file <code>${escape_html(filename)}</code> appears to be a binary file and cannot be parsed as text.</p>
+        <p>The file <code>${
+      escape_html(filename)
+    }</code> appears to be a binary file and cannot be parsed as text.</p>
         <div class="code-options">
           <h5>💡 Supported Formats:</h5>
           <ul>
@@ -1400,7 +1390,9 @@ function create_format_error(
   return `
     <div class="unsupported-format">
       <h4>🚫 Unsupported Format: ${escape_html(format_name)}</h4>
-      <p>The file <code>${escape_html(filename)}</code> appears to be a ${escape_html(format_name.toLowerCase())} file, which is not directly supported.</p>
+      <p>The file <code>${escape_html(filename)}</code> appears to be a ${
+    escape_html(format_name.toLowerCase())
+  } file, which is not directly supported.</p>
       <h5>💡 Conversion Options:</h5>
       <div class="code-options">
         ${conversion_html}

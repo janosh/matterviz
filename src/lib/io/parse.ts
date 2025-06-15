@@ -41,14 +41,14 @@ function matrix_vector_multiply(
   // Multiply a 3x3 matrix by a 3D vector
   return [
     matrix[0][0] * vector[0] +
-      matrix[0][1] * vector[1] +
-      matrix[0][2] * vector[2],
+    matrix[0][1] * vector[1] +
+    matrix[0][2] * vector[2],
     matrix[1][0] * vector[0] +
-      matrix[1][1] * vector[1] +
-      matrix[1][2] * vector[2],
+    matrix[1][1] * vector[1] +
+    matrix[1][2] * vector[2],
     matrix[2][0] * vector[0] +
-      matrix[2][1] * vector[1] +
-      matrix[2][2] * vector[2],
+    matrix[2][1] * vector[1] +
+    matrix[2][2] * vector[2],
   ]
 }
 
@@ -219,8 +219,8 @@ export function parse_poscar(content: string): ParsedStructure | null {
     if (scale_factor < 0) {
       const volume = Math.abs(
         lattice_vecs[0][0] *
-          (lattice_vecs[1][1] * lattice_vecs[2][2] -
-            lattice_vecs[1][2] * lattice_vecs[2][1]) +
+            (lattice_vecs[1][1] * lattice_vecs[2][2] -
+              lattice_vecs[1][2] * lattice_vecs[2][1]) +
           lattice_vecs[0][1] *
             (lattice_vecs[1][2] * lattice_vecs[2][0] -
               lattice_vecs[1][0] * lattice_vecs[2][2]) +
@@ -299,7 +299,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       // VASP 4 format - only atom counts, generate default element symbols
       atom_counts = lines[line_index].trim().split(/\s+/).map(Number)
       element_symbols = atom_counts.map((_, i) =>
-        validate_element_symbol(`Element${i}`, i),
+        validate_element_symbol(`Element${i}`, i)
       )
       line_index += 1
     }
@@ -327,8 +327,8 @@ export function parse_poscar(content: string): ParsedStructure | null {
 
       // Determine coordinate mode
       const is_direct = coordinate_mode.startsWith(`D`)
-      const is_cartesian =
-        coordinate_mode.startsWith(`C`) || coordinate_mode.startsWith(`K`)
+      const is_cartesian = coordinate_mode.startsWith(`C`) ||
+        coordinate_mode.startsWith(`K`)
 
       if (!is_direct && !is_cartesian) {
         console.error(`Unknown coordinate mode in POSCAR: ${coordinate_mode}`)
@@ -377,14 +377,14 @@ export function parse_poscar(content: string): ParsedStructure | null {
             // Convert fractional to Cartesian coordinates
             xyz = [
               coords[0] * scaled_lattice[0][0] +
-                coords[1] * scaled_lattice[1][0] +
-                coords[2] * scaled_lattice[2][0],
+              coords[1] * scaled_lattice[1][0] +
+              coords[2] * scaled_lattice[2][0],
               coords[0] * scaled_lattice[0][1] +
-                coords[1] * scaled_lattice[1][1] +
-                coords[2] * scaled_lattice[2][1],
+              coords[1] * scaled_lattice[1][1] +
+              coords[2] * scaled_lattice[2][1],
               coords[0] * scaled_lattice[0][2] +
-                coords[1] * scaled_lattice[1][2] +
-                coords[2] * scaled_lattice[2][2],
+              coords[1] * scaled_lattice[1][2] +
+              coords[2] * scaled_lattice[2][2],
             ]
           } else {
             // Already Cartesian, scale if needed
@@ -596,12 +596,8 @@ export function parse_cif(content: string): ParsedStructure | null {
     }
 
     // Parse unit cell parameters
-    let cell_a = 1,
-      cell_b = 1,
-      cell_c = 1
-    let alpha = 90,
-      beta = 90,
-      gamma = 90
+    let [cell_a, cell_b, cell_c] = [1, 1, 1]
+    let [alpha, beta, gamma] = [90, 90, 90]
 
     // Find unit cell parameters
     for (const line of lines) {
@@ -721,15 +717,12 @@ export function parse_cif(content: string): ParsedStructure | null {
 
         if (tokens.length >= atom_site_headers.length) {
           // Use precomputed header indices
-          const label_idx =
-            header_indices.label >= 0 ? header_indices.label : -1
-          const symbol_idx =
-            header_indices.symbol >= 0 ? header_indices.symbol : -1
+          const label_idx = header_indices.label >= 0 ? header_indices.label : -1
+          const symbol_idx = header_indices.symbol >= 0 ? header_indices.symbol : -1
           const x_idx = header_indices.x >= 0 ? header_indices.x : -1
           const y_idx = header_indices.y >= 0 ? header_indices.y : -1
           const z_idx = header_indices.z >= 0 ? header_indices.z : -1
-          const occ_idx =
-            header_indices.occupancy >= 0 ? header_indices.occupancy : -1
+          const occ_idx = header_indices.occupancy >= 0 ? header_indices.occupancy : -1
 
           if (symbol_idx >= 0 && x_idx >= 0 && y_idx >= 0 && z_idx >= 0) {
             try {
@@ -753,14 +746,14 @@ export function parse_cif(content: string): ParsedStructure | null {
               // Convert fractional to Cartesian coordinates
               const xyz: Vector = [
                 fract_x * lattice_matrix[0][0] +
-                  fract_y * lattice_matrix[1][0] +
-                  fract_z * lattice_matrix[2][0],
+                fract_y * lattice_matrix[1][0] +
+                fract_z * lattice_matrix[2][0],
                 fract_x * lattice_matrix[0][1] +
-                  fract_y * lattice_matrix[1][1] +
-                  fract_z * lattice_matrix[2][1],
+                fract_y * lattice_matrix[1][1] +
+                fract_z * lattice_matrix[2][1],
                 fract_x * lattice_matrix[0][2] +
-                  fract_y * lattice_matrix[1][2] +
-                  fract_z * lattice_matrix[2][2],
+                fract_y * lattice_matrix[1][2] +
+                fract_z * lattice_matrix[2][2],
               ]
 
               const site: Site = {
@@ -867,8 +860,8 @@ export function parse_structure_file(
 
           // Check if first token looks like an element symbol (not a number)
           // and the next 3 tokens look like coordinates (numbers)
-          const is_element_symbol =
-            isNaN(parseInt(first_token)) && first_token.length <= 3
+          const is_element_symbol = isNaN(parseInt(first_token)) &&
+            first_token.length <= 3
           const are_coordinates = coords.every(
             (coord) => !isNaN(parseFloat(coord)),
           )

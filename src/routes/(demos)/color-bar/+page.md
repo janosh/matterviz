@@ -8,11 +8,13 @@ Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 </script>
 
 {#each [
-  // [color_scale, tick_side, tick_labels, range, label_text]
-  [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]],
-  [`Magma`, `secondary`, 10, [100, 1631]],
-  [`Cividis`, `primary`, 4, [-99.9812, -10]],
-] as [color_scale, tick_side, tick_labels, range]}
+    // [color_scale, tick_side, tick_labels, range, label_text]
+    [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]],
+    [`Magma`, `secondary`, 10, [100, 1631]],
+    [`Cividis`, `primary`, 4, [-99.9812, -10]],
+  ] as
+  [color_scale, tick_side, tick_labels, range]
+}
   <ColorBar
     title="color_scale={color_scale} &emsp; tick_side={tick_side} &emsp; range={range}"
     {color_scale}
@@ -35,9 +37,14 @@ You can make fat and skinny bars:
   const wrapper_style = 'margin: auto;'
 </script>
 
-<ColorBar {wrapper_style} style="width: 10em; height: 8pt;" />
+<ColorBar {wrapper_style} style="width: 10em; height: 8pt" />
 <br />
-<ColorBar title="Viridis" {wrapper_style} style="width: 4em; height: 2em;" tick_labels={2} />
+<ColorBar
+  title="Viridis"
+  {wrapper_style}
+  style="width: 4em; height: 2em"
+  tick_labels={2}
+/>
 <br />
 <ColorBar {wrapper_style} --cbar-width="10em" --cbar-height="2em" tick_labels={3} />
 <br />
@@ -74,13 +81,13 @@ You can make fat and skinny bars:
 
 <PeriodicTable
   {heatmap_values}
-  style="margin: 2em auto 4em;"
+  style="margin: 2em auto 4em"
   bind:color_scale
   color_scale_range={heat_range}
   links="name"
 >
   {#snippet inset()}
-    <TableInset style="place-items: center; padding: 2em;">
+    <TableInset style="place-items: center; padding: 2em">
       <ColorBar
         {color_scale}
         title={heat_label}
@@ -117,9 +124,12 @@ Example demonstrating `title_side` and `tick_side` interaction:
 <section>
   {#each title_sides as title_side, l_idx}
     {#each tick_sides as tick_side, t_idx}
-      {@const orientation =
-        title_side === `top` || title_side === `bottom` ? `horizontal` : `vertical`}
-      {@const bar_style = orientation === `horizontal` ? `width: 150px; height: 20px;` : `width: 20px; height: 150px;`}
+      {@const orientation = title_side === `top` || title_side === `bottom`
+      ? `horizontal`
+      : `vertical`}
+      {@const bar_style = orientation === `horizontal`
+      ? `width: 150px; height: 20px;`
+      : `width: 20px; height: 150px;`}
       {@const num_ticks = l_idx + t_idx + 2}
       {@const current_range = [l_idx * 10, (l_idx + 1) * 10 + t_idx * 20]}
       <div>
@@ -133,7 +143,7 @@ Example demonstrating `title_side` and `tick_side` interaction:
           tick_labels={num_ticks}
           range={current_range}
           --cbar-tick-overlap-offset="10px"
-          --cbar-tick-label-color="{tick_side === `inside` ? `white` : `currentColor`}"
+          --cbar-tick-label-color={tick_side === `inside` ? `white` : `currentColor`}
         />
       </div>
     {/each}
@@ -213,9 +223,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
   import { ColorBar } from '$lib'
 </script>
 
-<div
-  style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0;"
->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0">
   <ColorBar
     title="Large Linear Range (0 to 1e6)"
     range={[0, 1e6]}
@@ -227,7 +235,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
     title="Large Log Range (1 to 1e9)"
     range={[1, 1e9]}
     scale_type="log"
-    style="width: 400px;"
+    style="width: 400px"
     tick_labels={10}
   />
 
@@ -250,7 +258,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
     range={[0.01, 100]}
     scale_type="log"
     tick_format=".3"
-    style="width: 400px;"
+    style="width: 400px"
     tick_labels={5}
   />
 </div>

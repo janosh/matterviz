@@ -1,5 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
-import type { Trajectory, TrajectoryDataExtractor, TrajectoryFrame } from '.'
+import type { Trajectory, TrajectoryDataExtractor, TrajectoryFrame } from './index'
 
 // Common data extractor that extracts energy and structural properties
 export const energy_data_extractor: TrajectoryDataExtractor = (
@@ -48,7 +48,7 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
       const forces = frame.metadata.forces as number[][]
       if (forces.length > 0) {
         const force_magnitudes = forces.map((force) =>
-          Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2),
+          Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
         )
         data.force_max = Math.max(...force_magnitudes)
         data.force_norm = Math.sqrt(
@@ -210,7 +210,7 @@ export const full_data_extractor: TrajectoryDataExtractor = (
   // Check if lattice parameters vary and conditionally include them
   const lattice_params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`]
   const varying_lattice_params = lattice_params.filter((param) =>
-    property_varies(trajectory, param),
+    property_varies(trajectory, param)
   )
 
   // If lattice parameters don't vary, mark them for conditional visibility

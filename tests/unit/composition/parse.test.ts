@@ -38,14 +38,7 @@ describe(`atomic number utilities`, () => {
     expect(atomic_number_to_element_symbol(atomic_number)).toBeNull()
   })
 
-  test.each([
-    [`H`, 1],
-    [`C`, 6],
-    [`O`, 8],
-    [`Fe`, 26],
-    [`Au`, 79],
-    [`Og`, 118],
-  ] as const)(
+  test.each([[`H`, 1], [`C`, 6], [`O`, 8], [`Fe`, 26], [`Au`, 79], [`Og`, 118]] as const)(
     `should convert element symbol %s to atomic number %i`,
     (symbol, expected) => {
       expect(element_symbol_to_atomic_number(symbol)).toBe(expected)
@@ -102,9 +95,9 @@ describe(`atomic number utilities`, () => {
   )
 
   test(`should throw error for invalid element symbols in conversion`, () => {
-    expect(() =>
-      convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType),
-    ).toThrow(`Invalid element symbol: Xx`)
+    expect(() => convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType)).toThrow(
+      `Invalid element symbol: Xx`,
+    )
   })
 })
 
@@ -290,8 +283,7 @@ describe(`composition_to_percentages`, () => {
       (composition, expected_percentages) => {
         const result = composition_to_percentages(composition, true)
         Object.entries(expected_percentages).forEach(([element, expected]) => {
-          const tolerance =
-            Object.keys(expected_percentages).length === 1 ? 0 : 1
+          const tolerance = Object.keys(expected_percentages).length === 1 ? 0 : 1
           expect(result[element as ElementSymbol]).toBeCloseTo(
             expected,
             tolerance,
@@ -305,9 +297,8 @@ describe(`composition_to_percentages`, () => {
     })
 
     test(`should throw error for unknown elements`, () => {
-      expect(() =>
-        composition_to_percentages({ Xx: 1 } as CompositionType, true),
-      ).toThrow(`Unknown element: Xx`)
+      expect(() => composition_to_percentages({ Xx: 1 } as CompositionType, true))
+        .toThrow(`Unknown element: Xx`)
     })
 
     test(`should always sum to 100%`, () => {

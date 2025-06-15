@@ -77,9 +77,8 @@ describe(`standalone composition parsing`, () => {
       expect(() => convert_atomic_numbers_to_symbols({ 999: 1 })).toThrow(
         `Invalid atomic number: 999`,
       )
-      expect(() =>
-        convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType),
-      ).toThrow(`Invalid element symbol: Xx`)
+      expect(() => convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType))
+        .toThrow(`Invalid element symbol: Xx`)
     })
   })
 

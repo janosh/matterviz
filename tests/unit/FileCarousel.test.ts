@@ -2,7 +2,7 @@ import type { FileInfo } from '$site'
 import { FileCarousel } from '$site'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { doc_query } from '.'
+import { doc_query } from './index'
 
 describe(`FileCarousel`, () => {
   // Mock file data for testing
@@ -13,8 +13,9 @@ describe(`FileCarousel`, () => {
   ): FileInfo => {
     // Extract the correct file type, handling double extensions like .cif.gz
     let base_name = name
-    if (base_name.toLowerCase().endsWith(`.gz`))
+    if (base_name.toLowerCase().endsWith(`.gz`)) {
       base_name = base_name.slice(0, -3)
+    }
 
     const type = base_name.split(`.`).pop()?.toUpperCase() ?? `FILE`
 
@@ -50,7 +51,7 @@ describe(`FileCarousel`, () => {
     ])(
       `renders %s correctly`,
       (
-        description: string,
+        _description: string,
         files_or_active: FileInfo[] | string[],
         expected_count: number,
         test_type?: string,
@@ -86,16 +87,16 @@ describe(`FileCarousel`, () => {
 
   describe(`file type detection and CSS classes`, () => {
     it.each([
-      [`structure.cif`, `cif`, `.cif-file`],
-      [`molecule.xyz`, `xyz`, `.xyz-file`],
-      [`data.json`, `json`, `.json-file`],
-      [`compressed.cif.gz`, `cif`, `.cif-file`],
-      [`trajectory.traj`, `traj`, `.traj-file`],
-      [`xdatcar_file`, `traj`, `.traj-file`],
-      [`poscar`, `poscar`, `.poscar-file`],
+      [`structure.cif`, `.cif-file`],
+      [`molecule.xyz`, `.xyz-file`],
+      [`data.json`, `.json-file`],
+      [`compressed.cif.gz`, `.cif-file`],
+      [`trajectory.traj`, `.traj-file`],
+      [`xdatcar_file`, `.traj-file`],
+      [`poscar`, `.poscar-file`],
     ])(
-      `correctly identifies %s as %s type with %s class`,
-      (filename: string, expected_type: string, css_class: string) => {
+      `correctly identifies %s as %s class`,
+      (filename: string, css_class: string) => {
         const test_file = create_mock_file(filename, `content`)
         mount(FileCarousel, {
           target: document.body,
@@ -108,26 +109,19 @@ describe(`FileCarousel`, () => {
 
   describe(`filtering functionality`, () => {
     it.each([
-      [
-        `structure`,
-        true,
-        [`crystal`, `molecule`, `unknown`],
-        `show_structure_filters`,
-      ],
-      [`structure`, false, [], `show_structure_filters`],
-      [`format`, true, [`CIF`, `XYZ`, `JSON`, `TRAJ`], `format_filters`],
+      [true, [`crystal`, `molecule`, `unknown`], `show_structure_filters`],
+      [false, [], `show_structure_filters`],
+      [true, [`CIF`, `XYZ`, `JSON`, `TRAJ`], `format_filters`],
     ])(
-      `shows %s filters correctly when enabled=%s`,
+      `shows filters correctly when enabled=%s`,
       (
-        filter_type: string,
         show_filters: boolean,
         expected_filters: string[],
         test_key: string,
       ) => {
-        const props =
-          test_key === `show_structure_filters`
-            ? { files: mock_files, show_structure_filters: show_filters }
-            : { files: mock_files }
+        const props = test_key === `show_structure_filters`
+          ? { files: mock_files, show_structure_filters: show_filters }
+          : { files: mock_files }
 
         mount(FileCarousel, { target: document.body, props })
 
@@ -245,17 +239,13 @@ describe(`FileCarousel`, () => {
 
   describe(`edge cases and configuration`, () => {
     it.each([
-      [`file with no extension`, `README`, `content`],
-      [`file with multiple dots`, `file.name.with.dots.cif`, `content`],
-      [`empty filename`, ``, `content`],
-      [
-        `very long filename`,
-        `very_long_filename_that_should_wrap_properly.cif`,
-        `content`,
-      ],
+      [`README`, `content`],
+      [`file.name.with.dots.cif`, `content`],
+      [``, `content`],
+      [`very_long_filename_that_should_wrap_properly.cif`, `content`],
     ])(
       `handles %s gracefully`,
-      (description: string, filename: string, content: string) => {
+      (filename: string, content: string) => {
         const edge_case_files = [create_mock_file(filename, content)]
         mount(FileCarousel, {
           target: document.body,
@@ -327,7 +317,7 @@ describe(`FileCarousel`, () => {
     ])(
       `handles %s correctly`,
       (
-        description: string,
+        _description: string,
         props: { files: FileInfo[]; active_files?: string[] },
         expected: number | boolean,
         test_type: string,

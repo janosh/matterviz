@@ -117,22 +117,21 @@
       {#each unique_structure_types as structure_type (structure_type)}
         {@const is_active = active_structure_filter === structure_type}
         {@const icon = structure_type
-          ? { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] || `📄`
-          : `📄`}
+        ? { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] || `📄`
+        : `📄`}
         <span
           class="legend-item"
           class:active={is_active}
           onclick={() => structure_type && toggle_filter(`structure`, structure_type)}
           onkeydown={(e) =>
-            (e.key === `Enter` || e.key === ` `) &&
-            structure_type &&
-            toggle_filter(`structure`, structure_type)}
+          (e.key === `Enter` || e.key === ` `) &&
+          structure_type &&
+          toggle_filter(`structure`, structure_type)}
           role="button"
           tabindex="0"
           title="Filter to show only {structure_type} structures"
         >
-          {icon}
-          {structure_type}
+          {icon} {structure_type}
         </span>
       {/each}
       {#if unique_structure_types.length > 0 && unique_formats.length > 0}&emsp;{/if}
@@ -145,13 +144,12 @@
         class:active={is_active}
         onclick={() => toggle_filter(`format`, format)}
         onkeydown={(e) =>
-          (e.key === `Enter` || e.key === ` `) && toggle_filter(`format`, format)}
+        (e.key === `Enter` || e.key === ` `) && toggle_filter(`format`, format)}
         role="button"
         tabindex="0"
         title="Filter to show only {format.toUpperCase()} files"
       >
-        <span class="format-circle {format}-color"></span>
-        {format.toUpperCase()}
+        <span class="format-circle {format}-color"></span> {format.toUpperCase()}
       </span>
     {/each}
 

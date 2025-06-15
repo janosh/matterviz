@@ -1,4 +1,5 @@
-import puppeteer from 'https://deno.land/x/puppeteer/mod.ts'
+// deno-lint-ignore-file no-await-in-loop
+import puppeteer from 'npm:puppeteer'
 
 // to run this script: deno run --allow-all src/update-site-screenshots.ts
 // requires brew install deno
@@ -6,11 +7,7 @@ import puppeteer from 'https://deno.land/x/puppeteer/mod.ts'
 const today = new Date().toISOString().slice(0, 10)
 
 const pages = [
-  {
-    url: `/`,
-    name: `landing-page`,
-    actions: [[`hover`, `a[href*="selenium"]`]],
-  },
+  { url: `/`, name: `landing-page`, actions: [[`hover`, `a[href*="selenium"]`]] },
   {
     url: `/`,
     name: `heatmap`,
@@ -21,12 +18,12 @@ const pages = [
       [`hover`, `a[href*="radon"]`],
     ],
   },
-  { url: `/radon`, name: `details-page` },
-]
+  { url: `/radon`, name: `details-page`, actions: [] },
+] as const
 
 const browser = await puppeteer.launch()
 
-for (const { url, name, actions = [] } of pages) {
+for (const { url, name, actions } of pages) {
   console.log(name)
   const page = await browser.newPage()
   // increase screenshot resolution
@@ -37,7 +34,6 @@ for (const { url, name, actions = [] } of pages) {
     await page.waitForSelector(selector)
     await page[action](selector)
   }
-  await page.waitForTimeout(200) // wait for animations to finish
   await page.screenshot({ path: `static/${today}-${name}.webp` })
 }
 

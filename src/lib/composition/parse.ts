@@ -64,9 +64,11 @@ export function convert_atomic_numbers_to_symbols(
 ): CompositionType {
   const composition: CompositionType = {}
 
-  for (const [atomic_number_str, amount] of Object.entries(
-    atomic_composition,
-  )) {
+  for (
+    const [atomic_number_str, amount] of Object.entries(
+      atomic_composition,
+    )
+  ) {
     const atomic_number = Number(atomic_number_str)
     const symbol = atomic_number_to_element_symbol(atomic_number)
 
@@ -99,8 +101,8 @@ export function convert_symbols_to_atomic_numbers(
     }
 
     if (typeof amount === `number` && amount > 0) {
-      atomic_composition[atomic_number] =
-        (atomic_composition[atomic_number] || 0) + amount
+      atomic_composition[atomic_number] = (atomic_composition[atomic_number] || 0) +
+        amount
     }
   }
 
@@ -142,7 +144,7 @@ function expand_parentheses(formula: string): string {
   while (formula.includes(`(`)) {
     formula = formula.replace(
       /\(([^()]+)\)(\d*)/g,
-      (match, group, multiplier) => {
+      (_match, group, multiplier) => {
         const mult = multiplier ? parseInt(multiplier, 10) : 1
         let expanded = ``
 
@@ -312,9 +314,7 @@ export function get_alphabetical_formula(
     // If it's already a string, parse it and reformat alphabetically
     try {
       const composition = parse_composition_input(input)
-      return format_composition_formula(composition, (symbols) =>
-        symbols.sort(),
-      )
+      return format_composition_formula(composition, (symbols) => symbols.sort())
     } catch {
       // If parsing fails, return the original string
       return input
@@ -323,16 +323,15 @@ export function get_alphabetical_formula(
     // It's a structure object - need to extract composition
     try {
       const composition = extract_composition_from_structure(input)
-      return format_composition_formula(composition, (symbols) =>
-        symbols.sort(),
-      )
+      return format_composition_formula(composition, (symbols) => symbols.sort())
     } catch {
       return `Unknown`
     }
   } else {
     // It's a composition object
-    return format_composition_formula(input as CompositionType, (symbols) =>
-      symbols.sort(),
+    return format_composition_formula(
+      input as CompositionType,
+      (symbols) => symbols.sort(),
     )
   }
 }
@@ -398,10 +397,11 @@ function extract_composition_from_structure(
         const element = species.element as ElementSymbol
         const occu = species.occu || 1
 
-        if (element in composition) {
-          composition[element]! += occu
-        } else {
+        if (composition[element] === undefined) {
           composition[element] = occu
+        } else {
+          const current = composition[element]
+          if (current !== undefined) composition[element] = current + occu
         }
       }
     }

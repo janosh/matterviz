@@ -4,6 +4,7 @@ import mdsvexamples from 'mdsvexamples'
 import katex from 'rehype-katex'
 import math from 'remark-math'
 import { sveltePreprocess } from 'svelte-preprocess'
+import process from 'node:process'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },

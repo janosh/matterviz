@@ -4,7 +4,12 @@
   import { default_category_colors, is_color } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
 
-  type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+  type SplitLayout =
+    | `diagonal`
+    | `horizontal`
+    | `vertical`
+    | `triangular`
+    | `quadrant`
 
   interface Props {
     element: ChemicalElement
@@ -110,8 +115,9 @@
 
     // Auto-determine layout based on value count (backwards compatibility)
     const layout_map = { 2: `diagonal`, 3: `horizontal`, 4: `quadrant` } as const
-    if (value.length in layout_map)
+    if (value.length in layout_map) {
       return layout_map[value.length as keyof typeof layout_map]
+    }
     console.error(`Only 2, 3, or 4 values are supported for split_layout`)
     return null
   })
@@ -126,56 +132,56 @@
       case `diagonal`:
         return count === 2
           ? {
-              segments: [`diagonal-top`, `diagonal-bottom`],
-              positions: [`top-left`, `bottom-right`],
-            }
+            segments: [`diagonal-top`, `diagonal-bottom`],
+            positions: [`top-left`, `bottom-right`],
+          }
           : null
 
       case `horizontal`:
         return count === 3
           ? {
-              segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
-              positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
-            }
+            segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
+            positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
+          }
           : null
 
       case `vertical`:
         return count === 3
           ? {
-              segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
-              positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
-            }
+            segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
+            positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
+          }
           : null
 
       case `triangular`:
         return count === 4
           ? {
-              segments: [
-                `triangle-top`,
-                `triangle-right`,
-                `triangle-bottom`,
-                `triangle-left`,
-              ],
-              positions: [
-                `triangle-top-pos`,
-                `triangle-right-pos`,
-                `triangle-bottom-pos`,
-                `triangle-left-pos`,
-              ],
-            }
+            segments: [
+              `triangle-top`,
+              `triangle-right`,
+              `triangle-bottom`,
+              `triangle-left`,
+            ],
+            positions: [
+              `triangle-top-pos`,
+              `triangle-right-pos`,
+              `triangle-bottom-pos`,
+              `triangle-left-pos`,
+            ],
+          }
           : null
 
       case `quadrant`:
         return count === 4
           ? {
-              segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
-              positions: [
-                `value-quadrant-tl`,
-                `value-quadrant-tr`,
-                `value-quadrant-bl`,
-                `value-quadrant-br`,
-              ],
-            }
+            segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
+            positions: [
+              `value-quadrant-tl`,
+              `value-quadrant-tr`,
+              `value-quadrant-bl`,
+              `value-quadrant-br`,
+            ],
+          }
           : null
 
       default:
@@ -192,11 +198,9 @@
   class="element-tile {category}"
   class:active
   class:last-active={selected.last_element === element}
-  style:background-color={Array.isArray(value) && bg_colors?.length > 1
-    ? `transparent`
-    : fallback_bg_color}
+  style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
   style:color={text_color ??
-    choose_bw_for_contrast(node, contrast_bg_color, text_color_threshold)}
+  choose_bw_for_contrast(node, contrast_bg_color, text_color_threshold)}
   {style}
   role="link"
   tabindex="0"
@@ -220,8 +224,8 @@
           <span
             class="value multi-value {layout_config.positions[idx]}"
             style:color={bg_colors?.[idx]
-              ? choose_bw_for_contrast(null, bg_colors[idx], text_color_threshold)
-              : null}
+            ? choose_bw_for_contrast(null, bg_colors[idx], text_color_threshold)
+            : null}
           >
             {format_value(val)}
           </span>
@@ -229,12 +233,12 @@
       {/each}
     {:else if Array.isArray(value)}
       <!-- Fallback for other array lengths -->
-      <span class="value"
-        >{value
-          .map((v) => format_value(v))
-          .filter((v) => v)
-          .join(` / `)}</span
-      >
+      <span class="value">{
+        value
+        .map((v) => format_value(v))
+        .filter((v) => v)
+        .join(` / `)
+      }</span>
     {:else}
       <!-- Single value -->
       <span class="value">{format_value(value)}</span>
@@ -252,7 +256,8 @@
         <div
           class="segment {layout_config.segments[idx]}"
           style:background-color={bg_color}
-        ></div>
+        >
+        </div>
       {/if}
     {/each}
   {/if}

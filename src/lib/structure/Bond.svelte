@@ -25,8 +25,12 @@
   const from_vec = new Vector3(...from)
   const to_vec = new Vector3(...to)
 
-  const { position, rotation, height } = calc_bond(from_vec, to_vec, offset, thickness)
-
+  const { position, rotation, height } = calc_bond(
+    from_vec,
+    to_vec,
+    offset,
+    thickness,
+  )
   // Create gradient texture when both colors are provided
   let gradient_texture = $derived.by(() => {
     if (!from_color || !to_color) return null

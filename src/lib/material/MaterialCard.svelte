@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { InfoCard, format_num, superscript_digits } from '$lib'
+  import { format_num, InfoCard, superscript_digits } from '$lib'
   import type { SummaryDoc } from '$types'
   import type { Snippet } from 'svelte'
   import SymmetryCard from './SymmetryCard.svelte'
@@ -16,8 +16,9 @@
       title: `Band Gap`,
       value: material.band_gap,
       unit: `eV`,
-      tooltip:
-        material.vbm && material.cbm ? `VBM: ${material.vbm}, CBM: ${material.cbm}` : ``,
+      tooltip: material.vbm && material.cbm
+        ? `VBM: ${material.vbm}, CBM: ${material.cbm}`
+        : ``,
     },
     {
       title: `Space Group`,
@@ -81,7 +82,15 @@
       }`,
       tooltip: `µB: Bohr magneton, f.u.: formula unit`,
     },
-    { title: `Ordering`, value: { NM: `non-magnetic` }[material.ordering] ?? `unknown` },
+    {
+      title: `Ordering`,
+      value: ({
+        NM: `non-magnetic`,
+        FM: `ferromagnetic`,
+        FiM: `ferrimagnetic`,
+        AFM: `antiferromagnetic`,
+      } as Record<string, string>)[material.ordering] ?? `unknown`,
+    },
     {
       title: `Possible oxidation states`,
       value: superscript_digits(material.possible_species?.join(` `) ?? ``),
@@ -108,7 +117,8 @@
   {#if material.database_IDs?.icsd?.length}
     <p>
       ICSD IDs: {#each material.database_IDs.icsd as id (id)}
-        {@const href = `https://ccdc.cam.ac.uk/structures/Search?Ccdcid=${id}&DatabaseToSearch=ICSD`}
+        {@const href =
+        `https://ccdc.cam.ac.uk/structures/Search?Ccdcid=${id}&DatabaseToSearch=ICSD`}
         <a {href}>{id}</a>
       {/each}
     </p>

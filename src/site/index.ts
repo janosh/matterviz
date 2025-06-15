@@ -19,7 +19,7 @@ export const structures = Object.entries(
   })
   .sort((struct1, struct2) => {
     const [n1, n2] = [struct1, struct2].map((struct) =>
-      struct.id.split(`-`)[1].padStart(6, `0`),
+      struct.id.split(`-`)[1].padStart(6, `0`)
     )
     return n1.localeCompare(n2)
   })

@@ -1,8 +1,4 @@
-import {
-  export_json,
-  export_xyz,
-  generate_structure_filename,
-} from '$lib/io/export'
+import { export_json, export_xyz, generate_structure_filename } from '$lib/io/export'
 import type { AnyStructure } from '$lib/structure'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -145,19 +141,19 @@ describe(`XYZ export format validation`, () => {
       [0.0, 2.0, 0.0],
       [0.0, 0.0, 2.0],
     ]
-    const fractional_coords = [0.5, 0.5, 0.5]
+    const frac_coords = [0.5, 0.5, 0.5]
 
-    // Manual conversion to verify our understanding
+    // Manual conversion to verify
     const cartesian = [
-      fractional_coords[0] * lattice_matrix[0][0] +
-        fractional_coords[1] * lattice_matrix[1][0] +
-        fractional_coords[2] * lattice_matrix[2][0],
-      fractional_coords[0] * lattice_matrix[0][1] +
-        fractional_coords[1] * lattice_matrix[1][1] +
-        fractional_coords[2] * lattice_matrix[2][1],
-      fractional_coords[0] * lattice_matrix[0][2] +
-        fractional_coords[1] * lattice_matrix[1][2] +
-        fractional_coords[2] * lattice_matrix[2][2],
+      frac_coords[0] * lattice_matrix[0][0] +
+      frac_coords[1] * lattice_matrix[1][0] +
+      frac_coords[2] * lattice_matrix[2][0],
+      frac_coords[0] * lattice_matrix[0][1] +
+      frac_coords[1] * lattice_matrix[1][1] +
+      frac_coords[2] * lattice_matrix[2][1],
+      frac_coords[0] * lattice_matrix[0][2] +
+      frac_coords[1] * lattice_matrix[1][2] +
+      frac_coords[2] * lattice_matrix[2][2],
     ]
 
     expect(cartesian).toEqual([1.0, 1.0, 1.0])

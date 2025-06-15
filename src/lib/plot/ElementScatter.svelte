@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScatterPlot, element_data, format_num, type InternalPoint } from '$lib'
+  import { element_data, format_num, type InternalPoint, ScatterPlot } from '$lib'
   import { selected } from '$lib/state.svelte'
 
   interface Props {

@@ -16,7 +16,7 @@ vi.mock(`$lib/composition/parse`, () => ({
     Object.values(comp).reduce(
       (sum: number, val: number) => sum + (val || 0),
       0,
-    ),
+    )
   ),
   composition_to_percentages: vi.fn((comp: Record<string, number>) => {
     const total = Object.values(comp).reduce(
@@ -73,11 +73,13 @@ describe(`Composition component`, () => {
     expect(doc_query(`.composition-container`)).toBeTruthy()
   })
 
-  test.each([
-    [`pie`, `.pie-chart`],
-    [`bubble`, `.bubble-chart`],
-    [`bar`, `.stacked-bar-chart-container`],
-  ] as const)(`renders %s mode correctly`, (mode, selector) => {
+  test.each(
+    [
+      [`pie`, `.pie-chart`],
+      [`bubble`, `.bubble-chart`],
+      [`bar`, `.stacked-bar-chart-container`],
+    ] as const,
+  )(`renders %s mode correctly`, (mode, selector) => {
     mount(Composition, { target: document.body, props: { input: `H2O`, mode } })
     expect(doc_query(selector)).toBeTruthy()
   })

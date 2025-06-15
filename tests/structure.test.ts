@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
 // Helper function to mock downloads if needed, or check for anchor tags
 // For now, we'll focus on button presence and clickability
@@ -34,9 +34,7 @@ test.describe(`Structure Component Tests`, () => {
     ).toContainText(`500`)
   })
 
-  test(`reacts to background_color prop change from test page`, async ({
-    page,
-  }) => {
+  test(`reacts to background_color prop change from test page`, async ({ page }) => {
     const structure_div = page.locator(`#structure-wrapper .structure`)
     // More specific locator for the test page's background color input
     const background_color_input = page.locator(
@@ -184,9 +182,7 @@ test.describe(`Structure Component Tests`, () => {
     )
   })
 
-  test(`show_site_labels defaults to false and can be toggled`, async ({
-    page,
-  }) => {
+  test(`show_site_labels defaults to false and can be toggled`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
     const test_page_controls_checkbox = page.locator(
@@ -202,18 +198,20 @@ test.describe(`Structure Component Tests`, () => {
     const all_checkboxes = controls_dialog.locator(`input[type="checkbox"]`)
     const checkbox_count = await all_checkboxes.count()
 
-    let site_labels_checkbox = null
-    for (let idx = 0; idx < checkbox_count; idx++) {
+    // Search for site labels checkbox in parallel
+    const checkbox_promises = Array.from({ length: checkbox_count }, async (_, idx) => {
       const checkbox = all_checkboxes.nth(idx)
       const label_text = await checkbox.locator(`xpath=..`).textContent()
-      if (label_text?.includes(`site labels`)) {
-        site_labels_checkbox = checkbox
-        break
-      }
-    }
+      if (label_text?.includes(`site labels`)) return checkbox
+      return null
+    })
 
-    expect(site_labels_checkbox).not.toBeNull()
-    expect(await site_labels_checkbox!.isChecked()).toBe(false)
+    const checkbox_results = await Promise.all(checkbox_promises)
+    const site_labels_checkbox = checkbox_results.find((checkbox) => checkbox !== null) ||
+      null
+
+    if (!site_labels_checkbox) throw `Site labels checkbox not found`
+    expect(await site_labels_checkbox.isChecked()).toBe(false)
   })
 
   test(`show_site_labels controls are properly labeled`, async ({ page }) => {
@@ -317,9 +315,7 @@ test.describe(`Structure Component Tests`, () => {
     }
   })
 
-  test(`element color legend allows color changes via color picker`, async ({
-    page,
-  }) => {
+  test(`element color legend allows color changes via color picker`, async ({ page }) => {
     const structure_wrapper = page.locator(`#structure-wrapper`)
     await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
 
@@ -358,9 +354,7 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   // SKIPPED: Controls dialog fails to open reliably in test environment
-  test.skip(`controls panel stays open when interacting with control inputs`, async ({
-    page,
-  }) => {
+  test.skip(`controls panel stays open when interacting with control inputs`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
     const controls_open_status = page.locator(
@@ -449,8 +443,7 @@ test.describe(`Structure Component Tests`, () => {
       .locator(`label`)
       .filter({ hasText: /Color/ })
       .first()
-    const background_color_input =
-      background_color_label.locator(`input[type="color"]`)
+    const background_color_input = background_color_label.locator(`input[type="color"]`)
     await expect(background_color_input).toBeVisible()
     await background_color_input.fill(`#00ff00`)
     await expect(controls_open_status).toContainText(`true`)
@@ -460,9 +453,7 @@ test.describe(`Structure Component Tests`, () => {
     // The important thing is that normal control inputs (checkboxes, selects, inputs) keep the panel open
   })
 
-  test(`control inputs have intended effects on structure`, async ({
-    page,
-  }) => {
+  test(`control inputs have intended effects on structure`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
     const canvas = structure_component.locator(`canvas`)
@@ -525,9 +516,7 @@ test.describe(`Structure Component Tests`, () => {
     await show_atoms_checkbox.check()
   })
 
-  test(`controls panel closes only on escape and outside clicks`, async ({
-    page,
-  }) => {
+  test(`controls panel closes only on escape and outside clicks`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_toggle_button = structure_component.locator(
       `button.controls-toggle`,
@@ -670,9 +659,7 @@ test.describe(`File Drop Functionality Tests`, () => {
   })
 
   // SKIPPED: File drop simulation not triggering properly
-  test.skip(`drops POSCAR file onto structure viewer and updates structure`, async ({
-    page,
-  }) => {
+  test.skip(`drops POSCAR file onto structure viewer and updates structure`, async ({ page }) => {
     const structure_component = page.locator(`.structure`)
     const canvas = structure_component.locator(`canvas`)
 
@@ -711,9 +698,7 @@ Direct
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
   })
 
-  test(`drops XYZ file onto structure viewer and updates structure`, async ({
-    page,
-  }) => {
+  test(`drops XYZ file onto structure viewer and updates structure`, async ({ page }) => {
     const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
@@ -820,9 +805,7 @@ H    1.261    0.728   -0.890`
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
   })
 
-  test(`drag and drop from file carousel updates structure`, async ({
-    page,
-  }) => {
+  test(`drag and drop from file carousel updates structure`, async ({ page }) => {
     const file_carousel = page.locator(`.file-carousel`)
     const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
@@ -854,9 +837,7 @@ H    1.261    0.728   -0.890`
     expect(preview_content).not.toBe(`No structure loaded`)
   })
 
-  test(`drag and drop from file carousel shows correct file content in preview`, async ({
-    page,
-  }) => {
+  test(`drag and drop from file carousel shows correct file content in preview`, async ({ page }) => {
     const file_carousel = page.locator(`.file-carousel`)
     const content_preview = page.locator(`.content-preview`)
     const structure_component = page.locator(`.structure`).first()
@@ -899,20 +880,15 @@ test.describe(`Reset Camera Button Tests`, () => {
     await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
   })
 
-  test(`reset camera button is hidden initially when camera is at default position`, async ({
-    page,
-  }) => {
+  test(`reset camera button is hidden initially when camera is at default position`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
-    const reset_camera_button =
-      structure_component.locator(`button.reset-camera`)
+    const reset_camera_button = structure_component.locator(`button.reset-camera`)
 
     // Reset button should not be visible initially
     await expect(reset_camera_button).not.toBeVisible()
   })
 
-  test(`reset camera button structure and styling are correct`, async ({
-    page,
-  }) => {
+  test(`reset camera button structure and styling are correct`, async ({ page }) => {
     // Test the button structure when it would be visible
     // Since OrbitControls events don't fire in test environment, we'll test the static structure
     const structure_component = page.locator(`#structure-wrapper .structure`)
@@ -937,9 +913,7 @@ test.describe(`Reset Camera Button Tests`, () => {
     console.log(`Other buttons in section: ${other_button_count}`)
   })
 
-  test(`reset camera button SVG icon structure is correct`, async ({
-    page,
-  }) => {
+  test(`reset camera button SVG icon structure is correct`, async ({ page }) => {
     // Test the SVG structure by temporarily making the button visible
     // Since OrbitControls events don't work in test environment, we'll inject the button for testing
 
@@ -985,9 +959,7 @@ test.describe(`Reset Camera Button Tests`, () => {
     })
   })
 
-  test(`reset camera button functionality works when manually triggered`, async ({
-    page,
-  }) => {
+  test(`reset camera button functionality works when manually triggered`, async ({ page }) => {
     // Test the reset camera functionality by manually creating the button and testing its click handler
 
     const test_result = await page.evaluate(() => {
@@ -1045,9 +1017,7 @@ test.describe(`Reset Camera Button Tests`, () => {
     expect(test_result.isHiddenAfterClick).toBe(true)
   })
 
-  test(`camera interaction attempts work in test environment`, async ({
-    page,
-  }) => {
+  test(`camera interaction attempts work in test environment`, async ({ page }) => {
     // Test that camera interactions can be performed (even if OrbitControls events don't fire)
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const canvas = structure_component.locator(`canvas`)
@@ -1056,13 +1026,14 @@ test.describe(`Reset Camera Button Tests`, () => {
     await expect(canvas).toBeVisible()
 
     const box = await canvas.boundingBox()
-    expect(box).toBeTruthy()
-    expect(box!.width).toBeGreaterThan(0)
-    expect(box!.height).toBeGreaterThan(0)
+    if (!box) throw `Canvas box not found`
+
+    expect(box.width).toBeGreaterThan(0)
+    expect(box.height).toBeGreaterThan(0)
 
     // Test that we can perform mouse interactions on the canvas
-    const centerX = box!.x + box!.width / 2
-    const centerY = box!.y + box!.height / 2
+    const centerX = box.x + box.width / 2
+    const centerY = box.y + box.height / 2
 
     // These interactions should complete without error, even if they don't trigger OrbitControls
     await page.mouse.move(centerX, centerY)
@@ -1075,8 +1046,8 @@ test.describe(`Reset Camera Button Tests`, () => {
 
     // Test drag interaction
     await canvas.dragTo(canvas, {
-      sourcePosition: { x: box!.width / 2 - 30, y: box!.height / 2 },
-      targetPosition: { x: box!.width / 2 + 30, y: box!.height / 2 },
+      sourcePosition: { x: box.width / 2 - 30, y: box.height / 2 },
+      targetPosition: { x: box.width / 2 + 30, y: box.height / 2 },
       force: true,
     })
 
@@ -1084,9 +1055,7 @@ test.describe(`Reset Camera Button Tests`, () => {
     expect(true).toBe(true)
   })
 
-  test(`reset camera button state management logic is sound`, async ({
-    page,
-  }) => {
+  test(`reset camera button state management logic is sound`, async ({ page }) => {
     // Test the logical behavior of the reset camera button state management
     // Since OrbitControls events don't work in test environment, we test the logic directly
 
@@ -1245,9 +1214,7 @@ test.describe(`Export Button Tests`, () => {
     await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
   })
 
-  test(`export buttons are visible when controls panel is open`, async ({
-    page,
-  }) => {
+  test(`export buttons are visible when controls panel is open`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
     const test_page_controls_checkbox = page.locator(
@@ -1280,9 +1247,7 @@ test.describe(`Export Button Tests`, () => {
     await expect(png_export_btn).toBeEnabled()
   })
 
-  test(`export buttons are not visible when controls panel is closed`, async ({
-    page,
-  }) => {
+  test(`export buttons are not visible when controls panel is closed`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
 
@@ -1367,9 +1332,7 @@ test.describe(`Export Button Tests`, () => {
     await expect(png_export_btn).toBeEnabled()
   })
 
-  test(`export buttons have correct attributes and styling`, async ({
-    page,
-  }) => {
+  test(`export buttons have correct attributes and styling`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
     const test_page_controls_checkbox = page.locator(
@@ -1413,9 +1376,7 @@ test.describe(`Export Button Tests`, () => {
     expect(xyz_classes).toBe(png_classes)
   })
 
-  test(`export buttons are grouped together in proper layout`, async ({
-    page,
-  }) => {
+  test(`export buttons are grouped together in proper layout`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`dialog.controls`)
     const test_page_controls_checkbox = page.locator(
@@ -1447,7 +1408,7 @@ test.describe(`Export Button Tests`, () => {
 
     // Verify the container has proper flex styling for button layout
     const container_styles = await export_container.evaluate((el) => {
-      const computed = window.getComputedStyle(el)
+      const computed = globalThis.getComputedStyle(el)
       return {
         display: computed.display,
         gap: computed.gap,
@@ -1571,9 +1532,7 @@ test.describe(`Export Button Tests`, () => {
     await expect(png_export_btn).toBeEnabled()
   })
 
-  test(`reset camera button integration with existing UI elements`, async ({
-    page,
-  }) => {
+  test(`reset camera button integration with existing UI elements`, async ({ page }) => {
     // Test that the reset camera button integrates properly with other UI elements
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const button_section = structure_component.locator(`section`)
@@ -1588,7 +1547,7 @@ test.describe(`Export Button Tests`, () => {
 
     // Test that the section has proper CSS styling for button layout
     const section_styles = await button_section.evaluate((el) => {
-      const computed = window.getComputedStyle(el)
+      const computed = globalThis.getComputedStyle(el)
       return {
         position: computed.position,
         display: computed.display,
@@ -1612,12 +1571,12 @@ test.describe(`Export Button Tests`, () => {
       const testButton = document.createElement(`button`)
       testButton.className = `reset-camera`
       testButton.style.visibility = `hidden` // Don't show it, just test layout
-      testButton.innerHTML = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>`
+      testButton.innerHTML =
+        `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>`
 
       section.appendChild(testButton)
 
-      const fits_properly =
-        testButton.offsetWidth > 0 && testButton.offsetHeight > 0
+      const fits_properly = testButton.offsetWidth > 0 && testButton.offsetHeight > 0
 
       section.removeChild(testButton)
       return fits_properly

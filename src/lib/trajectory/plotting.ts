@@ -3,7 +3,7 @@ import { plot_colors } from '$lib/colors'
 import { get_label_with_unit } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
 import { lattice_param_keys } from '$lib/structure'
-import type { Trajectory, TrajectoryDataExtractor } from '.'
+import type { Trajectory, TrajectoryDataExtractor } from './index'
 
 // Properties that should be assigned to the secondary y-axis
 export const Y2_PROPERTIES = new Set([
@@ -42,7 +42,7 @@ export function generate_plot_series(
 
   // Extract data from all frames
   const all_extracted_data = trajectory.frames.map((frame) =>
-    data_extractor(frame, trajectory),
+    data_extractor(frame, trajectory)
   )
 
   if (all_extracted_data.length === 0) return []
@@ -87,8 +87,7 @@ export function generate_plot_series(
       const y_axis: `y1` | `y2` = y2_properties.has(lower_key) ? `y2` : `y1`
 
       // Determine default visibility
-      let is_default_visible =
-        default_visible_properties.has(lower_key) ||
+      let is_default_visible = default_visible_properties.has(lower_key) ||
         default_visible_properties.has(key)
 
       // If lattice parameters are constant, don't show them by default
@@ -131,7 +130,7 @@ export function generate_plot_series(
     (s) =>
       s.visible &&
       ![`volume`, `density`].some((prop) =>
-        s.label?.toLowerCase().includes(prop.toLowerCase()),
+        s.label?.toLowerCase().includes(prop.toLowerCase())
       ),
   )
 
@@ -176,8 +175,8 @@ export function should_hide_plot(
     const fallback_properties = [`volume`, `density`]
     visible_series = plot_series.filter((s) =>
       fallback_properties.some((prop) =>
-        s.label?.toLowerCase().includes(prop.toLowerCase()),
-      ),
+        s.label?.toLowerCase().includes(prop.toLowerCase())
+      )
     )
   }
 

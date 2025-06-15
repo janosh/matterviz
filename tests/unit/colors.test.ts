@@ -66,19 +66,19 @@ describe(`Element Color Schemes`, () => {
       // Check for missing elements
       const missing_elements = [...first_elements].filter(
         (el) => !scheme_elements.has(el),
-      )
+      ).join(`, `)
       expect(
         missing_elements,
-        `${scheme_name} is missing elements from ${first_scheme_name}: ${missing_elements.join(`, `)}`,
+        `${scheme_name} is missing elements from ${first_scheme_name}: ${missing_elements}`,
       ).toHaveLength(0)
 
       // Check for extra elements
       const extra_elements = [...scheme_elements].filter(
         (el) => !first_elements.has(el),
-      )
+      ).join(`, `)
       expect(
         extra_elements,
-        `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements.join(`, `)}`,
+        `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements}`,
       ).toHaveLength(0)
     }
   })
@@ -107,15 +107,14 @@ describe(`Element Color Schemes`, () => {
       // Alloy scheme inherits from VESTA so may have more duplicates
       // Muted scheme uses desaturated colors that can result in similar hex values
       // Dark Mode scheme uses bright colors that can result in similar hex values
-      const max_duplicates =
-        {
-          Alloy: 15,
-          Muted: 15,
-          'Dark Mode': 25,
-          Pastel: 10,
-          Vesta: 10,
-          Jmol: 10,
-        }[scheme_name] ?? Infinity
+      const max_duplicates = {
+        Alloy: 15,
+        Muted: 15,
+        'Dark Mode': 25,
+        Pastel: 10,
+        Vesta: 10,
+        Jmol: 10,
+      }[scheme_name] ?? Infinity
       const duplicate_count = color_values.length - unique_colors.size
       expect(
         duplicate_count,

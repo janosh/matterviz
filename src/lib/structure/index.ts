@@ -55,7 +55,7 @@ export type PymatgenLattice = {
   volume: number
 } & { [key in (typeof lattice_param_keys)[number]]: number }
 
-export type PymatgenMolecule = { sites: Site[]; charge: number; id?: string }
+export type PymatgenMolecule = { sites: Site[]; charge?: number; id?: string }
 export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
 
 export type Edge = {
@@ -95,11 +95,7 @@ export function get_elem_amounts(structure: AnyStructure) {
   for (const site of structure.sites) {
     for (const species of site.species) {
       const { element: elem, occu } = species
-      if (elem in elements) {
-        elements[elem]! += occu
-      } else {
-        elements[elem] = occu
-      }
+      elements[elem] = (elements[elem] ?? 0) + occu
     }
   }
   return elements
@@ -113,7 +109,7 @@ export function format_chemical_formula(
   const elements = get_elem_amounts(structure)
   const formula = []
   for (const el of sort_fn(Object.keys(elements) as ElementSymbol[])) {
-    const amount = elements[el]!
+    const amount = elements[el] ?? 0
     if (amount === 1) formula.push(el)
     else formula.push(`${el}<sub>${amount}</sub>`)
   }
@@ -129,10 +125,10 @@ export function electro_neg_formula(structure: AnyStructure): string {
   // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) => {
     return symbols.sort((el1, el2) => {
-      const elec_neg1 =
-        element_data.find((el) => el.symbol === el1)?.electronegativity ?? 0
-      const elec_neg2 =
-        element_data.find((el) => el.symbol === el2)?.electronegativity ?? 0
+      const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
+        0
+      const elec_neg2 = element_data.find((el) => el.symbol === el2)?.electronegativity ??
+        0
 
       // Sort by electronegativity (ascending), then alphabetically for ties
       if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
@@ -141,18 +137,16 @@ export function electro_neg_formula(structure: AnyStructure): string {
   })
 }
 
-export const atomic_radii: Partial<Record<ElementSymbol, number>> =
-  Object.fromEntries(
-    element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
-  )
+export const atomic_radii: Partial<Record<ElementSymbol, number>> = Object.fromEntries(
+  element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
+)
 
-export const atomic_weights: Partial<Record<ElementSymbol, number>> =
-  Object.fromEntries(element_data.map((el) => [el.symbol, el.atomic_mass]))
+export const atomic_weights: Partial<Record<ElementSymbol, number>> = Object.fromEntries(
+  element_data.map((el) => [el.symbol, el.atomic_mass]),
+)
 
 export function get_elements(structure: AnyStructure): ElementSymbol[] {
-  const elems = structure.sites.flatMap((site) =>
-    site.species.map((sp) => sp.element),
-  )
+  const elems = structure.sites.flatMap((site) => site.species.map((sp) => sp.element))
   return [...new Set(elems)].sort() // unique elements
 }
 
@@ -208,8 +202,7 @@ export function find_image_atoms(
     // Check if the site is at the edge and determine its image
     // based on whether fractional coordinates are close to 0 or 1
     const edges: number[] = [0, 1, 2].filter(
-      (idx) =>
-        Math.abs(abc[idx]) < tolerance || Math.abs(abc[idx] - 1) < tolerance,
+      (idx) => Math.abs(abc[idx]) < tolerance || Math.abs(abc[idx] - 1) < tolerance,
     )
 
     if (edges.length > 0) {

@@ -16,7 +16,11 @@
     highlight_shell?: number | null
     style?: string
     // if function, it'll be called with electron index and should return a string
-    number_electrons?: boolean | `hierarchical` | `sequential` | ((idx: number) => string)
+    number_electrons?:
+      | boolean
+      | `hierarchical`
+      | `sequential`
+      | ((idx: number) => string)
     electron_label_props?: Record<string, string | number>
     [key: string]: unknown
   }
@@ -113,8 +117,8 @@
               {shell_idx + 1}.{elec_idx + 1}
               <!-- {:else if [`sequential`, true].includes(number_electrons)} -->
             {:else}
-              {@const nth_electron =
-                shells.slice(0, shell_idx).reduce((a, b) => a + b, 0) + elec_idx + 1}
+              {@const nth_electron = shells.slice(0, shell_idx).reduce((a, b) => a + b, 0) +
+          elec_idx + 1}
               {nth_electron}
             {/if}
           </text>

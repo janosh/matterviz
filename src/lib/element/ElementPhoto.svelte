@@ -29,8 +29,7 @@
   {#if hidden && missing_msg}
     <div {style}>
       <span>
-        <svg><use href="#icon-no-image" /></svg>&nbsp;{missing_msg}
-        {name}
+        <svg><use href="#icon-no-image" /></svg>&nbsp;{missing_msg} {name}
       </span>
     </div>
   {/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num, InfoCard } from '$lib'
-  import { density, electro_neg_formula, type PymatgenStructure } from '.'
+  import { density, electro_neg_formula, type PymatgenStructure } from './index'
 
   interface Props {
     structure: PymatgenStructure

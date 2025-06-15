@@ -1,7 +1,7 @@
 import { BohrAtom } from '$lib'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '.'
+import { doc_query } from './index'
 
 describe(`BohrAtom`, () => {
   test.each([
@@ -12,7 +12,7 @@ describe(`BohrAtom`, () => {
     [`O`, `Oxygen`, [2, 6]],
   ])(
     `renders with custom styles and properties`,
-    async (symbol, name, shells) => {
+    (symbol, name, shells) => {
       mount(BohrAtom, {
         target: document.body,
         props: {

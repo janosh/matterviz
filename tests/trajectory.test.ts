@@ -48,7 +48,7 @@ test.describe(`Trajectory Component Tests`, () => {
       controls.locator(`.info-section span`).filter({ hasText: `Atoms: 2` }),
     ).toBeVisible()
     await expect(
-      controls.locator(`.info-section span`).filter({ hasText: `E:` }),
+      controls.locator(`.info-section span`).filter({ hasText: `E0:` }),
     ).toBeVisible()
 
     // Navigation functionality
@@ -248,10 +248,10 @@ test.describe(`Trajectory Component Tests`, () => {
       info_section.locator(`span`).filter({ hasText: `Atoms:` }),
     ).toBeVisible()
     await expect(
-      info_section.locator(`span`).filter({ hasText: `E:` }),
+      info_section.locator(`span`).filter({ hasText: `E0:` }),
     ).toBeVisible()
     await expect(
-      info_section.locator(`span`).filter({ hasText: `Vol:` }),
+      info_section.locator(`span`).filter({ hasText: `Vol0:` }),
     ).toBeVisible()
 
     // Binary file handling capabilities
