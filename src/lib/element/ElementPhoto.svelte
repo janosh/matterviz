@@ -21,7 +21,7 @@
 
 {#if name && number}
   <img
-    src="https://github.com/janosh/elementari/raw/main/static/{file}"
+    src="https://github.com/janosh/matterviz/raw/main/static/{file}"
     alt={name}
     onerror={() => (hidden = true)}
     {style}

@@ -136,7 +136,7 @@
     if (!allow_file_drop) return
 
     // Check for our custom internal file format first
-    const internal_data = event.dataTransfer?.getData(`application/x-elementari-file`)
+    const internal_data = event.dataTransfer?.getData(`application/x-matterviz-file`)
     if (internal_data) {
       try {
         const file_info = JSON.parse(internal_data)

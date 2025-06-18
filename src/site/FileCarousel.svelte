@@ -77,7 +77,7 @@
 
     // Set drag data using a custom MIME type for internal transfers
     event.dataTransfer?.setData(
-      `application/x-elementari-file`,
+      `application/x-matterviz-file`,
       JSON.stringify({
         name: filename,
         content: file.content,

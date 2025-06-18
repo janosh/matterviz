@@ -220,10 +220,10 @@
   ]
 </script>
 
-<h1 style="margin: 0">Elementari</h1>
+<h1 style="margin: 0">MatterViz</h1>
 
 <p>
-  <code>elementari</code> is a toolkit for building interactive web UIs for materials
+  <code>matterviz</code> is a toolkit for building interactive web UIs for materials
   science: periodic tables, 3d crystal structures (and molecules), Bohr atoms, nuclei,
   heatmaps, scatter plots. Check out some of the examples in the navigation bar above.
 </p>

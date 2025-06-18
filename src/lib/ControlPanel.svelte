@@ -13,6 +13,8 @@
     show_toggle_button?: boolean // Whether the toggle button should be shown
     open_icon?: IconName // Custom icon for open state
     closed_icon?: IconName // Custom icon for closed state
+    toggle_controls_btn?: HTMLButtonElement // Toggle button DOM element
+    controls?: HTMLDivElement // Control panel DOM element
   }
   let {
     controls_open = $bindable(false),
@@ -23,10 +25,9 @@
     show_toggle_button = true,
     open_icon = `Cross`,
     closed_icon = `Settings`,
+    toggle_controls_btn,
+    controls,
   }: Props = $props()
-
-  let controls: HTMLElement | undefined = $state(undefined) // Control panel DOM element
-  let toggle_controls_btn: HTMLButtonElement | undefined = $state(undefined) // Toggle button DOM element
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === `Escape`) controls_open = false
@@ -76,6 +77,7 @@
     height: 28px;
     padding: 0.125rem 0.25rem;
     font-size: 0.8rem;
+    box-sizing: border-box;
   }
   .controls-toggle:hover {
     background-color: transparent !important;
@@ -94,7 +96,7 @@
     box-sizing: border-box;
     top: var(--controls-top, 30pt);
     right: var(--controls-right, 6pt);
-    background: var(--controls-bg, rgba(10, 10, 10, 0.8));
+    background: var(--controls-bg, rgba(10, 10, 10, 0.95));
     padding: var(--controls-padding, 6pt 9pt);
     border-radius: var(--controls-border-radius, 3pt);
     width: var(--controls-width, 20em);
