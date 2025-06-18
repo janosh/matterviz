@@ -2,15 +2,15 @@
 
 ## 🙋 How can I help?
 
-Pull requests to improve docs, test coverage or examples are always welcome! If you want to implement a new feature, please submit an issue first so we can discuss project-fit. You can also look for [issues labeled 'help wanted'](https://github.com/janosh/elementari/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) and open a PR to close one of those. If you don't finish, you're welcome to submit it as draft PR anyway. Someone else might take over.
+Pull requests to improve docs, test coverage or examples are always welcome! If you want to implement a new feature, please submit an issue first so we can discuss project-fit. You can also look for [issues labeled 'help wanted'](https://github.com/janosh/matterviz/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) and open a PR to close one of those. If you don't finish, you're welcome to submit it as draft PR anyway. Someone else might take over.
 
 ## 🚀 Submit a PR
 
 To submit a pull request, clone the repo, install dependencies and start the dev server to see changes as you make them.
 
 ```sh
-git clone https://github.com/janosh/elementari
-cd elementari
+git clone https://github.com/janosh/matterviz
+cd matterviz
 npm run install
 npm dev
 ```
@@ -37,9 +37,9 @@ Any new features should come with corresponding tests. If you fix a bug, please 
 
 This repo has 3 required CI checks that have to pass for every PR before merging:
 
-- tests: run as [GitHub Action](https://github.com/janosh/elementari/actions/workflows/test.yml) ([workflow code](https://github.com/janosh/elementari/blob/main/.github/workflows/test.yml))
-- linting: handled by [pre-commit.ci](https://results.pre-commit.ci/latest/github/janosh/elementari/main)
-- docs: [continuous deployment](https://github.com/janosh/elementari/blob/main/.github/workflows/gh-pages.yml) through GitHub Pages
+- tests: run as [GitHub Action](https://github.com/janosh/matterviz/actions/workflows/test.yml) ([workflow code](https://github.com/janosh/matterviz/blob/main/.github/workflows/test.yml))
+- linting: handled by [pre-commit.ci](https://results.pre-commit.ci/latest/github/janosh/matterviz/main)
+- docs: [continuous deployment](https://github.com/janosh/matterviz/blob/main/.github/workflows/gh-pages.yml) through GitHub Pages
 
 ## 🆕 New release
 
@@ -75,4 +75,4 @@ Push the release commit and tag to `origin/main`:
 git push && git push --tags
 ```
 
-Finally [publish a new release on GitHub](https://github.com/janosh/elementari/releases/new).
+Finally [publish a new release on GitHub](https://github.com/janosh/matterviz/releases/new).

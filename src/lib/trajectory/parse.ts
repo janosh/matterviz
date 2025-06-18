@@ -1196,7 +1196,7 @@ import json
 traj = read('${filename}', index=':')
 structures = [AseAtomsAdaptor.get_structure(atoms) for atoms in traj]
 
-# Save as JSON for elementari
+# Save as JSON for matterviz
 trajectory_data = {
     "frames": [{"structure": struct.as_dict(), "step": i} for i, struct in enumerate(structures)]
 }
