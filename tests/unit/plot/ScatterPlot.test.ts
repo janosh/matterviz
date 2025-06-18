@@ -258,7 +258,7 @@ describe(`ScatterPlot`, () => {
 
   test(`handles all edge cases and safeguards against invalid data`, () => {
     // Create a series with all types of problematic data
-    const comprehensive_test_data = [
+    const full_test_data = [
       { // Valid series with some missing/null data points
         x: [1, 2, null, 4, 5] as (number | null | undefined)[],
         y: [5, 4, undefined, 2, 1] as (number | null | undefined)[],
@@ -276,7 +276,7 @@ describe(`ScatterPlot`, () => {
     const component = mount(ScatterPlot, {
       target: document.body,
       props: {
-        series: comprehensive_test_data,
+        series: full_test_data,
         // Test multiple edge cases together
         x_lim: [null, null],
         y_lim: [null, null],

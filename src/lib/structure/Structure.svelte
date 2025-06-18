@@ -1,63 +1,43 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import type { AnyStructure, Lattice } from '$lib'
-  import { get_elem_amounts, get_pbc_image_sites } from '$lib'
+  import type { AnyStructure } from '$lib'
+  import { get_elem_amounts, get_pbc_image_sites, Icon } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import { decompress_file } from '$lib/io/decompress'
   import * as exports from '$lib/io/export'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
-  import type { ComponentProps, Snippet } from 'svelte'
-  import Select from 'svelte-multiselect'
-  import { Tooltip } from 'svelte-zoo'
+  import type { Snippet } from 'svelte'
   import { WebGLRenderer } from 'three'
-  import { BOND_DEFAULTS, CELL_DEFAULTS, StructureLegend, StructureScene } from './index'
+  import {
+    BOND_DEFAULTS,
+    CELL_DEFAULTS,
+    StructureControls,
+    StructureLegend,
+    StructureScene,
+  } from './index'
+  import type { Props as ControlProps } from './StructureControls.svelte'
 
-  interface Props {
+  interface Props extends ControlProps {
     // output of pymatgen.core.Structure.as_dict()
-    structure?: AnyStructure | undefined
-    // need to set a default atom_radius so it doesn't initialize to 0
-    scene_props?: ComponentProps<typeof StructureScene> // passed to StructureScene
-    lattice_props?: ComponentProps<typeof Lattice> // passed to Lattice
-    // whether to show the controls panel
-    controls_open?: boolean
-    // canvas background color
-    background_color?: string // must be hex code for <input type='color'>
-    // background color opacity (0-1)
-    background_opacity?: number
+    // structure?: AnyStructure | undefined
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
     reveal_buttons?: boolean | number
     fullscreen?: boolean
-    wrapper?: HTMLDivElement | undefined
-    // the control panel DOM element
-    controls?: HTMLElement | undefined
-    // the button to toggle the control panel
-    toggle_controls_btn?: HTMLButtonElement | undefined
     // bindable width of the canvas
     width?: number
     // bindable height of the canvas
     height?: number
     reset_text?: string
-    color_scheme?: `Jmol` | `Vesta`
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
     tips_modal?: HTMLDialogElement | undefined
     enable_tips?: boolean
-    save_json_btn_text?: string
-    save_png_btn_text?: string
-    save_xyz_btn_text?: string
-    png_dpi?: number // PNG export DPI (dots per inch) - 72 is standard web resolution, 150+ is print quality
-    // boolean or map from element symbols to labels
-    // use atom_label snippet to include HTML and event handlers
-    show_site_labels?: boolean
-    show_image_atoms?: boolean
-    show_full_controls?: boolean
     tips_icon?: Snippet<[]>
-    fullscreen_toggle?: Snippet<[]>
-    controls_toggle?: Snippet<[{ controls_open: boolean }]>
+    fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure: AnyStructure }]>
     // Generic callback for when files are dropped - receives raw content and filename
     on_file_drop?: (content: string, filename: string) => void
@@ -82,8 +62,6 @@
     reveal_buttons = 500,
     fullscreen = false,
     wrapper = $bindable(undefined),
-    controls = $bindable(undefined),
-    toggle_controls_btn = $bindable(undefined),
     width = $bindable(0),
     height = $bindable(0),
     reset_text = `Reset camera`,
@@ -101,8 +79,7 @@
     show_image_atoms = $bindable(true),
     show_full_controls = $bindable(false),
     tips_icon,
-    fullscreen_toggle,
-    controls_toggle,
+    fullscreen_toggle = true,
     bottom_left,
     on_file_drop,
     max_text_size = 5 * 1024 * 1024, // 5 MB default
@@ -124,43 +101,16 @@
     colors.element = element_color_schemes[color_scheme]
   })
 
-  // Color scheme selection state
-  let color_scheme_selected = $state([color_scheme])
-  $effect(() => {
-    if (color_scheme_selected.length > 0) {
-      color_scheme = color_scheme_selected[0] as `Jmol` | `Vesta`
-    }
-  })
-
-  // Helper function to get example set of colors from an element color scheme
-  function get_representative_colors(scheme_name: string): string[] {
-    const scheme =
-      element_color_schemes[scheme_name as keyof typeof element_color_schemes]
-    if (!scheme) return []
-
-    // Get colors for common elements: H, C, N, O, Fe, Ca, Si, Al
-    const sample_elements = [`H`, `C`, `N`, `O`, `Fe`, `Ca`, `Si`, `Al`]
-    return sample_elements
-      .slice(0, 4) // Take first 4
-      .map((el) => scheme[el] || scheme.H || `#cccccc`)
-      .filter(Boolean)
-  }
-
-  function on_keydown(event: KeyboardEvent) {
-    if (event.key === `Escape`) controls_open = false
-  }
-
-  const on_window_click =
-    (node: (HTMLElement | undefined | null)[], cb: () => void) => (event: MouseEvent) => {
-      if (!node || !event.target) return // ignore invalid input
-      // ignore clicks inside any of the nodes
-      if (node && node.some((n) => n?.contains(event.target as Node))) return
-      cb() // invoke callback
-    }
-
   let visible_buttons = $derived(
     reveal_buttons == true ||
       (typeof reveal_buttons == `number` && reveal_buttons < width),
+  )
+
+  // only updates when structure or show_image_atoms change
+  let scene_structure = $derived(
+    show_image_atoms && structure && `lattice` in structure
+      ? get_pbc_image_sites(structure)
+      : structure,
   )
 
   // Track if camera has ever been moved from initial position
@@ -191,7 +141,9 @@
       try {
         const file_info = JSON.parse(internal_data)
         if (file_info.content && file_info.content.length > max_text_size) {
-          console.warn(`Internal file data too large: ${file_info.content.length} bytes`)
+          console.warn(
+            `Internal file data too large: ${file_info.content.length} bytes`,
+          )
           return
         }
         try {
@@ -266,13 +218,6 @@
   })
 </script>
 
-<svelte:window
-  onkeydown={on_keydown}
-  onclick={on_window_click([controls, toggle_controls_btn], () => {
-    if (controls_open) controls_open = false
-  })}
-/>
-
 {#if structure?.sites}
   <div
     class="structure"
@@ -299,13 +244,12 @@
       {#if camera_has_moved}
         <button class="reset-camera" onclick={reset_camera} title={reset_text}>
           <!-- Target/Focus icon for reset camera -->
-          <svg><use href="#icon-reset" /></svg>
+          <Icon icon="Reset" />
         </button>
       {/if}
       {#if enable_tips}
         <button class="info-icon" onclick={() => tips_modal?.showModal()}>
-          {#if tips_icon}{@render tips_icon()}{:else}<svg><use href="#icon-info" /></svg
-            >{/if}
+          {#if tips_icon}{@render tips_icon()}{:else}<Icon icon="Info" />{/if}
         </button>
       {/if}
       <button
@@ -313,356 +257,33 @@
         class="fullscreen-toggle"
         title="Toggle fullscreen"
       >
-        {#if fullscreen_toggle}{@render fullscreen_toggle()}{:else}
-          <svg style="transform: scale(0.9);"><use href="#icon-fullscreen" /></svg>
+        {#if typeof fullscreen_toggle === `function`}
+          {@render fullscreen_toggle()}
+        {:else if fullscreen_toggle}
+          <Icon icon="Fullscreen" style="transform: scale(0.9)" />
         {/if}
       </button>
-      <button
-        onclick={() => (controls_open = !controls_open)}
-        bind:this={toggle_controls_btn}
-        class="controls-toggle"
-        title={controls_open ? `Close controls` : `Open controls`}
-      >
-        {#if controls_toggle}{@render controls_toggle({
-            controls_open,
-          })}{:else if controls_open}
-          <svg><use href="#icon-x" /></svg>
-        {:else}
-          <svg><use href="#icon-settings" /></svg>
-        {/if}
-      </button>
+
+      <StructureControls
+        bind:controls_open
+        bind:scene_props
+        bind:lattice_props
+        bind:show_image_atoms
+        bind:show_site_labels
+        bind:show_full_controls
+        bind:background_color
+        bind:background_opacity
+        bind:color_scheme
+        bind:png_dpi
+        {structure}
+        {wrapper}
+        {save_json_btn_text}
+        {save_png_btn_text}
+        {save_xyz_btn_text}
+      />
     </section>
 
     <StructureLegend elements={get_elem_amounts(structure)} bind:tips_modal />
-
-    <dialog class="controls" bind:this={controls} open={controls_open}>
-      <!-- Visibility Controls -->
-      <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap;">
-        Show <label>
-          <input type="checkbox" bind:checked={scene_props.show_atoms} />
-          atoms
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={scene_props.show_bonds} />
-          bonds
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={show_image_atoms} />
-          image atoms
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={show_site_labels} />
-          site labels
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={show_full_controls} />
-          full controls
-        </label>
-      </div>
-
-      <hr />
-
-      <!-- Atom Controls -->
-      <h4 class="section-heading">Atoms</h4>
-      <label class="slider-control">
-        Radius <small>(Å)</small>
-        <input
-          type="number"
-          min="0.2"
-          max={2}
-          step={0.05}
-          bind:value={scene_props.atom_radius}
-        />
-        <input
-          type="range"
-          min="0.2"
-          max={2}
-          step={0.05}
-          bind:value={scene_props.atom_radius}
-        />
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
-        <span>
-          Scale according to atomic radii
-          <small> (if false, all atoms same size)</small>
-        </span>
-      </label>
-      <label style="align-items: flex-start;">
-        Color scheme
-        <Select
-          options={Object.keys(element_color_schemes)}
-          maxSelect={1}
-          minSelect={1}
-          bind:selected={color_scheme_selected}
-          liOptionStyle="padding: 3pt 6pt;"
-          style="width: 10em; border: none;"
-        >
-          {#snippet children({ option })}
-            {@const style = `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
-            <div {style}>
-              {option}
-              <div style="display: flex; gap: 3pt;">
-                {#each get_representative_colors(String(option)) as color (color)}
-                  {@const style = `width: 15px; height: 15px; border-radius: 2px; background: {color};`}
-                  <div {style}></div>
-                {/each}
-              </div>
-            </div>
-          {/snippet}
-        </Select>
-      </label>
-
-      <hr />
-
-      <!-- Cell Controls -->
-      <h4 class="section-heading">Cell</h4>
-      <label>
-        <input type="checkbox" bind:checked={lattice_props.show_vectors} />
-        lattice vectors
-      </label>
-      {#each [{ label: `Edge color`, color_prop: `cell_edge_color` as const, opacity_prop: `cell_edge_opacity` as const, step: 0.05 }, { label: `Surface color`, color_prop: `cell_surface_color` as const, opacity_prop: `cell_surface_opacity` as const, step: 0.01 }] as { label, color_prop, opacity_prop, step } (label)}
-        <div class="control-row">
-          <label class="compact">
-            {label}
-            <input type="color" bind:value={lattice_props[color_prop]} />
-          </label>
-          <label class="slider-control">
-            opacity
-            <input
-              type="number"
-              min={0}
-              max={1}
-              {step}
-              bind:value={lattice_props[opacity_prop]}
-            />
-            <input
-              type="range"
-              min={0}
-              max={1}
-              {step}
-              bind:value={lattice_props[opacity_prop]}
-            />
-          </label>
-        </div>
-      {/each}
-
-      <hr />
-
-      <!-- Background Controls -->
-      <h4 class="section-heading">Background</h4>
-      <div class="control-row">
-        <label class="compact">
-          Color
-          <input type="color" bind:value={background_color} />
-        </label>
-        <label class="slider-control">
-          Opacity
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.02}
-            bind:value={background_opacity}
-          />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.02}
-            bind:value={background_opacity}
-          />
-        </label>
-      </div>
-
-      {#if show_full_controls}
-        <!-- Camera Controls -->
-        <h4 class="section-heading">Camera</h4>
-        <label>
-          Auto rotate speed
-          <input
-            type="number"
-            min={0}
-            max={2}
-            step={0.01}
-            bind:value={scene_props.auto_rotate}
-          />
-          <input
-            type="range"
-            min={0}
-            max={2}
-            step={0.01}
-            bind:value={scene_props.auto_rotate}
-          />
-        </label>
-        <label>
-          Zoom speed
-          <input
-            type="number"
-            min={0.1}
-            max={0.8}
-            step={0.02}
-            bind:value={scene_props.zoom_speed}
-          />
-          <input
-            type="range"
-            min={0.1}
-            max={0.8}
-            step={0.02}
-            bind:value={scene_props.zoom_speed}
-          />
-        </label>
-        <label>
-          <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
-            Pan speed
-          </Tooltip>
-          <input
-            type="number"
-            min={0}
-            max={2}
-            step={0.01}
-            bind:value={scene_props.pan_speed}
-          />
-          <input
-            type="range"
-            min={0}
-            max={2}
-            step={0.01}
-            bind:value={scene_props.pan_speed}
-          />
-        </label>
-        <label>
-          <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
-          <input
-            type="number"
-            min={0}
-            max={0.3}
-            step={0.01}
-            bind:value={scene_props.rotation_damping}
-          />
-          <input
-            type="range"
-            min={0}
-            max={0.3}
-            step={0.01}
-            bind:value={scene_props.rotation_damping}
-          />
-        </label>
-
-        <hr />
-
-        <!-- Lighting Controls -->
-        <h4 class="section-heading">Lighting</h4>
-        <label>
-          <Tooltip text="intensity of the directional light">Directional light</Tooltip>
-          <input
-            type="number"
-            min={0}
-            max={4}
-            step={0.01}
-            bind:value={scene_props.directional_light}
-          />
-          <input
-            type="range"
-            min={0}
-            max={4}
-            step={0.01}
-            bind:value={scene_props.directional_light}
-          />
-        </label>
-        <label>
-          <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
-          <input
-            type="number"
-            min={0.5}
-            max={3}
-            step={0.05}
-            bind:value={scene_props.ambient_light}
-          />
-          <input
-            type="range"
-            min={0.5}
-            max={3}
-            step={0.05}
-            bind:value={scene_props.ambient_light}
-          />
-        </label>
-      {/if}
-
-      <hr />
-
-      {#if scene_props.show_bonds}
-        <label>
-          Bonding strategy
-          <select bind:value={scene_props.bonding_strategy}>
-            <option value="max_dist">Max Distance</option>
-            <option value="nearest_neighbor">Nearest Neighbor</option>
-            <option value="vdw_radius_based">Van der Waals Radii</option>
-          </select>
-        </label>
-
-        <label>
-          Bond color
-          <input type="color" bind:value={scene_props.bond_color} />
-        </label>
-        <label>
-          Bond thickness
-          <input
-            type="number"
-            min={0.01}
-            max={0.12}
-            step={0.005}
-            bind:value={scene_props.bond_thickness}
-          />
-          <input
-            type="range"
-            min="0.01"
-            max="0.12"
-            step={0.005}
-            bind:value={scene_props.bond_thickness}
-          />
-        </label>
-      {/if}
-
-      <span
-        style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap;"
-      >
-        <button
-          type="button"
-          onclick={() => exports.export_json(structure)}
-          title={save_json_btn_text}
-        >
-          {save_json_btn_text}
-        </button>
-        <button
-          type="button"
-          onclick={() => exports.export_xyz(structure)}
-          title={save_xyz_btn_text}
-        >
-          {save_xyz_btn_text}
-        </button>
-        <button
-          type="button"
-          onclick={() => {
-            const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
-            exports.export_png(canvas, structure, png_dpi)
-          }}
-          title="{save_png_btn_text} (${png_dpi} DPI)"
-        >
-          {save_png_btn_text}
-        </button>
-        <small style="margin-left: 4pt;">DPI:</small>
-        <input
-          type="number"
-          min={72}
-          max={300}
-          step={25}
-          bind:value={png_dpi}
-          style="width: 3.5em;"
-          title="Export resolution in dots per inch"
-        />
-      </span>
-    </dialog>
 
     <Canvas
       createRenderer={(canvas) => {
@@ -671,16 +292,13 @@
           preserveDrawingBuffer: true,
           antialias: true,
           alpha: true,
-        })
-        // Store renderer reference for high-res export
+        }) // Store renderer reference for high-res export
         ;(canvas as exports.CanvasWithRenderer).__customRenderer = renderer
         return renderer
       }}
     >
       <StructureScene
-        structure={show_image_atoms && structure && `lattice` in structure
-          ? get_pbc_image_sites(structure)
-          : structure}
+        structure={scene_structure}
         {...scene_props}
         {show_site_labels}
         {lattice_props}
@@ -732,7 +350,6 @@
   button:hover {
     background-color: transparent !important;
   }
-
   section {
     position: absolute;
     display: flex;
@@ -742,121 +359,20 @@
     gap: var(--struct-buttons-gap, 3pt);
     z-index: 2;
   }
-
   section button {
     pointer-events: auto;
+    font-size: 1em;
   }
-  section button svg {
-    pointer-events: none;
-    width: 20px;
-    height: 20px;
+  section :global(.controls-toggle) {
+    background-color: transparent;
   }
-
-  dialog.controls {
-    position: absolute;
-    left: unset;
-    background: transparent;
-    border: none;
-    display: grid;
-    visibility: hidden;
-    opacity: 0;
-    gap: var(--struct-controls-gap, 4pt);
-    text-align: var(--struct-controls-text-align, left);
-    transition:
-      visibility var(--struct-controls-transition-duration),
-      opacity var(--struct-controls-transition-duration);
-    box-sizing: border-box;
-    top: var(--struct-controls-top, 30pt);
-    right: var(--struct-controls-right, 6pt);
-    background: var(--struct-controls-bg, rgba(10, 10, 10, 0.8));
-    padding: var(--struct-controls-padding, 6pt 9pt);
-    border-radius: var(--struct-controls-border-radius, 3pt);
-    width: var(--struct-controls-width, 20em);
-    max-width: var(--struct-controls-max-width, 90cqw);
-    color: var(--struct-controls-text-color);
-    overflow: auto;
-    max-height: var(--struct-controls-max-height, calc(100vh - 3em));
-  }
-  dialog.controls hr {
-    border: none;
-    background: var(--struct-controls-hr-bg, gray);
-    margin: var(--struct-controls-hr-margin, 0);
-    height: var(--struct-controls-hr-height, 0.5px);
-  }
-  dialog.controls label {
-    display: flex;
-    align-items: center;
-    gap: var(--struct-controls-label-gap, 2pt);
-  }
-  dialog.controls input[type='range'] {
-    margin-left: auto;
-    width: var(--struct-controls-input-range-width, 100px);
-    flex-shrink: 0;
-  }
-  .slider-control input[type='range'] {
-    margin-left: 0;
-  }
-  dialog.controls input[type='number'] {
-    box-sizing: border-box;
-    text-align: center;
-    border-radius: var(--struct-controls-input-num-border-radius, 3pt);
-    width: var(--struct-controls-input-num-width, 2.2em);
-    border: var(--struct-controls-input-num-border, none);
-    background: var(--struct-controls-input-num-bg, rgba(255, 255, 255, 0.15));
-    margin-right: 3pt;
-    margin-left: var(--struct-controls-input-num-margin-left, 6pt);
-    flex-shrink: 0;
-  }
-  input::-webkit-inner-spin-button {
-    display: none;
-  }
-
-  dialog.controls[open] {
-    visibility: visible;
-    opacity: 1;
-    z-index: var(--struct-controls-z-index, 1);
-    pointer-events: auto;
-  }
-  dialog.controls button {
-    width: max-content;
-    background-color: var(--struct-controls-btn-bg, rgba(255, 255, 255, 0.2));
-  }
-  select {
-    margin: var(--struct-controls-select-margin, 0 0 0 5pt);
-    color: var(--struct-controls-select-color, white);
-    background-color: var(--struct-controls-select-bg, rgba(255, 255, 255, 0.1));
-  }
-  p.warn {
-    text-align: center;
-  }
-  input[type='color'] {
-    width: var(--struct-input-color-width, 40px);
-    height: var(--struct-input-color-height, 16px);
-    margin: var(--struct-input-color-margin, 0 0 0 5pt);
-    border: var(--struct-input-color-border, 1px solid rgba(255, 255, 255, 0.05));
-    box-sizing: border-box;
+  section :global(.controls-toggle):hover {
+    background-color: transparent !important;
   }
   .structure :global(canvas) {
     pointer-events: auto;
   }
-  .section-heading {
-    margin: 8pt 0 2pt;
-    font-size: 0.9em;
-    color: var(--text-muted, #ccc);
-  }
-  .control-row {
-    display: flex;
-    gap: 4pt;
-    align-items: flex-start;
-  }
-  .control-row label {
-    min-width: 0;
-  }
-  .control-row label.compact {
-    flex: 0 0 auto;
-    margin-right: 8pt;
-  }
-  .control-row label.slider-control {
-    flex: 1;
+  p.warn {
+    text-align: center;
   }
 </style>

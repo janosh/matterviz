@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { Vector } from '$lib'
+  import type { Vector3 } from '$lib'
   import { T } from '@threlte/core'
-  import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
+  import { CanvasTexture, Euler, Quaternion } from 'three'
 
   interface Props {
-    from?: Vector // position of atom 1
-    to: Vector // position of atom 2
+    from?: Vector3 // position of atom 1
+    to: Vector3 // position of atom 2
     offset?: number // offset of the bond from the center of the atoms
     thickness?: number // thickness/radius of the cylinder geometry and mesh scaling
     color?: string // color of the bond
@@ -67,7 +67,7 @@
     // length of the bond
     const height = delta_vec.length()
     // calculate position
-    let position: Vector
+    let position: Vector3
     if (offset === 0) {
       position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).toArray()
     } else {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, BondPair, Site, Vector } from '$lib'
+  import type { AnyStructure, BondPair, Site, Vector3 } from '$lib'
   import {
     add,
     atomic_radii,
@@ -34,7 +34,7 @@
     // determined by the atomic radius of the element
     same_size_atoms?: boolean
     // initial camera position from which to render the scene
-    camera_position?: Vector
+    camera_position?: Vector3
     // rotation damping factor (how quickly the rotation comes to rest after mouse release)
     rotation_damping?: number
     // zoom level of the camera
@@ -180,7 +180,7 @@
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={lattice ? (scale(add(...lattice.matrix), 0.5) as Vector) : [0, 0, 0]}
+    target={lattice ? (scale(add(...lattice.matrix), 0.5) as Vector3) : [0, 0, 0]}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     autoRotate={Boolean(auto_rotate)}

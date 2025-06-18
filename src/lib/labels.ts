@@ -200,6 +200,7 @@ export const trajectory_labels: Record<string, string> = {
   temperature: `Temperature (K)`,
   pressure: `Pressure (GPa)`,
   stress_max: `σ<sub>max</sub> (GPa)`,
+  stress_frobenius: `σ<sub>F</sub> (GPa)`,
 }
 
 // Helper function to get property label with unit for trajectory plotting
@@ -209,9 +210,7 @@ export function get_label_with_unit(
   units?: Record<string, string>,
 ): string {
   // First check if we have an explicit label mapping
-  if (property_labels?.[key]) {
-    return property_labels[key]
-  }
+  if (property_labels?.[key]) return property_labels[key]
 
   // Fallback to old units approach for backward compatibility
   const lower_key = key.toLowerCase()
@@ -228,6 +227,10 @@ export function get_label_with_unit(
 
   if (lower_key === `stress_max`) {
     return unit ? `σ<sub>max</sub> (${unit})` : `σ<sub>max</sub>`
+  }
+
+  if (lower_key === `stress_frobenius`) {
+    return unit ? `σ<sub>F</sub> (${unit})` : `σ<sub>F</sub>`
   }
 
   if (lower_key === `temperature`) {

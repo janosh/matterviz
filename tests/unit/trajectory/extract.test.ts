@@ -1,4 +1,5 @@
-import type { ElementSymbol, Vector } from '$lib'
+import type { ElementSymbol, Vec3 } from '$lib'
+import { Matrix3x3 } from '$lib/math'
 import type { Trajectory } from '$lib/trajectory'
 import {
   energy_data_extractor,
@@ -8,9 +9,9 @@ import {
 } from '$lib/trajectory/extract'
 import { parse_torch_sim_hdf5 } from '$lib/trajectory/parse'
 import { readFileSync } from 'fs'
+import process from 'node:process'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import process from 'node:process'
 
 // Helper to read binary test files (for HDF5)
 function read_binary_test_file(filename: string): ArrayBuffer {
@@ -34,8 +35,8 @@ function create_basic_frame(
           species: [
             { element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 },
           ],
-          abc: [0, 0, 0] as Vector,
-          xyz: [0, 0, 0] as Vector,
+          abc: [0, 0, 0] as Vec3,
+          xyz: [0, 0, 0] as Vec3,
           label: `H1`,
           properties: {},
         },
@@ -60,8 +61,8 @@ function create_frame_with_lattice(
           species: [
             { element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 },
           ],
-          abc: [0, 0, 0] as Vector,
-          xyz: [0, 0, 0] as Vector,
+          abc: [0, 0, 0] as Vec3,
+          xyz: [0, 0, 0] as Vec3,
           label: `H1`,
           properties: {},
         },
@@ -72,7 +73,7 @@ function create_frame_with_lattice(
           [lattice_params.a || 1, 0, 0],
           [0, lattice_params.b || 1, 0],
           [0, 0, lattice_params.c || 1],
-        ] as [Vector, Vector, Vector],
+        ] as Matrix3x3,
         pbc: [true, true, true] as [boolean, boolean, boolean],
         a: lattice_params.a || 1,
         b: lattice_params.b || 1,
@@ -271,9 +272,9 @@ describe(`Full Data Extractor`, () => {
     expect(frame1_data.a).toBe(1.0)
     expect(frame2_data.a).toBe(1.1)
 
-    // Should NOT have constant lattice marker (lattice varies)
-    expect(frame1_data._constant_lattice_params).toBeUndefined()
-    expect(frame2_data._constant_lattice_params).toBeUndefined()
+    // Should NOT have constant lattice markers (lattice varies)
+    expect(frame1_data._constant_a).toBeUndefined()
+    expect(frame2_data._constant_a).toBeUndefined()
   })
 
   it(`should detect constant lattice parameters`, () => {
@@ -305,9 +306,19 @@ describe(`Full Data Extractor`, () => {
       constant_trajectory,
     )
 
-    // Should have constant lattice marker
-    expect(frame1_data._constant_lattice_params).toBe(1)
-    expect(frame2_data._constant_lattice_params).toBe(1)
+    // Should have constant lattice markers for all parameters
+    expect(frame1_data._constant_a).toBe(1)
+    expect(frame2_data._constant_a).toBe(1)
+    expect(frame1_data._constant_b).toBe(1)
+    expect(frame2_data._constant_b).toBe(1)
+    expect(frame1_data._constant_c).toBe(1)
+    expect(frame2_data._constant_c).toBe(1)
+    expect(frame1_data._constant_alpha).toBe(1)
+    expect(frame2_data._constant_alpha).toBe(1)
+    expect(frame1_data._constant_beta).toBe(1)
+    expect(frame2_data._constant_beta).toBe(1)
+    expect(frame1_data._constant_gamma).toBe(1)
+    expect(frame2_data._constant_gamma).toBe(1)
 
     // All lattice properties should be the same
     expect(frame1_data.a).toBe(frame2_data.a)
@@ -425,9 +436,21 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
 
     all_frame_data.forEach((data) => {
       if (is_constant) {
-        expect(data._constant_lattice_params).toBe(1)
+        // Check that all lattice parameters are marked as constant
+        expect(data._constant_a).toBe(1)
+        expect(data._constant_b).toBe(1)
+        expect(data._constant_c).toBe(1)
+        expect(data._constant_alpha).toBe(1)
+        expect(data._constant_beta).toBe(1)
+        expect(data._constant_gamma).toBe(1)
       } else {
-        expect(data._constant_lattice_params).toBeUndefined()
+        // Check that lattice parameters are not marked as constant
+        expect(data._constant_a).toBeUndefined()
+        expect(data._constant_b).toBeUndefined()
+        expect(data._constant_c).toBeUndefined()
+        expect(data._constant_alpha).toBeUndefined()
+        expect(data._constant_beta).toBeUndefined()
+        expect(data._constant_gamma).toBeUndefined()
       }
     })
   })

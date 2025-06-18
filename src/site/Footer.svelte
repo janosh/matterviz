@@ -1,22 +1,23 @@
 <script lang="ts">
+  import { Icon } from '$lib'
   import pkg from '$root/package.json'
 </script>
 
 <footer>
   <a href="{pkg.repository}/blob/main/license">
-    <svg><use href="#icon-license" /></svg> License
+    <Icon icon="License" /> License
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/acknowledgements">
-    <svg><use href="#icon-hands-clapping" /></svg> Acknowledgements
+    <Icon icon="HandsClapping" /> Acknowledgements
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/changelog">
-    <svg><use href="#icon-changelog" /></svg> Changelog
+    <Icon icon="Changelog" /> Changelog
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
   <a href="/contributing">
-    <svg><use href="#icon-repo-fork" /></svg> Contributing
+    <Icon icon="RepoFork" /> Contributing
   </a>
   <small>
     Built with Svelte by

@@ -11,8 +11,8 @@
   "bugs": "https://github.com/janosh/elementari/issues",
   "dependencies": {
     "@sveltejs/kit": "^2.21.5",
-    "@threlte/core": "8.0.4",
-    "@threlte/extras": "^9.2.1",
+    "@threlte/core": "8.0.5",
+    "@threlte/extras": "^9.3.0",
     "@types/d3-force": "^3.0.10",
     "@types/d3-hierarchy": "^3.1.7",
     "d3": "^7.9.0",
@@ -27,7 +27,7 @@
     "d3-shape": "^3.2.0",
     "h5wasm": "^0.8.1",
     "highlight.js": "^11.11.1",
-    "svelte": "5.34.1",
+    "svelte": "5.34.3",
     "svelte-multiselect": "11.1.1",
     "svelte-zoo": "^0.4.19",
     "three": "^0.177.0"
@@ -68,7 +68,7 @@
     "svelte-toc": "^0.6.1",
     "svelte2tsx": "^0.7.39",
     "typescript": "5.8.3",
-    "typescript-eslint": "^8.34.0",
+    "typescript-eslint": "^8.34.1",
     "vite": "^6.3.5",
     "vitest": "^3.2.3"
   },

@@ -1,4 +1,5 @@
-import type { ElementSymbol, Vector } from '$lib'
+import type { ElementSymbol } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure, Site } from '$lib/structure'
 import type { BondingAlgo } from '$lib/structure/bonding'
 import { max_dist, nearest_neighbor, vdw_radius_based } from '$lib/structure/bonding'
@@ -33,11 +34,7 @@ function make_structure(
     sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
     charge: 0,
     lattice: {
-      matrix: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] as [Vector, Vector, Vector],
+      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
       pbc: [true, true, true] as [boolean, boolean, boolean],
       a: 1,
       b: 1,

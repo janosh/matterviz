@@ -7,7 +7,6 @@
     // Custom error snippet for advanced error handling
     error_snippet?: Snippet<[{ error_message: string; on_dismiss: () => void }]>
   }
-
   let { error_message, on_dismiss, error_snippet }: Props = $props()
 </script>
 
@@ -40,7 +39,6 @@
     border: 1px solid var(--trajectory-error-border, #f97583);
     box-sizing: border-box;
   }
-
   .error-message button {
     margin-top: 1rem;
     background: var(--trajectory-error-button-bg, #d73a49);
@@ -52,11 +50,9 @@
     font-size: 0.9rem;
     transition: background-color 0.2s;
   }
-
   .error-message button:hover {
     background: var(--trajectory-error-button-hover-bg, #cb2431);
   }
-
   /* Styles for unsupported format messages */
   .error-message :global(.unsupported-format) {
     text-align: left;
@@ -66,7 +62,6 @@
     overflow-y: auto;
     overflow-x: hidden;
   }
-
   .error-message :global(.unsupported-format h4) {
     color: var(--trajectory-error-color, #d73a49);
     margin: 0 0 1rem 0;
@@ -75,43 +70,36 @@
     align-items: center;
     gap: 0.5rem;
   }
-
   .error-message :global(.unsupported-format h5) {
     color: var(--trajectory-text-color, #24292e);
     margin: 0.75rem 0 0.25rem 0;
     font-size: 0.9rem;
     font-weight: 600;
   }
-
   .error-message :global(.unsupported-format p) {
     color: var(--trajectory-text-color, #24292e);
     margin: 0.25rem 0;
     text-align: left;
     font-size: 0.85rem;
   }
-
   .error-message :global(.unsupported-format ul) {
     text-align: left;
     margin: 0.5rem 0;
     padding-left: 1.5rem;
   }
-
   .error-message :global(.unsupported-format li) {
     color: var(--trajectory-text-color, #24292e);
     margin: 0.25rem 0;
   }
-
   .error-message :global(.unsupported-format .code-options) {
     margin: 1rem 0 0 0;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1.5rem;
   }
-
   .error-message :global(.unsupported-format .code-options > div) {
     margin: 0;
   }
-
   .error-message :global(.unsupported-format .code-options strong) {
     color: var(--trajectory-code-title-color, #0366d6);
     display: block;
@@ -119,7 +107,6 @@
     font-size: 0.85rem;
     font-weight: 600;
   }
-
   .error-message :global(.unsupported-format pre) {
     background: var(--trajectory-pre-bg, #f6f8fa);
     padding: 0.5rem;
@@ -131,7 +118,6 @@
     max-height: 150px;
     overflow-y: auto;
   }
-
   .error-message :global(.unsupported-format p code) {
     background: var(--trajectory-inline-code-bg, rgba(175, 184, 193, 0.2));
     padding: 0.2em 0.4em;

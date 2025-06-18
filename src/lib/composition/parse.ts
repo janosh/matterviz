@@ -64,23 +64,16 @@ export function convert_atomic_numbers_to_symbols(
 ): CompositionType {
   const composition: CompositionType = {}
 
-  for (
-    const [atomic_number_str, amount] of Object.entries(
-      atomic_composition,
-    )
-  ) {
+  for (const [atomic_number_str, amount] of Object.entries(atomic_composition)) {
     const atomic_number = Number(atomic_number_str)
     const symbol = atomic_number_to_element_symbol(atomic_number)
 
-    if (!symbol) {
-      throw new Error(`Invalid atomic number: ${atomic_number}`)
-    }
+    if (!symbol) throw new Error(`Invalid atomic number: ${atomic_number}`)
 
     if (typeof amount === `number` && amount > 0) {
       composition[symbol] = (composition[symbol] || 0) + amount
     }
   }
-
   return composition
 }
 
@@ -92,20 +85,15 @@ export function convert_symbols_to_atomic_numbers(
   const atomic_composition: Record<number, number> = {}
 
   for (const [symbol, amount] of Object.entries(symbol_composition)) {
-    const atomic_number = element_symbol_to_atomic_number(
-      symbol as ElementSymbol,
-    )
+    const atomic_number = element_symbol_to_atomic_number(symbol as ElementSymbol)
 
-    if (!atomic_number) {
-      throw new Error(`Invalid element symbol: ${symbol}`)
-    }
+    if (!atomic_number) throw new Error(`Invalid element symbol: ${symbol}`)
 
     if (typeof amount === `number` && amount > 0) {
       atomic_composition[atomic_number] = (atomic_composition[atomic_number] || 0) +
         amount
     }
   }
-
   return atomic_composition
 }
 
@@ -130,10 +118,8 @@ export function parse_formula(formula: string): CompositionType {
     if (!elem_symbols.includes(element)) {
       throw new Error(`Invalid element symbol: ${element}`)
     }
-
     composition[element] = (composition[element] || 0) + count
   }
-
   return composition
 }
 

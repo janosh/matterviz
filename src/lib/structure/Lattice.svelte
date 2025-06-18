@@ -1,6 +1,7 @@
 <!-- Export default values for use in other components -->
 <script lang="ts">
-  import { add, scale, type Vector } from '$lib'
+  import { add, scale } from '$lib'
+  import type { Matrix3x3, Vec3 } from '$lib/math'
   import { T } from '@threlte/core'
   import {
     BoxGeometry,
@@ -13,7 +14,7 @@
   import { CELL_DEFAULTS } from './index'
 
   interface Props {
-    matrix?: [Vector, Vector, Vector] | undefined
+    matrix?: Matrix3x3 | undefined
     cell_edge_color?: string
     cell_surface_color?: string
     cell_line_width?: number // thickness of the cell edges
@@ -21,7 +22,7 @@
     cell_surface_opacity?: number // opacity of the cell surfaces
     show_vectors?: boolean // whether to show the lattice vectors
     vector_colors?: [string, string, string] // lattice vector colors
-    vector_origin?: Vector // lattice vector origin (all arrows start from this point)
+    vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
   }
   let {
     matrix = undefined,
@@ -32,11 +33,11 @@
     cell_surface_opacity = CELL_DEFAULTS.surface_opacity,
     show_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
-    vector_origin = [-1, -1, -1] as Vector,
+    vector_origin = [-1, -1, -1] as Vec3,
   }: Props = $props()
 
   let lattice_center = $derived(
-    matrix ? (scale(add(...matrix), 0.5) as Vector) : ([0, 0, 0] as Vector),
+    matrix ? (scale(add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
   )
 
   // Extract line segments from EdgesGeometry for cylinder-based thick lines
@@ -67,7 +68,7 @@
   function get_cylinder_transform(
     start: Vector3,
     end: Vector3,
-  ): { position: Vector; rotation: Vector; length: number } {
+  ): { position: Vec3; rotation: Vec3; length: number } {
     const direction = end.clone().sub(start)
     const length = direction.length()
     const center = start.clone().add(end).multiplyScalar(0.5)
@@ -80,8 +81,8 @@
     const euler = new Euler().setFromQuaternion(quaternion)
 
     return {
-      position: center.toArray() as Vector,
-      rotation: euler.toArray().slice(0, 3) as Vector,
+      position: center.toArray() as Vec3,
+      rotation: euler.toArray().slice(0, 3) as Vec3,
       length,
     }
   }
@@ -138,7 +139,7 @@
           {@const vector_length = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)}
           {@const shaft_length = vector_length * 0.85}
           <!-- Shaft goes to 85% of vector length -->
-          {@const tip_start_position = scale(vec, 0.85) as Vector}
+          {@const tip_start_position = scale(vec, 0.85) as Vec3}
           <!-- Calculate rotation to align with vector direction -->
           {@const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0), // Default up direction for cylinder/cone
@@ -147,10 +148,10 @@
           {@const rotation = new Euler()
       .setFromQuaternion(quaternion)
       .toArray()
-      .slice(0, 3) as Vector}
+      .slice(0, 3) as Vec3}
 
           <!-- Arrow shaft - position at center of shaft length -->
-          {@const shaft_center = scale(vec, 0.425) as Vector}
+          {@const shaft_center = scale(vec, 0.425) as Vec3}
           <!-- Center at 42.5% = half of 85% -->
           <T.Mesh position={shaft_center} {rotation}>
             <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />

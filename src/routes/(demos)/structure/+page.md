@@ -16,7 +16,7 @@
 ```svelte example stackblitz
 <script>
   import { Structure, StructureCard } from '$lib'
-  import { structures } from '$site'
+  import { structures } from '$site/structures'
   import Select from 'svelte-multiselect'
 
   let formula = $state(`Bi2Zr2O7-Fm3m`)
@@ -86,7 +86,7 @@ Showcasing structures with different crystal systems.
 ```svelte example stackblitz
 <script>
   import { crystal_systems, Structure } from '$lib'
-  import { structures } from '$site'
+  import { structures } from '$site/structures'
 </script>
 
 <ul class="crystal-systems">

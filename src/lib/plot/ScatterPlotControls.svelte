@@ -1,0 +1,460 @@
+<script lang="ts">
+  import { ControlPanel } from '$lib'
+  import type { DataSeries } from '$lib/plot'
+  import type { Snippet } from 'svelte'
+
+  interface Props {
+    // Control panel visibility
+    show_controls?: boolean
+    controls_open?: boolean
+    // Custom content for the control panel
+    plot_controls?: Snippet<[]>
+    // Series data for multi-series controls
+    series?: readonly DataSeries[]
+    // Display options
+    markers?: `line` | `points` | `line+points`
+    show_zero_lines?: boolean
+    x_grid?: boolean | Record<string, unknown>
+    y_grid?: boolean | Record<string, unknown>
+    y2_grid?: boolean | Record<string, unknown>
+    // Whether there are y2 points to show y2 grid control
+    has_y2_points?: boolean
+    // Style controls
+    point_size?: number
+    point_color?: string
+    point_opacity?: number
+    point_stroke_width?: number
+    point_stroke_color?: string
+    point_stroke_opacity?: number
+    line_width?: number
+    line_color?: string
+    line_opacity?: number
+    line_dash?: string | undefined
+    show_points?: boolean
+    show_lines?: boolean
+    selected_series_idx?: number
+  }
+  let {
+    show_controls = $bindable(false),
+    controls_open = $bindable(false),
+    plot_controls,
+    series = [],
+    markers = $bindable(`line+points`),
+    show_zero_lines = $bindable(true),
+    x_grid = $bindable(true),
+    y_grid = $bindable(true),
+    y2_grid = $bindable(true),
+    has_y2_points = false,
+    // Style controls
+    point_size = $bindable(4),
+    point_color = $bindable(`#4682b4`),
+    point_opacity = $bindable(1),
+    point_stroke_width = $bindable(1),
+    point_stroke_color = $bindable(`#000000`),
+    point_stroke_opacity = $bindable(1),
+    line_width = $bindable(2),
+    line_color = $bindable(`#4682b4`),
+    line_opacity = $bindable(1),
+    line_dash = $bindable(undefined),
+    show_points = $bindable(true),
+    show_lines = $bindable(true),
+    selected_series_idx = $bindable(0),
+  }: Props = $props()
+
+  // Derived state
+  let has_multiple_series = $derived(series.filter(Boolean).length > 1)
+
+  // Handle click outside control panel to close it
+  function handle_click_outside_controls(event: MouseEvent) {
+    if (!controls_open) return
+
+    const target = event.target as Element
+    const control_panel = target.closest(`.plot-controls`)
+
+    // Don't close if clicking inside the control panel
+    if (!control_panel) controls_open = false
+  }
+
+  // Sync control states with props
+  $effect(() => {
+    // Sync with markers prop
+    show_points = markers?.includes(`points`) ?? false
+    show_lines = markers?.includes(`line`) ?? false
+
+    // Sync with first series style properties
+    if (series.length > 0 && series[0]) {
+      const first_series = series[0]
+
+      // Point style
+      const first_point_style = Array.isArray(first_series.point_style)
+        ? first_series.point_style[0]
+        : first_series.point_style
+
+      if (first_point_style) {
+        point_size = first_point_style.radius ?? 4
+        point_color = first_point_style.fill ?? `#4682b4`
+        point_stroke_width = first_point_style.stroke_width ?? 1
+        point_stroke_color = first_point_style.stroke ?? `#000000`
+        point_opacity = first_point_style.fill_opacity ?? 1
+      }
+
+      // Line style
+      if (first_series.line_style) {
+        line_width = first_series.line_style.stroke_width ?? 2
+        line_color = first_series.line_style.stroke ?? `#4682b4`
+        line_dash = first_series.line_style.line_dash
+      }
+    }
+  })
+
+  // Apply control states back to props
+  $effect(() => {
+    // Update markers
+    const new_markers = show_points && show_lines
+      ? `line+points`
+      : show_points
+      ? `points`
+      : show_lines
+      ? `line`
+      : `points`
+
+    if (new_markers !== markers) markers = new_markers
+  })
+</script>
+
+<svelte:document onclick={handle_click_outside_controls} />
+
+{#if show_controls}
+  <div class="plot-controls">
+    <ControlPanel
+      bind:controls_open
+      show_toggle_button
+      toggle_button={{ class: `plot-controls-toggle` }}
+      panel_props={{ class: `plot-controls-panel`, style: `top: 30px; right: 6px;` }}
+      closed_icon="Settings"
+      open_icon="Cross"
+    >
+      {#snippet controls_content()}
+        {#if plot_controls}
+          {@render plot_controls()}
+        {:else}
+          <div class="plot-controls-content">
+            <!-- Display Controls -->
+            <h4 class="section-heading">Display</h4>
+            <div class="controls-group">
+              <label class="checkbox-label">
+                <input type="checkbox" bind:checked={show_zero_lines} />
+                Show zero lines
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" bind:checked={show_points} />
+                Show points
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" bind:checked={show_lines} />
+                Show lines
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" bind:checked={x_grid as boolean} />
+                X-axis grid
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" bind:checked={y_grid as boolean} />
+                Y-axis grid
+              </label>
+              {#if has_y2_points}
+                <label class="checkbox-label">
+                  <input type="checkbox" bind:checked={y2_grid as boolean} />
+                  Y2-axis grid
+                </label>
+              {/if}
+            </div>
+
+            <!-- Series Selection (for multi-series style controls) -->
+            {#if has_multiple_series}
+              <div class="controls-group">
+                <div class="control-row">
+                  <label for="series-select">Series</label>
+                  <select bind:value={selected_series_idx} id="series-select">
+                    {#each series.filter(Boolean) as
+                      series_data,
+                      idx
+                      (series_data.label ?? idx)
+                    }
+                      <option value={idx}>
+                        {series_data.label ?? `Series ${idx + 1}`}
+                      </option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Point Style Controls -->
+            {#if show_points}
+              <h4 class="section-heading">Point Style</h4>
+              <div class="controls-group">
+                <div class="control-row">
+                  <label for="point-size-range">Size:</label>
+                  <input
+                    id="point-size-range"
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="0.5"
+                    bind:value={point_size}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    step="0.5"
+                    bind:value={point_size}
+                    class="number-input"
+                  />
+                </div>
+                <div class="control-row">
+                  <label for="point-color">Color:</label>
+                  <input
+                    id="point-color"
+                    type="color"
+                    bind:value={point_color}
+                    class="color-input"
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={point_opacity}
+                    class="opacity-slider"
+                    title="Color opacity"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={point_opacity}
+                    class="number-input opacity-number"
+                  />
+                </div>
+                <div class="control-row">
+                  <label for="point-stroke-width-range">Stroke Width:</label>
+                  <input
+                    id="point-stroke-width-range"
+                    type="range"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    bind:value={point_stroke_width}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    bind:value={point_stroke_width}
+                    class="number-input"
+                  />
+                </div>
+                <div class="control-row">
+                  <label for="point-stroke-color">Stroke Color:</label>
+                  <input
+                    id="point-stroke-color"
+                    type="color"
+                    bind:value={point_stroke_color}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={point_stroke_opacity}
+                    class="opacity-slider"
+                    title="Stroke opacity"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={point_stroke_opacity}
+                    class="number-input opacity-number"
+                  />
+                </div>
+              </div>
+            {/if}
+
+            <!-- Line Style Controls -->
+            {#if show_lines}
+              <h4 class="section-heading">Line Style</h4>
+              <div class="controls-group">
+                <div class="control-row">
+                  <label for="line-width-range">Line Width:</label>
+                  <input
+                    id="line-width-range"
+                    type="range"
+                    min="0.5"
+                    max="10"
+                    step="0.5"
+                    bind:value={line_width}
+                  />
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="10"
+                    step="0.5"
+                    bind:value={line_width}
+                    class="number-input"
+                  />
+                </div>
+                <div class="control-row">
+                  <label for="line-color">Line Color:</label>
+                  <input
+                    id="line-color"
+                    type="color"
+                    bind:value={line_color}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={line_opacity}
+                    class="opacity-slider"
+                    title="Line opacity"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={line_opacity}
+                    class="number-input opacity-number"
+                  />
+                </div>
+                <div class="control-row">
+                  <label for="line-style-select">Line Style:</label>
+                  <select
+                    id="line-style-select"
+                    value={line_dash ?? `solid`}
+                    onchange={(event) => {
+                      line_dash = event.currentTarget.value === `solid`
+                        ? undefined
+                        : event.currentTarget.value
+                    }}
+                  >
+                    <option value="solid">Solid</option>
+                    <option value="4,4">Dashed</option>
+                    <option value="2,2">Dotted</option>
+                    <option value="8,4,2,4">Dash-dot</option>
+                  </select>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      {/snippet}
+    </ControlPanel>
+  </div>
+{/if}
+
+<style>
+  .plot-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+  }
+  .plot-controls :global(.plot-controls-toggle) {
+    background: transparent;
+    color: var(--esp-controls-icon-color, currentColor);
+    border: none;
+    border-radius: 4px;
+    padding: 6px;
+  }
+  .plot-controls :global(.plot-controls-toggle):hover {
+    background: var(--esp-controls-hover-bg, rgba(0, 0, 0, 0.2)) !important;
+    border-color: var(--esp-controls-hover-border, rgba(255, 255, 255, 0.3)) !important;
+  }
+  .plot-controls :global(.plot-controls-panel) {
+    --controls-bg: rgba(0, 0, 0, 0.9);
+    --controls-text-color: white;
+    --controls-width: 16em;
+  }
+  .plot-controls :global(.section-heading) {
+    margin: 0 0 8px 0;
+    font-size: 0.9em;
+    color: #ccc;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 4px;
+  }
+  .plot-controls :global(.plot-controls-content) {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .plot-controls :global(.controls-group) {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .plot-controls :global(.checkbox-label) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+  }
+  .plot-controls :global(.control-row) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85em;
+  }
+  .plot-controls :global(.control-row label) {
+    min-width: 80px;
+    font-size: 0.85em;
+  }
+  .plot-controls :global(.control-row input[type='range']) {
+    flex: 1;
+    min-width: 60px;
+  }
+  .plot-controls :global(.number-input) {
+    width: 50px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    color: white;
+    padding: 2px 4px;
+    font-size: 0.8em;
+  }
+  .plot-controls :global(.control-row input[type='color']) {
+    width: 40px;
+    height: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .plot-controls :global(.control-row select) {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    color: white;
+    padding: 2px 4px;
+    font-size: 0.8em;
+  }
+  .plot-controls :global(.opacity-slider) {
+    flex: 1;
+    min-width: 50px;
+    margin-left: 4px;
+  }
+  .plot-controls :global(.opacity-number) {
+    width: 40px;
+    margin-left: 4px;
+  }
+</style>

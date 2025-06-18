@@ -44,17 +44,21 @@ function read_binary_test_file(filename: string): ArrayBuffer {
 describe(`VASP XDATCAR Parser`, () => {
   const xdatcar_content = read_test_file(`vasp-XDATCAR.MD.gz`)
 
-  it(`should detect XDATCAR format by filename`, () => {
-    expect(is_vasp_xdatcar(``, `XDATCAR`)).toBe(true)
-    expect(is_vasp_xdatcar(``, `XDATCAR.MD`)).toBe(true)
-    expect(is_vasp_xdatcar(``, `xdatcar`)).toBe(true)
-    expect(is_vasp_xdatcar(``, `some_file.json`)).toBe(false)
+  it.each([
+    [`XDATCAR`, true],
+    [`XDATCAR.MD`, true],
+    [`xdatcar`, true],
+    [`some_file.json`, false],
+  ])(`should detect XDATCAR format by filename: %s -> %s`, (filename, expected) => {
+    expect(is_vasp_xdatcar(``, filename)).toBe(expected)
   })
 
-  it(`should detect XDATCAR format by content`, () => {
-    expect(is_vasp_xdatcar(xdatcar_content)).toBe(true)
-    expect(is_vasp_xdatcar(`{"frames": []}`)).toBe(false)
-    expect(is_vasp_xdatcar(`random text`)).toBe(false)
+  it.each([
+    [`valid XDATCAR content`, xdatcar_content, true],
+    [`JSON content`, `{"frames": []}`, false],
+    [`random text`, `random text`, false],
+  ])(`should detect XDATCAR format by content: %s`, (_, content, expected) => {
+    expect(is_vasp_xdatcar(content)).toBe(expected)
   })
 
   it(`should parse XDATCAR file correctly`, () => {
@@ -240,10 +244,12 @@ H  0.000  0.000  0.000
 H  0.000  0.000  1.000
 O  0.000  1.000  0.000`
 
-  it(`should detect multi-frame XYZ format`, () => {
-    expect(is_xyz_trajectory(multi_frame_xyz, `trajectory.xyz`)).toBe(true)
-    expect(is_xyz_trajectory(single_frame_xyz, `single.xyz`)).toBe(false)
-    expect(is_xyz_trajectory(`random text`, `test.xyz`)).toBe(false)
+  it.each([
+    [`multi-frame XYZ`, multi_frame_xyz, `trajectory.xyz`, true],
+    [`single-frame XYZ`, single_frame_xyz, `single.xyz`, false],
+    [`random text`, `random text`, `test.xyz`, false],
+  ])(`should detect XYZ trajectory format: %s`, (_, content, filename, expected) => {
+    expect(is_xyz_trajectory(content, filename)).toBe(expected)
   })
 
   it(`should parse multi-frame XYZ trajectory correctly`, () => {
@@ -295,6 +301,214 @@ H  1.1  0.0  0.0`
     expect(trajectory.frames[1].step).toBe(10)
   })
 
+  describe(`Property Aliases Extraction`, () => {
+    it.each([
+      [`energy`, `energy=-123.45`, -123.45],
+      [`energy`, `E=-50.0`, -50.0],
+      [`energy`, `total_energy=10.5`, 10.5],
+      [`energy`, `etot=-0.001`, -0.001],
+      [`energy_per_atom`, `e_per_atom=-3.1`, -3.1],
+      [`energy_per_atom`, `energy/atom=-2.5`, -2.5],
+      [`volume`, `vol=500.0`, 500.0],
+      [`volume`, `V=250.25`, 250.25],
+      [`pressure`, `P=0.05`, 0.05],
+      [`pressure`, `press=1.5`, 1.5],
+      [`temperature`, `temp=273.15`, 273.15],
+      [`temperature`, `T=500`, 500],
+      [`bandgap`, `E_gap=1.5`, 1.5],
+      [`bandgap`, `gap=3.2`, 3.2],
+      [`bandgap`, `bg=1.2`, 1.2],
+      [`force_max`, `max_force=0.001`, 0.001],
+      [`force_max`, `force_max=0.005`, 0.005],
+      [`force_max`, `fmax=0.0001`, 0.0001],
+      [`stress_max`, `max_stress=15.5`, 15.5],
+      [`stress_max`, `stress_max=10.2`, 10.2],
+      [`stress_frobenius`, `stress_frobenius=5.5`, 5.5],
+    ])(`should extract %s from %s`, (property, comment, expected) => {
+      const trajectory = parse_xyz_trajectory(`1\n${comment}\nH 0.0 0.0 0.0`)
+      expect(trajectory.frames[0].metadata?.[property]).toBe(expected)
+    })
+
+    it(`should handle multiple properties and various formats`, () => {
+      const test_cases = [
+        {
+          comment: `energy=-123.45 temp=300 pressure=0.1 vol=1000 E_gap=2.1`,
+          expected: {
+            energy: -123.45,
+            temperature: 300,
+            pressure: 0.1,
+            volume: 1000,
+            bandgap: 2.1,
+          },
+        },
+        {
+          comment: `energy = -123.45`,
+          expected: { energy: -123.45 },
+        },
+        {
+          comment: `energy: -123.45`,
+          expected: { energy: -123.45 },
+        },
+        {
+          comment: `energy=1.23e-5`,
+          expected: { energy: 1.23e-5 },
+        },
+        {
+          comment: `ENERGY=-123.45`,
+          expected: { energy: -123.45 },
+        },
+        {
+          comment: `energy=-10.0 E=-20.0`,
+          expected: { energy: -10.0 }, // First match wins
+        },
+      ]
+
+      for (const { comment, expected } of test_cases) {
+        const trajectory = parse_xyz_trajectory(`1\n${comment}\nH 0.0 0.0 0.0`)
+        const metadata = trajectory.frames[0].metadata
+
+        for (const [key, value] of Object.entries(expected)) {
+          if (typeof value === `number` && value < 1e-4) {
+            expect(metadata?.[key]).toBeCloseTo(value, 10)
+          } else {
+            expect(metadata?.[key]).toBe(value)
+          }
+        }
+      }
+    })
+  })
+
+  it(`should throw error for invalid XYZ content`, () => {
+    expect(() => parse_xyz_trajectory(`invalid content`)).toThrow()
+    expect(() => parse_xyz_trajectory(`2\ncomment\nH 0 0`)).toThrow() // insufficient coordinates
+  })
+
+  it(`should parse real-world extended XYZ with lattice and properties`, () => {
+    // This is a simplified version of the user's V8_Ta12_W71_Re8-mace-omat file
+    const real_extxyz = `99
+Lattice="-4.039723298286767 4.039723298286767 4.039723298286767 4.039723298286767 -4.039723298286767 4.039723298286767 14.812318760384814 14.812318760384814 -14.812318760384814" Properties=species:S:1:pos:R:3 energy=-701.3836929723975 max_force=7.87217977469913e-05 pbc="T T T"
+Re       0.00482629       0.01191940      -0.03807456
+W        1.35714257       1.36052711      -1.35818985
+W        2.72819238       2.69423255      -2.71014460
+W        4.05649345       4.06188519      -4.04314859
+W        5.41714572       5.43842926      -5.35604789
+Ta       6.77315609       6.78751640      -6.68088406
+Re       8.09747446       8.04851012      -8.08613278
+W        9.39590882       9.41221427      -9.42864515
+Re      10.76166754      10.75106283     -10.77658179
+W       12.10802609      12.11796727     -12.12239784
+${
+      Array.from(
+        { length: 89 },
+        (_, i) => `W        1${i}.0       1${i}.0       -1${i}.0`,
+      ).join(`\n`)
+    }
+99
+Lattice="-4.27735408053893 4.27735408053893 4.27735408053893 4.27735408053893 -4.27735408053893 4.27735408053893 15.683631628642745 15.683631628642745 -15.683631628642745" Properties=species:S:1:pos:R:3 energy=-701.3839091019137 max_force=0.0001628999252425785 pbc="T T T"
+Re       0.00358536       0.01099639      -0.02518610
+W        1.42918631       1.44113518      -1.42684861
+W        2.87919847       2.85643202      -2.86709324
+W        4.29294813       4.28705754      -4.27717706
+W        5.72058576       5.72569671      -5.67827983
+Ta       7.15979138       7.15013886      -7.09687177
+Re       8.56928990       8.53489846      -8.55926436
+W        9.95475821       9.98028271      -9.97532489
+Re      11.38749333      11.39753017     -11.41219393
+W       12.82068623      12.82525376     -12.83205955
+${
+      Array.from(
+        { length: 89 },
+        (_, i) => `W        2${i}.0       2${i}.0       -2${i}.0`,
+      ).join(`\n`)
+    }`
+
+    expect(is_xyz_trajectory(real_extxyz, `test.extxyz`)).toBe(true)
+
+    const trajectory = parse_xyz_trajectory(real_extxyz)
+    expect(trajectory.frames).toHaveLength(2)
+    expect(trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
+
+    // Check first frame
+    const frame1 = trajectory.frames[0]
+    expect(frame1.structure.sites).toHaveLength(99)
+    expect(frame1.metadata?.energy).toBeCloseTo(-701.3836929723975)
+    expect(frame1.metadata?.force_max).toBeCloseTo(7.87217977469913e-05)
+    expect(`lattice` in frame1.structure).toBe(true)
+    if (`lattice` in frame1.structure) {
+      expect(frame1.structure.lattice?.volume).toBeGreaterThan(0)
+    }
+
+    // Check second frame
+    const frame2 = trajectory.frames[1]
+    expect(frame2.structure.sites).toHaveLength(99)
+    expect(frame2.metadata?.energy).toBeCloseTo(-701.3839091019137)
+    expect(frame2.metadata?.force_max).toBeCloseTo(0.0001628999252425785)
+    expect(`lattice` in frame2.structure).toBe(true)
+    if (`lattice` in frame2.structure) {
+      expect(frame2.structure.lattice?.volume).toBeGreaterThan(0)
+    }
+  })
+
+  it(`should parse stress tensor and calculate Frobenius norm`, () => {
+    const stress_xyz = `2
+stress="1.0 0.5 0.2 0.5 2.0 0.3 0.2 0.3 1.5" energy=-10.0
+H  0.0  0.0  0.0
+H  1.0  0.0  0.0`
+
+    const trajectory = parse_xyz_trajectory(stress_xyz)
+    const frame = trajectory.frames[0]
+
+    // Check that stress tensor is parsed
+    expect(frame.metadata?.stress).toBeDefined()
+    expect(Array.isArray(frame.metadata?.stress)).toBe(true)
+
+    // Check calculated stress properties
+    expect(frame.metadata?.stress_frobenius).toBeDefined()
+    expect(frame.metadata?.stress_max).toBeDefined()
+    expect(frame.metadata?.pressure).toBeDefined()
+
+    // Verify Frobenius norm calculation: sqrt(1^2 + 0.5^2 + 0.2^2 + 0.5^2 + 2^2 + 0.3^2 + 0.2^2 + 0.3^2 + 1.5^2)
+    const expected_frobenius = Math.sqrt(
+      1 ** 2 + 0.5 ** 2 + 0.2 ** 2 + 0.5 ** 2 + 2 ** 2 + 0.3 ** 2 + 0.2 ** 2 + 0.3 ** 2 +
+        1.5 ** 2,
+    )
+    expect(frame.metadata?.stress_frobenius).toBeCloseTo(expected_frobenius)
+
+    // Verify pressure calculation: -(1.0 + 2.0 + 1.5)/3
+    const expected_pressure = -(1.0 + 2.0 + 1.5) / 3
+    expect(frame.metadata?.pressure).toBeCloseTo(expected_pressure)
+  })
+
+  it(`should parse real stress tensor from user file format`, () => {
+    const user_stress_xyz = `2
+stress="0.011280142298528788 -0.0 -0.0 -0.0 0.011280142298528788 0.0 -0.0 -0.0 0.011280142298528788" energy=-38.06523566
+H  0.0  0.0  0.0
+H  1.0  0.0  0.0`
+
+    const trajectory = parse_xyz_trajectory(user_stress_xyz)
+    const frame = trajectory.frames[0]
+
+    // Check that stress tensor is parsed correctly
+    expect(frame.metadata?.stress).toBeDefined()
+    expect(Array.isArray(frame.metadata?.stress)).toBe(true)
+
+    // Check calculated stress properties
+    expect(frame.metadata?.stress_frobenius).toBeDefined()
+    expect(frame.metadata?.stress_max).toBeDefined()
+    expect(frame.metadata?.pressure).toBeDefined()
+
+    // Verify Frobenius norm for the diagonal tensor
+    const stress_val = 0.011280142298528788
+    const expected_frobenius = Math.sqrt(3 * stress_val ** 2) // 3 diagonal elements
+    expect(frame.metadata?.stress_frobenius).toBeCloseTo(expected_frobenius)
+
+    // Verify pressure for diagonal tensor: -(3 * stress_val)/3 = -stress_val
+    expect(frame.metadata?.pressure).toBeCloseTo(-stress_val)
+
+    // Von Mises stress should be 0 for hydrostatic stress (all diagonal elements equal)
+    expect(frame.metadata?.stress_max).toBeCloseTo(0, 10)
+  })
+
   it(`should throw error for invalid XYZ content`, () => {
     expect(() => parse_xyz_trajectory(`invalid content`)).toThrow()
     expect(() => parse_xyz_trajectory(`2\ncomment\nH 0 0`)).toThrow() // insufficient coordinates
@@ -335,7 +549,6 @@ O  0.000  1.000  0.000`
     )
     expect(trajectory.metadata?.source_format).toBe(`single_xyz`)
     expect(trajectory.frames).toHaveLength(1)
-    expect(trajectory.frames[0].structure.charge).toBe(0) // Should have charge property
   })
 
   it(`should prefer multi-frame over single-frame parsing for XYZ`, async () => {

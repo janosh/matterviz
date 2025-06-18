@@ -1,21 +1,7 @@
-<!--
-PeriodicTable.svelte - Interactive Periodic Table Component
-
-NEW FEATURE: Multi-value heatmaps
-- Pass arrays of 1-4 values per element in heatmap_values
-- 2 values: diagonal split (top-left triangle, bottom-right triangle)
-- 3 values: horizontal bars (top, middle, bottom)
-- 4 values: quadrants (top-left, top-right, bottom-left, bottom-right)
-
-Example usage:
-- Single values: heatmap_values={[1, 2, 3, ...]} or heatmap_values={{H: 1, He: 2, ...}}
-- Multi values: heatmap_values={[[1,2], [3,4,5], [6,7,8,9], ...]} or heatmap_values={{H: [1,2], He: [3,4,5], ...}}
--->
-
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import type { Category, ChemicalElement, PeriodicTableEvents, XyObj } from '$lib'
-  import { ElementPhoto, ElementTile, elem_symbols, type ElementSymbol } from '$lib'
+  import type { Category, ChemicalElement, XyObj } from '$lib'
+  import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { is_color } from '$lib/colors'
   import element_data from '$lib/element/data'
   import * as d3_sc from 'd3-scale-chromatic'
@@ -66,16 +52,16 @@ Example usage:
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
       | Snippet<
-          [
-            {
-              element: ChemicalElement
-              value: number | number[] | string | string[]
-              active: boolean
-              bg_color: string | null
-              scale_context: ScaleContext
-            },
-          ]
-        >
+        [
+          {
+            element: ChemicalElement
+            value: number | number[] | string | string[]
+            active: boolean
+            bg_color: string | null
+            scale_context: ScaleContext
+          },
+        ]
+      >
       | boolean
     children?: Snippet
     [key: string]: unknown
@@ -108,9 +94,6 @@ Example usage:
     children,
     ...rest
   }: Props = $props()
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
   let heat_values = $derived.by(() => {
     if (Array.isArray(heatmap_values)) {
@@ -150,7 +133,9 @@ Example usage:
     if (disabled || !active_element) return
     if (event.key == `Enter`) return goto(active_element.name.toLowerCase())
 
-    if (![`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`].includes(event.key)) return
+    if (![`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`].includes(event.key)) {
+      return
+    }
 
     event.preventDefault() // prevent scrolling the page
     event.stopPropagation()
@@ -158,15 +143,14 @@ Example usage:
     // change the active element in the periodic table with arrow keys
     // TODO doesn't allow navigating to lanthanides and actinides yet
     const { column, row } = active_element
-    active_element =
-      element_data.find((elem) => {
-        return {
-          ArrowUp: elem.column == column && elem.row == row - 1,
-          ArrowDown: elem.column == column && elem.row == row + 1,
-          ArrowLeft: elem.column == column - 1 && elem.row == row,
-          ArrowRight: elem.column == column + 1 && elem.row == row,
-        }[event.key]
-      }) ?? active_element
+    active_element = element_data.find((elem) => {
+      return {
+        ArrowUp: elem.column == column && elem.row == row - 1,
+        ArrowDown: elem.column == column && elem.row == row + 1,
+        ArrowLeft: elem.column == column - 1 && elem.row == row,
+        ArrowRight: elem.column == column + 1 && elem.row == row,
+      }[event.key]
+    }) ?? active_element
   }
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
@@ -197,16 +181,16 @@ Example usage:
     color_scale_range[0] ??
       (heat_values.length
         ? Math.min(
-            ...heat_values.flat().filter((v): v is number => typeof v === `number`),
-          )
+          ...heat_values.flat().filter((v): v is number => typeof v === `number`),
+        )
         : 0),
   )
   let cs_max = $derived(
     color_scale_range[1] ??
       (heat_values.length
         ? Math.max(
-            ...heat_values.flat().filter((v): v is number => typeof v === `number`),
-          )
+          ...heat_values.flat().filter((v): v is number => typeof v === `number`),
+        )
         : 1),
   )
 
@@ -273,17 +257,17 @@ Example usage:
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
-      {@const active =
-        active_category === category.replaceAll(` `, `-`) ||
+      {@const active = active_category === category.replaceAll(` `, `-`) ||
         active_element?.name === name}
+      {@const style = `grid-column: ${column}; grid-row: ${row};`}
       <ElementTile
         {element}
         href={links
-          ? typeof links == `string`
-            ? `${element[links]}`.toLowerCase()
-            : links[symbol]
-          : null}
-        style="grid-column: {column}; grid-row: {row};"
+        ? typeof links == `string`
+          ? `${element[links]}`.toLowerCase()
+          : links[symbol]
+        : null}
+        {style}
         {value}
         bg_color={color_overrides[symbol] ?? bg_color(value, element)}
         bg_colors={Array.isArray(value) ? bg_colors(value, element) : []}
@@ -305,9 +289,12 @@ Example usage:
     {/each}
     <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
     {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
+      {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${
+        6 + idx
+      }; ${lanth_act_style};`}
       <ElementTile
         element={lanth_act_element as unknown as ChemicalElement}
-        style="opacity: 0.8; grid-column: 3; grid-row: {6 + idx}; {lanth_act_style};"
+        {style}
         onmouseenter={() => (active_category = lanth_act_element.category)}
         onmouseleave={() => (active_category = null)}
         symbol_style="font-size: 30cqw;"
@@ -321,35 +308,35 @@ Example usage:
     {#if bottom_left_inset}
       {@render bottom_left_inset({ active_element })}
     {:else if show_photo && active_element}
-      <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2;" />
+      <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
     {/if}
 
     <!-- Tooltip -->
     {#if tooltip_visible && tooltip_element && tooltip !== false}
-      <div class="tooltip" style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px;">
+      {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
+      <div class="tooltip" {style}>
         {#if typeof tooltip == `function`}
           {@const tooltip_value = heat_values[tooltip_element.number - 1]}
           {@render tooltip({
-            element: tooltip_element,
-            value: tooltip_value,
-            active:
-              active_category === tooltip_element.category.replaceAll(` `, `-`) ||
-              active_element?.name === tooltip_element.name,
-            bg_color:
-              color_overrides[tooltip_element.symbol] ??
-              bg_color(tooltip_value, tooltip_element),
-            scale_context: { min: cs_min, max: cs_max, color_scale },
-          })}
+          element: tooltip_element,
+          value: tooltip_value,
+          active:
+            active_category === tooltip_element.category.replaceAll(` `, `-`) ||
+            active_element?.name === tooltip_element.name,
+          bg_color: color_overrides[tooltip_element.symbol] ??
+            bg_color(tooltip_value, tooltip_element),
+          scale_context: { min: cs_min, max: cs_max, color_scale },
+        })}
         {:else}
           {tooltip_element.name}<br />
           <small>{tooltip_element.symbol} • {tooltip_element.number}</small>
           {#if Array.isArray(heat_values[tooltip_element.number - 1])}
             <br />
-            <small
-              >Values: {(heat_values[tooltip_element.number - 1] as number[]).join(
-                `, `,
-              )}</small
-            >
+            <small>Values: {
+                (heat_values[tooltip_element.number - 1] as number[]).join(
+                  `, `,
+                )
+              }</small>
           {/if}
         {/if}
       </div>
