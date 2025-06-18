@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
+  import { Icon } from '$lib'
 
   import pkg from '$root/package.json'
 
@@ -24,8 +25,7 @@
   {#if online === false}
     Looks like you're offline. If you think your connection is fine, check the
     <a href="https://githubstatus.com">GitHub status page</a>
-    as this site is hosted by &thinsp;<svg><use href="#icon-github" /></svg>&thinsp;
-    GitHub Pages.
+    as this site is hosted by &thinsp;<Icon icon="GitHub" />&thinsp; GitHub Pages.
   {/if}
 
   <p>

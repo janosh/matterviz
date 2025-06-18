@@ -12,6 +12,7 @@ export { default as ElementScatter } from './ElementScatter.svelte'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
+export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
 
 export type XyObj = { x: number; y: number }

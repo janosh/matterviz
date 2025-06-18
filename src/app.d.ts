@@ -1,6 +1,6 @@
 /// <reference types="@sveltejs/kit" />
 
-declare module '$site/structures/mp-*.json' {
+declare module 'mp-*.json' {
   const content: import('$lib/structure').PymatgenStructure
   export default content
 }

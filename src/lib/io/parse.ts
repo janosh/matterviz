@@ -1,72 +1,11 @@
-import { elem_symbols, type ElementSymbol, type Site, type Vector } from '$lib'
-
-// Import matrix functions for proper fractional coordinate calculation
-function matrix_inverse_3x3(
-  matrix: [Vector, Vector, Vector],
-): [Vector, Vector, Vector] {
-  // Calculate the inverse of a 3x3 matrix
-  const [[a, b, c], [d, e, f], [g, h, i]] = matrix
-
-  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
-
-  if (Math.abs(det) < 1e-10) {
-    throw `Matrix is singular and cannot be inverted`
-  }
-
-  const inv_det = 1 / det
-
-  return [
-    [
-      (e * i - f * h) * inv_det,
-      (c * h - b * i) * inv_det,
-      (b * f - c * e) * inv_det,
-    ],
-    [
-      (f * g - d * i) * inv_det,
-      (a * i - c * g) * inv_det,
-      (c * d - a * f) * inv_det,
-    ],
-    [
-      (d * h - e * g) * inv_det,
-      (b * g - a * h) * inv_det,
-      (a * e - b * d) * inv_det,
-    ],
-  ]
-}
-
-function matrix_vector_multiply(
-  matrix: [Vector, Vector, Vector],
-  vector: Vector,
-): Vector {
-  // Multiply a 3x3 matrix by a 3D vector
-  return [
-    matrix[0][0] * vector[0] +
-    matrix[0][1] * vector[1] +
-    matrix[0][2] * vector[2],
-    matrix[1][0] * vector[0] +
-    matrix[1][1] * vector[1] +
-    matrix[1][2] * vector[2],
-    matrix[2][0] * vector[0] +
-    matrix[2][1] * vector[1] +
-    matrix[2][2] * vector[2],
-  ]
-}
-
-function transpose_matrix(
-  matrix: [Vector, Vector, Vector],
-): [Vector, Vector, Vector] {
-  // Transpose a 3x3 matrix
-  return [
-    [matrix[0][0], matrix[1][0], matrix[2][0]],
-    [matrix[0][1], matrix[1][1], matrix[2][1]],
-    [matrix[0][2], matrix[1][2], matrix[2][2]],
-  ]
-}
+import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
+import * as math from '$lib/math'
 
 export interface ParsedStructure {
   sites: Site[]
   lattice?: {
-    matrix: [Vector, Vector, Vector]
+    matrix: Matrix3x3
     a: number
     b: number
     c: number
@@ -127,33 +66,6 @@ function parse_coordinate_line(line: string): number[] {
   return tokens.slice(0, 3).map(parse_coordinate)
 }
 
-// Calculate lattice parameters from lattice vectors
-function calculate_lattice_parameters(matrix: [Vector, Vector, Vector]) {
-  const [a_vec, b_vec, c_vec] = matrix
-
-  const a = Math.sqrt(a_vec[0] ** 2 + a_vec[1] ** 2 + a_vec[2] ** 2)
-  const b = Math.sqrt(b_vec[0] ** 2 + b_vec[1] ** 2 + b_vec[2] ** 2)
-  const c = Math.sqrt(c_vec[0] ** 2 + c_vec[1] ** 2 + c_vec[2] ** 2)
-
-  // Calculate angles in degrees
-  const dot_ab = a_vec[0] * b_vec[0] + a_vec[1] * b_vec[1] + a_vec[2] * b_vec[2]
-  const dot_ac = a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]
-  const dot_bc = b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]
-
-  const gamma = Math.acos(dot_ab / (a * b)) * (180 / Math.PI) // angle between a and b
-  const beta = Math.acos(dot_ac / (a * c)) * (180 / Math.PI) // angle between a and c
-  const alpha = Math.acos(dot_bc / (b * c)) * (180 / Math.PI) // angle between b and c
-
-  // Calculate volume using scalar triple product
-  const volume = Math.abs(
-    a_vec[0] * (b_vec[1] * c_vec[2] - b_vec[2] * c_vec[1]) +
-      a_vec[1] * (b_vec[2] * c_vec[0] - b_vec[0] * c_vec[2]) +
-      a_vec[2] * (b_vec[0] * c_vec[1] - b_vec[1] * c_vec[0]),
-  )
-
-  return { a, b, c, alpha, beta, gamma, volume }
-}
-
 // Validate element symbol and provide fallback
 function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Clean symbol (remove suffixes like _pv, /hash)
@@ -201,15 +113,15 @@ export function parse_poscar(content: string): ParsedStructure | null {
     }
 
     // Parse lattice vectors (lines 3-5)
-    const parse_vector = (line: string, line_num: number): Vector => {
+    const parse_vector = (line: string, line_num: number): Vec3 => {
       const coords = line.trim().split(/\s+/).map(parse_coordinate)
       if (coords.length !== 3) {
         throw `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`
       }
-      return coords as Vector
+      return coords as Vec3
     }
 
-    const lattice_vecs: [Vector, Vector, Vector] = [
+    const lattice_vecs: Matrix3x3 = [
       parse_vector(lines[2], 3),
       parse_vector(lines[3], 4),
       parse_vector(lines[4], 5),
@@ -232,10 +144,10 @@ export function parse_poscar(content: string): ParsedStructure | null {
     }
 
     // Scale lattice vectors
-    const scaled_lattice: [Vector, Vector, Vector] = [
-      lattice_vecs[0].map((x) => x * scale_factor) as Vector,
-      lattice_vecs[1].map((x) => x * scale_factor) as Vector,
-      lattice_vecs[2].map((x) => x * scale_factor) as Vector,
+    const scaled_lattice: Matrix3x3 = [
+      lattice_vecs[0].map((x) => x * scale_factor) as Vec3,
+      lattice_vecs[1].map((x) => x * scale_factor) as Vec3,
+      lattice_vecs[2].map((x) => x * scale_factor) as Vec3,
     ]
 
     // Parse element symbols and atom counts (may span multiple lines)
@@ -368,8 +280,8 @@ export function parse_poscar(content: string): ParsedStructure | null {
             }
           }
 
-          let xyz: Vector
-          let abc: Vector
+          let xyz: Vec3
+          let abc: Vec3
 
           if (is_direct) {
             // Store fractional coordinates
@@ -397,9 +309,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
             try {
-              const lattice_transposed = transpose_matrix(scaled_lattice)
-              const lattice_inv = matrix_inverse_3x3(lattice_transposed)
-              abc = matrix_vector_multiply(lattice_inv, xyz)
+              const lattice_transposed = math.transpose_matrix(scaled_lattice)
+              const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+              abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
             } catch {
               // Fallback to simplified method if matrix is singular
               abc = [
@@ -426,7 +338,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
         atom_index += count
       }
 
-      const lattice_params = calculate_lattice_parameters(scaled_lattice)
+      const lattice_params = math.calc_lattice_params(scaled_lattice)
 
       const structure: ParsedStructure = {
         sites,
@@ -506,13 +418,13 @@ export function parse_xyz(content: string): ParsedStructure | null {
     if (lattice_match) {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
-        const lattice_vectors: [Vector, Vector, Vector] = [
+        const lattice_vectors: Matrix3x3 = [
           [lattice_values[0], lattice_values[1], lattice_values[2]],
           [lattice_values[3], lattice_values[4], lattice_values[5]],
           [lattice_values[6], lattice_values[7], lattice_values[8]],
         ]
 
-        const lattice_params = calculate_lattice_parameters(lattice_vectors)
+        const lattice_params = math.calc_lattice_params(lattice_vectors)
         lattice = {
           matrix: lattice_vectors,
           ...lattice_params,
@@ -544,18 +456,18 @@ export function parse_xyz(content: string): ParsedStructure | null {
       ]
 
       // For XYZ files, coordinates are typically in Cartesian
-      const xyz: Vector = [coords[0], coords[1], coords[2]]
+      const xyz: Vec3 = [coords[0], coords[1], coords[2]]
 
       // Calculate fractional coordinates if lattice is available
-      let abc: Vector = [0, 0, 0]
+      let abc: Vec3 = [0, 0, 0]
       if (lattice) {
         // Calculate fractional coordinates using proper matrix inversion
         // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
         // we need column vectors, so we transpose before inversion
         try {
-          const lattice_transposed = transpose_matrix(lattice.matrix)
-          const lattice_inv = matrix_inverse_3x3(lattice_transposed)
-          abc = matrix_vector_multiply(lattice_inv, xyz)
+          const lattice_transposed = math.transpose_matrix(lattice.matrix)
+          const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+          abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
         } catch {
           // Fallback to simplified method if matrix is singular
           abc = [xyz[0] / lattice.a, xyz[1] / lattice.b, xyz[2] / lattice.c]
@@ -617,37 +529,13 @@ export function parse_cif(content: string): ParsedStructure | null {
       }
     }
 
-    // Convert angles to radians for calculation
-    const alpha_rad = (alpha * Math.PI) / 180
-    const beta_rad = (beta * Math.PI) / 180
-    const gamma_rad = (gamma * Math.PI) / 180
-
-    // Calculate lattice vectors from unit cell parameters
-    // Standard crystallographic convention
-    const cos_alpha = Math.cos(alpha_rad)
-    const cos_beta = Math.cos(beta_rad)
-    const cos_gamma = Math.cos(gamma_rad)
-    const sin_gamma = Math.sin(gamma_rad)
-
-    const vol_factor = Math.sqrt(
-      1 -
-        cos_alpha ** 2 -
-        cos_beta ** 2 -
-        cos_gamma ** 2 +
-        2 * cos_alpha * cos_beta * cos_gamma,
+    // Calculate lattice vectors from unit cell parameters using math utility
+    const lattice_matrix = math.cell_to_lattice_matrix(
+      ...[cell_a, cell_b, cell_c, alpha, beta, gamma],
     )
 
-    const lattice_matrix: [Vector, Vector, Vector] = [
-      [cell_a, 0, 0],
-      [cell_b * cos_gamma, cell_b * sin_gamma, 0],
-      [
-        cell_c * cos_beta,
-        (cell_c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma,
-        (cell_c * vol_factor) / sin_gamma,
-      ],
-    ]
-
-    const volume = cell_a * cell_b * cell_c * vol_factor
+    // Calculate lattice parameters (including volume)
+    const calculated_lattice_params = math.calc_lattice_params(lattice_matrix)
 
     // Find atom site data
     const sites: Site[] = []
@@ -741,20 +629,13 @@ export function parse_cif(content: string): ParsedStructure | null {
                 element_symbol,
                 sites.length,
               )
-              const abc: Vector = [fract_x, fract_y, fract_z]
+              const abc: Vec3 = [fract_x, fract_y, fract_z]
 
               // Convert fractional to Cartesian coordinates
-              const xyz: Vector = [
-                fract_x * lattice_matrix[0][0] +
-                fract_y * lattice_matrix[1][0] +
-                fract_z * lattice_matrix[2][0],
-                fract_x * lattice_matrix[0][1] +
-                fract_y * lattice_matrix[1][1] +
-                fract_z * lattice_matrix[2][1],
-                fract_x * lattice_matrix[0][2] +
-                fract_y * lattice_matrix[1][2] +
-                fract_z * lattice_matrix[2][2],
-              ]
+              const xyz = math.mat3x3_vec3_multiply(
+                math.transpose_matrix(lattice_matrix),
+                abc,
+              )
 
               const site: Site = {
                 species: [{ element, occu: occupancy, oxidation_state: 0 }],
@@ -786,21 +667,11 @@ export function parse_cif(content: string): ParsedStructure | null {
       return null
     }
 
-    const lattice_params = {
-      a: cell_a,
-      b: cell_b,
-      c: cell_c,
-      alpha,
-      beta,
-      gamma,
-      volume,
-    }
-
     const structure: ParsedStructure = {
       sites,
       lattice: {
         matrix: lattice_matrix,
-        ...lattice_params,
+        ...calculated_lattice_params,
       },
     }
 

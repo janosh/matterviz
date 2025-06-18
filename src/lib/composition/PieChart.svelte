@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num, type CompositionType, type ElementSymbol } from '$lib'
+  import { type CompositionType, type ElementSymbol, format_num } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import { choose_bw_for_contrast } from '$lib/labels'
   import type { Snippet } from 'svelte'
@@ -68,7 +68,7 @@
   let center = $derived(size / 2)
 
   // Function to determine text color based on background
-  function get_text_color(background_color: string, is_inside_slice: boolean): string {
+  function get_text_color(background_color: string, is_inside_slice: boolean) {
     if (is_inside_slice) {
       // For text inside slices, use the background color of the slice
       return choose_bw_for_contrast(null, background_color)
@@ -112,15 +112,14 @@
         const large_arc = angle_span > 180 ? 1 : 0
 
         // Create donut path if inner radius > 0, otherwise regular pie slice
-        const path =
-          inner_radius_adjusted > 0
-            ? `M ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} L ${x2_inner} ${y2_inner} A ${inner_radius_adjusted} ${inner_radius_adjusted} 0 ${large_arc} 0 ${x1_inner} ${y1_inner} Z`
-            : `M ${center} ${center} L ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} Z`
+        const path = inner_radius_adjusted > 0
+          ? `M ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} L ${x2_inner} ${y2_inner} A ${inner_radius_adjusted} ${inner_radius_adjusted} 0 ${large_arc} 0 ${x1_inner} ${y1_inner} Z`
+          : `M ${center} ${center} L ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} Z`
 
         // Position labels with three-tier strategy
         const is_very_thin_slice = angle_span < VERY_THIN_SLICE_THRESHOLD // Place outside
-        const is_medium_slice =
-          angle_span >= VERY_THIN_SLICE_THRESHOLD && angle_span < MEDIUM_SLICE_THRESHOLD // Near outer edge
+        const is_medium_slice = angle_span >= VERY_THIN_SLICE_THRESHOLD &&
+          angle_span < MEDIUM_SLICE_THRESHOLD // Near outer edge
 
         let label_radius: number
         let is_outside_slice = false
@@ -144,7 +143,8 @@
         const font_scale = Math.min(
           MAX_FONT_SCALE,
           MIN_FONT_SCALE +
-            (angle_span / MAX_ANGLE_FOR_FULL_SCALE) * (MAX_FONT_SCALE - MIN_FONT_SCALE),
+            (angle_span / MAX_ANGLE_FOR_FULL_SCALE) *
+              (MAX_FONT_SCALE - MIN_FONT_SCALE),
         )
 
         const color = element_colors[element as ElementSymbol] || `#cccccc`
@@ -176,9 +176,7 @@
         d={segment.path}
         fill={segment.color}
         stroke="white"
-        stroke-width={hovered_element === segment.element
-          ? stroke_width + 1
-          : stroke_width}
+        stroke-width={hovered_element === segment.element ? stroke_width + 1 : stroke_width}
         class="pie-segment"
         class:interactive
         class:hovered={hovered_element === segment.element}
@@ -187,7 +185,9 @@
         {...interactive && {
           role: `button`,
           tabindex: 0,
-          'aria-label': `${segment.element}: ${segment.amount} ${segment.amount === 1 ? `atom` : `atoms`} (${segment.percentage.toFixed(1)}%)`,
+          'aria-label': `${segment.element}: ${segment.amount} ${
+            segment.amount === 1 ? `atom` : `atoms`
+          } (${segment.percentage.toFixed(1)}%)`,
         }}
       >
         <title>
@@ -215,16 +215,17 @@
             class="pie-label"
             class:inside-slice={!segment.is_outside_slice}
             class:outside-slice={segment.is_outside_slice}
-            style="color: {segment.text_color}; font-size: {12 * segment.font_scale}px;"
+            style:color={segment.text_color}
           >
-            <span class="element-symbol" style="font-size: {14 * segment.font_scale}px"
-              >{segment.element}</span
-            >{#if show_amounts}<sub
-                class="amount"
-                style="font-size: {10 * segment.font_scale}px">{segment.amount}</sub
-              >{/if}
+            <span class="element-symbol" style:font-size="{14 * segment.font_scale}px">{
+              segment.element
+            }</span>
+            {#if show_amounts}
+              <sub class="amount" style:font-size="{10 * segment.font_scale}px">
+                {segment.amount}
+              </sub>{/if}
             {#if show_percentages}
-              <sub class="percentage" style="font-size: {11 * segment.font_scale}px">
+              <sub class="percentage" style:font-size="{11 * segment.font_scale}px">
                 {format_num(segment.percentage, 1)}%
               </sub>
             {/if}
@@ -281,7 +282,7 @@
     transition: all 0.2s ease;
     white-space: nowrap;
   }
-  foreignObject {
+  foreignobject {
     overflow: visible;
   }
   .pie-label.hovered {

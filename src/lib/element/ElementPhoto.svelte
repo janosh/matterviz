@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
+  import { Icon } from '$lib'
 
   interface Props {
     element: ChemicalElement
@@ -29,7 +30,7 @@
   {#if hidden && missing_msg}
     <div {style}>
       <span>
-        <svg><use href="#icon-no-image" /></svg>&nbsp;{missing_msg} {name}
+        <Icon icon="NoImage" />&nbsp;{missing_msg} {name}
       </span>
     </div>
   {/if}

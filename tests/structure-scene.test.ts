@@ -117,7 +117,7 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   // Combined tooltip functionality tests
-  test(`tooltip displays comprehensive information correctly`, async ({ page }) => {
+  test(`tooltip displays info correctly`, async ({ page }) => {
     const atom_position = await find_hoverable_atom(page)
     test.skip(!atom_position, `No hoverable atoms found`)
     if (!atom_position) throw new Error(`No hoverable atoms found`) // type narrowing

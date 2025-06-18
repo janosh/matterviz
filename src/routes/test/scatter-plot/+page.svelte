@@ -1,11 +1,11 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
   import type {
-    DataSeries,
-    InternalPoint,
-    LabelStyle,
-    PointStyle,
-    ScaleType,
+      DataSeries,
+      InternalPoint,
+      LabelStyle,
+      PointStyle,
+      ScaleType,
   } from '$lib/plot'
   import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
 
@@ -461,6 +461,7 @@
         x_label="X Axis"
         y_label="Y Axis"
         markers="line+points"
+        show_controls
       />
     </div>
   </section>
@@ -662,7 +663,12 @@
     <div
       style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center; margin-bottom: 1em;"
     >
-      {#each [[`top_left`, `Top Left`], [`top_right`, `Top Right`], [`bottom_left`, `Bottom Left`], [`bottom_right`, `Bottom Right`]] as const as [quadrant, label] (label)}
+      {#each [
+        [`top_left`, `Top Left`],
+        [`top_right`, `Top Right`],
+        [`bottom_left`, `Bottom Left`],
+        [`bottom_right`, `Bottom Right`],
+      ] as const as [quadrant, label] (label)}
         <label>
           {label}: {auto_placement_density[quadrant]}
           <input
@@ -712,7 +718,7 @@
       </div>
       <div id="legend-multi-default" class="plot-container">
         <h3>Multi Series (Default Legend) - Legend Expected</h3>
-        <ScatterPlot series={legend_multi_series} legend={{ draggable: true }} />
+        <ScatterPlot series={legend_multi_series} legend={{ draggable: true }} show_controls />
       </div>
       <div id="legend-zero" class="plot-container">
         <h3>Zero Series - No Legend Expected</h3>

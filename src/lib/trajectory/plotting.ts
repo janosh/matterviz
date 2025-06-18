@@ -2,7 +2,6 @@
 import { plot_colors } from '$lib/colors'
 import { get_label_with_unit } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
-import { lattice_param_keys } from '$lib/structure'
 import type { Trajectory, TrajectoryDataExtractor } from './index'
 
 // Properties that should be assigned to the secondary y-axis
@@ -10,6 +9,7 @@ export const Y2_PROPERTIES = new Set([
   `force_max`,
   `force_norm`,
   `stress_max`,
+  `stress_frobenius`,
   `volume`,
   `density`,
   `pressure`,
@@ -37,121 +37,118 @@ export function generate_plot_series(
     units,
     colors = plot_colors,
     y2_properties = Y2_PROPERTIES,
-    default_visible_properties = new Set([`energy`, `force_max`]),
+    default_visible_properties = new Set([`energy`, `force_max`, `stress_frobenius`]),
   } = options
 
-  // Extract data from all frames
-  const all_extracted_data = trajectory.frames.map((frame) =>
-    data_extractor(frame, trajectory)
-  )
+  // Single pass: extract data and detect constants simultaneously
+  const property_data = new Map<string, {
+    values: number[]
+    sum: number
+    sum_squares: number
+    min: number
+    max: number
+  }>()
 
-  if (all_extracted_data.length === 0) return []
+  // Extract data from all frames in a single pass
+  trajectory.frames.forEach((frame) => {
+    const data = data_extractor(frame, trajectory)
 
-  // Get all unique keys from extracted data
-  const all_keys = new Set<string>()
-  for (const data of all_extracted_data) {
-    Object.keys(data).forEach((key) => all_keys.add(key))
-  }
+    for (const [key, value] of Object.entries(data)) {
+      // Skip non-numeric values, step, and marker properties
+      if (typeof value !== `number` || key === `Step` || key.startsWith(`_constant_`)) {
+        continue
+      }
 
-  // Check if lattice parameters are constant (using marker from full_data_extractor)
-  const has_constant_lattice_params = all_extracted_data.some(
-    (data) => data._constant_lattice_params === 1,
-  )
+      if (!property_data.has(key)) {
+        property_data.set(key, {
+          values: [],
+          sum: 0,
+          sum_squares: 0,
+          min: value,
+          max: value,
+        })
+      }
 
-  // Create a series for each property
+      const prop = property_data.get(key)
+      if (!prop) continue
+
+      prop.values.push(value)
+      prop.sum += value
+      prop.sum_squares += value * value
+      prop.min = Math.min(prop.min, value)
+      prop.max = Math.max(prop.max, value)
+    }
+  })
+
+  // Filter out constant properties and create series
   const series: DataSeries[] = []
   let color_idx = 0
 
-  for (const key of all_keys) {
-    // Skip Step for x-axis (we use step index instead)
-    if (key === `Step`) continue
-    // Skip the marker property used for lattice parameter detection
-    if (key === `_constant_lattice_params`) continue
+  for (const [key, prop] of property_data) {
+    const n = prop.values.length
+    if (n <= 1) continue
 
-    const x_values: number[] = []
-    const y_values: number[] = []
+    // Fast constant detection using coefficient of variation
+    const mean = prop.sum / n
+    const variance = (prop.sum_squares - prop.sum * prop.sum / n) / n
+    const coefficient_of_variation = Math.abs(mean) > 1e-10
+      ? Math.sqrt(variance) / Math.abs(mean)
+      : Math.sqrt(variance)
 
-    for (let idx = 0; idx < all_extracted_data.length; idx++) {
-      const data = all_extracted_data[idx]
-      if (key in data && typeof data[key] === `number`) {
-        x_values.push(idx) // step index as x (0-based)
-        y_values.push(data[key])
-      }
+    // Skip properties with very low variation (effectively constant)
+    if (coefficient_of_variation < 1e-6) {
+      continue
     }
 
-    if (x_values.length > 0) {
-      const color = colors[color_idx % colors.length]
-      const lower_key = key.toLowerCase()
+    // Create series data
+    const lower_key = key.toLowerCase()
+    const x_values = Array.from({ length: n }, (_, idx) => idx)
+    const y_values = prop.values
+    const color = colors[color_idx % colors.length]
+    const y_axis: `y1` | `y2` = y2_properties.has(lower_key) ? `y2` : `y1`
+    const is_default_visible = default_visible_properties.has(lower_key) ||
+      default_visible_properties.has(key)
+    const label = get_label_with_unit(key, property_labels, units)
 
-      // Determine which y-axis to use based on property type
-      const y_axis: `y1` | `y2` = y2_properties.has(lower_key) ? `y2` : `y1`
-
-      // Determine default visibility
-      let is_default_visible = default_visible_properties.has(lower_key) ||
-        default_visible_properties.has(key)
-
-      // If lattice parameters are constant, don't show them by default
-      if (
-        has_constant_lattice_params &&
-        lattice_param_keys.includes(
-          lower_key as (typeof lattice_param_keys)[number],
-        )
-      ) {
-        is_default_visible = false
-      }
-
-      const label = get_label_with_unit(key, property_labels, units)
-
-      series.push({
-        x: x_values,
-        y: y_values,
-        label,
-        y_axis,
-        visible: is_default_visible,
-        markers: x_values.length < 30 ? `line+points` : `line`,
-        metadata: x_values.map(() => ({ series_label: label })),
-        line_style: {
-          stroke: color,
-          stroke_width: 2,
-        },
-        point_style: {
-          fill: color,
-          radius: 4,
-          stroke: color,
-          stroke_width: 1,
-        },
-      })
-      color_idx++
-    }
+    series.push({
+      x: x_values,
+      y: y_values,
+      label,
+      y_axis,
+      visible: is_default_visible,
+      markers: n < 30 ? `line+points` : `line`,
+      metadata: x_values.map(() => ({ series_label: label })),
+      line_style: {
+        stroke: color,
+        stroke_width: 2,
+      },
+      point_style: {
+        fill: color,
+        radius: 4,
+        stroke: color,
+        stroke_width: 1,
+      },
+    })
+    color_idx++
   }
 
-  // If no priority properties are visible, make volume and density visible by default
-  const has_visible_priority_properties = series.some(
-    (s) =>
-      s.visible &&
-      ![`volume`, `density`].some((prop) =>
-        s.label?.toLowerCase().includes(prop.toLowerCase())
-      ),
+  // Fallback visibility for volume/density if no priority properties are visible
+  const has_visible_priority = series.some((s) =>
+    s.visible &&
+    ![`volume`, `density`].some((prop) => s.label?.toLowerCase().includes(prop))
   )
 
-  if (!has_visible_priority_properties) {
-    for (const s of series) {
+  if (!has_visible_priority) {
+    series.forEach((s) => {
       const label_lower = s.label?.toLowerCase() || ``
       if (label_lower.includes(`volume`) || label_lower.includes(`density`)) {
         s.visible = true
       }
-    }
+    })
   }
 
-  // Sort by visible series so they appear first in legend
-  series.sort((s1, s2) => {
-    // If a is visible and b is not, a should come first (negative)
-    if (s1.visible === true && s2.visible !== true) return -1
-    // If b is visible and a is not, b should come first (positive)
-    if (s2.visible === true && s1.visible !== true) return 1
-    // Otherwise maintain original order
-    return 0
-  })
+  // Sort by visibility for legend ordering
+  series.sort((a, b) => Number(b.visible) - Number(a.visible))
 
   return series
 }

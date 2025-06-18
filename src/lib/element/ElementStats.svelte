@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { ElementHeading, format_num } from '$lib'
+  import { ElementHeading, format_num, Icon } from '$lib'
 
   interface Props {
     element: ChemicalElement | null
@@ -22,7 +22,7 @@
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
       <strong>
-        <svg><use href="#icon-weight" /></svg> {format_num(element.atomic_mass)}
+        <Icon icon="Weight" /> {format_num(element.atomic_mass)}
       </strong>
     </section>
     <section>
@@ -31,19 +31,18 @@
         <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
       <strong>
-        <svg><use href="#icon-scale" /></svg> {format_num(element.density)}
+        <Icon icon="Scale" /> {format_num(element.density)}
       </strong>
     </section>
     <section>
       <p>Phase</p>
       <strong>
-        <svg><use href="#icon-{element.phase.toLowerCase()}" /></svg>
-        {element.phase}</strong>
+        <Icon icon={element.phase} /> {element.phase}</strong>
     </section>
     <section>
       <p>Year of Discovery</p>
       <strong>
-        <svg><use href="#icon-calendar" /></svg> {element.year}
+        <Icon icon="CalendarBlank" /> {element.year}
       </strong>
     </section>
   </div>

@@ -303,9 +303,9 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.lattice.a).toBeCloseTo(4.916, 3)
     expect(result.lattice.b).toBeCloseTo(4.916, 3)
     expect(result.lattice.c).toBeCloseTo(5.405, 3)
-    expect(result.lattice.alpha).toBe(90)
-    expect(result.lattice.beta).toBe(90)
-    expect(result.lattice.gamma).toBe(120)
+    expect(result.lattice.alpha).toBeCloseTo(90, 6)
+    expect(result.lattice.beta).toBeCloseTo(90, 6)
+    expect(result.lattice.gamma).toBeCloseTo(120, 6)
 
     // Check sites
     expect(result.sites[0].species[0].element).toBe(`Si`)

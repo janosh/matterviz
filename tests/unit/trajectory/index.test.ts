@@ -1,4 +1,4 @@
-import type { ElementSymbol, Vector } from '$lib'
+import type { ElementSymbol, Vec3 } from '$lib'
 import type { Trajectory } from '$lib/trajectory'
 import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
 import { describe, expect, it } from 'vitest'
@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest'
 // Helper to create a basic site
 const create_site = (
   element: ElementSymbol,
-  abc: Vector,
-  xyz: Vector,
+  abc: Vec3,
+  xyz: Vec3,
   label: string,
 ) => ({
   species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -33,8 +33,8 @@ describe(`Trajectory Validation`, () => {
           create_frame(0, [
             create_site(
               `H` as ElementSymbol,
-              [0, 0, 0] as Vector,
-              [0, 0, 0] as Vector,
+              [0, 0, 0] as Vec3,
+              [0, 0, 0] as Vec3,
               `H1`,
             ),
           ]),
@@ -75,8 +75,8 @@ describe(`Trajectory Validation`, () => {
               sites: [
                 create_site(
                   `H` as ElementSymbol,
-                  [0, 0, 0] as Vector,
-                  [0, 0, 0] as Vector,
+                  [0, 0, 0] as Vec3,
+                  [0, 0, 0] as Vec3,
                   `H1`,
                 ),
               ],
@@ -105,42 +105,42 @@ describe(`Trajectory Statistics`, () => {
           create_frame(1, [
             create_site(
               `H` as ElementSymbol,
-              [0, 0, 0] as Vector,
-              [0, 0, 0] as Vector,
+              [0, 0, 0] as Vec3,
+              [0, 0, 0] as Vec3,
               `H1`,
             ),
             create_site(
               `O` as ElementSymbol,
-              [0.5, 0.5, 0.5] as Vector,
-              [1, 1, 1] as Vector,
+              [0.5, 0.5, 0.5] as Vec3,
+              [1, 1, 1] as Vec3,
               `O1`,
             ),
           ]),
           create_frame(2, [
             create_site(
               `H` as ElementSymbol,
-              [0.1, 0, 0] as Vector,
-              [0.1, 0, 0] as Vector,
+              [0.1, 0, 0] as Vec3,
+              [0.1, 0, 0] as Vec3,
               `H1`,
             ),
             create_site(
               `O` as ElementSymbol,
-              [0.6, 0.5, 0.5] as Vector,
-              [1.1, 1, 1] as Vector,
+              [0.6, 0.5, 0.5] as Vec3,
+              [1.1, 1, 1] as Vec3,
               `O1`,
             ),
           ]),
           create_frame(5, [
             create_site(
               `H` as ElementSymbol,
-              [0.2, 0, 0] as Vector,
-              [0.2, 0, 0] as Vector,
+              [0.2, 0, 0] as Vec3,
+              [0.2, 0, 0] as Vec3,
               `H1`,
             ),
             create_site(
               `O` as ElementSymbol,
-              [0.7, 0.5, 0.5] as Vector,
-              [1.2, 1, 1] as Vector,
+              [0.7, 0.5, 0.5] as Vec3,
+              [1.2, 1, 1] as Vec3,
               `O1`,
             ),
           ]),
@@ -163,42 +163,42 @@ describe(`Trajectory Statistics`, () => {
           create_frame(0, [
             create_site(
               `H` as ElementSymbol,
-              [0, 0, 0] as Vector,
-              [0, 0, 0] as Vector,
+              [0, 0, 0] as Vec3,
+              [0, 0, 0] as Vec3,
               `H1`,
             ),
           ]),
           create_frame(1, [
             create_site(
               `H` as ElementSymbol,
-              [0, 0, 0] as Vector,
-              [0, 0, 0] as Vector,
+              [0, 0, 0] as Vec3,
+              [0, 0, 0] as Vec3,
               `H1`,
             ),
             create_site(
               `H` as ElementSymbol,
-              [0.5, 0.5, 0.5] as Vector,
-              [1, 1, 1] as Vector,
+              [0.5, 0.5, 0.5] as Vec3,
+              [1, 1, 1] as Vec3,
               `H2`,
             ),
           ]),
           create_frame(2, [
             create_site(
               `H` as ElementSymbol,
-              [0, 0, 0] as Vector,
-              [0, 0, 0] as Vector,
+              [0, 0, 0] as Vec3,
+              [0, 0, 0] as Vec3,
               `H1`,
             ),
             create_site(
               `H` as ElementSymbol,
-              [0.3, 0.3, 0.3] as Vector,
-              [0.6, 0.6, 0.6] as Vector,
+              [0.3, 0.3, 0.3] as Vec3,
+              [0.6, 0.6, 0.6] as Vec3,
               `H2`,
             ),
             create_site(
               `O` as ElementSymbol,
-              [0.7, 0.7, 0.7] as Vector,
-              [1.4, 1.4, 1.4] as Vector,
+              [0.7, 0.7, 0.7] as Vec3,
+              [1.4, 1.4, 1.4] as Vec3,
               `O1`,
             ),
           ]),
@@ -221,8 +221,8 @@ describe(`Trajectory Statistics`, () => {
           create_frame(42, [
             create_site(
               `H` as ElementSymbol,
-              [0, 0, 0] as Vector,
-              [0, 0, 0] as Vector,
+              [0, 0, 0] as Vec3,
+              [0, 0, 0] as Vec3,
               `H1`,
             ),
           ]),

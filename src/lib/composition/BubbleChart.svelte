@@ -93,7 +93,7 @@
 
     const root = pack_layout(
       hierarchy<BubbleDataLeaf | BubbleDataRoot>(hierarchy_data).sum((d) =>
-        d && `amount` in d ? d.amount : 0,
+        d && `amount` in d ? d.amount : 0
       ),
     ) as HierarchyCircularNode<BubbleDataLeaf | BubbleDataRoot>
 
@@ -145,12 +145,13 @@
         {...interactive && {
           role: `button`,
           tabindex: 0,
-          'aria-label': `${bubble.element}: ${bubble.amount} ${bubble.amount === 1 ? `atom` : `atoms`}`,
+          'aria-label': `${bubble.element}: ${bubble.amount} ${
+            bubble.amount === 1 ? `atom` : `atoms`
+          }`,
         }}
       >
         <title>
-          {bubble.element}: {bubble.amount}
-          {bubble.amount === 1 ? `atom` : `atoms`}
+          {bubble.element}: {bubble.amount} {bubble.amount === 1 ? `atom` : `atoms`}
         </title>
       </circle>
 
@@ -169,16 +170,14 @@
           class="bubble-label-container"
           class:hovered={hovered_element === bubble.element}
         >
-          <div
-            class="bubble-label"
-            style="color: {bubble.text_color}; font-size: {12 * bubble.font_scale}px;"
-          >
-            <span class="element-symbol" style="font-size: {14 * bubble.font_scale}px"
-              >{bubble.element}</span
-            >{#if show_amounts}<sub
-                class="amount"
-                style="font-size: {10 * bubble.font_scale}px">{bubble.amount}</sub
-              >{/if}
+          <div class="bubble-label" style:color={bubble.text_color}>
+            <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px">{
+              bubble.element
+            }</span>
+            {#if show_amounts}
+              <sub class="amount" style:font-size="{10 * bubble.font_scale}px">
+                {bubble.amount}
+              </sub>{/if}
           </div>
         </foreignObject>
       {/each}
@@ -226,7 +225,7 @@
     transition: all 0.2s ease;
     white-space: nowrap;
   }
-  foreignObject {
+  foreignobject {
     overflow: visible;
   }
   .bubble-label.hovered {

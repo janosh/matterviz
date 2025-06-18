@@ -291,7 +291,7 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  test(`comprehensive prop functionality`, () => {
+  test(`multiple props`, () => {
     // Test multiple props affecting appearance and behavior in one test
     const props = {
       heatmap_values: [1, 2, 3, 4],

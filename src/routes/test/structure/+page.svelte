@@ -1,9 +1,8 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
   import Structure from '$lib/structure/Structure.svelte'
   import initial_structure from '$site/structures/mp-1.json'
 
-  let test_structure = $state(initial_structure as unknown as AnyStructure)
+  let test_structure = $state(initial_structure)
 
   let controls_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
@@ -29,7 +28,8 @@
         lattice_props.cell_edge_color = url_params.get(`cell_edge_color`) || `white`
       }
       if (url_params.has(`cell_surface_color`)) {
-        lattice_props.cell_surface_color = url_params.get(`cell_surface_color`) || `white`
+        lattice_props.cell_surface_color = url_params.get(`cell_surface_color`) ||
+          `white`
       }
       if (url_params.has(`cell_edge_opacity`)) {
         const opacity = parseFloat(url_params.get(`cell_edge_opacity`) || `0.4`)
@@ -52,18 +52,24 @@
       const handle_lattice_props = (event: Event) => {
         const customEvent = event as CustomEvent
         const { detail } = customEvent
-        if (detail.cell_edge_color !== undefined)
+        if (detail.cell_edge_color !== undefined) {
           lattice_props.cell_edge_color = detail.cell_edge_color
-        if (detail.cell_surface_color !== undefined)
+        }
+        if (detail.cell_surface_color !== undefined) {
           lattice_props.cell_surface_color = detail.cell_surface_color
-        if (detail.cell_edge_opacity !== undefined)
+        }
+        if (detail.cell_edge_opacity !== undefined) {
           lattice_props.cell_edge_opacity = detail.cell_edge_opacity
-        if (detail.cell_surface_opacity !== undefined)
+        }
+        if (detail.cell_surface_opacity !== undefined) {
           lattice_props.cell_surface_opacity = detail.cell_surface_opacity
-        if (detail.cell_line_width !== undefined)
+        }
+        if (detail.cell_line_width !== undefined) {
           lattice_props.cell_line_width = detail.cell_line_width
-        if (detail.show_vectors !== undefined)
+        }
+        if (detail.show_vectors !== undefined) {
           lattice_props.show_vectors = detail.show_vectors
+        }
       }
 
       window.addEventListener(`setLatticeProps`, handle_lattice_props)
@@ -118,7 +124,9 @@
 
 <div
   id="structure-wrapper"
-  style="width: {canvas.width}px; height: {canvas.height}px; border: 1px solid #ccc; margin-top: 20px;"
+  style="border: 1px solid #ccc; margin-top: 20px"
+  style:width="{canvas.width}px"
+  style:height="{canvas.height}px"
 >
   <Structure
     bind:structure={test_structure}
@@ -132,7 +140,7 @@
   />
 </div>
 
-<div data-testid="controls-open-status" style="margin-top: 10px;">
+<div data-testid="controls-open-status" style="margin-top: 10px">
   Controls Open Status: {controls_open}
 </div>
 <div data-testid="structure-id-status">

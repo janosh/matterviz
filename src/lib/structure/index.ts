@@ -1,13 +1,16 @@
 // Utilities for dealing with pymatgen Structures
-import type { ElementSymbol, Vector } from '$lib'
-import { add, format_num, scale } from '$lib'
+import type { ElementSymbol, Vec3 } from '$lib'
+import { format_num, scale } from '$lib'
 import element_data from '$lib/element/data'
+import type { Matrix3x3 } from '$lib/math'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
 export { default as Lattice } from './Lattice.svelte'
+export * from './pbc'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCard } from './StructureCard.svelte'
+export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 
@@ -34,8 +37,8 @@ export type Species = {
 
 export type Site = {
   species: Species[]
-  abc: Vector
-  xyz: Vector
+  abc: Vec3
+  xyz: Vec3
   label: string
   properties: Record<string, unknown>
 }
@@ -49,11 +52,13 @@ export const lattice_param_keys = [
   `gamma`,
 ] as const
 
+export type LatticeParams = { [key in (typeof lattice_param_keys)[number]]: number }
+
 export type PymatgenLattice = {
-  matrix: [Vector, Vector, Vector]
+  matrix: Matrix3x3
   pbc: [boolean, boolean, boolean]
   volume: number
-} & { [key in (typeof lattice_param_keys)[number]]: number }
+} & LatticeParams
 
 export type PymatgenMolecule = { sites: Site[]; charge?: number; id?: string }
 export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
@@ -82,7 +87,7 @@ export type StructureGraph = {
 }
 
 // [atom_pos_1, atom_pos_2, atom_idx_1, atom_idx_2, bond_length]
-export type BondPair = [Vector, Vector, number, number, number]
+export type BondPair = [Vec3, Vec3, number, number, number]
 
 export type IdStructure = PymatgenStructure & { id: string }
 export type StructureWithGraph = IdStructure & { graph: Graph }
@@ -169,88 +174,8 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
   return format_num(dens, prec)
 }
 
-function generate_permutations(length: number): number[][] {
-  // generate all permutations of 0s and 1s of length `length`
-  const result: number[][] = []
-  for (let idx = 0; idx < Math.pow(2, length); idx++) {
-    const binaryString = idx.toString(2).padStart(length, `0`)
-    result.push(Array.from(binaryString).map(Number))
-  }
-  return result
-}
-
-export function find_image_atoms(
-  structure: PymatgenStructure,
-  { tolerance = 0.05 }: { tolerance?: number } = {},
-  // fractional tolerance for determining if a site is at the edge of the cell
-): [number, Vector][] {
-  /*
-    This function finds all atoms on corners and faces of the cell needed to make the cell symmetrically occupied.
-    It returns an array of [atom_idx, image_xyz] pairs where atom_idx is the index of
-    the original atom and image_xyz is the position of one of its images.
-  */
-  if (!structure.lattice) return []
-
-  const edge_sites: Array<[number, Vector]> = []
-  const permutations = generate_permutations(3) //  [1, 0, 0], [0, 1, 0], etc.
-  const lattice_vecs = structure.lattice?.matrix
-
-  for (const [idx, site] of structure.sites.entries()) {
-    const abc = site.abc
-    edge_sites.push([idx, site.xyz])
-
-    // Check if the site is at the edge and determine its image
-    // based on whether fractional coordinates are close to 0 or 1
-    const edges: number[] = [0, 1, 2].filter(
-      (idx) => Math.abs(abc[idx]) < tolerance || Math.abs(abc[idx] - 1) < tolerance,
-    )
-
-    if (edges.length > 0) {
-      for (const perm of permutations) {
-        let img_xyz: Vector = [...site.xyz] // copy site.xyz
-        for (const edge of edges) {
-          if (perm[edge] === 1) {
-            if (Math.abs(abc[edge]) < tolerance) {
-              // if fractional coordinate is close to 0, add lattice vector to get image location
-              const sum = add(img_xyz, lattice_vecs[edge])
-              img_xyz = [sum[0], sum[1], sum[2]] as Vector
-            } else {
-              // if fractional coordinate is close to 1, subtract lattice vector to get image location
-              const diff = add(img_xyz, scale(lattice_vecs[edge], -1))
-              img_xyz = [diff[0], diff[1], diff[2]] as Vector
-            }
-          }
-        }
-        edge_sites.push([idx, img_xyz])
-      }
-    }
-  }
-
-  return edge_sites
-}
-
-// this function takes a pymatgen Structure and returns a new one with all the image atoms added
-export function get_pbc_image_sites(
-  ...args: Parameters<typeof find_image_atoms>
-): PymatgenStructure {
-  const edge_sites = find_image_atoms(...args)
-  const structure = args[0]
-
-  const symmetrized_structure: PymatgenStructure = { ...structure }
-  symmetrized_structure.sites = [...structure.sites]
-
-  // add all the image atoms as new sites
-  for (const [site_idx, img_xyz] of edge_sites) {
-    const new_site = structure.sites[site_idx]
-    // copy original site
-    symmetrized_structure.sites.push({ ...new_site, xyz: img_xyz })
-  }
-
-  return symmetrized_structure
-}
-
-export function get_center_of_mass(struct_or_mol: AnyStructure): Vector {
-  let center: Vector = [0, 0, 0]
+export function get_center_of_mass(struct_or_mol: AnyStructure): Vec3 {
+  let center: Vec3 = [0, 0, 0]
   let total_weight = 0
 
   for (const site of struct_or_mol.sites) {
@@ -262,11 +187,11 @@ export function get_center_of_mass(struct_or_mol: AnyStructure): Vector {
       center[0] + scaled_pos[0],
       center[1] + scaled_pos[1],
       center[2] + scaled_pos[2],
-    ] as Vector
+    ] as Vec3
 
     total_weight += wt
   }
 
   const result = scale(center, 1 / total_weight)
-  return [result[0], result[1], result[2]] as Vector
+  return [result[0], result[1], result[2]] as Vec3
 }

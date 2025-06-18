@@ -12,6 +12,7 @@
     PeriodicTable,
     PropertySelect,
   } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
@@ -24,21 +25,21 @@
   })
 
   const icon_property_map = {
-    'Atomic Mass': `#icon-weight`,
-    'Atomic Number': `#icon-info`,
-    'Atomic Radius': `#icon-atom`,
-    'Atomic Volume': `#icon-solid`,
-    'Boiling Point': `#icon-gas`,
-    'Covalent Radius': `#icon-orbit`,
-    'Electron Affinity': `#icon-atom`,
-    'Electron Valency': `#icon-atom`,
-    'First Ionization Energy': `#icon-arrow-up`,
-    'Ionization Energies': `#icon-arrow-up`,
-    'Melting Point': `#icon-liquid`,
-    'Number of Shells': `#icon-electron-shells`,
-    'Specific Heat': `#icon-arrow-up`,
-    Density: `#icon-scale`,
-    Electronegativity: `#icon-atom`,
+    'Atomic Mass': `Weight`,
+    'Atomic Number': `Info`,
+    'Atomic Radius': `Atom`,
+    'Atomic Volume': `Solid`,
+    'Boiling Point': `Gas`,
+    'Covalent Radius': `Orbit`,
+    'Electron Affinity': `Atom`,
+    'Electron Valency': `Atom`,
+    'First Ionization Energy': `ArrowUp`,
+    'Ionization Energies': `ArrowUp`,
+    'Melting Point': `Liquid`,
+    'Number of Shells': `ElectronShells`,
+    'Specific Heat': `ArrowUp`,
+    Density: `Scale`,
+    Electronegativity: `Atom`,
   } as const
 
   let key_vals = $derived(
@@ -54,9 +55,9 @@
         // if value has a unit, append it
         if (unit) value = `${value} &thinsp;${unit}`
 
-        const icon = label && label in icon_property_map
-          ? icon_property_map[label]
-          : `#icon-info`
+        const icon = label && (label in icon_property_map)
+          ? icon_property_map[label as keyof typeof icon_property_map]
+          : `Info`
         return [label, value, icon] as const
       }),
   )
@@ -73,9 +74,9 @@
   let active_shell: number | null = $state(null)
 
   let scatter_plot_values = $derived(
-    element_data.map((
-      el,
-    ) => (selected.heatmap_key ? el[selected.heatmap_key] : null)),
+    element_data
+      .map((el) => (selected.heatmap_key ? el[selected.heatmap_key] : null))
+      .filter((val): val is number => typeof val === `number`),
   )
   let [y_label, y_unit] = $derived(
     selected.heatmap_key ? (property_labels[selected.heatmap_key] ?? []) : [],
@@ -145,9 +146,9 @@
     <table>
       <thead>
         <tr>
-          <th><svg><use href="#icon-circle" /></svg>&nbsp;Shell</th>
-          <th><svg><use href="#icon-atom" /></svg>&nbsp;Electrons</th>
-          <th><svg><use href="#icon-orbit" /></svg>&nbsp;Orbitals</th>
+          <th><Icon icon="Circle" />&nbsp;Shell</th>
+          <th><Icon icon="Atom" />&nbsp;Electrons</th>
+          <th><Icon icon="Orbit" />&nbsp;Orbitals</th>
         </tr>
       </thead>
 
@@ -189,7 +190,7 @@
       {#if idx % 2 === 1 || idx < key_vals.length - 1}
         <div>
           <strong>
-            <svg><use href={icon} /></svg>
+            <Icon {icon} />
             {@html value}
           </strong>
           <small>{label}</small>

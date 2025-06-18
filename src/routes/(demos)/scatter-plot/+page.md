@@ -2,7 +2,7 @@
 
 ## Basic Plot with Multiple Display Modes
 
-A simple scatter plot showing different display modes (points, lines, or both):
+A simple scatter plot showing different display modes (points, lines, or both). Notice the gear icon in the top-right corner. Click it to access styling controls including point size, colors, line width, opacity, and more:
 
 ```svelte example stackblitz
 <script>
@@ -83,6 +83,7 @@ A simple scatter plot showing different display modes (points, lines, or both):
     y_label="Y Value"
     markers={display_mode}
     point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
+    show_controls
     style="height: 300px"
   />
   <div
@@ -880,7 +881,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 
 ## Combined Interactive Scatter Plot with Custom Controls
 
-This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling:
+This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control panel with point size, line width, colors, and styling options:
 
 ```svelte example stackblitz
 <script>
@@ -998,6 +999,7 @@ This example combines multiple features including different display modes, custo
     y_label={axis_labels.y}
     markers={display_mode}
     change={(point) => (hovered_point = point)}
+    show_controls
     style="height: 400px;"
     legend={null}
   >

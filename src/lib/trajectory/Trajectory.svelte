@@ -1,20 +1,21 @@
 <script lang="ts">
-  import { Spinner, Structure } from '$lib'
+  import { Icon, Spinner, Structure } from '$lib'
   import { decompress_file } from '$lib/io/decompress'
   import { format_num, trajectory_labels } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
+  import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { titles_as_tooltips } from 'svelte-zoo'
   import { full_data_extractor } from './extract'
   import type { Trajectory, TrajectoryDataExtractor } from './index'
-  import { TrajectoryError } from './index'
+  import { Sidebar, TrajectoryError } from './index'
   import {
-      data_url_to_array_buffer,
-      get_unsupported_format_message,
-      load_trajectory_from_url,
-      parse_trajectory_data,
+    data_url_to_array_buffer,
+    get_unsupported_format_message,
+    load_trajectory_from_url,
+    parse_trajectory_data,
   } from './parse'
   import { generate_plot_series, should_hide_plot } from './plotting'
 
@@ -53,6 +54,10 @@
     error_snippet?: Snippet<[{ error_message: string; on_dismiss: () => void }]>
 
     show_controls?: boolean // show/hide the trajectory controls bar
+    // show/hide the fullscreen button
+    show_fullscreen_button?: boolean
+    // display mode: 'both' (default), 'structure' (only structure), 'plot' (only plot)
+    display_mode?: `both` | `structure` | `plot`
     // step labels configuration for slider
     // - positive number: number of evenly spaced ticks
     // - negative number: spacing between ticks (e.g., -10 = every 10th step)
@@ -84,12 +89,14 @@
     allow_file_drop = true,
     on_file_drop = handle_trajectory_file_drop,
     layout = `horizontal`,
-    structure_props = { show_image_atoms: false },
+    structure_props = {},
     plot_props = {},
     spinner_props = {},
     trajectory_controls,
     error_snippet,
     show_controls = true,
+    show_fullscreen_button = true,
+    display_mode = $bindable(`both`),
     property_labels = trajectory_labels,
     units = {
       energy: `eV`,
@@ -113,7 +120,11 @@
   let frame_rate_fps = $state(1) // default 1 frame per second
   let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
   let current_filename = $state<string | null>(null)
+  let current_file_path = $state<string | null>(null)
   let file_size = $state<number | null>(null)
+  let file_object = $state<File | null>(null)
+  let wrapper = $state<HTMLDivElement | undefined>(undefined)
+  let sidebar_open = $state(false)
 
   // Current frame structure for display
   let current_structure = $derived(
@@ -122,88 +133,7 @@
       : undefined,
   )
 
-  // Truncate filename for display
-  let display_filename = $derived.by((): string | null => {
-    if (!current_filename) return null
-
-    if (current_filename.length <= 20) return current_filename
-
-    // Truncate with ellipsis in the middle: 8 chars + "..." + 9 chars = 20 total
-    const start = current_filename.slice(0, 8)
-    const end = current_filename.slice(-9)
-    return `${start}...${end}`
-  })
-
-  // Comprehensive tooltip with trajectory statistics
-  let info_tooltip = $derived.by((): string | undefined => {
-    if (!trajectory) return undefined
-
-    const stats: string[] = []
-    const first_frame = trajectory.frames[0]
-
-    // File information
-    if (current_filename) stats.push(`File: ${current_filename}`)
-    if (file_size !== null) {
-      const size_str =
-        file_size > 1024 * 1024
-          ? `${format_num(file_size / (1024 * 1024), `.2~f`)} MB`
-          : `${format_num(file_size / 1024, `.1~f`)} KB`
-      stats.push(`Size: ${size_str}`)
-    }
-
-    // Lattice information (atoms/volume already in top bar)
-    if (`lattice` in first_frame.structure) {
-      const { volume, a, b, c, alpha, beta, gamma } = first_frame.structure.lattice
-      stats.push(
-        `Density: ${format_num(first_frame.structure.sites.length / volume, `.4~s`)} atoms/Å³`,
-      )
-      stats.push(
-        `Cell: ${format_num(a, `.2~s`)} × ${format_num(b, `.2~s`)} × ${format_num(c, `.2~s`)} Å`,
-      )
-      stats.push(
-        `Angles: α=${format_num(alpha, `.1~f`)}° β=${format_num(beta, `.1~f`)}° γ=${format_num(gamma, `.1~f`)}°`,
-      )
-
-      // Volume change if available
-      if (trajectory.frames.length > 1) {
-        const volumes = trajectory.frames
-          .map((frame) =>
-            `lattice` in frame.structure ? frame.structure.lattice.volume : null,
-          )
-          .filter((v): v is number => v !== null)
-
-        if (volumes.length > 1) {
-          const vol_change =
-            ((Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)) * 100
-          if (Math.abs(vol_change) > 0.1) {
-            stats.push(`Volume change: ${format_num(vol_change, `.2~f`)}%`)
-          }
-        }
-      }
-    }
-
-    // Energy range with span in parentheses
-    const energies = trajectory.frames
-      .map((f) => f.metadata?.energy)
-      .filter(Boolean) as number[]
-    if (energies.length > 1) {
-      const min_energy = Math.min(...energies)
-      const max_energy = Math.max(...energies)
-      const energy_span = max_energy - min_energy
-      stats.push(
-        `Energy: ${format_num(min_energy, `.3~s`)} to ${format_num(max_energy, `.3~s`)} eV (span: ${format_num(energy_span, `.3~s`)} eV)`,
-      )
-    }
-
-    // Format if available
-    if (trajectory.metadata?.source_format) {
-      stats.push(`Format: ${trajectory.metadata.source_format}`)
-    }
-
-    return stats.join(`<br />`)
-  })
-
-  // Calculate step label positions based on step_labels prop
+  // Calculate step label positions using D3's pretty ticks for even distribution
   let step_label_positions = $derived.by((): number[] => {
     if (!trajectory || !step_labels) return []
 
@@ -217,16 +147,14 @@
 
     if (typeof step_labels === `number`) {
       if (step_labels > 0) {
-        // Positive number: evenly spaced ticks
-        const tick_count = Math.min(step_labels, total_frames)
-        if (tick_count <= 1) return [0]
-
-        const positions: number[] = []
-        for (let idx = 0; idx < tick_count; idx++) {
-          const position = Math.round((idx * (total_frames - 1)) / (tick_count - 1))
-          positions.push(position)
-        }
-        return positions
+        // Use D3's pretty ticks for even distribution
+        const scale = scaleLinear().domain([0, total_frames - 1])
+        const ticks = scale.nice().ticks(Math.min(step_labels, total_frames))
+        // Round and filter to valid frame indices
+        return ticks
+          .map((t) => Math.round(t))
+          .filter((t) => t >= 0 && t < total_frames)
+          .filter((t, idx, arr) => arr.indexOf(t) === idx) // Remove duplicates
       } else if (step_labels < 0) {
         // Negative number: spacing between ticks
         const spacing = Math.abs(step_labels)
@@ -264,7 +192,13 @@
   })
 
   // Check if all plotted values are constant (no variation) using extracted utility
-  let show_plot = $derived(!should_hide_plot(trajectory, plot_series))
+  let show_plot = $derived(
+    display_mode !== `structure` && !should_hide_plot(trajectory, plot_series),
+  )
+
+  // Determine what to show based on display mode
+  let show_structure = $derived(display_mode !== `plot`)
+  let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
   // Generate intelligent axis labels based on first series on each axis
   let y_axis_labels = $derived.by(() => {
@@ -287,7 +221,9 @@
   })
 
   // Check if there are any Y2 series to determine padding
-  let has_y2_series = $derived(plot_series.some((s) => s.y_axis === `y2` && s.visible))
+  let has_y2_series = $derived(
+    plot_series.some((s) => s.y_axis === `y2` && s.visible),
+  )
 
   // Handle file drop events
   async function handle_file_drop(event: DragEvent) {
@@ -329,6 +265,8 @@
 
     loading = true
     file_size = file.size // Capture file size
+    current_file_path = file.webkitRelativePath || file.name // Capture full path if available
+    file_object = file
     try {
       // Check if this is an HDF5 file (handle as binary)
       if (
@@ -415,17 +353,12 @@
     if (playing) {
       // Clear existing interval if it exists - use untrack to avoid circular dependency
       const current_interval = untrack(() => play_interval)
-      if (current_interval !== undefined) {
-        clearInterval(current_interval)
-      }
+      if (current_interval !== undefined) clearInterval(current_interval)
 
       // Create new interval with current frame rate
       play_interval = setInterval(() => {
-        if (current_step_idx >= trajectory!.frames.length - 1) {
-          pause_playback()
-        } else {
-          next_step()
-        }
+        if (current_step_idx >= trajectory!.frames.length - 1) go_to_step(0) // Loop back to 1st step
+        else next_step()
       }, rate_ms)
     } else {
       // Clear interval when not playing - use untrack to avoid circular dependency
@@ -504,7 +437,10 @@
     }
   }
 
-  async function handle_trajectory_binary_drop(buffer: ArrayBuffer, filename: string) {
+  async function handle_trajectory_binary_drop(
+    buffer: ArrayBuffer,
+    filename: string,
+  ) {
     loading = true
     error_message = null
 
@@ -523,6 +459,114 @@
       loading = false
     }
   }
+
+  // Fullscreen functionality
+  function toggle_fullscreen() {
+    if (!document.fullscreenElement && wrapper) {
+      wrapper.requestFullscreen().catch(console.error)
+    } else {
+      document.exitFullscreen()
+    }
+  }
+
+  // Display mode cycling
+  function cycle_display_mode() {
+    const modes: Array<`both` | `structure` | `plot`> = [`both`, `structure`, `plot`]
+    const current_index = modes.indexOf(display_mode)
+    const next_index = (current_index + 1) % modes.length
+    display_mode = modes[next_index]
+  }
+
+  // Display mode labels and icons
+  const display_mode_config = {
+    both: {
+      label: `Show Both`,
+      icon: `TwoColumns`,
+      title: `Show both structure and plot`,
+    },
+    structure: {
+      label: `Structure Only`,
+      icon: `Atom`,
+      title: `Show structure only`,
+    },
+    plot: { label: `Plot Only`, icon: `ScatterPlot`, title: `Show plot only` },
+  } as const
+
+  // Handle click outside sidebar to close it
+  function handle_click_outside(event: MouseEvent) {
+    if (!sidebar_open) return
+
+    const target = event.target as Element
+    const sidebar = target.closest(`.info-sidebar`)
+    const info_button = target.closest(`.info-button`)
+
+    // Don't close if clicking on sidebar or info button
+    if (!sidebar && !info_button) sidebar_open = false
+  }
+
+  // Handle keyboard shortcuts
+  function onkeydown(event: KeyboardEvent) {
+    if (!trajectory) return
+
+    // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
+    const target = event.target as HTMLElement
+    const is_step_input = target.classList.contains(`step-input`)
+    const is_input_focused = target.tagName === `INPUT` ||
+      target.tagName === `TEXTAREA`
+
+    // Skip if typing in an input that's not our step input
+    if (is_input_focused && !is_step_input) return
+
+    // If typing in step input, only handle certain navigation keys
+    if (is_step_input && is_input_focused) {
+      // Allow normal typing, but handle special navigation keys
+      if ([`Escape`, `Enter`].includes(event.key)) target.blur() // Remove focus from input
+      return
+    }
+
+    const total_frames = trajectory.frames.length
+    const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
+
+    // Navigation shortcuts
+    if (event.key === ` `) toggle_play()
+    else if (event.key === `ArrowLeft`) {
+      if (is_cmd_or_ctrl) go_to_step(0)
+      else prev_step()
+    } else if (event.key === `ArrowRight`) {
+      if (is_cmd_or_ctrl) go_to_step(total_frames - 1)
+      else next_step()
+    } else if (event.key === `Home`) go_to_step(0)
+    else if (event.key === `End`) go_to_step(total_frames - 1)
+    else if (event.key === `j`) {
+      go_to_step(Math.max(0, current_step_idx - 10))
+    } else if (event.key === `l`) {
+      go_to_step(Math.min(total_frames - 1, current_step_idx + 10))
+    } else if (event.key === `PageUp`) {
+      go_to_step(Math.max(0, current_step_idx - 25))
+    } else if (event.key === `PageDown`) {
+      go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
+    } // Interface shortcuts
+    else if (event.key === `f`) toggle_fullscreen()
+    else if (event.key === `i`) sidebar_open = !sidebar_open
+    else if (event.key === `d` && plot_series.length > 0) {
+      cycle_display_mode()
+    } // Playback speed shortcuts (only when playing)
+    else if ((event.key === `=` || event.key === `+`) && is_playing) {
+      frame_rate_fps = Math.min(5, frame_rate_fps + 0.2)
+    } else if (event.key === `-` && is_playing) {
+      frame_rate_fps = Math.max(0.2, frame_rate_fps - 0.2)
+    } // System shortcuts
+    else if (event.key === `Escape`) {
+      if (document.fullscreenElement) document.exitFullscreen()
+      else sidebar_open = false
+    } // Number keys 0-9 - jump to percentage of trajectory
+    else if (event.key >= `0` && event.key <= `9`) {
+      go_to_step(Math.floor((parseInt(event.key, 10) / 10) * (total_frames - 1)))
+    } else if (event.key === `Escape` && sidebar_open) { // Escape key to close sidebar
+      event.stopPropagation()
+      sidebar_open = false
+    }
+  }
 </script>
 
 <div
@@ -530,6 +574,7 @@
   class:horizontal={layout === `horizontal`}
   class:vertical={layout === `vertical`}
   class:dragover
+  bind:this={wrapper}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
@@ -543,6 +588,8 @@
     event.preventDefault()
     dragover = false
   }}
+  onclick={handle_click_outside}
+  {onkeydown}
 >
   {#if loading}
     <Spinner text="Loading trajectory..." {...spinner_props} />
@@ -558,14 +605,27 @@
       <div class="trajectory-controls">
         {#if trajectory_controls}
           {@render trajectory_controls({
-            trajectory,
-            current_step_idx,
-            total_frames: trajectory.frames.length,
-            on_step_change: go_to_step,
-          })}
+        trajectory,
+        current_step_idx,
+        total_frames: trajectory.frames.length,
+        on_step_change: go_to_step,
+      })}
         {:else}
-          {@const current_frame = trajectory.frames[current_step_idx]}
           {@const input_width = Math.max(25, String(current_step_idx).length * 8 + 6)}
+          {#if current_filename}
+            <div class="filename-section">
+              <button
+                use:titles_as_tooltips
+                title="Click to copy filename"
+                onclick={() => {
+                  if (current_filename) navigator.clipboard.writeText(current_filename)
+                }}
+              >
+                {current_filename}
+              </button>
+            </div>
+          {/if}
+
           <!-- Navigation controls -->
           <div class="nav-section">
             <button
@@ -603,28 +663,13 @@
               type="number"
               min="0"
               max={trajectory.frames.length - 1}
-              value={current_step_idx}
-              onchange={(event) => {
-                const target = event.target as HTMLInputElement
-                const step_num = parseInt(target.value, 10)
-                if (
-                  !isNaN(step_num) &&
-                  step_num >= 0 &&
-                  trajectory &&
-                  step_num <= trajectory.frames.length - 1
-                ) {
-                  current_step_idx = step_num
-                } else {
-                  // Reset to current value if invalid
-                  target.value = String(current_step_idx)
-                }
-              }}
+              bind:value={current_step_idx}
               oninput={(event) => {
                 const target = event.target as HTMLInputElement
                 const width = Math.max(25, Math.min(80, target.value.length * 8 + 6))
                 target.style.width = `${width}px`
               }}
-              style="width: {input_width}px;"
+              style:width="{input_width}px"
               class="step-input"
               title="Enter step number to jump to"
             />
@@ -641,12 +686,11 @@
               {#if step_label_positions.length > 0}
                 <div class="step-labels">
                   {#each step_label_positions as step_idx (step_idx)}
-                    {@const position_percent =
-                      (step_idx / (trajectory.frames.length - 1)) * 100}
-                    {@const adjusted_position =
-                      1.5 + (position_percent * (100 - 2)) / 100}
-                    <div class="step-tick" style="left: {adjusted_position}%;"></div>
-                    <div class="step-label" style="left: {adjusted_position}%;">
+                    {@const position_percent = (step_idx / (trajectory.frames.length - 1)) *
+              100}
+                    {@const adjusted_position = 1.5 + (position_percent * (100 - 2)) / 100}
+                    <div class="step-tick" style:left="{adjusted_position}%"></div>
+                    <div class="step-label" style:left="{adjusted_position}%">
                       {step_idx}
                     </div>
                   {/each}
@@ -658,9 +702,8 @@
           <!-- Frame rate control - only shown when playing -->
           {#if is_playing}
             <div class="speed-section">
-              <label for="step-rate-slider" style="font-weight: 500; white-space: nowrap;"
-                >Speed:</label
-              >
+              <label for="step-rate-slider" style="font-weight: 500; white-space: nowrap"
+              >Speed:</label>
               <input
                 id="step-rate-slider"
                 type="range"
@@ -686,66 +729,77 @@
 
           <!-- Frame info section -->
           <div class="info-section">
-            {#if display_filename}
-              <span
-                use:titles_as_tooltips
-                title={current_filename !== display_filename
-                  ? current_filename
-                  : undefined}>{display_filename}</span
+            <!-- Info button to open sidebar -->
+            {#if trajectory}
+              <button
+                onclick={() => (sidebar_open = !sidebar_open)}
+                title={sidebar_open ? `Close info panel` : `Open info panel`}
+                aria-label={sidebar_open ? `Close info panel` : `Open info panel`}
+                class="info-button nav-button"
+                class:active={sidebar_open}
               >
+                <Icon icon="Info" style="width: 22px; height: 22px" />
+              </button>
             {/if}
-            <span>Atoms: {current_frame.structure.sites.length}</span>
-            {#if `lattice` in current_frame.structure}
-              <span title="Initial cell volume" use:titles_as_tooltips>
-                Vol<sub>0</sub>: {format_num(
-                  current_frame.structure.lattice.volume,
-                  `.3~s`,
-                )} Å³
-              </span>
+            <!-- Display mode button - after info button -->
+            {#if plot_series.length > 0}
+              <button
+                onclick={cycle_display_mode}
+                title={display_mode_config[display_mode].title}
+                class="display-mode nav-button"
+              >
+                <Icon icon={display_mode_config[display_mode].icon} />
+              </button>
             {/if}
-            {#if current_frame.metadata?.energy}
-              <span title="Initial total energy" use:titles_as_tooltips>
-                E<sub>0</sub>: {format_num(
-                  current_frame.metadata.energy as number,
-                  `.3~s`,
-                )} eV
-              </span>
-            {/if}
-            <!-- Info icon with comprehensive tooltip -->
-            {#if info_tooltip}
-              <div class="info-icon" use:titles_as_tooltips title={info_tooltip}>
-                <svg style="width: 20px; height: 20px;"><use href="#icon-info" /></svg>
-              </div>
+            <!-- Fullscreen button - rightmost position -->
+            {#if show_fullscreen_button}
+              <button
+                onclick={toggle_fullscreen}
+                title="Toggle fullscreen"
+                aria-label="Toggle fullscreen"
+                class="fullscreen-button nav-button"
+              >
+                <Icon icon="Fullscreen" />
+              </button>
             {/if}
           </div>
         {/if}
       </div>
     {/if}
 
-    <div class="content-area" class:hide-plot={!show_plot}>
-      <Structure
-        structure={current_structure}
-        allow_file_drop={false}
-        style="height: 100%; border-radius: 0;"
-        enable_tips={false}
-        {...structure_props}
-      />
+    <div
+      class="content-area"
+      class:hide-plot={!actual_show_plot}
+      class:hide-structure={!show_structure}
+      class:show-both={display_mode === `both`}
+      class:show-structure-only={display_mode === `structure`}
+      class:show-plot-only={display_mode === `plot`}
+    >
+      {#if show_structure}
+        <Structure
+          structure={current_structure}
+          allow_file_drop={false}
+          style="height: 100%; border-radius: 0"
+          enable_tips={false}
+          fullscreen_toggle={false}
+          {...{ show_image_atoms: false, ...structure_props }}
+        />
+      {/if}
 
-      {#if show_plot}
+      {#if actual_show_plot}
         <ScatterPlot
           series={plot_series}
           x_label="Step"
           y_label={y_axis_labels.y1}
           y_label_shift={{ y: 20 }}
+          y_format=".1~s"
+          y2_format=".1~s"
           y2_label={y_axis_labels.y2}
+          y2_label_shift={{ y: 80 }}
           current_x_value={current_step_idx}
           change={handle_plot_change}
           markers="line"
-          x_ticks={step_label_positions.length > 1
-            ? -(step_label_positions[1] - step_label_positions[0])
-            : trajectory && trajectory.frames.length <= 10
-              ? -1
-              : undefined}
+          x_ticks={step_label_positions}
           legend={{
             responsive: true,
             layout: `horizontal`,
@@ -753,9 +807,9 @@
             item_gap: 0,
             padding: { t: 5, b: 5, l: 5, r: 5 },
           }}
-          padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 80 : 20 }}
+          padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
           range_padding={0}
-          style="height: 100%;"
+          style="height: 100%"
           {...plot_props}
         >
           {#snippet tooltip({ x, y, metadata })}
@@ -775,13 +829,13 @@
       <div class="drop-zone">
         <h3>Load Trajectory</h3>
         <p>
-          Drop a trajectory file here (.xyz, .json, .json.gz, XDATCAR) or provide
+          Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR) or provide
           trajectory data via props
         </p>
         <div class="supported-formats">
           <strong>Supported formats:</strong>
           <ul>
-            <li>Multi-frame XYZ trajectory files</li>
+            <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
             <li>Pymatgen trajectory JSON</li>
             <li>Array of structures with metadata</li>
             <li>VASP XDATCAR files</li>
@@ -790,6 +844,20 @@
         </div>
       </div>
     </div>
+  {/if}
+
+  <!-- Info Sidebar -->
+  {#if trajectory}
+    <Sidebar
+      {trajectory}
+      {current_step_idx}
+      {current_filename}
+      {current_file_path}
+      {file_size}
+      {file_object}
+      is_open={sidebar_open}
+      onclose={() => (sidebar_open = false)}
+    />
   {/if}
 </div>
 
@@ -805,7 +873,14 @@
     border: 2px dashed transparent;
     transition: border-color 0.2s ease;
     box-sizing: border-box;
-    overflow: visible;
+    overflow: hidden;
+    contain: layout;
+  }
+  .trajectory-viewer:fullscreen {
+    height: 100vh !important;
+    width: 100vw !important;
+    border-radius: 0;
+    border: none;
   }
   /* Content area - grid container for equal sizing */
   .content-area {
@@ -823,6 +898,20 @@
   /* When plot is hidden, structure takes full space */
   .content-area.hide-plot {
     grid-template-columns: 1fr !important;
+  }
+  /* When structure is hidden, plot takes full space */
+  .content-area.hide-structure {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+  }
+  /* Display mode specific layouts */
+  .content-area.show-structure-only {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+  }
+  .content-area.show-plot-only {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
   }
   .trajectory-viewer.dragover {
     border-color: var(--trajectory-dragover-border, #007acc);
@@ -919,6 +1008,56 @@
     gap: 0.25rem;
     color: var(--traj-text, #e2e8f0);
   }
+  .filename-section {
+    display: flex;
+    align-items: center;
+    color: var(--traj-text, #e2e8f0);
+  }
+  .filename-section button {
+    white-space: nowrap;
+    padding: 0.125rem 0.375rem;
+    background: var(--traj-bg, rgba(26, 32, 44, 0.8));
+    border-radius: 2px;
+    border: var(--traj-border, 1px solid rgba(74, 85, 104, 0.5));
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    line-height: inherit;
+  }
+  .display-mode {
+    min-width: 28px;
+    height: 28px;
+    background: var(--trajectory-display-mode-bg, rgba(255, 255, 255, 0.05));
+  }
+  .display-mode:hover:not(:disabled) {
+    background: var(--trajectory-display-mode-hover-bg, #6b7280);
+  }
+  .fullscreen-button {
+    min-width: 28px;
+    height: 28px;
+    background: var(--trajectory-fullscreen-bg, rgba(255, 255, 255, 0.05));
+  }
+  .fullscreen-button:hover:not(:disabled) {
+    background: var(--trajectory-fullscreen-hover-bg, rgba(255, 255, 255, 0.1));
+  }
+  .info-button {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    background: var(--trajectory-info-bg, #4b5563);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .info-button:hover:not(:disabled) {
+    background: var(--trajectory-info-hover-bg, #6b7280);
+  }
+  .info-button.active {
+    background: var(--trajectory-info-active-bg, #3b82f6);
+  }
   .info-section {
     display: flex;
     align-items: center;
@@ -926,13 +1065,7 @@
     color: var(--traj-text, #e2e8f0);
     margin-left: auto;
   }
-  .info-section span {
-    white-space: nowrap;
-    padding: 0.125rem 0.375rem;
-    background: var(--traj-bg, rgba(26, 32, 44, 0.8));
-    border-radius: 2px;
-    border: var(--traj-border, 1px solid rgba(74, 85, 104, 0.5));
-  }
+
   .play-button {
     background: var(--trajectory-play-button-bg, #6b7280);
     min-width: 36px;
@@ -1023,6 +1156,11 @@
       min-width: 0;
     }
     .speed-section {
+      justify-content: center;
+    }
+    .filename-section {
+      order: -1;
+      width: 100%;
       justify-content: center;
     }
     .info-section {

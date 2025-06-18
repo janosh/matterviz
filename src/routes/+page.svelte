@@ -3,7 +3,8 @@
   import { parse_structure_file } from '$lib/io/parse'
   import type { AnyStructure, PymatgenStructure } from '$lib/structure'
   import type { FileInfo } from '$site'
-  import { FileCarousel, PeriodicTableDemo, structures } from '$site'
+  import { FileCarousel, PeriodicTableDemo } from '$site'
+  import { structures } from '$site/structures'
   import { onMount } from 'svelte'
 
   const structure_files_raw = import.meta.glob(

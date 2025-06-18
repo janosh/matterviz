@@ -100,22 +100,18 @@
     window.removeEventListener(`mouseup`, handle_window_mouse_up)
   }
 
-  let grid_template_style = $derived.by(() => {
-    if (layout === `horizontal`) {
-      // n_items defines columns
-      return `grid-template-columns: repeat(${layout_tracks}, auto);`
-    } else {
-      // n_items defines rows (less common for legends, usually 1 column)
-      // If vertical, usually just one column, n_items might not be intuitive.
-      // Let's assume vertical always means 1 column unless n_items forces rows.
-      return `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`
-    }
-  })
+  let div_style = $derived(
+    {
+      horizontal: `grid-template-columns: repeat(${layout_tracks}, auto);`,
+      vertical:
+        `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`,
+    }[layout] + wrapper_style,
+  )
 </script>
 
 <div
   class="legend {draggable ? `draggable` : ``} {is_dragging ? `is-dragging` : ``}"
-  style="{wrapper_style} {grid_template_style}"
+  style={div_style}
   onmousedown={handle_legend_mouse_down}
   {...rest}
 >

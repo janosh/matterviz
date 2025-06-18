@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChemicalElement, PeriodicTableEvents } from '$lib'
+  import type { ChemicalElement } from '$lib'
   import { choose_bw_for_contrast, format_num } from '$lib'
   import { default_category_colors, is_color } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
@@ -18,7 +18,6 @@
     show_number?: boolean
     show_name?: boolean
     value?: number | number[] | string | string[] | false | undefined
-    style?: string
     symbol_style?: string
     active?: boolean
     href?: string | null
@@ -42,7 +41,6 @@
     show_number = undefined, // auto-determine based on multi-value splits
     show_name = true,
     value = undefined,
-    style = ``,
     symbol_style = ``,
     active = false,
     href = null,
@@ -56,9 +54,6 @@
     split_layout = undefined, // auto-determine based on value count if not specified
     ...rest
   }: Props = $props()
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  type $$Events = PeriodicTableEvents // for type-safe event listening on this component
 
   let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
@@ -201,7 +196,6 @@
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
   style:color={text_color ??
   choose_bw_for_contrast(node, contrast_bg_color, text_color_threshold)}
-  {style}
   role="link"
   tabindex="0"
   {...rest}

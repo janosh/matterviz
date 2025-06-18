@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LOG_MIN_EPS, format_num } from '$lib'
+  import { format_num, LOG_MIN_EPS } from '$lib'
   import { luminance } from '$lib/labels'
   import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
@@ -66,11 +66,13 @@
 
     // If ticks are primary (bottom), default label to top
     // If ticks are secondary (top), default label to bottom
-    if (orientation === `horizontal`) return tick_side === `primary` ? `top` : `bottom`
-    // orientation === `vertical`
-    // If ticks are primary (right), default label to left
-    // If ticks are secondary (left), default label to right
-    else return tick_side === `primary` ? `left` : `right`
+    if (orientation === `horizontal`) {
+      return tick_side === `primary` ? `top` : `bottom`
+    } else { // orientation === `vertical`
+      // If ticks are primary (right), default label to left
+      // If ticks are secondary (left), default label to right
+      return tick_side === `primary` ? `left` : `right`
+    }
   })
 
   // Calculate originally requested number of ticks
@@ -78,8 +80,8 @@
     Array.isArray(tick_labels)
       ? tick_labels.length
       : typeof tick_labels === `number`
-        ? tick_labels
-        : 5,
+      ? tick_labels
+      : 5,
   )
 
   // Determine actual number of ticks to generate
@@ -87,8 +89,8 @@
     Array.isArray(tick_labels)
       ? tick_labels.length
       : typeof tick_labels === `number`
-        ? tick_labels
-        : 5,
+      ? tick_labels
+      : 5,
   )
 
   // Scale for ticks - based *only* on 'range' prop and 'scale_type' for ticks
@@ -164,13 +166,15 @@
         if (
           Math.abs(Math.log10(nice_min) % 1) < LOG_MIN_EPS &&
           !power_of_10_ticks.includes(nice_min)
-        )
+        ) {
           power_of_10_ticks.unshift(nice_min)
+        }
         if (
           Math.abs(Math.log10(nice_max) % 1) < LOG_MIN_EPS &&
           !power_of_10_ticks.includes(nice_max)
-        )
+        ) {
           power_of_10_ticks.push(nice_max)
+        }
 
         // If no powers of 10 are within range (e.g., [0.1, 0.9]), fall back to D3 ticks?
         // Or just return filtered list which might be empty?
@@ -304,9 +308,9 @@
         // Interpolate logarithmically within (potentially adjusted) ramp domain
         const log_min = Math.log10(adjusted_min_ramp)
         const log_max = Math.log10(adjusted_max_ramp) // Already checked max > 0
-        if (log_min === log_max)
+        if (log_min === log_max) {
           data_value = adjusted_min_ramp // Avoid division by zero / NaN
-        else data_value = Math.pow(10, log_min + t * (log_max - log_min))
+        } else data_value = Math.pow(10, log_min + t * (log_max - log_min))
       } else {
         // Interpolate linearly within original ramp domain
         data_value = min_ramp_domain + t * (max_ramp_domain - min_ramp_domain)
@@ -324,11 +328,15 @@
   )
 
   // CSS variables for bar width/height based on orientation
-  let bar_dynamic_style = $derived(`
-    --cbar-width: ${orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 14px)`};
-    --cbar-height: ${orientation === `vertical` ? `100%` : `var(--cbar-thickness, 14px)`};
-    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)});
-  `)
+  let bar_dynamic_style = $derived(
+    `--cbar-width: ${
+      orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 14px)`
+    };
+    --cbar-height: ${
+      orientation === `vertical` ? `100%` : `var(--cbar-thickness, 14px)`
+    };
+    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)});` + (style ?? ``),
+  )
 
   // Calculate additional margin for main label if it overlaps with ticks
   let label_overlap_margin_style = $derived.by(() => {
@@ -336,14 +344,11 @@
     if (tick_side === `inside`) return ``
 
     // Determine concrete side outside ticks are on
-    const concrete_outside_tick_side =
-      orientation === `horizontal`
-        ? tick_side === `primary`
-          ? `bottom`
-          : `top`
-        : tick_side === `primary`
-          ? `right`
-          : `left`
+    const concrete_outside_tick_side = orientation === `horizontal`
+      ? tick_side === `primary` ? `bottom` : `top`
+      : tick_side === `primary`
+      ? `right`
+      : `left`
 
     if (actual_title_side !== concrete_outside_tick_side) return ``
 
@@ -362,14 +367,18 @@
       (actual_title_side === `left` || actual_title_side === `right`)
     ) {
       if (actual_title_side === `right`) {
-        rotate_style = `transform: rotate(90deg); transform-origin: center; white-space: nowrap;` // Apply title rotation
+        rotate_style =
+          `transform: rotate(90deg); transform-origin: center; white-space: nowrap;` // Apply title rotation
       } else {
-        rotate_style = `transform: rotate(-90deg); transform-origin: center; white-space: nowrap;`
+        rotate_style =
+          `transform: rotate(-90deg); transform-origin: center; white-space: nowrap;`
       }
       size_constraint = `max-width: var(--cbar-label-max-width, 2em);` // max-width constraint for rotated labels
     }
 
-    return `${rotate_style} ${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`.trim()
+    return `${rotate_style} ${size_constraint} ${label_overlap_margin_style} ${
+      title_style ?? ``
+    }`.trim()
   })
 
   function get_tick_text_color(tick_value: number): string | null {
@@ -385,39 +394,47 @@
       return `black`
     }
   }
+
+  // Align items based on orientation and title position
+  let div_style = $derived(`
+    --cbar-wrapper-align-items: ${
+    orientation === `vertical` &&
+      (actual_title_side === `left` || actual_title_side === `right`)
+      ? `stretch`
+      : `center`
+  };
+    --cbar-label-display: ${
+    orientation === `vertical` &&
+      (actual_title_side === `left` || actual_title_side === `right`)
+      ? `flex`
+      : `inline-block`
+  };
+    height: ${
+    orientation === `vertical`
+      ? `var(--cbar-height, 100%)`
+      : `var(--cbar-height, auto)`
+  };
+    min-height: ${
+    orientation === `vertical` ? `var(--cbar-min-height, 150px)` : `auto`
+  };
+    max-height: ${
+    orientation === `vertical` ? `var(--cbar-max-height, 1000px)` : `none`
+  }; ${wrapper_style ?? ``}`)
 </script>
 
-<div
-  style:flex-direction={wrapper_flex_dir}
-  style="
-    /* Align items based on orientation and title position */
-    --cbar-wrapper-align-items: {orientation === `vertical` &&
-  (actual_title_side === `left` || actual_title_side === `right`)
-    ? `stretch`
-    : `center`};
-    --cbar-label-display: {orientation === `vertical` &&
-  (actual_title_side === `left` || actual_title_side === `right`)
-    ? `flex`
-    : `inline-block`};
-    /* default height=100% for orientation vertical, with min/max constraints */
-    height: {orientation === `vertical`
-    ? `var(--cbar-height, 100%)`
-    : `var(--cbar-height, auto)`};
-    min-height: {orientation === `vertical` ? `var(--cbar-min-height, 150px)` : `auto`};
-    max-height: {orientation === `vertical` ? `var(--cbar-max-height, 1000px)` : `none`};
-    {wrapper_style ?? ``}
-    "
-  class="colorbar"
->
+<div style:flex-direction={wrapper_flex_dir} style={div_style} class="colorbar">
   {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
-  <div style="{bar_dynamic_style} {style ?? ``}" class="bar">
-    {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as tick_label (tick_label)}
+  <div style={bar_dynamic_style} class="bar">
+    {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as
+      tick_label
+      (tick_label)
+    }
       {@const position_percent =
         // Use derived scale's mapping function to get position percent
         scale_for_ticks(tick_label)}
       {@const tick_inline_style = `
         position: absolute;
-        ${orientation === `horizontal` ? `left: ${position_percent}%;` : `top: ${position_percent}%;`}
+        ${orientation === `horizontal` ? `left` : `top`}: ${position_percent}%;
         color: ${get_tick_text_color(tick_label) ?? `inherit`};
       `}
       <span style={tick_inline_style} class="tick-label {orientation} tick-{tick_side}">
