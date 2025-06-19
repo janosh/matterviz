@@ -517,9 +517,7 @@ export function parse_vasp_xdatcar(content: string): Trajectory {
     // Parse atomic positions
     const sites = []
     for (let atom_idx = 0; atom_idx < total_atoms; atom_idx++) {
-      if (line_idx >= lines.length) {
-        break
-      }
+      if (line_idx >= lines.length) break
 
       const pos_line = lines[line_idx++].trim()
       const parts = pos_line.split(/\s+/)
@@ -685,7 +683,35 @@ export function parse_xyz_trajectory(content: string): Trajectory {
       stress_frobenius: [`stress_frobenius`, `frobenius_stress`, `stress_frob`],
     }
 
+    // First, try to extract properties from within the Properties= string (extended XYZ format)
+    const properties_match = comment_line.match(/Properties\s*=\s*"?([^"]*)"?/i)
+    if (properties_match) {
+      const properties_string = properties_match[1]
+
+      // Split the Properties string by spaces and look for property=value pairs
+      const property_parts = properties_string.split(/\s+/)
+      for (const part of property_parts) {
+        if (part.includes(`=`)) {
+          const [key, value] = part.split(`=`, 2)
+          const parsed_value = parseFloat(value)
+          if (!isNaN(parsed_value)) {
+            // Check if this key matches any of our canonical properties
+            for (const [canonical_name, aliases] of Object.entries(property_aliases)) {
+              if (aliases.some((alias) => key.toLowerCase() === alias.toLowerCase())) {
+                frame_metadata[canonical_name] = parsed_value
+                break
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Then, extract other properties that might be outside the Properties string
     for (const [canonical_name, aliases] of Object.entries(property_aliases)) {
+      // Skip if we already found this property in the Properties string
+      if (canonical_name in frame_metadata) continue
+
       let found_value: number | undefined
 
       // Try each alias until we find a match
@@ -752,9 +778,7 @@ export function parse_xyz_trajectory(content: string): Trajectory {
         lattice = { matrix: lattice_matrix, ...lattice_params, pbc: [true, true, true] }
 
         // Add calculated volume to metadata if not already present
-        if (!frame_metadata.volume) {
-          frame_metadata.volume = lattice.volume
-        }
+        if (!frame_metadata.volume) frame_metadata.volume = lattice.volume
       }
     }
 
@@ -812,11 +836,7 @@ export function parse_xyz_trajectory(content: string): Trajectory {
     // Include lattice information if parsed from extended XYZ format
     const structure: AnyStructure = { sites, ...(lattice && { lattice }) }
 
-    frames.push({
-      structure,
-      step,
-      metadata: frame_metadata,
-    })
+    frames.push({ structure, step, metadata: frame_metadata })
   }
 
   if (frames.length === 0) {
@@ -862,9 +882,7 @@ export function is_xyz_trajectory(content: string, filename?: string): boolean {
         }
 
         // Check if we have enough lines for this frame
-        if (line_idx + num_atoms + 1 >= lines.length) {
-          break
-        }
+        if (line_idx + num_atoms + 1 >= lines.length) break
 
         // Skip comment line
         line_idx++
@@ -896,9 +914,7 @@ export function is_xyz_trajectory(content: string, filename?: string): boolean {
 
           // Skip remaining atoms in this frame
           line_idx += num_atoms - Math.min(num_atoms, 5)
-        } else {
-          line_idx++
-        }
+        } else line_idx++
       }
 
       // Return true if we found at least 2 valid frames

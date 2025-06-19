@@ -1,6 +1,6 @@
 // Plotting utilities for trajectory visualization
 import { plot_colors } from '$lib/colors'
-import { get_label_with_unit } from '$lib/labels'
+import { get_clean_label } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
 import type { Trajectory, TrajectoryDataExtractor } from './index'
 
@@ -95,29 +95,43 @@ export function generate_plot_series(
       ? Math.sqrt(variance) / Math.abs(mean)
       : Math.sqrt(variance)
 
+    const lower_key = key.toLowerCase()
+    const is_energy = lower_key === `energy`
+    const has_significant_variation = coefficient_of_variation >= 1e-6
+
     // Skip properties with very low variation (effectively constant)
-    if (coefficient_of_variation < 1e-6) {
+    // Exception: always include energy regardless of variation
+    if (!has_significant_variation && !is_energy) {
       continue
     }
 
     // Create series data
-    const lower_key = key.toLowerCase()
     const x_values = Array.from({ length: n }, (_, idx) => idx)
     const y_values = prop.values
     const color = colors[color_idx % colors.length]
     const y_axis: `y1` | `y2` = y2_properties.has(lower_key) ? `y2` : `y1`
-    const is_default_visible = default_visible_properties.has(lower_key) ||
-      default_visible_properties.has(key)
-    const label = get_label_with_unit(key, property_labels, units)
+
+    // For energy: only visible by default if it has significant variation
+    // For other properties: use the normal default visibility logic
+    const is_default_visible = is_energy
+      ? has_significant_variation &&
+        (default_visible_properties.has(lower_key) || default_visible_properties.has(key))
+      : (default_visible_properties.has(lower_key) || default_visible_properties.has(key))
+
+    // Extract unit and create clean label
+    const unit = units?.[lower_key] || units?.[key] || ``
+    const clean_label = get_clean_label(key, property_labels)
+    const full_label = unit ? `${clean_label} (${unit})` : clean_label
 
     series.push({
       x: x_values,
       y: y_values,
-      label,
+      label: full_label,
+      unit,
       y_axis,
       visible: is_default_visible,
       markers: n < 30 ? `line+points` : `line`,
-      metadata: x_values.map(() => ({ series_label: label })),
+      metadata: x_values.map(() => ({ series_label: full_label })),
       line_style: {
         stroke: color,
         stroke_width: 2,

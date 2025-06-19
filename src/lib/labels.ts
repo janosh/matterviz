@@ -81,9 +81,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
   }
 
   // If it's a number without SI suffix, try parsing it
-  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) {
-    return parseFloat(cleaned)
-  }
+  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) return parseFloat(cleaned)
 
   // If the value is not a formatted number, return as is
   return value
@@ -203,6 +201,44 @@ export const trajectory_labels: Record<string, string> = {
   stress_frobenius: `σ<sub>F</sub> (GPa)`,
 }
 
+// Helper function to get clean label without units
+export function get_clean_label(
+  key: string,
+  property_labels?: Record<string, string>,
+): string {
+  // First check if we have an explicit label mapping
+  if (property_labels?.[key]) {
+    // Remove any existing unit notation from the label
+    return property_labels[key].replace(/\s*\([^)]*\)\s*$/, ``)
+  }
+
+  const lower_key = key.toLowerCase()
+
+  // Special formatting for force properties
+  if (lower_key === `force_max` || key === `Force Max`) {
+    return `F<sub>max</sub>`
+  }
+
+  if (lower_key === `force_norm` || key === `Force RMS`) {
+    return `F<sub>norm</sub>`
+  }
+
+  if (lower_key === `stress_max`) {
+    return `σ<sub>max</sub>`
+  }
+
+  if (lower_key === `stress_frobenius`) {
+    return `σ<sub>F</sub>`
+  }
+
+  if (lower_key === `temperature`) {
+    return `Temperature`
+  }
+
+  // Capitalize the key name for all other properties
+  return key.charAt(0).toUpperCase() + key.slice(1)
+}
+
 // Helper function to get property label with unit for trajectory plotting
 export function get_label_with_unit(
   key: string,
@@ -212,32 +248,10 @@ export function get_label_with_unit(
   // First check if we have an explicit label mapping
   if (property_labels?.[key]) return property_labels[key]
 
-  // Fallback to old units approach for backward compatibility
+  // Get clean label and add unit if available
+  const clean_label = get_clean_label(key, property_labels)
   const lower_key = key.toLowerCase()
   const unit = units?.[lower_key] || units?.[key] || ``
 
-  // Special formatting for force properties
-  if (lower_key === `force_max` || key === `Force Max`) {
-    return unit ? `F<sub>max</sub> (${unit})` : `F<sub>max</sub>`
-  }
-
-  if (lower_key === `force_norm` || key === `Force RMS`) {
-    return unit ? `F<sub>norm</sub> (${unit})` : `F<sub>norm</sub>`
-  }
-
-  if (lower_key === `stress_max`) {
-    return unit ? `σ<sub>max</sub> (${unit})` : `σ<sub>max</sub>`
-  }
-
-  if (lower_key === `stress_frobenius`) {
-    return unit ? `σ<sub>F</sub> (${unit})` : `σ<sub>F</sub>`
-  }
-
-  if (lower_key === `temperature`) {
-    return unit ? `Temperature (${unit})` : `Temperature`
-  }
-
-  // Capitalize the key name for all other properties
-  const capitalized_key = key.charAt(0).toUpperCase() + key.slice(1)
-  return unit ? `${capitalized_key} (${unit})` : capitalized_key
+  return unit ? `${clean_label} (${unit})` : clean_label
 }

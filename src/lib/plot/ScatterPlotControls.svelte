@@ -1,6 +1,8 @@
 <script lang="ts">
   import { ControlPanel } from '$lib'
   import type { DataSeries } from '$lib/plot'
+  import { format } from 'd3-format'
+  import { timeFormat } from 'd3-time-format'
   import type { Snippet } from 'svelte'
 
   interface Props {
@@ -19,6 +21,10 @@
     y2_grid?: boolean | Record<string, unknown>
     // Whether there are y2 points to show y2 grid control
     has_y2_points?: boolean
+    // Format controls
+    x_format?: string
+    y_format?: string
+    y2_format?: string
     // Style controls
     point_size?: number
     point_color?: string
@@ -45,6 +51,10 @@
     y_grid = $bindable(true),
     y2_grid = $bindable(true),
     has_y2_points = false,
+    // Format controls
+    x_format = $bindable(``),
+    y_format = $bindable(``),
+    y2_format = $bindable(``),
     // Style controls
     point_size = $bindable(4),
     point_color = $bindable(`#4682b4`),
@@ -61,8 +71,48 @@
     selected_series_idx = $bindable(0),
   }: Props = $props()
 
+  // Local variables for format inputs to prevent invalid values from reaching props
+  let x_format_input = $state(x_format)
+  let y_format_input = $state(y_format)
+  let y2_format_input = $state(y2_format)
+
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
+
+  // Validation function for format specifiers
+  function is_valid_format(format_string: string): boolean {
+    if (!format_string) return true // Empty string is valid (uses default formatting)
+
+    try {
+      if (format_string.startsWith(`%`)) { // Time format validation
+        timeFormat(format_string)(new Date())
+        return true
+      } else { // Number format validation
+        format(format_string)(123.456)
+        return true
+      }
+    } catch {
+      return false
+    }
+  }
+
+  // Handle format input changes - only update prop if valid
+  function handle_format_input(event: Event, format_type: `x` | `y` | `y2`) {
+    const input = event.target as HTMLInputElement
+
+    // Update local variable
+    if (format_type === `x`) x_format_input = input.value
+    else if (format_type === `y`) y_format_input = input.value
+    else if (format_type === `y2`) y2_format_input = input.value
+
+    // Only update prop if valid
+    if (is_valid_format(input.value)) {
+      input.classList.remove(`invalid`)
+      if (format_type === `x`) x_format = input.value
+      else if (format_type === `y`) y_format = input.value
+      else if (format_type === `y2`) y2_format = input.value
+    } else input.classList.add(`invalid`)
+  }
 
   // Handle click outside control panel to close it
   function handle_click_outside_controls(event: MouseEvent) {
@@ -167,6 +217,46 @@
                   <input type="checkbox" bind:checked={y2_grid as boolean} />
                   Y2-axis grid
                 </label>
+              {/if}
+            </div>
+
+            <!-- Format Controls -->
+            <h4 class="section-heading">Tick Format</h4>
+            <div class="controls-group">
+              <div class="control-row">
+                <label for="x-format">X-axis:</label>
+                <input
+                  id="x-format"
+                  type="text"
+                  bind:value={x_format_input}
+                  placeholder="e.g., .2f, .0%, %Y-%m-%d"
+                  class="format-input"
+                  oninput={(event) => handle_format_input(event, `x`)}
+                />
+              </div>
+              <div class="control-row">
+                <label for="y-format">Y-axis:</label>
+                <input
+                  id="y-format"
+                  type="text"
+                  bind:value={y_format_input}
+                  placeholder="e.g., .2f, .1e, .0%"
+                  class="format-input"
+                  oninput={(event) => handle_format_input(event, `y`)}
+                />
+              </div>
+              {#if has_y2_points}
+                <div class="control-row">
+                  <label for="y2-format">Y2-axis:</label>
+                  <input
+                    id="y2-format"
+                    type="text"
+                    bind:value={y2_format_input}
+                    placeholder="e.g., .2f, .1e, .0%"
+                    class="format-input"
+                    oninput={(event) => handle_format_input(event, `y2`)}
+                  />
+                </div>
               {/if}
             </div>
 
@@ -456,5 +546,27 @@
   .plot-controls :global(.opacity-number) {
     width: 40px;
     margin-left: 4px;
+  }
+  .plot-controls :global(.format-input) {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    color: white;
+    padding: 4px 6px;
+    font-size: 0.8em;
+    font-family: monospace;
+  }
+  .plot-controls :global(.format-input::placeholder) {
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+  }
+  .plot-controls :global(.format-input.invalid) {
+    border-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+  }
+  .plot-controls :global(.format-input.invalid:focus) {
+    outline-color: #ff6b6b;
+    box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }
 </style>

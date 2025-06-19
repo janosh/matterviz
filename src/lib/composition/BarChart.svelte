@@ -77,11 +77,6 @@
   )
   let percentages = $derived(composition_to_percentages(composition))
 
-  // Function to determine text color based on background
-  function get_text_color(background_color: string): string {
-    return choose_bw_for_contrast(null, background_color)
-  }
-
   // Calculate bar segments for horizontal layout
   let segments = $derived.by(() => {
     const element_entries = Object.entries(composition).filter(
@@ -130,7 +125,7 @@
         color,
         width_percent: percentage,
         font_scale,
-        text_color: get_text_color(color),
+        text_color: choose_bw_for_contrast(null, color),
         can_show_label,
         is_thin,
         needs_external_label,

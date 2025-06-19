@@ -110,6 +110,7 @@ export interface DataSeries {
   point_tween?: TweenedOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
+  unit?: string // Optional unit for the series (e.g., "eV", "eV/Å", "GPa")
   line_style?: {
     stroke?: string
     stroke_width?: number

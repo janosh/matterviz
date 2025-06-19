@@ -14,4 +14,4 @@ jobs:
     uses: janosh/workflows/.github/workflows/deno-test.yml@main
     with:
       test-cmd: deno task unit
-      e2e-test-cmd: deno task e2e
+      e2e-test-cmd: npx playwright test

@@ -222,6 +222,44 @@ describe(`generate_plot_series`, () => {
         }
       },
     )
+
+    it(`should always include energy series regardless of variance`, () => {
+      // Create trajectory with extremely low-variance energy (below 1e-6 coefficient of variation)
+      const low_variance_trajectory = create_trajectory([
+        { energy: -789.391026308538 },
+        { energy: -789.391026308539 },
+        { energy: -789.391026308540 },
+        { energy: -789.391026308541 },
+      ])
+
+      const series = generate_plot_series(low_variance_trajectory, test_extractor)
+
+      // Energy should always be included in series
+      const energy_series = series.find((s) => s.label?.toLowerCase().includes(`energy`))
+      expect(energy_series).toBeDefined()
+      expect(energy_series?.x).toHaveLength(4)
+      expect(energy_series?.y).toHaveLength(4)
+
+      // But it should not be visible by default due to low variance
+      expect(energy_series?.visible).toBe(false)
+    })
+
+    it(`should make energy visible by default when it has high variance`, () => {
+      // Create trajectory with high-variance energy
+      const high_variance_trajectory = create_trajectory([
+        { energy: -100.0 },
+        { energy: -50.0 },
+        { energy: -25.0 },
+        { energy: -10.0 },
+      ])
+
+      const series = generate_plot_series(high_variance_trajectory, test_extractor)
+
+      // Energy should be included and visible by default due to high variance
+      const energy_series = series.find((s) => s.label?.toLowerCase().includes(`energy`))
+      expect(energy_series).toBeDefined()
+      expect(energy_series?.visible).toBe(true)
+    })
   })
 })
 
@@ -265,5 +303,48 @@ describe(`should_hide_plot`, () => {
     expect(should_hide_plot(trajectory, series)).toBe(false)
     // Loose tolerance considers this constant
     expect(should_hide_plot(trajectory, series, 1e-2)).toBe(true)
+  })
+})
+
+describe(`y-axis assignment edge cases`, () => {
+  it(`should assign force_max to y2 axis by default`, () => {
+    const trajectory = create_trajectory([
+      { force_max: 1.0 },
+      { force_max: 2.0 },
+    ])
+
+    const series = generate_plot_series(trajectory, test_extractor)
+    const force_series = series.find((s) => s.label?.includes(`F<sub>max</sub>`))
+
+    expect(force_series?.y_axis).toBe(`y2`)
+  })
+
+  it(`should assign energy to y1 axis by default`, () => {
+    const trajectory = create_trajectory([
+      { energy: -10.0 },
+      { energy: -10.5 },
+    ])
+
+    const series = generate_plot_series(trajectory, test_extractor)
+    const energy_series = series.find((s) => s.label?.includes(`Energy`))
+
+    expect(energy_series?.y_axis).toBe(`y1`)
+  })
+
+  it(`should handle mixed y1 and y2 properties correctly`, () => {
+    const trajectory = create_trajectory([
+      { energy: -10.0, force_max: 0.1, volume: 17.0 },
+      { energy: -10.5, force_max: 0.2, volume: 17.5 },
+    ])
+
+    const series = generate_plot_series(trajectory, test_extractor)
+
+    const energy_series = series.find((s) => s.label?.includes(`Energy`))
+    const force_series = series.find((s) => s.label?.includes(`F<sub>max</sub>`))
+    const volume_series = series.find((s) => s.label?.includes(`Volume`))
+
+    expect(energy_series?.y_axis).toBe(`y1`)
+    expect(force_series?.y_axis).toBe(`y2`)
+    expect(volume_series?.y_axis).toBe(`y2`)
   })
 })

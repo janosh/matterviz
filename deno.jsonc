@@ -9,7 +9,8 @@
     "e2e": "npx playwright test",
     "test:install": "npx playwright install chromium",
     "lint": "deno lint",
-    "fmt": "deno fmt"
+    "fmt": "deno fmt",
+    "package": "svelte-package"
   },
   "lock": false,
   "imports": {

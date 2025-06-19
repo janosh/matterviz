@@ -1,6 +1,6 @@
 ci:
   autoupdate_schedule: quarterly
-  skip: [deno-fmt, deno-lint]
+  skip: [deno-fmt, deno-lint, eslint]
 
 default_stages: [pre-commit]
 

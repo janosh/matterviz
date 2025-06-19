@@ -286,6 +286,9 @@
   .md-color {
     background-color: rgba(255, 215, 0, 0.8);
   }
+  .yaml-color {
+    background-color: rgba(255, 0, 255, 0.8);
+  }
   .file-item {
     display: flex;
     align-items: center;
@@ -341,6 +344,10 @@
   .md-file {
     background: rgba(255, 215, 0, 0.08);
     border-color: rgba(255, 215, 0, 0.2);
+  }
+  .yaml-file {
+    background: rgba(255, 0, 255, 0.08);
+    border-color: rgba(255, 0, 255, 0.2);
   }
   .drag-handle {
     display: flex;

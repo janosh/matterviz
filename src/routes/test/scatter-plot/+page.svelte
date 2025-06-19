@@ -1,11 +1,11 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
   import type {
-      DataSeries,
-      InternalPoint,
-      LabelStyle,
-      PointStyle,
-      ScaleType,
+    DataSeries,
+    InternalPoint,
+    LabelStyle,
+    PointStyle,
+    ScaleType,
   } from '$lib/plot'
   import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
 
@@ -340,11 +340,11 @@
 
   // Legend test data
   const legend_single_series: DataSeries[] = [
-    { x: [1, 2], y: [3, 4], metadata: { label: `Single Series` } },
+    { x: [1, 2], y: [3, 4], metadata: { label: `Single Series` }, point_style: { fill: `steelblue`, radius: 5 } },
   ]
   const legend_multi_series: DataSeries[] = [
-    { x: [1, 2], y: [3, 4], metadata: { label: `Series A` } },
-    { x: [1, 2], y: [1, 2], metadata: { label: `Series B` } },
+    { x: [1, 2], y: [3, 4], metadata: { label: `Series A` }, point_style: { fill: `red`, radius: 5 } },
+    { x: [1, 2], y: [1, 2], metadata: { label: `Series B` }, point_style: { fill: `blue`, radius: 5 } },
   ]
   const legend_zero_series: DataSeries[] = []
 
@@ -706,19 +706,19 @@
     <div class="plot-grid">
       <div id="legend-single-default" class="plot-container">
         <h3>Single Series (Default Legend) - No Legend Expected</h3>
-        <ScatterPlot series={legend_single_series} />
+        <ScatterPlot series={legend_single_series} markers="points" />
       </div>
       <div id="legend-single-null" class="plot-container">
         <h3>Single Series (legend=null) - No Legend Expected</h3>
-        <ScatterPlot series={legend_single_series} legend={null} />
+        <ScatterPlot series={legend_single_series} legend={null} markers="points" />
       </div>
       <div id="legend-single-config" class="plot-container">
         <h3>Single Series (Configured Legend) - Legend Expected</h3>
-        <ScatterPlot series={legend_single_series} legend={{ layout: `horizontal` }} />
+        <ScatterPlot series={legend_single_series} legend={{ layout: `horizontal` }} markers="points" />
       </div>
       <div id="legend-multi-default" class="plot-container">
         <h3>Multi Series (Default Legend) - Legend Expected</h3>
-        <ScatterPlot series={legend_multi_series} legend={{ draggable: true }} show_controls />
+        <ScatterPlot series={legend_multi_series} legend={{ draggable: true }} show_controls markers="points" />
       </div>
       <div id="legend-zero" class="plot-container">
         <h3>Zero Series - No Legend Expected</h3>

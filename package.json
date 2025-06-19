@@ -15,6 +15,7 @@
     "@threlte/extras": "^9.3.0",
     "@types/d3-force": "^3.0.10",
     "@types/d3-hierarchy": "^3.1.7",
+    "@types/js-yaml": "^4.0.9",
     "d3": "^7.9.0",
     "d3-array": "^3.2.4",
     "d3-color": "^3.1.0",
@@ -27,6 +28,7 @@
     "d3-shape": "^3.2.0",
     "h5wasm": "^0.8.1",
     "highlight.js": "^11.11.1",
+    "js-yaml": "^4.1.0",
     "svelte": "5.34.3",
     "svelte-multiselect": "11.1.1",
     "svelte-zoo": "^0.4.19",
@@ -100,6 +102,10 @@
     "./colors": {
       "types": "./dist/colors.d.ts",
       "default": "./dist/colors.js"
+    },
+    "./io": {
+      "types": "./dist/io.d.ts",
+      "default": "./dist/io.js"
     },
     "./labels": {
       "types": "./dist/labels.d.ts",

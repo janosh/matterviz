@@ -1,4 +1,3 @@
-import { browser } from '$app/environment'
 import type { AnyStructure } from '$lib'
 import { electro_neg_formula } from '$lib'
 import { download } from '$lib/api'
@@ -161,7 +160,7 @@ export function export_png(
 ): void {
   try {
     if (!canvas) {
-      if (browser) console.warn(`Canvas not found for PNG export`)
+      if (typeof window !== `undefined`) console.warn(`Canvas not found for PNG export`)
       return
     }
 
@@ -177,7 +176,7 @@ export function export_png(
             const filename = generate_structure_filename(structure, `png`)
             download(blob, filename, `image/png`)
           } else {
-            if (browser) {
+            if (typeof window !== `undefined`) {
               console.warn(`Failed to generate PNG - canvas may be empty`)
             }
           }
@@ -212,7 +211,7 @@ export function export_png(
               const filename = generate_structure_filename(structure, `png`)
               download(blob, filename, `image/png`)
             } else {
-              if (browser) {
+              if (typeof window !== `undefined`) {
                 console.warn(`Failed to generate high-resolution PNG`)
               }
             }
@@ -224,7 +223,7 @@ export function export_png(
       // Restore original settings
       renderer.setPixelRatio(original_pixel_ratio)
       renderer.setSize(original_size.width, original_size.height, false)
-      if (browser) {
+      if (typeof window !== `undefined`) {
         console.warn(
           `Failed to render at high resolution: ${
             error instanceof Error ? error.message : String(error)

@@ -53,7 +53,7 @@
   }
 
   interface Props {
-    series?: readonly DataSeries[]
+    series?: DataSeries[]
     style?: string
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -155,7 +155,7 @@
     y2_label_shift = { y: 60 },
     y2_tick_label_shift = { x: 8, y: 0 },
     y2_unit = ``,
-    y2_format = ``,
+    y2_format = $bindable(``),
     y2_ticks = 5,
     y2_scale_type = `linear`,
     y2_grid = true,
@@ -171,8 +171,8 @@
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
     markers = `line+points`,
-    x_format = ``,
-    y_format = ``,
+    x_format = $bindable(``),
+    y_format = $bindable(``),
     tooltip,
     change = () => {},
     x_ticks,
@@ -219,11 +219,35 @@
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
+  // Process series to ensure single visible series are always on y1 (left) axis.
+  // This prevents the scenario where the left y-axis is empty while the right y-axis
+  // has the only visible series, which would create a confusing plot layout.
+  let processed_series = $derived.by((): DataSeries[] => {
+    if (series.length === 0) return []
+
+    // Count visible series (filter out null/undefined series)
+    const visible_series = series.filter((s) => s && (s.visible ?? true))
+
+    // If only one series is visible, ensure it's on y1 axis
+    if (visible_series.length === 1) {
+      return series.map((s) => {
+        if (s && (s.visible ?? true) && s.y_axis === `y2`) {
+          // Reassign single visible series from y2 to y1
+          return { ...s, y_axis: `y1` as const }
+        }
+        return s
+      })
+    }
+
+    // For multiple visible series, keep original assignments
+    return series
+  })
+
   // Stable ID assignment for series - computed once and cached
   let next_id = 0
   const series_id_cache = new WeakMap<object, number>()
   let series_with_ids = $derived.by(() => {
-    return series.map((s) => {
+    return processed_series.map((s) => {
       if (!s || typeof s !== `object`) return s
       if (`_id` in s && typeof s._id === `number`) return s // Already has stable ID
 
@@ -252,7 +276,6 @@
   let current_x_range = $state<[number, number]>([0, 1])
   let current_y_range = $state<[number, number]>([0, 1])
   let current_y2_range = $state<[number, number]>([0, 1])
-  let series_visibility = $state<boolean[]>(series.map((s) => s?.visible ?? true))
   let previous_series_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
 
   // State to hold the calculated label positions after simulation
@@ -334,16 +357,14 @@
   let y1_points = $derived(
     series_with_ids
       .filter(Boolean)
-      .filter((s, idx) =>
-        (series_visibility[idx] ?? true) && (s.y_axis ?? `y1`) === `y1`
-      ) // Only visible y1 series
+      .filter((s) => (s.visible ?? true) && (s.y_axis ?? `y1`) === `y1`) // Only visible y1 series
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
 
   let y2_points = $derived(
     series_with_ids
       .filter(Boolean)
-      .filter((s, idx) => (series_visibility[idx] ?? true) && s.y_axis === `y2`) // Only visible y2 series
+      .filter((s) => (s.visible ?? true) && s.y_axis === `y2`) // Only visible y2 series
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
 
@@ -595,7 +616,7 @@
   let filtered_series = $derived(
     series_with_ids
       .map((data_series, series_idx) => {
-        if (!series_visibility[series_idx]) {
+        if (!(data_series?.visible ?? true)) {
           return {
             ...data_series,
             visible: false,
@@ -764,7 +785,7 @@
   // Prepare data needed for the legend component
   let legend_data = $derived.by(() => {
     return series_with_ids.map((data_series, series_idx) => {
-      const is_visible = series_visibility[series_idx] ?? true
+      const is_visible = data_series?.visible ?? true
       // Prefer top-level label, fallback to metadata label, then default
       const label = data_series?.label ??
         (typeof data_series?.metadata === `object` &&
@@ -1423,33 +1444,74 @@
     })
   })
 
+  // Helper function to check if two series have compatible units
+  function have_compatible_units(series1: DataSeries, series2: DataSeries): boolean {
+    const unit1 = series1.unit
+    const unit2 = series2.unit
+
+    // If either series has no unit, they're compatible
+    if (!unit1 || !unit2) return true
+
+    return unit1 === unit2
+  }
+
+  function resolve_unit_conflicts(
+    series: DataSeries[],
+    target_idx: number,
+  ): DataSeries[] {
+    const target_series = series[target_idx]
+    const target_axis = target_series.y_axis ?? `y1`
+
+    return series.map((s, idx) => ({
+      ...s,
+      visible: idx === target_idx ||
+        !(s.visible && (s.y_axis ?? `y1`) === target_axis &&
+          !have_compatible_units(target_series, s)),
+    }))
+  }
+
   // Function to toggle series visibility
   function toggle_series_visibility(series_idx: number) {
-    if (series_idx >= 0 && series_idx < series_visibility.length) {
-      series_visibility[series_idx] = !series_visibility[series_idx]
+    if (series_idx >= 0 && series_idx < series.length && series[series_idx]) {
+      const toggled_series = series[series_idx]
+      const new_visibility = !(toggled_series.visible ?? true)
+
+      if (new_visibility) {
+        series = resolve_unit_conflicts(series, series_idx)
+      } else {
+        // Just toggle visibility normally when hiding
+        series = series.map((s, idx) => {
+          if (idx === series_idx) return { ...s, visible: false }
+          return s
+        })
+      }
     }
   }
 
   // Function to handle double-click on legend item
   function handle_legend_double_click(double_clicked_idx: number) {
-    const visible_count = series_visibility.filter((v) => v).length
+    const current_visibility = processed_series.map((s) => s?.visible ?? true)
+    const visible_count = current_visibility.filter((v) => v).length
     const is_currently_isolated = visible_count === 1 &&
-      series_visibility[double_clicked_idx]
+      current_visibility[double_clicked_idx]
 
     if (is_currently_isolated && previous_series_visibility) {
       // Restore previous visibility state
-      series_visibility = [...previous_series_visibility]
+      series = series.map((s, idx) => ({
+        ...s,
+        visible: previous_series_visibility![idx],
+      }))
       previous_series_visibility = null // Clear memory
     } else {
       // Isolate the double-clicked series
       // Only store previous state if we are actually isolating (more than one series visible)
       if (visible_count > 1) {
-        previous_series_visibility = [...series_visibility] // Store current state
+        previous_series_visibility = [...current_visibility] // Store current state
       }
-      const new_visibility = series_visibility.map((_, idx) =>
-        idx === double_clicked_idx
-      )
-      series_visibility = new_visibility
+      series = series.map((s, idx) => ({
+        ...s,
+        visible: idx === double_clicked_idx,
+      }))
     }
   }
 
@@ -2025,6 +2087,9 @@
         bind:show_points
         bind:show_lines
         bind:selected_series_idx
+        bind:x_format
+        bind:y_format
+        bind:y2_format
         series={series_with_ids}
         {plot_controls}
         has_y2_points={y2_points.length > 0}

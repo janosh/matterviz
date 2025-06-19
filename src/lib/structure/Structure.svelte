@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
   import type { AnyStructure } from '$lib'
   import { get_elem_amounts, get_pbc_image_sites, Icon } from '$lib'
   import { element_color_schemes } from '$lib/colors'
@@ -196,7 +195,7 @@
 
   // set --struct-bg to background_color
   $effect(() => {
-    if (browser && wrapper && background_color) {
+    if (typeof window !== `undefined` && wrapper && background_color) {
       // Convert opacity (0-1) to hex alpha value (00-FF)
       const alpha_hex = Math.round(background_opacity * 255)
         .toString(16)
@@ -207,7 +206,7 @@
 
   // react to changes in the 'fullscreen' property
   $effect(() => {
-    if (browser) {
+    if (typeof window !== `undefined`) {
       // react to changes in the 'fullscreen' property
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
