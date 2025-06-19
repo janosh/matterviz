@@ -12,10 +12,6 @@
     <Icon icon="HandsClapping" /> Acknowledgements
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
-  <a href="/changelog">
-    <Icon icon="Changelog" /> Changelog
-  </a>
-  <strong>&ensp;&bull;&ensp;</strong>
   <a href="/contributing">
     <Icon icon="RepoFork" /> Contributing
   </a>

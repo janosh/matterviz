@@ -43,8 +43,4 @@
     margin: auto;
     text-align: center;
   }
-  p img {
-    vertical-align: middle;
-    margin: 0 1pt 0 3pt;
-  }
 </style>
