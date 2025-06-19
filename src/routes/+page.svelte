@@ -8,7 +8,7 @@
   import { onMount } from 'svelte'
 
   const structure_files_raw = import.meta.glob(
-    `$site/structures/*.{poscar,xyz,cif}`,
+    `$site/structures/*.{poscar,xyz,cif,yaml}`,
     { eager: true, query: `?raw`, import: `default` },
   ) as Record<string, string>
 
@@ -79,6 +79,17 @@
       return `crystal`
     }
 
+    // YAML files: phonopy files always represent crystal structures with lattices
+    if (
+      filename.toLowerCase().endsWith(`.yaml`) ||
+      filename.toLowerCase().endsWith(`.yml`)
+    ) {
+      const is_phonopy = content.includes(`phono3py:`) || content.includes(`phonopy:`)
+      // Check if it's a phonopy file by looking for phonopy-specific content
+      if (is_phonopy) return `crystal`
+      return `unknown`
+    }
+
     // XYZ files: try to detect lattice info from content
     if (filename.endsWith(`.xyz`)) {
       try {
@@ -106,10 +117,12 @@
       content: content,
     })),
     // JSON files from structures import
-    ...structures.map((s: PymatgenStructure & { id: string }) => ({
-      name: `${s.id}.json`,
-      content: JSON.stringify(s, null, 2),
-    })),
+    ...structures
+      .filter((s): s is PymatgenStructure & { id: string } => Boolean(s.id))
+      .map((s) => ({
+        name: `${s.id}.json`,
+        content: JSON.stringify(s, null, 2),
+      })),
   ].map(
     (file: { name: string; content: string }): FileInfo => ({
       ...file,
@@ -206,7 +219,8 @@
           last_loaded_file_content = content
           last_loaded_filename = filename
         } else {
-          parsing_error = `Failed to parse file. Supported: JSON, POSCAR, XYZ, CIF`
+          parsing_error =
+            `Failed to parse file. Supported: JSON, POSCAR, XYZ, CIF, YAML`
         }
       } catch (error) {
         parsing_error = `Error: ${error}`
@@ -248,9 +262,10 @@
 
 <p>
   Either from the set of example files or drag a local <code>extXYZ</code>,
-  <code>POSCAR</code>, <code>CIF</code>, <code>pymatgen</code> JSON files, or compressed
-  versions of these files onto either structure viewer. You can also edit the structure
-  content in the textarea below. Changes will automatically update both 3D viewers.
+  <code>POSCAR</code>, <code>CIF</code>, <code>YAML</code>, <code>pymatgen</code> JSON
+  files, or compressed versions of these files onto either structure viewer. You can also
+  edit the structure content in the textarea below. Changes will automatically update both
+  3D viewers.
 </p>
 
 <div class="files-and-textearea">

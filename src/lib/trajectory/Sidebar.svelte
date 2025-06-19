@@ -60,7 +60,7 @@
       if (file_size !== null && file_size !== undefined) {
         const size_str = file_size > 1024 * 1024
           ? `${format_num(file_size / (1024 * 1024), `.2~f`)} MB`
-          : `${format_num(file_size / 1024, `.1~f`)} KB`
+          : `${format_num(file_size / 1024, `.2~f`)} KB`
         file_info.push({ label: `File Size`, value: size_str })
 
         // Add file size in bytes for very large files
@@ -150,8 +150,8 @@
         },
         {
           label: `Angles`,
-          value: `${format_num(alpha, `.1~f`)}°, ${format_num(beta, `.1~f`)}°, ${
-            format_num(gamma, `.1~f`)
+          value: `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${
+            format_num(gamma, `.2~f`)
           }°`,
         },
       ]
@@ -189,15 +189,15 @@
       if (Math.abs(max_temp - min_temp) > 1) {
         traj_info.push({
           label: `Temperature`,
-          value: `${format_num(min_temp, `.1~f`)} - ${
-            format_num(max_temp, `.1~f`)
+          value: `${format_num(min_temp, `.2~f`)} - ${
+            format_num(max_temp, `.2~f`)
           } K`,
         })
       }
     } else if (temperatures.length === 1) {
       traj_info.push({
         label: `Temperature`,
-        value: `${format_num(temperatures[0], `.1~f`)} K`,
+        value: `${format_num(temperatures[0], `.2~f`)} K`,
       })
     }
 

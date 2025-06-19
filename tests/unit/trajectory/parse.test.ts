@@ -513,6 +513,64 @@ H  1.0  0.0  0.0`
     expect(() => parse_xyz_trajectory(`invalid content`)).toThrow()
     expect(() => parse_xyz_trajectory(`2\ncomment\nH 0 0`)).toThrow() // insufficient coordinates
   })
+
+  it(`should extract properties from Properties string format`, () => {
+    // Test parsing of properties embedded within the Properties= string (as in the user's file)
+    const xyz_content = `3
+Lattice="10.027269239044983 0.0 0.0 0.0 10.027269239044983 0.0 0.0 0.0 10.027269239044983" Properties="species:S:1:pos:R:3 energy=-789.391026308538 max_force=0.0005370598466879987" pbc="T T T"
+Fe       0.01378909       0.00042791       0.01532024
+Ni       0.00431291       1.69245624       1.67489410
+Cr       1.68709712       0.01488100       1.67799499`
+
+    const trajectory = parse_xyz_trajectory(xyz_content)
+    expect(trajectory.frames).toHaveLength(1)
+    expect(trajectory.frames[0]?.metadata).toBeDefined()
+
+    const metadata = trajectory.frames[0]?.metadata
+    if (metadata) {
+      expect(metadata.energy).toBeCloseTo(-789.391026308538, 8)
+      expect(metadata.force_max).toBeCloseTo(0.0005370598466879987, 10)
+    }
+  })
+
+  it(`should prioritize Properties string over standalone properties`, () => {
+    // Test that properties from Properties= string take precedence over standalone properties
+    const xyz_content = `3
+Lattice="10.0 0.0 0.0 0.0 10.0 0.0 0.0 0.0 10.0" Properties="species:S:1:pos:R:3 energy=-100.0" energy=-50.0 pbc="T T T"
+Fe       0.0       0.0       0.0
+Fe       5.0       0.0       0.0
+Fe       0.0       5.0       0.0`
+
+    const trajectory = parse_xyz_trajectory(xyz_content)
+    expect(trajectory.frames).toHaveLength(1)
+    expect(trajectory.frames[0]?.metadata).toBeDefined()
+
+    const metadata = trajectory.frames[0]?.metadata
+    if (metadata) {
+      // Should extract energy from Properties string (-100.0), not standalone (-50.0)
+      expect(metadata.energy).toBeCloseTo(-100.0, 5)
+    }
+  })
+
+  it(`should handle mixed property sources correctly`, () => {
+    // Test with some properties in Properties string and others standalone
+    const xyz_content = `3
+Lattice="10.0 0.0 0.0 0.0 10.0 0.0 0.0 0.0 10.0" Properties="species:S:1:pos:R:3 energy=-100.0" temp=300 pressure=1.5 pbc="T T T"
+Fe       0.0       0.0       0.0
+Fe       5.0       0.0       0.0
+Fe       0.0       5.0       0.0`
+
+    const trajectory = parse_xyz_trajectory(xyz_content)
+    expect(trajectory.frames).toHaveLength(1)
+    expect(trajectory.frames[0]?.metadata).toBeDefined()
+
+    const metadata = trajectory.frames[0]?.metadata
+    if (metadata) {
+      expect(metadata.energy).toBeCloseTo(-100.0, 5) // From Properties string
+      expect(metadata.temperature).toBeCloseTo(300, 5) // From standalone
+      expect(metadata.pressure).toBeCloseTo(1.5, 5) // From standalone
+    }
+  })
 })
 
 describe(`General Trajectory Parser with XYZ`, () => {

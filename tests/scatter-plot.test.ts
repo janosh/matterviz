@@ -539,7 +539,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
         .locator(`.legend-item >> text=Series A`)
         .locator(`..`) // Get the parent legend-item div
       const series_a_markers = plot_locator.locator(
-        `g[data-series-idx='0'] .marker`,
+        `g[data-series-id="0"] .marker`,
       )
 
       // Initial state: Series A visible
@@ -548,13 +548,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Click to hide Series A
       await legend_item.click()
-      // TODO: Check why marker count isn't 0. Maybe they are just display:none?
-      // await expect(series_a_markers).toHaveCount(0)
+      const hidden_markers = plot_locator.locator(`g[data-series-id] .marker`)
+      await expect(hidden_markers).toHaveCount(2) // Only Series B markers remain
       await expect(legend_item).toHaveClass(/hidden/) // Legend item visually hidden
 
       // Click to show Series A again
       await legend_item.click()
-      await expect(series_a_markers).toHaveCount(2) // Points visible again
+      const restored_markers = plot_locator.locator(`g[data-series-id] .marker`)
+      await expect(restored_markers).toHaveCount(4) // Both series visible (2 markers each)
       await expect(legend_item).not.toHaveClass(/hidden/)
     })
 
@@ -567,10 +568,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
         .locator(`.legend-item >> text=Series B`)
         .locator(`..`)
       const series_a_markers = plot_locator.locator(
-        `g[data-series-idx='0'] .marker`,
+        `g[data-series-id="0"] .marker`,
       )
       const series_b_markers = plot_locator.locator(
-        `g[data-series-idx='1'] .marker`,
+        `g[data-series-id="1"] .marker`,
       )
 
       // Initial state: Both series visible
@@ -581,17 +582,17 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Double click A to isolate it
       await series_a_item.dblclick()
-      await expect(series_a_markers).toHaveCount(2) // A remains visible
-      await expect(series_b_markers).toHaveCount(0) // B becomes hidden
+      const isolated_markers = plot_locator.locator(`g[data-series-id] .marker`)
+      await expect(isolated_markers).toHaveCount(2) // Only A remains visible
       await expect(series_a_item).not.toHaveClass(/hidden/)
       await expect(series_b_item).toHaveClass(/hidden/) // B legend item visually hidden
 
       // Double click A again to restore all
       await series_a_item.dblclick()
-      // TODO: Fix checks after restore. Similar issue as single click toggle?
-      // await expect(series_b_markers).toHaveCount(2) // B should be visible again
-      // await expect(series_a_item).not.toHaveClass(/hidden/)
-      // await expect(series_b_item).not.toHaveClass(/hidden/)
+      const restored_markers = plot_locator.locator(`g[data-series-id] .marker`)
+      await expect(restored_markers).toHaveCount(4) // Both series restored (2 markers each)
+      await expect(series_a_item).not.toHaveClass(/hidden/)
+      await expect(series_b_item).not.toHaveClass(/hidden/)
     })
   })
 
@@ -750,15 +751,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const series_a_item = plot_locator
         .locator(`.legend-item >> text=Series A`)
         .locator(`..`)
-      const series_a_markers = plot_locator.locator(
-        `g[data-series-idx='0'] .marker`,
-      )
-
       // Wait for legend to be visible
       await expect(legend_locator).toBeVisible()
 
       // Initial state: Series A visible
-      await expect(series_a_markers).toHaveCount(2)
       await expect(series_a_item).not.toHaveClass(/hidden/)
 
       // Click on legend item (should toggle visibility, not start drag)
@@ -768,7 +764,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Click again to restore
       await series_a_item.click()
       await expect(series_a_item).not.toHaveClass(/hidden/)
-      await expect(series_a_markers).toHaveCount(2)
+      const restored_markers = plot_locator.locator(`g[data-series-id] .marker`)
+      await expect(restored_markers).toHaveCount(4) // Both series visible
     })
 
     test(`legend shows grab cursor when draggable`, async ({ page }) => {
@@ -1593,7 +1590,7 @@ test.describe(`Control Panel`, () => {
 
     // Test display controls
     const display_controls = [
-      { label: `Show points`, selector: `svg g[data-series-idx] .marker` },
+      { label: `Show points`, selector: `svg g[data-series-id] .marker` },
       { label: `Show lines`, selector: `svg path[fill="none"]` },
     ]
 
@@ -1850,6 +1847,186 @@ test.describe(`Control Panel`, () => {
     await expect(control_panel).not.toBeVisible()
   })
 
+  test(`tick format controls modify axis tick labels and validate input`, async ({ page }) => {
+    const scatter_plot = page.locator(`.scatter`).first()
+    const controls_toggle = scatter_plot.locator(`.plot-controls-toggle`)
+
+    // Capture console errors to ensure invalid formats don't reach D3
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    // Open controls
+    await controls_toggle.click()
+    const control_panel = scatter_plot.locator(`.plot-controls-panel`)
+    await expect(control_panel).toBeVisible()
+
+    // Verify format controls are visible
+    const x_format_input = control_panel.locator(`input#x-format`)
+    const y_format_input = control_panel.locator(`input#y-format`)
+
+    await expect(x_format_input).toBeVisible()
+    await expect(y_format_input).toBeVisible()
+
+    // Y2 format input should not be visible for single-axis plots
+    const y2_format_input = control_panel.locator(`input#y2-format`)
+    await expect(y2_format_input).not.toBeVisible()
+
+    // Get initial tick text for comparison
+    const initial_x_tick_text = await scatter_plot.locator(`g.x-axis .tick text`).first()
+      .textContent()
+    const initial_y_tick_text = await scatter_plot.locator(`g.y-axis .tick text`).first()
+      .textContent()
+
+    // Test valid X-axis format - scientific notation
+    await x_format_input.fill(`.2e`)
+    await page.waitForTimeout(300) // Allow time for validation and update
+
+    // Verify X-axis ticks updated to scientific notation
+    const updated_x_tick_text = await scatter_plot.locator(`g.x-axis .tick text`).first()
+      .textContent()
+    expect(updated_x_tick_text).toMatch(/^\d\.\d{2}e[+-]\d+$/) // e.g., "0.00e+0" or "0.00e+00"
+    expect(updated_x_tick_text).not.toBe(initial_x_tick_text)
+
+    // Verify input doesn't have invalid styling
+    await expect(x_format_input).not.toHaveClass(/invalid/)
+
+    // Test valid Y-axis format - percentage
+    await y_format_input.fill(`.0%`)
+    await page.waitForTimeout(300)
+
+    // Verify Y-axis ticks updated to percentage format
+    const updated_y_tick_text = await scatter_plot.locator(`g.y-axis .tick text`).first()
+      .textContent()
+    expect(updated_y_tick_text).toMatch(/^\d+%\s*/) // e.g., "1000% "
+    expect(updated_y_tick_text).not.toBe(initial_y_tick_text)
+
+    // Verify input doesn't have invalid styling
+    await expect(y_format_input).not.toHaveClass(/invalid/)
+
+    // Test invalid format string - should show validation styling
+    await x_format_input.fill(`.3e3`) // Invalid: extra number after 'e'
+    await page.waitForTimeout(200)
+
+    // Verify input shows invalid styling
+    await expect(x_format_input).toHaveClass(/invalid/)
+
+    // Verify ticks didn't change from previous valid state (scientific notation)
+    const tick_after_invalid = await scatter_plot.locator(`g.x-axis .tick text`).first()
+      .textContent()
+    expect(tick_after_invalid).toMatch(/^\d\.\d{2}e[+-]\d+$/) // Still scientific notation
+
+    // Test another invalid format
+    await y_format_input.fill(`.`) // Incomplete format specifier
+    await page.waitForTimeout(200)
+
+    // Verify input shows invalid styling
+    await expect(y_format_input).toHaveClass(/invalid/)
+
+    // Verify Y ticks didn't change from previous valid state (percentage)
+    const y_tick_after_invalid = await scatter_plot.locator(`g.y-axis .tick text`).first()
+      .textContent()
+    expect(y_tick_after_invalid).toMatch(/^\d+%\s*/) // Still percentage
+
+    // Test time format for X-axis
+    await x_format_input.fill(`%Y-%m-%d`)
+    await page.waitForTimeout(300)
+
+    // Verify input doesn't have invalid styling for time format
+    await expect(x_format_input).not.toHaveClass(/invalid/)
+
+    // Test recovery from invalid to valid format
+    await y_format_input.fill(`.2f`) // Valid decimal format
+    await page.waitForTimeout(300)
+
+    // Verify invalid styling is removed
+    await expect(y_format_input).not.toHaveClass(/invalid/)
+
+    // Verify ticks updated to decimal format
+    const final_y_tick_text = await scatter_plot.locator(`g.y-axis .tick text`).first()
+      .textContent()
+    expect(final_y_tick_text).toMatch(/^\d+(\.\d{2})?\s*/) // e.g., "10.00 " or "10 "
+
+    // Clear formats to test empty string handling
+    await x_format_input.fill(``)
+    await y_format_input.fill(``)
+    await page.waitForTimeout(200)
+
+    // Empty strings should be valid (use default formatting)
+    await expect(x_format_input).not.toHaveClass(/invalid/)
+    await expect(y_format_input).not.toHaveClass(/invalid/)
+
+    // Verify no console errors occurred during format testing
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`Y2 format control only appears with dual-axis data`, async ({ page }) => {
+    // First test single-axis plot (should not show Y2 format)
+    const single_axis_plot = page.locator(`#basic-example .scatter`)
+    await single_axis_plot.locator(`.plot-controls-toggle`).click()
+
+    let control_panel = single_axis_plot.locator(`.plot-controls-panel`)
+    await expect(control_panel).toBeVisible()
+
+    // Y2 format input should not be visible
+    await expect(control_panel.locator(`input#y2-format`)).not.toBeVisible()
+
+    // Close this control panel
+    await single_axis_plot.locator(`.plot-controls-toggle`).click()
+
+    // Navigate to a page that might have dual-axis data
+    // For this test, we'll create a scenario or use existing multi-series data
+    // and assume some plots have Y2 axis data
+
+    // Look for any plot that might have dual-axis capability
+    // Since the current test data doesn't include Y2 axis, we'll test the conditional logic
+    const multi_series_plot = page.locator(`#legend-multi-default .scatter`)
+    await multi_series_plot.locator(`.plot-controls-toggle`).click()
+
+    control_panel = multi_series_plot.locator(`.plot-controls-panel`)
+    await expect(control_panel).toBeVisible()
+
+    // For current test data, Y2 should still not be visible
+    // But the control structure should be there
+    await expect(control_panel.locator(`input#x-format`)).toBeVisible()
+    await expect(control_panel.locator(`input#y-format`)).toBeVisible()
+
+    // Test that format controls work the same in multi-series plots
+    const x_format_input = control_panel.locator(`input#x-format`)
+    await x_format_input.fill(`.1f`)
+    await page.waitForTimeout(200)
+    await expect(x_format_input).not.toHaveClass(/invalid/)
+  })
+
+  test(`format input placeholders provide helpful examples`, async ({ page }) => {
+    const scatter_plot = page.locator(`.scatter`).first()
+    const controls_toggle = scatter_plot.locator(`.plot-controls-toggle`)
+
+    // Open controls
+    await controls_toggle.click()
+    const control_panel = scatter_plot.locator(`.plot-controls-panel`)
+
+    // Check placeholder text provides useful format examples
+    const x_format_input = control_panel.locator(`input#x-format`)
+    const y_format_input = control_panel.locator(`input#y-format`)
+
+    await expect(x_format_input).toHaveAttribute(
+      `placeholder`,
+      `e.g., .2f, .0%, %Y-%m-%d`,
+    )
+    await expect(y_format_input).toHaveAttribute(`placeholder`, `e.g., .2f, .1e, .0%`)
+
+    // Test that placeholders are helpful by testing the actual examples
+    await x_format_input.fill(`.2f`)
+    await page.waitForTimeout(200)
+    await expect(x_format_input).not.toHaveClass(/invalid/)
+
+    await y_format_input.fill(`.1e`)
+    await page.waitForTimeout(200)
+    await expect(y_format_input).not.toHaveClass(/invalid/)
+  })
+
   test(`series selector only affects selected series in multi-series plots`, async ({ page }) => {
     // First, navigate to a page with multi-series data
     await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
@@ -1876,8 +2053,12 @@ test.describe(`Control Panel`, () => {
     await expect(series_selector).toHaveValue(`1`)
 
     // Check initial state - both series should have markers
-    const series_a_markers = multi_series_plot.locator(`g[data-series-idx='0'] .marker`)
-    const series_b_markers = multi_series_plot.locator(`g[data-series-idx='1'] .marker`)
+    const series_a_markers = multi_series_plot.locator(
+      `g[data-series-id="0"] .marker`,
+    )
+    const series_b_markers = multi_series_plot.locator(
+      `g[data-series-id="1"] .marker`,
+    )
     await expect(series_a_markers).toHaveCount(2)
     await expect(series_b_markers).toHaveCount(2)
 

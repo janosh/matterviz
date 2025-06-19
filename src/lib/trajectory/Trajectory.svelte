@@ -117,7 +117,7 @@
   let loading = $state(false)
   let error_message = $state<string | null>(null)
   let is_playing = $state(false)
-  let frame_rate_fps = $state(1) // default 1 frame per second
+  let frame_rate_fps = $state(5)
   let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
   let current_filename = $state<string | null>(null)
   let current_file_path = $state<string | null>(null)
@@ -792,14 +792,15 @@
           x_label="Step"
           y_label={y_axis_labels.y1}
           y_label_shift={{ y: 20 }}
-          y_format=".1~s"
-          y2_format=".1~s"
+          y_format=".2~s"
+          y2_format=".2~s"
           y2_label={y_axis_labels.y2}
           y2_label_shift={{ y: 80 }}
           current_x_value={current_step_idx}
           change={handle_plot_change}
           markers="line"
           x_ticks={step_label_positions}
+          show_controls
           legend={{
             responsive: true,
             layout: `horizontal`,

@@ -1,4 +1,10 @@
-import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/io/parse'
+import {
+  parse_cif,
+  parse_phonopy_yaml,
+  parse_poscar,
+  parse_structure_file,
+  parse_xyz,
+} from '$lib/io/parse'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
@@ -8,7 +14,22 @@ import scientific_notation_poscar from '$site/structures/scientific-notation.pos
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
+import { readFileSync } from 'fs'
+import process from 'node:process'
+import { join } from 'path'
 import { describe, expect, it, vi } from 'vitest'
+import { gunzipSync } from 'zlib'
+
+// Load compressed phonopy files using Node.js built-in decompression
+const agi_compressed = readFileSync(
+  join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py_params.yaml.gz`),
+)
+const agi_phono3py_params = gunzipSync(agi_compressed).toString(`utf-8`)
+
+const beo_compressed = readFileSync(
+  join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py_params.yaml.gz`),
+)
+const beo_phono3py_params = gunzipSync(beo_compressed).toString(`utf-8`)
 
 describe(`POSCAR Parser`, () => {
   it.each([
@@ -332,4 +353,202 @@ O2   O   0.410  0.140  0.880  1.000`
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
   })
+})
+
+describe(`Phonopy YAML Parser`, () => {
+  const simple_phonopy_yaml = `
+phono3py:
+  version: 2.3.0
+  frequency_unit_conversion_factor: 15.633302
+
+space_group:
+  type: "P6_3mc"
+  number: 186
+  Hall_symbol: "P 6c -2c"
+
+primitive_cell:
+  lattice:
+  - [     4.556340561269590,     0.000000000000000,     0.000000000000000 ]
+  - [    -2.278170280634795,     3.945906674352911,     0.000000000000000 ]
+  - [     0.000000000000000,     0.000000000000000,     7.446308720723541 ]
+  points:
+  - symbol: Ag
+    coordinates: [  0.333333333333333,  0.666666666666667,  0.001734192635380 ]
+    mass: 107.868200
+  - symbol: I
+    coordinates: [  0.333333333333333,  0.666666666666667,  0.376708787364615 ]
+    mass: 126.904470
+
+unit_cell:
+  lattice:
+  - [     4.556340561269590,     0.000000000000000,     0.000000000000000 ]
+  - [    -2.278170280634795,     3.945906674352912,     0.000000000000000 ]
+  - [     0.000000000000000,     0.000000000000000,     7.446308720723541 ]
+  points:
+  - symbol: Ag
+    coordinates: [  0.333333333333333,  0.666666666666667,  0.001734192635380 ]
+    mass: 107.868200
+    reduced_to: 1
+  - symbol: I
+    coordinates: [  0.333333333333333,  0.666666666666667,  0.376708787364615 ]
+    mass: 126.904470
+    reduced_to: 3
+`
+
+  it.each([
+    {
+      name: `basic phonopy YAML structure`,
+      content: simple_phonopy_yaml,
+      expected_result: `structure`,
+      expected_sites: 2,
+      expected_lattice_a: 4.556340561269590,
+      site_checks: [
+        {
+          idx: 0,
+          element: `Ag`,
+          abc: [0.333333333333333, 0.666666666666667, 0.001734192635380],
+          mass: 107.868200,
+        },
+        {
+          idx: 1,
+          element: `I`,
+          abc: [0.333333333333333, 0.666666666666667, 0.376708787364615],
+          mass: 126.904470,
+        },
+      ],
+    },
+    {
+      name: `phonopy YAML with phonon_displacements`,
+      content: simple_phonopy_yaml +
+        `\nphonon_displacements:\n- # This should be ignored for performance\n  - 0.1\n  - 0.2\n  - 0.3`,
+      expected_result: `structure`,
+      expected_sites: 2,
+    },
+    {
+      name: `invalid phonopy YAML`,
+      content: `invalid: yaml: content:`,
+      expected_result: `null`,
+    },
+    {
+      name: `phonopy YAML without any cells`,
+      content: `\nphono3py:\n  version: 2.3.0\nspace_group:\n  type: "P6_3mc"\n`,
+      expected_result: `null`,
+    },
+  ])(
+    `should handle $name`,
+    ({ content, expected_result, expected_sites, expected_lattice_a, site_checks }) => {
+      const structure = parse_phonopy_yaml(content)
+
+      if (expected_result === `null`) {
+        expect(structure).toBeNull()
+      } else {
+        expect(structure).toBeDefined()
+        if (!expected_sites) throw `Expected sites to be number`
+        expect(structure?.sites).toHaveLength(expected_sites)
+        expect(structure?.lattice).toBeDefined()
+
+        if (expected_lattice_a) {
+          expect(structure?.lattice?.a).toBeCloseTo(expected_lattice_a, 6)
+          expect(structure?.lattice?.volume).toBeGreaterThan(0)
+        }
+
+        if (site_checks) {
+          for (const check of site_checks) {
+            const site = structure?.sites[check.idx]
+            expect(site?.species[0].element).toBe(check.element)
+            expect(site?.abc).toEqual(check.abc)
+            expect(site?.properties.mass).toBe(check.mass)
+          }
+        }
+      }
+    },
+  )
+
+  it.each([
+    {
+      name: `AgI phonopy file`,
+      content: agi_phono3py_params,
+      filename: `AgI-fq978185p-phono3py_params.yaml.gz`,
+      expected_min_sites: 70,
+      space_group: `P6_3mc`,
+    },
+    {
+      name: `BeO phonopy file`,
+      content: beo_phono3py_params,
+      filename: `BeO-zw12zc18p-phono3py_params.yaml.gz`,
+      expected_min_sites: 60,
+      space_group: `F-43m`,
+    },
+    {
+      name: `simple phonopy YAML`,
+      content: simple_phonopy_yaml,
+      filename: `phono3py_params.yaml`,
+      expected_min_sites: 1,
+      space_group: `P6_3mc`,
+    },
+  ])(
+    `should parse and detect $name`,
+    ({ content, filename, expected_min_sites }) => {
+      // Test direct parsing
+      const direct_result = parse_phonopy_yaml(content)
+      expect(direct_result).toBeDefined()
+      expect(direct_result?.sites.length).toBeGreaterThan(expected_min_sites)
+      expect(direct_result?.lattice).toBeDefined()
+      expect(direct_result?.lattice?.volume).toBeGreaterThan(0)
+
+      // Test auto-detection by extension
+      const by_extension = parse_structure_file(content, filename)
+      expect(by_extension).toBeDefined()
+      expect(by_extension?.sites.length).toBeGreaterThan(expected_min_sites)
+
+      // Test auto-detection by content
+      const by_content = parse_structure_file(content)
+      expect(by_content).toBeDefined()
+      expect(by_content?.sites.length).toBeGreaterThan(expected_min_sites)
+    },
+  )
+
+  it.each([
+    {
+      name: `specific primitive cell`,
+      content: simple_phonopy_yaml,
+      cell_type: `primitive_cell` as const,
+      expected_result: `structure`,
+      expected_sites: 2,
+    },
+    {
+      name: `specific unit cell`,
+      content: simple_phonopy_yaml,
+      cell_type: `unit_cell` as const,
+      expected_result: `structure`,
+      expected_sites: 2,
+    },
+    {
+      name: `auto mode (explicit)`,
+      content: simple_phonopy_yaml,
+      cell_type: `auto` as const,
+      expected_result: `structure`,
+      expected_sites: 2,
+    },
+    {
+      name: `non-existent cell type`,
+      content: simple_phonopy_yaml,
+      cell_type: `supercell` as const,
+      expected_result: `null`,
+    },
+  ])(
+    `should handle $name when requested`,
+    ({ content, cell_type, expected_result, expected_sites }) => {
+      const result = parse_phonopy_yaml(content, cell_type)
+
+      if (expected_result === `null`) {
+        expect(result).toBeNull()
+      } else {
+        expect(result).toBeDefined()
+        if (!expected_sites) throw `Expected sites to be number`
+        expect(result?.sites).toHaveLength(expected_sites)
+        expect(result?.lattice).toBeDefined()
+      }
+    },
+  )
 })

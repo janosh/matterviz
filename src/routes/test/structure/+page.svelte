@@ -1,8 +1,7 @@
 <script lang="ts">
+  import type { PymatgenStructure } from '$lib'
   import Structure from '$lib/structure/Structure.svelte'
-  import initial_structure from '$site/structures/mp-1.json'
-
-  let test_structure = $state(initial_structure)
+  import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
@@ -95,11 +94,6 @@
   </label>
   <br />
   <label>
-    Structure ID (read-only):
-    <input type="text" readonly value={test_structure?.id ?? `N/A`} />
-  </label>
-  <br />
-  <label>
     Canvas Width:
     <input type="number" bind:value={canvas.width} />
   </label>
@@ -129,7 +123,7 @@
   style:height="{canvas.height}px"
 >
   <Structure
-    bind:structure={test_structure}
+    structure={mp1_struct as unknown as PymatgenStructure}
     bind:controls_open
     bind:width={canvas.width}
     bind:height={canvas.height}
@@ -142,9 +136,6 @@
 
 <div data-testid="controls-open-status" style="margin-top: 10px">
   Controls Open Status: {controls_open}
-</div>
-<div data-testid="structure-id-status">
-  Structure ID Status: {test_structure?.id ?? `undefined`}
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
