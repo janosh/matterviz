@@ -52,7 +52,7 @@
       const file_info = []
       if (current_filename) {
         file_info.push({
-          label: `Filename`,
+          label: `Name`,
           value: current_filename,
           tooltip: current_file_path || undefined,
         })
@@ -72,9 +72,10 @@
 
       // Add file timestamps if available
       if (file_object) {
+        const last_modified_date = new Date(file_object.lastModified)
         file_info.push({
           label: `Last Modified`,
-          value: file_object.lastModified.toLocaleString(),
+          value: last_modified_date.toLocaleString(),
           tooltip: `File system last modified time`,
         })
       }
@@ -159,12 +160,10 @@
     }
 
     // Trajectory Information Section
-    const traj_info = [
-      {
-        label: `Steps`,
-        value: `${trajectory.frames.length} (current: ${current_step_idx + 1})`,
-      },
-    ]
+    const traj_info = [{
+      label: `Steps`,
+      value: `${trajectory.frames.length} (current: ${current_step_idx + 1})`,
+    }]
 
     // Add trajectory duration if we have time metadata
     const times = trajectory.frames

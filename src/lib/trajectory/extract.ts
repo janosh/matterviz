@@ -1,4 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
+import { get_density, type PymatgenStructure } from '$lib/structure'
 import type { Trajectory, TrajectoryDataExtractor, TrajectoryFrame } from './index'
 
 // Common data extractor that extracts energy and structural properties
@@ -121,14 +122,23 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
 
   if (frame.metadata) {
     // Extract other structural properties, avoiding volume duplicate
-    const structural_fields = [`density`, `temperature`]
+    const structural_fields = [`temperature`]
 
     for (const field of structural_fields) {
       if (
         field in frame.metadata &&
         typeof frame.metadata[field] === `number`
-      ) {
-        data[field] = frame.metadata[field] as number
+      ) data[field] = frame.metadata[field] as number
+    }
+
+    // Handle density separately - prefer metadata, but calculate if not available
+    if (frame.metadata.density && typeof frame.metadata.density === `number`) {
+      data.density = frame.metadata.density
+    } else if (`lattice` in frame.structure) {
+      try {
+        data.density = get_density(frame.structure as PymatgenStructure)
+      } catch (error) {
+        console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
       }
     }
 
@@ -142,6 +152,13 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     }
 
     // Note: pressure is handled by force_stress_data_extractor to avoid duplication
+  } else if (`lattice` in frame.structure) {
+    // Calculate density even when no metadata is available
+    try {
+      data.density = get_density(frame.structure as PymatgenStructure)
+    } catch (error) {
+      console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
+    }
   }
 
   return data

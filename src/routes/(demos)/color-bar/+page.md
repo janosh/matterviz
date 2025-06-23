@@ -54,14 +54,9 @@ You can make fat and skinny bars:
 
 ```svelte example stackblitz code_above
 <script>
-  import {
-    ColorBar,
-    ColorScaleSelect,
-    element_data,
-    PeriodicTable,
-    PropertySelect,
-    TableInset,
-  } from '$lib'
+  import { element_data } from '$lib'
+  import { ColorBar, ColorScaleSelect } from '$lib/plot'
+  import { PeriodicTable, PropertySelect, TableInset } from '$lib/periodic-table'
 
   let color_scale = $state(`interpolateCividis`)
   let heatmap_key = $state(``)

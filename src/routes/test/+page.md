@@ -10,7 +10,7 @@
   )
 </script>
 
-<main>
+<main style="max-width: 45em; margin: 0 auto;">
 
 # End-to-End Testing
 
@@ -19,10 +19,3 @@ The files in this directory are used for end-to-end testing with Playwright. Run
 <DemoNav {routes} />
 
 </main>
-
-<style>
-  main {
-    max-width: 45em;
-    margin: 0 auto;
-  }
-</style>

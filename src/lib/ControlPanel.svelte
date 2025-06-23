@@ -14,7 +14,8 @@
     open_icon?: IconName // Custom icon for open state
     closed_icon?: IconName // Custom icon for closed state
     toggle_controls_btn?: HTMLButtonElement // Toggle button DOM element
-    controls?: HTMLDivElement // Control panel DOM element
+    controls_div?: HTMLDivElement // Control panel DOM element
+    icon_style?: string // Style for the icon
   }
   let {
     controls_open = $bindable(false),
@@ -26,8 +27,11 @@
     open_icon = `Cross`,
     closed_icon = `Settings`,
     toggle_controls_btn,
-    controls,
+    controls_div,
+    icon_style = `width: 24px; height: 24px`,
   }: Props = $props()
+
+  const [panel_class, toggle_class] = [`controls-panel`, `controls-toggle`]
 
   function on_keydown(event: KeyboardEvent) {
     if (event.key === `Escape`) controls_open = false
@@ -35,9 +39,20 @@
   function toggle_controls() {
     controls_open = !controls_open
   }
+  function handle_click_outside(event: MouseEvent) {
+    if (!controls_open) return
+
+    const target = event.target as Element
+    const control_panel = target.closest(`.${panel_class}`)
+    const toggle_btn = target.closest(`.${toggle_class}`)
+
+    // Don't close if clicking inside panel or on toggle button
+    if (!control_panel && !toggle_btn) controls_open = false
+  }
 </script>
 
 <svelte:window onkeydown={on_keydown} />
+<svelte:document onclick={handle_click_outside} />
 
 {#if show_controls}
   {#if show_toggle_button}
@@ -48,21 +63,18 @@
       aria-controls="controls-panel"
       title={toggle_button.title ?? (controls_open ? `Close controls` : `Open controls`)}
       {...toggle_button}
-      class="controls-toggle {toggle_button.class ?? ``}"
+      class="{toggle_class} {toggle_button.class ?? ``}"
     >
-      <Icon
-        icon={controls_open ? open_icon : closed_icon}
-        style="width: 24px; height: 24px"
-      />
+      <Icon icon={controls_open ? open_icon : closed_icon} style={icon_style} />
     </button>
   {/if}
 
   <div
     class:controls-open={controls_open}
-    bind:this={controls}
+    bind:this={controls_div}
     role="dialog"
     {...panel_props}
-    class="controls {panel_props.class ?? ``}"
+    class="{panel_class} {panel_props.class ?? ``}"
   >
     {#if controls_content}
       {@render controls_content()}
@@ -73,16 +85,18 @@
 <style>
   .controls-toggle {
     background-color: transparent;
-    min-width: 28px;
-    height: 28px;
-    padding: 0.125rem 0.25rem;
-    font-size: 0.8rem;
+    width: 30px;
+    height: 30px;
     box-sizing: border-box;
+    display: flex;
+    place-items: center;
+    padding: 4pt 4pt;
+    border-radius: 50%;
   }
   .controls-toggle:hover {
-    background-color: transparent !important;
+    background-color: rgba(255, 255, 255, 0.1);
   }
-  .controls {
+  .controls-panel {
     position: absolute;
     left: unset;
     background: transparent;
@@ -90,11 +104,9 @@
     display: grid;
     gap: var(--controls-gap, 4pt);
     text-align: var(--controls-text-align, left);
-    transition:
-      visibility var(--controls-transition-duration, 0.3s),
-      opacity var(--controls-transition-duration, 0.3s);
+    transition: var(--controls-transition, 0.3s);
     box-sizing: border-box;
-    top: var(--controls-top, 30pt);
+    top: var(--controls-top, 20pt);
     right: var(--controls-right, 6pt);
     background: var(--controls-bg, rgba(10, 10, 10, 0.95));
     padding: var(--controls-padding, 6pt 9pt);
@@ -109,31 +121,31 @@
     z-index: var(--controls-z-index, 1);
     pointer-events: none;
   }
-  .controls.controls-open {
+  .controls-panel.controls-open {
     visibility: visible !important;
     opacity: 1 !important;
     pointer-events: auto !important;
   }
-  .controls :global(hr) {
+  .controls-panel :global(hr) {
     border: none;
     background: var(--controls-hr-bg, gray);
     margin: var(--controls-hr-margin, 0);
     height: var(--controls-hr-height, 0.5px);
   }
-  .controls :global(label) {
+  .controls-panel :global(label) {
     display: flex;
     align-items: center;
     gap: var(--controls-label-gap, 2pt);
   }
-  .controls :global(input[type='range']) {
+  .controls-panel :global(input[type='range']) {
     margin-left: auto;
     width: var(--controls-input-range-width, 100px);
     flex-shrink: 0;
   }
-  .controls :global(.slider-control input[type='range']) {
+  .controls-panel :global(.slider-control input[type='range']) {
     margin-left: 0;
   }
-  .controls :global(input[type='number']) {
+  .controls-panel :global(input[type='number']) {
     box-sizing: border-box;
     text-align: center;
     border-radius: var(--controls-input-num-border-radius, 3pt);
@@ -144,43 +156,43 @@
     margin-left: var(--controls-input-num-margin-left, 6pt);
     flex-shrink: 0;
   }
-  .controls :global(input::-webkit-inner-spin-button) {
+  .controls-panel :global(input::-webkit-inner-spin-button) {
     display: none;
   }
-  .controls :global(button) {
+  .controls-panel :global(button) {
     width: max-content;
     background-color: var(--controls-btn-bg, rgba(255, 255, 255, 0.2));
   }
-  .controls :global(select) {
+  .controls-panel :global(select) {
     margin: var(--controls-select-margin, 0 0 0 5pt);
     color: var(--controls-select-color, white);
     background-color: var(--controls-select-bg, rgba(255, 255, 255, 0.1));
   }
-  .controls :global(input[type='color']) {
+  .controls-panel :global(input[type='color']) {
     width: var(--input-color-width, 40px);
     height: var(--input-color-height, 16px);
     margin: var(--input-color-margin, 0 0 0 5pt);
     border: var(--input-color-border, 1px solid rgba(255, 255, 255, 0.05));
     box-sizing: border-box;
   }
-  .controls :global(.section-heading) {
+  .controls-panel :global(.section-heading) {
     margin: 8pt 0 2pt;
     font-size: 0.9em;
     color: var(--text-muted, #ccc);
   }
-  .controls :global(.control-row) {
+  .controls-panel :global(.control-row) {
     display: flex;
     gap: 4pt;
     align-items: flex-start;
   }
-  .controls :global(.control-row label) {
+  .controls-panel :global(.control-row label) {
     min-width: 0;
   }
-  .controls :global(.control-row label.compact) {
+  .controls-panel :global(.control-row label.compact) {
     flex: 0 0 auto;
     margin-right: 8pt;
   }
-  .controls :global(.control-row label.slider-control) {
+  .controls-panel :global(.control-row label.slider-control) {
     flex: 1;
   }
 </style>

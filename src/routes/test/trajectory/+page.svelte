@@ -300,8 +300,11 @@
   <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
-      property_labels={{ energy: `Total Energy`, force_max: `Max Force` }}
-      units={{ energy: `kcal/mol`, force_max: `kcal/(mol·Å)` }}
+      data_extractor={(frame: TrajectoryFrame) => ({
+        Step: frame.step,
+        'Total Energy': (frame.metadata?.energy as number) || 0,
+        'Max Force': (frame.metadata?.force_max as number) || 0,
+      })}
       layout="horizontal"
     />
   </div>

@@ -11,24 +11,24 @@
     elem_color_picker_title?: string
     labels?: HTMLLabelElement[]
     tips_modal?: HTMLDialogElement | undefined
-    style?: string | null
     dialog_style?: string | null
     tips_modal_snippet?: Snippet
     amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
     show_amounts?: boolean // Whether to show element amounts
     get_element_label?: (element: string, amount: number) => string // Custom label function
+    [key: string]: unknown
   }
   let {
     elements,
     elem_color_picker_title = `Double click to reset color`,
     labels = $bindable([]),
     tips_modal = $bindable(undefined),
-    style = null,
     dialog_style = null,
     tips_modal_snippet,
     amount_format = `.3~f`,
     show_amounts = true,
     get_element_label,
+    ...rest
   }: Props = $props()
 
   // Generate label text for each element
@@ -38,7 +38,7 @@
   }
 </script>
 
-<div {style}>
+<div class="structure-legend" {...rest}>
   {#each Object.entries(elements) as [elem, amt], idx (elem + amt)}
     <Tooltip
       text={element_data.find((el) => el.symbol == elem)?.name}
@@ -92,7 +92,7 @@
 </dialog>
 
 <style>
-  div {
+  .structure-legend {
     display: flex;
     position: absolute;
     bottom: var(--struct-legend-bottom, 8pt);
@@ -101,18 +101,23 @@
     font-size: var(--struct-legend-font, 14pt);
     filter: grayscale(10%) brightness(0.8) saturate(0.8);
     z-index: var(--struct-legend-z-index, 1);
+    pointer-events: auto;
+    visibility: visible;
   }
-  div label {
+  .structure-legend label {
     padding: var(--struct-legend-pad, 1pt 4pt);
     border-radius: var(--struct-legend-radius, 3pt);
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+    visibility: visible;
   }
-  div label input[type='color'] {
+  .structure-legend label input[type='color'] {
     z-index: var(--struct-legend-input-z, 1);
     opacity: 0;
     position: absolute;
-    width: 100%;
-    height: 100%;
-    top: 0;
+    visibility: hidden;
+    top: 7pt;
     left: 0;
     cursor: pointer;
   }

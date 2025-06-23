@@ -174,84 +174,50 @@ export function superscript_digits(input: string): string {
   )
 }
 
-// Trajectory property labels: controls how properties are displayed in trajectory plots
-export const trajectory_labels: Record<string, string> = {
-  // Energy properties
-  energy: `Energy (eV)`,
-  energy_per_atom: `Energy per atom (eV/atom)`,
-  potential_energy: `Potential energy (eV)`,
-  kinetic_energy: `Kinetic energy (eV)`,
-  total_energy: `Total energy (eV)`,
+// Trajectory property configuration: clean labels and units as structured data
+export const trajectory_property_config: Record<string, { label: string; unit: string }> =
+  {
+    // Energy properties
+    energy: { label: `Energy`, unit: `eV` },
+    Energy: { label: `Energy`, unit: `eV` },
+    energy_per_atom: { label: `Energy per atom`, unit: `eV/atom` },
+    potential_energy: { label: `Potential energy`, unit: `eV` },
+    kinetic_energy: { label: `Kinetic energy`, unit: `eV` },
+    total_energy: { label: `Total energy`, unit: `eV` },
 
-  // Force properties
-  force_max: `F<sub>max</sub> (eV/Å)`,
-  force_norm: `F<sub>norm</sub> (eV/Å)`,
-  'Force Max': `Force Max (eV/Å)`,
-  'Force RMS': `Force RMS (eV/Å)`,
+    // Force properties (common variations)
+    force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
+    Fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
+    fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
+    'Force Max': { label: `Force Max`, unit: `eV/Å` },
+    force_norm: { label: `F<sub>norm</sub>`, unit: `eV/Å` },
+    'Force RMS': { label: `Force RMS`, unit: `eV/Å` },
 
-  // Structural properties
-  volume: `Volume (Å³)`,
-  Volume: `Cell Volume (Å³)`,
-  density: `Density (g/cm³)`,
+    // Structural properties
+    volume: { label: `Volume`, unit: `Å³` },
+    Volume: { label: `Volume`, unit: `Å³` },
+    density: { label: `Density`, unit: `g/cm³` },
+    Density: { label: `Density`, unit: `g/cm³` },
 
-  // Thermodynamic properties
-  temperature: `Temperature (K)`,
-  pressure: `Pressure (GPa)`,
-  stress_max: `σ<sub>max</sub> (GPa)`,
-  stress_frobenius: `σ<sub>F</sub> (GPa)`,
-}
+    // Lattice parameters (common variations)
+    a: { label: `A`, unit: `Å` },
+    A: { label: `A`, unit: `Å` },
+    b: { label: `B`, unit: `Å` },
+    B: { label: `B`, unit: `Å` },
+    c: { label: `C`, unit: `Å` },
+    C: { label: `C`, unit: `Å` },
+    alpha: { label: `α`, unit: `°` },
+    Alpha: { label: `α`, unit: `°` },
+    beta: { label: `β`, unit: `°` },
+    Beta: { label: `β`, unit: `°` },
+    gamma: { label: `γ`, unit: `°` },
+    Gamma: { label: `γ`, unit: `°` },
 
-// Helper function to get clean label without units
-export function get_clean_label(
-  key: string,
-  property_labels?: Record<string, string>,
-): string {
-  // First check if we have an explicit label mapping
-  if (property_labels?.[key]) {
-    // Remove any existing unit notation from the label
-    return property_labels[key].replace(/\s*\([^)]*\)\s*$/, ``)
+    // Thermodynamic properties
+    temperature: { label: `Temperature`, unit: `K` },
+    Temperature: { label: `Temperature`, unit: `K` },
+    pressure: { label: `Pressure`, unit: `GPa` },
+    Pressure: { label: `Pressure`, unit: `GPa` },
+    stress_max: { label: `σ<sub>max</sub>`, unit: `GPa` },
+    stress_frobenius: { label: `σ<sub>F</sub>`, unit: `GPa` },
   }
-
-  const lower_key = key.toLowerCase()
-
-  // Special formatting for force properties
-  if (lower_key === `force_max` || key === `Force Max`) {
-    return `F<sub>max</sub>`
-  }
-
-  if (lower_key === `force_norm` || key === `Force RMS`) {
-    return `F<sub>norm</sub>`
-  }
-
-  if (lower_key === `stress_max`) {
-    return `σ<sub>max</sub>`
-  }
-
-  if (lower_key === `stress_frobenius`) {
-    return `σ<sub>F</sub>`
-  }
-
-  if (lower_key === `temperature`) {
-    return `Temperature`
-  }
-
-  // Capitalize the key name for all other properties
-  return key.charAt(0).toUpperCase() + key.slice(1)
-}
-
-// Helper function to get property label with unit for trajectory plotting
-export function get_label_with_unit(
-  key: string,
-  property_labels?: Record<string, string>,
-  units?: Record<string, string>,
-): string {
-  // First check if we have an explicit label mapping
-  if (property_labels?.[key]) return property_labels[key]
-
-  // Get clean label and add unit if available
-  const clean_label = get_clean_label(key, property_labels)
-  const lower_key = key.toLowerCase()
-  const unit = units?.[lower_key] || units?.[key] || ``
-
-  return unit ? `${clean_label} (${unit})` : clean_label
-}

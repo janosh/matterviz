@@ -65,9 +65,9 @@
     d={marker_path}
     stroke={style.stroke ?? `transparent`}
     stroke-width={style.stroke_width ?? 1}
-    style:fill-opacity={style.fill_opacity}
-    style:stroke-opacity={style.stroke_opacity}
-    style:fill="var(--point-fill-color, {style.fill ?? `black`})"
+    fill-opacity={style.fill_opacity ?? 1}
+    stroke-opacity={style.stroke_opacity ?? 1}
+    fill="var(--point-fill-color, {style.fill ?? `black`})"
     class="marker"
     class:is-hovered={is_hovered && (hover.enabled ?? true)}
   />
@@ -77,7 +77,7 @@
       y={label?.offset?.y ?? 0}
       style:font-size={label?.font_size ?? `10px`}
       style:font-family={label?.font_family ?? `sans-serif`}
-      style:fill="var(--scatter-point-label-fill, currentColor)"
+      fill="var(--scatter-point-label-fill, currentColor)"
       dominant-baseline="middle"
       class="label-text"
     >
