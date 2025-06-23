@@ -1,6 +1,6 @@
 // Utilities for dealing with pymatgen Structures
 import type { ElementSymbol, Vec3 } from '$lib'
-import { format_num, scale } from '$lib'
+import { scale } from '$lib'
 import element_data from '$lib/element/data'
 import type { Matrix3x3 } from '$lib/math'
 
@@ -13,20 +13,29 @@ export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
+export { default as Vector } from './Vector.svelte'
 
-export const CELL_DEFAULTS = {
-  edge_opacity: 0.4,
-  surface_opacity: 0.05,
-  color: `#ffffff`,
-  line_width: 1.5,
-} as const
-
-export const BOND_DEFAULTS = {
-  thickness: 0.25,
-  offset: 0,
-  color: `white`,
-  from_color: `white`,
-  to_color: `white`,
+export const STRUCT_DEFAULTS = {
+  cell: {
+    edge_color: `#000000`,
+    edge_opacity: 0.4,
+    surface_color: `#ffffff`,
+    surface_opacity: 0.05,
+    color: `#ffffff`,
+    line_width: 1.5,
+  },
+  bond: {
+    thickness: 0.1,
+    offset: 0,
+    color: `#ffffff`,
+  },
+  vector: {
+    scale: 2,
+    color: `#ff6b6b`,
+    shaft_radius: 0.02,
+    arrow_head_radius: 0.08,
+    arrow_head_length: 0.2,
+  },
 } as const
 
 export type Species = {
@@ -159,8 +168,8 @@ export function get_elements(structure: AnyStructure): ElementSymbol[] {
 // to grams per cubic centimeter (g/cm^3)
 const uA3_to_gcm3 = 1.66053907
 
-export function density(structure: PymatgenStructure, prec = `.2f`) {
-  // calculate the density of a pymatgen Structure in
+export function get_density(structure: PymatgenStructure): number {
+  // calculate the density of a pymatgen Structure in g/cm³
   const elements = get_elem_amounts(structure)
   let mass = 0
   for (const [el, amt] of Object.entries(elements)) {
@@ -170,8 +179,7 @@ export function density(structure: PymatgenStructure, prec = `.2f`) {
       mass += amt * weight
     }
   }
-  const dens = (uA3_to_gcm3 * mass) / structure.lattice.volume
-  return format_num(dens, prec)
+  return (uA3_to_gcm3 * mass) / structure.lattice.volume
 }
 
 export function get_center_of_mass(struct_or_mol: AnyStructure): Vec3 {

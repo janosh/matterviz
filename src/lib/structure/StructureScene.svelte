@@ -1,18 +1,10 @@
 <script lang="ts">
-  import type { AnyStructure, BondPair, Site, Vector3 } from '$lib'
-  import {
-    add,
-    atomic_radii,
-    Bond,
-    BOND_DEFAULTS,
-    element_data,
-    euclidean_dist,
-    Lattice,
-    pbc_dist,
-    scale,
-  } from '$lib'
+  import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
+  import { atomic_radii, element_data } from '$lib'
   import { format_num } from '$lib/labels'
+  import * as math from '$lib/math'
   import { colors } from '$lib/state.svelte'
+  import { Bond, Lattice, STRUCT_DEFAULTS, Vector } from '$lib/structure'
   import { T } from '@threlte/core'
   import { Gizmo, HTML, interactivity, OrbitControls } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -34,7 +26,7 @@
     // determined by the atomic radius of the element
     same_size_atoms?: boolean
     // initial camera position from which to render the scene
-    camera_position?: Vector3
+    camera_position?: [x: number, y: number, z: number]
     // rotation damping factor (how quickly the rotation comes to rest after mouse release)
     rotation_damping?: number
     // zoom level of the camera
@@ -47,30 +39,27 @@
     show_atoms?: boolean
     show_bonds?: boolean
     show_site_labels?: boolean
+    show_force_vectors?: boolean
+    force_vector_scale?: number
+    force_vector_color?: string
     gizmo?: boolean | ComponentProps<typeof Gizmo>
     hovered_idx?: number | null
     active_idx?: number | null
     hovered_site?: Site | null
     active_site?: Site | null
     precision?: string
-    auto_rotate?: number // auto rotate speed. set to 0 to disable auto rotation.
-    bond_thickness?: number // thickness of bond cylinder geometry
-    bond_color?: string // must be hex code for <input type='color'>
-    // TODO implement bond_color_mode
-    // bond_color_mode?: `single` | `split-midpoint` | `gradient`
+    auto_rotate?: number
+    bond_thickness?: number
+    bond_color?: string
     bonding_strategy?: keyof typeof bonding_strategies
     bonding_options?: Record<string, unknown>
     active_hovered_dist?: ActiveHoveredDist | null
-    fov?: number // field of view of the camera. smaller values reduce perspective distortion
+    fov?: number
     ambient_light?: number
     directional_light?: number
-    // number of segments in sphere geometry. higher is smoother but more
-    // expensive to render (usually >16, <32)
     sphere_segments?: number
-    lattice_props?: Omit<ComponentProps<typeof Lattice>, `matrix`>
-    atom_label?: Snippet<[Site]>
-    // whether the camera is currently being moved (rotation, panning, zooming)
-    // can be bound to from parent component to monitor camera interaction state
+    lattice_props?: ComponentProps<typeof Lattice>
+    atom_label?: Snippet<[Site, number]>
     camera_is_moving?: boolean
   }
   let {
@@ -87,6 +76,9 @@
     show_atoms = true,
     show_bonds = true,
     show_site_labels = false,
+    show_force_vectors = false,
+    force_vector_scale = STRUCT_DEFAULTS.vector.scale,
+    force_vector_color = STRUCT_DEFAULTS.vector.color,
     gizmo = true,
     hovered_idx = $bindable(null),
     active_idx = $bindable(null),
@@ -94,8 +86,8 @@
     active_site = $bindable(null),
     precision = `.3~f`,
     auto_rotate = 0,
-    bond_thickness = BOND_DEFAULTS.thickness,
-    bond_color = `#ffffff`,
+    bond_thickness = STRUCT_DEFAULTS.bond.thickness,
+    bond_color = STRUCT_DEFAULTS.bond.color,
     bonding_strategy = `nearest_neighbor`,
     bonding_options = {},
     active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
@@ -138,7 +130,7 @@
   })
 
   // Create modest gizmo options with balanced colors
-  let gizmo_options = $derived.by(() => {
+  let gizmo_props = $derived.by(() => {
     const axis_options = Object.fromEntries(
       [
         [`x`, `#d75555`, `#e66666`], // red
@@ -180,7 +172,7 @@
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={lattice ? (scale(add(...lattice.matrix), 0.5) as Vector3) : [0, 0, 0]}
+    target={lattice ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3) : [0, 0, 0]}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     autoRotate={Boolean(auto_rotate)}
@@ -197,7 +189,7 @@
     }}
   >
     {#if gizmo}
-      <Gizmo {...gizmo_options} />
+      <Gizmo {...gizmo_props} />
     {/if}
   </OrbitControls>
 </T.PerspectiveCamera>
@@ -265,14 +257,14 @@
       <!-- use polar coordinates + offset if site has partial occupancy to move the text to the side of the corresponding sphere slice -->
       <!-- TODO fix render multiple labels for disordered sites
         {@const phi = 2 * Math.PI * (start_angle + occu / 2)}
-      {@const pos = add(
+      {@const pos = math.add(
         xyz,
-        scale([Math.cos(phi), 0, Math.sin(phi)], label_radius * radius),
+        math.scale([Math.cos(phi), 0, Math.sin(phi)], label_radius * radius),
       )} -->
       {#if show_site_labels}
         <HTML center position={xyz}>
           {#if atom_label}
-            {@render atom_label(site)}
+            {@render atom_label(site, site_idx)}
           {:else}
             <span class="atom-label">
               {@html species.map((sp) => sp.element).join(`&nbsp;`)}
@@ -281,6 +273,24 @@
         </HTML>
       {/if}
     {/each}
+  {/each}
+{/if}
+
+<!-- Force vectors -->
+{#if show_force_vectors && structure?.sites}
+  {#each structure.sites as site, site_idx (site_idx)}
+    {#if site.properties?.force && Array.isArray(site.properties.force)}
+      {@const majority_element = site.species.reduce((max, spec) =>
+    spec.occu > max.occu ? spec : max
+  ).element}
+      {@const atom_color = colors.element?.[majority_element] || force_vector_color}
+      <Vector
+        position={site.xyz}
+        vector={site.properties.force as Vec3}
+        scale={force_vector_scale}
+        color={atom_color}
+      />
+    {/if}
   {/each}
 {/if}
 
@@ -375,9 +385,9 @@
 
       <!-- distance from hovered to active site -->
       {#if active_site && active_site != hovered_site && active_hovered_dist}
-        {@const direct_distance = euclidean_dist(hovered_site.xyz, active_site.xyz)}
+        {@const direct_distance = math.euclidean_dist(hovered_site.xyz, active_site.xyz)}
         {@const pbc_distance = lattice
-        ? pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
+        ? math.pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
         : direct_distance}
         <div class="distance">
           <strong>dist:</strong>

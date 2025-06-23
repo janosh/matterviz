@@ -9,8 +9,7 @@
   import type { Snippet } from 'svelte'
   import { WebGLRenderer } from 'three'
   import {
-    BOND_DEFAULTS,
-    CELL_DEFAULTS,
+    STRUCT_DEFAULTS,
     StructureControls,
     StructureLegend,
     StructureScene,
@@ -46,13 +45,18 @@
   }
   let {
     structure = $bindable(undefined),
-    scene_props = $bindable({ atom_radius: 1, show_atoms: true, auto_rotate: 0 }),
+    scene_props = $bindable({
+      atom_radius: 1,
+      show_atoms: true,
+      auto_rotate: 0,
+      same_size_atoms: false,
+    }),
     lattice_props = $bindable({
-      cell_edge_opacity: CELL_DEFAULTS.edge_opacity,
-      cell_surface_opacity: CELL_DEFAULTS.surface_opacity,
-      cell_edge_color: CELL_DEFAULTS.color,
-      cell_surface_color: CELL_DEFAULTS.color,
-      cell_line_width: CELL_DEFAULTS.line_width,
+      cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
+      cell_surface_opacity: STRUCT_DEFAULTS.cell.surface_opacity,
+      cell_edge_color: STRUCT_DEFAULTS.cell.color,
+      cell_surface_color: STRUCT_DEFAULTS.cell.color,
+      cell_line_width: STRUCT_DEFAULTS.cell.line_width,
       show_vectors: true,
     }),
     controls_open = $bindable(false),
@@ -85,19 +89,38 @@
     ...rest
   }: Props = $props()
 
-  // Ensure scene_props always has some defaults merged in
   $effect.pre(() => {
-    scene_props = {
-      atom_radius: 1,
-      show_atoms: true,
-      auto_rotate: 0,
-      bond_thickness: BOND_DEFAULTS.thickness,
-      ...scene_props,
+    // Ensure scene_props defaults to show_atoms=true
+    scene_props = { show_atoms: true, ...scene_props }
+  })
+
+  // Track if force vectors have been auto-enabled to prevent repeated triggering
+  let force_vectors_auto_enabled = $state(false)
+
+  // Auto-enable force vectors when structure has force data
+  $effect(() => {
+    if (structure?.sites && !force_vectors_auto_enabled) {
+      const has_force_data = structure.sites.some((site) =>
+        site.properties?.force && Array.isArray(site.properties.force)
+      )
+
+      // Enable force vectors if structure has force data
+      if (has_force_data && !scene_props.show_force_vectors) {
+        scene_props = {
+          ...scene_props,
+          show_force_vectors: true,
+          force_vector_scale: scene_props.force_vector_scale ||
+            STRUCT_DEFAULTS.vector.scale,
+          force_vector_color: scene_props.force_vector_color || `#ff6b6b`,
+        }
+        force_vectors_auto_enabled = true
+      }
     }
   })
 
   $effect.pre(() => {
-    colors.element = element_color_schemes[color_scheme]
+    colors.element =
+      element_color_schemes[color_scheme as keyof typeof element_color_schemes]
   })
 
   let visible_buttons = $derived(
@@ -188,9 +211,7 @@
   export function toggle_fullscreen() {
     if (!document.fullscreenElement && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
-    } else {
-      document.exitFullscreen()
-    }
+    } else document.exitFullscreen()
   }
 
   // set --struct-bg to background_color
@@ -239,7 +260,7 @@
     }}
     {...rest}
   >
-    <section class:visible={visible_buttons}>
+    <section class:visible={visible_buttons} class="control-buttons">
       {#if camera_has_moved}
         <button class="reset-camera" onclick={reset_camera} title={reset_text}>
           <!-- Target/Focus icon for reset camera -->
@@ -251,17 +272,19 @@
           {#if tips_icon}{@render tips_icon()}{:else}<Icon icon="Info" />{/if}
         </button>
       {/if}
-      <button
-        onclick={toggle_fullscreen}
-        class="fullscreen-toggle"
-        title="Toggle fullscreen"
-      >
-        {#if typeof fullscreen_toggle === `function`}
-          {@render fullscreen_toggle()}
-        {:else if fullscreen_toggle}
-          <Icon icon="Fullscreen" style="transform: scale(0.9)" />
-        {/if}
-      </button>
+      {#if fullscreen_toggle}
+        <button
+          onclick={toggle_fullscreen}
+          class="fullscreen-toggle"
+          title="Toggle fullscreen"
+        >
+          {#if typeof fullscreen_toggle === `function`}
+            {@render fullscreen_toggle()}
+          {:else}
+            <Icon icon="Fullscreen" style="transform: scale(0.9)" />
+          {/if}
+        </button>
+      {/if}
 
       <StructureControls
         bind:controls_open
@@ -325,7 +348,6 @@
     min-width: var(--struct-min-width, 300px);
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg, rgba(255, 255, 255, 0.1));
-    --struct-controls-transition-duration: 0.3s;
     overflow: var(--struct-overflow, visible);
     color: var(--struct-text-color);
   }
@@ -349,27 +371,18 @@
   button:hover {
     background-color: transparent !important;
   }
-  section {
+  section.control-buttons {
     position: absolute;
     display: flex;
     justify-content: end;
     top: var(--struct-buttons-top, 1ex);
     right: var(--struct-buttons-right, 1ex);
     gap: var(--struct-buttons-gap, 3pt);
-    z-index: 2;
+    z-index: var(--struct-buttons-z-index, 1);
   }
   section button {
     pointer-events: auto;
     font-size: 1em;
-  }
-  section :global(.controls-toggle) {
-    background-color: transparent;
-  }
-  section :global(.controls-toggle):hover {
-    background-color: transparent !important;
-  }
-  .structure :global(canvas) {
-    pointer-events: auto;
   }
   p.warn {
     text-align: center;

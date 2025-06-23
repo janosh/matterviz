@@ -131,28 +131,33 @@
     show_points = markers?.includes(`points`) ?? false
     show_lines = markers?.includes(`line`) ?? false
 
-    // Sync with first series style properties
-    if (series.length > 0 && series[0]) {
-      const first_series = series[0]
+    // Sync with selected series style properties
+    if (
+      series.length > 0 &&
+      selected_series_idx >= 0 &&
+      selected_series_idx < series.length &&
+      series[selected_series_idx]
+    ) {
+      const selected_series = series[selected_series_idx]
 
       // Point style
-      const first_point_style = Array.isArray(first_series.point_style)
-        ? first_series.point_style[0]
-        : first_series.point_style
+      const selected_point_style = Array.isArray(selected_series.point_style)
+        ? selected_series.point_style[0]
+        : selected_series.point_style
 
-      if (first_point_style) {
-        point_size = first_point_style.radius ?? 4
-        point_color = first_point_style.fill ?? `#4682b4`
-        point_stroke_width = first_point_style.stroke_width ?? 1
-        point_stroke_color = first_point_style.stroke ?? `#000000`
-        point_opacity = first_point_style.fill_opacity ?? 1
+      if (selected_point_style) {
+        point_size = selected_point_style.radius ?? 4
+        point_color = selected_point_style.fill ?? `#4682b4`
+        point_stroke_width = selected_point_style.stroke_width ?? 1
+        point_stroke_color = selected_point_style.stroke ?? `#000000`
+        point_opacity = selected_point_style.fill_opacity ?? 1
       }
 
       // Line style
-      if (first_series.line_style) {
-        line_width = first_series.line_style.stroke_width ?? 2
-        line_color = first_series.line_style.stroke ?? `#4682b4`
-        line_dash = first_series.line_style.line_dash
+      if (selected_series.line_style) {
+        line_width = selected_series.line_style.stroke_width ?? 2
+        line_color = selected_series.line_style.stroke ?? `#4682b4`
+        line_dash = selected_series.line_style.line_dash
       }
     }
   })
@@ -179,8 +184,7 @@
     <ControlPanel
       bind:controls_open
       show_toggle_button
-      toggle_button={{ class: `plot-controls-toggle` }}
-      panel_props={{ class: `plot-controls-panel`, style: `top: 30px; right: 6px;` }}
+      panel_props={{ style: `top: 30px; right: 6px;` }}
       closed_icon="Settings"
       open_icon="Cross"
     >
@@ -455,23 +459,12 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    z-index: 10;
+    z-index: var(--plot-controls-z-index);
   }
-  .plot-controls :global(.plot-controls-toggle) {
-    background: transparent;
-    color: var(--esp-controls-icon-color, currentColor);
-    border: none;
-    border-radius: 4px;
-    padding: 6px;
-  }
-  .plot-controls :global(.plot-controls-toggle):hover {
-    background: var(--esp-controls-hover-bg, rgba(0, 0, 0, 0.2)) !important;
-    border-color: var(--esp-controls-hover-border, rgba(255, 255, 255, 0.3)) !important;
-  }
-  .plot-controls :global(.plot-controls-panel) {
-    --controls-bg: rgba(0, 0, 0, 0.9);
-    --controls-text-color: white;
-    --controls-width: 16em;
+  .plot-controls :global(.controls-panel) {
+    --control-panel-bg: rgba(0, 0, 0, 0.9);
+    --control-panel-text-color: white;
+    --control-panel-width: 16em;
   }
   .plot-controls :global(.section-heading) {
     margin: 0 0 8px 0;

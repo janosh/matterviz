@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon, Spinner, Structure } from '$lib'
   import { decompress_file } from '$lib/io/decompress'
-  import { format_num, trajectory_labels } from '$lib/labels'
+  import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import { scaleLinear } from 'd3-scale'
@@ -17,7 +17,12 @@
     load_trajectory_from_url,
     parse_trajectory_data,
   } from './parse'
-  import { generate_plot_series, should_hide_plot } from './plotting'
+  import {
+    generate_axis_labels,
+    generate_plot_series,
+    should_hide_plot,
+    toggle_series_visibility,
+  } from './plotting'
 
   interface Props {
     // trajectory data - can be provided directly or loaded from file
@@ -78,6 +83,9 @@
       temperature?: string
       pressure?: string
       length?: string
+      a?: string
+      b?: string
+      c?: string
       [key: string]: string | undefined
     }
   }
@@ -97,19 +105,7 @@
     show_controls = true,
     show_fullscreen_button = true,
     display_mode = $bindable(`both`),
-    property_labels = trajectory_labels,
-    units = {
-      energy: `eV`,
-      energy_per_atom: `eV/atom`,
-      force_max: `eV/Å`,
-      force_norm: `eV/Å`,
-      stress_max: `GPa`,
-      volume: `Å³`,
-      density: `g/cm³`,
-      temperature: `K`,
-      pressure: `GPa`,
-      length: `Å`,
-    },
+
     step_labels = 5,
   }: Props = $props()
 
@@ -177,17 +173,8 @@
   let plot_series = $derived.by((): DataSeries[] => {
     if (!trajectory) return []
 
-    // Filter out undefined values from units
-    const filtered_units: Record<string, string> = {}
-    for (const [key, value] of Object.entries(units)) {
-      if (value !== undefined) {
-        filtered_units[key] = value
-      }
-    }
-
     return generate_plot_series(trajectory, data_extractor, {
-      property_labels,
-      units: filtered_units,
+      property_config: trajectory_property_config,
     })
   })
 
@@ -200,25 +187,8 @@
   let show_structure = $derived(display_mode !== `plot`)
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
-  // Generate intelligent axis labels based on first series on each axis
-  let y_axis_labels = $derived.by(() => {
-    if (plot_series.length === 0) return { y1: `Value`, y2: `Value` }
-
-    const y1_series = plot_series.filter((s) => (s.y_axis ?? `y1`) === `y1`)
-    const y2_series = plot_series.filter((s) => s.y_axis === `y2`)
-
-    const get_axis_label = (series: DataSeries[]): string => {
-      if (series.length === 0) return `Value`
-      // Use the first series label as the axis label
-      const first_series = series[0]
-      return first_series?.label || `Value`
-    }
-
-    return {
-      y1: get_axis_label(y1_series),
-      y2: get_axis_label(y2_series),
-    }
-  })
+  // Generate intelligent axis labels based on first visible series on each axis
+  let y_axis_labels = $derived(generate_axis_labels(plot_series))
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(
@@ -325,6 +295,25 @@
       go_to_step(step_idx)
     }
   }
+
+  // Handle legend toggling with unit-aware visibility management
+  function handle_legend_toggle(series_idx: number): void {
+    plot_series = toggle_series_visibility(plot_series, series_idx)
+  }
+
+  // Legend configuration with unit-aware toggle handlers
+  let legend_config = $derived.by(() => {
+    const config = {
+      responsive: true,
+      layout: `horizontal`,
+      layout_tracks: 3,
+      item_gap: 0,
+      padding: { t: 5, b: 5, l: 5, r: 5 },
+      ...plot_props?.legend,
+      on_toggle: plot_props?.legend?.on_toggle ?? handle_legend_toggle,
+    }
+    return config
+  })
 
   // Play/pause functionality
   function toggle_play() {
@@ -567,6 +556,8 @@
       sidebar_open = false
     }
   }
+
+  let controls_open = $state({ structure: false, plot: false })
 </script>
 
 <div
@@ -574,6 +565,7 @@
   class:horizontal={layout === `horizontal`}
   class:vertical={layout === `vertical`}
   class:dragover
+  class:active={sidebar_open || is_playing || controls_open.structure || controls_open.plot}
   bind:this={wrapper}
   role="button"
   tabindex="0"
@@ -783,6 +775,7 @@
           enable_tips={false}
           fullscreen_toggle={false}
           {...{ show_image_atoms: false, ...structure_props }}
+          bind:controls_open={controls_open.structure}
         />
       {/if}
 
@@ -801,17 +794,12 @@
           markers="line"
           x_ticks={step_label_positions}
           show_controls
-          legend={{
-            responsive: true,
-            layout: `horizontal`,
-            layout_tracks: 3,
-            item_gap: 0,
-            padding: { t: 5, b: 5, l: 5, r: 5 },
-          }}
+          bind:controls_open={controls_open.plot}
           padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
           range_padding={0}
           style="height: 100%"
           {...plot_props}
+          legend={legend_config}
         >
           {#snippet tooltip({ x, y, metadata })}
             {#if metadata?.series_label}
@@ -842,6 +830,10 @@
             <li>VASP XDATCAR files</li>
             <li>Compressed files (.gz)</li>
           </ul>
+          <p style="margin-top: 1rem; font-size: 0.9em; color: var(--trajectory-text-muted, #666)">
+            💡 Force vectors will be automatically displayed when present in trajectory
+            data
+          </p>
         </div>
       </div>
     </div>
@@ -874,8 +866,10 @@
     border: 2px dashed transparent;
     transition: border-color 0.2s ease;
     box-sizing: border-box;
-    overflow: hidden;
     contain: layout;
+  }
+  .trajectory-viewer.active {
+    z-index: 2;
   }
   .trajectory-viewer:fullscreen {
     height: 100vh !important;

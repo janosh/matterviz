@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from '$lib';
   import type {
     DataSeries,
     InternalPoint,
     LabelStyle,
     PointStyle,
     ScaleType,
-  } from '$lib/plot'
-  import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
+  } from '$lib/plot';
+  import { LOG_MIN_EPS, symbol_names } from '$lib/plot';
 
   // === Basic Example Data ===
   const basic_data = {
@@ -900,6 +900,113 @@
     </div>
   </section>
 
+  <!-- Axis Color Test -->
+  <section id="axis-color-test" class="demo-section">
+    <h2>Axis Label Coloring Test</h2>
+    <p>
+      Tests axis label coloring behavior with different configurations.
+    </p>
+
+    <div class="plot-grid">
+      <!-- Single axis plot (no coloring) -->
+      <div id="single-axis-plot" class="plot-container">
+        <h3>Single Axis (No Coloring)</h3>
+        <ScatterPlot
+          series={[basic_data]}
+          x_label="X Axis"
+          y_label="Y Axis"
+        />
+      </div>
+
+      <!-- Dual axis plot (with coloring) -->
+      <div id="dual-axis-plot" class="plot-container">
+        <h3>Dual Axis (With Coloring)</h3>
+        <ScatterPlot
+          series={[
+            {
+              ...multi_series_data1,
+              y_axis: `y1`,
+              line_style: { stroke: `#ff5555`, stroke_width: 2 }
+            },
+            {
+              ...multi_series_data2,
+              y_axis: `y2`,
+              line_style: { stroke: `#5555ff`, stroke_width: 2 }
+            }
+          ]}
+          x_label="X Axis"
+          y_label="Y1 Axis"
+          y2_label="Y2 Axis"
+        />
+      </div>
+
+      <!-- Color scale plot (no axis coloring) -->
+      <div id="color-scale-axis-plot" class="plot-container">
+        <h3>Color Scale (No Axis Coloring)</h3>
+        <ScatterPlot
+          series={[
+            {
+              ...multi_series_data1,
+              y_axis: `y1`,
+              color_values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            },
+            {
+              ...multi_series_data2,
+              y_axis: `y2`
+            }
+          ]}
+          x_label="X Axis"
+          y_label="Y1 Axis"
+          y2_label="Y2 Axis"
+        />
+      </div>
+
+      <!-- Custom axis colors -->
+      <div id="custom-axis-colors-plot" class="plot-container">
+        <h3>Custom Axis Colors</h3>
+        <ScatterPlot
+          series={[
+            {
+              ...multi_series_data1,
+              y_axis: `y1`
+            },
+            {
+              ...multi_series_data2,
+              y_axis: `y2`
+            }
+          ]}
+          color_axis_labels={{ y1: `#ff0000`, y2: `#00ff00` }}
+          x_label="X Axis"
+          y_label="Y1 Axis (Custom Red)"
+          y2_label="Y2 Axis (Custom Green)"
+        />
+      </div>
+
+      <!-- Disabled axis coloring -->
+      <div id="disabled-axis-colors-plot" class="plot-container">
+        <h3>Disabled Axis Coloring</h3>
+        <ScatterPlot
+          series={[
+            {
+              ...multi_series_data1,
+              y_axis: `y1`,
+              line_style: { stroke: `#ff5555`, stroke_width: 2 }
+            },
+            {
+              ...multi_series_data2,
+              y_axis: `y2`,
+              line_style: { stroke: `#5555ff`, stroke_width: 2 }
+            }
+          ]}
+          color_axis_labels={false}
+          x_label="X Axis"
+          y_label="Y1 Axis"
+          y2_label="Y2 Axis"
+        />
+      </div>
+    </div>
+  </section>
+
   <!-- Point Event Test -->
   <div id="point-event-test" class="test-section">
     <h2>Point Event Test</h2>
@@ -975,5 +1082,31 @@
 
   label {
     margin-right: 1em;
+  }
+
+  .plot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+  }
+
+  .plot-container {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+  }
+
+  .plot-container h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    text-align: center;
+    font-size: 1rem;
+  }
+
+  .test-section {
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px dashed #eee;
   }
 </style>

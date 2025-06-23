@@ -78,7 +78,7 @@ export async function load_trajectory_from_url(
     return await parse_trajectory_data(content, filename)
   } else {
     // Manual decompression needed (for cases where server sends raw gzip)
-    const { decompress_file } = await import(`$lib/io/decompress`)
+    const { decompress_file } = await import(`../io/decompress`)
     const blob = await response.blob()
     const file = new File([blob], filename, {
       type: response.headers.get(`content-type`) || `application/octet-stream`,
@@ -211,6 +211,7 @@ const ATOMIC_NUMBER_TO_SYMBOL: Record<number, ElementSymbol> = {
 }
 
 // Parse torch-sim HDF5 trajectory file
+
 export async function parse_torch_sim_hdf5(
   buffer: ArrayBuffer,
   filename?: string,
@@ -246,35 +247,40 @@ export async function parse_torch_sim_hdf5(
       }
 
       const data_group_keys = data_group.keys()
-      if (
-        !data_group_keys.includes(`atomic_numbers`) ||
-        !data_group_keys.includes(`positions`)
-      ) {
+      if (!data_group_keys.includes(`positions`)) {
         throw new Error(
-          `Invalid torch-sim HDF5 format: missing required datasets`,
+          `Invalid torch-sim HDF5 format: missing positions dataset`,
         )
       }
 
-      // Read atomic numbers and convert to element symbols
-      const atomic_numbers_dataset = data_group.get(
-        `atomic_numbers`,
-      ) as H5Dataset | null
-      if (!atomic_numbers_dataset) {
-        throw new Error(`Missing atomic_numbers dataset`)
-      }
-      const atomic_numbers_data = atomic_numbers_dataset.to_array() as number[][]
-      const atom_numbers = atomic_numbers_data[0] // First (and only) row
-
-      const elements = atom_numbers.map((num: number) => {
-        return ATOMIC_NUMBER_TO_SYMBOL[num] || (`X` as ElementSymbol)
-      })
-
-      // Read positions data
+      // Read positions data first to get atom count
       const positions_dataset = data_group.get(`positions`) as H5Dataset | null
       if (!positions_dataset) {
         throw new Error(`Missing positions dataset`)
       }
       const positions = positions_dataset.to_array() as number[][][]
+      const num_atoms = positions[0]?.length || 0
+
+      // Read atomic numbers and convert to element symbols (if available)
+      let elements: ElementSymbol[]
+      const atomic_numbers_dataset = data_group.get(
+        `atomic_numbers`,
+      ) as H5Dataset | null
+
+      if (atomic_numbers_dataset) {
+        const atomic_numbers_data = atomic_numbers_dataset.to_array() as number[][]
+        const atom_numbers = atomic_numbers_data[0] // First (and only) row
+        elements = atom_numbers.map((num: number) => {
+          return ATOMIC_NUMBER_TO_SYMBOL[num] || (`X` as ElementSymbol)
+        })
+      } else {
+        // No atomic numbers available - use generic placeholder
+        console.warn(
+          `HDF5 file does not contain atomic_numbers dataset. Using generic atom symbols. ` +
+            `Consider adding atomic_numbers to properly identify chemical elements.`,
+        )
+        elements = Array.from({ length: num_atoms }, () => `C` as ElementSymbol)
+      }
 
       // Read cell data if available
       let cells: number[][][] | undefined
@@ -314,12 +320,13 @@ export async function parse_torch_sim_hdf5(
       }
 
       // Get periodic boundary conditions if available
-      let pbc: boolean[] = [true, true, true] // Default
+      let pbc: [boolean, boolean, boolean] = [true, true, true] // Default for crystals
       try {
         const pbc_dataset = data_group.get(`pbc`) as H5Dataset | null
         if (pbc_dataset) {
           const pbc_array = pbc_dataset.to_array() as number[]
-          pbc = pbc_array.slice(0, 3).map((val) => val !== 0)
+          const pbc_bools = pbc_array.slice(0, 3).map((val) => val !== 0)
+          pbc = [pbc_bools[0] ?? true, pbc_bools[1] ?? true, pbc_bools[2] ?? true]
         }
       } catch {
         // PBC might not be available
@@ -327,12 +334,46 @@ export async function parse_torch_sim_hdf5(
 
       const frames: TrajectoryFrame[] = positions.map(
         (frame_positions, frame_idx) => {
-          // Get the lattice matrix for this frame
-          const lattice_matrix = (cells?.[frame_idx]
-            ? (cells[frame_idx].map((row) =>
-              row.slice()
-            ))
-            : [[1, 0, 0], [0, 1, 0], [0, 0, 1]]) as Matrix3x3
+          // Determine appropriate lattice matrix for this frame
+          let lattice_matrix: Matrix3x3
+          let coordinate_system: `fractional` | `cartesian` = `fractional`
+
+          if (cells?.[frame_idx]) {
+            // Use provided cell - coordinates should already be positioned correctly
+            lattice_matrix = cells[frame_idx].map((row) => row.slice()) as Matrix3x3
+            coordinate_system = `cartesian` // torch-sim typically uses Cartesian coordinates even with cells
+          } else {
+            // No cell provided - analyze coordinates to determine system
+            const coords = frame_positions as number[][]
+            const mins = [
+              Math.min(...coords.map((pos) => pos[0])),
+              Math.min(...coords.map((pos) => pos[1])),
+              Math.min(...coords.map((pos) => pos[2])),
+            ]
+            const maxs = [
+              Math.max(...coords.map((pos) => pos[0])),
+              Math.max(...coords.map((pos) => pos[1])),
+              Math.max(...coords.map((pos) => pos[2])),
+            ]
+            const ranges = [maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]]
+
+            // If coordinates are in a reasonable range (>2 Angstrom), assume Cartesian
+            if (ranges.some((range) => range > 2)) {
+              coordinate_system = `cartesian`
+              // Create bounding box with some padding
+              const padding = 2.0 // Angstrom
+              const size_x = ranges[0] + padding * 2
+              const size_y = ranges[1] + padding * 2
+              const size_z = ranges[2] + padding * 2
+              lattice_matrix = [[size_x, 0, 0], [0, size_y, 0], [0, 0, size_z]]
+
+              // For molecular systems, disable PBC
+              pbc = [false, false, false]
+            } else {
+              // Use unit cell for fractional coordinates
+              lattice_matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            }
+          }
 
           const lattice_params = math.calc_lattice_params(lattice_matrix)
           const lattice = { matrix: lattice_matrix, ...lattice_params, pbc }
@@ -342,13 +383,42 @@ export async function parse_torch_sim_hdf5(
 
           // Create sites array in the expected format
           const sites = frame_positions.map((xyz_pos, atom_idx) => {
-            // Convert Cartesian coordinates to fractional coordinates efficiently
-            const abc = math.mat3x3_vec3_multiply(inv_matrix, xyz_pos as Vec3)
+            let abc: Vec3
+            let xyz: Vec3
+
+            if (coordinate_system === `cartesian`) {
+              // Coordinates are in Cartesian units
+              if (cells?.[frame_idx]) {
+                // Cell provided - coordinates should already be positioned correctly within the cell
+                xyz = xyz_pos.slice() as Vec3
+                abc = math.mat3x3_vec3_multiply(inv_matrix, xyz)
+              } else {
+                // No cell - center the molecule in a bounding box
+                const coords = frame_positions as number[][]
+                const mins = [
+                  Math.min(...coords.map((pos) => pos[0])),
+                  Math.min(...coords.map((pos) => pos[1])),
+                  Math.min(...coords.map((pos) => pos[2])),
+                ]
+                const padding = 2.0
+                const centered_xyz: Vec3 = [
+                  xyz_pos[0] - mins[0] + padding,
+                  xyz_pos[1] - mins[1] + padding,
+                  xyz_pos[2] - mins[2] + padding,
+                ]
+                xyz = centered_xyz
+                abc = math.mat3x3_vec3_multiply(inv_matrix, centered_xyz)
+              }
+            } else {
+              // Fractional coordinates - convert to Cartesian
+              abc = xyz_pos.slice() as Vec3
+              xyz = math.mat3x3_vec3_multiply(math.transpose_matrix(lattice_matrix), abc)
+            }
 
             return {
               species: [{ element: elements[atom_idx], occu: 1, oxidation_state: 0 }],
               abc,
-              xyz: xyz_pos.slice() as Vec3,
+              xyz,
               label: `${elements[atom_idx]}${atom_idx + 1}`,
               properties: {},
             }
@@ -417,26 +487,19 @@ export async function parse_torch_sim_hdf5(
 }
 
 // Check if a file is a torch-sim HDF5 trajectory
-export function is_torch_sim_hdf5(
-  content: unknown,
-  filename?: string,
-): boolean {
+export function is_torch_sim_hdf5(content: unknown, filename?: string): boolean {
   // Check filename extension first
   const has_hdf5_extension = filename &&
     (filename.toLowerCase().endsWith(`.h5`) ||
       filename.toLowerCase().endsWith(`.hdf5`))
 
-  if (filename && !has_hdf5_extension) {
-    return false
-  }
+  if (filename && !has_hdf5_extension) return false
 
   // If we only have filename (no content), return based on extension
   if (
     !content ||
     (content instanceof ArrayBuffer && content.byteLength === 0)
-  ) {
-    return Boolean(has_hdf5_extension)
-  }
+  ) return Boolean(has_hdf5_extension)
 
   // Check if content is binary (HDF5 files are binary)
   if (typeof content === `string`) {
@@ -458,18 +521,13 @@ export function is_torch_sim_hdf5(
 export function parse_vasp_xdatcar(content: string): Trajectory {
   const lines = content.trim().split(/\r?\n/)
   let line_idx = 0
-
-  if (lines.length < 10) {
-    throw new Error(`XDATCAR file too short`)
-  }
+  if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
   // Parse header
   const title = lines[line_idx++].trim()
   const scale_factor = parseFloat(lines[line_idx++])
 
-  if (isNaN(scale_factor)) {
-    throw new Error(`Invalid scale factor in XDATCAR`)
-  }
+  if (isNaN(scale_factor)) throw new Error(`Invalid scale factor in XDATCAR`)
 
   // Parse lattice vectors (3 lines)
   const lattice_vectors: Matrix3x3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
@@ -482,7 +540,11 @@ export function parse_vasp_xdatcar(content: string): Trajectory {
   }
 
   const lattice_params = math.calc_lattice_params(lattice_vectors)
-  const lattice = { matrix: lattice_vectors, ...lattice_params, pbc: [true, true, true] }
+  const lattice = {
+    matrix: lattice_vectors,
+    ...lattice_params,
+    pbc: [true, true, true] as [boolean, boolean, boolean],
+  }
 
   // Parse element names and counts
   const element_line = lines[line_idx++].trim().split(/\s+/)
@@ -507,9 +569,7 @@ export function parse_vasp_xdatcar(content: string): Trajectory {
   while (line_idx < lines.length) {
     // Look for configuration header
     const config_line = lines[line_idx++]
-    if (!config_line || !config_line.includes(`Direct configuration=`)) {
-      continue
-    }
+    if (!config_line || !config_line.includes(`Direct configuration=`)) continue
 
     const config_match = config_line.match(/configuration=\s*(\d+)/)
     const step = config_match ? parseInt(config_match[1]) : frames.length + 1
@@ -775,7 +835,11 @@ export function parse_xyz_trajectory(content: string): Trajectory {
         ]
 
         const lattice_params = math.calc_lattice_params(lattice_matrix)
-        lattice = { matrix: lattice_matrix, ...lattice_params, pbc: [true, true, true] }
+        lattice = {
+          matrix: lattice_matrix,
+          ...lattice_params,
+          pbc: [true, true, true] as [boolean, boolean, boolean],
+        }
 
         // Add calculated volume to metadata if not already present
         if (!frame_metadata.volume) frame_metadata.volume = lattice.volume
@@ -788,6 +852,10 @@ export function parse_xyz_trajectory(content: string): Trajectory {
 
     // Pre-compute inverse matrix once per frame for efficiency
     const inv_matrix = lattice && get_inverse_matrix(lattice.matrix)
+
+    // Check if force data is available based on Properties string
+    const has_forces = properties_match?.[1]?.includes(`forces:R:3`) ?? false
+    const forces_array: number[][] = []
 
     for (let atom_idx = 0; atom_idx < num_atoms; atom_idx++) {
       if (line_idx >= lines.length) {
@@ -821,15 +889,46 @@ export function parse_xyz_trajectory(content: string): Trajectory {
         ? math.mat3x3_vec3_multiply(inv_matrix, xyz)
         : [0, 0, 0]
 
+      // Extract force vector if available (next 3 columns after coordinates)
+      let force_vector: Vec3 | undefined
+      if (has_forces && parts.length >= 7) {
+        const fx = parseFloat(parts[4])
+        const fy = parseFloat(parts[5])
+        const fz = parseFloat(parts[6])
+
+        if (!isNaN(fx) && !isNaN(fy) && !isNaN(fz)) {
+          force_vector = [fx, fy, fz]
+          forces_array.push([fx, fy, fz])
+        }
+      }
+
       sites.push({
         species: [{ element, occu: 1, oxidation_state: 0 }],
         abc,
         xyz,
         label: `${element}${atom_idx + 1}`,
-        properties: {},
+        properties: force_vector ? { force: force_vector } : {},
       })
 
       line_idx++
+    }
+
+    // Store forces array in metadata for compatibility with existing force calculations
+    if (forces_array.length > 0) {
+      frame_metadata.forces = forces_array
+
+      // Calculate force statistics
+      const force_magnitudes = forces_array.map((force) =>
+        Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
+      )
+
+      if (force_magnitudes.length > 0) {
+        frame_metadata.force_max = Math.max(...force_magnitudes)
+        frame_metadata.force_norm = Math.sqrt(
+          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
+            force_magnitudes.length,
+        )
+      }
     }
 
     // Create structure for this frame
@@ -936,46 +1035,74 @@ export function parse_pymatgen_trajectory(
   const frame_properties = obj_data.frame_properties as Array<
     Record<string, unknown>
   >
+  const site_properties = obj_data.site_properties as Array<
+    Record<string, unknown>
+  >
 
   const lattice_params = math.calc_lattice_params(matrix)
 
   const frames: TrajectoryFrame[] = coords.map((frame_coords, frame_idx) => {
+    // Extract frame properties first to check for forces
+    const frame_props = frame_properties?.[frame_idx] || {}
+
+    // Extract forces if available (check multiple possible locations)
+    let forces_data: number[][] | undefined
+
+    // Method 1: frame_properties.forces.data (standard format)
+    if (frame_props.forces && typeof frame_props.forces === `object`) {
+      const forces_obj = frame_props.forces as { data?: number[][] }
+      if (forces_obj.data && Array.isArray(forces_obj.data)) {
+        forces_data = forces_obj.data
+      }
+    }
+
+    // Method 2: site_properties[frame_idx].momenta (alternative format)
+    if (!forces_data && site_properties?.[frame_idx]?.momenta) {
+      const momenta = site_properties[frame_idx].momenta as number[][]
+      if (Array.isArray(momenta) && momenta.length > 0) {
+        forces_data = momenta // Use momenta as forces (they're the same for force visualization)
+      }
+    }
+
     // Convert coordinates and species to sites
     const sites = frame_coords.map((xyz, site_idx) => {
       const abc = [xyz[0], xyz[1], xyz[2]] as Vec3 // pymatgen uses fractional coordinates
       const cartesian = math.mat3x3_vec3_multiply(math.transpose_matrix(matrix), abc)
+
+      // Add force vector to site properties if available
+      const site_properties: Record<string, unknown> = {}
+      const force = forces_data?.[site_idx]
+      if (force && force.length >= 3) {
+        site_properties.force = [force[0], force[1], force[2]] as Vec3
+      }
 
       return {
         species: [{ element: species[site_idx].element, occu: 1, oxidation_state: 0 }],
         abc,
         xyz: cartesian,
         label: species[site_idx].element,
-        properties: {},
+        properties: site_properties,
       }
     })
 
     // Extract frame metadata
-    const frame_props = frame_properties[frame_idx] || {}
     const metadata: Record<string, unknown> = { ...frame_props }
 
-    // Process forces if available
-    if (frame_props.forces && typeof frame_props.forces === `object`) {
-      const forces_obj = frame_props.forces as { data?: number[][] }
-      if (forces_obj.data && Array.isArray(forces_obj.data)) {
-        metadata.forces = forces_obj.data
+    // Process forces if available (store in metadata for compatibility)
+    if (forces_data) {
+      metadata.forces = forces_data
 
-        // Calculate max force
-        const forces = forces_obj.data as number[][]
-        if (forces.length > 0) {
-          const force_magnitudes = forces.map((force: number[]) =>
-            Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
-          )
-          metadata.force_max = Math.max(...force_magnitudes)
-          metadata.force_rms = Math.sqrt(
-            force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
-              force_magnitudes.length,
-          )
-        }
+      // Calculate force statistics
+      const force_magnitudes = forces_data.map((force: number[]) =>
+        Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
+      )
+
+      if (force_magnitudes.length > 0) {
+        metadata.force_max = Math.max(...force_magnitudes)
+        metadata.force_norm = Math.sqrt(
+          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
+            force_magnitudes.length,
+        )
       }
     }
 
@@ -1010,7 +1137,11 @@ export function parse_pymatgen_trajectory(
       structure: {
         sites,
         charge: (obj_data.charge as number) || 0,
-        lattice: { matrix, ...lattice_params, pbc: [true, true, true] },
+        lattice: {
+          matrix,
+          ...lattice_params,
+          pbc: [true, true, true] as [boolean, boolean, boolean],
+        },
       },
       step: frame_idx,
       metadata,

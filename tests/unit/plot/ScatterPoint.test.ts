@@ -20,11 +20,11 @@ describe(`ScatterPoint`, () => {
 
     const path = doc_query(`path`)
     expect(path).toBeTruthy()
-    expect(path.getAttribute(`fill`)).toBe(null) // Check no default fill, should be passed via CSS var --point-fill-color
-    expect(path.getAttribute(`fill-opacity`)).toBe(null)
+    expect(path.getAttribute(`fill`)).toBe(`var(--point-fill-color, black)`) // Default fill with fallback
+    expect(path.getAttribute(`fill-opacity`)).toBe(`1`) // Default opacity with fallback
     expect(path.getAttribute(`stroke`)).toBe(`transparent`)
     expect(path.getAttribute(`stroke-width`)).toBe(`1`)
-    expect(path.getAttribute(`stroke-opacity`)).toBe(null)
+    expect(path.getAttribute(`stroke-opacity`)).toBe(`1`) // Default opacity with fallback
     expect(path.getAttribute(`d`)).toBeTruthy()
   })
 
@@ -43,8 +43,8 @@ describe(`ScatterPoint`, () => {
     const path = doc_query(`path`)
     expect(path.getAttribute(`stroke`)).toBe(style.stroke)
     expect(path.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
-    expect(path.style.fillOpacity).toBe(String(style.fill_opacity))
-    expect(path.style.strokeOpacity).toBe(String(style.stroke_opacity))
+    expect(path.getAttribute(`fill-opacity`)).toBe(String(style.fill_opacity))
+    expect(path.getAttribute(`stroke-opacity`)).toBe(String(style.stroke_opacity))
   })
 
   test.each(symbol_names)(
@@ -109,7 +109,7 @@ describe(`ScatterPoint`, () => {
       })
       const path = doc_query(`path`)
       expect(path).toBeTruthy()
-      expect(path.style.fillOpacity).toBe(String(opacity))
+      expect(path.getAttribute(`fill-opacity`)).toBe(String(opacity))
     },
   )
 
@@ -133,7 +133,7 @@ describe(`ScatterPoint`, () => {
       expect(path).toBeTruthy()
       expect(path.getAttribute(`stroke`)).toBe(stroke)
       expect(path.getAttribute(`stroke-width`)).toBe(String(width))
-      expect(path.style.strokeOpacity).toBe(String(opacity))
+      expect(path.getAttribute(`stroke-opacity`)).toBe(String(opacity))
     },
   )
 

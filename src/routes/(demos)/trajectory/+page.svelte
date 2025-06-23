@@ -1,16 +1,20 @@
 <script lang="ts">
-  import { trajectory_labels } from '$lib/labels'
   import type { Trajectory } from '$lib/trajectory'
   import { TrajectoryViewer } from '$lib/trajectory'
   import { full_data_extractor } from '$lib/trajectory/extract'
   import { FileCarousel, type FileInfo } from '$site'
 
-  let trajectories = $state<(Trajectory | undefined)[]>([undefined, undefined])
+  let trajectories = $state<(Trajectory | undefined)[]>([
+    undefined,
+    undefined,
+    undefined,
+  ])
   let active_trajectory_files = $state<string[]>([])
 
   let default_trajectory_urls = $state([
-    `/trajectories/torch-sim-gold-cluster-55-atoms.h5`, // Top viewer
-    `/trajectories/vasp-XDATCAR-traj.gz`, // Bottom viewer
+    `/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    `/trajectories/vasp-XDATCAR-traj.gz`,
+    `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`,
   ])
 
   // Load trajectory files from the trajectories directory
@@ -156,7 +160,6 @@
       trajectory_url={!trajectory ? default_trajectory_urls[idx] : undefined}
       data_extractor={full_data_extractor}
       layout="horizontal"
-      property_labels={trajectory_labels}
       structure_props={{
         controls_open: false,
         show_full_controls: false,
