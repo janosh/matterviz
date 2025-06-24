@@ -40,8 +40,8 @@ export function norm(vec: NdVector): number {
   return Math.sqrt(vec.reduce((acc, val) => acc + val ** 2, 0))
 }
 
-export function scale(vec: NdVector, factor: number): NdVector {
-  return vec.map((component) => component * factor)
+export function scale<T extends NdVector>(vec: T, factor: number): T {
+  return vec.map((component) => component * factor) as T
 }
 
 export function euclidean_dist(vec1: Vec3, vec2: Vec3): number {
@@ -121,9 +121,11 @@ export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
   ]
 }
 
-export function add(...vecs: NdVector[]): NdVector {
+export function add<T extends NdVector>(...vecs: T[]): T {
   // add up any number of same-length vectors
-  if (vecs.length === 0) return []
+  if (vecs.length === 0) {
+    throw new Error(`Cannot add zero vectors`)
+  }
 
   const first_vec = vecs[0]
   const length = first_vec.length
@@ -141,7 +143,7 @@ export function add(...vecs: NdVector[]): NdVector {
       result[idx] += vec[idx]
     }
   }
-  return result
+  return result as T
 }
 
 export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[][] {

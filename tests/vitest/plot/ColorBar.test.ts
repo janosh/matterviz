@@ -2,12 +2,8 @@ import { ColorBar } from '$lib'
 import { luminance } from '$lib/labels'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '..'
-
-afterEach(() => {
-  document.body.innerHTML = `` // Clean up DOM after each test
-})
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 describe(`ColorBar Horizontal (Default)`, () => {
   test(`renders text, color scale, tick labels, and styles`, () => {

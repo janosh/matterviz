@@ -72,7 +72,7 @@
     <h2>Composition Gallery</h2>
 
     {#each [`pie`, `bubble`, `bar`] as const as mode (mode)}
-      <h3 style="margin: 1em 0 -1ex;">As {mode} chart</h3>
+      <h3 style="margin: 1em 0 -1ex">As {mode} chart</h3>
       <div class="compositions-grid">
         {#each compositions as comp (comp.name)}
           <div class="composition-card">

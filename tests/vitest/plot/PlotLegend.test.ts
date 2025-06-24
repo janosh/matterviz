@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { type LegendItem, PlotLegend } from '$lib/plot'
 import { mount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '..'
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 const default_series_data: LegendItem[] = [
   {
@@ -63,16 +63,6 @@ function simulate_keyboard_event(element: Element | null, key: string): void {
 }
 
 describe(`PlotLegend`, () => {
-  beforeEach(() => {
-    // Clear body before each test
-    document.body.innerHTML = ``
-  })
-
-  afterEach(() => {
-    // Clean up DOM after each test
-    document.body.innerHTML = ``
-  })
-
   test(`renders with default props and basic data`, () => {
     mount(PlotLegend, {
       target: document.body,

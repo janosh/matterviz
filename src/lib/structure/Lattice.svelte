@@ -1,7 +1,7 @@
 <!-- Export default values for use in other components -->
 <script lang="ts">
-  import { add, scale } from '$lib'
   import type { Matrix3x3, Vec3 } from '$lib/math'
+  import * as math from '$lib/math'
   import { T } from '@threlte/core'
   import {
     BoxGeometry,
@@ -37,7 +37,7 @@
   }: Props = $props()
 
   let lattice_center = $derived(
-    matrix ? (scale(add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
+    matrix ? (math.scale(math.add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
   )
 
   // Extract line segments from EdgesGeometry for cylinder-based thick lines
@@ -139,7 +139,7 @@
           {@const vector_length = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)}
           {@const shaft_length = vector_length * 0.85}
           <!-- Shaft goes to 85% of vector length -->
-          {@const tip_start_position = scale(vec, 0.85) as Vec3}
+          {@const tip_start_position = math.scale(vec, 0.85) as Vec3}
           <!-- Calculate rotation to align with vector direction -->
           {@const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0), // Default up direction for cylinder/cone
@@ -149,9 +149,8 @@
       .setFromQuaternion(quaternion)
       .toArray()
       .slice(0, 3) as Vec3}
-
           <!-- Arrow shaft - position at center of shaft length -->
-          {@const shaft_center = scale(vec, 0.425) as Vec3}
+          {@const shaft_center = math.scale(vec, 0.425) as Vec3}
           <!-- Center at 42.5% = half of 85% -->
           <T.Mesh position={shaft_center} {rotation}>
             <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />
@@ -160,7 +159,7 @@
 
           <!-- Arrow tip -->
           <T.Mesh position={tip_start_position} {rotation}>
-            <T.ConeGeometry args={[0.2, vector_length * 0.05, 16]} />
+            <T.ConeGeometry args={[0.175, 0.5, 16]} />
             <T.MeshStandardMaterial color={vector_colors[idx]} />
           </T.Mesh>
         {/each}

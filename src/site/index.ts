@@ -6,9 +6,9 @@ export { default as PeriodicTableDemo } from './PeriodicTableDemo.svelte'
 
 export interface FileInfo {
   name: string
-  content: string
+  content: string | ArrayBuffer // Direct binary support - no more data URLs!
   formatted_name: string
   type: string
   structure_type?: `crystal` | `molecule` | `unknown`
-  content_type?: `text` | `binary` // Indicates if content is text or binary data URL
+  content_type?: `text` | `binary` // Indicates if content is text or binary ArrayBuffer
 }

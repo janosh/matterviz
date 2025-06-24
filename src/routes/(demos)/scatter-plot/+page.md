@@ -327,7 +327,9 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 </script>
 
 <div id="point-sizing">
-  <div style="display: flex; flex-wrap: wrap; gap: 1em 2em; margin-bottom: 1em; align-items: center">
+  <div
+    style="display: flex; flex-wrap: wrap; gap: 1em 2em; margin-bottom: 1em; align-items: center"
+  >
     <label>
       Label Size: {label_size}
       <input type="range" bind:value={label_size} min="8" max="20">
@@ -1171,7 +1173,9 @@ This example demonstrates how the color bar automatically positions itself in on
 </script>
 
 <div id="auto-colorbar-placement">
-  <div style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center">
+  <div
+    style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center"
+  >
     {#each [['top_left', 'Top Left'], ['top_right', 'Top Right'], [
         'bottom_left',
         'Bottom Left',
@@ -1334,7 +1338,9 @@ This example shows how to place the color bar vertically on the right side of th
 </script>
 
 <div>
-  <div style="margin-bottom: 1em; display: flex; gap: 1em; flex-wrap: wrap; align-items: center">
+  <div
+    style="margin-bottom: 1em; display: flex; gap: 1em; flex-wrap: wrap; align-items: center"
+  >
     <div>
       <strong>Color Scale Type:</strong>
       {#each ['linear', 'log'] as scale_type}

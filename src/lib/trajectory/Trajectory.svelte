@@ -12,7 +12,6 @@
   import type { Trajectory, TrajectoryDataExtractor } from './index'
   import { Sidebar, TrajectoryError } from './index'
   import {
-    data_url_to_array_buffer,
     get_unsupported_format_message,
     load_trajectory_from_url,
     parse_trajectory_data,
@@ -209,8 +208,18 @@
 
         // Check if this is a binary file
         if (file_info.is_binary) {
-          const array_buffer = data_url_to_array_buffer(file_info.content)
-          await handle_trajectory_binary_drop(array_buffer, file_info.name)
+          if (file_info.content instanceof ArrayBuffer) {
+            await handle_trajectory_binary_drop(file_info.content, file_info.name)
+          } else if (file_info.content_url) {
+            const response = await fetch(file_info.content_url)
+            const array_buffer = await response.arrayBuffer()
+            await handle_trajectory_binary_drop(array_buffer, file_info.name)
+          } else {
+            console.warn(
+              `Binary file without ArrayBuffer or blob URL:`,
+              file_info.name,
+            )
+          }
         } else {
           await on_file_drop(file_info.content, file_info.name)
         }
@@ -608,7 +617,7 @@
             <div class="filename-section">
               <button
                 use:titles_as_tooltips
-                title="Click to copy filename"
+                title="Click to copy filename {current_filename}"
                 onclick={() => {
                   if (current_filename) navigator.clipboard.writeText(current_filename)
                 }}
@@ -830,7 +839,9 @@
             <li>VASP XDATCAR files</li>
             <li>Compressed files (.gz)</li>
           </ul>
-          <p style="margin-top: 1rem; font-size: 0.9em; color: var(--trajectory-text-muted, #666)">
+          <p
+            style="margin-top: 1rem; font-size: 0.9em; color: var(--trajectory-text-muted, #666)"
+          >
             💡 Force vectors will be automatically displayed when present in trajectory
             data
           </p>

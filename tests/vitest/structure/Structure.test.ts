@@ -4,7 +4,7 @@ import { euclidean_dist, type Matrix3x3, pbc_dist } from '$lib/math'
 import { structures } from '$site/structures'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../index'
+import { doc_query } from '../setup'
 
 const structure = structures[0]
 

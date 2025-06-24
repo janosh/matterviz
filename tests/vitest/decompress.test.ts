@@ -2,7 +2,6 @@ import {
   type CompressionFormat,
   decompress_data,
   decompress_file,
-  decompress_gzip,
   detect_compression_format,
   is_compressed_file,
   remove_compression_extension,
@@ -135,72 +134,6 @@ describe(`decompress utility functions`, () => {
         expect(decompressed).toBe(test_string)
       },
     )
-  })
-
-  describe(`decompress_gzip`, () => {
-    beforeEach(() => {
-      // Reset any mocks before each test
-      vi.clearAllMocks()
-    })
-
-    test(`should throw error when DecompressionStream is not supported`, async () => {
-      // Mock missing DecompressionStream API
-      const original_decompression_stream = globalThis.DecompressionStream
-      // @ts-expect-error - intentionally deleting for test
-      delete globalThis.DecompressionStream
-
-      await expect(decompress_gzip(new ArrayBuffer(0))).rejects.toThrow(
-        `DecompressionStream API not supported`,
-      )
-
-      // Restore original
-      globalThis.DecompressionStream = original_decompression_stream
-    })
-
-    test(`should handle decompression errors gracefully`, async () => {
-      // Skip if DecompressionStream is not available in test environment
-      if (!globalThis.DecompressionStream) {
-        return
-      }
-
-      // Create invalid gzip data (should cause decompression to fail)
-      const invalid_gzip_data = new ArrayBuffer(10)
-      const view = new Uint8Array(invalid_gzip_data)
-      view.fill(255) // Fill with invalid data
-
-      await expect(decompress_gzip(invalid_gzip_data)).rejects.toThrow(
-        `Failed to decompress gzip file`,
-      )
-    })
-
-    test(`should successfully decompress valid gzip data`, async () => {
-      // Skip if APIs are not available in test environment
-      if (!globalThis.CompressionStream || !globalThis.DecompressionStream) {
-        return
-      }
-
-      const test_string = `{"test": "data", "compressed": true}`
-      const encoder = new TextEncoder()
-      const data = encoder.encode(test_string)
-
-      // Compress the data first
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(data)
-          controller.close()
-        },
-      })
-
-      const compressed_stream = stream.pipeThrough(
-        new CompressionStream(`gzip`),
-      )
-      const response = new Response(compressed_stream)
-      const compressed_buffer = await response.arrayBuffer()
-
-      // Now test decompression
-      const decompressed = await decompress_gzip(compressed_buffer)
-      expect(decompressed).toBe(test_string)
-    })
   })
 
   describe(`decompress_file`, () => {

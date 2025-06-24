@@ -34,7 +34,6 @@ describe(`BubbleChart component`, () => {
     const BubbleChart = (await import(`$lib/composition/BubbleChart.svelte`))
       .default
 
-    document.body.innerHTML = ``
     mount(BubbleChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size: 200 },
@@ -50,7 +49,6 @@ describe(`BubbleChart component`, () => {
     const BubbleChart = (await import(`$lib/composition/BubbleChart.svelte`))
       .default
 
-    document.body.innerHTML = ``
     mount(BubbleChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1, C: 1 }, size: 200 },
@@ -64,7 +62,6 @@ describe(`BubbleChart component`, () => {
     const BubbleChart = (await import(`$lib/composition/BubbleChart.svelte`))
       .default
 
-    document.body.innerHTML = ``
     mount(BubbleChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size: 200, interactive: true },

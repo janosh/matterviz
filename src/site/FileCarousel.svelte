@@ -75,20 +75,39 @@
 
     const is_binary = file.content_type === `binary`
 
-    // Set drag data using a custom MIME type for internal transfers
-    event.dataTransfer?.setData(
-      `application/x-matterviz-file`,
-      JSON.stringify({
-        name: filename,
-        content: file.content,
-        type: file.type,
-        is_binary,
-      }),
-    )
+    if (is_binary && file.content instanceof ArrayBuffer) {
+      // For binary files, create a temporary URL for drag transfer
+      // This avoids expensive base64 conversion during drag operations
+      const blob = new Blob([file.content], { type: `application/octet-stream` })
+      const temp_url = URL.createObjectURL(blob)
 
-    // For text files, also set plain text as fallback for external applications
-    if (!is_binary) {
-      event.dataTransfer?.setData(`text/plain`, file.content)
+      // Store both the blob URL and metadata for the receiver
+      event.dataTransfer?.setData(
+        `application/x-matterviz-file`,
+        JSON.stringify({
+          name: filename,
+          content_url: temp_url, // Temporary blob URL instead of data URL
+          type: file.type,
+          is_binary: true,
+        }),
+      )
+
+      // Clean up the temporary URL after drag completes
+      setTimeout(() => URL.revokeObjectURL(temp_url), 5000)
+    } else {
+      // For text files, use the original approach
+      event.dataTransfer?.setData(
+        `application/x-matterviz-file`,
+        JSON.stringify({
+          name: filename,
+          content: file.content as string,
+          type: file.type,
+          is_binary: false,
+        }),
+      )
+
+      // Also set plain text as fallback for external applications
+      event.dataTransfer?.setData(`text/plain`, file.content as string)
     }
 
     on_drag_start?.(file, event)

@@ -8,5 +8,5 @@ export default {
   },
   workers: 8,
   timeout: 15_000, // Global timeout per test
-  testIgnore: [`tests/unit/**`], // ignore unit tests
+  testIgnore: [`tests/vitest/**`], // ignore unit tests
 } satisfies PlaywrightTestConfig

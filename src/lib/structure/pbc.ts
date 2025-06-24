@@ -1,6 +1,6 @@
 // Periodic Boundary Conditions utilities for pymatgen Structures
 import type { Vec3 } from '$lib'
-import { add, scale } from '$lib'
+import * as math from '$lib/math'
 import type { PymatgenStructure } from './index'
 
 export function find_image_atoms(
@@ -50,8 +50,8 @@ export function find_image_atoms(
         for (let bit = 0; bit < edge_dims.length; bit++) {
           if (mask & (1 << bit)) {
             const { dim, direction } = edge_dims[bit]
-            const translation = scale(lattice_vecs[dim], direction)
-            const sum = add(img_xyz, translation)
+            const translation = math.scale(lattice_vecs[dim], direction)
+            const sum = math.add(img_xyz, translation)
             img_xyz = [sum[0], sum[1], sum[2]] as Vec3
             img_abc[dim] += direction // Update fractional coordinate
           }

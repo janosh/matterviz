@@ -55,9 +55,6 @@ export async function decompress_data(
   }
 }
 
-// Legacy compatibility
-export const decompress_gzip = (data: ArrayBuffer) => decompress_data(data, `gzip`)
-
 export function decompress_file(
   file: File,
 ): Promise<{ content: string; filename: string }> {
@@ -88,7 +85,7 @@ export function decompress_file(
       }
     }
 
-    reader.onerror = () => reject(new Error(`Failed to read file`))
+    reader.onerror = () => reject(new Error(`Failed to read file ${file.name}`))
 
     if (compressed) reader.readAsArrayBuffer(file)
     else reader.readAsText(file)

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib';
-  import { ControlPanel } from '$lib';
-  import { element_color_schemes } from '$lib/colors';
-  import * as exports from '$lib/io/export';
-  import { STRUCT_DEFAULTS, StructureScene } from '$lib/structure';
-  import type { ComponentProps } from 'svelte';
-  import Select from 'svelte-multiselect';
-  import { Tooltip } from 'svelte-zoo';
+  import type { AnyStructure } from '$lib'
+  import { ControlPanel } from '$lib'
+  import { element_color_schemes } from '$lib/colors'
+  import * as exports from '$lib/io/export'
+  import { STRUCT_DEFAULTS, StructureScene } from '$lib/structure'
+  import type { ComponentProps } from 'svelte'
+  import Select from 'svelte-multiselect'
+  import { Tooltip } from 'svelte-zoo'
 
   export interface Props {
     // Control panel state
@@ -89,7 +89,7 @@
   let has_forces = $derived(
     structure?.sites?.some((site) =>
       site.properties?.force && Array.isArray(site.properties.force)
-    ) ?? false
+    ) ?? false,
   )
 
   // Helper function to get example set of colors from an element color scheme
@@ -110,7 +110,7 @@
 <ControlPanel bind:controls_open>
   {#snippet controls_content()}
     <!-- Visibility Controls -->
-    <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap">
       Show <label>
         <input type="checkbox" bind:checked={scene_props.show_atoms} />
         atoms
@@ -167,7 +167,7 @@
         <small> (if false, all atoms same size)</small>
       </span>
     </label>
-    <label style="align-items: flex-start;">
+    <label style="align-items: flex-start">
       Color scheme
       <Select
         options={Object.keys(element_color_schemes)}
@@ -175,15 +175,17 @@
         minSelect={1}
         bind:selected={color_scheme_selected}
         liOptionStyle="padding: 3pt 6pt;"
-        style="width: 10em; border: none;"
+        style="width: 10em; border: none"
       >
         {#snippet children({ option })}
-          {@const style = `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
+          {@const style =
+          `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
           <div {style}>
             {option}
-            <div style="display: flex; gap: 3pt;">
+            <div style="display: flex; gap: 3pt">
               {#each get_representative_colors(String(option)) as color (color)}
-                {@const style = `width: 15px; height: 15px; border-radius: 2px; background: {color};`}
+                {@const style =
+              `width: 15px; height: 15px; border-radius: 2px; background: {color};`}
                 <div {style}></div>
               {/each}
             </div>
@@ -201,16 +203,16 @@
         Scale
         <input
           type="number"
-          min="0.01"
-          max="1"
-          step="0.01"
+          min="0.001"
+          max="5"
+          step="0.001"
           bind:value={scene_props.force_vector_scale}
         />
         <input
           type="range"
-          min="0.01"
-          max="1"
-          step="0.01"
+          min="0.001"
+          max="5"
+          step="0.001"
           bind:value={scene_props.force_vector_scale}
         />
       </label>
@@ -229,9 +231,22 @@
       lattice vectors
     </label>
     {#each [
-      { label: `Edge color`, color_prop: `cell_edge_color`, opacity_prop: `cell_edge_opacity`, step: 0.05 },
-      { label: `Surface color`, color_prop: `cell_surface_color`, opacity_prop: `cell_surface_opacity`, step: 0.01 },
-    ] as const as { label, color_prop, opacity_prop, step } (label)}
+      {
+        label: `Edge color`,
+        color_prop: `cell_edge_color`,
+        opacity_prop: `cell_edge_opacity`,
+        step: 0.05,
+      },
+      {
+        label: `Surface color`,
+        color_prop: `cell_surface_color`,
+        opacity_prop: `cell_surface_opacity`,
+        step: 0.01,
+      },
+    ] as const as
+      { label, color_prop, opacity_prop, step }
+      (label)
+    }
       <div class="control-row">
         <label class="compact">
           {label}
@@ -417,13 +432,25 @@
       </label>
       <label>
         Bond thickness
-        <input type="number" min={0.05} max={0.5} step={0.05} bind:value={scene_props.bond_thickness} />
-        <input type="range" min={0.05} max={0.5} step={0.05} bind:value={scene_props.bond_thickness} />
+        <input
+          type="number"
+          min={0.05}
+          max={0.5}
+          step={0.05}
+          bind:value={scene_props.bond_thickness}
+        />
+        <input
+          type="range"
+          min={0.05}
+          max={0.5}
+          step={0.05}
+          bind:value={scene_props.bond_thickness}
+        />
       </label>
     {/if}
 
     <span
-      style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap;"
+      style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
     >
       <button
         type="button"
@@ -449,14 +476,14 @@
       >
         {save_png_btn_text}
       </button>
-      <small style="margin-left: 4pt;">DPI:</small>
+      <small style="margin-left: 4pt">DPI:</small>
       <input
         type="number"
         min={72}
         max={300}
         step={25}
         bind:value={png_dpi}
-        style="width: 3.5em;"
+        style="width: 3.5em"
         title="Export resolution in dots per inch"
       />
     </span>
