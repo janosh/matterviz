@@ -4,7 +4,7 @@ import { colors } from '$lib/state.svelte'
 import StructureLegend from '$lib/structure/StructureLegend.svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../index'
+import { doc_query } from '../setup'
 
 describe(`StructureLegend Component`, () => {
   const mock_elements: CompositionType = {
@@ -16,7 +16,6 @@ describe(`StructureLegend Component`, () => {
 
   beforeEach(() => {
     colors.element = { ...default_element_colors }
-    document.body.innerHTML = ``
   })
 
   test.each([

@@ -1,8 +1,8 @@
 import type { FileInfo } from '$site'
 import { FileCarousel } from '$site'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { doc_query } from './index'
+import { describe, expect, it } from 'vitest'
+import { doc_query } from './setup'
 
 describe(`FileCarousel`, () => {
   // Mock file data for testing
@@ -31,11 +31,6 @@ describe(`FileCarousel`, () => {
     create_mock_file(`unknown.dat`, `unknown content`, `unknown`),
     create_mock_file(`poscar_file`, `poscar content`, `crystal`),
   ]
-
-  beforeEach(() => {
-    // Clear DOM before each test
-    document.body.innerHTML = ``
-  })
 
   describe(`rendering and basic functionality`, () => {
     it.each([

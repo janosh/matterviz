@@ -2,11 +2,10 @@ import { ColorScaleSelect } from '$lib'
 import type { D3ColorSchemeName } from '$lib/colors'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '..'
+import { doc_query } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
   beforeEach(() => {
-    document.body.innerHTML = ``
     vi.useFakeTimers()
   })
 

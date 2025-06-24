@@ -8,6 +8,7 @@
     undefined,
     undefined,
     undefined,
+    undefined,
   ])
   let active_trajectory_files = $state<string[]>([])
 
@@ -15,6 +16,7 @@
     `/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
     `/trajectories/vasp-XDATCAR-traj.gz`,
     `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`,
+    `/trajectories/ase-images-Ag-0-to-97.xyz.gz`,
   ])
 
   // Load trajectory files from the trajectories directory
@@ -70,10 +72,9 @@
 
     if (is_binary) {
       const buffer = await response.arrayBuffer()
-      const { array_buffer_to_data_url } = await import(`$lib/trajectory/parse`)
       return {
         name: strip_query(filename),
-        content: array_buffer_to_data_url(buffer),
+        content: buffer, // used to convert buffer to data URL, much slower. using ArrayBuffer directly has no conversion overhead, >10x faster.
         formatted_name: format_filename(filename),
         type: get_file_type(filename),
         content_type: `binary`,

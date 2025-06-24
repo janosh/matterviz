@@ -63,12 +63,12 @@
   )
   let contrast_bg_color = $derived(bg_color ?? default_category_colors[category])
 
-  // Determine if we should show the atomic number - default to false for multi-value splits to avoid overlap
+  // Determine if we should show the atomic number
   const should_show_number = $derived.by(() => {
     if (show_number !== undefined) return show_number
-    // Auto-hide number for multi-value splits to prevent overlap with value labels
+    // Hide number for multi-value splits to prevent overlap with value labels
     if (Array.isArray(value) && value.length > 1) return false
-    return true // default to true for single values
+    return true
   })
 
   // Helper function to format values appropriately
@@ -96,92 +96,75 @@
   // Determine if we should show values - default to false if any array element is a color
   const should_show_values = $derived.by(() => {
     if (show_values !== undefined) return show_values
-    if (Array.isArray(value)) {
-      return !value.some((v) => is_color(v))
-    }
+    if (Array.isArray(value)) return !value.some((v) => is_color(v))
     return !is_color(value)
-  })
-
-  // Determine the actual layout to use based on value count and split_layout prop
-  const actual_layout = $derived.by(() => {
-    if (!Array.isArray(value)) return null
-
-    if (split_layout) return split_layout
-
-    // Auto-determine layout based on value count (backwards compatibility)
-    const layout_map = { 2: `diagonal`, 3: `horizontal`, 4: `quadrant` } as const
-    if (value.length in layout_map) {
-      return layout_map[value.length as keyof typeof layout_map]
-    }
-    console.error(`Only 2, 3, or 4 values are supported for split_layout`)
-    return null
   })
 
   // Get the appropriate CSS classes for segments and positions based on layout
   const layout_config = $derived.by(() => {
-    if (!Array.isArray(value) || !actual_layout) return null
+    if (!Array.isArray(value)) return null
 
     const count = value.length
+    // Use explicit split_layout or auto-determine based on count
+    const layout = split_layout ?? {
+      2: `diagonal`,
+      3: `horizontal`,
+      4: `quadrant`,
+    }[count] as SplitLayout | undefined
 
-    switch (actual_layout) {
-      case `diagonal`:
-        return count === 2
-          ? {
-            segments: [`diagonal-top`, `diagonal-bottom`],
-            positions: [`top-left`, `bottom-right`],
-          }
-          : null
+    if (!layout) return null
 
-      case `horizontal`:
-        return count === 3
-          ? {
-            segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
-            positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
-          }
-          : null
-
-      case `vertical`:
-        return count === 3
-          ? {
-            segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
-            positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
-          }
-          : null
-
-      case `triangular`:
-        return count === 4
-          ? {
-            segments: [
-              `triangle-top`,
-              `triangle-right`,
-              `triangle-bottom`,
-              `triangle-left`,
-            ],
-            positions: [
-              `triangle-top-pos`,
-              `triangle-right-pos`,
-              `triangle-bottom-pos`,
-              `triangle-left-pos`,
-            ],
-          }
-          : null
-
-      case `quadrant`:
-        return count === 4
-          ? {
-            segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
-            positions: [
-              `value-quadrant-tl`,
-              `value-quadrant-tr`,
-              `value-quadrant-bl`,
-              `value-quadrant-br`,
-            ],
-          }
-          : null
-
-      default:
-        return null
+    if (layout === `diagonal` && count === 2) {
+      return {
+        segments: [`diagonal-top`, `diagonal-bottom`],
+        positions: [`top-left`, `bottom-right`],
+      }
     }
+
+    if (layout === `horizontal` && count === 3) {
+      return {
+        segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
+        positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
+      }
+    }
+
+    if (layout === `vertical` && count === 3) {
+      return {
+        segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
+        positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
+      }
+    }
+
+    if (layout === `triangular` && count === 4) {
+      return {
+        segments: [
+          `triangle-top`,
+          `triangle-right`,
+          `triangle-bottom`,
+          `triangle-left`,
+        ],
+        positions: [
+          `triangle-top-pos`,
+          `triangle-right-pos`,
+          `triangle-bottom-pos`,
+          `triangle-left-pos`,
+        ],
+      }
+    }
+
+    if (layout === `quadrant` && count === 4) {
+      return {
+        segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
+        positions: [
+          `value-quadrant-tl`,
+          `value-quadrant-tr`,
+          `value-quadrant-bl`,
+          `value-quadrant-br`,
+        ],
+      }
+    }
+
+    return null
   })
 </script>
 

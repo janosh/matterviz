@@ -1,8 +1,9 @@
 // Utilities for dealing with pymatgen Structures
 import type { ElementSymbol, Vec3 } from '$lib'
-import { scale } from '$lib'
+import { atomic_weights } from '$lib/composition/parse'
 import element_data from '$lib/element/data'
 import type { Matrix3x3 } from '$lib/math'
+import * as math from '$lib/math'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
@@ -30,7 +31,7 @@ export const STRUCT_DEFAULTS = {
     color: `#ffffff`,
   },
   vector: {
-    scale: 2,
+    scale: 1,
     color: `#ff6b6b`,
     shaft_radius: 0.02,
     arrow_head_radius: 0.08,
@@ -155,10 +156,6 @@ export const atomic_radii: Partial<Record<ElementSymbol, number>> = Object.fromE
   element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
 )
 
-export const atomic_weights: Partial<Record<ElementSymbol, number>> = Object.fromEntries(
-  element_data.map((el) => [el.symbol, el.atomic_mass]),
-)
-
 export function get_elements(structure: AnyStructure): ElementSymbol[] {
   const elems = structure.sites.flatMap((site) => site.species.map((sp) => sp.element))
   return [...new Set(elems)].sort() // unique elements
@@ -173,11 +170,8 @@ export function get_density(structure: PymatgenStructure): number {
   const elements = get_elem_amounts(structure)
   let mass = 0
   for (const [el, amt] of Object.entries(elements)) {
-    const element = el as ElementSymbol
-    const weight = atomic_weights[element]
-    if (weight !== undefined) {
-      mass += amt * weight
-    }
+    const weight = atomic_weights.get(el as ElementSymbol)
+    if (weight !== undefined) mass += amt * weight
   }
   return (uA3_to_gcm3 * mass) / structure.lattice.volume
 }
@@ -190,16 +184,11 @@ export function get_center_of_mass(struct_or_mol: AnyStructure): Vec3 {
     // TODO this assumes there's just one species. doesn't handle disordered sites
     const wt = site.species[0].occu
 
-    const scaled_pos = scale(site.xyz, wt)
-    center = [
-      center[0] + scaled_pos[0],
-      center[1] + scaled_pos[1],
-      center[2] + scaled_pos[2],
-    ] as Vec3
+    const scaled_pos = math.scale(site.xyz, wt)
+    center = math.add(center, scaled_pos)
 
     total_weight += wt
   }
 
-  const result = scale(center, 1 / total_weight)
-  return [result[0], result[1], result[2]] as Vec3
+  return math.scale(center, 1 / total_weight)
 }

@@ -1,8 +1,8 @@
 import { element_data, ElementTile } from '$lib'
 import { default_category_colors } from '$lib/colors'
 import { mount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '..'
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 type SplitLayout =
   | `diagonal`
@@ -14,10 +14,6 @@ type SplitLayout =
 // test random element for increased robustness
 const rand_idx = Math.floor(Math.random() * element_data.length)
 const rand_element = element_data[rand_idx]
-
-afterEach(() => {
-  document.body.innerHTML = ``
-})
 
 describe(`ElementTile`, () => {
   describe(`basic rendering`, () => {
@@ -659,25 +655,25 @@ describe(`ElementTile`, () => {
       expect(!!document.querySelector(`.name`)).toBe(is_detected)
     })
 
-    test.each([
-      [true, `shows color as text`],
-      [false, `hides all values`],
-    ])(`show_values=%s`, (show_values, _desc) => {
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          value: `#ff0000`,
-          bg_color: `#ff0000`,
-          show_values,
-        },
-      })
+    test.each([[true, `shows color as text`], [false, `hides all values`]])(
+      `show_values=%s`,
+      (show_values, _desc) => {
+        mount(ElementTile, {
+          target: document.body,
+          props: {
+            element: rand_element,
+            value: `#ff0000`,
+            bg_color: `#ff0000`,
+            show_values,
+          },
+        })
 
-      const has_value = !!document.querySelector(`.value`)
-      const has_name = !!document.querySelector(`.name`)
-      expect(has_value).toBe(show_values)
-      expect(has_name).toBe(!show_values)
-    })
+        const has_value = !!document.querySelector(`.value`)
+        const has_name = !!document.querySelector(`.name`)
+        expect(has_value).toBe(show_values)
+        expect(has_name).toBe(!show_values)
+      },
+    )
 
     test.each([
       [[`#ff0000`, `#00ff00`], 2],
@@ -738,6 +734,40 @@ describe(`ElementTile`, () => {
 
       const node = doc_query(`.element-tile`)
       expect(node.style.backgroundColor).toBe(custom_color)
+    })
+  })
+
+  describe(`split_layout validation`, () => {
+    test.each([
+      [`invalid_layout`, `1 / 2 / 3 / 4`, 0],
+      [`unknown`, `1 / 2 / 3 / 4`, 0],
+      [``, `1 / 2 / 3 / 4`, 0],
+      [null, ``, 4],
+      [undefined, ``, 4],
+    ])(`split_layout "%s" handling`, (layout, expected_text, expected_segments) => {
+      mount(ElementTile, {
+        target: document.body,
+        props: {
+          element: rand_element,
+          value: [1, 2, 3, 4],
+          split_layout: layout as unknown as SplitLayout,
+          bg_colors: [`#ff0000`, `#00ff00`, `#0000ff`, `#ffff00`],
+        },
+      })
+
+      const segments = document.querySelectorAll(`.segment`)
+      expect(segments.length).toBe(expected_segments)
+
+      if (expected_segments === 0) {
+        const fallback_value = document.querySelector(`.value`)
+        expect(fallback_value?.textContent).toBe(expected_text)
+      } else {
+        // Check for quadrant segments when auto-layout is used
+        expect(document.querySelector(`.segment.quadrant-tl`)).toBeTruthy()
+        expect(document.querySelector(`.segment.quadrant-tr`)).toBeTruthy()
+        expect(document.querySelector(`.segment.quadrant-bl`)).toBeTruthy()
+        expect(document.querySelector(`.segment.quadrant-br`)).toBeTruthy()
+      }
     })
   })
 })

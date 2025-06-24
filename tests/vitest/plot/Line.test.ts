@@ -10,8 +10,6 @@ describe(`Line`, () => {
   let target_div: HTMLDivElement
 
   beforeEach(() => {
-    // Efficiently reset and recreate the target div
-    document.body.innerHTML = ``
     target_div = document.createElement(`div`)
     target_div.setAttribute(`style`, container_style)
     document.body.appendChild(target_div)

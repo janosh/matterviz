@@ -221,6 +221,10 @@
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
+  // Unique component ID to avoid clipPath conflicts between multiple instances
+  let component_id = $state(`scatter-${Math.random().toString(36).substring(2, 9)}`)
+  let clip_path_id = $derived(`plot-area-clip-${component_id}`)
+
   // Process series to ensure single visible series are always on y1 (left) axis.
   // This prevents the scenario where the left y-axis is empty while the right y-axis
   // has the only visible series, which would create a confusing plot layout.
@@ -371,6 +375,14 @@
   )
 
   let pad = $derived({ t: 5, b: 50, l: 50, r: 20, ...padding })
+
+  // Reactive clip area dimensions to ensure proper responsiveness
+  let clip_area = $derived({
+    x: pad.l,
+    y: pad.t,
+    width: Math.max(1, width - pad.l - pad.r),
+    height: Math.max(1, height - pad.t - pad.b),
+  })
 
   // Calculate plot area center coordinates
   let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
@@ -1642,12 +1654,12 @@
       {/if}
 
       <defs>
-        <clipPath id="plot-area-clip">
+        <clipPath id={clip_path_id}>
           <rect
-            x={pad.l}
-            y={pad.t}
-            width={width - pad.l - pad.r}
-            height={height - pad.t - pad.b}
+            x={clip_area.x}
+            y={clip_area.y}
+            width={clip_area.width}
+            height={clip_area.height}
           />
         </clipPath>
       </defs>
@@ -1656,7 +1668,7 @@
       {#if markers?.includes(`line`) && show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? markers}
-          <g data-series-id={series_data._id} clip-path="url(#plot-area-clip)">
+          <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
             {#if series_markers?.includes(`line`)}
               {@const all_line_points = series_data.x.map((x, idx) => ({
           x,
@@ -2151,6 +2163,7 @@
         legend_manual_position
           ? ``
           : get_placement_styles(legend_placement_cell, `legend`).transform};
+          pointer-events: auto;
           ${legend?.wrapper_style ?? ``}
         `}
       />

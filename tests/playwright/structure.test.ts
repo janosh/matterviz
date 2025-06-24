@@ -950,12 +950,7 @@ test.describe(`Reset Camera Button Tests`, () => {
       // Clean up
       resetButton.remove()
 
-      return {
-        success: true,
-        isVisible,
-        clicked,
-        isHiddenAfterClick,
-      }
+      return { success: true, isVisible, clicked, isHiddenAfterClick }
     })
 
     expect(test_result.success).toBe(true)

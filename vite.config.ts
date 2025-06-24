@@ -12,8 +12,8 @@ export default defineConfig(({ mode }) => ({
     coverage: {
       reporter: [`text`, `json-summary`],
     },
-    setupFiles: `tests/unit/setup.ts`,
-    include: [`tests/unit/**/*.test.ts`, `tests/unit/**/*.test.svelte.ts`],
+    setupFiles: `tests/vitest/setup.ts`,
+    include: [`tests/vitest/**/*.test.ts`, `tests/vitest/**/*.test.svelte.ts`],
   },
 
   server: {

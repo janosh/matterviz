@@ -119,9 +119,7 @@ export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`M
 // calculate human-perceived brightness from RGB color
 export function luminance(clr: string) {
   const { r, g, b } = rgb(clr)
-  // if (![r, g, b].every((c) => c >= 0 && c <= 255)) {
-  //   console.error(`invalid RGB color: ${clr}, parsed to rgb=${r},${g},${b}`)
-  // }
+
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 // https://stackoverflow.com/a/596243
 }
 

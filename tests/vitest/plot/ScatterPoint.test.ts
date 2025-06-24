@@ -3,12 +3,11 @@ import type { PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
 import { bounceIn } from 'svelte/easing'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '..'
+import { doc_query } from '../setup'
 
 describe(`ScatterPoint`, () => {
   const container_style = `width: 800px; height: 600px;`
   beforeEach(() => {
-    document.body.innerHTML = `` // Clear body before each test
     const container = document.createElement(`div`)
     container.setAttribute(`style`, container_style)
     document.body.appendChild(container)
@@ -209,33 +208,29 @@ describe(`ScatterPoint`, () => {
     expect(g.getAttribute(`transform`)).toBe(`translate(0 0)`) // Initial transform
   })
 
-  test(`renders with different text annotation positions`, () => {
-    const positions = [
+  test.each(
+    [
       { position: `above`, offset: { x: 0, y: -15 } },
       { position: `right`, offset: { x: 15, y: 0 } },
       { position: `below`, offset: { x: 0, y: 15 } },
       { position: `left`, offset: { x: -15, y: 0 } },
-    ] as const
+    ] as const,
+  )(`renders with different text annotation positions`, (pos) => {
+    const container = document.createElement(`div`)
+    container.setAttribute(`style`, container_style)
+    document.body.appendChild(container)
 
-    for (const pos of positions) {
-      // Re-create container in loop to isolate tests
-      document.body.innerHTML = ``
-      const container = document.createElement(`div`)
-      container.setAttribute(`style`, container_style)
-      document.body.appendChild(container)
-
-      const label = {
-        text: `Point ${pos.position}`,
-        offset: pos.offset,
-      }
-      const target = doc_query(`div`)
-      mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
-
-      const text = doc_query(`text`)
-      expect(text.textContent).toBe(label.text)
-      expect(text.getAttribute(`x`)).toBe(String(pos.offset.x))
-      expect(text.getAttribute(`y`)).toBe(String(pos.offset.y))
+    const label = {
+      text: `Point ${pos.position}`,
+      offset: pos.offset,
     }
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
+
+    const text = doc_query(`text`)
+    expect(text.textContent).toBe(label.text)
+    expect(text.getAttribute(`x`)).toBe(String(pos.offset.x))
+    expect(text.getAttribute(`y`)).toBe(String(pos.offset.y))
   })
 
   test.each(

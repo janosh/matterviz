@@ -3,15 +3,13 @@ import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '..'
+import { doc_query } from '../setup'
 
 const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)
 
 describe(`PeriodicTable`, () => {
   afterEach(() => {
-    // Clean up DOM after each test to prevent state accumulation
-    document.body.innerHTML = ``
     // Restore console.error if it was mocked
     vi.restoreAllMocks()
   })

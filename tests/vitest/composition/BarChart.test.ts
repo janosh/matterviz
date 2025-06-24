@@ -1,6 +1,6 @@
 import { BarChart } from '$lib/composition'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // Mock composition parsing utilities
 vi.mock(`$lib/composition/parse`, () => ({
@@ -84,10 +84,6 @@ function doc_query<T extends Element = Element>(selector: string): T {
 }
 
 describe(`BarChart component`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test(`imports without errors`, async () => {
     const module = await import(`$lib/composition/BarChart.svelte`)
     expect(module.default).toBeDefined()

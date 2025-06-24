@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { ScatterPlot } from '$lib';
+  import { ScatterPlot } from '$lib'
   import type {
     DataSeries,
     InternalPoint,
     LabelStyle,
     PointStyle,
     ScaleType,
-  } from '$lib/plot';
-  import { LOG_MIN_EPS, symbol_names } from '$lib/plot';
+  } from '$lib/plot'
+  import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
 
   // === Basic Example Data ===
   const basic_data = {
@@ -208,9 +208,24 @@
     y: [10, 10, 90, 90],
     point_style: { fill: `green`, radius: 6 },
     point_label: [
-      { text: `Sparse-TL`, auto_placement: true, font_size: `10px`, offset: { x: 10 } },
-      { text: `Sparse-TR`, auto_placement: true, font_size: `10px`, offset: { x: -40 } },
-      { text: `Sparse-BL`, auto_placement: true, font_size: `10px`, offset: { y: -15 } },
+      {
+        text: `Sparse-TL`,
+        auto_placement: true,
+        font_size: `10px`,
+        offset: { x: 10 },
+      },
+      {
+        text: `Sparse-TR`,
+        auto_placement: true,
+        font_size: `10px`,
+        offset: { x: -40 },
+      },
+      {
+        text: `Sparse-BL`,
+        auto_placement: true,
+        font_size: `10px`,
+        offset: { y: -15 },
+      },
       { text: `Sparse-BR`, auto_placement: true, font_size: `10px` },
     ],
   }
@@ -256,14 +271,13 @@
       point_label: (Array.isArray(series.point_label)
         ? series.point_label
         : series.point_label
-          ? [series.point_label]
-          : []
-      ).map(
-        (lbl): LabelStyle => ({
-          ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
-          auto_placement: enable_auto_placement,
-        }),
-      ),
+        ? [series.point_label]
+        : []).map(
+          (lbl): LabelStyle => ({
+            ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+            auto_placement: enable_auto_placement,
+          }),
+        ),
     }))
   })
 
@@ -340,11 +354,26 @@
 
   // Legend test data
   const legend_single_series: DataSeries[] = [
-    { x: [1, 2], y: [3, 4], metadata: { label: `Single Series` }, point_style: { fill: `steelblue`, radius: 5 } },
+    {
+      x: [1, 2],
+      y: [3, 4],
+      metadata: { label: `Single Series` },
+      point_style: { fill: `steelblue`, radius: 5 },
+    },
   ]
   const legend_multi_series: DataSeries[] = [
-    { x: [1, 2], y: [3, 4], metadata: { label: `Series A` }, point_style: { fill: `red`, radius: 5 } },
-    { x: [1, 2], y: [1, 2], metadata: { label: `Series B` }, point_style: { fill: `blue`, radius: 5 } },
+    {
+      x: [1, 2],
+      y: [3, 4],
+      metadata: { label: `Series A` },
+      point_style: { fill: `red`, radius: 5 },
+    },
+    {
+      x: [1, 2],
+      y: [1, 2],
+      metadata: { label: `Series B` },
+      point_style: { fill: `blue`, radius: 5 },
+    },
   ]
   const legend_zero_series: DataSeries[] = []
 
@@ -438,11 +467,13 @@
   let last_double_clicked_point_id = $state<string | null>(null)
 
   function handle_point_click({ point }: { point: InternalPoint }) {
-    last_clicked_point_id = `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+    last_clicked_point_id =
+      `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
   }
 
   function handle_point_double_click({ point }: { point: InternalPoint }) {
-    last_double_clicked_point_id = `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+    last_double_clicked_point_id =
+      `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
   }
 
   const point_event_data: DataSeries[] = [
@@ -587,7 +618,7 @@
     <div class="demo-row">
       <div class="demo-plot" id="color-scale-toggle">
         <h3>Color Scale with Toggle</h3>
-        <div style="display: flex; justify-content: center; gap: 1em;">
+        <div style="display: flex; justify-content: center; gap: 1em">
           {#each [`linear`, `log`] as scale_type (scale_type)}
             <label>
               <input type="radio" value={scale_type} bind:group={color_scale.type} />
@@ -634,7 +665,7 @@
   <section
     class="demo-section"
     id="label-auto-placement-test"
-    style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px;"
+    style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
   >
     <h2>Label Auto Placement Test</h2>
     <label>
@@ -649,7 +680,7 @@
         x_lim={[0, 100]}
         y_lim={[0, 100]}
         markers="points"
-        style="height: 450px; width: 100%;"
+        style="height: 450px; width: 100%"
       />
     {/key}
   </section>
@@ -661,14 +692,17 @@
       point density.
     </p>
     <div
-      style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center; margin-bottom: 1em;"
+      style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center; margin-bottom: 1em"
     >
       {#each [
-        [`top_left`, `Top Left`],
-        [`top_right`, `Top Right`],
-        [`bottom_left`, `Bottom Left`],
-        [`bottom_right`, `Bottom Right`],
-      ] as const as [quadrant, label] (label)}
+          [`top_left`, `Top Left`],
+          [`top_right`, `Top Right`],
+          [`bottom_left`, `Bottom Left`],
+          [`bottom_right`, `Bottom Right`],
+        ] as const as
+        [quadrant, label]
+        (label)
+      }
         <label>
           {label}: {auto_placement_density[quadrant]}
           <input
@@ -676,13 +710,13 @@
             min="0"
             max="100"
             bind:value={auto_placement_density[quadrant]}
-            style="width: 100px; margin-left: 0.5em;"
+            style="width: 100px; margin-left: 0.5em"
           />
         </label>
       {/each}
     </div>
 
-    <div class="demo-plot" style="height: 450px;">
+    <div class="demo-plot" style="height: 450px">
       <ScatterPlot
         series={auto_placement_plot_series}
         x_label="X Position"
@@ -714,11 +748,20 @@
       </div>
       <div id="legend-single-config" class="plot-container">
         <h3>Single Series (Configured Legend) - Legend Expected</h3>
-        <ScatterPlot series={legend_single_series} legend={{ layout: `horizontal` }} markers="points" />
+        <ScatterPlot
+          series={legend_single_series}
+          legend={{ layout: `horizontal` }}
+          markers="points"
+        />
       </div>
       <div id="legend-multi-default" class="plot-container">
         <h3>Multi Series (Default Legend) - Legend Expected</h3>
-        <ScatterPlot series={legend_multi_series} legend={{ draggable: true }} show_controls markers="points" />
+        <ScatterPlot
+          series={legend_multi_series}
+          legend={{ draggable: true }}
+          show_controls
+          markers="points"
+        />
       </div>
       <div id="legend-zero" class="plot-container">
         <h3>Zero Series - No Legend Expected</h3>
@@ -733,7 +776,7 @@
       Test switching between linear and log scales. Values near zero previously caused NaN
       errors during the tweening animation.
     </p>
-    <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em;">
+    <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em">
       {#each [`linear`, `log`] as scale_type (scale_type)}
         <label>
           <input
@@ -746,7 +789,7 @@
         </label>
       {/each}
     </div>
-    <div class="demo-plot" style="height: 400px;">
+    <div class="demo-plot" style="height: 400px">
       <ScatterPlot
         series={[lin_log_transition_data]}
         x_label="X Axis (Linear)"
@@ -761,7 +804,7 @@
   <!-- Added Point Sizing Example -->
   <h2>Point Sizing Test with Spiral Data</h2>
   <div id="point-sizing">
-    <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center;">
+    <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center">
       <label>
         Min Size (px):
         <input
@@ -770,7 +813,7 @@
           min="0.5"
           max="10"
           step="0.5"
-          style="width: 50px;"
+          style="width: 50px"
           aria-label="Min Size (px)"
         />
       </label>
@@ -782,7 +825,7 @@
           min="5"
           max="30"
           step="1"
-          style="width: 50px;"
+          style="width: 50px"
           aria-label="Max Size (px)"
         />
       </label>
@@ -803,7 +846,7 @@
       y_lim={[-15, 15]}
       markers="points"
       {size_scale}
-      style="height: 500px; width: 100%;"
+      style="height: 500px; width: 100%"
     >
       {#snippet tooltip({ x, y, metadata })}
         <strong>Spiral Point</strong><br />
@@ -926,13 +969,13 @@
             {
               ...multi_series_data1,
               y_axis: `y1`,
-              line_style: { stroke: `#ff5555`, stroke_width: 2 }
+              line_style: { stroke: `#ff5555`, stroke_width: 2 },
             },
             {
               ...multi_series_data2,
               y_axis: `y2`,
-              line_style: { stroke: `#5555ff`, stroke_width: 2 }
-            }
+              line_style: { stroke: `#5555ff`, stroke_width: 2 },
+            },
           ]}
           x_label="X Axis"
           y_label="Y1 Axis"
@@ -948,12 +991,12 @@
             {
               ...multi_series_data1,
               y_axis: `y1`,
-              color_values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+              color_values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             },
             {
               ...multi_series_data2,
-              y_axis: `y2`
-            }
+              y_axis: `y2`,
+            },
           ]}
           x_label="X Axis"
           y_label="Y1 Axis"
@@ -968,12 +1011,12 @@
           series={[
             {
               ...multi_series_data1,
-              y_axis: `y1`
+              y_axis: `y1`,
             },
             {
               ...multi_series_data2,
-              y_axis: `y2`
-            }
+              y_axis: `y2`,
+            },
           ]}
           color_axis_labels={{ y1: `#ff0000`, y2: `#00ff00` }}
           x_label="X Axis"
@@ -990,13 +1033,13 @@
             {
               ...multi_series_data1,
               y_axis: `y1`,
-              line_style: { stroke: `#ff5555`, stroke_width: 2 }
+              line_style: { stroke: `#ff5555`, stroke_width: 2 },
             },
             {
               ...multi_series_data2,
               y_axis: `y2`,
-              line_style: { stroke: `#5555ff`, stroke_width: 2 }
-            }
+              line_style: { stroke: `#5555ff`, stroke_width: 2 },
+            },
           ]}
           color_axis_labels={false}
           x_label="X Axis"
@@ -1020,7 +1063,7 @@
         onclick: handle_point_click,
         ondblclick: handle_point_double_click,
       }}
-      style="height: 300px; border: 1px solid #eee;"
+      style="height: 300px; border: 1px solid #eee"
     />
     <p data-testid="last-clicked-point">
       Last Clicked Point: {last_clicked_point_id ?? `none`}

@@ -218,7 +218,9 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
   import { ColorBar } from '$lib'
 </script>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0">
+<div
+  style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0"
+>
   <ColorBar
     title="Large Linear Range (0 to 1e6)"
     range={[0, 1e6]}
