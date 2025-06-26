@@ -24,13 +24,15 @@ repos:
       - id: deno-fmt
         name: Deno format
         entry: deno fmt
-        files: \.(ts|js|svelte)$
+        types_or: [file]
         language: system
+        args: [--config, deno.jsonc]
       - id: deno-lint
         name: Deno lint
         entry: deno lint
-        files: \.(ts|js|svelte)$
+        types_or: [file]
         language: system
+        args: [--config, deno.jsonc, --permit-no-files, --fix]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

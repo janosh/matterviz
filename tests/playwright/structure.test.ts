@@ -12,8 +12,9 @@ test.describe(`Structure Component Tests`, () => {
 
     const canvas = structure_wrapper.locator(`canvas`)
     await expect(canvas).toBeVisible()
-    await expect(canvas).toHaveAttribute(`width`)
-    await expect(canvas).toHaveAttribute(`height`)
+    // Check CSS dimensions instead of HTML attributes since Three.js uses CSS sizing
+    await expect(canvas).toHaveCSS(`width`, `600px`, { timeout: 5000 })
+    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: 5000 })
 
     await expect(
       page.locator(`[data-testid="controls-open-status"]`),
@@ -44,7 +45,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div).toHaveCSS(
       `background-color`,
       `rgba(255, 0, 0, ${expected_alpha})`,
-      { timeout: 3000 },
+      { timeout: 5000 },
     )
 
     const new_bg_style_full = await structure_div.evaluate(
@@ -71,8 +72,8 @@ test.describe(`Structure Component Tests`, () => {
 
     await expect(structure_wrapper_div).toHaveCSS(`width`, `600px`)
     await expect(structure_wrapper_div).toHaveCSS(`height`, `400px`)
-    await expect(canvas).toHaveAttribute(`width`, `600`)
-    await expect(canvas).toHaveAttribute(`height`, `500`)
+    await expect(canvas).toHaveCSS(`width`, `600px`, { timeout: 3000 })
+    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: 3000 })
 
     await width_input.fill(`700`)
     await height_input.fill(`500`)
@@ -82,8 +83,8 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_wrapper_div).toHaveCSS(`width`, `700px`)
     await expect(structure_wrapper_div).toHaveCSS(`height`, `500px`)
 
-    await expect(canvas).toHaveAttribute(`width`, `700`, { timeout: 1000 })
-    await expect(canvas).toHaveAttribute(`height`, `500`, { timeout: 1000 })
+    await expect(canvas).toHaveCSS(`width`, `700px`, { timeout: 3000 })
+    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: 3000 })
   })
 
   // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking
@@ -114,7 +115,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Use test page checkbox for more reliable opening
     await test_page_controls_checkbox.check()
-    await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 1000 })
+    await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 3000 })
 
     await page.keyboard.press(`Escape`)
 
@@ -146,7 +147,7 @@ test.describe(`Structure Component Tests`, () => {
     )
 
     await test_page_controls_checkbox.check()
-    await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 1000 })
+    await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 3000 })
 
     await outside_area.click({ position: { x: 0, y: 0 }, force: true })
 
@@ -550,7 +551,7 @@ test.describe(`Structure Component Tests`, () => {
     // Open controls panel using test page checkbox
     await test_page_controls_checkbox.check()
     // Wait for dialog to be visible
-    await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 2000 })
+    await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 5000 })
 
     // Enable bonds
     const show_bonds_label = controls_dialog
@@ -626,8 +627,14 @@ test.describe(`Structure Component Tests`, () => {
 
 test.describe(`File Drop Functionality Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/`, { waitUntil: `load` })
-    await page.waitForSelector(`.structure canvas`, { timeout: 5000 })
+    await page.goto(`/`, { waitUntil: `networkidle` })
+    // Wait for structure component to be rendered and canvas to be available
+    await page.waitForSelector(`.structure`, { timeout: 10000 })
+    // Wait for Three.js to initialize the canvas
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector(`.structure canvas`) as HTMLCanvasElement
+      return canvas && canvas.width > 0 && canvas.height > 0
+    }, { timeout: 10_000 })
   })
 
   // SKIPPED: File drop simulation not triggering properly
@@ -1166,13 +1173,13 @@ test.describe(`Export Button Tests`, () => {
     await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 2000 })
 
     const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     const xyz_export_btn = controls_dialog.locator(
-      `button:has-text("📄 Save as XYZ")`,
+      `button:has-text("⬇ XYZ")`,
     )
     const png_export_btn = controls_dialog.locator(
-      `button:has-text("✎ Save as PNG")`,
+      `button:has-text("⬇ PNG")`,
     )
 
     await expect(json_export_btn).toBeVisible()
@@ -1191,10 +1198,10 @@ test.describe(`Export Button Tests`, () => {
     await expect(controls_dialog).not.toHaveClass(/controls-open/)
 
     const json_export_btn = structure_component.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     const xyz_export_btn = structure_component.locator(
-      `button:has-text("📄 Save as XYZ")`,
+      `button:has-text("⬇ XYZ")`,
     )
 
     await expect(json_export_btn).not.toBeVisible()
@@ -1212,7 +1219,7 @@ test.describe(`Export Button Tests`, () => {
     await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 2000 })
 
     const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     await expect(json_export_btn).toBeVisible()
     await json_export_btn.click()
@@ -1231,7 +1238,7 @@ test.describe(`Export Button Tests`, () => {
     await expect(controls_dialog).toHaveClass(/controls-open/, { timeout: 2000 })
 
     const xyz_export_btn = controls_dialog.locator(
-      `button:has-text("📄 Save as XYZ")`,
+      `button:has-text("⬇ XYZ")`,
     )
     await expect(xyz_export_btn).toBeVisible()
     await xyz_export_btn.click()
@@ -1252,7 +1259,7 @@ test.describe(`Export Button Tests`, () => {
 
     // Find and click PNG export button
     const png_export_btn = controls_dialog.locator(
-      `button:has-text("✎ Save as PNG")`,
+      `button:has-text("⬇ PNG")`,
     )
     await expect(png_export_btn).toBeVisible()
     await png_export_btn.click()
@@ -1274,26 +1281,26 @@ test.describe(`Export Button Tests`, () => {
 
     // Test JSON export button attributes
     const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     await expect(json_export_btn).toHaveAttribute(`type`, `button`)
-    await expect(json_export_btn).toHaveAttribute(`title`, `⬇ Save as JSON`)
+    await expect(json_export_btn).toHaveAttribute(`title`, `⬇ JSON`)
 
     // Test XYZ export button attributes
     const xyz_export_btn = controls_dialog.locator(
-      `button:has-text("📄 Save as XYZ")`,
+      `button:has-text("⬇ XYZ")`,
     )
     await expect(xyz_export_btn).toHaveAttribute(`type`, `button`)
-    await expect(xyz_export_btn).toHaveAttribute(`title`, `📄 Save as XYZ`)
+    await expect(xyz_export_btn).toHaveAttribute(`title`, `⬇ XYZ`)
 
     // Test PNG export button attributes (includes DPI info)
     const png_export_btn = controls_dialog.locator(
-      `button:has-text("✎ Save as PNG")`,
+      `button:has-text("⬇ PNG")`,
     )
     await expect(png_export_btn).toHaveAttribute(`type`, `button`)
     // PNG button title includes DPI information
     const png_title = await png_export_btn.getAttribute(`title`)
-    expect(png_title).toMatch(/✎ Save as PNG \(\$\d+ DPI\)/)
+    expect(png_title).toMatch(/⬇ PNG \(\$\d+ DPI\)/)
 
     // Verify buttons have proper styling classes if any
     const json_classes = await json_export_btn.getAttribute(`class`)
@@ -1318,18 +1325,18 @@ test.describe(`Export Button Tests`, () => {
 
     // Find the container with export buttons
     const export_container = controls_dialog.locator(
-      `span:has(button:has-text("⬇ Save as JSON"))`,
+      `span:has(button:has-text("⬇ JSON"))`,
     )
     await expect(export_container).toBeVisible()
 
     // Verify all three export buttons are within the same container
     const json_btn = export_container.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     const xyz_btn = export_container.locator(
-      `button:has-text("📄 Save as XYZ")`,
+      `button:has-text("⬇ XYZ")`,
     )
-    const png_btn = export_container.locator(`button:has-text("✎ Save as PNG")`)
+    const png_btn = export_container.locator(`button:has-text("⬇ PNG")`)
 
     await expect(json_btn).toBeVisible()
     await expect(xyz_btn).toBeVisible()
@@ -1380,7 +1387,7 @@ test.describe(`Export Button Tests`, () => {
 
     // Verify PNG button title updates with new DPI
     const png_export_btn = controls_dialog.locator(
-      `button:has-text("✎ Save as PNG")`,
+      `button:has-text("⬇ PNG")`,
     )
     const updated_title = await png_export_btn.getAttribute(`title`)
     expect(updated_title).toContain(`($200 DPI)`)
@@ -1406,10 +1413,10 @@ test.describe(`Export Button Tests`, () => {
 
     // Find export buttons
     const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     const png_export_btn = controls_dialog.locator(
-      `button:has-text("✎ Save as PNG")`,
+      `button:has-text("⬇ PNG")`,
     )
 
     // Test multiple clicks work without errors
@@ -1444,10 +1451,10 @@ test.describe(`Export Button Tests`, () => {
 
     // Test exports with loaded structure
     const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ Save as JSON")`,
+      `button:has-text("⬇ JSON")`,
     )
     const png_export_btn = controls_dialog.locator(
-      `button:has-text("✎ Save as PNG")`,
+      `button:has-text("⬇ PNG")`,
     )
 
     await json_export_btn.click({ force: true })

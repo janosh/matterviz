@@ -42,7 +42,10 @@ test.describe(`Trajectory Component`, () => {
         const filename_button = filename_section.locator(`button`)
         await expect(filename_button).toBeVisible()
         await expect(filename_button).toBeEnabled()
-        await expect(filename_button).toHaveAttribute(`title`, `Click to copy filename`)
+        await expect(filename_button).toHaveAttribute(
+          `title`,
+          `Click to copy filename`,
+        )
         await filename_button.click() // no visual feedback expected
       }
 
@@ -118,11 +121,16 @@ test.describe(`Trajectory Component`, () => {
       await expect(sidebar).toContainText(`Volume`)
 
       // Test component-specific timestamp formatting: sidebar should display formatted dates
-      if (await sidebar.locator(`[title="File system last modified time"]`).isVisible()) {
+      if (
+        await sidebar.locator(`[title="File system last modified time"]`)
+          .isVisible()
+      ) {
         const timestamp_text = await sidebar.locator(
           `[title="File system last modified time"]`,
         ).textContent()
-        expect(timestamp_text).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}.*\d{1,2}:\d{2}/)
+        expect(timestamp_text).toMatch(
+          /\d{1,2}\/\d{1,2}\/\d{4}.*\d{1,2}:\d{2}/,
+        )
       }
     })
 
@@ -170,13 +178,28 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`layout and configuration options`, () => {
-    test(`layout classes are correct`, async ({ page }) => {
-      await expect(
-        page.locator(`#loaded-trajectory .trajectory-viewer`),
-      ).toHaveClass(/horizontal/)
-      await expect(
-        page.locator(`#vertical-layout .trajectory-viewer`),
-      ).toHaveClass(/vertical/)
+    test(`layout classes are correct based on viewport and props`, async ({ page }) => {
+      // Auto layout should be horizontal when container is wide
+      const auto_trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+
+      // Start with container that should trigger horizontal layout (default 500px height from test page)
+      await expect(auto_trajectory).toHaveClass(/horizontal/)
+
+      // Explicit vertical layout should override auto detection
+      const vertical_trajectory = page.locator(
+        `#vertical-layout .trajectory-viewer`,
+      )
+      await expect(vertical_trajectory).toHaveClass(/vertical/)
+
+      // Test auto layout with tall container - make the container tall and narrow
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.height = `900px`
+        el.style.width = `300px`
+        el.style.minHeight = `900px` // Ensure the height is actually applied
+        el.style.minWidth = `300px` // Ensure the width is actually applied
+      })
+
+      await expect(auto_trajectory).toHaveClass(/vertical/, { timeout: 8000 })
     })
 
     test(`step labels work correctly`, async ({ page }) => {
@@ -247,7 +270,9 @@ test.describe(`Trajectory Component`, () => {
     })
 
     test(`custom properties display correctly`, async ({ page }) => {
-      const custom_props = page.locator(`#custom-properties .trajectory-viewer`)
+      const custom_props = page.locator(
+        `#custom-properties .trajectory-viewer`,
+      )
       const legend = custom_props.locator(`.legend`)
 
       await expect(legend).toBeVisible()
@@ -516,7 +541,9 @@ test.describe(`Trajectory Component`, () => {
 
       // Verify that the component has proper keyboard event handling
       const has_keydown_handler = await page.evaluate(() => {
-        const viewer = document.querySelector(`#loaded-trajectory .trajectory-viewer`)
+        const viewer = document.querySelector(
+          `#loaded-trajectory .trajectory-viewer`,
+        )
         // Check if the element is focusable and has keyboard event handling
         return viewer && (
           viewer.getAttribute(`tabindex`) !== null ||
@@ -532,16 +559,186 @@ test.describe(`Trajectory Component`, () => {
     })
   })
 
-  test.describe(`responsive design`, () => {
+  test.describe(`responsive design and viewport-based layout`, () => {
+    test(`auto layout detects viewport aspect ratio and applies correct layout`, async ({ page }) => {
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+
+      // Test wide container (should trigger horizontal layout)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `800px`
+        el.style.height = `400px`
+      })
+      await expect(trajectory).toHaveClass(/horizontal/)
+      await expect(trajectory).not.toHaveClass(/vertical/)
+
+      // Test tall container (should trigger vertical layout)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `400px`
+        el.style.height = `800px`
+      })
+      await expect(trajectory).toHaveClass(/vertical/)
+      await expect(trajectory).not.toHaveClass(/horizontal/)
+
+      // Test square container (implementation may default to horizontal for equal dimensions)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `600px`
+        el.style.height = `600px`
+      })
+      // For equal dimensions, the component can choose either layout - just verify it has one
+      const has_layout_class = await trajectory.evaluate((el) => {
+        return el.classList.contains(`horizontal`) ||
+          el.classList.contains(`vertical`)
+      })
+      expect(has_layout_class).toBe(true)
+    })
+
+    test(`layout prop overrides automatic detection`, async ({ page }) => {
+      // Test that explicit layout props still work
+      const vertical_trajectory = page.locator(
+        `#vertical-layout .trajectory-viewer`,
+      )
+
+      // Set wide container that would normally trigger horizontal
+      await page.locator(`#vertical-layout div`).first().evaluate((el) => {
+        el.style.width = `800px`
+        el.style.height = `400px`
+      })
+
+      // Should still be vertical due to explicit layout="vertical" prop
+      await expect(vertical_trajectory).toHaveClass(/vertical/)
+      await expect(vertical_trajectory).not.toHaveClass(/horizontal/)
+    })
+
+    test(`display mode cycling works correctly with responsive layout`, async ({ page }) => {
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+      const display_button = trajectory.locator(`.display-mode`)
+      const content_area = trajectory.locator(`.content-area`)
+
+      // Test in tall container (vertical layout)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `400px`
+        el.style.height = `700px`
+      })
+      await expect(trajectory).toHaveClass(/vertical/)
+
+      // Test display mode cycling in vertical layout
+      await expect(display_button).toBeVisible()
+
+      // Cycle through display modes
+      await display_button.click() // Should go to structure only
+      await expect(content_area).toHaveClass(/show-structure-only/)
+
+      await display_button.click() // Should go to plot only
+      await expect(content_area).toHaveClass(/show-plot-only/)
+
+      await display_button.click() // Should go back to both
+      await expect(content_area).toHaveClass(/show-both/)
+
+      // Test in wide container (horizontal layout)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `800px`
+        el.style.height = `400px`
+      })
+      await expect(trajectory).toHaveClass(/horizontal/)
+
+      // Display mode cycling should still work
+      await display_button.click()
+      await expect(content_area).toHaveClass(/show-structure-only/)
+    })
+
+    test(`vertical mode single-component display fills full height`, async ({ page }) => {
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+      const content_area = trajectory.locator(`.content-area`)
+      const display_button = trajectory.locator(`.display-mode`)
+
+      // Set tall container to trigger vertical layout
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `400px`
+        el.style.height = `700px`
+      })
+      await expect(trajectory).toHaveClass(/vertical/)
+
+      // Switch to structure only mode
+      await display_button.click() // First click -> structure only
+      await expect(content_area).toHaveClass(/show-structure-only/)
+
+      // Check that content area has correct grid configuration for single component
+      const grid_styles = await content_area.evaluate((el) => {
+        const styles = getComputedStyle(el)
+        return {
+          gridTemplateColumns: styles.gridTemplateColumns,
+          gridTemplateRows: styles.gridTemplateRows,
+          display: styles.display,
+        }
+      })
+
+      expect(grid_styles.display).toBe(`grid`)
+      // Check that we have a single column layout (computed 1fr becomes pixel value)
+      expect(grid_styles.gridTemplateColumns.split(` `)).toHaveLength(1)
+      // Check that we have a single row layout
+      expect(grid_styles.gridTemplateRows.split(` `)).toHaveLength(1)
+
+      // Switch to plot only mode
+      await display_button.click() // Second click -> plot only
+      await expect(content_area).toHaveClass(/show-plot-only/)
+
+      // Check grid configuration again
+      const plot_only_styles = await content_area.evaluate((el) => {
+        const styles = getComputedStyle(el)
+        return {
+          gridTemplateColumns: styles.gridTemplateColumns,
+          gridTemplateRows: styles.gridTemplateRows,
+        }
+      })
+
+      // Should have single column and single row for plot only mode
+      expect(plot_only_styles.gridTemplateColumns.split(` `)).toHaveLength(1)
+      expect(plot_only_styles.gridTemplateRows.split(` `)).toHaveLength(1)
+    })
+
+    test(`mobile viewport forces vertical content layout for small screens`, async ({ page }) => {
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+      const content_area = trajectory.locator(`.content-area`)
+
+      // Test mobile container that's technically wide but small enough to trigger media query
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `700px` // wide but under 768px threshold
+        el.style.height = `350px`
+      })
+      // Also need to make the page narrow to trigger media query
+      await page.setViewportSize({ width: 700, height: 800 })
+
+      // Check that CSS media queries force vertical content layout for small screens
+      const content_styles = await content_area.evaluate((el) => {
+        const styles = getComputedStyle(el)
+        return {
+          gridTemplateColumns: styles.gridTemplateColumns,
+          gridTemplateRows: styles.gridTemplateRows,
+        }
+      })
+
+      // On small screens (width < 768px), content should stack vertically via CSS media queries
+      // The media query forces grid-template-columns: 1fr (single column)
+      expect(content_styles.gridTemplateColumns.split(` `)).toHaveLength(1)
+      // Should have two rows for structure and plot stacked vertically
+      expect(content_styles.gridTemplateRows.split(` `)).toHaveLength(2)
+    })
+
     test(`mobile layout adapts correctly`, async ({ page }) => {
-      const trajectory = page.locator(`#loaded-trajectory .trajectory-viewer`)
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
       const controls = trajectory.locator(`.trajectory-controls`)
 
-      // Test mobile viewport
-      await page.setViewportSize({ width: 375, height: 667 })
+      // Test mobile container with tall aspect ratio
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `300px`
+        el.style.height = `600px`
+      })
       await expect(trajectory).toBeVisible()
       await expect(controls.locator(`.play-button`)).toBeVisible()
       await expect(controls.locator(`.info-button`)).toBeVisible()
+
+      // Should use vertical layout for tall container
+      await expect(trajectory).toHaveClass(/vertical/)
 
       // Sidebar should exist and be properly sized
       const sidebar = trajectory.locator(`.info-sidebar`)
@@ -552,12 +749,60 @@ test.describe(`Trajectory Component`, () => {
     })
 
     test(`desktop layout works correctly`, async ({ page }) => {
-      await page.setViewportSize({ width: 1280, height: 720 })
-      const trajectory = page.locator(`#loaded-trajectory .trajectory-viewer`)
+      // Test wide container (desktop-like aspect ratio)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `900px`
+        el.style.height = `500px`
+      })
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
 
       await expect(trajectory).toBeVisible()
+      await expect(trajectory).toHaveClass(/horizontal/) // Wide container should be horizontal
       await expect(trajectory.locator(`.content-area`)).toBeVisible()
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
+    })
+
+    test(`viewport resize updates layout dynamically`, async ({ page }) => {
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+
+      // Start with wide container
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `800px`
+        el.style.height = `400px`
+      })
+      await expect(trajectory).toHaveClass(/horizontal/)
+
+      // Resize to tall container
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `400px`
+        el.style.height = `800px`
+      })
+      await expect(trajectory).toHaveClass(/vertical/)
+
+      // Resize back to wide
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `800px`
+        el.style.height = `400px`
+      })
+      await expect(trajectory).toHaveClass(/horizontal/)
+    })
+
+    test(`layout responsive behavior with tablet viewports`, async ({ page }) => {
+      const trajectory = page.locator(`#auto-layout .trajectory-viewer`)
+
+      // Test tablet landscape container (should be horizontal)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `750px`
+        el.style.height = `550px`
+      })
+      await expect(trajectory).toHaveClass(/horizontal/)
+
+      // Test tablet portrait container (should be vertical)
+      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+        el.style.width = `550px`
+        el.style.height = `750px`
+      })
+      await expect(trajectory).toHaveClass(/vertical/)
     })
   })
 })
@@ -572,7 +817,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
   test.describe(`debugging unit extraction and legend issues`, () => {
     test(`debug third viewer data and unit grouping`, async ({ page }) => {
       // Navigate to the third trajectory viewer
-      const third_viewer = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const third_viewer = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
         .nth(2)
       const plot = third_viewer.locator(`.scatter`)
       const legend = plot.locator(`.legend`)
@@ -590,7 +837,8 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         const text = await legend_item.textContent()
         const is_visible = await legend_item.evaluate((el) => {
           const styles = globalThis.getComputedStyle(el)
-          return styles.opacity !== `0` && !styles.textDecoration.includes(`line-through`)
+          return styles.opacity !== `0` &&
+            !styles.textDecoration.includes(`line-through`)
         })
 
         // Extract unit from text
@@ -621,7 +869,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`debug legend text and unit extraction`, async ({ page }) => {
-      const first_viewer = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const first_viewer = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
         .first()
       const plot = first_viewer.locator(`.scatter`)
       const legend = plot.locator(`.legend`)
@@ -665,7 +915,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`debug legend click behavior`, async ({ page }) => {
-      const first_viewer = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const first_viewer = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
         .first()
       const plot = first_viewer.locator(`.scatter`)
       const legend = plot.locator(`.legend`)
@@ -682,9 +934,6 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         // Click the legend item
         await first_item.click()
 
-        // Wait a moment for changes
-        await page.waitForTimeout(200)
-
         // Verify the item is still accessible after click
         await expect(first_item).toBeAttached()
       }
@@ -693,7 +942,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`plot legend interactions and unit constraints`, () => {
     test(`first trajectory viewer - basic legend functionality`, async ({ page }) => {
-      const first_viewer = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const first_viewer = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
         .first()
       const plot = first_viewer.locator(`.scatter`)
       const legend = plot.locator(`.legend`)
@@ -715,7 +966,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`second trajectory viewer - legend interactions`, async ({ page }) => {
-      const all_viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const all_viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
       const viewer_count = await all_viewers.count()
 
       // Skip if we don't have at least 2 viewers
@@ -750,7 +1003,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`unit group constraints are enforced strictly`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
       const first_viewer = viewers.first()
 
       // Just check that we can find a trajectory viewer with a legend
@@ -771,7 +1026,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`legend unit constraints maintained throughout interactions`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
       const first_viewer = viewers.first()
 
       // Just check that we can interact with the legend
@@ -795,10 +1052,16 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`y-axis labels match visible series units`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
       const viewer_count = await viewers.count()
 
-      for (let viewer_idx = 0; viewer_idx < Math.min(viewer_count, 3); viewer_idx++) {
+      for (
+        let viewer_idx = 0;
+        viewer_idx < Math.min(viewer_count, 3);
+        viewer_idx++
+      ) {
         const viewer = viewers.nth(viewer_idx)
         const plot = viewer.locator(`.scatter`)
 
@@ -852,7 +1115,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`energy properties get priority for y1 axis`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
 
       for (let viewer_idx = 0; viewer_idx < 3; viewer_idx++) {
         const viewer = viewers.nth(viewer_idx)
@@ -903,7 +1168,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`force and stress properties go to y2 axis`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
 
       for (let viewer_idx = 0; viewer_idx < 3; viewer_idx++) {
         const viewer = viewers.nth(viewer_idx)
@@ -955,7 +1222,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`concatenated axis labels for multiple series with same unit`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
 
       for (let viewer_idx = 0; viewer_idx < 3; viewer_idx++) {
         const viewer = viewers.nth(viewer_idx)
@@ -999,7 +1268,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`Regression Tests for Control Panel Fixes`, () => {
     test(`should handle z-index and control panel interactions correctly`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
       const viewer_count = await viewers.count()
 
       // Test z-index hierarchy when controls are open
@@ -1011,10 +1282,10 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         expect(initial_z).toBe(`auto`)
 
         // Test structure controls button click
-        const struct_button = viewer.locator(`.structure-controls button`).first()
+        const struct_button = viewer.locator(`.structure-controls button`)
+          .first()
         if (await struct_button.count() > 0) {
           await struct_button.click()
-          await page.waitForTimeout(100)
 
           const active_z = await viewer.evaluate((el) => getComputedStyle(el).zIndex)
           expect(parseInt(active_z) || 0).toBeGreaterThan(0)
@@ -1026,7 +1297,6 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         const plot_button = viewer.locator(`.plot-controls button`).first()
         if (await plot_button.count() > 0) {
           await plot_button.click()
-          await page.waitForTimeout(100)
 
           const plot_active_z = await viewer.evaluate((el) => getComputedStyle(el).zIndex)
           expect(parseInt(plot_active_z) || 0).toBeGreaterThan(0)
@@ -1035,7 +1305,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should ensure control panels are clickable and not occluded`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
 
       // Test structure legend clickability
       for (let idx = 0; idx < Math.min(await viewers.count(), 2); idx++) {
@@ -1059,7 +1331,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should update z-index correctly when viewers become active`, async ({ page }) => {
-      const viewer = page.locator(`.dual-trajectory-container .trajectory-viewer`).first()
+      const viewer = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      ).first()
 
       // Check initial state
       const initial_classes = await viewer.getAttribute(`class`)
@@ -1071,7 +1345,6 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       const info_button = viewer.locator(`.info-button`)
       if (await info_button.count() > 0) {
         await info_button.click()
-        await page.waitForTimeout(100)
 
         const active_classes = await viewer.getAttribute(`class`)
         const active_z = await viewer.evaluate((el) => getComputedStyle(el).zIndex)
@@ -1082,7 +1355,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should handle multiple viewers independently`, async ({ page }) => {
-      const viewers = page.locator(`.dual-trajectory-container .trajectory-viewer`)
+      const viewers = page.locator(
+        `.dual-trajectory-container .trajectory-viewer`,
+      )
       const viewer_count = await viewers.count()
 
       if (viewer_count >= 2) {
@@ -1099,7 +1374,6 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         const first_button = first_viewer.locator(`.info-button`)
         if (await first_button.count() > 0) {
           await first_button.click()
-          await page.waitForTimeout(100)
 
           const first_active_z = await first_viewer.evaluate((el) =>
             getComputedStyle(el).zIndex

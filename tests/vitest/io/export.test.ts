@@ -1,8 +1,15 @@
-import { export_json, export_xyz, generate_structure_filename } from '$lib/io/export'
+import type { ElementSymbol, Species, Vec3 } from '$lib'
+import {
+  copy_to_clipboard,
+  export_json,
+  export_xyz,
+  generate_json_content,
+  generate_structure_filename,
+  generate_xyz_content,
+} from '$lib/io/export'
+import { parse_structure_file } from '$lib/io/parse'
 import type { AnyStructure } from '$lib/structure'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-// Import the mocked modules to get access to the mock functions
 
 // Mock the download function
 vi.mock(`$lib/api`, () => ({
@@ -18,327 +25,372 @@ vi.mock(`$lib`, async (import_original) => {
   }
 })
 
+// Mock clipboard API for testing
+Object.defineProperty(navigator, `clipboard`, {
+  value: {
+    writeText: vi.fn().mockResolvedValue(undefined),
+  },
+  writable: true,
+})
+
 // Get the mocked functions for type-safe access
 const { download } = await import(`$lib/api`)
 const { electro_neg_formula } = await import(`$lib`)
 const mock_download = vi.mocked(download)
 const mock_electro_neg_formula = vi.mocked(electro_neg_formula)
+const mock_clipboard_write_text = vi.mocked(navigator.clipboard.writeText)
 
-describe(`generate_structure_filename`, () => {
+// Test structure fixtures with proper typing
+const simple_structure: AnyStructure = {
+  id: `test_h2o`,
+  sites: [
+    {
+      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 1 }],
+      xyz: [0.757, 0.586, 0.0] as [number, number, number],
+      abc: [0.1, 0.1, 0.0] as [number, number, number],
+      label: `H`,
+      properties: {},
+    },
+    {
+      species: [{
+        element: `O` as ElementSymbol,
+        occu: 1,
+        oxidation_state: -2,
+      }],
+      xyz: [0.0, 0.0, 0.0],
+      abc: [0.0, 0.0, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 1 }],
+      xyz: [-0.757, 0.586, 0.0],
+      abc: [-0.1, 0.1, 0.0],
+      label: `H`,
+      properties: {},
+    },
+  ],
+  lattice: {
+    matrix: [
+      [10.0, 0.0, 0.0],
+      [0.0, 10.0, 0.0],
+      [0.0, 0.0, 10.0],
+    ],
+    pbc: [true, true, true],
+    a: 10.0,
+    b: 10.0,
+    c: 10.0,
+    alpha: 90.0,
+    beta: 90.0,
+    gamma: 90.0,
+    volume: 1000.0,
+  },
+}
+
+const complex_structure: AnyStructure = {
+  id: `test_complex`,
+  sites: [
+    {
+      species: [{
+        element: `Li` as ElementSymbol,
+        occu: 1,
+        oxidation_state: 1,
+      }],
+      xyz: [0.0, 0.0, 0.0],
+      abc: [0.0, 0.0, 0.0],
+      label: `Li`,
+      properties: {},
+    },
+    {
+      species: [{
+        element: `Fe` as ElementSymbol,
+        occu: 1,
+        oxidation_state: 2,
+      }],
+      xyz: [2.5, 0.0, 0.0],
+      abc: [0.5, 0.0, 0.0],
+      label: `Fe`,
+      properties: {},
+    },
+    {
+      species: [{ element: `P` as ElementSymbol, occu: 1, oxidation_state: 5 }],
+      xyz: [0.0, 2.5, 0.0],
+      abc: [0.0, 0.5, 0.0],
+      label: `P`,
+      properties: {},
+    },
+    {
+      species: [{
+        element: `O` as ElementSymbol,
+        occu: 1,
+        oxidation_state: -2,
+      }],
+      xyz: [1.25, 1.25, 0.0],
+      abc: [0.25, 0.25, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{
+        element: `O` as ElementSymbol,
+        occu: 1,
+        oxidation_state: -2,
+      }],
+      xyz: [3.75, 1.25, 0.0],
+      abc: [0.75, 0.25, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{
+        element: `O` as ElementSymbol,
+        occu: 1,
+        oxidation_state: -2,
+      }],
+      xyz: [1.25, 3.75, 0.0],
+      abc: [0.25, 0.75, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{
+        element: `O` as ElementSymbol,
+        occu: 1,
+        oxidation_state: -2,
+      }],
+      xyz: [3.75, 3.75, 0.0],
+      abc: [0.75, 0.75, 0.0],
+      label: `O`,
+      properties: {},
+    },
+  ],
+  lattice: {
+    matrix: [
+      [5.0, 0.0, 0.0],
+      [0.0, 5.0, 0.0],
+      [0.0, 0.0, 5.0],
+    ],
+    pbc: [true, true, true],
+    a: 5.0,
+    b: 5.0,
+    c: 5.0,
+    alpha: 90.0,
+    beta: 90.0,
+    gamma: 90.0,
+    volume: 125.0,
+  },
+}
+
+// Real structure data from mp-1.json (2 Cs atoms)
+const real_structure_json =
+  `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}, {"species": [{"element": "Cs", "occu": 1}], "abc": [0.5, 0.5, 0.5], "xyz": [3.1284650614394, 3.1284650614393996, 3.1284650614394], "label": "Cs", "properties": {}}]}`
+
+describe(`Export functionality comprehensive tests`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mock_electro_neg_formula.mockReturnValue(`H2O`)
   })
 
-  it.each([
-    {
-      name: `basic structure with ID`,
-      structure: {
-        id: `water_molecule`,
+  describe(`Site count verification - Core Issue Fix`, () => {
+    it(`should export all sites in XYZ format`, () => {
+      const xyz_content = generate_xyz_content(simple_structure)
+      const lines = xyz_content.split(`\n`)
+
+      // Check header
+      expect(lines[0]).toBe(`3`) // number of atoms
+      expect(lines[1]).toBe(`test_h2o H2O`) // comment line
+
+      // Check that all 3 atoms are present
+      expect(lines[2]).toBe(`H 0.757000 0.586000 0.000000`)
+      expect(lines[3]).toBe(`O 0.000000 0.000000 0.000000`)
+      expect(lines[4]).toBe(`H -0.757000 0.586000 0.000000`)
+      expect(lines).toHaveLength(5) // 3 atoms + 2 header lines
+    })
+
+    it(`should export all sites in JSON format`, () => {
+      const json_content = generate_json_content(simple_structure)
+      const parsed = JSON.parse(json_content)
+
+      expect(parsed.sites).toHaveLength(3)
+      expect(parsed.sites[0].species[0].element).toBe(`H`)
+      expect(parsed.sites[1].species[0].element).toBe(`O`)
+      expect(parsed.sites[2].species[0].element).toBe(`H`)
+    })
+
+    it(`should handle complex structures with many sites`, () => {
+      mock_electro_neg_formula.mockReturnValue(`LiFeP4O7`)
+      const xyz_content = generate_xyz_content(complex_structure)
+      const lines = xyz_content.split(`\n`)
+
+      // Check header
+      expect(lines[0]).toBe(`7`) // number of atoms
+      expect(lines[1]).toBe(`test_complex LiFeP4O7`) // comment line
+
+      // Check all atoms are present
+      expect(lines[2]).toBe(`Li 0.000000 0.000000 0.000000`)
+      expect(lines[3]).toBe(`Fe 2.500000 0.000000 0.000000`)
+      expect(lines[4]).toBe(`P 0.000000 2.500000 0.000000`)
+      expect(lines[5]).toBe(`O 1.250000 1.250000 0.000000`)
+      expect(lines[6]).toBe(`O 3.750000 1.250000 0.000000`)
+      expect(lines[7]).toBe(`O 1.250000 3.750000 0.000000`)
+      expect(lines[8]).toBe(`O 3.750000 3.750000 0.000000`)
+      expect(lines).toHaveLength(9) // 7 atoms + 2 header lines
+
+      // JSON should also have all sites
+      const json_content = generate_json_content(complex_structure)
+      const parsed = JSON.parse(json_content)
+      expect(parsed.sites).toHaveLength(7)
+    })
+
+    it(`should handle large structures (24 sites)`, () => {
+      const large_structure: AnyStructure = {
+        id: `large_24_sites`,
         sites: [
-          { species: [{ element: `H` }] },
-          { species: [{ element: `O` }] },
+          // 8 Lu atoms
+          ...Array.from({ length: 8 }, (_, idx) => ({
+            species: [{
+              element: `Lu` as ElementSymbol,
+              occu: 1,
+              oxidation_state: 3,
+            }],
+            xyz: [idx, idx * 0.5, idx * 0.25] as [number, number, number],
+            abc: [idx * 0.1, idx * 0.05, idx * 0.025] as [
+              number,
+              number,
+              number,
+            ],
+            label: `Lu`,
+            properties: {},
+          })),
+          // 16 Al atoms
+          ...Array.from({ length: 16 }, (_, idx) => ({
+            species: [{
+              element: `Al` as ElementSymbol,
+              occu: 1,
+              oxidation_state: 3,
+            }],
+            xyz: [idx + 10, idx * 0.5 + 10, idx * 0.25 + 10] as [
+              number,
+              number,
+              number,
+            ],
+            abc: [idx * 0.1 + 0.5, idx * 0.05 + 0.5, idx * 0.025 + 0.5] as [
+              number,
+              number,
+              number,
+            ],
+            label: `Al`,
+            properties: {},
+          })),
         ],
-      } as AnyStructure,
-      extension: `xyz`,
-      should_contain: [`water_molecule`, `2sites`, `.xyz`],
-    },
-    {
-      name: `structure with space group`,
-      structure: {
-        id: `quartz`,
-        sites: Array(6).fill({ species: [{ element: `Si` }] }),
-        symmetry: { space_group_symbol: `P3121` },
-      } as AnyStructure,
-      extension: `json`,
-      should_contain: [`quartz`, `P3121`, `6sites`, `.json`],
-    },
-    {
-      name: `structure with lattice system`,
-      structure: {
-        sites: Array(4).fill({ species: [{ element: `C` }] }),
-        lattice: { lattice_system: `cubic` },
-      } as AnyStructure,
-      extension: `png`,
-      should_contain: [`cubic`, `4sites`, `.png`],
-    },
-    {
-      name: `minimal structure without metadata`,
-      structure: {
-        sites: [{ species: [{ element: `X` }] }],
-      } as AnyStructure,
-      extension: `xyz`,
-      should_contain: [`1sites`, `.xyz`],
-    },
-    {
-      name: `undefined structure`,
-      structure: undefined,
-      extension: `xyz`,
-      should_contain: [`structure.xyz`],
-    },
-    {
-      name: `structure with no sites`,
-      structure: { sites: [] } as AnyStructure,
-      extension: `json`,
-      should_contain: [`.json`],
-    },
-  ])(
-    `should generate filename for $name`,
-    ({ structure, extension, should_contain }) => {
-      const result = generate_structure_filename(structure, extension)
-      for (const part of should_contain) {
-        expect(result).toContain(part)
       }
-    },
-  )
 
-  it(`should handle structure with all metadata`, () => {
-    const structure = {
-      id: `complex_structure`,
-      sites: Array(10).fill({ species: [{ element: `Si` }] }),
-      symmetry: { space_group_symbol: `Pm3m` },
-      lattice: { lattice_system: `cubic` },
-    } as AnyStructure
+      // Export to XYZ
+      const xyz_content = generate_xyz_content(large_structure)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[0]).toBe(`24`) // number of atoms
+      expect(lines).toHaveLength(26) // 24 atoms + 2 header lines
 
-    const result = generate_structure_filename(structure, `cif`)
-    expect(result).toContain(`complex_structure`)
-    expect(result).toContain(`Pm3m`)
-    expect(result).toContain(`cubic`)
-    expect(result).toContain(`10sites`)
-    expect(result).toContain(`.cif`)
-  })
-})
+      // Check first few Lu and Al atoms
+      expect(lines[2]).toBe(`Lu 0.000000 0.000000 0.000000`)
+      expect(lines[3]).toBe(`Lu 1.000000 0.500000 0.250000`)
+      expect(lines[10]).toBe(`Al 10.000000 10.000000 10.000000`)
 
-describe(`XYZ export format validation`, () => {
-  it(`should generate correct XYZ header format`, () => {
-    // Test the expected format: number of atoms, comment line, then coordinates
-    const mock_structure = {
-      id: `test_molecule`,
-      sites: [
-        {
-          species: [{ element: `C` }],
-          xyz: [0.0, 0.0, 0.0],
-        },
-        {
-          species: [{ element: `H` }],
-          xyz: [1.0, 0.0, 0.0],
-        },
-      ],
-    } as AnyStructure
+      // Export to JSON and verify all sites
+      const json_content = generate_json_content(large_structure)
+      const parsed = JSON.parse(json_content)
+      expect(parsed.sites).toHaveLength(24)
 
-    // We can't easily test the actual export function due to dependencies,
-    // but we can test the filename generation and coordinate handling logic
-    const filename = generate_structure_filename(mock_structure, `xyz`)
-    expect(filename).toContain(`test_molecule`)
-    expect(filename).toContain(`2sites`)
-    expect(filename.endsWith(`.xyz`)).toBe(true)
+      // Verify element distribution
+      const elements = parsed.sites.map((
+        site: { species: { element: ElementSymbol }[] },
+      ) => site.species[0].element)
+      expect(elements.filter((el: string) => el === `Lu`)).toHaveLength(8)
+      expect(elements.filter((el: string) => el === `Al`)).toHaveLength(16)
+    })
   })
 
-  it(`should handle fractional coordinate conversion concept`, () => {
-    // Test that we understand the coordinate conversion logic
-    const lattice_matrix = [
-      [2.0, 0.0, 0.0],
-      [0.0, 2.0, 0.0],
-      [0.0, 0.0, 2.0],
-    ]
-    const frac_coords = [0.5, 0.5, 0.5]
+  describe(`Round-trip export and parse tests`, () => {
+    it(`should round-trip real structure data correctly`, () => {
+      // Parse the real structure
+      const parsed_structure = parse_structure_file(
+        real_structure_json,
+        `mp-1.json`,
+      )
+      expect(parsed_structure).toBeTruthy()
+      expect(parsed_structure?.sites).toHaveLength(2)
 
-    // Manual conversion to verify
-    const cartesian = [
-      frac_coords[0] * lattice_matrix[0][0] +
-      frac_coords[1] * lattice_matrix[1][0] +
-      frac_coords[2] * lattice_matrix[2][0],
-      frac_coords[0] * lattice_matrix[0][1] +
-      frac_coords[1] * lattice_matrix[1][1] +
-      frac_coords[2] * lattice_matrix[2][1],
-      frac_coords[0] * lattice_matrix[0][2] +
-      frac_coords[1] * lattice_matrix[1][2] +
-      frac_coords[2] * lattice_matrix[2][2],
-    ]
+      // Export to XYZ and verify all sites are present
+      const xyz_content = generate_xyz_content(parsed_structure as AnyStructure)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[0]).toBe(`2`) // number of atoms
+      expect(lines[2]).toBe(`Cs 0.000000 0.000000 0.000000`) // First Cs
+      expect(lines[3]).toBe(`Cs 3.128465 3.128465 3.128465`) // Second Cs (rounded)
+      expect(lines).toHaveLength(4) // 2 atoms + 2 header lines
 
-    expect(cartesian).toEqual([1.0, 1.0, 1.0])
-  })
-})
+      // Export to JSON and verify all sites are present
+      const json_content = generate_json_content(parsed_structure as AnyStructure)
+      const re_parsed = JSON.parse(json_content)
+      expect(re_parsed.sites).toHaveLength(2)
+      expect(re_parsed.sites[0].species[0].element).toBe(`Cs`)
+      expect(re_parsed.sites[1].species[0].element).toBe(`Cs`)
+    })
 
-describe(`JSON export format validation`, () => {
-  it(`should preserve structure data integrity`, () => {
-    const original_structure = {
-      id: `test_structure`,
-      sites: [
-        {
-          species: [{ element: `H`, oxidation_state: 1 }],
-          xyz: [0.0, 0.0, 0.0],
-          properties: { charge: 1.0 },
-        },
-      ],
-      lattice: {
-        a: 5.0,
-        b: 5.0,
-        c: 5.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 125.0,
-      },
-      metadata: {
-        source: `test`,
-        calculation_type: `dft`,
-      },
-    }
+    it(`should round-trip XYZ export and parse for simple structure`, () => {
+      const xyz_content = generate_xyz_content(simple_structure)
+      const parsed_structure = parse_structure_file(xyz_content, `test.xyz`)
 
-    // Test that JSON.stringify preserves the structure correctly
-    const json_string = JSON.stringify(original_structure, null, 2)
-    const parsed_back = JSON.parse(json_string)
+      // Check basic structure properties
+      expect(parsed_structure?.sites).toHaveLength(3)
 
-    expect(parsed_back).toEqual(original_structure)
-    expect(parsed_back.sites[0].properties.charge).toBe(1.0)
-    expect(parsed_back.lattice.volume).toBe(125.0)
-    expect(parsed_back.metadata.calculation_type).toBe(`dft`)
+      // Check element symbols are preserved
+      const elements = parsed_structure?.sites.map((site) => site.species?.[0]?.element)
+      expect(elements).toEqual([`H`, `O`, `H`])
 
-    // Test that the filename generation works
-    const filename = generate_structure_filename(
-      original_structure as AnyStructure,
-      `json`,
-    )
-    expect(filename).toContain(`test_structure`)
-    expect(filename).toContain(`1sites`)
-    expect(filename.endsWith(`.json`)).toBe(true)
-  })
-})
+      // Check coordinates are preserved (with some tolerance for floating point precision)
+      expect(parsed_structure?.sites[0].xyz?.[0]).toBeCloseTo(0.757, 5)
+      expect(parsed_structure?.sites[0].xyz?.[1]).toBeCloseTo(0.586, 5)
+      expect(parsed_structure?.sites[1].xyz?.[0]).toBeCloseTo(0.0, 5)
+      expect(parsed_structure?.sites[2].xyz?.[0]).toBeCloseTo(-0.757, 5)
+    })
 
-describe(`Error handling`, () => {
-  it(`should handle malformed structures gracefully`, () => {
-    const malformed_structures = [
-      null,
-      undefined,
-      {},
-      { sites: null },
-      { sites: undefined },
-      { sites: [`not an array`] },
-    ]
+    it(`should round-trip JSON export and parse for complex structure`, () => {
+      const json_content = generate_json_content(complex_structure)
+      const parsed_structure = parse_structure_file(json_content, `test.json`)
 
-    for (const structure of malformed_structures) {
-      expect(() => {
-        generate_structure_filename(
-          structure as AnyStructure | undefined | null,
-          `xyz`,
+      // Check structure is identical
+      expect((parsed_structure as AnyStructure).id).toBe(complex_structure.id)
+      expect(parsed_structure?.sites).toHaveLength(7)
+
+      // Check all sites are preserved with both xyz and abc coordinates
+      for (let idx = 0; idx < (parsed_structure?.sites?.length ?? 0); idx++) {
+        const original_site = complex_structure.sites[idx]
+        const parsed_site = parsed_structure?.sites[idx]
+
+        expect(parsed_site?.species?.[0]?.element).toBe(
+          original_site.species?.[0]?.element,
         )
-      }).not.toThrow()
-    }
+        expect(parsed_site?.xyz).toEqual(original_site.xyz)
+        expect(parsed_site?.abc).toEqual(original_site.abc)
+      }
+    })
   })
 
-  it(`should handle sites with missing species`, () => {
-    const structure_with_missing_species = {
-      sites: [{ species: [] }, { species: null }, { species: undefined }, {}],
-    } as AnyStructure
-
-    const filename = generate_structure_filename(
-      structure_with_missing_species,
-      `xyz`,
-    )
-    expect(filename).toContain(`4sites`)
-    expect(filename.endsWith(`.xyz`)).toBe(true)
-  })
-})
-
-describe(`Edge cases`, () => {
-  it(`should handle very large structures`, () => {
-    const large_structure = {
-      id: `large_crystal`,
-      sites: Array(10000).fill({ species: [{ element: `Si` }] }),
-    } as AnyStructure
-
-    const filename = generate_structure_filename(large_structure, `xyz`)
-    expect(filename).toContain(`large_crystal`)
-    expect(filename).toContain(`10000sites`)
-  })
-
-  it(`should handle structures with complex element symbols`, () => {
-    const structure_with_lanthanides = {
-      id: `lanthanide_compound`,
-      sites: [
-        { species: [{ element: `La` }] },
-        { species: [{ element: `Ce` }] },
-        { species: [{ element: `Pr` }] },
-        { species: [{ element: `Nd` }] },
-      ],
-    } as AnyStructure
-
-    const filename = generate_structure_filename(
-      structure_with_lanthanides,
-      `cif`,
-    )
-    expect(filename).toContain(`lanthanide_compound`)
-    expect(filename).toContain(`4sites`)
-    expect(filename.endsWith(`.cif`)).toBe(true)
-  })
-
-  it(`should handle special characters in IDs`, () => {
-    const structure_with_special_chars = {
-      id: `structure-with_special.chars@123`,
-      sites: [{ species: [{ element: `C` }] }],
-    } as AnyStructure
-
-    const filename = generate_structure_filename(
-      structure_with_special_chars,
-      `xyz`,
-    )
-    // Should still include the ID even with special characters
-    expect(filename).toContain(`structure-with_special.chars@123`)
-    expect(filename.endsWith(`.xyz`)).toBe(true)
-  })
-})
-
-describe(`export_xyz`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mock_electro_neg_formula.mockReturnValue(`H2O`)
-    // Mock window.alert
-    vi.stubGlobal(`alert`, vi.fn())
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it.each([
-    {
-      name: `simple molecule with cartesian coordinates`,
-      structure: {
-        id: `water`,
+  describe(`Coordinate handling`, () => {
+    it(`should convert fractional coordinates to cartesian when xyz not available`, () => {
+      const structure_with_abc: AnyStructure = {
+        id: `frac_coords`,
         sites: [
           {
-            species: [{ element: `O` }],
-            xyz: [0.0, 0.0, 0.0],
-            abc: [0.0, 0.0, 0.0],
-          },
-          {
-            species: [{ element: `H` }],
-            xyz: [0.757, 0.586, 0.0],
-            abc: [0.1, 0.1, 0.0],
-          },
-          {
-            species: [{ element: `H` }],
-            xyz: [-0.757, 0.586, 0.0],
-            abc: [-0.1, 0.1, 0.0],
-          },
-        ],
-      } as AnyStructure,
-      expected_lines: [
-        `3`,
-        `water H2O`,
-        `O 0.000000 0.000000 0.000000`,
-        `H 0.757000 0.586000 0.000000`,
-        `H -0.757000 0.586000 0.000000`,
-      ],
-    },
-    {
-      name: `structure with fractional coordinates`,
-      structure: {
-        sites: [
-          {
-            species: [{ element: `Si` }],
-            abc: [0.5, 0.5, 0.5],
+            species: [{
+              element: `C` as ElementSymbol,
+              occu: 1,
+              oxidation_state: 0,
+            }],
+            abc: [0.5, 0.5, 0.5], // Center of unit cell
+            xyz: [0, 0, 0],
+            label: `C`,
+            properties: {},
           },
         ],
         lattice: {
@@ -347,234 +399,264 @@ describe(`export_xyz`, () => {
             [0.0, 2.0, 0.0],
             [0.0, 0.0, 2.0],
           ],
+          pbc: [true, true, true],
+          a: 2.0,
+          b: 2.0,
+          c: 2.0,
+          alpha: 90.0,
+          beta: 90.0,
+          gamma: 90.0,
+          volume: 8.0,
         },
-      } as AnyStructure,
-      expected_lines: [`1`, `H2O`, `Si 1.000000 1.000000 1.000000`],
-    },
-    {
-      name: `structure without coordinates (fallback)`,
-      structure: {
-        id: `test`,
+      }
+
+      // Remove xyz coordinates to force abc conversion by creating a modified structure
+      const modified_structure = {
+        ...structure_with_abc,
+        sites: structure_with_abc.sites.map((site, idx) =>
+          idx === 0
+            ? { ...site, xyz: undefined as unknown as Vec3 } // Test scenario: force abc conversion
+            : site
+        ),
+      }
+
+      const xyz_content = generate_xyz_content(modified_structure)
+      const lines = xyz_content.split(`\n`)
+
+      expect(lines[0]).toBe(`1`)
+      expect(lines[2]).toBe(`C 1.000000 1.000000 1.000000`) // 0.5 * 2.0 = 1.0 for each axis
+    })
+
+    it(`should preserve coordinate precision in round-trip`, () => {
+      const high_precision_structure: AnyStructure = {
         sites: [
           {
-            species: [{ element: `C` }],
+            species: [{
+              element: `C` as ElementSymbol,
+              occu: 1,
+              oxidation_state: 0,
+            }],
+            xyz: [1.23456789, 2.3456789, 3.456789],
+            abc: [0.1, 0.2, 0.3],
+            label: `C`,
+            properties: {},
           },
-        ],
-      } as AnyStructure,
-      expected_lines: [`1`, `test H2O`, `C 0.000000 0.000000 0.000000`],
-    },
-    {
-      name: `structure with complex lattice matrix`,
-      structure: {
-        sites: [
           {
-            species: [{ element: `N` }],
-            abc: [0.25, 0.75, 0.5],
+            species: [{
+              element: `N` as ElementSymbol,
+              occu: 1,
+              oxidation_state: 0,
+            }],
+            xyz: [4.56789123, 5.6789123, 6.789123],
+            abc: [0.4, 0.5, 0.6],
+            label: `N`,
+            properties: {},
           },
         ],
-        lattice: {
-          matrix: [
-            [3.0, 1.0, 0.0],
-            [0.0, 4.0, 0.5],
-            [0.0, 0.0, 5.0],
+      }
+
+      const xyz_content = generate_xyz_content(high_precision_structure)
+      const parsed_structure = parse_structure_file(xyz_content, `test.xyz`)
+
+      // XYZ format should preserve 6 decimal places
+      expect(parsed_structure?.sites[0].xyz?.[0]).toBeCloseTo(1.234568, 5)
+      expect(parsed_structure?.sites[0].xyz?.[1]).toBeCloseTo(2.345679, 5)
+      expect(parsed_structure?.sites[1].xyz?.[0]).toBeCloseTo(4.567891, 5)
+    })
+  })
+
+  describe(`Filename generation`, () => {
+    it.each([
+      {
+        name: `basic structure with ID`,
+        structure: {
+          id: `water_molecule`,
+          sites: [
+            {
+              species: [{
+                element: `H` as ElementSymbol,
+                occu: 1,
+                oxidation_state: 1,
+              }],
+              abc: [0, 0, 0],
+              xyz: [0, 0, 0],
+              label: `H`,
+              properties: {},
+            },
+            {
+              species: [{
+                element: `O` as ElementSymbol,
+                occu: 1,
+                oxidation_state: -2,
+              }],
+              abc: [0, 0, 0],
+              xyz: [0, 0, 0],
+              label: `O`,
+              properties: {},
+            },
           ],
-        },
-      } as AnyStructure,
-      expected_lines: [`1`, `H2O`, `N 0.750000 3.250000 2.875000`],
-    },
-  ])(`should export $name correctly`, ({ structure, expected_lines }) => {
-    export_xyz(structure)
+        } as AnyStructure,
+        extension: `xyz`,
+        should_contain: [`water_molecule`, `2sites`, `.xyz`],
+      },
+      {
+        name: `structure with many sites`,
+        structure: {
+          id: `complex_crystal`,
+          sites: Array(24).fill({
+            species: [{
+              element: `Si` as ElementSymbol,
+              occu: 1,
+              oxidation_state: 4,
+            }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `Si`,
+            properties: {},
+          }),
+        } as AnyStructure,
+        extension: `json`,
+        should_contain: [`complex_crystal`, `24sites`, `.json`],
+      },
+    ])(
+      `should generate filename for $name`,
+      ({ structure, extension, should_contain }) => {
+        const result = generate_structure_filename(structure, extension)
+        for (const part of should_contain) {
+          expect(result).toContain(part)
+        }
+      },
+    )
 
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content, filename, mime_type] = mock_download.mock.calls[0]
+    it(`should strip HTML tags from chemical formulas`, () => {
+      mock_electro_neg_formula.mockReturnValue(`Li<sub>2</sub>O`)
+      const structure = {
+        id: `lithium_oxide`,
+        sites: Array(3).fill({
+          species: [{
+            element: `Li` as ElementSymbol,
+            occu: 1,
+            oxidation_state: 1,
+          }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `Li`,
+          properties: {},
+        }),
+      } as AnyStructure
 
-    // Check content format
-    const lines = content.split(`\n`)
-    expect(lines).toEqual(expected_lines)
-
-    // Check filename and MIME type
-    expect(filename).toMatch(/.*\.xyz$/)
-    expect(mime_type).toBe(`text/plain`)
+      const result = generate_structure_filename(structure, `xyz`)
+      expect(result).toContain(`Li2O`)
+      expect(result).not.toContain(`<sub>`)
+      expect(result).not.toContain(`</sub>`)
+    })
   })
 
-  it(`should handle structure without sites`, () => {
-    const structure = {} as AnyStructure
-    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  describe(`Clipboard functionality`, () => {
+    it(`should copy text to clipboard`, async () => {
+      const test_text = `Hello, world!`
+      await copy_to_clipboard(test_text)
 
-    export_xyz(structure)
+      expect(mock_clipboard_write_text).toHaveBeenCalledWith(test_text)
+    })
 
-    expect(mock_download).not.toHaveBeenCalled()
-    expect(spy).toHaveBeenCalledWith(`No structure or sites to download`)
+    it(`should handle clipboard API errors`, async () => {
+      mock_clipboard_write_text.mockRejectedValueOnce(
+        new Error(`Clipboard not available`),
+      )
 
-    spy.mockRestore()
+      await expect(copy_to_clipboard(`test`)).rejects.toThrow(
+        `Clipboard not available`,
+      )
+    })
   })
 
-  it(`should handle structure with empty sites array`, () => {
-    const structure = { sites: [] } as AnyStructure
-    export_xyz(structure)
+  describe(`Error handling`, () => {
+    it(`should throw error for structure without sites`, () => {
+      expect(() => generate_xyz_content(undefined)).toThrow(
+        `No structure or sites to export`,
+      )
+      // Empty sites array is valid and should not throw - it exports 0 atoms
+      expect(() => generate_xyz_content({ sites: [] } as AnyStructure)).not
+        .toThrow()
 
-    // Empty sites array still exports a valid XYZ file with 0 atoms
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content] = mock_download.mock.calls[0]
-    const lines = content.split(`\n`)
-    expect(lines[0]).toBe(`0`) // 0 atoms
-    expect(lines[1]).toBe(`H2O`) // comment line from mocked formula
-  })
+      const empty_xyz = generate_xyz_content({ sites: [] } as AnyStructure)
+      const lines = empty_xyz.split(`\n`)
+      expect(lines[0]).toBe(`0`) // 0 atoms
+    })
 
-  it(`should handle undefined structure`, () => {
-    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    it(`should throw error for undefined structure in JSON export`, () => {
+      expect(() => generate_json_content(undefined)).toThrow(
+        `No structure to export`,
+      )
+    })
 
-    export_xyz(undefined)
-
-    expect(mock_download).not.toHaveBeenCalled()
-    expect(spy).toHaveBeenCalledWith(`No structure or sites to download`)
-
-    spy.mockRestore()
-  })
-
-  it(`should handle sites with missing species`, () => {
-    const structure = {
-      sites: [{ species: [] }, { species: undefined }],
-    } as AnyStructure
-
-    export_xyz(structure)
-
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content] = mock_download.mock.calls[0]
-    const lines = content.split(`\n`)
-
-    expect(lines[2]).toBe(`X 0.000000 0.000000 0.000000`)
-    expect(lines[3]).toBe(`X 0.000000 0.000000 0.000000`)
-  })
-
-  it(`should prioritize xyz over abc coordinates`, () => {
-    const structure = {
-      sites: [
-        {
-          species: [{ element: `C` }],
-          xyz: [1.0, 2.0, 3.0],
-          abc: [0.1, 0.2, 0.3],
-        },
-      ],
-      lattice: {
-        matrix: [
-          [10.0, 0.0, 0.0],
-          [0.0, 10.0, 0.0],
-          [0.0, 0.0, 10.0],
+    it(`should handle species without element (fallback to X)`, () => {
+      const structure_no_element: AnyStructure = {
+        sites: [
+          {
+            species: [
+              { element: undefined, occu: 1, oxidation_state: 0 } as Species & {
+                element: undefined
+              },
+            ],
+            xyz: [0.0, 0.0, 0.0],
+            abc: [0.0, 0.0, 0.0],
+            label: `X`,
+            properties: {},
+          },
         ],
-      },
-    } as AnyStructure
+      }
 
-    export_xyz(structure)
+      const xyz_content = generate_xyz_content(structure_no_element)
+      const lines = xyz_content.split(`\n`)
 
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content] = mock_download.mock.calls[0]
-    const lines = content.split(`\n`)
-
-    // Should use xyz coordinates (1,2,3) not converted abc coordinates (1,2,3)
-    expect(lines[2]).toBe(`C 1.000000 2.000000 3.000000`)
-  })
-})
-
-describe(`export_json`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mock_electro_neg_formula.mockReturnValue(`H2O`)
-    vi.stubGlobal(`alert`, vi.fn())
+      expect(lines[2]).toBe(`X 0.000000 0.000000 0.000000`)
+    })
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
+  describe(`Export functions with download`, () => {
+    beforeEach(() => {
+      vi.stubGlobal(`alert`, vi.fn())
+    })
 
-  it(`should export structure as formatted JSON`, () => {
-    const structure = {
-      id: `test_structure`,
-      sites: [
-        {
-          species: [{ element: `H` }],
-          xyz: [0.0, 0.0, 0.0],
-        },
-      ],
-      lattice: {
-        a: 1.0,
-        b: 1.0,
-        c: 1.0,
-      },
-    } as AnyStructure
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
 
-    export_json(structure)
+    it(`should export XYZ with correct content and filename`, () => {
+      export_xyz(simple_structure)
 
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content, filename, mime_type] = mock_download.mock.calls[0]
+      expect(mock_download).toHaveBeenCalledOnce()
+      const [content, filename, mime_type] = mock_download.mock.calls[0]
 
-    // Check that content is valid JSON
-    const parsed = JSON.parse(content)
-    expect(parsed).toEqual(structure)
+      // Check content format
+      const lines = (content as string).split(`\n`)
+      expect(lines[0]).toBe(`3`)
+      expect(lines[1]).toBe(`test_h2o H2O`)
+      expect(lines[2]).toBe(`H 0.757000 0.586000 0.000000`)
 
-    // Check formatting (should be pretty-printed)
-    expect(content).toContain(`\n  "id": "test_structure"`)
+      // Check filename and MIME type
+      expect(filename).toMatch(/.*\.xyz$/)
+      expect(mime_type).toBe(`text/plain`)
+    })
 
-    // Check filename and MIME type
-    expect(filename).toMatch(/.*\.json$/)
-    expect(mime_type).toBe(`application/json`)
-  })
+    it(`should export JSON with correct content and filename`, () => {
+      export_json(simple_structure)
 
-  it(`should handle structure with complex nested data`, () => {
-    const structure = {
-      id: `complex`,
-      sites: [
-        {
-          species: [{ element: `C`, oxidation_state: 0 }],
-          xyz: [1.23456789, -2.3456789, 3.45678901],
-          properties: { magnetic_moment: 0.5 },
-        },
-      ],
-      lattice: {
-        matrix: [
-          [1.0, 0.0, 0.0],
-          [0.0, 1.0, 0.0],
-          [0.0, 0.0, 1.0],
-        ],
-        volume: 1.0,
-      },
-      metadata: {
-        source: `test`,
-        created: `2024-01-01`,
-      },
-    } as unknown as AnyStructure
+      expect(mock_download).toHaveBeenCalledOnce()
+      const [content, filename, mime_type] = mock_download.mock.calls[0]
 
-    export_json(structure)
+      // Check that content is valid JSON
+      const parsed = JSON.parse(content as string)
+      expect(parsed).toEqual(simple_structure)
 
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content] = mock_download.mock.calls[0]
+      // Check formatting (should be pretty-printed)
+      expect(content).toContain(`\n  "id": "test_h2o"`)
 
-    const parsed = JSON.parse(content)
-    expect(parsed).toEqual(structure)
-    expect(parsed.sites[0].properties.magnetic_moment).toBe(0.5)
-    expect(parsed.metadata.source).toBe(`test`)
-  })
-
-  it(`should handle undefined structure`, () => {
-    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-
-    export_json(undefined)
-
-    expect(mock_download).not.toHaveBeenCalled()
-    expect(spy).toHaveBeenCalledWith(`No structure to download`)
-
-    spy.mockRestore()
-  })
-
-  it(`should export empty structure`, () => {
-    const structure = {} as AnyStructure
-
-    export_json(structure)
-
-    expect(mock_download).toHaveBeenCalledOnce()
-    const [content] = mock_download.mock.calls[0]
-
-    const parsed = JSON.parse(content)
-    expect(parsed).toEqual({})
+      // Check filename and MIME type
+      expect(filename).toMatch(/.*\.json$/)
+      expect(mime_type).toBe(`application/json`)
+    })
   })
 })

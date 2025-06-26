@@ -18,7 +18,7 @@ export { default as Vector } from './Vector.svelte'
 
 export const STRUCT_DEFAULTS = {
   cell: {
-    edge_color: `#000000`,
+    edge_color: `#ffffff`,
     edge_opacity: 0.4,
     surface_color: `#ffffff`,
     surface_opacity: 0.05,

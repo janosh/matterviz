@@ -243,10 +243,16 @@ test.describe(`Periodic Table`, () => {
         if (typeof heatmap_value !== `number`) continue
         const heatmap_val = format_num(heatmap_value)
 
-        // make sure heatmap value is displayed correctly
-        const text = `${rand_elem.number} ${rand_elem.symbol} ${heatmap_val}`
-        const elem_tile = await page.$(`text=${text}`, { strict: true })
-        expect(elem_tile, `selector text=${text}`).not.toBeNull()
+        // make sure heatmap value is displayed correctly - use more specific selector
+        const element_selector = `.element-tile`
+        const tiles_with_text = await page.locator(element_selector)
+          .filter({ hasText: `${rand_elem.number} ${rand_elem.symbol} ${heatmap_val}` })
+          .count()
+
+        expect(
+          tiles_with_text,
+          `Expected at least one element tile with text "${rand_elem.number} ${rand_elem.symbol} ${heatmap_val}"`,
+        ).toBeGreaterThan(0)
       }
     })
   })

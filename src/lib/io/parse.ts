@@ -3,6 +3,17 @@ import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import { load as yaml_load } from 'js-yaml'
 
+// Check if filename indicates a trajectory file
+export function is_trajectory_file(filename: string): boolean {
+  const name = filename.toLowerCase()
+  return (
+    name.match(/\.(traj|xyz|extxyz|h5|hdf5)$/) !== null ||
+    /(xdatcar|trajectory|traj|md|relax)/.test(name) ||
+    /\.(xyz|extxyz|traj)\.gz$/.test(name) ||
+    (name.endsWith(`.gz`) && /(traj|xdatcar|trajectory|relax|xyz)/.test(name))
+  )
+}
+
 export interface ParsedStructure {
   sites: Site[]
   lattice?: {
@@ -245,8 +256,8 @@ export function parse_poscar(content: string): ParsedStructure | null {
     } else {
       // VASP 4 format - only atom counts, generate default element symbols
       atom_counts = lines[line_index].trim().split(/\s+/).map(Number)
-      element_symbols = atom_counts.map((_, i) =>
-        validate_element_symbol(`Element${i}`, i)
+      element_symbols = atom_counts.map((_, idx) =>
+        validate_element_symbol(`Element${idx}`, idx)
       )
       line_index += 1
     }
@@ -856,6 +867,22 @@ export function parse_structure_file(
       return parse_cif(content)
     }
 
+    // JSON files (pymatgen structures) - just parse directly
+    if (ext === `json`) {
+      try {
+        const parsed = JSON.parse(content)
+        // Validate that it has the required structure format
+        if (parsed.sites && Array.isArray(parsed.sites)) {
+          return parsed as ParsedStructure
+        }
+        console.error(`JSON file does not contain a valid structure format`)
+        return null
+      } catch (error) {
+        console.error(`Error parsing JSON file:`, error)
+        return null
+      }
+    }
+
     // YAML files (phonopy)
     if (ext === `yaml` || ext === `yml`) return parse_phonopy_yaml(content)
 
@@ -871,6 +898,17 @@ export function parse_structure_file(
   if (lines.length < 2) {
     console.error(`File too short to determine format`)
     return null
+  }
+
+  // JSON format detection: try to parse as JSON first
+  try {
+    const parsed = JSON.parse(content)
+    // If it parses as JSON, validate that it's a structure
+    if (parsed.sites && Array.isArray(parsed.sites)) {
+      return parsed as ParsedStructure
+    }
+  } catch {
+    // Not JSON, continue with other format detection
   }
 
   // XYZ format detection: first line should be a number, second line is comment

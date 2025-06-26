@@ -7,6 +7,7 @@
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { Tooltip } from 'svelte-zoo'
+  import type { Camera, Scene } from 'three'
 
   export interface Props {
     // Control panel state
@@ -41,6 +42,10 @@
     save_json_btn_text?: string
     save_png_btn_text?: string
     save_xyz_btn_text?: string
+    copy_json_btn_text?: string
+    copy_xyz_btn_text?: string
+    scene?: Scene
+    camera?: Camera
   }
   let {
     controls_open = $bindable(false),
@@ -72,9 +77,13 @@
     structure = undefined,
     wrapper = undefined,
     png_dpi = $bindable(150),
-    save_json_btn_text = `⬇ Save as JSON`,
-    save_png_btn_text = `✎ Save as PNG`,
-    save_xyz_btn_text = `📄 Save as XYZ`,
+    save_json_btn_text = `⬇ JSON`,
+    save_png_btn_text = `⬇ PNG`,
+    save_xyz_btn_text = `⬇ XYZ`,
+    copy_json_btn_text = `📋 JSON`,
+    copy_xyz_btn_text = `📋 XYZ`,
+    scene = undefined,
+    camera = undefined,
   }: Props = $props()
 
   // Color scheme selection state
@@ -84,6 +93,21 @@
       color_scheme = color_scheme_selected[0] as string
     }
   })
+
+  // Copy button feedback state
+  let copy_status = $state<{ json: boolean; xyz: boolean }>({
+    json: false,
+    xyz: false,
+  })
+
+  // Dynamic button text based on copy status
+  const copy_confirm = `✅ Copied!`
+  let current_copy_json_btn_text = $derived(
+    copy_status.json ? copy_confirm : copy_json_btn_text,
+  )
+  let current_copy_xyz_btn_text = $derived(
+    copy_status.xyz ? copy_confirm : copy_xyz_btn_text,
+  )
 
   // Detect if structure has force data
   let has_forces = $derived(
@@ -105,6 +129,38 @@
       .map((el) => scheme[el] || scheme.H || `#cccccc`)
       .filter(Boolean)
   }
+
+  // Workaround for Svelte 5 reactivity issue
+  // https://github.com/sveltejs/svelte/issues/12320
+  function trigger_reactivity() {
+    lattice_props = lattice_props
+    scene_props = scene_props
+  }
+
+  // Handle clipboard copy with user feedback
+  async function handle_copy(format: `json` | `xyz`) {
+    if (!structure) {
+      console.warn(`No structure available for copying`)
+      return
+    }
+
+    try {
+      let content: string
+      if (format === `json`) content = exports.generate_json_content(structure)
+      else if (format === `xyz`) content = exports.generate_xyz_content(structure)
+      else throw new Error(`Invalid format: ${format}`)
+
+      await exports.copy_to_clipboard(content)
+
+      // Show temporary feedback in button text
+      copy_status[format] = true
+      setTimeout(() => {
+        copy_status[format] = false
+      }, 1000)
+    } catch (error) {
+      console.error(`Failed to copy ${format.toUpperCase()} to clipboard`, error)
+    }
+  }
 </script>
 
 <ControlPanel bind:controls_open>
@@ -112,11 +168,19 @@
     <!-- Visibility Controls -->
     <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap">
       Show <label>
-        <input type="checkbox" bind:checked={scene_props.show_atoms} />
+        <input
+          type="checkbox"
+          bind:checked={scene_props.show_atoms}
+          onchange={trigger_reactivity}
+        />
         atoms
       </label>
       <label>
-        <input type="checkbox" bind:checked={scene_props.show_bonds} />
+        <input
+          type="checkbox"
+          bind:checked={scene_props.show_bonds}
+          onchange={trigger_reactivity}
+        />
         bonds
       </label>
       <label>
@@ -129,7 +193,11 @@
       </label>
       {#if has_forces}
         <label>
-          <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
+          <input
+            type="checkbox"
+            bind:checked={scene_props.show_force_vectors}
+            onchange={trigger_reactivity}
+          />
           force vectors
         </label>
       {/if}
@@ -151,6 +219,8 @@
         max={2}
         step={0.05}
         bind:value={scene_props.atom_radius}
+        onchange={trigger_reactivity}
+        oninput={trigger_reactivity}
       />
       <input
         type="range"
@@ -158,10 +228,16 @@
         max={2}
         step={0.05}
         bind:value={scene_props.atom_radius}
+        onchange={trigger_reactivity}
+        oninput={trigger_reactivity}
       />
     </label>
     <label>
-      <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
+      <input
+        type="checkbox"
+        bind:checked={scene_props.same_size_atoms}
+        onchange={trigger_reactivity}
+      />
       <span>
         Scale according to atomic radii
         <small> (if false, all atoms same size)</small>
@@ -178,15 +254,15 @@
         style="width: 10em; border: none"
       >
         {#snippet children({ option })}
-          {@const style =
+          {@const option_style =
           `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
-          <div {style}>
+          <div style={option_style}>
             {option}
             <div style="display: flex; gap: 3pt">
               {#each get_representative_colors(String(option)) as color (color)}
-                {@const style =
-              `width: 15px; height: 15px; border-radius: 2px; background: {color};`}
-                <div {style}></div>
+                {@const color_style =
+              `width: 15px; height: 15px; border-radius: 2px; background: ${color};`}
+                <div style={color_style}></div>
               {/each}
             </div>
           </div>
@@ -227,7 +303,11 @@
     <!-- Cell Controls -->
     <h4 class="section-heading">Cell</h4>
     <label>
-      <input type="checkbox" bind:checked={lattice_props.show_vectors} />
+      <input
+        type="checkbox"
+        bind:checked={lattice_props.show_vectors}
+        onchange={trigger_reactivity}
+      />
       lattice vectors
     </label>
     {#each [
@@ -250,7 +330,11 @@
       <div class="control-row">
         <label class="compact">
           {label}
-          <input type="color" bind:value={lattice_props[color_prop]} />
+          <input
+            type="color"
+            bind:value={lattice_props[color_prop]}
+            onchange={trigger_reactivity}
+          />
         </label>
         <label class="slider-control">
           opacity
@@ -260,6 +344,8 @@
             max={1}
             {step}
             bind:value={lattice_props[opacity_prop]}
+            onchange={trigger_reactivity}
+            oninput={trigger_reactivity}
           />
           <input
             type="range"
@@ -267,6 +353,8 @@
             max={1}
             {step}
             bind:value={lattice_props[opacity_prop]}
+            onchange={trigger_reactivity}
+            oninput={trigger_reactivity}
           />
         </label>
       </div>
@@ -461,6 +549,13 @@
       </button>
       <button
         type="button"
+        onclick={() => handle_copy(`json`)}
+        title={current_copy_json_btn_text}
+      >
+        {current_copy_json_btn_text}
+      </button>
+      <button
+        type="button"
         onclick={() => exports.export_xyz(structure)}
         title={save_xyz_btn_text}
       >
@@ -468,9 +563,16 @@
       </button>
       <button
         type="button"
+        onclick={() => handle_copy(`xyz`)}
+        title={current_copy_xyz_btn_text}
+      >
+        {current_copy_xyz_btn_text}
+      </button>
+      <button
+        type="button"
         onclick={() => {
           const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
-          exports.export_png(canvas, structure, png_dpi)
+          exports.export_png(canvas, structure, png_dpi, scene, camera)
         }}
         title="{save_png_btn_text} (${png_dpi} DPI)"
       >

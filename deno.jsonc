@@ -8,8 +8,6 @@
     "vitest": "deno run -A --node-modules-dir npm:vitest run tests/vitest/**/*.ts",
     "e2e": "npx playwright test",
     "test:install": "npx playwright install chromium",
-    "lint": "deno lint",
-    "fmt": "deno fmt",
     "package": "svelte-package",
     "changelog": "deno run -A https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts"
   },
@@ -54,9 +52,9 @@
   },
   "fmt": {
     "exclude": [
-      "src/site/structures/*",
-      "src/site/molecules/*",
-      "src/site/trajectories/*"
+      "src/site/structures/*.json",
+      "src/site/molecules/*.json",
+      "src/site/trajectories/*.json"
     ],
     "indentWidth": 2,
     "lineWidth": 90,

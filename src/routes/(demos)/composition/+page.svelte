@@ -104,8 +104,8 @@
           composition={parsed_composition}
           size={150}
           color_scheme="Vesta"
-          show_labels={true}
-          show_amounts={true}
+          show_labels
+          show_amounts
           on_composition_change={(comp: CompositionType) => (parsed_composition = comp)}
         />
       </div>
@@ -116,7 +116,7 @@
           composition={parsed_composition}
           size={150}
           color_scheme="Jmol"
-          show_labels={true}
+          show_labels
         />
       </div>
 
@@ -127,8 +127,8 @@
           size={150}
           inner_radius={30}
           color_scheme="Pastel"
-          show_labels={true}
-          show_amounts={true}
+          show_labels
+          show_amounts
         />
       </div>
 
@@ -138,8 +138,8 @@
           composition={parsed_composition}
           size={150}
           color_scheme="Muted"
-          show_labels={true}
-          show_percentages={true}
+          show_labels
+          show_percentages
           show_amounts={false}
         />
       </div>

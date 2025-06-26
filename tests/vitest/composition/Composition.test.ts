@@ -1,3 +1,4 @@
+import type { CompositionType } from '$lib'
 import { Composition } from '$lib/composition'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -97,7 +98,7 @@ describe(`Composition component`, () => {
   test(`handles numeric input`, () => {
     mount(Composition, {
       target: document.body,
-      props: { input: { 1: 2, 8: 1 } as Composition },
+      props: { input: { 1: 2, 8: 1 } as CompositionType },
     })
     expect(doc_query(`.composition-container`)).toBeTruthy()
   })

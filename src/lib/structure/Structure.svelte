@@ -5,8 +5,9 @@
   import { decompress_file } from '$lib/io/decompress'
   import * as exports from '$lib/io/export'
   import { colors } from '$lib/state.svelte'
-  import { Canvas } from '@threlte/core'
+  import { Canvas, useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
+  import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
   import {
     STRUCT_DEFAULTS,
@@ -17,12 +18,10 @@
   import type { Props as ControlProps } from './StructureControls.svelte'
 
   interface Props extends ControlProps {
-    // output of pymatgen.core.Structure.as_dict()
-    // structure?: AnyStructure | undefined
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
-    reveal_buttons?: boolean | number
+    show_buttons?: boolean | number
     fullscreen?: boolean
     // bindable width of the canvas
     width?: number
@@ -62,7 +61,7 @@
     controls_open = $bindable(false),
     background_color = $bindable(`#ffffff`),
     background_opacity = $bindable(0.1),
-    reveal_buttons = 500,
+    show_buttons = 0,
     fullscreen = false,
     wrapper = $bindable(undefined),
     width = $bindable(0),
@@ -74,9 +73,9 @@
     allow_file_drop = true,
     tips_modal = $bindable(undefined),
     enable_tips = true,
-    save_json_btn_text = `⬇ Save as JSON`,
-    save_png_btn_text = `✎ Save as PNG`,
-    save_xyz_btn_text = `📄 Save as XYZ`,
+    save_json_btn_text = `⬇ JSON`,
+    save_png_btn_text = `⬇ PNG`,
+    save_xyz_btn_text = `⬇ XYZ`,
     png_dpi = $bindable(150),
     show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
@@ -124,8 +123,8 @@
   })
 
   let visible_buttons = $derived(
-    reveal_buttons == true ||
-      (typeof reveal_buttons == `number` && reveal_buttons < width),
+    show_buttons == true ||
+      (typeof show_buttons == `number` && show_buttons < width),
   )
 
   // only updates when structure or show_image_atoms change
@@ -138,6 +137,9 @@
   // Track if camera has ever been moved from initial position
   let camera_has_moved = $state(false)
   let camera_is_moving = $state(false)
+  let scene: Scene | undefined = $state(undefined)
+  let camera: Camera | undefined = $state(undefined)
+
   // Reset tracking when structure changes
   $effect(() => {
     if (structure) camera_has_moved = false
@@ -236,6 +238,15 @@
       }
     }
   })
+
+  function SceneContext() {
+    const threlte = useThrelte()
+    $effect(() => {
+      scene = threlte.scene
+      camera = threlte.camera.current
+    })
+    return undefined
+  }
 </script>
 
 {#if structure?.sites}
@@ -302,6 +313,8 @@
         {save_json_btn_text}
         {save_png_btn_text}
         {save_xyz_btn_text}
+        {scene}
+        {camera}
       />
     </section>
 
@@ -319,6 +332,7 @@
         return renderer
       }}
     >
+      <SceneContext />
       <StructureScene
         structure={scene_structure}
         {...scene_props}
@@ -365,12 +379,6 @@
     font-size: var(--struct-bottom-left-font-size, 1.2em);
     padding: var(--struct-bottom-left-padding, 1pt 5pt);
   }
-  button {
-    background-color: transparent;
-  }
-  button:hover {
-    background-color: transparent !important;
-  }
   section.control-buttons {
     position: absolute;
     display: flex;
@@ -380,9 +388,13 @@
     gap: var(--struct-buttons-gap, 3pt);
     z-index: var(--struct-buttons-z-index, 1);
   }
-  section button {
+  section.control-buttons button {
     pointer-events: auto;
     font-size: 1em;
+    background-color: transparent;
+  }
+  section.control-buttons button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
   }
   p.warn {
     text-align: center;
