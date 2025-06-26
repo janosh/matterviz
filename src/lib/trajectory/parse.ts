@@ -76,8 +76,7 @@ export async function parse_torch_sim_hdf5(
   filename?: string,
 ): Promise<Trajectory> {
   try {
-    // Initialize h5wasm
-    await h5wasm.ready
+    await h5wasm.ready // Initialize h5wasm
     const { FS } = await h5wasm.ready
 
     // Write buffer to virtual filesystem
@@ -85,7 +84,7 @@ export async function parse_torch_sim_hdf5(
     FS.writeFile(temp_filename, new Uint8Array(buffer))
 
     // Open the file
-    const f = new h5wasm.File(temp_filename, `r`)
+    const h5_file = new h5wasm.File(temp_filename, `r`)
 
     try {
       // Define types for h5wasm objects since they don't have proper TypeScript definitions
@@ -100,7 +99,7 @@ export async function parse_torch_sim_hdf5(
       }
 
       // Validate torch-sim format by checking for required groups
-      const data_group = f.get(`data`) as H5Group | null
+      const data_group = h5_file.get(`data`) as H5Group | null
       if (!data_group) {
         throw new Error(`Invalid torch-sim HDF5 format: missing data group`)
       }
@@ -226,8 +225,7 @@ export async function parse_torch_sim_hdf5(
               const size_z = ranges[2] + padding * 2
               lattice_matrix = [[size_x, 0, 0], [0, size_y, 0], [0, 0, size_z]]
 
-              // For molecular systems, disable PBC
-              pbc = [false, false, false]
+              pbc = [false, false, false] // For molecular systems, disable PBC
             } else {
               // Use unit cell for fractional coordinates
               lattice_matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
@@ -305,7 +303,7 @@ export async function parse_torch_sim_hdf5(
       let title = `TorchSim Trajectory`
       let program = `Unknown`
       try {
-        const header_group = f.get(`header`) as H5Group | null
+        const header_group = h5_file.get(`header`) as H5Group | null
         title = header_group?.attrs?.title?.toString() ?? title
         program = header_group?.attrs?.program?.toString() ?? program
       } catch {
@@ -332,7 +330,7 @@ export async function parse_torch_sim_hdf5(
         },
       }
     } finally {
-      f.close()
+      h5_file.close()
       // Clean up temporary file
       try {
         FS.unlink(temp_filename)

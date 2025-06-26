@@ -228,32 +228,42 @@
     <TrajectoryViewer
       bind:trajectory={empty_trajectory}
       bind:current_step_idx={current_step}
-      allow_file_drop={true}
+      allow_file_drop
     />
   </div>
 </section>
 
 <section id="loaded-trajectory">
-  <h2>Loaded Trajectory</h2>
+  <h2>Loaded Trajectory (Auto Layout)</h2>
   <div style="height: 400px; border: 1px solid #ccc">
     <TrajectoryViewer
       bind:trajectory={loaded_trajectory}
       bind:current_step_idx={current_step}
-      allow_file_drop={true}
-      layout="horizontal"
-      show_controls={true}
+      allow_file_drop
+      show_controls
+      step_labels={3}
+    />
+  </div>
+</section>
+
+<section id="auto-layout">
+  <h2>Auto Layout (Responsive)</h2>
+  <div style="height: 500px; border: 1px solid #ccc">
+    <TrajectoryViewer
+      trajectory={test_trajectory}
+      show_controls
       step_labels={3}
     />
   </div>
 </section>
 
 <section id="vertical-layout">
-  <h2>Vertical Layout</h2>
+  <h2>Vertical Layout (Explicit)</h2>
   <div style="height: 500px; border: 1px solid #ccc">
     <TrajectoryViewer
       trajectory={test_trajectory}
       layout="vertical"
-      show_controls={true}
+      show_controls
       step_labels={[-1]}
     />
   </div>
@@ -276,7 +286,7 @@
     <TrajectoryViewer
       bind:trajectory={error_trajectory}
       trajectory_url="/non-existent-trajectory.json"
-      allow_file_drop={true}
+      allow_file_drop
     />
   </div>
 </section>
@@ -331,7 +341,7 @@
 <section id="trajectory-url">
   <h2>Trajectory URL Loading</h2>
   <div style="height: 400px; border: 1px solid #ccc">
-    <TrajectoryViewer trajectory_url="/test-trajectory.json" allow_file_drop={true} />
+    <TrajectoryViewer trajectory_url="/test-trajectory.json" allow_file_drop />
   </div>
 </section>
 

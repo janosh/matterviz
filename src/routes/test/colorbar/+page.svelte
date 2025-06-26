@@ -134,7 +134,7 @@
     title="Nice Range Output"
     range={[0.1, 0.9]}
     bind:nice_range={nice_range_output}
-    snap_ticks={true}
+    snap_ticks
     tick_labels={4}
   />
   <p data-testid="nice-range-output">
@@ -147,7 +147,7 @@
   <ColorBar
     range={[0, 1000]}
     scale_type="log"
-    snap_ticks={true}
+    snap_ticks
     tick_labels={4}
     tick_side="inside"
     orientation="vertical"

@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="static/logo.svg" alt="Logo" height="100">
+  <sub><img src="static/favicon.svg" alt="Logo" height="40"></sub> MatterViz
 </h1>
 
 <h4 align="center">
@@ -7,11 +7,29 @@
 [![Tests](https://github.com/janosh/matterviz/actions/workflows/test.yml/badge.svg)](https://github.com/janosh/matterviz/actions/workflows/test.yml)
 [![GH Pages](https://github.com/janosh/matterviz/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/janosh/matterviz/actions/workflows/gh-pages.yml)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/janosh/matterviz/main.svg?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)](https://results.pre-commit.ci/latest/github/janosh/matterviz/main?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)
+[![VSCode Extension](https://img.shields.io/badge/Install%20VSCode-Extension-blue)](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz)
+[![Docs](https://img.shields.io/badge/View-interactive%20docs-blue)](https://matterviz.janosh.dev)
 [![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz)](https://stackblitz.com/github/janosh/matterviz)
 
 </h4>
 
 `matterviz` is a toolkit for building interactive web UIs for materials science: periodic tables, 3d crystal structures (and molecules, though needs some improvements!), Bohr atoms, nuclei, heatmaps, scatter plots. It's under active development and not yet ready for production use but we appreciate any feedback from beta testers! 🙏
+
+## 🔌 &thinsp; [VSCode Extension][MatterViz extension]
+
+Visualize crystal structures and molecular dynamics trajectories directly in VSCode with the [MatterViz extension]. Features include:
+
+- Native support for common file formats (CIF, POSCAR, XYZ, TRAJ, HDF5, etc.)
+- Context menu (right click > "Render with MatterViz") and keyboard shortcuts (<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Windows, <kbd>cmd</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Mac) for quick access
+- Custom viewer for MD trajectories/geometry optimizations
+
+[MatterViz extension]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
+
+## 🗺️ &thinsp; Roadmap
+
+- **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev) (works but under active development)
+- **✅ MatterViz VSCode**: [marketplace.visualstudio.com/items?itemName=janosh.matterviz](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz) (works but under active development)
+- **🚧 MatterViz iPython**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for interactive Python-based visualization in notebooks and batch processing/screenshot automation (still prototyping)
 
 ![Screenshot of landing page](static/2023-02-13-landing-page.webp)
 

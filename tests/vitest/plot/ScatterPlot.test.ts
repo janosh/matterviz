@@ -167,9 +167,9 @@ describe(`ScatterPlot`, () => {
     const timestamp_data = {
       x: Array(12)
         .fill(0)
-        .map((_, i) => {
+        .map((_, idx) => {
           const date = new Date()
-          date.setMonth(date.getMonth() - (12 - i))
+          date.setMonth(date.getMonth() - (12 - idx))
           return date.getTime()
         }),
       y: Array(12)
@@ -1253,10 +1253,10 @@ describe(`ScatterPlot`, () => {
     const dense_data = {
       x: Array(100)
         .fill(0)
-        .map((_, i) => 0.1 * Math.pow(10, i / 20)),
+        .map((_, idx) => 0.1 * Math.pow(10, idx / 20)),
       y: Array(100)
         .fill(0)
-        .map((_, i) => 0.1 * Math.pow(10, i / 20)),
+        .map((_, idx) => 0.1 * Math.pow(10, idx / 20)),
       point_style: { fill: `steelblue`, radius: 3 },
     }
 

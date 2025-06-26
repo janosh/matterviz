@@ -1,6 +1,6 @@
 # Changelog
 
-#### [v0.1.0](https://github.com/janosh/matterviz/compare/v0.1.0...v0.1.0)
+## [v0.1.0](https://github.com/janosh/matterviz/compare/v0.1.0...v0.1.0)
 
 > 19 June 2025
 

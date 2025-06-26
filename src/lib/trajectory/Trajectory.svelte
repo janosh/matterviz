@@ -35,8 +35,8 @@
     // file drop handlers
     allow_file_drop?: boolean
     on_file_drop?: (content: string, filename: string) => Promise<void> | void
-    // layout configuration
-    layout?: `horizontal` | `vertical`
+    // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
+    layout?: `auto` | `horizontal` | `vertical`
     // structure viewer props (passed to Structure component)
     structure_props?: ComponentProps<typeof Structure>
     // plot props (passed to ScatterPlot component)
@@ -95,7 +95,7 @@
     data_extractor = full_data_extractor,
     allow_file_drop = true,
     on_file_drop = handle_trajectory_file_drop,
-    layout = `horizontal`,
+    layout = `auto`,
     structure_props = {},
     plot_props = {},
     spinner_props = {},
@@ -120,6 +120,21 @@
   let file_object = $state<File | null>(null)
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let sidebar_open = $state(false)
+
+  // Viewport dimensions for responsive layout
+  let viewport = $state({ width: 0, height: 0 })
+
+  // Reactive layout that chooses based on viewport aspect ratio when layout is 'auto'
+  let actual_layout = $derived.by((): `horizontal` | `vertical` => {
+    if (layout === `horizontal` || layout === `vertical`) return layout // Explicit layout override
+
+    // Auto layout: choose based on viewport aspect ratio
+    if (viewport.width > 0 && viewport.height > 0) {
+      return viewport.width > viewport.height ? `horizontal` : `vertical`
+    }
+
+    return `horizontal` // Fallback to horizontal if dimensions not available yet
+  })
 
   // Current frame structure for display
   let current_structure = $derived(
@@ -570,12 +585,12 @@
 </script>
 
 <div
-  class="trajectory-viewer"
-  class:horizontal={layout === `horizontal`}
-  class:vertical={layout === `vertical`}
+  class="trajectory-viewer {actual_layout}"
   class:dragover
   class:active={sidebar_open || is_playing || controls_open.structure || controls_open.plot}
   bind:this={wrapper}
+  bind:clientWidth={viewport.width}
+  bind:clientHeight={viewport.height}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
@@ -904,6 +919,7 @@
   /* When plot is hidden, structure takes full space */
   .content-area.hide-plot {
     grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
   }
   /* When structure is hidden, plot takes full space */
   .content-area.hide-structure {
@@ -911,11 +927,13 @@
     grid-template-rows: 1fr !important;
   }
   /* Display mode specific layouts */
-  .content-area.show-structure-only {
+  .trajectory-viewer.horizontal .content-area.show-structure-only,
+  .trajectory-viewer.vertical .content-area.show-structure-only {
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr !important;
   }
-  .content-area.show-plot-only {
+  .trajectory-viewer.horizontal .content-area.show-plot-only,
+  .trajectory-viewer.vertical .content-area.show-plot-only {
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr !important;
   }
@@ -1149,49 +1167,23 @@
   }
   /* Responsive design */
   @media (max-width: 768px) {
-    .trajectory-viewer.horizontal {
-      flex-direction: column;
+    /* On small screens, force vertical layout for content area regardless of viewport aspect ratio */
+    .trajectory-viewer.horizontal .content-area {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr 1fr !important;
     }
-    .trajectory-controls {
-      flex-wrap: wrap;
-      gap: 0.375rem;
-    }
-    .step-section {
-      order: 1;
-      width: 100%;
-      min-width: 0;
-    }
-    .speed-section {
-      justify-content: center;
-    }
-    .filename-section {
-      order: -1;
-      width: 100%;
-      justify-content: center;
-    }
-    .info-section {
-      margin-left: 0;
-      justify-content: center;
-      gap: 0.375rem;
+    /* Override for when plot is hidden */
+    .trajectory-viewer.horizontal .content-area.hide-plot {
+      grid-template-rows: 1fr !important;
     }
   }
-  @media (max-width: 480px) {
-    .trajectory-controls {
-      padding: 0.125rem 0.375rem;
-      font-size: 0.75rem;
-      gap: 0.25rem;
-    }
-    .nav-button {
-      min-width: 24px;
-      height: 24px;
-      font-size: 0.7rem;
-    }
-    .info-section {
-      flex-direction: column;
-      gap: 0.125rem;
-    }
-    .speed-section {
-      font-size: 0.65rem;
+
+  /* Additional responsive breakpoints for auto layout */
+  @media (orientation: portrait) and (max-width: 1024px) {
+    /* Force vertical layout on portrait tablets and phones */
+    .trajectory-viewer .content-area {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr 1fr !important;
     }
   }
 </style>

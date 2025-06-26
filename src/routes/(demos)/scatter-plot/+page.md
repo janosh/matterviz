@@ -1502,7 +1502,7 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
   y_label="Y Axis (Fixed Range)"
   markers="line"
   style="height: 400px"
-  show_zero_lines={true}
+  show_zero_lines
   padding={{ l: 150 }}
   legend={{
     wrapper_style: `

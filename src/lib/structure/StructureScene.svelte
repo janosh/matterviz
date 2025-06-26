@@ -61,6 +61,7 @@
     lattice_props?: ComponentProps<typeof Lattice>
     atom_label?: Snippet<[Site, number]>
     camera_is_moving?: boolean
+    orbit_controls?: typeof OrbitControls | undefined
   }
   let {
     structure = undefined,
@@ -98,6 +99,7 @@
     lattice_props = {},
     atom_label,
     camera_is_moving = $bindable(false),
+    orbit_controls = $bindable(undefined),
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
@@ -167,6 +169,7 @@
 <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
   <!-- fix the ugly target -->
   <OrbitControls
+    bind:ref={orbit_controls}
     position={[0, 0, 0]}
     enableZoom={zoom_speed > 0}
     zoomSpeed={zoom_speed}

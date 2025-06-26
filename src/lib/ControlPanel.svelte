@@ -111,7 +111,7 @@
     background: var(--controls-bg, rgba(10, 10, 10, 0.95));
     padding: var(--controls-padding, 6pt 9pt);
     border-radius: var(--controls-border-radius, 3pt);
-    width: var(--controls-width, 20em);
+    width: var(--controls-width, 28em);
     max-width: var(--controls-max-width, 90cqw);
     color: var(--controls-text-color);
     overflow: auto;

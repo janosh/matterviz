@@ -269,7 +269,7 @@
 </p>
 
 <div class="files-and-textearea">
-  <FileCarousel files={sample_files} {active_files} show_structure_filters={true} />
+  <FileCarousel files={sample_files} {active_files} show_structure_filters />
 
   <div class="textarea-container">
     <textarea

@@ -23,8 +23,8 @@ export async function fetch_zipped<T>(
   return JSON.parse(await decompress(response.body))
 }
 
-// Function to download data to a file
-export function download(data: string | Blob, filename: string, type: string) {
+// Original download implementation
+function default_download(data: string | Blob, filename: string, type: string) {
   const file = new Blob([data], { type })
   const link = document.createElement(`a`)
   const url = URL.createObjectURL(file)
@@ -35,4 +35,16 @@ export function download(data: string | Blob, filename: string, type: string) {
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
+}
+
+// Function to download data to a file - checks for global override first
+export function download(data: string | Blob, filename: string, type: string): void {
+  // Check if there's a global download override (used by VSCode extension)
+  const global_download = (globalThis as Record<string, unknown>).download
+  if (typeof global_download === `function` && global_download !== download) {
+    return (global_download as typeof download)(data, filename, type)
+  }
+
+  // Use default browser download
+  return default_download(data, filename, type)
 }

@@ -19,5 +19,5 @@ src/types
 # coverage
 test-results
 
-# TODO remove once fully implemented
-extensions/vscode/
+# vscode extension
+*.vsix

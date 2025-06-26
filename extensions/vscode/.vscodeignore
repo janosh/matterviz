@@ -1,0 +1,8 @@
+# Source files
+src/**
+webview/**
+*.ts
+
+# Build files
+tsconfig.json
+.vscode/**

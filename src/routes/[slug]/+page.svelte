@@ -137,7 +137,7 @@
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
       show_photo={false}
-      disabled={true}
+      disabled
       style="width: 100%; max-width: 350px"
       links="name"
       active_element={element}
@@ -176,7 +176,7 @@
       symbol={element.symbol}
       shells={element.shells}
       name={element.name}
-      adapt_size={true}
+      adapt_size
       orbital_period={orbiting ? 3 : 0}
       highlight_shell={active_shell}
       onclick={() => (orbiting = !orbiting)}
