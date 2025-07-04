@@ -1,6 +1,6 @@
 // Parsing functions for trajectory data from various formats
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
-import { escape_html, is_binary } from '$lib'
+import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
 import { parse_xyz } from '$lib/io/parse'
 import type { Matrix3x3 } from '$lib/math'
@@ -8,365 +8,153 @@ import * as math from '$lib/math'
 import * as h5wasm from 'h5wasm'
 import type { Trajectory, TrajectoryFrame } from './index'
 
-// Cache for matrix inversions to avoid repeated calculations
-const matrix_inversion_cache = new WeakMap<
-  Matrix3x3,
-  Matrix3x3
->()
+// Common interfaces
+export interface ParseProgress {
+  current: number
+  total: number
+  stage: string
+}
 
-// Cached matrix inversion for coordinate transformations
-function get_inverse_matrix(matrix: Matrix3x3): Matrix3x3 {
-  // Check cache first
-  const cached = matrix_inversion_cache.get(matrix)
+interface ParsedFrame {
+  positions: number[][]
+  elements: ElementSymbol[]
+  lattice_matrix?: Matrix3x3
+  pbc?: [boolean, boolean, boolean]
+  metadata?: Record<string, unknown>
+}
+
+// Add interface for HDF5 group to replace 'any' type
+interface Hdf5Group {
+  get(name: string): Hdf5Dataset | Hdf5Group | null
+}
+
+interface Hdf5Dataset {
+  to_array(): unknown
+}
+
+// Type guard to check if an object is an Hdf5Dataset
+const is_hdf5_dataset = (obj: Hdf5Dataset | Hdf5Group | null): obj is Hdf5Dataset => {
+  return obj !== null && `to_array` in obj
+}
+
+// Cache for matrix inversions
+const matrix_cache = new WeakMap<Matrix3x3, Matrix3x3>()
+
+// Common utilities
+const get_inverse_matrix = (matrix: Matrix3x3): Matrix3x3 => {
+  const cached = matrix_cache.get(matrix)
   if (cached) return cached
-
-  // Use the shared matrix_inverse_3x3 function
   const inverse = math.matrix_inverse_3x3(matrix)
-
-  // Cache the result
-  matrix_inversion_cache.set(matrix, inverse)
+  matrix_cache.set(matrix, inverse)
   return inverse
 }
 
-// Utility function to load trajectory from URL with automatic format detection
-export async function load_trajectory_from_url(
-  url: string,
-): Promise<Trajectory> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch trajectory file: ${response.status}`)
-  }
+const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
+  numbers.map((num) => atomic_number_to_symbol[num] || (`X` as ElementSymbol))
 
-  // Check response headers to determine if decompression is needed
-  const content_encoding = response.headers.get(`content-encoding`)
-  const content_type = response.headers.get(`content-type`)
+const create_site = (
+  element: ElementSymbol,
+  xyz: Vec3,
+  abc: Vec3,
+  idx: number,
+  properties: Record<string, unknown> = {},
+) => ({
+  species: [{ element, occu: 1, oxidation_state: 0 }],
+  abc,
+  xyz,
+  label: `${element}${idx + 1}`,
+  properties,
+})
 
-  let filename = url.split(`/`).pop() || `trajectory`
+const create_lattice = (
+  matrix: Matrix3x3,
+  pbc: [boolean, boolean, boolean] = [true, true, true],
+) => ({
+  matrix,
+  ...math.calc_lattice_params(matrix),
+  pbc,
+})
 
-  // Check if this is an HDF5 file first (regardless of content-encoding)
-  if ([`h5`, `hdf5`].includes(filename.toLowerCase().split(`.`).pop() || ``)) {
-    // Handle HDF5 files as binary: always use arrayBuffer()
-    const buffer = await response.arrayBuffer()
-    return await parse_trajectory_data(buffer, filename)
-  }
+const create_structure = (
+  positions: number[][],
+  elements: ElementSymbol[],
+  lattice_matrix?: Matrix3x3,
+  pbc?: [boolean, boolean, boolean],
+  force_data?: number[][],
+): AnyStructure => {
+  const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
+  const sites = positions.map((pos, idx) => {
+    const xyz = pos as Vec3
+    const abc = inv_matrix
+      ? math.mat3x3_vec3_multiply(inv_matrix, xyz)
+      : [0, 0, 0] as Vec3
+    const properties = force_data?.[idx] ? { force: force_data[idx] as Vec3 } : {}
+    return create_site(elements[idx], xyz, abc, idx, properties)
+  })
 
-  // For non-HDF5 files, handle based on content encoding
-  // If server sends gzip content-encoding, the browser auto-decompresses
-  // If content-type is application/json, it's likely already decompressed
-  if (content_encoding === `gzip` || content_type?.includes(`json`)) {
-    // Server already decompressed the content, use it directly
-    const content = await response.text()
-    // Remove .gz extension from filename if it exists
-    filename = filename.replace(/\.gz$/, ``)
-    return await parse_trajectory_data(content, filename)
-  } else {
-    // Manual decompression needed (for cases where server sends raw gzip)
-    const { decompress_file } = await import(`../io/decompress`)
-    const blob = await response.blob()
-    const file = new File([blob], filename, {
-      type: response.headers.get(`content-type`) || `application/octet-stream`,
-    })
-    const result = await decompress_file(file)
-    return await parse_trajectory_data(result.content, result.filename)
+  return lattice_matrix
+    ? { sites, lattice: create_lattice(lattice_matrix, pbc) }
+    : { sites }
+}
+
+const create_trajectory_frame = (
+  parsed_frame: ParsedFrame,
+  step: number,
+): TrajectoryFrame => ({
+  structure: create_structure(
+    parsed_frame.positions,
+    parsed_frame.elements,
+    parsed_frame.lattice_matrix,
+    parsed_frame.pbc,
+    parsed_frame.metadata?.forces as number[][],
+  ),
+  step,
+  metadata: parsed_frame.metadata || {},
+})
+
+const calculate_force_stats = (forces: number[][]): Record<string, number> => {
+  const magnitudes = forces.map((f) => Math.sqrt(f[0] ** 2 + f[1] ** 2 + f[2] ** 2))
+  return {
+    force_max: Math.max(...magnitudes),
+    force_norm: Math.sqrt(
+      magnitudes.reduce((sum, f) => sum + f ** 2, 0) / magnitudes.length,
+    ),
   }
 }
 
-export async function parse_torch_sim_hdf5(
-  buffer: ArrayBuffer,
-  filename?: string,
-): Promise<Trajectory> {
-  try {
-    await h5wasm.ready // Initialize h5wasm
-    const { FS } = await h5wasm.ready
+const calculate_stress_stats = (stress: number[][]): Record<string, number> => {
+  const [s11, s22, s33] = [stress[0][0], stress[1][1], stress[2][2]]
+  const [s12, s13, s23] = [stress[0][1], stress[0][2], stress[1][2]]
 
-    // Write buffer to virtual filesystem
-    const temp_filename = filename || `temp.h5`
-    FS.writeFile(temp_filename, new Uint8Array(buffer))
-
-    // Open the file
-    const h5_file = new h5wasm.File(temp_filename, `r`)
-
-    try {
-      // Define types for h5wasm objects since they don't have proper TypeScript definitions
-      type H5Group = {
-        keys(): string[]
-        get(name: string): H5Dataset | H5Group | null
-        attrs?: Record<string, { toString(): string }>
-      }
-
-      type H5Dataset = {
-        to_array(): unknown
-      }
-
-      // Validate torch-sim format by checking for required groups
-      const data_group = h5_file.get(`data`) as H5Group | null
-      if (!data_group) {
-        throw new Error(`Invalid torch-sim HDF5 format: missing data group`)
-      }
-
-      const data_group_keys = data_group.keys()
-      if (!data_group_keys.includes(`positions`)) {
-        throw new Error(
-          `Invalid torch-sim HDF5 format: missing positions dataset`,
-        )
-      }
-
-      // Read positions data first to get atom count
-      const positions_dataset = data_group.get(`positions`) as H5Dataset | null
-      if (!positions_dataset) {
-        throw new Error(`Missing positions dataset`)
-      }
-      const positions = positions_dataset.to_array() as number[][][]
-      const num_atoms = positions[0]?.length || 0
-
-      // Read atomic numbers and convert to element symbols (if available)
-      let elements: ElementSymbol[]
-      const atomic_numbers_dataset = data_group.get(
-        `atomic_numbers`,
-      ) as H5Dataset | null
-
-      if (atomic_numbers_dataset) {
-        const atomic_numbers_data = atomic_numbers_dataset.to_array() as number[][]
-        const atom_numbers = atomic_numbers_data[0] // First (and only) row
-        elements = atom_numbers.map((num: number) => {
-          return atomic_number_to_symbol[num] || (`X` as ElementSymbol)
-        })
-      } else {
-        // No atomic numbers available - use generic placeholder
-        console.warn(
-          `HDF5 file does not contain atomic_numbers dataset. Using generic atom symbols. ` +
-            `Consider adding atomic_numbers to properly identify chemical elements.`,
-        )
-        elements = Array.from({ length: num_atoms }, () => `C` as ElementSymbol)
-      }
-
-      // Read cell data if available
-      let cells: number[][][] | undefined
-      try {
-        const cell_dataset = data_group.get(`cell`) as H5Dataset | null
-        if (cell_dataset) {
-          cells = cell_dataset.to_array() as number[][][]
-        }
-      } catch {
-        // Cell data might not be available
-      }
-
-      // Read energies if available
-      let potential_energies: number[] | undefined
-      let kinetic_energies: number[] | undefined
-
-      try {
-        const pe_dataset = data_group.get(
-          `potential_energy`,
-        ) as H5Dataset | null
-        if (pe_dataset) {
-          const pe_array = pe_dataset.to_array() as number[][]
-          potential_energies = pe_array.map((row) => row[0])
-        }
-      } catch {
-        // Potential energy might not be available
-      }
-
-      try {
-        const ke_dataset = data_group.get(`kinetic_energy`) as H5Dataset | null
-        if (ke_dataset) {
-          const ke_array = ke_dataset.to_array() as number[][]
-          kinetic_energies = ke_array.map((row) => row[0])
-        }
-      } catch {
-        // Kinetic energy might not be available
-      }
-
-      // Get periodic boundary conditions if available
-      let pbc: [boolean, boolean, boolean] = [true, true, true] // Default for crystals
-      try {
-        const pbc_dataset = data_group.get(`pbc`) as H5Dataset | null
-        if (pbc_dataset) {
-          const pbc_array = pbc_dataset.to_array() as number[]
-          const pbc_bools = pbc_array.slice(0, 3).map((val) => val !== 0)
-          pbc = [pbc_bools[0] ?? true, pbc_bools[1] ?? true, pbc_bools[2] ?? true]
-        }
-      } catch {
-        // PBC might not be available
-      }
-
-      const frames: TrajectoryFrame[] = positions.map(
-        (frame_positions, frame_idx) => {
-          // Determine appropriate lattice matrix for this frame
-          let lattice_matrix: Matrix3x3
-          let coordinate_system: `fractional` | `cartesian` = `fractional`
-
-          if (cells?.[frame_idx]) {
-            // Use provided cell - coordinates should already be positioned correctly
-            lattice_matrix = cells[frame_idx].map((row) => row.slice()) as Matrix3x3
-            coordinate_system = `cartesian` // torch-sim typically uses Cartesian coordinates even with cells
-          } else {
-            // No cell provided - analyze coordinates to determine system
-            const coords = frame_positions as number[][]
-            const mins = [
-              Math.min(...coords.map((pos) => pos[0])),
-              Math.min(...coords.map((pos) => pos[1])),
-              Math.min(...coords.map((pos) => pos[2])),
-            ]
-            const maxs = [
-              Math.max(...coords.map((pos) => pos[0])),
-              Math.max(...coords.map((pos) => pos[1])),
-              Math.max(...coords.map((pos) => pos[2])),
-            ]
-            const ranges = [maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]]
-
-            // If coordinates are in a reasonable range (>2 Angstrom), assume Cartesian
-            if (ranges.some((range) => range > 2)) {
-              coordinate_system = `cartesian`
-              // Create bounding box with some padding
-              const padding = 2.0 // Angstrom
-              const size_x = ranges[0] + padding * 2
-              const size_y = ranges[1] + padding * 2
-              const size_z = ranges[2] + padding * 2
-              lattice_matrix = [[size_x, 0, 0], [0, size_y, 0], [0, 0, size_z]]
-
-              pbc = [false, false, false] // For molecular systems, disable PBC
-            } else {
-              // Use unit cell for fractional coordinates
-              lattice_matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-            }
-          }
-
-          const lattice_params = math.calc_lattice_params(lattice_matrix)
-          const lattice = { matrix: lattice_matrix, ...lattice_params, pbc }
-
-          // Cache inverse matrix for coordinate transformations
-          const inv_matrix = get_inverse_matrix(lattice_matrix)
-
-          // Create sites array in the expected format
-          const sites = frame_positions.map((xyz_pos, atom_idx) => {
-            let abc: Vec3
-            let xyz: Vec3
-
-            if (coordinate_system === `cartesian`) {
-              // Coordinates are in Cartesian units
-              if (cells?.[frame_idx]) {
-                // Cell provided - coordinates should already be positioned correctly within the cell
-                xyz = xyz_pos.slice() as Vec3
-                abc = math.mat3x3_vec3_multiply(inv_matrix, xyz)
-              } else {
-                // No cell - center the molecule in a bounding box
-                const coords = frame_positions as number[][]
-                const mins = [
-                  Math.min(...coords.map((pos) => pos[0])),
-                  Math.min(...coords.map((pos) => pos[1])),
-                  Math.min(...coords.map((pos) => pos[2])),
-                ]
-                const padding = 2.0
-                const centered_xyz: Vec3 = [
-                  xyz_pos[0] - mins[0] + padding,
-                  xyz_pos[1] - mins[1] + padding,
-                  xyz_pos[2] - mins[2] + padding,
-                ]
-                xyz = centered_xyz
-                abc = math.mat3x3_vec3_multiply(inv_matrix, centered_xyz)
-              }
-            } else {
-              // Fractional coordinates - convert to Cartesian
-              abc = xyz_pos.slice() as Vec3
-              xyz = math.mat3x3_vec3_multiply(math.transpose_matrix(lattice_matrix), abc)
-            }
-
-            return {
-              species: [{ element: elements[atom_idx], occu: 1, oxidation_state: 0 }],
-              abc,
-              xyz,
-              label: `${elements[atom_idx]}${atom_idx + 1}`,
-              properties: {},
-            }
-          })
-
-          const structure: AnyStructure = { sites, lattice }
-
-          const metadata: Record<string, unknown> = {
-            volume: lattice.volume,
-            ...(potential_energies &&
-              frame_idx < potential_energies.length && {
-              energy: potential_energies[frame_idx],
-            }),
-            ...(kinetic_energies &&
-              frame_idx < kinetic_energies.length && {
-              kinetic_energy: kinetic_energies[frame_idx],
-            }),
-          }
-
-          return { structure, step: frame_idx, metadata }
-        },
-      )
-
-      // Get metadata if available
-      let title = `TorchSim Trajectory`
-      let program = `Unknown`
-      try {
-        const header_group = h5_file.get(`header`) as H5Group | null
-        title = header_group?.attrs?.title?.toString() ?? title
-        program = header_group?.attrs?.program?.toString() ?? program
-      } catch {
-        // Header might not be available
-      }
-
-      // Count unique elements
-      const element_counts: Record<string, number> = {}
-      elements.forEach((element) => {
-        element_counts[element] = (element_counts[element] || 0) + 1
-      })
-
-      return {
-        frames,
-        metadata: {
-          title,
-          program,
-          num_atoms: elements.length,
-          num_frames: frames.length,
-          periodic_boundary_conditions: pbc,
-          ...(potential_energies && { has_energy: true }),
-          ...(kinetic_energies && { has_kinetic_energy: true }),
-          element_counts,
-        },
-      }
-    } finally {
-      h5_file.close()
-      // Clean up temporary file
-      try {
-        FS.unlink(temp_filename)
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
-  } catch (error) {
-    throw new Error(`Failed to parse torch-sim HDF5 file: ${error}`)
+  return {
+    stress_max: Math.sqrt(
+      0.5 * ((s11 - s22) ** 2 + (s22 - s33) ** 2 + (s33 - s11) ** 2) +
+        3 * (s12 ** 2 + s13 ** 2 + s23 ** 2),
+    ),
+    stress_frobenius: Math.sqrt(stress.flat().reduce((sum, val) => sum + val ** 2, 0)),
+    pressure: -(s11 + s22 + s33) / 3,
   }
 }
 
-// Check if a file is a torch-sim HDF5 trajectory
-export function is_torch_sim_hdf5(content: unknown, filename?: string): boolean {
+// Format detection
+const is_torch_sim_hdf5 = (content: unknown, filename?: string): boolean => {
   // Check filename extension first
   const has_hdf5_extension = filename &&
-    (filename.toLowerCase().endsWith(`.h5`) ||
-      filename.toLowerCase().endsWith(`.hdf5`))
+    (filename.toLowerCase().endsWith(`.h5`) || filename.toLowerCase().endsWith(`.hdf5`))
 
   if (filename && !has_hdf5_extension) return false
 
-  // If we only have filename (no content), return based on extension
-  if (
-    !content ||
-    (content instanceof ArrayBuffer && content.byteLength === 0)
-  ) return Boolean(has_hdf5_extension)
-
-  // Check if content is binary (HDF5 files are binary)
-  if (typeof content === `string`) {
-    return false // HDF5 files should not be parsed as text
+  // If no content or empty, return based on extension
+  if (!content || (content instanceof ArrayBuffer && content.byteLength === 0)) {
+    return Boolean(has_hdf5_extension)
   }
 
-  // Check for HDF5 signature at the beginning of the file
+  // Check if content is binary (HDF5 files are binary)
+  if (typeof content === `string`) return false
+
+  // Check for HDF5 signature
   if (content instanceof ArrayBuffer && content.byteLength >= 8) {
     const view = new Uint8Array(content.slice(0, 8))
-    // HDF5 signature: \211HDF\r\n\032\n
     const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
     return hdf5_signature.every((byte, idx) => view[idx] === byte)
   }
@@ -374,455 +162,340 @@ export function is_torch_sim_hdf5(content: unknown, filename?: string): boolean 
   return false
 }
 
-// Parse VASP XDATCAR format
-export function parse_vasp_xdatcar(content: string): Trajectory {
+const is_ase_format = (content: unknown, filename?: string): boolean => {
+  if (filename && !filename.toLowerCase().endsWith(`.traj`)) return false
+  if (!(content instanceof ArrayBuffer) || content.byteLength < 24) return false
+  // ASE trajectory files start with "- of Ulm" signature
+  const view = new Uint8Array(content.slice(0, 24))
+  const signature = [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d]
+  if (!signature.every((byte, idx) => view[idx] === byte)) return false
+  // ASE trajectory files also have a tag that starts with "ASE-Trajectory"
+  const tag = new TextDecoder().decode(view.slice(8, 24)).replace(/\0/g, ``)
+  return tag.startsWith(`ASE-Trajectory`)
+}
+
+const is_vasp_format = (content: string, filename?: string): boolean => {
+  if (filename) {
+    const basename = filename.toLowerCase().split(`/`).pop() || ``
+    if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) return true
+  }
   const lines = content.trim().split(/\r?\n/)
+  return lines.length >= 10 &&
+    lines.some((line) => line.includes(`Direct configuration=`)) &&
+    !isNaN(parseFloat(lines[1])) &&
+    lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
+}
+
+const is_xyz_multi_frame = (content: string, filename?: string): boolean => {
+  if (!filename?.toLowerCase().match(/\.(xyz|extxyz)$/)) return false
+  const lines = content.trim().split(/\r?\n/)
+  let frame_count = 0
   let line_idx = 0
+
+  while (line_idx < lines.length && frame_count < 10) {
+    if (!lines[line_idx]?.trim()) {
+      line_idx++
+      continue
+    }
+
+    const num_atoms = parseInt(lines[line_idx].trim(), 10)
+    if (isNaN(num_atoms) || num_atoms <= 0) {
+      line_idx++
+      continue
+    }
+    if (line_idx + num_atoms + 1 >= lines.length) break
+
+    line_idx += 2 // Skip comment line
+    let valid_coords = 0
+
+    for (let idx = 0; idx < Math.min(num_atoms, 5); idx++) {
+      const parts = lines[line_idx + idx]?.trim().split(/\s+/)
+      if (parts?.length >= 4 && isNaN(parseInt(parts[0])) && parts[0].length <= 3) {
+        if (parts.slice(1, 4).every((coord) => !isNaN(parseFloat(coord)))) {
+          valid_coords++
+        }
+      }
+    }
+
+    if (valid_coords >= Math.min(num_atoms, 3)) {
+      frame_count++
+      line_idx += num_atoms
+    } else {
+      line_idx++
+    }
+  }
+
+  return frame_count >= 2
+}
+
+// Specialized parsers
+const parse_torch_sim_hdf5 = async (
+  buffer: ArrayBuffer,
+  filename?: string,
+): Promise<Trajectory> => {
+  await h5wasm.ready
+  const { FS } = await h5wasm.ready
+  const temp_filename = filename || `temp.h5`
+
+  FS.writeFile(temp_filename, new Uint8Array(buffer))
+  const h5_file = new h5wasm.File(temp_filename, `r`)
+
+  try {
+    const data_group = h5_file.get(`data`) as Hdf5Group
+    if (!data_group?.get(`positions`)) throw new Error(`Invalid torch-sim format`)
+
+    const positions_dataset = data_group.get(`positions`)
+    const positions = is_hdf5_dataset(positions_dataset)
+      ? positions_dataset.to_array() as number[][][]
+      : null
+    if (!positions) throw new Error(`Invalid positions data`)
+
+    const atomic_numbers_dataset = data_group.get(`atomic_numbers`)
+    const atomic_numbers = is_hdf5_dataset(atomic_numbers_dataset)
+      ? atomic_numbers_dataset.to_array() as number[][]
+      : null
+
+    const cells_dataset = data_group.get(`cell`)
+    const cells = is_hdf5_dataset(cells_dataset)
+      ? cells_dataset.to_array() as number[][][]
+      : null
+
+    if (!atomic_numbers) throw new Error(`Missing atomic numbers`)
+
+    const elements = convert_atomic_numbers(atomic_numbers[0])
+    const potential_energies_dataset = data_group.get(`potential_energy`)
+    const potential_energies = is_hdf5_dataset(potential_energies_dataset)
+      ? potential_energies_dataset.to_array() as number[][]
+      : null
+
+    const pbc_dataset = data_group.get(`pbc`)
+    const pbc_data = is_hdf5_dataset(pbc_dataset)
+      ? pbc_dataset.to_array() as number[]
+      : null
+    const pbc = pbc_data && pbc_data.length === 3
+      ? [!!pbc_data[0], !!pbc_data[1], !!pbc_data[2]] as [boolean, boolean, boolean]
+      : [false, false, false] as [boolean, boolean, boolean]
+
+    const frames = positions.map((frame_positions, idx) => {
+      const lattice_matrix = cells?.[idx] as Matrix3x3 | undefined
+
+      // Handle case where cell information is missing (e.g., molecular dynamics in vacuum)
+      const metadata: Record<string, unknown> = {
+        ...(potential_energies && { energy: potential_energies[idx][0] }),
+      }
+
+      // Only add volume if we have a lattice matrix
+      if (lattice_matrix) {
+        metadata.volume = math.calc_lattice_params(lattice_matrix).volume
+      }
+
+      return create_trajectory_frame({
+        positions: frame_positions,
+        elements,
+        lattice_matrix,
+        pbc: lattice_matrix ? pbc : [false, false, false], // Use false PBC if no lattice
+        metadata,
+      }, idx)
+    })
+
+    return {
+      frames,
+      metadata: {
+        title: `TorchSim Trajectory`,
+        program: `TorchSim`,
+        source_format: `torch_sim_hdf5`,
+        num_atoms: elements.length,
+        num_frames: frames.length,
+        periodic_boundary_conditions: cells ? pbc : [false, false, false],
+        has_cell_info: Boolean(cells),
+        element_counts: elements.reduce((acc, el) => {
+          acc[el] = (acc[el] || 0) + 1
+          return acc
+        }, {} as Record<string, number>),
+      },
+    }
+  } finally {
+    h5_file.close()
+    try {
+      FS.unlink(temp_filename)
+    } catch {
+      // Ignore errors when cleaning up temporary file
+    }
+  }
+}
+
+const parse_vasp_xdatcar = (content: string, filename?: string): Trajectory => {
+  const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
-  // Parse header
-  const title = lines[line_idx++].trim()
-  const scale_factor = parseFloat(lines[line_idx++])
+  const title = lines[0].trim()
+  const scale = parseFloat(lines[1])
+  if (isNaN(scale)) throw new Error(`Invalid scale factor`)
 
-  if (isNaN(scale_factor)) throw new Error(`Invalid scale factor in XDATCAR`)
+  const lattice_matrix = lines.slice(2, 5).map((line) =>
+    line.trim().split(/\s+/).map((x) => parseFloat(x) * scale)
+  ) as Matrix3x3
 
-  // Parse lattice vectors (3 lines)
-  const lattice_vectors: Matrix3x3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-  for (let i = 0; i < 3; i++) {
-    const coords = lines[line_idx++].trim().split(/\s+/).map(Number)
-    if (coords.length !== 3 || coords.some(isNaN)) {
-      throw new Error(`Invalid lattice vector at line ${line_idx}`)
-    }
-    lattice_vectors[i] = coords.map((x) => x * scale_factor) as Vec3
-  }
+  const element_names = lines[5].trim().split(/\s+/)
+  const element_counts = lines[6].trim().split(/\s+/).map(Number)
+  const elements: ElementSymbol[] = element_names.flatMap((name, idx) =>
+    Array(element_counts[idx]).fill(name as ElementSymbol)
+  )
 
-  const lattice_params = math.calc_lattice_params(lattice_vectors)
-  const lattice = {
-    matrix: lattice_vectors,
-    ...lattice_params,
-    pbc: [true, true, true] as [boolean, boolean, boolean],
-  }
-
-  // Parse element names and counts
-  const element_line = lines[line_idx++].trim().split(/\s+/)
-  const count_line = lines[line_idx++].trim().split(/\s+/).map(Number)
-
-  if (element_line.length !== count_line.length || count_line.some(isNaN)) {
-    throw new Error(`Element names and counts don't match`)
-  }
-
-  // Create element array for sites
-  const elements: ElementSymbol[] = []
-  for (let i = 0; i < element_line.length; i++) {
-    for (let j = 0; j < count_line[i]; j++) {
-      elements.push(element_line[i] as ElementSymbol)
-    }
-  }
-
-  const total_atoms = count_line.reduce((sum, count) => sum + count, 0)
   const frames: TrajectoryFrame[] = []
+  let line_idx = 7
 
-  // Parse configurations
   while (line_idx < lines.length) {
-    // Look for configuration header
-    const config_line = lines[line_idx++]
-    if (!config_line || !config_line.includes(`Direct configuration=`)) continue
-
-    const config_match = config_line.match(/configuration=\s*(\d+)/)
-    const step = config_match ? parseInt(config_match[1]) : frames.length + 1
-
-    // Parse atomic positions
-    const sites = []
-    for (let atom_idx = 0; atom_idx < total_atoms; atom_idx++) {
-      if (line_idx >= lines.length) break
-
-      const pos_line = lines[line_idx++].trim()
-      const parts = pos_line.split(/\s+/)
-
-      // Handle different XDATCAR formats:
-      // 1. Just coordinates: x y z
-      // 2. Coordinates with element: x y z Element
-      let coords: number[]
-      let element: ElementSymbol
-
-      if (parts.length >= 4 && isNaN(Number(parts[3]))) {
-        // Format: x y z Element
-        coords = parts.slice(0, 3).map(Number)
-        element = parts[3] as ElementSymbol
-      } else {
-        // Format: x y z (use element from header)
-        coords = parts.slice(0, 3).map(Number)
-        element = elements[atom_idx]
-      }
-
-      if (coords.length < 3 || coords.some(isNaN)) {
-        console.warn(`Invalid coordinate line: ${pos_line}`)
-        continue
-      }
-
-      const abc: Vec3 = [coords[0], coords[1], coords[2]]
-
-      // Convert fractional to Cartesian coordinates efficiently
-      const xyz = math.mat3x3_vec3_multiply(math.transpose_matrix(lattice_vectors), abc)
-
-      sites.push({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `${element}${atom_idx + 1}`,
-        properties: {},
-      })
+    if (!lines[line_idx]?.includes(`Direct configuration=`)) {
+      line_idx++
+      continue
     }
 
-    if (sites.length === total_atoms) {
-      frames.push({
-        structure: { sites, lattice },
-        step,
-        metadata: { volume: lattice.volume },
-      })
-    }
-  }
+    const step_match = lines[line_idx].match(/configuration=\s*(\d+)/)
+    const step = step_match ? parseInt(step_match[1]) : frames.length + 1
+    line_idx++
 
-  if (frames.length === 0) {
-    throw new Error(`No valid configurations found in XDATCAR`)
+    const positions = []
+    for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
+      const coords = lines[line_idx].trim().split(/\s+/).slice(0, 3).map(Number)
+      if (coords.length === 3 && !coords.some(isNaN)) {
+        const abc = coords as Vec3
+        positions.push(
+          math.mat3x3_vec3_multiply(math.transpose_matrix(lattice_matrix), abc),
+        )
+      }
+      line_idx++
+    }
+
+    if (positions.length === elements.length) {
+      frames.push(create_trajectory_frame({
+        positions,
+        elements,
+        lattice_matrix,
+        pbc: [true, true, true],
+        metadata: { volume: math.calc_lattice_params(lattice_matrix).volume },
+      }, step))
+    }
   }
 
   return {
     frames,
     metadata: {
+      filename,
       title,
       source_format: `vasp_xdatcar`,
       frame_count: frames.length,
-      total_atoms,
-      elements: element_line,
-      element_counts: count_line,
+      total_atoms: elements.length,
+      elements: element_names,
+      element_counts,
+      periodic_boundary_conditions: [true, true, true],
     },
   }
 }
 
-// Detect if content is VASP XDATCAR format
-export function is_vasp_xdatcar(content: string, filename?: string): boolean {
-  // Check filename patterns (XDATCAR files typically named "XDATCAR" or variants)
-  if (filename) {
-    const basename = filename.toLowerCase().split(`/`).pop() || ``
-    if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) {
-      return true
-    }
-  }
-
-  // Check content patterns - XDATCAR files have a specific structure:
-  // 1. Title line
-  // 2. Scale factor (single number)
-  // 3. Three lattice vectors (3 numbers each)
-  // 4. Element names
-  // 5. Element counts
-  // 6. Configurations starting with "Direct configuration="
+const parse_xyz_trajectory = (content: string): Trajectory => {
   const lines = content.trim().split(/\r?\n/)
-  if (lines.length < 10) return false
-
-  // Look for "Direct configuration=" pattern which is unique to XDATCAR
-  const has_config_pattern = lines.some((line) => line.includes(`Direct configuration=`))
-
-  // Check if second line is a number (scale factor)
-  const second_line_is_number = !isNaN(parseFloat(lines[1]))
-
-  // Check if we have lattice vectors (lines 2-4 should be 3 numbers each)
-  let has_lattice_vectors = true
-  for (let i = 2; i < 5 && i < lines.length; i++) {
-    const coords = lines[i].trim().split(/\s+/)
-    if (
-      coords.length !== 3 ||
-      coords.some((coord) => isNaN(parseFloat(coord)))
-    ) {
-      has_lattice_vectors = false
-      break
-    }
-  }
-
-  return has_config_pattern && second_line_is_number && has_lattice_vectors
-}
-
-// Parse multi-frame XYZ format for trajectories
-export function parse_xyz_trajectory(content: string): Trajectory {
-  const lines = content.trim().split(/\r?\n/)
-  let line_idx = 0
   const frames: TrajectoryFrame[] = []
+  let line_idx = 0
 
   while (line_idx < lines.length) {
-    // Skip empty lines
-    if (!lines[line_idx] || lines[line_idx].trim() === ``) {
+    if (!lines[line_idx]?.trim()) {
       line_idx++
       continue
     }
 
-    // Parse number of atoms (line 1 of each frame)
-    const num_atoms_line = lines[line_idx]?.trim()
-    if (!num_atoms_line) break
-
-    const num_atoms = parseInt(num_atoms_line, 10)
+    const num_atoms = parseInt(lines[line_idx].trim(), 10)
     if (isNaN(num_atoms) || num_atoms <= 0) {
       line_idx++
       continue
     }
-
-    // Check if we have enough lines for this frame
     if (line_idx + num_atoms + 1 >= lines.length) break
 
-    // Parse comment line (line 2 of each frame) - may contain metadata
     line_idx++
-    const comment_line = lines[line_idx] || ``
-    const frame_metadata: Record<string, unknown> = {}
+    const comment = lines[line_idx] || ``
+    const metadata: Record<string, unknown> = {}
 
-    // Try to extract step number from comment
-    const step_match = comment_line.match(/step\s*[=:]?\s*(\d+)/i)
-    const frame_match = comment_line.match(/frame\s*[=:]?\s*(\d+)/i)
-    const ionic_step_match = comment_line.match(/ionic_step\s*[=:]?\s*(\d+)/i)
+    // Extract step number
+    const step_match = comment.match(/(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i)
+    const step = step_match ? parseInt(step_match[1]) : frames.length
 
-    const step = step_match
-      ? parseInt(step_match[1])
-      : frame_match
-      ? parseInt(frame_match[1])
-      : ionic_step_match
-      ? parseInt(ionic_step_match[1])
-      : frames.length
-
-    // Extract various properties from extended XYZ comment line
-    // Map canonical property names to possible alternative names
-    const property_aliases: Record<string, string[]> = {
-      energy: [`energy`, `E`, `total_energy`, `etot`, `total_e`],
-      energy_per_atom: [`energy_per_atom`, `e_per_atom`, `energy/atom`, `epa`],
-      volume: [`volume`, `vol`, `V`, `cell_volume`],
-      pressure: [`pressure`, `P`, `press`],
-      temperature: [`temperature`, `temp`, `T`, `kelvin`],
-      bandgap: [`bandgap`, `E_gap`, `gap`, `band_gap`, `egap`, `bg`],
-      force_max: [`max_force`, `force_max`, `fmax`, `maximum_force`],
-      stress_max: [`max_stress`, `stress_max`, `maximum_stress`],
-      stress_frobenius: [`stress_frobenius`, `frobenius_stress`, `stress_frob`],
+    // Extract properties with comprehensive aliases
+    const property_patterns = {
+      energy:
+        /(?:energy|E|etot|total_energy)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      energy_per_atom:
+        /(?:e_per_atom|energy\/atom)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      volume: /(?:volume|vol|V)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      pressure: /(?:pressure|press|P)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      temperature: /(?:temperature|temp|T)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      bandgap: /(?:E_gap|gap|bg)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      force_max:
+        /(?:max_force|force_max|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      stress_max:
+        /(?:max_stress|stress_max)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      stress_frobenius: /stress_frobenius\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
     }
 
-    // First, try to extract properties from within the Properties= string (extended XYZ format)
-    const properties_match = comment_line.match(/Properties\s*=\s*"?([^"]*)"?/i)
-    if (properties_match) {
-      const properties_string = properties_match[1]
+    Object.entries(property_patterns).forEach(([key, pattern]) => {
+      const match = comment.match(pattern)
+      if (match) metadata[key] = parseFloat(match[1])
+    })
 
-      // Split the Properties string by spaces and look for property=value pairs
-      const property_parts = properties_string.split(/\s+/)
-      for (const part of property_parts) {
-        if (part.includes(`=`)) {
-          const [key, value] = part.split(`=`, 2)
-          const parsed_value = parseFloat(value)
-          if (!isNaN(parsed_value)) {
-            // Check if this key matches any of our canonical properties
-            for (const [canonical_name, aliases] of Object.entries(property_aliases)) {
-              if (aliases.some((alias) => key.toLowerCase() === alias.toLowerCase())) {
-                frame_metadata[canonical_name] = parsed_value
-                break
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Then, extract other properties that might be outside the Properties string
-    for (const [canonical_name, aliases] of Object.entries(property_aliases)) {
-      // Skip if we already found this property in the Properties string
-      if (canonical_name in frame_metadata) continue
-
-      let found_value: number | undefined
-
-      // Try each alias until we find a match
-      for (const alias of aliases) {
-        const regex = new RegExp(
-          `${alias}\\s*[=:]?\\s*([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)`,
-          `i`,
-        )
-        const match = comment_line.match(regex)
-        if (match) {
-          found_value = parseFloat(match[1])
-          break // Stop at first match to avoid conflicts
-        }
-      }
-
-      if (found_value !== undefined && !isNaN(found_value)) {
-        frame_metadata[canonical_name] = found_value
-      }
-    }
-
-    // Parse stress tensor if present (for extended XYZ format)
-    const stress_match = comment_line.match(/stress\s*=\s*"([^"]+)"/i)
-    if (stress_match) {
-      const stress_values = stress_match[1].split(/\s+/).map(Number)
-      if (stress_values.length === 9) {
-        // Convert flat array to 3x3 stress tensor using helper function
-        const stress_tensor = math.vec9_to_mat3x3(stress_values)
-
-        // Store the full stress tensor
-        frame_metadata.stress = stress_tensor
-        // Convert to Voigt notation for stress_max calculation
-        const [s11, s22, s33, s23, s13, s12] = math.to_voigt(stress_tensor)
-
-        // Calculate von Mises stress (stress_max equivalent)
-        frame_metadata.stress_max = Math.sqrt(
-          0.5 * ((s11 - s22) ** 2 + (s22 - s33) ** 2 + (s33 - s11) ** 2) +
-            3 * (s12 ** 2 + s13 ** 2 + s23 ** 2),
-        )
-
-        // Calculate Frobenius norm of stress tensor
-        frame_metadata.stress_frobenius = Math.sqrt(
-          stress_values.reduce((sum, val) => sum + val ** 2, 0),
-        )
-
-        // Calculate pressure (negative trace/3)
-        frame_metadata.pressure = -(s11 + s22 + s33) / 3
-      }
-    }
-
-    // Parse lattice matrix if present (for extended XYZ format)
-    const lattice_match = comment_line.match(/Lattice\s*=\s*"([^"]+)"/i)
-    let lattice = null
+    // Extract lattice matrix
+    const lattice_match = comment.match(/Lattice\s*=\s*"([^"]+)"/i)
+    let lattice_matrix: Matrix3x3 | undefined
     if (lattice_match) {
-      const lattice_values = lattice_match[1].split(/\s+/).map(Number)
-      if (lattice_values.length === 9) {
-        // Convert flat array to 3x3 matrix
-        const lattice_matrix: Matrix3x3 = [
-          [lattice_values[0], lattice_values[1], lattice_values[2]],
-          [lattice_values[3], lattice_values[4], lattice_values[5]],
-          [lattice_values[6], lattice_values[7], lattice_values[8]],
+      const values = lattice_match[1].split(/\s+/).map(Number)
+      if (values.length === 9) {
+        lattice_matrix = [
+          [values[0], values[1], values[2]],
+          [values[3], values[4], values[5]],
+          [values[6], values[7], values[8]],
         ]
-
-        const lattice_params = math.calc_lattice_params(lattice_matrix)
-        lattice = {
-          matrix: lattice_matrix,
-          ...lattice_params,
-          pbc: [true, true, true] as [boolean, boolean, boolean],
-        }
-
-        // Add calculated volume to metadata if not already present
-        if (!frame_metadata.volume) frame_metadata.volume = lattice.volume
+        metadata.volume = math.calc_lattice_params(lattice_matrix).volume
       }
     }
 
-    // Parse atomic coordinates (lines 3 to N+2)
-    const sites = []
+    // Parse atoms
     line_idx++
+    const positions: number[][] = []
+    const elements: ElementSymbol[] = []
+    const forces: number[][] = []
+    const has_forces = comment.includes(`forces:R:3`)
 
-    // Pre-compute inverse matrix once per frame for efficiency
-    const inv_matrix = lattice && get_inverse_matrix(lattice.matrix)
+    for (let idx = 0; idx < num_atoms && line_idx < lines.length; idx++) {
+      const parts = lines[line_idx].trim().split(/\s+/)
+      if (parts.length >= 4) {
+        elements.push(parts[0] as ElementSymbol)
+        const pos: Vec3 = [
+          parseFloat(parts[1]),
+          parseFloat(parts[2]),
+          parseFloat(parts[3]),
+        ]
+        positions.push(pos)
 
-    // Check if force data is available based on Properties string
-    const has_forces = properties_match?.[1]?.includes(`forces:R:3`) ?? false
-    const forces_array: number[][] = []
-
-    for (let atom_idx = 0; atom_idx < num_atoms; atom_idx++) {
-      if (line_idx >= lines.length) {
-        throw new Error(`Incomplete XYZ frame: missing atomic coordinates`)
-      }
-
-      const coord_line = lines[line_idx].trim()
-      if (!coord_line) {
-        throw new Error(`Empty coordinate line in XYZ frame`)
-      }
-
-      const parts = coord_line.split(/\s+/)
-      if (parts.length < 4) {
-        throw new Error(`Invalid coordinate line in XYZ frame: ${coord_line}`)
-      }
-
-      const element = parts[0] as ElementSymbol
-      const x = parseFloat(parts[1])
-      const y = parseFloat(parts[2])
-      const z = parseFloat(parts[3])
-
-      if (isNaN(x) || isNaN(y) || isNaN(z)) {
-        throw new Error(`Invalid coordinates in XYZ frame: ${coord_line}`)
-      }
-
-      // XYZ coordinates are typically in Angstroms (Cartesian)
-      const xyz: Vec3 = [x, y, z]
-
-      // Calculate fractional coordinates if lattice info is available
-      const abc: Vec3 = inv_matrix
-        ? math.mat3x3_vec3_multiply(inv_matrix, xyz)
-        : [0, 0, 0]
-
-      // Extract force vector if available
-      // Need to dynamically determine column positions based on Properties string
-      let force_vector: Vec3 | undefined
-      if (has_forces) {
-        // Parse Properties string to determine column layout
-        let force_start_col = 4 // Default fallback
-
-        if (properties_match?.[1]) {
-          const properties_str = properties_match[1]
-          const property_specs = properties_str.split(/\s+/)
-          let col_idx = 1 // Start after element (column 0)
-
-          for (const spec of property_specs) {
-            if (spec.includes(`forces:`)) {
-              force_start_col = col_idx
-              break
-            }
-            // Count columns used by this property
-            const match = spec.match(/:R:(\d+)/)
-            if (match) {
-              col_idx += parseInt(match[1])
-            } else {
-              col_idx += 1 // Default single column
-            }
-          }
-        }
-
-        if (parts.length >= force_start_col + 3) {
-          const fx = parseFloat(parts[force_start_col])
-          const fy = parseFloat(parts[force_start_col + 1])
-          const fz = parseFloat(parts[force_start_col + 2])
-
-          if (!isNaN(fx) && !isNaN(fy) && !isNaN(fz)) {
-            force_vector = [fx, fy, fz]
-            forces_array.push([fx, fy, fz])
-          }
+        if (
+          has_forces && parts.length >= 7 &&
+          parts.slice(4, 7).every((x) => !isNaN(parseFloat(x)))
+        ) {
+          forces.push([parseFloat(parts[4]), parseFloat(parts[5]), parseFloat(parts[6])])
         }
       }
-
-      sites.push({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `${element}${atom_idx + 1}`,
-        properties: force_vector ? { force: force_vector } : {},
-      })
-
       line_idx++
     }
 
-    // Store forces array in metadata for compatibility with existing force calculations
-    if (forces_array.length > 0) {
-      frame_metadata.forces = forces_array
-
-      // Calculate force statistics
-      const force_magnitudes = forces_array.map((force) =>
-        Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
-      )
-
-      if (force_magnitudes.length > 0) {
-        frame_metadata.force_max = Math.max(...force_magnitudes)
-        frame_metadata.force_norm = Math.sqrt(
-          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
-            force_magnitudes.length,
-        )
-      }
+    if (forces.length > 0) {
+      metadata.forces = forces
+      Object.assign(metadata, calculate_force_stats(forces))
     }
 
-    // Create structure for this frame
-    // Include lattice information if parsed from extended XYZ format
-    const structure: AnyStructure = { sites, ...(lattice && { lattice }) }
-
-    frames.push({ structure, step, metadata: frame_metadata })
-  }
-
-  if (frames.length === 0) {
-    throw new Error(`No valid frames found in XYZ trajectory`)
+    frames.push(create_trajectory_frame({
+      positions,
+      elements,
+      lattice_matrix,
+      pbc: lattice_matrix ? [true, true, true] : undefined,
+      metadata,
+    }, step))
   }
 
   return {
@@ -836,498 +509,390 @@ export function parse_xyz_trajectory(content: string): Trajectory {
   }
 }
 
-// Detect if content is multi-frame XYZ trajectory format
-export function is_xyz_trajectory(content: string, filename?: string): boolean {
-  // Check filename patterns
-  if (filename) {
-    const basename = filename.toLowerCase().split(`/`).pop() || ``
-    if (basename.endsWith(`.xyz`) || basename.endsWith(`.extxyz`)) {
-      // Check if it's a multi-frame XYZ by simulating the parsing process
-      const lines = content.trim().split(/\r?\n/)
-      let line_idx = 0
-      let frame_count = 0
-
-      while (line_idx < lines.length && frame_count < 10) {
-        // Skip empty lines
-        if (!lines[line_idx] || lines[line_idx].trim() === ``) {
-          line_idx++
-          continue
-        }
-
-        // Try to parse atom count
-        const num_atoms_line = lines[line_idx]?.trim()
-        const num_atoms = parseInt(num_atoms_line, 10)
-
-        if (isNaN(num_atoms) || num_atoms <= 0) {
-          line_idx++
-          continue
-        }
-
-        // Check if we have enough lines for this frame
-        if (line_idx + num_atoms + 1 >= lines.length) break
-
-        // Skip comment line
-        line_idx++
-
-        // Check if the coordinate lines look valid
-        let valid_coordinates = 0
-        for (let atom_idx = 0; atom_idx < Math.min(num_atoms, 5); atom_idx++) {
-          line_idx++
-          if (line_idx >= lines.length) break
-
-          const coord_line = lines[line_idx]?.trim()
-          if (coord_line) {
-            const parts = coord_line.split(/\s+/)
-            if (parts.length >= 4) {
-              const first_token = parts[0]
-              const coords = parts.slice(1, 4)
-              const is_element = isNaN(parseInt(first_token)) && first_token.length <= 3
-              const are_coords = coords.every((coord) => !isNaN(parseFloat(coord)))
-              if (is_element && are_coords) {
-                valid_coordinates++
-              }
-            }
-          }
-        }
-
-        // If we found valid coordinates, count this as a frame
-        if (valid_coordinates >= Math.min(num_atoms, 3)) {
-          frame_count++
-
-          // Skip remaining atoms in this frame
-          line_idx += num_atoms - Math.min(num_atoms, 5)
-        } else line_idx++
-      }
-
-      // Return true if we found at least 2 valid frames
-      return frame_count >= 2
-    }
-  }
-
-  return false
-}
-
-// Parse pymatgen Trajectory format
-export function parse_pymatgen_trajectory(
-  obj_data: Record<string, unknown>,
+const parse_pymatgen_trajectory = (
+  data: Record<string, unknown>,
   filename?: string,
-): Trajectory {
-  const species = obj_data.species as Array<{ element: ElementSymbol }>
-  const coords = obj_data.coords as number[][][] // [frame][atom][xyz]
-  const matrix = obj_data.lattice as Matrix3x3 // lattice vectors
-  const frame_properties = obj_data.frame_properties as Array<
-    Record<string, unknown>
-  >
-  const site_properties = obj_data.site_properties as Array<
-    Record<string, unknown>
-  >
+): Trajectory => {
+  const species = data.species as Array<{ element: ElementSymbol }>
+  const coords = data.coords as number[][][]
+  const matrix = data.lattice as Matrix3x3
+  const frame_properties = data.frame_properties as Array<Record<string, unknown>>
 
-  const lattice_params = math.calc_lattice_params(matrix)
+  const frames = coords.map((frame_coords, idx) => {
+    const frame_props = frame_properties?.[idx] || {}
+    const metadata = { ...frame_props }
 
-  const frames: TrajectoryFrame[] = coords.map((frame_coords, frame_idx) => {
-    // Extract frame properties first to check for forces
-    const frame_props = frame_properties?.[frame_idx] || {}
-
-    // Extract forces if available (check multiple possible locations)
-    let forces_data: number[][] | undefined
-
-    // Method 1: frame_properties.forces.data (standard format)
-    if (frame_props.forces && typeof frame_props.forces === `object`) {
-      const forces_obj = frame_props.forces as { data?: number[][] }
-      if (forces_obj.data && Array.isArray(forces_obj.data)) {
-        forces_data = forces_obj.data
-      }
-    }
-
-    // Method 2: site_properties[frame_idx].momenta (alternative format)
-    if (!forces_data && site_properties?.[frame_idx]?.momenta) {
-      const momenta = site_properties[frame_idx].momenta as number[][]
-      if (Array.isArray(momenta) && momenta.length > 0) {
-        forces_data = momenta // Use momenta as forces (they're the same for force visualization)
-      }
-    }
-
-    // Convert coordinates and species to sites
-    const sites = frame_coords.map((xyz, site_idx) => {
-      const abc = [xyz[0], xyz[1], xyz[2]] as Vec3 // pymatgen uses fractional coordinates
-      const cartesian = math.mat3x3_vec3_multiply(math.transpose_matrix(matrix), abc)
-
-      // Add force vector to site properties if available
-      const site_properties: Record<string, unknown> = {}
-      const force = forces_data?.[site_idx]
-      if (force && force.length >= 3) {
-        site_properties.force = [force[0], force[1], force[2]] as Vec3
-      }
-
-      return {
-        species: [{ element: species[site_idx].element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz: cartesian,
-        label: species[site_idx].element,
-        properties: site_properties,
-      }
-    })
-
-    // Extract frame metadata
-    const metadata: Record<string, unknown> = { ...frame_props }
-
-    // Process forces if available (store in metadata for compatibility)
+    // Extract forces
+    const forces_data = (frame_props.forces as { data?: number[][] })?.data || null
     if (forces_data) {
       metadata.forces = forces_data
-
-      // Calculate force statistics
-      const force_magnitudes = forces_data.map((force: number[]) =>
-        Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
-      )
-
-      if (force_magnitudes.length > 0) {
-        metadata.force_max = Math.max(...force_magnitudes)
-        metadata.force_norm = Math.sqrt(
-          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
-            force_magnitudes.length,
-        )
-      }
+      Object.assign(metadata, calculate_force_stats(forces_data))
     }
 
-    // Process stress if available
-    if (frame_props.stress && typeof frame_props.stress === `object`) {
-      const stress_obj = frame_props.stress as { data?: number[][] }
-      if (stress_obj.data && Array.isArray(stress_obj.data)) {
-        metadata.stress = stress_obj.data
-
-        // Calculate max stress (von Mises equivalent)
-        const stress = stress_obj.data as number[][]
-        if (stress.length === 3 && stress[0].length === 3) {
-          const s11 = stress[0][0],
-            s22 = stress[1][1],
-            s33 = stress[2][2]
-          const s12 = stress[0][1],
-            s13 = stress[0][2],
-            s23 = stress[1][2]
-
-          metadata.stress_max = Math.sqrt(
-            0.5 * ((s11 - s22) ** 2 + (s22 - s33) ** 2 + (s33 - s11) ** 2) +
-              3 * (s12 ** 2 + s13 ** 2 + s23 ** 2),
-          )
-
-          // Calculate pressure (negative trace/3)
-          metadata.pressure = -(s11 + s22 + s33) / 3
-        }
-      }
+    // Extract stress
+    const stress_data = (frame_props.stress as { data?: number[][] })?.data
+    if (stress_data?.length === 3) {
+      metadata.stress = stress_data
+      Object.assign(metadata, calculate_stress_stats(stress_data))
     }
 
-    return {
-      structure: {
-        sites,
-        charge: (obj_data.charge as number) || 0,
-        lattice: {
-          matrix,
-          ...lattice_params,
-          pbc: [true, true, true] as [boolean, boolean, boolean],
-        },
-      },
-      step: frame_idx,
+    const positions = frame_coords.map((abc) =>
+      math.mat3x3_vec3_multiply(math.transpose_matrix(matrix), abc as Vec3)
+    )
+
+    return create_trajectory_frame({
+      positions,
+      elements: species.map((s) => s.element),
+      lattice_matrix: matrix,
+      pbc: [true, true, true],
       metadata,
-    }
+    }, idx)
   })
 
   return {
     frames,
     metadata: {
-      filename: filename || obj_data.filename,
+      filename,
       source_format: `pymatgen_trajectory`,
       species_list: species.map((s) => s.element),
-      constant_lattice: obj_data.constant_lattice as boolean,
       frame_count: frames.length,
+      periodic_boundary_conditions: [true, true, true],
     },
   }
 }
 
-// Parse trajectory from various common formats
+const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajectory => {
+  const view = new DataView(buffer)
+  let offset = 0
+
+  // Validate signature
+  const signature = new TextDecoder().decode(new Uint8Array(buffer, 0, 8))
+  if (signature !== `- of Ulm`) throw new Error(`Invalid ASE trajectory`)
+  offset += 8
+
+  const tag = new TextDecoder().decode(new Uint8Array(buffer, offset, 16)).replace(
+    /\0/g,
+    ``,
+  ).trim()
+  if (!tag.startsWith(`ASE-Trajectory`)) throw new Error(`Invalid ASE trajectory`)
+  offset += 16
+
+  // Read header
+  const _version = Number(view.getBigInt64(offset, true))
+  offset += 8
+  const n_items = Number(view.getBigInt64(offset, true))
+  offset += 8
+  const offsets_pos = Number(view.getBigInt64(offset, true))
+  offset += 8
+
+  if (n_items <= 0) throw new Error(`Invalid frame count`)
+
+  // Read offsets
+  const frame_offsets = []
+  offset = offsets_pos
+  for (let idx = 0; idx < n_items; idx++) {
+    frame_offsets.push(Number(view.getBigInt64(offset, true)))
+    offset += 8
+  }
+
+  const read_ndarray = (ref: { ndarray: unknown[] }): number[][] => {
+    const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
+    const total = shape.reduce((a, b) => a * b, 1)
+    const data: number[] = []
+    let pos = array_offset
+
+    for (let idx = 0; idx < total; idx++) {
+      let value: number
+      if (dtype === `int64`) {
+        value = Number(view.getBigInt64(pos, true))
+        pos += 8
+      } else if (dtype === `int32`) {
+        value = view.getInt32(pos, true)
+        pos += 4
+      } else if (dtype === `float64`) {
+        value = view.getFloat64(pos, true)
+        pos += 8
+      } else if (dtype === `float32`) {
+        value = view.getFloat32(pos, true)
+        pos += 4
+      } else throw new Error(`Unsupported dtype: ${dtype}`)
+      data.push(value)
+    }
+
+    return shape.length === 1
+      ? [data]
+      : shape.length === 2
+      ? Array.from({ length: shape[0] }, (_, i) =>
+        data.slice(i * shape[1], (i + 1) * shape[1]))
+      : (() => {
+        throw new Error(`Unsupported shape`)
+      })()
+  }
+
+  const frames: TrajectoryFrame[] = []
+  let global_numbers: number[] | undefined
+
+  for (let idx = 0; idx < n_items; idx++) {
+    offset = frame_offsets[idx]
+    const json_length = Number(view.getBigInt64(offset, true))
+    offset += 8
+
+    const json_str = new TextDecoder().decode(new Uint8Array(buffer, offset, json_length))
+    const frame_data = JSON.parse(json_str)
+
+    const positions_ref = frame_data[`positions.`] || frame_data.positions
+    const positions = positions_ref?.ndarray ? read_ndarray(positions_ref) : positions_ref
+    const cell = frame_data.cell as Matrix3x3
+    const numbers_ref: unknown = frame_data[`numbers.`] || frame_data.numbers ||
+      global_numbers
+    const numbers: number[] = (numbers_ref as { ndarray?: unknown })?.ndarray
+      ? read_ndarray(numbers_ref as { ndarray: unknown[] }).flat()
+      : numbers_ref as number[]
+
+    if (numbers) global_numbers = numbers
+
+    const elements = convert_atomic_numbers(numbers)
+    const metadata = {
+      filename,
+      title: `ASE Trajectory`,
+      program: `ASE`,
+      num_atoms: global_numbers?.length || 0,
+      num_frames: frames.length,
+      source_format: `ase_trajectory`,
+      periodic_boundary_conditions: [true, true, true],
+      element_counts: global_numbers?.reduce((acc, num) => {
+        const el = atomic_number_to_symbol[num] || `X`
+        acc[el] = (acc[el] || 0) + 1
+        return acc
+      }, {} as Record<string, number>),
+      ...(frame_data.calculator && { ...frame_data.calculator }),
+      ...(frame_data.info && { ...frame_data.info }),
+    }
+
+    frames.push(create_trajectory_frame({
+      positions,
+      elements,
+      lattice_matrix: cell,
+      pbc: frame_data.pbc || [true, true, true],
+      metadata,
+    }, idx))
+  }
+
+  return {
+    frames,
+    metadata: {
+      filename,
+      title: `ASE Trajectory`,
+      program: `ASE`,
+      num_atoms: global_numbers?.length || 0,
+      num_frames: frames.length,
+      source_format: `ase_trajectory`,
+      periodic_boundary_conditions: [true, true, true],
+      element_counts: global_numbers?.reduce((acc, num) => {
+        const el = atomic_number_to_symbol[num] || `X`
+        acc[el] = (acc[el] || 0) + 1
+        return acc
+      }, {} as Record<string, number>),
+    },
+  }
+}
+
+// Main parsing entry point
 export async function parse_trajectory_data(
   data: unknown,
   filename?: string,
 ): Promise<Trajectory> {
-  // Handle binary data (HDF5 files)
   if (data instanceof ArrayBuffer) {
-    // Check if it's a torch-sim HDF5 file
+    if (is_ase_format(data, filename)) return parse_ase_trajectory(data, filename)
     if (is_torch_sim_hdf5(data, filename)) {
       return await parse_torch_sim_hdf5(data, filename)
     }
-
-    // If not a recognized HDF5 format, throw error
-    throw new Error(`Unsupported binary file format`)
+    throw new Error(`Unsupported binary format`)
   }
 
-  // Handle string data (raw file content)
   if (typeof data === `string`) {
     const content = data.trim()
+    if (is_xyz_multi_frame(content, filename)) return parse_xyz_trajectory(content)
+    if (is_vasp_format(content, filename)) return parse_vasp_xdatcar(content, filename)
 
-    // Try multi-frame XYZ format first (before single XYZ)
-    if (is_xyz_trajectory(content, filename)) {
-      return parse_xyz_trajectory(content)
-    }
-
-    // Try VASP XDATCAR format
-    if (is_vasp_xdatcar(content, filename)) {
-      return parse_vasp_xdatcar(content)
-    }
-
-    // Try single-frame XYZ (convert to trajectory format)
-    if (
-      filename?.toLowerCase().endsWith(`.xyz`) ||
-      filename?.toLowerCase().endsWith(`.extxyz`)
-    ) {
+    // Try single XYZ as fallback
+    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
       try {
-        const single_structure = parse_xyz(content)
-        if (single_structure) {
+        const structure = parse_xyz(content)
+        if (structure) {
           return {
-            frames: [{ structure: single_structure, step: 0, metadata: {} }],
-            metadata: {
-              filename,
-              source_format: `single_xyz`,
-              frame_count: 1,
-            },
+            frames: [{ structure, step: 0, metadata: {} }],
+            metadata: { source_format: `single_xyz`, frame_count: 1 },
           }
         }
-      } catch (error) {
-        console.warn(`Failed to parse as single XYZ:`, error)
+      } catch {
+        // Ignore XYZ parsing errors and try other formats
       }
     }
 
-    // Try JSON parsing for other formats
     try {
       data = JSON.parse(content)
     } catch {
-      throw new Error(
-        `Content is not valid JSON, XYZ trajectory, single XYZ, VASP XDATCAR, or HDF5 format`,
-      )
+      throw new Error(`Unsupported text format`)
     }
   }
 
-  if (!data || typeof data !== `object`) {
-    throw new Error(`Invalid trajectory data: must be an object or array`)
-  }
+  if (!data || typeof data !== `object`) throw new Error(`Invalid data format`)
 
-  // Handle array format (list of frames)
+  // Handle JSON formats
   if (Array.isArray(data)) {
-    const frames: TrajectoryFrame[] = data.map((frame_data, idx) => {
-      if (typeof frame_data !== `object` || frame_data === null) {
-        throw new Error(`Invalid frame data at index ${idx}`)
-      }
-
-      // Try different possible structure keys
+    const frames = data.map((frame_data, idx) => {
       const frame_obj = frame_data as Record<string, unknown>
-      let structure: AnyStructure
-
-      if (frame_obj.structure && typeof frame_obj.structure === `object`) {
-        structure = frame_obj.structure as AnyStructure
-      } else if (frame_obj.sites) {
-        // Frame data is itself a structure
-        structure = frame_data as AnyStructure
-      } else {
-        throw new Error(`No structure found in frame ${idx}`)
-      }
-
+      const structure = (frame_obj.structure || frame_obj) as AnyStructure
       return {
         structure,
-        step: typeof frame_obj.step === `number` ? frame_obj.step : idx,
-        metadata: (frame_obj.metadata as Record<string, unknown>) || frame_obj,
+        step: frame_obj.step as number || idx,
+        metadata: frame_obj.metadata as Record<string, unknown> || {},
       }
     })
-
-    return {
-      frames,
-      metadata: {
-        filename,
-        source_format: `array`,
-        frame_count: frames.length,
-      },
-    }
+    return { frames, metadata: { source_format: `array`, frame_count: frames.length } }
   }
 
-  // Handle object format
-  const obj_data = data as Record<string, unknown>
+  const obj = data as Record<string, unknown>
 
-  // Check if it's a pymatgen Trajectory format
-  if (
-    obj_data[`@class`] === `Trajectory` &&
-    obj_data.species &&
-    Array.isArray(obj_data.species) &&
-    obj_data.coords &&
-    Array.isArray(obj_data.coords) &&
-    obj_data.lattice &&
-    obj_data.frame_properties &&
-    Array.isArray(obj_data.frame_properties)
-  ) {
-    return parse_pymatgen_trajectory(obj_data, filename)
+  // Pymatgen format
+  if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
+    return parse_pymatgen_trajectory(obj, filename)
   }
 
-  // Check if it has a frames property
-  if (obj_data.frames && Array.isArray(obj_data.frames)) {
+  // Object with frames
+  if (obj.frames && Array.isArray(obj.frames)) {
     return {
-      frames: obj_data.frames as TrajectoryFrame[],
+      frames: obj.frames as TrajectoryFrame[],
       metadata: {
-        ...(obj_data.metadata as Record<string, unknown>),
-        filename,
+        ...obj.metadata as Record<string, unknown>,
         source_format: `object_with_frames`,
       },
     }
   }
 
-  // Check if it's a single structure
-  if (obj_data.sites) {
+  // Single structure
+  if (obj.sites) {
     return {
-      frames: [
-        {
-          structure: data as AnyStructure,
-          step: 0,
-          metadata: {},
-        },
-      ],
-      metadata: {
-        filename,
-        source_format: `single_structure`,
-        frame_count: 1,
-      },
+      frames: [{ structure: obj as AnyStructure, step: 0, metadata: {} }],
+      metadata: { source_format: `single_structure`, frame_count: 1 },
     }
   }
 
-  throw new Error(
-    `Unrecognized trajectory format: expected array of frames, object with frames property, single structure, or VASP XDATCAR format`,
-  )
+  throw new Error(`Unrecognized trajectory format`)
 }
 
-// Helper function to detect unsupported file formats and provide helpful messages
+// Utility functions
+export async function load_trajectory_from_url(url: string): Promise<Trajectory> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`)
+
+  const filename = url.split(`/`).pop() || `trajectory`
+  const is_hdf5 = filename.toLowerCase().match(/\.h5$|\.hdf5$/)
+
+  if (is_hdf5) {
+    return await parse_trajectory_data(await response.arrayBuffer(), filename)
+  }
+
+  const content_encoding = response.headers.get(`content-encoding`)
+  if (content_encoding === `gzip`) {
+    return await parse_trajectory_data(
+      await response.text(),
+      filename.replace(/\.gz$/, ``),
+    )
+  }
+
+  const { decompress_file } = await import(`../io/decompress`)
+  const file = new File([await response.blob()], filename)
+  const result = await decompress_file(file)
+  return await parse_trajectory_data(result.content, result.filename)
+}
+
 export function get_unsupported_format_message(
   filename: string,
   content: string,
 ): string | null {
-  const lower_filename = filename.toLowerCase()
+  const lower = filename.toLowerCase()
+  const formats = [
+    { ext: [`.dump`, `.lammpstrj`], name: `LAMMPS`, tool: `pymatgen` },
+    { ext: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
+    { ext: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
+  ]
 
-  // Check for binary ASE trajectory files
-  if (lower_filename.endsWith(`.traj`)) {
-    return create_format_error(`ASE Binary Trajectory`, filename, [
-      {
-        tool: `ASE`,
-        code: `from ase.io import read, write
-# Read ASE trajectory
-traj = read('${filename}', index=':')
-# Convert to multi-frame XYZ
-write('${filename.replace(`.traj`, `.xyz`)}', traj)`,
-      },
-      {
-        tool: `pymatgen`,
-        code: `from pymatgen.io.ase import AseAtomsAdaptor
-from ase.io import read
-import json
-
-# Read ASE trajectory and convert to pymatgen
-traj = read('${filename}', index=':')
-structures = [AseAtomsAdaptor.get_structure(atoms) for atoms in traj]
-
-# Save as JSON for matterviz
-trajectory_data = {
-    "frames": [{"structure": struct.as_dict(), "step": i} for i, struct in enumerate(structures)]
-}
-with open('${filename.replace(`.traj`, `.json`)}', 'w') as file:
-    json.dump(trajectory_data, file)`,
-      },
-    ])
+  for (const { ext, name, tool } of formats) {
+    if (ext.some((e) => lower.endsWith(e))) {
+      return `<div class="unsupported-format"><h4>🚫 ${name} format not supported</h4><p>Convert with ${tool} first</p></div>`
+    }
   }
 
-  // Check for LAMMPS trajectory files
-  if (
-    lower_filename.endsWith(`.dump`) ||
-    lower_filename.endsWith(`.lammpstrj`)
-  ) {
-    return create_format_error(`LAMMPS Trajectory`, filename, [
-      {
-        tool: `pymatgen`,
-        code: `from pymatgen.io.lammps.data import LammpsData
-# Convert LAMMPS trajectory to supported format
-# (specific code depends on LAMMPS trajectory format)`,
-      },
-    ])
-  }
-
-  // Check for NetCDF files (common in MD simulations)
-  if (lower_filename.endsWith(`.nc`) || lower_filename.endsWith(`.netcdf`)) {
-    return create_format_error(`NetCDF Trajectory`, filename, [
-      {
-        tool: `MDAnalysis`,
-        code: `import MDAnalysis as mda
-# Convert NetCDF to XYZ format
-u = mda.Universe('topology.pdb', '${filename}')
-u.atoms.write('${filename.replace(/\.(nc|netcdf)$/, `.xyz`)}', frames='all')`,
-      },
-    ])
-  }
-
-  // Check for DCD files (CHARMM/NAMD trajectories) # codespell:ignore
-  if (lower_filename.endsWith(`.dcd`)) {
-    return create_format_error(`DCD Trajectory`, filename, [
-      {
-        tool: `MDAnalysis`,
-        code: `import MDAnalysis as mda
-# You'll need a topology file (PSF, PDB, etc.)
-u = mda.Universe('topology.psf', '${filename}')
-u.atoms.write('${filename.replace(`.dcd`, `.xyz`)}', frames='all')`,
-      },
-    ])
-  }
-
-  // Check if content looks like binary data
-  if (content.length > 0 && is_binary(content)) {
-    return `
-      <div class="unsupported-format">
-        <h4>🚫 Unsupported Format: Binary File</h4>
-        <p>The file <code>${
-      escape_html(filename)
-    }</code> appears to be a binary file and cannot be parsed as text.</p>
-        <div class="code-options">
-          <h5>💡 Supported Formats:</h5>
-          <ul>
-            <li>Multi-frame XYZ files (text-based)</li>
-            <li>Pymatgen trajectory JSON</li>
-            <li>VASP XDATCAR files</li>
-            <li>Compressed versions (.gz) of the above</li>
-          </ul>
-          <p>Please convert your trajectory to one of these text-based formats.</p>
-        </div>
-      </div>
-    `
-  }
-
-  return null
+  return is_binary(content)
+    ? `<div class="unsupported-format"><h4>🚫 Binary format not supported</h4></div>`
+    : null
 }
 
-// Simplified format error creation
-function create_format_error(
-  format_name: string,
+export async function parse_trajectory_async(
+  data: ArrayBuffer | string,
   filename: string,
-  conversions: Array<{ tool: string; code: string }>,
-): string {
-  const conversion_html = conversions
-    .map(
-      ({ tool, code }) => `
-        <div>
-          <strong>${tool}:</strong>
-          <pre class="language-python">${code}</pre>
-        </div>`,
-    )
-    .join(``)
+  on_progress?: (progress: ParseProgress) => void,
+): Promise<Trajectory> {
+  const update_progress = (current: number, stage: string) =>
+    on_progress?.({ current, total: 100, stage })
 
-  return `
-    <div class="unsupported-format">
-      <h4>🚫 Unsupported Format: ${escape_html(format_name)}</h4>
-      <p>The file <code>${escape_html(filename)}</code> appears to be a ${
-    escape_html(format_name.toLowerCase())
-  } file, which is not directly supported.</p>
-      <h5>💡 Conversion Options:</h5>
-      <div class="code-options">
-        ${conversion_html}
-      </div>
-    </div>
-  `
+  try {
+    update_progress(0, `Detecting format...`)
+
+    // Format detection and parsing in one step
+    let result: Trajectory
+    if (data instanceof ArrayBuffer) {
+      if (is_ase_format(data, filename)) {
+        update_progress(50, `Parsing ASE trajectory...`)
+        result = parse_ase_trajectory(data, filename)
+      } else if (is_torch_sim_hdf5(data, filename)) {
+        update_progress(50, `Parsing TorchSim HDF5...`)
+        result = await parse_torch_sim_hdf5(data, filename)
+      } else {
+        throw new Error(`Unsupported binary format`)
+      }
+    } else {
+      const content = data.trim()
+      if (is_xyz_multi_frame(content, filename)) {
+        update_progress(50, `Parsing XYZ trajectory...`)
+        result = parse_xyz_trajectory(content)
+      } else if (is_vasp_format(content, filename)) {
+        update_progress(50, `Parsing VASP XDATCAR...`)
+        result = parse_vasp_xdatcar(content, filename)
+      } else if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
+        update_progress(50, `Parsing single XYZ...`)
+        const { parse_xyz } = await import(`../io/parse`)
+        const structure = parse_xyz(content)
+        if (!structure) throw new Error(`Failed to parse XYZ structure`)
+        result = {
+          frames: [{ structure, step: 0, metadata: {} }],
+          metadata: { source_format: `single_xyz`, frame_count: 1 },
+        }
+      } else {
+        update_progress(50, `Parsing JSON trajectory...`)
+        try {
+          result = await parse_trajectory_data(JSON.parse(content), filename)
+        } catch {
+          result = await parse_trajectory_data(data, filename)
+        }
+      }
+    }
+
+    update_progress(85, `Validating frames...`)
+    if (!result.frames?.length) throw new Error(`No valid frames found`)
+
+    if (result.metadata) {
+      result.metadata.frame_count ??= result.frames.length
+    }
+    update_progress(100, `Complete`)
+    return result
+  } catch (error) {
+    update_progress(
+      100,
+      `Error: ${error instanceof Error ? error.message : `Unknown error`}`,
+    )
+    throw error
+  }
 }

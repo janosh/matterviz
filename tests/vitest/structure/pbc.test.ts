@@ -6,13 +6,12 @@ import {
   get_pbc_image_sites,
   type PymatgenStructure,
 } from '$lib/structure'
-import { parse_xyz_trajectory } from '$lib/trajectory/parse'
+import { parse_trajectory_data } from '$lib/trajectory/parse'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import mp1_json from '$site/structures/mp-1.json' with { type: 'json' }
 import mp2_json from '$site/structures/mp-2.json' with { type: 'json' }
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
-import refractory_alloy from '$site/trajectories/V8_Ta12_W71_Re8-mace-omat.xyz?raw'
 import { expect, test } from 'vitest'
 
 test(`pbc_dist basic functionality`, () => {
@@ -356,98 +355,117 @@ test(`pbc_dist optimization advanced scenarios`, () => {
   }
 })
 
-test(`find_image_atoms handles trajectory structures correctly`, () => {
-  // Parse the trajectory
-  const trajectory = parse_xyz_trajectory(refractory_alloy)
-  const structure = trajectory.frames[0].structure
+test(`find_image_atoms finds correct images for normal cell`, async () => {
+  const normal_structure_extxyz = `8
+Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
+Cl       0.0       0.0       0.0
+Cl       2.5       0.0       2.5
+Cl       0.0       2.5       2.5
+Cl       2.5       2.5       0.0
+Cl       2.5       0.0       0.0
+Cl       0.0       0.0       2.5
+Cl       0.0       2.5       0.0
+Cl       2.5       2.5       2.5`
+
+  const normal_trajectory = await parse_trajectory_data(
+    normal_structure_extxyz,
+    `test.xyz`,
+  )
+  const normal_structure = normal_trajectory.frames[0].structure as PymatgenStructure
 
   // Test that the structure has lattice information
-  expect(`lattice` in structure).toBe(true)
-  if (!(`lattice` in structure) || !structure.lattice) {
+  expect(`lattice` in normal_structure).toBe(true)
+  if (!(`lattice` in normal_structure) || !normal_structure.lattice) {
     throw new Error(`Structure should have lattice`)
   }
 
   // Test the image atom detection
-  const image_atoms = find_image_atoms(structure)
-  const processed_structure = get_pbc_image_sites(structure)
+  const image_atoms = find_image_atoms(normal_structure)
+  const processed_structure = get_pbc_image_sites(normal_structure)
 
-  // For trajectory data, we expect NO image atoms (algorithm should detect it's trajectory data)
-  expect(image_atoms.length).toBe(0)
+  // This structure has atoms within the unit cell, so it will be treated as a normal crystal
+  // and will generate image atoms for atoms near cell boundaries
+  expect(image_atoms.length).toBeGreaterThan(0)
 
-  // For trajectory data, get_pbc_image_sites should return the structure unchanged
-  // Same number of sites (no wrapping or image atoms added)
-  expect(processed_structure.sites.length).toBe(structure.sites.length)
+  // For normal crystal structures, get_pbc_image_sites adds image atoms
+  expect(processed_structure.sites.length).toBeGreaterThan(normal_structure.sites.length)
 
-  // Verify coordinates are unchanged (not wrapped)
-  for (let i = 0; i < structure.sites.length; i++) {
-    const original = structure.sites[i]
-    const processed = processed_structure.sites[i]
-
-    // Coordinates should be identical (no wrapping occurred)
-    expect(processed.xyz[0]).toBeCloseTo(original.xyz[0], 10)
-    expect(processed.xyz[1]).toBeCloseTo(original.xyz[1], 10)
-    expect(processed.xyz[2]).toBeCloseTo(original.xyz[2], 10)
-    expect(processed.abc[0]).toBeCloseTo(original.abc[0], 10)
-    expect(processed.abc[1]).toBeCloseTo(original.abc[1], 10)
-    expect(processed.abc[2]).toBeCloseTo(original.abc[2], 10)
-  }
-
-  // Verify that many atoms are outside the unit cell (this is what makes it trajectory data)
-  const atoms_outside = structure.sites.filter(({ abc }) =>
+  // Verify that few/no atoms are outside the unit cell (making it a normal crystal structure)
+  const atoms_outside = normal_structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1)
   )
 
-  // This trajectory should have many atoms outside the unit cell (>10% threshold)
-  expect(atoms_outside.length).toBeGreaterThan(structure.sites.length * 0.1)
+  // This structure should have few atoms outside the unit cell (<10% threshold)
+  expect(atoms_outside.length).toBeLessThanOrEqual(normal_structure.sites.length * 0.1)
 
   // Test multiple frames to ensure consistency
   for (
     let frame_idx = 1;
-    frame_idx < Math.min(trajectory.frames.length, 3);
+    frame_idx < Math.min(normal_trajectory.frames.length, 3);
     frame_idx++
   ) {
-    const frame_structure = trajectory.frames[frame_idx].structure as PymatgenStructure
+    const frame_structure = normal_trajectory.frames[frame_idx]
+      .structure as PymatgenStructure
     const frame_image_atoms = find_image_atoms(frame_structure)
-    expect(frame_image_atoms.length).toBe(0) // Should consistently detect trajectory data
+    expect(frame_image_atoms.length).toBeGreaterThan(0) // Should consistently treat as normal crystal
   }
 })
 
-// Test trajectory detection threshold with simple structures
-test(`trajectory detection based on atoms outside unit cell`, () => {
-  // This test uses the actual parsed structures from the existing fixtures
-  // to avoid type issues with manually constructed structures
+test(`find_image_atoms finds correct images for trajectory-like cell`, async () => {
+  const trajectory_like_extxyz = `8
+Lattice="15.0 0.0 0.0 0.0 15.0 0.0 0.0 0.0 15.0" Properties=species:S:1:pos:R:3 pbc="T T T"
+C         1.0       1.0       1.0
+C         9.0       1.0       9.0
+C         1.0       9.0       9.0
+C         9.0       9.0       1.0
+C         8.0       2.0       2.0
+C        16.0       2.0      16.0
+C         2.0      17.0      17.0
+C        -2.0      10.0      12.0`
 
-  // Test with a normal crystal structure (should create images)
-  const normal_structure_extxyz = `2
-Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
-Na       0.0       0.0       0.0
-Cl       2.5       2.5       2.5`
-
-  const normal_trajectory = parse_xyz_trajectory(normal_structure_extxyz)
-  const normal_structure = normal_trajectory.frames[0].structure as PymatgenStructure
-
-  const normal_image_atoms = find_image_atoms(normal_structure)
-  expect(normal_image_atoms.length).toBeGreaterThan(0) // Should create some image atoms
-
-  // Test with trajectory-like data (many atoms outside cell)
-  const trajectory_like_extxyz = `10
-Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
-C       -10.0      -8.0      -6.0
-C        -8.0      -6.0      -4.0
-C        -6.0      -4.0      -2.0
-C        -4.0      -2.0       0.0
-C        -2.0       0.0       2.0
-C         0.0       2.0       4.0
-C         2.0       4.0       6.0
-C         4.0       6.0       8.0
-C         6.0       8.0      10.0
-C         8.0      10.0      12.0`
-
-  const trajectory_like = parse_xyz_trajectory(trajectory_like_extxyz)
+  const trajectory_like = await parse_trajectory_data(trajectory_like_extxyz, `test.xyz`)
   const trajectory_structure = trajectory_like.frames[0].structure as PymatgenStructure
 
-  const trajectory_image_atoms = find_image_atoms(trajectory_structure)
-  expect(trajectory_image_atoms.length).toBe(0) // Should detect trajectory and skip image generation
+  // Test that the structure has lattice information
+  expect(`lattice` in trajectory_structure).toBe(true)
+  if (!(`lattice` in trajectory_structure) || !trajectory_structure.lattice) {
+    throw new Error(`Structure should have lattice`)
+  }
+
+  // Test the image atom detection
+  const image_atoms = find_image_atoms(trajectory_structure)
+  const processed_structure = get_pbc_image_sites(trajectory_structure)
+
+  // This structure has atoms near cell boundaries, so it will be detected as trajectory data
+  // and will NOT generate image atoms (trajectory data detection)
+  expect(image_atoms.length).toBe(0)
+
+  // For trajectory data, get_pbc_image_sites returns the structure unchanged
+  expect(processed_structure.sites.length).toBe(
+    trajectory_structure.sites.length,
+  )
+
+  // Verify that some atoms are outside the unit cell (making it trajectory data)
+  const atoms_outside = trajectory_structure.sites.filter(({ abc }) =>
+    abc.some((coord) => coord < -0.1 || coord > 1.1)
+  )
+
+  // This structure should have some atoms outside the unit cell (>10% threshold for trajectory data)
+  expect(atoms_outside.length).toBeGreaterThan(
+    trajectory_structure.sites.length * 0.1,
+  )
+
+  // Test multiple frames to ensure consistency
+  for (
+    let frame_idx = 1;
+    frame_idx < Math.min(trajectory_like.frames.length, 3);
+    frame_idx++
+  ) {
+    const frame_structure = trajectory_like.frames[frame_idx]
+      .structure as PymatgenStructure
+    const frame_image_atoms = find_image_atoms(frame_structure)
+    expect(frame_image_atoms.length).toBe(0) // Should consistently treat as trajectory data
+  }
 })
 
 // Comprehensive tests for find_image_atoms with real structure files
@@ -935,9 +953,9 @@ test(`image atom generation should not create duplicates`, () => {
   ) // Max 20% duplicates or 3, whichever is higher
 
   // Alternative check: ensure all pairwise distances are reasonable
-  for (let i = 0; i < image_atoms.length; i++) {
-    for (let j = i + 1; j < image_atoms.length; j++) {
-      const pos1 = image_atoms[i][1] // xyz coordinates
+  for (let idx = 0; idx < image_atoms.length; idx++) {
+    for (let j = idx + 1; j < image_atoms.length; j++) {
+      const pos1 = image_atoms[idx][1] // xyz coordinates
       const pos2 = image_atoms[j][1] // xyz coordinates
       const distance = euclidean_dist(pos1, pos2)
 

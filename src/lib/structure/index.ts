@@ -14,6 +14,7 @@ export { default as StructureCard } from './StructureCard.svelte'
 export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
+export { default as StructureSidebar } from './StructureSidebar.svelte'
 export { default as Vector } from './Vector.svelte'
 
 export const STRUCT_DEFAULTS = {

@@ -16,3 +16,4 @@ jobs:
       test-cmd: deno task vitest
       e2e-install-cmd: npx playwright install chromium
       e2e-test-cmd: npx playwright test
+      deno-version: 2.3.7

@@ -21,6 +21,13 @@
   /* darken browser form controls like input[type='color'] */
   color-scheme: dark;
   --max-text-width: 40em;
+
+  /* Histogram dark mode colors */
+  --histogram-axis-color: #e5e5e5;
+  --histogram-text-color: #e5e5e5;
+  --histogram-tooltip-bg: rgba(60, 60, 60, 0.95);
+  --histogram-tooltip-color: white;
+  --histogram-tooltip-border: rgba(255, 255, 255, 0.2);
 }
 body {
   background: var(--page-bg);

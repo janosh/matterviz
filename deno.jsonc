@@ -5,7 +5,7 @@
     "preview": "deno run -A --node-modules-dir npm:vite preview",
     "serve": "deno task build && deno task preview",
     "test": "deno task vitest && deno task e2e",
-    "vitest": "deno run -A --node-modules-dir npm:vitest run tests/vitest/**/*.ts",
+    "vitest": "deno run -A --node-modules-dir npm:vitest",
     "e2e": "npx playwright test",
     "test:install": "npx playwright install chromium",
     "package": "svelte-package",

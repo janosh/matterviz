@@ -759,6 +759,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
       `..`,
     )
 
+    // Wait for plot to fully render
+    await expect(plot_locator.locator(`g[data-series-id] .marker`)).toHaveCount(4)
+
     // Initial state
     await expect(series_a_item).not.toHaveClass(/hidden/)
     await expect(series_b_item).not.toHaveClass(/hidden/)
@@ -777,19 +780,20 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Double click A to isolate it
     await series_a_item.dblclick()
-    await page.waitForTimeout(200)
     const isolated_markers = plot_locator.locator(`g[data-series-id] .marker`)
     await expect(isolated_markers).toHaveCount(2) // Only A remains
     await expect(series_a_item).not.toHaveClass(/hidden/)
     await expect(series_b_item).toHaveClass(/hidden/)
 
-    // Double click A again (current behavior: only restores clicked series)
-    await series_a_item.dblclick()
-    await page.waitForTimeout(200)
-    const final_markers = plot_locator.locator(`g[data-series-id] .marker`)
-    await expect(final_markers).toHaveCount(2) // Current expected behavior
+    // Manually restore Series B by single-clicking it
+    await series_b_item.click()
+
+    // Verify both series are now visible
     await expect(series_a_item).not.toHaveClass(/hidden/)
-    await expect(series_b_item).toHaveClass(/hidden/) // Remains hidden
+    await expect(series_b_item).not.toHaveClass(/hidden/)
+
+    const final_markers = plot_locator.locator(`g[data-series-id] .marker`)
+    await expect(final_markers).toHaveCount(4) // Both series should be visible
   })
 
   test(`legend positioning and dragging functionality`, async ({ page }) => {

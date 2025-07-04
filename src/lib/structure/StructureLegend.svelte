@@ -3,16 +3,12 @@
   import { choose_bw_for_contrast, element_data, format_num } from '$lib'
   import { default_element_colors } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
-  import type { Snippet } from 'svelte'
   import { Tooltip } from 'svelte-zoo'
 
   interface Props {
     elements: CompositionType
     elem_color_picker_title?: string
     labels?: HTMLLabelElement[]
-    tips_modal?: HTMLDialogElement | undefined
-    dialog_style?: string | null
-    tips_modal_snippet?: Snippet
     amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
     show_amounts?: boolean // Whether to show element amounts
     get_element_label?: (element: string, amount: number) => string // Custom label function
@@ -22,9 +18,6 @@
     elements,
     elem_color_picker_title = `Double click to reset color`,
     labels = $bindable([]),
-    tips_modal = $bindable(undefined),
-    dialog_style = null,
-    tips_modal_snippet,
     amount_format = `.3~f`,
     show_amounts = true,
     get_element_label,
@@ -65,32 +58,6 @@
   {/each}
 </div>
 
-<dialog
-  bind:this={tips_modal}
-  onclick={() => tips_modal?.close()}
-  onkeydown={() => tips_modal?.close()}
-  style={dialog_style}
->
-  {#if tips_modal_snippet}{@render tips_modal_snippet()}{:else}
-    <p>
-      Drop a POSCAR, XYZ, CIF or pymatgen JSON file onto the canvas to load a new
-      structure.
-    </p>
-    <p>
-      Click on an atom to make it active. Then hover another atom to get its distance to
-      the active atom (with PBC and direct).
-    </p>
-    <p>
-      Hold <kbd>shift</kbd> or <kbd>cmd</kbd> or <kbd>ctrl</kbd> and drag to pan the
-      scene.
-    </p>
-    <p>
-      Click on an element label in the color legend to change its color. Double click to
-      reset.
-    </p>
-  {/if}
-</dialog>
-
 <style>
   .structure-legend {
     display: flex;
@@ -120,43 +87,5 @@
     top: 7pt;
     left: 0;
     cursor: pointer;
-  }
-  dialog {
-    position: fixed;
-    top: var(--struct-dialog-top, 50%);
-    left: var(--struct-dialog-left, 50%);
-    transform: translate(-50%, -50%);
-    margin: 0;
-    padding: var(--struct-dialog-pad, 4pt 1em);
-    background: var(--struct-dialog-bg, rgba(0, 0, 0, 0.8));
-    color: var(--struct-dialog-color, white);
-    border-radius: var(--struct-dialog-radius, 5px);
-    transition: var(--struct-dialog-transition, all 0.3s);
-    overflow: visible;
-  }
-  /* info icon in top left corner */
-  dialog::before {
-    content: '?';
-    position: absolute;
-    top: 0;
-    left: 0;
-    display: flex;
-    place-content: center;
-    place-items: center;
-    transform: var(--struct-tooltip-before-transform, translate(-50%, -50%));
-    box-sizing: border-box;
-    font-size: var(--struct-tooltip-before-font-size, 20pt);
-    color: var(--struct-tooltip-before-color, white);
-    background: var(--struct-tooltip-before-bg, rgba(0, 0, 0, 0.8));
-    border-radius: var(--struct-tooltip-before-border-radius, 50%);
-    width: var(--struct-tooltip-before-width, 1em);
-    height: var(--struct-tooltip-before-height, 1em);
-    border: var(--struct-tooltip-before-border, 1px solid white);
-  }
-  dialog::backdrop {
-    background: var(--struct-dialog-backdrop, rgba(0, 0, 0, 0.2));
-  }
-  dialog p {
-    margin: var(--struct-dialog-text-margin, 0);
   }
 </style>

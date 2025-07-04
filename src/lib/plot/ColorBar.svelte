@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { format_num, LOG_MIN_EPS } from '$lib'
+  import { format_num } from '$lib'
   import { luminance } from '$lib/labels'
+  import * as math from '$lib/math'
   import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
@@ -107,9 +108,9 @@
         use_log_for_ticks = false
       } else if (scale_min <= 0) {
         console.warn(
-          `Log scale received non-positive min value (${scale_min}) for ticks. Using epsilon=${LOG_MIN_EPS} instead.`,
+          `Log scale received non-positive min value (${scale_min}) for ticks. Using epsilon=${math.LOG_MIN_EPS} instead.`,
         )
-        scale_min = LOG_MIN_EPS // Substitute with epsilon
+        scale_min = math.LOG_MIN_EPS // Substitute with epsilon
       }
     }
 
@@ -164,13 +165,13 @@
 
         // Ensure domain endpoints are included if they are powers of 10 and missed by loop
         if (
-          Math.abs(Math.log10(nice_min) % 1) < LOG_MIN_EPS &&
+          Math.abs(Math.log10(nice_min) % 1) < math.LOG_MIN_EPS &&
           !power_of_10_ticks.includes(nice_min)
         ) {
           power_of_10_ticks.unshift(nice_min)
         }
         if (
-          Math.abs(Math.log10(nice_max) % 1) < LOG_MIN_EPS &&
+          Math.abs(Math.log10(nice_max) % 1) < math.LOG_MIN_EPS &&
           !power_of_10_ticks.includes(nice_max)
         ) {
           power_of_10_ticks.push(nice_max)
@@ -257,9 +258,9 @@
         use_log_fallback = false
       } else if (min_val <= 0) {
         console.warn(
-          `Log scale received non-positive min value (${min_val}) for fallback scale. Using epsilon=${LOG_MIN_EPS} instead.`,
+          `Log scale received non-positive min value (${min_val}) for fallback scale. Using epsilon=${math.LOG_MIN_EPS} instead.`,
         )
-        min_val = LOG_MIN_EPS // Substitute with epsilon
+        min_val = math.LOG_MIN_EPS // Substitute with epsilon
       }
     }
 
@@ -294,9 +295,9 @@
         use_log_interp = false
       } else if (min_ramp_domain <= 0) {
         console.warn(
-          `Log scale specified for gradient, but min domain value (${min_ramp_domain}) is not positive. Using epsilon=${LOG_MIN_EPS} instead.`,
+          `Log scale specified for gradient, but min domain value (${min_ramp_domain}) is not positive. Using epsilon=${math.LOG_MIN_EPS} instead.`,
         )
-        adjusted_min_ramp = LOG_MIN_EPS // Substitute with epsilon
+        adjusted_min_ramp = math.LOG_MIN_EPS // Substitute with epsilon
       }
     }
 

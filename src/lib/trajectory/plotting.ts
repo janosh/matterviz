@@ -48,15 +48,15 @@ function calculate_unit_group_priority(unit: string, group_series: DataSeries[])
   if (unit_priority !== -1) priority = unit_priority
 
   // Check for energy properties (high priority)
-  const has_priority_property = group_series.some((s) => {
-    const label_lower = s.label?.toLowerCase() || ``
+  const has_priority_property = group_series.some((srs) => {
+    const label_lower = srs.label?.toLowerCase() || ``
     return Y1_PRIORITY_PROPERTIES.some((prop) => label_lower.includes(prop))
   })
   if (has_priority_property) priority = Math.min(priority, 10)
 
   // Force-related properties have medium priority (should go to y2 when energy is present)
-  const has_force_property = group_series.some((s) => {
-    const label_lower = s.label?.toLowerCase() || ``
+  const has_force_property = group_series.some((srs) => {
+    const label_lower = srs.label?.toLowerCase() || ``
     return label_lower.includes(`force`) || label_lower.includes(`f`)
   })
   if (has_force_property && priority > 100) priority = 100 // Medium priority, lower than energy
@@ -182,7 +182,7 @@ export function generate_plot_series(
 
   // Apply the assignments back to series
   all_series.forEach((series) => {
-    const group = unit_groups.find((g) => g.series.some((s) => s === series))
+    const group = unit_groups.find((g) => g.series.some((srs) => srs === series))
     if (group) {
       series.visible = group.is_visible
       series.y_axis = axis_assignments.get(group) || `y1`
@@ -203,10 +203,10 @@ function group_series_by_units(
   const unit_map = new Map<string, DataSeries[]>()
 
   // Group series by unit
-  series.forEach((s) => {
-    const unit = s.unit || `dimensionless`
+  series.forEach((srs) => {
+    const unit = srs.unit || `dimensionless`
     if (!unit_map.has(unit)) unit_map.set(unit, [])
-    unit_map.get(unit)?.push(s)
+    unit_map.get(unit)?.push(srs)
   })
 
   // Create unit groups with priority calculation
@@ -216,8 +216,8 @@ function group_series_by_units(
       const priority = calculate_unit_group_priority(unit, group_series)
 
       // Check if any series in this group should be visible by default
-      const has_default_visible = group_series.some((s) => {
-        const label = s.label?.toLowerCase().replace(/<[^>]*>/g, ``) || ``
+      const has_default_visible = group_series.some((srs) => {
+        const label = srs.label?.toLowerCase().replace(/<[^>]*>/g, ``) || ``
         return Array.from(default_visible_properties).some((prop) => {
           const prop_lower = prop.toLowerCase()
           // Special case for force_max which might appear as 'fmax' or just 'f'
@@ -326,7 +326,9 @@ export function toggle_series_visibility(
   unit_groups.sort((a, b) => a.priority - b.priority)
 
   // Find the target unit group and update its visibility
-  const target_group = unit_groups.find((g) => g.series.some((s) => s === target_series))
+  const target_group = unit_groups.find((g) =>
+    g.series.some((srs) => srs === target_series)
+  )
   if (!target_group) return series
 
   // Handle smart unit group replacement when turning ON a series
@@ -345,8 +347,8 @@ export function toggle_series_visibility(
       group_to_hide.is_visible = false
 
       // Also hide all individual series in this group to prevent recalculation from overriding
-      group_to_hide.series.forEach((s) => {
-        const series_idx = series_map.get(`${s.label}|${s.unit}`)
+      group_to_hide.series.forEach((srs) => {
+        const series_idx = series_map.get(`${srs.label}|${srs.unit}`)
         if (series_idx !== undefined && series_idx !== -1) {
           series[series_idx] = { ...series[series_idx], visible: false }
         }
@@ -355,17 +357,15 @@ export function toggle_series_visibility(
   }
 
   // Toggle the target series specifically
-  const updated_series = series.map((s) => {
-    if (s === target_series) {
-      return { ...s, visible: new_visibility }
-    }
-    return { ...s }
+  const updated_series = series.map((srs) => {
+    if (srs === target_series) return { ...srs, visible: new_visibility }
+    return { ...srs }
   })
 
   // Recalculate unit group visibility based on individual series
   unit_groups.forEach((group) => {
-    group.is_visible = group.series.some((s) => {
-      const series_idx = series_map.get(`${s.label}|${s.unit}`)
+    group.is_visible = group.series.some((srs) => {
+      const series_idx = series_map.get(`${srs.label}|${srs.unit}`)
       if (series_idx !== undefined) {
         const updated_s = updated_series[series_idx]
         return updated_s?.visible || false
@@ -384,8 +384,8 @@ export function toggle_series_visibility(
     groups_to_hide.forEach((group) => {
       group.is_visible = false
       // Hide all series in this group
-      group.series.forEach((s) => {
-        const idx = series_map.get(`${s.label}|${s.unit}`)
+      group.series.forEach((srs) => {
+        const idx = series_map.get(`${srs.label}|${srs.unit}`)
         if (idx !== undefined && idx !== -1) {
           updated_series[idx] = { ...updated_series[idx], visible: false }
         }
@@ -407,14 +407,14 @@ export function toggle_series_visibility(
   }
 
   // Apply axis assignments
-  return updated_series.map((s) => {
+  return updated_series.map((srs) => {
     const group = unit_groups.find((g) =>
-      g.series.some((gs) => gs.label === s.label && gs.unit === s.unit)
+      g.series.some((gs) => gs.label === srs.label && gs.unit === srs.unit)
     )
     if (group && axis_assignments.has(group)) {
-      return { ...s, y_axis: axis_assignments.get(group) }
+      return { ...srs, y_axis: axis_assignments.get(group) }
     }
-    return s
+    return srs
   })
 }
 
@@ -424,19 +424,23 @@ export function should_hide_plot(
   plot_series: DataSeries[],
   tolerance = 1e-10,
 ): boolean {
-  if (!trajectory || trajectory.frames.length <= 1) return false
+  if (!trajectory) return false
+
+  // Hide plot for single-frame trajectories (single data points)
+  if (trajectory.frames.length <= 1) return true
 
   // If there are no series to plot, hide the plot
   if (plot_series.length === 0) return true
 
-  const visible_series = plot_series.filter((s) => s.visible)
-  if (visible_series.length === 0) return true
+  const visible_series = plot_series.filter((srs) => srs.visible)
+  // Don't hide plot when all series are manually disabled, show empty plot with legend. allows users to re-enable series via legend
+  if (visible_series.length === 0) return false
 
-  for (const series of visible_series) {
-    if (series.y.length <= 1) continue
+  for (const srs of visible_series) {
+    if (srs.y.length <= 1) continue
 
-    const first_value = series.y[0]
-    const has_variation = series.y.some(
+    const first_value = srs.y[0]
+    const has_variation = srs.y.some(
       (value) => Math.abs(value - first_value) > tolerance,
     )
 
@@ -445,7 +449,7 @@ export function should_hide_plot(
     }
   }
 
-  return true // All series are constant, hide plot
+  return true // All visible series are constant, hide plot
 }
 
 // Generate dynamic y-axis labels based on visible series with proper concatenation
@@ -455,14 +459,14 @@ export function generate_axis_labels(
   if (plot_series.length === 0) return { y1: `Value`, y2: `Value` }
 
   const get_axis_label = (axis_series: DataSeries[]): string => {
-    const visible_series = axis_series.filter((s) => s.visible)
+    const visible_series = axis_series.filter((srs) => srs.visible)
     if (visible_series.length === 0) return `Value`
 
     // Group by unit
     const unit_groups = new Map<string, string[]>()
-    visible_series.forEach((s) => {
-      const unit = s.unit || ``
-      const label = s.label || `Value`
+    visible_series.forEach((srs) => {
+      const unit = srs.unit || ``
+      const label = srs.label || `Value`
       if (!unit_groups.has(unit)) unit_groups.set(unit, [])
       unit_groups.get(unit)?.push(label)
     })
@@ -478,8 +482,8 @@ export function generate_axis_labels(
     return unit ? `${concatenated_labels} (${unit})` : concatenated_labels
   }
 
-  const y1_series = plot_series.filter((s) => (s.y_axis ?? `y1`) === `y1`)
-  const y2_series = plot_series.filter((s) => s.y_axis === `y2`)
+  const y1_series = plot_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`)
+  const y2_series = plot_series.filter((srs) => srs.y_axis === `y2`)
 
   return {
     y1: get_axis_label(y1_series),

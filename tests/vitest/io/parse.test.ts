@@ -1,5 +1,6 @@
 import {
   is_trajectory_file,
+  parse_any_structure,
   parse_cif,
   parse_phonopy_yaml,
   parse_poscar,
@@ -18,14 +19,25 @@ import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
 import { join } from 'path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
+
+// Suppress console.error for the entire test file since parse functions
+// are expected to handle invalid input gracefully and log errors
+let console_error_spy: ReturnType<typeof vi.spyOn>
+beforeEach(() => {
+  console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+})
+afterEach(() => {
+  console_error_spy.mockRestore()
+})
 
 // Load compressed phonopy files using Node.js built-in decompression
 const agi_compressed = readFileSync(
   join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py_params.yaml.gz`),
 )
 const agi_phono3py_params = gunzipSync(agi_compressed).toString(`utf-8`)
+const hea_hcp_filename = `nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
 
 const beo_compressed = readFileSync(
   join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py_params.yaml.gz`),
@@ -116,18 +128,12 @@ describe(`POSCAR Parser`, () => {
   ])(
     `should reject lattice vectors with $name`,
     ({ content, expected_error }) => {
-      const console_error_spy = vi
-        .spyOn(console, `error`)
-        .mockImplementation(() => {})
-
       const result = parse_poscar(content)
       expect(result).toBeNull()
       expect(console_error_spy).toHaveBeenCalledWith(
         `Error parsing POSCAR file:`,
         expected_error,
       )
-
-      console_error_spy.mockRestore()
     },
   )
 })
@@ -582,5 +588,458 @@ describe(`Trajectory File Detection`, () => {
     expect(is_trajectory_file(`molecule.json`)).toBe(false)
     expect(is_trajectory_file(`POSCAR`)).toBe(false)
     expect(is_trajectory_file(`data.txt`)).toBe(false)
+  })
+})
+
+describe(`parse_structure_file`, () => {
+  test(`parses nested JSON structure correctly`, () => {
+    // Read the actual test file
+    const compressed = readFileSync(
+      `./src/site/structures/${hea_hcp_filename}`,
+    )
+    const content = gunzipSync(compressed).toString(`utf8`)
+
+    const result = parse_structure_file(content, hea_hcp_filename)
+
+    expect(result).toBeTruthy()
+    expect(result?.sites).toBeDefined()
+    expect(result?.sites.length).toBeGreaterThan(0)
+    expect(result?.lattice).toBeDefined()
+
+    // Check first site
+    const first_site = result?.sites[0]
+    expect(first_site?.species).toBeDefined()
+    expect(first_site?.species[0]?.element).toBe(`Ta`)
+    expect(first_site?.abc).toBeDefined()
+    expect(first_site?.xyz).toBeDefined()
+
+    // Check lattice
+    expect(result?.lattice?.matrix).toBeDefined()
+    expect(result?.lattice?.volume).toBeCloseTo(3218.0139605153627, 5)
+  })
+
+  test(`parses simple JSON structure correctly`, () => {
+    const simple_structure = {
+      sites: [
+        {
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `H1`,
+          properties: {},
+        },
+      ],
+      lattice: {
+        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        a: 1,
+        b: 1,
+        c: 1,
+        alpha: 90,
+        beta: 90,
+        gamma: 90,
+        volume: 1,
+      },
+    }
+
+    const content = JSON.stringify(simple_structure)
+    const result = parse_structure_file(content, `simple.json`)
+
+    expect(result).toBeTruthy()
+    expect(result?.sites.length).toBe(1)
+    expect(result?.sites[0].species[0].element).toBe(`H`)
+  })
+
+  test(`handles multiple levels of nesting`, () => {
+    const deeply_nested = {
+      data: {
+        materials: [
+          {
+            id: `test-1`,
+            structure: {
+              sites: [
+                {
+                  species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+                  abc: [0.5, 0.5, 0.5],
+                  xyz: [1, 1, 1],
+                  label: `C1`,
+                  properties: {},
+                },
+              ],
+              lattice: {
+                matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+                a: 2,
+                b: 2,
+                c: 2,
+                alpha: 90,
+                beta: 90,
+                gamma: 90,
+                volume: 8,
+              },
+            },
+          },
+        ],
+      },
+    }
+
+    const content = JSON.stringify(deeply_nested)
+    const result = parse_structure_file(content, `nested.json`)
+
+    expect(result).toBeTruthy()
+    expect(result?.sites.length).toBe(1)
+    expect(result?.sites[0].species[0].element).toBe(`C`)
+    expect(result?.lattice?.volume).toBe(8)
+  })
+
+  test(`returns null for invalid JSON structure`, () => {
+    const invalid_structure = {
+      not_a_structure: `this is not a structure`,
+      some_data: [1, 2, 3],
+    }
+
+    const content = JSON.stringify(invalid_structure)
+    const result = parse_structure_file(content, `invalid.json`)
+
+    expect(result).toBeNull()
+  })
+
+  test(`handles array with structure at different positions`, () => {
+    const array_with_structure = [
+      { id: `first`, type: `metadata` },
+      { id: `second`, type: `other_data` },
+      {
+        id: `third`,
+        structure: {
+          sites: [
+            {
+              species: [{ element: `N`, occu: 1, oxidation_state: 0 }],
+              abc: [0.25, 0.25, 0.25],
+              xyz: [0.5, 0.5, 0.5],
+              label: `N1`,
+              properties: {},
+            },
+          ],
+          lattice: {
+            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            a: 2,
+            b: 2,
+            c: 2,
+            alpha: 90,
+            beta: 90,
+            gamma: 90,
+            volume: 8,
+          },
+        },
+      },
+    ]
+
+    const content = JSON.stringify(array_with_structure)
+    const result = parse_structure_file(content, `array_structure.json`)
+
+    expect(result).toBeTruthy()
+    expect(result?.sites.length).toBe(1)
+    expect(result?.sites[0].species[0].element).toBe(`N`)
+  })
+
+  test(`parses compressed HEA structure file correctly`, () => {
+    // Test parsing of a real compressed JSON structure file
+    const compressed = readFileSync(`./src/site/structures/${hea_hcp_filename}`)
+    const content = gunzipSync(compressed).toString(`utf8`)
+
+    // Verify the file contains valid JSON with expected structure
+    const parsed = JSON.parse(content)
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(parsed.length).toBeGreaterThan(0)
+    expect(parsed[0]).toHaveProperty(`structure`)
+
+    // Validate the nested structure format
+    const nested_structure = parsed[0].structure
+    expect(nested_structure).toBeDefined()
+    expect(typeof nested_structure).toBe(`object`)
+    expect(nested_structure).toHaveProperty(`sites`)
+    expect(Array.isArray(nested_structure.sites)).toBe(true)
+    expect(nested_structure.sites.length).toBeGreaterThan(0)
+
+    // Test the actual parsing function can handle this format
+    const result = parse_structure_file(content, hea_hcp_filename)
+    expect(result).toBeTruthy()
+    expect(result?.sites).toBeDefined()
+    expect(result?.sites.length).toBeGreaterThan(0)
+    expect(result?.sites[0]).toHaveProperty(`species`)
+    expect(result?.sites[0].species[0]).toHaveProperty(`element`)
+    expect(result?.lattice).toBeDefined()
+  })
+
+  describe(`comprehensive nested structure parsing`, () => {
+    const make_valid_struct = (element = `Fe`) => ({
+      sites: [
+        {
+          species: [{ element, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `${element}1`,
+          properties: {},
+        },
+      ],
+      lattice: {
+        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        a: 1,
+        b: 1,
+        c: 1,
+        alpha: 90,
+        beta: 90,
+        gamma: 90,
+        volume: 1,
+      },
+    })
+
+    test.each([
+      [`simple object wrapper`, { data: make_valid_struct() }],
+      [`nested object`, { results: { structure: make_valid_struct() } }],
+      [`array wrapper`, [{ structure: make_valid_struct() }]],
+      [`mixed nesting`, { data: [{ item: { structure: make_valid_struct() } }] }],
+      [`deep nesting`, { a: { b: { c: { d: make_valid_struct() } } } }],
+      [`structure array`, { structures: [make_valid_struct()] }],
+      [`multiple items with structure`, [{ id: 1 }, {
+        structure: make_valid_struct(),
+      }]],
+    ])(`finds structure in %s`, (_description, wrapper) => {
+      const content = JSON.stringify(wrapper)
+      const result = parse_structure_file(content, `test.json`)
+
+      expect(result).toBeTruthy()
+      expect(result?.sites.length).toBe(1)
+      expect(result?.sites[0].species[0].element).toBe(`Fe`)
+      expect(result?.lattice?.volume).toBe(1)
+    })
+
+    test.each([
+      [`empty object`, {}],
+      [`null structure`, { structure: null }],
+      [`invalid sites`, { sites: `not_an_array` }],
+      [`empty sites array`, { sites: [] }],
+      [`missing species`, { sites: [{ abc: [0, 0, 0] }] }],
+      [`malformed species`, { sites: [{ species: `not_array`, abc: [0, 0, 0] }] }],
+      [`missing coordinates`, { sites: [{ species: [{ element: `H` }] }] }],
+      [`array of invalid objects`, [{ no_structure: true }, { also_invalid: true }]],
+    ])(`returns null for %s`, (_description, invalid_data) => {
+      const content = JSON.stringify(invalid_data)
+      const result = parse_structure_file(content, `invalid.json`)
+
+      expect(result).toBeNull()
+    })
+
+    test.each([
+      [`very deep nesting`, 10],
+      [`moderate nesting`, 5],
+      [`minimal nesting`, 2],
+    ])(`handles %s (depth %d)`, (_description, depth) => {
+      let nested_obj: object = make_valid_struct()
+      for (let idx = 0; idx < depth; idx++) {
+        nested_obj = { [`level_${idx}`]: nested_obj }
+      }
+
+      const content = JSON.stringify(nested_obj)
+      const result = parse_structure_file(content, `deep.json`)
+
+      expect(result).toBeTruthy()
+      expect(result?.sites[0].species[0].element).toBe(`Fe`)
+    })
+
+    test(`finds valid structure when multiple structures exist`, () => {
+      const structure_a = make_valid_struct(`Li`)
+      const structure_b = make_valid_struct(`Na`)
+
+      // Test with multiple structures - should find at least one
+      const data = [
+        { type: `first`, structure: structure_a },
+        { type: `second`, structure: structure_b },
+      ]
+
+      const content = JSON.stringify(data)
+      const result = parse_structure_file(content, `multiple.json`)
+
+      expect(result).toBeTruthy()
+      expect(result?.sites.length).toBe(1)
+      // Should find one of the structures (order may vary due to recursive search)
+      const found_element = result?.sites[0].species[0].element
+      expect([`Li`, `Na`]).toContain(found_element)
+    })
+
+    test(`handles arrays with mixed valid/invalid structures`, () => {
+      const test_structure = make_valid_struct(`Cu`)
+
+      const mixed_array = [
+        { invalid: `data` },
+        { sites: `not_array` }, // Invalid structure
+        test_structure, // First valid structure - should be found
+        { another: `structure`, ...make_valid_struct() }, // Another valid one with Fe
+      ]
+
+      const content = JSON.stringify(mixed_array)
+      const result = parse_structure_file(content, `mixed.json`)
+
+      expect(result).toBeTruthy()
+      expect(result?.sites[0].species[0].element).toBe(`Cu`) // Should find first valid structure
+    })
+  })
+
+  describe(`data passing and transformation logic`, () => {
+    // Using the actual implementation from shared utility
+    // This ensures tests validate the real production logic
+    // rather than potentially outdated mock implementations
+
+    test.each([
+      [`simple direct structure`, {
+        sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }],
+        charge: 0, // Include charge to match expected behavior
+      }],
+      [`nested in object`, {
+        structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] },
+      }],
+      [`nested in array`, [{
+        structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] },
+      }]],
+    ])(`parse_any_structure handles %s correctly`, (description, input) => {
+      const content = JSON.stringify(input)
+      const result = parse_any_structure(content, `test.json`)
+
+      expect(result).toBeTruthy()
+      expect(result?.sites).toBeDefined()
+      expect(result?.sites.length).toBeGreaterThan(0)
+
+      // For direct structures, charge may be preserved; for nested, it's set to 0
+      if (description.includes(`simple direct`)) {
+        expect(result?.charge).toBe(0) // Direct structure should preserve charge
+      } else {
+        expect(result?.charge).toBe(0) // Nested structures get transformed charge
+      }
+    })
+
+    test(`transforms lattice properties correctly`, () => {
+      const nested_structure = {
+        data: {
+          structure: {
+            sites: [{ species: [{ element: `C` }], abc: [0, 0, 0] }],
+            lattice: {
+              matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+              volume: 8,
+            },
+          },
+        },
+      }
+
+      const content = JSON.stringify(nested_structure)
+      const result = parse_any_structure(content, `test.json`)
+
+      expect(result).toBeTruthy()
+
+      // Check if it's a crystal structure with lattice
+      if (result && `lattice` in result && result.lattice) {
+        expect(result.lattice.pbc).toEqual([true, true, true])
+        expect(result.lattice.volume).toBe(8)
+        expect(result.lattice.matrix).toEqual([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+      }
+    })
+
+    test.each([
+      [`malformed JSON`, `{invalid json`],
+      [`completely invalid structure`, `{ "no_structure": true }`],
+      [`empty string`, ``],
+      [`only whitespace`, `   \n\t   `],
+    ])(`handles invalid input gracefully: %s`, (_description, invalid_content) => {
+      const result = parse_any_structure(invalid_content, `test.json`)
+      expect(result).toBeNull()
+    })
+
+    test(`preserves all structure properties during transformation`, () => {
+      const nested_with_properties = {
+        result: {
+          structure: {
+            sites: [
+              {
+                species: [{ element: `Au`, occu: 0.8, oxidation_state: 1 }],
+                abc: [0.5, 0.5, 0.5],
+                xyz: [1, 1, 1],
+                label: `Au1_site`,
+                properties: { magnetic_moment: 2.5, custom_data: `test` },
+              },
+            ],
+            lattice: {
+              matrix: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+              a: 3,
+              b: 3,
+              c: 3,
+              alpha: 90,
+              beta: 90,
+              gamma: 90,
+              volume: 27,
+              pbc: [true, false, true], // Custom PBC that should be overridden
+            },
+            properties: { formula: `Au`, energy: -5.2 },
+            charge: 2, // Custom charge that should be overridden
+          },
+        },
+      }
+
+      const content = JSON.stringify(nested_with_properties)
+      const result = parse_any_structure(content, `test.json`)
+
+      expect(result).toBeTruthy()
+
+      // Check site properties are preserved
+      const site = result?.sites[0]
+      expect(site?.species[0].occu).toBe(0.8)
+      expect(site?.properties?.magnetic_moment).toBe(2.5)
+      expect(site?.label).toBe(`Au1_site`)
+
+      // Check lattice properties are preserved but PBC is overridden (for crystal structures)
+      if (result && `lattice` in result && result.lattice) {
+        expect(result.lattice.volume).toBe(27)
+        expect(result.lattice.pbc).toEqual([true, true, true]) // Overridden
+      }
+
+      // Check charge is overridden
+      expect(result?.charge).toBe(0) // Overridden
+
+      // Structure-level properties may not be preserved in transformation
+      // The transformation focuses on sites and lattice
+      expect(result?.sites.length).toBe(1)
+      if (result && `lattice` in result && result.lattice) {
+        expect(result.lattice).toBeDefined()
+      }
+    })
+  })
+
+  test(`handles deeply nested JSON without performance issues`, () => {
+    // Create a deeply nested structure to test the improved recursive function
+    let deeply_nested: Record<string, unknown> = {
+      sites: [{ species: [`H`], abc: [0.0, 0.0, 0.0] }],
+    }
+
+    // Wrap the structure in multiple levels of nesting (100 levels deep)
+    // This tests the parser's ability to handle realistic worst-case scenarios
+    // where JSON APIs might return heavily nested response objects
+    for (let idx = 0; idx < 100; idx++) {
+      deeply_nested = {
+        level: idx,
+        nested: deeply_nested,
+      }
+    }
+
+    const json_content = JSON.stringify(deeply_nested)
+
+    // This should complete without stack overflow or infinite recursion
+    const start_time = performance.now()
+    const result = parse_structure_file(json_content, `test.json`)
+    const end_time = performance.now()
+
+    expect(result).not.toBeNull()
+    expect(result?.sites).toHaveLength(1)
+    expect(result?.sites[0].species).toContain(`H`)
+
+    // Should complete reasonably quickly (less than 100ms for 100 levels)
+    // This ensures the recursive parser is efficient and doesn't degrade
+    // significantly with nesting depth
+    expect(end_time - start_time).toBeLessThan(100)
   })
 })

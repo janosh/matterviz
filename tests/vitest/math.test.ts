@@ -220,9 +220,9 @@ describe(`tensor conversion utilities`, () => {
       const voigt = math.to_voigt(tensor)
       const reconstructed = math.from_voigt(voigt)
 
-      for (let i = 0; i < 3; i++) {
+      for (let idx = 0; idx < 3; idx++) {
         for (let j = 0; j < 3; j++) {
-          expect(reconstructed[i][j]).toBeCloseTo(tensor[i][j], 10)
+          expect(reconstructed[idx][j]).toBeCloseTo(tensor[idx][j], 10)
         }
       }
     })
@@ -432,9 +432,9 @@ describe(`tensor conversion utilities`, () => {
       stress_tensors.forEach((tensor) => {
         const voigt = math.to_voigt(tensor)
         const reconstructed = math.from_voigt(voigt)
-        for (let i = 0; i < 3; i++) {
+        for (let idx = 0; idx < 3; idx++) {
           for (let j = 0; j < 3; j++) {
-            expect(reconstructed[i][j]).toBeCloseTo(tensor[i][j], 10)
+            expect(reconstructed[idx][j]).toBeCloseTo(tensor[idx][j], 10)
           }
         }
       })

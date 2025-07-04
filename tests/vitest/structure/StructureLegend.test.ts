@@ -95,24 +95,6 @@ describe(`StructureLegend Component`, () => {
     expect(colors.element.Fe).toBe(default_element_colors.Fe)
   })
 
-  test(`tips modal content and behavior`, () => {
-    mount(StructureLegend, {
-      target: document.body,
-      props: { elements: mock_elements, dialog_style: `background: red;` },
-    })
-
-    const dialog = doc_query<HTMLDialogElement>(`dialog`)
-
-    expect(dialog.textContent).toContain(`Drop a POSCAR, XYZ, CIF`)
-    expect(dialog.textContent).toContain(`Click on an atom to make it active`)
-    expect(dialog.getAttribute(`style`)).toBe(`background: red;`)
-
-    dialog.showModal()
-    expect(dialog.open).toBe(true)
-    dialog.close()
-    expect(dialog.open).toBe(false)
-  })
-
   test.each([
     [{}, 0, undefined], // Empty elements
     [{ Fe: 0 }, 1, `Fe0`], // Zero amount

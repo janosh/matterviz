@@ -3,9 +3,8 @@
   import { get_elem_amounts, get_pbc_image_sites, Icon } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import { decompress_file } from '$lib/io/decompress'
-  import * as exports from '$lib/io/export'
   import { colors } from '$lib/state.svelte'
-  import { Canvas, useThrelte } from '@threlte/core'
+  import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
@@ -14,6 +13,7 @@
     StructureControls,
     StructureLegend,
     StructureScene,
+    StructureSidebar,
   } from './index'
   import type { Props as ControlProps } from './StructureControls.svelte'
 
@@ -31,9 +31,7 @@
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
-    tips_modal?: HTMLDialogElement | undefined
-    enable_tips?: boolean
-    tips_icon?: Snippet<[]>
+    enable_info?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure: AnyStructure }]>
     // Generic callback for when files are dropped - receives raw content and filename
@@ -71,8 +69,7 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    tips_modal = $bindable(undefined),
-    enable_tips = true,
+    enable_info = true,
     save_json_btn_text = `⬇ JSON`,
     save_png_btn_text = `⬇ PNG`,
     save_xyz_btn_text = `⬇ XYZ`,
@@ -80,7 +77,6 @@
     show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
     show_full_controls = $bindable(false),
-    tips_icon,
     fullscreen_toggle = true,
     bottom_left,
     on_file_drop,
@@ -139,6 +135,9 @@
   let camera_is_moving = $state(false)
   let scene: Scene | undefined = $state(undefined)
   let camera: Camera | undefined = $state(undefined)
+
+  // Sidebar state
+  let sidebar_open = $state(false)
 
   // Reset tracking when structure changes
   $effect(() => {
@@ -216,8 +215,39 @@
     } else document.exitFullscreen()
   }
 
-  // set --struct-bg to background_color
-  $effect(() => {
+  // Handle click outside sidebar to close it
+  function handle_click_outside(event: MouseEvent) {
+    const target = event.target as Element
+
+    // Handle sidebar
+    if (sidebar_open) {
+      const sidebar = target.closest(`.info-sidebar`)
+      const info_button = target.closest(`.info-icon`)
+      // Don't close if clicking on sidebar or info button
+      if (!sidebar && !info_button) sidebar_open = false
+    }
+  }
+
+  // Handle keyboard shortcuts
+  function onkeydown(event: KeyboardEvent) {
+    // Don't handle shortcuts if user is typing in an input field
+    const target = event.target as HTMLElement
+    const is_input_focused = target.tagName === `INPUT` ||
+      target.tagName === `TEXTAREA`
+
+    if (is_input_focused) return
+
+    // Interface shortcuts
+    if (event.key === `f` && (event.ctrlKey || event.metaKey)) toggle_fullscreen()
+    else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
+      sidebar_open = !sidebar_open
+    } else if (event.key === `Escape`) {
+      if (document.fullscreenElement) document.exitFullscreen()
+      else sidebar_open = false
+    }
+  }
+
+  $effect(() => { // set --struct-bg to background_color
     if (typeof window !== `undefined` && wrapper && background_color) {
       // Convert opacity (0-1) to hex alpha value (00-FF)
       const alpha_hex = Math.round(background_opacity * 255)
@@ -227,10 +257,8 @@
     }
   })
 
-  // react to changes in the 'fullscreen' property
-  $effect(() => {
+  $effect(() => { // react to 'fullscreen' state changes
     if (typeof window !== `undefined`) {
-      // react to changes in the 'fullscreen' property
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
       } else if (!fullscreen && document.fullscreenElement) {
@@ -238,21 +266,13 @@
       }
     }
   })
-
-  function SceneContext() {
-    const threlte = useThrelte()
-    $effect(() => {
-      scene = threlte.scene
-      camera = threlte.camera.current
-    })
-    return undefined
-  }
 </script>
 
-{#if structure?.sites}
+{#if (structure?.sites?.length ?? 0) > 0}
   <div
     class="structure"
     class:dragover
+    class:active={sidebar_open || controls_open}
     role="region"
     bind:this={wrapper}
     bind:clientWidth={width}
@@ -269,6 +289,8 @@
       event.preventDefault()
       dragover = false
     }}
+    onclick={handle_click_outside}
+    {onkeydown}
     {...rest}
   >
     <section class:visible={visible_buttons} class="control-buttons">
@@ -278,9 +300,14 @@
           <Icon icon="Reset" />
         </button>
       {/if}
-      {#if enable_tips}
-        <button class="info-icon" onclick={() => tips_modal?.showModal()}>
-          {#if tips_icon}{@render tips_icon()}{:else}<Icon icon="Info" />{/if}
+      {#if enable_info}
+        <button
+          class="info-icon"
+          onclick={() => (sidebar_open = !sidebar_open)}
+          title="{sidebar_open ? `Close` : `Open`} info panel"
+          class:active={sidebar_open}
+        >
+          <Icon icon="Info" />
         </button>
       {/if}
       {#if fullscreen_toggle}
@@ -318,33 +345,43 @@
       />
     </section>
 
-    <StructureLegend elements={get_elem_amounts(structure)} bind:tips_modal />
+    <StructureLegend elements={get_elem_amounts(structure!)} />
 
-    <Canvas
-      createRenderer={(canvas) => {
-        const renderer = new WebGLRenderer({
-          canvas,
-          preserveDrawingBuffer: true,
-          antialias: true,
-          alpha: true,
-        }) // Store renderer reference for high-res export
-        ;(canvas as exports.CanvasWithRenderer).__customRenderer = renderer
-        return renderer
-      }}
-    >
-      <SceneContext />
-      <StructureScene
-        structure={scene_structure}
-        {...scene_props}
-        {show_site_labels}
-        {lattice_props}
-        bind:camera_is_moving
-      />
-    </Canvas>
+    {#if !import.meta.env.VITEST}
+      <!-- prevent from rendering in vitest runner since Canvas API not available -->
+      <Canvas
+        createRenderer={(canvas) => {
+          const renderer = new WebGLRenderer({
+            canvas,
+            preserveDrawingBuffer: true,
+            antialias: true,
+            alpha: true,
+          })
+          return renderer
+        }}
+      >
+        <StructureScene
+          structure={scene_structure}
+          {...scene_props}
+          {show_site_labels}
+          {lattice_props}
+          bind:camera_is_moving
+        />
+      </Canvas>
+    {/if}
 
     <div class="bottom-left">
-      {@render bottom_left?.({ structure })}
+      {@render bottom_left?.({ structure: structure! })}
     </div>
+
+    <!-- Info Sidebar -->
+    {#if structure}
+      <StructureSidebar
+        {structure}
+        is_open={sidebar_open}
+        onclose={() => (sidebar_open = false)}
+      />
+    {/if}
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -362,8 +399,11 @@
     min-width: var(--struct-min-width, 300px);
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg, rgba(255, 255, 255, 0.1));
-    overflow: var(--struct-overflow, visible);
+    overflow: hidden;
     color: var(--struct-text-color);
+  }
+  .structure.active {
+    z-index: var(--struct-active-z-index, 2);
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;
@@ -395,6 +435,23 @@
   }
   section.control-buttons button:hover {
     background-color: rgba(255, 255, 255, 0.1);
+  }
+  .info-icon {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    background: var(--trajectory-info-bg, #4b5563);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .info-icon:hover:not(:disabled) {
+    background: var(--trajectory-info-hover-bg, #6b7280);
+  }
+  .info-icon.active {
+    background: var(--trajectory-info-active-bg, #3b82f6);
   }
   p.warn {
     text-align: center;

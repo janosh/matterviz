@@ -9,6 +9,7 @@ import PlotLegend from './PlotLegend.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
 export { default as ElementScatter } from './ElementScatter.svelte'
+export { default as Histogram } from './Histogram.svelte'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
@@ -229,6 +230,3 @@ export interface LegendItem {
     line_dash?: string
   }
 }
-
-// Small value to substitute for non-positive minimum in log scales
-export const LOG_MIN_EPS = 1e-9
