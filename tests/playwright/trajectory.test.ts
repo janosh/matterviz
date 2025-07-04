@@ -605,6 +605,39 @@ test.describe(`Trajectory Component`, () => {
       await expect(play_button).toHaveText(`▶`)
     })
 
+    test(`FPS range slider covers full range and stays synchronized`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory .trajectory-viewer`)
+      const play_button = trajectory.locator(`.play-button`)
+
+      await play_button.click() // Start playing to show speed controls
+
+      const speed_section = trajectory.locator(`.speed-section`)
+      if (await speed_section.isVisible()) {
+        const speed_input = speed_section.locator(`.speed-input`)
+        const speed_slider = speed_section.locator(`.speed-slider`)
+
+        // Test range of FPS values via slider
+        for (const fps of [`0.2`, `5`, `15`, `30`]) {
+          await speed_slider.fill(fps)
+          await expect(speed_input).toHaveValue(fps)
+        }
+
+        // Test input field changes with decimal
+        await speed_input.fill(`12.5`)
+        await speed_input.press(`Enter`)
+        await expect(speed_input).toHaveValue(`12.5`)
+
+        // Verify attributes and UI elements
+        await expect(speed_slider).toHaveAttribute(`min`, `0.2`)
+        await expect(speed_slider).toHaveAttribute(`max`, `30`)
+        await expect(speed_input).toHaveAttribute(`step`, `0.1`)
+        await expect(speed_section).toContainText(`fps`)
+      }
+
+      await play_button.click() // Stop playing
+      await expect(play_button).toHaveText(`▶`)
+    })
+
     test(`large jump navigation works`, async ({ page }) => {
       // Test large jumps using the slider (simulating what PageUp/PageDown would do)
       const trajectory = page.locator(`#loaded-trajectory .trajectory-viewer`)

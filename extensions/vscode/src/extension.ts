@@ -24,23 +24,29 @@ interface MessageData {
 export function is_trajectory_file(filename: string): boolean {
   const name = filename.toLowerCase()
   return (
+    // Standard trajectory file extensions
     name.match(/\.(traj|xyz|extxyz|h5|hdf5)$/) !== null ||
-    /(xdatcar|trajectory|traj|md|relax)/.test(name) ||
+    // Files with trajectory-related keywords
+    /(xdatcar|trajectory|traj|md|relax|npt|nvt|nve)/.test(name) ||
+    // Compressed trajectory files
     /\.(xyz|extxyz|traj)\.gz$/.test(name) ||
-    (name.endsWith(`.gz`) && /(traj|xdatcar|trajectory|relax|xyz)/.test(name))
+    (name.endsWith(`.gz`) &&
+      /(traj|xdatcar|trajectory|relax|xyz|md|npt|nvt|nve)/.test(name))
   )
 }
 
 // Read file from filesystem
 export const read_file = (file_path: string): FileData => {
   const filename = path.basename(file_path)
-  const compressed = /\.(gz|traj|h5|hdf5)$/.test(filename)
+  // Binary files that should be read as base64
+  const is_binary = /\.(gz|traj|h5|hdf5)$/.test(filename)
+
   return {
     filename,
-    content: compressed
+    content: is_binary
       ? fs.readFileSync(file_path).toString(`base64`)
       : fs.readFileSync(file_path, `utf8`),
-    isCompressed: compressed,
+    isCompressed: is_binary,
   }
 }
 

@@ -569,7 +569,7 @@
     else if (event.key === `f`) toggle_fullscreen()
     else if (event.key === `i`) sidebar_open = !sidebar_open // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
-      frame_rate_fps = Math.min(5, frame_rate_fps + 0.2)
+      frame_rate_fps = Math.min(30, frame_rate_fps + 0.2)
     } else if (event.key === `-` && is_playing) {
       frame_rate_fps = Math.max(0.2, frame_rate_fps - 0.2)
     } // System shortcuts
@@ -736,7 +736,7 @@
                 id="step-rate-slider"
                 type="range"
                 min="0.2"
-                max="5"
+                max="30"
                 step="0.1"
                 bind:value={frame_rate_fps}
                 class="speed-slider"
@@ -745,7 +745,7 @@
               <input
                 type="number"
                 min="0.2"
-                max="5"
+                max="30"
                 step="0.1"
                 bind:value={frame_rate_fps}
                 class="speed-input"
@@ -761,8 +761,8 @@
             {#if trajectory}
               <button
                 onclick={() => (sidebar_open = !sidebar_open)}
-                title={sidebar_open ? `Close info panel` : `Open info panel`}
-                aria-label={sidebar_open ? `Close info panel` : `Open info panel`}
+                title="{sidebar_open ? `Close` : `Open`} info panel"
+                aria-label="{sidebar_open ? `Close` : `Open`} info panel"
                 class="info-button nav-button"
                 class:active={sidebar_open}
               >
