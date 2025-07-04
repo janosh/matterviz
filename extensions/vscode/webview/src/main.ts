@@ -62,12 +62,18 @@ const parse_file_content = async (
   filename: string,
   is_compressed: boolean = false,
 ): Promise<ParseResult> => {
-  // Handle compressed files by decompressing first
+  // Handle compressed/binary files by converting from base64 first
   if (is_compressed) {
     const buffer = base64_to_array_buffer(content)
 
     // For HDF5 files, pass buffer directly to trajectory parser
     if (/\.h5|\.hdf5$/i.test(filename)) {
+      const data = await parse_trajectory_data(buffer, filename)
+      return { type: `trajectory`, filename, data }
+    }
+
+    // For ASE .traj files, pass buffer directly to trajectory parser
+    if (/\.traj$/i.test(filename)) {
       const data = await parse_trajectory_data(buffer, filename)
       return { type: `trajectory`, filename, data }
     }

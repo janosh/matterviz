@@ -1,5 +1,25 @@
 # Changelog
 
+#### [v0.1.2](https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.2)
+
+> 4 July 2025
+
+### 🛠 Enhancements
+
+- Allow toggling between histogram and line plot of properties in Trajectory viewer by @janosh in https://github.com/janosh/matterviz/pull/85
+- VSCode extension for rendering structures and trajectories with MatterViz directly in editor tabs by @janosh in https://github.com/janosh/matterviz/pull/82
+
+**Full Changelog**: https://github.com/janosh/matterviz/compare/v0.1.0...v0.1.2
+
+#### [v0.1.1](https://github.com/janosh/matterviz/compare/v0.1.1...v0.1.2)
+
+> 19 June 2025
+
+### 🛠 Enhancements
+
+- Big speedup of binary trajectory parsing by avoiding data-URI conversion, use ArrayBuffer directly by @janosh in https://github.com/janosh/matterviz/pull/81
+- Force vectors by @janosh in https://github.com/janosh/matterviz/pull/80
+
 ## [v0.1.0](https://github.com/janosh/matterviz/compare/v0.1.0...v0.1.0)
 
 > 19 June 2025

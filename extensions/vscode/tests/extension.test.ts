@@ -69,6 +69,7 @@ describe(`MatterViz Extension`, () => {
   }
   const mock_context = { extensionUri: { fsPath: `/test` }, subscriptions: [] }
 
+  // only checking filename recognition, files don't need to exist
   test.each([
     // Basic trajectory files
     [`test.traj`, true],
@@ -81,6 +82,13 @@ describe(`MatterViz Extension`, () => {
     [`trajectory.dat`, true],
     [`md.xyz.gz`, true],
     [`relax.extxyz`, true],
+    // ASE ULM binary trajectory files (specific to this fix)
+    [`md_npt_300K.traj`, true],
+    [`ase-LiMnO2-chgnet-relax.traj`, true],
+    [`simulation_nvt_250K.traj`, true],
+    [`molecular_dynamics_nve.traj`, true],
+    [`water_cluster_md.traj`, true],
+    [`optimization_relax.traj`, true],
     // Case insensitive
     [`FILE.TRAJ`, true],
     [`TrAjEcToRy.XyZ`, true],
@@ -110,8 +118,10 @@ describe(`MatterViz Extension`, () => {
   test.each([
     [`test.gz`, true],
     [`test.h5`, true],
-    [`test.traj`, true],
+    [`test.traj`, true], // ASE binary files should be treated as compressed
     [`test.hdf5`, true],
+    [`md_npt_300K.traj`, true], // Specific ASE ULM binary file
+    [`ase-LiMnO2-chgnet-relax.traj`, true], // Another ASE ULM binary file
     [`test.cif`, false],
     [`test.xyz`, false],
     [`test.json`, false],
@@ -127,6 +137,67 @@ describe(`MatterViz Extension`, () => {
     } else {
       expect(mock_fs.readFileSync).toHaveBeenCalledWith(file_path, `utf8`)
     }
+  })
+
+  test.each([
+    [`md_npt_300K.traj`, true, true], // ASE binary trajectory
+    [`ase-LiMnO2-chgnet-relax.traj`, true, true], // ASE binary trajectory
+    [`simulation_nvt_250K.traj`, true, true], // ASE binary trajectory
+    [`water_cluster_md.traj`, true, true], // ASE binary trajectory
+    [`optimization_relax.traj`, true, true], // ASE binary trajectory
+    [`regular_text.traj`, true, true], // .traj files are always binary
+    [`test.xyz`, true, false], // Text trajectory file
+    [`test.extxyz`, true, false], // Text trajectory file
+    [`test.cif`, false, false], // Not a trajectory file
+  ])(
+    `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,
+    (filename, is_trajectory, is_binary) => {
+      expect(is_trajectory_file(filename)).toBe(is_trajectory)
+
+      if (is_trajectory) {
+        const result = read_file(`/test/${filename}`)
+        expect(result.isCompressed).toBe(is_binary)
+      }
+    },
+  )
+
+  // Integration test for ASE trajectory file processing (simulates the exact failing scenario)
+  test(`ASE trajectory file end-to-end processing`, () => {
+    const ase_filename = `ase-LiMnO2-chgnet-relax.traj`
+
+    // Step 1: Extension should detect this as a trajectory file
+    expect(is_trajectory_file(ase_filename)).toBe(true)
+
+    // Step 2: Extension should read this as binary (compressed)
+    const file_result = read_file(`/test/${ase_filename}`)
+    expect(file_result.filename).toBe(ase_filename)
+    expect(file_result.isCompressed).toBe(true)
+    expect(file_result.content).toBe(`mock content`) // base64 encoded binary data
+
+    // Step 3: Verify webview data structure matches expected format
+    const webview_data = {
+      type: `trajectory` as const,
+      data: file_result,
+    }
+
+    // Step 4: HTML generation should work with this data
+    const html = create_html(
+      mock_webview as unknown as vscode.Webview,
+      mock_context as unknown as vscode.ExtensionContext,
+      webview_data,
+    )
+
+    expect(html).toContain(`<!DOCTYPE html>`)
+    expect(html).toContain(JSON.stringify(webview_data))
+
+    // Step 5: Verify the exact data structure that would be sent to webview
+    const parsed_data = JSON.parse(
+      html.match(/mattervizData=(.+?)</s)?.[1] || `{}`,
+    )
+    expect(parsed_data.type).toBe(`trajectory`)
+    expect(parsed_data.data.filename).toBe(ase_filename)
+    expect(parsed_data.data.isCompressed).toBe(true)
+    expect(parsed_data.data.content).toBe(`mock content`)
   })
 
   test.each([
