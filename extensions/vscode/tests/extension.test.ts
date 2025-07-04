@@ -375,7 +375,7 @@ describe(`MatterViz Extension`, () => {
     }
     const nonces = new Set<string>()
 
-    for (let i = 0; i < 1000; i++) {
+    for (let idx = 0; idx < 1000; idx++) {
       const html = create_html(
         mock_webview as vscode.Webview,
         mock_context as vscode.ExtensionContext,

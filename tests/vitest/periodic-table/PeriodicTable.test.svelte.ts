@@ -35,11 +35,11 @@ describe(`PeriodicTable`, () => {
     const element_tile = doc_query(`.element-tile`)
     element_tile?.dispatchEvent(mouseenter)
     await tick()
-    expect([...element_tile.classList]).toContain(`active`)
+    expect(Array.from(element_tile.classList)).toContain(`active`)
 
     element_tile?.dispatchEvent(mouseleave)
     await tick()
-    expect([...element_tile.classList]).not.toContain(`active`)
+    expect(Array.from(element_tile.classList)).not.toContain(`active`)
   })
 
   test(`shows element photo when hovering element tile`, async () => {
@@ -59,7 +59,7 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`keyboard navigation works`, async () => {
-    let active_element: (typeof element_data)[0] | null = $state(null)
+    let active_element: (typeof element_data)[0] | null = null
 
     mount(PeriodicTable, {
       target: document.body,
@@ -73,6 +73,7 @@ describe(`PeriodicTable`, () => {
       },
     })
 
+    // Set initial active element
     active_element = element_data[0]
     await tick()
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
@@ -96,7 +97,7 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`PropertySelect integration`, async () => {
-    const props: { heatmap_values?: number[] } = $state({})
+    const props: { heatmap_values?: number[] } = {}
     mount(PeriodicTable, { target: document.body, props })
     mount(PropertySelect, { target: document.body })
 
@@ -250,7 +251,7 @@ describe(`PeriodicTable`, () => {
   )(
     `disabled=%s (%s)`,
     async (disabled, initial, expected, _description) => {
-      let active_element = $state<ChemicalElement | null>(initial)
+      let active_element: ChemicalElement | null = initial
       mount(PeriodicTable, {
         target: document.body,
         props: {
@@ -267,7 +268,7 @@ describe(`PeriodicTable`, () => {
         mouseenter,
       )
       await tick()
-      expect(active_element?.symbol || null).toBe(expected)
+      expect((active_element as ChemicalElement | null)?.symbol || null).toBe(expected)
     },
   )
 

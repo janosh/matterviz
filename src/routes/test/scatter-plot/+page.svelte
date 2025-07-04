@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ScatterPlot } from '$lib'
+  import * as math from '$lib/math'
   import type {
     DataSeries,
     InternalPoint,
@@ -7,7 +8,7 @@
     PointStyle,
     ScaleType,
   } from '$lib/plot'
-  import { LOG_MIN_EPS, symbol_names } from '$lib/plot'
+  import { symbol_names } from '$lib/plot'
 
   // === Basic Example Data ===
   const basic_data = {
@@ -796,7 +797,7 @@
         y_label="Y Axis"
         markers="line+points"
         y_scale_type={lin_log_y_scale_type}
-        y_lim={lin_log_y_scale_type === `log` ? [LOG_MIN_EPS, null] : [null, null]}
+        y_lim={lin_log_y_scale_type === `log` ? [math.LOG_MIN_EPS, null] : [null, null]}
       />
     </div>
   </section>

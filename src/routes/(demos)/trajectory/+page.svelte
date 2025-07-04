@@ -167,14 +167,10 @@
         background_color: `#1a1a1a`,
         background_opacity: 0.8,
       }}
-      plot_props={{
+      scatter_props={{
         x_label: `Step`,
         markers: `line+points`,
-        legend: {
-          responsive: true,
-          layout: `horizontal`,
-          layout_tracks: 2,
-        },
+        legend: { responsive: true, layout: `horizontal`, layout_tracks: 2 },
         style:
           `background: var(--traj-plot-bg, #2d3748); color: var(--traj-plot-text, #e2e8f0);`,
       }}

@@ -385,9 +385,8 @@ describe(`ScatterPoint`, () => {
       // Check initial transform
       expect(g_element.getAttribute(`transform`)).toBe(`translate(0 0)`)
 
-      // Advance timers
-      vi.advanceTimersByTime(props.point_tween.duration)
-      await vi.runAllTimersAsync()
+      // Advance timers to completion
+      await vi.advanceTimersByTimeAsync(props.point_tween.duration)
 
       // Verify final position (primary check is mounting without error)
       expect(g_element.getAttribute(`transform`)).toBe(`translate(100 150)`)

@@ -3,18 +3,19 @@
   import { decompress_file } from '$lib/io/decompress'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
+  import { Histogram, ScatterPlot } from '$lib/plot'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { titles_as_tooltips } from 'svelte-zoo'
   import { full_data_extractor } from './extract'
   import type { Trajectory, TrajectoryDataExtractor } from './index'
-  import { Sidebar, TrajectoryError } from './index'
+  import { TrajectoryError, TrajectorySidebar } from './index'
+  import type { ParseProgress } from './parse'
   import {
     get_unsupported_format_message,
     load_trajectory_from_url,
-    parse_trajectory_data,
+    parse_trajectory_async,
   } from './parse'
   import {
     generate_axis_labels,
@@ -40,7 +41,9 @@
     // structure viewer props (passed to Structure component)
     structure_props?: ComponentProps<typeof Structure>
     // plot props (passed to ScatterPlot component)
-    plot_props?: ComponentProps<typeof ScatterPlot>
+    scatter_props?: ComponentProps<typeof ScatterPlot>
+    // histogram props (passed to Histogram component, excluding series which is handled separately)
+    histogram_props?: Omit<ComponentProps<typeof Histogram>, `series`>
     // spinner props (passed to Spinner component)
     spinner_props?: ComponentProps<typeof Spinner>
     // custom snippets for additional UI elements
@@ -60,8 +63,13 @@
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
     show_fullscreen_button?: boolean
-    // display mode: 'both' (default), 'structure' (only structure), 'plot' (only plot)
-    display_mode?: `both` | `structure` | `plot`
+    // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
+    display_mode?:
+      | `structure+scatter`
+      | `structure`
+      | `scatter`
+      | `histogram`
+      | `structure+histogram`
     // step labels configuration for slider
     // - positive number: number of evenly spaced ticks
     // - negative number: spacing between ticks (e.g., -10 = every 10th step)
@@ -97,14 +105,14 @@
     on_file_drop = handle_trajectory_file_drop,
     layout = `auto`,
     structure_props = {},
-    plot_props = {},
+    scatter_props = {},
+    histogram_props = {},
     spinner_props = {},
     trajectory_controls,
     error_snippet,
     show_controls = true,
     show_fullscreen_button = true,
-    display_mode = $bindable(`both`),
-
+    display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
   }: Props = $props()
 
@@ -120,6 +128,7 @@
   let file_object = $state<File | null>(null)
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let sidebar_open = $state(false)
+  let parsing_progress = $state<ParseProgress | null>(null)
 
   // Viewport dimensions for responsive layout
   let viewport = $state({ width: 0, height: 0 })
@@ -198,7 +207,7 @@
   )
 
   // Determine what to show based on display mode
-  let show_structure = $derived(display_mode !== `plot`)
+  let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
   // Generate intelligent axis labels based on first visible series on each axis
@@ -262,10 +271,11 @@
     current_file_path = file.webkitRelativePath || file.name // Capture full path if available
     file_object = file
     try {
-      // Check if this is an HDF5 file (handle as binary)
+      // Check if this is a binary trajectory file (HDF5 or ASE)
       if (
         file.name.toLowerCase().endsWith(`.h5`) ||
-        file.name.toLowerCase().endsWith(`.hdf5`)
+        file.name.toLowerCase().endsWith(`.hdf5`) ||
+        file.name.toLowerCase().endsWith(`.traj`)
       ) {
         const buffer = await file.arrayBuffer()
         await handle_trajectory_binary_drop(buffer, file.name)
@@ -333,8 +343,8 @@
       layout_tracks: 3,
       item_gap: 0,
       padding: { t: 5, b: 5, l: 5, r: 5 },
-      ...plot_props?.legend,
-      on_toggle: plot_props?.legend?.on_toggle ?? handle_legend_toggle,
+      ...scatter_props?.legend,
+      on_toggle: scatter_props?.legend?.on_toggle ?? handle_legend_toggle,
     }
     return config
   })
@@ -416,58 +426,60 @@
   })
 
   async function handle_trajectory_file_drop(content: string, filename: string) {
-    loading = true
-    error_message = null
-
-    try {
-      // Check for unsupported formats first
-      const unsupported_message = get_unsupported_format_message(filename, content)
-      if (unsupported_message) {
-        error_message = unsupported_message
-        current_filename = null
-        file_size = null
-        return
-      }
-
-      // Use the new parser that can handle multiple formats including XDATCAR
-      trajectory = await parse_trajectory_data(content, filename)
-      current_step_idx = 0
-      current_filename = filename
-      // Note: file_size remains as set by the caller (could be null for text drops)
-    } catch (err) {
-      // Check if this might be an unsupported format even if not detected initially
-      const unsupported_message = get_unsupported_format_message(filename, content)
-      if (unsupported_message) {
-        error_message = unsupported_message
-      } else {
-        error_message = `Failed to parse trajectory file: ${err}`
-      }
-      current_filename = null
-      file_size = null
-      console.error(`Trajectory parsing error:`, err)
-    } finally {
-      loading = false
-    }
+    await load_trajectory_data(content, filename)
   }
 
   async function handle_trajectory_binary_drop(
     buffer: ArrayBuffer,
     filename: string,
   ) {
+    await load_trajectory_data(buffer, filename)
+  }
+
+  // Consolidated trajectory loading function
+  async function load_trajectory_data(
+    data: string | ArrayBuffer,
+    filename: string,
+  ) {
     loading = true
     error_message = null
+    parsing_progress = null
 
     try {
-      // Parse binary data (e.g., HDF5 files)
-      trajectory = await parse_trajectory_data(buffer, filename)
+      // Check for unsupported formats first (only for text content)
+      if (typeof data === `string`) {
+        const unsupported_message = get_unsupported_format_message(filename, data)
+        if (unsupported_message) {
+          error_message = unsupported_message
+          current_filename = null
+          file_size = null
+          return
+        }
+      }
+
+      trajectory = await parse_trajectory_async(data, filename, (progress) => {
+        parsing_progress = progress
+      })
+
       current_step_idx = 0
       current_filename = filename
-      // Note: file_size should already be set by the caller
+      parsing_progress = null
     } catch (err) {
-      error_message = `Failed to parse binary trajectory file: ${err}`
+      // Check if this might be an unsupported format even if not detected initially
+      if (typeof data === `string`) {
+        const unsupported_message = get_unsupported_format_message(filename, data)
+        if (unsupported_message) {
+          error_message = unsupported_message
+        } else {
+          error_message = `Failed to parse trajectory file: ${err}`
+        }
+      } else {
+        error_message = `Failed to parse binary trajectory file: ${err}`
+      }
       current_filename = null
       file_size = null
-      console.error(`Binary trajectory parsing error:`, err)
+      parsing_progress = null
+      console.error(`Trajectory parsing error:`, err)
     } finally {
       loading = false
     }
@@ -482,39 +494,34 @@
     }
   }
 
-  // Display mode cycling
-  function cycle_display_mode() {
-    const modes: Array<`both` | `structure` | `plot`> = [`both`, `structure`, `plot`]
-    const current_index = modes.indexOf(display_mode)
-    const next_index = (current_index + 1) % modes.length
-    display_mode = modes[next_index]
-  }
+  // Get current view mode label
+  let current_view_label = $derived.by(() => {
+    if (display_mode === `structure`) return `Structure Only`
+    if (display_mode === `scatter`) return `Scatter Only`
+    if (display_mode === `histogram`) return `Histogram Only`
+    return `Structure + Scatter`
+  })
 
-  // Display mode labels and icons
-  const display_mode_config = {
-    both: {
-      label: `Show Both`,
-      icon: `TwoColumns`,
-      title: `Show both structure and plot`,
-    },
-    structure: {
-      label: `Structure Only`,
-      icon: `Atom`,
-      title: `Show structure only`,
-    },
-    plot: { label: `Plot Only`, icon: `ScatterPlot`, title: `Show plot only` },
-  } as const
+  let view_mode_dropdown_open = $state(false)
 
   // Handle click outside sidebar to close it
   function handle_click_outside(event: MouseEvent) {
-    if (!sidebar_open) return
-
     const target = event.target as Element
-    const sidebar = target.closest(`.info-sidebar`)
-    const info_button = target.closest(`.info-button`)
 
-    // Don't close if clicking on sidebar or info button
-    if (!sidebar && !info_button) sidebar_open = false
+    // Handle sidebar
+    if (sidebar_open) {
+      const sidebar = target.closest(`.info-sidebar`)
+      const info_button = target.closest(`.info-button`)
+      // Don't close if clicking on sidebar or info button
+      if (!sidebar && !info_button) sidebar_open = false
+    }
+
+    // Handle view mode dropdown
+    if (view_mode_dropdown_open) {
+      const dropdown_wrapper = target.closest(`.view-mode-dropdown-wrapper`)
+      // Don't close if clicking on dropdown wrapper (which contains both button and menu)
+      if (!dropdown_wrapper) view_mode_dropdown_open = false
+    }
   }
 
   // Handle keyboard shortcuts
@@ -560,10 +567,7 @@
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
     } // Interface shortcuts
     else if (event.key === `f`) toggle_fullscreen()
-    else if (event.key === `i`) sidebar_open = !sidebar_open
-    else if (event.key === `d` && plot_series.length > 0) {
-      cycle_display_mode()
-    } // Playback speed shortcuts (only when playing)
+    else if (event.key === `i`) sidebar_open = !sidebar_open // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
       frame_rate_fps = Math.min(5, frame_rate_fps + 0.2)
     } else if (event.key === `-` && is_playing) {
@@ -571,6 +575,7 @@
     } // System shortcuts
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
+      else if (view_mode_dropdown_open) view_mode_dropdown_open = false
       else sidebar_open = false
     } // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
@@ -608,7 +613,14 @@
   {onkeydown}
 >
   {#if loading}
-    <Spinner text="Loading trajectory..." {...spinner_props} />
+    {#if parsing_progress}
+      <Spinner
+        text="{parsing_progress.stage} ({parsing_progress.current}%)"
+        {...spinner_props}
+      />
+    {:else}
+      <Spinner text="Loading trajectory..." {...spinner_props} />
+    {/if}
   {:else if error_message}
     <TrajectoryError
       {error_message}
@@ -757,15 +769,65 @@
                 <Icon icon="Info" style="width: 22px; height: 22px" />
               </button>
             {/if}
-            <!-- Display mode button - after info button -->
+            <!-- Display mode dropdown -->
             {#if plot_series.length > 0}
-              <button
-                onclick={cycle_display_mode}
-                title={display_mode_config[display_mode].title}
-                class="display-mode nav-button"
-              >
-                <Icon icon={display_mode_config[display_mode].icon} />
-              </button>
+              <div class="view-mode-dropdown-wrapper">
+                <button
+                  onclick={() => (view_mode_dropdown_open = !view_mode_dropdown_open)}
+                  title={current_view_label}
+                  class="view-mode-button nav-button"
+                  class:active={view_mode_dropdown_open}
+                >
+                  <Icon
+                    icon={({
+                      structure: `Atom`,
+                      'structure+scatter': `TwoColumns`,
+                      'structure+histogram': `TwoColumns`,
+                      scatter: `ScatterPlot`,
+                      histogram: `Histogram`,
+                    } as const)[display_mode]}
+                  />
+                  <Icon icon={view_mode_dropdown_open ? `ArrowUp` : `ArrowDown`} />
+                </button>
+                {#if view_mode_dropdown_open}
+                  <div class="view-mode-dropdown">
+                    {#each [
+              { mode: `structure`, icon: `Atom`, label: `Structure-only` },
+              {
+                mode: `structure+scatter`,
+                icon: `TwoColumns`,
+                label: `Structure + Scatter`,
+              },
+              {
+                mode: `structure+histogram`,
+                icon: `TwoColumns`,
+                label: `Structure + Histogram`,
+              },
+              { mode: `scatter`, icon: `ScatterPlot`, label: `Scatter-only` },
+              {
+                mode: `histogram`,
+                icon: `Histogram`,
+                label: `Histogram-only`,
+              },
+            ] as const as
+                      option
+                      (option.mode)
+                    }
+                      <button
+                        class="view-mode-option"
+                        class:selected={display_mode === option.mode}
+                        onclick={() => {
+                          display_mode = option.mode
+                          view_mode_dropdown_open = false
+                        }}
+                      >
+                        <Icon icon={option.icon} />
+                        <span>{option.label}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
             {/if}
             <!-- Fullscreen button - rightmost position -->
             {#if show_fullscreen_button}
@@ -787,9 +849,9 @@
       class="content-area"
       class:hide-plot={!actual_show_plot}
       class:hide-structure={!show_structure}
-      class:show-both={display_mode === `both`}
+      class:show-both={display_mode === `structure+scatter` || display_mode === `structure+histogram`}
       class:show-structure-only={display_mode === `structure`}
-      class:show-plot-only={display_mode === `plot`}
+      class:show-plot-only={display_mode === `scatter` || display_mode === `histogram`}
     >
       {#if show_structure}
         <Structure
@@ -804,37 +866,65 @@
       {/if}
 
       {#if actual_show_plot}
-        <ScatterPlot
-          series={plot_series}
-          x_label="Step"
-          y_label={y_axis_labels.y1}
-          y_label_shift={{ y: 20 }}
-          y_format=".2~s"
-          y2_format=".2~s"
-          y2_label={y_axis_labels.y2}
-          y2_label_shift={{ y: 80 }}
-          current_x_value={current_step_idx}
-          change={handle_plot_change}
-          markers="line"
-          x_ticks={step_label_positions}
-          show_controls
-          bind:controls_open={controls_open.plot}
-          padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
-          range_padding={0}
-          style="height: 100%"
-          {...plot_props}
-          legend={legend_config}
-        >
-          {#snippet tooltip({ x, y, metadata })}
-            {#if metadata?.series_label}
-              Step: {Math.round(x)}<br />
-              {@html metadata.series_label}: {typeof y === `number` ? format_num(y) : y}
-            {:else}
-              Step: {Math.round(x)}<br />
-              Value: {typeof y === `number` ? format_num(y) : y}
-            {/if}
-          {/snippet}
-        </ScatterPlot>
+        {#if display_mode === `scatter` || display_mode === `structure+scatter`}
+          <ScatterPlot
+            series={plot_series}
+            x_label="Step"
+            y_label={y_axis_labels.y1}
+            y_label_shift={{ y: 20 }}
+            y_format=".2~s"
+            y2_format=".2~s"
+            y2_label={y_axis_labels.y2}
+            y2_label_shift={{ y: 80 }}
+            current_x_value={current_step_idx}
+            change={handle_plot_change}
+            markers="line"
+            x_ticks={step_label_positions}
+            show_controls
+            bind:controls_open={controls_open.plot}
+            padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
+            range_padding={0}
+            style="height: 100%"
+            {...scatter_props}
+            legend={legend_config}
+          >
+            {#snippet tooltip({ x, y, metadata })}
+              {#if metadata?.series_label}
+                Step: {Math.round(x)}<br />
+                {@html metadata.series_label}: {typeof y === `number` ? format_num(y) : y}
+              {:else}
+                Step: {Math.round(x)}<br />
+                Value: {typeof y === `number` ? format_num(y) : y}
+              {/if}
+            {/snippet}
+          </ScatterPlot>
+        {:else if display_mode === `histogram` || display_mode === `structure+histogram`}
+          <Histogram
+            series={plot_series}
+            x_label={histogram_props.x_label ?? `Value`}
+            y_label={histogram_props.y_label ?? `Count`}
+            mode={histogram_props.mode ?? `overlay`}
+            show_legend={histogram_props.show_legend ?? (plot_series.length > 1)}
+            legend={{
+              responsive: true,
+              layout: `horizontal`,
+              layout_tracks: 3,
+              item_gap: 0,
+              padding: { t: 5, b: 5, l: 5, r: 5 },
+              on_toggle: handle_legend_toggle,
+              series_data: [],
+              ...(histogram_props.legend || {}),
+            }}
+            style="height: 100%"
+            {...histogram_props}
+          >
+            {#snippet tooltip({ value, count, property })}
+              <div>Value: {format_num(value)}</div>
+              <div>Count: {count}</div>
+              <div>{property}</div>
+            {/snippet}
+          </Histogram>
+        {/if}
       {/if}
     </div>
   {:else}
@@ -842,16 +932,18 @@
       <div class="drop-zone">
         <h3>Load Trajectory</h3>
         <p>
-          Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR) or provide
-          trajectory data via props
+          Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj,
+          .h5) or provide trajectory data via props
         </p>
         <div class="supported-formats">
           <strong>Supported formats:</strong>
           <ul>
             <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
+            <li>ASE trajectory files (.traj)</li>
             <li>Pymatgen trajectory JSON</li>
             <li>Array of structures with metadata</li>
             <li>VASP XDATCAR files</li>
+            <li>HDF5 trajectory files (.h5, .hdf5)</li>
             <li>Compressed files (.gz)</li>
           </ul>
           <p
@@ -865,9 +957,8 @@
     </div>
   {/if}
 
-  <!-- Info Sidebar -->
   {#if trajectory}
-    <Sidebar
+    <TrajectorySidebar
       {trajectory}
       {current_step_idx}
       {current_filename}
@@ -952,6 +1043,8 @@
     border-bottom: var(--trajectory-border, 1px solid #e1e4e8);
     color: var(--trajectory-text-color, #24292e);
     font-size: 0.8rem;
+    position: relative;
+    z-index: 100;
   }
   .nav-section {
     display: flex;
@@ -1177,7 +1270,6 @@
       grid-template-rows: 1fr !important;
     }
   }
-
   /* Additional responsive breakpoints for auto layout */
   @media (orientation: portrait) and (max-width: 1024px) {
     /* Force vertical layout on portrait tablets and phones */
@@ -1185,5 +1277,78 @@
       grid-template-columns: 1fr !important;
       grid-template-rows: 1fr 1fr !important;
     }
+  }
+
+  /* View mode dropdown styles */
+  .view-mode-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+    padding: 2pt 0 2pt 6pt;
+  }
+  .view-mode-button {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 50px;
+    max-width: 120px;
+    background: var(--trajectory-view-mode-bg, rgba(255, 255, 255, 0.05));
+    overflow: hidden;
+  }
+  .view-mode-button:hover:not(:disabled) {
+    background: var(--trajectory-view-mode-hover-bg, #6b7280);
+  }
+  .view-mode-button.active {
+    background: var(--trajectory-view-mode-active-bg, #4b5563);
+  }
+  .view-mode-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--traj-surface, rgba(45, 55, 72, 0.95));
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--traj-border, rgba(74, 85, 104, 0.7));
+    border-radius: 4px;
+    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    margin-top: 2px;
+    min-width: 180px;
+  }
+  .view-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    text-align: left;
+    color: var(--traj-text, #e2e8f0);
+    font-size: 0.8rem;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  .view-mode-option:first-child {
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+  }
+  .view-mode-option:last-child {
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
+  }
+  .view-mode-option:hover {
+    background: var(--traj-surface-hover, rgba(74, 85, 104, 0.3));
+  }
+  .view-mode-option.selected {
+    background: var(--traj-accent, rgba(99, 179, 237, 0.2));
+    color: var(--traj-accent-text, #a8d8f0);
+  }
+  .view-mode-option span {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
   }
 </style>

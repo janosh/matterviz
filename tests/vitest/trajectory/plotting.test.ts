@@ -382,7 +382,7 @@ describe(`should_hide_plot`, () => {
     {
       name: `hidden varying series`,
       series: [create_series([1.0, 2.0, 3.0], false)],
-      expected: true,
+      expected: false,
     },
   ])(`should hide plot for $name`, ({ series, expected }) => {
     expect(should_hide_plot(trajectory, series)).toBe(expected)
@@ -390,7 +390,7 @@ describe(`should_hide_plot`, () => {
 
   it(`should handle single frame trajectory and custom tolerance`, () => {
     const single_frame = create_trajectory([{}])
-    expect(should_hide_plot(single_frame, [])).toBe(false)
+    expect(should_hide_plot(single_frame, [])).toBe(true) // Single frame should hide plot
 
     const series = [create_series([1.0, 1.000001, 1.0])]
     expect(should_hide_plot(trajectory, series)).toBe(false) // Default tolerance

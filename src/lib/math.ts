@@ -283,3 +283,5 @@ export function cell_to_lattice_matrix(
     [c1, c2, c3],
   ]
 }
+
+export const LOG_MIN_EPS = 1e-9 // Constants

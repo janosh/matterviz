@@ -1,9 +1,9 @@
 // Utility functions for working with trajectory data
 import type { AnyStructure } from '$lib'
 
-export { default as Sidebar } from './Sidebar.svelte'
 export { default as TrajectoryViewer } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
+export { default as TrajectorySidebar } from './TrajectorySidebar.svelte'
 
 // Trajectory types for pymatgen trajectory data
 export type TrajectoryFrame = {

@@ -135,6 +135,52 @@ test.describe(`Structure Component Tests`, () => {
     )
   })
 
+  test(`keyboard shortcuts require modifier keys`, async ({ page }) => {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    await structure_component.click()
+
+    const is_mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
+    )
+
+    let page_errors = false
+    page.on(`pageerror`, () => (page_errors = true))
+
+    // Test that single keys don't trigger actions or cause errors
+    await page.keyboard.press(`f`)
+    await page.keyboard.press(`i`)
+
+    // Should not be in fullscreen mode after 'f' key
+    const is_fullscreen = await page.evaluate(() => !!document.fullscreenElement)
+    expect(is_fullscreen).toBe(false)
+
+    // Test that modifier key combinations can be dispatched without errors
+    await page.evaluate((isMac) => {
+      const structureDiv = document.querySelector(
+        `#structure-wrapper .structure`,
+      ) as HTMLElement
+      if (structureDiv) {
+        structureDiv.focus()
+        // Test both Ctrl+F and Ctrl+I shortcuts
+        const keys = [`f`, `i`]
+        keys.forEach((key) => {
+          const event = new KeyboardEvent(`keydown`, {
+            key,
+            ctrlKey: !isMac,
+            metaKey: isMac,
+            bubbles: true,
+          })
+          structureDiv.dispatchEvent(event)
+        })
+      }
+    }, is_mac)
+
+    // Verify no errors occurred and component still functions
+    await page.waitForTimeout(100)
+    expect(page_errors).toBe(false)
+    await expect(structure_component.locator(`canvas`)).toBeVisible()
+  })
+
   test(`closes controls panel on outside click`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_toggle_button = structure_component.locator(
@@ -857,7 +903,7 @@ test.describe(`Reset Camera Button Tests`, () => {
   test(`reset camera button structure and styling are correct`, async ({ page }) => {
     // Since OrbitControls events don't fire in test environment, we'll test the static structure
     const structure_component = page.locator(`#structure-wrapper .structure`)
-    const button_section = structure_component.locator(`section`)
+    const button_section = structure_component.locator(`section.control-buttons`)
 
     await expect(button_section).toBeVisible()
 
@@ -1467,7 +1513,7 @@ test.describe(`Export Button Tests`, () => {
   test(`reset camera button integration with existing UI elements`, async ({ page }) => {
     // Test that the reset camera button integrates properly with other UI elements
     const structure_component = page.locator(`#structure-wrapper .structure`)
-    const button_section = structure_component.locator(`section`)
+    const button_section = structure_component.locator(`section.control-buttons`)
 
     // Verify the button section exists and has the right structure
     await expect(button_section).toBeVisible()

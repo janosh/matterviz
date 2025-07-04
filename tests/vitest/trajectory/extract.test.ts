@@ -1,13 +1,13 @@
 import type { ElementSymbol, Vec3 } from '$lib'
 import { Matrix3x3 } from '$lib/math'
-import type { Trajectory } from '$lib/trajectory'
+import type { Trajectory, TrajectoryFrame } from '$lib/trajectory'
 import {
   energy_data_extractor,
   force_stress_data_extractor,
   full_data_extractor,
   structural_data_extractor,
 } from '$lib/trajectory/extract'
-import { parse_torch_sim_hdf5 } from '$lib/trajectory/parse'
+import { parse_trajectory_data } from '$lib/trajectory/parse'
 import { readFileSync } from 'fs'
 import process from 'node:process'
 import { join } from 'path'
@@ -32,9 +32,7 @@ function create_basic_frame(
     structure: {
       sites: [
         {
-          species: [
-            { element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 },
-          ],
+          species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
           abc: [0, 0, 0] as Vec3,
           xyz: [0, 0, 0] as Vec3,
           label: `H1`,
@@ -420,7 +418,10 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     const hdf5_content = read_binary_test_file(
       `torch-sim-gold-cluster-55-atoms.h5`,
     )
-    const trajectory = await parse_torch_sim_hdf5(hdf5_content)
+    const trajectory = await parse_trajectory_data(
+      hdf5_content,
+      `torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const first_frame = trajectory.frames[0]
 
     const energy_data = energy_data_extractor(first_frame, trajectory)
@@ -444,26 +445,29 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     const hdf5_content = read_binary_test_file(
       `torch-sim-gold-cluster-55-atoms.h5`,
     )
-    const trajectory = await parse_torch_sim_hdf5(hdf5_content)
+    const trajectory = await parse_trajectory_data(
+      hdf5_content,
+      `torch-sim-gold-cluster-55-atoms.h5`,
+    )
 
-    const all_frame_data = trajectory.frames.map((frame) =>
+    const all_frame_data = trajectory.frames.map((frame: TrajectoryFrame) =>
       full_data_extractor(frame, trajectory)
     )
 
     expect(all_frame_data).toHaveLength(20)
 
-    all_frame_data.forEach((data, idx) => {
+    all_frame_data.forEach((data: Record<string, unknown>, idx: number) => {
       expect(data.Step).toBe(idx)
       expect(typeof data.volume).toBe(`number`)
       expect(data.volume).toBeGreaterThan(0)
     })
 
     // Check lattice consistency
-    const volumes = all_frame_data.map((data) => data.volume)
+    const volumes = all_frame_data.map((data: Record<string, unknown>) => data.volume)
     const unique_volumes = new Set(volumes)
     const is_constant = unique_volumes.size === 1
 
-    all_frame_data.forEach((data) => {
+    all_frame_data.forEach((data: Record<string, unknown>) => {
       if (is_constant) {
         // Check that all lattice parameters are marked as constant
         expect(data._constant_a).toBe(1)
