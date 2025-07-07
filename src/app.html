@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="author" content="Janosh Riebesell" />
+    <title>MatterViz</title>
     <meta
       name="description"
       content="Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories and more."
@@ -25,17 +26,44 @@
     ></script>
 
     <link rel="icon" href="/favicon.svg" />
-    <link rel="stylesheet" href="/prism-vsc-dark-plus.css" />
+    <link rel="stylesheet" href="/prism-syntax-highlight-theme-aware.css" />
     <!-- math display -->
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css"
     />
 
+    <script src="/themes.js"></script>
+    <script>
+      // SSR Theme initialization - runs immediately after themes.js
+      // Get stored theme preference
+      let mode = 'auto'
+      try {
+        mode = localStorage['matterviz-theme'] || 'auto'
+      } catch {}
+
+      // Resolve theme (auto = system preference)
+      const system = matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+      const resolved = mode === 'auto' ? system : mode
+
+      // Apply theme CSS variables
+      const root = document.documentElement
+      const theme = window.MATTERVIZ_THEMES[resolved]
+      const css_map = window.MATTERVIZ_CSS_MAP
+
+      for (const key in theme) {
+        if (css_map[key]) root.style.setProperty(css_map[key], theme[key])
+      }
+
+      // Set theme attribute and store resolved theme
+      root.setAttribute('data-theme', resolved)
+      window.__MATTERVIZ_THEME__ = { mode, resolved, system }
+    </script>
     %sveltekit.head%
   </head>
-
-  <body data-sveltekit-prefetch>
-    <div>%sveltekit.body%</div>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

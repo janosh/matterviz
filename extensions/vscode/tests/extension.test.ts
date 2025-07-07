@@ -2,10 +2,12 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as vscode from 'vscode'
+import type { ThemeName } from '../../../src/lib/theme/index'
 import {
   activate,
   create_html,
   get_file,
+  get_theme,
   handle_msg,
   is_trajectory_file,
   read_file,
@@ -23,6 +25,14 @@ vi.mock(`vscode`, () => ({
     activeTextEditor: null,
     tabGroups: { activeTabGroup: { activeTab: null } },
     registerCustomEditorProvider: vi.fn(),
+    activeColorTheme: { kind: 1 }, // Light theme by default
+    onDidChangeActiveColorTheme: vi.fn(),
+  },
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn((_key: string, defaultValue: string) => defaultValue),
+    })),
+    onDidChangeConfiguration: vi.fn(),
   },
   commands: { registerCommand: vi.fn() },
   Uri: {
@@ -32,6 +42,7 @@ vi.mock(`vscode`, () => ({
     })),
   },
   ViewColumn: { Beside: 2 },
+  ColorThemeKind: { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 },
 }))
 
 const mock_vscode = vscode as unknown as {
@@ -45,6 +56,11 @@ const mock_vscode = vscode as unknown as {
       activeTabGroup: { activeTab: { input?: { uri?: vscode.Uri } } | null }
     }
     registerCustomEditorProvider: ReturnType<typeof vi.fn>
+    onDidChangeActiveColorTheme: ReturnType<typeof vi.fn>
+  }
+  workspace: {
+    getConfiguration: ReturnType<typeof vi.fn>
+    onDidChangeConfiguration: ReturnType<typeof vi.fn>
   }
   commands: { registerCommand: ReturnType<typeof vi.fn> }
 }
@@ -65,7 +81,11 @@ describe(`MatterViz Extension`, () => {
   // Test data consolidation
   const mock_webview = {
     cspSource: `vscode-webview:`,
-    asWebviewUri: vi.fn((uri: unknown) => uri),
+    asWebviewUri: vi.fn((uri: unknown) =>
+      `https://vscode-webview.local${(uri as { fsPath: string }).fsPath}`
+    ),
+    onDidReceiveMessage: vi.fn(),
+    html: ``,
   }
   const mock_context = { extensionUri: { fsPath: `/test` }, subscriptions: [] }
 
@@ -373,6 +393,7 @@ describe(`MatterViz Extension`, () => {
   test(`render creates webview panel`, () => {
     const mock_panel = {
       webview: { html: ``, onDidReceiveMessage: vi.fn(), ...mock_webview },
+      onDidDispose: vi.fn(),
     }
     mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
     mock_vscode.window.activeTextEditor = {
@@ -497,5 +518,227 @@ describe(`MatterViz Extension`, () => {
     )
     await Promise.all(promises)
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledTimes(50)
+  })
+
+  // Theme functionality tests
+  describe(`Theme functionality`, () => {
+    test.each([
+      [mock_vscode.ColorThemeKind.Light, `auto`, `light`], // Light VSCode theme, auto setting → light
+      [mock_vscode.ColorThemeKind.Dark, `auto`, `dark`], // Dark VSCode theme, auto setting → dark
+      [mock_vscode.ColorThemeKind.HighContrast, `auto`, `black`], // High contrast VSCode theme, auto setting → black
+      [mock_vscode.ColorThemeKind.HighContrastLight, `auto`, `white`], // High contrast light VSCode theme, auto setting → white
+      [mock_vscode.ColorThemeKind.Light, `light`, `light`], // Light VSCode theme, light setting → light
+      [mock_vscode.ColorThemeKind.Light, `dark`, `dark`], // Light VSCode theme, dark setting → dark
+      [mock_vscode.ColorThemeKind.Light, `white`, `white`], // Light VSCode theme, white setting → white
+      [mock_vscode.ColorThemeKind.Light, `black`, `black`], // Light VSCode theme, black setting → black
+      [mock_vscode.ColorThemeKind.Dark, `light`, `light`], // Dark VSCode theme, light setting → light
+      [mock_vscode.ColorThemeKind.Dark, `dark`, `dark`], // Dark VSCode theme, dark setting → dark
+      [mock_vscode.ColorThemeKind.Dark, `white`, `white`], // Dark VSCode theme, white setting → white
+      [mock_vscode.ColorThemeKind.Dark, `black`, `black`], // Dark VSCode theme, black setting → black
+    ])(
+      `theme detection: VSCode theme %i, setting '%s' → '%s'`,
+      (vscode_theme_kind: number, setting: string, expected: ThemeName) => {
+        const mock_config = {
+          get: vi.fn((key: string, default_value?: string) =>
+            key === `theme` ? setting : default_value
+          ),
+        }
+        mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+        mock_vscode.window.activeColorTheme = { kind: vscode_theme_kind }
+
+        const result = get_theme()
+        expect(result).toBe(expected)
+      },
+    )
+
+    test(`webview data includes theme`, () => {
+      const mock_config = {
+        get: vi.fn((key: string, default_value?: string) =>
+          key === `theme` ? `dark` : default_value
+        ),
+      }
+      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+
+      const data = {
+        type: `structure` as const,
+        data: { filename: `test.cif`, content: `content`, isCompressed: false },
+        theme: get_theme(),
+      }
+
+      const html = create_html(
+        mock_webview as vscode.Webview,
+        mock_context as vscode.ExtensionContext,
+        data,
+      )
+
+      const parsed_data = JSON.parse(
+        html.match(/mattervizData=(.+?)</s)?.[1] || `{}`,
+      )
+      expect(parsed_data.theme).toBe(`dark`)
+    })
+
+    test(`HTML includes themes.js script`, () => {
+      const data = {
+        type: `structure` as const,
+        data: { filename: `test.cif`, content: `content`, isCompressed: false },
+        theme: `light` as const,
+      }
+
+      const html = create_html(
+        mock_webview as vscode.Webview,
+        mock_context as vscode.ExtensionContext,
+        data,
+      )
+
+      expect(html).toContain(`themes.js`)
+      expect(html).toMatch(/<script[^>]*src="[^"]*themes\.js"[^>]*>/)
+    })
+
+    test(`invalid theme setting falls back to auto`, () => {
+      const mock_config = {
+        get: vi.fn((key: string, default_value?: string) =>
+          key === `theme` ? `invalid-theme` : default_value
+        ),
+      }
+      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+      mock_vscode.window.activeColorTheme = {
+        kind: mock_vscode.ColorThemeKind.Light,
+      }
+
+      const result = get_theme()
+      expect(result).toBe(`light`) // Should fall back to system theme
+    })
+
+    test(`high contrast themes are mapped correctly`, () => {
+      const mock_config = {
+        get: vi.fn((key: string, default_value?: string) =>
+          key === `theme` ? `auto` : default_value
+        ),
+      }
+      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+
+      // Test high contrast dark → black
+      mock_vscode.window.activeColorTheme = {
+        kind: mock_vscode.ColorThemeKind.HighContrast,
+      }
+      expect(get_theme()).toBe(`black`)
+
+      // Test high contrast light → white
+      mock_vscode.window.activeColorTheme = {
+        kind: mock_vscode.ColorThemeKind.HighContrastLight,
+      }
+      expect(get_theme()).toBe(`white`)
+    })
+  })
+
+  describe(`Theme listener cleanup`, () => {
+    const setup_panel = (options = {}) => {
+      const mock_dispose = vi.fn()
+      const mock_panel = {
+        webview: {
+          html: `initial`,
+          onDidReceiveMessage: vi.fn(),
+          ...mock_webview,
+        },
+        onDidDispose: vi.fn(),
+        visible: true,
+        ...options,
+      }
+
+      mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
+      mock_vscode.window.onDidChangeActiveColorTheme.mockReturnValue({
+        dispose: mock_dispose,
+      })
+      mock_vscode.workspace.onDidChangeConfiguration.mockReturnValue({
+        dispose: mock_dispose,
+      })
+      mock_vscode.window.activeTextEditor = {
+        document: { fileName: `/test/active.cif`, getText: () => `content` },
+      } as vscode.TextEditor
+
+      return { mock_dispose, mock_panel }
+    }
+
+    test(`sets up and cleans up theme listeners`, () => {
+      const { mock_dispose, mock_panel } = setup_panel()
+
+      render(mock_context as vscode.ExtensionContext)
+
+      expect(mock_vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled()
+      expect(mock_panel.onDidDispose).toHaveBeenCalled()
+
+      // Test cleanup
+      mock_panel.onDidDispose.mock.calls[0][0]()
+      expect(mock_dispose).toHaveBeenCalledTimes(2)
+    })
+
+    test(`respects panel visibility for theme updates`, () => {
+      const mock_panel = {
+        webview: {
+          html: ``,
+          onDidReceiveMessage: vi.fn(),
+          ...mock_webview,
+        },
+        onDidDispose: vi.fn(),
+        visible: false,
+      }
+
+      mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
+      mock_vscode.window.onDidChangeActiveColorTheme.mockReturnValue({
+        dispose: vi.fn(),
+      })
+      mock_vscode.workspace.onDidChangeConfiguration.mockReturnValue({
+        dispose: vi.fn(),
+      })
+      mock_vscode.window.activeTextEditor = {
+        document: { fileName: `/test/active.cif`, getText: () => `content` },
+      } as vscode.TextEditor
+
+      render(mock_context as vscode.ExtensionContext)
+
+      // Store initial HTML after render (render always sets HTML initially)
+      const initial_html = mock_panel.webview.html
+
+      const theme_callback =
+        mock_vscode.window.onDidChangeActiveColorTheme.mock.calls[0][0]
+
+      // Should not update when invisible
+      theme_callback()
+      expect(mock_panel.webview.html).toBe(initial_html)
+
+      // Should update when visible
+      mock_panel.visible = true
+      theme_callback()
+      expect(mock_panel.webview.html).not.toBe(initial_html)
+    })
+
+    test(`multiple panels dispose independently`, () => {
+      const dispose1 = vi.fn()
+      const dispose2 = vi.fn()
+      const panel1 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
+      const panel2 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
+
+      mock_vscode.window.createWebviewPanel
+        .mockReturnValueOnce(panel1).mockReturnValueOnce(panel2)
+      mock_vscode.window.onDidChangeActiveColorTheme
+        .mockReturnValueOnce({ dispose: dispose1 }).mockReturnValueOnce({
+          dispose: dispose2,
+        })
+      mock_vscode.workspace.onDidChangeConfiguration
+        .mockReturnValueOnce({ dispose: dispose1 }).mockReturnValueOnce({
+          dispose: dispose2,
+        })
+
+      mock_vscode.window.activeTextEditor = {
+        document: { fileName: `/test/active.cif`, getText: () => `content` },
+      } as vscode.TextEditor
+
+      render(mock_context as vscode.ExtensionContext)
+      render(mock_context as vscode.ExtensionContext)
+
+      panel1.onDidDispose.mock.calls[0][0]()
+      expect(dispose1).toHaveBeenCalledTimes(2)
+      expect(dispose2).not.toHaveBeenCalled()
+    })
   })
 })

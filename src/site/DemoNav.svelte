@@ -25,18 +25,21 @@
     display: flex;
     gap: 1em calc(2pt + 1cqw);
     place-content: center;
-    margin: 1em auto 2em;
+    margin: -1em auto 2em;
     padding: 1em;
     max-width: 45em;
     flex-wrap: wrap;
   }
   nav > a {
     padding: 0 4pt;
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--demo-nav-link-bg);
     border-radius: 3pt;
     transition: 0.2s;
   }
+  nav > a:hover {
+    background-color: var(--demo-nav-link-hover-bg);
+  }
   nav > a[aria-current='page'] {
-    color: mediumseagreen;
+    color: var(--demo-nav-link-active-color);
   }
 </style>

@@ -71,7 +71,7 @@
     show_image_atoms = $bindable(true),
     show_site_labels = $bindable(false),
     show_full_controls = $bindable(false),
-    background_color = $bindable(`#ffffff`),
+    background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     color_scheme = $bindable(`Vesta`),
     structure = undefined,
@@ -367,7 +367,14 @@
     <div class="control-row">
       <label class="compact">
         Color
-        <input type="color" bind:value={background_color} />
+        <!-- not using bind:value to not give a default value of #000000 to background_color, needs to stay undefined to not override --struct-bg theme color -->
+        <input
+          type="color"
+          value={background_color}
+          oninput={(event) => {
+            background_color = (event.target as HTMLInputElement).value
+          }}
+        />
       </label>
       <label class="slider-control">
         Opacity

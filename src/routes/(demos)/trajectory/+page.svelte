@@ -161,12 +161,6 @@
       trajectory_url={!trajectory ? default_trajectory_urls[idx] : undefined}
       data_extractor={full_data_extractor}
       layout="horizontal"
-      structure_props={{
-        controls_open: false,
-        show_full_controls: false,
-        background_color: `#1a1a1a`,
-        background_opacity: 0.8,
-      }}
       scatter_props={{
         x_label: `Step`,
         markers: `line+points`,
@@ -245,7 +239,7 @@
     text-align: center;
     max-width: 800px;
     margin: 0 auto 2rem auto;
-    color: var(--traj-text, #e2e8f0);
+    color: var(--text-color, #1f2937);
   }
 
   .dual-trajectory-container {

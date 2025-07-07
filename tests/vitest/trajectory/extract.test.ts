@@ -1,5 +1,5 @@
 import type { ElementSymbol, Vec3 } from '$lib'
-import { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
 import type { Trajectory, TrajectoryFrame } from '$lib/trajectory'
 import {
   energy_data_extractor,

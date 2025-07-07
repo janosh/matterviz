@@ -108,12 +108,12 @@
     box-sizing: border-box;
     top: var(--controls-top, 20pt);
     right: var(--controls-right, 6pt);
-    background: var(--controls-bg, rgba(10, 10, 10, 0.95));
+    background: var(--controls-bg, rgba(15, 23, 42, 0.95));
     padding: var(--controls-padding, 6pt 9pt);
     border-radius: var(--controls-border-radius, 3pt);
     width: var(--controls-width, 28em);
     max-width: var(--controls-max-width, 90cqw);
-    color: var(--controls-text-color);
+    color: var(--controls-text-color, #eee);
     overflow: auto;
     max-height: var(--controls-max-height, calc(100vh - 3em));
     visibility: hidden;
@@ -128,7 +128,7 @@
   }
   .controls-panel :global(hr) {
     border: none;
-    background: var(--controls-hr-bg, gray);
+    background: var(--controls-hr-bg, rgba(255, 255, 255, 0.1));
     margin: var(--controls-hr-margin, 0);
     height: var(--controls-hr-height, 0.5px);
   }
@@ -150,8 +150,6 @@
     text-align: center;
     border-radius: var(--controls-input-num-border-radius, 3pt);
     width: var(--controls-input-num-width, 2.2em);
-    border: var(--controls-input-num-border, none);
-    background: var(--controls-input-num-bg, rgba(255, 255, 255, 0.15));
     margin-right: 3pt;
     margin-left: var(--controls-input-num-margin-left, 6pt);
     flex-shrink: 0;
@@ -161,12 +159,15 @@
   }
   .controls-panel :global(button) {
     width: max-content;
-    background-color: var(--controls-btn-bg, rgba(255, 255, 255, 0.2));
+    background-color: var(--controls-btn-bg, rgba(255, 255, 255, 0.1));
+  }
+  .controls-panel :global(button:hover) {
+    background-color: var(--controls-btn-hover-bg, rgba(255, 255, 255, 0.2));
   }
   .controls-panel :global(select) {
     margin: var(--controls-select-margin, 0 0 0 5pt);
-    color: var(--controls-select-color, white);
-    background-color: var(--controls-select-bg, rgba(255, 255, 255, 0.1));
+    color: var(--controls-select-color, #eee);
+    background-color: var(--controls-select-bg, rgba(255, 255, 255, 0.05));
   }
   .controls-panel :global(input[type='color']) {
     width: var(--input-color-width, 40px);

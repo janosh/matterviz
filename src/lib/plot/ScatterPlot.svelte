@@ -1607,7 +1607,6 @@
         {/each}
       {/if}
 
-      <!-- X-axis -->
       <g class="x-axis">
         {#if width > 0 && height > 0}
           {#each x_tick_values as tick (tick)}
@@ -1674,7 +1673,6 @@
         </foreignObject>
       </g>
 
-      <!-- Y-axis -->
       <g class="y-axis">
         {#if width > 0 && height > 0}
           {#each y_tick_values as tick, idx (tick)}
@@ -1988,7 +1986,7 @@
   }
   svg {
     width: 100%;
-    fill: var(--scatter-fill, white);
+    fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     overflow: visible;
     font-size: var(--scatter-font-size);
@@ -2017,7 +2015,7 @@
     height: 100%;
     font-size: var(--scatter-font-size, inherit);
     font-weight: var(--scatter-font-weight, normal);
-    color: var(--scatter-fill, currentColor);
+    color: var(--text-color);
     white-space: nowrap;
     /* Use line-height to center text vertically without flexbox */
     line-height: 20px; /* Match foreignObject height */

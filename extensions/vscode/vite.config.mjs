@@ -3,6 +3,9 @@ import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 
+// this file is trying to load ESM-only packages but it's being loaded as CommonJS by VSCode extension.
+// Needs to be explicitly named .mjs to communicate correct import format to VSCode.
+
 const __dirname = fileURLToPath(new URL(`.`, import.meta.url))
 
 export default defineConfig({

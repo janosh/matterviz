@@ -1,0 +1,460 @@
+/* Theme-aware Prism.js syntax highlighting */
+/* Switches between light and dark themes based on the active color theme */
+
+/* =============================================================================
+   CSS CUSTOM PROPERTIES & BASE STYLES
+   ============================================================================= */
+
+:root {
+  /* Light theme colors */
+  --prism-light-bg: #f6f8fa;
+  --prism-light-text: #24292f;
+  --prism-light-selection: #add6ff;
+  --prism-light-comment: #6a737d;
+  --prism-light-string: #032f62;
+  --prism-light-number: #005cc5;
+  --prism-light-keyword: #d73a49;
+  --prism-light-function: #6f42c1;
+  --prism-light-builtin: #22863a;
+
+  /* Dark theme colors */
+  --prism-dark-bg: #1e1e1e;
+  --prism-dark-text: #d4d4d4;
+  --prism-dark-selection: #75a7ca;
+  --prism-dark-comment: #6a9955;
+  --prism-dark-string: #ce9178;
+  --prism-dark-number: #b5cea8;
+  --prism-dark-keyword: #569cd6;
+  --prism-dark-function: #dcdcaa;
+  --prism-dark-builtin: #4ec9b0;
+  --prism-dark-variable: #9cdcfe;
+  --prism-dark-operator: #d4d4d4;
+  --prism-dark-regex: #d16969;
+  --prism-dark-control: #c586c0;
+  --prism-dark-escape: #d7ba7d;
+  --prism-dark-punctuation: #808080;
+}
+
+pre[class*='language-'], code[class*='language-'] {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 13px;
+  text-align: left;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  line-height: 1.4;
+  tab-size: 4;
+  hyphens: none;
+  text-shadow: none;
+  direction: ltr;
+}
+
+pre[class*='language-'] {
+  padding: 1em;
+  margin: 0.5em 0;
+  overflow: auto;
+  border-radius: 0.3em;
+}
+
+:not(pre) > code[class*='language-'] {
+  padding: 0.1em 0.3em;
+  border-radius: 0.3em;
+  white-space: normal;
+}
+
+/* =============================================================================
+   LIGHT THEMES (light, white)
+   ============================================================================= */
+
+[data-theme='light'] pre[class*='language-'],
+[data-theme='light'] code[class*='language-'],
+[data-theme='white'] pre[class*='language-'],
+[data-theme='white'] code[class*='language-'] {
+  color: var(--prism-light-text);
+  background: none;
+}
+
+[data-theme='light'] pre[class*='language-'],
+[data-theme='white'] pre[class*='language-'] {
+  background: var(--prism-light-bg);
+}
+
+[data-theme='light'] :not(pre) > code[class*='language-'],
+[data-theme='white'] :not(pre) > code[class*='language-'] {
+  background: var(--prism-light-bg);
+}
+
+[data-theme='light'] ::selection, [data-theme='white'] ::selection {
+  background: var(--prism-light-selection);
+  text-shadow: none;
+}
+
+/* Light theme tokens */
+[data-theme='light'] .token.comment,
+[data-theme='light'] .token.prolog,
+[data-theme='light'] .token.doctype,
+[data-theme='light'] .token.cdata,
+[data-theme='white'] .token.comment,
+[data-theme='white'] .token.prolog,
+[data-theme='white'] .token.doctype,
+[data-theme='white'] .token.cdata {
+  color: var(--prism-light-comment);
+  font-style: italic;
+}
+
+[data-theme='light'] .token.string,
+[data-theme='light'] .token.attr-value,
+[data-theme='light'] .token.selector,
+[data-theme='white'] .token.string,
+[data-theme='white'] .token.attr-value,
+[data-theme='white'] .token.selector {
+  color: var(--prism-light-string);
+}
+
+[data-theme='light'] .token.punctuation,
+[data-theme='light'] .token.operator,
+[data-theme='white'] .token.punctuation,
+[data-theme='white'] .token.operator {
+  color: var(--prism-light-text);
+}
+
+[data-theme='light'] .token.entity,
+[data-theme='light'] .token.url,
+[data-theme='light'] .token.symbol,
+[data-theme='light'] .token.number,
+[data-theme='light'] .token.boolean,
+[data-theme='light'] .token.variable,
+[data-theme='light'] .token.constant,
+[data-theme='light'] .token.property,
+[data-theme='light'] .token.regex,
+[data-theme='light'] .token.inserted,
+[data-theme='white'] .token.entity,
+[data-theme='white'] .token.url,
+[data-theme='white'] .token.symbol,
+[data-theme='white'] .token.number,
+[data-theme='white'] .token.boolean,
+[data-theme='white'] .token.variable,
+[data-theme='white'] .token.constant,
+[data-theme='white'] .token.property,
+[data-theme='white'] .token.regex,
+[data-theme='white'] .token.inserted {
+  color: var(--prism-light-number);
+}
+
+[data-theme='light'] .token.atrule,
+[data-theme='light'] .token.keyword,
+[data-theme='light'] .token.attr-name,
+[data-theme='white'] .token.atrule,
+[data-theme='white'] .token.keyword,
+[data-theme='white'] .token.attr-name {
+  color: var(--prism-light-keyword);
+}
+
+[data-theme='light'] .token.function,
+[data-theme='light'] .token.deleted,
+[data-theme='light'] .token.tag,
+[data-theme='light'] .token.function-name,
+[data-theme='white'] .token.function,
+[data-theme='white'] .token.deleted,
+[data-theme='white'] .token.tag,
+[data-theme='white'] .token.function-name {
+  color: var(--prism-light-function);
+}
+
+[data-theme='light'] .token.char,
+[data-theme='light'] .token.builtin,
+[data-theme='white'] .token.char,
+[data-theme='white'] .token.builtin {
+  color: var(--prism-light-builtin);
+}
+
+[data-theme='light'] .token.important,
+[data-theme='light'] .token.bold,
+[data-theme='white'] .token.important,
+[data-theme='white'] .token.bold {
+  font-weight: bold;
+}
+
+[data-theme='light'] .token.italic, [data-theme='white'] .token.italic {
+  font-style: italic;
+}
+
+[data-theme='light'] .token.namespace, [data-theme='white'] .token.namespace {
+  opacity: 0.7;
+}
+
+/* =============================================================================
+   DARK THEMES (dark, black)
+   ============================================================================= */
+
+[data-theme='dark'] pre[class*='language-'],
+[data-theme='dark'] code[class*='language-'],
+[data-theme='black'] pre[class*='language-'],
+[data-theme='black'] code[class*='language-'] {
+  color: var(--prism-dark-text);
+}
+
+[data-theme='dark'] pre[class*='language-'],
+[data-theme='black'] pre[class*='language-'] {
+  background: var(--prism-dark-bg);
+}
+
+[data-theme='dark'] :not(pre) > code[class*='language-'],
+[data-theme='black'] :not(pre) > code[class*='language-'] {
+  background: var(--prism-dark-bg);
+}
+
+[data-theme='dark'] ::selection, [data-theme='black'] ::selection {
+  background: var(--prism-dark-selection);
+  text-shadow: none;
+}
+
+/* Dark theme tokens */
+[data-theme='dark'] .token.comment,
+[data-theme='dark'] .token.prolog,
+[data-theme='black'] .token.comment,
+[data-theme='black'] .token.prolog {
+  color: var(--prism-dark-comment);
+}
+
+[data-theme='dark'] .token.punctuation, [data-theme='black'] .token.punctuation {
+  color: var(--prism-dark-text);
+}
+
+[data-theme='dark'] .token.property,
+[data-theme='dark'] .token.tag,
+[data-theme='dark'] .token.boolean,
+[data-theme='dark'] .token.number,
+[data-theme='dark'] .token.constant,
+[data-theme='dark'] .token.symbol,
+[data-theme='dark'] .token.inserted,
+[data-theme='dark'] .token.unit,
+[data-theme='black'] .token.property,
+[data-theme='black'] .token.tag,
+[data-theme='black'] .token.boolean,
+[data-theme='black'] .token.number,
+[data-theme='black'] .token.constant,
+[data-theme='black'] .token.symbol,
+[data-theme='black'] .token.inserted,
+[data-theme='black'] .token.unit {
+  color: var(--prism-dark-number);
+}
+
+[data-theme='dark'] .token.selector,
+[data-theme='dark'] .token.attr-name,
+[data-theme='dark'] .token.string,
+[data-theme='dark'] .token.char,
+[data-theme='dark'] .token.builtin,
+[data-theme='dark'] .token.deleted,
+[data-theme='black'] .token.selector,
+[data-theme='black'] .token.attr-name,
+[data-theme='black'] .token.string,
+[data-theme='black'] .token.char,
+[data-theme='black'] .token.builtin,
+[data-theme='black'] .token.deleted {
+  color: var(--prism-dark-string);
+}
+
+[data-theme='dark'] .token.operator,
+[data-theme='dark'] .token.entity,
+[data-theme='black'] .token.operator,
+[data-theme='black'] .token.entity {
+  color: var(--prism-dark-operator);
+}
+
+[data-theme='dark'] .token.operator.arrow, [data-theme='black'] .token.operator.arrow {
+  color: var(--prism-dark-keyword);
+}
+
+[data-theme='dark'] .token.atrule, [data-theme='black'] .token.atrule {
+  color: var(--prism-dark-string);
+}
+
+[data-theme='dark'] .token.atrule .token.rule,
+[data-theme='black'] .token.atrule .token.rule {
+  color: var(--prism-dark-control);
+}
+
+[data-theme='dark'] .token.atrule .token.url,
+[data-theme='black'] .token.atrule .token.url {
+  color: var(--prism-dark-variable);
+}
+
+[data-theme='dark'] .token.atrule .token.function,
+[data-theme='black'] .token.atrule .token.function {
+  color: var(--prism-dark-function);
+}
+
+[data-theme='dark'] .token.keyword, [data-theme='black'] .token.keyword {
+  color: var(--prism-dark-keyword);
+}
+
+[data-theme='dark'] .token.keyword.module,
+[data-theme='dark'] .token.keyword.control-flow,
+[data-theme='black'] .token.keyword.module,
+[data-theme='black'] .token.keyword.control-flow {
+  color: var(--prism-dark-control);
+}
+
+[data-theme='dark'] .token.function,
+[data-theme='dark'] .token.function .token.maybe-class-name,
+[data-theme='black'] .token.function,
+[data-theme='black'] .token.function .token.maybe-class-name {
+  color: var(--prism-dark-function);
+}
+
+[data-theme='dark'] .token.regex, [data-theme='black'] .token.regex {
+  color: var(--prism-dark-regex);
+}
+
+[data-theme='dark'] .token.important, [data-theme='black'] .token.important {
+  color: var(--prism-dark-keyword);
+}
+
+[data-theme='dark'] .token.italic, [data-theme='black'] .token.italic {
+  font-style: italic;
+}
+
+[data-theme='dark'] .token.class-name,
+[data-theme='dark'] .token.maybe-class-name,
+[data-theme='dark'] .token.console,
+[data-theme='dark'] .token.parameter,
+[data-theme='dark'] .token.interpolation,
+[data-theme='dark'] .token.variable,
+[data-theme='dark'] .token.namespace,
+[data-theme='black'] .token.class-name,
+[data-theme='black'] .token.maybe-class-name,
+[data-theme='black'] .token.console,
+[data-theme='black'] .token.parameter,
+[data-theme='black'] .token.interpolation,
+[data-theme='black'] .token.variable,
+[data-theme='black'] .token.namespace {
+  color: var(--prism-dark-builtin);
+}
+
+[data-theme='dark'] .token.imports .token.maybe-class-name,
+[data-theme='dark'] .token.exports .token.maybe-class-name,
+[data-theme='black'] .token.imports .token.maybe-class-name,
+[data-theme='black'] .token.exports .token.maybe-class-name {
+  color: var(--prism-dark-variable);
+}
+
+[data-theme='dark'] .token.escape, [data-theme='black'] .token.escape {
+  color: var(--prism-dark-escape);
+}
+
+[data-theme='dark'] .token.tag .token.punctuation,
+[data-theme='dark'] .token.cdata,
+[data-theme='black'] .token.tag .token.punctuation,
+[data-theme='black'] .token.cdata {
+  color: var(--prism-dark-punctuation);
+}
+
+[data-theme='dark'] .token.attr-value,
+[data-theme='dark'] .token.attr-value .token.punctuation,
+[data-theme='black'] .token.attr-value,
+[data-theme='black'] .token.attr-value .token.punctuation {
+  color: var(--prism-dark-string);
+}
+
+[data-theme='dark'] .token.attr-value .token.punctuation.attr-equals,
+[data-theme='black'] .token.attr-value .token.punctuation.attr-equals {
+  color: var(--prism-dark-text);
+}
+
+[data-theme='dark'] .token.doctype .token.doctype-tag,
+[data-theme='black'] .token.doctype .token.doctype-tag {
+  color: var(--prism-dark-keyword);
+}
+
+[data-theme='dark'] .token.doctype .token.name,
+[data-theme='black'] .token.doctype .token.name {
+  color: var(--prism-dark-variable);
+}
+
+[data-theme='dark'] .token.punctuation.interpolation-punctuation,
+[data-theme='black'] .token.punctuation.interpolation-punctuation {
+  color: var(--prism-dark-keyword);
+}
+
+/* Language-specific overrides for dark themes */
+[data-theme='dark'] pre[class*='language-javascript'],
+[data-theme='dark'] code[class*='language-javascript'],
+[data-theme='dark'] pre[class*='language-jsx'],
+[data-theme='dark'] code[class*='language-jsx'],
+[data-theme='dark'] pre[class*='language-typescript'],
+[data-theme='dark'] code[class*='language-typescript'],
+[data-theme='dark'] pre[class*='language-tsx'],
+[data-theme='dark'] code[class*='language-tsx'],
+[data-theme='black'] pre[class*='language-javascript'],
+[data-theme='black'] code[class*='language-javascript'],
+[data-theme='black'] pre[class*='language-jsx'],
+[data-theme='black'] code[class*='language-jsx'],
+[data-theme='black'] pre[class*='language-typescript'],
+[data-theme='black'] code[class*='language-typescript'],
+[data-theme='black'] pre[class*='language-tsx'],
+[data-theme='black'] code[class*='language-tsx'] {
+  color: var(--prism-dark-variable);
+}
+
+[data-theme='dark'] pre[class*='language-css'],
+[data-theme='dark'] code[class*='language-css'],
+[data-theme='black'] pre[class*='language-css'],
+[data-theme='black'] code[class*='language-css'] {
+  color: var(--prism-dark-string);
+}
+
+[data-theme='dark'] pre[class*='language-html'],
+[data-theme='dark'] code[class*='language-html'],
+[data-theme='black'] pre[class*='language-html'],
+[data-theme='black'] code[class*='language-html'] {
+  color: var(--prism-dark-text);
+}
+
+[data-theme='dark'] .language-html .token.punctuation,
+[data-theme='black'] .language-html .token.punctuation {
+  color: var(--prism-dark-punctuation);
+}
+
+[data-theme='dark'] .language-regex .token.anchor,
+[data-theme='black'] .language-regex .token.anchor {
+  color: var(--prism-dark-function);
+}
+
+/* =============================================================================
+   LINE HIGHLIGHTING
+   ============================================================================= */
+
+pre[data-line], pre[class*='language-'] > code[class*='language-'] {
+  position: relative;
+}
+
+[data-theme='light'] .line-highlight, [data-theme='white'] .line-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: inherit 0;
+  margin-top: 1em;
+  background: linear-gradient(
+    to right,
+    hsla(24, 20%, 50%, 0.08) 70%,
+    hsla(24, 20%, 50%, 0)
+  );
+  pointer-events: none;
+  line-height: inherit;
+  white-space: pre;
+}
+
+[data-theme='dark'] .line-highlight, [data-theme='black'] .line-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: inherit 0;
+  margin-top: 1em;
+  background: #f7ebc6;
+  box-shadow: inset 5px 0 0 #f7d87c;
+  z-index: 0;
+  pointer-events: none;
+  line-height: inherit;
+  white-space: pre;
+}

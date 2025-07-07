@@ -268,7 +268,7 @@
   .clear-filter:hover {
     background: rgba(255, 100, 100, 0.2);
     border-color: rgba(255, 100, 100, 0.5);
-    color: #ff6666;
+    color: var(--error-color, #ff6666);
   }
   .format-item {
     display: flex;
@@ -320,7 +320,7 @@
     gap: 0.5em;
   }
   .file-item.active {
-    border-color: #00ff00;
+    border-color: var(--success-color, #00ff00);
     background: rgba(0, 255, 0, 0.15);
     box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
   }
@@ -328,7 +328,7 @@
     cursor: grabbing;
   }
   .file-item:hover {
-    border-color: #007acc;
+    border-color: var(--accent-color, #007acc);
     background: rgba(0, 122, 204, 0.2);
     filter: brightness(1.1);
   }

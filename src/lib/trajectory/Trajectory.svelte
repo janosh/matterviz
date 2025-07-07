@@ -129,8 +129,6 @@
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let sidebar_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
-
-  // Viewport dimensions for responsive layout
   let viewport = $state({ width: 0, height: 0 })
 
   // Reactive layout that chooses based on viewport aspect ratio when layout is 'auto'
@@ -152,43 +150,34 @@
       : undefined,
   )
 
-  // Calculate step label positions using D3's pretty ticks for even distribution
   let step_label_positions = $derived.by((): number[] => {
-    if (!trajectory || !step_labels) return []
+    if (!trajectory?.frames.length || !step_labels) return []
 
-    const total_frames = trajectory.frames.length
-    if (total_frames <= 1) return []
+    const total = trajectory.frames.length
+    if (total <= 1) return []
 
     if (Array.isArray(step_labels)) {
-      // Exact positions provided as array
-      return step_labels.filter((idx: number) => idx >= 0 && idx < total_frames)
+      return step_labels.filter((idx) => idx >= 0 && idx < total)
     }
 
     if (typeof step_labels === `number`) {
       if (step_labels > 0) {
-        // Use D3's pretty ticks for even distribution
-        const scale = scaleLinear().domain([0, total_frames - 1])
-        const ticks = scale.nice().ticks(Math.min(step_labels, total_frames))
-        // Round and filter to valid frame indices
-        return ticks
+        return scaleLinear().domain([0, total - 1]).nice()
+          .ticks(Math.min(step_labels, total))
           .map((t) => Math.round(t))
-          .filter((t) => t >= 0 && t < total_frames)
-          .filter((t, idx, arr) => arr.indexOf(t) === idx) // Remove duplicates
-      } else if (step_labels < 0) {
-        // Negative number: spacing between ticks
+          .filter((t, i, arr) => t >= 0 && t < total && arr.indexOf(t) === i)
+      }
+      if (step_labels < 0) {
         const spacing = Math.abs(step_labels)
-        const positions: number[] = []
-        for (let idx = 0; idx < total_frames; idx += spacing) {
-          positions.push(idx)
-        }
-        // Always include the last frame if it's not already included
-        if (positions[positions.length - 1] !== total_frames - 1) {
-          positions.push(total_frames - 1)
-        }
-        return positions
+        const positions = Array.from(
+          { length: Math.ceil(total / spacing) },
+          (_, idx) => idx * spacing,
+        )
+        return positions[positions.length - 1] === total - 1
+          ? positions
+          : [...positions, total - 1]
       }
     }
-
     return []
   })
 
@@ -859,7 +848,6 @@
           allow_file_drop={false}
           style="height: 100%; border-radius: 0"
           enable_tips={false}
-          fullscreen_toggle={false}
           {...{ show_image_atoms: false, ...structure_props }}
           bind:controls_open={controls_open.structure}
         />
@@ -901,10 +889,14 @@
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}
           <Histogram
             series={plot_series}
-            x_label={histogram_props.x_label ?? `Value`}
-            y_label={histogram_props.y_label ?? `Count`}
-            mode={histogram_props.mode ?? `overlay`}
-            show_legend={histogram_props.show_legend ?? (plot_series.length > 1)}
+            x_label={(`x_label` in histogram_props) ? histogram_props.x_label as string : `Value`}
+            y_label={(`y_label` in histogram_props) ? histogram_props.y_label as string : `Count`}
+            mode={(`mode` in histogram_props)
+            ? histogram_props.mode as `overlay` | `single`
+            : `overlay`}
+            show_legend={(`show_legend` in histogram_props)
+            ? histogram_props.show_legend as boolean
+            : (plot_series.length > 1)}
             legend={{
               responsive: true,
               layout: `horizontal`,
@@ -972,6 +964,9 @@
 </div>
 
 <style>
+  :root {
+    --trajectory-border-radius: 8px;
+  }
   .trajectory-viewer {
     display: flex;
     flex-direction: column;
@@ -1029,8 +1024,8 @@
     grid-template-rows: 1fr !important;
   }
   .trajectory-viewer.dragover {
-    border-color: var(--trajectory-dragover-border, #007acc);
-    background-color: var(--trajectory-dragover-bg, rgba(0, 122, 204, 0.1));
+    border-color: var(--trajectory-dragover-border);
+    background-color: var(--trajectory-dragover-bg);
   }
 
   .trajectory-controls {
@@ -1038,13 +1033,14 @@
     align-items: center;
     gap: 1rem;
     padding: 0.5rem;
-    background: var(--traj-surface, rgba(45, 55, 72, 0.95));
+    background: var(--traj-surface);
     backdrop-filter: blur(4px);
-    border-bottom: var(--trajectory-border, 1px solid #e1e4e8);
-    color: var(--trajectory-text-color, #24292e);
+    border-bottom: 1px solid var(--trajectory-border, rgba(255, 255, 255, 0.1));
+    color: var(--trajectory-text-color);
     font-size: 0.8rem;
     position: relative;
     z-index: 100;
+    border-radius: var(--trajectory-border-radius) var(--trajectory-border-radius) 0 0;
   }
   .nav-section {
     display: flex;
@@ -1055,6 +1051,7 @@
     min-width: 28px;
     height: 28px;
     padding: 0.125rem 0.25rem;
+    box-sizing: border-box;
     font-size: 0.8rem;
   }
   .step-section {
@@ -1077,7 +1074,7 @@
   }
   .step-slider {
     width: 100%;
-    accent-color: var(--traj-accent, #63b3ed);
+    accent-color: var(--traj-accent);
   }
   .step-labels {
     position: absolute;
@@ -1092,29 +1089,29 @@
     transform: translateX(-50%);
     width: 2px;
     height: 4px;
-    background: var(--traj-muted, rgba(148, 163, 184, 0.8));
+    background: var(--traj-muted);
     top: -10px;
   }
   .step-label {
     position: absolute;
     transform: translateX(-50%);
     font-size: 0.65rem;
-    color: var(--traj-muted, rgba(148, 163, 184, 0.85));
+    color: var(--traj-muted);
     white-space: nowrap;
     text-align: center;
     top: -6px;
   }
   .speed-slider {
     width: 90px;
-    accent-color: var(--traj-accent, #63b3ed);
+    accent-color: var(--traj-accent);
   }
   .speed-input {
     width: 45px;
     text-align: center;
-    background: var(--traj-bg, rgba(26, 32, 44, 0.8));
-    border: var(--traj-border, 1px solid rgba(74, 85, 104, 0.5));
+    background: var(--traj-bg);
+    border: var(--traj-border);
     border-radius: 3px;
-    color: var(--traj-text, #e2e8f0);
+    color: var(--traj-text);
     font-size: 0.8rem;
     padding: 0.125rem 0.25rem;
     box-sizing: border-box;
@@ -1123,19 +1120,19 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    color: var(--traj-text, #e2e8f0);
+    color: var(--traj-text);
   }
   .filename-section {
     display: flex;
     align-items: center;
-    color: var(--traj-text, #e2e8f0);
+    color: var(--traj-text);
   }
   .filename-section button {
     white-space: nowrap;
     padding: 0.125rem 0.375rem;
-    background: var(--traj-bg, rgba(26, 32, 44, 0.8));
+    background: var(--traj-bg);
     border-radius: 2px;
-    border: var(--traj-border, 1px solid rgba(74, 85, 104, 0.5));
+    border: var(--traj-border);
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1179,7 +1176,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: var(--traj-text, #e2e8f0);
+    color: var(--traj-text);
     margin-left: auto;
   }
 
@@ -1204,19 +1201,19 @@
     justify-content: center;
     height: 100%;
     padding: 2rem;
-    color: var(--trajectory-text-color, #24292e);
+    color: var(--trajectory-text-color);
   }
   .drop-zone {
     text-align: center;
     padding: 3rem;
-    border: 2px dashed var(--trajectory-dropzone-border, #ccc);
-    border-radius: 8px;
-    background: var(--trajectory-dropzone-bg, #f9f9f9);
-    color: var(--trajectory-text-color, #24292e);
+    border: 2px dashed var(--trajectory-dropzone-border);
+    border-radius: var(--trajectory-border-radius);
+    background: var(--trajectory-dropzone-bg);
+    color: var(--trajectory-text-color);
     max-width: 500px;
   }
   .drop-zone h3 {
-    color: var(--trajectory-heading-color, var(--trajectory-text-color, #24292e));
+    color: var(--trajectory-heading-color);
     margin-bottom: 1rem;
   }
   .supported-formats {
@@ -1224,18 +1221,18 @@
     text-align: left;
   }
   .supported-formats strong {
-    color: var(--trajectory-text-color, #24292e);
+    color: var(--trajectory-text-color);
   }
   .supported-formats ul {
     margin: 0.5rem 0;
     padding-left: 1.5rem;
   }
   .supported-formats li {
-    color: var(--trajectory-text-muted, #586069);
+    color: var(--trajectory-text-muted);
   }
   button {
-    background: var(--traj-border-bg, #4a5568);
-    color: var(--traj-text, #e2e8f0);
+    background: var(--traj-border-bg);
+    color: var(--traj-text);
     border: none;
     border-radius: 4px;
     padding: 0.25rem 0.5rem;
@@ -1245,14 +1242,13 @@
     transition: background-color 0.2s;
   }
   button:hover:not(:disabled) {
-    background: var(--traj-surface-hover, #4a5568);
+    background: var(--traj-surface-hover);
   }
   button:disabled {
-    background: var(--traj-text-muted, #a0aec0);
-    color: var(--traj-border-bg, #4a5568);
+    background: var(--traj-text-muted);
+    color: var(--traj-border-bg);
     cursor: not-allowed;
   }
-  /* Hide number input spinner arrows */
   .trajectory-controls input[type='number']::-webkit-outer-spin-button,
   .trajectory-controls input[type='number']::-webkit-inner-spin-button {
     -webkit-appearance: none;
@@ -1278,8 +1274,6 @@
       grid-template-rows: 1fr 1fr !important;
     }
   }
-
-  /* View mode dropdown styles */
   .view-mode-dropdown-wrapper {
     position: relative;
     display: inline-block;
@@ -1304,9 +1298,9 @@
     position: absolute;
     top: 100%;
     right: 0;
-    background: var(--traj-surface, rgba(45, 55, 72, 0.95));
+    background: var(--traj-surface);
     backdrop-filter: blur(4px);
-    border: 1px solid var(--traj-border, rgba(74, 85, 104, 0.7));
+    border: 1px solid var(--traj-border);
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
     z-index: 1000;
@@ -1323,7 +1317,7 @@
     border: none;
     border-radius: 0;
     text-align: left;
-    color: var(--traj-text, #e2e8f0);
+    color: var(--traj-text);
     font-size: 0.8rem;
     line-height: 1.2;
     cursor: pointer;
@@ -1338,11 +1332,11 @@
     border-bottom-right-radius: 3px;
   }
   .view-mode-option:hover {
-    background: var(--traj-surface-hover, rgba(74, 85, 104, 0.3));
+    background: var(--traj-surface-hover);
   }
   .view-mode-option.selected {
-    background: var(--traj-accent, rgba(99, 179, 237, 0.2));
-    color: var(--traj-accent-text, #a8d8f0);
+    background: var(--traj-accent);
+    color: var(--traj-accent-text);
   }
   .view-mode-option span {
     font-weight: 500;
