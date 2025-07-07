@@ -91,14 +91,7 @@ We welcome contributions! Please see our [Contributing Guide](../../contributing
 
 This extension is [MIT-Licensed](./license).
 
-## 🐛 Issues & Support
-
-- **Bug Reports**: [GitHub Issues](https://github.com/janosh/matterviz/issues)
-- **Feature Requests**: [GitHub Discussions](https://github.com/janosh/matterviz/discussions)
-- **Documentation**: [MatterViz Docs](https://matterviz.janosh.dev)
-
 ## 🔗 Related Projects
 
-- **MatterViz Web**: Full-featured web application at [matterviz.janosh.dev](https://matterviz.janosh.dev)
-- (TODO) **MatterViz CLI**: Command-line interface for batch processing
-- (TODO) **MatterViz iPython**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for interactive Python-based visualization
+- **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev) (works but under active development)
+- **🚧 MatterViz iPython**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for interactive Python-based visualization in notebooks and batch processing/screenshot automation (still prototyping)

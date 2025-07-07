@@ -15,7 +15,6 @@ export * from './periodic-table'
 export * from './plot'
 export { default as Spinner } from './Spinner.svelte'
 export * from './structure'
-export { default as Structure } from './structure/Structure.svelte'
 export { default as Trajectory } from './trajectory/Trajectory.svelte'
 
 export type Category = (typeof categories)[number]

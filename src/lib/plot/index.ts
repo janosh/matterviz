@@ -126,6 +126,14 @@ export interface InternalPoint extends PlotPoint {
   size_value?: number | null // Size value for the point
 }
 
+export interface Tooltip {
+  show: boolean
+  x: number
+  y: number
+  title?: string
+  items?: { label: string; value: string; color?: string }[]
+}
+
 export type TooltipProps = {
   x: number
   y: number

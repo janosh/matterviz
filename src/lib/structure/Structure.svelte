@@ -57,7 +57,7 @@
       show_vectors: true,
     }),
     controls_open = $bindable(false),
-    background_color = $bindable(`#ffffff`),
+    background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_buttons = 0,
     fullscreen = false,
@@ -84,9 +84,12 @@
     ...rest
   }: Props = $props()
 
+  // Ensure scene_props defaults to show_atoms=true on component mount
   $effect.pre(() => {
-    // Ensure scene_props defaults to show_atoms=true
-    scene_props = { show_atoms: true, ...scene_props }
+    // show_atoms undefined check is important to avoid infinite $effect loop
+    if (scene_props.show_atoms === undefined) {
+      scene_props = { show_atoms: true, ...scene_props }
+    }
   })
 
   // Track if force vectors have been auto-enabled to prevent repeated triggering
@@ -247,13 +250,20 @@
     }
   }
 
-  $effect(() => { // set --struct-bg to background_color
+  // Only set background override when background_color is explicitly provided
+  $effect(() => {
     if (typeof window !== `undefined` && wrapper && background_color) {
       // Convert opacity (0-1) to hex alpha value (00-FF)
       const alpha_hex = Math.round(background_opacity * 255)
         .toString(16)
         .padStart(2, `0`)
-      wrapper.style.setProperty(`--struct-bg`, `${background_color}${alpha_hex}`)
+      wrapper.style.setProperty(
+        `--struct-bg-override`,
+        `${background_color}${alpha_hex}`,
+      )
+    } else if (typeof window !== `undefined` && wrapper) {
+      // Remove override to use theme system
+      wrapper.style.removeProperty(`--struct-bg-override`)
     }
   })
 
@@ -398,7 +408,7 @@
     max-width: var(--struct-max-width, 100%);
     min-width: var(--struct-min-width, 300px);
     border-radius: var(--struct-border-radius, 3pt);
-    background: var(--struct-bg, rgba(255, 255, 255, 0.1));
+    background: var(--struct-bg-override, var(--struct-bg));
     overflow: hidden;
     color: var(--struct-text-color);
   }
@@ -410,7 +420,7 @@
     width: 100vw !important;
   }
   .structure.dragover {
-    background: var(--struct-dragover-bg, rgba(0, 0, 0, 0.7));
+    background: var(--struct-dragover-bg);
   }
   div.bottom-left {
     position: absolute;

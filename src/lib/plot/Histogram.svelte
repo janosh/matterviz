@@ -247,14 +247,13 @@
         {/if}
       </g>
 
-      <!-- X-axis -->
       <g class="x-axis">
         <line
           x1={padding.l}
           x2={width - padding.r}
           y1={height - padding.b}
           y2={height - padding.b}
-          stroke="var(--histogram-axis-color, black)"
+          stroke="var(--histogram-axis-color)"
           stroke-width="1"
         />
 
@@ -274,14 +273,14 @@
             <line
               y1="0"
               y2="5"
-              stroke="var(--histogram-axis-color, black)"
+              stroke="var(--histogram-axis-color)"
               stroke-width="1"
             />
             <text
               y="18"
               text-anchor="middle"
               font-size="12"
-              fill="var(--histogram-text-color, black)"
+              fill="var(--histogram-text-color)"
             >
               {format_value(tick, x_format)}
             </text>
@@ -294,20 +293,19 @@
           y={height - 10}
           text-anchor="middle"
           font-size="14"
-          fill="var(--histogram-text-color, black)"
+          fill="var(--histogram-text-color)"
         >
           {x_label}
         </text>
       </g>
 
-      <!-- Y-axis -->
       <g class="y-axis">
         <line
           x1={padding.l}
           x2={padding.l}
           y1={padding.t}
           y2={height - padding.b}
-          stroke="var(--histogram-axis-color, black)"
+          stroke="var(--histogram-axis-color)"
           stroke-width="1"
         />
 
@@ -327,7 +325,7 @@
             <line
               x1="-5"
               x2="0"
-              stroke="var(--histogram-axis-color, black)"
+              stroke="var(--histogram-axis-color)"
               stroke-width="1"
             />
             <text
@@ -335,7 +333,7 @@
               text-anchor="end"
               dominant-baseline="central"
               font-size="12"
-              fill="var(--histogram-text-color, black)"
+              fill="var(--histogram-text-color)"
             >
               {format_value(tick, y_format)}
             </text>
@@ -348,7 +346,7 @@
           y={padding.t + chart_height / 2}
           text-anchor="middle"
           font-size="14"
-          fill="var(--histogram-text-color, black)"
+          fill="var(--histogram-text-color)"
           transform="rotate(-90, 15, {padding.t + chart_height / 2})"
         >
           {y_label}
@@ -380,14 +378,14 @@
     height: 100%;
   }
   .tooltip {
-    background: var(--histogram-tooltip-bg, rgba(0, 0, 0, 0.8));
-    color: var(--histogram-tooltip-color, white);
+    background: var(--histogram-tooltip-bg);
+    color: var(--histogram-tooltip-color);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
     pointer-events: none;
     white-space: nowrap;
-    border: 1px solid var(--histogram-tooltip-border, rgba(255, 255, 255, 0.2));
+    border: 1px solid var(--histogram-tooltip-border);
   }
   .histogram-series rect {
     transition: opacity 0.2s ease;

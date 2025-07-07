@@ -462,14 +462,14 @@
     z-index: var(--plot-controls-z-index);
   }
   .plot-controls :global(.controls-panel) {
-    --control-panel-bg: rgba(0, 0, 0, 0.9);
-    --control-panel-text-color: white;
+    --control-panel-bg: var(--controls-bg);
+    --control-panel-text-color: var(--controls-text-color);
     --control-panel-width: 16em;
   }
   .plot-controls :global(.section-heading) {
     margin: 0 0 8px 0;
     font-size: 0.9em;
-    color: #ccc;
+    color: var(--muted-text-color, #ccc);
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 4px;
@@ -508,10 +508,7 @@
   .plot-controls :global(.number-input) {
     width: 50px;
     text-align: center;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 3px;
-    color: white;
     padding: 2px 4px;
     font-size: 0.8em;
   }
@@ -524,10 +521,7 @@
   }
   .plot-controls :global(.control-row select) {
     flex: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 3px;
-    color: white;
     padding: 2px 4px;
     font-size: 0.8em;
   }
@@ -542,10 +536,7 @@
   }
   .plot-controls :global(.format-input) {
     flex: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 3px;
-    color: white;
     padding: 4px 6px;
     font-size: 0.8em;
     font-family: monospace;
@@ -555,11 +546,11 @@
     font-style: italic;
   }
   .plot-controls :global(.format-input.invalid) {
-    border-color: #ff6b6b;
+    border-color: var(--error-color, #ff6b6b);
     background: rgba(255, 107, 107, 0.1);
   }
   .plot-controls :global(.format-input.invalid:focus) {
-    outline-color: #ff6b6b;
+    outline-color: var(--error-color, #ff6b6b);
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }
 </style>

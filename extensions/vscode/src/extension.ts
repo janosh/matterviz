@@ -1,6 +1,12 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import type { ThemeName } from '../../../src/lib/theme/index'
+import {
+  AUTO_THEME,
+  COLOR_THEMES,
+  is_valid_theme_mode,
+} from '../../../src/lib/theme/index'
 
 interface FileData {
   filename: string
@@ -11,6 +17,7 @@ interface FileData {
 interface WebviewData {
   type: `trajectory` | `structure`
   data: FileData
+  theme: ThemeName
 }
 
 interface MessageData {
@@ -73,6 +80,47 @@ export const get_file = (uri?: vscode.Uri): FileData => {
   throw new Error(`No file found`)
 }
 
+// Detect VSCode theme and user preference
+export const get_theme = (): ThemeName => {
+  const config = vscode.workspace.getConfiguration(`matterviz`)
+  const theme_setting = config.get<string>(`theme`, AUTO_THEME)
+
+  // Validate theme setting
+  if (!is_valid_theme_mode(theme_setting)) {
+    console.warn(
+      `Invalid theme setting: ${theme_setting}, falling back to auto`,
+    )
+    return get_system_theme()
+  }
+
+  // Handle manual theme selection
+  if (theme_setting !== AUTO_THEME) {
+    return theme_setting as ThemeName
+  }
+
+  // Auto-detect from VSCode color theme
+  return get_system_theme()
+}
+
+// Get system theme based on VSCode's current color theme
+const get_system_theme = (): ThemeName => {
+  const color_theme = vscode.window.activeColorTheme
+
+  // Map VSCode theme kind to our theme names
+  switch (color_theme.kind) {
+    case vscode.ColorThemeKind.Light:
+      return COLOR_THEMES.light
+    case vscode.ColorThemeKind.Dark:
+      return COLOR_THEMES.dark
+    case vscode.ColorThemeKind.HighContrast:
+      return COLOR_THEMES.black
+    case vscode.ColorThemeKind.HighContrastLight:
+      return COLOR_THEMES.white
+    default:
+      return COLOR_THEMES.light
+  }
+}
+
 // Create HTML content for webview
 export const create_html = (
   webview: vscode.Webview,
@@ -80,11 +128,11 @@ export const create_html = (
   data: WebviewData,
 ): string => {
   const nonce = Math.random().toString(36).slice(2, 34)
-  const css_uri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri, `dist`, `webview.css`),
-  )
   const js_uri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, `dist`, `webview.js`),
+  )
+  const themes_uri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, `../../static`, `themes.js`),
   )
 
   return `<!DOCTYPE html>
@@ -93,7 +141,7 @@ export const create_html = (
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="${css_uri}">
+    <script nonce="${nonce}" src="${themes_uri}"></script>
     <script nonce="${nonce}">window.mattervizData=${JSON.stringify(data)}</script>
   </head>
   <body>
@@ -143,18 +191,50 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, `dist`)],
+        localResourceRoots: [
+          vscode.Uri.joinPath(context.extensionUri, `dist`),
+          vscode.Uri.joinPath(context.extensionUri, `../../static`),
+        ],
       },
     )
     panel.webview.html = create_html(panel.webview, context, {
       type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
       data: file,
+      theme: get_theme(),
     })
     panel.webview.onDidReceiveMessage(
       handle_msg,
       undefined,
       context.subscriptions,
     )
+
+    // Listen for theme changes and update webview
+    const update_theme = () => {
+      if (panel.visible) {
+        panel.webview.html = create_html(panel.webview, context, {
+          type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
+          data: file,
+          theme: get_theme(),
+        })
+      }
+    }
+
+    const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(
+      update_theme,
+    )
+    const config_change_listener = vscode.workspace.onDidChangeConfiguration(
+      (event) => {
+        if (event.affectsConfiguration(`matterviz.theme`)) {
+          update_theme()
+        }
+      },
+    )
+
+    // Dispose listeners when panel is closed
+    panel.onDidDispose(() => {
+      theme_change_listener.dispose()
+      config_change_listener.dispose()
+    })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     vscode.window.showErrorMessage(`Failed: ${message}`)
@@ -187,6 +267,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         enableScripts: true,
         localResourceRoots: [
           vscode.Uri.joinPath(this.context.extensionUri, `dist`),
+          vscode.Uri.joinPath(this.context.extensionUri, `../../static`),
         ],
       }
       webview_panel.webview.html = create_html(
@@ -195,6 +276,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         {
           type: is_trajectory_file(filename) ? `trajectory` : `structure`,
           data: read_file(document.uri.fsPath),
+          theme: get_theme(),
         },
       )
       webview_panel.webview.onDidReceiveMessage(
@@ -202,6 +284,39 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         undefined,
         this.context.subscriptions,
       )
+
+      // Listen for theme changes and update webview
+      const update_theme = () => {
+        if (webview_panel.visible) {
+          webview_panel.webview.html = create_html(
+            webview_panel.webview,
+            this.context,
+            {
+              type: is_trajectory_file(filename) ? `trajectory` : `structure`,
+              data: read_file(document.uri.fsPath),
+              theme: get_theme(),
+            },
+          )
+        }
+      }
+
+      const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(
+        update_theme,
+      )
+      const config_change_listener = vscode.workspace.onDidChangeConfiguration(
+        (event) => {
+          if (event.affectsConfiguration(`matterviz.theme`)) {
+            update_theme()
+          }
+        },
+      )
+
+      // Dispose listeners when panel is closed
+      webview_panel.onDidDispose(() => {
+        theme_change_listener.dispose()
+        config_change_listener.dispose()
+      })
+      // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       vscode.window.showErrorMessage(`Failed: ${message}`)

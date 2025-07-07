@@ -1,4 +1,7 @@
 :root {
+  /* Theme transition duration */
+  --theme-transition-duration: 0.3s;
+
   --text-color: #eee;
 
   --page-bg: #090019;
@@ -12,14 +15,18 @@
   --zoo-github-corner-color: var(--page-bg);
   --zoo-github-corner-bg: var(--text-color);
 
+  /* Copy button styling */
+  --zoo-copy-btn-bg: var(--zoo-copy-btn-bg, rgba(255, 255, 255, 0.1));
+  --zoo-copy-btn-hover-bg: var(--zoo-copy-btn-hover-bg, rgba(255, 255, 255, 0.2));
+  --zoo-copy-btn-color: var(--zoo-copy-btn-color, var(--text-color));
+
   --sms-options-bg: rgb(20, 18, 36);
   --sms-max-width: 20em;
   --sms-border: 1px dotted teal;
   --sms-focus-border: 1px dotted cornflowerblue;
   --sms-active-color: cornflowerblue;
 
-  /* darken browser form controls like input[type='color'] */
-  color-scheme: dark;
+  /* Form controls will be themed dynamically via color-scheme property */
   --max-text-width: 40em;
 
   /* Histogram dark mode colors */
@@ -28,6 +35,24 @@
   --histogram-tooltip-bg: rgba(60, 60, 60, 0.95);
   --histogram-tooltip-color: white;
   --histogram-tooltip-border: rgba(255, 255, 255, 0.2);
+
+  /* override svelte-zoo CodeExample pre background-color */
+  --zoo-example-code-bg: var(--pre-bg);
+}
+
+/* Targeted theme transitions for performance */
+:where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
+:where(select, label, .theme-control, .toc, svg, path, circle, rect, text),
+:where(.info-sidebar, .sidebar-header, .sidebar-content, .close-button),
+:where(nav > a),
+:where(.theme-control, .theme-control label, .theme-control select) {
+  transition:
+    background-color var(--theme-transition-duration) ease,
+    color var(--theme-transition-duration) ease,
+    border-color var(--theme-transition-duration) ease,
+    fill var(--theme-transition-duration) ease,
+    stroke var(--theme-transition-duration) ease,
+    box-shadow var(--theme-transition-duration) ease;
 }
 body {
   background: var(--page-bg);
@@ -45,7 +70,7 @@ main {
   container-type: inline-size;
 }
 a {
-  color: cornflowerblue;
+  color: var(--accent-color, cornflowerblue);
   text-decoration: none;
 }
 
@@ -56,17 +81,16 @@ a.btn {
   border: none;
   border-radius: 3pt;
   padding: 2pt 4pt;
-  transition: 0.2s;
   /* TODO remove 2 lines below, just here as temp fix for svelte-zoo CodeExample SVG icons */
   line-height: 1;
   align-items: center;
 }
 :is(button, a.btn):hover {
-  background-color: darkcyan;
+  background-color: var(--accent-color, darkcyan);
   color: white;
 }
 a:hover {
-  color: orange;
+  color: var(--accent-hover-color, orange);
 }
 code,
 kbd {
@@ -74,7 +98,7 @@ kbd {
   padding: 1pt 3pt;
   border-radius: 3pt;
   font-size: 1.1em;
-  background-color: black;
+  background-color: var(--code-bg, black);
 }
 kbd {
   font-size: larger;
@@ -87,12 +111,12 @@ pre {
   position: relative;
   border-radius: 4pt;
   font-size: 8pt;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--pre-bg);
   padding: 1em;
   overflow-x: auto;
 }
 blockquote {
-  border-left: 3pt solid cornflowerblue;
+  border-left: 3pt solid var(--accent-color, cornflowerblue);
   padding: 3pt 7pt;
   background: rgba(255, 255, 255, 0.2);
   margin: 1em 0;
@@ -131,14 +155,20 @@ aside.toc.desktop {
 textarea {
   display: block;
   width: 100%;
-  background-color: rgba(255, 255, 255, 0.1);
-  color: var(--text-color);
   min-height: 100px;
   box-sizing: border-box;
   margin: 1em auto;
-  border: none;
 }
 
+/* Modern flat input styling */
+input {
+  border: none;
+  border-radius: 3pt;
+}
+input[type='number'] {
+  min-width: 60px;
+  width: auto;
+}
 input[type='color'] {
   border: none;
   padding: 0;
@@ -160,14 +190,14 @@ table {
   border-collapse: collapse;
 }
 table :is(td, th) {
-  border: 1px solid gray;
+  border: 1px solid var(--border-color, gray);
   padding: 3pt 12pt;
 }
 table.roomy :is(td, th) {
   padding: 5pt 9pt;
 }
 tbody tr:nth-child(odd) {
-  background: black;
+  background: var(--surface-bg, black);
 }
 
 :where(ul.selected > li button, button.remove-all) {

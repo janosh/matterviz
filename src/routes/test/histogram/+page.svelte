@@ -280,7 +280,7 @@
       series={multiple_series_data}
       bins={30}
       mode="overlay"
-      show_legend={true}
+      show_legend
       style="height: 400px; border: 1px solid #ccc"
     />
   </section>
