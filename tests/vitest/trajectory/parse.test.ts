@@ -260,7 +260,7 @@ describe(`Unsupported Formats`, () => {
     [`XDATCAR`],
     [`test.h5`],
     [`test.hdf5`],
-    [`test.traj`], // ASE trajectory files are now supported
+    [`test.traj`],
   ])(`should return null for supported format: %s`, (filename) => {
     expect(get_unsupported_format_message(filename, ``)).toBeNull()
   })

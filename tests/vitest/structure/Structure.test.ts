@@ -13,23 +13,17 @@ const structure = structures[0]
 // Tests for Structure component functionality
 describe(`Structure`, () => {
   beforeEach(() => {
-    mount(Structure, {
-      target: document.body,
-      props: { structure },
-    })
+    mount(Structure, { target: document.body, props: { structure } })
   })
 
   test(`open control panel when clicking toggle button`, async () => {
     mount(Structure, {
       target: document.body,
-      props: {
-        structure,
-        controls_open: false,
-      },
+      props: { structure, controls_open: false },
     })
 
     // Check that the controls toggle button exists and is clickable
-    const controls_toggle = doc_query(`button.controls-toggle`)
+    const controls_toggle = doc_query(`button.structure-controls-toggle`)
     expect(controls_toggle).toBeTruthy()
 
     controls_toggle.click()
@@ -39,13 +33,22 @@ describe(`Structure`, () => {
     expect(document.querySelector(`.controls-panel`)).toBeTruthy()
   })
 
-  test(`JSON file download when clicking download button`, () => {
+  test(`JSON file download when clicking download button`, async () => {
     globalThis.URL.createObjectURL = vi.fn()
 
     mount(Structure, {
       target: document.body,
       props: { structure },
     })
+
+    // First, open the structure control panel by clicking the correct toggle button
+    // Look for the structure controls toggle button specifically
+    const structure_controls_toggle = document.querySelector(
+      `button.structure-controls-toggle`,
+    ) as HTMLButtonElement
+    expect(structure_controls_toggle).toBeTruthy()
+    structure_controls_toggle.click()
+    await tick()
 
     const spy = vi.spyOn(document.body, `appendChild`)
     // Use title attribute to find the download button

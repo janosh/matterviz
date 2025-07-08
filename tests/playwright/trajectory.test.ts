@@ -204,6 +204,22 @@ test.describe(`Trajectory Component`, () => {
       await expect(fullscreen_button).toBeEnabled()
     })
 
+    test(`has correct default values`, async () => {
+      // Check default display mode (should be 'structure+scatter')
+      const content_area = trajectory_viewer.locator(`.content-area`)
+      await expect(content_area).toHaveClass(/show-both/)
+      await expect(content_area).not.toHaveClass(/show-structure-only/)
+      await expect(content_area).not.toHaveClass(/show-scatter-only/)
+
+      // Check default step (should be 0)
+      const step_input = controls.locator(`.step-input`)
+      await expect(step_input).toHaveValue(`0`)
+
+      // Check sidebar is initially closed
+      const sidebar = trajectory_viewer.locator(`.info-sidebar`).first()
+      await expect(sidebar).not.toHaveClass(/open/)
+    })
+
     test(`playback controls function properly`, async () => {
       const play_button = controls.locator(`.play-button`)
 

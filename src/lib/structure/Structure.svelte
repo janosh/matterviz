@@ -11,9 +11,9 @@
   import {
     STRUCT_DEFAULTS,
     StructureControls,
+    StructureInfoPanel,
     StructureLegend,
     StructureScene,
-    StructureSidebar,
   } from './index'
   import type { Props as ControlProps } from './StructureControls.svelte'
 
@@ -32,6 +32,7 @@
     dragover?: boolean
     allow_file_drop?: boolean
     enable_info?: boolean
+    info_open?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure: AnyStructure }]>
     // Generic callback for when files are dropped - receives raw content and filename
@@ -57,6 +58,7 @@
       show_vectors: true,
     }),
     controls_open = $bindable(false),
+    info_open = $bindable(false),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_buttons = 0,
@@ -139,8 +141,19 @@
   let scene: Scene | undefined = $state(undefined)
   let camera: Camera | undefined = $state(undefined)
 
-  // Sidebar state
-  let sidebar_open = $state(false)
+  // Track which panel was opened last for mutual exclusion
+  let last_opened: `info` | `controls` | null = $state(null)
+
+  // Auto-close behavior: make info/controls panels mutually exclusive
+  $effect(() => {
+    if (info_open && !controls_open) last_opened = `info`
+    if (controls_open && !info_open) last_opened = `controls`
+
+    if (info_open && controls_open) {
+      if (last_opened === `info`) controls_open = false
+      else info_open = false
+    }
+  })
 
   // Reset tracking when structure changes
   $effect(() => {
@@ -215,19 +228,8 @@
   export function toggle_fullscreen() {
     if (!document.fullscreenElement && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
-    } else document.exitFullscreen()
-  }
-
-  // Handle click outside sidebar to close it
-  function handle_click_outside(event: MouseEvent) {
-    const target = event.target as Element
-
-    // Handle sidebar
-    if (sidebar_open) {
-      const sidebar = target.closest(`.info-sidebar`)
-      const info_button = target.closest(`.info-icon`)
-      // Don't close if clicking on sidebar or info button
-      if (!sidebar && !info_button) sidebar_open = false
+    } else {
+      document.exitFullscreen()
     }
   }
 
@@ -243,10 +245,13 @@
     // Interface shortcuts
     if (event.key === `f` && (event.ctrlKey || event.metaKey)) toggle_fullscreen()
     else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
-      sidebar_open = !sidebar_open
+      info_open = !info_open
     } else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
-      else sidebar_open = false
+      else {
+        info_open = false
+        controls_open = false
+      }
     }
   }
 
@@ -276,13 +281,27 @@
       }
     }
   })
+
+  // Listen for fullscreen changes to keep state in sync
+  $effect(() => {
+    if (typeof window === `undefined`) return
+    const on_fullscreen_change = () => {
+      fullscreen = !!document.fullscreenElement
+    }
+
+    document.addEventListener(`fullscreenchange`, on_fullscreen_change)
+
+    return () => {
+      document.removeEventListener(`fullscreenchange`, on_fullscreen_change)
+    }
+  })
 </script>
 
 {#if (structure?.sites?.length ?? 0) > 0}
   <div
     class="structure"
     class:dragover
-    class:active={sidebar_open || controls_open}
+    class:active={info_open || controls_open}
     role="region"
     bind:this={wrapper}
     bind:clientWidth={width}
@@ -299,7 +318,6 @@
       event.preventDefault()
       dragover = false
     }}
-    onclick={handle_click_outside}
     {onkeydown}
     {...rest}
   >
@@ -310,28 +328,25 @@
           <Icon icon="Reset" />
         </button>
       {/if}
-      {#if enable_info}
-        <button
-          class="info-icon"
-          onclick={() => (sidebar_open = !sidebar_open)}
-          title="{sidebar_open ? `Close` : `Open`} info panel"
-          class:active={sidebar_open}
-        >
-          <Icon icon="Info" />
-        </button>
-      {/if}
       {#if fullscreen_toggle}
         <button
           onclick={toggle_fullscreen}
           class="fullscreen-toggle"
-          title="Toggle fullscreen"
+          title="{fullscreen ? `Exit` : `Enter`} fullscreen"
         >
           {#if typeof fullscreen_toggle === `function`}
             {@render fullscreen_toggle()}
           {:else}
-            <Icon icon="Fullscreen" style="transform: scale(0.9)" />
+            <Icon
+              icon="{fullscreen ? `Exit` : ``}Fullscreen"
+              style="transform: scale(0.9)"
+            />
           {/if}
         </button>
+      {/if}
+
+      {#if enable_info && structure}
+        <StructureInfoPanel {structure} bind:info_open />
       {/if}
 
       <StructureControls
@@ -383,15 +398,6 @@
     <div class="bottom-left">
       {@render bottom_left?.({ structure: structure! })}
     </div>
-
-    <!-- Info Sidebar -->
-    {#if structure}
-      <StructureSidebar
-        {structure}
-        is_open={sidebar_open}
-        onclose={() => (sidebar_open = false)}
-      />
-    {/if}
   </div>
 {:else if structure}
   <p class="warn">No sites found in structure</p>
@@ -409,11 +415,13 @@
     min-width: var(--struct-min-width, 300px);
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg-override, var(--struct-bg));
-    overflow: hidden;
     color: var(--struct-text-color);
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);
+  }
+  .structure:fullscreen {
+    background: var(--page-bg);
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;
@@ -436,32 +444,21 @@
     top: var(--struct-buttons-top, 1ex);
     right: var(--struct-buttons-right, 1ex);
     gap: var(--struct-buttons-gap, 3pt);
-    z-index: var(--struct-buttons-z-index, 1);
+    /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
+    z-index: var(--struct-buttons-z-index, 2);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  section.control-buttons.visible {
+    opacity: 1;
+    pointer-events: auto;
   }
   section.control-buttons button {
-    pointer-events: auto;
-    font-size: 1em;
     background-color: transparent;
   }
-  section.control-buttons button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-  .info-icon {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    border-radius: 50%;
-    background: var(--trajectory-info-bg, #4b5563);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-  }
-  .info-icon:hover:not(:disabled) {
-    background: var(--trajectory-info-hover-bg, #6b7280);
-  }
-  .info-icon.active {
-    background: var(--trajectory-info-active-bg, #3b82f6);
+  section.control-buttons :global(button:hover) {
+    background-color: var(--panel-btn-hover-bg);
   }
   p.warn {
     text-align: center;

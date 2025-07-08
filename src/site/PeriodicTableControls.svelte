@@ -480,14 +480,12 @@
     padding: 0 1em;
     max-width: 1200px;
   }
-
   section {
     background: rgba(255, 255, 255, 0.02);
     border-radius: 6px;
     padding: 0.75em;
     border: 1px solid rgba(255, 255, 255, 0.05);
   }
-
   section h3 {
     display: flex;
     justify-content: space-between;
@@ -498,7 +496,6 @@
     font-size: 1.1em;
     color: var(--text-color);
   }
-
   .section-reset-btn {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-color);
@@ -510,12 +507,10 @@
     opacity: 0.8;
     transition: opacity 0.2s;
   }
-
   .section-reset-btn:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.2);
   }
-
   section > label {
     display: flex;
     align-items: center;
@@ -524,30 +519,25 @@
     font-size: 0.9em;
     flex-wrap: wrap;
   }
-
   section > label > span {
     min-width: 100px;
     font-weight: 500;
     font-size: 0.85em;
   }
-
   section > label input[type='range'] {
     flex: 1;
     margin: 0 0.3em;
   }
-
   section > label input[type='number'] {
     width: 60px;
     padding: 2px 4px;
     border-radius: 3px;
   }
-
   section > label input[type='text'] {
     flex: 1;
     padding: 4px 6px;
     border-radius: 3px;
   }
-
   section > label input[type='color'] {
     width: 40px;
     height: 30px;
@@ -555,14 +545,12 @@
     border: 1px solid rgba(255, 255, 255, 0.2);
     cursor: pointer;
   }
-
   section > label select {
     flex: 1;
     padding: 4px 6px;
     border-radius: 3px;
     cursor: pointer;
   }
-
   section > label button {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-color);
@@ -574,16 +562,13 @@
     opacity: 0.7;
     transition: opacity 0.2s;
   }
-
   section > label button:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.2);
   }
-
   .category-colors {
     display: grid;
   }
-
   .category-colors label {
     display: flex;
     align-items: center;
@@ -595,11 +580,9 @@
     text-transform: capitalize;
     transition: background-color 0.2s;
   }
-
   .category-colors label:hover {
     background-color: rgba(255, 255, 255, 0.1);
   }
-
   .category-colors input[type='color'] {
     width: 20px;
     height: 20px;
@@ -607,11 +590,9 @@
     border: 1px solid rgba(255, 255, 255, 0.2);
     cursor: pointer;
   }
-
   .category-colors span {
     flex: 1;
   }
-
   .category-colors button {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-color);
@@ -623,7 +604,6 @@
     opacity: 0.7;
     transition: opacity 0.2s;
   }
-
   .category-colors button:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.2);

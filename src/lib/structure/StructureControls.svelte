@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { ControlPanel } from '$lib'
+  import { DraggablePanel } from '$lib'
   import { element_color_schemes } from '$lib/colors'
   import * as exports from '$lib/io/export'
   import { STRUCT_DEFAULTS, StructureScene } from '$lib/structure'
@@ -53,7 +53,7 @@
       atom_radius: 1,
       show_atoms: true,
       auto_rotate: 0,
-      show_bonds: true,
+      show_bonds: false,
       show_force_vectors: false,
       force_vector_scale: STRUCT_DEFAULTS.vector.scale,
       force_vector_color: STRUCT_DEFAULTS.vector.color,
@@ -163,154 +163,158 @@
   }
 </script>
 
-<ControlPanel bind:controls_open>
-  {#snippet controls_content()}
-    <!-- Visibility Controls -->
-    <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap">
-      Show <label>
-        <input
-          type="checkbox"
-          bind:checked={scene_props.show_atoms}
-          onchange={trigger_reactivity}
-        />
-        atoms
-      </label>
+<DraggablePanel
+  bind:show={controls_open}
+  panel_props={{ class: `controls-panel` }}
+  toggle_props={{ class: `structure-controls-toggle`, title: `Open controls` }}
+  icon_style="transform: scale(1.2);"
+>
+  <!-- Visibility Controls -->
+  <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap">
+    Show <label>
+      <input
+        type="checkbox"
+        bind:checked={scene_props.show_atoms}
+        onchange={trigger_reactivity}
+      />
+      atoms
+    </label>
+    <label>
+      <input
+        type="checkbox"
+        bind:checked={scene_props.show_bonds}
+        onchange={trigger_reactivity}
+      />
+      bonds
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={show_image_atoms} />
+      image atoms
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={show_site_labels} />
+      site labels
+    </label>
+    {#if has_forces}
       <label>
         <input
           type="checkbox"
-          bind:checked={scene_props.show_bonds}
+          bind:checked={scene_props.show_force_vectors}
           onchange={trigger_reactivity}
         />
-        bonds
+        force vectors
       </label>
-      <label>
-        <input type="checkbox" bind:checked={show_image_atoms} />
-        image atoms
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={show_site_labels} />
-        site labels
-      </label>
-      {#if has_forces}
-        <label>
-          <input
-            type="checkbox"
-            bind:checked={scene_props.show_force_vectors}
-            onchange={trigger_reactivity}
-          />
-          force vectors
-        </label>
-      {/if}
-      <label>
-        <input type="checkbox" bind:checked={show_full_controls} />
-        full controls
-      </label>
-    </div>
+    {/if}
+    <label>
+      <input type="checkbox" bind:checked={show_full_controls} />
+      full controls
+    </label>
+  </div>
 
-    <hr />
+  <hr />
 
-    <!-- Atom Controls -->
-    <h4 class="section-heading">Atoms</h4>
+  <!-- Atom Controls -->
+  <h4 class="section-heading">Atoms</h4>
+  <label class="slider-control">
+    Radius <small>(Å)</small>
+    <input
+      type="number"
+      min="0.2"
+      max={2}
+      step={0.05}
+      bind:value={scene_props.atom_radius}
+      onchange={trigger_reactivity}
+      oninput={trigger_reactivity}
+    />
+    <input
+      type="range"
+      min="0.2"
+      max={2}
+      step={0.05}
+      bind:value={scene_props.atom_radius}
+      onchange={trigger_reactivity}
+      oninput={trigger_reactivity}
+    />
+  </label>
+  <label>
+    <input
+      type="checkbox"
+      bind:checked={scene_props.same_size_atoms}
+      onchange={trigger_reactivity}
+    />
+    <span>
+      Scale according to atomic radii
+      <small> (if false, all atoms same size)</small>
+    </span>
+  </label>
+  <label style="align-items: flex-start">
+    Color scheme
+    <Select
+      options={Object.keys(element_color_schemes)}
+      maxSelect={1}
+      minSelect={1}
+      bind:selected={color_scheme_selected}
+      liOptionStyle="padding: 3pt 6pt;"
+      style="width: 10em; border: none"
+    >
+      {#snippet children({ option })}
+        {@const option_style =
+          `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
+        <div style={option_style}>
+          {option}
+          <div style="display: flex; gap: 3pt">
+            {#each get_representative_colors(String(option)) as color (color)}
+              {@const color_style =
+              `width: 15px; height: 15px; border-radius: 2px; background: ${color};`}
+              <div style={color_style}></div>
+            {/each}
+          </div>
+        </div>
+      {/snippet}
+    </Select>
+  </label>
+
+  <hr />
+
+  <!-- Force Vector Controls -->
+  {#if has_forces && scene_props.show_force_vectors}
+    <h4 class="section-heading">Force Vectors</h4>
     <label class="slider-control">
-      Radius <small>(Å)</small>
+      Scale
       <input
         type="number"
-        min="0.2"
-        max={2}
-        step={0.05}
-        bind:value={scene_props.atom_radius}
-        onchange={trigger_reactivity}
-        oninput={trigger_reactivity}
+        min="0.001"
+        max="5"
+        step="0.001"
+        bind:value={scene_props.force_vector_scale}
       />
       <input
         type="range"
-        min="0.2"
-        max={2}
-        step={0.05}
-        bind:value={scene_props.atom_radius}
-        onchange={trigger_reactivity}
-        oninput={trigger_reactivity}
+        min="0.001"
+        max="5"
+        step="0.001"
+        bind:value={scene_props.force_vector_scale}
       />
     </label>
-    <label>
-      <input
-        type="checkbox"
-        bind:checked={scene_props.same_size_atoms}
-        onchange={trigger_reactivity}
-      />
-      <span>
-        Scale according to atomic radii
-        <small> (if false, all atoms same size)</small>
-      </span>
-    </label>
-    <label style="align-items: flex-start">
-      Color scheme
-      <Select
-        options={Object.keys(element_color_schemes)}
-        maxSelect={1}
-        minSelect={1}
-        bind:selected={color_scheme_selected}
-        liOptionStyle="padding: 3pt 6pt;"
-        style="width: 10em; border: none"
-      >
-        {#snippet children({ option })}
-          {@const option_style =
-          `display: flex; align-items: center; gap: 6pt; justify-content: space-between;`}
-          <div style={option_style}>
-            {option}
-            <div style="display: flex; gap: 3pt">
-              {#each get_representative_colors(String(option)) as color (color)}
-                {@const color_style =
-              `width: 15px; height: 15px; border-radius: 2px; background: ${color};`}
-                <div style={color_style}></div>
-              {/each}
-            </div>
-          </div>
-        {/snippet}
-      </Select>
+    <label class="compact">
+      Color
+      <input type="color" bind:value={scene_props.force_vector_color} />
     </label>
 
     <hr />
+  {/if}
 
-    <!-- Force Vector Controls -->
-    {#if has_forces && scene_props.show_force_vectors}
-      <h4 class="section-heading">Force Vectors</h4>
-      <label class="slider-control">
-        Scale
-        <input
-          type="number"
-          min="0.001"
-          max="5"
-          step="0.001"
-          bind:value={scene_props.force_vector_scale}
-        />
-        <input
-          type="range"
-          min="0.001"
-          max="5"
-          step="0.001"
-          bind:value={scene_props.force_vector_scale}
-        />
-      </label>
-      <label class="compact">
-        Color
-        <input type="color" bind:value={scene_props.force_vector_color} />
-      </label>
-
-      <hr />
-    {/if}
-
-    <!-- Cell Controls -->
-    <h4 class="section-heading">Cell</h4>
-    <label>
-      <input
-        type="checkbox"
-        bind:checked={lattice_props.show_vectors}
-        onchange={trigger_reactivity}
-      />
-      lattice vectors
-    </label>
-    {#each [
+  <!-- Cell Controls -->
+  <h4 class="section-heading">Cell</h4>
+  <label>
+    <input
+      type="checkbox"
+      bind:checked={lattice_props.show_vectors}
+      onchange={trigger_reactivity}
+    />
+    lattice vectors
+  </label>
+  {#each [
       {
         label: `Edge color`,
         color_prop: `cell_edge_color`,
@@ -324,280 +328,286 @@
         step: 0.01,
       },
     ] as const as
-      { label, color_prop, opacity_prop, step }
-      (label)
-    }
-      <div class="control-row">
-        <label class="compact">
-          {label}
-          <input
-            type="color"
-            bind:value={lattice_props[color_prop]}
-            onchange={trigger_reactivity}
-          />
-        </label>
-        <label class="slider-control">
-          opacity
-          <input
-            type="number"
-            min={0}
-            max={1}
-            {step}
-            bind:value={lattice_props[opacity_prop]}
-            onchange={trigger_reactivity}
-            oninput={trigger_reactivity}
-          />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            {step}
-            bind:value={lattice_props[opacity_prop]}
-            onchange={trigger_reactivity}
-            oninput={trigger_reactivity}
-          />
-        </label>
-      </div>
-    {/each}
-
-    <hr />
-
-    <!-- Background Controls -->
-    <h4 class="section-heading">Background</h4>
-    <div class="control-row">
+    { label, color_prop, opacity_prop, step }
+    (label)
+  }
+    <div class="panel-row">
       <label class="compact">
-        Color
-        <!-- not using bind:value to not give a default value of #000000 to background_color, needs to stay undefined to not override --struct-bg theme color -->
+        {label}
         <input
           type="color"
-          value={background_color}
-          oninput={(event) => {
-            background_color = (event.target as HTMLInputElement).value
-          }}
+          bind:value={lattice_props[color_prop]}
+          onchange={trigger_reactivity}
         />
       </label>
       <label class="slider-control">
-        Opacity
+        opacity
         <input
           type="number"
           min={0}
           max={1}
-          step={0.02}
-          bind:value={background_opacity}
+          {step}
+          bind:value={lattice_props[opacity_prop]}
+          onchange={trigger_reactivity}
+          oninput={trigger_reactivity}
         />
         <input
           type="range"
           min={0}
           max={1}
-          step={0.02}
-          bind:value={background_opacity}
+          {step}
+          bind:value={lattice_props[opacity_prop]}
+          onchange={trigger_reactivity}
+          oninput={trigger_reactivity}
         />
       </label>
     </div>
+  {/each}
 
-    {#if show_full_controls}
-      <!-- Camera Controls -->
-      <h4 class="section-heading">Camera</h4>
-      <label>
-        Auto rotate speed
-        <input
-          type="number"
-          min={0}
-          max={2}
-          step={0.01}
-          bind:value={scene_props.auto_rotate}
-        />
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.01}
-          bind:value={scene_props.auto_rotate}
-        />
-      </label>
-      <label>
-        Zoom speed
-        <input
-          type="number"
-          min={0.1}
-          max={0.8}
-          step={0.02}
-          bind:value={scene_props.zoom_speed}
-        />
-        <input
-          type="range"
-          min={0.1}
-          max={0.8}
-          step={0.02}
-          bind:value={scene_props.zoom_speed}
-        />
-      </label>
-      <label>
-        <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
-          Pan speed
-        </Tooltip>
-        <input
-          type="number"
-          min={0}
-          max={2}
-          step={0.01}
-          bind:value={scene_props.pan_speed}
-        />
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.01}
-          bind:value={scene_props.pan_speed}
-        />
-      </label>
-      <label>
-        <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
-        <input
-          type="number"
-          min={0}
-          max={0.3}
-          step={0.01}
-          bind:value={scene_props.rotation_damping}
-        />
-        <input
-          type="range"
-          min={0}
-          max={0.3}
-          step={0.01}
-          bind:value={scene_props.rotation_damping}
-        />
-      </label>
+  <hr />
 
-      <hr />
+  <!-- Background Controls -->
+  <h4 class="section-heading">Background</h4>
+  <div class="panel-row">
+    <label class="compact">
+      Color
+      <!-- not using bind:value to not give a default value of #000000 to background_color, needs to stay undefined to not override --struct-bg theme color -->
+      <input
+        type="color"
+        value={background_color}
+        oninput={(event) => {
+          background_color = (event.target as HTMLInputElement).value
+        }}
+      />
+    </label>
+    <label class="slider-control">
+      Opacity
+      <input
+        type="number"
+        min={0}
+        max={1}
+        step={0.02}
+        bind:value={background_opacity}
+      />
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.02}
+        bind:value={background_opacity}
+      />
+    </label>
+  </div>
 
-      <!-- Lighting Controls -->
-      <h4 class="section-heading">Lighting</h4>
-      <label>
-        <Tooltip text="intensity of the directional light">Directional light</Tooltip>
-        <input
-          type="number"
-          min={0}
-          max={4}
-          step={0.01}
-          bind:value={scene_props.directional_light}
-        />
-        <input
-          type="range"
-          min={0}
-          max={4}
-          step={0.01}
-          bind:value={scene_props.directional_light}
-        />
-      </label>
-      <label>
-        <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
-        <input
-          type="number"
-          min={0.5}
-          max={3}
-          step={0.05}
-          bind:value={scene_props.ambient_light}
-        />
-        <input
-          type="range"
-          min={0.5}
-          max={3}
-          step={0.05}
-          bind:value={scene_props.ambient_light}
-        />
-      </label>
-    {/if}
+  {#if show_full_controls}
+    <!-- Camera Controls -->
+    <h4 class="section-heading">Camera</h4>
+    <label>
+      Auto rotate speed
+      <input
+        type="number"
+        min={0}
+        max={2}
+        step={0.01}
+        bind:value={scene_props.auto_rotate}
+      />
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.01}
+        bind:value={scene_props.auto_rotate}
+      />
+    </label>
+    <label>
+      Zoom speed
+      <input
+        type="number"
+        min={0.1}
+        max={0.8}
+        step={0.02}
+        bind:value={scene_props.zoom_speed}
+      />
+      <input
+        type="range"
+        min={0.1}
+        max={0.8}
+        step={0.02}
+        bind:value={scene_props.zoom_speed}
+      />
+    </label>
+    <label>
+      <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
+        Pan speed
+      </Tooltip>
+      <input
+        type="number"
+        min={0}
+        max={2}
+        step={0.01}
+        bind:value={scene_props.pan_speed}
+      />
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.01}
+        bind:value={scene_props.pan_speed}
+      />
+    </label>
+    <label>
+      <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
+      <input
+        type="number"
+        min={0}
+        max={0.3}
+        step={0.01}
+        bind:value={scene_props.rotation_damping}
+      />
+      <input
+        type="range"
+        min={0}
+        max={0.3}
+        step={0.01}
+        bind:value={scene_props.rotation_damping}
+      />
+    </label>
 
     <hr />
 
-    {#if scene_props.show_bonds}
-      <label>
-        Bonding strategy
-        <select bind:value={scene_props.bonding_strategy}>
-          <option value="max_dist">Max Distance</option>
-          <option value="nearest_neighbor">Nearest Neighbor</option>
-          <option value="vdw_radius_based">Van der Waals Radii</option>
-        </select>
-      </label>
-
-      <label>
-        Bond color
-        <input type="color" bind:value={scene_props.bond_color} />
-      </label>
-      <label>
-        Bond thickness
-        <input
-          type="number"
-          min={0.05}
-          max={0.5}
-          step={0.05}
-          bind:value={scene_props.bond_thickness}
-        />
-        <input
-          type="range"
-          min={0.05}
-          max={0.5}
-          step={0.05}
-          bind:value={scene_props.bond_thickness}
-        />
-      </label>
-    {/if}
-
-    <span
-      style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
-    >
-      <button
-        type="button"
-        onclick={() => exports.export_json(structure)}
-        title={save_json_btn_text}
-      >
-        {save_json_btn_text}
-      </button>
-      <button
-        type="button"
-        onclick={() => handle_copy(`json`)}
-        title={current_copy_json_btn_text}
-      >
-        {current_copy_json_btn_text}
-      </button>
-      <button
-        type="button"
-        onclick={() => exports.export_xyz(structure)}
-        title={save_xyz_btn_text}
-      >
-        {save_xyz_btn_text}
-      </button>
-      <button
-        type="button"
-        onclick={() => handle_copy(`xyz`)}
-        title={current_copy_xyz_btn_text}
-      >
-        {current_copy_xyz_btn_text}
-      </button>
-      <button
-        type="button"
-        onclick={() => {
-          const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
-          exports.export_png(canvas, structure, png_dpi, scene, camera)
-        }}
-        title="{save_png_btn_text} (${png_dpi} DPI)"
-      >
-        {save_png_btn_text}
-      </button>
-      <small style="margin-left: 4pt">DPI:</small>
+    <!-- Lighting Controls -->
+    <h4 class="section-heading">Lighting</h4>
+    <label>
+      <Tooltip text="intensity of the directional light">Directional light</Tooltip>
       <input
         type="number"
-        min={72}
-        max={300}
-        step={25}
-        bind:value={png_dpi}
-        style="width: 3.5em"
-        title="Export resolution in dots per inch"
+        min={0}
+        max={4}
+        step={0.01}
+        bind:value={scene_props.directional_light}
       />
-    </span>
-  {/snippet}
-</ControlPanel>
+      <input
+        type="range"
+        min={0}
+        max={4}
+        step={0.01}
+        bind:value={scene_props.directional_light}
+      />
+    </label>
+    <label>
+      <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
+      <input
+        type="number"
+        min={0.5}
+        max={3}
+        step={0.05}
+        bind:value={scene_props.ambient_light}
+      />
+      <input
+        type="range"
+        min={0.5}
+        max={3}
+        step={0.05}
+        bind:value={scene_props.ambient_light}
+      />
+    </label>
+  {/if}
+
+  <hr />
+
+  {#if scene_props.show_bonds}
+    <label>
+      Bonding strategy
+      <select bind:value={scene_props.bonding_strategy}>
+        <option value="max_dist">Max Distance</option>
+        <option value="nearest_neighbor">Nearest Neighbor</option>
+        <option value="vdw_radius_based">Van der Waals Radii</option>
+      </select>
+    </label>
+
+    <label>
+      Bond color
+      <input type="color" bind:value={scene_props.bond_color} />
+    </label>
+    <label>
+      Bond thickness
+      <input
+        type="number"
+        min={0.05}
+        max={0.5}
+        step={0.05}
+        bind:value={scene_props.bond_thickness}
+      />
+      <input
+        type="range"
+        min={0.05}
+        max={0.5}
+        step={0.05}
+        bind:value={scene_props.bond_thickness}
+      />
+    </label>
+  {/if}
+
+  <!-- Export Controls -->
+  <hr />
+  <h4 class="section-heading">Export</h4>
+  <span
+    style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
+  >
+    <button
+      type="button"
+      onclick={() => exports.export_json(structure)}
+      title={save_json_btn_text}
+    >
+      {save_json_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => handle_copy(`json`)}
+      title={current_copy_json_btn_text}
+    >
+      {current_copy_json_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => exports.export_xyz(structure)}
+      title={save_xyz_btn_text}
+    >
+      {save_xyz_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => handle_copy(`xyz`)}
+      title={current_copy_xyz_btn_text}
+    >
+      {current_copy_xyz_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => {
+        const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
+        if (canvas) {
+          exports.export_png(canvas, structure, png_dpi, scene, camera)
+        } else {
+          console.warn(`Canvas element not found for PNG export`)
+        }
+      }}
+      title="{save_png_btn_text} (${png_dpi} DPI)"
+    >
+      {save_png_btn_text}
+    </button>
+    <small style="margin-left: 4pt">DPI:</small>
+    <input
+      type="number"
+      min={72}
+      max={300}
+      step={25}
+      bind:value={png_dpi}
+      style="width: 3.5em"
+      title="Export resolution in dots per inch"
+    />
+  </span>
+</DraggablePanel>
 
 <style>
   .section-heading {
@@ -605,19 +615,19 @@
     font-size: 0.9em;
     color: var(--text-muted, #ccc);
   }
-  .control-row {
+  .panel-row {
     display: flex;
     gap: 4pt;
     align-items: flex-start;
   }
-  .control-row label {
+  .panel-row label {
     min-width: 0;
   }
-  .control-row label.compact {
+  .panel-row label.compact {
     flex: 0 0 auto;
     margin-right: 8pt;
   }
-  .control-row label.slider-control {
+  .panel-row label.slider-control {
     flex: 1;
   }
 </style>

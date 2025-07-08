@@ -9,7 +9,9 @@ test.describe(`Lattice Component Tests`, () => {
     await page
       .locator(`label:has-text("Controls Open") input[type="checkbox"]`)
       .check()
-    await expect(page.locator(`.controls-panel`)).toHaveClass(/controls-open/)
+    await expect(page.locator(`.draggable-panel.controls-panel`)).toHaveClass(
+      /panel-open/,
+    )
   })
 
   test(`renders lattice with default properties`, async ({ page }) => {
@@ -21,7 +23,7 @@ test.describe(`Lattice Component Tests`, () => {
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     const checkbox = page.locator(
-      `.controls-panel label:has-text("lattice vectors") input[type="checkbox"]`,
+      `.draggable-panel label:has-text("lattice vectors") input[type="checkbox"]`,
     )
 
     const before = await canvas.screenshot()
@@ -36,11 +38,11 @@ test.describe(`Lattice Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     // Target Edge color input by its label text
     const edge_color = page.locator(
-      `.controls-panel label:has-text("Edge color") input[type="color"]`,
+      `.draggable-panel label:has-text("Edge color") input[type="color"]`,
     )
     // Target Surface opacity range input
     const surface_opacity = page.locator(
-      `.controls-panel label:has-text("Surface color") + label input[type="range"]`,
+      `.draggable-panel label:has-text("Surface color") + label input[type="range"]`,
     )
 
     // Make surface visible and change edge color
@@ -56,10 +58,10 @@ test.describe(`Lattice Component Tests`, () => {
   test(`opacity controls work`, async ({ page }) => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     const edge_opacity = page.locator(
-      `.controls-panel label:has-text("Edge color") + label input[type="range"]`,
+      `.draggable-panel label:has-text("Edge color") + label input[type="range"]`,
     )
     const surface_opacity = page.locator(
-      `.controls-panel label:has-text("Surface color") + label input[type="range"]`,
+      `.draggable-panel label:has-text("Surface color") + label input[type="range"]`,
     )
 
     const before = await canvas.screenshot()
@@ -73,10 +75,10 @@ test.describe(`Lattice Component Tests`, () => {
 
   test(`number and range inputs sync`, async ({ page }) => {
     const edge_range = page.locator(
-      `.controls-panel label:has-text("Edge color") + label input[type="range"]`,
+      `.draggable-panel label:has-text("Edge color") + label input[type="range"]`,
     )
     const edge_number = page.locator(
-      `.controls-panel label:has-text("Edge color") + label input[type="number"]`,
+      `.draggable-panel label:has-text("Edge color") + label input[type="number"]`,
     )
 
     await edge_number.fill(`0.3`)
@@ -88,10 +90,10 @@ test.describe(`Lattice Component Tests`, () => {
 
   test(`inputs have correct validation`, async ({ page }) => {
     const edge_number = page.locator(
-      `.controls-panel label:has-text("Edge color") + label input[type="number"]`,
+      `.draggable-panel label:has-text("Edge color") + label input[type="number"]`,
     )
     const surface_number = page.locator(
-      `.controls-panel label:has-text("Surface color") + label input[type="number"]`,
+      `.draggable-panel label:has-text("Surface color") + label input[type="number"]`,
     )
 
     await expect(edge_number).toHaveAttribute(`step`, `0.05`)
