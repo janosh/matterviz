@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { ScatterPlot } from '$lib'
   import * as math from '$lib/math'
   import type {
     DataSeries,
@@ -8,7 +7,7 @@
     PointStyle,
     ScaleType,
   } from '$lib/plot'
-  import { symbol_names } from '$lib/plot'
+  import { ScatterPlot, symbol_names } from '$lib/plot'
 
   // === Basic Example Data ===
   const basic_data = {

@@ -418,6 +418,43 @@ const themes = {
     white: `rgba(0, 0, 0, 0.05)`,
     black: `rgba(255, 255, 255, 0.05)`,
   },
+  // Panel colors (for DraggablePanel component)
+  'panel-bg': {
+    light: `rgba(229, 231, 235, 0.95)`,
+    dark: `rgba(15, 23, 42, 0.95)`,
+    white: `rgba(248, 250, 252, 0.98)`,
+    black: `rgba(26, 26, 26, 0.98)`,
+  },
+  'panel-text-color': {
+    light: `#374151`,
+    dark: `#eee`,
+    white: `#000000`,
+    black: `#f5f5f5`,
+  },
+  'panel-border': {
+    light: `rgba(0, 0, 0, 0.2)`,
+    dark: `rgba(255, 255, 255, 0.15)`,
+    white: `rgba(0, 0, 0, 0.1)`,
+    black: `rgba(255, 255, 255, 0.1)`,
+  },
+  'panel-btn-bg': {
+    light: `rgba(0, 0, 0, 0.12)`,
+    dark: `rgba(255, 255, 255, 0.1)`,
+    white: `rgba(0, 0, 0, 0.05)`,
+    black: `rgba(255, 255, 255, 0.05)`,
+  },
+  'panel-btn-hover-bg': {
+    light: `rgba(0, 0, 0, 0.25)`,
+    dark: `rgba(255, 255, 255, 0.2)`,
+    white: `rgba(0, 0, 0, 0.1)`,
+    black: `rgba(255, 255, 255, 0.15)`,
+  },
+  'panel-hr-bg': {
+    light: `rgba(0, 0, 0, 0.15)`,
+    dark: `rgba(255, 255, 255, 0.1)`,
+    white: `rgba(0, 0, 0, 0.05)`,
+    black: `rgba(255, 255, 255, 0.05)`,
+  },
   // Trajectory colors
   'traj-surface': {
     light: `rgba(241, 243, 245, 0.95)`,
@@ -563,18 +600,6 @@ const themes = {
     white: `#f0f0f0`,
     black: `#374151`,
   },
-  'trajectory-info-hover-bg': {
-    light: `#9ca3af`,
-    dark: `#6b7280`,
-    white: `#e5e7eb`,
-    black: `#4b5563`,
-  },
-  'trajectory-info-active-bg': {
-    light: `#4f46e5`,
-    dark: `#3b82f6`,
-    white: `#2563eb`,
-    black: `#60a5fa`,
-  },
   'trajectory-play-button-bg': {
     light: `#d1d5db`,
     dark: `#6b7280`,
@@ -617,6 +642,31 @@ const themes = {
     white: `rgba(0, 0, 0, 0.05)`,
     black: `rgba(255, 255, 255, 0.05)`,
   },
+  // Svelte MultiSelect component colors
+  'sms-options-bg': {
+    light: `rgba(255, 255, 255, 0.95)`,
+    dark: `rgb(20, 18, 36)`,
+    white: `rgba(255, 255, 255, 0.98)`,
+    black: `rgba(15, 15, 15, 0.95)`,
+  },
+  'sms-border': {
+    light: `1px dotted #6b7280`,
+    dark: `1px dotted teal`,
+    white: `1px dotted #9ca3af`,
+    black: `1px dotted teal`,
+  },
+  'sms-focus-border': {
+    light: `1px dotted #4f46e5`,
+    dark: `1px dotted cornflowerblue`,
+    white: `1px dotted #2563eb`,
+    black: `1px dotted #7dd3fc`,
+  },
+  'sms-active-color': {
+    light: `#4f46e5`,
+    dark: `cornflowerblue`,
+    white: `#2563eb`,
+    black: `#7dd3fc`,
+  },
   // VSCode-specific theme variables
   'vscode-editor-background': {
     light: `#ffffff`,
@@ -645,6 +695,10 @@ const special_mappings = {
   'copy-btn-color': `--zoo-copy-btn-color`,
   'github-corner-color': `--zoo-github-corner-color`,
   'github-corner-bg': `--zoo-github-corner-bg`,
+  'sms-options-bg': `--sms-options-bg`,
+  'sms-border': `--sms-border`,
+  'sms-focus-border': `--sms-focus-border`,
+  'sms-active-color': `--sms-active-color`,
   'vscode-editor-background': `--vscode-editor-background`,
   'vscode-editor-foreground': `--vscode-editor-foreground`,
   'vscode-error-foreground': `--vscode-errorForeground`,

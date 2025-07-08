@@ -245,7 +245,7 @@
   .dual-trajectory-container {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 6rem;
     min-height: 80vh;
   }
 

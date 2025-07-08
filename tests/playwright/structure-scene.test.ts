@@ -868,7 +868,7 @@ test.describe(`StructureScene Component Tests`, () => {
         } else {
           // Fallback to controls manipulation
           const controls_btn = document.querySelector(
-            `button.controls-toggle`,
+            `button.structure-controls-toggle`,
           ) as HTMLButtonElement
           if (controls_btn) controls_btn.click()
 

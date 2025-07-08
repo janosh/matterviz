@@ -1,5 +1,5 @@
 import type { Category, ChemicalElement } from '$lib'
-import { AUTO_THEME, COLOR_THEMES } from '$lib/theme/index'
+import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { default_category_colors, default_element_colors } from './colors'
 import { type Tooltip } from './plot'
 import { type ThemeMode } from './theme'
@@ -57,8 +57,17 @@ try {
 }
 
 export const theme_state = $state<
-  { mode: ThemeMode; system_mode: typeof COLOR_THEMES.light | typeof COLOR_THEMES.dark }
+  {
+    mode: ThemeMode
+    system_mode: typeof COLOR_THEMES.light | typeof COLOR_THEMES.dark
+    type: `light` | `dark`
+  }
 >({
   mode: initial_theme_mode,
   system_mode: initial_system_mode,
+  get type() {
+    // For AUTO_THEME, use system_mode, otherwise lookup the mode in THEME_TYPE
+    const effective_mode = this.mode === AUTO_THEME ? this.system_mode : this.mode
+    return THEME_TYPE[effective_mode as keyof typeof THEME_TYPE]
+  },
 })

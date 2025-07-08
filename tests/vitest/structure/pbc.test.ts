@@ -1,11 +1,8 @@
 import { parse_structure_file } from '$lib/io/parse'
 import * as math from '$lib/math'
 import { euclidean_dist, type Matrix3x3, pbc_dist, type Vec3 } from '$lib/math'
-import {
-  find_image_atoms,
-  get_pbc_image_sites,
-  type PymatgenStructure,
-} from '$lib/structure'
+import type { PymatgenStructure } from '$lib/structure'
+import { find_image_atoms, get_pbc_image_sites } from '$lib/structure'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import mp1_json from '$site/structures/mp-1.json' with { type: 'json' }

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { BohrAtom, element_data } from '$lib'
-  import { Slider } from 'svelte-zoo'
   import Description from './bohr-atoms.md'
 
   let orbital_period = $state(2)
@@ -8,14 +7,13 @@
 
 <Description />
 
-<Slider
-  label="Electron Orbital Period"
-  bind:value={orbital_period}
-  min={0}
-  max={5}
-  step={0.1}
-  style="place-content: center; margin: 1em"
-/>
+<label
+  style="display: flex; align-items: center; gap: 1ex; margin: 1em auto; place-content: center"
+>
+  Electron Orbital Period
+  <input type="number" bind:value={orbital_period} min={0} max={5} step={0.1} />
+  <input type="range" bind:value={orbital_period} min={0} max={5} step={0.1} />
+</label>
 
 <ol>
   {#each element_data as { shells, symbol, number, name } (symbol + number + name)}

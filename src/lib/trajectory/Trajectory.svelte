@@ -1166,12 +1166,6 @@
     justify-content: center;
     padding: 0;
   }
-  .info-button:hover:not(:disabled) {
-    background: var(--trajectory-info-hover-bg, #6b7280);
-  }
-  .info-button.active {
-    background: var(--trajectory-info-active-bg, #3b82f6);
-  }
   .info-section {
     display: flex;
     align-items: center;

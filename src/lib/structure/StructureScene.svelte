@@ -75,7 +75,7 @@
     zoom_speed = 0.3,
     pan_speed = 1,
     show_atoms = true,
-    show_bonds = true,
+    show_bonds = false,
     show_site_labels = false,
     show_force_vectors = false,
     force_vector_scale = STRUCT_DEFAULTS.vector.scale,

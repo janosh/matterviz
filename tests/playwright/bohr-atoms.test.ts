@@ -5,7 +5,8 @@ test.describe(`Bohr Atoms page`, () => {
   test(`lists all elements`, async ({ page }) => {
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
-    const element_tiles = await page.$$(`ol > li > svg > circle + text`)
+    await page.waitForSelector(`ol li svg`, { state: `visible`, timeout: 10000 })
+    const element_tiles = await page.$$(`ol li svg text`)
     expect(element_tiles).toHaveLength(element_data.length)
   })
 
@@ -13,7 +14,8 @@ test.describe(`Bohr Atoms page`, () => {
     // happened once that SVGs collapsed to 0 height
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
-    const first_svg = await page.$(`ol > li > svg`)
+    await page.waitForSelector(`ol li svg`, { state: `visible`, timeout: 10000 })
+    const first_svg = await page.$(`ol li svg`)
     const { height } = (await first_svg?.boundingBox()) ?? {}
 
     expect(height).toBe(300)
