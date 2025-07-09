@@ -10,7 +10,6 @@
     show_panel?: boolean
     children: Snippet<[]>
     // Toggle button
-    show_toggle_button?: boolean
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     open_icon?: IconName
     closed_icon?: IconName
@@ -22,6 +21,7 @@
     // Callbacks
     onclose?: () => void
     on_drag_start?: () => void
+    custom_toggle?: () => void
     // Bindable state
     toggle_panel_btn?: HTMLButtonElement
     panel_div?: HTMLDivElement
@@ -33,7 +33,6 @@
     show = $bindable(false),
     show_panel = true,
     children,
-    show_toggle_button = true,
     toggle_props = {},
     open_icon = `Cross`,
     closed_icon = `Settings`,
@@ -43,6 +42,7 @@
     panel_props = {},
     onclose = () => {},
     on_drag_start = () => {},
+    custom_toggle = undefined,
     toggle_panel_btn,
     panel_div,
     has_been_dragged = $bindable(false),
@@ -50,6 +50,7 @@
   }: Props = $props()
 
   let initial_position = $state({ left: `50px`, top: `50px` })
+  let show_control_buttons = $state(false)
 
   // Keyboard shortcuts
   function on_keydown(event: KeyboardEvent) {
@@ -84,11 +85,15 @@
         })
       }
     }
+    // Hide the control buttons after reset
+    show_control_buttons = false
+    has_been_dragged = false
   }
 
   // Drag handlers
   function handle_drag_start() {
     has_been_dragged = true
+    show_control_buttons = true
     currently_dragging = true
     on_drag_start()
   }
@@ -170,47 +175,43 @@
 <svelte:document onclick={handle_click_outside} />
 
 {#if show_panel}
-  {#if show_toggle_button}
-    <button
-      bind:this={toggle_panel_btn}
-      onclick={(event) => handle_button_click(event, toggle_panel)}
-      aria-expanded={show}
-      aria-controls="draggable-panel"
-      title={toggle_props.title ?? (show ? `Close panel` : `Open panel`)}
-      {...toggle_props}
-      class="panel-toggle {toggle_props.class ?? ``}"
-    >
-      <Icon icon={show ? open_icon : closed_icon} style={icon_style} />
-    </button>
-  {/if}
+  <button
+    bind:this={toggle_panel_btn}
+    onclick={(event) => handle_button_click(event, custom_toggle || toggle_panel)}
+    aria-expanded={show}
+    aria-controls="draggable-panel"
+    title={toggle_props.title ?? (show ? `Close panel` : `Open panel`)}
+    {...toggle_props}
+    class="panel-toggle {toggle_props.class ?? ``}"
+  >
+    <Icon icon={show ? open_icon : closed_icon} style={icon_style} />
+  </button>
 
-  {#if show}
-    {#key show}
-      <div
-        {@attach draggable({
-          handle_selector: `.drag-handle`,
-          on_drag_start: handle_drag_start,
-          on_drag_end: handle_drag_end,
-        })}
-        bind:this={panel_div}
-        role="dialog"
-        aria-label="Draggable panel"
-        aria-modal="false"
-        style:max-width={max_width}
-        style:top={initial_position.top}
-        style:left={initial_position.left}
-        {...panel_props}
-        class="draggable-panel {panel_props.class ?? ``}"
-      >
-        <Icon icon="DragIndicator" class="drag-handle" />
-
-        {#if has_been_dragged}
+  <div
+    {@attach draggable({
+      handle_selector: `.drag-handle`,
+      on_drag_start: handle_drag_start,
+      on_drag_end: handle_drag_end,
+    })}
+    bind:this={panel_div}
+    role="dialog"
+    aria-label="Draggable panel"
+    aria-modal="false"
+    style:max-width={max_width}
+    style:top={initial_position.top}
+    style:left={initial_position.left}
+    style:display={show ? `grid` : `none`}
+    {...panel_props}
+    class="draggable-panel {show ? `panel-open` : ``} {panel_props.class ?? ``}"
+  >
+    <div class="panel-header">
+      <div class="control-buttons">
+        {#if show_control_buttons}
           <button
             class="reset-button"
             onclick={(event) => handle_button_click(event, reset_position)}
             title="Reset panel position"
             aria-label="Reset panel position"
-            style="right: 35px"
           >
             <Icon icon="Reset" style="width: 1.25em; height: 1.25em" />
           </button>
@@ -219,16 +220,20 @@
             onclick={(event) => handle_button_click(event, close_panel)}
             title="Close panel"
             aria-label="Close panel"
-            style="right: 65px"
           >
             <Icon icon="Cross" style="width: 1.25em; height: 1.25em" />
           </button>
         {/if}
-
-        {@render children()}
+        <Icon
+          icon="DragIndicator"
+          class="drag-handle"
+          style="width: 1.25em; height: 1.25em"
+        />
       </div>
-    {/key}
-  {/if}
+    </div>
+
+    {@render children()}
+  </div>
 {/if}
 
 <style>
@@ -241,6 +246,10 @@
     padding: 4pt;
     border-radius: var(--panel-toggle-border-radius, 3pt);
     background-color: transparent;
+    transition: background-color 0.2s;
+  }
+  .panel-toggle:hover {
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   .draggable-panel {
     position: absolute; /* Use absolute so panel scrolls with page content */
@@ -257,7 +266,6 @@
     transition: opacity 0.3s, background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
     width: 28em;
     max-width: 90cqw;
-    color: var(--panel-text-color, #eee);
     overflow: auto;
     max-height: calc(100vh - 3em);
     pointer-events: auto;
@@ -335,40 +343,54 @@
   .draggable-panel :global(.panel-row label.slider-control) {
     flex: 1;
   }
+  /* Panel header styling */
+  .draggable-panel .panel-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    height: 1.3em;
+    z-index: 10;
+    pointer-events: none; /* Allow events to pass through to children */
+  }
+
+  /* Control buttons container */
+  .draggable-panel .control-buttons {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    pointer-events: auto; /* Re-enable pointer events for buttons */
+  }
+
   /* Drag handle styling */
   .draggable-panel :global(.drag-handle) {
     width: 1.3em;
     height: 1.3em;
     cursor: grab;
-    position: absolute;
-    top: 5px;
-    right: 5px;
     border-radius: 3px;
     padding: 2px;
     box-sizing: border-box;
-    /* Light mode - dark handle */
-    color: rgba(0, 0, 0, 0.6);
-    background-color: rgba(0, 0, 0, 0.1);
-    z-index: 1;
+    opacity: 0.6;
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    pointer-events: auto; /* Re-enable pointer events for drag handle */
   }
-  /* Dark mode - light handle */
-  :global([data-theme='dark']) .draggable-panel :global(.drag-handle),
-  :global(.dark) .draggable-panel :global(.drag-handle) {
-    color: rgba(255, 255, 255, 0.6);
-    background-color: rgba(255, 255, 255, 0.1);
+  .draggable-panel :global(.drag-handle:hover) {
+    opacity: 0.8;
+    background-color: color-mix(in srgb, currentColor 20%, transparent);
   }
   /* Ensure drag handle cursor changes properly */
   .draggable-panel :global(.drag-handle:active) {
     cursor: grabbing;
   }
+
   /* Reset and close button styling */
   .draggable-panel .reset-button,
   .draggable-panel .close-button {
-    position: absolute;
-    top: 5px;
     background: none;
     border: none;
-    cursor: pointer;
     padding: 2px;
     border-radius: 3px;
     box-sizing: border-box;
@@ -376,30 +398,13 @@
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
-    z-index: 10;
-    color: rgba(0, 0, 0, 0.6);
-    background-color: rgba(0, 0, 0, 0.1);
+    width: 1.3em;
+    height: 1.3em;
+    opacity: 0.6;
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
   }
   .draggable-panel :where(.reset-button:hover, .close-button:hover) {
-    /* Light mode - darker on hover */
-    color: rgba(0, 0, 0, 0.8);
-    background-color: rgba(0, 0, 0, 0.2);
-  }
-  /* Dark mode */
-  :global([data-theme='dark']) .drag-handle,
-  :global([data-theme='dark']) .reset-button,
-  :global([data-theme='dark']) .close-button,
-  :global(.dark) .drag-handle,
-  :global(.dark) .reset-button,
-  :global(.dark) .close-button {
-    color: rgba(255, 255, 255, 0.6);
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-  :global([data-theme='dark']) .reset-button:hover,
-  :global([data-theme='dark']) .close-button:hover,
-  :global(.dark) .reset-button:hover,
-  :global(.dark) .close-button:hover {
-    color: rgba(255, 255, 255, 0.9);
-    background-color: rgba(255, 255, 255, 0.2);
+    opacity: 0.8;
+    background-color: color-mix(in srgb, currentColor 20%, transparent);
   }
 </style>

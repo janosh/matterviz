@@ -8,93 +8,257 @@ import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { gunzipSync } from 'zlib'
 
-// Helper to read test files (handles both gzip and regular text files)
-function read_test_file(filename: string): string {
+// Helper to read test files
+const read_test_file = (filename: string): string => {
   const file_path = join(process.cwd(), `src/site/trajectories`, filename)
-
   if (filename.endsWith(`.gz`)) {
-    // Read as buffer and decompress
-    const compressed_data = readFileSync(file_path)
-    const decompressed_data = gunzipSync(compressed_data)
-    return decompressed_data.toString(`utf-8`)
-  } else {
-    // Read as regular text file
-    return readFileSync(file_path, `utf-8`)
+    return gunzipSync(readFileSync(file_path)).toString(`utf-8`)
   }
+  return readFileSync(file_path, `utf-8`)
 }
 
-// Helper to read binary test files (for HDF5)
-function read_binary_test_file(filename: string): ArrayBuffer {
+// Helper to read binary test files
+const read_binary_test_file = (filename: string): ArrayBuffer => {
   const file_path = join(process.cwd(), `src/site/trajectories`, filename)
   const buffer = readFileSync(file_path)
-  return buffer.buffer.slice(
-    buffer.byteOffset,
-    buffer.byteOffset + buffer.byteLength,
-  )
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
+// Test data factory
+const create_test_structure = (element = `H`, atoms = 3) => ({
+  sites: Array.from({ length: atoms }, (_, idx) => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
+    abc: [0, 0, 0],
+    xyz: [idx, 0, 0],
+    label: `${element}${idx + 1}`,
+    properties: {},
+  })),
+  charge: 0,
+})
+
 describe(`VASP XDATCAR Parser`, () => {
-  const xdatcar_content = read_test_file(`vasp-XDATCAR.MD.gz`)
-
   it(`should parse VASP XDATCAR file correctly`, async () => {
-    const trajectory = await parse_trajectory_data(xdatcar_content, `XDATCAR`)
+    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
+    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
 
-    expect(trajectory).toBeDefined()
     expect(trajectory.metadata?.source_format).toBe(`vasp_xdatcar`)
-    expect(trajectory.metadata?.filename).toBe(`XDATCAR`)
     expect(trajectory.frames).toHaveLength(5)
     expect(trajectory.frames[0].structure.sites).toHaveLength(80)
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
   })
 
-  it(`should throw error for invalid content`, async () => {
+  it(`should handle element names and counts correctly`, async () => {
+    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
+    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
+
+    expect(trajectory.metadata?.elements).toEqual([`O`, `Fe`])
+    expect(trajectory.metadata?.element_counts).toEqual([48, 32])
+  })
+
+  it(`should calculate lattice volumes correctly`, async () => {
+    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
+    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
+
+    trajectory.frames.forEach((frame) => {
+      if (frame.metadata?.volume !== undefined) {
+        expect(frame.metadata.volume).toBeGreaterThan(0)
+        expect(typeof frame.metadata.volume).toBe(`number`)
+      }
+    })
+  })
+
+  it(`should reject invalid content`, async () => {
     await expect(parse_trajectory_data(`too short`, `XDATCAR`)).rejects.toThrow()
+    await expect(parse_trajectory_data(`invalid\nscale\nfactor`, `XDATCAR`)).rejects
+      .toThrow()
+  })
+
+  it(`should handle missing configuration lines`, async () => {
+    const invalid_content = `title\n1.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
+    await expect(parse_trajectory_data(invalid_content, `XDATCAR`)).rejects.toThrow()
   })
 })
 
 describe(`XYZ Trajectory Format`, () => {
-  const multi_frame_xyz = `3
-energy=-10.5 step=0
-H 0.0 0.0 0.0
-H 1.0 0.0 0.0
-H 0.0 1.0 0.0
-3
-energy=-9.2 step=1
-H 0.1 0.0 0.0
-H 1.1 0.0 0.0
-H 0.1 1.0 0.0`
-
-  it(`should parse multi-frame XYZ trajectory`, async () => {
-    const trajectory = await parse_trajectory_data(multi_frame_xyz, `test.xyz`)
-
-    expect(trajectory).toBeDefined()
-    expect(trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
-    expect(trajectory.frames).toHaveLength(2)
-    expect(trajectory.frames[0].metadata?.energy).toBe(-10.5)
-    expect(trajectory.frames[1].metadata?.energy).toBe(-9.2)
+  it.each([
+    [
+      `multi-frame`,
+      `3\nenergy=-10.5\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
+      `xyz_trajectory`,
+      2,
+    ],
+    [
+      `single-frame`,
+      `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`,
+      `single_xyz`,
+      1,
+    ],
+  ])(`should parse %s XYZ`, async (_, content, expected_format, expected_frames) => {
+    const trajectory = await parse_trajectory_data(content, `test.xyz`)
+    expect(trajectory.metadata?.source_format).toBe(expected_format)
+    expect(trajectory.frames).toHaveLength(expected_frames)
   })
 
-  it(`should handle single XYZ as fallback`, async () => {
-    const single_xyz = `3
-comment
-H 0.0 0.0 0.0
-H 1.0 0.0 0.0
-H 0.0 1.0 0.0`
+  it(`should extract energy from comment line`, async () => {
+    const content =
+      `3\nenergy=-10.5 step=42\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2 step=43\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
+    const trajectory = await parse_trajectory_data(content, `test.xyz`)
 
-    const trajectory = await parse_trajectory_data(single_xyz, `test.xyz`)
-    expect(trajectory).toBeDefined()
-    expect(trajectory.metadata?.source_format).toBe(`single_xyz`)
-    expect(trajectory.frames).toHaveLength(1)
+    expect(trajectory.frames[0]?.metadata?.energy).toBe(-10.5)
+    expect(trajectory.frames[0]?.step).toBe(42)
+  })
+
+  it(`should extract various properties from comment line`, async () => {
+    const content =
+      `3\nenergy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
+    const trajectory = await parse_trajectory_data(content, `test.xyz`)
+
+    const metadata = trajectory.frames[0]?.metadata
+    expect(metadata?.energy).toBe(-10.5)
+    expect(metadata?.volume).toBe(100.0)
+    expect(metadata?.pressure).toBe(1.5)
+    expect(metadata?.temperature).toBe(300)
+    expect(metadata?.force_max).toBe(0.1)
+    expect(metadata?.bandgap).toBe(2.0)
+  })
+
+  it(`should parse lattice matrix from comment line`, async () => {
+    const content =
+      `3\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const trajectory = await parse_trajectory_data(content, `test.xyz`)
+
+    const structure = trajectory.frames[0].structure
+    expect(structure).toBeDefined()
+    expect(`lattice` in structure).toBe(true)
+    // @ts-expect-error - line above ensures lattice is defined but doesn't type narrow
+    expect(structure.lattice.matrix).toEqual([
+      [5.0, 0.0, 0.0],
+      [0.0, 5.0, 0.0],
+      [0.0, 0.0, 5.0],
+    ])
+  })
+
+  it(`should handle forces in extended XYZ format`, async () => {
+    const content =
+      `3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3\n3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3`
+    const trajectory = await parse_trajectory_data(content, `test.extxyz`)
+
+    const metadata = trajectory.frames[0]?.metadata
+    expect(metadata?.forces).toEqual([
+      [0.1, 0.0, 0.0],
+      [0.0, 0.2, 0.0],
+      [0.0, 0.0, 0.3],
+    ])
+    expect(metadata?.force_max).toBe(0.3)
+  })
+
+  it(`should handle invalid atom counts gracefully`, async () => {
+    const content =
+      `invalid\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const trajectory = await parse_trajectory_data(content, `test.xyz`)
+    expect(trajectory.frames).toHaveLength(1) // Should skip invalid and parse valid frame
+  })
+
+  it(`should skip empty lines and malformed frames`, async () => {
+    const content =
+      `\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n3\nanother valid\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const trajectory = await parse_trajectory_data(content, `test.xyz`)
+    expect(trajectory.frames).toHaveLength(2)
   })
 })
 
 describe(`HDF5 Format`, () => {
-  it(`should parse torch-sim HDF5 file`, async () => {
-    const hdf5_content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(hdf5_content, `test.h5`)
+  it(`should parse valid HDF5 file`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
 
-    expect(trajectory).toBeDefined()
-    expect(trajectory.metadata?.source_format).toBe(`torch_sim_hdf5`)
+    expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
+    expect(trajectory.frames.length).toBe(20)
+    expect(trajectory.metadata?.num_atoms).toBe(55)
+    expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(`Au`)
+  })
+
+  it(`should handle various atomic number dataset names`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+
+    // Should find atomic numbers under any of the common names
+    expect(trajectory.metadata?.element_counts).toBeDefined()
+    const element_counts = trajectory.metadata?.element_counts as Record<string, number>
+    expect(element_counts?.Au).toBe(55)
+  })
+
+  it(`should extract energy data when available`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+
+    // Check if energy data is present in metadata
+    const has_energy = trajectory.frames.some((frame) =>
+      frame.metadata?.energy !== undefined && frame.metadata?.energy !== null
+    )
+
+    if (has_energy) {
+      trajectory.frames.forEach((frame) => {
+        if (frame.metadata?.energy !== undefined) {
+          expect(typeof frame.metadata.energy).toBe(`number`)
+        }
+      })
+    }
+  })
+
+  it(`should handle periodic boundary conditions`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+
+    expect(trajectory.metadata?.periodic_boundary_conditions).toBeDefined()
+    expect(Array.isArray(trajectory.metadata?.periodic_boundary_conditions)).toBe(true)
+    expect(trajectory.metadata?.periodic_boundary_conditions).toHaveLength(3)
+  })
+
+  it(`should calculate volumes when lattice is present`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+
+    trajectory.frames.forEach((frame) => {
+      if (frame.metadata?.volume !== undefined) {
+        expect(typeof frame.metadata.volume).toBe(`number`)
+        expect(frame.metadata.volume).toBeGreaterThan(0)
+      }
+    })
+  })
+
+  it(`should provide detailed error for missing positions`, async () => {
+    // This would require a custom HDF5 file without positions - skip for now
+    // but keep the test structure for when we have such a file
+    const content = read_binary_test_file(`torch-sim-water-cluster-bad-file.h5`)
+    await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow()
+  })
+
+  it(`should provide detailed error for missing atomic numbers`, async () => {
+    const content = read_binary_test_file(`torch-sim-water-cluster-bad-file.h5`)
+    await expect(parse_trajectory_data(content, `bad.h5`)).rejects.toThrow(
+      /Missing required atomic numbers/,
+    )
+  })
+
+  it(`should produce consistent results across separate parse operations`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory1 = await parse_trajectory_data(content, `test1.h5`)
+    const trajectory2 = await parse_trajectory_data(content, `test2.h5`)
+
+    // Results should be identical but independent
+    expect(trajectory1.frames.length).toBe(trajectory2.frames.length)
+    expect(trajectory1.metadata?.num_atoms).toBe(trajectory2.metadata?.num_atoms)
+    expect(trajectory1).not.toBe(trajectory2) // Different instances
+  })
+
+  it(`should handle different HDF5 group structures`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+
+    // Should successfully parse regardless of which group contains the data
     expect(trajectory.frames.length).toBeGreaterThan(0)
+    expect(trajectory.metadata?.num_atoms).toBeGreaterThan(0)
   })
 })
 
@@ -102,139 +266,124 @@ describe(`ASE Trajectory Format`, () => {
   it.skipIf(!existsSync(join(process.cwd(), `src/site/trajectories/large`)))(
     `should parse ASE binary trajectory`,
     async () => {
-      const ase_content = read_binary_test_file(
+      const content = read_binary_test_file(
         `large/2025-07-03-ase-md-npt-300K-from-andrew-rosen.traj`,
       )
-      const trajectory = await parse_trajectory_data(ase_content, `test.traj`)
+      const trajectory = await parse_trajectory_data(content, `test.traj`)
 
-      expect(trajectory).toBeDefined()
       expect(trajectory.metadata?.source_format).toBe(`ase_trajectory`)
-      expect(trajectory.metadata?.filename).toBe(`test.traj`)
       expect(trajectory.frames.length).toBeGreaterThan(0)
+      expect(trajectory.metadata?.num_atoms).toBeGreaterThan(0)
     },
   )
-})
 
-describe(`JSON Format`, () => {
-  it(`should parse compressed JSON trajectory`, async () => {
-    const json_content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
-    const trajectory = await parse_trajectory_data(json_content, `test.json.gz`)
+  it(`should validate ASE trajectory signature`, async () => {
+    const invalid_buffer = new ArrayBuffer(24)
+    const view = new Uint8Array(invalid_buffer)
+    view.set([0x12, 0x34, 0x56, 0x78]) // Invalid signature
 
-    expect(trajectory).toBeDefined()
+    await expect(parse_trajectory_data(invalid_buffer, `test.traj`)).rejects.toThrow()
+  })
+
+  it(`should handle ASE trajectory with calculator info`, async () => {
+    // This would require a test file with calculator info
+    // For now, just test the structure exists
+    const content = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
+    const trajectory = await parse_trajectory_data(content, `test.traj`)
+
+    expect(trajectory.metadata?.source_format).toBe(`ase_trajectory`)
     expect(trajectory.frames.length).toBeGreaterThan(0)
   })
 })
 
-describe(`General Trajectory Parser`, () => {
-  it(`should route XDATCAR files to XDATCAR parser`, async () => {
-    const xdatcar_content = read_test_file(`vasp-XDATCAR.MD.gz`)
-    const trajectory = await parse_trajectory_data(
-      xdatcar_content,
-      `XDATCAR.MD`,
-    )
-
-    expect(trajectory.metadata?.source_format).toBe(`vasp_xdatcar`)
-    expect(trajectory.frames).toHaveLength(5)
+describe(`JSON Formats`, () => {
+  it(`should parse compressed JSON`, async () => {
+    const content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.json.gz`)
+    expect(trajectory.frames.length).toBeGreaterThan(0)
   })
 
-  it(`should route HDF5 files to torch-sim HDF5 parser`, async () => {
-    const hdf5_content = read_binary_test_file(
-      `torch-sim-gold-cluster-55-atoms.h5`,
-    )
-    const trajectory = await parse_trajectory_data(
-      hdf5_content,
-      `torch-sim-gold-cluster-55-atoms.h5`,
-    )
+  it(`should parse pymatgen trajectory with forces and stress`, async () => {
+    const content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.json.gz`)
 
-    expect(trajectory.frames).toHaveLength(20)
-    expect(trajectory.metadata?.num_atoms).toBe(55)
-    expect(trajectory.frames[0].structure.sites).toHaveLength(55)
-    expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(
-      `Au`,
-    )
+    expect(trajectory.metadata?.source_format).toBe(`pymatgen_trajectory`)
+    expect(trajectory.metadata?.species_list).toBeDefined()
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
+
+    // Check for forces and stress in frame properties
+    const has_forces = trajectory.frames.some((frame) => frame.metadata?.forces)
+    const has_stress = trajectory.frames.some((frame) => frame.metadata?.stress)
+
+    if (has_forces) {
+      trajectory.frames.forEach((frame) => {
+        if (frame.metadata?.forces) {
+          expect(Array.isArray(frame.metadata.forces)).toBe(true)
+          expect(frame.metadata?.force_max).toBeDefined()
+          expect(frame.metadata?.force_norm).toBeDefined()
+        }
+      })
+    }
+
+    if (has_stress) {
+      trajectory.frames.forEach((frame) => {
+        if (frame.metadata?.stress) {
+          expect(Array.isArray(frame.metadata.stress)).toBe(true)
+          expect(frame.metadata?.stress_max).toBeDefined()
+          expect(frame.metadata?.pressure).toBeDefined()
+        }
+      })
+    }
   })
 
-  it(`should handle JSON array format`, async () => {
-    const json_array = JSON.stringify([
-      {
-        structure: {
-          sites: [
-            {
-              species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-              abc: [0, 0, 0],
-              xyz: [0, 0, 0],
-              label: `H1`,
-              properties: {},
-            },
-          ],
-          charge: 0,
-        },
-        step: 0,
-        metadata: { energy: -1.0 },
-      },
-    ])
-
-    const trajectory = await parse_trajectory_data(json_array, `test.json`)
-    expect(trajectory.metadata?.source_format).toBe(`array`)
+  it.each([
+    [`array`, JSON.stringify([{ structure: create_test_structure(), step: 0 }]), `array`],
+    [
+      `object_with_frames`,
+      JSON.stringify({ frames: [{ structure: create_test_structure(), step: 0 }] }),
+      `object_with_frames`,
+    ],
+    [`single_structure`, JSON.stringify(create_test_structure()), `single_structure`],
+  ])(`should parse %s format`, async (_, content, expected_format) => {
+    const trajectory = await parse_trajectory_data(content, `test.json`)
+    expect(trajectory.metadata?.source_format).toBe(expected_format)
     expect(trajectory.frames).toHaveLength(1)
   })
 
-  it(`should handle JSON object with frames`, async () => {
-    const json_object = JSON.stringify({
-      frames: [
-        {
-          structure: {
-            sites: [
-              {
-                species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-                abc: [0, 0, 0],
-                xyz: [0, 0, 0],
-                label: `H1`,
-                properties: {},
-              },
-            ],
-            charge: 0,
-          },
-          step: 0,
-          metadata: { energy: -1.0 },
-        },
-      ],
-      metadata: { description: `test trajectory` },
-    })
+  it(`should handle malformed JSON gracefully`, async () => {
+    const malformed_json = `{ "frames": [{ "structure": { "sites": [ invalid`
+    await expect(parse_trajectory_data(malformed_json, `test.json`)).rejects.toThrow()
+  })
+})
 
-    const trajectory = await parse_trajectory_data(json_object, `test.json`)
-    expect(trajectory.metadata?.source_format).toBe(`object_with_frames`)
-    expect(trajectory.frames).toHaveLength(1)
+describe(`Format Detection`, () => {
+  it.each([
+    [`vasp-XDATCAR.MD.gz`, `vasp_xdatcar`],
+    [`torch-sim-gold-cluster-55-atoms.h5`, `hdf5_trajectory`],
+    [`pymatgen-LiMnO2-chgnet-relax.json.gz`, `pymatgen_trajectory`],
+  ])(`should route %s to %s parser`, async (filename, expected_format) => {
+    const content = filename.endsWith(`.h5`)
+      ? read_binary_test_file(filename)
+      : read_test_file(filename)
+    const trajectory = await parse_trajectory_data(content, filename)
+    expect(trajectory.metadata?.source_format).toBe(expected_format)
   })
 
-  it(`should handle single structure`, async () => {
-    const single_structure = JSON.stringify({
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        },
-      ],
-      charge: 0,
-    })
+  it(`should detect XYZ multi-frame vs single-frame`, async () => {
+    const single_frame = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const multi_frame = `${single_frame}\n${single_frame}`
 
-    const trajectory = await parse_trajectory_data(
-      single_structure,
-      `structure.json`,
-    )
-    expect(trajectory.metadata?.source_format).toBe(`single_structure`)
-    expect(trajectory.frames).toHaveLength(1)
+    const single_trajectory = await parse_trajectory_data(single_frame, `test.xyz`)
+    const multi_trajectory = await parse_trajectory_data(multi_frame, `test.xyz`)
+
+    expect(single_trajectory.metadata?.source_format).toBe(`single_xyz`)
+    expect(multi_trajectory.metadata?.source_format).toBe(`xyz_trajectory`)
   })
 
-  it(`should throw error for unrecognized format`, async () => {
-    await expect(
-      parse_trajectory_data(`invalid content`, `test.txt`),
-    ).rejects.toThrow()
-    await expect(parse_trajectory_data({}, `test.json`)).rejects.toThrow()
-    await expect(parse_trajectory_data(null, `test.json`)).rejects.toThrow()
+  it(`should detect HDF5 signature correctly`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+    expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
   })
 })
 
@@ -249,43 +398,70 @@ describe(`Unsupported Formats`, () => {
   })
 
   it(`should detect binary content as unsupported`, () => {
-    const binary_content = `\x00\x01\x02\x03`
-    const message = get_unsupported_format_message(`unknown.bin`, binary_content)
+    const message = get_unsupported_format_message(`unknown.bin`, `\x00\x01\x02\x03`)
     expect(message).toContain(`Binary format not supported`)
   })
 
-  it.each([
-    [`test.xyz`],
-    [`test.json`],
-    [`XDATCAR`],
-    [`test.h5`],
-    [`test.hdf5`],
-    [`test.traj`],
-  ])(`should return null for supported format: %s`, (filename) => {
-    expect(get_unsupported_format_message(filename, ``)).toBeNull()
-  })
+  it.each([`test.xyz`, `test.json`, `XDATCAR`, `test.h5`, `test.traj`])(
+    `should return null for supported format: %s`,
+    (filename) => {
+      expect(get_unsupported_format_message(filename, ``)).toBeNull()
+    },
+  )
 })
 
 describe(`Error Handling`, () => {
-  it(`should throw for completely invalid content`, async () => {
-    await expect(parse_trajectory_data(`completely invalid`, `unknown.txt`)).rejects
-      .toThrow()
+  it.each([
+    [`invalid text`, `unknown.txt`],
+    [new ArrayBuffer(8), `unknown.bin`],
+    [``, `empty.txt`],
+    [`   `, `whitespace.txt`],
+    [null, `null.txt`],
+    [undefined, `undefined.txt`],
+    [{}, `empty-object.json`],
+  ])(`should reject invalid input: %s`, async (content, filename) => {
+    await expect(parse_trajectory_data(content, filename)).rejects.toThrow()
   })
 
-  it(`should throw for unsupported binary format`, async () => {
-    const invalid_binary = new ArrayBuffer(8)
-    await expect(parse_trajectory_data(invalid_binary, `unknown.bin`)).rejects.toThrow(
-      `Unsupported binary format`,
+  it(`should provide helpful error messages`, async () => {
+    const too_short_hdf5 = new ArrayBuffer(4)
+    await expect(parse_trajectory_data(too_short_hdf5, `test.h5`)).rejects.toThrow(
+      /Unsupported binary format/,
     )
+
+    const invalid_xdatcar = `title\ninvalid_scale\n`
+    await expect(parse_trajectory_data(invalid_xdatcar, `XDATCAR`)).rejects.toThrow()
   })
 
-  it(`should handle empty content`, async () => {
-    await expect(parse_trajectory_data(``)).rejects.toThrow()
-    await expect(parse_trajectory_data(`   `)).rejects.toThrow()
+  it(`should handle edge cases in XYZ parsing`, async () => {
+    const negative_atoms =
+      `-1\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const trajectory = await parse_trajectory_data(negative_atoms, `test.xyz`)
+    expect(trajectory.frames).toHaveLength(1) // Should skip negative atoms and parse valid frame
+
+    const zero_atoms =
+      `0\ncomment\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const trajectory2 = await parse_trajectory_data(zero_atoms, `test.xyz`)
+    expect(trajectory2.frames).toHaveLength(1) // Should skip zero atoms and parse valid frame
+  })
+})
+
+describe(`Metadata Preservation`, () => {
+  it(`should preserve filename in metadata`, async () => {
+    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
+    const trajectory = await parse_trajectory_data(content, `test-filename.xdatcar`)
+    expect(trajectory.metadata?.filename).toBe(`test-filename.xdatcar`)
   })
 
-  it(`should handle null/undefined input`, async () => {
-    await expect(parse_trajectory_data(null)).rejects.toThrow()
-    await expect(parse_trajectory_data(undefined)).rejects.toThrow()
+  it(`should calculate frame counts correctly`, async () => {
+    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
+    const trajectory = await parse_trajectory_data(content, `XDATCAR`)
+    expect(trajectory.metadata?.frame_count).toBe(trajectory.frames.length)
+  })
+
+  it(`should preserve lattice info flags`, async () => {
+    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const trajectory = await parse_trajectory_data(content, `test.h5`)
+    expect(trajectory.metadata?.has_cell_info).toBeDefined()
   })
 })

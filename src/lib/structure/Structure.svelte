@@ -124,8 +124,8 @@
   })
 
   let visible_buttons = $derived(
-    show_buttons == true ||
-      (typeof show_buttons == `number` && show_buttons < width),
+    show_buttons === true ||
+      (typeof show_buttons === `number` && show_buttons < width),
   )
 
   // only updates when structure or show_image_atoms change
@@ -141,19 +141,16 @@
   let scene: Scene | undefined = $state(undefined)
   let camera: Camera | undefined = $state(undefined)
 
-  // Track which panel was opened last for mutual exclusion
-  let last_opened: `info` | `controls` | null = $state(null)
+  // Custom toggle handlers for mutual exclusion
+  function toggle_info() {
+    if (info_open) info_open = false
+    else [info_open, controls_open] = [true, false]
+  }
 
-  // Auto-close behavior: make info/controls panels mutually exclusive
-  $effect(() => {
-    if (info_open && !controls_open) last_opened = `info`
-    if (controls_open && !info_open) last_opened = `controls`
-
-    if (info_open && controls_open) {
-      if (last_opened === `info`) controls_open = false
-      else info_open = false
-    }
-  })
+  function toggle_controls() {
+    if (controls_open) controls_open = false
+    else [controls_open, info_open] = [true, false]
+  }
 
   // Reset tracking when structure changes
   $effect(() => {
@@ -281,21 +278,13 @@
       }
     }
   })
-
-  // Listen for fullscreen changes to keep state in sync
-  $effect(() => {
-    if (typeof window === `undefined`) return
-    const on_fullscreen_change = () => {
-      fullscreen = !!document.fullscreenElement
-    }
-
-    document.addEventListener(`fullscreenchange`, on_fullscreen_change)
-
-    return () => {
-      document.removeEventListener(`fullscreenchange`, on_fullscreen_change)
-    }
-  })
 </script>
+
+<svelte:document
+  onfullscreenchange={() => {
+    fullscreen = !!document.fullscreenElement
+  }}
+/>
 
 {#if (structure?.sites?.length ?? 0) > 0}
   <div
@@ -322,52 +311,55 @@
     {...rest}
   >
     <section class:visible={visible_buttons} class="control-buttons">
-      {#if camera_has_moved}
-        <button class="reset-camera" onclick={reset_camera} title={reset_text}>
-          <!-- Target/Focus icon for reset camera -->
-          <Icon icon="Reset" />
-        </button>
-      {/if}
-      {#if fullscreen_toggle}
-        <button
-          onclick={toggle_fullscreen}
-          class="fullscreen-toggle"
-          title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-        >
-          {#if typeof fullscreen_toggle === `function`}
-            {@render fullscreen_toggle()}
-          {:else}
-            <Icon
-              icon="{fullscreen ? `Exit` : ``}Fullscreen"
-              style="transform: scale(0.9)"
-            />
-          {/if}
-        </button>
-      {/if}
+      {#if visible_buttons}
+        {#if camera_has_moved}
+          <button class="reset-camera" onclick={reset_camera} title={reset_text}>
+            <!-- Target/Focus icon for reset camera -->
+            <Icon icon="Reset" />
+          </button>
+        {/if}
+        {#if fullscreen_toggle}
+          <button
+            onclick={toggle_fullscreen}
+            class="fullscreen-toggle"
+            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+          >
+            {#if typeof fullscreen_toggle === `function`}
+              {@render fullscreen_toggle()}
+            {:else}
+              <Icon
+                icon="{fullscreen ? `Exit` : ``}Fullscreen"
+                style="transform: scale(0.9)"
+              />
+            {/if}
+          </button>
+        {/if}
 
-      {#if enable_info && structure}
-        <StructureInfoPanel {structure} bind:info_open />
-      {/if}
+        {#if enable_info && structure}
+          <StructureInfoPanel {structure} bind:info_open custom_toggle={toggle_info} />
+        {/if}
 
-      <StructureControls
-        bind:controls_open
-        bind:scene_props
-        bind:lattice_props
-        bind:show_image_atoms
-        bind:show_site_labels
-        bind:show_full_controls
-        bind:background_color
-        bind:background_opacity
-        bind:color_scheme
-        bind:png_dpi
-        {structure}
-        {wrapper}
-        {save_json_btn_text}
-        {save_png_btn_text}
-        {save_xyz_btn_text}
-        {scene}
-        {camera}
-      />
+        <StructureControls
+          bind:controls_open
+          bind:scene_props
+          bind:lattice_props
+          bind:show_image_atoms
+          bind:show_site_labels
+          bind:show_full_controls
+          bind:background_color
+          bind:background_opacity
+          bind:color_scheme
+          bind:png_dpi
+          {structure}
+          {wrapper}
+          {save_json_btn_text}
+          {save_png_btn_text}
+          {save_xyz_btn_text}
+          {scene}
+          {camera}
+          custom_toggle={toggle_controls}
+        />
+      {/if}
     </section>
 
     <StructureLegend elements={get_elem_amounts(structure!)} />

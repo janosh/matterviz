@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DataSeries } from '$lib/plot'
-  import { PlotLegend } from '$lib/plot'
+  import { HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, extent, max } from 'd3-array'
   import { format } from 'd3-format'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -37,29 +37,41 @@
     x_ticks?: TicksOption
     y_ticks?: TicksOption
     tooltip?: Snippet<[{ value: number; count: number; property: string }]>
+    // Control panel props
+    show_controls?: boolean
+    controls_open?: boolean
+    plot_controls?: Snippet<[]>
+    // Callback for handling series visibility changes
+    on_series_toggle?: (series_idx: number) => void
     [key: string]: unknown
   }
   let {
     series = [],
-    bins = 20,
+    bins = $bindable(20),
     x_label = `Value`,
     y_label = `Count`,
-    x_format = `.2~s`,
-    y_format = `d`,
-    x_scale_type = `linear`,
-    y_scale_type = `linear`,
+    x_format = $bindable(`.2~s`),
+    y_format = $bindable(`d`),
+    x_scale_type = $bindable(`linear`),
+    y_scale_type = $bindable(`linear`),
     padding = { t: 20, b: 60, l: 60, r: 20 },
-    show_legend = true,
+    show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar_opacity = 0.7,
-    bar_stroke_width = 1,
-    selected_property = ``,
-    mode = `single`,
-    x_grid = true,
-    y_grid = true,
-    x_ticks = 8,
-    y_ticks = 6,
+    bar_opacity = $bindable(0.7),
+    bar_stroke_width = $bindable(1),
+    selected_property = $bindable(``),
+    mode = $bindable(`single`),
+    x_grid = $bindable(true),
+    y_grid = $bindable(true),
+    x_ticks = $bindable(8),
+    y_ticks = $bindable(6),
     tooltip,
+    // Control panel props
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
+    plot_controls,
+    // Callback for handling series visibility changes
+    on_series_toggle = () => {},
     ...rest
   }: Props = $props()
 
@@ -172,9 +184,11 @@
   let legend_data = $derived(prepare_legend_data(series))
   function toggle_series_visibility(series_idx: number) {
     if (series_idx >= 0 && series_idx < series.length) {
-      series[series_idx] = {
-        ...series[series_idx],
-        visible: !(series[series_idx].visible ?? true),
+      // Use the legend's on_toggle callback if provided, otherwise use the component's callback
+      if (legend?.on_toggle) {
+        legend.on_toggle(series_idx)
+      } else {
+        on_series_toggle(series_idx)
       }
     }
   }
@@ -353,6 +367,30 @@
         </text>
       </g>
     </svg>
+  {/if}
+
+  <!-- Control Panel -->
+  {#if show_controls}
+    <HistogramControls
+      bind:show_controls
+      bind:controls_open
+      bind:bins
+      bind:mode
+      bind:bar_opacity
+      bind:bar_stroke_width
+      bind:show_legend
+      bind:x_grid
+      bind:y_grid
+      bind:x_scale_type
+      bind:y_scale_type
+      bind:x_ticks
+      bind:y_ticks
+      bind:x_format
+      bind:y_format
+      bind:selected_property
+      {series}
+      {plot_controls}
+    />
   {/if}
 
   <!-- Legend -->

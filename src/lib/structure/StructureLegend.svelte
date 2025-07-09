@@ -86,6 +86,5 @@
     visibility: hidden;
     top: 7pt;
     left: 0;
-    cursor: pointer;
   }
 </style>

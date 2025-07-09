@@ -4,7 +4,13 @@
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
   import { colors } from '$lib/state.svelte'
-  import { Bond, Lattice, STRUCT_DEFAULTS, Vector } from '$lib/structure'
+  import {
+    Bond,
+    get_center_of_mass,
+    Lattice,
+    STRUCT_DEFAULTS,
+    Vector,
+  } from '$lib/structure'
   import { T } from '@threlte/core'
   import { Gizmo, HTML, interactivity, OrbitControls } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -114,6 +120,15 @@
   let lattice = $derived(
     structure && `lattice` in structure ? structure.lattice : null,
   )
+
+  // Get rotation target: lattice center for crystalline structures, center of mass for molecular systems
+  let rotation_target = $derived(
+    lattice
+      ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3)
+      : structure
+      ? get_center_of_mass(structure)
+      : [0, 0, 0] as Vec3,
+  )
   $effect.pre(() => {
     if (camera_position.every((val) => val === 0) && structure) {
       // Simple approach: use sum of lattice dimensions as size estimate
@@ -175,7 +190,7 @@
     zoomSpeed={zoom_speed}
     enablePan={pan_speed > 0}
     panSpeed={pan_speed}
-    target={lattice ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3) : [0, 0, 0]}
+    target={rotation_target}
     maxZoom={max_zoom}
     minZoom={min_zoom}
     autoRotate={Boolean(auto_rotate)}
