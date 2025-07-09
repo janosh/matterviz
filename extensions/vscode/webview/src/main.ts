@@ -29,6 +29,14 @@ interface MatterVizApp {
   destroy(): void
 }
 
+interface FileChangeMessage {
+  command: `fileUpdated` | `fileDeleted`
+  file_path?: string
+  data?: FileData
+  type?: `trajectory` | `structure`
+  theme?: ThemeName
+}
+
 // VSCode webview API type (available globally in webview context)
 interface WebviewApi {
   postMessage(message: { command: string; text: string }): void
@@ -46,6 +54,83 @@ declare global {
   // VSCode webview API is available globally
   function acquireVsCodeApi(): WebviewApi
   const vscode: WebviewApi | undefined
+}
+
+// Global VSCode API instance
+let vscode_api: WebviewApi | null = null
+let current_app: MatterVizApp | null = null
+
+// Initialize VSCode API once
+const get_vscode_api = (): WebviewApi | null => {
+  if (vscode_api) return vscode_api
+
+  if (typeof acquireVsCodeApi !== `undefined`) {
+    try {
+      vscode_api = acquireVsCodeApi()
+      return vscode_api
+    } catch (error) {
+      console.warn(`Failed to acquire VSCode API:`, error)
+      return null
+    }
+  }
+
+  return null
+}
+
+// Handle file change events from extension
+const handle_file_change = async (message: FileChangeMessage): Promise<void> => {
+  console.log(`File change message:`, message)
+
+  if (message.command === `fileDeleted`) {
+    // File was deleted - show error message
+    const container = document.getElementById(`matterviz-app`)
+    if (container) {
+      container.innerHTML = `
+        <div style="padding: 2rem; text-align: center; color: var(--vscode-errorForeground);">
+          <h2>File Deleted</h2>
+          <p>The file "${message.file_path}" has been deleted.</p>
+        </div>
+      `
+    }
+    return
+  }
+
+  if (message.command === `fileUpdated` && message.data) {
+    try {
+      // Apply updated theme
+      if (message.theme) {
+        apply_theme(message.theme as ThemeName)
+      }
+
+      // Parse updated file content
+      const { content, filename, isCompressed } = message.data
+      const result = await parse_file_content(content, filename, isCompressed)
+
+      // Update the display
+      const container = document.getElementById(`matterviz-app`)
+      if (container && current_app) {
+        current_app.destroy()
+        current_app = create_display(container, result, result.filename) as MatterVizApp
+      }
+
+      const api = get_vscode_api()
+      if (api) {
+        api.postMessage({
+          command: `info`,
+          text: `File reloaded successfully`,
+        })
+      }
+    } catch (error) {
+      console.error(`Failed to reload file:`, error)
+      const api = get_vscode_api()
+      if (api) {
+        api.postMessage({
+          command: `error`,
+          text: `Failed to reload file: ${error}`,
+        })
+      }
+    }
+  }
 }
 
 // Convert base64 to ArrayBuffer for binary files
@@ -173,7 +258,7 @@ const create_display = (
   container: HTMLElement,
   result: ParseResult,
   filename: string,
-): unknown => {
+): MatterVizApp => {
   Object.assign(container.style, {
     width: `100%`,
     height: `100%`,
@@ -211,9 +296,15 @@ const create_display = (
     : `Structure rendered: ${filename} (${result.data.sites.length} atoms)`
 
   // Get VSCode API if available
-  const vscode_api = typeof acquireVsCodeApi !== `undefined` ? acquireVsCodeApi() : null
-  vscode_api?.postMessage({ command: `info`, text: message })
-  return component
+  const api = get_vscode_api()
+  api?.postMessage({ command: `info`, text: message })
+
+  return {
+    destroy: () => {
+      component.$destroy?.()
+      container.innerHTML = ``
+    },
+  }
 }
 
 // Initialize the MatterViz application
@@ -233,16 +324,42 @@ const initialize_app = async (): Promise<MatterVizApp> => {
 
   try {
     const result = await parse_file_content(content, filename, isCompressed)
-    create_display(container, result, result.filename)
-    return globalThis.MatterVizApp = {
-      destroy: () => container.innerHTML = ``,
+    const app = create_display(container, result, result.filename)
+
+    // Store the app instance for file watching
+    current_app = app
+
+    // Set up file change monitoring
+    const api = get_vscode_api()
+    if (api) {
+      console.log(`[MatterViz Webview] Setting up file change listener`)
+      // Listen for file change messages from extension
+      globalThis.addEventListener(`message`, (event) => {
+        const message = event.data as FileChangeMessage
+        console.log(`[MatterViz Webview] Received message:`, message)
+        if (
+          message.command === `fileUpdated` || message.command === `fileDeleted`
+        ) {
+          console.log(
+            `[MatterViz Webview] Handling file change:`,
+            message.command,
+          )
+          handle_file_change(message)
+        }
+      })
+    } else {
+      console.log(
+        `[MatterViz Webview] VSCode API not available - file watching disabled`,
+      )
     }
+
+    return app
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error))
     create_error_display(container, err, filename)
     // Get VSCode API if available
-    const vscode_api = typeof acquireVsCodeApi !== `undefined` ? acquireVsCodeApi() : null
-    vscode_api?.postMessage({
+    const api = get_vscode_api()
+    api?.postMessage({
       command: `error`,
       text: `Failed to render file: ${err.message}`,
     })
@@ -257,7 +374,9 @@ globalThis.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
     return null
   }
   try {
-    return await initialize_app()
+    const app = await initialize_app()
+    current_app = app
+    return app
   } catch (error) {
     console.error(`MatterViz initialization error:`, error)
     return null

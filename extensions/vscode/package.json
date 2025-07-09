@@ -67,15 +67,9 @@
     }
   },
   "scripts": {
-    "build:clean": "rm -rf dist",
-    "build:tsc": "tsc",
-    "build:theme": "mkdir -p dist/src/lib/theme && cp -r ../../src/lib/theme/* dist/src/lib/theme/",
-    "build:move": "mv dist/extensions/vscode/src/extension.js dist/extension.cjs",
-    "build:fix-imports": "sed -i.bak 's|../../../src/lib/theme/index|./src/lib/theme/index|g' dist/extension.cjs && rm -f dist/extension.cjs.bak",
-    "build:vite": "vite build",
-    "build": "pnpm build:clean && pnpm build:tsc && pnpm build:theme && pnpm build:move && pnpm build:fix-imports && pnpm build:vite",
+    "build": "rm -rf dist && tsc && cp -r ../../src/lib/theme dist/src/lib/ && mv dist/extensions/vscode/src/extension.js dist/extension.cjs && sed -i.bak 's|../../../src/lib/theme/index|./src/lib/theme/index|g' dist/extension.cjs && rm -f dist/extension.cjs.bak && vite build",
     "dev": "tsc --watch & vite build --watch",
-    "vitest": "vitest",
+    "test": "vitest run",
     "package": "pnpm build && vsce package"
   },
   "devDependencies": {

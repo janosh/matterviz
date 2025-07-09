@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { format_num, MaterialCard, Structure, StructureCard } from '$lib'
+  import { format_num, MaterialCard, Structure } from '$lib'
   import { download, fetch_zipped, mp_build_bucket } from '$lib/api'
 
   let { data = $bindable() } = $props()
@@ -66,11 +66,7 @@
   </center>
   <Structure structure={data.summary.structure} />
 
-  <MaterialCard material={data.summary}>
-    {#snippet after_symmetry()}
-      <StructureCard structure={data.summary.structure} />
-    {/snippet}
-  </MaterialCard>
+  <MaterialCard material={data.summary} />
 
   <h3>
     Crystal description

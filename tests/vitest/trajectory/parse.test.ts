@@ -2,11 +2,11 @@ import {
   get_unsupported_format_message,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import process from 'node:process'
-import { join } from 'path'
+import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { gunzipSync } from 'zlib'
 
 // Helper to read test files
 const read_test_file = (filename: string): string => {
@@ -176,6 +176,13 @@ describe(`HDF5 Format`, () => {
     expect(trajectory.frames.length).toBe(20)
     expect(trajectory.metadata?.num_atoms).toBe(55)
     expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(`Au`)
+
+    // Should include dataset discovery information
+    expect(trajectory.metadata?.discovered_datasets).toBeDefined()
+    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
+    expect(discovery?.positions).toBeDefined()
+    expect(discovery?.atomic_numbers).toBeDefined()
+    expect(trajectory.metadata?.total_groups_found).toBeGreaterThan(0)
   })
 
   it(`should handle various atomic number dataset names`, async () => {
@@ -236,9 +243,16 @@ describe(`HDF5 Format`, () => {
 
   it(`should provide detailed error for missing atomic numbers`, async () => {
     const content = read_binary_test_file(`torch-sim-water-cluster-bad-file.h5`)
-    await expect(parse_trajectory_data(content, `bad.h5`)).rejects.toThrow(
-      /Missing required atomic numbers/,
-    )
+
+    try {
+      await parse_trajectory_data(content, `bad.h5`)
+      expect.fail(`Expected parsing to fail`)
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        expect(error.message).toMatch(/Missing required.*dataset/i)
+        expect(error.message.length).toBeGreaterThan(50) // More informative than before
+      }
+    }
   })
 
   it(`should produce consistent results across separate parse operations`, async () => {
@@ -249,6 +263,9 @@ describe(`HDF5 Format`, () => {
     // Results should be identical but independent
     expect(trajectory1.frames.length).toBe(trajectory2.frames.length)
     expect(trajectory1.metadata?.num_atoms).toBe(trajectory2.metadata?.num_atoms)
+    expect(trajectory1.metadata?.discovered_datasets).toEqual(
+      trajectory2.metadata?.discovered_datasets,
+    )
     expect(trajectory1).not.toBe(trajectory2) // Different instances
   })
 
@@ -259,6 +276,11 @@ describe(`HDF5 Format`, () => {
     // Should successfully parse regardless of which group contains the data
     expect(trajectory.frames.length).toBeGreaterThan(0)
     expect(trajectory.metadata?.num_atoms).toBeGreaterThan(0)
+
+    // Discovery information should show dataset paths
+    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
+    expect(discovery?.positions).toContain(`/`)
+    expect(discovery?.atomic_numbers).toContain(`/`)
   })
 })
 
