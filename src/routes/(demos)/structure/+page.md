@@ -15,7 +15,7 @@
 
 ```svelte example stackblitz
 <script>
-  import { Structure, StructureCard } from '$lib'
+  import { Structure } from '$lib'
   import { structures } from '$site/structures'
   import Select from 'svelte-multiselect'
 
@@ -47,10 +47,6 @@
 </form>
 
 <h3 align="center">{formula}</h3>
-<StructureCard {structure} />
-<p>
-  canvas width=<span>{width}</span>, height=<span>{height}</span>
-</p>
 <Structure {structure} bind:width bind:height />
 
 <style>

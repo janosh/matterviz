@@ -7,7 +7,6 @@ import {
   COLOR_THEMES,
   is_valid_theme_mode,
 } from '../../../src/lib/theme/index'
-
 interface FileData {
   filename: string
   content: string
@@ -25,7 +24,11 @@ interface MessageData {
   text?: string
   filename?: string
   content?: string
+  file_path?: string
 }
+
+// Track active file watchers by file path
+const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 
 // Check if filename indicates a trajectory file
 export function is_trajectory_file(filename: string): boolean {
@@ -77,7 +80,9 @@ export const get_file = (uri?: vscode.Uri): FileData => {
     return read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
   }
 
-  throw new Error(`No file found`)
+  throw new Error(
+    `No file selected. MatterViz needs an active editor to know what to render.`,
+  )
 }
 
 // Detect VSCode theme and user preference
@@ -107,18 +112,13 @@ const get_system_theme = (): ThemeName => {
   const color_theme = vscode.window.activeColorTheme
 
   // Map VSCode theme kind to our theme names
-  switch (color_theme.kind) {
-    case vscode.ColorThemeKind.Light:
-      return COLOR_THEMES.light
-    case vscode.ColorThemeKind.Dark:
-      return COLOR_THEMES.dark
-    case vscode.ColorThemeKind.HighContrast:
-      return COLOR_THEMES.black
-    case vscode.ColorThemeKind.HighContrastLight:
-      return COLOR_THEMES.white
-    default:
-      return COLOR_THEMES.light
-  }
+  if (color_theme.kind === vscode.ColorThemeKind.Light) return COLOR_THEMES.light
+  else if (color_theme.kind === vscode.ColorThemeKind.Dark) return COLOR_THEMES.dark
+  else if (color_theme.kind === vscode.ColorThemeKind.HighContrast) {
+    return COLOR_THEMES.black
+  } else if (color_theme.kind === vscode.ColorThemeKind.HighContrastLight) {
+    return COLOR_THEMES.white
+  } else return COLOR_THEMES.light
 }
 
 // Create HTML content for webview
@@ -155,7 +155,10 @@ export const create_html = (
 }
 
 // Handle messages from webview
-export const handle_msg = async (msg: MessageData): Promise<void> => {
+export const handle_msg = async (
+  msg: MessageData,
+  webview?: vscode.Webview,
+): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     vscode.window.showInformationMessage(msg.text)
   } else if (msg.command === `error` && msg.text) {
@@ -177,13 +180,130 @@ export const handle_msg = async (msg: MessageData): Promise<void> => {
       const message = error instanceof Error ? error.message : String(error)
       vscode.window.showErrorMessage(`Save failed: ${message}`)
     }
+  } else if (msg.command === `startWatching` && msg.file_path && webview) {
+    // Handle request to start watching a file
+    start_watching_file(msg.file_path, webview)
+  } else if (msg.command === `stopWatching` && msg.file_path) {
+    // Handle request to stop watching a file
+    stop_watching_file(msg.file_path)
   }
 }
 
-// Render structure or trajectory in webview
+// Start watching a file using VS Code's built-in file system watcher
+function start_watching_file(file_path: string, webview: vscode.Webview): void {
+  try {
+    // Stop existing watcher for this file if any
+    stop_watching_file(file_path)
+
+    // Create a new file system watcher for this specific file
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(
+        vscode.Uri.file(path.dirname(file_path)),
+        path.basename(file_path),
+      ),
+    )
+
+    // Listen for file changes
+    watcher.onDidChange(() => {
+      handle_file_change(`change`, file_path, webview)
+    })
+
+    // Listen for file deletion
+    watcher.onDidDelete(() => {
+      handle_file_change(`delete`, file_path, webview)
+      stop_watching_file(file_path) // Clean up watcher
+    })
+
+    active_watchers.set(file_path, watcher)
+    console.log(`Started watching file: ${file_path}`)
+  } catch (error) {
+    console.error(`Failed to start watching file ${file_path}:`, error)
+    webview.postMessage({
+      command: `error`,
+      text: `Failed to start watching file: ${error}`,
+    })
+  }
+}
+
+// Handle file change events from VS Code file system watcher
+function handle_file_change(
+  event_type: `change` | `delete`,
+  file_path: string,
+  webview: vscode.Webview,
+): void {
+  console.log(`[MatterViz] File change detected:`, {
+    file_path,
+    event_type,
+  })
+
+  if (event_type === `delete`) {
+    // File was deleted - send notification
+    console.log(`[MatterViz] Sending fileDeleted message to webview`)
+    try {
+      webview.postMessage({
+        command: `fileDeleted`,
+        file_path,
+      })
+    } catch (error) {
+      console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
+    }
+    return
+  }
+
+  if (event_type === `change`) {
+    // File was changed - send updated content
+    try {
+      console.log(`[MatterViz] Reading updated file content...`)
+      const updated_file = read_file(file_path)
+      const filename = path.basename(file_path)
+
+      console.log(`[MatterViz] Sending fileUpdated message to webview:`, {
+        filename,
+        content_length: updated_file.content.length,
+        isCompressed: updated_file.isCompressed,
+      })
+
+      webview.postMessage({
+        command: `fileUpdated`,
+        file_path,
+        data: updated_file,
+        type: is_trajectory_file(filename) ? `trajectory` : `structure`,
+        theme: get_theme(),
+      })
+    } catch (error) {
+      console.error(
+        `[MatterViz] Failed to read updated file ${file_path}:`,
+        error,
+      )
+      try {
+        webview.postMessage({
+          command: `error`,
+          text: `Failed to read updated file: ${error}`,
+        })
+      } catch (msgError) {
+        console.error(`[MatterViz] Failed to send error message:`, msgError)
+      }
+    }
+  }
+}
+
+// Stop watching a file and dispose the watcher
+function stop_watching_file(file_path: string): void {
+  const watcher = active_watchers.get(file_path)
+  if (watcher) {
+    watcher.dispose()
+    active_watchers.delete(file_path)
+    console.log(`Stopped watching file: ${file_path}`)
+  }
+}
+
+// Enhanced render function with file watching
 export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
   try {
     const file = get_file(uri)
+    const file_path = uri?.fsPath ||
+      vscode.window.activeTextEditor?.document.fileName
+
     const panel = vscode.window.createWebviewPanel(
       `matterviz`,
       `MatterViz - ${file.filename}`,
@@ -197,13 +317,20 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
         ],
       },
     )
+
+    // Start watching the file if we have a file path
+    if (file_path) {
+      start_watching_file(file_path, panel.webview)
+    }
+
     panel.webview.html = create_html(panel.webview, context, {
       type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
       data: file,
       theme: get_theme(),
     })
+
     panel.webview.onDidReceiveMessage(
-      handle_msg,
+      (msg: MessageData) => handle_msg(msg, panel.webview),
       undefined,
       context.subscriptions,
     )
@@ -211,9 +338,10 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
     // Listen for theme changes and update webview
     const update_theme = () => {
       if (panel.visible) {
+        const current_file = file_path ? read_file(file_path) : file
         panel.webview.html = create_html(panel.webview, context, {
           type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
-          data: file,
+          data: current_file,
           theme: get_theme(),
         })
       }
@@ -223,7 +351,7 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
       update_theme,
     )
     const config_change_listener = vscode.workspace.onDidChangeConfiguration(
-      (event) => {
+      (event: vscode.ConfigurationChangeEvent) => {
         if (event.affectsConfiguration(`matterviz.theme`)) {
           update_theme()
         }
@@ -234,6 +362,9 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
     panel.onDidDispose(() => {
       theme_change_listener.dispose()
       config_change_listener.dispose()
+
+      // Clean up file watcher
+      if (file_path) stop_watching_file(file_path)
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
@@ -263,6 +394,8 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
   ) {
     try {
       const filename = path.basename(document.uri.fsPath)
+      const file_path = document.uri.fsPath
+
       webview_panel.webview.options = {
         enableScripts: true,
         localResourceRoots: [
@@ -280,10 +413,13 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         },
       )
       webview_panel.webview.onDidReceiveMessage(
-        handle_msg,
+        (msg: MessageData) => handle_msg(msg, webview_panel.webview),
         undefined,
         this.context.subscriptions,
       )
+
+      // Start watching the file immediately
+      start_watching_file(file_path, webview_panel.webview)
 
       // Listen for theme changes and update webview
       const update_theme = () => {
@@ -304,7 +440,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         update_theme,
       )
       const config_change_listener = vscode.workspace.onDidChangeConfiguration(
-        (event) => {
+        (event: vscode.ConfigurationChangeEvent) => {
           if (event.affectsConfiguration(`matterviz.theme`)) {
             update_theme()
           }
@@ -315,6 +451,8 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       webview_panel.onDidDispose(() => {
         theme_change_listener.dispose()
         config_change_listener.dispose()
+
+        stop_watching_file(file_path) // Clean up file watcher
       })
       // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
@@ -340,4 +478,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 }
 
 // Deactivate extension
-export const deactivate = (): void => {}
+export const deactivate = (): void => {
+  // Clean up all active file watchers
+  for (const watcher of active_watchers.values()) {
+    watcher.dispose()
+  }
+  active_watchers.clear()
+}

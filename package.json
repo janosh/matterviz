@@ -10,7 +10,7 @@
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/matterviz/issues",
   "dependencies": {
-    "@sveltejs/kit": "^2.22.2",
+    "@sveltejs/kit": "2.22.2",
     "@threlte/core": "8.0.5",
     "@threlte/extras": "^9.4.1",
     "@types/d3-force": "^3.0.10",

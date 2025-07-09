@@ -5,6 +5,7 @@ import { atomic_number_to_symbol } from '$lib/composition/parse'
 import { parse_xyz } from '$lib/io/parse'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
 import type { Trajectory, TrajectoryFrame } from './index'
 
@@ -23,19 +24,20 @@ interface ParsedFrame {
   metadata?: Record<string, unknown>
 }
 
-// Add interface for HDF5 group to replace 'any' type
-interface Hdf5Group {
-  get(name: string): Hdf5Dataset | Hdf5Group | null
-  keys?(): string[] // Optional method for iterating through group contents
+// Type guard to check if an entity is a Dataset
+const is_hdf5_dataset = (entity: Entity | null): entity is Dataset => {
+  return entity !== null &&
+    (`to_array` in entity ||
+      entity instanceof h5wasm.Dataset ||
+      entity.constructor.name === `Dataset`)
 }
 
-interface Hdf5Dataset {
-  to_array(): unknown
-}
-
-// Type guard to check if an object is an Hdf5Dataset
-const is_hdf5_dataset = (obj: Hdf5Dataset | Hdf5Group | null): obj is Hdf5Dataset => {
-  return obj !== null && `to_array` in obj
+// Type guard to check if an entity is a Group
+const is_hdf5_group = (entity: Entity | null): entity is Group => {
+  return entity !== null &&
+    (`keys` in entity && `get` in entity ||
+      entity instanceof h5wasm.Group ||
+      entity.constructor.name === `Group`)
 }
 
 // Cache for matrix inversions
@@ -242,55 +244,62 @@ const parse_torch_sim_hdf5 = async (
   const h5_file = new h5wasm.File(temp_filename, `r`)
 
   try {
-    // Cache for HDF5 dataset lookups to avoid redundant I/O operations
-    const cache = new Map<string, Hdf5Dataset | Hdf5Group | null>()
+    // Discover all groups in the file
+    const discover_groups = (
+      parent: Group,
+      path = `root`,
+    ): Array<[string, Group]> => {
+      const groups: Array<[string, Group]> = [[path, parent]]
 
-    const get_dataset = (
-      group: { get: (name: string) => unknown } | null,
-      name: string,
-      group_path: string,
-    ) => {
-      if (!group) return null
-      const key = `${group_path}/${name}`
-      if (cache.has(key)) {
-        const cached_result = cache.get(key)
-        return cached_result || null
+      for (const name of parent.keys()) {
+        const item = parent.get(name)
+        if (is_hdf5_group(item)) {
+          groups.push(...discover_groups(item, `${path}/${name}`))
+        }
       }
-      const result = group.get(name) as Hdf5Dataset | Hdf5Group | null
-      cache.set(key, result)
-      return result
+      return groups
     }
 
-    // Get main groups
-    const groups = {
-      root: h5_file,
-      data: get_dataset(h5_file, `data`, `root`) as Hdf5Group | null,
-      header: get_dataset(h5_file, `header`, `root`) as Hdf5Group | null,
-      metadata: get_dataset(h5_file, `metadata`, `root`) as Hdf5Group | null,
-      steps: get_dataset(h5_file, `steps`, `root`) as Hdf5Group | null,
-    }
+    const all_groups = discover_groups(h5_file as unknown as Group)
 
-    // Find positions (required)
+    // Find positions dataset (required)
     let positions: number[][][] | null = null
-    for (const [path, group] of Object.entries(groups)) {
-      if (!group) continue
-      const dataset = get_dataset(group, `positions`, path)
-      if (is_hdf5_dataset(dataset)) {
-        const raw = dataset.to_array() as number[][] | number[][][]
-        positions = Array.isArray(raw[0]?.[0]) ? raw as number[][][] : [raw as number[][]]
-        break
+    let positions_source = ``
+
+    for (const [group_path, group] of all_groups) {
+      for (const name of group.keys()) {
+        const item = group.get(name)
+        if (name === `positions` && is_hdf5_dataset(item)) {
+          const raw = item.to_array() as number[][] | number[][][]
+          positions = Array.isArray(raw[0]?.[0])
+            ? raw as number[][][]
+            : [raw as number[][]]
+          positions_source = `${group_path}/${name}`
+          break
+        }
       }
+      if (positions) break
     }
 
     if (!positions) {
+      // Generate helpful error message with available datasets
+      const available_datasets = new Set<string>()
+      for (const [, group] of all_groups) {
+        for (const name of group.keys()) {
+          available_datasets.add(name)
+        }
+      }
+
       throw new Error(
         `Missing required 'positions' dataset in HDF5 file. ` +
-          `Expected 3D array of atomic coordinates.`,
+          `Expected 3D array of atomic coordinates.\n` +
+          `Available datasets: ${Array.from(available_datasets).sort().join(`, `)}`,
       )
     }
 
     // Find atomic numbers (required)
     let atomic_numbers: number[][] | null = null
+    let atomic_numbers_source = ``
     const atomic_number_names = [
       `atomic_numbers`,
       `numbers`,
@@ -302,32 +311,44 @@ const parse_torch_sim_hdf5 = async (
       `types`,
     ]
 
-    for (const [path, group] of Object.entries(groups)) {
-      if (!group || atomic_numbers) continue
-      for (const name of atomic_number_names) {
-        const dataset = get_dataset(group, name, path)
-        if (is_hdf5_dataset(dataset)) {
-          const raw = dataset.to_array() as number[] | number[][]
+    for (const [group_path, group] of all_groups) {
+      if (atomic_numbers) break
+      for (const name of group.keys()) {
+        const item = group.get(name)
+        if (atomic_number_names.includes(name) && is_hdf5_dataset(item)) {
+          const raw = item.to_array() as number[] | number[][]
           atomic_numbers = Array.isArray(raw[0]) ? raw as number[][] : [raw as number[]]
+          atomic_numbers_source = `${group_path}/${name}`
           break
         }
       }
     }
 
     if (!atomic_numbers) {
+      // Generate helpful error message with available datasets
+      const available_datasets = new Set<string>()
+      for (const [, group] of all_groups) {
+        for (const name of group.keys()) {
+          available_datasets.add(name)
+        }
+      }
+
       throw new Error(
         `Missing required atomic numbers in HDF5 file. ` +
-          `Expected dataset with atomic numbers/species information.`,
+          `Expected dataset with atomic numbers/species information.\n` +
+          `Looking for one of: ${atomic_number_names.join(`, `)}\n` +
+          `Available datasets: ${Array.from(available_datasets).sort().join(`, `)}`,
       )
     }
 
     // Find optional datasets
     const find_optional = (names: string[]) => {
-      for (const [path, group] of Object.entries(groups)) {
-        if (!group) continue
-        for (const name of names) {
-          const dataset = get_dataset(group, name, path)
-          if (is_hdf5_dataset(dataset)) return dataset.to_array()
+      for (const [, group] of all_groups) {
+        for (const name of group.keys()) {
+          const item = group.get(name)
+          if (names.includes(name) && is_hdf5_dataset(item)) {
+            return item.to_array()
+          }
         }
       }
       return null
@@ -378,6 +399,14 @@ const parse_torch_sim_hdf5 = async (
           acc[el] = (acc[el] || 0) + 1
           return acc
         }, {} as Record<string, number>),
+        // Add dataset discovery information
+        discovered_datasets: {
+          positions: positions_source,
+          atomic_numbers: atomic_numbers_source,
+          cells: cells ? `found` : `not found`,
+          energies: energies ? `found` : `not found`,
+        },
+        total_groups_found: all_groups.length,
       },
     }
   } finally {
