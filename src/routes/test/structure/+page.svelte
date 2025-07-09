@@ -92,12 +92,12 @@
         }
       }
 
-      window.addEventListener(`setLatticeProps`, handle_lattice_props)
-      window.addEventListener(`setShowButtons`, handle_show_buttons)
+      window.addEventListener(`set-lattice-props`, handle_lattice_props)
+      window.addEventListener(`set-show-buttons`, handle_show_buttons)
 
       return () => {
-        window.removeEventListener(`setLatticeProps`, handle_lattice_props)
-        window.removeEventListener(`setShowButtons`, handle_show_buttons)
+        window.removeEventListener(`set-lattice-props`, handle_lattice_props)
+        window.removeEventListener(`set-show-buttons`, handle_show_buttons)
       }
     }
   })

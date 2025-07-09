@@ -10,7 +10,7 @@
   import { titles_as_tooltips } from 'svelte-zoo'
   import { full_data_extractor } from './extract'
   import type { Trajectory, TrajectoryDataExtractor } from './index'
-  import { TrajectoryError, TrajectorySidebar } from './index'
+  import { TrajectoryError, TrajectoryInfoPanel } from './index'
   import type { ParseProgress } from './parse'
   import {
     get_unsupported_format_message,
@@ -127,7 +127,7 @@
   let file_size = $state<number | null>(null)
   let file_object = $state<File | null>(null)
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
-  let sidebar_open = $state(false)
+  let info_panel_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
 
@@ -493,17 +493,9 @@
 
   let view_mode_dropdown_open = $state(false)
 
-  // Handle click outside sidebar to close it
+  // Handle click outside to close dropdowns
   function handle_click_outside(event: MouseEvent) {
     const target = event.target as Element
-
-    // Handle sidebar
-    if (sidebar_open) {
-      const sidebar = target.closest(`.info-sidebar`)
-      const info_button = target.closest(`.info-button`)
-      // Don't close if clicking on sidebar or info button
-      if (!sidebar && !info_button) sidebar_open = false
-    }
 
     // Handle view mode dropdown
     if (view_mode_dropdown_open) {
@@ -556,7 +548,8 @@
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
     } // Interface shortcuts
     else if (event.key === `f`) toggle_fullscreen()
-    else if (event.key === `i`) sidebar_open = !sidebar_open // Playback speed shortcuts (only when playing)
+    // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
+    // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
       frame_rate_fps = Math.min(30, frame_rate_fps + 0.2)
     } else if (event.key === `-` && is_playing) {
@@ -565,23 +558,27 @@
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
-      else sidebar_open = false
+      // Escape key for info panel handled by DraggablePanel
     } // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
       go_to_step(Math.floor((parseInt(event.key, 10) / 10) * (total_frames - 1)))
-    } else if (event.key === `Escape` && sidebar_open) { // Escape key to close sidebar
-      event.stopPropagation()
-      sidebar_open = false
     }
   }
 
   let controls_open = $state({ structure: false, plot: false })
+  let fullscreen = $state(false)
 </script>
+
+<svelte:document
+  onfullscreenchange={() => {
+    fullscreen = !!document.fullscreenElement
+  }}
+/>
 
 <div
   class="trajectory-viewer {actual_layout}"
   class:dragover
-  class:active={sidebar_open || is_playing || controls_open.structure || controls_open.plot}
+  class:active={is_playing || controls_open.structure || controls_open.plot}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -649,26 +646,22 @@
               onclick={prev_step}
               disabled={current_step_idx === 0 || is_playing}
               title="Previous step"
-              class="nav-button"
             >
               ⏮
             </button>
-
             <button
               onclick={toggle_play}
               disabled={trajectory.frames.length <= 1}
               title={is_playing ? `Pause playback` : `Play trajectory`}
-              class="play-button nav-button"
+              class="play-button"
               class:playing={is_playing}
             >
               {is_playing ? `⏸` : `▶`}
             </button>
-
             <button
               onclick={next_step}
               disabled={current_step_idx === trajectory.frames.length - 1 || is_playing}
               title="Next step"
-              class="nav-button"
             >
               ⏭
             </button>
@@ -746,17 +739,16 @@
 
           <!-- Frame info section -->
           <div class="info-section">
-            <!-- Info button to open sidebar -->
             {#if trajectory}
-              <button
-                onclick={() => (sidebar_open = !sidebar_open)}
-                title="{sidebar_open ? `Close` : `Open`} info panel"
-                aria-label="{sidebar_open ? `Close` : `Open`} info panel"
-                class="info-button nav-button"
-                class:active={sidebar_open}
-              >
-                <Icon icon="Info" style="width: 22px; height: 22px" />
-              </button>
+              <TrajectoryInfoPanel
+                {trajectory}
+                {current_step_idx}
+                {current_filename}
+                {current_file_path}
+                {file_size}
+                {file_object}
+                bind:info_open={info_panel_open}
+              />
             {/if}
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0}
@@ -764,7 +756,7 @@
                 <button
                   onclick={() => (view_mode_dropdown_open = !view_mode_dropdown_open)}
                   title={current_view_label}
-                  class="view-mode-button nav-button"
+                  class="view-mode-button"
                   class:active={view_mode_dropdown_open}
                 >
                   <Icon
@@ -822,11 +814,11 @@
             {#if show_fullscreen_button}
               <button
                 onclick={toggle_fullscreen}
-                title="Toggle fullscreen"
-                aria-label="Toggle fullscreen"
-                class="fullscreen-button nav-button"
+                title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+                aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
+                class="fullscreen-button"
               >
-                <Icon icon="Fullscreen" />
+                <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
               </button>
             {/if}
           </div>
@@ -948,19 +940,6 @@
       </div>
     </div>
   {/if}
-
-  {#if trajectory}
-    <TrajectorySidebar
-      {trajectory}
-      {current_step_idx}
-      {current_filename}
-      {current_file_path}
-      {file_size}
-      {file_object}
-      is_open={sidebar_open}
-      onclose={() => (sidebar_open = false)}
-    />
-  {/if}
 </div>
 
 <style>
@@ -986,7 +965,7 @@
   .trajectory-viewer:fullscreen {
     height: 100vh !important;
     width: 100vw !important;
-    border-radius: 0;
+    border-radius: 0 !important;
     border: none;
   }
   /* Content area - grid container for equal sizing */
@@ -1037,7 +1016,6 @@
     backdrop-filter: blur(4px);
     border-bottom: 1px solid var(--trajectory-border, rgba(255, 255, 255, 0.1));
     color: var(--trajectory-text-color);
-    font-size: 0.8rem;
     position: relative;
     z-index: 100;
     border-radius: var(--trajectory-border-radius) var(--trajectory-border-radius) 0 0;
@@ -1046,13 +1024,6 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-  }
-  .nav-button {
-    min-width: 28px;
-    height: 28px;
-    padding: 0.125rem 0.25rem;
-    box-sizing: border-box;
-    font-size: 0.8rem;
   }
   .step-section {
     display: flex;
@@ -1136,7 +1107,6 @@
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: pointer;
     line-height: inherit;
   }
   .display-mode {
@@ -1150,32 +1120,20 @@
   .fullscreen-button {
     min-width: 28px;
     height: 28px;
-    background: var(--trajectory-fullscreen-bg, rgba(255, 255, 255, 0.05));
+    background: transparent;
   }
   .fullscreen-button:hover:not(:disabled) {
-    background: var(--trajectory-fullscreen-hover-bg, rgba(255, 255, 255, 0.1));
-  }
-  .info-button {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    border-radius: 50%;
-    background: var(--trajectory-info-bg, #4b5563);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
+    background: color-mix(in srgb, var(--traj-text) 8%, var(--traj-border-bg));
   }
   .info-section {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 2px;
     color: var(--traj-text);
     margin-left: auto;
   }
 
   .play-button {
-    background: var(--trajectory-play-button-bg, #6b7280);
     min-width: 36px;
     font-size: 0.9rem;
   }
@@ -1231,12 +1189,11 @@
     border-radius: 4px;
     padding: 0.25rem 0.5rem;
     cursor: pointer;
-    font-size: 0.85rem;
     min-width: 2rem;
     transition: background-color 0.2s;
   }
   button:hover:not(:disabled) {
-    background: var(--traj-surface-hover);
+    background: color-mix(in srgb, var(--traj-text) 8%, var(--traj-border-bg));
   }
   button:disabled {
     background: var(--traj-text-muted);
@@ -1281,12 +1238,6 @@
     max-width: 120px;
     background: var(--trajectory-view-mode-bg, rgba(255, 255, 255, 0.05));
     overflow: hidden;
-  }
-  .view-mode-button:hover:not(:disabled) {
-    background: var(--trajectory-view-mode-hover-bg, #6b7280);
-  }
-  .view-mode-button.active {
-    background: var(--trajectory-view-mode-active-bg, #4b5563);
   }
   .view-mode-dropdown {
     position: absolute;

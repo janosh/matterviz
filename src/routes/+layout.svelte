@@ -100,13 +100,13 @@
     position: absolute;
     top: 2em;
     left: 2em;
-    background-color: var(--home-btn-bg);
+    background-color: var(--btn-bg);
     padding: 1pt 5pt;
     border-radius: 3pt;
     transition: 0.2s;
     z-index: 1;
   }
   a[href='.']:hover {
-    background-color: var(--home-btn-hover-bg);
+    background-color: var(--btn-hover-bg);
   }
 </style>

@@ -26,6 +26,7 @@ interface ParsedFrame {
 // Add interface for HDF5 group to replace 'any' type
 interface Hdf5Group {
   get(name: string): Hdf5Dataset | Hdf5Group | null
+  keys?(): string[] // Optional method for iterating through group contents
 }
 
 interface Hdf5Dataset {
@@ -241,50 +242,115 @@ const parse_torch_sim_hdf5 = async (
   const h5_file = new h5wasm.File(temp_filename, `r`)
 
   try {
-    const data_group = h5_file.get(`data`) as Hdf5Group
-    if (!data_group?.get(`positions`)) throw new Error(`Invalid torch-sim format`)
+    // Cache for HDF5 dataset lookups to avoid redundant I/O operations
+    const cache = new Map<string, Hdf5Dataset | Hdf5Group | null>()
 
-    const positions_dataset = data_group.get(`positions`)
-    const positions = is_hdf5_dataset(positions_dataset)
-      ? positions_dataset.to_array() as number[][][]
-      : null
-    if (!positions) throw new Error(`Invalid positions data`)
+    const get_dataset = (
+      group: { get: (name: string) => unknown } | null,
+      name: string,
+      group_path: string,
+    ) => {
+      if (!group) return null
+      const key = `${group_path}/${name}`
+      if (cache.has(key)) {
+        const cached_result = cache.get(key)
+        return cached_result || null
+      }
+      const result = group.get(name) as Hdf5Dataset | Hdf5Group | null
+      cache.set(key, result)
+      return result
+    }
 
-    const atomic_numbers_dataset = data_group.get(`atomic_numbers`)
-    const atomic_numbers = is_hdf5_dataset(atomic_numbers_dataset)
-      ? atomic_numbers_dataset.to_array() as number[][]
-      : null
+    // Get main groups
+    const groups = {
+      root: h5_file,
+      data: get_dataset(h5_file, `data`, `root`) as Hdf5Group | null,
+      header: get_dataset(h5_file, `header`, `root`) as Hdf5Group | null,
+      metadata: get_dataset(h5_file, `metadata`, `root`) as Hdf5Group | null,
+      steps: get_dataset(h5_file, `steps`, `root`) as Hdf5Group | null,
+    }
 
-    const cells_dataset = data_group.get(`cell`)
-    const cells = is_hdf5_dataset(cells_dataset)
-      ? cells_dataset.to_array() as number[][][]
-      : null
+    // Find positions (required)
+    let positions: number[][][] | null = null
+    for (const [path, group] of Object.entries(groups)) {
+      if (!group) continue
+      const dataset = get_dataset(group, `positions`, path)
+      if (is_hdf5_dataset(dataset)) {
+        const raw = dataset.to_array() as number[][] | number[][][]
+        positions = Array.isArray(raw[0]?.[0]) ? raw as number[][][] : [raw as number[][]]
+        break
+      }
+    }
 
-    if (!atomic_numbers) throw new Error(`Missing atomic numbers`)
+    if (!positions) {
+      throw new Error(
+        `Missing required 'positions' dataset in HDF5 file. ` +
+          `Expected 3D array of atomic coordinates.`,
+      )
+    }
 
+    // Find atomic numbers (required)
+    let atomic_numbers: number[][] | null = null
+    const atomic_number_names = [
+      `atomic_numbers`,
+      `numbers`,
+      `Z`,
+      `species`,
+      `atoms`,
+      `elements`,
+      `atom_types`,
+      `types`,
+    ]
+
+    for (const [path, group] of Object.entries(groups)) {
+      if (!group || atomic_numbers) continue
+      for (const name of atomic_number_names) {
+        const dataset = get_dataset(group, name, path)
+        if (is_hdf5_dataset(dataset)) {
+          const raw = dataset.to_array() as number[] | number[][]
+          atomic_numbers = Array.isArray(raw[0]) ? raw as number[][] : [raw as number[]]
+          break
+        }
+      }
+    }
+
+    if (!atomic_numbers) {
+      throw new Error(
+        `Missing required atomic numbers in HDF5 file. ` +
+          `Expected dataset with atomic numbers/species information.`,
+      )
+    }
+
+    // Find optional datasets
+    const find_optional = (names: string[]) => {
+      for (const [path, group] of Object.entries(groups)) {
+        if (!group) continue
+        for (const name of names) {
+          const dataset = get_dataset(group, name, path)
+          if (is_hdf5_dataset(dataset)) return dataset.to_array()
+        }
+      }
+      return null
+    }
+
+    const cells = find_optional([`cell`, `cells`, `lattice`]) as number[][][] | null
+    const energies = find_optional([`potential_energy`, `energy`]) as number[][] | null
+    const pbc_data = find_optional([`pbc`]) as number[] | null
+
+    // Process data
     const elements = convert_atomic_numbers(atomic_numbers[0])
-    const potential_energies_dataset = data_group.get(`potential_energy`)
-    const potential_energies = is_hdf5_dataset(potential_energies_dataset)
-      ? potential_energies_dataset.to_array() as number[][]
-      : null
-
-    const pbc_dataset = data_group.get(`pbc`)
-    const pbc_data = is_hdf5_dataset(pbc_dataset)
-      ? pbc_dataset.to_array() as number[]
-      : null
-    const pbc = pbc_data && pbc_data.length === 3
+    const pbc = pbc_data?.length === 3
       ? [!!pbc_data[0], !!pbc_data[1], !!pbc_data[2]] as [boolean, boolean, boolean]
       : [false, false, false] as [boolean, boolean, boolean]
 
     const frames = positions.map((frame_positions, idx) => {
       const lattice_matrix = cells?.[idx] as Matrix3x3 | undefined
+      const metadata: Record<string, unknown> = {}
 
-      // Handle case where cell information is missing (e.g., molecular dynamics in vacuum)
-      const metadata: Record<string, unknown> = {
-        ...(potential_energies && { energy: potential_energies[idx][0] }),
+      const energy_value = energies?.[idx]?.[0]
+      if (energy_value !== null && energy_value !== undefined) {
+        metadata.energy = energy_value
       }
-
-      // Only add volume if we have a lattice matrix
       if (lattice_matrix) {
         metadata.volume = math.calc_lattice_params(lattice_matrix).volume
       }
@@ -301,9 +367,9 @@ const parse_torch_sim_hdf5 = async (
     return {
       frames,
       metadata: {
-        title: `TorchSim Trajectory`,
-        program: `TorchSim`,
-        source_format: `torch_sim_hdf5`,
+        title: `HDF5 Trajectory`,
+        program: `HDF5`,
+        source_format: `hdf5_trajectory`,
         num_atoms: elements.length,
         num_frames: frames.length,
         periodic_boundary_conditions: cells ? pbc : [false, false, false],
@@ -319,7 +385,7 @@ const parse_torch_sim_hdf5 = async (
     try {
       FS.unlink(temp_filename)
     } catch {
-      // Ignore errors when cleaning up temporary file
+      // Ignore cleanup errors
     }
   }
 }
@@ -461,7 +527,8 @@ const parse_xyz_trajectory = (content: string): Trajectory => {
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
     const forces: number[][] = []
-    const has_forces = comment.includes(`forces:R:3`)
+    const has_forces = comment.includes(`forces:R:3`) ||
+      comment.includes(`Properties=`) && comment.includes(`forces:R:3`)
 
     for (let idx = 0; idx < num_atoms && line_idx < lines.length; idx++) {
       const parts = lines[line_idx].trim().split(/\s+/)

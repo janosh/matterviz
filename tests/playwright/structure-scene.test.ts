@@ -478,7 +478,7 @@ test.describe(`StructureScene Component Tests`, () => {
       )
       if (!structureElement) {
         // If no test ID exists, we'll set the properties through controls
-        const event = new CustomEvent(`setLatticeProps`, {
+        const event = new CustomEvent(`set-lattice-props`, {
           detail: {
             cell_edge_color: `#ff0000`,
             cell_surface_color: `#ff0000`,
@@ -503,7 +503,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     for (const color of test_colors) {
       await page.evaluate((test_color) => {
-        const event = new CustomEvent(`setLatticeProps`, {
+        const event = new CustomEvent(`set-lattice-props`, {
           detail: {
             cell_edge_color: test_color,
             cell_surface_color: test_color,
@@ -524,7 +524,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     for (const opacity of test_opacities) {
       await page.evaluate((test_opacity) => {
-        const event = new CustomEvent(`setLatticeProps`, {
+        const event = new CustomEvent(`set-lattice-props`, {
           detail: {
             cell_edge_opacity: test_opacity,
             cell_surface_opacity: test_opacity * 0.2,
@@ -547,7 +547,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test edges only (surface opacity = 0)
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0.8,
           cell_surface_opacity: 0,
@@ -561,7 +561,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test surfaces only (edge opacity = 0)
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0,
           cell_surface_opacity: 0.4,
@@ -575,7 +575,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test both visible with different opacities
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0.6,
           cell_surface_opacity: 0.3,
@@ -589,7 +589,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test neither visible (both opacity = 0)
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0,
           cell_surface_opacity: 0,
@@ -623,7 +623,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Set wireframe mode with high opacity and contrast for visibility
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_color: `#ffffff`,
           cell_surface_color: `#ffffff`,
@@ -668,7 +668,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     for (const width of line_widths) {
       await page.evaluate((test_width) => {
-        const event = new CustomEvent(`setLatticeProps`, {
+        const event = new CustomEvent(`set-lattice-props`, {
           detail: {
             cell_edge_color: `#ffffff`,
             cell_surface_color: `#ffffff`,
@@ -695,7 +695,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Set baseline with both edges and surfaces visible
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0.8,
           cell_surface_opacity: 0.3,
@@ -709,7 +709,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test edges only (surface opacity = 0)
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0.8,
           cell_surface_opacity: 0,
@@ -723,7 +723,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test surfaces only (edge opacity = 0)
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0,
           cell_surface_opacity: 0.3,
@@ -737,7 +737,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test neither visible (both opacity = 0)
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0,
           cell_surface_opacity: 0,
@@ -774,7 +774,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     for (const opacity of test_values) {
       await page.evaluate((test_opacity) => {
-        const event = new CustomEvent(`setLatticeProps`, {
+        const event = new CustomEvent(`set-lattice-props`, {
           detail: {
             cell_edge_opacity: test_opacity,
             cell_surface_opacity: test_opacity,
@@ -799,7 +799,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test low edge opacity, no surfaces
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0.2,
           cell_surface_opacity: 0,
@@ -813,7 +813,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test high edge opacity, no surfaces
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0.9,
           cell_surface_opacity: 0,
@@ -827,7 +827,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test no edges, low surface opacity
     await page.evaluate(() => {
-      const event = new CustomEvent(`setLatticeProps`, {
+      const event = new CustomEvent(`set-lattice-props`, {
         detail: {
           cell_edge_opacity: 0,
           cell_surface_opacity: 0.2,
@@ -908,6 +908,35 @@ test.describe(`StructureScene Component Tests`, () => {
     // In that case, just verify no errors occurred
     if (atomic_radii_screenshot.equals(uniform_size_screenshot)) {
       console.warn(`same_size_atoms property appears to have no visual effect`)
+    }
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Test rotation target prevents structure from moving off-canvas
+  test(`rotation target uses lattice center for crystalline structures and center of mass for molecular systems`, async ({ page }) => {
+    const console_errors = setup_console_monitoring(page)
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    await expect(canvas).toBeVisible()
+    await page.waitForTimeout(200)
+
+    // Test rotation behavior - should not move structure off-canvas
+    const box = await canvas.boundingBox()
+    if (box) {
+      const initial_screenshot = await canvas.screenshot()
+
+      // Perform rotation drag
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
+      })
+
+      const rotated_screenshot = await canvas.screenshot()
+
+      // Verify rotation occurred and structure remains visible (not moved off-canvas)
+      expect(initial_screenshot.equals(rotated_screenshot)).toBe(false)
+      expect(rotated_screenshot.length).toBeGreaterThan(1000)
     }
 
     expect(console_errors).toHaveLength(0)

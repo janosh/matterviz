@@ -239,6 +239,7 @@
       mode="single"
       x_label="Value"
       y_label="Frequency"
+      show_controls
       style="height: 400px; border: 1px solid #ccc"
     />
   </section>
@@ -281,6 +282,7 @@
       bins={30}
       mode="overlay"
       show_legend
+      show_controls
       style="height: 400px; border: 1px solid #ccc"
     />
   </section>
@@ -307,6 +309,7 @@
       mode="overlay"
       x_scale_type={x_scale}
       y_scale_type={y_scale}
+      show_controls
       style="height: 400px; border: 1px solid #ccc"
     />
   </section>
@@ -431,6 +434,7 @@
       y_ticks={y_tick_count}
       x_label="Value (Custom X Ticks)"
       y_label="Count (Custom Y Ticks)"
+      show_controls
       style="height: 400px; border: 1px solid #ccc"
     />
   </section>

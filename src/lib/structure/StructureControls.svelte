@@ -46,6 +46,7 @@
     copy_xyz_btn_text?: string
     scene?: Scene
     camera?: Camera
+    [key: string]: unknown
   }
   let {
     controls_open = $bindable(false),
@@ -84,6 +85,7 @@
     copy_xyz_btn_text = `📋 XYZ`,
     scene = undefined,
     camera = undefined,
+    ...rest
   }: Props = $props()
 
   // Color scheme selection state
@@ -168,6 +170,7 @@
   panel_props={{ class: `controls-panel` }}
   toggle_props={{ class: `structure-controls-toggle`, title: `Open controls` }}
   icon_style="transform: scale(1.2);"
+  {...rest}
 >
   <!-- Visibility Controls -->
   <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap">

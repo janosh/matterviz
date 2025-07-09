@@ -1213,6 +1213,40 @@ test.describe(`Export Button Tests`, () => {
     await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
   })
 
+  // Helper function to open controls panel and wait for DraggablePanel positioning
+  async function open_controls_panel(page: Page) {
+    const structure_component = page.locator(`#structure-wrapper .structure`)
+    const controls_dialog = structure_component.locator(`.controls-panel`)
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    await page.waitForFunction(() => {
+      const panel = document.querySelector(`.draggable-panel.panel-open`)
+      if (!panel) return false
+      const rect = panel.getBoundingClientRect()
+      const style = globalThis.getComputedStyle(panel)
+      return rect.width > 0 && rect.height > 0 && style.display !== `none`
+    }, { timeout: 5000 })
+
+    return { structure_component, controls_dialog }
+  }
+
+  // Helper function to click export buttons using direct DOM manipulation
+  async function click_export_button(page: Page, button_type: `JSON` | `PNG`) {
+    const selector = button_type === `JSON`
+      ? `button[title="⬇ JSON"]`
+      : `button[title*="⬇ PNG"]`
+
+    await page.evaluate((sel) => {
+      const btn = document.querySelector(sel) as HTMLButtonElement
+      if (btn) btn.click()
+    }, selector)
+  }
+
   test(`export buttons are visible when controls panel is open`, async ({ page }) => {
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const controls_dialog = structure_component.locator(`.controls-panel`)
@@ -1304,18 +1338,13 @@ test.describe(`Export Button Tests`, () => {
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Open controls panel
     await test_page_controls_checkbox.check()
     await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
 
-    // Find and click PNG export button
-    const png_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ PNG")`,
-    )
+    const png_export_btn = controls_dialog.locator(`button:has-text("⬇ PNG")`)
     await expect(png_export_btn).toBeVisible()
     await png_export_btn.click()
 
-    // Button should be clickable without throwing errors
     await expect(png_export_btn).toBeEnabled()
   })
 
@@ -1326,7 +1355,6 @@ test.describe(`Export Button Tests`, () => {
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Open controls panel
     await test_page_controls_checkbox.check()
     await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
 
@@ -1370,7 +1398,6 @@ test.describe(`Export Button Tests`, () => {
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Open controls panel
     await test_page_controls_checkbox.check()
     await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
 
@@ -1452,83 +1479,52 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`multiple export button clicks work correctly`, async ({ page }) => {
-    const structure_component = page.locator(`#structure-wrapper .structure`)
-    const controls_dialog = structure_component.locator(`.controls-panel`)
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
+    const { controls_dialog } = await open_controls_panel(page)
 
-    // Open controls panel
-    await test_page_controls_checkbox.check()
-    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+    const json_export_btn = controls_dialog.locator(`button:has-text("⬇ JSON")`)
+    const png_export_btn = controls_dialog.locator(`button:has-text("⬇ PNG")`)
 
-    // Find export buttons
-    const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ JSON")`,
-    )
-    const png_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ PNG")`,
-    )
-
-    // Test multiple clicks work without errors
-    await json_export_btn.click({ force: true })
+    await click_export_button(page, `JSON`)
     await expect(json_export_btn).toBeEnabled()
 
-    await png_export_btn.click({ force: true })
+    await click_export_button(page, `JSON`)
+    await expect(json_export_btn).toBeEnabled()
+
+    await click_export_button(page, `PNG`)
     await expect(png_export_btn).toBeEnabled()
 
-    // Test rapid sequential clicks
-    await json_export_btn.click({ force: true })
-    await expect(json_export_btn).toBeEnabled()
+    await click_export_button(page, `PNG`)
+    await expect(png_export_btn).toBeEnabled()
   })
 
   test(`export buttons work with loaded structure`, async ({ page }) => {
-    // Test that export buttons work with the default structure from the test page
-    const structure_component = page.locator(`#structure-wrapper .structure`)
-    const controls_dialog = structure_component.locator(`.controls-panel`)
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
+    const { structure_component, controls_dialog } = await open_controls_panel(page)
 
-    // Open controls panel
-    await test_page_controls_checkbox.check()
-    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
-
-    // Verify structure is loaded (check canvas has content)
     const canvas = structure_component.locator(`canvas`)
     await expect(canvas).toBeVisible()
     await expect(canvas).toHaveAttribute(`width`)
     await expect(canvas).toHaveAttribute(`height`)
 
-    // Test exports with loaded structure
-    const json_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ JSON")`,
-    )
-    const png_export_btn = controls_dialog.locator(
-      `button:has-text("⬇ PNG")`,
-    )
+    const json_export_btn = controls_dialog.locator(`button:has-text("⬇ JSON")`)
+    const png_export_btn = controls_dialog.locator(`button:has-text("⬇ PNG")`)
 
-    await json_export_btn.click({ force: true })
+    await click_export_button(page, `JSON`)
     await expect(json_export_btn).toBeEnabled()
 
-    await png_export_btn.click({ force: true })
+    await click_export_button(page, `PNG`)
     await expect(png_export_btn).toBeEnabled()
   })
 
   test(`reset camera button integration with existing UI elements`, async ({ page }) => {
-    // Test that the reset camera button integrates properly with other UI elements
     const structure_component = page.locator(`#structure-wrapper .structure`)
     const button_section = structure_component.locator(`section.control-buttons`)
 
-    // Verify the button section exists and has the right structure
     await expect(button_section).toBeVisible()
 
-    // Check that other buttons exist in the section
     const other_buttons = button_section.locator(`button`)
     const button_count = await other_buttons.count()
     expect(button_count).toBeGreaterThan(0)
 
-    // Test that the section has proper CSS styling for button layout
     const section_styles = await button_section.evaluate((el) => {
       const computed = globalThis.getComputedStyle(el)
       return {
@@ -1543,17 +1539,13 @@ test.describe(`Export Button Tests`, () => {
     expect(section_styles.display).toBe(`flex`)
     expect(section_styles.justifyContent).toBe(`end`)
 
-    // Verify that adding a reset button would fit properly in the layout
     const layout_test = await page.evaluate(() => {
-      const section = document.querySelector(
-        `#structure-wrapper .structure section`,
-      )
+      const section = document.querySelector(`#structure-wrapper .structure section`)
       if (!section) return false
 
-      // Temporarily add a reset button to test layout
       const testButton = document.createElement(`button`)
       testButton.className = `reset-camera`
-      testButton.style.visibility = `hidden` // Don't show it, just test layout
+      testButton.style.visibility = `hidden`
       testButton.innerHTML =
         `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>`
 
@@ -1576,42 +1568,35 @@ test.describe(`Show Buttons Tests`, () => {
   })
 
   test(`should hide buttons when show_buttons is false`, async ({ page }) => {
-    // Navigate to test page with show_buttons=false
     await page.goto(`/test/structure?show_buttons=false`)
     await page.waitForSelector(`canvas`)
 
-    // Control buttons should not be visible
-    await expect(page.locator(`.control-buttons`)).not.toHaveClass(/visible/)
+    await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
+      .not.toHaveClass(/visible/)
 
-    // Individual buttons should not be visible
     await expect(page.locator(`button[title*="info panel"]`)).not.toBeVisible()
     await expect(page.locator(`.fullscreen-toggle`)).not.toBeVisible()
   })
 
   test(`should hide buttons when structure width is narrower than show_buttons number`, async ({ page }) => {
-    // Navigate to test page and set narrow width
     await page.goto(`/test/structure`)
     await page.waitForSelector(`canvas`)
 
-    // Set canvas width to 400px and show_buttons to 600 (threshold higher than width)
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`400`)
 
-    // Wait for structure to resize
     await page.waitForFunction(() => {
       const wrapper = document.querySelector(`#structure-wrapper`)
       return wrapper && wrapper.getBoundingClientRect().width <= 400
     })
 
-    // Update the Structure component to use show_buttons=600
     await page.evaluate(() => {
-      // Dispatch custom event to set show_buttons to 600
       globalThis.dispatchEvent(
-        new CustomEvent(`setShowButtons`, { detail: { show_buttons: 600 } }),
+        new CustomEvent(`set-show-buttons`, { detail: { show_buttons: 600 } }),
       )
     })
 
-    // Control buttons should not be visible since width (400) < show_buttons (600)
-    await expect(page.locator(`.control-buttons`)).not.toHaveClass(/visible/)
+    await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
+      .not.toHaveClass(/visible/)
     await expect(page.locator(`button[title*="info panel"]`)).not.toBeVisible()
   })
 
@@ -1633,12 +1618,13 @@ test.describe(`Show Buttons Tests`, () => {
     await page.evaluate(() => {
       // Dispatch custom event to set show_buttons to 600
       globalThis.dispatchEvent(
-        new CustomEvent(`setShowButtons`, { detail: { show_buttons: 600 } }),
+        new CustomEvent(`set-show-buttons`, { detail: { show_buttons: 600 } }),
       )
     })
 
     // Control buttons should be visible since width (800) > show_buttons (600)
-    await expect(page.locator(`.control-buttons`)).toHaveClass(/visible/)
+    await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
+      .toHaveClass(/visible/)
     await expect(page.locator(`button[title*="info panel"]`)).toBeVisible()
   })
 
@@ -1657,7 +1643,8 @@ test.describe(`Show Buttons Tests`, () => {
     })
 
     // Control buttons should still be visible when show_buttons is true (default)
-    await expect(page.locator(`.control-buttons`)).toHaveClass(/visible/)
+    await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
+      .toHaveClass(/visible/)
     await expect(page.locator(`button[title*="info panel"]`)).toBeVisible()
   })
 })

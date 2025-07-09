@@ -165,8 +165,6 @@
         x_label: `Step`,
         markers: `line+points`,
         legend: { responsive: true, layout: `horizontal`, layout_tracks: 2 },
-        style:
-          `background: var(--traj-plot-bg, #2d3748); color: var(--traj-plot-text, #e2e8f0);`,
       }}
       spinner_props={{
         style: `background: rgba(0, 0, 0, 0.1); color: white;`,
@@ -187,54 +185,6 @@
 </div>
 
 <style>
-  /* CSS Custom Properties for External Customization */
-  :global(:root) {
-    /* Dark theme colors for trajectory demo */
-    --traj-bg: #1a202c;
-    --traj-surface: #2d3748;
-    --traj-surface-hover: #4a5568;
-    --traj-border-bg: #4a5568;
-    --traj-text: #e2e8f0;
-    --traj-text-muted: #a0aec0;
-    --traj-accent: #63b3ed;
-    --traj-accent-hover: #4299e1;
-    --traj-success: #68d391;
-    --traj-warning: #fbd38d;
-    --traj-error: #fc8181;
-    --traj-plot-bg: #2d3748;
-    --traj-plot-text: #e2e8f0;
-
-    /* Trajectory component styling */
-    --trajectory-controls-bg: var(--traj-surface, #2d3748);
-    --trajectory-button-bg: var(--traj-accent, #63b3ed);
-    --trajectory-button-color: var(--traj-bg, #1a202c);
-    --trajectory-button-hover-bg: var(--traj-accent-hover, #4299e1);
-    --trajectory-panel-border: var(--traj-border-bg, #4a5568);
-    --trajectory-info-bg: var(--traj-surface, rgba(45, 55, 72, 0.9));
-    --trajectory-info-color: var(--traj-text, #e2e8f0);
-    --trajectory-loading-bg: var(--traj-surface, rgba(45, 55, 72, 0.95));
-    --trajectory-border: 1px solid var(--traj-border-bg, #4a5568);
-    --trajectory-text-color: var(--traj-text, #e2e8f0);
-    --trajectory-dropzone-border: var(--traj-border-bg, #4a5568);
-    --trajectory-dropzone-bg: var(--traj-surface, #2d3748);
-    --trajectory-dragover-border: var(--traj-accent, #63b3ed);
-    --trajectory-dragover-bg: var(--traj-accent, rgba(99, 179, 237, 0.1));
-
-    /* Dark theme overrides for error messages */
-    --trajectory-error-bg: var(--traj-surface, #2d3748);
-    --trajectory-error-color: var(--traj-error, #fc8181);
-    --trajectory-error-border: var(--traj-error, #fc8181);
-    --trajectory-error-button-bg: var(--traj-error, #fc8181);
-    --trajectory-help-bg: var(--traj-bg, #1a202c);
-    --trajectory-help-border: var(--traj-border-bg, #4a5568);
-    --trajectory-code-bg: var(--traj-bg, #1a202c);
-    --trajectory-code-border: var(--traj-border-bg, #4a5568);
-    --trajectory-code-title-color: var(--traj-accent, #63b3ed);
-    --trajectory-pre-bg: var(--traj-bg, #1a202c);
-    --trajectory-pre-border: var(--traj-border-bg, #4a5568);
-    --trajectory-inline-code-bg: var(--traj-border-bg, rgba(74, 85, 104, 0.3));
-  }
-
   p {
     text-align: center;
     max-width: 800px;

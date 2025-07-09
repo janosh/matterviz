@@ -13,13 +13,13 @@ const structure = structures[0]
 // Tests for Structure component functionality
 describe(`Structure`, () => {
   beforeEach(() => {
-    mount(Structure, { target: document.body, props: { structure } })
+    mount(Structure, { target: document.body, props: { structure, show_buttons: true } })
   })
 
   test(`open control panel when clicking toggle button`, async () => {
     mount(Structure, {
       target: document.body,
-      props: { structure, controls_open: false },
+      props: { structure, controls_open: false, show_buttons: true },
     })
 
     // Check that the controls toggle button exists and is clickable
@@ -38,7 +38,7 @@ describe(`Structure`, () => {
 
     mount(Structure, {
       target: document.body,
-      props: { structure },
+      props: { structure, show_buttons: true },
     })
 
     // First, open the structure control panel by clicking the correct toggle button
@@ -74,6 +74,7 @@ describe(`Structure`, () => {
       target: document.body,
       props: {
         structure,
+        show_buttons: true,
       },
     })
 

@@ -39,7 +39,7 @@
 /* Targeted theme transitions for performance */
 :where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
 :where(select, label, .theme-control, .toc, svg, path, circle, rect, text),
-:where(.info-sidebar, .sidebar-header, .sidebar-content, .close-button),
+:where(.info-panel, .panel-header, .panel-content, .close-button),
 :where(nav > a),
 :where(.theme-control, .theme-control label, .theme-control select) {
   transition:
@@ -167,6 +167,7 @@ input[type='color'] {
   outline: none;
   border-radius: 3pt;
   overflow: hidden;
+  cursor: pointer;
 }
 input[type='color']::-webkit-color-swatch-wrapper {
   padding: 0;

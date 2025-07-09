@@ -1,17 +1,128 @@
 // Theme System - Single Source of Truth
+// Base colors used across themes
+const colors = {
+  // Text colors
+  txt_light: `#374151`, // Dark gray
+  txt_dark: `#eee`, // Light gray
+  txt_white: `#000000`, // Black
+  txt_black: `#f5f5f5`, // Off-white
+
+  // Page backgrounds
+  bg_light: `#f1f3f5`, // Light gray
+  bg_dark: `#090019`, // Very dark blue
+  bg_white: `#ffffff`, // Pure white
+  bg_black: `#000000`, // Pure black
+
+  // Surfaces (cards, panels, etc.)
+  surf_light: `#ffffff`, // White cards on light bg
+  surf_dark: `#2a2a2a`, // Dark cards on dark bg
+  surf_white: `#fafafa`, // Off-white cards on white bg
+  surf_black: `#0f0f0f`, // Very dark cards on black bg
+
+  // Borders
+  border_light: `#d1d5db`, // Gray border
+  border_dark: `#404040`, // Dark gray border
+  border_white: `#f0f0f0`, // Light border
+  border_black: `#202020`, // Dark border
+
+  // Accents
+  acc_light: `#4f46e5`, // Indigo
+  acc_dark: `#60a5fa`, // Light blue
+  acc_white: `#2563eb`, // Blue
+  acc_black: `#7dd3fc`, // Cyan
+
+  // Error colors
+  error_text_light: `#dc2626`, // Red
+  error_text_dark: `#fca5a5`, // Light red
+  error_text_white: `#b91c1c`, // Dark red
+  error_text_black: `#f87171`, // Pink-red
+
+  error_border_light: `#fca5a5`, // Light red
+  error_border_dark: `#dc2626`, // Red
+  error_border_white: `#fecaca`, // Very light red
+  error_border_black: `#991b1b`, // Dark red
+
+  error_btn_light: `#dc2626`, // Red
+  error_btn_dark: `#7f1d1d`, // Dark red
+  error_btn_white: `#b91c1c`, // Dark red
+  error_btn_black: `#991b1b`, // Dark red
+
+  error_btn_hover_light: `#b91c1c`, // Dark red
+  error_btn_hover_dark: `#991b1b`, // Darker red
+  error_btn_hover_white: `#991b1b`, // Darker red
+  error_btn_hover_black: `#7f1d1d`, // Very dark red
+}
+
+// Helper functions for common patterns
+const btn_bg = (dark_op, light_op) => ({
+  light: `rgba(0, 0, 0, ${light_op})`,
+  dark: `rgba(255, 255, 255, ${dark_op})`,
+  white: `rgba(0, 0, 0, ${light_op / 2})`,
+  black: `rgba(255, 255, 255, ${dark_op / 2})`,
+})
+
+const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
+  light: `rgba(${light_bg}, ${light_op})`,
+  dark: `rgba(${dark_bg}, ${dark_op})`,
+  white: `rgba(255, 255, 255, 0.98)`,
+  black: `rgba(20, 20, 20, 0.98)`,
+})
+
+const border_alpha = (alpha = 0.2) => ({
+  light: `rgba(0, 0, 0, ${alpha})`,
+  dark: `rgba(255, 255, 255, ${alpha})`,
+  white: `rgba(0, 0, 0, ${alpha / 2})`,
+  black: `rgba(255, 255, 255, ${alpha / 2})`,
+})
+
 const themes = {
+  // Core colors
   'page-bg': {
-    light: `#f1f3f5`,
-    dark: `#090019`,
-    white: `#ffffff`,
-    black: `#000000`,
+    light: colors.bg_light,
+    dark: colors.bg_dark,
+    white: colors.bg_white,
+    black: colors.bg_black,
   },
   'text-color': {
-    light: `#374151`,
-    dark: `#eee`,
-    white: `#000000`,
-    black: `#f5f5f5`,
+    light: colors.txt_light,
+    dark: colors.txt_dark,
+    white: colors.txt_white,
+    black: colors.txt_black,
   },
+  'surface-bg': {
+    light: colors.surf_light,
+    dark: colors.surf_dark,
+    white: colors.surf_white,
+    black: colors.surf_black,
+  },
+  'border-color': {
+    light: colors.border_light,
+    dark: colors.border_dark,
+    white: colors.border_white,
+    black: colors.border_black,
+  },
+  'accent-color': {
+    light: colors.acc_light,
+    dark: colors.acc_dark,
+    white: colors.acc_white,
+    black: colors.acc_black,
+  },
+
+  // Hover states
+  'surface-hover-bg': {
+    light: `#e5e7eb`,
+    dark: `#3a3a3a`,
+    white: `#fafafa`,
+    black: `#1a1a1a`,
+  },
+  'accent-hover-color': {
+    light: `#3730a3`,
+    dark: `#3b82f6`,
+    white: `#1d4ed8`,
+    black: `#0ea5e9`,
+  },
+
+  // Code/pre backgrounds
   'code-bg': {
     light: `#e5e7eb`,
     dark: `#000000`,
@@ -24,150 +135,8 @@ const themes = {
     white: `#fafafa`,
     black: `rgba(255, 255, 255, 0.02)`,
   },
-  'struct-bg': {
-    light: `rgba(0, 0, 0, 0.02)`,
-    dark: `rgba(255, 255, 255, 0.05)`,
-    white: `rgba(0, 0, 0, 0.01)`,
-    black: `rgba(255, 255, 255, 0.02)`,
-  },
-  'struct-dragover-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(0, 0, 0, 0.7)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(0, 0, 0, 0.8)`,
-  },
-  'struct-text-color': {
-    light: `#374151`,
-    dark: `#e5e5e5`,
-    white: `#000000`,
-    black: `#f0f0f0`,
-  },
-  'struct-border': {
-    light: `#d1d5db`,
-    dark: `#404040`,
-    white: `#f0f0f0`,
-    black: `#202020`,
-  },
-  'struct-accent': {
-    light: `#4f46e5`,
-    dark: `#60a5fa`,
-    white: `#2563eb`,
-    black: `#7dd3fc`,
-  },
-  'legend-filter': {
-    light: `grayscale(10%) brightness(0.8) saturate(0.9)`,
-    dark: `grayscale(10%) brightness(0.8) saturate(0.8)`,
-    white: `grayscale(2%) brightness(0.9) saturate(1.2)`,
-    black: `grayscale(15%) brightness(0.7) saturate(0.7)`,
-  },
-  'copy-btn-bg': {
-    light: `rgba(0, 0, 0, 0.12)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'copy-btn-hover-bg': {
-    light: `rgba(0, 0, 0, 0.25)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.1)`,
-    black: `rgba(255, 255, 255, 0.15)`,
-  },
-  'copy-btn-color': {
-    light: `#374151`,
-    dark: `#eee`,
-    white: `#000000`,
-    black: `#f5f5f5`,
-  },
-  'home-btn-bg': {
-    light: `rgba(0, 0, 0, 0.08)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'home-btn-hover-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.1)`,
-    black: `rgba(255, 255, 255, 0.15)`,
-  },
-  'github-corner-color': {
-    light: `#f1f3f5`,
-    dark: `#090019`,
-    white: `#ffffff`,
-    black: `#000000`,
-  },
-  'github-corner-bg': {
-    light: `#374151`,
-    dark: `#eee`,
-    white: `#000000`,
-    black: `#f5f5f5`,
-  },
-  'histogram-axis-color': {
-    light: `#4b5563`,
-    dark: `#e5e5e5`,
-    white: `#000000`,
-    black: `#f0f0f0`,
-  },
-  'histogram-text-color': {
-    light: `#374151`,
-    dark: `#e5e5e5`,
-    white: `#000000`,
-    black: `#f0f0f0`,
-  },
-  'histogram-tooltip-bg': {
-    light: `rgba(243, 244, 246, 0.95)`,
-    dark: `rgba(60, 60, 60, 0.95)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(20, 20, 20, 0.98)`,
-  },
-  'histogram-tooltip-color': {
-    light: `#374151`,
-    dark: `white`,
-    white: `#000000`,
-    black: `#f5f5f5`,
-  },
-  'histogram-tooltip-border': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.1)`,
-  },
-  'surface-bg': {
-    light: `#f1f3f5`,
-    dark: `#2a2a2a`,
-    white: `#ffffff`,
-    black: `#0f0f0f`,
-  },
-  'surface-hover-bg': {
-    light: `#e5e7eb`,
-    dark: `#3a3a3a`,
-    white: `#fafafa`,
-    black: `#1a1a1a`,
-  },
-  'border-color': {
-    light: `#d1d5db`,
-    dark: `#404040`,
-    white: `#f0f0f0`,
-    black: `#202020`,
-  },
-  'accent-color': {
-    light: `#4f46e5`,
-    dark: `#60a5fa`,
-    white: `#2563eb`,
-    black: `#7dd3fc`,
-  },
-  'accent-hover-color': {
-    light: `#3730a3`,
-    dark: `#3b82f6`,
-    white: `#1d4ed8`,
-    black: `#0ea5e9`,
-  },
-  'muted-text-color': {
-    light: `#6b7280`,
-    dark: `#9ca3af`,
-    white: `#374151`,
-    black: `#d1d5db`,
-  },
+
+  // Semantic colors (same across themes)
   'success-color': {
     light: `#10b981`,
     dark: `#10b981`,
@@ -186,299 +155,62 @@ const themes = {
     white: `#dc2626`,
     black: `#f87171`,
   },
-  // Sidebar colors
-  'sidebar-bg': {
-    light: `rgba(241, 243, 245, 0.96)`,
-    dark: `rgba(15, 23, 42, 0.96)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(0, 0, 0, 0.98)`,
-  },
-  'sidebar-border': {
-    light: `rgba(209, 213, 219, 0.8)`,
-    dark: `rgba(71, 85, 105, 0.3)`,
-    white: `rgba(240, 240, 240, 0.9)`,
-    black: `rgba(32, 32, 32, 0.5)`,
-  },
-  'sidebar-header-bg': {
-    light: `rgba(243, 244, 246, 0.9)`,
-    dark: `rgba(30, 41, 59, 0.8)`,
-    white: `rgba(255, 255, 255, 0.95)`,
-    black: `rgba(15, 15, 15, 0.9)`,
-  },
-  'sidebar-header-border': {
-    light: `rgba(209, 213, 219, 0.5)`,
-    dark: `rgba(71, 85, 105, 0.2)`,
-    white: `rgba(240, 240, 240, 0.7)`,
-    black: `rgba(32, 32, 32, 0.3)`,
-  },
-  'sidebar-title-color': {
-    light: `#374151`,
-    dark: `#f1f5f9`,
-    white: `#000000`,
-    black: `#f8fafc`,
-  },
-  'sidebar-close-color': {
+  'muted-text-color': {
     light: `#6b7280`,
-    dark: `#94a3b8`,
+    dark: `#9ca3af`,
     white: `#374151`,
-    black: `#cbd5e1`,
+    black: `#d1d5db`,
   },
-  'sidebar-close-hover-bg': {
-    light: `rgba(209, 213, 219, 0.5)`,
-    dark: `rgba(71, 85, 105, 0.3)`,
-    white: `rgba(240, 240, 240, 0.7)`,
-    black: `rgba(32, 32, 32, 0.5)`,
+
+  // Interactive elements (buttons, etc.)
+  'btn-bg': btn_bg(0.1, 0.12),
+  'btn-hover-bg': btn_bg(0.2, 0.25),
+
+  // Tooltips
+  'tooltip-bg': tooltip_bg(`243, 244, 246`, `60, 60, 60`),
+  'tooltip-border': border_alpha(0.15),
+
+  // Structure-specific
+  'struct-bg': {
+    light: `rgba(0, 0, 0, 0.02)`,
+    dark: `rgba(255, 255, 255, 0.05)`,
+    white: `rgba(0, 0, 0, 0.01)`,
+    black: `rgba(255, 255, 255, 0.02)`,
   },
-  'sidebar-close-hover-color': {
-    light: `#4b5563`,
-    dark: `#f1f5f9`,
-    white: `#000000`,
-    black: `#f8fafc`,
-  },
-  'sidebar-scrollbar-thumb': {
-    light: `rgba(107, 114, 128, 0.7)`,
-    dark: `rgba(71, 85, 105, 0.5)`,
-    white: `rgba(107, 114, 128, 0.5)`,
-    black: `rgba(32, 32, 32, 0.7)`,
-  },
-  'sidebar-scrollbar-thumb-hover': {
-    light: `rgba(75, 85, 99, 0.9)`,
-    dark: `rgba(71, 85, 105, 0.7)`,
-    white: `rgba(55, 65, 81, 0.7)`,
-    black: `rgba(55, 65, 81, 0.9)`,
-  },
-  'sidebar-section-title-color': {
-    light: `#4b5563`,
-    dark: `#cbd5e1`,
-    white: `#000000`,
-    black: `#e2e8f0`,
-  },
-  'sidebar-item-bg': {
-    light: `rgba(243, 244, 246, 0.6)`,
-    dark: `rgba(30, 41, 59, 0.4)`,
-    white: `rgba(255, 255, 255, 0.8)`,
-    black: `rgba(15, 15, 15, 0.6)`,
-  },
-  'sidebar-item-border': {
-    light: `rgba(209, 213, 219, 0.4)`,
-    dark: `rgba(71, 85, 105, 0.2)`,
-    white: `rgba(240, 240, 240, 0.6)`,
-    black: `rgba(32, 32, 32, 0.3)`,
-  },
-  'sidebar-item-hover-bg': {
-    light: `rgba(229, 231, 235, 0.8)`,
-    dark: `rgba(30, 41, 59, 0.6)`,
-    white: `rgba(250, 250, 250, 0.9)`,
-    black: `rgba(26, 26, 26, 0.8)`,
-  },
-  'sidebar-item-hover-border': {
-    light: `rgba(156, 163, 175, 0.6)`,
-    dark: `rgba(71, 85, 105, 0.4)`,
-    white: `rgba(229, 231, 235, 0.8)`,
-    black: `rgba(55, 65, 81, 0.6)`,
-  },
-  'sidebar-site-item-bg': {
-    light: `rgba(219, 234, 254, 0.6)`,
-    dark: `rgba(30, 41, 59, 0.2)`,
-    white: `rgba(248, 250, 252, 0.8)`,
-    black: `rgba(15, 23, 42, 0.4)`,
-  },
-  'sidebar-site-border': {
-    light: `rgba(79, 70, 229, 0.6)`,
-    dark: `rgba(99, 179, 237, 0.6)`,
-    white: `rgba(37, 99, 235, 0.8)`,
-    black: `rgba(125, 211, 252, 0.8)`,
-  },
-  'sidebar-label-color': {
-    light: `#6b7280`,
-    dark: `#94a3b8`,
-    white: `#374151`,
-    black: `#cbd5e1`,
-  },
-  'sidebar-value-color': {
-    light: `#374151`,
-    dark: `#f1f5f9`,
-    white: `#000000`,
-    black: `#f8fafc`,
-  },
-  'sidebar-shadow': {
-    light: `4px 0 20px rgba(0, 0, 0, 0.08)`,
-    dark: `-4px 0 20px rgba(0, 0, 0, 0.15)`,
-    white: `4px 0 20px rgba(0, 0, 0, 0.02)`,
-    black: `-4px 0 20px rgba(0, 0, 0, 0.3)`,
-  },
-  // Demo nav colors
-  'demo-nav-link-bg': {
-    light: `rgba(0, 0, 0, 0.08)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.02)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'demo-nav-link-hover-bg': {
+  'struct-dragover-bg': {
     light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.15)`,
+    dark: `rgba(0, 0, 0, 0.7)`,
     white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.1)`,
+    black: `rgba(0, 0, 0, 0.8)`,
   },
-  'demo-nav-link-active-color': {
-    light: `#dc2626`,
-    dark: `mediumseagreen`,
-    white: `coral`,
-    black: `lightseagreen`,
-  },
-  // Theme control colors
-  'theme-control-bg': {
-    light: `rgba(241, 243, 245, 0.9)`,
-    dark: `rgba(15, 23, 42, 0.9)`,
-    white: `rgba(255, 255, 255, 0.95)`,
-    black: `rgba(0, 0, 0, 0.95)`,
-  },
-  'theme-control-border': {
-    light: `rgba(0, 0, 0, 0.25)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.1)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'theme-control-hover-bg': {
-    light: `rgba(241, 243, 245, 0.95)`,
-    dark: `rgba(15, 23, 42, 0.95)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(15, 15, 15, 0.98)`,
-  },
-  'theme-control-hover-border': {
-    light: `rgba(0, 0, 0, 0.3)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.15)`,
-    black: `rgba(255, 255, 255, 0.1)`,
-  },
-  'theme-control-select-bg': {
-    light: `rgba(241, 243, 245, 0.95)`,
-    dark: `rgba(30, 41, 59, 0.9)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(15, 15, 15, 0.95)`,
-  },
-  'theme-control-select-border': {
-    light: `rgba(0, 0, 0, 0.3)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.15)`,
-    black: `rgba(255, 255, 255, 0.1)`,
-  },
-  'theme-control-select-hover-bg': {
-    light: `rgba(229, 231, 235, 1)`,
-    dark: `rgba(51, 65, 85, 1)`,
-    white: `rgba(255, 255, 255, 1)`,
-    black: `rgba(26, 26, 26, 1)`,
-  },
-  'theme-control-select-hover-border': {
-    light: `rgba(0, 0, 0, 0.4)`,
-    dark: `rgba(255, 255, 255, 0.3)`,
-    white: `rgba(0, 0, 0, 0.2)`,
-    black: `rgba(255, 255, 255, 0.15)`,
-  },
-  'theme-control-label-color': {
-    light: `#4b5563`,
-    dark: `#e2e8f0`,
-    white: `#000000`,
-    black: `#f1f5f9`,
-  },
-  // Control panel colors
-  'controls-bg': {
-    light: `rgba(241, 243, 245, 0.95)`,
-    dark: `rgba(15, 23, 42, 0.95)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(0, 0, 0, 0.98)`,
-  },
-  'controls-text-color': {
-    light: `#374151`,
-    dark: `#eee`,
-    white: `#000000`,
-    black: `#f5f5f5`,
-  },
-  'controls-border': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'controls-btn-bg': {
-    light: `rgba(0, 0, 0, 0.12)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'controls-btn-hover-bg': {
-    light: `rgba(0, 0, 0, 0.25)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.1)`,
-    black: `rgba(255, 255, 255, 0.15)`,
-  },
-  'controls-hr-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  // Panel colors (for DraggablePanel component)
+
+  // Panel backgrounds (DraggablePanel, etc.)
   'panel-bg': {
     light: `rgba(229, 231, 235, 0.95)`,
     dark: `rgba(15, 23, 42, 0.95)`,
     white: `rgba(248, 250, 252, 0.98)`,
     black: `rgba(26, 26, 26, 0.98)`,
   },
-  'panel-text-color': {
-    light: `#374151`,
-    dark: `#eee`,
-    white: `#000000`,
-    black: `#f5f5f5`,
-  },
-  'panel-border': {
-    light: `rgba(0, 0, 0, 0.2)`,
-    dark: `rgba(255, 255, 255, 0.15)`,
-    white: `rgba(0, 0, 0, 0.1)`,
-    black: `rgba(255, 255, 255, 0.1)`,
-  },
-  'panel-btn-bg': {
-    light: `rgba(0, 0, 0, 0.12)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'panel-btn-hover-bg': {
-    light: `rgba(0, 0, 0, 0.25)`,
-    dark: `rgba(255, 255, 255, 0.2)`,
-    white: `rgba(0, 0, 0, 0.1)`,
-    black: `rgba(255, 255, 255, 0.15)`,
-  },
-  'panel-hr-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  // Trajectory colors
+  'panel-border': border_alpha(0.15),
+
+  // Trajectory-specific
   'traj-surface': {
     light: `rgba(241, 243, 245, 0.95)`,
     dark: `rgba(45, 55, 72, 0.95)`,
     white: `rgba(255, 255, 255, 0.98)`,
     black: `rgba(15, 15, 15, 0.98)`,
   },
-  'traj-text': {
-    light: `#374151`,
-    dark: `#e2e8f0`,
-    white: `#000000`,
-    black: `#f1f5f9`,
-  },
-  'traj-border': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(74, 85, 104, 0.5)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
+  'traj-border-bg': {
+    light: colors.border_light,
+    dark: `#4a5568`,
+    white: colors.border_white,
+    black: colors.border_black,
   },
   'traj-accent': {
-    light: `#4f46e5`,
+    light: colors.acc_light,
     dark: `#63b3ed`,
-    white: `#2563eb`,
-    black: `#7dd3fc`,
+    white: colors.acc_white,
+    black: colors.acc_black,
   },
   'traj-muted': {
     light: `#6b7280`,
@@ -492,60 +224,63 @@ const themes = {
     white: `rgba(255, 255, 255, 0.95)`,
     black: `rgba(10, 10, 10, 0.9)`,
   },
-  'traj-surface-hover': {
-    light: `rgba(0, 0, 0, 0.08)`,
-    dark: `rgba(74, 85, 104, 0.3)`,
-    white: `rgba(0, 0, 0, 0.02)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'traj-border-bg': {
-    light: `#d1d5db`,
-    dark: `#4a5568`,
-    white: `#f0f0f0`,
-    black: `#202020`,
-  },
-  'traj-text-muted': {
-    light: `#9ca3af`,
-    dark: `#a0aec0`,
-    white: `#6b7280`,
-    black: `#cbd5e1`,
-  },
-  'traj-accent-text': {
-    light: `#3730a3`,
-    dark: `#a8d8f0`,
-    white: `#1d4ed8`,
-    black: `#bae6fd`,
-  },
-  'traj-plot-bg': {
-    light: `rgba(245, 242, 242, 0.8)`,
-    dark: `rgba(26, 32, 44, 0.8)`,
-    white: `rgba(255, 255, 255, 0.95)`,
-    black: `rgba(10, 10, 10, 0.9)`,
-  },
-  'trajectory-dragover-border': {
-    light: `#4f46e5`,
-    dark: `#007acc`,
-    white: `#2563eb`,
-    black: `#0ea5e9`,
-  },
-  'trajectory-dragover-bg': {
-    light: `rgba(79, 70, 229, 0.1)`,
-    dark: `rgba(0, 122, 204, 0.1)`,
-    white: `rgba(37, 99, 235, 0.05)`,
-    black: `rgba(14, 165, 233, 0.05)`,
-  },
-  'trajectory-text-color': {
-    light: `#374151`,
+  'traj-text': {
+    light: colors.txt_light,
     dark: `#e2e8f0`,
-    white: `#000000`,
+    white: colors.txt_white,
     black: `#f1f5f9`,
   },
-  'trajectory-border': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
+
+  // Trajectory component variables (used directly)
+  'trajectory-text-color': {
+    light: colors.txt_light,
+    dark: `#e2e8f0`,
+    white: colors.txt_white,
+    black: `#f1f5f9`,
   },
+  'trajectory-text-muted': {
+    light: `#6b7280`,
+    dark: `#a0aec0`,
+    white: `#374151`,
+    black: `#cbd5e1`,
+  },
+  'trajectory-heading-color': {
+    light: colors.txt_light,
+    dark: `#e2e8f0`,
+    white: colors.txt_white,
+    black: `#f1f5f9`,
+  },
+  'trajectory-error-bg': {
+    light: colors.surf_light,
+    dark: colors.surf_dark,
+    white: colors.surf_white,
+    black: colors.surf_black,
+  },
+  'trajectory-error-color': {
+    light: colors.error_text_light,
+    dark: colors.error_text_dark,
+    white: colors.error_text_white,
+    black: colors.error_text_black,
+  },
+  'trajectory-error-border': {
+    light: colors.error_border_light,
+    dark: colors.error_border_dark,
+    white: colors.error_border_white,
+    black: colors.error_border_black,
+  },
+  'trajectory-error-button-bg': {
+    light: colors.error_btn_light,
+    dark: colors.error_btn_dark,
+    white: colors.error_btn_white,
+    black: colors.error_btn_black,
+  },
+  'trajectory-error-button-hover-bg': {
+    light: colors.error_btn_hover_light,
+    dark: colors.error_btn_hover_dark,
+    white: colors.error_btn_hover_white,
+    black: colors.error_btn_hover_black,
+  },
+  'trajectory-border': border_alpha(0.15),
   'trajectory-dropzone-border': {
     light: `#9ca3af`,
     dark: `#4a5568`,
@@ -558,91 +293,100 @@ const themes = {
     white: `#ffffff`,
     black: `rgba(15, 15, 15, 0.7)`,
   },
-  'trajectory-heading-color': {
-    light: `#374151`,
-    dark: `#e2e8f0`,
-    white: `#000000`,
-    black: `#f1f5f9`,
+  'trajectory-dragover-border': {
+    light: colors.acc_light,
+    dark: `#007acc`,
+    white: colors.acc_white,
+    black: `#0ea5e9`,
   },
-  'trajectory-text-muted': {
-    light: `#6b7280`,
-    dark: `#a0aec0`,
-    white: `#374151`,
-    black: `#cbd5e1`,
+  'trajectory-dragover-bg': {
+    light: `rgba(79, 70, 229, 0.1)`,
+    dark: `rgba(0, 122, 204, 0.1)`,
+    white: `rgba(37, 99, 235, 0.05)`,
+    black: `rgba(14, 165, 233, 0.05)`,
   },
-  'trajectory-display-mode-bg': {
-    light: `rgba(0, 0, 0, 0.08)`,
-    dark: `rgba(255, 255, 255, 0.05)`,
-    white: `rgba(0, 0, 0, 0.02)`,
-    black: `rgba(255, 255, 255, 0.02)`,
-  },
-  'trajectory-display-mode-hover-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `#6b7280`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.1)`,
-  },
-  'trajectory-fullscreen-bg': {
-    light: `rgba(0, 0, 0, 0.08)`,
-    dark: `rgba(255, 255, 255, 0.05)`,
-    white: `rgba(0, 0, 0, 0.02)`,
-    black: `rgba(255, 255, 255, 0.02)`,
-  },
-  'trajectory-fullscreen-hover-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(255, 255, 255, 0.1)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
-  },
-  'trajectory-info-bg': {
-    light: `#d1d5db`,
-    dark: `#4b5563`,
-    white: `#f0f0f0`,
+
+  // Dropzone states
+  'dropzone-border': {
+    light: `#9ca3af`,
+    dark: `#4a5568`,
+    white: `#e5e7eb`,
     black: `#374151`,
   },
-  'trajectory-play-button-bg': {
-    light: `#d1d5db`,
-    dark: `#6b7280`,
-    white: `#f0f0f0`,
-    black: `#4b5563`,
+  'dropzone-bg': {
+    light: `#f3f4f6`,
+    dark: `rgba(45, 55, 72, 0.5)`,
+    white: `#ffffff`,
+    black: `rgba(15, 15, 15, 0.7)`,
   },
-  'trajectory-play-button-hover-bg': {
-    light: `#9ca3af`,
-    dark: `#7f8793`,
-    white: `#e5e7eb`,
-    black: `#6b7280`,
+  'dragover-border': {
+    light: colors.acc_light,
+    dark: `#007acc`,
+    white: colors.acc_white,
+    black: `#0ea5e9`,
   },
-  'trajectory-pause-button-bg': {
-    light: `#d1d5db`,
-    dark: `#6b7280`,
-    white: `#f0f0f0`,
-    black: `#4b5563`,
+  'dragover-bg': {
+    light: `rgba(79, 70, 229, 0.1)`,
+    dark: `rgba(0, 122, 204, 0.1)`,
+    white: `rgba(37, 99, 235, 0.05)`,
+    black: `rgba(14, 165, 233, 0.05)`,
   },
-  'trajectory-pause-button-hover-bg': {
-    light: `#9ca3af`,
-    dark: `#9ca3af`,
-    white: `#e5e7eb`,
-    black: `#9ca3af`,
+
+  // Theme control
+  'theme-control-bg': {
+    light: `rgba(241, 243, 245, 0.9)`,
+    dark: `rgba(15, 23, 42, 0.9)`,
+    white: `rgba(255, 255, 255, 0.95)`,
+    black: `rgba(0, 0, 0, 0.95)`,
   },
-  'trajectory-view-mode-bg': {
-    light: `rgba(0, 0, 0, 0.08)`,
-    dark: `rgba(255, 255, 255, 0.05)`,
-    white: `rgba(0, 0, 0, 0.02)`,
-    black: `rgba(255, 255, 255, 0.02)`,
+  'theme-control-border': border_alpha(0.25),
+  'theme-control-hover-bg': {
+    light: `rgba(241, 243, 245, 0.95)`,
+    dark: `rgba(15, 23, 42, 0.95)`,
+    white: `rgba(255, 255, 255, 0.98)`,
+    black: `rgba(15, 15, 15, 0.98)`,
   },
-  'trajectory-view-mode-hover-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `#6b7280`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.1)`,
+
+  // Demo nav
+  'demo-nav-link-bg': btn_bg(0.1, 0.08),
+  'demo-nav-link-hover-bg': btn_bg(0.15, 0.15),
+  'demo-nav-link-active-color': {
+    light: `#dc2626`,
+    dark: `mediumseagreen`,
+    white: `coral`,
+    black: `lightseagreen`,
   },
-  'trajectory-view-mode-active-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `#4b5563`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(255, 255, 255, 0.05)`,
+
+  // Plot legend
+  'plot-legend-background-color': {
+    light: `rgba(255, 255, 255, 0.95)`,
+    dark: `rgba(0, 0, 0, 0.2)`,
+    white: `rgba(255, 255, 255, 0.98)`,
+    black: `rgba(0, 0, 0, 0.3)`,
   },
-  // Svelte MultiSelect component colors
+  'plot-legend-border': {
+    light: `1px solid rgba(0, 0, 0, 0.2)`,
+    dark: `1px solid rgba(255, 255, 255, 0.2)`,
+    white: `1px solid rgba(0, 0, 0, 0.1)`,
+    black: `1px solid rgba(255, 255, 255, 0.1)`,
+  },
+  'plot-legend-item-color': {
+    light: colors.txt_light,
+    dark: colors.txt_dark,
+    white: colors.txt_white,
+    black: colors.txt_black,
+  },
+  'plot-legend-item-hover-background-color': btn_bg(0.1, 0.1),
+
+  // Non-color theming (filters, etc.)
+  'legend-filter': {
+    light: `grayscale(10%) brightness(0.8) saturate(0.9)`,
+    dark: `grayscale(10%) brightness(0.8) saturate(0.8)`,
+    white: `grayscale(2%) brightness(0.9) saturate(1.2)`,
+    black: `grayscale(15%) brightness(0.7) saturate(0.7)`,
+  },
+
+  // Svelte MultiSelect
   'sms-options-bg': {
     light: `rgba(255, 255, 255, 0.95)`,
     dark: `rgb(20, 18, 36)`,
@@ -656,29 +400,50 @@ const themes = {
     black: `1px dotted teal`,
   },
   'sms-focus-border': {
-    light: `1px dotted #4f46e5`,
+    light: `1px dotted ${colors.acc_light}`,
     dark: `1px dotted cornflowerblue`,
-    white: `1px dotted #2563eb`,
-    black: `1px dotted #7dd3fc`,
+    white: `1px dotted ${colors.acc_white}`,
+    black: `1px dotted ${colors.acc_black}`,
   },
   'sms-active-color': {
-    light: `#4f46e5`,
+    light: colors.acc_light,
     dark: `cornflowerblue`,
-    white: `#2563eb`,
-    black: `#7dd3fc`,
+    white: colors.acc_white,
+    black: colors.acc_black,
   },
-  // VSCode-specific theme variables
+
+  // Zoo components (svelte-zoo)
+  'copy-btn-color': {
+    light: colors.txt_light,
+    dark: colors.txt_dark,
+    white: colors.txt_white,
+    black: colors.txt_black,
+  },
+  'github-corner-color': {
+    light: colors.bg_light,
+    dark: colors.bg_dark,
+    white: colors.bg_white,
+    black: colors.bg_black,
+  },
+  'github-corner-bg': {
+    light: colors.txt_light,
+    dark: colors.txt_dark,
+    white: colors.txt_white,
+    black: colors.txt_black,
+  },
+
+  // VSCode-specific
   'vscode-editor-background': {
-    light: `#ffffff`,
+    light: colors.bg_white,
     dark: `#1e1e1e`,
-    white: `#ffffff`,
-    black: `#000000`,
+    white: colors.bg_white,
+    black: colors.bg_black,
   },
   'vscode-editor-foreground': {
     light: `#333333`,
     dark: `#d4d4d4`,
-    white: `#000000`,
-    black: `#ffffff`,
+    white: colors.txt_white,
+    black: colors.txt_black,
   },
   'vscode-error-foreground': {
     light: `#e51400`,
@@ -690,8 +455,8 @@ const themes = {
 
 // Auto-generate CSS variables - theme keys now match CSS variable names exactly
 const special_mappings = {
-  'copy-btn-bg': `--zoo-copy-btn-bg`,
-  'copy-btn-hover-bg': `--zoo-copy-btn-hover-bg`,
+  'btn-bg': `--zoo-copy-btn-bg`,
+  'btn-hover-bg': `--zoo-copy-btn-hover-bg`,
   'copy-btn-color': `--zoo-copy-btn-color`,
   'github-corner-color': `--zoo-github-corner-color`,
   'github-corner-bg': `--zoo-github-corner-bg`,
@@ -703,13 +468,6 @@ const special_mappings = {
   'vscode-editor-foreground': `--vscode-editor-foreground`,
   'vscode-error-foreground': `--vscode-errorForeground`,
 }
-
-const css_vars = Object.fromEntries(
-  Object.keys(themes).map((key) => [
-    key,
-    special_mappings[key] || `--${key}`,
-  ]),
-)
 
 // Generate flattened themes and export
 const light = {}
@@ -725,6 +483,8 @@ for (const [key, values] of Object.entries(themes)) {
 
 // Export for global access
 globalThis.MATTERVIZ_THEMES = { light, dark, white, black }
-globalThis.MATTERVIZ_CSS_MAP = css_vars
+globalThis.MATTERVIZ_CSS_MAP = Object.fromEntries(
+  Object.keys(themes).map((key) => [key, special_mappings[key] || `--${key}`]),
+)
 globalThis.MATTERVIZ_THEME_SOURCE = themes
 globalThis.MATTERVIZ_SSR_PROPS = Object.keys(themes)

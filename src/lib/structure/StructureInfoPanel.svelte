@@ -17,12 +17,14 @@
     info_open?: boolean
     show_info?: boolean
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
+    [key: string]: unknown
   }
   let {
     structure,
     info_open = $bindable(false),
     show_info = $bindable(true),
     atom_count_thresholds = [50, 500],
+    ...rest
   }: Props = $props()
 
   let copied_items = $state<Set<string>>(new Set())
@@ -50,7 +52,7 @@
     }
   }
 
-  let sidebar_data = $derived.by(() => {
+  let info_panel_data = $derived.by(() => {
     if (!structure) return []
     const sections = []
     const [min_threshold, max_threshold] = atom_count_thresholds
@@ -267,10 +269,11 @@
         theme_state.type === `dark` ? `0.5` : `0.1`
       }); max-height: 80vh;`,
     }}
+    {...rest}
   >
     <div class="info-panel-content">
       <h4 class="section-heading">Structure Info</h4>
-      {#each sidebar_data as section (section.title)}
+      {#each info_panel_data as section (section.title)}
         <section>
           {#if section.title && section.title !== `Structure`}
             <h4 class="section-heading">{section.title}</h4>
@@ -312,7 +315,7 @@
               </div>
             {/if}
           {/each}
-          {#if section !== sidebar_data[sidebar_data.length - 1]}
+          {#if section !== info_panel_data[info_panel_data.length - 1]}
             <hr />
           {/if}
         </section>
@@ -391,7 +394,6 @@
   }
   section div span:first-child {
     font-size: 0.85em;
-    color: var(--panel-text-color, currentColor);
     font-weight: 500;
     min-width: 0;
     flex: 1;
@@ -402,7 +404,6 @@
   }
   section div span:last-child {
     font-size: 0.8em;
-    color: var(--panel-text-color, currentColor);
     font-weight: 500;
     text-align: right;
     font-family: inherit;
@@ -415,12 +416,10 @@
     white-space: normal;
     overflow: visible;
     text-overflow: unset;
-    color: var(--panel-text-color, currentColor);
     opacity: 1;
   }
   section div.tips-item span:last-child {
     font-size: 0.8em;
-    color: var(--panel-text-color, currentColor);
     opacity: 0.8;
     font-weight: 400;
     text-align: left;
@@ -441,12 +440,10 @@
     border-color: var(--panel-border, rgba(255, 255, 255, 0.3));
   }
   section div.toggle-item span:first-child {
-    color: var(--panel-text-color, currentColor);
     font-size: 0.9em;
     font-weight: 600;
   }
   section div.toggle-item span:last-child {
-    color: var(--panel-text-color, currentColor);
     font-size: 1em;
     font-weight: 600;
   }

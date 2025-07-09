@@ -167,282 +167,277 @@
 </script>
 
 {#if show_controls}
-  <div class="plot-controls">
-    <DraggablePanel
-      bind:show={controls_open}
-      closed_icon="Settings"
-      open_icon="Cross"
-      icon_style="transform: scale(1.2);"
-      toggle_props={{ class: `scatter-controls-toggle` }}
-      panel_props={{
-        class: `scatter-controls-panel`,
-        style:
-          `--panel-width: 16em; max-height: 400px; overflow-y: auto; padding-right: 4px;`,
-      }}
-    >
-      {#if plot_controls}
-        {@render plot_controls()}
-      {:else}
-        <div class="plot-controls-content">
-          <!-- Display Controls -->
-          <h4 class="section-heading">Display</h4>
-          <div class="controls-group">
+  <DraggablePanel
+    bind:show={controls_open}
+    closed_icon="Settings"
+    open_icon="Cross"
+    icon_style="transform: scale(1.2);"
+    toggle_props={{ class: `scatter-controls-toggle` }}
+    panel_props={{
+      class: `scatter-controls-panel`,
+      style:
+        `--panel-width: 16em; max-height: 400px; overflow-y: auto; padding-right: 4px;`,
+    }}
+  >
+    {#if plot_controls}
+      {@render plot_controls()}
+    {:else}
+      <div class="plot-controls-content">
+        <!-- Display Controls -->
+        <h4 class="section-heading">Display</h4>
+        <div class="controls-group">
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={show_points} /> Show points
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={show_lines} /> Show lines
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
+          </label>
+          {#if has_y2_points}
             <label class="checkbox-label">
-              <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
+              <input type="checkbox" bind:checked={y2_grid as boolean} /> Y2-axis grid
             </label>
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={show_points} /> Show points
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={show_lines} /> Show lines
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
-            </label>
-            {#if has_y2_points}
-              <label class="checkbox-label">
-                <input type="checkbox" bind:checked={y2_grid as boolean} /> Y2-axis grid
-              </label>
-            {/if}
-          </div>
+          {/if}
+        </div>
 
-          <!-- Format Controls -->
-          <h4 class="section-heading">Tick Format</h4>
-          <div class="controls-group">
+        <!-- Format Controls -->
+        <h4 class="section-heading">Tick Format</h4>
+        <div class="controls-group">
+          <div class="panel-row">
+            <label for="x-format">X-axis:</label>
+            <input
+              id="x-format"
+              type="text"
+              bind:value={x_format_input}
+              placeholder=".2f / .0% / %Y-%m-%d"
+              class="format-input"
+              oninput={(event) => handle_format_input(event, `x`)}
+            />
+          </div>
+          <div class="panel-row">
+            <label for="y-format">Y-axis:</label>
+            <input
+              id="y-format"
+              type="text"
+              bind:value={y_format_input}
+              placeholder=".2f / .1e / .0%"
+              class="format-input"
+              oninput={(event) => handle_format_input(event, `y`)}
+            />
+          </div>
+          {#if has_y2_points}
             <div class="panel-row">
-              <label for="x-format">X-axis:</label>
+              <label for="y2-format">Y2-axis:</label>
               <input
-                id="x-format"
+                id="y2-format"
                 type="text"
-                bind:value={x_format_input}
-                placeholder=".2f / .0% / %Y-%m-%d"
-                class="format-input"
-                oninput={(event) => handle_format_input(event, `x`)}
-              />
-            </div>
-            <div class="panel-row">
-              <label for="y-format">Y-axis:</label>
-              <input
-                id="y-format"
-                type="text"
-                bind:value={y_format_input}
+                bind:value={y2_format_input}
                 placeholder=".2f / .1e / .0%"
                 class="format-input"
-                oninput={(event) => handle_format_input(event, `y`)}
+                oninput={(event) => handle_format_input(event, `y2`)}
               />
-            </div>
-            {#if has_y2_points}
-              <div class="panel-row">
-                <label for="y2-format">Y2-axis:</label>
-                <input
-                  id="y2-format"
-                  type="text"
-                  bind:value={y2_format_input}
-                  placeholder=".2f / .1e / .0%"
-                  class="format-input"
-                  oninput={(event) => handle_format_input(event, `y2`)}
-                />
-              </div>
-            {/if}
-          </div>
-
-          <!-- Series Selection (for multi-series style controls) -->
-          {#if has_multiple_series}
-            <div class="controls-group">
-              <div class="panel-row">
-                <label for="series-select">Series</label>
-                <select bind:value={selected_series_idx} id="series-select">
-                  {#each series.filter(Boolean) as
-                    series_data,
-                    idx
-                    (series_data.label ?? idx)
-                  }
-                    <option value={idx}>
-                      {series_data.label ?? `Series ${idx + 1}`}
-                    </option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-          {/if}
-
-          <!-- Point Style Controls -->
-          {#if show_points}
-            <h4 class="section-heading">Point Style</h4>
-            <div class="controls-group">
-              <div class="panel-row">
-                <label for="point-size-range">Size:</label>
-                <input
-                  id="point-size-range"
-                  type="range"
-                  min="1"
-                  max="20"
-                  step="0.5"
-                  bind:value={point_size}
-                />
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  step="0.5"
-                  bind:value={point_size}
-                  class="number-input"
-                />
-              </div>
-              <div class="panel-row">
-                <label for="point-color">Color:</label>
-                <input
-                  id="point-color"
-                  type="color"
-                  bind:value={point_color}
-                  class="color-input"
-                />
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  bind:value={point_opacity}
-                  class="opacity-slider"
-                  title="Color opacity"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  bind:value={point_opacity}
-                  class="number-input opacity-number"
-                />
-              </div>
-              <div class="panel-row">
-                <label for="point-stroke-width-range">Stroke Width:</label>
-                <input
-                  id="point-stroke-width-range"
-                  type="range"
-                  min="0"
-                  max="5"
-                  step="0.1"
-                  bind:value={point_stroke_width}
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="5"
-                  step="0.1"
-                  bind:value={point_stroke_width}
-                  class="number-input"
-                />
-              </div>
-              <div class="panel-row">
-                <label for="point-stroke-color">Stroke Color:</label>
-                <input
-                  id="point-stroke-color"
-                  type="color"
-                  bind:value={point_stroke_color}
-                />
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  bind:value={point_stroke_opacity}
-                  class="opacity-slider"
-                  title="Stroke opacity"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  bind:value={point_stroke_opacity}
-                  class="number-input opacity-number"
-                />
-              </div>
-            </div>
-          {/if}
-
-          <!-- Line Style Controls -->
-          {#if show_lines}
-            <h4 class="section-heading">Line Style</h4>
-            <div class="controls-group">
-              <div class="panel-row">
-                <label for="line-width-range">Line Width:</label>
-                <input
-                  id="line-width-range"
-                  type="range"
-                  min="0.5"
-                  max="10"
-                  step="0.5"
-                  bind:value={line_width}
-                />
-                <input
-                  type="number"
-                  min="0.5"
-                  max="10"
-                  step="0.5"
-                  bind:value={line_width}
-                  class="number-input"
-                />
-              </div>
-              <div class="panel-row">
-                <label for="line-color">Line Color:</label>
-                <input
-                  id="line-color"
-                  type="color"
-                  bind:value={line_color}
-                />
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  bind:value={line_opacity}
-                  class="opacity-slider"
-                  title="Line opacity"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  bind:value={line_opacity}
-                  class="number-input opacity-number"
-                />
-              </div>
-              <div class="panel-row">
-                <label for="line-style-select">Line Style:</label>
-                <select
-                  id="line-style-select"
-                  value={line_dash ?? `solid`}
-                  onchange={(event) => {
-                    line_dash = event.currentTarget.value === `solid`
-                      ? undefined
-                      : event.currentTarget.value
-                  }}
-                >
-                  <option value="solid">Solid</option>
-                  <option value="4,4">Dashed</option>
-                  <option value="2,2">Dotted</option>
-                  <option value="8,4,2,4">Dash-dot</option>
-                </select>
-              </div>
             </div>
           {/if}
         </div>
-      {/if}
-    </DraggablePanel>
-  </div>
+
+        <!-- Series Selection (for multi-series style controls) -->
+        {#if has_multiple_series}
+          <div class="controls-group">
+            <div class="panel-row">
+              <label for="series-select">Series</label>
+              <select bind:value={selected_series_idx} id="series-select">
+                {#each series.filter(Boolean) as
+                  series_data,
+                  idx
+                  (series_data.label ?? idx)
+                }
+                  <option value={idx}>
+                    {series_data.label ?? `Series ${idx + 1}`}
+                  </option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Point Style Controls -->
+        {#if show_points}
+          <h4 class="section-heading">Point Style</h4>
+          <div class="controls-group">
+            <div class="panel-row">
+              <label for="point-size-range">Size:</label>
+              <input
+                id="point-size-range"
+                type="range"
+                min="1"
+                max="20"
+                step="0.5"
+                bind:value={point_size}
+              />
+              <input
+                type="number"
+                min="1"
+                max="20"
+                step="0.5"
+                bind:value={point_size}
+                class="number-input"
+              />
+            </div>
+            <div class="panel-row">
+              <label for="point-color">Color:</label>
+              <input
+                id="point-color"
+                type="color"
+                bind:value={point_color}
+                class="color-input"
+              />
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={point_opacity}
+                class="opacity-slider"
+                title="Color opacity"
+              />
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={point_opacity}
+                class="number-input opacity-number"
+              />
+            </div>
+            <div class="panel-row">
+              <label for="point-stroke-width-range">Stroke Width:</label>
+              <input
+                id="point-stroke-width-range"
+                type="range"
+                min="0"
+                max="5"
+                step="0.1"
+                bind:value={point_stroke_width}
+              />
+              <input
+                type="number"
+                min="0"
+                max="5"
+                step="0.1"
+                bind:value={point_stroke_width}
+                class="number-input"
+              />
+            </div>
+            <div class="panel-row">
+              <label for="point-stroke-color">Stroke Color:</label>
+              <input
+                id="point-stroke-color"
+                type="color"
+                bind:value={point_stroke_color}
+              />
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={point_stroke_opacity}
+                class="opacity-slider"
+                title="Stroke opacity"
+              />
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={point_stroke_opacity}
+                class="number-input opacity-number"
+              />
+            </div>
+          </div>
+        {/if}
+
+        <!-- Line Style Controls -->
+        {#if show_lines}
+          <h4 class="section-heading">Line Style</h4>
+          <div class="controls-group">
+            <div class="panel-row">
+              <label for="line-width-range">Line Width:</label>
+              <input
+                id="line-width-range"
+                type="range"
+                min="0.5"
+                max="10"
+                step="0.5"
+                bind:value={line_width}
+              />
+              <input
+                type="number"
+                min="0.5"
+                max="10"
+                step="0.5"
+                bind:value={line_width}
+                class="number-input"
+              />
+            </div>
+            <div class="panel-row">
+              <label for="line-color">Line Color:</label>
+              <input
+                id="line-color"
+                type="color"
+                bind:value={line_color}
+              />
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={line_opacity}
+                class="opacity-slider"
+                title="Line opacity"
+              />
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={line_opacity}
+                class="number-input opacity-number"
+              />
+            </div>
+            <div class="panel-row">
+              <label for="line-style-select">Line Style:</label>
+              <select
+                id="line-style-select"
+                value={line_dash ?? `solid`}
+                onchange={(event) => {
+                  line_dash = event.currentTarget.value === `solid`
+                    ? undefined
+                    : event.currentTarget.value
+                }}
+              >
+                <option value="solid">Solid</option>
+                <option value="4,4">Dashed</option>
+                <option value="2,2">Dotted</option>
+                <option value="8,4,2,4">Dash-dot</option>
+              </select>
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </DraggablePanel>
 {/if}
 
 <style>
-  .plot-controls {
-    z-index: var(--plot-controls-z-index);
-  }
-  .plot-controls :global(.section-heading) {
+  :global(.scatter-controls-panel .section-heading) {
     margin: 0 0 8px 0;
     font-size: 0.9em;
     color: var(--muted-text-color, #ccc);
@@ -450,38 +445,38 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 4px;
   }
-  .plot-controls :global(.plot-controls-content) {
+  :global(.scatter-controls-panel .plot-controls-content) {
     max-height: 400px;
     overflow-y: auto;
     padding-right: 4px;
   }
-  .plot-controls :global(.controls-group) {
+  :global(.scatter-controls-panel .controls-group) {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 16px;
   }
-  .plot-controls :global(.checkbox-label) {
+  :global(.scatter-controls-panel .checkbox-label) {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 0.85em;
   }
-  .plot-controls :global(.panel-row) {
+  :global(.scatter-controls-panel .panel-row) {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 0.85em;
   }
-  .plot-controls :global(.panel-row label) {
+  :global(.scatter-controls-panel .panel-row label) {
     min-width: 80px;
     font-size: 0.85em;
   }
-  .plot-controls :global(.panel-row input[type='range']) {
+  :global(.scatter-controls-panel .panel-row input[type='range']) {
     flex: 1;
     min-width: 60px;
   }
-  .plot-controls :global(.number-input) {
+  :global(.scatter-controls-panel .number-input) {
     width: 50px;
     text-align: center;
     border-radius: 3px;
@@ -489,45 +484,44 @@
     font-size: 0.8em;
     box-sizing: border-box;
   }
-  .plot-controls :global(.panel-row input[type='color']) {
+  :global(.scatter-controls-panel .panel-row input[type='color']) {
     width: 40px;
     height: 24px;
     box-sizing: border-box;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 3px;
-    cursor: pointer;
   }
-  .plot-controls :global(.panel-row select) {
+  :global(.scatter-controls-panel .panel-row select) {
     flex: 1;
     border-radius: 3px;
     padding: 2px 4px;
     font-size: 0.8em;
   }
-  .plot-controls :global(.opacity-slider) {
+  :global(.scatter-controls-panel .opacity-slider) {
     flex: 1;
     min-width: 50px;
     margin-left: 4px;
   }
-  .plot-controls :global(.opacity-number) {
+  :global(.scatter-controls-panel .opacity-number) {
     width: 40px;
     margin-left: 4px;
   }
-  .plot-controls :global(.format-input) {
+  :global(.scatter-controls-panel .format-input) {
     flex: 1;
     border-radius: 3px;
     padding: 4px 6px;
     font-size: 0.8em;
     font-family: monospace;
   }
-  .plot-controls :global(.format-input::placeholder) {
+  :global(.scatter-controls-panel .format-input::placeholder) {
     color: rgba(255, 255, 255, 0.5);
     font-style: italic;
   }
-  .plot-controls :global(.format-input.invalid) {
+  :global(.scatter-controls-panel .format-input.invalid) {
     border-color: var(--error-color, #ff6b6b);
     background: rgba(255, 107, 107, 0.1);
   }
-  .plot-controls :global(.format-input.invalid:focus) {
+  :global(.scatter-controls-panel .format-input.invalid:focus) {
     outline-color: var(--error-color, #ff6b6b);
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }
