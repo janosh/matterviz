@@ -64,12 +64,6 @@
     width: calc(100cqw - 2em);
     z-index: 2;
   }
-  p {
-    text-align: center;
-  }
-  p > span {
-    color: orange;
-  }
 </style>
 ```
 

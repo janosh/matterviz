@@ -238,8 +238,6 @@
 
 <style>
   .panel-toggle {
-    width: 30px;
-    height: 30px;
     box-sizing: border-box;
     display: flex;
     place-items: center;
@@ -356,16 +354,12 @@
     z-index: 10;
     pointer-events: none; /* Allow events to pass through to children */
   }
-
-  /* Control buttons container */
   .draggable-panel .control-buttons {
     display: flex;
     gap: 5px;
     align-items: center;
     pointer-events: auto; /* Re-enable pointer events for buttons */
   }
-
-  /* Drag handle styling */
   .draggable-panel :global(.drag-handle) {
     width: 1.3em;
     height: 1.3em;
@@ -385,7 +379,6 @@
   .draggable-panel :global(.drag-handle:active) {
     cursor: grabbing;
   }
-
   /* Reset and close button styling */
   .draggable-panel .reset-button,
   .draggable-panel .close-button {

@@ -7,8 +7,8 @@
   let info_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
-  let gizmo = $state(true)
   let show_buttons = $state<boolean | number>(true)
+  let scene_props = $state({ gizmo: true, show_atoms: true })
 
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
@@ -133,7 +133,12 @@
   <br />
   <label>
     Show Gizmo:
-    <input type="checkbox" bind:checked={gizmo} />
+    <input type="checkbox" bind:checked={scene_props.gizmo} />
+  </label>
+  <br />
+  <label>
+    Show Atoms:
+    <input type="checkbox" bind:checked={scene_props.show_atoms} />
   </label>
   <br />
   <label>
@@ -164,7 +169,7 @@
     bind:height={canvas.height}
     {background_color}
     {show_buttons}
-    scene_props={{ gizmo, show_atoms: true }}
+    bind:scene_props
     {lattice_props}
   />
 </div>
@@ -175,7 +180,7 @@
 
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
-<div data-testid="gizmo-status">Gizmo Status: {gizmo}</div>
+<div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_buttons}</div>
 
 <style>

@@ -22,6 +22,9 @@
 
   const viewer_titles = [mp_id, `Li4Fe3Mn1(PO4)4.cif`]
 
+  // Scene props for structure viewers
+  let scene_props = $state([{ auto_rotate: 0.5 }, { auto_rotate: 0.5 }])
+
   // Initialize structures once on mount to avoid reactive loops
   onMount(() => {
     // Load MP structure
@@ -227,7 +230,7 @@
       <h3>{viewer_titles[idx]}</h3>
       <Structure
         {structure}
-        scene_props={{ auto_rotate: 0.5 }}
+        bind:scene_props={scene_props[idx]}
         on_file_drop={structure_handlers[idx]}
         style="--struct-height: 400px"
       />
