@@ -1,6 +1,22 @@
 # Changelog
 
-#### [v0.1.2](https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.2)
+## [v0.1.3](https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.3)
+
+> 9 July 2025
+
+### 🛠 Enhancements
+
+- Add color theme support to MatterViz Web and VSCode by @janosh in https://github.com/janosh/matterviz/pull/86
+- `DraggablePanel` replaces `ControlPanel` used by `StructureControls`, `StructureInfoPanel`, `ScatterPlotControls` by @janosh in https://github.com/janosh/matterviz/pull/89
+- VSCode extension file-watching: Structure and Trajectory viewers auto-update on file changes by @janosh in https://github.com/janosh/matterviz/pull/91
+
+### 🐛 Bug Fixes
+
+- Add `HistogramControls` using `DraggablePanel`, rename `TrajectorySidebar` to `TrajectoryInfoPanel` now also using `DraggablePanel` by @janosh in https://github.com/janosh/matterviz/pull/90
+
+**Full Changelog**: https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.3
+
+## [v0.1.2](https://github.com/janosh/matterviz/compare/v0.1.1...v0.1.2)
 
 > 4 July 2025
 

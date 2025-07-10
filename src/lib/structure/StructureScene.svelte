@@ -66,8 +66,8 @@
     sphere_segments?: number
     lattice_props?: ComponentProps<typeof Lattice>
     atom_label?: Snippet<[Site, number]>
-    camera_is_moving?: boolean
-    orbit_controls?: typeof OrbitControls | undefined
+    camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
+    orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
   }
   let {
     structure = undefined,
