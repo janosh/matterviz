@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import type { Category, ChemicalElement } from '$lib'
   import {
     BohrAtom,
@@ -132,6 +133,10 @@
     ),
     Math.max(...element_data.map((el) => Math.abs(el.electron_affinity || 0))),
   ] as [number, number])
+
+  const onenter = (element: ChemicalElement) => {
+    goto(`/${element.name.toLowerCase()}`)
+  }
 </script>
 
 {#snippet custom_tooltip({
@@ -187,6 +192,7 @@
     inner_transition_metal_offset={inner_transition_offset}
     show_photo
     style="margin: 2em auto; max-width: 1200px; --elem-tile-border-radius: {tile_border_radius}pt; --elem-symbol-font-size: {symbol_font_size}cqw; --elem-number-font-size: {number_font_size}cqw; --elem-name-font-size: {name_font_size}cqw; --elem-value-font-size: {value_font_size}cqw; --tooltip-font-size: {tooltip_font_size}px; --tooltip-bg: {tooltip_bg_color}; --tooltip-color: {tooltip_text_color}"
+    {onenter}
   >
     {#if selected.element && window_width > 1100}
       {@const { shells, name, symbol } = selected.element}
@@ -249,6 +255,7 @@
   color_scale="interpolateRdYlBu"
   tooltip
   style="margin: 1em auto; max-width: 800px"
+  {onenter}
 >
   {#snippet inset()}
     <TableInset>
@@ -294,6 +301,7 @@
   split_layout="quadrant"
   tooltip
   style="margin: 1em auto; max-width: 800px"
+  {onenter}
 >
   {#snippet inset()}
     <TableInset>
@@ -364,6 +372,7 @@
   tooltip
   gap={tile_gap}
   style="margin: 1em auto; max-width: 1000px"
+  {onenter}
 >
   {#snippet inset()}
     <TableInset>

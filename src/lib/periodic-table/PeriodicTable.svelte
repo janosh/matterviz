@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
   import type { Category, ChemicalElement, XyObj } from '$lib'
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { is_color } from '$lib/colors'
@@ -64,6 +63,7 @@
       >
       | boolean
     children?: Snippet
+    onenter?: (element: ChemicalElement) => void
     [key: string]: unknown
   }
   let {
@@ -90,7 +90,7 @@
     inset,
     bottom_left_inset,
     tooltip = false,
-
+    onenter,
     children,
     ...rest
   }: Props = $props()
@@ -131,11 +131,10 @@
 
   function handle_key(event: KeyboardEvent) {
     if (disabled || !active_element) return
-    if (event.key == `Enter`) return goto(active_element.name.toLowerCase())
+    if (event.key == `Enter`) onenter?.(active_element)
 
-    if (![`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`].includes(event.key)) {
-      return
-    }
+    const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
+    if (!arrow_keys.includes(event.key)) return
 
     event.preventDefault() // prevent scrolling the page
     event.stopPropagation()
@@ -166,11 +165,6 @@
       }
     }
     tooltip_visible = true
-  }
-
-  function handle_tooltip_leave() {
-    tooltip_visible = false
-    tooltip_element = null
   }
 
   let color_scale_fn = $derived(
@@ -280,7 +274,8 @@
         }}
         onmouseleave={() => {
           set_active_element(null)()
-          handle_tooltip_leave()
+          tooltip_visible = false
+          tooltip_element = null
         }}
         onfocus={set_active_element(element)}
         onblur={set_active_element(null)}

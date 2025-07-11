@@ -2,8 +2,8 @@
   import { DraggablePanel, Icon } from '$lib'
   import { format_num } from '$lib/labels'
   import { theme_state } from '$lib/state.svelte'
-  import { electro_neg_formula } from '$lib/structure'
-  import { titles_as_tooltips } from 'svelte-zoo'
+  import { type AnyStructure, electro_neg_formula } from '$lib/structure'
+  import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
   import type { Trajectory } from './index'
 
   interface Props {
@@ -13,7 +13,8 @@
     current_file_path?: string | null
     file_size?: number | null
     file_object?: File | null
-    show_info?: boolean
+    panel_open?: boolean
+    [key: string]: unknown
   }
   let {
     trajectory,
@@ -22,7 +23,8 @@
     current_file_path,
     file_size,
     file_object,
-    show_info = $bindable(true),
+    panel_open = $bindable(false),
+    ...rest
   }: Props = $props()
 
   let copied_items = $state<Set<string>>(new Set())
@@ -40,25 +42,20 @@
     }
   }
 
-  // Helper functions for creating info items and extracting metadata
-  const info_item = (
-    label: string,
-    value: string,
-    key: string,
-    tooltip?: string,
-  ) => ({ label, value, key, tooltip })
-
+  // Helper functions
   const format_size = (bytes: number) =>
     bytes > 1024 * 1024
       ? `${format_num(bytes / (1024 * 1024), `.2~f`)} MB`
       : `${format_num(bytes / 1024, `.2~f`)} KB`
 
+  const is_valid_number = (val: unknown): val is number =>
+    typeof val === `number` && !isNaN(val) && isFinite(val)
+
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
-    frames.map((f) => f.metadata?.[prop]).filter((val): val is number =>
-      typeof val === `number`
-    )
+    frames.map((f) => f.metadata?.[prop]).filter(is_valid_number)
 
   const format_range = (values: number[], unit = ``, decimals = `.2~f`) => {
+    if (!values.length) return null
     if (values.length === 1) {
       return `${format_num(values[0], decimals)} ${unit}`.trim()
     }
@@ -67,182 +64,185 @@
       .trim()
   }
 
+  type InfoItem = { label: string; value: string; key: string; tooltip?: string }
+
+  const safe_item = (
+    label: string,
+    value: string | null,
+    key: string,
+    tooltip?: string,
+  ): InfoItem | null => value ? { label, value, key, tooltip } : null
+
+  const is_info_item = (item: unknown): item is InfoItem => Boolean(item)
+
+  const safe_formula = (structure: AnyStructure) => {
+    try {
+      return electro_neg_formula(structure)
+    } catch {
+      return null
+    }
+  }
+
   // Get trajectory info organized by sections
   let info_sections = $derived.by(() => {
-    if (!trajectory) return []
+    if (
+      !trajectory?.frames?.length || current_step_idx < 0 ||
+      current_step_idx >= trajectory.frames.length
+    ) return []
 
     const current_frame = trajectory.frames[current_step_idx]
-    const sections: Array<ReturnType<typeof info_item>[]> = []
+    if (!current_frame?.structure?.sites) return []
+
+    const sections: (InfoItem | null | false | ``)[][] = []
 
     // File info section
     const file_items = [
       current_filename &&
-      info_item(
+      safe_item(
         `Name`,
         current_filename,
         `file-name`,
         current_file_path || undefined,
       ),
-      file_size && info_item(`File Size`, format_size(file_size), `file-size`),
-      file_object &&
-      info_item(
+      file_size && file_size > 0 &&
+      safe_item(`File Size`, format_size(file_size), `file-size`),
+      file_object?.lastModified &&
+      safe_item(
         `Modified`,
         new Date(file_object.lastModified).toLocaleString(),
         `file-modified`,
       ),
       trajectory.metadata?.source_format &&
-      info_item(`Format`, String(trajectory.metadata.source_format), `file-format`),
-    ].filter((item): item is ReturnType<typeof info_item> =>
-      item !== false && item !== null
-    )
+      safe_item(`Format`, String(trajectory.metadata.source_format), `file-format`),
+    ].filter(is_info_item)
 
     if (file_items.length > 0) sections.push(file_items)
 
     // Structure info section
-    const structure_items = [
-      info_item(`Atoms`, `${current_frame.structure.sites.length}`, `atoms`),
-      info_item(
-        `Formula`,
-        String(electro_neg_formula(current_frame.structure)),
-        `formula`,
-      ),
-    ]
+    const { structure } = current_frame
+    const lattice = `lattice` in structure ? structure.lattice : null
+    const { volume, a, b, c, alpha, beta, gamma } = lattice || {}
+    const formula = safe_formula(structure)
 
-    if (`lattice` in current_frame.structure) {
-      const { volume, a, b, c, alpha, beta, gamma } = current_frame.structure.lattice
-      structure_items.push(
-        info_item(`Volume`, `${format_num(volume, `.3~s`)} Å³`, `volume`),
-        info_item(
-          `Density`,
-          `${
-            format_num(current_frame.structure.sites.length / volume, `.4~s`)
-          } atoms/Å³`,
-          `density`,
-        ),
-        info_item(
-          `Cell Lengths`,
-          `${format_num(a, `.3~f`)}, ${format_num(b, `.3~f`)}, ${
-            format_num(c, `.3~f`)
-          } Å`,
-          `cell-lengths`,
-        ),
-        info_item(
-          `Cell Angles`,
-          `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${
-            format_num(gamma, `.2~f`)
-          }°`,
-          `cell-angles`,
-        ),
-      )
-    }
-    sections.push(structure_items)
+    const structure_items = [
+      safe_item(`Atoms`, `${structure.sites.length}`, `atoms`),
+      formula && safe_item(`Formula`, String(formula), `formula`),
+      is_valid_number(volume) && volume > 0 &&
+      safe_item(`Volume`, `${format_num(volume, `.3~s`)} Å³`, `volume`),
+      is_valid_number(volume) && volume > 0 && structure.sites.length > 0 &&
+      safe_item(
+        `Density`,
+        `${format_num(structure.sites.length / volume, `.4~s`)} atoms/Å³`,
+        `density`,
+      ),
+      [a, b, c].every(is_valid_number) &&
+      safe_item(
+        `Cell Lengths`,
+        `${format_num(a as number, `.3~f`)}, ${format_num(b as number, `.3~f`)}, ${
+          format_num(c as number, `.3~f`)
+        } Å`,
+        `cell-lengths`,
+      ),
+      [alpha, beta, gamma].every(is_valid_number) &&
+      safe_item(
+        `Cell Angles`,
+        `${format_num(alpha as number, `.2~f`)}°, ${
+          format_num(beta as number, `.2~f`)
+        }°, ${format_num(gamma as number, `.2~f`)}°`,
+        `cell-angles`,
+      ),
+    ].filter(is_info_item)
+
+    if (structure_items.length > 0) sections.push(structure_items)
 
     // Trajectory info section
+    const times = extract_numeric_array(trajectory.frames, `time`)
+    const duration = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
+    const time_unit = trajectory.metadata?.time_unit || `fs`
+
+    const properties = [
+      { key: `temperature`, unit: `K` },
+      { key: `pressure`, unit: `GPa` },
+    ]
+
     const traj_items = [
-      info_item(
+      safe_item(
         `Steps`,
         `${trajectory.frames.length} (current: ${current_step_idx + 1})`,
         `steps`,
       ),
-    ]
+      duration > 0 &&
+      safe_item(
+        `Duration`,
+        `${format_num(duration, `.3~s`)} ${time_unit}`,
+        `duration`,
+      ),
+      ...properties.map(({ key, unit }) => {
+        const values = extract_numeric_array(trajectory.frames, key)
+        const range = format_range(values, unit)
+        return range &&
+          safe_item(key.charAt(0).toUpperCase() + key.slice(1), range, key)
+      }),
+    ].filter(Boolean)
 
-    // Add time duration if available
-    const times = extract_numeric_array(trajectory.frames, `time`)
-    if (times.length > 1) {
-      const duration = Math.max(...times) - Math.min(...times)
-      const unit = trajectory.metadata?.time_unit || `fs`
-      traj_items.push(
-        info_item(`Duration`, `${format_num(duration, `.3~s`)} ${unit}`, `duration`),
-      )
-    }
-
-    // Add property ranges
-    const properties = [
-      {
-        key: `temperature`,
-        values: extract_numeric_array(trajectory.frames, `temperature`),
-        unit: `K`,
-      },
-      {
-        key: `pressure`,
-        values: extract_numeric_array(trajectory.frames, `pressure`),
-        unit: `GPa`,
-      },
-    ]
-
-    properties.forEach(({ key, values, unit }) => {
-      if (values.length > 0) {
-        traj_items.push(info_item(
-          key.charAt(0).toUpperCase() + key.slice(1),
-          format_range(values, unit),
-          key,
-        ))
-      }
-    })
-
-    sections.push(traj_items)
+    if (traj_items.length > 0) sections.push(traj_items)
 
     // Energy section
     const energies = extract_numeric_array(trajectory.frames, `energy`)
     if (energies.length > 1) {
-      const energy_items = []
-      const current_energy = current_frame.metadata?.energy as number | undefined
-      if (current_energy != null) {
-        energy_items.push(
-          info_item(
-            `Current Energy`,
-            `${format_num(current_energy, `.3~s`)} eV`,
-            `energy-current`,
-          ),
-        )
-      }
-      energy_items.push(
-        info_item(
-          `Energy Range`,
-          format_range(energies, `eV`, `.3~s`),
-          `energy-range`,
+      const current_energy = current_frame.metadata?.energy
+      const energy_range = format_range(energies, `eV`, `.3~s`)
+
+      const energy_items = [
+        is_valid_number(current_energy) &&
+        safe_item(
+          `Current Energy`,
+          `${format_num(current_energy, `.3~s`)} eV`,
+          `energy-current`,
         ),
-      )
-      sections.push(energy_items)
+        energy_range && safe_item(`Energy Range`, energy_range, `energy-range`),
+      ].filter(Boolean)
+
+      if (energy_items.length > 0) sections.push(energy_items)
     }
 
     // Forces section
     const forces = extract_numeric_array(trajectory.frames, `force_max`)
     if (forces.length > 1) {
-      const force_items = []
-      const current_force = current_frame.metadata?.force_max as number | undefined
-      if (current_force != null) {
-        force_items.push(
-          info_item(
-            `Max Force`,
-            `${format_num(current_force, `.3~s`)} eV/Å`,
-            `force-current`,
-          ),
-        )
-      }
-      force_items.push(
-        info_item(`Force Range`, format_range(forces, `eV/Å`, `.3~s`), `force-range`),
-      )
-      sections.push(force_items)
+      const current_force = current_frame.metadata?.force_max
+      const force_range = format_range(forces, `eV/Å`, `.3~s`)
+
+      const force_items = [
+        is_valid_number(current_force) &&
+        safe_item(
+          `Max Force`,
+          `${format_num(current_force, `.3~s`)} eV/Å`,
+          `force-current`,
+        ),
+        force_range && safe_item(`Force Range`, force_range, `force-range`),
+      ].filter(Boolean)
+
+      if (force_items.length > 0) sections.push(force_items)
     }
 
     // Volume change section
-    if (`lattice` in current_frame.structure && trajectory.frames.length > 1) {
+    if (lattice && trajectory.frames.length > 1) {
       const volumes = trajectory.frames
-        .map((f) => (`lattice` in f.structure ? f.structure.lattice.volume : null))
-        .filter((v): v is number => v !== null)
+        .map((f) => (`lattice` in f.structure && f.structure.lattice?.volume))
+        .filter(is_valid_number)
+        .filter((v) => v > 0)
 
       if (volumes.length > 1) {
         const vol_change =
           ((Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)) * 100
-        if (Math.abs(vol_change) > 0.1) {
-          sections.push([
-            info_item(
+        if (Math.abs(vol_change) > 0.1 && is_valid_number(vol_change)) {
+          sections.push(
+            [safe_item(
               `Volume Change`,
               `${format_num(vol_change, `.2~f`)}%`,
               `vol-change`,
-            ),
-          ])
+            )].filter(Boolean),
+          )
         }
       }
     }
@@ -251,61 +251,56 @@
   })
 </script>
 
-{#if show_info}
-  <DraggablePanel
-    max_width="24em"
-    toggle_props={{ class: `trajectory-info-toggle`, title: `Toggle trajectory info` }}
-    open_icon="Cross"
-    closed_icon="Info"
-    icon_style="transform: scale(1.3);"
-    panel_props={{
-      class: `trajectory-info-panel`,
-      style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
-        theme_state.type === `dark` ? `0.5` : `0.1`
-      }); max-height: 80vh;`,
-    }}
-  >
-    <div class="info-content">
-      <h4>Trajectory Info</h4>
-      {#each info_sections as section, section_idx (section_idx)}
-        {#if section_idx > 0}
-          <hr class="section-divider" />
-        {/if}
-        {#each section as item (item.key)}
-          <div
-            class="info-item"
-            title="Click to copy: {item.label}: {item.value}"
-            onclick={() => copy_item(item.label, item.value, item.key)}
-            role="button"
-            tabindex="0"
-            onkeydown={(event) => {
-              if (event.key === `Enter` || event.key === ` `) {
-                event.preventDefault()
-                copy_item(item.label, item.value, item.key)
-              }
-            }}
-          >
-            <span>{item.label}</span>
-            <span title={item.tooltip} use:titles_as_tooltips>{@html item.value}</span>
-            {#if copied_items.has(item.key)}
-              <div class="copy-check">
-                <Icon
-                  icon="Check"
-                  style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-                />
-              </div>
-            {/if}
+<DraggablePanel
+  bind:show={panel_open}
+  max_width="24em"
+  toggle_props={{ class: `trajectory-info-toggle`, title: `Toggle trajectory info` }}
+  open_icon="Cross"
+  closed_icon="Info"
+  icon_style="transform: scale(1.3);"
+  panel_props={{
+    class: `trajectory-info-panel`,
+    style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
+      theme_state.type === `dark` ? `0.5` : `0.1`
+    }); max-height: 80vh;`,
+  }}
+  {...rest}
+>
+  <h4>Trajectory Info</h4>
+  {#each info_sections as section, section_idx (section_idx)}
+    {#if section_idx > 0}
+      <hr class="section-divider" />
+    {/if}
+    {#each section as { label, value, key, tooltip } (key)}
+      <div
+        class="info-item"
+        title="Click to copy: {label}: {value}"
+        onclick={() => copy_item(label, value, key)}
+        role="button"
+        tabindex="0"
+        onkeydown={(event) => {
+          if (event.key === `Enter` || event.key === ` `) {
+            event.preventDefault()
+            copy_item(label, value, key)
+          }
+        }}
+      >
+        <span>{label}</span>
+        <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
+        {#if copied_items.has(key)}
+          <div class="copy-check">
+            <Icon
+              icon="Check"
+              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+            />
           </div>
-        {/each}
-      {/each}
-    </div>
-  </DraggablePanel>
-{/if}
+        {/if}
+      </div>
+    {/each}
+  {/each}
+</DraggablePanel>
 
 <style>
-  .info-content {
-    padding-top: 8pt;
-  }
   h4 {
     margin: 8pt 0 6pt;
     font-size: 0.9em;
@@ -321,16 +316,14 @@
     align-items: center;
     justify-content: space-between;
     gap: 6pt;
-    padding: 1pt 0;
-    margin-bottom: 1pt;
+    padding: var(--panel-padding, 1pt 5pt);
+    border-radius: var(--panel-border-radius, 3pt);
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
   }
   .info-item:hover {
-    background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.03));
-    padding-left: 3pt;
-    padding-right: 3pt;
+    background: var(--panel-btn-hover-bg, var(--tooltip-bg));
   }
   .info-item span:first-child {
     font-size: 0.85em;

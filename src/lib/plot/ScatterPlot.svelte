@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cells_3x3, corner_cells, Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-  import { luminance } from '$lib/labels'
+  import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
@@ -49,7 +49,6 @@
 
   interface Props {
     series?: DataSeries[]
-    style?: string
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
     x_range?: [number, number] // Explicit ranges for x and y axes. If provided, this overrides the auto-computed range.
@@ -136,10 +135,10 @@
     show_lines?: boolean
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
+    [key: string]: unknown
   }
   let {
     series = [],
-    style = ``,
     x_lim = [null, null],
     y_lim = [null, null],
     x_range,
@@ -209,6 +208,7 @@
     show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
     color_axis_labels = true,
+    ...rest
   }: Props = $props()
 
   let width = $state(0)
@@ -1410,7 +1410,12 @@
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 </script>
 
-<div class="scatter" bind:clientWidth={width} bind:clientHeight={height} {style}>
+<div
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  {...rest}
+  class="scatter {rest.class ?? ``}"
+>
   {#if width && height}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
@@ -1852,7 +1857,7 @@
         {@const label = point_label?.text ?? null}
 
         {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
-        {@const tooltip_text_color = tooltip_lum > 0.5 ? `black` : `white`}
+        {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
 
         <foreignObject x={cx + 5} y={cy}>
           <div
@@ -1883,6 +1888,9 @@
     <!-- Control Panel positioned in top-right corner -->
     {#if show_controls}
       <ScatterPlotControls
+        toggle_props={{
+          style: `position: absolute; top: 0; right: 0; background-color: transparent;`,
+        }}
         bind:this={controls_component}
         bind:show_controls
         bind:controls_open
@@ -1891,6 +1899,12 @@
         bind:x_grid
         bind:y_grid
         bind:y2_grid
+        bind:x_range
+        bind:y_range
+        bind:y2_range
+        auto_x_range={auto_x_range as [number, number]}
+        auto_y_range={auto_y_range as [number, number]}
+        auto_y2_range={auto_y2_range as [number, number]}
         bind:point_size
         bind:point_color
         bind:point_opacity
@@ -1979,7 +1993,6 @@
     position: relative; /* Needed for absolute positioning of children like ColorBar */
     width: 100%;
     height: 100%;
-    display: flex;
     min-height: var(--scatter-min-height, 100px);
     container-type: inline-size;
     z-index: var(--scatter-z-index, 1);

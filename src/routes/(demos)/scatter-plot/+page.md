@@ -4,7 +4,7 @@
 
 A simple scatter plot showing different display modes (points, lines, or both). Notice the gear icon in the top-right corner. Click it to access styling controls including point size, colors, line width, opacity, and more:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -105,7 +105,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 
 Demonstrate various point styles, custom tooltips, and hover effects:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -258,7 +258,7 @@ Hovered point:
 
 This example demonstrates how to apply different styles _and sizes_ to individual points within a single series, including different marker symbols. The size of each point is determined by its distance from the center of the spiral, controlled by the `size_values` prop.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
   import { symbol_names } from '$lib/plot'
@@ -382,7 +382,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 
 This example shows categorized data with color coding, custom tick intervals, and demonstrates handling negative values:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -476,7 +476,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 
 Using time data on the x-axis with custom formatting:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -569,7 +569,7 @@ Using time data on the x-axis with custom formatting:
 
 This example demonstrates how points with identical coordinates can still be individually identified and interacted with:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -636,7 +636,7 @@ This example demonstrates how points with identical coordinates can still be ind
 
 This example shows how to add permanent text labels to your scatter points:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -671,7 +671,7 @@ This example shows how to add permanent text labels to your scatter points:
 
 You can position labels in different directions relative to each point:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -705,7 +705,7 @@ You can position labels in different directions relative to each point:
 
 ScatterPlot supports logarithmic scaling for data that spans multiple orders of magnitude. This example combines multiple datasets and allows you to dynamically switch between linear and logarithmic scales for both the X and Y axes using the checkboxes below. Observe how the appearance of the data changes, particularly for power-law relationships which appear as straight lines on log-log plots.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
   import { symbol_names } from '$lib/plot'
@@ -886,7 +886,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 
 This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control panel with point size, line width, colors, and styling options:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
   import { symbol_names } from '$lib/plot'
@@ -1094,7 +1094,7 @@ This example combines multiple features including different display modes, custo
 
 This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -1225,7 +1225,7 @@ To enable this feature, set `auto_placement: true` within the `point_label` obje
 
 This example demonstrates automatic placement with several clusters of points:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 
@@ -1312,7 +1312,7 @@ Try toggling the checkbox to see the difference between manual (default) offset 
 
 This example shows how to place the color bar vertically on the right side of the plot, outside the main plotting area, and make it span the full height available. It also demonstrates how to dynamically change the color scheme and toggle between linear and log color scales.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorScaleSelect, ScatterPlot } from '$lib'
 
@@ -1405,7 +1405,7 @@ This example shows how to place the color bar vertically on the right side of th
 
 This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Observe how the lines originating and ending outside the plot area are correctly cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ScatterPlot } from '$lib'
 

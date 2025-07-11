@@ -1,6 +1,6 @@
 `Nucleus.svelte`
 
-```svelte example stackblitz code_above
+```svelte example code_above
 <script>
   import { element_data, Nucleus } from '$lib'
 </script>

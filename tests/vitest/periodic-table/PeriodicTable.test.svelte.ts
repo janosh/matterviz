@@ -182,7 +182,7 @@ describe(`PeriodicTable`, () => {
     ] as const,
   )(
     `error handling for invalid heatmap_values`,
-    (heatmap_values, error_message) => {
+    (heatmap_values, error_msg) => {
       const original_error = console.error
       console.error = vi.fn()
 
@@ -193,7 +193,7 @@ describe(`PeriodicTable`, () => {
 
       expect(console.error).toHaveBeenCalledOnce()
       expect(console.error).toBeCalledWith(
-        expect.stringContaining(error_message),
+        expect.stringContaining(error_msg),
       )
 
       console.error = original_error

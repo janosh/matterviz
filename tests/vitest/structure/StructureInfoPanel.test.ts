@@ -43,7 +43,7 @@ test.each([
     const atom_count_thresholds = [50, 500]
     mount(StructureInfoPanel, {
       target: document.body,
-      props: { structure, info_open: true, show_info: true, atom_count_thresholds },
+      props: { structure, panel_open: true, atom_count_thresholds },
     })
 
     // Check formula shows correct atom count
@@ -79,8 +79,7 @@ test.each([
       expect(formula_text).not.toContain(`Cartesian`)
     }
 
-    // Clean up
-    document.body.innerHTML = ``
+    document.body.innerHTML = `` // Clean up
   },
 )
 
@@ -88,11 +87,7 @@ test(`structure with > 500 atoms should not create sites section`, () => {
   const structure = create_test_structure(600)
   mount(StructureInfoPanel, {
     target: document.body,
-    props: {
-      structure,
-      info_open: true,
-      show_info: true,
-    },
+    props: { structure, panel_open: true },
   })
 
   // Check that no sites section exists

@@ -12,7 +12,7 @@ import type { AnyStructure } from '$lib/structure'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the download function
-vi.mock(`$lib/api`, () => ({
+vi.mock(`$lib/mp-api`, () => ({
   download: vi.fn(),
 }))
 
@@ -34,7 +34,7 @@ Object.defineProperty(navigator, `clipboard`, {
 })
 
 // Get the mocked functions for type-safe access
-const { download } = await import(`$lib/api`)
+const { download } = await import(`$lib/mp-api`)
 const { electro_neg_formula } = await import(`$lib`)
 const mock_download = vi.mocked(download)
 const mock_electro_neg_formula = vi.mocked(electro_neg_formula)

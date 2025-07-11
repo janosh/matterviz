@@ -1,4 +1,4 @@
-import { fetch_zipped, mp_build_bucket } from '$lib/api'
+import { fetch_zipped, mp_build_bucket } from '$lib/mp-api'
 import type { RobocrystallogapherDoc, SimilarityDoc, SummaryDoc } from '$types'
 
 export const prerender = false

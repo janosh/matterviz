@@ -1,5 +1,5 @@
-import { fetch_zipped, mp_build_bucket } from '$lib/api'
 import type { SummaryDoc } from '$lib/material'
+import { fetch_zipped, mp_build_bucket } from '$lib/mp-api'
 
 export const ssr = false
 const mp_build_url =

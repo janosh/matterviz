@@ -15,6 +15,7 @@
 </script>
 
 <nav>
+  <a href="/" aria-current={page.url.pathname === `/` ? `page` : undefined}>/home</a>
   {#each routes as href (href)}
     <a {href} aria-current={is_current(href)}>{labels[href] ?? href}</a>
   {/each}
@@ -32,14 +33,14 @@
   }
   nav > a {
     padding: 0 4pt;
-    background-color: var(--demo-nav-link-bg);
+    background-color: var(--nav-link-bg);
     border-radius: 3pt;
     transition: 0.2s;
   }
   nav > a:hover {
-    background-color: var(--demo-nav-link-hover-bg);
+    background-color: var(--nav-link-hover-bg);
   }
   nav > a[aria-current='page'] {
-    color: var(--demo-nav-link-active-color);
+    color: var(--nav-link-active-color);
   }
 </style>

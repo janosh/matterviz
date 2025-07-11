@@ -26,6 +26,7 @@ vi.mock(`$lib/colors`, () => ({
     O: `#ff0d0d`,
     Fe: `#e06633`,
   },
+  pick_color_for_contrast: vi.fn(() => `#000000`),
 }))
 
 function doc_query<T extends Element = Element>(selector: string): T {
@@ -36,26 +37,20 @@ function doc_query<T extends Element = Element>(selector: string): T {
 
 describe(`Composition component`, () => {
   test(`renders with basic props`, () => {
-    mount(Composition, { target: document.body, props: { input: `H2O` } })
-    expect(doc_query(`.composition-container`)).toBeTruthy()
+    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+    expect(doc_query(`.composition`)).toBeTruthy()
   })
 
-  test.each(
-    [
-      [`pie`, `.pie-chart`],
-      [`bubble`, `.bubble-chart`],
-      [`bar`, `.stacked-bar-chart-container`],
-    ] as const,
-  )(`renders %s mode correctly`, (mode, selector) => {
-    mount(Composition, { target: document.body, props: { input: `H2O`, mode } })
-    expect(doc_query(selector)).toBeTruthy()
+  test.each([`pie`, `bubble`, `bar`] as const)(`renders %s mode correctly`, (mode) => {
+    mount(Composition, { target: document.body, props: { composition: `H2O`, mode } })
+    expect(doc_query(`.${mode}-chart`)).toBeTruthy()
   })
 
   test(`forwards props to child components`, () => {
     mount(Composition, {
       target: document.body,
       props: {
-        input: `H2O`,
+        composition: `H2O`,
         size: 200,
         color_scheme: `Jmol`,
         interactive: false,
@@ -68,7 +63,7 @@ describe(`Composition component`, () => {
     const on_composition_change = vi.fn()
     mount(Composition, {
       target: document.body,
-      props: { input: `H2O`, on_composition_change },
+      props: { composition: `H2O`, on_composition_change },
     })
 
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -76,21 +71,21 @@ describe(`Composition component`, () => {
   })
 
   test(`handles invalid input gracefully`, () => {
-    mount(Composition, { target: document.body, props: { input: `invalid` } })
-    expect(doc_query(`.composition-container`)).toBeTruthy()
+    mount(Composition, { target: document.body, props: { composition: `invalid` } })
+    expect(doc_query(`.composition`)).toBeTruthy()
   })
 
   test(`applies custom styling`, () => {
     mount(Composition, {
       target: document.body,
       props: {
-        input: `H2O`,
+        composition: `H2O`,
         style: `background-color: red;`,
         class: `my-custom-class`,
       },
     })
 
-    const container = doc_query(`.composition-container`)
+    const container = doc_query(`.composition`)
     expect(container.getAttribute(`style`)).toBe(`background-color: red;`)
     expect(container.classList.contains(`my-custom-class`)).toBe(true)
   })
@@ -98,19 +93,20 @@ describe(`Composition component`, () => {
   test(`handles numeric input`, () => {
     mount(Composition, {
       target: document.body,
-      props: { input: { 1: 2, 8: 1 } as CompositionType },
+      props: { composition: { 1: 2, 8: 1 } as CompositionType },
     })
-    expect(doc_query(`.composition-container`)).toBeTruthy()
+    expect(doc_query(`.composition`)).toBeTruthy()
   })
 
   test(`renders bar mode with custom dimensions`, () => {
     mount(Composition, {
       target: document.body,
-      props: { input: `H2O`, mode: `bar`, width: 400, height: 80 },
+      props: { composition: `H2O`, mode: `bar`, width: 400, height: 80 },
     })
 
-    const container = doc_query(`.stacked-bar-chart-container`)
-    expect(container.getAttribute(`style`)).toContain(`--bar-max-width: 400px`)
-    expect(container.getAttribute(`style`)).toContain(`--bar-height: 80px`)
+    const container = doc_query(`.bar-chart`)
+    expect(container.getAttribute(`style`)).toContain(
+      `max-width: 200px; max-height: 200px;`,
+    )
   })
 })

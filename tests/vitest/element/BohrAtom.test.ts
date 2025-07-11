@@ -1,7 +1,7 @@
 import { BohrAtom } from '$lib'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from './setup'
+import { doc_query } from '../setup'
 
 describe(`BohrAtom`, () => {
   test.each([
