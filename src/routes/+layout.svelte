@@ -9,8 +9,7 @@
   import { DemoNav, Footer } from '$site'
   import { demos } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
-  import { CmdPalette } from 'svelte-multiselect'
-  import { CopyButton, GitHubCorner } from 'svelte-zoo'
+  import { CmdPalette, CopyButton, GitHubCorner } from 'svelte-multiselect'
   import '../app.css'
 
   interface Props {

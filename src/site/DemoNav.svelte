@@ -32,14 +32,14 @@
   }
   nav > a {
     padding: 0 4pt;
-    background-color: var(--demo-nav-link-bg);
+    background-color: var(--nav-link-bg);
     border-radius: 3pt;
     transition: 0.2s;
   }
   nav > a:hover {
-    background-color: var(--demo-nav-link-hover-bg);
+    background-color: var(--nav-link-hover-bg);
   }
   nav > a[aria-current='page'] {
-    color: var(--demo-nav-link-active-color);
+    color: var(--nav-link-active-color);
   }
 </style>

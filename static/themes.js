@@ -130,7 +130,7 @@ const themes = {
     black: `#0a0a0a`,
   },
   'pre-bg': {
-    light: `#e5e7eb`,
+    light: `#fcfcfc`,
     dark: `rgba(255, 255, 255, 0.05)`,
     white: `#fafafa`,
     black: `rgba(255, 255, 255, 0.02)`,
@@ -167,7 +167,7 @@ const themes = {
   'btn-hover-bg': btn_bg(0.2, 0.25),
 
   // Tooltips
-  'tooltip-bg': tooltip_bg(`243, 244, 246`, `60, 60, 60`),
+  'tooltip-bg': tooltip_bg(`243, 244, 246`, `0, 40, 60`),
   'tooltip-border': border_alpha(0.15),
 
   // Structure-specific
@@ -347,10 +347,10 @@ const themes = {
     black: `rgba(15, 15, 15, 0.98)`,
   },
 
-  // Demo nav
-  'demo-nav-link-bg': btn_bg(0.1, 0.08),
-  'demo-nav-link-hover-bg': btn_bg(0.15, 0.15),
-  'demo-nav-link-active-color': {
+  // Navigation links
+  'nav-link-bg': btn_bg(0.1, 0.08),
+  'nav-link-hover-bg': btn_bg(0.15, 0.15),
+  'nav-link-active-color': {
     light: `#dc2626`,
     dark: `mediumseagreen`,
     white: `coral`,
@@ -412,7 +412,6 @@ const themes = {
     black: colors.acc_black,
   },
 
-  // Zoo components (svelte-zoo)
   'copy-btn-color': {
     light: colors.txt_light,
     dark: colors.txt_dark,
@@ -455,11 +454,11 @@ const themes = {
 
 // Auto-generate CSS variables - theme keys now match CSS variable names exactly
 const special_mappings = {
-  'btn-bg': `--zoo-copy-btn-bg`,
-  'btn-hover-bg': `--zoo-copy-btn-hover-bg`,
-  'copy-btn-color': `--zoo-copy-btn-color`,
-  'github-corner-color': `--zoo-github-corner-color`,
-  'github-corner-bg': `--zoo-github-corner-bg`,
+  'btn-bg': `--copy-btn-bg`,
+  'btn-hover-bg': `--copy-btn-hover-bg`,
+  'copy-btn-color': `--copy-btn-color`,
+  'github-corner-color': `--github-corner-color`,
+  'github-corner-bg': `--github-corner-bg`,
   'sms-options-bg': `--sms-options-bg`,
   'sms-border': `--sms-border`,
   'sms-focus-border': `--sms-focus-border`,

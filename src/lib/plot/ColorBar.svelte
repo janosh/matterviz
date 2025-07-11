@@ -37,6 +37,7 @@
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
     color_scale_domain?: [number, number]
+    [key: string]: unknown
   }
   let {
     title = null,
@@ -56,6 +57,7 @@
     scale_type = `linear`,
     color_scale_fn = undefined,
     color_scale_domain = undefined,
+    ...rest
   }: Props = $props()
 
   // Derive actual title_side, applying default logic if user didn't provide one
@@ -423,7 +425,12 @@
   }; ${wrapper_style ?? ``}`)
 </script>
 
-<div style:flex-direction={wrapper_flex_dir} style={div_style} class="colorbar">
+<div
+  style:flex-direction={wrapper_flex_dir}
+  style={div_style}
+  {...rest}
+  class="colorbar {rest.class ?? ``}"
+>
   {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
   <div style={bar_dynamic_style} class="bar">
     {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as

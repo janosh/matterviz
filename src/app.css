@@ -12,13 +12,13 @@
   --toc-desktop-nav-margin: 0 0 0 1em;
   --toc-active-bg: teal;
 
-  --zoo-github-corner-color: var(--page-bg);
-  --zoo-github-corner-bg: var(--text-color);
+  --github-corner-color: var(--page-bg);
+  --github-corner-bg: var(--text-color);
 
   /* Copy button styling */
-  --zoo-copy-btn-bg: var(--zoo-copy-btn-bg, rgba(255, 255, 255, 0.1));
-  --zoo-copy-btn-hover-bg: var(--zoo-copy-btn-hover-bg, rgba(255, 255, 255, 0.2));
-  --zoo-copy-btn-color: var(--zoo-copy-btn-color, var(--text-color));
+  --copy-btn-bg: var(--copy-btn-bg, rgba(255, 255, 255, 0.1));
+  --copy-btn-hover-bg: var(--copy-btn-hover-bg, rgba(255, 255, 255, 0.2));
+  --copy-btn-color: var(--copy-btn-color, var(--text-color));
 
   --sms-max-width: 20em;
 
@@ -31,9 +31,6 @@
   --histogram-tooltip-bg: rgba(60, 60, 60, 0.95);
   --histogram-tooltip-color: white;
   --histogram-tooltip-border: rgba(255, 255, 255, 0.2);
-
-  /* override svelte-zoo CodeExample pre background-color */
-  --zoo-example-code-bg: var(--pre-bg);
 }
 
 /* Targeted theme transitions for performance */
@@ -77,9 +74,6 @@ a.btn {
   border: none;
   border-radius: 3pt;
   padding: 2pt 4pt;
-  /* TODO remove 2 lines below, just here as temp fix for svelte-zoo CodeExample SVG icons */
-  line-height: 1;
-  align-items: center;
 }
 a:hover {
   color: var(--accent-hover-color, orange);
@@ -89,7 +83,6 @@ kbd {
   overflow-wrap: break-word;
   padding: 1pt 3pt;
   border-radius: 3pt;
-  font-size: 1.1em;
   background-color: var(--code-bg, black);
 }
 kbd {

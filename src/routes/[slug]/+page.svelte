@@ -16,7 +16,7 @@
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
-  import { PrevNext } from 'svelte-zoo'
+  import { PrevNext } from 'svelte-multiselect'
 
   let { data } = $props()
   let element = $derived(data.element)

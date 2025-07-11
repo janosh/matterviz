@@ -9,7 +9,7 @@ const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
 })
 const defaults = {
-  Wrapper: `svelte-zoo/CodeExample.svelte`,
+  Wrapper: [`svelte-multiselect`, `CodeExample`],
   pkg: pkg.name,
   repo: pkg.repository,
   hideStyle: true,

@@ -10,22 +10,10 @@
   let { title = `Symmetry`, material, ...rest }: Props = $props()
 
   let data = $derived([
-    {
-      title: `Crystal System`,
-      value: `${material.symmetry?.crystal_system}`,
-    },
-    {
-      title: `International Number`,
-      value: material.symmetry?.number,
-    },
-    {
-      title: `Point Group`,
-      value: `${material.symmetry?.point_group}`,
-    },
-    {
-      title: `Symbol`,
-      value: `${material.symmetry?.symbol}`,
-    },
+    { title: `Crystal System`, value: `${material.symmetry?.crystal_system}` },
+    { title: `International Number`, value: material.symmetry?.number },
+    { title: `Point Group`, value: `${material.symmetry?.point_group}` },
+    { title: `Symbol`, value: `${material.symmetry?.symbol}` },
   ])
 </script>
 

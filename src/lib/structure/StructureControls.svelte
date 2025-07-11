@@ -6,7 +6,7 @@
   import { STRUCT_DEFAULTS, StructureScene } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
-  import { Tooltip } from 'svelte-zoo'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { Camera, Scene } from 'three'
 
   export interface Props {
@@ -440,9 +440,12 @@
       />
     </label>
     <label>
-      <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
+      <span
+        title="Pan by clicking and dragging while holding cmd, ctrl or shift"
+        {@attach tooltip()}
+      >
         Pan speed
-      </Tooltip>
+      </span>
       <input
         type="number"
         min={0}
@@ -459,7 +462,9 @@
       />
     </label>
     <label>
-      <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
+      <span title="Damping factor for rotation" {@attach tooltip()}>
+        Rotation damping
+      </span>
       <input
         type="number"
         min={0}
@@ -481,7 +486,9 @@
     <!-- Lighting Controls -->
     <h4 class="section-heading">Lighting</h4>
     <label>
-      <Tooltip text="intensity of the directional light">Directional light</Tooltip>
+      <span title="Intensity of the directional light" {@attach tooltip()}>
+        Directional light
+      </span>
       <input
         type="number"
         min={0}
@@ -498,7 +505,9 @@
       />
     </label>
     <label>
-      <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
+      <span title="Intensity of the ambient light" {@attach tooltip()}>
+        Ambient light
+      </span>
       <input
         type="number"
         min={0.5}

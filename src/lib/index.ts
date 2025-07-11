@@ -1,6 +1,5 @@
 import type { categories, elem_symbols } from './labels'
 
-export * from './attachments'
 export { default as BohrAtom } from './BohrAtom.svelte'
 export * from './colors'
 export * from './composition'

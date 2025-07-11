@@ -1,6 +1,4 @@
 <script>
-  import { FileDetails } from 'svelte-zoo'
-
   const structure_code_files = import.meta.glob('$lib/Structure*', {
     query: '?raw',
     import: 'default',
@@ -66,8 +64,6 @@
   }
 </style>
 ```
-
-<FileDetails {files} />
 
 ## Different Crystal Systems
 

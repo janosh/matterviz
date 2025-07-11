@@ -3,7 +3,7 @@
   import { format_num } from '$lib/labels'
   import { theme_state } from '$lib/state.svelte'
   import { electro_neg_formula } from '$lib/structure'
-  import { titles_as_tooltips } from 'svelte-zoo'
+  import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
   import type { Trajectory } from './index'
 
   interface Props {
@@ -13,7 +13,8 @@
     current_file_path?: string | null
     file_size?: number | null
     file_object?: File | null
-    show_info?: boolean
+    panel_open?: boolean
+    [key: string]: unknown
   }
   let {
     trajectory,
@@ -22,7 +23,8 @@
     current_file_path,
     file_size,
     file_object,
-    show_info = $bindable(true),
+    panel_open = $bindable(false),
+    ...rest
   }: Props = $props()
 
   let copied_items = $state<Set<string>>(new Set())
@@ -251,61 +253,56 @@
   })
 </script>
 
-{#if show_info}
-  <DraggablePanel
-    max_width="24em"
-    toggle_props={{ class: `trajectory-info-toggle`, title: `Toggle trajectory info` }}
-    open_icon="Cross"
-    closed_icon="Info"
-    icon_style="transform: scale(1.3);"
-    panel_props={{
-      class: `trajectory-info-panel`,
-      style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
-        theme_state.type === `dark` ? `0.5` : `0.1`
-      }); max-height: 80vh;`,
-    }}
-  >
-    <div class="info-content">
-      <h4>Trajectory Info</h4>
-      {#each info_sections as section, section_idx (section_idx)}
-        {#if section_idx > 0}
-          <hr class="section-divider" />
-        {/if}
-        {#each section as item (item.key)}
-          <div
-            class="info-item"
-            title="Click to copy: {item.label}: {item.value}"
-            onclick={() => copy_item(item.label, item.value, item.key)}
-            role="button"
-            tabindex="0"
-            onkeydown={(event) => {
-              if (event.key === `Enter` || event.key === ` `) {
-                event.preventDefault()
-                copy_item(item.label, item.value, item.key)
-              }
-            }}
-          >
-            <span>{item.label}</span>
-            <span title={item.tooltip} use:titles_as_tooltips>{@html item.value}</span>
-            {#if copied_items.has(item.key)}
-              <div class="copy-check">
-                <Icon
-                  icon="Check"
-                  style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-                />
-              </div>
-            {/if}
+<DraggablePanel
+  bind:show={panel_open}
+  max_width="24em"
+  toggle_props={{ class: `trajectory-info-toggle`, title: `Toggle trajectory info` }}
+  open_icon="Cross"
+  closed_icon="Info"
+  icon_style="transform: scale(1.3);"
+  panel_props={{
+    class: `trajectory-info-panel`,
+    style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
+      theme_state.type === `dark` ? `0.5` : `0.1`
+    }); max-height: 80vh;`,
+  }}
+  {...rest}
+>
+  <h4>Trajectory Info</h4>
+  {#each info_sections as section, section_idx (section_idx)}
+    {#if section_idx > 0}
+      <hr class="section-divider" />
+    {/if}
+    {#each section as { label, value, key, tooltip } (key)}
+      <div
+        class="info-item"
+        title="Click to copy: {label}: {value}"
+        onclick={() => copy_item(label, value, key)}
+        role="button"
+        tabindex="0"
+        onkeydown={(event) => {
+          if (event.key === `Enter` || event.key === ` `) {
+            event.preventDefault()
+            copy_item(label, value, key)
+          }
+        }}
+      >
+        <span>{label}</span>
+        <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
+        {#if copied_items.has(key)}
+          <div class="copy-check">
+            <Icon
+              icon="Check"
+              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+            />
           </div>
-        {/each}
-      {/each}
-    </div>
-  </DraggablePanel>
-{/if}
+        {/if}
+      </div>
+    {/each}
+  {/each}
+</DraggablePanel>
 
 <style>
-  .info-content {
-    padding-top: 8pt;
-  }
   h4 {
     margin: 8pt 0 6pt;
     font-size: 0.9em;
@@ -321,16 +318,14 @@
     align-items: center;
     justify-content: space-between;
     gap: 6pt;
-    padding: 1pt 0;
-    margin-bottom: 1pt;
+    padding: var(--panel-padding, 1pt 5pt);
+    border-radius: var(--panel-border-radius, 3pt);
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
   }
   .info-item:hover {
-    background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.03));
-    padding-left: 3pt;
-    padding-right: 3pt;
+    background: var(--panel-btn-hover-bg, var(--tooltip-bg));
   }
   .info-item span:first-child {
     font-size: 0.85em;

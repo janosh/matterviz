@@ -7,7 +7,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { titles_as_tooltips } from 'svelte-zoo'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import { full_data_extractor } from './extract'
   import type { Trajectory, TrajectoryDataExtractor } from './index'
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
@@ -95,6 +95,7 @@
       c?: string
       [key: string]: string | undefined
     }
+    [key: string]: unknown
   }
   let {
     trajectory = $bindable(undefined),
@@ -114,6 +115,7 @@
     show_fullscreen_button = true,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
+    ...rest
   }: Props = $props()
 
   let dragover = $state(false)
@@ -576,7 +578,6 @@
 />
 
 <div
-  class="trajectory-viewer {actual_layout}"
   class:dragover
   class:active={is_playing || controls_open.structure || controls_open.plot}
   bind:this={wrapper}
@@ -597,6 +598,8 @@
   }}
   onclick={handle_click_outside}
   {onkeydown}
+  {...rest}
+  class="trajectory-viewer {actual_layout} {rest.class ?? ``}"
 >
   {#if loading}
     {#if parsing_progress}
@@ -629,8 +632,8 @@
           {#if current_filename}
             <div class="filename-section">
               <button
-                use:titles_as_tooltips
-                title="Click to copy filename {current_filename}"
+                title="Click to copy filename <code>{current_filename}</code>"
+                {@attach tooltip()}
                 onclick={() => {
                   if (current_filename) navigator.clipboard.writeText(current_filename)
                 }}
@@ -747,7 +750,7 @@
                 {current_file_path}
                 {file_size}
                 {file_object}
-                bind:info_open={info_panel_open}
+                bind:panel_open={info_panel_open}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -977,8 +980,10 @@
   }
   .trajectory-viewer.horizontal .content-area {
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
   }
   .trajectory-viewer.vertical .content-area {
+    grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
   }
   /* When plot is hidden, structure takes full space */

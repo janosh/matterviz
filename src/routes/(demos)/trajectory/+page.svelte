@@ -154,7 +154,7 @@
 
 <h1>Trajectory Viewer</h1>
 
-<div class="dual-trajectory-container full-bleed">
+<div class="trajectory-container full-bleed">
   {#each trajectories as trajectory, idx (idx)}
     <TrajectoryViewer
       bind:trajectory={trajectories[idx]}
@@ -192,19 +192,20 @@
     color: var(--text-color, #1f2937);
   }
 
-  .dual-trajectory-container {
+  .trajectory-container {
     display: flex;
     flex-direction: column;
     gap: 6rem;
     min-height: 80vh;
   }
 
-  .dual-trajectory-container :global(.trajectory-viewer) {
+  .trajectory-container :global(.trajectory-viewer) {
     height: 70vh;
     min-height: 500px;
     border: 1px solid var(--traj-border-bg, #4a5568);
     border-radius: 8px;
     background: var(--traj-surface, #2d3748);
+    box-sizing: border-box;
   }
 
   .trajectory-files-section {

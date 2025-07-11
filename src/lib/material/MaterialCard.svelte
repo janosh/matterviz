@@ -53,25 +53,14 @@
       unit: `eV/atom`,
       condition: material.uncorrected_energy_per_atom != material.energy_per_atom,
     },
-    {
-      title: `Last updated`,
-      value: material.last_updated?.$date.split(`T`)[0],
-    },
+    { title: `Last updated`, value: material.last_updated?.$date.split(`T`)[0] },
     {
       title: `Origins`,
       value: material.origins,
       condition: material.origins?.length,
     },
-    {
-      title: `Voigt bulk modulus`,
-      value: material.k_voigt,
-      unit: `GPa`,
-    },
-    {
-      title: `Voig shear modulus`,
-      value: material.g_voigt,
-      unit: `GPa`,
-    },
+    { title: `Voigt bulk modulus`, value: material.k_voigt, unit: `GPa` },
+    { title: `Voig shear modulus`, value: material.g_voigt, unit: `GPa` },
     { title: `Refractive index`, value: material.n },
     {
       title: `Is magnetic`,

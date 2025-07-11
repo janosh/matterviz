@@ -4,7 +4,7 @@
   import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
-  let info_open = $state(false)
+  let info_panel_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_buttons = $state<boolean | number>(true)
@@ -58,8 +58,7 @@
     }
   })
 
-  // Listen for custom events from tests
-  $effect(() => {
+  $effect(() => { // Listen for custom events from tests
     if (typeof window !== `undefined`) {
       const handle_lattice_props = (event: Event) => {
         const customEvent = event as CustomEvent
@@ -153,18 +152,15 @@
   </label>
 </section>
 
-<hr />
-
 <div
   id="structure-wrapper"
-  style="border: 1px solid #ccc; margin-top: 20px"
   style:width="{canvas.width}px"
   style:height="{canvas.height}px"
 >
   <Structure
     structure={mp1_struct as unknown as PymatgenStructure}
     bind:controls_open
-    bind:info_open
+    bind:info_panel_open
     bind:width={canvas.width}
     bind:height={canvas.height}
     {background_color}
@@ -182,20 +178,3 @@
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
 <div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_buttons}</div>
-
-<style>
-  section {
-    margin-bottom: 20px;
-    padding: 10px;
-    border: 1px solid lightgray;
-    border-radius: 5px;
-  }
-  label {
-    display: inline-block;
-    margin-bottom: 5px;
-    margin-right: 15px;
-  }
-  input[type='number'] {
-    width: 60px;
-  }
-</style>
