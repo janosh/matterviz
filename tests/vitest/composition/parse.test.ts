@@ -1,57 +1,19 @@
 import type { CompositionType, ElementSymbol } from '$lib'
+import { atomic_number_to_symbol } from '$lib/composition'
 import {
-  atomic_number_to_element_symbol,
   composition_to_percentages,
   convert_atomic_numbers_to_symbols,
   convert_symbols_to_atomic_numbers,
-  element_symbol_to_atomic_number,
   get_alphabetical_formula,
   get_electro_neg_formula,
   get_total_atoms,
   normalize_composition,
-  parse_composition_input,
+  parse_composition,
   parse_formula,
 } from '$lib/composition/parse'
 import { describe, expect, test } from 'vitest'
 
 describe(`atomic number utilities`, () => {
-  test.each([
-    [1, `H`],
-    [6, `C`],
-    [8, `O`],
-    [26, `Fe`],
-    [79, `Au`],
-    [118, `Og`],
-  ])(
-    `should convert atomic number %i to element symbol %s`,
-    (atomic_number, expected) => {
-      expect(atomic_number_to_element_symbol(atomic_number)).toBe(expected)
-    },
-  )
-
-  test.each([
-    [0, `Invalid atomic number 0`],
-    [-1, `Invalid atomic number -1`],
-    [119, `Invalid atomic number 119`],
-    [999, `Invalid atomic number 999`],
-  ])(`should return null for %s`, (atomic_number, _description) => {
-    expect(atomic_number_to_element_symbol(atomic_number)).toBeNull()
-  })
-
-  test.each([[`H`, 1], [`C`, 6], [`O`, 8], [`Fe`, 26], [`Au`, 79], [`Og`, 118]] as const)(
-    `should convert element symbol %s to atomic number %i`,
-    (symbol, expected) => {
-      expect(element_symbol_to_atomic_number(symbol)).toBe(expected)
-    },
-  )
-
-  test.each([
-    [`Xx`, `Invalid element symbol Xx`],
-    [`ABC`, `Invalid element symbol ABC`],
-  ])(`should return null for %s`, (symbol, _description) => {
-    expect(element_symbol_to_atomic_number(symbol as ElementSymbol)).toBeNull()
-  })
-
   test.each([
     [{ 26: 2, 8: 3 }, { Fe: 2, O: 3 }, `Fe2O3`],
     [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `H2O`],
@@ -335,10 +297,10 @@ describe(`get_total_atoms`, () => {
   )
 })
 
-describe(`parse_composition_input`, () => {
+describe(`parse_composition`, () => {
   test(`should parse string formulas`, () => {
-    expect(parse_composition_input(`H2O`)).toEqual({ H: 2, O: 1 })
-    expect(parse_composition_input(`Fe2O3`)).toEqual({ Fe: 2, O: 3 })
+    expect(parse_composition(`H2O`)).toEqual({ H: 2, O: 1 })
+    expect(parse_composition(`Fe2O3`)).toEqual({ Fe: 2, O: 3 })
   })
 
   test.each([
@@ -353,33 +315,33 @@ describe(`parse_composition_input`, () => {
   ])(
     `should parse JSON string %s (%s)`,
     (json_string, expected, _description) => {
-      expect(parse_composition_input(json_string)).toEqual(expected)
+      expect(parse_composition(json_string)).toEqual(expected)
     },
   )
 
   test(`should normalize symbol compositions`, () => {
-    expect(parse_composition_input({ H: 2, O: 1 })).toEqual({ H: 2, O: 1 })
-    expect(parse_composition_input({ Fe: 2, O: 3, N: 0 })).toEqual({
+    expect(parse_composition({ H: 2, O: 1 })).toEqual({ H: 2, O: 1 })
+    expect(parse_composition({ Fe: 2, O: 3, N: 0 })).toEqual({
       Fe: 2,
       O: 3,
     })
   })
 
   test(`should handle atomic number compositions`, () => {
-    expect(parse_composition_input({ 1: 2, 8: 1 })).toEqual({ H: 2, O: 1 })
+    expect(parse_composition({ 1: 2, 8: 1 })).toEqual({ H: 2, O: 1 })
   })
 
   test(`should handle mixed compositions`, () => {
-    expect(parse_composition_input({ 1: 2, O: 1 })).toEqual({ '1': 2, O: 1 })
+    expect(parse_composition({ 1: 2, O: 1 })).toEqual({ '1': 2, O: 1 })
   })
 
   test(`should handle empty inputs`, () => {
-    expect(parse_composition_input(``)).toEqual({})
-    expect(parse_composition_input({})).toEqual({})
+    expect(parse_composition(``)).toEqual({})
+    expect(parse_composition({})).toEqual({})
   })
 
   test(`should throw error for invalid formula strings`, () => {
-    expect(() => parse_composition_input(`Xx2`)).toThrow(
+    expect(() => parse_composition(`Xx2`)).toThrow(
       `Invalid element symbol: Xx`,
     )
   })
@@ -387,13 +349,13 @@ describe(`parse_composition_input`, () => {
   test(`should handle invalid atomic numbers gracefully`, () => {
     // Mixed compositions with invalid atomic numbers should be normalized without error
     // The invalid atomic number is simply preserved as-is in the key
-    expect(parse_composition_input({ 999: 1 })).toEqual({ '999': 1 })
+    expect(parse_composition({ 999: 1 })).toEqual({ '999': 1 })
   })
 
   test(`should handle malformed JSON gracefully`, () => {
     // If JSON parsing fails, should fall back to formula parsing
     // This malformed JSON will fail both JSON parsing and formula parsing
-    expect(() => parse_composition_input(`{Xx: 70, Yy: 18}`)).toThrow(
+    expect(() => parse_composition(`{Xx: 70, Yy: 18}`)).toThrow(
       `Invalid element symbol: X`,
     )
   })
@@ -403,10 +365,8 @@ describe(`edge cases and error handling`, () => {
   test(`should handle very large compositions`, () => {
     const large_composition: CompositionType = {}
     for (let idx = 1; idx <= 50; idx++) {
-      const symbol = atomic_number_to_element_symbol(idx)
-      if (symbol) {
-        large_composition[symbol] = idx
-      }
+      const symbol = atomic_number_to_symbol[idx] || null
+      if (symbol) large_composition[symbol] = idx
     }
 
     const total = get_total_atoms(large_composition)
@@ -511,19 +471,5 @@ describe(`versatile formula functions`, () => {
     expect(get_electro_neg_formula(structure)).toBe(
       `Fe<sub>2</sub> O<sub>3</sub>`,
     )
-  })
-})
-
-describe(`is_empty_composition`, () => {
-  test(`should detect empty compositions`, async () => {
-    const { is_empty_composition } = await import(`$lib/composition/parse`)
-    expect(is_empty_composition({})).toBe(true)
-    expect(is_empty_composition({ H: 0, O: 0 })).toBe(true)
-  })
-
-  test(`should detect non-empty compositions`, async () => {
-    const { is_empty_composition } = await import(`$lib/composition/parse`)
-    expect(is_empty_composition({ H: 1 })).toBe(false)
-    expect(is_empty_composition({ H: 2, O: 1 })).toBe(false)
   })
 })

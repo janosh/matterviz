@@ -35,7 +35,7 @@
     value_font_size = $bindable(18),
     tooltip_font_size = $bindable(14),
     tooltip_bg_color = $bindable(`rgba(0, 0, 0, 0.8)`),
-    tooltip_text_color = $bindable(`white`),
+    tooltip_text_color = $bindable(`#ffffff`),
     tile_border_radius = $bindable(1),
     inner_transition_offset = $bindable(0.5),
     tile_font_color = $bindable(`white`),
@@ -126,28 +126,26 @@
     else if (prop === `value_font_size`) value_font_size = default_value as number
     else if (prop === `tooltip_font_size`) tooltip_font_size = default_value as number
     else if (prop === `tooltip_bg_color`) tooltip_bg_color = default_value as string
-    else if (prop === `tooltip_text_color`) {
-      tooltip_text_color = default_value as string
-    } else if (prop === `tile_border_radius`) {
-      tile_border_radius = default_value as number
-    } else if (prop === `inner_transition_offset`) {
-      inner_transition_offset = default_value as number
-    } else if (prop === `tile_font_color`) tile_font_color = default_value as string
+    else if (prop === `tooltip_text_color`) tooltip_text_color = String(default_value)
+    else if (prop === `tile_border_radius`) tile_border_radius = Number(default_value)
+    else if (prop === `inner_transition_offset`) {
+      inner_transition_offset = Number(default_value)
+    } else if (prop === `tile_font_color`) tile_font_color = String(default_value)
     else if (prop === `tile_transition_duration`) {
-      tile_transition_duration = default_value as number
+      tile_transition_duration = Number(default_value)
     } else if (prop === `hover_border_width`) {
-      hover_border_width = default_value as number
+      hover_border_width = Number(default_value)
     } else if (prop === `symbol_font_weight`) {
-      symbol_font_weight = default_value as number
+      symbol_font_weight = Number(default_value)
     } else if (prop === `number_font_weight`) {
-      number_font_weight = default_value as number
+      number_font_weight = Number(default_value)
     } else if (prop === `tooltip_border_radius`) {
-      tooltip_border_radius = default_value as number
-    } else if (prop === `tooltip_padding`) tooltip_padding = default_value as string
+      tooltip_border_radius = Number(default_value)
+    } else if (prop === `tooltip_padding`) tooltip_padding = String(default_value)
     else if (prop === `tooltip_line_height`) {
-      tooltip_line_height = default_value as number
+      tooltip_line_height = Number(default_value)
     } else if (prop === `tooltip_text_align`) {
-      tooltip_text_align = default_value as string
+      tooltip_text_align = String(default_value)
     }
   }
 

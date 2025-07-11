@@ -1,13 +1,13 @@
 <script lang="ts">
   import { type CompositionType, type ElementSymbol, format_num } from '$lib'
-  import { element_color_schemes } from '$lib/colors'
-  import { choose_bw_for_contrast } from '$lib/labels'
+  import type { ColorSchemeName } from '$lib/colors'
+  import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
   import type { Snippet } from 'svelte'
   import { composition_to_percentages } from './parse'
 
   // Constants for bar chart calculations
-  const MIN_FONT_SCALE = 0.6
-  const MAX_FONT_SCALE = 1.2
+  const MIN_FONT_SCALE = 1
+  const MAX_FONT_SCALE = 2
   const MIN_SEGMENT_SIZE_FOR_LABEL = 15 // pixels
 
   // Type for bar chart segment data
@@ -27,47 +27,25 @@
 
   interface Props {
     composition: CompositionType
-    width?: number
-    height?: number
-    segment_gap?: number
-    border_radius?: number
+    size?: number
     outer_corners_only?: boolean
     show_labels?: boolean
     show_percentages?: boolean
     show_amounts?: boolean
-    color_scheme?: keyof typeof element_color_schemes
-    segment_content?: Snippet<
-      [
-        {
-          element: ElementSymbol
-          amount: number
-          percentage: number
-          color: string
-          width_percent: number
-          font_scale: number
-          text_color: string
-        },
-      ]
-    >
-    style?: string
-    class?: string
+    color_scheme?: ColorSchemeName
+    segment_content?: Snippet<[SegmentData]>
     interactive?: boolean
     [key: string]: unknown
   }
   let {
     composition,
-    width = 200,
-    height = 60,
-    segment_gap = 0,
-    border_radius = 8,
+    size = 200,
     outer_corners_only = true,
     show_labels = true,
     show_percentages = false,
     show_amounts = true,
     color_scheme = `Vesta`,
     segment_content,
-    style = ``,
-    class: class_name = ``,
     interactive = true,
     ...rest
   }: Props = $props()
@@ -84,19 +62,18 @@
     )
     if (element_entries.length === 0) return []
 
-    const THIN_SEGMENT_THRESHOLD = 20 // Percentage below which segment is considered thin
-    const EXTERNAL_LABEL_SIZE_THRESHOLD = 5 // Lower threshold for external labels
+    const thin_segment_threshold = 20 // Percentage below which segment is considered thin
+    const external_label_size_threshold = 5 // Lower threshold for external labels
 
-    let above_labels = 0
-    let below_labels = 0
+    let [above_labels, below_labels] = [0, 0]
 
     return element_entries.map(([element, amount]) => {
       const percentage = percentages[element as ElementSymbol] || 0
       const color = element_colors[element as ElementSymbol] || `#cccccc`
 
       // Calculate font scale based on percentage (approximate segment width)
-      const approx_segment_width = (percentage / 100) * width
-      const segment_size = Math.min(approx_segment_width, height)
+      const approx_segment_width = (percentage / 100) * size
+      const segment_size = Math.min(approx_segment_width, size)
       const font_scale = Math.min(
         MAX_FONT_SCALE,
         Math.max(MIN_FONT_SCALE, segment_size / 40),
@@ -104,8 +81,8 @@
 
       // Determine label display requirements
       const can_show_label = segment_size >= MIN_SEGMENT_SIZE_FOR_LABEL
-      const is_thin = percentage < THIN_SEGMENT_THRESHOLD
-      const can_show_external_label = segment_size >= EXTERNAL_LABEL_SIZE_THRESHOLD
+      const is_thin = percentage < thin_segment_threshold
+      const can_show_external_label = segment_size >= external_label_size_threshold
       const needs_external_label = is_thin && can_show_external_label
 
       // Balance labels above and below for better visual distribution
@@ -125,7 +102,7 @@
         color,
         width_percent: percentage,
         font_scale,
-        text_color: choose_bw_for_contrast(null, color),
+        text_color: pick_color_for_contrast(null, color),
         can_show_label,
         is_thin,
         needs_external_label,
@@ -152,13 +129,10 @@
 {/snippet}
 
 <div
-  class="stacked-bar-chart-container {class_name}"
-  style:--bar-max-width="{width}px"
-  style:--bar-height="{height}px"
-  style:--segment-gap="{segment_gap}px"
-  style:--border-radius="{border_radius}px"
-  {style}
+  style:max-width="{size}px"
+  style:max-height="{size}px"
   {...rest}
+  class="bar-chart {rest.class ?? ``}"
 >
   <!-- External labels above the bar -->
   <div class="external-labels-above">
@@ -240,11 +214,14 @@
 </div>
 
 <style>
-  .stacked-bar-chart-container {
+  :root {
+    --segment-gap: 0px;
+    --border-radius: 8px;
+  }
+  .bar-chart {
     display: inline-flex;
     flex-direction: column;
     width: 100%;
-    max-width: var(--bar-max-width);
     min-width: var(--bar-min-width, 100px);
     gap: 2px;
   }
@@ -271,8 +248,7 @@
   .bar-segments {
     display: flex;
     width: 100%;
-    height: var(--bar-height, 50px);
-    max-height: var(--bar-max-height, 25px);
+    height: var(--bar-height, 30px);
     gap: var(--segment-gap);
     border-radius: var(--border-radius);
     overflow: hidden;
@@ -328,11 +304,5 @@
   .percentage {
     margin-left: 1px;
     transform: translateY(5px);
-  }
-  .amount {
-    font-weight: 500;
-  }
-  .percentage {
-    font-weight: 400;
   }
 </style>

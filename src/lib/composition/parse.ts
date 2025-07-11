@@ -3,7 +3,7 @@ import { elem_symbols } from '$lib'
 import element_data from '$lib/element/data'
 
 // Create a mapping from atomic numbers to element symbols
-export const atomic_number_to_symbol: Partial<Record<number, ElementSymbol>> = {}
+export const atomic_number_to_symbol: Record<number, ElementSymbol> = {}
 export const symbol_to_atomic_number: Partial<Record<ElementSymbol, number>> = {}
 
 // Create mass/electronegativity maps for O(1) lookups in loops below
@@ -15,46 +15,15 @@ for (const element of element_data) {
   atomic_number_to_symbol[element.number] = element.symbol
   symbol_to_atomic_number[element.symbol] = element.number
   atomic_weights.set(element.symbol, element.atomic_mass)
-  element_electronegativity_map.set(
-    element.symbol,
-    element.electronegativity ?? 0,
-  )
-}
-
-// Convert atomic number to element symbol
-// Example: 26 -> "Fe", 8 -> "O"
-export function atomic_number_to_element_symbol(
-  atomic_number: number,
-): ElementSymbol | null {
-  return atomic_number_to_symbol[atomic_number] || null
-}
-
-// Convert element symbol to atomic number
-// Example: "Fe" -> 26, "O" -> 8
-export function element_symbol_to_atomic_number(
-  symbol: ElementSymbol,
-): number | null {
-  return symbol_to_atomic_number[symbol] || null
+  element_electronegativity_map.set(element.symbol, element.electronegativity ?? 0)
 }
 
 // Check if an object represents a composition with atomic numbers as keys
 // Returns true if ALL keys are valid atomic numbers (1-118) and at least one key exists
-function is_atomic_number_composition(
-  obj: Record<string | number, number>,
-): boolean {
+function is_atomic_number_composition(obj: Record<string | number, number>): boolean {
   const keys = Object.keys(obj)
-  return (
-    keys.length > 0 &&
-    keys.every((key) => {
-      const num = Number(key)
-      return (
-        Number.isInteger(num) &&
-        num >= 1 &&
-        num <= 118 &&
-        atomic_number_to_symbol[num]
-      )
-    })
-  )
+  return (keys.length > 0 &&
+    keys.map(Number).every((num) => Number.isInteger(num) && num >= 1 && num <= 118))
 }
 
 // Convert a composition with atomic numbers to element symbols
@@ -66,7 +35,7 @@ export function convert_atomic_numbers_to_symbols(
 
   for (const [atomic_number_str, amount] of Object.entries(atomic_composition)) {
     const atomic_number = Number(atomic_number_str)
-    const symbol = atomic_number_to_element_symbol(atomic_number)
+    const symbol = atomic_number_to_symbol[atomic_number] || null
 
     if (!symbol) throw new Error(`Invalid atomic number: ${atomic_number}`)
 
@@ -85,7 +54,7 @@ export function convert_symbols_to_atomic_numbers(
   const atomic_composition: Record<number, number> = {}
 
   for (const [symbol, amount] of Object.entries(symbol_composition)) {
-    const atomic_number = element_symbol_to_atomic_number(symbol as ElementSymbol)
+    const atomic_number = symbol_to_atomic_number[symbol as ElementSymbol]
 
     if (!atomic_number) throw new Error(`Invalid element symbol: ${symbol}`)
 
@@ -155,15 +124,10 @@ function expand_parentheses(formula: string): string {
 // Normalize a composition by ensuring all values are positive numbers
 // Handles both element symbol and atomic number compositions
 export function normalize_composition(
-  composition:
-    | CompositionType
-    | Record<number, number>
-    | Record<string | number, number>,
+  composition: CompositionType | Record<number, number> | Record<string | number, number>,
 ): CompositionType {
   // If it's an atomic number composition, convert to symbols first
-  if (
-    is_atomic_number_composition(composition as Record<string | number, number>)
-  ) {
+  if (is_atomic_number_composition(composition)) {
     const atomic_comp = composition as Record<number, number>
     const symbol_comp = convert_atomic_numbers_to_symbols(atomic_comp)
     return normalize_composition(symbol_comp)
@@ -193,12 +157,8 @@ export function composition_to_percentages(
     // Calculate weight for each element
     for (const [element, amount] of Object.entries(composition)) {
       if (typeof amount === `number` && amount > 0) {
-        const atomic_mass = atomic_weights.get(
-          element as ElementSymbol,
-        )
-        if (atomic_mass === undefined) {
-          throw new Error(`Unknown element: ${element}`)
-        }
+        const atomic_mass = atomic_weights.get(element as ElementSymbol)
+        if (atomic_mass === undefined) throw new Error(`Unknown element: ${element}`)
         const weight = amount * atomic_mass
         element_weights[element as ElementSymbol] = weight
         total_weight += weight
@@ -216,11 +176,7 @@ export function composition_to_percentages(
     return percentages
   }
 
-  // Calculate count-based percentages (original implementation)
-  const total = Object.values(composition).reduce(
-    (sum, count) => sum + (count || 0),
-    0,
-  )
+  const total = get_total_atoms(composition)
   if (total === 0) return {}
 
   const percentages: CompositionType = {}
@@ -234,20 +190,11 @@ export function composition_to_percentages(
 }
 
 // Get the total number of atoms in a composition
-export function get_total_atoms(composition: CompositionType): number {
-  return Object.values(composition).reduce(
-    (sum, count) => sum + (count || 0),
-    0,
-  )
-}
-
-// Check if a composition is empty (no elements with positive amounts)
-export function is_empty_composition(composition: CompositionType): boolean {
-  return get_total_atoms(composition) === 0
-}
+export const get_total_atoms = (composition: CompositionType): number =>
+  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
 
 // Convert composition input (string, symbol object, or atomic number object) to normalized composition object
-export function parse_composition_input(
+export function parse_composition(
   input:
     | string
     | CompositionType
@@ -299,7 +246,7 @@ export function get_alphabetical_formula(
   if (typeof input === `string`) {
     // If it's already a string, parse it and reformat alphabetically
     try {
-      const composition = parse_composition_input(input)
+      const composition = parse_composition(input)
       return format_composition_formula(composition, (symbols) => symbols.sort())
     } catch {
       // If parsing fails, return the original string
@@ -313,8 +260,7 @@ export function get_alphabetical_formula(
     } catch {
       return `Unknown`
     }
-  } else {
-    // It's a composition object
+  } else { // It's a composition object
     return format_composition_formula(
       input as CompositionType,
       (symbols) => symbols.sort(),
@@ -342,7 +288,7 @@ export function get_electro_neg_formula(
   if (typeof input === `string`) {
     // If it's already a string, parse it and reformat by electronegativity
     try {
-      const composition = parse_composition_input(input)
+      const composition = parse_composition(input)
       return format_composition_formula(composition, sort_by_electronegativity)
     } catch {
       // If parsing fails, return the original string
@@ -356,8 +302,7 @@ export function get_electro_neg_formula(
     } catch {
       return `Unknown`
     }
-  } else {
-    // It's a composition object
+  } else { // It's a composition object
     return format_composition_formula(
       input as CompositionType,
       sort_by_electronegativity,

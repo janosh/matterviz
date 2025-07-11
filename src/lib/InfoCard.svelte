@@ -1,12 +1,11 @@
 <script lang="ts">
   import { format_num } from '$lib'
-  import type { PropertyOrigin } from '$types'
   import type { Snippet } from 'svelte'
 
   interface Props {
     data?: {
       title: string
-      value?: string | number | number[] | null | PropertyOrigin
+      value?: string | number | number[] | null
       unit?: string
       fmt?: string
       condition?: boolean | number | null

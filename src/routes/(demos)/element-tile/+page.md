@@ -1,6 +1,6 @@
 `ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If its background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color. This an, of course, go wrong e.g. if the tile is absolutely positioned outside its parent element. In that case, pass an explicit `text_color` prop and `text_color_threshold={null}` to `ElementTile` to override the automatic color selection.
 
-```svelte example stackblitz code_above
+```svelte example code_above
 <script>
   import { element_data, ElementTile } from '$lib'
 
@@ -27,7 +27,7 @@
 
 Displaying values instead of element names by passing the `value` prop.
 
-```svelte example stackblitz code_above
+```svelte example code_above
 <script>
   import { element_data, ElementTile } from '$lib'
 
@@ -59,7 +59,7 @@ Displaying values instead of element names by passing the `value` prop.
 
 ElementTile supports displaying multiple values per tile with different split layout options. Control the layout using the `split_layout` prop.
 
-```svelte example stackblitz code_above
+```svelte example code_above
 <script>
   import { element_data, ElementTile } from '$lib'
 

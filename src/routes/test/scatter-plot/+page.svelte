@@ -1063,7 +1063,6 @@
         onclick: handle_point_click,
         ondblclick: handle_point_double_click,
       }}
-      style="height: 300px; border: 1px solid #eee"
     />
     <p data-testid="last-clicked-point">
       Last Clicked Point: {last_clicked_point_id ?? `none`}
@@ -1073,83 +1072,3 @@
     </p>
   </div>
 </div>
-
-<style>
-  .demo-container {
-    max-width: 1200px;
-    margin: 20px auto;
-    padding: 20px;
-    font-family: sans-serif;
-  }
-
-  .demo-section {
-    margin-bottom: 40px;
-    padding-bottom: 20px;
-    border-bottom: 1px dashed #eee;
-  }
-  .demo-section:last-child {
-    border-bottom: none;
-  }
-
-  .demo-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    justify-content: space-around;
-  }
-
-  .demo-plot {
-    flex: 1 1 45%;
-    min-width: 350px;
-    height: 350px;
-    border: 1px solid #ccc;
-    box-sizing: border-box;
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 20px;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .demo-plot h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    text-align: center;
-    font-size: 1em;
-  }
-
-  :is(h1, h2) {
-    text-align: center;
-    margin-bottom: 1em;
-  }
-
-  label {
-    margin-right: 1em;
-  }
-
-  .plot-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 20px;
-    margin-top: 20px;
-  }
-
-  .plot-container {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 15px;
-  }
-
-  .plot-container h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    text-align: center;
-    font-size: 1rem;
-  }
-
-  .test-section {
-    margin-bottom: 40px;
-    padding-bottom: 20px;
-    border-bottom: 1px dashed #eee;
-  }
-</style>

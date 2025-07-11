@@ -89,19 +89,19 @@ describe(`Theme System`, () => {
   })
 
   describe(`Theme resolution`, () => {
-    test.each([
-      [`auto`, `light`, `light`],
-      [`auto`, `dark`, `dark`],
-      [`light`, `dark`, `light`],
-      [`dark`, `light`, `dark`],
-      [`white`, `dark`, `white`],
-      [`black`, `light`, `black`],
-    ])(
+    test.each(
+      [
+        [`auto`, `light`, `light`],
+        [`auto`, `dark`, `dark`],
+        [`light`, `dark`, `light`],
+        [`dark`, `light`, `dark`],
+        [`white`, `dark`, `white`],
+        [`black`, `light`, `black`],
+      ] as const,
+    )(
       `resolve_theme_mode("%s", "%s") returns "%s"`,
       (theme_mode, system_mode, expected) => {
-        expect(
-          resolve_theme_mode(theme_mode as ThemeMode, system_mode as `light` | `dark`),
-        ).toBe(expected)
+        expect(resolve_theme_mode(theme_mode, system_mode)).toBe(expected)
       },
     )
   })
@@ -194,10 +194,7 @@ describe(`Theme System`, () => {
       },
     )
 
-    test.each([
-      [true, `dark`],
-      [false, `light`],
-    ])(
+    test.each([[true, `dark`], [false, `light`]])(
       `apply_theme_to_dom("auto") with system preference %s resolves to "%s"`,
       (dark_preference, expected_theme) => {
         Object.defineProperty(window, `matchMedia`, {

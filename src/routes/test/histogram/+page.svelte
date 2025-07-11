@@ -217,10 +217,7 @@
   <h1>Histogram Component Tests</h1>
 
   <!-- Basic Single Series Test -->
-  <section
-    id="basic-single-series"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd"
-  >
+  <section id="basic-single-series">
     <h2>Basic Single Series</h2>
     <div style="margin: 1rem 0">
       <label>Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} /> {
@@ -240,15 +237,11 @@
       x_label="Value"
       y_label="Frequency"
       show_controls
-      style="height: 400px; border: 1px solid #ccc"
     />
   </section>
 
   <!-- Multiple Series Overlay Test -->
-  <section
-    id="multiple-series-overlay"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd"
-  >
+  <section id="multiple-series-overlay">
     <h2>Multiple Series Overlay</h2>
     <div style="margin: 1rem 0">
       <label>Opacity: <input
@@ -283,15 +276,11 @@
       mode="overlay"
       show_legend
       show_controls
-      style="height: 400px; border: 1px solid #ccc"
     />
   </section>
 
   <!-- Logarithmic Scales Test -->
-  <section
-    id="logarithmic-scales"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd"
-  >
+  <section id="logarithmic-scales">
     <h2>Logarithmic Scales</h2>
     <div style="margin: 1rem 0">
       <label>X-axis:
@@ -310,15 +299,11 @@
       x_scale_type={x_scale}
       y_scale_type={y_scale}
       show_controls
-      style="height: 400px; border: 1px solid #ccc"
     />
   </section>
 
   <!-- Real-World Distributions Test -->
-  <section
-    id="real-world-distributions"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd"
-  >
+  <section id="real-world-distributions">
     <h2>Real-World Data Distributions</h2>
     <div style="margin: 1rem 0">
       <label>Distribution Type:
@@ -335,15 +320,11 @@
       series={real_world_data}
       bins={distribution_type === `discrete` ? 6 : 25}
       mode="single"
-      style="height: 400px; border: 1px solid #ccc"
     />
   </section>
 
   <!-- Bin Size Comparison Test -->
-  <section
-    id="bin-size-comparison"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd"
-  >
+  <section id="bin-size-comparison">
     <h2>Bin Size Comparison</h2>
     <div style="margin: 1rem 0">
       <label><input type="checkbox" bind:checked={show_overlay} /> Show Overlay</label>
@@ -388,15 +369,11 @@
       bins={show_overlay ? bin_count_30 : single_bin_count}
       mode={show_overlay ? `overlay` : `single`}
       show_legend={show_overlay}
-      style="height: 400px; border: 1px solid #ccc"
     />
   </section>
 
   <!-- Tick Configuration Test -->
-  <section
-    id="tick-configuration"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd"
-  >
+  <section id="tick-configuration">
     <h2>Tick Configuration Test</h2>
     <div style="margin: 1rem 0">
       <label>X-axis Ticks: <input
@@ -435,15 +412,11 @@
       x_label="Value (Custom X Ticks)"
       y_label="Count (Custom Y Ticks)"
       show_controls
-      style="height: 400px; border: 1px solid #ccc"
     />
   </section>
 
   <!-- Custom Styling Test -->
-  <section
-    id="custom-styling"
-    style="margin: 2rem 0; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)"
-  >
+  <section id="custom-styling">
     <h2>Custom Styling</h2>
     <div style="margin: 1rem 0">
       <label>Color Scheme:
@@ -496,49 +469,18 @@
           bind:value={padding_right}
         /> {padding_right}</label>
     </div>
-    <div
-      class="histogram"
-      style="height: 400px; border: 2px solid #333; border-radius: 8px; background: white"
-    >
-      <Histogram
-        series={styled_data}
-        bins={25}
-        mode="single"
-        {x_format}
-        {y_format}
-        padding={{
-          t: padding_top,
-          b: padding_bottom,
-          l: padding_left,
-          r: padding_right,
-        }}
-      />
-    </div>
+    <Histogram
+      series={styled_data}
+      bins={25}
+      mode="single"
+      {x_format}
+      {y_format}
+      padding={{
+        t: padding_top,
+        b: padding_bottom,
+        l: padding_left,
+        r: padding_right,
+      }}
+    />
   </section>
 </div>
-
-<style>
-  section {
-    background: white;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-
-  .histogram {
-    position: relative;
-  }
-
-  label {
-    display: inline-block;
-    margin: 0.5rem 0;
-    font-weight: 500;
-  }
-
-  input[type='range'] {
-    margin: 0 0.5rem;
-  }
-
-  select {
-    margin: 0 0.5rem;
-    padding: 0.25rem;
-  }
-</style>

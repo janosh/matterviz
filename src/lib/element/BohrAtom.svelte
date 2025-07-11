@@ -14,7 +14,6 @@
     shell_props?: Record<string, string | number>
     electron_props?: Record<string, string | number>
     highlight_shell?: number | null
-    style?: string
     // if function, it'll be called with electron index and should return a string
     number_electrons?:
       | boolean
@@ -37,7 +36,6 @@
     shell_props = {},
     electron_props = {},
     highlight_shell = null,
-    style = ``,
     number_electrons = false,
     electron_label_props = {},
     ...rest
@@ -65,15 +63,10 @@
     fill: `blue`,
     ...electron_props,
   })
+  let viewBox = $derived(`-${size / 2}, -${size / 2}, ${size}, ${size}`)
 </script>
 
-<svg
-  fill={base_fill}
-  viewBox="-{size / 2}, -{size / 2}, {size}, {size}"
-  role="presentation"
-  {style}
-  {...rest}
->
+<svg fill={base_fill} {viewBox} role="presentation" {...rest}>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}

@@ -22,20 +22,20 @@ describe(`StructureLegend Component`, () => {
     {
       desc: `basic rendering with default amounts`,
       props: { elements: mock_elements, style: `margin: 20px;` },
-      expected_labels: [`Fe2`, `O3`, `H1.5`, `C12.123`],
+      expected_labels: [`Fe 2`, `O 3`, `H 1.5`, `C 12.123`],
       expected_count: 4,
       check_styling: true,
     },
     {
       desc: `custom amount formatting`,
       props: { elements: { Fe: 2.123456, O: 3.0 }, amount_format: `.2f` },
-      expected_labels: [`Fe2.12`, `O3.00`],
+      expected_labels: [`Fe 2.12`, `O 3.00`],
       expected_count: 2,
     },
     {
       desc: `floating point precision`,
       props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
-      expected_labels: [`P1.485`, `Ge0.515`, `S3`],
+      expected_labels: [`P 1.485`, `Ge 0.515`, `S 3`],
       expected_count: 3,
     },
     {
@@ -47,7 +47,7 @@ describe(`StructureLegend Component`, () => {
     {
       desc: `show amounts explicitly`,
       props: { elements: { Fe: 2.123456 }, show_amounts: true, amount_format: `.2f` },
-      expected_labels: [`Fe2.12`],
+      expected_labels: [`Fe 2.12`],
       expected_count: 1,
     },
   ])(`$desc`, ({ props, expected_labels, expected_count, check_styling }) => {
@@ -97,9 +97,9 @@ describe(`StructureLegend Component`, () => {
 
   test.each([
     [{}, 0, undefined], // Empty elements
-    [{ Fe: 0 }, 1, `Fe0`], // Zero amount
-    [{ Fe: 0.0001 }, 1, `Fe0`], // Very small decimal (trimmed by .3~f format)
-    [{ Xx: 1 } as CompositionType, 1, `Xx1`], // Non-existent element
+    [{ Fe: 0 }, 1, `Fe 0`], // Zero amount
+    [{ Fe: 0.0001 }, 1, `Fe 0`], // Very small decimal (trimmed by .3~f format)
+    [{ Xx: 1 } as CompositionType, 1, `Xx 1`], // Non-existent element
   ])(
     `handles edge cases correctly`,
     (elements, expected_count, expected_text) => {

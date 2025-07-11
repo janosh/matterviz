@@ -1,8 +1,8 @@
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorBar, ColorScaleSelect, PeriodicTable, TableInset } from '$lib'
   import { format_num } from '$lib/labels'
-  import { RadioButtons } from 'svelte-zoo'
+  import { RadioButtons } from 'svelte-multiselect'
   import mp_elem_counts from './mp-element-counts.json'
   import wbm_elem_counts from './wbm-element-counts.json'
 

@@ -1,6 +1,6 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
 // this file is trying to load ESM-only packages but it's being loaded as CommonJS by VSCode extension.
@@ -17,25 +17,10 @@ export default defineConfig({
       output: { entryFileNames: `webview.js`, format: `iife` },
     },
     emptyOutDir: false,
-    chunkSizeWarningLimit: 1_000_000,
-  },
-  test: {
-    setupFiles: [`tests/setup.ts`],
   },
   resolve: {
     alias: {
-      '$lib': resolve(__dirname, `../../src/lib`),
-      '$app/navigation': resolve(
-        __dirname,
-        `webview/src/stubs/app-navigation.ts`,
-      ),
-      '$app/stores': resolve(__dirname, `webview/src/stubs/app-stores.ts`),
-      '$app/environment': resolve(
-        __dirname,
-        `webview/src/stubs/app-environment.ts`,
-      ),
-      // Mock vscode module for tests
-      'vscode': resolve(__dirname, `tests/vscode-mock.ts`),
+      $lib: resolve(__dirname, `../../src/lib`),
     },
   },
 })

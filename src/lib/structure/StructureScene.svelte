@@ -172,8 +172,8 @@
     )
 
     const default_options = {
-      size: 100,
       background: { enabled: false },
+      className: `responsive-gizmo`,
       ...axis_options,
     }
 
@@ -424,6 +424,10 @@
 {/if}
 
 <style>
+  :global(.responsive-gizmo) {
+    width: clamp(70px, 12cqw, 100px) !important;
+    height: clamp(70px, 12cqw, 100px) !important;
+  }
   div.tooltip {
     width: max-content;
     box-sizing: border-box;
@@ -436,30 +440,25 @@
     font-size: var(--struct-tooltip-font-size);
     line-height: var(--struct-tooltip-line-height);
   }
-
   div.tooltip .elements {
     margin-bottom: var(--struct-tooltip-elements-margin);
   }
-
   div.tooltip .occupancy {
     font-size: var(--struct-tooltip-occu-font-size);
     opacity: var(--struct-tooltip-occu-opacity);
     margin-right: var(--struct-tooltip-occu-margin);
   }
-
   div.tooltip .elem-name {
     font-size: var(--struct-tooltip-elem-name-font-size, 0.85em);
     opacity: var(--struct-tooltip-elem-name-opacity, 0.7);
     margin: var(--struct-tooltip-elem-name-margin, 0 0 0 0.3em);
     font-weight: var(--struct-tooltip-elem-name-font-weight, normal);
   }
-
   div.tooltip .coordinates,
   div.tooltip .distance {
     font-size: var(--struct-tooltip-coords-font-size);
     margin: var(--struct-tooltip-coords-margin);
   }
-
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border-radius: var(--struct-atom-label-border-radius, 3pt);

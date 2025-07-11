@@ -274,7 +274,7 @@ describe(`ElementTile`, () => {
 
   describe(`text_color_threshold prop`, () => {
     test(`uses custom text_color_threshold`, () => {
-      // This test verifies the prop is accepted and passed to choose_bw_for_contrast
+      // This test verifies the prop is accepted and passed to pick_color_for_contrast
       mount(ElementTile, {
         target: document.body,
         props: { element: rand_element, text_color_threshold: 0.5 },

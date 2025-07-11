@@ -1,5 +1,4 @@
 import type { Category, ChemicalElement } from '$lib'
-import { rgb } from 'd3-color'
 import { format } from 'd3-format'
 
 // TODO add labels and units for all elemental properties
@@ -115,39 +114,6 @@ export const categories = [
 
 // deno-fmt-ignore-next-line
 export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
-
-// calculate human-perceived brightness from RGB color
-export function luminance(clr: string) {
-  const { r, g, b } = rgb(clr)
-
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 // https://stackoverflow.com/a/596243
-}
-
-// get background color of passed DOM node, or recurse up the DOM tree if current node is transparent
-export function get_bg_color(
-  elem: HTMLElement | null,
-  bg_color: string | null = null,
-): string {
-  if (bg_color) return bg_color
-  // recurse up the DOM tree to find the first non-transparent background color
-  const transparent = `rgba(0, 0, 0, 0)`
-  if (!elem) return transparent // if no DOM node, return transparent
-
-  const bg = getComputedStyle(elem).backgroundColor // get node background color
-  if (bg !== transparent) return bg // if not transparent, return it
-  return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
-}
-
-// pick black or white text color to maximize contrast with background
-export function choose_bw_for_contrast(
-  node: HTMLElement | null,
-  // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails
-  bg_color: string | null = null,
-  text_color_threshold: number = 0.7,
-) {
-  const light_bg = luminance(get_bg_color(node, bg_color)) > text_color_threshold
-  return light_bg ? `black` : `white` // white text for dark backgrounds, black for light
-}
 
 export const superscript_map = {
   '0': `⁰`,

@@ -4,7 +4,7 @@
 
 A simple histogram showing the distribution of values from a single data series. Use the controls to adjust the number of bins and see how it affects the visualization:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Histogram } from '$lib'
   import { generate_normal } from '$site/plot-utils'
@@ -51,7 +51,7 @@ A simple histogram showing the distribution of values from a single data series.
 
 Compare multiple data distributions by overlaying them in the same histogram. Toggle series visibility and adjust opacity to better see overlapping regions:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Histogram } from '$lib'
   import { generate_normal, generate_exponential, generate_uniform } from '$site/plot-utils'
@@ -139,7 +139,7 @@ Compare multiple data distributions by overlaying them in the same histogram. To
 
 For data that spans multiple orders of magnitude, logarithmic scales can be useful. This example shows data with both linear and log-normal distributions:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Histogram } from '$lib'
   import { generate_log_normal, generate_power_law } from '$site/plot-utils'
@@ -205,7 +205,7 @@ For data that spans multiple orders of magnitude, logarithmic scales can be usef
 
 This example demonstrates histograms with different types of real-world data patterns including bimodal, skewed, and discrete distributions:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Histogram } from '$lib'
   import {
@@ -294,7 +294,7 @@ This example demonstrates histograms with different types of real-world data pat
 
 This example shows how different bin sizes affect the same data visualization. Use the controls to see how bin count impacts pattern recognition:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Histogram } from '$lib'
   import { generate_mixed_data } from '$site/plot-utils'
@@ -368,7 +368,7 @@ This example shows how different bin sizes affect the same data visualization. U
 
 Demonstrate various styling options including custom colors, axis formatting, and layout customization:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Histogram } from '$lib'
   import { generate_financial_data } from '$site/plot-utils'

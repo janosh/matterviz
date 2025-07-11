@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
   import { get_elem_amounts, get_pbc_image_sites, Icon } from '$lib'
-  import { element_color_schemes } from '$lib/colors'
+  import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file } from '$lib/io/decompress'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
@@ -31,8 +31,8 @@
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
-    enable_info?: boolean
-    info_open?: boolean
+    enable_info_panel?: boolean
+    info_panel_open?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure: AnyStructure }]>
     // Generic callback for when files are dropped - receives raw content and filename
@@ -58,7 +58,7 @@
       show_vectors: true,
     }),
     controls_open = $bindable(false),
-    info_open = $bindable(false),
+    info_panel_open = $bindable(false),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_buttons = 0,
@@ -71,7 +71,7 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    enable_info = true,
+    enable_info_panel = true,
     save_json_btn_text = `⬇ JSON`,
     save_png_btn_text = `⬇ PNG`,
     save_xyz_btn_text = `⬇ XYZ`,
@@ -119,13 +119,12 @@
   })
 
   $effect.pre(() => {
-    colors.element =
-      element_color_schemes[color_scheme as keyof typeof element_color_schemes]
+    colors.element = element_color_schemes[color_scheme as ColorSchemeName]
   })
 
   let visible_buttons = $derived(
     show_buttons === true ||
-      (typeof show_buttons === `number` && show_buttons < width),
+      (typeof show_buttons === `number` && width > show_buttons),
   )
 
   // only updates when structure or show_image_atoms change
@@ -143,13 +142,13 @@
 
   // Custom toggle handlers for mutual exclusion
   function toggle_info() {
-    if (info_open) info_open = false
-    else [info_open, controls_open] = [true, false]
+    if (info_panel_open) info_panel_open = false
+    else [info_panel_open, controls_open] = [true, false]
   }
 
   function toggle_controls() {
     if (controls_open) controls_open = false
-    else [controls_open, info_open] = [true, false]
+    else [controls_open, info_panel_open] = [true, false]
   }
 
   // Reset tracking when structure changes
@@ -242,11 +241,11 @@
     // Interface shortcuts
     if (event.key === `f` && (event.ctrlKey || event.metaKey)) toggle_fullscreen()
     else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
-      info_open = !info_open
+      info_panel_open = !info_panel_open
     } else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else {
-        info_open = false
+        info_panel_open = false
         controls_open = false
       }
     }
@@ -290,7 +289,7 @@
   <div
     class="structure"
     class:dragover
-    class:active={info_open || controls_open}
+    class:active={info_panel_open || controls_open}
     role="region"
     bind:this={wrapper}
     bind:clientWidth={width}
@@ -335,8 +334,12 @@
           </button>
         {/if}
 
-        {#if enable_info && structure}
-          <StructureInfoPanel {structure} bind:info_open custom_toggle={toggle_info} />
+        {#if enable_info_panel && structure}
+          <StructureInfoPanel
+            {structure}
+            bind:panel_open={info_panel_open}
+            custom_toggle={toggle_info}
+          />
         {/if}
 
         <StructureControls
@@ -364,17 +367,16 @@
 
     <StructureLegend elements={get_elem_amounts(structure!)} />
 
-    {#if !import.meta.env.VITEST}
-      <!-- prevent from rendering in vitest runner since Canvas API not available -->
+    <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
+    {#if typeof WebGLRenderingContext !== `undefined`}
       <Canvas
-        createRenderer={(canvas) => {
-          const renderer = new WebGLRenderer({
+        createRenderer={(canvas: HTMLCanvasElement) => {
+          return new WebGLRenderer({
             canvas,
             preserveDrawingBuffer: true,
             antialias: true,
             alpha: true,
           })
-          return renderer
         }}
       >
         <StructureScene
@@ -408,6 +410,7 @@
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
+    container-type: inline-size;
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);

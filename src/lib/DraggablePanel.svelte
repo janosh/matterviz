@@ -2,8 +2,8 @@
   import { Icon } from '$lib'
   import type { IconName } from '$lib/icons'
   import type { Snippet } from 'svelte'
+  import { draggable } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { draggable } from './attachments'
 
   interface Props {
     show?: boolean
@@ -237,7 +237,7 @@
 {/if}
 
 <style>
-  .panel-toggle {
+  button.panel-toggle {
     box-sizing: border-box;
     display: flex;
     place-items: center;
@@ -246,7 +246,7 @@
     background-color: transparent;
     transition: background-color 0.2s;
   }
-  .panel-toggle:hover {
+  button.panel-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   .draggable-panel {
@@ -254,7 +254,7 @@
     background: var(--panel-bg, rgba(15, 23, 42, 0.95));
     border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
     border-radius: 6px;
-    padding: 5px 15px 15px;
+    padding: var(--panel-padding, 1ex);
     box-sizing: border-box;
     z-index: 10;
     display: grid;

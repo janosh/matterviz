@@ -7,7 +7,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { titles_as_tooltips } from 'svelte-zoo'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import { full_data_extractor } from './extract'
   import type { Trajectory, TrajectoryDataExtractor } from './index'
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
@@ -58,7 +58,7 @@
       ]
     >
     // Custom error snippet for advanced error handling
-    error_snippet?: Snippet<[{ error_message: string; on_dismiss: () => void }]>
+    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
 
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
@@ -95,6 +95,7 @@
       c?: string
       [key: string]: string | undefined
     }
+    [key: string]: unknown
   }
   let {
     trajectory = $bindable(undefined),
@@ -102,7 +103,7 @@
     current_step_idx = $bindable(0),
     data_extractor = full_data_extractor,
     allow_file_drop = true,
-    on_file_drop = handle_trajectory_file_drop,
+    on_file_drop = load_trajectory_data,
     layout = `auto`,
     structure_props = {},
     scatter_props = {},
@@ -114,11 +115,12 @@
     show_fullscreen_button = true,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
+    ...rest
   }: Props = $props()
 
   let dragover = $state(false)
   let loading = $state(false)
-  let error_message = $state<string | null>(null)
+  let error_msg = $state<string | null>(null)
   let is_playing = $state(false)
   let frame_rate_fps = $state(5)
   let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
@@ -222,11 +224,11 @@
         // Check if this is a binary file
         if (file_info.is_binary) {
           if (file_info.content instanceof ArrayBuffer) {
-            await handle_trajectory_binary_drop(file_info.content, file_info.name)
+            await load_trajectory_data(file_info.content, file_info.name)
           } else if (file_info.content_url) {
             const response = await fetch(file_info.content_url)
             const array_buffer = await response.arrayBuffer()
-            await handle_trajectory_binary_drop(array_buffer, file_info.name)
+            await load_trajectory_data(array_buffer, file_info.name)
           } else {
             console.warn(
               `Binary file without ArrayBuffer or blob URL:`,
@@ -267,14 +269,14 @@
         file.name.toLowerCase().endsWith(`.traj`)
       ) {
         const buffer = await file.arrayBuffer()
-        await handle_trajectory_binary_drop(buffer, file.name)
+        await load_trajectory_data(buffer, file.name)
         return
       }
 
       // Check for known unsupported binary formats before trying to read
       const unsupported_message = get_unsupported_format_message(file.name, ``)
       if (unsupported_message) {
-        error_message = unsupported_message
+        error_msg = unsupported_message
         current_filename = null
         file_size = null
         return
@@ -283,7 +285,7 @@
       const { content, filename } = await decompress_file(file)
       if (content) await on_file_drop(content, filename)
     } catch (error) {
-      error_message = `Failed to read file: ${error}`
+      error_msg = `Failed to read file: ${error}`
       current_filename = null
       file_size = null
       console.error(`File reading error:`, error)
@@ -393,7 +395,7 @@
   $effect(() => {
     if (trajectory_url && !trajectory) {
       loading = true
-      error_message = null
+      error_msg = null
 
       load_trajectory_from_url(trajectory_url)
         .then((loaded_trajectory: Trajectory) => {
@@ -406,7 +408,7 @@
         })
         .catch((err: Error) => {
           console.error(`Failed to load trajectory from URL:`, err)
-          error_message = `Failed to load trajectory: ${err.message}`
+          error_msg = `Failed to load trajectory: ${err.message}`
           current_filename = null
           file_size = null
           loading = false
@@ -414,24 +416,10 @@
     }
   })
 
-  async function handle_trajectory_file_drop(content: string, filename: string) {
-    await load_trajectory_data(content, filename)
-  }
-
-  async function handle_trajectory_binary_drop(
-    buffer: ArrayBuffer,
-    filename: string,
-  ) {
-    await load_trajectory_data(buffer, filename)
-  }
-
   // Consolidated trajectory loading function
-  async function load_trajectory_data(
-    data: string | ArrayBuffer,
-    filename: string,
-  ) {
+  async function load_trajectory_data(data: string | ArrayBuffer, filename: string) {
     loading = true
-    error_message = null
+    error_msg = null
     parsing_progress = null
 
     try {
@@ -439,7 +427,7 @@
       if (typeof data === `string`) {
         const unsupported_message = get_unsupported_format_message(filename, data)
         if (unsupported_message) {
-          error_message = unsupported_message
+          error_msg = unsupported_message
           current_filename = null
           file_size = null
           return
@@ -458,12 +446,12 @@
       if (typeof data === `string`) {
         const unsupported_message = get_unsupported_format_message(filename, data)
         if (unsupported_message) {
-          error_message = unsupported_message
+          error_msg = unsupported_message
         } else {
-          error_message = `Failed to parse trajectory file: ${err}`
+          error_msg = `Failed to parse trajectory file: ${err}`
         }
       } else {
-        error_message = `Failed to parse binary trajectory file: ${err}`
+        error_msg = `Failed to parse binary trajectory file: ${err}`
       }
       current_filename = null
       file_size = null
@@ -488,7 +476,9 @@
     if (display_mode === `structure`) return `Structure Only`
     if (display_mode === `scatter`) return `Scatter Only`
     if (display_mode === `histogram`) return `Histogram Only`
-    return `Structure + Scatter`
+    if (display_mode === `structure+histogram`) return `Structure + Histogram`
+    if (display_mode === `structure+scatter`) return `Structure + Scatter`
+    throw new Error(`Unexpected display mode: ${display_mode}`)
   })
 
   let view_mode_dropdown_open = $state(false)
@@ -576,7 +566,6 @@
 />
 
 <div
-  class="trajectory-viewer {actual_layout}"
   class:dragover
   class:active={is_playing || controls_open.structure || controls_open.plot}
   bind:this={wrapper}
@@ -597,6 +586,8 @@
   }}
   onclick={handle_click_outside}
   {onkeydown}
+  {...rest}
+  class="trajectory {actual_layout} {rest.class ?? ``}"
 >
   {#if loading}
     {#if parsing_progress}
@@ -607,10 +598,10 @@
     {:else}
       <Spinner text="Loading trajectory..." {...spinner_props} />
     {/if}
-  {:else if error_message}
+  {:else if error_msg}
     <TrajectoryError
-      {error_message}
-      on_dismiss={() => (error_message = null)}
+      {error_msg}
+      on_dismiss={() => (error_msg = null)}
       {error_snippet}
     />
   {:else if trajectory}
@@ -627,17 +618,16 @@
         {:else}
           {@const input_width = Math.max(25, String(current_step_idx).length * 8 + 6)}
           {#if current_filename}
-            <div class="filename-section">
-              <button
-                use:titles_as_tooltips
-                title="Click to copy filename {current_filename}"
-                onclick={() => {
-                  if (current_filename) navigator.clipboard.writeText(current_filename)
-                }}
-              >
-                {current_filename}
-              </button>
-            </div>
+            <button
+              class="filename"
+              title="Click to copy filename <code>{current_filename}</code>"
+              {@attach tooltip()}
+              onclick={() => {
+                if (current_filename) navigator.clipboard.writeText(current_filename)
+              }}
+            >
+              {current_filename}
+            </button>
           {/if}
 
           <!-- Navigation controls -->
@@ -747,7 +737,7 @@
                 {current_file_path}
                 {file_size}
                 {file_object}
-                bind:info_open={info_panel_open}
+                bind:panel_open={info_panel_open}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -830,9 +820,9 @@
       class="content-area"
       class:hide-plot={!actual_show_plot}
       class:hide-structure={!show_structure}
-      class:show-both={display_mode === `structure+scatter` || display_mode === `structure+histogram`}
+      class:show-both={[`structure+scatter`, `structure+histogram`].includes(display_mode)}
       class:show-structure-only={display_mode === `structure`}
-      class:show-plot-only={display_mode === `scatter` || display_mode === `histogram`}
+      class:show-plot-only={[`scatter`, `histogram`].includes(display_mode)}
     >
       {#if show_structure}
         <Structure
@@ -913,72 +903,67 @@
     </div>
   {:else}
     <div class="empty-state">
-      <div class="drop-zone">
-        <h3>Load Trajectory</h3>
-        <p>
-          Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj,
-          .h5) or provide trajectory data via props
-        </p>
-        <div class="supported-formats">
-          <strong>Supported formats:</strong>
-          <ul>
-            <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
-            <li>ASE trajectory files (.traj)</li>
-            <li>Pymatgen trajectory JSON</li>
-            <li>Array of structures with metadata</li>
-            <li>VASP XDATCAR files</li>
-            <li>HDF5 trajectory files (.h5, .hdf5)</li>
-            <li>Compressed files (.gz)</li>
-          </ul>
-          <p
-            style="margin-top: 1rem; font-size: 0.9em; color: var(--trajectory-text-muted, #666)"
-          >
-            💡 Force vectors will be automatically displayed when present in trajectory
-            data
-          </p>
-        </div>
-      </div>
+      <h3>Load Trajectory</h3>
+      <p>
+        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj, .h5)
+        or provide trajectory data via props
+      </p>
+      <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
+      <ul>
+        <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
+        <li>ASE trajectory files (.traj)</li>
+        <li>Pymatgen trajectory JSON</li>
+        <li>Array of structures with metadata</li>
+        <li>VASP XDATCAR files</li>
+        <li>HDF5 trajectory files (.h5, .hdf5)</li>
+        <li>Compressed files (.gz)</li>
+      </ul>
+      <p>
+        💡 Force vectors will be automatically displayed when present in trajectory data
+      </p>
     </div>
   {/if}
 </div>
 
 <style>
   :root {
-    --trajectory-border-radius: 8px;
+    --traj-border-radius: 8px;
+    --traj-min-height: 500px;
   }
-  .trajectory-viewer {
+  .trajectory {
     display: flex;
     flex-direction: column;
     height: 100%;
-    width: 100%;
     position: relative;
-    min-height: 500px;
-    border-radius: 4px;
-    border: 2px dashed transparent;
+    min-height: var(--traj-min-height);
+    border-radius: var(--traj-border-radius);
+    border: 1px solid var(--traj-border-color);
     transition: border-color 0.2s ease;
     box-sizing: border-box;
     contain: layout;
   }
-  .trajectory-viewer.active {
+  .trajectory.active {
+    /* needed so info/control panels from an active viewer overlay those of the next (if there is one) */
     z-index: 2;
   }
-  .trajectory-viewer:fullscreen {
+  .trajectory:fullscreen {
     height: 100vh !important;
     width: 100vw !important;
     border-radius: 0 !important;
     border: none;
+    background: var(--traj-surface);
   }
   /* Content area - grid container for equal sizing */
   .content-area {
     display: grid;
     flex: 1;
-    min-height: 0;
-    overflow: visible;
   }
-  .trajectory-viewer.horizontal .content-area {
+  .trajectory.horizontal .content-area {
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
   }
-  .trajectory-viewer.vertical .content-area {
+  .trajectory.vertical .content-area {
+    grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
   }
   /* When plot is hidden, structure takes full space */
@@ -992,19 +977,19 @@
     grid-template-rows: 1fr !important;
   }
   /* Display mode specific layouts */
-  .trajectory-viewer.horizontal .content-area.show-structure-only,
-  .trajectory-viewer.vertical .content-area.show-structure-only {
+  .trajectory.horizontal .content-area.show-structure-only,
+  .trajectory.vertical .content-area.show-structure-only {
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr !important;
   }
-  .trajectory-viewer.horizontal .content-area.show-plot-only,
-  .trajectory-viewer.vertical .content-area.show-plot-only {
+  .trajectory.horizontal .content-area.show-plot-only,
+  .trajectory.vertical .content-area.show-plot-only {
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr !important;
   }
-  .trajectory-viewer.dragover {
-    border-color: var(--trajectory-dragover-border);
-    background-color: var(--trajectory-dragover-bg);
+  .trajectory.dragover {
+    border-color: var(--traj-dragover-border);
+    background-color: var(--traj-dragover-bg);
   }
 
   .trajectory-controls {
@@ -1014,11 +999,10 @@
     padding: 0.5rem;
     background: var(--traj-surface);
     backdrop-filter: blur(4px);
-    border-bottom: 1px solid var(--trajectory-border, rgba(255, 255, 255, 0.1));
-    color: var(--trajectory-text-color);
+    border-bottom: 1px solid var(--traj-border, rgba(255, 255, 255, 0.1));
     position: relative;
     z-index: 100;
-    border-radius: var(--trajectory-border-radius) var(--trajectory-border-radius) 0 0;
+    border-radius: var(--traj-border-radius) var(--traj-border-radius) 0 0;
   }
   .nav-section {
     display: flex;
@@ -1060,14 +1044,14 @@
     transform: translateX(-50%);
     width: 2px;
     height: 4px;
-    background: var(--traj-muted);
+    background: var(--text-color-muted);
     top: -10px;
   }
   .step-label {
     position: absolute;
     transform: translateX(-50%);
     font-size: 0.65rem;
-    color: var(--traj-muted);
+    color: var(--text-color-muted);
     white-space: nowrap;
     text-align: center;
     top: -6px;
@@ -1079,10 +1063,8 @@
   .speed-input {
     width: 45px;
     text-align: center;
-    background: var(--traj-bg);
-    border: var(--traj-border);
+    border: 1px solid var(--traj-border-color);
     border-radius: 3px;
-    color: var(--traj-text);
     font-size: 0.8rem;
     padding: 0.125rem 0.25rem;
     box-sizing: border-box;
@@ -1091,31 +1073,24 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    color: var(--traj-text);
   }
-  .filename-section {
-    display: flex;
+  button.filename {
     align-items: center;
-    color: var(--traj-text);
-  }
-  .filename-section button {
     white-space: nowrap;
     padding: 0.125rem 0.375rem;
-    background: var(--traj-bg);
     border-radius: 2px;
-    border: var(--traj-border);
-    max-width: 200px;
+    max-width: 250px;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: inherit;
+    display: inline-block;
   }
   .display-mode {
     min-width: 28px;
     height: 28px;
-    background: var(--trajectory-display-mode-bg, rgba(255, 255, 255, 0.05));
+    background: var(--traj-display-mode-bg, rgba(255, 255, 255, 0.05));
   }
   .display-mode:hover:not(:disabled) {
-    background: var(--trajectory-display-mode-hover-bg, #6b7280);
+    background: var(--traj-display-mode-hover-bg, #6b7280);
   }
   .fullscreen-button {
     min-width: 28px;
@@ -1123,13 +1098,12 @@
     background: transparent;
   }
   .fullscreen-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--traj-text) 8%, var(--traj-border-bg));
+    background: var(--traj-border-color);
   }
   .info-section {
     display: flex;
     align-items: center;
     gap: 2px;
-    color: var(--traj-text);
     margin-left: auto;
   }
 
@@ -1138,53 +1112,41 @@
     font-size: 0.9rem;
   }
   .play-button:hover:not(:disabled) {
-    background: var(--trajectory-play-button-hover-bg, #7f8793);
+    background: var(--traj-play-button-hover-bg, #7f8793);
   }
   .play-button.playing {
-    background: var(--trajectory-pause-button-bg, #6b7280);
+    background: var(--traj-pause-button-bg, #6b7280);
   }
   .play-button.playing:hover:not(:disabled) {
-    background: var(--trajectory-pause-button-hover-bg, #9ca3af);
+    background: var(--traj-pause-button-hover-bg, #9ca3af);
   }
 
   .empty-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
     padding: 2rem;
-    color: var(--trajectory-text-color);
+    border: 2px dashed var(--traj-border-color);
+    border-radius: var(--traj-border-radius);
+    background: var(--dropzone-bg);
   }
-  .drop-zone {
-    text-align: center;
-    padding: 3rem;
-    border: 2px dashed var(--trajectory-dropzone-border);
-    border-radius: var(--trajectory-border-radius);
-    background: var(--trajectory-dropzone-bg);
-    color: var(--trajectory-text-color);
+  .empty-state :where(p, ul) {
+    color: var(--text-color-muted);
+  }
+  .empty-state :where(h3, p, ul, li, strong) {
     max-width: 500px;
-  }
-  .drop-zone h3 {
-    color: var(--trajectory-heading-color);
-    margin-bottom: 1rem;
+    margin-inline: auto;
   }
   .supported-formats {
     margin-top: 1.5rem;
     text-align: left;
-  }
-  .supported-formats strong {
-    color: var(--trajectory-text-color);
   }
   .supported-formats ul {
     margin: 0.5rem 0;
     padding-left: 1.5rem;
   }
   .supported-formats li {
-    color: var(--trajectory-text-muted);
+    color: var(--text-color-muted);
   }
   button {
-    background: var(--traj-border-bg);
-    color: var(--traj-text);
+    background: var(--traj-border-color);
     border: none;
     border-radius: 4px;
     padding: 0.25rem 0.5rem;
@@ -1193,11 +1155,11 @@
     transition: background-color 0.2s;
   }
   button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--traj-text) 8%, var(--traj-border-bg));
+    background: var(--traj-border-color);
   }
   button:disabled {
     background: var(--traj-text-muted);
-    color: var(--traj-border-bg);
+    color: var(--traj-border-color);
     cursor: not-allowed;
   }
   .trajectory-controls input[type='number']::-webkit-outer-spin-button,
@@ -1206,21 +1168,8 @@
     margin: 0;
   }
   /* Responsive design */
-  @media (max-width: 768px) {
-    /* On small screens, force vertical layout for content area regardless of viewport aspect ratio */
-    .trajectory-viewer.horizontal .content-area {
-      grid-template-columns: 1fr !important;
-      grid-template-rows: 1fr 1fr !important;
-    }
-    /* Override for when plot is hidden */
-    .trajectory-viewer.horizontal .content-area.hide-plot {
-      grid-template-rows: 1fr !important;
-    }
-  }
-  /* Additional responsive breakpoints for auto layout */
-  @media (orientation: portrait) and (max-width: 1024px) {
-    /* Force vertical layout on portrait tablets and phones */
-    .trajectory-viewer .content-area {
+  @media (orientation: portrait) {
+    .trajectory .content-area.show-both:not(.hide-plot):not(.hide-structure) {
       grid-template-columns: 1fr !important;
       grid-template-rows: 1fr 1fr !important;
     }
@@ -1236,7 +1185,7 @@
     gap: 2px;
     min-width: 50px;
     max-width: 120px;
-    background: var(--trajectory-view-mode-bg, rgba(255, 255, 255, 0.05));
+    background: var(--traj-view-mode-bg, rgba(255, 255, 255, 0.05));
     overflow: hidden;
   }
   .view-mode-dropdown {
@@ -1245,7 +1194,7 @@
     right: 0;
     background: var(--traj-surface);
     backdrop-filter: blur(4px);
-    border: 1px solid var(--traj-border);
+    border: 1px solid var(--traj-border-color);
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
     z-index: 1000;
@@ -1262,7 +1211,6 @@
     border: none;
     border-radius: 0;
     text-align: left;
-    color: var(--traj-text);
     font-size: 0.8rem;
     line-height: 1.2;
     cursor: pointer;

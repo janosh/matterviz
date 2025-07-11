@@ -1,5 +1,7 @@
 // Theme System for MatterViz
 
+export * from './themes'
+
 const is_browser = typeof window !== `undefined`
 const storage_key = `matterviz-theme`
 
@@ -14,7 +16,8 @@ export const COLOR_THEMES = {
 export const AUTO_THEME = `auto` as const
 
 // whether a theme is light or dark
-export const THEME_TYPE: Record<ThemeName, `light` | `dark`> = {
+export type ThemeType = `light` | `dark`
+export const THEME_TYPE: Record<ThemeName, ThemeType> = {
   [COLOR_THEMES.light]: `light`,
   [COLOR_THEMES.dark]: `dark`,
   [COLOR_THEMES.white]: `light`,
@@ -49,8 +52,7 @@ export const is_valid_theme_name = (value: string): value is ThemeName =>
 
 export const resolve_theme_mode = (
   mode: ThemeMode,
-  system_preference: typeof COLOR_THEMES.light | typeof COLOR_THEMES.dark =
-    COLOR_THEMES.light,
+  system_preference: ThemeType = COLOR_THEMES.light,
 ): ThemeName => (mode === AUTO_THEME ? system_preference : mode)
 
 // Global theme objects
@@ -80,7 +82,7 @@ export const save_theme_preference = (mode: ThemeMode): void => {
 }
 
 // System color scheme
-export const get_system_mode = (): typeof COLOR_THEMES.light | typeof COLOR_THEMES.dark =>
+export const get_system_mode = (): ThemeType =>
   is_browser && matchMedia(`(prefers-color-scheme: dark)`).matches
     ? COLOR_THEMES.dark
     : COLOR_THEMES.light

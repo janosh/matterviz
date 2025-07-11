@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fetch_zipped, mp_build_bucket } from '$lib/api'
+  import { fetch_zipped, mp_build_bucket } from '$lib/mp-api'
 
   let { data = $bindable() } = $props()
 

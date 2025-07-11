@@ -1,19 +1,17 @@
 <script>
-  import { FileDetails } from 'svelte-zoo'
-
-  const structure_code_files = import.meta.glob('$lib/Structure*', {
+  const structure_files = import.meta.glob('$lib/Structure*', {
     query: '?raw',
     import: 'default',
     eager: true,
   })
-  const files = Object.entries(structure_code_files).map(([path, content]) => {
-    return { title: path, content }
-  })
+  const files = Object.entries(structure_files).map(
+    ([path, content]) => ({ title: path, content })
+  )
 </script>
 
 # Structure
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { Structure } from '$lib'
   import { structures } from '$site/structures'
@@ -67,13 +65,11 @@
 </style>
 ```
 
-<FileDetails {files} />
-
 ## Different Crystal Systems
 
 Showcasing structures with different crystal systems.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { crystal_systems, Structure } from '$lib'
   import { structures } from '$site/structures'

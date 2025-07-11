@@ -1,8 +1,8 @@
 import type { Category, ChemicalElement } from '$lib'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { default_category_colors, default_element_colors } from './colors'
-import { type Tooltip } from './plot'
-import { type ThemeMode } from './theme'
+import type { Tooltip } from './plot'
+import type { ThemeMode, ThemeType } from './theme'
 
 export const selected = $state<{
   category: Category | null
@@ -40,8 +40,7 @@ export const periodic_table_state = $state({
 
 // Theme state with safe initialization
 let initial_theme_mode: ThemeMode = AUTO_THEME
-let initial_system_mode: typeof COLOR_THEMES.light | typeof COLOR_THEMES.dark =
-  COLOR_THEMES.light
+let initial_system_mode: ThemeType = COLOR_THEMES.light
 
 // Safe theme initialization for test environments
 try {
@@ -57,11 +56,7 @@ try {
 }
 
 export const theme_state = $state<
-  {
-    mode: ThemeMode
-    system_mode: typeof COLOR_THEMES.light | typeof COLOR_THEMES.dark
-    type: `light` | `dark`
-  }
+  { mode: ThemeMode; system_mode: ThemeType; type: ThemeType }
 >({
   mode: initial_theme_mode,
   system_mode: initial_system_mode,

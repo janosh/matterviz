@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { page } from '$app/state'
   import { element_data } from '$lib'
+  import '$lib/app.css'
   import { theme_state } from '$lib/state.svelte'
   import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
@@ -9,24 +9,18 @@
   import { DemoNav, Footer } from '$site'
   import { demos } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
-  import { CmdPalette } from 'svelte-multiselect'
-  import { CopyButton, GitHubCorner } from 'svelte-zoo'
-  import '../app.css'
+  import { CmdPalette, CopyButton, GitHubCorner } from 'svelte-multiselect'
 
   interface Props {
     children?: Snippet
   }
   let { children }: Props = $props()
 
-  // Apply theme changes when mode changes (after SSR)
-  $effect(() => {
-    if (typeof window !== `undefined`) {
-      apply_theme_to_dom(theme_state.mode)
-    }
+  $effect(() => { // Apply theme changes when mode changes (after SSR)
+    if (typeof window !== `undefined`) apply_theme_to_dom(theme_state.mode)
   })
 
-  // Update system preference when it changes
-  $effect(() => {
+  $effect(() => { // Update system preference when it changes
     if (typeof window !== `undefined`) {
       const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
 
@@ -78,35 +72,15 @@
 
 <CmdPalette {actions} placeholder="Go to..." />
 <GitHubCorner href={pkg.repository} />
-{#if typeof window !== `undefined`}
-  <CopyButton global />
-{/if}
+<!-- TODO update to pass class="copy-btn" in next svelte-multiselect -->
+<CopyButton
+  global="position: absolute; top: 9pt; right: 9pt; background: var(--btn-bg); color: var(--btn-color)"
+/>
 
 <ThemeControl />
 
 <DemoNav />
 
-{#if !page.error && page.url.pathname !== `/`}
-  <a href="." aria-label="Back to index page">&laquo; home</a>
-{/if}
-
 {@render children?.()}
 
 <Footer />
-
-<style>
-  a[href='.'] {
-    font-size: 13pt;
-    position: absolute;
-    top: 2em;
-    left: 2em;
-    background-color: var(--btn-bg);
-    padding: 1pt 5pt;
-    border-radius: 3pt;
-    transition: 0.2s;
-    z-index: 1;
-  }
-  a[href='.']:hover {
-    background-color: var(--btn-hover-bg);
-  }
-</style>

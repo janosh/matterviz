@@ -1,5 +1,5 @@
 import { ColorBar } from '$lib'
-import { luminance } from '$lib/labels'
+import { luminance } from '$lib/colors'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'

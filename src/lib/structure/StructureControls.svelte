@@ -1,12 +1,12 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
   import { DraggablePanel } from '$lib'
-  import { element_color_schemes } from '$lib/colors'
+  import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import * as exports from '$lib/io/export'
   import { STRUCT_DEFAULTS, StructureScene } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
-  import { Tooltip } from 'svelte-zoo'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { Camera, Scene } from 'three'
 
   export interface Props {
@@ -120,8 +120,7 @@
 
   // Helper function to get example set of colors from an element color scheme
   function get_representative_colors(scheme_name: string): string[] {
-    const scheme =
-      element_color_schemes[scheme_name as keyof typeof element_color_schemes]
+    const scheme = element_color_schemes[scheme_name as ColorSchemeName]
     if (!scheme) return []
 
     // Get colors for common elements: H, C, N, O, Fe, Ca, Si, Al
@@ -440,9 +439,12 @@
       />
     </label>
     <label>
-      <Tooltip text="pan by clicking and dragging while holding cmd, ctrl or shift">
+      <span
+        title="Pan by clicking and dragging while holding cmd, ctrl or shift"
+        {@attach tooltip()}
+      >
         Pan speed
-      </Tooltip>
+      </span>
       <input
         type="number"
         min={0}
@@ -459,7 +461,9 @@
       />
     </label>
     <label>
-      <Tooltip text="damping factor for rotation">Rotation damping</Tooltip>
+      <span title="Damping factor for rotation" {@attach tooltip()}>
+        Rotation damping
+      </span>
       <input
         type="number"
         min={0}
@@ -481,7 +485,9 @@
     <!-- Lighting Controls -->
     <h4 class="section-heading">Lighting</h4>
     <label>
-      <Tooltip text="intensity of the directional light">Directional light</Tooltip>
+      <span title="Intensity of the directional light" {@attach tooltip()}>
+        Directional light
+      </span>
       <input
         type="number"
         min={0}
@@ -498,7 +504,9 @@
       />
     </label>
     <label>
-      <Tooltip text="intensity of the ambient light">Ambient light</Tooltip>
+      <span title="Intensity of the ambient light" {@attach tooltip()}>
+        Ambient light
+      </span>
       <input
         type="number"
         min={0.5}
