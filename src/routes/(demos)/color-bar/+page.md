@@ -2,7 +2,7 @@
 
 Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorBar } from '$lib'
 </script>
@@ -30,7 +30,7 @@ Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 
 You can make fat and skinny bars:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorBar } from '$lib'
 
@@ -52,7 +52,7 @@ You can make fat and skinny bars:
 
 `PeriodicTable.svelte` heatmap example with `ColorBar` inside `TableInset`
 
-```svelte example stackblitz code_above
+```svelte example code_above
 <script>
   import { element_data } from '$lib'
   import { ColorBar, ColorScaleSelect } from '$lib/plot'
@@ -108,7 +108,7 @@ You can make fat and skinny bars:
 
 Example demonstrating `title_side` and `tick_side` interaction:
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorBar } from '$lib'
 
@@ -170,7 +170,7 @@ Example demonstrating `title_side` and `tick_side` interaction:
 
 You can format tick labels for date/time ranges by providing a D3 format string via the `tick_format` prop. The color bar accepts ranges as milliseconds since the epoch (standard JavaScript `Date.getTime()`).
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorBar } from '$lib'
 
@@ -213,7 +213,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
 Demonstrating the color bar with large numeric ranges, using both linear and logarithmic scales (`scale_type='log'`). Log scales require a positive range (both min and max > 0). Scientific notation is used for tick labels via `tick_format='.0e'`.
 
-```svelte example stackblitz
+```svelte example
 <script>
   import { ColorBar } from '$lib'
 </script>

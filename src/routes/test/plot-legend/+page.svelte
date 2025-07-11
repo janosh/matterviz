@@ -96,8 +96,8 @@
 
 <h1>PlotLegend Integration Test Page</h1>
 
-<div style="display: flex; gap: 20px; align-items: flex-start">
-  <div style="border: 1px solid #ccc; padding: 10px; min-width: 200px">
+<div>
+  <div>
     <h2>Legend Component</h2>
     <PlotLegend
       {series_data}
@@ -110,7 +110,7 @@
     />
   </div>
 
-  <div style="border: 1px solid #ccc; padding: 10px">
+  <div>
     <h2>Controls</h2>
     <label for="layout">Layout:</label>
     <select bind:value={legend_layout} id="layout">
@@ -143,10 +143,7 @@
 </div>
 
 <h2>Custom Style Test Case</h2>
-<div
-  id="custom-style-legend"
-  style="--plot-legend-background-color: rgb(10, 20, 30); --plot-legend-item-padding: 1px; --plot-legend-item-color: rgb(255, 255, 0); padding: 5px; border: 1px solid red; max-width: 200px"
->
+<div id="custom-style-legend">
   <PlotLegend
     series_data={series_data.slice(0, 2)}
     layout="horizontal"
@@ -155,15 +152,3 @@
     on_double_click={() => {}}
   />
 </div>
-
-<style>
-  label {
-    display: block;
-    margin-bottom: 5px;
-  }
-  input,
-  select {
-    margin-bottom: 10px;
-    width: 200px;
-  }
-</style>

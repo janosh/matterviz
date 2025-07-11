@@ -13,9 +13,6 @@ coverage
 # secrets
 .env
 
-# auto-generated
-src/types
-
 # coverage and large test files
 test-results*
 src/site/trajectories/large

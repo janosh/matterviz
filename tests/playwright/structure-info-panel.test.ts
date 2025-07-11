@@ -8,23 +8,23 @@ test.describe(`StructureInfoPanel`, () => {
 
   test(`should toggle panel visibility with info button`, async ({ page }) => {
     // Wait for button to be visible first
-    await expect(page.locator(`button[title*="info panel"]`)).toBeVisible()
+    await expect(page.locator(`button[title*="structure info"]`)).toBeVisible()
 
     // Info panel should be closed initially
     await expect(page.locator(`.draggable-panel.structure-info-panel`)).not.toBeVisible()
 
     // Click info button to open panel
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
     await expect(page.locator(`.draggable-panel.structure-info-panel`)).toBeVisible()
 
     // Click info button again to close panel
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
     await expect(page.locator(`.draggable-panel.structure-info-panel`)).not.toBeVisible()
   })
 
   test(`should display structure information sections`, async ({ page }) => {
     // Open info panel
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
     await expect(page.locator(`.structure-info-panel`)).toBeVisible()
 
     // Check main sections are present
@@ -43,15 +43,15 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should display site information with coordinates`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Check if sites toggle is present (for structures with 50+ atoms)
-    const sitesToggle = page.locator(`.toggle-item`)
-    const hasSitesToggle = await sitesToggle.count() > 0
+    const sites_toggle = page.locator(`.toggle-item`)
+    const has_sites_toggle = await sites_toggle.count() > 0
 
-    if (hasSitesToggle) {
+    if (has_sites_toggle) {
       // Click the toggle to expand sites
-      await sitesToggle.click()
+      await sites_toggle.click()
     }
 
     // Check site entries are present
@@ -60,14 +60,14 @@ test.describe(`StructureInfoPanel`, () => {
 
     // Check coordinate format (should contain parentheses and commas)
     const fractional = page.locator(`text=Fractional`).first()
-    const fractionalParent = fractional.locator(`..`)
-    await expect(fractionalParent).toContainText(`(`)
-    await expect(fractionalParent).toContainText(`,`)
-    await expect(fractionalParent).toContainText(`)`)
+    const fractional_parent = fractional.locator(`..`)
+    await expect(fractional_parent).toContainText(`(`)
+    await expect(fractional_parent).toContainText(`,`)
+    await expect(fractional_parent).toContainText(`)`)
   })
 
   test(`should show drag handle and not show close button initially`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Drag handle should be visible
     await expect(page.locator(`.drag-handle`)).toBeVisible()
@@ -77,7 +77,7 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should close panel when clicking outside (before dragging)`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
     await expect(page.locator(`.structure-info-panel`)).toBeVisible()
 
     // Click outside the panel (on canvas)
@@ -88,39 +88,39 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should make panel draggable and show close button after dragging`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Get initial position
     const panel = page.locator(`.info-panel-content`)
-    const initialBox = await panel.boundingBox()
-    expect(initialBox).toBeTruthy()
-    if (!initialBox) return
+    const initial_box = await panel.boundingBox()
+    expect(initial_box).toBeTruthy()
+    if (!initial_box) return
 
     // Drag the panel by its handle
-    const dragHandle = page.locator(`.drag-handle`)
-    await dragHandle.hover()
+    const drag_handle = page.locator(`.drag-handle`)
+    await drag_handle.hover()
     await page.mouse.down()
-    await page.mouse.move(initialBox.x + 100, initialBox.y + 50)
+    await page.mouse.move(initial_box.x + 100, initial_box.y + 50)
     await page.mouse.up()
 
     // Check panel moved
-    const newBox = await panel.boundingBox()
-    expect(newBox).toBeTruthy()
-    if (!newBox) return
+    const new_box = await panel.boundingBox()
+    expect(new_box).toBeTruthy()
+    if (!new_box) return
 
-    expect(newBox.x).toBeGreaterThan(initialBox.x)
-    expect(newBox.y).toBeGreaterThan(initialBox.y)
+    expect(new_box.x).toBeGreaterThan(initial_box.x)
+    expect(new_box.y).toBeGreaterThan(initial_box.y)
 
     // Close button should now be visible
     await expect(page.locator(`.close-button`)).toBeVisible()
   })
 
   test(`should not close panel when clicking outside after dragging`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Drag the panel
-    const dragHandle = page.locator(`.drag-handle`)
-    await dragHandle.hover()
+    const drag_handle = page.locator(`.drag-handle`)
+    await drag_handle.hover()
     await page.mouse.down()
     await page.mouse.move(400, 300)
     await page.mouse.up()
@@ -136,11 +136,11 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should close panel with close button and reset drag state`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Drag the panel to activate close button
-    const dragHandle = page.locator(`.drag-handle`)
-    await dragHandle.hover()
+    const drag_handle = page.locator(`.drag-handle`)
+    await drag_handle.hover()
     await page.mouse.down()
     await page.mouse.move(400, 300)
     await page.mouse.up()
@@ -155,26 +155,26 @@ test.describe(`StructureInfoPanel`, () => {
     await expect(page.locator(`.structure-info-panel`)).not.toBeVisible()
 
     // Reopen panel - close button should not be visible (drag state reset)
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
     await expect(page.locator(`.close-button`)).not.toBeVisible()
   })
 
   test(`should copy item to clipboard with checkmark feedback`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Grant clipboard permissions
     await page.context().grantPermissions([`clipboard-read`, `clipboard-write`])
 
     // Click on a copyable item (Formula)
-    const formulaItem = page.locator(`text=Formula`).locator(`..`)
-    await formulaItem.click()
+    const formula_item = page.locator(`text=Formula`).locator(`..`)
+    await formula_item.click()
 
     // Checkmark should appear briefly
     await expect(page.locator(`.copy-checkmark-overlay`)).toBeVisible()
 
     // Check clipboard content
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText())
-    expect(clipboardText).toContain(`Formula:`)
+    const clipboard_text = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard_text).toContain(`Formula:`)
 
     // Checkmark should disappear after timeout
     await page.waitForTimeout(1100) // Wait for 1.1 seconds (checkmark disappears after 1s)
@@ -182,18 +182,18 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should not copy usage tips items`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Try to click on a usage tips item
-    const tipsItem = page.locator(`text=File Drop`).locator(`..`)
-    await tipsItem.click()
+    const tips_item = page.locator(`text=File Drop`).locator(`..`)
+    await tips_item.click()
 
     // No checkmark should appear
     await expect(page.locator(`.copy-checkmark-overlay`)).not.toBeVisible()
   })
 
   test(`should display usage tips section`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Check usage tips content
     await expect(page.locator(`text=File Drop`)).toBeVisible()
@@ -209,16 +209,16 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should format numeric values correctly`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Check that volume/density values are formatted with units
-    const volumeDensity = page.locator(`text=Volume, Density`).locator(`..`)
-    await expect(volumeDensity).toContainText(`Å³`)
-    await expect(volumeDensity).toContainText(`g/cm³`)
+    const volume_density = page.locator(`text=Volume, Density`).locator(`..`)
+    await expect(volume_density).toContainText(`Å³`)
+    await expect(volume_density).toContainText(`g/cm³`)
 
     // Check that lattice parameters have units
-    const latticeParams = page.locator(`text=a, b, c`).locator(`..`)
-    await expect(latticeParams).toContainText(`Å`)
+    const lattice_params = page.locator(`text=a, b, c`).locator(`..`)
+    await expect(lattice_params).toContainText(`Å`)
 
     // Check that angles have degree symbols
     const angles = page.locator(`text=α, β, γ`).locator(`..`)
@@ -226,37 +226,37 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should handle keyboard navigation for copy functionality`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
     await page.context().grantPermissions([`clipboard-read`, `clipboard-write`])
 
     // Focus on a copyable item and press Enter
-    const formulaItem = page.locator(`text=Formula`).locator(`..`)
-    await formulaItem.focus()
+    const formula_item = page.locator(`text=Formula`).locator(`..`)
+    await formula_item.focus()
     await page.keyboard.press(`Enter`)
 
     // Checkmark should appear
     await expect(page.locator(`.copy-checkmark-overlay`)).toBeVisible()
 
     // Check clipboard content
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText())
-    expect(clipboardText).toContain(`Formula:`)
+    const clipboard_text = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard_text).toContain(`Formula:`)
   })
 
   test(`should display site properties when available`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Check if sites toggle is present and expand if needed
-    const sitesToggle = page.locator(`.toggle-item`)
-    const hasSitesToggle = await sitesToggle.count() > 0
+    const sites_toggle = page.locator(`.toggle-item`)
+    const has_sites_toggle = await sites_toggle.count() > 0
 
-    if (hasSitesToggle) {
+    if (has_sites_toggle) {
       // Click the toggle to expand sites
-      await sitesToggle.click()
+      await sites_toggle.click()
     }
 
     // Check that site items are indented (have the site-item class)
-    const siteItems = page.locator(`.site-item`)
-    await expect(siteItems.first()).toBeVisible()
+    const site_items = page.locator(`.site-item`)
+    await expect(site_items.first()).toBeVisible()
 
     // Check that site headers show element names
     const sites = page.locator(`.structure-info-panel section div`)
@@ -264,14 +264,14 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should handle drag cursor states correctly`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Check initial cursor state
-    const dragHandle = page.locator(`.drag-handle`)
-    await expect(dragHandle).toHaveCSS(`cursor`, `grab`)
+    const drag_handle = page.locator(`.drag-handle`)
+    await expect(drag_handle).toHaveCSS(`cursor`, `grab`)
 
     // Start dragging and check cursor changes
-    await dragHandle.hover()
+    await drag_handle.hover()
     await page.mouse.down()
 
     // Note: Testing cursor change to 'grabbing' during drag is tricky in Playwright
@@ -281,38 +281,38 @@ test.describe(`StructureInfoPanel`, () => {
   })
 
   test(`should handle sites toggle for medium-sized structures`, async ({ page }) => {
-    await page.locator(`button[title*="info panel"]`).click()
+    await page.locator(`button[title*="structure info"]`).click()
 
     // Look for sites toggle button (only appears for structures with 50+ atoms)
-    const sitesToggle = page.locator(`.toggle-item`)
-    const hasSitesToggle = await sitesToggle.count() > 0
+    const sites_toggle = page.locator(`.toggle-item`)
+    const has_sites_toggle = await sites_toggle.count() > 0
 
-    if (hasSitesToggle) {
+    if (has_sites_toggle) {
       // Initially should be collapsed (showing "Sites (X atoms) ▼")
-      await expect(sitesToggle).toContainText(`Sites`)
-      await expect(sitesToggle).toContainText(`atoms`)
-      await expect(sitesToggle).toContainText(`▼`)
+      await expect(sites_toggle).toContainText(`Sites`)
+      await expect(sites_toggle).toContainText(`atoms`)
+      await expect(sites_toggle).toContainText(`▼`)
 
       // Sites details should not be visible initially
       await expect(page.locator(`text=Fractional`)).not.toBeVisible()
 
       // Click to expand
-      await sitesToggle.click()
+      await sites_toggle.click()
 
       // Should now show expanded state ("Hide Sites ▲")
-      await expect(sitesToggle).toContainText(`Hide Sites`)
-      await expect(sitesToggle).toContainText(`▲`)
+      await expect(sites_toggle).toContainText(`Hide Sites`)
+      await expect(sites_toggle).toContainText(`▲`)
 
       // Sites details should now be visible
       await expect(page.locator(`text=Fractional`)).toBeVisible()
       await expect(page.locator(`text=Cartesian`)).toBeVisible()
 
       // Click again to collapse
-      await sitesToggle.click()
+      await sites_toggle.click()
 
       // Should be collapsed again
-      await expect(sitesToggle).toContainText(`Sites`)
-      await expect(sitesToggle).toContainText(`▼`)
+      await expect(sites_toggle).toContainText(`Sites`)
+      await expect(sites_toggle).toContainText(`▼`)
       await expect(page.locator(`text=Fractional`)).not.toBeVisible()
     }
   })

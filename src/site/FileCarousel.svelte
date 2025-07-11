@@ -33,9 +33,7 @@
       base_name.includes(`_traj`) ||
       base_name.includes(`-traj`) ||
       base_name.toLowerCase().includes(`xdatcar`)
-    ) {
-      return `traj`
-    }
+    ) return `traj`
 
     // Normalize HDF5 files
     if ([`h5`, `hdf5`].includes(type)) return `h5`
@@ -111,10 +109,6 @@
     }
 
     on_drag_start?.(file, event)
-  }
-
-  const handle_drag_end = () => {
-    on_drag_end?.()
   }
 
   // Get unique file types for format filters
@@ -198,7 +192,9 @@
       class:compressed={is_compressed}
       draggable="true"
       ondragstart={(event) => handle_drag_start(file, event)}
-      ondragend={handle_drag_end}
+      ondragend={() => {
+        on_drag_end?.()
+      }}
       role="button"
       tabindex="0"
       title="Drag this {is_compressed

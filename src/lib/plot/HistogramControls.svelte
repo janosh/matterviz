@@ -324,46 +324,46 @@
 {/if}
 
 <style>
-  :global(.histogram-controls-panel .section-heading) {
+  .section-heading {
     margin: 0 0 8px 0;
     font-size: 0.9em;
-    color: var(--muted-text-color, #ccc);
+    color: var(--text-color-muted, #ccc);
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 4px;
   }
-  :global(.histogram-controls-panel .histogram-controls-content) {
+  .histogram-controls-content {
     max-height: 450px;
     overflow-y: auto;
     padding-right: 4px;
   }
-  :global(.histogram-controls-panel .controls-group) {
+  .controls-group {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 16px;
   }
-  :global(.histogram-controls-panel .checkbox-label) {
+  .checkbox-label {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 0.85em;
   }
-  :global(.histogram-controls-panel .panel-row) {
+  .panel-row {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 0.85em;
   }
-  :global(.histogram-controls-panel .panel-row label) {
+  .panel-row label {
     min-width: 80px;
     font-size: 0.85em;
   }
-  :global(.histogram-controls-panel .panel-row input[type='range']) {
+  .panel-row input[type='range'] {
     flex: 1;
     min-width: 60px;
   }
-  :global(.histogram-controls-panel .number-input) {
+  .number-input {
     width: 50px;
     text-align: center;
     border-radius: 3px;
@@ -371,28 +371,28 @@
     font-size: 0.8em;
     box-sizing: border-box;
   }
-  :global(.histogram-controls-panel .panel-row select) {
+  .panel-row select {
     flex: 1;
     border-radius: 3px;
     padding: 2px 4px;
     font-size: 0.8em;
   }
-  :global(.histogram-controls-panel .format-input) {
+  .format-input {
     flex: 1;
     border-radius: 3px;
     padding: 4px 6px;
     font-size: 0.8em;
     font-family: monospace;
   }
-  :global(.histogram-controls-panel .format-input::placeholder) {
+  .format-input::placeholder {
     color: rgba(255, 255, 255, 0.5);
     font-style: italic;
   }
-  :global(.histogram-controls-panel .format-input.invalid) {
+  .format-input:global(.invalid) {
     border-color: var(--error-color, #ff6b6b);
     background: rgba(255, 107, 107, 0.1);
   }
-  :global(.histogram-controls-panel .format-input.invalid:focus) {
+  .format-input:global(.invalid):focus {
     outline-color: var(--error-color, #ff6b6b);
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }

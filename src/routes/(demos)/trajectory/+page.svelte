@@ -93,20 +93,14 @@
         )
         const format = detect_compression_format(filename)
 
-        if (format) {
-          content = await decompress_data(arrayBuffer, format)
-        } else {
-          content = new TextDecoder().decode(arrayBuffer)
-        }
+        if (format) content = await decompress_data(arrayBuffer, format)
+        else content = new TextDecoder().decode(arrayBuffer)
       }
 
-      return {
-        name: strip_query(filename),
-        content,
-        formatted_name: format_filename(filename),
-        type: get_file_type(filename),
-        content_type: `text`,
-      }
+      const name = strip_query(filename)
+      const formatted_name = format_filename(filename)
+      const type = get_file_type(filename)
+      return { name, content, formatted_name, type, content_type: `text` }
     }
   }
 
@@ -154,7 +148,7 @@
 
 <h1>Trajectory Viewer</h1>
 
-<div class="dual-trajectory-container full-bleed">
+<div class="trajectory-container full-bleed">
   {#each trajectories as trajectory, idx (idx)}
     <TrajectoryViewer
       bind:trajectory={trajectories[idx]}
@@ -171,6 +165,7 @@
       }}
     />
   {/each}
+  <TrajectoryViewer />
 </div>
 
 <p style="margin: 2em auto">
@@ -191,22 +186,11 @@
     margin: 0 auto 2rem auto;
     color: var(--text-color, #1f2937);
   }
-
-  .dual-trajectory-container {
+  .trajectory-container {
     display: flex;
     flex-direction: column;
-    gap: 6rem;
-    min-height: 80vh;
+    gap: 5rem;
   }
-
-  .dual-trajectory-container :global(.trajectory-viewer) {
-    height: 70vh;
-    min-height: 500px;
-    border: 1px solid var(--traj-border-bg, #4a5568);
-    border-radius: 8px;
-    background: var(--traj-surface, #2d3748);
-  }
-
   .trajectory-files-section {
     max-width: 1400px;
     margin: 0 auto;

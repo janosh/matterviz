@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Webview } from 'vscode'
 
-import type { ThemeName } from '../../../src/lib/theme/index'
+import type { ThemeName } from '$lib/theme/index'
 import {
   activate,
   create_html,

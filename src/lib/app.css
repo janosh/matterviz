@@ -1,39 +1,14 @@
 :root {
-  /* Theme transition duration */
   --theme-transition-duration: 0.3s;
-
   --text-color: #eee;
-
   --page-bg: #090019;
-
-  --toc-mobile-bg: #1c0e3e;
-  --toc-li-padding: 4pt 7pt;
-  --toc-mobile-btn-color: var(--text-color);
-  --toc-desktop-nav-margin: 0 0 0 1em;
-  --toc-active-bg: teal;
-
-  --zoo-github-corner-color: var(--page-bg);
-  --zoo-github-corner-bg: var(--text-color);
-
-  /* Copy button styling */
-  --zoo-copy-btn-bg: var(--zoo-copy-btn-bg, rgba(255, 255, 255, 0.1));
-  --zoo-copy-btn-hover-bg: var(--zoo-copy-btn-hover-bg, rgba(255, 255, 255, 0.2));
-  --zoo-copy-btn-color: var(--zoo-copy-btn-color, var(--text-color));
-
-  --sms-max-width: 20em;
-
-  /* Form controls will be themed dynamically via color-scheme property */
   --max-text-width: 40em;
 
-  /* Histogram dark mode colors */
-  --histogram-axis-color: #e5e5e5;
-  --histogram-text-color: #e5e5e5;
-  --histogram-tooltip-bg: rgba(60, 60, 60, 0.95);
-  --histogram-tooltip-color: white;
-  --histogram-tooltip-border: rgba(255, 255, 255, 0.2);
+  --github-corner-color: var(--page-bg);
+  --github-corner-bg: var(--text-color);
 
-  /* override svelte-zoo CodeExample pre background-color */
-  --zoo-example-code-bg: var(--pre-bg);
+  --sms-max-width: 20em;
+  --sms-text-color: var(--text-color);
 }
 
 /* Targeted theme transitions for performance */
@@ -77,9 +52,6 @@ a.btn {
   border: none;
   border-radius: 3pt;
   padding: 2pt 4pt;
-  /* TODO remove 2 lines below, just here as temp fix for svelte-zoo CodeExample SVG icons */
-  line-height: 1;
-  align-items: center;
 }
 a:hover {
   color: var(--accent-hover-color, orange);
@@ -89,7 +61,6 @@ kbd {
   overflow-wrap: break-word;
   padding: 1pt 3pt;
   border-radius: 3pt;
-  font-size: 1.1em;
   background-color: var(--code-bg, black);
 }
 kbd {
@@ -123,9 +94,6 @@ blockquote p:last-child {
 :where(h1, h2, h3, h4, h5, h6) {
   scroll-margin-top: 100px;
 }
-:where(h2, h3, h4, h5, h6) {
-  margin-top: 2em;
-}
 /* style heading anchors added by rehype-autolink-headings, see svelte.config.js */
 :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
   transition: 0.3s;
@@ -134,14 +102,6 @@ blockquote p:last-child {
 }
 :where(h2, h3, h4, h5, h6):hover a[aria-hidden='true'] {
   opacity: 1;
-}
-
-/* svelte-toc styles */
-aside.toc.desktop {
-  position: fixed;
-  top: 3em;
-  left: calc(50vw + 50em / 2);
-  max-width: 16em;
 }
 
 textarea {

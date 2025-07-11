@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { choose_bw_for_contrast, format_num } from '$lib'
+  import { format_num, pick_color_for_contrast } from '$lib'
   import { default_category_colors, is_color } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
 
@@ -178,7 +178,7 @@
   class:last-active={selected.last_element === element}
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
   style:color={text_color ??
-  choose_bw_for_contrast(node, contrast_bg_color, text_color_threshold)}
+  pick_color_for_contrast(node, contrast_bg_color, text_color_threshold)}
   role="link"
   tabindex="0"
   {...rest}
@@ -201,7 +201,7 @@
           <span
             class="value multi-value {layout_config.positions[idx]}"
             style:color={bg_colors?.[idx]
-            ? choose_bw_for_contrast(null, bg_colors[idx], text_color_threshold)
+            ? pick_color_for_contrast(null, bg_colors[idx], text_color_threshold)
             : null}
           >
             {format_value(val)}
@@ -248,7 +248,7 @@
     display: flex;
     place-items: center;
     place-content: center;
-    border-radius: var(--elem-tile-border-radius, 4pt);
+    border-radius: var(--elem-tile-border-radius, 2pt);
     box-sizing: border-box;
     color: var(--elem-tile-text-color);
     /* add persistent invisible border so content doesn't move on hover */
@@ -260,7 +260,6 @@
   }
   .element-tile span {
     line-height: 1em;
-    z-index: 10;
   }
   .element-tile.active,
   .element-tile:hover {

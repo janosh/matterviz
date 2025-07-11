@@ -14,15 +14,13 @@
 
   interface Props {
     structure: AnyStructure
-    info_open?: boolean
-    show_info?: boolean
+    panel_open?: boolean
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
     [key: string]: unknown
   }
   let {
     structure,
-    info_open = $bindable(false),
-    show_info = $bindable(true),
+    panel_open = $bindable(false),
     atom_count_thresholds = [50, 500],
     ...rest
   }: Props = $props()
@@ -255,74 +253,72 @@
   })
 </script>
 
-{#if show_info}
-  <DraggablePanel
-    bind:show={info_open}
-    max_width="24em"
-    toggle_props={{ class: `structure-info-toggle`, title: `Toggle structure info` }}
-    open_icon="Cross"
-    closed_icon="Info"
-    icon_style="transform: scale(1.1);"
-    panel_props={{
-      class: `structure-info-panel`,
-      style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
-        theme_state.type === `dark` ? `0.5` : `0.1`
-      }); max-height: 80vh;`,
-    }}
-    {...rest}
-  >
-    <div class="info-panel-content">
-      <h4 class="section-heading">Structure Info</h4>
-      {#each info_panel_data as section (section.title)}
-        <section>
-          {#if section.title && section.title !== `Structure`}
-            <h4 class="section-heading">{section.title}</h4>
+<DraggablePanel
+  bind:show={panel_open}
+  max_width="24em"
+  toggle_props={{ class: `structure-info-toggle`, title: `Toggle structure info` }}
+  open_icon="Cross"
+  closed_icon="Info"
+  icon_style="transform: scale(1.1);"
+  panel_props={{
+    class: `structure-info-panel`,
+    style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
+      theme_state.type === `dark` ? `0.5` : `0.1`
+    }); max-height: 80vh;`,
+  }}
+  {...rest}
+>
+  <div class="info-panel-content">
+    <h4 class="section-heading">Structure Info</h4>
+    {#each info_panel_data as section (section.title)}
+      <section>
+        {#if section.title && section.title !== `Structure`}
+          <h4 class="section-heading">{section.title}</h4>
+        {/if}
+        {#each section.items as item (item.key)}
+          {#if section.title === `Usage Tips`}
+            <div class="tips-item">
+              <span>{item.label}</span>
+              <span>{@html item.value}</span>
+            </div>
+          {:else}
+            <div
+              class:site-item={item.label.startsWith(`  `)}
+              class:toggle-item={item.key === `sites-toggle`}
+              class="clickable"
+              title={item.key === `sites-toggle`
+              ? item.tooltip
+              : `Click to copy: ${item.label}: ${item.value}`}
+              onclick={() => handle_click(item, section.title)}
+              role="button"
+              tabindex="0"
+              onkeydown={(event) => {
+                if (event.key === `Enter` || event.key === ` `) {
+                  event.preventDefault()
+                  handle_click(item, section.title)
+                }
+              }}
+            >
+              <span>{item.label}</span>
+              <span title={item.tooltip}>{@html item.value}</span>
+              {#if item.key !== `sites-toggle` && copied_items.has(item.key)}
+                <div class="copy-checkmark-overlay">
+                  <Icon
+                    icon="Check"
+                    style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+                  />
+                </div>
+              {/if}
+            </div>
           {/if}
-          {#each section.items as item (item.key)}
-            {#if section.title === `Usage Tips`}
-              <div class="tips-item">
-                <span>{item.label}</span>
-                <span>{@html item.value}</span>
-              </div>
-            {:else}
-              <div
-                class:site-item={item.label.startsWith(`  `)}
-                class:toggle-item={item.key === `sites-toggle`}
-                class="clickable"
-                title={item.key === `sites-toggle`
-                ? item.tooltip
-                : `Click to copy: ${item.label}: ${item.value}`}
-                onclick={() => handle_click(item, section.title)}
-                role="button"
-                tabindex="0"
-                onkeydown={(event) => {
-                  if (event.key === `Enter` || event.key === ` `) {
-                    event.preventDefault()
-                    handle_click(item, section.title)
-                  }
-                }}
-              >
-                <span>{item.label}</span>
-                <span title={item.tooltip}>{@html item.value}</span>
-                {#if item.key !== `sites-toggle` && copied_items.has(item.key)}
-                  <div class="copy-checkmark-overlay">
-                    <Icon
-                      icon="Check"
-                      style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-                    />
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          {/each}
-          {#if section !== info_panel_data[info_panel_data.length - 1]}
-            <hr />
-          {/if}
-        </section>
-      {/each}
-    </div>
-  </DraggablePanel>
-{/if}
+        {/each}
+        {#if section !== info_panel_data[info_panel_data.length - 1]}
+          <hr />
+        {/if}
+      </section>
+    {/each}
+  </div>
+</DraggablePanel>
 
 <style>
   .info-panel-content {
@@ -426,10 +422,6 @@
     white-space: normal;
   }
   section div.toggle-item {
-    background: var(--panel-bg, rgba(0, 0, 0, 0.1));
-    border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.2));
-    border-radius: 4pt;
-    padding: 4pt 8pt;
     margin: 2pt 0;
     font-weight: 600;
     cursor: pointer;

@@ -67,10 +67,7 @@ vi.mock(`$lib/colors`, () => ({
     Ca: `#3dff00`,
     Mg: `#8aff00`,
   },
-}))
-
-vi.mock(`$lib/labels`, () => ({
-  choose_bw_for_contrast: vi.fn(() => `#000000`),
+  pick_color_for_contrast: vi.fn(() => `#000000`),
 }))
 
 vi.mock(`$lib`, () => ({
@@ -92,19 +89,19 @@ describe(`BarChart component`, () => {
   test(`renders container with correct dimensions`, () => {
     mount(BarChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1 }, width: 300, height: 60 },
+      props: { composition: { H: 2, O: 1 }, size: 300 },
     })
 
-    const container = document.querySelector(`.stacked-bar-chart-container`)
+    const container = document.querySelector(`.bar-chart`)
     expect(container).toBeTruthy()
-    expect(container?.getAttribute(`style`)).toContain(`--bar-max-width: 300px`)
-    expect(container?.getAttribute(`style`)).toContain(`--bar-height: 60px`)
+    expect(container?.getAttribute(`style`)).toContain(`max-width: 300px;`)
+    expect(container?.getAttribute(`style`)).toContain(`max-height: 300px;`)
   })
 
   test(`renders segments for each element`, () => {
     mount(BarChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1, C: 1 }, width: 300, height: 60 },
+      props: { composition: { H: 2, O: 1, C: 1 }, size: 300 },
     })
 
     expect(document.querySelectorAll(`.bar-segment`)).toHaveLength(3)
@@ -143,20 +140,17 @@ describe(`BarChart component`, () => {
     },
   )
 
-  test(`handles segment gaps and labels`, () => {
+  test.each([true, false])(`handles labels`, (show_labels) => {
+    const composition = { H: 2, O: 1 }
     mount(BarChart, {
       target: document.body,
-      props: {
-        composition: { H: 2, O: 1 },
-        width: 300,
-        segment_gap: 10,
-        show_labels: true,
-      },
+      props: { composition, size: 300, show_labels },
     })
 
-    const container = document.querySelector(`.stacked-bar-chart-container`)
-    expect(container?.getAttribute(`style`)).toContain(`--segment-gap: 10px`)
-    expect(document.querySelectorAll(`.bar-label`).length).toBeGreaterThan(0)
+    const container = document.querySelector(`.bar-chart`)
+    expect(container?.querySelectorAll(`.bar-label`).length).toBe(
+      show_labels ? Object.keys(composition).length : 0,
+    )
   })
 
   test(`renders with basic composition`, () => {
@@ -164,7 +158,7 @@ describe(`BarChart component`, () => {
       target: document.body,
       props: { composition: { H: 2, O: 1 } },
     })
-    expect(doc_query(`.stacked-bar-chart-container`)).toBeTruthy()
+    expect(doc_query(`.bar-chart`)).toBeTruthy()
   })
 
   test(`renders bar segments correctly`, () => {
@@ -179,22 +173,10 @@ describe(`BarChart component`, () => {
 
   test(`external label positioning balances above and below`, () => {
     // Create composition with many thin segments to trigger external labels
-    const composition = {
-      H: 1, // ~16.7%
-      C: 1, // ~16.7%
-      N: 1, // ~16.7%
-      O: 1, // ~16.7%
-      Ca: 1, // ~16.7%
-      Mg: 1, // ~16.7%
-    }
-
+    const composition = { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }
     mount(BarChart, {
       target: document.body,
-      props: {
-        composition,
-        width: 300,
-        height: 50,
-      },
+      props: { composition, size: 300 },
     })
 
     // Check that external labels exist
@@ -218,16 +200,13 @@ describe(`BarChart component`, () => {
   test(`handles custom dimensions`, () => {
     mount(BarChart, {
       target: document.body,
-      props: {
-        composition: { H: 2, O: 1 },
-        width: 400,
-        height: 80,
-      },
+      props: { composition: { H: 2, O: 1 }, size: 400 },
     })
 
-    const container = doc_query(`.stacked-bar-chart-container`)
-    expect(container.getAttribute(`style`)).toContain(`--bar-max-width: 400px`)
-    expect(container.getAttribute(`style`)).toContain(`--bar-height: 80px`)
+    const container = doc_query(`.bar-chart`)
+    expect(container.getAttribute(`style`)).toContain(
+      `max-width: 400px; max-height: 400px;`,
+    )
   })
 
   test(`applies custom styling and classes`, () => {
@@ -240,7 +219,7 @@ describe(`BarChart component`, () => {
       },
     })
 
-    const container = doc_query(`.stacked-bar-chart-container`)
+    const container = doc_query(`.bar-chart`)
     expect(container.getAttribute(`style`)).toContain(`background-color: red;`)
     expect(container.classList.contains(`my-custom-class`)).toBe(true)
   })

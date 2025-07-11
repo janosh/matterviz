@@ -1,24 +1,24 @@
 <script lang="ts">
   import type { CompositionType, ElementSymbol } from '$lib'
-  import { element_color_schemes } from '$lib/colors'
-  import { choose_bw_for_contrast } from '$lib/labels'
-  import type { HierarchyCircularNode } from 'd3-hierarchy'
-  import { hierarchy, pack } from 'd3-hierarchy'
+  import type { ColorSchemeName } from '$lib/colors'
+  import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
+  import { hierarchy, type HierarchyCircularNode, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
 
   // Constants for bubble positioning and sizing
-  const MIN_FONT_SCALE = 0.4
-  const MAX_FONT_SCALE = 1.0
+  const MIN_FONT_SCALE = 0.6
+  const MAX_FONT_SCALE = 2
 
   // Type for our bubble data structure
   type BubbleDataLeaf = {
     element: ElementSymbol
     amount: number
     color: string
-  }
-
-  type BubbleDataRoot = {
-    children: BubbleDataLeaf[]
+    radius?: number
+    x?: number
+    y?: number
+    font_scale?: number
+    text_color?: string
   }
 
   interface Props {
@@ -27,23 +27,8 @@
     padding?: number
     show_labels?: boolean
     show_amounts?: boolean
-    color_scheme?: keyof typeof element_color_schemes
-    bubble_content?: Snippet<
-      [
-        {
-          element: ElementSymbol
-          amount: number
-          radius: number
-          x: number
-          y: number
-          color: string
-          font_scale: number
-          text_color: string
-        },
-      ]
-    >
-    style?: string
-    class?: string
+    color_scheme?: ColorSchemeName
+    bubble_content?: Snippet<[BubbleDataLeaf]>
     interactive?: boolean
     [key: string]: unknown
   }
@@ -55,8 +40,6 @@
     show_amounts = true,
     color_scheme = `Vesta`,
     bubble_content,
-    style = ``,
-    class: class_name = ``,
     interactive = true,
     ...rest
   }: Props = $props()
@@ -64,11 +47,6 @@
   let element_colors = $derived(
     element_color_schemes[color_scheme] || element_color_schemes.Vesta,
   )
-
-  // Function to determine text color based on background
-  function get_text_color(background_color: string): string {
-    return choose_bw_for_contrast(null, background_color)
-  }
 
   // Calculate bubble data with proper circle packing
   let bubbles = $derived.by(() => {
@@ -78,7 +56,7 @@
     if (element_entries.length === 0) return []
 
     // Create hierarchy data structure for D3 pack
-    const hierarchy_data: BubbleDataRoot = {
+    const hierarchy_data = {
       children: element_entries.map(([element, amount]) => ({
         element: element as ElementSymbol,
         amount: amount!,
@@ -87,15 +65,13 @@
     }
 
     // Use D3's pack layout for proper circle packing
-    const pack_layout = pack<BubbleDataLeaf | BubbleDataRoot>()
+    const pack_layout = pack()
       .size([size - 2 * padding, size - 2 * padding])
       .padding(padding * 0.1) // Small padding between circles
 
     const root = pack_layout(
-      hierarchy<BubbleDataLeaf | BubbleDataRoot>(hierarchy_data).sum((d) =>
-        d && `amount` in d ? d.amount : 0
-      ),
-    ) as HierarchyCircularNode<BubbleDataLeaf | BubbleDataRoot>
+      hierarchy(hierarchy_data).sum((d) => d && `amount` in d ? d.amount : 0),
+    ) as HierarchyCircularNode<BubbleDataLeaf | BubbleDataLeaf[]>
 
     // Get max radius for font scaling
     const max_radius = Math.max(...root.leaves().map((d) => d.r || 0))
@@ -119,7 +95,7 @@
         y: (node.y || 0) + padding,
         color: data.color,
         font_scale,
-        text_color: get_text_color(data.color),
+        text_color: pick_color_for_contrast(null, data.color),
       }
     })
   })
@@ -127,73 +103,63 @@
   let hovered_element: ElementSymbol | null = $state(null)
 </script>
 
-<div class="bubble-chart-container {class_name}" {style} {...rest}>
-  <svg viewBox="0 0 {size} {size}" class="bubble-chart">
-    {#each bubbles as bubble (bubble.element)}
-      <circle
-        cx={bubble.x}
-        cy={bubble.y}
-        r={bubble.radius}
-        fill={bubble.color}
-        stroke="white"
-        stroke-width={hovered_element === bubble.element ? 1.5 : 1}
-        class="bubble"
-        class:interactive
-        class:hovered={hovered_element === bubble.element}
-        onmouseenter={() => interactive && (hovered_element = bubble.element)}
-        onmouseleave={() => interactive && (hovered_element = null)}
-        {...interactive && {
-          role: `button`,
-          tabindex: 0,
-          'aria-label': `${bubble.element}: ${bubble.amount} ${
-            bubble.amount === 1 ? `atom` : `atoms`
-          }`,
-        }}
-      >
-        <title>
-          {bubble.element}: {bubble.amount} {bubble.amount === 1 ? `atom` : `atoms`}
-        </title>
-      </circle>
+<svg viewBox="0 0 {size} {size}" {...rest} class="bubble-chart {rest.class ?? ``}">
+  {#each bubbles as bubble (bubble.element)}
+    <circle
+      cx={bubble.x}
+      cy={bubble.y}
+      r={bubble.radius}
+      fill={bubble.color}
+      stroke="white"
+      stroke-width={hovered_element === bubble.element ? 1.5 : 1}
+      class="bubble"
+      class:interactive
+      class:hovered={hovered_element === bubble.element}
+      onmouseenter={() => interactive && (hovered_element = bubble.element)}
+      onmouseleave={() => interactive && (hovered_element = null)}
+      {...interactive && {
+        role: `button`,
+        tabindex: 0,
+        'aria-label': `${bubble.element}: ${bubble.amount} ${
+          bubble.amount === 1 ? `atom` : `atoms`
+        }`,
+      }}
+    >
+      <title>
+        {bubble.element}: {bubble.amount} {bubble.amount === 1 ? `atom` : `atoms`}
+      </title>
+    </circle>
 
-      {#if bubble_content}
-        {@render bubble_content(bubble)}
-      {/if}
-    {/each}
-
-    {#if show_labels}
-      {#each bubbles as bubble (bubble.element)}
-        <foreignObject
-          x={bubble.x - (size * 0.15 * bubble.font_scale) / 2}
-          y={bubble.y - (size * 0.075 * bubble.font_scale) / 2}
-          width={size * 0.15 * bubble.font_scale}
-          height={size * 0.075 * bubble.font_scale}
-          class="bubble-label-container"
-          class:hovered={hovered_element === bubble.element}
-        >
-          <div class="bubble-label" style:color={bubble.text_color}>
-            <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px">{
-              bubble.element
-            }</span>
-            {#if show_amounts}
-              <sub class="amount" style:font-size="{10 * bubble.font_scale}px">
-                {bubble.amount}
-              </sub>{/if}
-          </div>
-        </foreignObject>
-      {/each}
+    {#if bubble_content}
+      {@render bubble_content(bubble)}
     {/if}
-  </svg>
-</div>
+  {/each}
+
+  {#if show_labels}
+    {#each bubbles as bubble (bubble.element)}
+      <foreignObject
+        x={bubble.x - (size * 0.15 * bubble.font_scale) / 2}
+        y={bubble.y - (size * 0.075 * bubble.font_scale) / 2}
+        width={size * 0.15 * bubble.font_scale}
+        height={size * 0.075 * bubble.font_scale}
+        class="bubble-label-container"
+        class:hovered={hovered_element === bubble.element}
+      >
+        <div class="bubble-label" style:color={bubble.text_color}>
+          <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px">{
+            bubble.element
+          }</span>
+          {#if show_amounts}
+            <sub class="amount" style:font-size="{10 * bubble.font_scale}px">
+              {bubble.amount}
+            </sub>{/if}
+        </div>
+      </foreignObject>
+    {/each}
+  {/if}
+</svg>
 
 <style>
-  .bubble-chart-container {
-    display: inline-block;
-  }
-  .bubble-chart {
-    overflow: visible;
-    width: 100%;
-    height: auto;
-  }
   .bubble {
     transition: all 0.2s ease;
   }

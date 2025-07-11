@@ -1,11 +1,11 @@
 // Import MatterViz parsing functions and components
+import '$lib/app.css'
 import { is_trajectory_file, parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
+import type { ThemeName } from '$lib/theme/index'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount } from 'svelte'
-import '../../../../src/app.css'
-import type { ThemeName } from '../../../../src/lib/theme/index'
 
 interface FileData {
   filename: string

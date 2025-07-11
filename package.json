@@ -10,8 +10,8 @@
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/matterviz/issues",
   "dependencies": {
-    "@sveltejs/kit": "^2.22.4",
-    "@threlte/core": "8.0.6",
+    "@sveltejs/kit": "^2.23.0",
+    "@threlte/core": "^8.1.3",
     "@threlte/extras": "^9.4.2",
     "@types/d3-force": "^3.0.10",
     "@types/d3-hierarchy": "^3.1.7",
@@ -26,21 +26,20 @@
     "d3-scale": "^4.0.2",
     "d3-scale-chromatic": "^3.1.0",
     "d3-shape": "^3.2.0",
-    "h5wasm": "^0.8.1",
+    "h5wasm": "^0.8.3",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.0",
-    "svelte": "5.35.5",
-    "svelte-multiselect": "11.1.1",
-    "svelte-zoo": "^0.4.19",
+    "svelte": "^5.36.0",
+    "svelte-multiselect": "11.2.2",
     "three": "^0.178.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.53.2",
+    "@playwright/test": "^1.54.1",
     "@rollup/plugin-yaml": "^4.1.2",
     "@stylistic/eslint-plugin": "^5.1.0",
     "@sveltejs/adapter-static": "3.0.8",
-    "@sveltejs/package": "^2.3.12",
-    "@sveltejs/vite-plugin-svelte": "^5.1.0",
+    "@sveltejs/package": "^2.4.0",
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
     "@types/d3-array": "^3.2.1",
     "@types/d3-color": "^3.1.3",
     "@types/d3-format": "^3.0.4",
@@ -52,7 +51,7 @@
     "@types/three": "^0.178.1",
     "@vitest/coverage-v8": "^3.2.4",
     "d3-time-format": "^4.1.0",
-    "eslint": "^9.30.1",
+    "eslint": "^9.31.0",
     "eslint-plugin-svelte": "^3.10.1",
     "happy-dom": "^18.0.1",
     "hastscript": "^9.0.1",
@@ -62,14 +61,13 @@
     "rehype-katex": "^7.0.1",
     "rehype-slug": "^6.0.0",
     "remark-math": "3.0.1",
-    "sharp": "^0.34.2",
+    "sharp": "^0.34.3",
     "svelte-check": "^4.2.2",
     "svelte-preprocess": "^6.0.3",
-    "svelte-toc": "^0.6.1",
     "svelte2tsx": "^0.7.40",
     "typescript": "5.8.3",
-    "typescript-eslint": "^8.36.0",
-    "vite": "^7.0.0",
+    "typescript-eslint": "^8.37.0",
+    "vite": "^7.0.4",
     "vitest": "^3.2.4"
   },
   "keywords": [
@@ -84,14 +82,18 @@
     "access": "public"
   },
   "exports": {
-    "./element/data": {
-      "types": "./dist/element/data.d.ts",
-      "default": "./dist/element/data.js"
-    },
     ".": {
       "types": "./dist/index.d.ts",
       "svelte": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./element/data": {
+      "types": "./dist/element/data.d.ts",
+      "default": "./dist/element/data.js"
+    },
+    "./app.css": {
+      "types": "./dist/app.css.d.ts",
+      "default": "./dist/app.css"
     },
     "./composition": {
       "types": "./dist/composition.d.ts",

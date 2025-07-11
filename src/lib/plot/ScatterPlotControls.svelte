@@ -3,7 +3,7 @@
   import type { DataSeries } from '$lib/plot'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
-  import type { Snippet } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
 
   interface Props {
     // Control panel visibility
@@ -21,6 +21,14 @@
     y2_grid?: boolean | Record<string, unknown>
     // Whether there are y2 points to show y2 grid control
     has_y2_points?: boolean
+    // Range controls
+    x_range?: [number, number]
+    y_range?: [number, number]
+    y2_range?: [number, number]
+    // Auto-detected ranges for fallback when only one value is set
+    auto_x_range?: [number, number]
+    auto_y_range?: [number, number]
+    auto_y2_range?: [number, number]
     // Format controls
     x_format?: string
     y_format?: string
@@ -39,6 +47,8 @@
     show_points?: boolean
     show_lines?: boolean
     selected_series_idx?: number
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
   }
   let {
     show_controls = $bindable(false),
@@ -51,6 +61,14 @@
     y_grid = $bindable(true),
     y2_grid = $bindable(true),
     has_y2_points = false,
+    // Range controls
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
+    y2_range = $bindable(undefined),
+    // Auto-detected ranges for fallback when only one value is set
+    auto_x_range = [0, 1],
+    auto_y_range = [0, 1],
+    auto_y2_range = [0, 1],
     // Format controls
     x_format = $bindable(``),
     y_format = $bindable(``),
@@ -69,101 +87,130 @@
     show_points = $bindable(true),
     show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
+    toggle_props = {},
+    panel_props = {},
   }: Props = $props()
-
-  // Local variables for format inputs to prevent invalid values from reaching props
-  let x_format_input = $state(x_format)
-  let y_format_input = $state(y_format)
-  let y2_format_input = $state(y2_format)
 
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
 
-  // Validation function for format specifiers
-  function is_valid_format(format_string: string): boolean {
-    if (!format_string) return true // Empty string is valid (uses default formatting)
-
+  // Generic helpers to eliminate ALL repetition
+  const validate_format = (str: string) => {
+    if (!str) return true
     try {
-      if (format_string.startsWith(`%`)) { // Time format validation
-        timeFormat(format_string)(new Date())
-        return true
-      } else { // Number format validation
-        format(format_string)(123.456)
-        return true
-      }
+      return str.startsWith(`%`)
+        ? timeFormat(str)(new Date()) || true
+        : format(str)(123.456) || true
     } catch {
       return false
     }
   }
 
-  // Handle format input changes - only update prop if valid
-  function handle_format_input(event: Event, format_type: `x` | `y` | `y2`) {
+  const format_input_handler = (type: `x` | `y` | `y2`) => (event: Event) => {
     const input = event.target as HTMLInputElement
 
-    // Update local variable
-    if (format_type === `x`) x_format_input = input.value
-    else if (format_type === `y`) y_format_input = input.value
-    else if (format_type === `y2`) y2_format_input = input.value
+    // Update local state
+    if (type === `x`) x_format_input = input.value
+    else if (type === `y`) y_format_input = input.value
+    else y2_format_input = input.value
 
-    // Only update prop if valid
-    if (is_valid_format(input.value)) {
-      input.classList.remove(`invalid`)
-      if (format_type === `x`) x_format = input.value
-      else if (format_type === `y`) y_format = input.value
-      else if (format_type === `y2`) y2_format = input.value
-    } else input.classList.add(`invalid`)
+    // Validate and update prop
+    const is_valid = validate_format(input.value)
+    input.classList.toggle(`invalid`, !is_valid)
+    if (is_valid) {
+      if (type === `x`) x_format = input.value
+      else if (type === `y`) y_format = input.value
+      else y2_format = input.value
+    }
   }
 
-  // Sync control states with props
+  const range_complete = (axis: `x` | `y` | `y2`) => {
+    const [min_el, max_el] = [`min`, `max`].map((b) =>
+      document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
+    )
+    if (!min_el || !max_el) return
+
+    const [min, max] = [min_el, max_el].map(
+      (el) => (el.classList.remove(`invalid`), el.value === `` ? null : +el.value),
+    )
+    const auto = { x: auto_x_range, y: auto_y_range, y2: auto_y2_range }[axis]
+
+    if (min !== null && max !== null && min >= max) {
+      ;[min_el, max_el].forEach((el) => el.classList.add(`invalid`))
+      return
+    }
+
+    const ranges = {
+      x: (r: typeof x_range) => x_range = r,
+      y: (r: typeof y_range) => y_range = r,
+      y2: (r: typeof y2_range) => y2_range = r,
+    }
+    ranges[axis](
+      min === null && max === null ? undefined : [min ?? auto[0], max ?? auto[1]],
+    )
+  }
+
+  const input_props = (
+    axis: `x` | `y` | `y2`,
+    bound: `min` | `max`,
+    range?: [number, number],
+  ) => ({
+    id: `${axis}-range-${bound}`,
+    type: `number`,
+    value: range?.[bound === `min` ? 0 : 1] ?? ``,
+    placeholder: `auto`,
+    class: `range-input`,
+    onblur: () => range_complete(axis),
+    onkeydown: (e: KeyboardEvent) =>
+      e.key === `Enter` && (e.target as HTMLElement).blur(),
+  })
+
+  // Ultra-minimal effects
+  $effect(() =>
+    [[x_range, `x`], [y_range, `y`], [y2_range, `y2`]].forEach(([range, axis]) => {
+      if (!range) {
+        ;[`min`, `max`].forEach((b) => {
+          const el = document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
+          if (el) el.value = ``
+        })
+      }
+    })
+  )
+
   $effect(() => {
-    // Sync with markers prop
     show_points = markers?.includes(`points`) ?? false
     show_lines = markers?.includes(`line`) ?? false
 
-    // Sync with selected series style properties
-    if (
-      series.length > 0 &&
-      selected_series_idx >= 0 &&
-      selected_series_idx < series.length &&
-      series[selected_series_idx]
-    ) {
-      const selected_series = series[selected_series_idx]
-
-      // Point style
-      const selected_point_style = Array.isArray(selected_series.point_style)
-        ? selected_series.point_style[0]
-        : selected_series.point_style
-
-      if (selected_point_style) {
-        point_size = selected_point_style.radius ?? 4
-        point_color = selected_point_style.fill ?? `#4682b4`
-        point_stroke_width = selected_point_style.stroke_width ?? 1
-        point_stroke_color = selected_point_style.stroke ?? `#000000`
-        point_opacity = selected_point_style.fill_opacity ?? 1
+    if (has_multiple_series && series[selected_series_idx]) {
+      const s = series[selected_series_idx]
+      const ps = Array.isArray(s.point_style) ? s.point_style[0] : s.point_style
+      if (ps) {
+        point_size = ps.radius ?? 4
+        point_color = ps.fill ?? `#4682b4`
+        point_stroke_width = ps.stroke_width ?? 1
+        point_stroke_color = ps.stroke ?? `#000`
+        point_opacity = ps.fill_opacity ?? 1
       }
-
-      // Line style
-      if (selected_series.line_style) {
-        line_width = selected_series.line_style.stroke_width ?? 2
-        line_color = selected_series.line_style.stroke ?? `#4682b4`
-        line_dash = selected_series.line_style.line_dash
+      if (s.line_style) {
+        line_width = s.line_style.stroke_width ?? 2
+        line_color = s.line_style.stroke ?? `#4682b4`
+        line_dash = s.line_style.line_dash
       }
     }
   })
 
-  // Apply control states back to props
   $effect(() => {
-    // Update markers
-    const new_markers = show_points && show_lines
+    markers = show_points && show_lines
       ? `line+points`
       : show_points
       ? `points`
-      : show_lines
-      ? `line`
-      : `points`
-
-    if (new_markers !== markers) markers = new_markers
+      : `line`
   })
+
+  // Local format state
+  let x_format_input = $state(x_format)
+  let y_format_input = $state(y_format)
+  let y2_format_input = $state(y2_format)
 </script>
 
 {#if show_controls}
@@ -172,11 +219,12 @@
     closed_icon="Settings"
     open_icon="Cross"
     icon_style="transform: scale(1.2);"
-    toggle_props={{ class: `scatter-controls-toggle` }}
+    toggle_props={{ class: `scatter-controls-toggle`, ...toggle_props }}
     panel_props={{
       class: `scatter-controls-panel`,
       style:
         `--panel-width: 16em; max-height: 400px; overflow-y: auto; padding-right: 4px;`,
+      ...panel_props,
     }}
   >
     {#if plot_controls}
@@ -184,7 +232,7 @@
     {:else}
       <div class="plot-controls-content">
         <!-- Display Controls -->
-        <h4 class="section-heading">Display</h4>
+        <h4 class="section-heading" style="margin-top: 0">Display</h4>
         <div class="controls-group">
           <label class="checkbox-label">
             <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
@@ -208,6 +256,31 @@
           {/if}
         </div>
 
+        <!-- Range Controls -->
+        <h4 class="section-heading">Axis Range</h4>
+        <div class="controls-group">
+          <div class="range-row">
+            <label for="x-range-min">X-axis:</label>
+            <input {...input_props(`x`, `min`, x_range)} />
+            <span class="range-separator">to</span>
+            <input {...input_props(`x`, `max`, x_range)} />
+          </div>
+          <div class="range-row">
+            <label for="y-range-min">Y-axis:</label>
+            <input {...input_props(`y`, `min`, y_range)} />
+            <span class="range-separator">to</span>
+            <input {...input_props(`y`, `max`, y_range)} />
+          </div>
+          {#if has_y2_points}
+            <div class="range-row">
+              <label for="y2-range-min">Y2-axis:</label>
+              <input {...input_props(`y2`, `min`, y2_range)} />
+              <span class="range-separator">to</span>
+              <input {...input_props(`y2`, `max`, y2_range)} />
+            </div>
+          {/if}
+        </div>
+
         <!-- Format Controls -->
         <h4 class="section-heading">Tick Format</h4>
         <div class="controls-group">
@@ -219,7 +292,7 @@
               bind:value={x_format_input}
               placeholder=".2f / .0% / %Y-%m-%d"
               class="format-input"
-              oninput={(event) => handle_format_input(event, `x`)}
+              oninput={format_input_handler(`x`)}
             />
           </div>
           <div class="panel-row">
@@ -230,7 +303,7 @@
               bind:value={y_format_input}
               placeholder=".2f / .1e / .0%"
               class="format-input"
-              oninput={(event) => handle_format_input(event, `y`)}
+              oninput={format_input_handler(`y`)}
             />
           </div>
           {#if has_y2_points}
@@ -242,7 +315,7 @@
                 bind:value={y2_format_input}
                 placeholder=".2f / .1e / .0%"
                 class="format-input"
-                oninput={(event) => handle_format_input(event, `y2`)}
+                oninput={format_input_handler(`y2`)}
               />
             </div>
           {/if}
@@ -437,46 +510,46 @@
 {/if}
 
 <style>
-  :global(.scatter-controls-panel .section-heading) {
+  .section-heading {
     margin: 0 0 8px 0;
     font-size: 0.9em;
-    color: var(--muted-text-color, #ccc);
+    color: var(--text-color-muted, #ccc);
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 4px;
   }
-  :global(.scatter-controls-panel .plot-controls-content) {
+  .plot-controls-content {
     max-height: 400px;
     overflow-y: auto;
     padding-right: 4px;
   }
-  :global(.scatter-controls-panel .controls-group) {
+  .controls-group {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 16px;
   }
-  :global(.scatter-controls-panel .checkbox-label) {
+  .checkbox-label {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 0.85em;
   }
-  :global(.scatter-controls-panel .panel-row) {
+  .panel-row {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 0.85em;
   }
-  :global(.scatter-controls-panel .panel-row label) {
+  .panel-row label {
     min-width: 80px;
     font-size: 0.85em;
   }
-  :global(.scatter-controls-panel .panel-row input[type='range']) {
+  .panel-row input[type='range'] {
     flex: 1;
     min-width: 60px;
   }
-  :global(.scatter-controls-panel .number-input) {
+  .number-input {
     width: 50px;
     text-align: center;
     border-radius: 3px;
@@ -484,44 +557,82 @@
     font-size: 0.8em;
     box-sizing: border-box;
   }
-  :global(.scatter-controls-panel .panel-row input[type='color']) {
+  .panel-row input[type='color'] {
     width: 40px;
     height: 24px;
     box-sizing: border-box;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 3px;
   }
-  :global(.scatter-controls-panel .panel-row select) {
+  .panel-row select {
     flex: 1;
     border-radius: 3px;
     padding: 2px 4px;
     font-size: 0.8em;
   }
-  :global(.scatter-controls-panel .opacity-slider) {
+  .opacity-slider {
     flex: 1;
     min-width: 50px;
     margin-left: 4px;
   }
-  :global(.scatter-controls-panel .opacity-number) {
+  .opacity-number {
     width: 40px;
     margin-left: 4px;
   }
-  :global(.scatter-controls-panel .format-input) {
+  .format-input {
     flex: 1;
     border-radius: 3px;
     padding: 4px 6px;
     font-size: 0.8em;
     font-family: monospace;
   }
-  :global(.scatter-controls-panel .format-input::placeholder) {
+  .format-input::placeholder {
     color: rgba(255, 255, 255, 0.5);
     font-style: italic;
   }
-  :global(.scatter-controls-panel .format-input.invalid) {
+  .format-input.invalid {
     border-color: var(--error-color, #ff6b6b);
     background: rgba(255, 107, 107, 0.1);
   }
-  :global(.scatter-controls-panel .format-input.invalid:focus) {
+  .format-input.invalid:focus {
+    outline-color: var(--error-color, #ff6b6b);
+    box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
+  }
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85em;
+  }
+  .range-row label {
+    min-width: 80px;
+    font-size: 0.85em;
+  }
+  .range-row .range-separator {
+    margin: 0 4px;
+    font-size: 0.85em;
+  }
+  .range-input {
+    flex: 1;
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 0.8em;
+    font-family: monospace;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color, #fff);
+    transition: border-color 0.2s ease-in-out;
+  }
+  .range-input:focus {
+    outline: none;
+    border-color: var(--primary-color, #4f46e5);
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+  }
+  .range-input.invalid {
+    border-color: var(--error-color, #ff6b6b);
+    background: rgba(255, 107, 107, 0.1);
+  }
+  .range-input.invalid:focus {
     outline-color: var(--error-color, #ff6b6b);
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }

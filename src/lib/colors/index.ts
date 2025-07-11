@@ -64,6 +64,7 @@ export const element_color_schemes = {
   'Dark Mode': dark_mode_hex,
 } as const
 
+export type ColorSchemeName = keyof typeof element_color_schemes
 export const default_element_colors = { ...vesta_hex }
 
 // Helper function to detect if a value is a color string
@@ -77,8 +78,7 @@ export const is_color = (val: unknown): val is string => {
     )
 }
 
-// Color series for e.g. line plots
-export const plot_colors = [
+export const plot_colors = [ // Color series for e.g. line plots
   `#63b3ed`,
   `#68d391`,
   `#fbd38d`,
@@ -90,3 +90,37 @@ export const plot_colors = [
   `#bee3f8`,
   `#c6f6d5`,
 ] as const
+
+// calculate human-perceived brightness from RGB color
+export function luminance(clr: string) {
+  const { r, g, b } = rgb(clr)
+
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 // https://stackoverflow.com/a/596243
+}
+
+// get background color of passed DOM node, or recurse up the DOM tree if current node is transparent
+export function get_bg_color(
+  elem: HTMLElement | null,
+  bg_color: string | null = null,
+): string {
+  if (bg_color) return bg_color
+  // recurse up the DOM tree to find the first non-transparent background color
+  const transparent = `rgba(0, 0, 0, 0)`
+  if (!elem) return transparent // if no DOM node, return transparent
+
+  const bg = getComputedStyle(elem).backgroundColor // get node background color
+  if (bg !== transparent) return bg // if not transparent, return it
+  return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
+}
+
+// pick black or white text color to maximize contrast with background
+export function pick_color_for_contrast(
+  node: HTMLElement | null,
+  // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails
+  bg_color: string | null = null,
+  text_color_threshold: number = 0.7,
+  choices: [string, string] = [`black`, `white`], // one dark and one light color (in that order)
+) {
+  const light_bg = luminance(get_bg_color(node, bg_color)) > text_color_threshold
+  return light_bg ? choices[0] : choices[1] // white text for dark backgrounds, black for light
+}
