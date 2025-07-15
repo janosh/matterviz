@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon, Spinner, Structure } from '$lib'
-  import { decompress_file } from '$lib/io/decompress'
+  import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
@@ -12,11 +12,7 @@
   import type { Trajectory, TrajectoryDataExtractor } from './index'
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
   import type { ParseProgress } from './parse'
-  import {
-    get_unsupported_format_message,
-    load_trajectory_from_url,
-    parse_trajectory_async,
-  } from './parse'
+  import { get_unsupported_format_message, parse_trajectory_async } from './parse'
   import {
     generate_axis_labels,
     generate_plot_series,
@@ -28,14 +24,17 @@
     // trajectory data - can be provided directly or loaded from file
     trajectory?: Trajectory | undefined
     // URL to load trajectory from (alternative to providing trajectory directly)
-    trajectory_url?: string
+    data_url?: string
     // current step index being displayed
     current_step_idx?: number
     // custom function to extract plot data from trajectory frames
     data_extractor?: TrajectoryDataExtractor
     // file drop handlers
     allow_file_drop?: boolean
-    on_file_drop?: (content: string, filename: string) => Promise<void> | void
+    on_file_drop?: (
+      content: string | ArrayBuffer,
+      filename: string,
+    ) => Promise<void> | void
     // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
     layout?: `auto` | `horizontal` | `vertical`
     // structure viewer props (passed to Structure component)
@@ -99,7 +98,7 @@
   }
   let {
     trajectory = $bindable(undefined),
-    trajectory_url,
+    data_url,
     current_step_idx = $bindable(0),
     data_extractor = full_data_extractor,
     allow_file_drop = true,
@@ -215,83 +214,40 @@
     dragover = false
     if (!allow_file_drop) return
 
-    // Check for our custom internal file format first
-    const internal_data = event.dataTransfer?.getData(`application/x-matterviz-file`)
-    if (internal_data) {
-      try {
-        const file_info = JSON.parse(internal_data)
+    // Handle URL-based files from FileCarousel
+    loading = true
+    error_msg = null
 
-        // Check if this is a binary file
-        if (file_info.is_binary) {
-          if (file_info.content instanceof ArrayBuffer) {
-            await load_trajectory_data(file_info.content, file_info.name)
-          } else if (file_info.content_url) {
-            const response = await fetch(file_info.content_url)
-            const array_buffer = await response.arrayBuffer()
-            await load_trajectory_data(array_buffer, file_info.name)
-          } else {
-            console.warn(
-              `Binary file without ArrayBuffer or blob URL:`,
-              file_info.name,
-            )
-          }
-        } else {
-          await on_file_drop(file_info.content, file_info.name)
-        }
-        return
-      } catch (error) {
-        console.warn(`Failed to parse internal file data:`, error)
-        // Fall through to other methods
-      }
-    }
+    const handled = await handle_url_drop(event, async (content, filename) => {
+      current_filename = filename
+      file_size = content instanceof ArrayBuffer
+        ? content.byteLength
+        : new Blob([content]).size
+      await load_trajectory_data(content, filename)
+    }).catch(() => false)
 
-    // Check for plain text data (fallback)
-    const text_data = event.dataTransfer?.getData(`text/plain`)
-    if (text_data) {
-      file_size = null // Size not available for text drops
-      await on_file_drop(text_data, `trajectory.json`)
+    if (handled) {
+      loading = false
       return
     }
 
-    // Handle actual file drops from file system
+    // Handle file system drops
     const file = event.dataTransfer?.files[0]
-    if (!file) return
+    if (file) {
+      file_size = file.size
+      current_file_path = file.webkitRelativePath || file.name
+      file_object = file
 
-    loading = true
-    file_size = file.size // Capture file size
-    current_file_path = file.webkitRelativePath || file.name // Capture full path if available
-    file_object = file
-    try {
-      // Check if this is a binary trajectory file (HDF5 or ASE)
-      if (
-        file.name.toLowerCase().endsWith(`.h5`) ||
-        file.name.toLowerCase().endsWith(`.hdf5`) ||
-        file.name.toLowerCase().endsWith(`.traj`)
-      ) {
+      // Binary trajectory files
+      if (/\.(h5|hdf5|traj)$/i.test(file.name)) {
         const buffer = await file.arrayBuffer()
         await load_trajectory_data(buffer, file.name)
-        return
+      } else {
+        const { content, filename } = await decompress_file(file)
+        if (content) await on_file_drop(content, filename)
       }
-
-      // Check for known unsupported binary formats before trying to read
-      const unsupported_message = get_unsupported_format_message(file.name, ``)
-      if (unsupported_message) {
-        error_msg = unsupported_message
-        current_filename = null
-        file_size = null
-        return
-      }
-
-      const { content, filename } = await decompress_file(file)
-      if (content) await on_file_drop(content, filename)
-    } catch (error) {
-      error_msg = `Failed to read file: ${error}`
-      current_filename = null
-      file_size = null
-      console.error(`File reading error:`, error)
-    } finally {
-      loading = false
     }
+    loading = false
   }
 
   // Step navigation functions
@@ -302,9 +258,7 @@
   }
 
   function prev_step() {
-    if (current_step_idx > 0) {
-      current_step_idx--
-    }
+    if (current_step_idx > 0) current_step_idx--
   }
 
   function go_to_step(idx: number) {
@@ -391,19 +345,19 @@
     }
   })
 
-  // Load trajectory from URL when trajectory_url is provided
-  $effect(() => {
-    if (trajectory_url && !trajectory) {
+  $effect(() => { // Load trajectory from URL when data_url is provided
+    if (data_url && !trajectory) {
       loading = true
       error_msg = null
 
-      load_trajectory_from_url(trajectory_url)
-        .then((loaded_trajectory: Trajectory) => {
-          trajectory = loaded_trajectory
-          current_step_idx = 0
-          // Extract filename from URL
-          current_filename = trajectory_url.split(`/`).pop() || trajectory_url
-          file_size = null // Size not available for URL loads
+      load_from_url(data_url, async (content, filename) => {
+        current_filename = filename
+        file_size = content instanceof ArrayBuffer
+          ? content.byteLength
+          : new Blob([content]).size
+        await load_trajectory_data(content, filename)
+      })
+        .then(() => {
           loading = false
         })
         .catch((err: Error) => {
@@ -423,41 +377,20 @@
     parsing_progress = null
 
     try {
-      // Check for unsupported formats first (only for text content)
-      if (typeof data === `string`) {
-        const unsupported_message = get_unsupported_format_message(filename, data)
-        if (unsupported_message) {
-          error_msg = unsupported_message
-          current_filename = null
-          file_size = null
-          return
-        }
-      }
-
       trajectory = await parse_trajectory_async(data, filename, (progress) => {
         parsing_progress = progress
       })
-
       current_step_idx = 0
       current_filename = filename
-      parsing_progress = null
     } catch (err) {
-      // Check if this might be an unsupported format even if not detected initially
-      if (typeof data === `string`) {
-        const unsupported_message = get_unsupported_format_message(filename, data)
-        if (unsupported_message) {
-          error_msg = unsupported_message
-        } else {
-          error_msg = `Failed to parse trajectory file: ${err}`
-        }
-      } else {
-        error_msg = `Failed to parse binary trajectory file: ${err}`
-      }
+      const unsupported_message = typeof data === `string`
+        ? get_unsupported_format_message(filename, data)
+        : null
+      error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
       current_filename = null
       file_size = null
-      parsing_progress = null
-      console.error(`Trajectory parsing error:`, err)
     } finally {
+      parsing_progress = null
       loading = false
     }
   }
@@ -590,14 +523,10 @@
   class="trajectory {actual_layout} {rest.class ?? ``}"
 >
   {#if loading}
-    {#if parsing_progress}
-      <Spinner
-        text="{parsing_progress.stage} ({parsing_progress.current}%)"
-        {...spinner_props}
-      />
-    {:else}
-      <Spinner text="Loading trajectory..." {...spinner_props} />
-    {/if}
+    {@const text = parsing_progress
+      ? `${parsing_progress.stage} (${parsing_progress.current}%)`
+      : `Loading trajectory...`}
+    <Spinner {text} {...spinner_props} />
   {:else if error_msg}
     <TrajectoryError
       {error_msg}

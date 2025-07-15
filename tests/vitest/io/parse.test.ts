@@ -360,6 +360,44 @@ O2   O   0.410  0.140  0.880  1.000`
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
   })
+
+  it(`should parse CIF with only _atom_site_label (no _atom_site_type_symbol)`, () => {
+    const label_only_cif = `data_test_structure
+_cell_length_a  5.000
+_cell_length_b  5.000
+_cell_length_c  5.000
+_cell_angle_alpha  90
+_cell_angle_beta   90
+_cell_angle_gamma  90
+loop_
+_atom_site_label
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Ru(1)  0.000  0.000  0.000  1.000
+P(1)   0.250  0.250  0.250  1.000
+S(2)   0.500  0.500  0.500  1.000
+N(1)   0.750  0.750  0.750  1.000`
+
+    const result = parse_cif(label_only_cif)
+    if (!result) throw `Failed to parse CIF with label-only format`
+
+    expect(result.sites).toHaveLength(4)
+
+    const expected_sites = [
+      { element: `Ru`, label: `Ru(1)`, abc: [0.0, 0.0, 0.0] },
+      { element: `P`, label: `P(1)`, abc: [0.25, 0.25, 0.25] },
+      { element: `S`, label: `S(2)`, abc: [0.5, 0.5, 0.5] },
+      { element: `N`, label: `N(1)`, abc: [0.75, 0.75, 0.75] },
+    ]
+
+    expected_sites.forEach((expected, idx) => {
+      expect(result.sites[idx].species[0].element).toBe(expected.element)
+      expect(result.sites[idx].label).toBe(expected.label)
+      expect(result.sites[idx].abc).toEqual(expected.abc)
+    })
+  })
 })
 
 describe(`Phonopy YAML Parser`, () => {

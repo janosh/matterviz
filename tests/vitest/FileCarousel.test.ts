@@ -8,8 +8,8 @@ describe(`FileCarousel`, () => {
   // Mock file data for testing
   const create_mock_file = (
     name: string,
-    content: string,
-    structure_type: `crystal` | `molecule` | `unknown` = `crystal`,
+    url: string,
+    category: `crystal` | `molecule` | `unknown` = `crystal`,
   ): FileInfo => {
     // Extract the correct file type, handling double extensions like .cif.gz
     let base_name = name
@@ -19,17 +19,17 @@ describe(`FileCarousel`, () => {
 
     const type = base_name.split(`.`).pop()?.toUpperCase() ?? `FILE`
 
-    return { name, content, formatted_name: name, type, structure_type }
+    return { name, url, type, category }
   }
 
   const mock_files: FileInfo[] = [
-    create_mock_file(`structure1.cif`, `cif content`, `crystal`),
-    create_mock_file(`molecule.xyz`, `xyz content`, `molecule`),
-    create_mock_file(`data.json`, `{"key": "value"}`, `crystal`),
-    create_mock_file(`compressed.cif.gz`, `compressed cif`, `crystal`),
-    create_mock_file(`trajectory.traj`, `traj content`, `crystal`),
-    create_mock_file(`unknown.dat`, `unknown content`, `unknown`),
-    create_mock_file(`poscar_file`, `poscar content`, `crystal`),
+    create_mock_file(`structure1.cif`, `/files/structure1.cif`, `crystal`),
+    create_mock_file(`molecule.xyz`, `/files/molecule.xyz`, `molecule`),
+    create_mock_file(`data.json`, `/files/data.json`, `crystal`),
+    create_mock_file(`compressed.cif.gz`, `/files/compressed.cif.gz`, `crystal`),
+    create_mock_file(`trajectory.traj`, `/files/trajectory.traj`, `crystal`),
+    create_mock_file(`unknown.dat`, `/files/unknown.dat`, `unknown`),
+    create_mock_file(`poscar_file`, `/files/poscar_file`, `crystal`),
   ]
 
   describe(`rendering and basic functionality`, () => {
@@ -87,7 +87,7 @@ describe(`FileCarousel`, () => {
       [`data.json`, `.json-file`],
       [`compressed.cif.gz`, `.cif-file`],
       [`trajectory.traj`, `.traj-file`],
-      [`xdatcar_file`, `.traj-file`],
+      [`xdatcar_file`, `.xdatcar_file-file`],
       [`poscar`, `.poscar-file`],
     ])(
       `correctly identifies %s as %s class`,
@@ -104,8 +104,8 @@ describe(`FileCarousel`, () => {
 
   describe(`filtering functionality`, () => {
     it.each([
-      [true, [`crystal`, `molecule`, `unknown`], `show_structure_filters`],
-      [false, [], `show_structure_filters`],
+      [true, [`crystal`, `molecule`, `unknown`], `show_category_filters`],
+      [false, [], `show_category_filters`],
       [true, [`CIF`, `XYZ`, `JSON`, `TRAJ`], `format_filters`],
     ])(
       `shows filters correctly when enabled=%s`,
@@ -114,8 +114,8 @@ describe(`FileCarousel`, () => {
         expected_filters: string[],
         test_key: string,
       ) => {
-        const props = test_key === `show_structure_filters`
-          ? { files: mock_files, show_structure_filters: show_filters }
+        const props = test_key === `show_category_filters`
+          ? { files: mock_files, show_category_filters: show_filters }
           : { files: mock_files }
 
         mount(FileCarousel, { target: document.body, props })
@@ -124,7 +124,7 @@ describe(`FileCarousel`, () => {
         expected_filters.forEach((filter) => {
           if (show_filters) {
             expect(legend_text).toContain(filter)
-          } else if (test_key === `show_structure_filters`) {
+          } else if (test_key === `show_category_filters`) {
             expect(legend_text).not.toContain(filter)
           }
         })
@@ -207,25 +207,25 @@ describe(`FileCarousel`, () => {
     )
 
     it.each([
-      [`structure type icons`, true, [`🔷`, `🧬`, `❓`]],
-      [`structure type icons hidden`, false, []],
+      [`category names`, true, [`crystal`, `molecule`, `unknown`]],
+      [`category names hidden`, false, []],
     ])(
       `shows %s correctly`,
       (
         _description: string,
-        show_structure_filters: boolean,
-        expected_icons: string[],
+        show_category_filters: boolean,
+        expected_items: string[],
       ) => {
         mount(FileCarousel, {
           target: document.body,
-          props: { files: mock_files, show_structure_filters },
+          props: { files: mock_files, show_category_filters },
         })
 
-        expected_icons.forEach((icon) => {
-          if (show_structure_filters) {
-            expect(document.body.textContent).toContain(icon)
+        expected_items.forEach((item) => {
+          if (show_category_filters) {
+            expect(document.body.textContent).toContain(item)
           } else {
-            expect(document.body.textContent).not.toContain(icon)
+            expect(document.body.textContent).not.toContain(item)
           }
         })
       },
@@ -266,16 +266,15 @@ describe(`FileCarousel`, () => {
           test_files = [
             {
               name: `test.txt`,
-              content: `content`,
-              formatted_name: `test.txt`,
+              url: `/files/test.txt`,
               type: `TXT`,
-              structure_type: test_config.structure_type,
+              category: test_config.structure_type,
             },
           ]
         } else {
           test_files = Array.from(
             { length: test_config.file_count },
-            (_, idx) => create_mock_file(`file${idx}.cif`, `content${idx}`),
+            (_, idx) => create_mock_file(`file${idx}.cif`, `/files/file${idx}.cif`),
           )
         }
 
@@ -304,7 +303,7 @@ describe(`FileCarousel`, () => {
         `active_count`,
       ],
       [
-        `with show_structure_filters disabled`,
+        `with show_category_filters disabled`,
         { files: mock_files },
         false,
         `no_structure_icons`,

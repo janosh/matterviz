@@ -657,9 +657,19 @@ export function parse_cif(content: string): ParsedStructure | null {
           const z_idx = header_indices.z >= 0 ? header_indices.z : -1
           const occ_idx = header_indices.occupancy >= 0 ? header_indices.occupancy : -1
 
-          if (symbol_idx >= 0 && x_idx >= 0 && y_idx >= 0 && z_idx >= 0) {
+          if (
+            (symbol_idx >= 0 || label_idx >= 0) && x_idx >= 0 && y_idx >= 0 && z_idx >= 0
+          ) {
             try {
-              const element_symbol = tokens[symbol_idx]
+              // Get element symbol from type_symbol field or extract from label
+              const element_symbol = symbol_idx >= 0
+                ? tokens[symbol_idx]
+                : label_idx >= 0
+                ? tokens[label_idx].match(/^([A-Z][a-z]?)/)?.[1] || tokens[label_idx]
+                : null
+
+              if (!element_symbol) continue
+
               const fract_x = parseFloat(tokens[x_idx])
               const fract_y = parseFloat(tokens[y_idx])
               const fract_z = parseFloat(tokens[z_idx])

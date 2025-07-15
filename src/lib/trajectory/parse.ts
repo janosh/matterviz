@@ -190,7 +190,7 @@ const is_vasp_format = (content: string, filename?: string): boolean => {
 }
 
 const is_xyz_multi_frame = (content: string, filename?: string): boolean => {
-  if (!filename?.toLowerCase().match(/\.(xyz|extxyz)$/)) return false
+  if (!filename?.toLowerCase().match(/\.(xyz|extxyz)/)) return false
   const lines = content.trim().split(/\r?\n/)
   let frame_count = 0
   let line_idx = 0
@@ -812,7 +812,7 @@ export async function parse_trajectory_data(
     if (is_vasp_format(content, filename)) return parse_vasp_xdatcar(content, filename)
 
     // Try single XYZ as fallback
-    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
+    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)/)) {
       try {
         const structure = parse_xyz(content)
         if (structure) {

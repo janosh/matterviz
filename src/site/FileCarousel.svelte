@@ -4,20 +4,25 @@
   interface Props {
     files: FileInfo[]
     active_files?: string[]
-    show_structure_filters?: boolean
+    show_category_filters?: boolean
+    category_labels?: Record<string, string>
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_drag_end?: () => void
+    [key: string]: unknown
   }
   let {
     files,
     active_files = [],
-    show_structure_filters = false,
+    show_category_filters = false,
+    category_labels = {},
     on_drag_start,
     on_drag_end,
+    ...rest
   }: Props = $props()
 
-  let active_structure_filter = $state<string | null>(null)
-  let active_format_filter = $state<string | null>(null)
+  let active_category_filter = $state<string | null>(null)
+  let active_type_filter = $state<string | null>(null)
+  type FilterKind = `category` | `type`
 
   // Helper function to get the base file type (removing .gz extension)
   const get_base_file_type = (filename: string): string => {
@@ -25,139 +30,95 @@
     // Remove .gz extension if present
     if (base_name.toLowerCase().endsWith(`.gz`)) base_name = base_name.slice(0, -3)
 
-    const type = base_name.split(`.`).pop()?.toLowerCase() || `file`
-
-    // Normalize trajectory-related types to just 'traj'
-    if (
-      type.endsWith(`traj`) ||
-      base_name.includes(`_traj`) ||
-      base_name.includes(`-traj`) ||
-      base_name.toLowerCase().includes(`xdatcar`)
-    ) return `traj`
-
-    // Normalize HDF5 files
-    if ([`h5`, `hdf5`].includes(type)) return `h5`
-
-    return type
+    return base_name.split(`.`).pop()?.toLowerCase() || `file`
   }
 
   // Filter files based on active filters
   let filtered_files = $derived(
     files.filter((file) => {
-      if (active_structure_filter && file.structure_type) {
-        return file.structure_type === active_structure_filter
+      if (active_category_filter && file.category) {
+        return file.category === active_category_filter
       }
-      if (active_format_filter) {
+      if (active_type_filter) {
         const normalized_type = get_base_file_type(file.name)
-        return normalized_type === active_format_filter
+        return normalized_type === active_type_filter
       }
       return true
     }),
   )
 
-  const toggle_filter = (type: `structure` | `format`, filter: string) => {
-    if (type === `structure`) {
-      active_structure_filter = active_structure_filter === filter ? null : filter
-      active_format_filter = null
+  const toggle_filter = (kind: FilterKind, filter: string) => {
+    if (kind === `category`) {
+      active_category_filter = active_category_filter === filter ? null : filter
+      active_type_filter = null
     } else {
-      active_format_filter = active_format_filter === filter ? null : filter
-      active_structure_filter = null
+      active_type_filter = active_type_filter === filter ? null : filter
+      active_category_filter = null
     }
   }
 
   const handle_drag_start = (file: FileInfo, event: DragEvent) => {
-    // For compressed files, remove the .gz extension from the filename since the content is already decompressed
-    const filename = file.name.toLowerCase().endsWith(`.gz`)
-      ? file.name.slice(0, -3)
-      : file.name
+    const file_url = file.url || file.name // Get the URL to drag (falling back to name)
 
-    const is_binary = file.content_type === `binary`
+    const payload = JSON.stringify({
+      name: file.name,
+      url: file_url,
+      type: file.type || get_base_file_type(file.name),
+      category: file.category,
+    })
+    // Set file data as JSON for applications that can handle it
+    event.dataTransfer?.setData(`application/json`, payload)
 
-    if (is_binary && file.content instanceof ArrayBuffer) {
-      // For binary files, create a temporary URL for drag transfer
-      // This avoids expensive base64 conversion during drag operations
-      const blob = new Blob([file.content], { type: `application/octet-stream` })
-      const temp_url = URL.createObjectURL(blob)
-
-      // Store both the blob URL and metadata for the receiver
-      event.dataTransfer?.setData(
-        `application/x-matterviz-file`,
-        JSON.stringify({
-          name: filename,
-          content_url: temp_url, // Temporary blob URL instead of data URL
-          type: file.type,
-          is_binary: true,
-        }),
-      )
-
-      // Clean up the temporary URL after drag completes
-      setTimeout(() => URL.revokeObjectURL(temp_url), 5000)
-    } else {
-      // For text files, use the original approach
-      event.dataTransfer?.setData(
-        `application/x-matterviz-file`,
-        JSON.stringify({
-          name: filename,
-          content: file.content as string,
-          type: file.type,
-          is_binary: false,
-        }),
-      )
-
-      // Also set plain text as fallback for external applications
-      event.dataTransfer?.setData(`text/plain`, file.content as string)
-    }
+    // Also set plain text as fallback for external applications
+    event.dataTransfer?.setData(`text/plain`, file_url)
 
     on_drag_start?.(file, event)
   }
 
   // Get unique file types for format filters
   let unique_formats = $derived(
-    [...new Set(files.map((f) => get_base_file_type(f.name)))].sort(),
+    [...new Set(files.map((file) => get_base_file_type(file.name)))].sort(),
   )
 
-  // Get unique structure types for structure filters
-  let unique_structure_types = $derived(
-    show_structure_filters
-      ? [...new Set(files.map((f) => f.structure_type).filter(Boolean))].sort()
+  // Get unique category types for category filters
+  let uniq_categories = $derived(
+    show_category_filters
+      ? [...new Set(files.map((file) => file.category))].sort().filter(Boolean)
       : [],
   )
 </script>
 
-<div class="file-carousel">
+<div class="file-carousel" {...rest}>
   <div class="legend">
-    {#if show_structure_filters}
-      {#each unique_structure_types as structure_type (structure_type)}
-        {@const is_active = active_structure_filter === structure_type}
-        {@const icon = structure_type
-        ? { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] || `📄`
-        : `📄`}
+    {#if show_category_filters}
+      {#each uniq_categories as category (category)}
+        {@const is_active = active_category_filter === category}
         <span
           class="legend-item"
           class:active={is_active}
-          onclick={() => structure_type && toggle_filter(`structure`, structure_type)}
-          onkeydown={(e) =>
-          (e.key === `Enter` || e.key === ` `) &&
-          structure_type &&
-          toggle_filter(`structure`, structure_type)}
+          onclick={() => category && toggle_filter(`category`, category)}
+          onkeydown={(evt) =>
+          (evt.key === `Enter` || evt.key === ` `) &&
+          category &&
+          toggle_filter(`category`, category)}
           role="button"
           tabindex="0"
-          title="Filter to show only {structure_type} structures"
+          title="Filter to show only {category}"
         >
-          {icon} {structure_type}
+          {(category && category_labels[category]) || category}
         </span>
       {/each}
-      {#if unique_structure_types.length > 0 && unique_formats.length > 0}&emsp;{/if}
+      {#if uniq_categories.length > 0 && unique_formats.length > 0}&emsp;{/if}
     {/if}
 
     {#each unique_formats as format (format)}
-      {@const is_active = active_format_filter === format}
+      {@const is_active = active_type_filter === format}
       <span
         class="legend-item format-item"
         class:active={is_active}
-        onclick={() => toggle_filter(`format`, format)}
-        onkeydown={(e) =>
-        (e.key === `Enter` || e.key === ` `) && toggle_filter(`format`, format)}
+        onclick={() => toggle_filter(`type`, format)}
+        onkeydown={(evt) =>
+        (evt.key === `Enter` || evt.key === ` `) && toggle_filter(`type`, format)}
         role="button"
         tabindex="0"
         title="Filter to show only {format.toUpperCase()} files"
@@ -166,14 +127,14 @@
       </span>
     {/each}
 
-    {#if active_structure_filter || active_format_filter}
+    {#if active_category_filter || active_type_filter}
       <button
+        title="Clear all filters"
         class="clear-filter"
         onclick={() => {
-          active_structure_filter = null
-          active_format_filter = null
+          active_category_filter = null
+          active_type_filter = null
         }}
-        title="Clear all filters"
       >
         ✕
       </button>
@@ -181,9 +142,6 @@
   </div>
 
   {#each filtered_files as file (file.name)}
-    {@const icon = file.structure_type
-      ? { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[file.structure_type]
-      : ``}
     {@const base_type = get_base_file_type(file.name)}
     {@const is_compressed = file.name.toLowerCase().endsWith(`.gz`)}
     <div
@@ -192,14 +150,10 @@
       class:compressed={is_compressed}
       draggable="true"
       ondragstart={(event) => handle_drag_start(file, event)}
-      ondragend={() => {
-        on_drag_end?.()
-      }}
+      ondragend={() => on_drag_end?.()}
       role="button"
       tabindex="0"
-      title="Drag this {is_compressed
-        ? `compressed `
-        : ``}{base_type.toUpperCase()} file to the viewer"
+      title="Drag this {base_type.toUpperCase()} file"
     >
       <div class="drag-handle">
         <div class="drag-bar"></div>
@@ -207,7 +161,7 @@
         <div class="drag-bar"></div>
       </div>
       <div class="file-name">
-        {file.formatted_name || file.name}&nbsp;{icon}
+        {file.name}&nbsp;{file.category}
         {#if is_compressed}<span class="compression-indicator">📦</span>{/if}
       </div>
     </div>
@@ -392,43 +346,5 @@
   }
   .file-item.compressed:hover {
     opacity: 1;
-  }
-
-  @media (max-width: 768px) {
-    .file-carousel {
-      gap: 0.3rem;
-    }
-    .legend {
-      font-size: 0.5em;
-      margin-bottom: 0.3em;
-      gap: 0.6em;
-    }
-    .legend-item {
-      padding: 0.1em 0.3em;
-    }
-    .clear-filter {
-      width: 1.5em;
-      height: 1.5em;
-    }
-    .format-circle {
-      width: 6px;
-      height: 6px;
-    }
-    .file-item {
-      min-height: 32px;
-      padding: 0.4rem 0.6rem;
-      gap: 0.5rem;
-    }
-    .drag-handle {
-      gap: 1px;
-    }
-    .drag-bar {
-      width: 10px;
-      height: 1.5px;
-    }
-    .file-name {
-      font-size: 0.7rem;
-      line-height: 1.1;
-    }
   }
 </style>
