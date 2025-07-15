@@ -662,11 +662,16 @@ export function parse_cif(content: string): ParsedStructure | null {
           ) {
             try {
               // Get element symbol from type_symbol field or extract from label
-              const element_symbol = symbol_idx >= 0
-                ? tokens[symbol_idx]
-                : label_idx >= 0
-                ? tokens[label_idx].match(/^([A-Z][a-z]?)/)?.[1] || tokens[label_idx]
-                : null
+              let element_symbol = null
+              if (symbol_idx >= 0) {
+                // Use dedicated type_symbol field if available
+                element_symbol = tokens[symbol_idx]
+              } else if (label_idx >= 0) {
+                // Extract element symbol from label (e.g., "C1" -> "C", "Fe_oct" -> "Fe")
+                const label = tokens[label_idx]
+                const extracted_symbol = label.match(/^([A-Z][a-z]?)/)?.[1]
+                element_symbol = extracted_symbol || label
+              }
 
               if (!element_symbol) continue
 

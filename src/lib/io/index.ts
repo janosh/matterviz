@@ -28,7 +28,7 @@ export async function load_from_url(
   if (!response.ok) throw new Error(`Fetch failed: ${response.status}`)
 
   const filename = url.split(`/`).pop() || url
-  const is_binary = /\.(h5|hdf5|traj)$/i.test(filename)
+  const is_binary = /\.(h5|hdf5|traj|npz|pkl|dat)$/i.test(filename)
 
   const content = is_binary ? await response.arrayBuffer() : await response.text()
   await callback(content, filename)
