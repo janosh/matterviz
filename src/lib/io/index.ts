@@ -38,47 +38,28 @@ export const detect_structure_type = (
   filename: string,
   content: string,
 ): `crystal` | `molecule` | `unknown` => {
-  // returns crystal if file contains a cell, else molecule
+  const lower_filename = filename.toLowerCase()
+
   if (filename.endsWith(`.json`)) {
     try {
-      const parsed = JSON.parse(content)
-      return (parsed as { lattice?: unknown }).lattice ? `crystal` : `molecule`
+      return JSON.parse(content).lattice ? `crystal` : `molecule`
     } catch {
       return `unknown`
     }
   }
 
-  // for now,CIF files always represent crystals with lattice
-  if (filename.toLowerCase().endsWith(`.cif`)) return `crystal`
+  if (lower_filename.endsWith(`.cif`)) return `crystal`
+  if (lower_filename.includes(`poscar`) || filename === `POSCAR`) return `crystal`
 
-  // POSCAR files always represent crystals with lattice
-  if (filename.toLowerCase().includes(`poscar`) || filename === `POSCAR`) {
-    return `crystal`
+  if (lower_filename.endsWith(`.yaml`) || lower_filename.endsWith(`.yml`)) {
+    return content.includes(`phono3py:`) || content.includes(`phonopy:`)
+      ? `crystal`
+      : `unknown`
   }
 
-  // YAML files: phonopy files always represent crystal structures with lattices
-  if (
-    filename.toLowerCase().endsWith(`.yaml`) ||
-    filename.toLowerCase().endsWith(`.yml`)
-  ) {
-    const is_phonopy = content.includes(`phono3py:`) || content.includes(`phonopy:`)
-    // Check if it's a phonopy file by looking for phonopy-specific content
-    if (is_phonopy) return `crystal`
-    return `unknown`
-  }
-
-  // XYZ files: try to detect lattice info from content
-  if (filename.endsWith(`.xyz`)) {
-    try {
-      // Simple heuristic: check for lattice information in XYZ comment line
-      const lines = content.trim().split(/\r?\n/)
-      if (lines.length >= 2 && lines[1].includes(`Lattice=`)) {
-        return `crystal`
-      }
-      return `molecule`
-    } catch {
-      return `unknown`
-    }
+  if (lower_filename.match(/\.xyz(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+    const lines = content.trim().split(/\r?\n/)
+    return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
   }
 
   return `unknown`

@@ -310,7 +310,7 @@
   <Spinner text="Loading structure..." {...spinner_props} />
 {:else if error_msg}
   <div class="error-state">
-    <p class="error">Failed to load structure: {error_msg}</p>
+    <p class="error">{error_msg}</p>
     <button onclick={() => (error_msg = null)}>Dismiss</button>
   </div>
 {:else if (structure?.sites?.length ?? 0) > 0}

@@ -161,7 +161,7 @@
         <div class="drag-bar"></div>
       </div>
       <div class="file-name">
-        {file.name}&nbsp;{file.category}
+        {file.name}{file.category ? `\u00A0${file.category}` : ``}
         {#if is_compressed}<span class="compression-indicator">📦</span>{/if}
       </div>
     </div>

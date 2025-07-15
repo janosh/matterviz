@@ -251,24 +251,24 @@ describe(`FileCarousel`, () => {
     )
 
     it.each([
-      { structure_type: undefined, expected_text: `test.txt` }, // undefined structure_type
+      { category: undefined, expected_text: `test.txt` }, // undefined category
       { file_count: 50, expected_children: 51 }, // many files (50)
     ])(
       `handles edge case gracefully`,
       (
         test_config:
-          | { structure_type: undefined; expected_text: string }
+          | { category: undefined; expected_text: string }
           | { file_count: number; expected_children: number },
       ) => {
         let test_files: FileInfo[]
 
-        if (`structure_type` in test_config) {
+        if (`category` in test_config) {
           test_files = [
             {
               name: `test.txt`,
               url: `/files/test.txt`,
               type: `TXT`,
-              category: test_config.structure_type,
+              category: test_config.category,
             },
           ]
         } else {
