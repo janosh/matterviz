@@ -21,7 +21,7 @@
       <strong>
         <a href={name.toLowerCase()}>{number}</a>
       </strong>
-      <BohrAtom {shells} {symbol} {name} {orbital_period} />
+      <BohrAtom {shells} {symbol} {name} {orbital_period} --border-radius="1ex" />
     </li>
   {/each}
 </ol>

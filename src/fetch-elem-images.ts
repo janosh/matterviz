@@ -1,7 +1,7 @@
 import elements from '$lib/element/data'
 import fs from 'node:fs'
 import process from 'node:process'
-import sharp from 'sharp'
+import sharp from 'npm:sharp'
 
 // make sure the directory exists
 fs.mkdirSync(`./static/elements`, { recursive: true })
@@ -87,7 +87,7 @@ if (download_promises.length > 0) {
   const results = await Promise.all(download_promises)
 
   // Update image source file with all results
-  const img_src_out = `./static/img-sources.json`
+  const img_src_out = `./src/lib/element-image-urls.json`
   const img_urls = fs.existsSync(img_src_out)
     ? JSON.parse(fs.readFileSync(img_src_out, `utf8`))
     : {}

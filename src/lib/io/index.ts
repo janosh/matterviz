@@ -1,3 +1,110 @@
+import type { FileInfo } from '$site'
+
 export * from './decompress'
 export * from './export'
 export * from './parse'
+
+// Handle URL-based file drop data by fetching content lazily
+export async function handle_url_drop(
+  drag_event: DragEvent,
+  callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
+): Promise<boolean> {
+  const json_data = drag_event.dataTransfer?.getData(`application/json`)
+  if (!json_data) return false
+
+  const file_info: FileInfo = JSON.parse(json_data)
+  if (!file_info.url) return false
+
+  await load_from_url(file_info.url, callback)
+  return true
+}
+
+// Generic function to load data from URL and call callback
+export async function load_from_url(
+  url: string,
+  callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
+): Promise<void> {
+  const filename = url.split(`/`).pop() || url
+  const ext = filename.split(`.`).pop()?.toLowerCase() || ``
+
+  // Check for known binary file extensions
+  const known_bin_extensions = `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz`.split(` `)
+  if (known_bin_extensions.includes(ext)) {
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+
+    // Handle gzipped files with proper content-encoding detection
+    if (ext === `gz` || ext === `gzip`) {
+      if (resp.headers.get(`content-encoding`) === `gzip`) {
+        // Browser automatically decompressed it, so it's text
+        return callback(await resp.text(), filename)
+      } else {
+        // Need to decompress manually
+        const { decompress_data } = await import(`./decompress`)
+        const buffer = await resp.arrayBuffer()
+        const content = await decompress_data(buffer, `gzip`)
+        // Remove .gz extension when manually decompressing
+        return callback(content, filename.replace(/\.gz$/, ``))
+      }
+    }
+
+    if (resp.headers.get(`content-encoding`) === `gzip`) {
+      return callback(await resp.text(), filename)
+    }
+
+    return callback(await resp.arrayBuffer(), filename)
+  }
+
+  // Check for magic bytes
+  try {
+    const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
+    if (head.ok) {
+      const buf = new Uint8Array(await head.arrayBuffer())
+      const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
+      const is_hdf5 = buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 &&
+        buf[3] === 0x46
+      if (is_gzip || is_hdf5) {
+        const resp = await fetch(url)
+        if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+        return callback(await resp.arrayBuffer(), filename)
+      }
+    }
+  } catch {
+    // Fall through to text fetch if HEAD request fails
+  }
+
+  const resp = await fetch(url)
+  if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+  return callback(await resp.text(), filename)
+}
+
+export const detect_structure_type = (
+  filename: string,
+  content: string,
+): `crystal` | `molecule` | `unknown` => {
+  const lower_filename = filename.toLowerCase()
+
+  if (filename.endsWith(`.json`)) {
+    try {
+      return JSON.parse(content).lattice ? `crystal` : `molecule`
+    } catch {
+      return `unknown`
+    }
+  }
+
+  if (lower_filename.endsWith(`.cif`)) return `crystal`
+  if (lower_filename.includes(`poscar`) || filename === `POSCAR`) return `crystal`
+
+  if (lower_filename.endsWith(`.yaml`) || lower_filename.endsWith(`.yml`)) {
+    return content.includes(`phono3py:`) || content.includes(`phonopy:`)
+      ? `crystal`
+      : `unknown`
+  }
+
+  if (lower_filename.match(/\.xyz(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+    const lines = content.trim().split(/\r?\n/)
+    return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
+  }
+
+  return `unknown`
+}

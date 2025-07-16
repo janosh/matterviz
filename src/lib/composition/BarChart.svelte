@@ -3,11 +3,9 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
   import type { Snippet } from 'svelte'
+  import { get_chart_font_scale } from './index'
   import { composition_to_percentages } from './parse'
 
-  // Constants for bar chart calculations
-  const MIN_FONT_SCALE = 1
-  const MAX_FONT_SCALE = 2
   const MIN_SEGMENT_SIZE_FOR_LABEL = 15 // pixels
 
   // Type for bar chart segment data
@@ -71,12 +69,28 @@
       const percentage = percentages[element as ElementSymbol] || 0
       const color = element_colors[element as ElementSymbol] || `#cccccc`
 
-      // Calculate font scale based on percentage (approximate segment width)
+      // Calculate font scale based on segment size and smart text fitting
       const approx_segment_width = (percentage / 100) * size
       const segment_size = Math.min(approx_segment_width, size)
-      const font_scale = Math.min(
-        MAX_FONT_SCALE,
-        Math.max(MIN_FONT_SCALE, segment_size / 40),
+      const [min_font_scale, max_font_scale] = [1, 2] as const
+      const scale_factor = Math.min(
+        1,
+        Math.max(
+          0,
+          (segment_size / 40 - min_font_scale) / (max_font_scale - min_font_scale),
+        ),
+      )
+      const base_scale = min_font_scale +
+        scale_factor * (max_font_scale - min_font_scale)
+      const label_text = element + (show_amounts ? amount!.toString() : ``) +
+        (show_percentages ? `${percentage.toFixed(1)}%` : ``)
+      const available_space = segment_size * 0.9 // 90% of segment width for text
+      const font_scale = get_chart_font_scale(
+        base_scale,
+        label_text,
+        available_space,
+        0.6,
+        12,
       )
 
       // Determine label display requirements

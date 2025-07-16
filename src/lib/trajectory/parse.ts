@@ -190,7 +190,9 @@ const is_vasp_format = (content: string, filename?: string): boolean => {
 }
 
 const is_xyz_multi_frame = (content: string, filename?: string): boolean => {
-  if (!filename?.toLowerCase().match(/\.(xyz|extxyz)$/)) return false
+  if (!filename?.toLowerCase().match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+    return false
+  }
   const lines = content.trim().split(/\r?\n/)
   let frame_count = 0
   let line_idx = 0
@@ -803,7 +805,7 @@ export async function parse_trajectory_data(
     if (is_torch_sim_hdf5(data, filename)) {
       return await parse_torch_sim_hdf5(data, filename)
     }
-    throw new Error(`Unsupported binary format`)
+    throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
   }
 
   if (typeof data === `string`) {
@@ -812,7 +814,7 @@ export async function parse_trajectory_data(
     if (is_vasp_format(content, filename)) return parse_vasp_xdatcar(content, filename)
 
     // Try single XYZ as fallback
-    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
+    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
       try {
         const structure = parse_xyz(content)
         if (structure) {
@@ -878,32 +880,6 @@ export async function parse_trajectory_data(
   throw new Error(`Unrecognized trajectory format`)
 }
 
-// Utility functions
-export async function load_trajectory_from_url(url: string): Promise<Trajectory> {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`)
-
-  const filename = url.split(`/`).pop() || `trajectory`
-  const is_hdf5 = filename.toLowerCase().match(/\.h5$|\.hdf5$/)
-
-  if (is_hdf5) {
-    return await parse_trajectory_data(await response.arrayBuffer(), filename)
-  }
-
-  const content_encoding = response.headers.get(`content-encoding`)
-  if (content_encoding === `gzip`) {
-    return await parse_trajectory_data(
-      await response.text(),
-      filename.replace(/\.gz$/, ``),
-    )
-  }
-
-  const { decompress_file } = await import(`../io/decompress`)
-  const file = new File([await response.blob()], filename)
-  const result = await decompress_file(file)
-  return await parse_trajectory_data(result.content, result.filename)
-}
-
 export function get_unsupported_format_message(
   filename: string,
   content: string,
@@ -917,12 +893,12 @@ export function get_unsupported_format_message(
 
   for (const { ext, name, tool } of formats) {
     if (ext.some((e) => lower.endsWith(e))) {
-      return `<div class="unsupported-format"><h4>🚫 ${name} format not supported</h4><p>Convert with ${tool} first</p></div>`
+      return `🚫 ${name} format not supported\nConvert with ${tool} first`
     }
   }
 
   return is_binary(content)
-    ? `<div class="unsupported-format"><h4>🚫 Binary format not supported</h4></div>`
+    ? `🚫 Binary format not supported${filename ? `: ${filename}` : ``}`
     : null
 }
 
@@ -947,7 +923,7 @@ export async function parse_trajectory_async(
         update_progress(50, `Parsing TorchSim HDF5...`)
         result = await parse_torch_sim_hdf5(data, filename)
       } else {
-        throw new Error(`Unsupported binary format`)
+        throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
       }
     } else {
       const content = data.trim()

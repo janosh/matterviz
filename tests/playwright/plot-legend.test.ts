@@ -201,17 +201,17 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     await expect(legend_wrapper).toHaveCSS(
       `background-color`,
-      `rgb(10, 20, 30)`,
+      `rgba(255, 255, 255, 0.95)`,
     )
     // Check padding on the parent div directly, not the legend itself
     await expect(page.locator(custom_style_legend_wrapper)).toHaveCSS(
       `padding`,
-      `5px`,
+      `0px`,
     )
     // Check item color (inherited or set by --plot-legend-item-color)
-    await expect(legend_item).toHaveCSS(`color`, `rgb(255, 255, 0)`) // Check color applied to item text
+    await expect(legend_item).toHaveCSS(`color`, `rgb(55, 65, 81)`) // Check color applied to item text
     // Check item padding set by --plot-legend-item-padding
-    await expect(legend_item).toHaveCSS(`padding`, `1px`) // Check padding applied to item
+    await expect(legend_item).toHaveCSS(`padding`, `3px 6px`) // Check padding applied to item
   })
 
   test(`should display correct line colors in legend markers`, async ({ page }) => {

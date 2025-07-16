@@ -1,11 +1,16 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { get_elem_amounts, get_pbc_image_sites, Icon } from '$lib'
+  import { get_elem_amounts, get_pbc_image_sites, Icon, Spinner } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
-  import { decompress_file } from '$lib/io/decompress'
+  import {
+    decompress_file,
+    handle_url_drop,
+    load_from_url,
+    parse_any_structure,
+  } from '$lib/io'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
-  import type { Snippet } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
   import {
@@ -35,10 +40,11 @@
     info_panel_open?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure: AnyStructure }]>
+    data_url?: string // URL to load structure from (alternative to providing structure directly)
     // Generic callback for when files are dropped - receives raw content and filename
-    on_file_drop?: (content: string, filename: string) => void
-    // Maximum size for text data to prevent UI freezes (bytes)
-    max_text_size?: number
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    // spinner props (passed to Spinner component)
+    spinner_props?: ComponentProps<typeof Spinner>
     [key: string]: unknown
   }
   let {
@@ -81,10 +87,53 @@
     show_full_controls = $bindable(false),
     fullscreen_toggle = true,
     bottom_left,
+    data_url,
     on_file_drop,
-    max_text_size = 5 * 1024 * 1024, // 5 MB default
+    spinner_props = {},
     ...rest
   }: Props = $props()
+
+  let loading = $state(false)
+  let error_msg = $state<string | null>(null)
+
+  // Load structure from URL when data_url is provided
+  $effect(() => {
+    if (data_url && !structure) {
+      loading = true
+      error_msg = null
+
+      load_from_url(data_url, (content, filename) => {
+        if (on_file_drop) {
+          on_file_drop(content, filename)
+        } else {
+          // Parse structure internally when no handler provided
+          try {
+            const text_content = content instanceof ArrayBuffer
+              ? new TextDecoder().decode(content)
+              : content
+            const parsed_structure = parse_any_structure(text_content, filename)
+            if (parsed_structure) {
+              structure = parsed_structure
+            } else {
+              error_msg = `Failed to parse structure from ${filename}`
+            }
+          } catch (error) {
+            error_msg = `Failed to parse structure: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          }
+        }
+      })
+        .then(() => {
+          loading = false
+        })
+        .catch((error: Error) => {
+          console.error(`Failed to load structure from URL:`, error)
+          error_msg = `Failed to load structure: ${error.message}`
+          loading = false
+        })
+    }
+  })
 
   // Ensure scene_props defaults to show_atoms=true on component mount
   $effect.pre(() => {
@@ -170,54 +219,26 @@
     dragover = false
     if (!allow_file_drop) return
 
-    // Check for our custom internal file format first
-    const internal_data = event.dataTransfer?.getData(`application/x-matterviz-file`)
-    if (internal_data) {
-      try {
-        const file_info = JSON.parse(internal_data)
-        if (file_info.content && file_info.content.length > max_text_size) {
-          console.warn(
-            `Internal file data too large: ${file_info.content.length} bytes`,
-          )
-          return
-        }
-        try {
-          on_file_drop?.(file_info.content, file_info.name)
-        } catch (error) {
-          console.error(`Failed to process internal file data:`, error)
-        }
-        return
-      } catch (error) {
-        console.warn(`Failed to parse internal file data:`, error)
-      }
-    }
+    // Handle URL-based files (e.g. from FilePicker)
+    const handled = await handle_url_drop(
+      event,
+      on_file_drop || ((content, filename) => {
+        const text_content = content instanceof ArrayBuffer
+          ? new TextDecoder().decode(content)
+          : content
+        const parsed_structure = parse_any_structure(text_content, filename)
+        if (parsed_structure) structure = parsed_structure
+        else error_msg = `Failed to parse structure from ${filename}`
+      }),
+    ).catch(() => false)
 
-    // Check for plain text data (fallback)
-    const text_data = event.dataTransfer?.getData(`text/plain`)
-    if (text_data) {
-      if (text_data.length > max_text_size) {
-        console.warn(
-          `Text data too large: ${text_data.length} bytes (max: ${max_text_size})`,
-        )
-        return
-      }
-      try {
-        on_file_drop?.(text_data, `structure.json`)
-      } catch (error) {
-        console.error(`Failed to process text data:`, error)
-      }
-      return
-    }
+    if (handled) return
 
-    // Handle actual file drops from file system
+    // Handle file system drops
     const file = event.dataTransfer?.files[0]
-    if (!file) return
-
-    try {
+    if (file) {
       const { content, filename } = await decompress_file(file)
       if (content) on_file_drop?.(content, filename)
-    } catch (error) {
-      console.error(`Failed to read file:`, error)
     }
   }
 
@@ -285,7 +306,14 @@
   }}
 />
 
-{#if (structure?.sites?.length ?? 0) > 0}
+{#if loading}
+  <Spinner text="Loading structure..." {...spinner_props} />
+{:else if error_msg}
+  <div class="error-state">
+    <p class="error">{error_msg}</p>
+    <button onclick={() => (error_msg = null)}>Dismiss</button>
+  </div>
+{:else if (structure?.sites?.length ?? 0) > 0}
   <div
     class="structure"
     class:dragover
@@ -457,5 +485,31 @@
   }
   p.warn {
     text-align: center;
+  }
+  .error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: var(--struct-height, 500px);
+    padding: 2rem;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .error-state p {
+    color: var(--error-color, #ff6b6b);
+    margin: 0 0 1rem;
+  }
+  .error-state button {
+    padding: 0.5rem 1rem;
+    background: var(--error-color, #ff6b6b);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .error-state button:hover {
+    background: var(--error-color-hover, #ff5252);
   }
 </style>

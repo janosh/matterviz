@@ -30,7 +30,7 @@
     adapt_size = false,
     shell_width = 20,
     size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270,
-    base_fill = `white`,
+    base_fill = `var(--text-color)`,
     orbital_period = 3,
     nucleus_props = {},
     shell_props = {},
@@ -46,19 +46,19 @@
   // with n the shell number, Z the atomic number, m the mass of the electron
   let _nucleus_props = $derived({
     r: 20,
-    fill: `white`,
+    fill: base_fill,
     'fill-opacity': `0.3`,
     ...nucleus_props,
   })
   let _shell_props = $derived({
-    stroke: `white`,
+    stroke: base_fill,
     'stroke-width': 1,
     fill: `none`,
     ...shell_props,
   })
   let _electron_props = $derived({
     r: 3,
-    stroke: `white`,
+    stroke: base_fill,
     'stroke-width': 1,
     fill: `blue`,
     ...electron_props,
@@ -87,7 +87,7 @@
         r={shell_radius}
         {..._shell_props}
         style:stroke-width={active ? 2 : 1}
-        style:stroke={active ? `yellow` : `white`}
+        style:stroke={active ? `yellow` : base_fill}
       />
 
       <!-- electrons -->
@@ -125,6 +125,8 @@
   svg {
     overflow: visible;
     width: 100%;
+    background-color: var(--surface-bg);
+    border-radius: var(--border-radius);
   }
   g.shell {
     animation: spin-right linear infinite;
