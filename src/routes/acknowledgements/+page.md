@@ -1,5 +1,5 @@
 <script>
-  import img_sources from '$root/static/img-sources.json';
+  import img_sources from '$lib/element-image-urls.json'
   import { dev } from '$app/environment'
   import pkg from '$root/package.json'
 </script>

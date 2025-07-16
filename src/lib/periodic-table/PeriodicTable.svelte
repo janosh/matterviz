@@ -380,6 +380,7 @@
     font-size: var(--tooltip-font-size, 14px);
     text-align: var(--tooltip-text-align, center);
     line-height: var(--tooltip-line-height, 1.2);
+    z-index: var(--tooltip-z-index, 2);
   }
   .tooltip::before {
     content: '';

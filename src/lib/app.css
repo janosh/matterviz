@@ -61,7 +61,7 @@ kbd {
   overflow-wrap: break-word;
   padding: 1pt 3pt;
   border-radius: 3pt;
-  background-color: var(--code-bg, black);
+  background-color: var(--code-bg);
 }
 kbd {
   font-size: larger;

@@ -53,8 +53,12 @@ test.describe(`Periodic Table`, () => {
     })
     await page.goto(`/`, { waitUntil: `networkidle` })
 
+    // Wait for periodic table to be fully rendered
+    await expect(page.locator(`.element-tile`).first()).toBeVisible({ timeout: 10000 })
+    await page.waitForLoadState(`domcontentloaded`)
+
     for (const tile of random_sample(await page.$$(`.element-tile`), 5)) {
-      await tile.hover()
+      await tile.hover({ timeout: 5000 })
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)

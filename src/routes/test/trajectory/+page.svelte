@@ -263,7 +263,7 @@
 <TrajectoryViewer
   id="error-state"
   bind:trajectory={error_trajectory}
-  trajectory_url="/non-existent-trajectory.json"
+  data_url="/non-existent-trajectory.json"
   allow_file_drop
 />
 
@@ -304,7 +304,7 @@
 
 <TrajectoryViewer
   id="trajectory-url"
-  trajectory_url="/test-trajectory.json"
+  data_url="/test-trajectory.json"
   allow_file_drop
 />
 
@@ -323,7 +323,7 @@
 <TrajectoryViewer
   id="error-snippet"
   trajectory={undefined}
-  trajectory_url="/non-existent-file.json"
+  data_url="/non-existent-file.json"
 >
   {#snippet error_snippet({ error_msg, on_dismiss })}
     <div class="custom-error">

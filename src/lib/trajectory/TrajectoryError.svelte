@@ -28,6 +28,8 @@
   .error-message {
     height: 100%;
     padding: 2rem;
+    place-content: center;
+    place-items: center;
     text-align: center;
     color: var(--traj-error-color);
     border-radius: var(--traj-border-radius);

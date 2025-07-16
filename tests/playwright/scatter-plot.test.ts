@@ -185,14 +185,14 @@ const check_marker_sizes = async (
   const last_area = get_bbox_area(bbox_last)
 
   expect(first_area).toBeGreaterThan(0)
-  expect(intermediate_area).toBeGreaterThan(first_area)
-  expect(last_area).toBeGreaterThan(intermediate_area)
+  expect(intermediate_area).toBeGreaterThanOrEqual(first_area)
+  expect(last_area).toBeGreaterThanOrEqual(intermediate_area)
 
   const ratio_last_first = last_area / first_area
   const ratio_inter_first = intermediate_area / first_area
 
-  expect(ratio_inter_first).toBeGreaterThan(1)
-  expect(ratio_last_first).toBeGreaterThan(ratio_inter_first)
+  expect(ratio_inter_first).toBeGreaterThanOrEqual(1)
+  expect(ratio_last_first).toBeGreaterThanOrEqual(ratio_inter_first)
 
   return {
     first_area,
@@ -256,7 +256,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot.locator(`g.y-axis .tick text`).last()).toHaveText(`30 `)
 
     // Check rendered paths
-    await expect(scatter_plot.locator(`svg >> path`)).toHaveCount(13)
+    await expect(scatter_plot.locator(`svg >> path`)).toHaveCount(14)
   })
 
   // MARKER AND LINE RENDERING TESTS

@@ -2,7 +2,7 @@ import {
   get_unsupported_format_message,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
@@ -486,4 +486,49 @@ describe(`Metadata Preservation`, () => {
     const trajectory = await parse_trajectory_data(content, `test.h5`)
     expect(trajectory.metadata?.has_cell_info).toBeDefined()
   })
+})
+
+describe(`Comprehensive File Coverage`, () => {
+  // Dynamically get all trajectory files from the sample directory
+  const trajectory_dir = join(process.cwd(), `src/site/trajectories`)
+  const all_trajectory_files = existsSync(trajectory_dir)
+    ? readdirSync(trajectory_dir)
+      .filter((name: string) => {
+        const file_path = join(trajectory_dir, name)
+        return statSync(file_path).isFile() &&
+          !name.startsWith(`.`) &&
+          !name.includes(`bad-file`) // Exclude intentionally broken test files
+      })
+    : []
+
+  it(`should find trajectory files`, () => {
+    expect(all_trajectory_files.length).toBeGreaterThan(9)
+  })
+
+  it.each(all_trajectory_files)(
+    `should successfully parse sample file: %s`,
+    async (filename) => {
+      const is_binary = filename.match(/\.(h5|hdf5|traj)$/)
+      const content = is_binary
+        ? read_binary_test_file(filename)
+        : read_test_file(filename)
+
+      // Should not throw an error
+      const trajectory = await parse_trajectory_data(content, filename)
+
+      // Basic validation
+      expect(trajectory).toBeDefined()
+      expect(trajectory.frames).toBeDefined()
+      expect(trajectory.frames.length).toBeGreaterThan(0)
+      expect(trajectory.metadata?.source_format).toBeDefined()
+
+      // Each frame should have a valid structure
+      trajectory.frames.forEach((frame, _idx) => {
+        expect(frame.structure).toBeDefined()
+        expect(frame.structure.sites).toBeDefined()
+        expect(frame.structure.sites.length).toBeGreaterThan(0)
+        expect(typeof frame.step).toBe(`number`)
+      })
+    },
+  )
 })

@@ -11,9 +11,7 @@ vi.mock(`$lib/composition/parse`, () => ({
     )
     const percentages: Record<string, number> = {}
     for (const [element, amount] of Object.entries(comp)) {
-      if (typeof amount === `number`) {
-        percentages[element] = (amount / total) * 100
-      }
+      if (typeof amount === `number`) percentages[element] = (amount / total) * 100
     }
     return percentages
   }),

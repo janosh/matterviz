@@ -4,10 +4,7 @@
   import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
   import { hierarchy, type HierarchyCircularNode, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
-
-  // Constants for bubble positioning and sizing
-  const MIN_FONT_SCALE = 0.6
-  const MAX_FONT_SCALE = 2
+  import { get_chart_font_scale } from './index'
 
   // Type for our bubble data structure
   type BubbleDataLeaf = {
@@ -80,11 +77,17 @@
       const radius = node.r || 0
       const data = node.data as BubbleDataLeaf
 
-      // Calculate font scale based on bubble size
-      // Scale from MIN_FONT_SCALE (for very small bubbles) to MAX_FONT_SCALE (for large bubbles)
-      const font_scale = Math.min(
-        MAX_FONT_SCALE,
-        MIN_FONT_SCALE + (radius / max_radius) * (MAX_FONT_SCALE - MIN_FONT_SCALE),
+      // Calculate font scale based on bubble size and smart text fitting
+      const [min_font_scale, max_font_scale] = [0.6, 2] as const
+      const scale_factor = radius / max_radius
+      const base_scale = min_font_scale +
+        scale_factor * (max_font_scale - min_font_scale)
+      const label_text = data.element + (show_amounts ? data.amount.toString() : ``)
+      const available_space = radius * 2 * 0.8 // 80% of bubble diameter for text
+      const font_scale = get_chart_font_scale(
+        base_scale,
+        label_text,
+        available_space,
       )
 
       return {

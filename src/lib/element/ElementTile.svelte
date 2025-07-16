@@ -296,6 +296,7 @@
     position: absolute;
     font-size: var(--elem-multi-value-font-size, 14cqw);
     font-weight: 600;
+    z-index: var(--elem-multi-value-z-index, 2);
   }
 
   /* 2-value diagonal positions */
@@ -476,19 +477,19 @@
   }
   .quadrant-tr {
     top: 0;
-    right: 0;
+    left: 50%;
     width: 50%;
     height: 50%;
   }
   .quadrant-bl {
-    bottom: 0;
+    top: 50%;
     left: 0;
     width: 50%;
     height: 50%;
   }
   .quadrant-br {
-    bottom: 0;
-    right: 0;
+    top: 50%;
+    left: 50%;
     width: 50%;
     height: 50%;
   }
