@@ -545,7 +545,10 @@ export function parse_xyz(content: string): ParsedStructure | null {
 }
 
 // Parse CIF (Crystallographic Information File) format
-export function parse_cif(content: string): ParsedStructure | null {
+export function parse_cif(
+  content: string,
+  wrap_frac: boolean = true,
+): ParsedStructure | null {
   try {
     const lines = content.trim().split(/\r?\n/)
 
@@ -691,15 +694,24 @@ export function parse_cif(content: string): ParsedStructure | null {
               )
               const abc: Vec3 = [fract_x, fract_y, fract_z]
 
+              // Conditionally wrap fractional coordinates to [0,1) (i.e. inside the cell) before converting to Cartesian
+              const abc_wrapped: Vec3 = wrap_frac
+                ? [
+                  abc[0] - Math.floor(abc[0]),
+                  abc[1] - Math.floor(abc[1]),
+                  abc[2] - Math.floor(abc[2]),
+                ]
+                : abc
+
               // Convert fractional to Cartesian coordinates
               const xyz = math.mat3x3_vec3_multiply(
                 math.transpose_matrix(lattice_matrix),
-                abc,
+                abc_wrapped,
               )
 
               const site: Site = {
                 species: [{ element, occu: occupancy, oxidation_state: 0 }],
-                abc,
+                abc: abc_wrapped,
                 xyz,
                 label,
                 properties: {},

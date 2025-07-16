@@ -298,65 +298,117 @@ describe(`Auto-detection & Error Handling`, () => {
 })
 
 describe(`CIF Parser`, () => {
-  const quartz_cif = `data_quartz_alpha
-_chemical_name_mineral                 'Quartz'
-_chemical_formula_sum                  'Si O2'
-_cell_length_a                         4.916
-_cell_length_b                         4.916
-_cell_length_c                         5.405
-_cell_angle_alpha                      90
-_cell_angle_beta                       90
-_cell_angle_gamma                      120
-_space_group_name_H-M_alt              'P 31 2 1'
-_space_group_IT_number                 152
-
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-_atom_site_occupancy
-Si1  Si  0.470  0.000  0.000  1.000
-O1   O   0.410  0.270  0.120  1.000
-O2   O   0.410  0.140  0.880  1.000`
-
-  it(`should parse CIF format correctly`, () => {
-    const result = parse_cif(quartz_cif)
-    if (!result) throw `Failed to parse CIF`
-    expect(result.sites).toHaveLength(3)
-
-    // Check lattice parameters
-    if (!result.lattice) throw `Failed to get lattice`
-    expect(result.lattice.a).toBeCloseTo(4.916, 3)
-    expect(result.lattice.b).toBeCloseTo(4.916, 3)
-    expect(result.lattice.c).toBeCloseTo(5.405, 3)
-    expect(result.lattice.alpha).toBeCloseTo(90, 6)
-    expect(result.lattice.beta).toBeCloseTo(90, 6)
-    expect(result.lattice.gamma).toBeCloseTo(120, 6)
-
-    // Check sites
-    expect(result.sites[0].species[0].element).toBe(`Si`)
-    expect(result.sites[0].abc).toEqual([0.47, 0.0, 0.0])
-    expect(result.sites[0].label).toBe(`Si1`)
-
-    expect(result.sites[1].species[0].element).toBe(`O`)
-    expect(result.sites[1].abc).toEqual([0.41, 0.27, 0.12])
-    expect(result.sites[1].label).toBe(`O1`)
-
-    expect(result.sites[2].species[0].element).toBe(`O`)
-    expect(result.sites[2].abc).toEqual([0.41, 0.14, 0.88])
-    expect(result.sites[2].label).toBe(`O2`)
-  })
+  it.each([
+    {
+      name: `quartz (hexagonal)`,
+      cif:
+        `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
+      expected_sites: 3,
+      expected_lattice: { a: 4.916, b: 4.916, c: 5.405, alpha: 90, beta: 90, gamma: 120 },
+      expected_abc: [
+        { element: `Si`, abc: [0.47, 0.0, 0.0] },
+        { element: `O`, abc: [0.41, 0.27, 0.12] },
+        { element: `O`, abc: [0.41, 0.14, 0.88] },
+      ],
+      check_beta: false,
+    },
+    {
+      name: `monoclinic (β ≠ 90°)`,
+      cif:
+        `data_monoclinic_test\n_cell_length_a                         10.000\n_cell_length_b                         5.000\n_cell_length_c                         8.000\n_cell_angle_alpha                      90\n_cell_angle_beta                       95\n_cell_angle_gamma                      90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
+      expected_sites: 3,
+      expected_lattice: { beta: 95 },
+      expected_abc: [
+        { element: `Ru`, abc: [0.0, 0.0, 0.0] },
+        { element: `P`, abc: [0.25, 0.25, 0.25] },
+        { element: `S`, abc: [0.5, 0.5, 0.5] },
+      ],
+      check_beta: true,
+    },
+  ])(
+    `should parse CIF format correctly: $name`,
+    ({ cif, expected_sites, expected_lattice, expected_abc, check_beta }) => {
+      const result = parse_cif(cif)
+      if (!result) throw `Failed to parse CIF: ${cif}`
+      expect(result.sites).toHaveLength(expected_sites)
+      if (expected_lattice) {
+        if (expected_lattice.a) {
+          expect(result.lattice?.a).toBeCloseTo(
+            expected_lattice.a,
+            3,
+          )
+        }
+        if (expected_lattice.b) {
+          expect(result.lattice?.b).toBeCloseTo(
+            expected_lattice.b,
+            3,
+          )
+        }
+        if (expected_lattice.c) {
+          expect(result.lattice?.c).toBeCloseTo(
+            expected_lattice.c,
+            3,
+          )
+        }
+        if (expected_lattice.alpha) {
+          expect(result.lattice?.alpha).toBeCloseTo(
+            expected_lattice.alpha,
+            6,
+          )
+        }
+        if (expected_lattice.beta) {
+          expect(result.lattice?.beta).toBeCloseTo(
+            expected_lattice.beta,
+            6,
+          )
+        }
+        if (expected_lattice.gamma) {
+          expect(result.lattice?.gamma).toBeCloseTo(
+            expected_lattice.gamma,
+            6,
+          )
+        }
+      }
+      expected_abc.forEach((expected, idx) => {
+        expect(result.sites[idx].species[0].element).toBe(expected.element)
+        expect(result.sites[idx].abc[0]).toBeCloseTo(expected.abc[0], 12)
+        expect(result.sites[idx].abc[1]).toBeCloseTo(expected.abc[1], 12)
+        expect(result.sites[idx].abc[2]).toBeCloseTo(expected.abc[2], 12)
+      })
+      // For non-orthogonal, check coordinate reconstruction
+      if (check_beta) {
+        const lattice = result.lattice?.matrix
+        if (!lattice) throw `Failed to get lattice matrix`
+        for (const site of result.sites) {
+          const reconstructed = [
+            site.abc[0] * lattice[0][0] + site.abc[1] * lattice[1][0] +
+            site.abc[2] * lattice[2][0],
+            site.abc[0] * lattice[0][1] + site.abc[1] * lattice[1][1] +
+            site.abc[2] * lattice[2][1],
+            site.abc[0] * lattice[0][2] + site.abc[1] * lattice[1][2] +
+            site.abc[2] * lattice[2][2],
+          ]
+          expect(reconstructed[0]).toBeCloseTo(site.xyz[0], 12)
+          expect(reconstructed[1]).toBeCloseTo(site.xyz[1], 12)
+          expect(reconstructed[2]).toBeCloseTo(site.xyz[2], 12)
+        }
+      }
+    },
+  )
 
   it(`should detect CIF format by extension`, () => {
-    const result = parse_structure_file(quartz_cif, `quartz.cif`)
+    const result = parse_structure_file(
+      `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
+      `quartz.cif`,
+    )
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
   })
 
   it(`should detect CIF format by content`, () => {
-    const result = parse_structure_file(quartz_cif)
+    const result = parse_structure_file(
+      `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
+    )
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
   })
@@ -398,6 +450,77 @@ N(1)   0.750  0.750  0.750  1.000`
       expect(result.sites[idx].abc).toEqual(expected.abc)
     })
   })
+
+  it.each([true, false])(
+    `should wrap/preserve fractional coordinates outside [0,1) when wrap_frac=%s`,
+    (wrap_frac: boolean) => {
+      const cif_with_outside_coords = `data_test_wrapping
+_cell_length_a                         5.000
+_cell_length_b                         5.000
+_cell_length_c                         5.000
+_cell_angle_alpha                      90
+_cell_angle_beta                       90
+_cell_angle_gamma                      90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+C1   C   1.250  0.750  0.500  1.000
+O1   O  -0.250  1.750  0.500  1.000
+H1   H   2.100  0.900  0.500  1.000`
+
+      const result = parse_cif(cif_with_outside_coords, wrap_frac)
+      if (!result) throw `Failed to parse CIF with outside coordinates`
+
+      expect(result.sites).toHaveLength(3)
+
+      const expected_coords = wrap_frac
+        ? { C: [0.25, 0.75, 0.5], O: [0.75, 0.75, 0.5], H: [0.1, 0.9, 0.5] }
+        : { C: [1.25, 0.75, 0.5], O: [-0.25, 1.75, 0.5], H: [2.1, 0.9, 0.5] }
+
+      // Check fractional coordinates
+      for (const [element, expected] of Object.entries(expected_coords)) {
+        const site = result.sites.find((site) => site.species[0].element === element)
+        expect(site?.abc[0]).toBeCloseTo(expected[0], 12)
+        expect(site?.abc[1]).toBeCloseTo(expected[1], 12)
+        expect(site?.abc[2]).toBeCloseTo(expected[2], 12)
+      }
+
+      // Verify coordinate bounds based on wrapping
+      for (const site of result.sites) {
+        if (wrap_frac) {
+          expect(site.abc[0]).toBeGreaterThanOrEqual(0)
+          expect(site.abc[0]).toBeLessThan(1)
+          expect(site.abc[1]).toBeGreaterThanOrEqual(0)
+          expect(site.abc[1]).toBeLessThan(1)
+          expect(site.abc[2]).toBeGreaterThanOrEqual(0)
+          expect(site.abc[2]).toBeLessThan(1)
+        }
+      }
+
+      // Test coordinate reconstruction works in both cases
+      const lattice = result.lattice?.matrix
+      if (!lattice) throw `Failed to get lattice matrix`
+
+      for (const site of result.sites) {
+        const reconstructed = [
+          site.abc[0] * lattice[0][0] + site.abc[1] * lattice[1][0] +
+          site.abc[2] * lattice[2][0],
+          site.abc[0] * lattice[0][1] + site.abc[1] * lattice[1][1] +
+          site.abc[2] * lattice[2][1],
+          site.abc[0] * lattice[0][2] + site.abc[1] * lattice[1][2] +
+          site.abc[2] * lattice[2][2],
+        ]
+
+        expect(reconstructed[0]).toBeCloseTo(site.xyz[0], 12)
+        expect(reconstructed[1]).toBeCloseTo(site.xyz[1], 12)
+        expect(reconstructed[2]).toBeCloseTo(site.xyz[2], 12)
+      }
+    },
+  )
 })
 
 describe(`Phonopy YAML Parser`, () => {

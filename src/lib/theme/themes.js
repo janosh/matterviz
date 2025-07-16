@@ -27,9 +27,9 @@ const colors = {
 
   // Accents
   acc_light: `#4f46e5`, // Indigo
-  acc_dark: `#60a5fa`, // Light blue
+  acc_dark: `cornflowerblue`, // Light blue
   acc_white: `#2563eb`, // Blue
-  acc_black: `#7dd3fc`, // Cyan
+  acc_black: `cornflowerblue`, // Cyan
 
   // Error colors
   error_text_light: `#dc2626`, // Red
@@ -312,8 +312,8 @@ const themes = {
   },
 
   // Navigation links
-  'nav-link-bg': btn_bg(0.2, 0.08),
-  'nav-link-hover-bg': btn_bg(0.15, 0.15),
+  'nav-link-bg': btn_bg(0.15, 0.05),
+  'nav-link-hover-bg': btn_bg(0.2, 0.1),
   'nav-link-active-color': {
     light: `#dc2626`,
     dark: `mediumseagreen`,
