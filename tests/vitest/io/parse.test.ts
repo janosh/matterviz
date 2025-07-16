@@ -396,9 +396,32 @@ describe(`CIF Parser`, () => {
     },
   )
 
+  const QUARTZ_CIF_FOR_DETECTION = `data_quartz_alpha
+_chemical_name_mineral                 'Quartz'
+_chemical_formula_sum                  'Si O2'
+_cell_length_a                         4.916
+_cell_length_b                         4.916
+_cell_length_c                         5.405
+_cell_angle_alpha                      90
+_cell_angle_beta                       90
+_cell_angle_gamma                      120
+_space_group_name_H-M_alt              'P 31 2 1'
+_space_group_IT_number                 152
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Si1  Si  0.470  0.000  0.000  1.000
+O1   O   0.410  0.270  0.120  1.000
+O2   O   0.410  0.140  0.880  1.000`
+
   it(`should detect CIF format by extension`, () => {
     const result = parse_structure_file(
-      `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
+      QUARTZ_CIF_FOR_DETECTION,
       `quartz.cif`,
     )
     if (!result) throw `Failed to parse CIF`
@@ -407,7 +430,7 @@ describe(`CIF Parser`, () => {
 
   it(`should detect CIF format by content`, () => {
     const result = parse_structure_file(
-      `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
+      QUARTZ_CIF_FOR_DETECTION,
     )
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
@@ -521,6 +544,108 @@ H1   H   2.100  0.900  0.500  1.000`
       }
     },
   )
+
+  describe(`CIF Error Handling`, () => {
+    it.each([
+      [`empty file`, ``, `CIF file too short`],
+      [`single line`, `data_test`, `CIF file too short`],
+      [
+        `missing cell params`,
+        `data_test\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Si  0.000  0.000  0.000`,
+        null,
+      ],
+      [
+        `invalid cell length`,
+        `data_test\n_cell_length_a  abc\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Si  0.000  0.000  0.000`,
+        null,
+      ],
+      [
+        `invalid coordinates`,
+        `data_test\n_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`,
+        null,
+      ],
+      [
+        `no atom sites`,
+        `data_test\n_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90`,
+        null,
+      ],
+      [
+        `invalid element`,
+        `data_test\n_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Xx  0.000  0.000  0.000`,
+        null,
+      ],
+    ])(
+      `should handle $name`,
+      (_test_name, content, expected_error) => {
+        const result = parse_cif(content)
+        if (expected_error) {
+          expect(result).toBeNull()
+          expect(console_error_spy).toHaveBeenCalledWith(
+            expect.stringContaining(expected_error),
+          )
+        } else if (result) {
+          expect(result).toHaveProperty(`sites`)
+          expect(result).toHaveProperty(`lattice`)
+        }
+      },
+    )
+
+    it(`should handle malformed loops and missing occupancy`, () => {
+      const malformed_cif = `data_test
+_cell_length_a  5.000
+_cell_length_b  5.000
+_cell_length_c  5.000
+_cell_angle_alpha  90
+_cell_angle_beta  90
+_cell_angle_gamma  90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Si1  Si  0.000  0.000  0.000  1.000
+O1   O   0.250  0.250  0.250
+H1   H   0.500  0.500  0.500  1.000  1.000`
+
+      const result = parse_cif(malformed_cif)
+      expect(result).not.toBeNull()
+      if (result) {
+        expect(result.sites.length).toBeGreaterThan(0)
+        expect(result.sites.length).toBeLessThan(3)
+        expect(result.sites[0].species[0].occu).toBe(1.0)
+      }
+    })
+
+    it(`should handle comments and syntax errors`, () => {
+      const cif_with_comments = `data_test
+# Comment
+_cell_length_a  5.000
+_cell_length_b  5.000
+_cell_length_c  5.000
+_cell_angle_alpha  90
+_cell_angle_beta  90
+_cell_angle_gamma  90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Si1  Si  0.000  0.000  0.000
+# Comment in loop
+O1   O   0.250  0.250  0.250
+_unknown_tag  value
+H1   H   0.500  0.500  0.500`
+
+      const result = parse_cif(cif_with_comments)
+      expect(result).not.toBeNull()
+      if (result) {
+        expect(result.sites).toHaveLength(3)
+      }
+    })
+  })
 })
 
 describe(`Phonopy YAML Parser`, () => {
