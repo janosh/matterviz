@@ -3,13 +3,12 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
   import type { Snippet } from 'svelte'
+  import { get_chart_font_scale } from './index'
   import { composition_to_percentages, get_total_atoms } from './parse'
 
   // Constants for pie chart calculations
   const VERY_THIN_SLICE_THRESHOLD = 20 // degrees
   const MEDIUM_SLICE_THRESHOLD = 90 // degrees - increased to move more slices toward outer edge
-  const MIN_FONT_SCALE = 1
-  const MAX_FONT_SCALE = 2.4
   const MAX_ANGLE_FOR_FULL_SCALE = 120 // degrees
 
   interface Props {
@@ -123,13 +122,24 @@
           is_outside_slice = false
         }
 
-        // Calculate font scale based on slice size
-        // Scale from MIN_FONT_SCALE (for very thin slices) to MAX_FONT_SCALE (for large slices)
-        const font_scale = Math.min(
-          MAX_FONT_SCALE,
-          MIN_FONT_SCALE +
-            (angle_span / MAX_ANGLE_FOR_FULL_SCALE) *
-              (MAX_FONT_SCALE - MIN_FONT_SCALE),
+        // Calculate font scale based on slice size and smart text fitting
+        const [min_font_scale, max_font_scale] = [1.4, 2] as const
+        const scale_factor = angle_span / MAX_ANGLE_FOR_FULL_SCALE
+        const base_scale = min_font_scale +
+          scale_factor * (max_font_scale - min_font_scale)
+        const label_text = element + (show_amounts ? amount!.toString() : ``) +
+          (show_percentages ? `${percentage.toFixed(1)}%` : ``)
+        const available_space = is_very_thin_slice
+          ? outer_radius * 0.8 // More space outside the slice
+          : Math.min(
+            outer_radius - inner_radius_adjusted, // Radial space
+            (angle_span * Math.PI / 180) * label_radius * 0.8, // Arc space at label radius
+          )
+
+        const font_scale = get_chart_font_scale(
+          base_scale,
+          label_text,
+          available_space,
         )
 
         const color = element_colors[element as ElementSymbol] || `#cccccc`

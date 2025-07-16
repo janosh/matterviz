@@ -472,10 +472,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
         ]
 
         const lattice_params = math.calc_lattice_params(lattice_vectors)
-        lattice = {
-          matrix: lattice_vectors,
-          ...lattice_params,
-        }
+        lattice = { matrix: lattice_vectors, ...lattice_params }
       }
     }
 
@@ -545,7 +542,10 @@ export function parse_xyz(content: string): ParsedStructure | null {
 }
 
 // Parse CIF (Crystallographic Information File) format
-export function parse_cif(content: string): ParsedStructure | null {
+export function parse_cif(
+  content: string,
+  wrap_frac: boolean = true,
+): ParsedStructure | null {
   try {
     const lines = content.trim().split(/\r?\n/)
 
@@ -657,9 +657,24 @@ export function parse_cif(content: string): ParsedStructure | null {
           const z_idx = header_indices.z >= 0 ? header_indices.z : -1
           const occ_idx = header_indices.occupancy >= 0 ? header_indices.occupancy : -1
 
-          if (symbol_idx >= 0 && x_idx >= 0 && y_idx >= 0 && z_idx >= 0) {
+          if (
+            (symbol_idx >= 0 || label_idx >= 0) && x_idx >= 0 && y_idx >= 0 && z_idx >= 0
+          ) {
             try {
-              const element_symbol = tokens[symbol_idx]
+              // Get element symbol from type_symbol field or extract from label
+              let element_symbol = null
+              if (symbol_idx >= 0) {
+                // Use dedicated type_symbol field if available
+                element_symbol = tokens[symbol_idx]
+              } else if (label_idx >= 0) {
+                // Extract element symbol from label (e.g., "C1" -> "C", "Fe_oct" -> "Fe")
+                const label = tokens[label_idx]
+                const extracted_symbol = label.match(/^([A-Z][a-z]?)/)?.[1]
+                element_symbol = extracted_symbol || label
+              }
+
+              if (!element_symbol) continue
+
               const fract_x = parseFloat(tokens[x_idx])
               const fract_y = parseFloat(tokens[y_idx])
               const fract_z = parseFloat(tokens[z_idx])
@@ -676,15 +691,24 @@ export function parse_cif(content: string): ParsedStructure | null {
               )
               const abc: Vec3 = [fract_x, fract_y, fract_z]
 
+              // Conditionally wrap fractional coordinates to [0,1) (i.e. inside the cell) before converting to Cartesian
+              const abc_wrapped: Vec3 = wrap_frac
+                ? [
+                  abc[0] - Math.floor(abc[0]),
+                  abc[1] - Math.floor(abc[1]),
+                  abc[2] - Math.floor(abc[2]),
+                ]
+                : abc
+
               // Convert fractional to Cartesian coordinates
               const xyz = math.mat3x3_vec3_multiply(
                 math.transpose_matrix(lattice_matrix),
-                abc,
+                abc_wrapped,
               )
 
               const site: Site = {
                 species: [{ element, occu: occupancy, oxidation_state: 0 }],
-                abc,
+                abc: abc_wrapped,
                 xyz,
                 label,
                 properties: {},

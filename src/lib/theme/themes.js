@@ -27,9 +27,9 @@ const colors = {
 
   // Accents
   acc_light: `#4f46e5`, // Indigo
-  acc_dark: `#60a5fa`, // Light blue
+  acc_dark: `cornflowerblue`, // Light blue
   acc_white: `#2563eb`, // Blue
-  acc_black: `#7dd3fc`, // Cyan
+  acc_black: `cornflowerblue`, // Cyan
 
   // Error colors
   error_text_light: `#dc2626`, // Red
@@ -57,8 +57,8 @@ const colors = {
 const btn_bg = (dark_op, light_op) => ({
   light: `rgba(0, 0, 0, ${light_op})`,
   dark: `rgba(255, 255, 255, ${dark_op})`,
-  white: `rgba(0, 0, 0, ${light_op / 2})`,
-  black: `rgba(255, 255, 255, ${dark_op / 2})`,
+  white: `rgba(0, 0, 0, ${light_op})`,
+  black: `rgba(255, 255, 255, ${dark_op})`,
 })
 
 const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
@@ -124,16 +124,16 @@ const themes = {
 
   // Code/pre backgrounds
   'code-bg': {
-    light: `#e5e7eb`,
-    dark: `#000000`,
-    white: `#fafafa`,
-    black: `#0a0a0a`,
+    light: `rgba(0, 0, 0, 0.05)`,
+    dark: `rgba(255, 255, 255, 0.1)`,
+    white: `rgba(0, 0, 0, 0.02)`,
+    black: `rgba(255, 255, 255, 0.1)`,
   },
   'pre-bg': {
-    light: `#fcfcfc`,
+    light: `rgba(0, 0, 0, 0.02)`,
     dark: `rgba(255, 255, 255, 0.05)`,
-    white: `#fafafa`,
-    black: `rgba(255, 255, 255, 0.02)`,
+    white: `rgba(0, 0, 0, 0.01)`,
+    black: `rgba(255, 255, 255, 0.1)`,
   },
 
   // Semantic colors (same across themes)
@@ -173,9 +173,9 @@ const themes = {
   // Structure-specific
   'struct-bg': {
     light: `rgba(0, 0, 0, 0.02)`,
-    dark: `rgba(255, 255, 255, 0.05)`,
+    dark: `rgba(255, 255, 255, 0.07)`,
     white: `rgba(0, 0, 0, 0.01)`,
-    black: `rgba(255, 255, 255, 0.02)`,
+    black: `rgba(255, 255, 255, 0.1)`,
   },
   'struct-dragover-bg': {
     light: `rgba(0, 0, 0, 0.15)`,
@@ -312,8 +312,8 @@ const themes = {
   },
 
   // Navigation links
-  'nav-link-bg': btn_bg(0.1, 0.08),
-  'nav-link-hover-bg': btn_bg(0.15, 0.15),
+  'nav-link-bg': btn_bg(0.15, 0.05),
+  'nav-link-hover-bg': btn_bg(0.2, 0.1),
   'nav-link-active-color': {
     light: `#dc2626`,
     dark: `mediumseagreen`,
