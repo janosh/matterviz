@@ -24,6 +24,21 @@ interface ParsedFrame {
   metadata?: Record<string, unknown>
 }
 
+// Check if filename indicates a trajectory file
+export function is_trajectory_file(filename: string): boolean {
+  const name = filename.toLowerCase()
+  return (
+    // Standard trajectory file extensions
+    name.match(/\.(traj|xyz|extxyz|h5|hdf5)$/) !== null ||
+    // Files with trajectory-related keywords
+    /(xdatcar|trajectory|traj|md|relax|npt|nvt|nve)/.test(name) ||
+    // Compressed trajectory files
+    /\.(xyz|extxyz|traj)\.gz$/.test(name) ||
+    (name.endsWith(`.gz`) &&
+      /(traj|xdatcar|trajectory|relax|xyz|md|npt|nvt|nve)/.test(name))
+  )
+}
+
 // Type guard to check if an entity is a Dataset
 const is_hdf5_dataset = (entity: Entity | null): entity is Dataset => {
   return entity !== null &&

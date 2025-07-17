@@ -1,9 +1,9 @@
 // Import MatterViz parsing functions and components
 import '$lib/app.css'
-import { is_trajectory_file, parse_structure_file } from '$lib/io/parse'
+import { parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import type { ThemeName } from '$lib/theme/index'
-import { parse_trajectory_data } from '$lib/trajectory/parse'
+import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount } from 'svelte'
 
@@ -292,8 +292,8 @@ const create_display = (
   const message = is_trajectory
     ? `Trajectory rendered: ${filename} (${result.data.frames.length} frames, ${
       result.data.frames[0]?.structure?.sites?.length || 0
-    } atoms)`
-    : `Structure rendered: ${filename} (${result.data.sites.length} atoms)`
+    } sites)`
+    : `Structure rendered: ${filename} (${result.data.sites.length} sites)`
 
   // Get VSCode API if available
   const api = get_vscode_api()

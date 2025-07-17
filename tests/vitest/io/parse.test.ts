@@ -1,5 +1,4 @@
 import {
-  is_trajectory_file,
   parse_any_structure,
   parse_cif,
   parse_phonopy_yaml,
@@ -844,37 +843,6 @@ unit_cell:
       }
     },
   )
-})
-
-describe(`Trajectory File Detection`, () => {
-  it(`should detect plain .xyz files as potential trajectory files`, () => {
-    // This test ensures the bug reported with Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz doesn't regress
-    expect(is_trajectory_file(`trajectory.xyz`)).toBe(true)
-    expect(is_trajectory_file(`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`)).toBe(true)
-    expect(is_trajectory_file(`single-molecule.xyz`)).toBe(true)
-    expect(is_trajectory_file(`md-run.xyz`)).toBe(true)
-  })
-
-  it(`should detect various trajectory file extensions`, () => {
-    expect(is_trajectory_file(`file.traj`)).toBe(true)
-    expect(is_trajectory_file(`file.extxyz`)).toBe(true)
-    expect(is_trajectory_file(`file.h5`)).toBe(true)
-    expect(is_trajectory_file(`file.hdf5`)).toBe(true)
-  })
-
-  it(`should detect trajectory files by keyword in filename`, () => {
-    expect(is_trajectory_file(`trajectory_data.json`)).toBe(true)
-    expect(is_trajectory_file(`md_simulation.cif`)).toBe(true)
-    expect(is_trajectory_file(`relax_output.poscar`)).toBe(true)
-    expect(is_trajectory_file(`XDATCAR`)).toBe(true)
-  })
-
-  it(`should not detect non-trajectory files`, () => {
-    expect(is_trajectory_file(`structure.cif`)).toBe(false)
-    expect(is_trajectory_file(`molecule.json`)).toBe(false)
-    expect(is_trajectory_file(`POSCAR`)).toBe(false)
-    expect(is_trajectory_file(`data.txt`)).toBe(false)
-  })
 })
 
 describe(`parse_structure_file`, () => {

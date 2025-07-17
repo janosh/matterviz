@@ -1,4 +1,4 @@
-import type { CompositionType, ElementSymbol } from '$lib'
+import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition'
 import {
   composition_to_percentages,
@@ -398,78 +398,132 @@ describe(`edge cases and error handling`, () => {
   })
 })
 
-describe(`versatile formula functions`, () => {
-  test(`get_alphabetical_formula handles strings`, () => {
-    expect(get_alphabetical_formula(`Fe2O3`)).toBe(
+describe(`formula formatting functions`, () => {
+  test.each([
+    [
+      `Fe2O3`,
       `Fe<sub>2</sub> O<sub>3</sub>`,
-    )
-    expect(get_alphabetical_formula(`H2O`)).toBe(`H<sub>2</sub> O`)
-    expect(get_alphabetical_formula(`CaCO3`)).toBe(`C Ca O<sub>3</sub>`)
-  })
-
-  test(`get_alphabetical_formula handles composition objects`, () => {
-    expect(get_alphabetical_formula({ Fe: 2, O: 3 })).toBe(
-      `Fe<sub>2</sub> O<sub>3</sub>`,
-    )
-    expect(get_alphabetical_formula({ H: 2, O: 1 })).toBe(`H<sub>2</sub> O`)
-    expect(get_alphabetical_formula({ Ca: 1, C: 1, O: 3 })).toBe(
+      `H2O`,
+      `H<sub>2</sub> O`,
+      `CaCO3`,
       `C Ca O<sub>3</sub>`,
-    )
+    ],
+  ])(
+    `get_alphabetical_formula handles strings`,
+    (fe2o3, fe2o3_expected, h2o, h2o_expected, caco3, caco3_expected) => {
+      expect(get_alphabetical_formula(fe2o3)).toBe(fe2o3_expected)
+      expect(get_alphabetical_formula(h2o)).toBe(h2o_expected)
+      expect(get_alphabetical_formula(caco3)).toBe(caco3_expected)
+    },
+  )
+
+  test.each([
+    [{ Fe: 2, O: 3 }, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [{ H: 2, O: 1 }, `H<sub>2</sub> O`],
+    [{ Ca: 1, C: 1, O: 3 }, `C Ca O<sub>3</sub>`],
+  ])(`get_alphabetical_formula handles composition objects`, (composition, expected) => {
+    expect(get_alphabetical_formula(composition)).toBe(expected)
   })
 
-  test(`get_electro_neg_formula handles strings`, () => {
-    expect(get_electro_neg_formula(`Fe2O3`)).toBe(
-      `Fe<sub>2</sub> O<sub>3</sub>`,
-    )
-    expect(get_electro_neg_formula(`H2O`)).toBe(`H<sub>2</sub> O`)
-    expect(get_electro_neg_formula(`NaCl`)).toBe(`Na Cl`)
+  test.each([
+    [`Fe2O3`, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [`H2O`, `H<sub>2</sub> O`],
+    [`NaCl`, `Na Cl`],
+  ])(`get_electro_neg_formula handles strings`, (formula, expected) => {
+    expect(get_electro_neg_formula(formula)).toBe(expected)
   })
 
-  test(`get_electro_neg_formula handles composition objects`, () => {
-    expect(get_electro_neg_formula({ Fe: 2, O: 3 })).toBe(
-      `Fe<sub>2</sub> O<sub>3</sub>`,
-    )
-    expect(get_electro_neg_formula({ H: 2, O: 1 })).toBe(`H<sub>2</sub> O`)
-    expect(get_electro_neg_formula({ Na: 1, Cl: 1 })).toBe(`Na Cl`)
+  test.each([
+    [{ Fe: 2, O: 3 }, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [{ H: 2, O: 1 }, `H<sub>2</sub> O`],
+    [{ Na: 1, Cl: 1 }, `Na Cl`],
+  ])(`get_electro_neg_formula handles composition objects`, (composition, expected) => {
+    expect(get_electro_neg_formula(composition)).toBe(expected)
   })
 
-  test(`get_alphabetical_formula handles invalid strings gracefully`, () => {
-    expect(get_alphabetical_formula(`invalid`)).toBe(``)
-    expect(get_alphabetical_formula(`123`)).toBe(``)
+  test.each([
+    [`invalid`, ``],
+    [`123`, ``],
+  ])(`formula functions handle invalid strings gracefully`, (invalid_input) => {
+    expect(get_alphabetical_formula(invalid_input)).toBe(``)
+    expect(get_electro_neg_formula(invalid_input)).toBe(``)
   })
 
-  test(`get_electro_neg_formula handles invalid strings gracefully`, () => {
-    expect(get_electro_neg_formula(`invalid`)).toBe(``)
-    expect(get_electro_neg_formula(`123`)).toBe(``)
-  })
-
-  test(`get_alphabetical_formula handles structure objects`, () => {
+  test(`formula functions handle structure objects`, () => {
     const structure = {
       sites: [
-        { species: [{ element: `Fe`, occu: 1 }] },
-        { species: [{ element: `Fe`, occu: 1 }] },
-        { species: [{ element: `O`, occu: 1 }] },
-        { species: [{ element: `O`, occu: 1 }] },
-        { species: [{ element: `O`, occu: 1 }] },
+        {
+          species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `Fe1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          abc: [0.5, 0.5, 0.5],
+          xyz: [0.5, 0.5, 0.5],
+          label: `Fe2`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          abc: [0.25, 0.25, 0.25],
+          xyz: [0.25, 0.25, 0.25],
+          label: `O1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          abc: [0.75, 0.75, 0.75],
+          xyz: [0.75, 0.75, 0.75],
+          label: `O2`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          abc: [0.5, 0, 0],
+          xyz: [0.5, 0, 0],
+          label: `O3`,
+          properties: {},
+        },
       ],
-    }
-    expect(get_alphabetical_formula(structure)).toBe(
-      `Fe<sub>2</sub> O<sub>3</sub>`,
-    )
+    } as AnyStructure
+    expect(get_alphabetical_formula(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
+    expect(get_electro_neg_formula(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
   })
 
-  test(`get_electro_neg_formula handles structure objects`, () => {
-    const structure = {
-      sites: [
-        { species: [{ element: `Fe`, occu: 1 }] },
-        { species: [{ element: `Fe`, occu: 1 }] },
-        { species: [{ element: `O`, occu: 1 }] },
-        { species: [{ element: `O`, occu: 1 }] },
-        { species: [{ element: `O`, occu: 1 }] },
-      ],
-    }
-    expect(get_electro_neg_formula(structure)).toBe(
-      `Fe<sub>2</sub> O<sub>3</sub>`,
-    )
-  })
+  test.each([
+    [{ Fe: 2, O: 3 }, false, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, true, `Fe2 O3`],
+    [`Fe2O3`, false, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [`Fe2O3`, true, `Fe2 O3`],
+    [{ H: 1, O: 1 }, false, `H O`],
+    [{ H: 1, O: 1 }, true, `H O`],
+    [`H2O`, false, `H<sub>2</sub> O`],
+    [`H2O`, true, `H2 O`],
+  ])(
+    `get_electro_neg_formula plain_text flag: input %p, plain_text=%p → %p`,
+    (input, plain_text, expected) => {
+      expect(get_electro_neg_formula(input, plain_text)).toBe(expected)
+    },
+  )
+
+  test.each([
+    [{ Fe: 2, O: 3 }, false, ` `, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, false, ``, `Fe<sub>2</sub>O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, false, `-`, `Fe<sub>2</sub>-O<sub>3</sub>`],
+    [{ Fe: 2, O: 3 }, true, ` `, `Fe2 O3`],
+    [{ Fe: 2, O: 3 }, true, ``, `Fe2O3`],
+    [{ Fe: 2, O: 3 }, true, `-`, `Fe2-O3`],
+    [`Fe2O3`, false, ``, `Fe<sub>2</sub>O<sub>3</sub>`],
+    [`Fe2O3`, true, ``, `Fe2O3`],
+    [`H2O`, false, ``, `H<sub>2</sub>O`],
+    [`H2O`, true, ``, `H2O`],
+  ])(
+    `get_electro_neg_formula delim parameter: input %p, plain_text=%p, delim=%p → %p`,
+    (input, plain_text, delim, expected) => {
+      expect(get_electro_neg_formula(input, plain_text, delim)).toBe(expected)
+    },
+  )
 })

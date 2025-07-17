@@ -1,4 +1,4 @@
-import type { CompositionType, ElementSymbol } from '$lib'
+import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
 import { elem_symbols } from '$lib'
 import element_data from '$lib/element/data'
 
@@ -219,10 +219,14 @@ export function parse_composition(
 // Format a composition object into a chemical formula string
 // @param composition - Composition object like {Fe: 2, O: 3}
 // @param sort_fn - Function to sort element symbols
-// @returns Formatted chemical formula with subscripts
+// @param plain_text - If true, output plain text without HTML tags
+// @param delim - Delimiter between elements (default: space)
+// @returns Formatted chemical formula with or without subscripts
 export function format_composition_formula(
   composition: CompositionType,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
+  plain_text = false,
+  delim = ` `,
 ): string {
   const formula = []
   const symbols = Object.keys(composition) as ElementSymbol[]
@@ -231,23 +235,32 @@ export function format_composition_formula(
     const amount = composition[el]
     if (amount && amount > 0) {
       if (amount === 1) formula.push(el)
-      else formula.push(`${el}<sub>${amount}</sub>`)
+      else formula.push(plain_text ? `${el}${amount}` : `${el}<sub>${amount}</sub>`)
     }
   }
-  return formula.join(` `)
+  return formula.join(delim)
 }
 
 // Versatile function to create an alphabetical formula from any input type
 // @param input - String formula, composition object, or structure
+// @param plain_text - If true, output plain text without HTML tags
+// @param delim - Delimiter between elements (default: space)
 // @returns Alphabetically sorted chemical formula
 export function get_alphabetical_formula(
-  input: string | CompositionType | Record<string, unknown>, // structure objects
+  input: string | CompositionType | AnyStructure,
+  plain_text = false,
+  delim = ` `,
 ): string {
   if (typeof input === `string`) {
     // If it's already a string, parse it and reformat alphabetically
     try {
       const composition = parse_composition(input)
-      return format_composition_formula(composition, (symbols) => symbols.sort())
+      return format_composition_formula(
+        composition,
+        (symbols) => symbols.sort(),
+        plain_text,
+        delim,
+      )
     } catch {
       // If parsing fails, return the original string
       return input
@@ -255,8 +268,13 @@ export function get_alphabetical_formula(
   } else if (`sites` in input || `lattice` in input) {
     // It's a structure object - need to extract composition
     try {
-      const composition = extract_composition_from_structure(input)
-      return format_composition_formula(composition, (symbols) => symbols.sort())
+      const composition = structure_to_composition(input)
+      return format_composition_formula(
+        composition,
+        (symbols) => symbols.sort(),
+        plain_text,
+        delim,
+      )
     } catch {
       return `Unknown`
     }
@@ -264,15 +282,21 @@ export function get_alphabetical_formula(
     return format_composition_formula(
       input as CompositionType,
       (symbols) => symbols.sort(),
+      plain_text,
+      delim,
     )
   }
 }
 
 // Versatile function to create an electronegativity-sorted formula from any input type
 // @param input - String formula, composition object, or structure
+// @param plain_text - If true, output plain text without HTML tags
+// @param delim - Delimiter between elements (default: space)
 // @returns Electronegativity-sorted chemical formula
 export function get_electro_neg_formula(
-  input: string | CompositionType | Record<string, unknown>, // structure objects
+  input: string | CompositionType | AnyStructure,
+  plain_text = false,
+  delim = ` `,
 ): string {
   const sort_by_electronegativity = (symbols: ElementSymbol[]) => {
     return symbols.sort((el1, el2) => {
@@ -289,16 +313,24 @@ export function get_electro_neg_formula(
     // If it's already a string, parse it and reformat by electronegativity
     try {
       const composition = parse_composition(input)
-      return format_composition_formula(composition, sort_by_electronegativity)
+      return format_composition_formula(
+        composition,
+        sort_by_electronegativity,
+        plain_text,
+        delim,
+      )
     } catch {
-      // If parsing fails, return the original string
-      return input
+      return input // If parsing fails, return the original string
     }
   } else if (`sites` in input || `lattice` in input) {
-    // It's a structure object - need to extract composition
-    try {
-      const composition = extract_composition_from_structure(input)
-      return format_composition_formula(composition, sort_by_electronegativity)
+    try { // It's a structure object - need to extract composition
+      const composition = structure_to_composition(input)
+      return format_composition_formula(
+        composition,
+        sort_by_electronegativity,
+        plain_text,
+        delim,
+      )
     } catch {
       return `Unknown`
     }
@@ -306,6 +338,8 @@ export function get_electro_neg_formula(
     return format_composition_formula(
       input as CompositionType,
       sort_by_electronegativity,
+      plain_text,
+      delim,
     )
   }
 }
@@ -313,7 +347,7 @@ export function get_electro_neg_formula(
 // Extract composition from a structure object
 // @param structure - Structure object with sites property
 // @returns Composition object
-function extract_composition_from_structure(
+function structure_to_composition(
   structure: Record<string, unknown>,
 ): CompositionType {
   const composition: CompositionType = {}

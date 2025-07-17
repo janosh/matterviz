@@ -131,13 +131,6 @@
       .filter(Boolean)
   }
 
-  // Workaround for Svelte 5 reactivity issue
-  // https://github.com/sveltejs/svelte/issues/12320
-  function trigger_reactivity() {
-    lattice_props = lattice_props
-    scene_props = scene_props
-  }
-
   // Handle clipboard copy with user feedback
   async function handle_copy(format: `json` | `xyz`) {
     if (!structure) {
@@ -147,8 +140,8 @@
 
     try {
       let content: string
-      if (format === `json`) content = exports.generate_json_content(structure)
-      else if (format === `xyz`) content = exports.generate_xyz_content(structure)
+      if (format === `json`) content = exports.structure_to_json_str(structure)
+      else if (format === `xyz`) content = exports.structure_to_xyz_str(structure)
       else throw new Error(`Invalid format: ${format}`)
 
       await exports.copy_to_clipboard(content)
@@ -177,7 +170,6 @@
       <input
         type="checkbox"
         bind:checked={scene_props.show_atoms}
-        onchange={trigger_reactivity}
       />
       atoms
     </label>
@@ -185,7 +177,6 @@
       <input
         type="checkbox"
         bind:checked={scene_props.show_bonds}
-        onchange={trigger_reactivity}
       />
       bonds
     </label>
@@ -202,7 +193,6 @@
         <input
           type="checkbox"
           bind:checked={scene_props.show_force_vectors}
-          onchange={trigger_reactivity}
         />
         force vectors
       </label>
@@ -225,8 +215,6 @@
       max={2}
       step={0.05}
       bind:value={scene_props.atom_radius}
-      onchange={trigger_reactivity}
-      oninput={trigger_reactivity}
     />
     <input
       type="range"
@@ -234,20 +222,17 @@
       max={2}
       step={0.05}
       bind:value={scene_props.atom_radius}
-      onchange={trigger_reactivity}
-      oninput={trigger_reactivity}
     />
   </label>
-  <label>
+  <label
+    title="If true, all atoms have same size. If false, scale according to atomic radii"
+    {@attach tooltip()}
+  >
+    Same size atoms
     <input
       type="checkbox"
       bind:checked={scene_props.same_size_atoms}
-      onchange={trigger_reactivity}
     />
-    <span>
-      Scale according to atomic radii
-      <small> (if false, all atoms same size)</small>
-    </span>
   </label>
   <label style="align-items: flex-start">
     Color scheme
@@ -312,7 +297,6 @@
     <input
       type="checkbox"
       bind:checked={lattice_props.show_vectors}
-      onchange={trigger_reactivity}
     />
     lattice vectors
   </label>
@@ -339,7 +323,6 @@
         <input
           type="color"
           bind:value={lattice_props[color_prop]}
-          onchange={trigger_reactivity}
         />
       </label>
       <label class="slider-control">
@@ -350,8 +333,6 @@
           max={1}
           {step}
           bind:value={lattice_props[opacity_prop]}
-          onchange={trigger_reactivity}
-          oninput={trigger_reactivity}
         />
         <input
           type="range"
@@ -359,8 +340,6 @@
           max={1}
           {step}
           bind:value={lattice_props[opacity_prop]}
-          onchange={trigger_reactivity}
-          oninput={trigger_reactivity}
         />
       </label>
     </div>
@@ -567,7 +546,7 @@
   >
     <button
       type="button"
-      onclick={() => exports.export_json(structure)}
+      onclick={() => exports.export_structure_as_json(structure)}
       title={save_json_btn_text}
     >
       {save_json_btn_text}
@@ -581,7 +560,7 @@
     </button>
     <button
       type="button"
-      onclick={() => exports.export_xyz(structure)}
+      onclick={() => exports.export_structure_as_xyz(structure)}
       title={save_xyz_btn_text}
     >
       {save_xyz_btn_text}
@@ -598,7 +577,7 @@
       onclick={() => {
         const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
         if (canvas) {
-          exports.export_png(canvas, structure, png_dpi, scene, camera)
+          exports.export_canvas_as_png(canvas, structure, png_dpi, scene, camera)
         } else {
           console.warn(`Canvas element not found for PNG export`)
         }

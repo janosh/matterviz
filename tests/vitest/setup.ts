@@ -25,3 +25,9 @@ globalThis.matchMedia = vi.fn().mockImplementation((query) => ({
   removeEventListener: vi.fn(),
   dispatchEvent: vi.fn(),
 }))
+
+// Mock clipboard API for testing
+Object.defineProperty(navigator, `clipboard`, {
+  value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  writable: true,
+})

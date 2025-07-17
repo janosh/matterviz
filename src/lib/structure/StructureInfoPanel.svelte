@@ -59,10 +59,14 @@
     const structure_items: SectionItem[] = [
       {
         label: `Formula`,
-        value: `${electro_neg_formula(structure)} (${structure.sites.length} atoms)`,
+        value: `${electro_neg_formula(structure)} (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
-      { label: `Charge`, value: `${structure.charge || 0}`, key: `structure-charge` },
+      {
+        label: `Charge`,
+        value: `${structure.charge || 0}e`,
+        key: `structure-charge`,
+      },
     ]
 
     if (`properties` in structure && structure.properties) {
@@ -122,7 +126,7 @@
       if (atom_count >= min_threshold) {
         const toggle_label = sites_expanded
           ? `Hide Sites`
-          : `Sites (${atom_count} atoms)`
+          : `Show ${atom_count} sites`
         site_items.push({
           label: toggle_label,
           value: sites_expanded ? `▲` : `▼`,

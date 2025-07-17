@@ -7,6 +7,7 @@ import {
   COLOR_THEMES,
   is_valid_theme_mode,
 } from '../../../src/lib/theme/index'
+import { is_trajectory_file } from '../../../src/lib/trajectory/parse'
 interface FileData {
   filename: string
   content: string
@@ -29,21 +30,6 @@ interface MessageData {
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
-
-// Check if filename indicates a trajectory file
-export function is_trajectory_file(filename: string): boolean {
-  const name = filename.toLowerCase()
-  return (
-    // Standard trajectory file extensions
-    name.match(/\.(traj|xyz|extxyz|h5|hdf5)$/) !== null ||
-    // Files with trajectory-related keywords
-    /(xdatcar|trajectory|traj|md|relax|npt|nvt|nve)/.test(name) ||
-    // Compressed trajectory files
-    /\.(xyz|extxyz|traj)\.gz$/.test(name) ||
-    (name.endsWith(`.gz`) &&
-      /(traj|xdatcar|trajectory|relax|xyz|md|npt|nvt|nve)/.test(name))
-  )
-}
 
 // Read file from filesystem
 export const read_file = (file_path: string): FileData => {
