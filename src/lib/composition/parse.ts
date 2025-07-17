@@ -291,12 +291,10 @@ export function get_electro_neg_formula(
       const composition = parse_composition(input)
       return format_composition_formula(composition, sort_by_electronegativity)
     } catch {
-      // If parsing fails, return the original string
-      return input
+      return input // If parsing fails, return the original string
     }
   } else if (`sites` in input || `lattice` in input) {
-    // It's a structure object - need to extract composition
-    try {
+    try { // It's a structure object - need to extract composition
       const composition = extract_composition_from_structure(input)
       return format_composition_formula(composition, sort_by_electronegativity)
     } catch {
