@@ -412,6 +412,86 @@ describe(`tensor conversion utilities`, () => {
     })
   })
 
+  describe(`matrix_inverse_3x3`, () => {
+    it.each([
+      [`identity matrix`, [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
+      [`diagonal matrix`, [
+        [2, 0, 0],
+        [0, 3, 0],
+        [0, 0, 4],
+      ], [[0.5, 0, 0], [0, 0.333333, 0], [0, 0, 0.25]]],
+      [`simple matrix`, [
+        [1, 2, 3],
+        [0, 1, 4],
+        [5, 6, 0],
+      ], [
+        [-24, 18, 5],
+        [20, -15, -4],
+        [-5, 4, 1],
+      ]],
+      [`symmetric matrix`, [
+        [4, 2, 1],
+        [2, 5, 3],
+        [1, 3, 6],
+      ], [[0.313433, -0.134328, 0.014925], [-0.134328, 0.343284, -0.149254], [
+        0.014925,
+        -0.149254,
+        0.238806,
+      ]]],
+    ])(`inverts %s`, (_, matrix, expected) => {
+      const inverse = math.matrix_inverse_3x3(matrix as math.Matrix3x3)
+
+      // Check each element with appropriate precision
+      for (let idx = 0; idx < 3; idx++) {
+        for (let j = 0; j < 3; j++) {
+          expect(inverse[idx][j]).toBeCloseTo(expected[idx][j], 5)
+        }
+      }
+    })
+
+    it(`verifies inverse property (A * A^-1 = I)`, () => {
+      const matrix: math.Matrix3x3 = [[1, 2, 3], [0, 1, 4], [5, 6, 0]]
+      const inverse = math.matrix_inverse_3x3(matrix)
+      const product = math.mat3x3_vec3_multiply(
+        matrix,
+        math.mat3x3_vec3_multiply(inverse, [1, 0, 0]),
+      )
+
+      // Check that A * A^-1 * [1,0,0] = [1,0,0]
+      expect(product[0]).toBeCloseTo(1, 10)
+      expect(product[1]).toBeCloseTo(0, 10)
+      expect(product[2]).toBeCloseTo(0, 10)
+    })
+
+    it(`throws error for singular matrix`, () => {
+      const singular_matrix: math.Matrix3x3 = [[1, 2, 3], [2, 4, 6], [3, 6, 9]] // determinant = 0
+      expect(() => math.matrix_inverse_3x3(singular_matrix)).toThrow(
+        `Matrix is singular and cannot be inverted`,
+      )
+    })
+
+    it(`handles edge cases`, () => {
+      // Very small determinant
+      const small_det_matrix: math.Matrix3x3 = [[1e-10, 0, 0], [0, 1e-10, 0], [
+        0,
+        0,
+        1e-10,
+      ]]
+      expect(() => math.matrix_inverse_3x3(small_det_matrix)).toThrow(
+        `Matrix is singular and cannot be inverted`,
+      )
+
+      // Large numbers
+      const large_matrix: math.Matrix3x3 = [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e10]]
+      const large_inverse = math.matrix_inverse_3x3(large_matrix)
+      expect(large_inverse[0][0]).toBeCloseTo(1e-10, 10)
+    })
+  })
+
   describe(`Integration & Edge Cases`, () => {
     it(`maintains round-trip consistency`, () => {
       const stress_tensors = [

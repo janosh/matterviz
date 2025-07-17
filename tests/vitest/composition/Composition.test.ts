@@ -1,6 +1,6 @@
 import type { CompositionType } from '$lib'
 import { Composition } from '$lib/composition'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 // Mock colors module
@@ -35,6 +35,13 @@ function doc_query<T extends Element = Element>(selector: string): T {
   return element
 }
 
+function open_context_menu() {
+  const wrapper = doc_query(`.composition`)
+  wrapper.dispatchEvent(
+    new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true }),
+  )
+}
+
 describe(`Composition component`, () => {
   test(`renders with basic props`, () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
@@ -65,7 +72,6 @@ describe(`Composition component`, () => {
       target: document.body,
       props: { composition: `H2O`, on_composition_change },
     })
-
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(on_composition_change).toHaveBeenCalledWith({ H: 2, O: 1 })
   })
@@ -84,7 +90,6 @@ describe(`Composition component`, () => {
         class: `my-custom-class`,
       },
     })
-
     const container = doc_query(`.composition`)
     expect(container.getAttribute(`style`)).toBe(`background-color: red;`)
     expect(container.classList.contains(`my-custom-class`)).toBe(true)
@@ -101,12 +106,68 @@ describe(`Composition component`, () => {
   test(`renders bar mode with custom dimensions`, () => {
     mount(Composition, {
       target: document.body,
-      props: { composition: `H2O`, mode: `bar`, width: 400, height: 80 },
+      props: { composition: `H2O`, mode: `bar`, size: 400 },
     })
+    expect(doc_query(`.bar-chart`).getAttribute(`viewBox`)).toContain(`0 0 400`)
+  })
 
-    const container = doc_query(`.bar-chart`)
-    expect(container.getAttribute(`style`)).toContain(
-      `max-width: 200px; max-height: 200px;`,
-    )
+  test(`opens context menu on right click`, async () => {
+    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+    open_context_menu()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(doc_query(`.context-menu`)).toBeTruthy()
+    expect(doc_query(`.header`).textContent).toBe(`Display Mode`)
+  })
+
+  test(`context menu has all expected options`, async () => {
+    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+    open_context_menu()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const menu_options = document.querySelectorAll(`.context-menu button`)
+    expect(menu_options.length).toBe(13) // 3 display modes + 6 color schemes + 4 export options
+
+    const option_texts = Array.from(menu_options).map((opt) => opt.textContent?.trim())
+    expect(option_texts).toContain(`Pie Chart`)
+    expect(option_texts).toContain(`Bubble Chart`)
+    expect(option_texts).toContain(`Bar Chart`)
+    expect(option_texts).toContain(`Vesta`)
+    expect(option_texts).toContain(`Jmol`)
+    expect(option_texts).toContain(`Alloy`)
+    expect(option_texts).toContain(`Copy Formula`)
+  })
+
+  test(`context menu changes propagate to chart components`, async () => {
+    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+    open_context_menu()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const bubble_option = Array.from(document.querySelectorAll(`.context-menu button`))
+      .find((opt) => opt.textContent?.includes(`Bubble Chart`))
+    expect(bubble_option).toBeTruthy()
+    ;(bubble_option as HTMLElement).click()
+    await tick()
+
+    open_context_menu()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(doc_query(`.bubble-chart`)).toBeTruthy()
+  })
+
+  test(`export options are available in context menu`, async () => {
+    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+    open_context_menu()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const export_options = Array.from(document.querySelectorAll(`.context-menu button`))
+      .filter((opt) =>
+        opt.textContent?.includes(`Export`) || opt.textContent?.includes(`Copy`)
+      )
+    expect(export_options.length).toBe(4)
+
+    const option_texts = export_options.map((opt) => opt.textContent?.trim())
+    expect(option_texts).toContain(`Copy Formula`)
+    expect(option_texts).toContain(`Copy Data`)
+    expect(option_texts).toContain(`Export SVG`)
+    expect(option_texts).toContain(`Export PNG`)
   })
 })

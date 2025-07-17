@@ -36,6 +36,7 @@
       ]
     >
     interactive?: boolean
+    svg_node?: SVGSVGElement | null
     [key: string]: unknown
   }
   let {
@@ -50,6 +51,7 @@
     center_content,
     segment_content,
     interactive = true,
+    svg_node = $bindable(null),
     ...rest
   }: Props = $props()
 
@@ -166,7 +168,12 @@
   let hovered_element: ElementSymbol | null = $state(null)
 </script>
 
-<svg viewBox="0 0 {size} {size}" {...rest} class="pie-chart {rest.class ?? ``}">
+<svg
+  viewBox="0 0 {size} {size}"
+  {...rest}
+  class="pie-chart {rest.class ?? ``}"
+  bind:this={svg_node}
+>
   {#each segments as segment (segment.element)}
     <path
       d={segment.path}

@@ -6,26 +6,31 @@
   import { get_chart_font_scale } from './index'
   import { composition_to_percentages } from './parse'
 
-  const MIN_SEGMENT_SIZE_FOR_LABEL = 15 // pixels
-
-  // Type for bar chart segment data
   type SegmentData = {
     element: ElementSymbol
     amount: number
     percentage: number
     color: string
-    width_percent: number
+    x: number
+    width: number
     font_scale: number
     text_color: string
     can_show_label: boolean
-    is_thin: boolean
     needs_external_label: boolean
     external_label_position: `above` | `below` | null
+    label_x: number
+    label_y: number
   }
 
   interface Props {
     composition: CompositionType
     size?: number
+    bar_height?: number
+    label_height?: number
+    gap?: number
+    min_segment_size_for_label?: number
+    thin_segment_threshold?: number
+    external_label_size_threshold?: number
     outer_corners_only?: boolean
     show_labels?: boolean
     show_percentages?: boolean
@@ -33,11 +38,18 @@
     color_scheme?: ColorSchemeName
     segment_content?: Snippet<[SegmentData]>
     interactive?: boolean
+    svg_node?: SVGSVGElement | null
     [key: string]: unknown
   }
   let {
     composition,
     size = 200,
+    bar_height = 30,
+    label_height = 20,
+    gap = 2,
+    min_segment_size_for_label = 15,
+    thin_segment_threshold = 20,
+    external_label_size_threshold = 5,
     outer_corners_only = true,
     show_labels = true,
     show_percentages = false,
@@ -45,6 +57,7 @@
     color_scheme = `Vesta`,
     segment_content,
     interactive = true,
+    svg_node = $bindable(null),
     ...rest
   }: Props = $props()
 
@@ -53,58 +66,50 @@
   )
   let percentages = $derived(composition_to_percentages(composition))
 
-  // Calculate bar segments for horizontal layout
+  let svg_height = $derived(label_height + gap + bar_height + gap + label_height)
+  let bar_y = $derived(label_height + gap)
+  let above_labels_y = $derived(label_height / 2)
+  let below_labels_y = $derived(
+    label_height + gap + bar_height + gap + label_height / 2,
+  )
+
   let segments = $derived.by(() => {
-    const element_entries = Object.entries(composition).filter(
-      ([_, amount]) => amount && amount > 0,
+    const element_entries = Object.entries(composition).filter(([_, amount]) =>
+      amount && amount > 0
     )
     if (element_entries.length === 0) return []
 
-    const thin_segment_threshold = 20 // Percentage below which segment is considered thin
-    const external_label_size_threshold = 5 // Lower threshold for external labels
-
     let [above_labels, below_labels] = [0, 0]
+    let current_x = 0
 
     return element_entries.map(([element, amount]) => {
       const percentage = percentages[element as ElementSymbol] || 0
       const color = element_colors[element as ElementSymbol] || `#cccccc`
+      const width = (percentage / 100) * size
+      const x = current_x
+      current_x += width
 
-      // Calculate font scale based on segment size and smart text fitting
-      const approx_segment_width = (percentage / 100) * size
-      const segment_size = Math.min(approx_segment_width, size)
-      const [min_font_scale, max_font_scale] = [1, 2] as const
-      const scale_factor = Math.min(
-        1,
-        Math.max(
-          0,
-          (segment_size / 40 - min_font_scale) / (max_font_scale - min_font_scale),
-        ),
-      )
-      const base_scale = min_font_scale +
-        scale_factor * (max_font_scale - min_font_scale)
+      const segment_size = Math.min(width, size)
+      const base_scale = Math.min(2, Math.max(1, segment_size / 40))
       const label_text = element + (show_amounts ? amount!.toString() : ``) +
         (show_percentages ? `${percentage.toFixed(1)}%` : ``)
-      const available_space = segment_size * 0.9 // 90% of segment width for text
       const font_scale = get_chart_font_scale(
         base_scale,
         label_text,
-        available_space,
+        segment_size * 0.9,
         0.6,
         12,
       )
 
-      // Determine label display requirements
-      const can_show_label = segment_size >= MIN_SEGMENT_SIZE_FOR_LABEL
+      // Label positioning
+      const can_show_label = segment_size >= min_segment_size_for_label
       const is_thin = percentage < thin_segment_threshold
       const can_show_external_label = segment_size >= external_label_size_threshold
       const needs_external_label = is_thin && can_show_external_label
 
-      // Balance labels above and below for better visual distribution
       let external_label_position: `above` | `below` | null = null
       if (needs_external_label) {
-        external_label_position = above_labels <= below_labels
-          ? (`above` as const)
-          : (`below` as const)
+        external_label_position = above_labels <= below_labels ? `above` : `below`
         if (external_label_position === `above`) above_labels++
         else below_labels++
       }
@@ -114,13 +119,15 @@
         amount: amount!,
         percentage,
         color,
-        width_percent: percentage,
+        x,
+        width,
         font_scale,
         text_color: pick_color_for_contrast(null, color),
         can_show_label,
-        is_thin,
         needs_external_label,
         external_label_position,
+        label_x: x + width / 2,
+        label_y: bar_y + bar_height / 2,
       }
     })
   })
@@ -129,53 +136,87 @@
 </script>
 
 {#snippet label_content(segment: SegmentData)}
-  <span class="element-symbol" style:font-size="{10 * segment.font_scale}px">{
-    segment.element
-  }</span>{#if show_amounts}<sub
-      class="amount"
-      style:font-size="{8 * segment.font_scale}px"
-    >{segment.amount}</sub>{/if}
+  <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px">
+    {segment.element}
+  </tspan>
+  {#if show_amounts}
+    <tspan class="amount" style:font-size="{8 * segment.font_scale}px" dx="1" dy="5">
+      {segment.amount}
+    </tspan>
+  {/if}
   {#if show_percentages}
-    <sub class="percentage" style:font-size="{8 * segment.font_scale}px">
+    <tspan class="percentage" style:font-size="{8 * segment.font_scale}px" dx="1" dy="5">
       {format_num(segment.percentage, 1)}%
-    </sub>
+    </tspan>
   {/if}
 {/snippet}
 
-<div
-  style:max-width="{size}px"
-  style:max-height="{size}px"
+<svg
+  viewBox="0 0 {size} {svg_height}"
   {...rest}
   class="bar-chart {rest.class ?? ``}"
+  style={`--bar-height: ${bar_height}px; --label-height: ${label_height}px; --gap: ${gap}px; --border-radius: ${
+    outer_corners_only ? 4 : 0
+  }px; ${rest.style ?? ``}`}
+  bind:this={svg_node}
 >
-  <!-- External labels above the bar -->
-  <div class="external-labels-above">
-    {#each segments as segment (segment.element)}
-      {#if show_labels && segment.needs_external_label &&
-        segment.external_label_position === `above`}
-        <div
-          class="external-label"
-          class:hovered={hovered_element === segment.element}
-          style:color={segment.color}
-          style:font-size="{7 * segment.font_scale}px"
-          style:flex={segment.width_percent}
-        >
-          {@render label_content(segment)}
-        </div>
-      {:else}
-        <div style:flex={segment.width_percent}></div>
-      {/if}
-    {/each}
-  </div>
+  <!-- Background and border -->
+  <rect
+    x="0"
+    y={bar_y}
+    width={size}
+    height={bar_height}
+    rx={outer_corners_only ? 4 : 0}
+    ry={outer_corners_only ? 4 : 0}
+    fill="var(--bar-bg, #fff)"
+    stroke="var(--bar-border, #ccc)"
+    stroke-width="1"
+  />
 
-  <div class="bar-segments" class:outer-corners-only={outer_corners_only}>
+  <!-- External labels above -->
+  {#each segments as segment (segment.element)}
+    {#if show_labels && segment.needs_external_label &&
+      segment.external_label_position === `above`}
+      <text
+        x={segment.label_x}
+        y={above_labels_y}
+        text-anchor="middle"
+        class="external-label"
+        class:hovered={hovered_element === segment.element}
+        style:fill={segment.color}
+      >
+        {@render label_content(segment)}
+      </text>
+    {/if}
+  {/each}
+
+  <!-- Bar segments -->
+  <defs>
+    <clipPath id="bar-clip-{size}">
+      <rect
+        x="0"
+        y={bar_y}
+        width={size}
+        height={bar_height}
+        rx={outer_corners_only ? 4 : 0}
+        ry={outer_corners_only ? 4 : 0}
+      />
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#bar-clip-{size})">
     {#each segments as segment (segment.element)}
-      <div
+      <rect
+        x={segment.x}
+        y={bar_y}
+        width={segment.width}
+        height={bar_height}
+        fill={segment.color}
+        stroke="white"
+        stroke-width={hovered_element === segment.element ? 1.5 : 1}
         class="bar-segment"
         class:interactive
         class:hovered={hovered_element === segment.element}
-        style:background-color={segment.color}
-        style:flex={segment.width_percent}
         onmouseenter={() => interactive && (hovered_element = segment.element)}
         onmouseleave={() => interactive && (hovered_element = null)}
         {...interactive && {
@@ -185,138 +226,83 @@
             segment.amount === 1 ? `atom` : `atoms`
           } (${segment.percentage.toFixed(1)}%)`,
         }}
-        title="{segment.element}: {segment.amount} {segment.amount === 1
-          ? `atom`
-          : `atoms`} ({segment.percentage.toFixed(1)}%)"
       >
-        {#if show_labels && segment.can_show_label && !segment.needs_external_label}
-          <div
-            class="bar-label"
-            style:color={segment.text_color}
-            style:font-size="{7 * segment.font_scale}px"
-          >
-            {@render label_content(segment)}
-          </div>
-        {/if}
-
-        {#if segment_content}
-          {@render segment_content(segment)}
-        {/if}
-      </div>
-    {/each}
-  </div>
-
-  <!-- External labels below the bar -->
-  <div class="external-labels-below">
-    {#each segments as segment (segment.element)}
-      {#if show_labels && segment.needs_external_label &&
-        segment.external_label_position === `below`}
-        <div
-          class="external-label"
-          class:hovered={hovered_element === segment.element}
-          style:color={segment.color}
-          style:font-size="{7 * segment.font_scale}px"
-          style:flex={segment.width_percent}
-        >
-          {@render label_content(segment)}
-        </div>
-      {:else}
-        <div style:flex={segment.width_percent}></div>
+        <title>
+          {segment.element}: {segment.amount} {segment.amount === 1 ? `atom` : `atoms`} ({
+            segment.percentage.toFixed(1)
+          }%)
+        </title>
+      </rect>
+      {#if segment_content}
+        {@render segment_content(segment)}
       {/if}
     {/each}
-  </div>
-</div>
+  </g>
+
+  <!-- Internal labels -->
+  {#each segments as segment (segment.element)}
+    {#if show_labels && segment.can_show_label && !segment.needs_external_label}
+      <text
+        x={segment.label_x}
+        y={segment.label_y}
+        text-anchor="middle"
+        dominant-baseline="middle"
+        class="bar-label"
+        style:fill={segment.text_color}
+      >
+        {@render label_content(segment)}
+      </text>
+    {/if}
+  {/each}
+
+  <!-- External labels below -->
+  {#each segments as segment (segment.element)}
+    {#if show_labels && segment.needs_external_label &&
+      segment.external_label_position === `below`}
+      <text
+        x={segment.label_x}
+        y={below_labels_y}
+        text-anchor="middle"
+        class="external-label"
+        class:hovered={hovered_element === segment.element}
+        style:fill={segment.color}
+      >
+        {@render label_content(segment)}
+      </text>
+    {/if}
+  {/each}
+</svg>
 
 <style>
-  :root {
-    --segment-gap: 0px;
-    --border-radius: 8px;
-  }
   .bar-chart {
-    display: inline-flex;
-    flex-direction: column;
+    display: inline-block;
     width: 100%;
-    min-width: var(--bar-min-width, 100px);
-    gap: 2px;
-  }
-  .external-labels-above,
-  .external-labels-below {
-    display: flex;
-    width: 100%;
-    gap: var(--segment-gap);
-    min-height: 20px;
-  }
-  .external-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-weight: 600;
-    white-space: nowrap;
-    pointer-events: none;
-    transition: all 0.2s ease;
-  }
-  .external-label.hovered {
-    font-weight: 700;
-  }
-  .bar-segments {
-    display: flex;
-    width: 100%;
-    height: var(--bar-height, 30px);
-    gap: var(--segment-gap);
-    border-radius: var(--border-radius);
-    overflow: hidden;
-  }
-  .bar-segments:not(.outer-corners-only) .bar-segment {
-    border-radius: var(--border-radius);
-  }
-  .bar-segments.outer-corners-only .bar-segment:first-child {
-    border-top-left-radius: var(--border-radius);
-    border-bottom-left-radius: var(--border-radius);
-  }
-  .bar-segments.outer-corners-only .bar-segment:last-child {
-    border-top-right-radius: var(--border-radius);
-    border-bottom-right-radius: var(--border-radius);
+    max-width: var(--bar-max-width, 100%);
   }
   .bar-segment {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     transition: all 0.2s ease;
-    min-width: 0; /* Allow flex items to shrink */
   }
   .bar-segment.interactive {
     cursor: pointer;
   }
-  .bar-segment.interactive:hover,
-  .bar-segment.hovered {
+  .bar-segment.interactive:hover, .bar-segment.hovered {
     filter: brightness(1.1);
-    transform: scaleY(1.05);
   }
   .bar-segment.interactive:focus {
     outline: 2px solid var(--focus-color, #0066cc);
     outline-offset: 2px;
   }
-  .bar-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-weight: 600;
-    white-space: nowrap;
-    pointer-events: none;
+  .external-label, .bar-label {
     transition: all 0.2s ease;
+    pointer-events: none;
   }
-  .bar-segment.hovered .bar-label {
+  .external-label.hovered, .bar-label.hovered {
     font-weight: 700;
   }
   .element-symbol {
     font-weight: 700;
   }
-  .amount,
-  .percentage {
-    margin-left: 1px;
-    transform: translateY(5px);
+  .amount, .percentage {
+    font-weight: 500;
   }
 </style>

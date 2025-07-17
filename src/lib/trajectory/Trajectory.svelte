@@ -1115,7 +1115,6 @@
     border: 1px solid var(--traj-border-color);
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    z-index: 1000;
     margin-top: 2px;
     min-width: 180px;
   }
