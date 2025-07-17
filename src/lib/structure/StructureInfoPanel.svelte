@@ -62,7 +62,11 @@
         value: `${electro_neg_formula(structure)} (${structure.sites.length} atoms)`,
         key: `structure-formula`,
       },
-      { label: `Charge`, value: `${structure.charge || 0}`, key: `structure-charge` },
+      {
+        label: `Charge`,
+        value: `${structure.charge || 0}e`,
+        key: `structure-charge`,
+      },
     ]
 
     if (`properties` in structure && structure.properties) {
