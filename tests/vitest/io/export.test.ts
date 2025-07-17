@@ -610,11 +610,9 @@ describe(`Export functionality`, () => {
     let mock_canvas: HTMLCanvasElement
     let mock_context: CanvasRenderingContext2D
     let mock_image: HTMLImageElement
-    let mock_url: string
     let mock_xml_serializer: { serializeToString: ReturnType<typeof vi.fn> }
 
     beforeEach(() => {
-      mock_url = `blob:mock-url`
       mock_svg = create_mock_svg()
       mock_cloned_svg = create_mock_svg()
       mock_svg.cloneNode = vi.fn(() => mock_cloned_svg)
@@ -638,8 +636,6 @@ describe(`Export functionality`, () => {
           ? mock_image
           : document.createElement(tag)
       ) as typeof document.createElement
-      globalThis.URL.createObjectURL = vi.fn(() => mock_url)
-      globalThis.URL.revokeObjectURL = vi.fn()
       globalThis.Image = vi.fn(() => mock_image) as unknown as typeof Image
     })
 
@@ -647,16 +643,12 @@ describe(`Export functionality`, () => {
       export_svg_as_png(mock_svg, `f.png`, 150)
       expect(mock_canvas.width).toBe(208)
       expect(mock_canvas.height).toBe(208)
-      expect(mock_image.crossOrigin).toBe(`anonymous`)
-      expect(mock_image.src).toBe(mock_url)
-      if (typeof mock_image.onload === `function`) {
-        mock_image.onload.call(mock_image, new Event(`load`))
-      }
+      expect(mock_image.src).toMatch(/^data:image\/svg\+xml;base64,/)
+      mock_image.onload?.call(mock_image, new Event(`load`))
       expect(mock_context.clearRect).toHaveBeenCalledWith(0, 0, 208, 208)
       expect(mock_context.drawImage).toHaveBeenCalledWith(mock_image, 0, 0, 208, 208)
       expect(mock_canvas.toBlob).toHaveBeenCalled()
       expect(mock_download).toHaveBeenCalledWith(expect.any(Blob), `f.png`, `image/png`)
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mock_url)
       expect(mock_cloned_svg.getAttribute(`font-family`)).toBe(`sans-serif`)
     })
 
@@ -706,7 +698,6 @@ describe(`Export functionality`, () => {
         mock_image.onerror.call(mock_image, new Event(`error`))
       }
       expect(err).toHaveBeenCalledWith(`Failed to load SVG for PNG export`)
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mock_url)
       expect(mock_download).not.toHaveBeenCalled()
       err.mockRestore()
     })
@@ -717,9 +708,7 @@ describe(`Export functionality`, () => {
       ) as unknown as (HTMLCanvasElement & { __customRenderer?: unknown })[`toBlob`]
       const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
       export_svg_as_png(mock_svg, `f.png`)
-      if (typeof mock_image.onload === `function`) {
-        mock_image.onload.call(mock_image, new Event(`load`))
-      }
+      mock_image.onload?.call(mock_image, new Event(`load`))
       expect(warn).toHaveBeenCalledWith(`Failed to generate PNG blob`)
       expect(mock_download).not.toHaveBeenCalled()
       warn.mockRestore()
@@ -732,11 +721,8 @@ describe(`Export functionality`, () => {
       })
       const err = vi.spyOn(console, `error`).mockImplementation(() => {})
       export_svg_as_png(mock_svg, `f.png`)
-      if (typeof mock_image.onload === `function`) {
-        mock_image.onload.call(mock_image, new Event(`load`))
-      }
+      mock_image.onload?.call(mock_image, new Event(`load`))
       expect(err).toHaveBeenCalledWith(`Error during PNG generation:`, error)
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mock_url)
       expect(mock_download).not.toHaveBeenCalled()
       err.mockRestore()
     })

@@ -48,6 +48,16 @@
     }
   }
 
+  // Handle right-click outside to close
+  function handle_right_click_outside(event: MouseEvent) {
+    if (!visible) return
+    const menu = (event.target as Element).closest(`.context-menu`)
+    if (!menu) {
+      event.preventDefault()
+      on_close?.()
+    }
+  }
+
   // Handle keyboard shortcuts
   function handle_keydown(event: KeyboardEvent) {
     if (event.key === `Escape` && visible) on_close?.()
@@ -59,7 +69,11 @@
   }
 </script>
 
-<svelte:document onclick={handle_click_outside} onkeydown={handle_keydown} />
+<svelte:document
+  onclick={handle_click_outside}
+  oncontextmenu={handle_right_click_outside}
+  onkeydown={handle_keydown}
+/>
 
 {#if visible}
   {@const { x, y } = get_smart_position()}

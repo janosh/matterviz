@@ -90,8 +90,7 @@
       current_x += width
 
       const segment_size = Math.min(width, size)
-      const scale_factor = Math.min(1, Math.max(0, (segment_size / 40 - 1) / 1))
-      const base_scale = 1 + scale_factor
+      const base_scale = Math.min(2, Math.max(1, segment_size / 40))
       const label_text = element + (show_amounts ? amount!.toString() : ``) +
         (show_percentages ? `${percentage.toFixed(1)}%` : ``)
       const font_scale = get_chart_font_scale(

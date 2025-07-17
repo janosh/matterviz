@@ -44,13 +44,15 @@
   let context_menu_open = $state(false)
   let context_menu_position = $state({ x: 0, y: 0 })
 
-  function handle_double_click(event: MouseEvent) { // open context menu
+  function handle_right_click(event: MouseEvent) { // open context menu
     event.preventDefault()
+    context_menu_open = false // Close any existing context menu first
     // Convert viewport coords to document coords
     const x = event.clientX + (window.scrollX || document.documentElement.scrollLeft)
     const y = event.clientY + (window.scrollY || document.documentElement.scrollTop)
     context_menu_position = { x, y }
-    context_menu_open = true
+    // Use a small delay to ensure the prev context menu closes happens before opening new one
+    setTimeout(() => context_menu_open = true, 0)
   }
 
   const mode_options = [
@@ -75,21 +77,27 @@
     { value: `export_png`, icon: `Download`, label: `Export PNG` },
   ] as const
 
+  const sec_titles = {
+    display_mode: `Display Mode`,
+    color_scheme: `Color Scheme`,
+    export: `Export`,
+  } as const
+
   const context_menu_sections = [
-    { title: `Display Mode`, options: mode_options },
-    { title: `Color Scheme`, options: color_scheme_options },
-    { title: `Export`, options: export_options },
+    { title: sec_titles.display_mode, options: mode_options },
+    { title: sec_titles.color_scheme, options: color_scheme_options },
+    { title: sec_titles.export, options: export_options },
   ] as const
 
   function handle_context_menu_select(
     section_title: string,
     option: { value: string },
   ) {
-    if (section_title === `Display Mode`) {
+    if (section_title === sec_titles.display_mode) {
       current_mode = option.value as CompositionChartMode
-    } else if (section_title === `Color Scheme`) {
+    } else if (section_title === sec_titles.color_scheme) {
       current_color_scheme = option.value as ColorSchemeName
-    } else if (section_title === `Export`) handle_export(option.value)
+    } else if (section_title === sec_titles.export) handle_export(option.value)
     context_menu_open = false
   }
 
@@ -104,10 +112,12 @@
         navigator.clipboard.writeText(data)
       } else if (export_type === `export_svg`) {
         const filename = `${get_electro_neg_formula(composition, true, ``)}.svg`
-        export_svg_as_svg(svg_node, filename)
+        if (svg_node) export_svg_as_svg(svg_node, filename)
+        else console.warn(`Chart SVG not available for SVG export`)
       } else if (export_type === `export_png`) {
         const filename = `${get_electro_neg_formula(composition, true, ``)}.png`
-        export_svg_as_png(svg_node, filename, 150)
+        if (svg_node) export_svg_as_png(svg_node, filename, 150)
+        else console.warn(`Chart SVG not available for PNG export`)
       } else console.warn(`Invalid export type:`, export_type)
     } catch (error) {
       console.error(`Export failed:`, error)
@@ -119,10 +129,10 @@
   composition={parsed}
   color_scheme={current_color_scheme}
   bind:svg_node
-  ondblclick={handle_double_click}
+  oncontextmenu={handle_right_click}
   role="button"
   tabindex="0"
-  aria-label="Double-click to open context menu"
+  aria-label="Right-click to open context menu"
   {...rest}
   class="composition {rest.class ?? ``}"
 />
@@ -131,8 +141,8 @@
   <ContextMenu
     sections={context_menu_sections}
     selected_values={{
-      'Display Mode': current_mode,
-      'Color Scheme': current_color_scheme,
+      [sec_titles.display_mode]: current_mode,
+      [sec_titles.color_scheme]: current_color_scheme,
     }}
     on_select={handle_context_menu_select}
     position={context_menu_position}

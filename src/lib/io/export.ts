@@ -346,35 +346,35 @@ export function export_svg_as_png(
     // Clone and patch SVG for font-family
     const cloned_svg = svg_element.cloneNode(true) as SVGElement
     set_svg_font_family(cloned_svg)
+
+    // Convert SVG to data URL to avoid tainted canvas issues
     const svg_string = new XMLSerializer().serializeToString(cloned_svg)
-    const svg_blob = new Blob([svg_string], { type: `image/svg+xml` })
-    const svg_url = URL.createObjectURL(svg_blob)
+    const svg_data_url = `data:image/svg+xml;base64,${
+      btoa(unescape(encodeURIComponent(svg_string)))
+    }`
 
     // Create an image element to load the SVG
     const img = new Image()
-    img.crossOrigin = `anonymous`
     img.onload = () => {
       try {
         ctx.clearRect(0, 0, pixel_width, pixel_height)
         ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
-        canvas.toBlob((blob) => {
-          if (blob) {
-            download(blob, filename, `image/png`)
-          } else {
-            console.warn(`Failed to generate PNG blob`)
-          }
-        }, `image/png`)
-        URL.revokeObjectURL(svg_url)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) download(blob, filename, `image/png`)
+            else console.warn(`Failed to generate PNG blob`)
+          },
+          `image/png`,
+          1, // set max PNG quality
+        )
       } catch (error) {
         console.error(`Error during PNG generation:`, error)
-        URL.revokeObjectURL(svg_url)
       }
     }
     img.onerror = () => {
       console.error(`Failed to load SVG for PNG export`)
-      URL.revokeObjectURL(svg_url)
     }
-    img.src = svg_url
+    img.src = svg_data_url
   } catch (error) {
     console.error(`Error exporting PNG:`, error)
   }

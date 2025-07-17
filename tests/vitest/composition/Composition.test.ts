@@ -37,7 +37,9 @@ function doc_query<T extends Element = Element>(selector: string): T {
 
 function open_context_menu() {
   const wrapper = doc_query(`.composition`)
-  wrapper.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true, cancelable: true }))
+  wrapper.dispatchEvent(
+    new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true }),
+  )
 }
 
 describe(`Composition component`, () => {
@@ -109,10 +111,10 @@ describe(`Composition component`, () => {
     expect(doc_query(`.bar-chart`).getAttribute(`viewBox`)).toContain(`0 0 400`)
   })
 
-  test(`opens context menu on double click`, async () => {
+  test(`opens context menu on right click`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await tick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(doc_query(`.context-menu`)).toBeTruthy()
     expect(doc_query(`.header`).textContent).toBe(`Display Mode`)
   })
@@ -120,7 +122,7 @@ describe(`Composition component`, () => {
   test(`context menu has all expected options`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await tick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     const menu_options = document.querySelectorAll(`.context-menu button`)
     expect(menu_options.length).toBe(13) // 3 display modes + 6 color schemes + 4 export options
@@ -138,7 +140,7 @@ describe(`Composition component`, () => {
   test(`context menu changes propagate to chart components`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await tick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     const bubble_option = Array.from(document.querySelectorAll(`.context-menu button`))
       .find((opt) => opt.textContent?.includes(`Bubble Chart`))
@@ -147,13 +149,14 @@ describe(`Composition component`, () => {
     await tick()
 
     open_context_menu()
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(doc_query(`.bubble-chart`)).toBeTruthy()
   })
 
   test(`export options are available in context menu`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await tick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     const export_options = Array.from(document.querySelectorAll(`.context-menu button`))
       .filter((opt) =>
