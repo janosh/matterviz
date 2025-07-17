@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Webview } from 'vscode'
 
 import type { ThemeName } from '$lib/theme/index'
+import { is_trajectory_file } from '$lib/trajectory/parse'
 import {
   activate,
   create_html,
   get_file,
   get_theme,
   handle_msg,
-  is_trajectory_file,
   read_file,
   render,
 } from '../src/extension'
@@ -113,52 +113,6 @@ describe(`MatterViz Extension`, () => {
     html: ``,
   }
   const mock_context = { extensionUri: { fsPath: `/test` }, subscriptions: [] }
-
-  // only checking filename recognition, files don't need to exist
-  test.each([
-    // Basic trajectory files
-    [`test.traj`, true],
-    [`test.xyz`, true],
-    [`test.extxyz`, true],
-    [`test.h5`, true],
-    [`data.hdf5`, true],
-    // VASP and special files
-    [`XDATCAR`, true],
-    [`trajectory.dat`, true],
-    [`md.xyz.gz`, true],
-    [`relax.extxyz`, true],
-    // ASE ULM binary trajectory files (specific to this fix)
-    [`md_npt_300K.traj`, true],
-    [`ase-LiMnO2-chgnet-relax.traj`, true],
-    [`simulation_nvt_250K.traj`, true],
-    [`molecular_dynamics_nve.traj`, true],
-    [`water_cluster_md.traj`, true],
-    [`optimization_relax.traj`, true],
-    // Case insensitive
-    [`FILE.TRAJ`, true],
-    [`TrAjEcToRy.XyZ`, true],
-    [`trajectory`, true],
-    [`.hidden.xyz`, true],
-    // Unicode filenames
-    [`مەركەزیtrajectory.traj`, true],
-    [`日本語.xyz`, true],
-    [`file🔥emoji.h5`, true],
-    [`Мой_файл.extxyz`, true],
-    // Non-trajectory files
-    [`test.cif`, false],
-    [`test.json`, false],
-    [`random.txt`, false],
-    [`test.xyz.backup`, false],
-    // Edge cases
-    [``, false],
-    [`no.extension`, false],
-    [`.`, false],
-    [`file.xyz.`, false],
-    // Very long filename
-    [`${`a`.repeat(1000)}.xyz`, true],
-  ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
-    expect(is_trajectory_file(filename)).toBe(expected)
-  })
 
   test.each([
     [`test.gz`, true],

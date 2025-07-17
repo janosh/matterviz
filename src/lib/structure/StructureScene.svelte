@@ -344,10 +344,10 @@
 }
   {#if site}
     {@const { xyz, species } = site}
-    {@const highlight_radius = same_size_atoms ? atom_radius : species.reduce(
-    (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
-    0,
-  ) * atom_radius}
+    {@const highlight_radius = atom_radius * (same_size_atoms
+    ? 1
+    : species.reduce((sum, spec) =>
+      sum + spec.occu * (atomic_radii[spec.element] ?? 1), 0))}
     <T.Mesh position={xyz} scale={1.02 * highlight_radius}>
       <T.SphereGeometry args={[0.5, 20, 20]} />
       <T.MeshStandardMaterial color="white" transparent {opacity} />

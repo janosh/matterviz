@@ -4,17 +4,6 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { load as yaml_load } from 'js-yaml'
 
-// Check if filename indicates a trajectory file
-export function is_trajectory_file(filename: string): boolean {
-  const name = filename.toLowerCase()
-  return (
-    name.match(/\.(traj|xyz|extxyz|h5|hdf5)$/) !== null ||
-    /(xdatcar|trajectory|traj|md|relax)/.test(name) ||
-    /\.(xyz|extxyz|traj)\.gz$/.test(name) ||
-    (name.endsWith(`.gz`) && /(traj|xdatcar|trajectory|relax|xyz)/.test(name))
-  )
-}
-
 export interface ParsedStructure {
   sites: Site[]
   lattice?: {

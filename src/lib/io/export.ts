@@ -9,7 +9,7 @@ export interface CanvasWithRenderer extends HTMLCanvasElement {
 }
 
 // Generate a filename for structure exports based on structure metadata
-export function generate_structure_filename(
+export function create_structure_filename(
   structure: AnyStructure | undefined,
   extension: string,
 ): string {
@@ -50,7 +50,7 @@ export function generate_structure_filename(
 }
 
 // Generate XYZ content string without saving
-export function generate_xyz_content(structure?: AnyStructure): string {
+export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
 
   const lines: string[] = []
@@ -132,7 +132,7 @@ export function generate_xyz_content(structure?: AnyStructure): string {
 }
 
 // Generate JSON content string without saving
-export function generate_json_content(structure?: AnyStructure): string {
+export function structure_to_json_str(structure?: AnyStructure): string {
   if (!structure) throw new Error(`No structure to export`)
   return JSON.stringify(structure, null, 2)
 }
@@ -147,10 +147,10 @@ export async function copy_to_clipboard(text: string): Promise<void> {
 // - Line 1: Number of atoms
 // - Line 2: Comment line (structure ID, formula, etc.)
 // - Remaining lines: Element symbol followed by x, y, z coordinates (in Angstroms)
-export function export_xyz(structure?: AnyStructure): void {
+export function export_structure_as_xyz(structure?: AnyStructure): void {
   try {
-    const xyz_content = generate_xyz_content(structure)
-    const filename = generate_structure_filename(structure, `xyz`)
+    const xyz_content = structure_to_xyz_str(structure)
+    const filename = create_structure_filename(structure, `xyz`)
     download(xyz_content, filename, `text/plain`)
   } catch (error) {
     console.error(`Error exporting XYZ:`, error)
@@ -158,10 +158,10 @@ export function export_xyz(structure?: AnyStructure): void {
 }
 
 // Export structure in pymatgen JSON format
-export function export_json(structure?: AnyStructure): void {
+export function export_structure_as_json(structure?: AnyStructure): void {
   try {
-    const data = generate_json_content(structure)
-    const filename = generate_structure_filename(structure, `json`)
+    const data = structure_to_json_str(structure)
+    const filename = create_structure_filename(structure, `json`)
     download(data, filename, `application/json`)
   } catch (error) {
     console.error(`Error exporting JSON:`, error)
@@ -169,7 +169,7 @@ export function export_json(structure?: AnyStructure): void {
 }
 
 // Export structure as PNG image from canvas
-export function export_png(
+export function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
   structure: AnyStructure | undefined,
   png_dpi = 150,
@@ -193,7 +193,7 @@ export function export_png(
       try {
         canvas.toBlob((blob) => {
           if (blob) {
-            const filename = generate_structure_filename(structure, `png`)
+            const filename = create_structure_filename(structure, `png`)
             download(blob, filename, `image/png`)
           } else {
             if (typeof window !== `undefined`) {
@@ -229,7 +229,7 @@ export function export_png(
         renderer.setSize(original_size.width, original_size.height, false)
 
         if (blob) {
-          const filename = generate_structure_filename(structure, `png`)
+          const filename = create_structure_filename(structure, `png`)
           download(blob, filename, `image/png`)
         } else {
           if (typeof window !== `undefined`) {
@@ -250,6 +250,131 @@ export function export_png(
         )
       }
     }
+  } catch (error) {
+    console.error(`Error exporting PNG:`, error)
+  }
+}
+
+// Helper to ensure font-family is set on SVG root
+function set_svg_font_family(svg: SVGElement) {
+  const style = svg.getAttribute(`style`) || ``
+  if (!/font-family/.test(style)) {
+    svg.setAttribute(`style`, `${style};font-family:sans-serif;`)
+  }
+  // Also set as attribute for extra robustness
+  svg.setAttribute(`font-family`, `sans-serif`)
+}
+
+// Export SVG element as SVG file
+export function export_svg_as_svg(
+  svg_element: SVGElement | null,
+  filename: string,
+): void {
+  try {
+    if (!svg_element) {
+      console.warn(`SVG element not found for export`)
+      return
+    }
+
+    // Clone the SVG to avoid modifying the original
+    const cloned_svg = svg_element.cloneNode(true) as SVGElement
+
+    // Ensure the SVG has proper dimensions and viewBox
+    const viewBox = svg_element.getAttribute(`viewBox`)
+    if (viewBox) {
+      cloned_svg.setAttribute(`viewBox`, viewBox)
+    }
+
+    // Ensure font-family is set
+    set_svg_font_family(cloned_svg)
+
+    // Convert SVG to string
+    const svg_string = new XMLSerializer().serializeToString(cloned_svg)
+
+    // Add XML declaration and DOCTYPE for proper SVG format
+    const svg_content =
+      `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
+
+    download(svg_content, filename, `image/svg+xml`)
+  } catch (error) {
+    console.error(`Error exporting SVG:`, error)
+  }
+}
+
+// Export SVG element as PNG by converting to canvas
+export function export_svg_as_png(
+  svg_element: SVGElement | null,
+  filename: string,
+  png_dpi = 150,
+): void {
+  try {
+    if (!svg_element) {
+      console.warn(`SVG element not found for PNG export`)
+      return
+    }
+
+    // Get SVG dimensions
+    const viewBox = svg_element.getAttribute(`viewBox`)
+    if (!viewBox) {
+      console.warn(`SVG viewBox not found for PNG export`)
+      return
+    }
+
+    const [, , width, height] = viewBox.split(` `).map(Number)
+    if (!width || !height) {
+      console.warn(`Invalid SVG dimensions for PNG export`)
+      return
+    }
+
+    // Convert DPI to pixel dimensions
+    const resolution_multiplier = png_dpi / 72
+    const pixel_width = Math.round(width * resolution_multiplier)
+    const pixel_height = Math.round(height * resolution_multiplier)
+
+    // Create a canvas for rendering
+    const canvas = document.createElement(`canvas`)
+    const ctx = canvas.getContext(`2d`)
+    if (!ctx) {
+      console.warn(`Canvas 2D context not available for PNG export`)
+      return
+    }
+
+    // Set canvas dimensions
+    canvas.width = pixel_width
+    canvas.height = pixel_height
+
+    // Clone and patch SVG for font-family
+    const cloned_svg = svg_element.cloneNode(true) as SVGElement
+    set_svg_font_family(cloned_svg)
+
+    // Convert SVG to data URL to avoid tainted canvas issues
+    const svg_string = new XMLSerializer().serializeToString(cloned_svg)
+    const svg_data_url = `data:image/svg+xml;base64,${
+      btoa(unescape(encodeURIComponent(svg_string)))
+    }`
+
+    // Create an image element to load the SVG
+    const img = new Image()
+    img.onload = () => {
+      try {
+        ctx.clearRect(0, 0, pixel_width, pixel_height)
+        ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) download(blob, filename, `image/png`)
+            else console.warn(`Failed to generate PNG blob`)
+          },
+          `image/png`,
+          1, // set max PNG quality
+        )
+      } catch (error) {
+        console.error(`Error during PNG generation:`, error)
+      }
+    }
+    img.onerror = () => {
+      console.error(`Failed to load SVG for PNG export`)
+    }
+    img.src = svg_data_url
   } catch (error) {
     console.error(`Error exporting PNG:`, error)
   }

@@ -48,7 +48,7 @@ test.each([
 
     // Check formula shows correct atom count
     const formula_text = document.body.textContent || ``
-    expect(formula_text).toContain(`(${atom_count} atoms)`)
+    expect(formula_text).toContain(`(${atom_count} sites)`)
 
     if (atom_count <= atom_count_thresholds[1]) {
       // Sites section should exist
@@ -57,9 +57,7 @@ test.each([
 
       if (atom_count >= atom_count_thresholds[0]) {
         // Should have toggle button for medium-sized structures (50-500 atoms)
-        const toggle_text = should_show_sites
-          ? `Hide Sites`
-          : `Sites (${atom_count} atoms)`
+        const toggle_text = should_show_sites ? `Hide Sites` : `Show ${atom_count} sites`
         expect(formula_text).toContain(toggle_text)
       }
 
