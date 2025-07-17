@@ -1,11 +1,9 @@
 <script lang="ts">
   import type { CompositionType } from '$lib'
   import {
-    BubbleChart,
     Composition,
     get_electro_neg_formula,
     parse_composition,
-    PieChart,
   } from '$lib/composition'
 
   let formula = $state(`LiFePO4`)
@@ -69,17 +67,17 @@
 </label>
 <div class="composition-grid">
   {#each [
-      [`Pie Chart`, PieChart, `Vesta`],
-      [`Bubble Chart`, BubbleChart, `Jmol`],
-      [`Donut Chart`, PieChart, `Pastel`],
-      [`Percentages`, PieChart, `Muted`],
+      [`Pie Chart`, `pie`, `Vesta`],
+      [`Bubble Chart`, `bubble`, `Jmol`],
+      [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }],
+      [`Percentages`, `pie`, `Muted`],
     ] as const as
-    [name, Chart, color_scheme]
+    [name, mode, color_scheme, props = {}]
     (name)
   }
     <div class="composition-card">
       <h4>{name}</h4>
-      <Chart composition={parsed_composition} {color_scheme} />
+      <Composition composition={parsed_composition} {mode} {color_scheme} {...props} />
     </div>
   {/each}
 </div>

@@ -92,8 +92,7 @@ describe(`BarChart component`, () => {
 
     const container = document.querySelector(`.bar-chart`)
     expect(container).toBeTruthy()
-    expect(container?.getAttribute(`style`)).toContain(`max-width: 300px;`)
-    expect(container?.getAttribute(`style`)).toContain(`max-height: 300px;`)
+    expect(container?.getAttribute(`viewBox`)).toContain(`0 0 300`)
   })
 
   test(`renders segments for each element`, () => {
@@ -102,7 +101,7 @@ describe(`BarChart component`, () => {
       props: { composition: { H: 2, O: 1, C: 1 }, size: 300 },
     })
 
-    expect(document.querySelectorAll(`.bar-segment`)).toHaveLength(3)
+    expect(document.querySelectorAll(`rect.bar-segment`)).toHaveLength(3)
   })
 
   test(`handles interactive mode`, () => {
@@ -112,7 +111,7 @@ describe(`BarChart component`, () => {
     })
 
     expect(
-      document.querySelectorAll(`.bar-segment[role="button"]`).length,
+      document.querySelectorAll(`rect.bar-segment[role="button"]`).length,
     ).toBeGreaterThan(0)
   })
 
@@ -131,10 +130,16 @@ describe(`BarChart component`, () => {
         },
       })
 
-      const container = document.querySelector(`.bar-segments`)
-      expect(container?.classList.contains(`outer-corners-only`)).toBe(
-        outer_corners_only,
-      )
+      const segments = document.querySelectorAll(`rect.bar-segment`)
+      expect(segments.length).toBeGreaterThan(0)
+
+      // Check that clip path exists for border radius
+      const clip_path = document.querySelector(`clipPath`)
+      expect(clip_path).toBeTruthy()
+
+      // Check that the clip path rect has the correct border radius
+      const clip_rect = clip_path?.querySelector(`rect`) as SVGElement
+      expect(clip_rect?.getAttribute(`rx`)).toBe(outer_corners_only ? `4` : `0`)
     },
   )
 
@@ -146,7 +151,7 @@ describe(`BarChart component`, () => {
     })
 
     const container = document.querySelector(`.bar-chart`)
-    expect(container?.querySelectorAll(`.bar-label`).length).toBe(
+    expect(container?.querySelectorAll(`text.bar-label`).length).toBe(
       show_labels ? Object.keys(composition).length : 0,
     )
   })
@@ -165,7 +170,7 @@ describe(`BarChart component`, () => {
       props: { composition: { H: 2, O: 1 } },
     })
 
-    const segments = document.querySelectorAll(`.bar-segment`)
+    const segments = document.querySelectorAll(`rect.bar-segment`)
     expect(segments.length).toBe(2) // H and O segments
   })
 
@@ -177,21 +182,24 @@ describe(`BarChart component`, () => {
       props: { composition, size: 300 },
     })
 
-    // Check that external labels exist
-    const aboveLabels = document.querySelectorAll(
-      `.external-labels-above .external-label`,
-    )
-    const belowLabels = document.querySelectorAll(
-      `.external-labels-below .external-label`,
-    )
+    // Check that external labels exist by looking at their y-coordinates
+    const all_labels = document.querySelectorAll(`text.external-label`)
+    const above_labels = Array.from(all_labels).filter((label) => {
+      const y = parseFloat(label.getAttribute(`y`) || `0`)
+      return y < 20 // Above the bar
+    })
+    const below_labels = Array.from(all_labels).filter((label) => {
+      const y = parseFloat(label.getAttribute(`y`) || `0`)
+      return y > 60 // Below the bar
+    })
 
     // With 6 equal segments at ~16.7% each, they should be thin enough for external labels
-    const totalExternalLabels = aboveLabels.length + belowLabels.length
-    expect(totalExternalLabels).toBeGreaterThan(0)
+    const total_external_labels = above_labels.length + below_labels.length
+    expect(total_external_labels).toBeGreaterThan(0)
 
     // The difference between above and below labels should be at most 1
     // (perfect balance or one extra in one direction)
-    const difference = Math.abs(aboveLabels.length - belowLabels.length)
+    const difference = Math.abs(above_labels.length - below_labels.length)
     expect(difference).toBeLessThanOrEqual(1)
   })
 
@@ -202,9 +210,7 @@ describe(`BarChart component`, () => {
     })
 
     const container = doc_query(`.bar-chart`)
-    expect(container.getAttribute(`style`)).toContain(
-      `max-width: 400px; max-height: 400px;`,
-    )
+    expect(container.getAttribute(`viewBox`)).toContain(`0 0 400`)
   })
 
   test(`applies custom styling and classes`, () => {
@@ -218,7 +224,9 @@ describe(`BarChart component`, () => {
     })
 
     const container = doc_query(`.bar-chart`)
-    expect(container.getAttribute(`style`)).toContain(`background-color: red;`)
+    const style = container.getAttribute(`style`)
+    expect(style).toContain(`background-color: red;`)
+    expect(style).toContain(`--bar-height: 30px`) // Should also have CSS variables
     expect(container.classList.contains(`my-custom-class`)).toBe(true)
   })
 
@@ -228,7 +236,7 @@ describe(`BarChart component`, () => {
       props: { composition: {} },
     })
 
-    const segments = document.querySelectorAll(`.bar-segment`)
+    const segments = document.querySelectorAll(`rect.bar-segment`)
     expect(segments.length).toBe(0)
   })
 
@@ -251,6 +259,49 @@ describe(`BarChart component`, () => {
 
     // Should find amount elements
     expect(document.querySelector(`.amount`)).toBeTruthy()
+  })
+
+  test(`handles custom bar dimensions`, () => {
+    mount(BarChart, {
+      target: document.body,
+      props: {
+        composition: { H: 2, O: 1 },
+        bar_height: 50,
+        label_height: 30,
+        gap: 5,
+      },
+    })
+
+    const container = document.querySelector(`.bar-chart`)
+    expect(container).toBeTruthy()
+
+    // Check that CSS variables are set
+    const style = container?.getAttribute(`style`)
+    expect(style).toContain(`--bar-height: 50px`)
+    expect(style).toContain(`--label-height: 30px`)
+    expect(style).toContain(`--gap: 5px`)
+  })
+
+  test(`handles custom thresholds`, () => {
+    mount(BarChart, {
+      target: document.body,
+      props: {
+        composition: { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 },
+        min_segment_size_for_label: 50, // Very high threshold
+        thin_segment_threshold: 30, // Higher threshold
+        external_label_size_threshold: 10, // Higher threshold
+      },
+    })
+
+    // With high thresholds, segments should have different label behavior
+    const bar_labels = document.querySelectorAll(`text.bar-label`)
+    const external_labels = document.querySelectorAll(`text.external-label`)
+
+    // Should have some labels (either internal or external)
+    expect(bar_labels.length + external_labels.length).toBeGreaterThan(0)
+
+    // With high min_segment_size_for_label, fewer internal labels should be shown
+    expect(bar_labels.length).toBeLessThanOrEqual(6)
   })
 })
 

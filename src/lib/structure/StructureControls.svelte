@@ -140,8 +140,8 @@
 
     try {
       let content: string
-      if (format === `json`) content = exports.generate_json_content(structure)
-      else if (format === `xyz`) content = exports.generate_xyz_content(structure)
+      if (format === `json`) content = exports.structure_to_json_str(structure)
+      else if (format === `xyz`) content = exports.structure_to_xyz_str(structure)
       else throw new Error(`Invalid format: ${format}`)
 
       await exports.copy_to_clipboard(content)
@@ -546,7 +546,7 @@
   >
     <button
       type="button"
-      onclick={() => exports.export_json(structure)}
+      onclick={() => exports.export_structure_as_json(structure)}
       title={save_json_btn_text}
     >
       {save_json_btn_text}
@@ -560,7 +560,7 @@
     </button>
     <button
       type="button"
-      onclick={() => exports.export_xyz(structure)}
+      onclick={() => exports.export_structure_as_xyz(structure)}
       title={save_xyz_btn_text}
     >
       {save_xyz_btn_text}
@@ -577,7 +577,7 @@
       onclick={() => {
         const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
         if (canvas) {
-          exports.export_png(canvas, structure, png_dpi, scene, camera)
+          exports.export_canvas_as_png(canvas, structure, png_dpi, scene, camera)
         } else {
           console.warn(`Canvas element not found for PNG export`)
         }

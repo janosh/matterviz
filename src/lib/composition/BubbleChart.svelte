@@ -27,6 +27,7 @@
     color_scheme?: ColorSchemeName
     bubble_content?: Snippet<[BubbleDataLeaf]>
     interactive?: boolean
+    svg_node?: SVGSVGElement | null
     [key: string]: unknown
   }
   let {
@@ -38,6 +39,7 @@
     color_scheme = `Vesta`,
     bubble_content,
     interactive = true,
+    svg_node = $bindable(null),
     ...rest
   }: Props = $props()
 
@@ -84,11 +86,7 @@
         scale_factor * (max_font_scale - min_font_scale)
       const label_text = data.element + (show_amounts ? data.amount.toString() : ``)
       const available_space = radius * 2 * 0.8 // 80% of bubble diameter for text
-      const font_scale = get_chart_font_scale(
-        base_scale,
-        label_text,
-        available_space,
-      )
+      const font_scale = get_chart_font_scale(base_scale, label_text, available_space)
 
       return {
         element: data.element,
@@ -106,7 +104,12 @@
   let hovered_element: ElementSymbol | null = $state(null)
 </script>
 
-<svg viewBox="0 0 {size} {size}" {...rest} class="bubble-chart {rest.class ?? ``}">
+<svg
+  viewBox="0 0 {size} {size}"
+  {...rest}
+  class="bubble-chart {rest.class ?? ``}"
+  bind:this={svg_node}
+>
   {#each bubbles as bubble (bubble.element)}
     <circle
       cx={bubble.x}
