@@ -1,6 +1,8 @@
-// Theme System - Single Source of Truth
-// Base colors used across themes
-const colors = {
+// MatterViz color themes.
+// Note: This file needs to be symlinked into static/ to be importable by app.html before initial page render to prevent flashing colors before client-side JS kicks in. It also needs to be in src/lib so it gets packaged and shipped to NPM for use by the anywidgets in pymatviz.
+// Can't use exports in this file as would then require type="module" in app.html to import which would defer until after HTML is ready (module files are always deferred).
+
+const colors = { // Base colors used across themes
   // Text colors
   txt_light: `#374151`, // Dark gray
   txt_dark: `#eee`, // Light gray
@@ -12,12 +14,6 @@ const colors = {
   bg_dark: `#090019`, // Very dark blue
   bg_white: `#ffffff`, // Pure white
   bg_black: `#000000`, // Pure black
-
-  // Surfaces (cards, panels, etc.)
-  surf_light: `#ffffff`, // White cards on light bg
-  surf_dark: `#2a2a2a`, // Dark cards on dark bg
-  surf_white: `#fafafa`, // Off-white cards on white bg
-  surf_black: `#0f0f0f`, // Very dark cards on black bg
 
   // Borders
   border_light: `#d1d5db`, // Gray border
@@ -90,10 +86,10 @@ const themes = {
     black: colors.txt_black,
   },
   'surface-bg': {
-    light: colors.surf_light,
-    dark: colors.surf_dark,
-    white: colors.surf_white,
-    black: colors.surf_black,
+    light: `rgb(237, 238, 239)`,
+    dark: `rgb(33, 36, 43)`,
+    white: `rgb(250, 250, 250)`,
+    black: `rgb(19, 19, 19)`,
   },
   'border-color': {
     light: colors.border_light,
@@ -112,8 +108,8 @@ const themes = {
   'surface-hover-bg': {
     light: `#e5e7eb`,
     dark: `#3a3a3a`,
-    white: `#fafafa`,
-    black: `#1a1a1a`,
+    white: `#f3f3f3`,
+    black: `#1f1f1f`,
   },
   'accent-hover-color': {
     light: `#3730a3`,
@@ -155,6 +151,24 @@ const themes = {
     white: `#dc2626`,
     black: `#f87171`,
   },
+  'error-button-bg': {
+    light: `#dc2626`,
+    dark: `#7f1d1d`,
+    white: `#b91c1c`,
+    black: `#991b1b`,
+  },
+  'error-button-hover-bg': {
+    light: `#b91c1c`,
+    dark: `#991b1b`,
+    white: `#991b1b`,
+    black: `#7f1d1d`,
+  },
+  'error-border': {
+    light: `1px solid #fca5a5`,
+    dark: `1px solid #dc2626`,
+    white: `1px solid #fecaca`,
+    black: `1px solid #991b1b`,
+  },
   'text-color-muted': {
     light: `#6b7280`,
     dark: `#9ca3af`,
@@ -165,6 +179,7 @@ const themes = {
   // Interactive elements (buttons, etc.)
   'btn-bg': btn_bg(0.2, 0.12),
   'btn-hover-bg': btn_bg(0.3, 0.25),
+  'btn-disabled-bg': btn_bg(0.1, 0.05),
 
   // Tooltips
   'tooltip-bg': tooltip_bg(`243, 244, 246`, `0, 40, 60`),
@@ -172,103 +187,20 @@ const themes = {
 
   // Structure-specific
   'struct-bg': {
-    light: `rgba(0, 0, 0, 0.02)`,
+    light: `rgba(0, 0, 0, 0.04)`,
     dark: `rgba(255, 255, 255, 0.07)`,
-    white: `rgba(0, 0, 0, 0.01)`,
+    white: `rgba(0, 0, 0, 0.02)`,
     black: `rgba(255, 255, 255, 0.1)`,
-  },
-  'struct-dragover-bg': {
-    light: `rgba(0, 0, 0, 0.15)`,
-    dark: `rgba(0, 0, 0, 0.7)`,
-    white: `rgba(0, 0, 0, 0.05)`,
-    black: `rgba(0, 0, 0, 0.8)`,
   },
 
   // Panel backgrounds (DraggablePanel, etc.)
   'panel-bg': {
-    light: `rgba(229, 231, 235, 0.95)`,
-    dark: `rgba(15, 23, 42, 0.95)`,
-    white: `rgba(248, 250, 252, 0.98)`,
-    black: `rgba(26, 26, 26, 0.98)`,
+    light: `rgb(229, 231, 235)`,
+    dark: `rgb(28 29 33)`,
+    white: `rgb(248, 250, 252)`,
+    black: `rgb(26, 26, 26)`,
   },
   'panel-border': border_alpha(0.15),
-
-  // Traj-specific
-  'traj-surface': {
-    light: `rgba(241, 243, 245, 0.95)`,
-    dark: `rgba(45, 55, 72, 0.95)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(15, 15, 15, 0.98)`,
-  },
-  'traj-border-color': {
-    light: colors.border_light,
-    dark: `#4a5568`,
-    white: colors.border_white,
-    black: colors.border_black,
-  },
-  'traj-accent': {
-    light: colors.acc_light,
-    dark: `#63b3ed`,
-    white: colors.acc_white,
-    black: colors.acc_black,
-  },
-
-  // Trajectory component variables (used directly)
-  'traj-text-color': {
-    light: colors.txt_light,
-    dark: `#e2e8f0`,
-    white: colors.txt_white,
-    black: `#f1f5f9`,
-  },
-  'traj-heading-color': {
-    light: colors.txt_light,
-    dark: `#e2e8f0`,
-    white: colors.txt_white,
-    black: `#f1f5f9`,
-  },
-  'traj-error-color': {
-    light: colors.error_text_light,
-    dark: colors.error_text_dark,
-    white: colors.error_text_white,
-    black: colors.error_text_black,
-  },
-  'traj-error-border': {
-    light: colors.error_border_light,
-    dark: colors.error_border_dark,
-    white: colors.error_border_white,
-    black: colors.error_border_black,
-  },
-  'traj-error-button-bg': {
-    light: colors.error_btn_light,
-    dark: colors.error_btn_dark,
-    white: colors.error_btn_white,
-    black: colors.error_btn_black,
-  },
-  'traj-error-button-hover-bg': {
-    light: colors.error_btn_hover_light,
-    dark: colors.error_btn_hover_dark,
-    white: colors.error_btn_hover_white,
-    black: colors.error_btn_hover_black,
-  },
-  'traj-border': border_alpha(0.15),
-  'traj-dropzone-border': {
-    light: `#9ca3af`,
-    dark: `#4a5568`,
-    white: `#e5e7eb`,
-    black: `#374151`,
-  },
-  'traj-dragover-border': {
-    light: colors.acc_light,
-    dark: `#007acc`,
-    white: colors.acc_white,
-    black: `#0ea5e9`,
-  },
-  'traj-dragover-bg': {
-    light: `rgba(79, 70, 229, 0.1)`,
-    dark: `rgba(0, 122, 204, 0.1)`,
-    white: `rgba(37, 99, 235, 0.05)`,
-    black: `rgba(14, 165, 233, 0.05)`,
-  },
 
   // Dropzone states
   'dropzone-border': {
@@ -284,10 +216,10 @@ const themes = {
     black: `rgba(15, 15, 15, 0.7)`,
   },
   'dragover-border': {
-    light: colors.acc_light,
-    dark: `#007acc`,
-    white: colors.acc_white,
-    black: `#0ea5e9`,
+    light: `1px solid ${colors.acc_light}`,
+    dark: `1px solid #007acc`,
+    white: `1px solid ${colors.acc_white}`,
+    black: `1px solid #0ea5e9`,
   },
   'dragover-bg': {
     light: `rgba(79, 70, 229, 0.1)`,
@@ -394,20 +326,6 @@ const themes = {
     white: colors.txt_white,
     black: colors.txt_black,
   },
-
-  // VSCode-specific
-  'vscode-editor-background': {
-    light: colors.bg_white,
-    dark: `#1e1e1e`,
-    white: colors.bg_white,
-    black: colors.bg_black,
-  },
-  'vscode-editor-foreground': {
-    light: `#333333`,
-    dark: `#d4d4d4`,
-    white: colors.txt_white,
-    black: colors.txt_black,
-  },
 }
 
 // Generate flattened themes and export
@@ -427,5 +345,3 @@ globalThis.MATTERVIZ_THEMES = { light, dark, white, black }
 globalThis.MATTERVIZ_CSS_MAP = Object.fromEntries(
   Object.keys(themes).map((key) => [key, `--${key}`]),
 )
-globalThis.MATTERVIZ_THEME_SOURCE = themes
-globalThis.MATTERVIZ_SSR_PROPS = Object.keys(themes)

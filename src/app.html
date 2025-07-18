@@ -49,9 +49,9 @@
       const resolved = mode === 'auto' ? system : mode
 
       // Apply theme CSS variables
-      const root = document.documentElement
       const theme = window.MATTERVIZ_THEMES[resolved]
       const css_map = window.MATTERVIZ_CSS_MAP
+      const root = document.documentElement
 
       for (const key in theme) {
         if (css_map[key]) root.style.setProperty(css_map[key], theme[key])
@@ -59,7 +59,6 @@
 
       // Set theme attribute and store resolved theme
       root.setAttribute('data-theme', resolved)
-      window.__MATTERVIZ_THEME__ = { mode, resolved, system }
     </script>
     %sveltekit.head%
   </head>

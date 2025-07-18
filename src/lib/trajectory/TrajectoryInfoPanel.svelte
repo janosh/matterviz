@@ -4,6 +4,7 @@
   import { theme_state } from '$lib/state.svelte'
   import { type AnyStructure, electro_neg_formula } from '$lib/structure'
   import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
+  import { SvelteSet } from 'svelte/reactivity'
   import type { Trajectory } from './index'
 
   interface Props {
@@ -27,15 +28,14 @@
     ...rest
   }: Props = $props()
 
-  let copied_items = $state<Set<string>>(new Set())
+  let copied_items = new SvelteSet<string>()
 
   async function copy_item(label: string, value: string, key: string) {
     try {
       await navigator.clipboard.writeText(`${label}: ${value}`)
-      copied_items = new Set(copied_items).add(key)
+      copied_items.add(key)
       setTimeout(() => {
         copied_items.delete(key)
-        copied_items = new Set(copied_items)
       }, 1000)
     } catch (error) {
       console.error(`Failed to copy to clipboard:`, error)
@@ -93,7 +93,7 @@
     const current_frame = trajectory.frames[current_step_idx]
     if (!current_frame?.structure?.sites) return []
 
-    const sections: (InfoItem | null | false | ``)[][] = []
+    const sections: InfoItem[][] = []
 
     // File info section
     const file_items = [
@@ -183,7 +183,7 @@
         return range &&
           safe_item(key.charAt(0).toUpperCase() + key.slice(1), range, key)
       }),
-    ].filter(Boolean)
+    ].filter(is_info_item)
 
     if (traj_items.length > 0) sections.push(traj_items)
 
@@ -201,7 +201,7 @@
           `energy-current`,
         ),
         energy_range && safe_item(`Energy Range`, energy_range, `energy-range`),
-      ].filter(Boolean)
+      ].filter(is_info_item)
 
       if (energy_items.length > 0) sections.push(energy_items)
     }
@@ -220,7 +220,7 @@
           `force-current`,
         ),
         force_range && safe_item(`Force Range`, force_range, `force-range`),
-      ].filter(Boolean)
+      ].filter(is_info_item)
 
       if (force_items.length > 0) sections.push(force_items)
     }
@@ -236,13 +236,13 @@
         const vol_change =
           ((Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)) * 100
         if (Math.abs(vol_change) > 0.1 && is_valid_number(vol_change)) {
-          sections.push(
-            [safe_item(
-              `Volume Change`,
-              `${format_num(vol_change, `.2~f`)}%`,
-              `vol-change`,
-            )].filter(Boolean),
-          )
+          const vol_items = [safe_item(
+            `Volume Change`,
+            `${format_num(vol_change, `.2~f`)}%`,
+            `vol-change`,
+          )].filter(is_info_item)
+
+          if (vol_items.length > 0) sections.push(vol_items)
         }
       }
     }

@@ -372,6 +372,10 @@
   <!-- Control Panel -->
   {#if show_controls}
     <HistogramControls
+      toggle_props={{
+        style:
+          `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;`,
+      }}
       bind:show_controls
       bind:controls_open
       bind:bins

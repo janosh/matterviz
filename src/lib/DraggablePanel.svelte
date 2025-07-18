@@ -251,7 +251,7 @@
   }
   .draggable-panel {
     position: absolute; /* Use absolute so panel scrolls with page content */
-    background: var(--panel-bg, rgba(15, 23, 42, 0.95));
+    background: var(--panel-bg);
     border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
     border-radius: 6px;
     padding: var(--panel-padding, 1ex);
@@ -321,10 +321,6 @@
     margin: 0 0 0 5pt;
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-sizing: border-box;
-  }
-  .draggable-panel :global(.section-heading) {
-    margin: 8pt 0 2pt;
-    font-size: 0.9em;
   }
   .draggable-panel :global(.panel-row) {
     display: flex;

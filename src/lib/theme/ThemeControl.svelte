@@ -37,7 +37,7 @@
     position: fixed;
     bottom: 1em;
     left: 1em;
-    z-index: 100;
+    z-index: var(--theme-control-z-index, 1);
     background: var(--theme-control-bg);
     border: 1px solid var(--theme-control-border);
     color: var(--text-color);

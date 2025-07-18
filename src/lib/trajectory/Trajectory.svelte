@@ -477,7 +477,11 @@
     }
   }
 
-  let controls_open = $state({ structure: false, plot: false })
+  let panels_open = $state({
+    structure_info: false,
+    structure_controls: false,
+    plot_controls: false,
+  })
   let fullscreen = $state(false)
 </script>
 
@@ -489,7 +493,8 @@
 
 <div
   class:dragover
-  class:active={is_playing || controls_open.structure || controls_open.plot}
+  class:active={is_playing || panels_open.structure_info || panels_open.structure_controls ||
+  panels_open.plot_info || panels_open.plot_controls}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -749,7 +754,8 @@
           style="height: 100%; border-radius: 0"
           enable_tips={false}
           {...{ show_image_atoms: false, ...structure_props }}
-          bind:controls_open={controls_open.structure}
+          bind:controls_open={panels_open.structure_controls}
+          bind:info_panel_open={panels_open.structure_info}
         />
       {/if}
 
@@ -769,12 +775,13 @@
             markers="line"
             x_ticks={step_label_positions}
             show_controls
-            bind:controls_open={controls_open.plot}
+            bind:controls_open={panels_open.plot_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
-            {...scatter_props}
             legend={legend_config}
+            {...scatter_props}
+            class="plot {scatter_props.class ?? ``}"
           >
             {#snippet tooltip({ x, y, metadata })}
               {#if metadata?.series_label}
@@ -809,6 +816,7 @@
             }}
             style="height: 100%"
             {...histogram_props}
+            class="plot {histogram_props.class ?? ``}"
           >
             {#snippet tooltip({ value, count, property })}
               <div>Value: {format_num(value)}</div>
@@ -845,31 +853,31 @@
 
 <style>
   :root {
-    --traj-border-radius: 8px;
-    --traj-min-height: 500px;
+    --border-radius: 4px;
+    --min-height: 500px;
   }
   .trajectory {
     display: flex;
     flex-direction: column;
     height: 100%;
     position: relative;
-    min-height: var(--traj-min-height);
-    border-radius: var(--traj-border-radius);
-    border: 1px solid var(--traj-border-color);
+    min-height: var(--traj-min-height, var(--min-height));
+    border-radius: var(--border-radius);
     transition: border-color 0.2s ease;
     box-sizing: border-box;
     contain: layout;
   }
+  .trajectory :global(.plot) {
+    background: var(--surface-bg);
+  }
   .trajectory.active {
-    /* needed so info/control panels from an active viewer overlay those of the next (if there is one) */
-    z-index: 2;
+    z-index: 2; /* needed so info/control panels from an active viewer overlay those of the next (if there is one) */
   }
   .trajectory:fullscreen {
     height: 100vh !important;
     width: 100vw !important;
     border-radius: 0 !important;
-    border: none;
-    background: var(--traj-surface);
+    background: var(--surface-bg);
   }
   /* Content area - grid container for equal sizing */
   .content-area {
@@ -906,8 +914,8 @@
     grid-template-rows: 1fr !important;
   }
   .trajectory.dragover {
-    border-color: var(--traj-dragover-border);
-    background-color: var(--traj-dragover-bg);
+    background-color: var(--traj-dragover-bg, var(--dragover-bg));
+    border: var(--traj-dragover-border, var(--dragover-border));
   }
 
   .trajectory-controls {
@@ -915,12 +923,10 @@
     align-items: center;
     gap: 1rem;
     padding: 0.5rem;
-    background: var(--traj-surface);
+    background: var(--surface-hover-bg);
     backdrop-filter: blur(4px);
-    border-bottom: 1px solid var(--traj-border, rgba(255, 255, 255, 0.1));
     position: relative;
-    z-index: 100;
-    border-radius: var(--traj-border-radius) var(--traj-border-radius) 0 0;
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
   }
   .nav-section {
     display: flex;
@@ -947,7 +953,7 @@
   }
   .step-slider {
     width: 100%;
-    accent-color: var(--traj-accent);
+    accent-color: var(--accent-color);
   }
   .step-labels {
     position: absolute;
@@ -976,12 +982,11 @@
   }
   .speed-slider {
     width: 90px;
-    accent-color: var(--traj-accent);
+    accent-color: var(--accent-color);
   }
   .speed-input {
     width: 45px;
     text-align: center;
-    border: 1px solid var(--traj-border-color);
     border-radius: 3px;
     font-size: 0.8rem;
     padding: 0.125rem 0.25rem;
@@ -1016,7 +1021,7 @@
     background: transparent;
   }
   .fullscreen-button:hover:not(:disabled) {
-    background: var(--traj-border-color);
+    background: var(--border-color);
   }
   .info-section {
     display: flex;
@@ -1041,8 +1046,7 @@
 
   .empty-state {
     padding: 2rem;
-    border: 2px dashed var(--traj-border-color);
-    border-radius: var(--traj-border-radius);
+    border-radius: var(--border-radius);
     background: var(--dropzone-bg);
   }
   .empty-state :where(p, ul) {
@@ -1064,7 +1068,7 @@
     color: var(--text-color-muted);
   }
   button {
-    background: var(--traj-border-color);
+    background: var(--border-color);
     border: none;
     border-radius: 4px;
     padding: 0.25rem 0.5rem;
@@ -1073,11 +1077,11 @@
     transition: background-color 0.2s;
   }
   button:hover:not(:disabled) {
-    background: var(--traj-border-color);
+    background: var(--border-color);
   }
   button:disabled {
-    background: var(--traj-text-muted);
-    color: var(--traj-border-color);
+    background: var(--btn-disabled-bg);
+    color: var(--text-color-muted);
     cursor: not-allowed;
   }
   .trajectory-controls input[type='number']::-webkit-outer-spin-button,
@@ -1095,9 +1099,9 @@
   .view-mode-dropdown-wrapper {
     position: relative;
     display: inline-block;
-    padding: 2pt 0 2pt 6pt;
   }
   .view-mode-button {
+    padding-right: 0;
     display: flex;
     align-items: center;
     gap: 2px;
@@ -1110,9 +1114,8 @@
     position: absolute;
     top: 100%;
     right: 0;
-    background: var(--traj-surface);
+    background: var(--surface-bg);
     backdrop-filter: blur(4px);
-    border: 1px solid var(--traj-border-color);
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
     margin-top: 2px;
@@ -1125,7 +1128,6 @@
     width: 100%;
     padding: 8px;
     background: transparent;
-    border: none;
     border-radius: 0;
     text-align: left;
     font-size: 0.8rem;
@@ -1137,16 +1139,11 @@
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
   }
-  .view-mode-option:last-child {
-    border-bottom-left-radius: 3px;
-    border-bottom-right-radius: 3px;
-  }
   .view-mode-option:hover {
-    background: var(--traj-surface-hover);
+    background: var(--surface-bg-hover);
   }
   .view-mode-option.selected {
-    background: var(--traj-accent);
-    color: var(--traj-accent-text);
+    color: var(--accent-color);
   }
   .view-mode-option span {
     font-weight: 500;

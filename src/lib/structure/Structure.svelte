@@ -451,7 +451,8 @@
     width: 100vw !important;
   }
   .structure.dragover {
-    background: var(--struct-dragover-bg);
+    background: var(--struct-dragover-bg, var(--dragover-bg));
+    border: var(--struct-dragover-border, var(--dragover-border));
   }
   div.bottom-left {
     position: absolute;
@@ -464,8 +465,8 @@
     position: absolute;
     display: flex;
     justify-content: end;
-    top: var(--struct-buttons-top, 1ex);
-    right: var(--struct-buttons-right, 1ex);
+    top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
+    right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: var(--struct-buttons-gap, 3pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
     z-index: var(--struct-buttons-z-index, 2);

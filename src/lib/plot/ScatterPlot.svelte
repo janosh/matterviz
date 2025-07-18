@@ -1889,7 +1889,8 @@
     {#if show_controls}
       <ScatterPlotControls
         toggle_props={{
-          style: `position: absolute; top: 0; right: 0; background-color: transparent;`,
+          style:
+            `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;`,
         }}
         bind:this={controls_component}
         bind:show_controls

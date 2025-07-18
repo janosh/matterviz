@@ -102,7 +102,7 @@
     gap: 1pt;
     padding: 4pt 9pt;
     background: var(--card-bg, rgba(255, 255, 255, 0.05));
-    border-radius: 8px;
+    border-radius: var(--border-radius, 4px);
     border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
   }
   .composition-card h4 {

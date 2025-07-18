@@ -31,9 +31,9 @@
     place-content: center;
     place-items: center;
     text-align: center;
-    color: var(--traj-error-color);
+    color: var(--error-color);
     border-radius: var(--traj-border-radius);
-    border: 1px solid var(--traj-error-border);
+    border: var(--error-border);
     box-sizing: border-box;
     flex: 1;
   }
@@ -46,7 +46,7 @@
   }
   .error-message button {
     margin-top: 1rem;
-    background: var(--traj-error-button-bg);
+    background: var(--error-button-bg);
     color: white;
     border: none;
     border-radius: 4px;
@@ -55,7 +55,7 @@
     transition: background-color 0.2s;
   }
   .error-message button:hover {
-    background: var(--traj-error-button-hover-bg);
+    background: var(--error-button-hover-bg);
   }
   /* Styles for unsupported format messages */
   .error-message :global(.unsupported-format) {
@@ -67,7 +67,7 @@
     overflow-x: hidden;
   }
   .error-message :global(.unsupported-format h4) {
-    color: var(--traj-error-color);
+    color: var(--error-color);
     margin: 0 0 1rem 0;
     font-size: 1.1rem;
     display: flex;
@@ -75,13 +75,11 @@
     gap: 0.5rem;
   }
   .error-message :global(.unsupported-format h5) {
-    color: var(--traj-text-color);
     margin: 0.75rem 0 0.25rem 0;
     font-size: 0.9rem;
     font-weight: 600;
   }
   .error-message :global(.unsupported-format p) {
-    color: var(--traj-text-color);
     margin: 0.25rem 0;
     text-align: left;
     font-size: 0.85rem;
@@ -92,7 +90,6 @@
     padding-left: 1.5rem;
   }
   .error-message :global(.unsupported-format li) {
-    color: var(--traj-text-color);
     margin: 0.25rem 0;
   }
   .error-message :global(.unsupported-format .code-options) {
@@ -105,14 +102,12 @@
     margin: 0;
   }
   .error-message :global(.unsupported-format .code-options strong) {
-    color: var(--traj-code-title-color);
     display: block;
     margin-bottom: 0.25rem;
     font-size: 0.85rem;
     font-weight: 600;
   }
   .error-message :global(.unsupported-format pre) {
-    background: var(--traj-pre-bg);
     padding: 0.5rem;
     margin: 0;
     overflow-x: auto;
@@ -123,7 +118,6 @@
     overflow-y: auto;
   }
   .error-message :global(.unsupported-format p code) {
-    background: var(--traj-inline-code-bg);
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;

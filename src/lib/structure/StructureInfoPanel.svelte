@@ -4,6 +4,8 @@
   import * as math from '$lib/math'
   import { theme_state } from '$lib/state.svelte'
   import { electro_neg_formula, get_density } from '$lib/structure'
+  import type { ComponentProps } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
 
   interface SectionItem {
     label: string
@@ -16,25 +18,28 @@
     structure: AnyStructure
     panel_open?: boolean
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
     [key: string]: unknown
   }
   let {
     structure,
     panel_open = $bindable(false),
     atom_count_thresholds = [50, 500],
+    toggle_props = $bindable({}),
+    panel_props = $bindable({}),
     ...rest
   }: Props = $props()
 
-  let copied_items = $state<Set<string>>(new Set())
+  let copied_items = new SvelteSet<string>()
   let sites_expanded = $state(false)
 
   async function copy_to_clipboard(label: string, value: string, key: string) {
     try {
       await navigator.clipboard.writeText(`${label}: ${value}`)
-      copied_items = new Set(copied_items).add(key)
+      copied_items.add(key)
       setTimeout(() => {
         copied_items.delete(key)
-        copied_items = new Set(copied_items)
       }, 1000)
     } catch (error) {
       console.error(`Failed to copy to clipboard:`, error)
@@ -260,7 +265,7 @@
 <DraggablePanel
   bind:show={panel_open}
   max_width="24em"
-  toggle_props={{ class: `structure-info-toggle`, title: `Toggle structure info` }}
+  toggle_props={{ class: `structure-info-toggle`, title: `Toggle structure info`, ...toggle_props }}
   open_icon="Cross"
   closed_icon="Info"
   icon_style="transform: scale(1.1);"
@@ -269,65 +274,64 @@
     style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
       theme_state.type === `dark` ? `0.5` : `0.1`
     }); max-height: 80vh;`,
+    ...panel_props,
   }}
   {...rest}
 >
-  <div class="info-panel-content">
-    <h4 class="section-heading">Structure Info</h4>
-    {#each info_panel_data as section (section.title)}
-      <section>
-        {#if section.title && section.title !== `Structure`}
-          <h4 class="section-heading">{section.title}</h4>
+  <h4 style="margin-top: 0">Structure Info</h4>
+  {#each info_panel_data as section (section.title)}
+    <section>
+      {#if section.title && section.title !== `Structure`}
+        <h4>{section.title}</h4>
+      {/if}
+      {#each section.items as item (item.key)}
+        {#if section.title === `Usage Tips`}
+          <div class="tips-item">
+            <span>{item.label}</span>
+            <span>{@html item.value}</span>
+          </div>
+        {:else}
+          <div
+            class:site-item={item.label.startsWith(`  `)}
+            class:toggle-item={item.key === `sites-toggle`}
+            class="clickable"
+            title={item.key === `sites-toggle`
+            ? item.tooltip
+            : `Click to copy: ${item.label}: ${item.value}`}
+            onclick={() => handle_click(item, section.title)}
+            role="button"
+            tabindex="0"
+            onkeydown={(event) => {
+              if (event.key === `Enter` || event.key === ` `) {
+                event.preventDefault()
+                handle_click(item, section.title)
+              }
+            }}
+          >
+            <span>{item.label}</span>
+            <span title={item.tooltip}>{@html item.value}</span>
+            {#if item.key !== `sites-toggle` && copied_items.has(item.key)}
+              <div class="copy-checkmark-overlay">
+                <Icon
+                  icon="Check"
+                  style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+                />
+              </div>
+            {/if}
+          </div>
         {/if}
-        {#each section.items as item (item.key)}
-          {#if section.title === `Usage Tips`}
-            <div class="tips-item">
-              <span>{item.label}</span>
-              <span>{@html item.value}</span>
-            </div>
-          {:else}
-            <div
-              class:site-item={item.label.startsWith(`  `)}
-              class:toggle-item={item.key === `sites-toggle`}
-              class="clickable"
-              title={item.key === `sites-toggle`
-              ? item.tooltip
-              : `Click to copy: ${item.label}: ${item.value}`}
-              onclick={() => handle_click(item, section.title)}
-              role="button"
-              tabindex="0"
-              onkeydown={(event) => {
-                if (event.key === `Enter` || event.key === ` `) {
-                  event.preventDefault()
-                  handle_click(item, section.title)
-                }
-              }}
-            >
-              <span>{item.label}</span>
-              <span title={item.tooltip}>{@html item.value}</span>
-              {#if item.key !== `sites-toggle` && copied_items.has(item.key)}
-                <div class="copy-checkmark-overlay">
-                  <Icon
-                    icon="Check"
-                    style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-                  />
-                </div>
-              {/if}
-            </div>
-          {/if}
-        {/each}
-        {#if section !== info_panel_data[info_panel_data.length - 1]}
-          <hr />
-        {/if}
-      </section>
-    {/each}
-  </div>
+      {/each}
+      {#if section !== info_panel_data[info_panel_data.length - 1]}
+        <hr />
+      {/if}
+    </section>
+  {/each}
 </DraggablePanel>
 
 <style>
-  .info-panel-content {
-    position: relative;
-    padding-top: 8pt;
+  h4 {
+    margin: 8pt 0 6pt;
+    font-size: 0.9em;
   }
   section {
     margin-bottom: 6pt;
@@ -356,7 +360,7 @@
     right: 3pt;
     transform: translateY(-50%);
     z-index: 10;
-    background: var(--panel-bg, rgba(0, 0, 0, 0.9));
+    background: var(--panel-bg);
     border-radius: 50%;
     padding: 3pt;
     display: flex;

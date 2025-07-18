@@ -103,7 +103,7 @@
   .context-menu {
     background: var(--surface-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--border-radius, 4px);
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(4px);
     min-width: var(--context-menu-min-width, 160px);
