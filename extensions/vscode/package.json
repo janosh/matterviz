@@ -6,25 +6,6 @@
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
-  "bugs": "https://github.com/janosh/matterviz/issues",
-  "license": "MIT",
-  "keywords": [
-    "chemistry",
-    "materials",
-    "visualization",
-    "structure",
-    "trajectory",
-    "3d",
-    "molecular dynamics",
-    "crystallography"
-  ],
-  "categories": [
-    "Data Science",
-    "Machine Learning",
-    "Visualization",
-    "Notebooks",
-    "Education"
-  ],
   "engines": { "vscode": "^1.96.0" },
   "main": "./dist/extension.cjs",
   "contributes": {
@@ -67,18 +48,16 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc && cp -r ../../src/lib/theme dist/src/lib/ && mv dist/extensions/vscode/src/extension.js dist/extension.cjs && sed -i.bak 's|../../../src/lib/theme/index|./src/lib/theme/index|g' dist/extension.cjs && rm -f dist/extension.cjs.bak && vite build",
-    "dev": "tsc --watch & vite build --watch",
-    "test": "vitest run",
+    "build": "rm -rf dist && vite build --config vite.webview.config.mjs && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
     "package": "pnpm build && vsce package"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^5.1.0",
-    "@types/node": "^24.0.10",
+    "@sveltejs/vite-plugin-svelte": "^6.1.0",
+    "@types/node": "^24.0.14",
     "@types/vscode": "^1.96.0",
-    "svelte": "^5.34.8",
+    "svelte": "^5.36.6",
     "typescript": "^5.8.3",
-    "vite": "^7.0.0",
+    "vite": "^7.0.5",
     "vitest": "^3.2.4"
   }
 }
