@@ -9,11 +9,11 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, `src/extension.ts`),
-      formats: ['cjs'],
-      fileName: () => 'extension.cjs',
+      formats: [`cjs`],
+      fileName: () => `extension.cjs`,
     },
     rollupOptions: {
-      external: ['vscode', 'fs', 'path'],
+      external: [`vscode`, `fs`, `path`],
     },
     minify: false,
   },

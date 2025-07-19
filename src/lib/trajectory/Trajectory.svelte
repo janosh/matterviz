@@ -494,7 +494,7 @@
 <div
   class:dragover
   class:active={is_playing || panels_open.structure_info || panels_open.structure_controls ||
-  panels_open.plot_info || panels_open.plot_controls}
+  panels_open.plot_controls}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}

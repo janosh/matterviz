@@ -6,6 +6,13 @@
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
+  "categories": [
+    "Data Science",
+    "Machine Learning",
+    "Visualization",
+    "Notebooks",
+    "Education"
+  ],
   "engines": { "vscode": "^1.96.0" },
   "main": "./dist/extension.cjs",
   "contributes": {
@@ -48,7 +55,8 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && vite build --config vite.webview.config.mjs && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
+    "build": "rm -rf dist && vite build --config vite.webview.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
+    "test": "vitest run",
     "package": "pnpm build && vsce package"
   },
   "devDependencies": {

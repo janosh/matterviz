@@ -64,13 +64,6 @@ const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
   black: `rgba(20, 20, 20, 0.98)`,
 })
 
-const border_alpha = (alpha = 0.2) => ({
-  light: `rgba(0, 0, 0, ${alpha})`,
-  dark: `rgba(255, 255, 255, ${alpha})`,
-  white: `rgba(0, 0, 0, ${alpha / 2})`,
-  black: `rgba(255, 255, 255, ${alpha / 2})`,
-})
-
 const themes = {
   // Core colors
   'page-bg': {
@@ -177,13 +170,18 @@ const themes = {
   },
 
   // Interactive elements (buttons, etc.)
-  'btn-bg': btn_bg(0.2, 0.12),
-  'btn-hover-bg': btn_bg(0.3, 0.25),
+  'btn-bg': btn_bg(0.1, 0.12),
+  'btn-hover-bg': btn_bg(0.2, 0.25),
   'btn-disabled-bg': btn_bg(0.1, 0.05),
 
   // Tooltips
   'tooltip-bg': tooltip_bg(`243, 244, 246`, `0, 40, 60`),
-  'tooltip-border': border_alpha(0.15),
+  'tooltip-border': {
+    light: `1px solid rgba(0, 0, 0, 0.15)`,
+    dark: `1px solid rgba(255, 255, 255, 0.15)`,
+    white: `1px solid rgba(0, 0, 0, 0.075)`,
+    black: `1px solid rgba(255, 255, 255, 0.075)`,
+  },
 
   // Structure-specific
   'struct-bg': {
@@ -200,14 +198,19 @@ const themes = {
     white: `rgb(248, 250, 252)`,
     black: `rgb(26, 26, 26)`,
   },
-  'panel-border': border_alpha(0.15),
+  'panel-border': {
+    light: `1px solid rgba(0, 0, 0, 0.15)`,
+    dark: `1px solid rgba(255, 255, 255, 0.15)`,
+    white: `1px solid rgba(0, 0, 0, 0.075)`,
+    black: `1px solid rgba(255, 255, 255, 0.075)`,
+  },
 
   // Dropzone states
   'dropzone-border': {
-    light: `#9ca3af`,
-    dark: `#4a5568`,
-    white: `#e5e7eb`,
-    black: `#374151`,
+    light: `1px solid #9ca3af`,
+    dark: `1px solid #4a5568`,
+    white: `1px solid #e5e7eb`,
+    black: `1px solid #374151`,
   },
   'dropzone-bg': {
     light: `rgba(0, 0, 0, 0.02)`,
@@ -226,21 +229,6 @@ const themes = {
     dark: `rgba(0, 122, 204, 0.1)`,
     white: `rgba(37, 99, 235, 0.05)`,
     black: `rgba(14, 165, 233, 0.05)`,
-  },
-
-  // Theme control
-  'theme-control-bg': {
-    light: `rgba(241, 243, 245, 0.9)`,
-    dark: `rgba(15, 23, 42, 0.9)`,
-    white: `rgba(255, 255, 255, 0.95)`,
-    black: `rgba(0, 0, 0, 0.95)`,
-  },
-  'theme-control-border': border_alpha(0.25),
-  'theme-control-hover-bg': {
-    light: `rgba(241, 243, 245, 0.95)`,
-    dark: `rgba(15, 23, 42, 0.95)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(15, 15, 15, 0.98)`,
   },
 
   // Navigation links

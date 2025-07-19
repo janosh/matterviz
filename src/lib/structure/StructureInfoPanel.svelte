@@ -265,7 +265,11 @@
 <DraggablePanel
   bind:show={panel_open}
   max_width="24em"
-  toggle_props={{ class: `structure-info-toggle`, title: `Toggle structure info`, ...toggle_props }}
+  toggle_props={{
+    class: `structure-info-toggle`,
+    title: `${panel_open ? `Close` : `Open`} structure info`,
+    ...toggle_props,
+  }}
   open_icon="Cross"
   closed_icon="Info"
   icon_style="transform: scale(1.1);"
@@ -437,7 +441,7 @@
   }
   section div.toggle-item:hover {
     background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.1));
-    border-color: var(--panel-border, rgba(255, 255, 255, 0.3));
+    border: var(--panel-border, 1px solid rgba(255, 255, 255, 0.3));
   }
   section div.toggle-item span:first-child {
     font-size: 0.9em;

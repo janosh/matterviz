@@ -2,7 +2,7 @@
 import '$lib/app.css'
 import { parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
-import type { ThemeName } from '$lib/theme/index'
+import { is_valid_theme_name, type ThemeName } from '$lib/theme/index'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount } from 'svelte'
@@ -94,7 +94,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
 
   if (message.command === `fileUpdated` && message.data) {
     try {
-      if (message.theme) apply_theme(message.theme as ThemeName)
+      if (message.theme && is_valid_theme_name(message.theme)) apply_theme(message.theme)
 
       const { content, filename, isCompressed } = message.data
       const result = await parse_file_content(content, filename, isCompressed)

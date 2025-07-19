@@ -3,6 +3,7 @@
   import { format_num } from '$lib/labels'
   import { theme_state } from '$lib/state.svelte'
   import { type AnyStructure, electro_neg_formula } from '$lib/structure'
+  import type { ComponentProps } from 'svelte'
   import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Trajectory } from './index'
@@ -15,6 +16,8 @@
     file_size?: number | null
     file_object?: File | null
     panel_open?: boolean
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
     [key: string]: unknown
   }
   let {
@@ -25,6 +28,8 @@
     file_size,
     file_object,
     panel_open = $bindable(false),
+    toggle_props,
+    panel_props,
     ...rest
   }: Props = $props()
 
@@ -254,7 +259,11 @@
 <DraggablePanel
   bind:show={panel_open}
   max_width="24em"
-  toggle_props={{ class: `trajectory-info-toggle`, title: `Toggle trajectory info` }}
+  toggle_props={{
+    class: `trajectory-info-toggle`,
+    title: `${panel_open ? `Close` : `Open`} trajectory info`,
+    ...toggle_props,
+  }}
   open_icon="Cross"
   closed_icon="Info"
   icon_style="transform: scale(1.3);"
@@ -263,6 +272,7 @@
     style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
       theme_state.type === `dark` ? `0.5` : `0.1`
     }); max-height: 80vh;`,
+    ...panel_props,
   }}
   {...rest}
 >

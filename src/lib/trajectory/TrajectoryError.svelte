@@ -32,7 +32,7 @@
     place-items: center;
     text-align: center;
     color: var(--error-color);
-    border-radius: var(--traj-border-radius);
+    border-radius: var(--border-radius);
     border: var(--error-border);
     box-sizing: border-box;
     flex: 1;

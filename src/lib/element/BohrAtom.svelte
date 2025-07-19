@@ -125,7 +125,6 @@
   svg {
     overflow: visible;
     width: 100%;
-    background-color: var(--surface-bg);
     border-radius: var(--border-radius);
   }
   g.shell {

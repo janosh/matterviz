@@ -46,8 +46,8 @@
     copy_xyz_btn_text?: string
     scene?: Scene
     camera?: Camera
-    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
-    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    controls_panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
     [key: string]: unknown
   }
   let {
@@ -87,8 +87,8 @@
     copy_xyz_btn_text = `📋 XYZ`,
     scene = undefined,
     camera = undefined,
-    panel_props = $bindable({}),
-    toggle_props = $bindable({}),
+    controls_panel_props = $bindable({}),
+    controls_toggle_props = $bindable({}),
     ...rest
   }: Props = $props()
 
@@ -163,8 +163,12 @@
 
 <DraggablePanel
   bind:show={controls_open}
-  panel_props={{ class: `controls-panel`, ...panel_props }}
-  toggle_props={{ class: `structure-controls-toggle`, title: `Open controls`, ...toggle_props }}
+  panel_props={{ class: `controls-panel`, ...controls_panel_props }}
+  toggle_props={{
+    class: `structure-controls-toggle`,
+    title: `${controls_open ? `Close` : `Open`} structure controls`,
+    ...controls_toggle_props,
+  }}
   icon_style="transform: scale(1.2);"
   {...rest}
 >

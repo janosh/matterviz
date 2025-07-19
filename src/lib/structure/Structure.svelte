@@ -11,6 +11,7 @@
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { tooltip } from 'svelte-multiselect'
   import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
   import {
@@ -302,7 +303,7 @@
 
 <svelte:document
   onfullscreenchange={() => {
-    fullscreen = !!document.fullscreenElement
+    fullscreen = Boolean(document.fullscreenElement)
   }}
 />
 
@@ -349,7 +350,7 @@
           <button
             onclick={toggle_fullscreen}
             class="fullscreen-toggle"
-            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+            {@attach tooltip({ content: `${fullscreen ? `Exit` : `Enter`} fullscreen` })}
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
@@ -367,6 +368,7 @@
             {structure}
             bind:panel_open={info_panel_open}
             custom_toggle={toggle_info}
+            {@attach tooltip({ content: `Structure info panel` })}
           />
         {/if}
 
