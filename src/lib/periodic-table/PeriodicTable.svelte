@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Category, ChemicalElement, XyObj } from '$lib'
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
-  import { is_color } from '$lib/colors'
+  import { default_category_colors, is_color } from '$lib/colors'
   import element_data from '$lib/element/data'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -211,7 +211,10 @@
       ) {
         // Use missing color for zero/missing values or when no heatmap data
         if (missing_color === `element-category` && element) {
-          return `var(--${element.category.replaceAll(` `, `-`)}-bg-color)`
+          const category_key = element.category.replaceAll(` `, `-`)
+          return `var(--${category_key}-bg-color, ${
+            default_category_colors[category_key] || `#cccccc`
+          })`
         }
         return missing_color
       }
@@ -345,19 +348,6 @@
   .periodic-table-container {
     /* needed for gap: 0.3cqw; to work */
     container-type: inline-size;
-
-    /* Default category colors - can be overridden by user */
-    --diatomic-nonmetal-bg-color: #ff8c00;
-    --noble-gas-bg-color: darkorchid;
-    --alkali-metal-bg-color: darkgreen;
-    --alkaline-earth-metal-bg-color: darkslateblue;
-    --metalloid-bg-color: darkgoldenrod;
-    --polyatomic-nonmetal-bg-color: brown;
-    --transition-metal-bg-color: #571e6c;
-    --post-transition-metal-bg-color: #938d4a;
-    --lanthanide-bg-color: #58748e;
-    --actinide-bg-color: cornflowerblue;
-    --experimental-bg-color: gray;
   }
   div.periodic-table {
     display: grid;

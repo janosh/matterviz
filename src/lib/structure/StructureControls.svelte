@@ -46,6 +46,8 @@
     copy_xyz_btn_text?: string
     scene?: Scene
     camera?: Camera
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
     [key: string]: unknown
   }
   let {
@@ -85,6 +87,8 @@
     copy_xyz_btn_text = `📋 XYZ`,
     scene = undefined,
     camera = undefined,
+    panel_props = $bindable({}),
+    toggle_props = $bindable({}),
     ...rest
   }: Props = $props()
 
@@ -159,13 +163,20 @@
 
 <DraggablePanel
   bind:show={controls_open}
-  panel_props={{ class: `controls-panel` }}
-  toggle_props={{ class: `structure-controls-toggle`, title: `Open controls` }}
+  panel_props={{ class: `controls-panel`, ...panel_props }}
+  toggle_props={{
+    class: `structure-controls-toggle`,
+    title: `${controls_open ? `Close` : `Open`} structure controls`,
+    ...toggle_props,
+  }}
   icon_style="transform: scale(1.2);"
   {...rest}
 >
+  <h4 style="margin-top: 0">Structure Controls</h4>
   <!-- Visibility Controls -->
-  <div style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap">
+  <div
+    style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap; max-width: 90%"
+  >
     Show <label>
       <input
         type="checkbox"
@@ -206,7 +217,7 @@
   <hr />
 
   <!-- Atom Controls -->
-  <h4 class="section-heading">Atoms</h4>
+  <h4>Atoms</h4>
   <label class="slider-control">
     Radius <small>(Å)</small>
     <input
@@ -265,7 +276,7 @@
 
   <!-- Force Vector Controls -->
   {#if has_forces && scene_props.show_force_vectors}
-    <h4 class="section-heading">Force Vectors</h4>
+    <h4>Force Vectors</h4>
     <label class="slider-control">
       Scale
       <input
@@ -292,7 +303,7 @@
   {/if}
 
   <!-- Cell Controls -->
-  <h4 class="section-heading">Cell</h4>
+  <h4>Cell</h4>
   <label>
     <input
       type="checkbox"
@@ -348,7 +359,7 @@
   <hr />
 
   <!-- Background Controls -->
-  <h4 class="section-heading">Background</h4>
+  <h4>Background</h4>
   <div class="panel-row">
     <label class="compact">
       Color
@@ -382,7 +393,7 @@
 
   {#if show_full_controls}
     <!-- Camera Controls -->
-    <h4 class="section-heading">Camera</h4>
+    <h4>Camera</h4>
     <label>
       Auto rotate speed
       <input
@@ -462,7 +473,7 @@
     <hr />
 
     <!-- Lighting Controls -->
-    <h4 class="section-heading">Lighting</h4>
+    <h4>Lighting</h4>
     <label>
       <span title="Intensity of the directional light" {@attach tooltip()}>
         Directional light
@@ -540,7 +551,7 @@
 
   <!-- Export Controls -->
   <hr />
-  <h4 class="section-heading">Export</h4>
+  <h4>Export</h4>
   <span
     style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
   >
@@ -600,10 +611,9 @@
 </DraggablePanel>
 
 <style>
-  .section-heading {
+  h4 {
     margin: 8pt 0 2pt;
     font-size: 0.9em;
-    color: var(--text-muted, #ccc);
   }
   .panel-row {
     display: flex;

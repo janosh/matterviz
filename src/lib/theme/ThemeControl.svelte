@@ -8,11 +8,8 @@
     onchange?: (mode: ThemeMode) => void // Callback when theme changes
     [key: string]: unknown
   }
-  let {
-    theme_mode = $bindable(theme_state.mode),
-    onchange = () => {},
-    ...rest
-  }: Props = $props()
+  let { theme_mode = $bindable(theme_state.mode), onchange = () => {}, ...rest }:
+    Props = $props()
 
   // Sync and save when theme changes
   $effect(() => {
@@ -26,7 +23,7 @@
   })
 </script>
 
-<select bind:value={theme_mode} class="theme-control" {...rest}>
+<select bind:value={theme_mode} {...rest} class="theme-control {rest.class ?? ``}">
   {#each THEME_OPTIONS as option (option.value)}
     <option value={option.value}>{option.icon} {option.label}</option>
   {/each}
@@ -37,9 +34,9 @@
     position: fixed;
     bottom: 1em;
     left: 1em;
-    z-index: 100;
-    background: var(--theme-control-bg);
-    border: 1px solid var(--theme-control-border);
+    z-index: var(--theme-control-z-index, 1);
+    background: var(--btn-bg);
+    border: var(--panel-border);
     color: var(--text-color);
     border-radius: 5pt;
     padding: 4pt 6pt;
@@ -48,8 +45,8 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
   .theme-control:hover {
-    background: var(--theme-control-hover-bg);
-    border-color: var(--theme-control-hover-border);
+    background: var(--btn-hover-bg);
+    border: var(--panel-border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   .theme-control:focus {
