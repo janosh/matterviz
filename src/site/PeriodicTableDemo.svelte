@@ -1,20 +1,11 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import type { Category, ChemicalElement } from '$lib'
-  import {
-    BohrAtom,
-    ColorBar,
-    ColorScaleSelect,
-    element_data,
-    ElementScatter,
-    ElementStats,
-    PeriodicTable,
-    PropertySelect,
-    TableInset,
-  } from '$lib'
+  import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { property_labels } from '$lib/labels'
-  import type { ScaleContext } from '$lib/periodic-table'
+  import { type ScaleContext, TableInset } from '$lib/periodic-table'
+  import { ColorBar, ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
   import { PeriodicTableControls } from '$site'
 
@@ -147,7 +138,7 @@
   scale_context,
 }: {
   element: ChemicalElement
-  value: number | number[]
+  value: string | number | (number | string)[]
   active: boolean
   bg_color: string | null
   scale_context: ScaleContext
@@ -172,7 +163,7 @@
 
 <svelte:window bind:innerWidth={window_width} />
 
-<div class="full-bleed">
+<div style="max-width: var(--max-text-width); margin: 1em auto">
   <form>
     <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
     {#if heatmap_key}
@@ -191,15 +182,8 @@
     gap={tile_gap}
     inner_transition_metal_offset={inner_transition_offset}
     show_photo
-    style="margin: 2em auto; max-width: 1200px; --elem-tile-border-radius: {tile_border_radius}pt; --elem-symbol-font-size: {symbol_font_size}cqw; --elem-number-font-size: {number_font_size}cqw; --elem-name-font-size: {name_font_size}cqw; --elem-value-font-size: {value_font_size}cqw; --tooltip-font-size: {tooltip_font_size}px; --tooltip-bg: {tooltip_bg_color}; --tooltip-color: {tooltip_text_color}"
     {onenter}
   >
-    {#if selected.element && window_width > 1100}
-      {@const { shells, name, symbol } = selected.element}
-      <a href="bohr-atoms" style="position: absolute; top: -240px; transform: scale(0.8)">
-        <BohrAtom {shells} name="Bohr Model of {name}" {symbol} style="width: 250px" />
-      </a>
-    {/if}
     {#snippet inset()}
       <TableInset>
         {#if heatmap_key}
@@ -235,169 +219,166 @@
     bind:inner_transition_offset
     bind:tile_font_color
   />
+  <h2>Multi-value Heatmap Examples</h2>
+  <p>
+    The periodic table now supports multiple values per element with different visual
+    layouts:
+  </p>
+
+  <h3>2-fold Split (Diagonal)</h3>
+  <p>
+    Each element shows two values as diagonal triangles: <strong>top-left = atomic
+      mass</strong>, <strong>bottom-right = density</strong>.
+  </p>
+  <PeriodicTable
+    tile_props={{ show_name: false, show_number: false }}
+    heatmap_values={two_fold_data}
+    color_scale="interpolateRdYlBu"
+    tooltip
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset>
+        <div class="color-bars-container">
+          <div class="color-bar-item">
+            <ColorBar
+              title="Atomic Mass (u)"
+              color_scale="interpolateRdYlBu"
+              range={atomic_mass_range}
+              orientation="horizontal"
+              style="width: 180px; height: 12px"
+              tick_labels={3}
+              title_side="top"
+            />
+          </div>
+          <div class="color-bar-item">
+            <ColorBar
+              title="Density (g/cm³)"
+              color_scale="interpolateRdYlBu"
+              range={density_range}
+              orientation="horizontal"
+              style="width: 180px; height: 12px"
+              tick_labels={3}
+              title_side="top"
+            />
+          </div>
+        </div>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+
+  <h3>4-fold Split</h3>
+  <p>
+    Each element shows four values as quadrants: <strong>top-left = atomic
+      radius</strong>,
+    <strong>top-right = electronegativity * 100</strong>,
+    <strong>bottom-left = covalent radius</strong>,
+    <strong>bottom-right = |electron affinity|</strong>.
+  </p>
+  <PeriodicTable
+    tile_props={{ show_name: false, show_number: false }}
+    heatmap_values={four_fold_data}
+    color_scale="interpolateViridis"
+    split_layout="quadrant"
+    tooltip
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset>
+        <div class="color-bars-container">
+          <div class="color-bar-item">
+            <ColorBar
+              title="Atomic Radius (pm)"
+              color_scale="interpolateViridis"
+              range={atomic_radius_range}
+              orientation="horizontal"
+              style="width: 135px; height: 12px"
+              tick_labels={3}
+              title_side="top"
+            />
+          </div>
+          <div class="color-bar-item">
+            <ColorBar
+              title="Electronegativity × 100"
+              color_scale="interpolateViridis"
+              range={electronegativity_range}
+              orientation="horizontal"
+              style="width: 135px; height: 12px"
+              tick_labels={3}
+              title_side="top"
+            />
+          </div>
+          <div class="color-bar-item">
+            <ColorBar
+              title="Covalent Radius (pm)"
+              color_scale="interpolateViridis"
+              range={covalent_radius_range}
+              orientation="horizontal"
+              style="width: 135px; height: 12px"
+              tick_labels={3}
+              title_side="top"
+            />
+          </div>
+          <div class="color-bar-item">
+            <ColorBar
+              title="|Electron Affinity| (kJ/mol)"
+              color_scale="interpolateViridis"
+              range={electron_affinity_range}
+              orientation="horizontal"
+              style="width: 135px; height: 12px"
+              tick_labels={3}
+              title_side="top"
+            />
+          </div>
+        </div>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+
+  <h2>Missing Color Demo</h2>
+  <p>
+    The <code>missing_color</code> prop is used to control how missing values in heatmap
+    data are displayed.
+  </p>
+
+  <PeriodicTable
+    tile_props={{ show_name: window_width > 800, text_color: tile_font_color }}
+    heatmap_values={missing_heatmap_values}
+    missing_color={missing_computed_color}
+    bind:color_scale
+    bind:active_element={missing_active_element}
+    bind:active_category={missing_active_category}
+    links="name"
+    tooltip
+    gap={tile_gap}
+    style="margin: 1em auto; max-width: 1000px"
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset>
+        <div class="missing-color-controls-inline">
+          <label>
+            <input
+              type="checkbox"
+              bind:checked={missing_use_category}
+              disabled={!missing_heatmap_values?.length}
+            />
+            Use element category colors
+          </label>
+
+          <label>
+            Missing color:
+            <input
+              type="color"
+              bind:value={missing_color}
+              disabled={missing_use_category || !missing_heatmap_values?.length}
+            />
+          </label>
+        </div>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
 </div>
-
-<!-- Multi-value Heatmap Examples -->
-<h2>Multi-value Heatmap Examples</h2>
-<p>
-  The periodic table now supports multiple values per element with different visual
-  layouts:
-</p>
-
-<h3>2-fold Split (Diagonal)</h3>
-<p>
-  Each element shows two values as diagonal triangles: <strong>top-left = atomic
-    mass</strong>, <strong>bottom-right = density</strong>.
-</p>
-<PeriodicTable
-  tile_props={{ show_name: false, show_number: false }}
-  heatmap_values={two_fold_data}
-  color_scale="interpolateRdYlBu"
-  tooltip
-  style="margin: 1em auto; max-width: 800px"
-  {onenter}
->
-  {#snippet inset()}
-    <TableInset>
-      <div class="color-bars-container">
-        <div class="color-bar-item">
-          <ColorBar
-            title="Atomic Mass (u)"
-            color_scale="interpolateRdYlBu"
-            range={atomic_mass_range}
-            orientation="horizontal"
-            style="width: 180px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="Density (g/cm³)"
-            color_scale="interpolateRdYlBu"
-            range={density_range}
-            orientation="horizontal"
-            style="width: 180px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-      </div>
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
-
-<h3>4-fold Split</h3>
-<p>
-  Each element shows four values as quadrants: <strong>top-left = atomic radius</strong>,
-  <strong>top-right = electronegativity * 100</strong>,
-  <strong>bottom-left = covalent radius</strong>,
-  <strong>bottom-right = |electron affinity|</strong>.
-</p>
-<PeriodicTable
-  tile_props={{ show_name: false, show_number: false }}
-  heatmap_values={four_fold_data}
-  color_scale="interpolateViridis"
-  split_layout="quadrant"
-  tooltip
-  style="margin: 1em auto; max-width: 800px"
-  {onenter}
->
-  {#snippet inset()}
-    <TableInset>
-      <div class="color-bars-container">
-        <div class="color-bar-item">
-          <ColorBar
-            title="Atomic Radius (pm)"
-            color_scale="interpolateViridis"
-            range={atomic_radius_range}
-            orientation="horizontal"
-            style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="Electronegativity × 100"
-            color_scale="interpolateViridis"
-            range={electronegativity_range}
-            orientation="horizontal"
-            style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="Covalent Radius (pm)"
-            color_scale="interpolateViridis"
-            range={covalent_radius_range}
-            orientation="horizontal"
-            style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="|Electron Affinity| (kJ/mol)"
-            color_scale="interpolateViridis"
-            range={electron_affinity_range}
-            orientation="horizontal"
-            style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-      </div>
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
-
-<h2>Missing Color Demo</h2>
-<p>
-  The <code>missing_color</code> prop is used to control how missing values in heatmap
-  data are displayed.
-</p>
-
-<PeriodicTable
-  tile_props={{ show_name: window_width > 800, text_color: tile_font_color }}
-  heatmap_values={missing_heatmap_values}
-  missing_color={missing_computed_color}
-  bind:color_scale
-  bind:active_element={missing_active_element}
-  bind:active_category={missing_active_category}
-  links="name"
-  tooltip
-  gap={tile_gap}
-  style="margin: 1em auto; max-width: 1000px"
-  {onenter}
->
-  {#snippet inset()}
-    <TableInset>
-      <div class="missing-color-controls-inline">
-        <label>
-          <input
-            type="checkbox"
-            bind:checked={missing_use_category}
-            disabled={!missing_heatmap_values?.length}
-          />
-          Use element category colors
-        </label>
-
-        <label>
-          Missing color:
-          <input
-            type="color"
-            bind:value={missing_color}
-            disabled={missing_use_category || !missing_heatmap_values?.length}
-          />
-        </label>
-      </div>
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
 
 <style>
   form {

@@ -2,7 +2,7 @@
   import { Icon } from '$lib'
   import type { IconName } from '$lib/icons'
   import type { Snippet } from 'svelte'
-  import { draggable } from 'svelte-multiselect/attachments'
+  import { draggable, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props {
@@ -28,7 +28,6 @@
     has_been_dragged?: boolean
     currently_dragging?: boolean
   }
-
   let {
     show = $bindable(false),
     show_panel = true,
@@ -96,10 +95,6 @@
     show_control_buttons = true
     currently_dragging = true
     on_drag_start()
-  }
-
-  function handle_drag_end() {
-    currently_dragging = false
   }
 
   // Position calculation
@@ -180,9 +175,9 @@
     onclick={(event) => handle_button_click(event, custom_toggle || toggle_panel)}
     aria-expanded={show}
     aria-controls="draggable-panel"
-    title={toggle_props.title ?? (show ? `Close panel` : `Open panel`)}
     {...toggle_props}
     class="panel-toggle {toggle_props.class ?? ``}"
+    {@attach tooltip({ content: toggle_props.title ?? (show ? `Close panel` : `Open panel`) })}
   >
     <Icon icon={show ? open_icon : closed_icon} style={icon_style} />
   </button>
@@ -191,7 +186,7 @@
     {@attach draggable({
       handle_selector: `.drag-handle`,
       on_drag_start: handle_drag_start,
-      on_drag_end: handle_drag_end,
+      on_drag_end: () => (currently_dragging = false),
     })}
     bind:this={panel_div}
     role="dialog"
@@ -251,8 +246,8 @@
   }
   .draggable-panel {
     position: absolute; /* Use absolute so panel scrolls with page content */
-    background: var(--panel-bg, rgba(15, 23, 42, 0.95));
-    border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
+    background: var(--panel-bg);
+    border: var(--panel-border, 1px solid rgba(255, 255, 255, 0.15));
     border-radius: 6px;
     padding: var(--panel-padding, 1ex);
     box-sizing: border-box;
@@ -321,10 +316,6 @@
     margin: 0 0 0 5pt;
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-sizing: border-box;
-  }
-  .draggable-panel :global(.section-heading) {
-    margin: 8pt 0 2pt;
-    font-size: 0.9em;
   }
   .draggable-panel :global(.panel-row) {
     display: flex;

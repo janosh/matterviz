@@ -2,7 +2,7 @@
   --theme-transition-duration: 0.3s;
   --text-color: #eee;
   --page-bg: #090019;
-  --max-text-width: 40em;
+  --max-text-width: 50em;
 
   --github-corner-color: var(--page-bg);
   --github-corner-bg: var(--text-color);
@@ -37,7 +37,7 @@ main {
   margin: auto;
   margin-bottom: 3em;
   width: 100%;
-  max-width: 50em;
+  max-width: var(--max-text-width);
   container-type: inline-size;
 }
 a {

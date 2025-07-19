@@ -1,11 +1,9 @@
 // Theme System for MatterViz
 
-export * from './themes'
-
 const is_browser = typeof window !== `undefined`
 const storage_key = `matterviz-theme`
 
-// Core theme constants - single source of truth
+// Core theme constants
 export const COLOR_THEMES = {
   light: `light`,
   dark: `dark`,
@@ -15,7 +13,6 @@ export const COLOR_THEMES = {
 
 export const AUTO_THEME = `auto` as const
 
-// whether a theme is light or dark
 export type ThemeType = `light` | `dark`
 export const THEME_TYPE: Record<ThemeName, ThemeType> = {
   [COLOR_THEMES.light]: `light`,
@@ -24,7 +21,6 @@ export const THEME_TYPE: Record<ThemeName, ThemeType> = {
   [COLOR_THEMES.black]: `dark`,
 } as const
 
-// Types
 export type ThemeName = keyof typeof COLOR_THEMES
 export type ThemeMode = ThemeName | typeof AUTO_THEME
 
@@ -65,7 +61,7 @@ declare global {
 export const get_theme_preference = (): ThemeMode => {
   if (!is_browser) return AUTO_THEME
   try {
-    const saved = localStorage.getItem(storage_key)
+    const saved = localStorage[storage_key]
     return is_valid_theme_mode(saved || ``) ? saved as ThemeMode : AUTO_THEME
   } catch {
     return AUTO_THEME
@@ -73,9 +69,8 @@ export const get_theme_preference = (): ThemeMode => {
 }
 
 export const save_theme_preference = (mode: ThemeMode): void => {
-  if (!is_browser) return
   try {
-    localStorage.setItem(storage_key, mode)
+    localStorage[storage_key] = mode
   } catch {
     // Silently fail if localStorage is unavailable
   }
@@ -103,21 +98,7 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
     }
   })
 
-  root.style.setProperty(`color-scheme`, THEME_TYPE[resolved])
   root.setAttribute(`data-theme`, resolved)
-}
-
-// Initialize theme system
-export const init_theme = (): void => {
-  if (!is_browser) return
-
-  const mode = get_theme_preference()
-  apply_theme_to_dom(mode)
-
-  matchMedia(`(prefers-color-scheme: dark)`).addEventListener(
-    `change`,
-    () => get_theme_preference() === AUTO_THEME && apply_theme_to_dom(AUTO_THEME),
-  )
 }
 
 // Theme getters

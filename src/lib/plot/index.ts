@@ -2,9 +2,17 @@ import type { SimulationNodeDatum } from 'd3-force'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
 import type { ComponentProps } from 'svelte'
-import { type TweenedOptions } from 'svelte/motion'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
+
+// TODO restore: import { type TweenedOptions } from 'svelte/motion'
+// pending https://github.com/sveltejs/svelte/issues/16151
+interface TweenedOptions<T> {
+  delay?: number
+  duration?: number | ((from: T, to: T) => number)
+  easing?: (t: number) => number
+  interpolate?: (a: T, b: T) => (t: number) => T
+}
 
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'

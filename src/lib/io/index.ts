@@ -48,6 +48,27 @@ export async function load_from_url(
       }
     }
 
+    // For H5 files, always load as binary regardless of signature
+    // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
+    if ([`h5`, `hdf5`].includes(ext)) {
+      try {
+        const buffer = await resp.arrayBuffer()
+        // Log warning if signature doesn't match but still return as binary
+        if (buffer.byteLength >= 8) {
+          const view = new Uint8Array(buffer.slice(0, 8))
+          const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
+          if (!hdf5_signature.every((byte, idx) => view[idx] === byte)) {
+            console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
+          }
+        }
+        return callback(buffer, filename)
+      } catch (error) {
+        console.warn(`Failed to load H5 file as binary:`, error)
+        // Fall back to text if binary loading fails
+        return callback(await resp.text(), filename)
+      }
+    }
+
     if (resp.headers.get(`content-encoding`) === `gzip`) {
       return callback(await resp.text(), filename)
     }

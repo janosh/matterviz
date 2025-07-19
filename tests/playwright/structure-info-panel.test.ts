@@ -27,8 +27,9 @@ test.describe(`StructureInfoPanel`, () => {
     await page.locator(`button[title*="structure info"]`).click()
     await expect(page.locator(`.structure-info-panel`)).toBeVisible()
 
+    const panel_heading = page.locator(`.structure-info-panel h4`).first()
     // Check main sections are present
-    await expect(page.locator(`.section-heading`).first()).toHaveText(`Structure Info`)
+    await expect(panel_heading).toHaveText(`Structure Info`)
     await expect(page.locator(`text=Cell`).first()).toBeVisible()
     await expect(page.locator(`text=Usage Tips`)).toBeVisible()
 
@@ -93,7 +94,7 @@ test.describe(`StructureInfoPanel`, () => {
     await page.locator(`button[title*="structure info"]`).click()
 
     // Get initial position
-    const panel = page.locator(`.info-panel-content`)
+    const panel = page.locator(`div.draggable-panel:has-text("Structure Info")`)
     const initial_box = await panel.boundingBox()
     expect(initial_box).toBeTruthy()
     if (!initial_box) return

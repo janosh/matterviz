@@ -11,6 +11,7 @@
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { tooltip } from 'svelte-multiselect'
   import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
   import {
@@ -45,6 +46,8 @@
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     // spinner props (passed to Spinner component)
     spinner_props?: ComponentProps<typeof Spinner>
+    loading?: boolean
+    error_msg?: string
     [key: string]: unknown
   }
   let {
@@ -90,17 +93,16 @@
     data_url,
     on_file_drop,
     spinner_props = {},
+    loading = $bindable(false),
+    error_msg = $bindable(undefined),
     ...rest
   }: Props = $props()
-
-  let loading = $state(false)
-  let error_msg = $state<string | null>(null)
 
   // Load structure from URL when data_url is provided
   $effect(() => {
     if (data_url && !structure) {
       loading = true
-      error_msg = null
+      error_msg = undefined
 
       load_from_url(data_url, (content, filename) => {
         if (on_file_drop) {
@@ -124,9 +126,7 @@
           }
         }
       })
-        .then(() => {
-          loading = false
-        })
+        .then(() => loading = false)
         .catch((error: Error) => {
           console.error(`Failed to load structure from URL:`, error)
           error_msg = `Failed to load structure: ${error.message}`
@@ -237,8 +237,22 @@
     // Handle file system drops
     const file = event.dataTransfer?.files[0]
     if (file) {
-      const { content, filename } = await decompress_file(file)
-      if (content) on_file_drop?.(content, filename)
+      try {
+        const { content, filename } = await decompress_file(file)
+        if (content) {
+          if (on_file_drop) on_file_drop(content, filename)
+          else {
+            // Parse structure internally when no handler provided
+            const parsed_structure = parse_any_structure(content, filename)
+            if (parsed_structure) structure = parsed_structure
+            else error_msg = `Failed to parse structure from ${filename}`
+          }
+        }
+      } catch (error) {
+        error_msg = `Failed to load file ${file.name}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      }
     }
   }
 
@@ -302,41 +316,41 @@
 
 <svelte:document
   onfullscreenchange={() => {
-    fullscreen = !!document.fullscreenElement
+    fullscreen = Boolean(document.fullscreenElement)
   }}
 />
 
-{#if loading}
-  <Spinner text="Loading structure..." {...spinner_props} />
-{:else if error_msg}
-  <div class="error-state">
-    <p class="error">{error_msg}</p>
-    <button onclick={() => (error_msg = null)}>Dismiss</button>
-  </div>
-{:else if (structure?.sites?.length ?? 0) > 0}
-  <div
-    class="structure"
-    class:dragover
-    class:active={info_panel_open || controls_open}
-    role="region"
-    bind:this={wrapper}
-    bind:clientWidth={width}
-    bind:clientHeight={height}
-    onmouseenter={() => (hovered = true)}
-    onmouseleave={() => (hovered = false)}
-    ondrop={handle_file_drop}
-    ondragover={(event) => {
-      event.preventDefault()
-      if (!allow_file_drop) return
-      dragover = true
-    }}
-    ondragleave={(event) => {
-      event.preventDefault()
-      dragover = false
-    }}
-    {onkeydown}
-    {...rest}
-  >
+<div
+  class="structure"
+  class:dragover
+  class:active={info_panel_open || controls_open}
+  role="region"
+  bind:this={wrapper}
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  onmouseenter={() => (hovered = true)}
+  onmouseleave={() => (hovered = false)}
+  ondrop={handle_file_drop}
+  ondragover={(event) => {
+    event.preventDefault()
+    if (!allow_file_drop) return
+    dragover = true
+  }}
+  ondragleave={(event) => {
+    event.preventDefault()
+    dragover = false
+  }}
+  {onkeydown}
+  {...rest}
+>
+  {#if loading}
+    <Spinner text="Loading structure..." {...spinner_props} />
+  {:else if error_msg}
+    <div class="error-state">
+      <p class="error">{error_msg}</p>
+      <button onclick={() => (error_msg = undefined)}>Dismiss</button>
+    </div>
+  {:else if (structure?.sites?.length ?? 0) > 0}
     <section class:visible={visible_buttons} class="control-buttons">
       {#if visible_buttons}
         {#if camera_has_moved}
@@ -349,7 +363,7 @@
           <button
             onclick={toggle_fullscreen}
             class="fullscreen-toggle"
-            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+            {@attach tooltip({ content: `${fullscreen ? `Exit` : `Enter`} fullscreen` })}
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
@@ -367,6 +381,7 @@
             {structure}
             bind:panel_open={info_panel_open}
             custom_toggle={toggle_info}
+            {@attach tooltip({ content: `Structure info panel` })}
           />
         {/if}
 
@@ -420,12 +435,12 @@
     <div class="bottom-left">
       {@render bottom_left?.({ structure: structure! })}
     </div>
-  </div>
-{:else if structure}
-  <p class="warn">No sites found in structure</p>
-{:else}
-  <p class="warn">No structure provided</p>
-{/if}
+  {:else if structure}
+    <p class="warn">No sites found in structure</p>
+  {:else}
+    <p class="warn">No structure provided</p>
+  {/if}
+</div>
 
 <style>
   .structure {
@@ -451,7 +466,8 @@
     width: 100vw !important;
   }
   .structure.dragover {
-    background: var(--struct-dragover-bg);
+    background: var(--struct-dragover-bg, var(--dragover-bg));
+    border: var(--struct-dragover-border, var(--dragover-border));
   }
   div.bottom-left {
     position: absolute;
@@ -464,8 +480,8 @@
     position: absolute;
     display: flex;
     justify-content: end;
-    top: var(--struct-buttons-top, 1ex);
-    right: var(--struct-buttons-right, 1ex);
+    top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
+    right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: var(--struct-buttons-gap, 3pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
     z-index: var(--struct-buttons-z-index, 2);

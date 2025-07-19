@@ -30,7 +30,6 @@
 {#each trajectory_files_paths as file (file)}
   <TrajectoryViewer
     data_url={file}
-    spinner_props={{ style: `background: transparent; color: white` }}
     class="full-bleed"
     style="margin-top: 5em"
   />

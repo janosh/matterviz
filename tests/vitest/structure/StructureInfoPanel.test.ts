@@ -52,7 +52,7 @@ test.each([
 
     if (atom_count <= atom_count_thresholds[1]) {
       // Sites section should exist
-      const sites_section = document.querySelector(`h4.section-heading`)
+      const sites_section = document.querySelector(`.structure-info-panel h4`)
       expect(sites_section).not.toBeNull()
 
       if (atom_count >= atom_count_thresholds[0]) {
@@ -89,9 +89,11 @@ test(`structure with > 500 atoms should not create sites section`, () => {
   })
 
   // Check that no sites section exists
-  const sites_headings = Array.from(document.querySelectorAll(`h4.section-heading`))
-  const sites_section = sites_headings.find((h) =>
-    (h as HTMLElement).textContent?.includes(`Sites`)
+  const sites_headings = Array.from(
+    document.querySelectorAll<HTMLHeadingElement>(`.structure-info-panel h4`),
+  )
+  const sites_section = sites_headings.find((heading) =>
+    heading.textContent?.includes(`Sites`)
   )
   expect(sites_section).toBeUndefined()
 

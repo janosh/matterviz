@@ -8,8 +8,16 @@ import { defineConfig } from 'vite'
 
 const __dirname = fileURLToPath(new URL(`.`, import.meta.url))
 
-export default defineConfig({
-  plugins: [svelte()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    mode === `test`
+      ? { // just ignore svelte files in test mode
+        name: `svelte-mock`,
+        resolveId: (id) => id.endsWith(`.svelte`) ? id : null,
+        load: (id) => id.endsWith(`.svelte`) ? `export default {}` : null,
+      }
+      : svelte(),
+  ],
   build: {
     outDir: `dist`,
     rollupOptions: {
@@ -23,4 +31,4 @@ export default defineConfig({
       $lib: resolve(__dirname, `../../src/lib`),
     },
   },
-})
+}))

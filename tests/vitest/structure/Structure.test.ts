@@ -10,12 +10,46 @@ import { doc_query } from '../setup'
 
 const structure = structures[0]
 
+// Shared test utilities to reduce duplication
+const SAMPLE_POSCAR_CONTENT = `BaTiO3 tetragonal
+1.0
+4.0 0.0 0.0
+0.0 4.0 0.0
+0.0 0.0 4.0
+Ba Ti O
+1 1 3
+Direct
+0.0 0.0 0.0
+0.5 0.5 0.5
+0.5 0.5 0.0
+0.5 0.0 0.5
+0.0 0.5 0.5`
+
+function create_mock_data_transfer(files: File[]): DataTransfer {
+  return {
+    files,
+    getData: () => ``,
+    dropEffect: `copy` as const,
+    effectAllowed: `copy` as const,
+    items: [] as unknown as DataTransferItemList,
+    types: [] as readonly string[],
+    clearData: () => {},
+    setData: () => {},
+    setDragImage: () => {},
+  } as unknown as DataTransfer
+}
+
+function create_drop_event(files: File[]): DragEvent {
+  const drag_event = new DragEvent(`drop`)
+  Object.defineProperty(drag_event, `dataTransfer`, {
+    value: create_mock_data_transfer(files),
+    writable: false,
+  })
+  return drag_event
+}
+
 // Tests for Structure component functionality
 describe(`Structure`, () => {
-  beforeEach(() => {
-    mount(Structure, { target: document.body, props: { structure, show_buttons: true } })
-  })
-
   test(`open control panel when clicking toggle button`, async () => {
     mount(Structure, {
       target: document.body,
@@ -72,10 +106,7 @@ describe(`Structure`, () => {
 
     mount(Structure, {
       target: document.body,
-      props: {
-        structure,
-        show_buttons: true,
-      },
+      props: { structure, show_buttons: true },
     })
 
     // Find the wrapper element that was created by the component
@@ -85,8 +116,9 @@ describe(`Structure`, () => {
     // Mock wrapper element
     wrapper.requestFullscreen = requestFullscreenMock
     document.exitFullscreen = exitFullscreenMock
+    await tick()
 
-    // Click the fullscreen button instead of calling the function directly
+    // Click the fullscreen button
     const fullscreen_button = document.querySelector(
       `.fullscreen-toggle`,
     ) as HTMLButtonElement
@@ -112,6 +144,126 @@ describe(`Structure`, () => {
       value: null,
       configurable: true,
     })
+  })
+
+  test(`drag and drop file handling`, async () => {
+    let structure_loaded = false
+
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure: undefined,
+        show_buttons: true,
+        on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
+          structure_loaded = true
+        },
+      },
+    })
+
+    const wrapper = document.querySelector(`.structure`) as HTMLElement
+    expect(wrapper).toBeTruthy()
+
+    const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
+    const drag_event = create_drop_event([file])
+
+    // Trigger the drop event
+    wrapper.dispatchEvent(drag_event)
+
+    // Wait for async processing to complete
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await tick()
+
+    // Verify that the file drop handler was called
+    expect(structure_loaded).toBe(true)
+  })
+
+  test(`drag and drop event handling`, async () => {
+    let event_handled = false
+    let file_content = null
+
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure: undefined,
+        show_buttons: true,
+        on_file_drop: (content: string | ArrayBuffer, _filename: string) => {
+          event_handled = true
+          file_content = content
+        },
+      },
+    })
+
+    const wrapper = document.querySelector(`.structure`) as HTMLElement
+    expect(wrapper).toBeTruthy()
+
+    const file = new File([`test content`], `test.txt`, { type: `text/plain` })
+    const drag_event = create_drop_event([file])
+
+    // Trigger the drop event
+    wrapper.dispatchEvent(drag_event)
+
+    // Wait for async processing to complete
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await tick()
+
+    expect(event_handled).toBe(true)
+    expect(file_content).toBe(`test content`)
+  })
+
+  test(`drag and drop with real POSCAR file`, async () => {
+    let structure_loaded = false
+
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure: undefined,
+        show_buttons: true,
+        on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
+          structure_loaded = true
+        },
+      },
+    })
+
+    const wrapper = document.querySelector(`.structure`) as HTMLElement
+    expect(wrapper).toBeTruthy()
+
+    const file = new File([SAMPLE_POSCAR_CONTENT], `BaTiO3.poscar`, {
+      type: `text/plain`,
+    })
+    const drag_event = create_drop_event([file])
+
+    // Trigger the drop event
+    wrapper.dispatchEvent(drag_event)
+
+    // Wait for async processing to complete
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await tick()
+
+    // Verify that the file drop handler was called
+    expect(structure_loaded).toBe(true)
+  })
+
+  test(`drag and drop without on_file_drop handler`, async () => {
+    mount(Structure, {
+      target: document.body,
+      props: { structure: undefined, show_buttons: true },
+    })
+
+    const wrapper = document.querySelector(`.structure`) as HTMLElement
+    expect(wrapper).toBeTruthy()
+
+    const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
+    const drag_event = create_drop_event([file])
+
+    // Trigger the drop event
+    wrapper.dispatchEvent(drag_event)
+
+    // Wait for async processing to complete
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await tick()
+
+    // Check that the structure was loaded (should show structure info)
+    expect(document.body.textContent).toContain(`Ba Ti O3`)
   })
 })
 

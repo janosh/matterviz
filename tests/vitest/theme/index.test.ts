@@ -183,17 +183,6 @@ describe(`Theme System`, () => {
       },
     )
 
-    test.each(Object.keys(COLOR_THEMES))(
-      `apply_theme_to_dom("%s") sets color-scheme correctly`,
-      (theme) => {
-        apply_theme_to_dom(theme as ThemeName)
-        const expected_scheme = THEME_TYPE[theme as ThemeName]
-        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-          expected_scheme,
-        )
-      },
-    )
-
     test.each([[true, `dark`], [false, `light`]])(
       `apply_theme_to_dom("auto") with system preference %s resolves to "%s"`,
       (dark_preference, expected_theme) => {
@@ -207,9 +196,6 @@ describe(`Theme System`, () => {
 
         apply_theme_to_dom(`auto`)
         expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
-        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-          expected_theme,
-        )
       },
     )
 
@@ -230,9 +216,6 @@ describe(`Theme System`, () => {
       globalThis.MATTERVIZ_CSS_MAP = {}
 
       expect(() => apply_theme_to_dom(`light`)).not.toThrow()
-      expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-        `light`,
-      )
     })
 
     test(`apply_theme_to_dom handles missing global data gracefully`, () => {
@@ -242,9 +225,6 @@ describe(`Theme System`, () => {
       globalThis.MATTERVIZ_CSS_MAP = undefined
 
       expect(() => apply_theme_to_dom(`light`)).not.toThrow()
-      expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-        `light`,
-      )
     })
   })
 
@@ -275,9 +255,6 @@ describe(`Theme System`, () => {
 
       const root = document.documentElement
       expect(root.getAttribute(`data-theme`)).toBe(theme)
-      expect(root.style.getPropertyValue(`color-scheme`)).toBe(
-        THEME_TYPE[theme as ThemeName],
-      )
       const expected = globalThis.MATTERVIZ_THEMES[theme as ThemeName] as {
         surface_bg: string
         text_color: string
@@ -304,28 +281,24 @@ describe(`Theme System`, () => {
         apply_theme_to_dom(`auto`)
 
         expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
-        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-          expected_theme,
-        )
       },
     )
   })
 
   describe(`Theme data integrity`, () => {
     test(`all theme keys have complete variant coverage`, () => {
-      const theme_source = globalThis.MATTERVIZ_THEME_SOURCE as
-        | Record<string, Record<string, string>>
-        | undefined
-      if (!theme_source) return
-
-      const theme_keys = Object.keys(theme_source)
-      const variants = Object.keys(COLOR_THEMES)
+      const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
+      const first_theme = globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName]
+      const expected_keys = Object.keys(first_theme)
       const missing_variants: string[] = []
 
-      for (const variant of variants) {
-        for (const key of theme_keys) {
-          if (!theme_source[key]?.[variant]) {
-            missing_variants.push(`${variant} variant for theme key: ${key}`)
+      for (const theme_name of theme_names) {
+        const theme_keys = Object.keys(
+          globalThis.MATTERVIZ_THEMES[theme_name as ThemeName],
+        )
+        for (const key of expected_keys) {
+          if (!theme_keys.includes(key)) {
+            missing_variants.push(`${key} missing from theme: ${theme_name}`)
           }
         }
       }
@@ -333,18 +306,16 @@ describe(`Theme System`, () => {
       expect(missing_variants).toEqual([])
     })
 
-    test(`all theme variants have consistent structure`, () => {
-      const theme_source = globalThis.MATTERVIZ_THEME_SOURCE as
-        | Record<string, Record<string, string>>
-        | undefined
-      if (!theme_source) return
+    test(`all theme variants have consistent keys`, () => {
+      const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
+      const first_theme = globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName]
+      const expected_keys = Object.keys(first_theme)
 
-      const theme_keys = Object.keys(theme_source)
-      const variants = Object.keys(COLOR_THEMES)
-
-      for (const variant of variants) {
-        const variant_keys = theme_keys.filter((key) => theme_source[key]?.[variant])
-        expect(variant_keys).toHaveLength(theme_keys.length)
+      for (const theme_name of theme_names) {
+        const theme_keys = Object.keys(
+          globalThis.MATTERVIZ_THEMES[theme_name as ThemeName],
+        )
+        expect(theme_keys).toEqual(expected_keys)
       }
     })
   })

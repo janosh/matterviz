@@ -22,7 +22,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: var(--spinner-bg, rgba(255, 255, 255, 0.9));
+    background: var(--spinner-bg);
     color: var(--spinner-text-color, #333);
     backdrop-filter: blur(4px);
     z-index: var(--spinner-z-index, 10);

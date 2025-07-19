@@ -139,9 +139,5 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     expect(
       new TextDecoder().decode(result_array.slice(8, 24)).replace(/\0/g, ``),
     ).toBe(`ASE-Trajectory`)
-
-    console.log(
-      `✅ ASE trajectory file regression test passed - binary conversion works correctly`,
-    )
   })
 })

@@ -219,315 +219,309 @@
     closed_icon="Settings"
     open_icon="Cross"
     icon_style="transform: scale(1.2);"
-    toggle_props={{ class: `scatter-controls-toggle`, ...toggle_props }}
+    toggle_props={{
+      class: `scatter-controls-toggle`,
+      title: `${controls_open ? `Close` : `Open`} scatter plot controls`,
+      style:
+        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
+          toggle_props?.style ?? ``
+        }`,
+      ...toggle_props,
+    }}
     panel_props={{
       class: `scatter-controls-panel`,
       style:
-        `--panel-width: 16em; max-height: 400px; overflow-y: auto; padding-right: 4px;`,
+        `--panel-width: 16em; max-height: 450px; overflow-y: auto; padding-right: 4px;`,
       ...panel_props,
     }}
   >
     {#if plot_controls}
       {@render plot_controls()}
     {:else}
-      <div class="plot-controls-content">
-        <!-- Display Controls -->
-        <h4 class="section-heading" style="margin-top: 0">Display</h4>
-        <div class="controls-group">
+      <h4 style="margin-top: 0">Scatter Plot Controls</h4>
+      <div class="controls-group">
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={show_points} /> Show points
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={show_lines} /> Show lines
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
+        </label>
+        {#if has_y2_points}
           <label class="checkbox-label">
-            <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
+            <input type="checkbox" bind:checked={y2_grid as boolean} /> Y2-axis grid
           </label>
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={show_points} /> Show points
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={show_lines} /> Show lines
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
-          </label>
-          {#if has_y2_points}
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={y2_grid as boolean} /> Y2-axis grid
-            </label>
-          {/if}
-        </div>
-
-        <!-- Range Controls -->
-        <h4 class="section-heading">Axis Range</h4>
-        <div class="controls-group">
-          <div class="range-row">
-            <label for="x-range-min">X-axis:</label>
-            <input {...input_props(`x`, `min`, x_range)} />
-            <span class="range-separator">to</span>
-            <input {...input_props(`x`, `max`, x_range)} />
-          </div>
-          <div class="range-row">
-            <label for="y-range-min">Y-axis:</label>
-            <input {...input_props(`y`, `min`, y_range)} />
-            <span class="range-separator">to</span>
-            <input {...input_props(`y`, `max`, y_range)} />
-          </div>
-          {#if has_y2_points}
-            <div class="range-row">
-              <label for="y2-range-min">Y2-axis:</label>
-              <input {...input_props(`y2`, `min`, y2_range)} />
-              <span class="range-separator">to</span>
-              <input {...input_props(`y2`, `max`, y2_range)} />
-            </div>
-          {/if}
-        </div>
-
-        <!-- Format Controls -->
-        <h4 class="section-heading">Tick Format</h4>
-        <div class="controls-group">
-          <div class="panel-row">
-            <label for="x-format">X-axis:</label>
-            <input
-              id="x-format"
-              type="text"
-              bind:value={x_format_input}
-              placeholder=".2f / .0% / %Y-%m-%d"
-              class="format-input"
-              oninput={format_input_handler(`x`)}
-            />
-          </div>
-          <div class="panel-row">
-            <label for="y-format">Y-axis:</label>
-            <input
-              id="y-format"
-              type="text"
-              bind:value={y_format_input}
-              placeholder=".2f / .1e / .0%"
-              class="format-input"
-              oninput={format_input_handler(`y`)}
-            />
-          </div>
-          {#if has_y2_points}
-            <div class="panel-row">
-              <label for="y2-format">Y2-axis:</label>
-              <input
-                id="y2-format"
-                type="text"
-                bind:value={y2_format_input}
-                placeholder=".2f / .1e / .0%"
-                class="format-input"
-                oninput={format_input_handler(`y2`)}
-              />
-            </div>
-          {/if}
-        </div>
-
-        <!-- Series Selection (for multi-series style controls) -->
-        {#if has_multiple_series}
-          <div class="controls-group">
-            <div class="panel-row">
-              <label for="series-select">Series</label>
-              <select bind:value={selected_series_idx} id="series-select">
-                {#each series.filter(Boolean) as
-                  series_data,
-                  idx
-                  (series_data.label ?? idx)
-                }
-                  <option value={idx}>
-                    {series_data.label ?? `Series ${idx + 1}`}
-                  </option>
-                {/each}
-              </select>
-            </div>
-          </div>
         {/if}
+      </div>
 
-        <!-- Point Style Controls -->
-        {#if show_points}
-          <h4 class="section-heading">Point Style</h4>
-          <div class="controls-group">
-            <div class="panel-row">
-              <label for="point-size-range">Size:</label>
-              <input
-                id="point-size-range"
-                type="range"
-                min="1"
-                max="20"
-                step="0.5"
-                bind:value={point_size}
-              />
-              <input
-                type="number"
-                min="1"
-                max="20"
-                step="0.5"
-                bind:value={point_size}
-                class="number-input"
-              />
-            </div>
-            <div class="panel-row">
-              <label for="point-color">Color:</label>
-              <input
-                id="point-color"
-                type="color"
-                bind:value={point_color}
-                class="color-input"
-              />
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={point_opacity}
-                class="opacity-slider"
-                title="Color opacity"
-              />
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={point_opacity}
-                class="number-input opacity-number"
-              />
-            </div>
-            <div class="panel-row">
-              <label for="point-stroke-width-range">Stroke Width:</label>
-              <input
-                id="point-stroke-width-range"
-                type="range"
-                min="0"
-                max="5"
-                step="0.1"
-                bind:value={point_stroke_width}
-              />
-              <input
-                type="number"
-                min="0"
-                max="5"
-                step="0.1"
-                bind:value={point_stroke_width}
-                class="number-input"
-              />
-            </div>
-            <div class="panel-row">
-              <label for="point-stroke-color">Stroke Color:</label>
-              <input
-                id="point-stroke-color"
-                type="color"
-                bind:value={point_stroke_color}
-              />
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={point_stroke_opacity}
-                class="opacity-slider"
-                title="Stroke opacity"
-              />
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={point_stroke_opacity}
-                class="number-input opacity-number"
-              />
-            </div>
-          </div>
-        {/if}
-
-        <!-- Line Style Controls -->
-        {#if show_lines}
-          <h4 class="section-heading">Line Style</h4>
-          <div class="controls-group">
-            <div class="panel-row">
-              <label for="line-width-range">Line Width:</label>
-              <input
-                id="line-width-range"
-                type="range"
-                min="0.5"
-                max="10"
-                step="0.5"
-                bind:value={line_width}
-              />
-              <input
-                type="number"
-                min="0.5"
-                max="10"
-                step="0.5"
-                bind:value={line_width}
-                class="number-input"
-              />
-            </div>
-            <div class="panel-row">
-              <label for="line-color">Line Color:</label>
-              <input
-                id="line-color"
-                type="color"
-                bind:value={line_color}
-              />
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={line_opacity}
-                class="opacity-slider"
-                title="Line opacity"
-              />
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={line_opacity}
-                class="number-input opacity-number"
-              />
-            </div>
-            <div class="panel-row">
-              <label for="line-style-select">Line Style:</label>
-              <select
-                id="line-style-select"
-                value={line_dash ?? `solid`}
-                onchange={(event) => {
-                  line_dash = event.currentTarget.value === `solid`
-                    ? undefined
-                    : event.currentTarget.value
-                }}
-              >
-                <option value="solid">Solid</option>
-                <option value="4,4">Dashed</option>
-                <option value="2,2">Dotted</option>
-                <option value="8,4,2,4">Dash-dot</option>
-              </select>
-            </div>
+      <!-- Range Controls -->
+      <h4>Axis Range</h4>
+      <div class="controls-group">
+        <div class="range-row">
+          <label for="x-range-min">X-axis:</label>
+          <input {...input_props(`x`, `min`, x_range)} />
+          <span class="range-separator">to</span>
+          <input {...input_props(`x`, `max`, x_range)} />
+        </div>
+        <div class="range-row">
+          <label for="y-range-min">Y-axis:</label>
+          <input {...input_props(`y`, `min`, y_range)} />
+          <span class="range-separator">to</span>
+          <input {...input_props(`y`, `max`, y_range)} />
+        </div>
+        {#if has_y2_points}
+          <div class="range-row">
+            <label for="y2-range-min">Y2-axis:</label>
+            <input {...input_props(`y2`, `min`, y2_range)} />
+            <span class="range-separator">to</span>
+            <input {...input_props(`y2`, `max`, y2_range)} />
           </div>
         {/if}
       </div>
+
+      <!-- Format Controls -->
+      <h4>Tick Format</h4>
+      <div class="controls-group">
+        <div class="panel-row">
+          <label for="x-format">X-axis:</label>
+          <input
+            id="x-format"
+            type="text"
+            bind:value={x_format_input}
+            placeholder=".2f / .0% / %Y-%m-%d"
+            class="format-input"
+            oninput={format_input_handler(`x`)}
+          />
+        </div>
+        <div class="panel-row">
+          <label for="y-format">Y-axis:</label>
+          <input
+            id="y-format"
+            type="text"
+            bind:value={y_format_input}
+            placeholder=".2f / .1e / .0%"
+            class="format-input"
+            oninput={format_input_handler(`y`)}
+          />
+        </div>
+        {#if has_y2_points}
+          <div class="panel-row">
+            <label for="y2-format">Y2-axis:</label>
+            <input
+              id="y2-format"
+              type="text"
+              bind:value={y2_format_input}
+              placeholder=".2f / .1e / .0%"
+              class="format-input"
+              oninput={format_input_handler(`y2`)}
+            />
+          </div>
+        {/if}
+      </div>
+
+      <!-- Series Selection (for multi-series style controls) -->
+      {#if has_multiple_series}
+        <div class="controls-group">
+          <div class="panel-row">
+            <label for="series-select">Series</label>
+            <select bind:value={selected_series_idx} id="series-select">
+              {#each series.filter(Boolean) as
+                series_data,
+                idx
+                (series_data.label ?? idx)
+              }
+                <option value={idx}>
+                  {series_data.label ?? `Series ${idx + 1}`}
+                </option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Point Style Controls -->
+      {#if show_points}
+        <h4>Point Style</h4>
+        <div class="controls-group">
+          <div class="panel-row">
+            <label for="point-size-range">Size:</label>
+            <input
+              id="point-size-range"
+              type="range"
+              min="1"
+              max="20"
+              step="0.5"
+              bind:value={point_size}
+            />
+            <input
+              type="number"
+              min="1"
+              max="20"
+              step="0.5"
+              bind:value={point_size}
+              class="number-input"
+            />
+          </div>
+          <div class="panel-row">
+            <label for="point-color">Color:</label>
+            <input
+              id="point-color"
+              type="color"
+              bind:value={point_color}
+              class="color-input"
+            />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={point_opacity}
+              class="opacity-slider"
+              title="Color opacity"
+            />
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={point_opacity}
+              class="number-input opacity-number"
+            />
+          </div>
+          <div class="panel-row">
+            <label for="point-stroke-width-range">Stroke Width:</label>
+            <input
+              id="point-stroke-width-range"
+              type="range"
+              min="0"
+              max="5"
+              step="0.1"
+              bind:value={point_stroke_width}
+            />
+            <input
+              type="number"
+              min="0"
+              max="5"
+              step="0.1"
+              bind:value={point_stroke_width}
+              class="number-input"
+            />
+          </div>
+          <div class="panel-row">
+            <label for="point-stroke-color">Stroke Color:</label>
+            <input
+              id="point-stroke-color"
+              type="color"
+              bind:value={point_stroke_color}
+            />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={point_stroke_opacity}
+              class="opacity-slider"
+              title="Stroke opacity"
+            />
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={point_stroke_opacity}
+              class="number-input opacity-number"
+            />
+          </div>
+        </div>
+      {/if}
+
+      <!-- Line Style Controls -->
+      {#if show_lines}
+        <h4>Line Style</h4>
+        <div class="controls-group">
+          <div class="panel-row">
+            <label for="line-width-range">Line Width:</label>
+            <input
+              id="line-width-range"
+              type="range"
+              min="0.5"
+              max="10"
+              step="0.5"
+              bind:value={line_width}
+            />
+            <input
+              type="number"
+              min="0.5"
+              max="10"
+              step="0.5"
+              bind:value={line_width}
+              class="number-input"
+            />
+          </div>
+          <div class="panel-row">
+            <label for="line-color">Line Color:</label>
+            <input
+              id="line-color"
+              type="color"
+              bind:value={line_color}
+            />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={line_opacity}
+              class="opacity-slider"
+              title="Line opacity"
+            />
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={line_opacity}
+              class="number-input opacity-number"
+            />
+          </div>
+          <div class="panel-row">
+            <label for="line-style-select">Line Style:</label>
+            <select
+              id="line-style-select"
+              value={line_dash ?? `solid`}
+              onchange={(event) => {
+                line_dash = event.currentTarget.value === `solid`
+                  ? undefined
+                  : event.currentTarget.value
+              }}
+            >
+              <option value="solid">Solid</option>
+              <option value="4,4">Dashed</option>
+              <option value="2,2">Dotted</option>
+              <option value="8,4,2,4">Dash-dot</option>
+            </select>
+          </div>
+        </div>
+      {/if}
     {/if}
   </DraggablePanel>
 {/if}
 
 <style>
-  .section-heading {
-    margin: 0 0 8px 0;
+  h4 {
+    margin: 8pt 0 2pt;
     font-size: 0.9em;
-    color: var(--text-color-muted, #ccc);
-    font-weight: 600;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 4px;
-  }
-  .plot-controls-content {
-    max-height: 400px;
-    overflow-y: auto;
-    padding-right: 4px;
   }
   .controls-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 16px;
   }
   .checkbox-label {
     display: flex;

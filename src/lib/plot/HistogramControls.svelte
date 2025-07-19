@@ -3,7 +3,7 @@
   import type { DataSeries } from '$lib/plot'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
-  import type { Snippet } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { TicksOption } from './scales'
 
   interface Props {
@@ -34,8 +34,9 @@
     y_format?: string
     // Selected property for single mode
     selected_property?: string
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
   }
-
   let {
     show_controls = $bindable(false),
     controls_open = $bindable(false),
@@ -55,6 +56,8 @@
     x_format = $bindable(`.2~s`),
     y_format = $bindable(`d`),
     selected_property = $bindable(``),
+    toggle_props,
+    panel_props,
   }: Props = $props()
 
   // Local variables for format inputs to prevent invalid values from reaching props
@@ -126,197 +129,200 @@
     offset={{ x: -35, y: 10 }}
     toggle_props={{
       class: `histogram-controls-toggle`,
-      style: `position: absolute; top: 10px; right: 10px;`,
+      title: `${controls_open ? `Close` : `Open`} histogram controls`,
+      style:
+        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
+          toggle_props?.style ?? ``
+        }`,
+      ...toggle_props,
     }}
     panel_props={{
       class: `histogram-controls-panel`,
       style:
         `--panel-width: 16em; max-height: 450px; overflow-y: auto; padding-right: 4px;`,
+      ...panel_props,
     }}
   >
     {#if plot_controls}
       {@render plot_controls()}
     {:else}
-      <div class="histogram-controls-content">
-        <!-- Histogram-specific Controls -->
-        <h4 class="section-heading">Histogram</h4>
-        <div class="controls-group">
+      <h4 style="margin-top: 0">Histogram Controls</h4>
+      <div class="controls-group">
+        <div class="panel-row">
+          <label for="bins-input">Bins:</label>
+          <input
+            id="bins-input"
+            type="range"
+            min="5"
+            max="100"
+            step="5"
+            bind:value={bins}
+          />
+          <input
+            type="number"
+            min="5"
+            max="100"
+            step="5"
+            bind:value={bins}
+            class="number-input"
+          />
+        </div>
+        {#if has_multiple_series}
           <div class="panel-row">
-            <label for="bins-input">Bins:</label>
-            <input
-              id="bins-input"
-              type="range"
-              min="5"
-              max="100"
-              step="5"
-              bind:value={bins}
-            />
-            <input
-              type="number"
-              min="5"
-              max="100"
-              step="5"
-              bind:value={bins}
-              class="number-input"
-            />
+            <label for="mode-select">Mode:</label>
+            <select bind:value={mode} id="mode-select">
+              <option value="single">Single</option>
+              <option value="overlay">Overlay</option>
+            </select>
           </div>
-          {#if has_multiple_series}
+          {#if mode === `single`}
             <div class="panel-row">
-              <label for="mode-select">Mode:</label>
-              <select bind:value={mode} id="mode-select">
-                <option value="single">Single</option>
-                <option value="overlay">Overlay</option>
+              <label for="property-select">Property:</label>
+              <select bind:value={selected_property} id="property-select">
+                <option value="">All</option>
+                {#each series_options as option (option)} 
+                  <option value={option}>{option}</option>
+                {/each}
               </select>
             </div>
-            {#if mode === `single`}
-              <div class="panel-row">
-                <label for="property-select">Property:</label>
-                <select bind:value={selected_property} id="property-select">
-                  <option value="">All</option>
-                  {#each series_options as option (option)} 
-                    <option value={option}>{option}</option>
-                  {/each}
-                </select>
-              </div>
-            {/if}
           {/if}
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={show_legend} />
-            Show legend
-          </label>
-        </div>
+        {/if}
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={show_legend} />
+          Show legend
+        </label>
+      </div>
 
-        <!-- Bar Style Controls -->
-        <h4 class="section-heading">Bar Style</h4>
-        <div class="controls-group">
-          <div class="panel-row">
-            <label for="bar-opacity-range">Opacity:</label>
-            <input
-              id="bar-opacity-range"
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              bind:value={bar_opacity}
-            />
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              bind:value={bar_opacity}
-              class="number-input"
-            />
-          </div>
-          <div class="panel-row">
-            <label for="bar-stroke-width-range">Stroke Width:</label>
-            <input
-              id="bar-stroke-width-range"
-              type="range"
-              min="0"
-              max="5"
-              step="0.1"
-              bind:value={bar_stroke_width}
-            />
-            <input
-              type="number"
-              min="0"
-              max="5"
-              step="0.1"
-              bind:value={bar_stroke_width}
-              class="number-input"
-            />
-          </div>
+      <!-- Bar Style Controls -->
+      <h4>Bar Style</h4>
+      <div class="controls-group">
+        <div class="panel-row">
+          <label for="bar-opacity-range">Opacity:</label>
+          <input
+            id="bar-opacity-range"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            bind:value={bar_opacity}
+          />
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.05"
+            bind:value={bar_opacity}
+            class="number-input"
+          />
         </div>
-
-        <!-- Display Controls -->
-        <h4 class="section-heading">Display</h4>
-        <div class="controls-group">
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={x_grid as boolean} />
-            X-axis grid
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={y_grid as boolean} />
-            Y-axis grid
-          </label>
+        <div class="panel-row">
+          <label for="bar-stroke-width-range">Stroke Width:</label>
+          <input
+            id="bar-stroke-width-range"
+            type="range"
+            min="0"
+            max="5"
+            step="0.1"
+            bind:value={bar_stroke_width}
+          />
+          <input
+            type="number"
+            min="0"
+            max="5"
+            step="0.1"
+            bind:value={bar_stroke_width}
+            class="number-input"
+          />
         </div>
+      </div>
 
-        <!-- Scale Type Controls -->
-        <h4 class="section-heading">Scale Type</h4>
-        <div class="controls-group">
-          <div class="panel-row">
-            <label for="x-scale-select">X-axis:</label>
-            <select bind:value={x_scale_type} id="x-scale-select">
-              <option value="linear">Linear</option>
-              <option value="log">Log</option>
-            </select>
-          </div>
-          <div class="panel-row">
-            <label for="y-scale-select">Y-axis:</label>
-            <select bind:value={y_scale_type} id="y-scale-select">
-              <option value="linear">Linear</option>
-              <option value="log">Log</option>
-            </select>
-          </div>
+      <!-- Display Controls -->
+      <h4>Display</h4>
+      <div class="controls-group">
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={x_grid as boolean} />
+          X-axis grid
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" bind:checked={y_grid as boolean} />
+          Y-axis grid
+        </label>
+      </div>
+
+      <!-- Scale Type Controls -->
+      <h4>Scale Type</h4>
+      <div class="controls-group">
+        <div class="panel-row">
+          <label for="x-scale-select">X-axis:</label>
+          <select bind:value={x_scale_type} id="x-scale-select">
+            <option value="linear">Linear</option>
+            <option value="log">Log</option>
+          </select>
         </div>
-
-        <!-- Tick Controls -->
-        <h4 class="section-heading">Ticks</h4>
-        <div class="controls-group">
-          <div class="panel-row">
-            <label for="x-ticks-input">X-axis:</label>
-            <input
-              id="x-ticks-input"
-              type="number"
-              min="2"
-              max="20"
-              step="1"
-              value={typeof x_ticks === `number` ? x_ticks : 8}
-              oninput={(event) => handle_ticks_input(event, `x`)}
-              class="number-input"
-            />
-          </div>
-          <div class="panel-row">
-            <label for="y-ticks-input">Y-axis:</label>
-            <input
-              id="y-ticks-input"
-              type="number"
-              min="2"
-              max="20"
-              step="1"
-              value={typeof y_ticks === `number` ? y_ticks : 6}
-              oninput={(event) => handle_ticks_input(event, `y`)}
-              class="number-input"
-            />
-          </div>
+        <div class="panel-row">
+          <label for="y-scale-select">Y-axis:</label>
+          <select bind:value={y_scale_type} id="y-scale-select">
+            <option value="linear">Linear</option>
+            <option value="log">Log</option>
+          </select>
         </div>
+      </div>
 
-        <!-- Format Controls -->
-        <h4 class="section-heading">Tick Format</h4>
-        <div class="controls-group">
-          <div class="panel-row">
-            <label for="x-format">X-axis:</label>
-            <input
-              id="x-format"
-              type="text"
-              bind:value={x_format_input}
-              placeholder=".2~s / .0% / %Y-%m-%d"
-              class="format-input"
-              oninput={(event) => handle_format_input(event, `x`)}
-            />
-          </div>
-          <div class="panel-row">
-            <label for="y-format">Y-axis:</label>
-            <input
-              id="y-format"
-              type="text"
-              bind:value={y_format_input}
-              placeholder="d / .1e / .0%"
-              class="format-input"
-              oninput={(event) => handle_format_input(event, `y`)}
-            />
-          </div>
+      <!-- Tick Controls -->
+      <h4>Ticks</h4>
+      <div class="controls-group">
+        <div class="panel-row">
+          <label for="x-ticks-input">X-axis:</label>
+          <input
+            id="x-ticks-input"
+            type="number"
+            min="2"
+            max="20"
+            step="1"
+            value={typeof x_ticks === `number` ? x_ticks : 8}
+            oninput={(event) => handle_ticks_input(event, `x`)}
+            class="number-input"
+          />
+        </div>
+        <div class="panel-row">
+          <label for="y-ticks-input">Y-axis:</label>
+          <input
+            id="y-ticks-input"
+            type="number"
+            min="2"
+            max="20"
+            step="1"
+            value={typeof y_ticks === `number` ? y_ticks : 6}
+            oninput={(event) => handle_ticks_input(event, `y`)}
+            class="number-input"
+          />
+        </div>
+      </div>
+
+      <!-- Format Controls -->
+      <h4>Tick Format</h4>
+      <div class="controls-group">
+        <div class="panel-row">
+          <label for="x-format">X-axis:</label>
+          <input
+            id="x-format"
+            type="text"
+            bind:value={x_format_input}
+            placeholder=".2~s / .0% / %Y-%m-%d"
+            class="format-input"
+            oninput={(event) => handle_format_input(event, `x`)}
+          />
+        </div>
+        <div class="panel-row">
+          <label for="y-format">Y-axis:</label>
+          <input
+            id="y-format"
+            type="text"
+            bind:value={y_format_input}
+            placeholder="d / .1e / .0%"
+            class="format-input"
+            oninput={(event) => handle_format_input(event, `y`)}
+          />
         </div>
       </div>
     {/if}
@@ -324,24 +330,14 @@
 {/if}
 
 <style>
-  .section-heading {
-    margin: 0 0 8px 0;
+  h4 {
+    margin: 8pt 0 2pt;
     font-size: 0.9em;
-    color: var(--text-color-muted, #ccc);
-    font-weight: 600;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 4px;
-  }
-  .histogram-controls-content {
-    max-height: 450px;
-    overflow-y: auto;
-    padding-right: 4px;
   }
   .controls-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 16px;
+    gap: 6pt;
   }
   .checkbox-label {
     display: flex;
