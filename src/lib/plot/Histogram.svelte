@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DraggablePanel } from '$lib'
   import type { DataSeries } from '$lib/plot'
   import { HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, extent, max } from 'd3-array'
@@ -43,6 +44,7 @@
     plot_controls?: Snippet<[]>
     // Callback for handling series visibility changes
     on_series_toggle?: (series_idx: number) => void
+    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
     [key: string]: unknown
   }
   let {
@@ -72,6 +74,7 @@
     plot_controls,
     // Callback for handling series visibility changes
     on_series_toggle = () => {},
+    controls_toggle_props,
     ...rest
   }: Props = $props()
 
@@ -372,6 +375,7 @@
   <!-- Control Panel -->
   {#if show_controls}
     <HistogramControls
+      toggle_props={controls_toggle_props}
       bind:show_controls
       bind:controls_open
       bind:bins

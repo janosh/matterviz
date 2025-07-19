@@ -222,7 +222,7 @@
 
 <div class="controls-grid">
   <section class="category-colors">
-    <h3>
+    <h3 style="grid-column: span 2">
       Element Category Colors
       {#if category_colors_modified}
         <button class="section-reset" onclick={reset_category_colors}>reset</button>
@@ -472,17 +472,17 @@
 <style>
   .controls-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 1.5em;
-    margin: 1em auto;
+    grid-template-columns:
+      var(--ptable-ctrl-columns, repeat(auto-fit, minmax(320px, 1fr)));
+    gap: var(--ptable-ctrl-gap, 1.5em);
+    margin: var(--ptable-ctrl-margin, 2em auto);
     padding: 0 1em;
     max-width: 1200px;
   }
   section {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--code-bg);
     border-radius: 6px;
-    padding: 0.75em;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 6pt 2ex;
   }
   section h3 {
     display: flex;
@@ -491,22 +491,11 @@
     margin: 0 0 0.8em 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     padding-bottom: 0.3em;
-    font-size: 1.1em;
-    color: var(--text-color);
+    max-height: max-content;
   }
   button.section-reset {
     background: rgba(255, 255, 255, 0.1);
-    color: var(--text-color);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-    padding: 2px 8px;
-    font-size: 0.75em;
-    opacity: 0.8;
-    transition: opacity 0.2s;
-  }
-  button.section-reset:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.2);
   }
   section > label {
     display: flex;
@@ -536,10 +525,10 @@
     border-radius: 3px;
   }
   section > label input[type='color'] {
-    width: 40px;
-    height: 30px;
+    width: 50px;
+    height: 20px;
     border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid var(--border-color);
   }
   section > label select {
     flex: 1;
@@ -549,7 +538,6 @@
   }
   section > label button {
     background: rgba(255, 255, 255, 0.1);
-    color: var(--text-color);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 3px;
     padding: 3px 6px;
@@ -559,45 +547,29 @@
   }
   section > label button:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.2);
   }
   .category-colors {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
   .category-colors label {
+    margin: 0;
     display: flex;
     align-items: center;
-    gap: 0.4em;
-    padding: 0.3em 0.4em;
-    border-radius: 3px;
-    font-size: 0.8em;
+    gap: 6pt;
+    flex-wrap: nowrap;
     text-transform: capitalize;
     transition: background-color 0.2s;
   }
-  .category-colors label:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+  .category-colors label span {
+    flex: 1;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
   }
   .category-colors input[type='color'] {
-    width: 20px;
-    height: 20px;
+    width: 25px;
+    height: 25px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-  .category-colors span {
-    flex: 1;
-  }
-  .category-colors button {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-color);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-    padding: 2px 6px;
-    font-size: 0.75em;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-  }
-  .category-colors button:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.2);
   }
 </style>

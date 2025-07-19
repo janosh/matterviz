@@ -1,13 +1,9 @@
+import type { ThemeName } from '$lib/theme/index'
+import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode } from '$lib/theme/index'
+import { is_trajectory_file } from '$lib/trajectory/parse'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
-import type { ThemeName } from '../../../src/lib/theme/index'
-import {
-  AUTO_THEME,
-  COLOR_THEMES,
-  is_valid_theme_mode,
-} from '../../../src/lib/theme/index'
-import { is_trajectory_file } from '../../../src/lib/trajectory/parse'
 interface FileData {
   filename: string
   content: string
@@ -201,7 +197,6 @@ function start_watching_file(file_path: string, webview: vscode.Webview): void {
     })
 
     active_watchers.set(file_path, watcher)
-    console.log(`Started watching file: ${file_path}`)
   } catch (error) {
     console.error(`Failed to start watching file ${file_path}:`, error)
     webview.postMessage({
@@ -217,19 +212,9 @@ function handle_file_change(
   file_path: string,
   webview: vscode.Webview,
 ): void {
-  console.log(`[MatterViz] File change detected:`, {
-    file_path,
-    event_type,
-  })
-
   if (event_type === `delete`) {
-    // File was deleted - send notification
-    console.log(`[MatterViz] Sending fileDeleted message to webview`)
-    try {
-      webview.postMessage({
-        command: `fileDeleted`,
-        file_path,
-      })
+    try { // File was deleted - send notification
+      webview.postMessage({ command: `fileDeleted`, file_path })
     } catch (error) {
       console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
     }
@@ -239,15 +224,8 @@ function handle_file_change(
   if (event_type === `change`) {
     // File was changed - send updated content
     try {
-      console.log(`[MatterViz] Reading updated file content...`)
       const updated_file = read_file(file_path)
       const filename = path.basename(file_path)
-
-      console.log(`[MatterViz] Sending fileUpdated message to webview:`, {
-        filename,
-        content_length: updated_file.content.length,
-        isCompressed: updated_file.isCompressed,
-      })
 
       webview.postMessage({
         command: `fileUpdated`,
@@ -257,10 +235,7 @@ function handle_file_change(
         theme: get_theme(),
       })
     } catch (error) {
-      console.error(
-        `[MatterViz] Failed to read updated file ${file_path}:`,
-        error,
-      )
+      console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
       try {
         webview.postMessage({
           command: `error`,
@@ -279,7 +254,6 @@ function stop_watching_file(file_path: string): void {
   if (watcher) {
     watcher.dispose()
     active_watchers.delete(file_path)
-    console.log(`Stopped watching file: ${file_path}`)
   }
 }
 
@@ -304,10 +278,7 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
       },
     )
 
-    // Start watching the file if we have a file path
-    if (file_path) {
-      start_watching_file(file_path, panel.webview)
-    }
+    if (file_path) start_watching_file(file_path, panel.webview)
 
     panel.webview.html = create_html(panel.webview, context, {
       type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
@@ -338,9 +309,7 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
     )
     const config_change_listener = vscode.workspace.onDidChangeConfiguration(
       (event: vscode.ConfigurationChangeEvent) => {
-        if (event.affectsConfiguration(`matterviz.theme`)) {
-          update_theme()
-        }
+        if (event.affectsConfiguration(`matterviz.theme`)) update_theme()
       },
     )
 

@@ -32,7 +32,7 @@
 <div class="structure-viewers">
   {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_url (file_url)}
     <div style="flex: 1">
-      <h3>{file_url.split(`.`)[0]}</h3>
+      <h3 style="margin: 0 0 1ex">{file_url.split(`.`)[0]}</h3>
       <Structure
         data_url="/structures/{file_url}"
         scene_props={{ auto_rotate: 0.5 }}
@@ -91,11 +91,11 @@
   }
   .structure-viewers {
     display: flex;
+    flex-wrap: wrap;
     gap: 2em;
     max-width: 1400px;
-    margin: 2em auto;
+    margin-inline: auto;
     text-align: center;
-    flex-wrap: wrap;
     min-width: 300px;
   }
 </style>

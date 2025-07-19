@@ -5,7 +5,17 @@
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "$lib": ["../../src/lib"],
+      "$lib/*": ["../../src/lib/*"],
+      "$site": ["../../src/site"],
+      "$site/*": ["../../src/site/*"]
+    }
   },
   "include": ["src/**/*"]
 }

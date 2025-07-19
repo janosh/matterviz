@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cells_3x3, corner_cells, Line, symbol_names } from '$lib'
+  import { cells_3x3, corner_cells, DraggablePanel, Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
@@ -135,6 +135,7 @@
     show_lines?: boolean
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
+    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
     [key: string]: unknown
   }
   let {
@@ -208,6 +209,7 @@
     show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
     color_axis_labels = true,
+    controls_toggle_props,
     ...rest
   }: Props = $props()
 
@@ -1888,9 +1890,7 @@
     <!-- Control Panel positioned in top-right corner -->
     {#if show_controls}
       <ScatterPlotControls
-        toggle_props={{
-          style: `position: absolute; top: 0; right: 0; background-color: transparent;`,
-        }}
+        toggle_props={controls_toggle_props}
         bind:this={controls_component}
         bind:show_controls
         bind:controls_open
@@ -1995,7 +1995,7 @@
     height: 100%;
     min-height: var(--scatter-min-height, 100px);
     container-type: inline-size;
-    z-index: var(--scatter-z-index, 1);
+    z-index: var(--scatter-z-index);
   }
   svg {
     width: 100%;
