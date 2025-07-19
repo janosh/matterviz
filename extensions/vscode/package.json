@@ -56,8 +56,8 @@
   },
   "scripts": {
     "build": "rm -rf dist && vite build --config vite.webview.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
-    "test": "vitest run",
-    "package": "pnpm build && vsce package"
+    "package": "pnpm build && vsce package",
+    "test": "vitest"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.1.0",

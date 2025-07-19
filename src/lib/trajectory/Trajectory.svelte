@@ -923,7 +923,8 @@
     align-items: center;
     gap: 1rem;
     padding: 0.5rem;
-    background: var(--surface-hover-bg);
+    z-index: var(--traj-controls-z-index, 1);
+    background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
     border-radius: var(--border-radius) var(--border-radius) 0 0;
@@ -1138,9 +1139,6 @@
   .view-mode-option:first-child {
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
-  }
-  .view-mode-option:hover {
-    background: var(--surface-bg-hover);
   }
   .view-mode-option.selected {
     color: var(--accent-color);

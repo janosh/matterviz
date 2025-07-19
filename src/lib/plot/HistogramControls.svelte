@@ -34,8 +34,8 @@
     y_format?: string
     // Selected property for single mode
     selected_property?: string
-    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
-    controls_panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
   }
   let {
     show_controls = $bindable(false),
@@ -56,8 +56,8 @@
     x_format = $bindable(`.2~s`),
     y_format = $bindable(`d`),
     selected_property = $bindable(``),
-    controls_toggle_props,
-    controls_panel_props,
+    toggle_props,
+    panel_props,
   }: Props = $props()
 
   // Local variables for format inputs to prevent invalid values from reaching props
@@ -130,13 +130,17 @@
     toggle_props={{
       class: `histogram-controls-toggle`,
       title: `${controls_open ? `Close` : `Open`} histogram controls`,
-      ...controls_toggle_props,
+      style:
+        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
+          toggle_props?.style ?? ``
+        }`,
+      ...toggle_props,
     }}
     panel_props={{
       class: `histogram-controls-panel`,
       style:
         `--panel-width: 16em; max-height: 450px; overflow-y: auto; padding-right: 4px;`,
-      ...controls_panel_props,
+      ...panel_props,
     }}
   >
     {#if plot_controls}

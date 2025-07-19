@@ -122,7 +122,7 @@
     color: var(--text-color-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    background: var(--surface-hover-bg);
+    background: var(--surface-bg-hover);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -145,7 +145,7 @@
     border-radius: 0;
   }
   button:hover:not(.disabled) {
-    background: var(--surface-hover-bg);
+    background: var(--surface-bg-hover);
   }
   button.selected {
     background: var(--accent-color);

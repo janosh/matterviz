@@ -47,8 +47,8 @@
     show_points?: boolean
     show_lines?: boolean
     selected_series_idx?: number
-    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
-    controls_panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
   }
   let {
     show_controls = $bindable(false),
@@ -87,8 +87,8 @@
     show_points = $bindable(true),
     show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
-    controls_toggle_props = {},
-    controls_panel_props = {},
+    toggle_props = {},
+    panel_props = {},
   }: Props = $props()
 
   // Derived state
@@ -222,13 +222,17 @@
     toggle_props={{
       class: `scatter-controls-toggle`,
       title: `${controls_open ? `Close` : `Open`} scatter plot controls`,
-      ...controls_toggle_props,
+      style:
+        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
+          toggle_props?.style ?? ``
+        }`,
+      ...toggle_props,
     }}
     panel_props={{
       class: `scatter-controls-panel`,
       style:
         `--panel-width: 16em; max-height: 450px; overflow-y: auto; padding-right: 4px;`,
-      ...controls_panel_props,
+      ...panel_props,
     }}
   >
     {#if plot_controls}

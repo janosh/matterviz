@@ -98,7 +98,7 @@ const themes = {
   },
 
   // Hover states
-  'surface-hover-bg': {
+  'surface-bg-hover': {
     light: `#e5e7eb`,
     dark: `#3a3a3a`,
     white: `#f3f3f3`,
