@@ -1516,8 +1516,8 @@ test.describe(`Show Buttons Tests`, () => {
     await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
   })
 
-  test(`should hide buttons when show_buttons is false`, async ({ page }) => {
-    await page.goto(`/test/structure?show_buttons=false`)
+  test(`should hide buttons when show_controls is false`, async ({ page }) => {
+    await page.goto(`/test/structure?show_controls=false`)
     await page.waitForSelector(`canvas`)
 
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
@@ -1527,54 +1527,54 @@ test.describe(`Show Buttons Tests`, () => {
     await expect(page.locator(`.fullscreen-toggle`)).not.toBeVisible()
   })
 
-  test(`should hide buttons when structure width is narrower than show_buttons number`, async ({ page }) => {
-    // Use URL parameter to set show_buttons to 600
-    await page.goto(`/test/structure?show_buttons=600`)
+  test(`should hide buttons when structure width is narrower than show_controls number`, async ({ page }) => {
+    // Use URL parameter to set show_controls to 600
+    await page.goto(`/test/structure?show_controls=600`)
     await page.waitForSelector(`canvas`)
 
-    // Verify show_buttons is set to 600 from URL
+    // Verify show_controls is set to 600 from URL
     await expect(page.locator(`[data-testid="show-buttons-status"]`))
       .toContainText(`Show Buttons Status: 600`)
 
-    // Set canvas width to 400px (less than show_buttons threshold)
+    // Set canvas width to 400px (less than show_controls threshold)
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`400`)
 
     // Wait for the width change to take effect
     await page.waitForTimeout(300)
 
-    // Control buttons should not be visible since width (400) < show_buttons (600)
+    // Control buttons should not be visible since width (400) < show_controls (600)
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
       .not.toHaveClass(/visible/)
     await expect(page.locator(`button[title*="structure info"]`)).not.toBeVisible()
   })
 
-  test(`should show buttons when structure width is wider than show_buttons number`, async ({ page }) => {
-    // Use URL parameter to set show_buttons to 600
-    await page.goto(`/test/structure?show_buttons=600`)
+  test(`should show buttons when structure width is wider than show_controls number`, async ({ page }) => {
+    // Use URL parameter to set show_controls to 600
+    await page.goto(`/test/structure?show_controls=600`)
     await page.waitForSelector(`canvas`)
 
-    // Verify show_buttons is set to 600 from URL
+    // Verify show_controls is set to 600 from URL
     await expect(page.locator(`[data-testid="show-buttons-status"]`))
       .toContainText(`Show Buttons Status: 600`)
 
-    // Set canvas width to 800px (greater than show_buttons threshold)
+    // Set canvas width to 800px (greater than show_controls threshold)
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`800`)
 
     // Wait for the width change to take effect
     await page.waitForTimeout(300)
 
-    // Control buttons should be visible since width (800) > show_buttons (600)
+    // Control buttons should be visible since width (800) > show_controls (600)
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
       .toHaveClass(/visible/)
     await expect(page.locator(`button[title*="structure info"]`)).toBeVisible()
   })
 
-  test(`should show buttons when show_buttons is true regardless of width`, async ({ page }) => {
-    // Use URL parameter to explicitly set show_buttons to true
-    await page.goto(`/test/structure?show_buttons=true`)
+  test(`should show buttons when show_controls is true regardless of width`, async ({ page }) => {
+    // Use URL parameter to explicitly set show_controls to true
+    await page.goto(`/test/structure?show_controls=true`)
     await page.waitForSelector(`canvas`)
 
-    // Verify show_buttons is set to true from URL
+    // Verify show_controls is set to true from URL
     await expect(page.locator(`[data-testid="show-buttons-status"]`))
       .toContainText(`Show Buttons Status: true`)
 
@@ -1584,7 +1584,7 @@ test.describe(`Show Buttons Tests`, () => {
     // Wait for the width change to take effect
     await page.waitForTimeout(300)
 
-    // Control buttons should still be visible when show_buttons is true (regardless of width)
+    // Control buttons should still be visible when show_controls is true (regardless of width)
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
       .toHaveClass(/visible/)
     await expect(page.locator(`button[title*="structure info"]`)).toBeVisible()
