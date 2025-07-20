@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.1.4](https://github.com/janosh/matterviz/compare/v0.1.3...v0.1.4)
+
+> 20 July 2025
+
+### 🛠 Enhancements
+
+- Add `ContextMenu.svelte` used on double click in `Composition.svelte` to select chart mode, color palette, export text/JSON/SVG/PNG by @janosh in https://github.com/janosh/matterviz/pull/94
+- URL-based data loading in Structure and refactored in Trajectory by @janosh in https://github.com/janosh/matterviz/pull/93
+
+### 🐛 Bug Fixes
+
+- Fix vscode extension build by @janosh in https://github.com/janosh/matterviz/pull/95
+- Housekeeping + Fixes by @janosh in https://github.com/janosh/matterviz/pull/92
+
+### 💥 Breaking Changes
+
+- Structure.svelte rename prop `show_buttons` to `show_controls` for consistency with other components by @janosh
+
+**Full Changelog**: https://github.com/janosh/matterviz/compare/v0.1.3...v0.1.4
+
 ## [v0.1.3](https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.3)
 
 > 9 July 2025
