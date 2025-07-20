@@ -135,9 +135,8 @@
       const size = lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10
       const distance = size * (65 / fov)
 
-      camera_position[0] = distance
-      camera_position[1] = distance * 0.3
-      camera_position[2] = distance * 0.8
+      // Create a new array instead of mutating the existing one
+      camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
   $effect.pre(() => {

@@ -27,7 +27,7 @@
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
-    show_buttons?: boolean | number
+    show_controls?: boolean | number
     fullscreen?: boolean
     // bindable width of the canvas
     width?: number
@@ -70,7 +70,7 @@
     info_panel_open = $bindable(false),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
-    show_buttons = 0,
+    show_controls = 0,
     fullscreen = false,
     wrapper = $bindable(undefined),
     width = $bindable(0),
@@ -172,8 +172,8 @@
   })
 
   let visible_buttons = $derived(
-    show_buttons === true ||
-      (typeof show_buttons === `number` && width > show_buttons),
+    show_controls === true ||
+      (typeof show_controls === `number` && width > show_controls),
   )
 
   // only updates when structure or show_image_atoms change

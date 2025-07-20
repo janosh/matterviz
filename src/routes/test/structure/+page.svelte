@@ -7,7 +7,7 @@
   let info_panel_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
-  let show_buttons = $state<boolean | number>(true)
+  let show_controls = $state<boolean | number>(true)
   let scene_props = $state({ gizmo: true, show_atoms: true })
 
   // Lattice properties for testing - using new dual opacity controls
@@ -44,15 +44,15 @@
         const line_width = parseInt(url_params.get(`cell_line_width`) || `1`)
         if (!isNaN(line_width)) lattice_props.cell_line_width = line_width
       }
-      if (url_params.has(`show_buttons`)) {
-        const show_buttons_param = url_params.get(`show_buttons`)
-        if (show_buttons_param === `false`) {
-          show_buttons = false
-        } else if (show_buttons_param === `true`) {
-          show_buttons = true
+      if (url_params.has(`show_controls`)) {
+        const show_controls_param = url_params.get(`show_controls`)
+        if (show_controls_param === `false`) {
+          show_controls = false
+        } else if (show_controls_param === `true`) {
+          show_controls = true
         } else {
-          const num = parseInt(show_buttons_param || ``)
-          if (!isNaN(num)) show_buttons = num
+          const num = parseInt(show_controls_param || ``)
+          if (!isNaN(num)) show_controls = num
         }
       }
     }
@@ -83,20 +83,20 @@
         }
       }
 
-      const handle_show_buttons = (event: Event) => {
+      const handle_show_controls = (event: Event) => {
         const customEvent = event as CustomEvent
         const { detail } = customEvent
-        if (detail.show_buttons !== undefined) {
-          show_buttons = detail.show_buttons
+        if (detail.show_controls !== undefined) {
+          show_controls = detail.show_controls
         }
       }
 
       window.addEventListener(`set-lattice-props`, handle_lattice_props)
-      window.addEventListener(`set-show-buttons`, handle_show_buttons)
+      window.addEventListener(`set-show-buttons`, handle_show_controls)
 
       return () => {
         window.removeEventListener(`set-lattice-props`, handle_lattice_props)
-        window.removeEventListener(`set-show-buttons`, handle_show_buttons)
+        window.removeEventListener(`set-show-buttons`, handle_show_controls)
       }
     }
   })
@@ -142,7 +142,7 @@
   <br />
   <label>
     Show Buttons:
-    <select bind:value={show_buttons}>
+    <select bind:value={show_controls}>
       <option value={true}>Always (true)</option>
       <option value={false}>Never (false)</option>
       <option value={400}>When width > 400px</option>
@@ -164,7 +164,7 @@
     bind:width={canvas.width}
     bind:height={canvas.height}
     {background_color}
-    {show_buttons}
+    {show_controls}
     bind:scene_props
     {lattice_props}
   />
@@ -177,4 +177,4 @@
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
 <div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
-<div data-testid="show-buttons-status">Show Buttons Status: {show_buttons}</div>
+<div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>

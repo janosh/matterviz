@@ -53,7 +53,7 @@ describe(`Structure`, () => {
   test(`open control panel when clicking toggle button`, async () => {
     mount(Structure, {
       target: document.body,
-      props: { structure, controls_open: false, show_buttons: true },
+      props: { structure, controls_open: false, show_controls: true },
     })
 
     // Check that the controls toggle button exists and is clickable
@@ -72,7 +72,7 @@ describe(`Structure`, () => {
 
     mount(Structure, {
       target: document.body,
-      props: { structure, show_buttons: true },
+      props: { structure, show_controls: true },
     })
 
     // First, open the structure control panel by clicking the correct toggle button
@@ -106,7 +106,7 @@ describe(`Structure`, () => {
 
     mount(Structure, {
       target: document.body,
-      props: { structure, show_buttons: true },
+      props: { structure, show_controls: true },
     })
 
     // Find the wrapper element that was created by the component
@@ -153,7 +153,7 @@ describe(`Structure`, () => {
       target: document.body,
       props: {
         structure: undefined,
-        show_buttons: true,
+        show_controls: true,
         on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
           structure_loaded = true
         },
@@ -185,7 +185,7 @@ describe(`Structure`, () => {
       target: document.body,
       props: {
         structure: undefined,
-        show_buttons: true,
+        show_controls: true,
         on_file_drop: (content: string | ArrayBuffer, _filename: string) => {
           event_handled = true
           file_content = content
@@ -217,7 +217,7 @@ describe(`Structure`, () => {
       target: document.body,
       props: {
         structure: undefined,
-        show_buttons: true,
+        show_controls: true,
         on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
           structure_loaded = true
         },
@@ -246,7 +246,7 @@ describe(`Structure`, () => {
   test(`drag and drop without on_file_drop handler`, async () => {
     mount(Structure, {
       target: document.body,
-      props: { structure: undefined, show_buttons: true },
+      props: { structure: undefined, show_controls: true },
     })
 
     const wrapper = document.querySelector(`.structure`) as HTMLElement

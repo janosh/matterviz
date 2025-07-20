@@ -235,6 +235,4 @@ describe(`ScatterPlot`, () => {
       simulate_mouse_event(scatter, `mousemove`, coords)
     })
   })
-
-  // ... existing code ...
 })
