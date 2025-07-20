@@ -57,13 +57,26 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 ### Custom Editor Integration
 
-MatterViz automatically registers as a custom editor for trajectory files (`.traj`, `.h5`, `.hdf5`, `.gz`), providing seamless integration with VS Code's editor system.
+MatterViz automatically registers as a custom editor for trajectory files such as `.traj`, `.h5`, `.hdf5`, `.xyz.gz`, etc.
 
 ## ⌨️ Keyboard Shortcuts
 
 | Shortcut                       | Action                          |
 | ------------------------------ | ------------------------------- |
 | `Ctrl+Shift+V` / `Cmd+Shift+V` | Render structure with MatterViz |
+
+## 📄 License
+
+This extension is [MIT-Licensed](./license).
+
+## 🔗 Related Projects
+
+- **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev)
+- **✅ pymatviz**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for Python notebooks. See [`pymatviz` readme](https://github.com/janosh/pymatviz/blob/widgets/readme.md#interactive-widgets) for details.
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](../../contributing.md) for details.
 
 ## 🛠️ Development
 
@@ -82,16 +95,3 @@ pnpm install
 pnpm build
 vsce package
 ```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](../../contributing.md) for details.
-
-## 📄 License
-
-This extension is [MIT-Licensed](./license).
-
-## 🔗 Related Projects
-
-- **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev) (works but under active development)
-- **🚧 MatterViz iPython**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for interactive Python-based visualization in notebooks and batch processing/screenshot automation (still prototyping)
