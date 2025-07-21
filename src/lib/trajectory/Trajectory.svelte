@@ -896,7 +896,7 @@
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}
           <Histogram
             series={plot_series}
-            x_label={(`x_label` in histogram_props) ? histogram_props.x_label as string : `Value`}
+            x_label={String(histogram_props.x_label ?? y_axis_labels.y1)}
             y_label={(`y_label` in histogram_props) ? histogram_props.y_label as string : `Count`}
             mode={(`mode` in histogram_props)
             ? histogram_props.mode as `overlay` | `single`
@@ -917,6 +917,7 @@
             style="height: 100%"
             {...histogram_props}
             class="plot {histogram_props.class ?? ``}"
+            --ctrl-btn-top="6ex"
           >
             {#snippet tooltip({ value, count, property })}
               <div>Value: {format_num(value)}</div>
