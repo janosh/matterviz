@@ -115,23 +115,24 @@ test.describe(`Structure Component Tests`, () => {
     const perf_mode_status = page.locator(`[data-testid="performance-mode-status"]`)
     const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
 
-    // Test speed mode via URL
-    await page.goto(`/test/structure?performance_mode=speed`, { waitUntil: `load` })
-    await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
-    await expect(perf_mode_status).toContainText(`Performance Mode Status: speed`)
-    await expect(perf_mode_select).toHaveValue(`speed`)
+    const test_cases = [
+      { param: `speed`, expected: `speed` },
+      { param: `quality`, expected: `quality` },
+      { param: `invalid`, expected: `quality` },
+    ]
 
-    // Test quality mode via URL
-    await page.goto(`/test/structure?performance_mode=quality`, { waitUntil: `load` })
-    await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
-    await expect(perf_mode_status).toContainText(`Performance Mode Status: quality`)
-    await expect(perf_mode_select).toHaveValue(`quality`)
-
-    // Test invalid mode defaults to quality
-    await page.goto(`/test/structure?performance_mode=invalid`, { waitUntil: `load` })
-    await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
-    await expect(perf_mode_status).toContainText(`Performance Mode Status: quality`)
-    await expect(perf_mode_select).toHaveValue(`quality`)
+    await Promise.all(
+      test_cases.map(async ({ param, expected }) => {
+        await page.goto(`/test/structure?performance_mode=${param}`, {
+          waitUntil: `load`,
+        })
+        await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
+        await expect(perf_mode_status).toContainText(
+          `Performance Mode Status: ${expected}`,
+        )
+        await expect(perf_mode_select).toHaveValue(expected)
+      }),
+    )
   })
 
   // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking

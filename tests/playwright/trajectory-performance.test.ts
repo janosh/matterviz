@@ -22,8 +22,13 @@ test.describe(`Trajectory Performance Tests`, () => {
         state: `visible`,
         timeout: 30000,
       }),
-      trajectory.locator(`.spinner`).waitFor({ state: `visible`, timeout: 30000 }),
     ])
+
+    // If spinner appeared during loading, wait for it to disappear
+    const spinner = trajectory.locator(`.spinner`)
+    if (await spinner.isVisible()) {
+      await spinner.waitFor({ state: `hidden`, timeout: 30000 })
+    }
 
     // Check if trajectory loaded successfully
     const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
@@ -89,10 +94,8 @@ test.describe(`Trajectory Performance Tests`, () => {
     const playback_duration = end_time - start_time
 
     // Performance assertions
-    // At 30fps, max_step steps should take ~(max_step/30) seconds
-    // Allow significant overhead for rendering large structures
     const expected_duration_ms = (max_step / TEST_FRAME_RATE_FPS) * 1000 // Convert to milliseconds
-    const max_allowed_duration_ms = expected_duration_ms * 10 // Allow 10x overhead for large structures
+    const max_allowed_duration_ms = expected_duration_ms * 3 // Allow 3x overhead for CI/to avoid flakiness
 
     console.log(`Playback performance results:`)
     console.log(`- Speed: ${TEST_FRAME_RATE_FPS}fps`)
@@ -106,10 +109,6 @@ test.describe(`Trajectory Performance Tests`, () => {
     )
 
     expect(playback_duration).toBeLessThan(max_allowed_duration_ms)
-
-    // Additional performance check: ensure it's not too slow
-    // Should complete in under 60 seconds even with overhead
-    expect(playback_duration).toBeLessThan(90_000)
   })
 
   test(`trajectory loading performance with large file`, async ({ page }) => {
@@ -143,8 +142,6 @@ test.describe(`Trajectory Performance Tests`, () => {
       throw new Error(`Trajectory failed to load: ${error_text}`)
     }
 
-    console.log(`Loading performance results:`)
-    console.log(`- File size: ~5.8MB`)
     console.log(`- Loading time: ${(loading_duration / 1000).toFixed(1)}s`)
 
     // Loading should complete in under 10 seconds
@@ -255,6 +252,7 @@ test.describe(`Trajectory Performance Tests`, () => {
       console.log(`- Increase: ${memory_increase_mb.toFixed(1)}MB`)
 
       // Memory increase should be reasonable (less than 200MB for large structure test)
+      // Note: This threshold may need adjustment as it can be affected by GC timing
       expect(memory_increase_mb).toBeLessThan(200)
     }
   })

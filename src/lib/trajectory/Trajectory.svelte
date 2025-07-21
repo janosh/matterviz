@@ -96,8 +96,8 @@
       c?: string
       [key: string]: string | undefined
     }
-    // FPS range configuration [min_fps, max_fps]
-    fps_range?: [number, number]
+    fps_range?: [number, number] // allowed FPS range [min_fps, max_fps]
+    fps?: number // frame rate for playback
     // Event handlers for trajectory playback and navigation
     on_play?: (data: TrajHandlerData) => void
     on_pause?: (data: TrajHandlerData) => void
@@ -141,7 +141,7 @@
     on_file_load,
     on_error,
     fps_range = [0.2, 30],
-    frame_rate_fps = $bindable(5),
+    fps = $bindable(5),
     ...rest
   }: Props = $props()
 
@@ -151,12 +151,12 @@
   let is_playing = $state(false)
   let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
 
-  // Ensure frame_rate_fps is within the allowed range
+  // Ensure fps is within the allowed range
   $effect(() => {
-    if (frame_rate_fps < fps_range[0]) {
-      frame_rate_fps = fps_range[0]
-    } else if (frame_rate_fps > fps_range[1]) {
-      frame_rate_fps = fps_range[1]
+    if (fps < fps_range[0]) {
+      fps = fps_range[0]
+    } else if (fps > fps_range[1]) {
+      fps = fps_range[1]
     }
   })
   let current_filename = $state<string | null>(null)
@@ -363,7 +363,7 @@
   $effect(() => { // Effect to manage playback interval
     // Only watch is_playing and frame_rate_ms, not play_interval itself
     const playing = is_playing
-    const rate_ms = 1000 / frame_rate_fps
+    const rate_ms = 1000 / fps
 
     if (playing) {
       // Clear existing interval if it exists - use untrack to avoid circular dependency
@@ -433,7 +433,7 @@
 
   // Watch for frame rate changes
   $effect(() => {
-    on_frame_rate_change?.({ trajectory, fps: frame_rate_fps })
+    on_frame_rate_change?.({ trajectory, fps: fps })
   })
 
   async function load_trajectory_data(data: string | ArrayBuffer, filename: string) {
@@ -555,11 +555,11 @@
     // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
-      frame_rate_fps = Math.min(fps_range[1], frame_rate_fps + 0.2)
-      on_frame_rate_change?.({ trajectory, fps: frame_rate_fps })
+      fps = Math.min(fps_range[1], fps + 0.2)
+      on_frame_rate_change?.({ trajectory, fps: fps })
     } else if (event.key === `-` && is_playing) {
-      frame_rate_fps = Math.max(fps_range[0], frame_rate_fps - 0.2)
-      on_frame_rate_change?.({ trajectory, fps: frame_rate_fps })
+      fps = Math.max(fps_range[0], fps - 0.2)
+      on_frame_rate_change?.({ trajectory, fps: fps })
     } // System shortcuts
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
@@ -728,16 +728,16 @@
                 min={fps_range[0]}
                 max={fps_range[1]}
                 step="0.1"
-                bind:value={frame_rate_fps}
+                bind:value={fps}
                 class="speed-slider"
-                title="Frame rate: {format_num(frame_rate_fps, `.2~s`)} fps"
+                title="Frame rate: {format_num(fps, `.2~s`)} fps"
               />
               <input
                 type="number"
                 min={fps_range[0]}
                 max={fps_range[1]}
                 step="0.1"
-                bind:value={frame_rate_fps}
+                bind:value={fps}
                 class="speed-input"
                 title="Enter precise FPS value"
               />

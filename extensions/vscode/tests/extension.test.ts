@@ -97,7 +97,7 @@ describe(`MatterViz Extension`, () => {
   const mock_webview = {
     cspSource: `vscode-webview:`,
     asWebviewUri: vi.fn((uri: { fsPath: string }) =>
-      `https://vscode-webview.local${uri.fsPath}`
+      `vscode-webview://unit-test${encodeURIComponent(uri.fsPath)}`
     ),
     onDidReceiveMessage: vi.fn(),
     postMessage: vi.fn(),
@@ -252,7 +252,7 @@ describe(`MatterViz Extension`, () => {
       }],
       [`structure`, {
         filename: `large.cif`,
-        content: `x`.repeat(100000),
+        content: `x`.repeat(100_000),
         isCompressed: false,
       }],
     ] as const,
@@ -407,7 +407,7 @@ describe(`MatterViz Extension`, () => {
     // HTML generation performance
     const large_data = {
       type: `structure`,
-      data: { filename: `large.cif`, content: `x`.repeat(100000), isCompressed: false },
+      data: { filename: `large.cif`, content: `x`.repeat(100_000), isCompressed: false },
       theme: `light`,
     } as const
     const html_start = performance.now()
