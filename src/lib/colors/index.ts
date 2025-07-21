@@ -40,9 +40,7 @@ function rgb_scheme_to_hex(
   for (const key in obj) {
     if (Object.hasOwn(obj, key)) {
       const val = obj[key]
-      if (val.length >= 3) {
-        result[key] = rgb(val[0], val[1], val[2]).formatHex()
-      }
+      if (val.length >= 3) result[key] = rgb(...val).formatHex()
     }
   }
   return result

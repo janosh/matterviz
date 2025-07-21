@@ -1,15 +1,5 @@
 import { describe, expect, test } from 'vitest'
-
-// Local implementation of base64_to_array_buffer for testing
-// This matches the implementation in webview/src/main.ts
-function base64_to_array_buffer(base64: string): ArrayBuffer {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let idx = 0; idx < binary.length; idx++) {
-    bytes[idx] = binary.charCodeAt(idx)
-  }
-  return bytes.buffer
-}
+import { base64_to_array_buffer } from '../src/webview/main'
 
 describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
   test.each([

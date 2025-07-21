@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: `dist`,
     rollupOptions: {
-      input: resolve(__dirname, `webview/src/main.ts`),
+      input: resolve(__dirname, `src/webview/main.ts`),
       output: { entryFileNames: `webview.js`, format: `iife` },
     },
     emptyOutDir: false,

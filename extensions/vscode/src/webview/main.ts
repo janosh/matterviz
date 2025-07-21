@@ -3,6 +3,7 @@ import '$lib/app.css'
 import { parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { is_valid_theme_name, type ThemeName } from '$lib/theme/index'
+import '$lib/theme/themes'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount } from 'svelte'
@@ -103,24 +104,20 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       const container = document.getElementById(`matterviz-app`)
       if (container && current_app) {
         current_app.destroy()
-        current_app = create_display(container, result, result.filename) as MatterVizApp
+        current_app = create_display(container, result, result.filename)
       }
 
       const vscode = get_vscode_api()
       if (vscode) {
-        vscode.postMessage({
-          command: `info`,
-          text: `File reloaded successfully`,
-        })
+        const text = `File reloaded successfully`
+        vscode.postMessage({ command: `info`, text })
       }
     } catch (error) {
       console.error(`Failed to reload file:`, error)
       const vscode = get_vscode_api()
       if (vscode) {
-        vscode.postMessage({
-          command: `error`,
-          text: `Failed to reload file: ${error}`,
-        })
+        const text = `Failed to reload file: ${error}`
+        vscode.postMessage({ command: `error`, text })
       }
     }
   }
@@ -139,22 +136,19 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
 // Apply theme to the webview DOM
 const apply_theme = (theme: ThemeName): void => {
   const root = document.documentElement
-
   root.setAttribute(`data-theme`, theme)
 
-  // Apply MatterViz theme if available
-  if (typeof globalThis !== `undefined` && globalThis.MATTERVIZ_THEMES) {
-    const matterviz_theme = globalThis.MATTERVIZ_THEMES[theme]
-    const css_map = globalThis.MATTERVIZ_CSS_MAP || {}
+  if (!globalThis.MATTERVIZ_THEMES) throw new Error(`No themes found`)
 
-    if (matterviz_theme) {
-      for (const [key, value] of Object.entries(matterviz_theme)) {
-        const css_var = css_map[key as keyof typeof css_map]
-        if (css_var && value) {
-          root.style.setProperty(css_var, value as string)
-        }
-      }
-    }
+  const matterviz_theme = globalThis.MATTERVIZ_THEMES[theme]
+  if (!matterviz_theme) throw new Error(`Theme ${theme} not found`)
+
+  const css_map = globalThis.MATTERVIZ_CSS_MAP || {}
+
+  // Apply MatterViz theme CSS variables to root element
+  for (const [key, value] of Object.entries(matterviz_theme)) {
+    const css_var = css_map[key]
+    if (css_var && value) root.style.setProperty(css_var, value)
   }
 }
 
@@ -260,16 +254,10 @@ const create_display = (
   const is_trajectory = result.type === `trajectory`
   const Component = is_trajectory ? Trajectory : Structure
   const props = is_trajectory
-    ? {
-      trajectory: result.data,
-      show_fullscreen_button: false,
-      layout: `horizontal`,
-    }
+    ? { trajectory: result.data, show_fullscreen_button: false, layout: `horizontal` }
     : { structure: result.data, fullscreen_toggle: false }
 
-  if (!is_trajectory) {
-    container.style.setProperty(`--struct-height`, `100vh`)
-  }
+  if (!is_trajectory) container.style.setProperty(`--struct-height`, `100vh`)
 
   const component = mount(Component, { target: container, props })
 
@@ -318,9 +306,8 @@ const initialize_app = async (): Promise<MatterVizApp> => {
     if (vscode) {
       // Listen for file change messages from extension
       globalThis.addEventListener(`message`, (event) => {
-        const message = event.data as FileChangeMessage
-        if (message.command === `fileUpdated` || message.command === `fileDeleted`) {
-          handle_file_change(message)
+        if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
+          handle_file_change(event.data)
         }
       })
     } else {
