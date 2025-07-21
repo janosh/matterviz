@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
-  import type { Trajectory, TrajectoryFrame } from '$lib/trajectory'
-  import { TrajectoryViewer } from '$lib/trajectory'
+  import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
+  import { Trajectory } from '$lib/trajectory'
 
   // Test data - simple trajectory for testing
-  const test_trajectory: Trajectory = {
+  const test_trajectory: TrajectoryType = {
     frames: [
       {
         step: 0,
@@ -129,7 +129,7 @@
   }
 
   // Constant values trajectory for testing plot hiding
-  const constant_trajectory: Trajectory = {
+  const constant_trajectory: TrajectoryType = {
     frames: [
       {
         step: 0,
@@ -172,7 +172,7 @@
   }
 
   // Dual axis trajectory with different property types
-  const dual_axis_trajectory: Trajectory = {
+  const dual_axis_trajectory: TrajectoryType = {
     frames: [
       {
         step: 0,
@@ -214,22 +214,22 @@
     },
   }
 
-  let empty_trajectory = $state<Trajectory | undefined>(undefined)
-  let loaded_trajectory = $state<Trajectory | undefined>(test_trajectory)
-  let error_trajectory = $state<Trajectory | undefined>(undefined)
+  let empty_trajectory = $state<TrajectoryType | undefined>(undefined)
+  let loaded_trajectory = $state<TrajectoryType | undefined>(test_trajectory)
+  let error_trajectory = $state<TrajectoryType | undefined>(undefined)
   let current_step = $state(0)
 </script>
 
 <h1>Trajectory Component Test Page</h1>
 
-<TrajectoryViewer
+<Trajectory
   id="empty-state"
   bind:trajectory={empty_trajectory}
   bind:current_step_idx={current_step}
   allow_file_drop
 />
 
-<TrajectoryViewer
+<Trajectory
   id="loaded-trajectory"
   bind:trajectory={loaded_trajectory}
   bind:current_step_idx={current_step}
@@ -238,14 +238,14 @@
   step_labels={3}
 />
 
-<TrajectoryViewer
+<Trajectory
   id="auto-layout"
   trajectory={test_trajectory}
   show_controls
   step_labels={3}
 />
 
-<TrajectoryViewer
+<Trajectory
   id="vertical-layout"
   trajectory={test_trajectory}
   layout="vertical"
@@ -253,21 +253,21 @@
   step_labels={[-1]}
 />
 
-<TrajectoryViewer
+<Trajectory
   id="no-controls"
   trajectory={test_trajectory}
   show_controls={false}
   layout="horizontal"
 />
 
-<TrajectoryViewer
+<Trajectory
   id="error-state"
   bind:trajectory={error_trajectory}
   data_url="/non-existent-trajectory.json"
   allow_file_drop
 />
 
-<TrajectoryViewer
+<Trajectory
   id="custom-extractor"
   trajectory={test_trajectory}
   data_extractor={(frame: TrajectoryFrame) => ({
@@ -277,7 +277,7 @@
   layout="horizontal"
 />
 
-<TrajectoryViewer
+<Trajectory
   id="custom-properties"
   trajectory={test_trajectory}
   data_extractor={(frame: TrajectoryFrame) => ({
@@ -288,27 +288,27 @@
   layout="horizontal"
 />
 
-<TrajectoryViewer
+<Trajectory
   id="negative-step-labels"
   trajectory={test_trajectory}
   step_labels={-1}
   layout="horizontal"
 />
 
-<TrajectoryViewer
+<Trajectory
   id="array-step-labels"
   trajectory={test_trajectory}
   step_labels={[0, 2]}
   layout="horizontal"
 />
 
-<TrajectoryViewer
+<Trajectory
   id="trajectory-url"
   data_url="/test-trajectory.json"
   allow_file_drop
 />
 
-<TrajectoryViewer id="custom-controls" trajectory={test_trajectory} layout="horizontal">
+<Trajectory id="custom-controls" trajectory={test_trajectory} layout="horizontal">
   {#snippet trajectory_controls(
     { current_step_idx, total_frames, on_step_change },
   )}
@@ -318,9 +318,9 @@
       <button onclick={() => on_step_change(total_frames - 1)}>Last</button>
     </div>
   {/snippet}
-</TrajectoryViewer>
+</Trajectory>
 
-<TrajectoryViewer
+<Trajectory
   id="error-snippet"
   trajectory={undefined}
   data_url="/non-existent-file.json"
@@ -332,15 +332,15 @@
       <button onclick={on_dismiss}>Dismiss Error</button>
     </div>
   {/snippet}
-</TrajectoryViewer>
+</Trajectory>
 
-<TrajectoryViewer
+<Trajectory
   id="constant-values"
   trajectory={constant_trajectory}
   layout="horizontal"
 />
 
-<TrajectoryViewer
+<Trajectory
   id="dual-axis"
   trajectory={dual_axis_trajectory}
   data_extractor={(frame: TrajectoryFrame) => ({
@@ -350,4 +350,67 @@
     pressure: (frame.metadata?.pressure as number) || 0,
   })}
   layout="horizontal"
+/>
+
+<Trajectory
+  id="event-handlers"
+  trajectory={test_trajectory}
+  layout="horizontal"
+  on_play={(data) => {
+    console.log(`Play event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-play`, { detail: data }))
+  }}
+  on_pause={(data) => {
+    console.log(`Pause event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-pause`, { detail: data }))
+  }}
+  on_step_change={(data) => {
+    console.log(`Step change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-step-change`, { detail: data }),
+    )
+  }}
+  on_end={(data) => {
+    console.log(`End event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-end`, { detail: data }))
+  }}
+  on_loop={(data) => {
+    console.log(`Loop event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-loop`, { detail: data }))
+  }}
+  on_frame_rate_change={(data) => {
+    console.log(`Frame rate change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-frame-rate-change`, { detail: data }),
+    )
+  }}
+  on_display_mode_change={(data) => {
+    console.log(`Display mode change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-display-mode-change`, { detail: data }),
+    )
+  }}
+  on_fullscreen_change={(data) => {
+    console.log(`Fullscreen change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-fullscreen-change`, { detail: data }),
+    )
+  }}
+  on_file_load={(data) => {
+    console.log(`File load event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-file-load`, { detail: data }),
+    )
+  }}
+  on_error={(data) => {
+    console.log(`Error event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-error`, { detail: data }))
+  }}
+/>
+
+<Trajectory
+  id="custom-fps-range"
+  trajectory={test_trajectory}
+  layout="horizontal"
+  fps_range={[1, 10]}
 />

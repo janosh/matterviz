@@ -1,5 +1,5 @@
 import type { ElementSymbol, Vec3 } from '$lib'
-import type { Trajectory } from '$lib/trajectory'
+import type { TrajectoryType } from '$lib/trajectory'
 import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
 import { describe, expect, it } from 'vitest'
 
@@ -40,12 +40,12 @@ describe(`Trajectory Validation`, () => {
           ]),
         ],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected_errors: [],
     },
     {
       name: `detect missing frames`,
-      trajectory: { frames: [], metadata: {} } as Trajectory,
+      trajectory: { frames: [], metadata: {} } as TrajectoryType,
       expected_errors: [`Trajectory must have at least one frame`],
     },
     {
@@ -54,7 +54,7 @@ describe(`Trajectory Validation`, () => {
       trajectory: {
         frames: [{ structure: null, step: 0, metadata: {} }],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected_errors: [`Frame 0 missing structure`],
     },
     {
@@ -62,7 +62,7 @@ describe(`Trajectory Validation`, () => {
       trajectory: {
         frames: [create_frame(0, [])],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected_errors: [`Frame 0 structure has no sites`],
     },
     {
@@ -87,7 +87,7 @@ describe(`Trajectory Validation`, () => {
           },
         ],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected_errors: [`Frame 0 missing or invalid step number`],
     },
   ])(`should $name`, ({ trajectory, expected_errors }) => {
@@ -146,7 +146,7 @@ describe(`Trajectory Statistics`, () => {
           ]),
         ],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected: {
         frame_count: 3,
         steps: [1, 2, 5],
@@ -204,7 +204,7 @@ describe(`Trajectory Statistics`, () => {
           ]),
         ],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected: {
         frame_count: 3,
         steps: [0, 1, 2],
@@ -228,7 +228,7 @@ describe(`Trajectory Statistics`, () => {
           ]),
         ],
         metadata: {},
-      } as Trajectory,
+      } as TrajectoryType,
       expected: {
         frame_count: 1,
         steps: [42],
@@ -240,7 +240,7 @@ describe(`Trajectory Statistics`, () => {
     },
     {
       name: `handle empty trajectory gracefully`,
-      trajectory: { frames: [], metadata: {} } as Trajectory,
+      trajectory: { frames: [], metadata: {} } as TrajectoryType,
       expected: {
         frame_count: 0,
         steps: [],

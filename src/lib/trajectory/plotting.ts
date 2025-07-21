@@ -2,7 +2,7 @@
 import { plot_colors } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
-import type { Trajectory, TrajectoryDataExtractor } from '$lib/trajectory'
+import type { TrajectoryDataExtractor, TrajectoryType } from '$lib/trajectory'
 
 // Priority order for y1 axis (higher priority = more likely to be on y1)
 const Y1_PRIORITY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`] // Energy units get highest priority
@@ -66,7 +66,7 @@ function calculate_unit_group_priority(unit: string, group_series: DataSeries[])
 
 // Generate plot data series from trajectory with robust unit-based grouping
 export function generate_plot_series(
-  trajectory: Trajectory,
+  trajectory: TrajectoryType,
   data_extractor: TrajectoryDataExtractor,
   options: PlotSeriesOptions = {},
 ): DataSeries[] {
@@ -420,7 +420,7 @@ export function toggle_series_visibility(
 
 // Check if all plotted values are constant (should hide plot)
 export function should_hide_plot(
-  trajectory: Trajectory | undefined,
+  trajectory: TrajectoryType | undefined,
   plot_series: DataSeries[],
   tolerance = 1e-10,
 ): boolean {
