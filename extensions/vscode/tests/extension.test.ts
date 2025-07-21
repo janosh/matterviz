@@ -19,12 +19,6 @@ vi.mock(`fs`)
 vi.mock(`path`, () => ({
   basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
   dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
-  resolve: vi.fn((p: string) => p),
-  extname: vi.fn((p: string) => {
-    const parts = p.split(`.`)
-    return parts.length > 1 ? `.` + parts.pop() : ``
-  }),
-  join: vi.fn((...paths: string[]) => paths.join(`/`)),
 }))
 
 const mock_vscode = vi.hoisted(() => ({
@@ -65,10 +59,7 @@ const mock_vscode = vi.hoisted(() => ({
 vi.mock(`vscode`, () => mock_vscode)
 
 describe(`MatterViz Extension`, () => {
-  const mock_fs = fs as unknown as {
-    readFileSync: ReturnType<typeof vi.fn>
-    writeFileSync: ReturnType<typeof vi.fn>
-  }
+  const mock_fs = fs
 
   let mock_file_system_watcher: {
     onDidChange: ReturnType<typeof vi.fn>
@@ -105,8 +96,8 @@ describe(`MatterViz Extension`, () => {
   // Test data consolidation
   const mock_webview = {
     cspSource: `vscode-webview:`,
-    asWebviewUri: vi.fn((uri: unknown) =>
-      `https://vscode-webview.local${(uri as { fsPath: string }).fsPath}`
+    asWebviewUri: vi.fn((uri: { fsPath: string }) =>
+      `vscode-webview://unit-test${encodeURIComponent(uri.fsPath)}`
     ),
     onDidReceiveMessage: vi.fn(),
     postMessage: vi.fn(),
@@ -205,16 +196,13 @@ describe(`MatterViz Extension`, () => {
     [{ fsPath: `/test/file.cif` }, `file.cif`],
     [{ fsPath: `/test/structure.xyz` }, `structure.xyz`],
   ])(`get_file with URI`, (uri, expected_filename) => {
-    const result = get_file(uri as vscode.Uri)
+    const result = get_file(uri)
     expect(result.filename).toBe(expected_filename)
   })
 
   test(`get_file with active editor`, () => {
     mock_vscode.window.activeTextEditor = {
-      document: {
-        fileName: `/test/active.cif`,
-        getText: () => `active content`,
-      },
+      document: { fileName: `/test/active.cif`, getText: () => `active content` },
     } as vscode.TextEditor
 
     const result = get_file()
@@ -225,7 +213,7 @@ describe(`MatterViz Extension`, () => {
 
   test(`get_file with active tab`, () => {
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
-      input: { uri: { fsPath: `/test/tab.cif` } as vscode.Uri },
+      input: { uri: { fsPath: `/test/tab.cif` } },
     }
 
     const result = get_file()
@@ -239,40 +227,38 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
-  test.each([
-    [`structure`, {
-      filename: `test.cif`,
-      content: `content`,
-      isCompressed: false,
-    }],
-    [`trajectory`, {
-      filename: `test.traj`,
-      content: `YmluYXJ5`,
-      isCompressed: true,
-    }],
-    [`structure`, {
-      filename: `test"quotes.cif`,
-      content: `content`,
-      isCompressed: false,
-    }],
-    [`structure`, { filename: `test.cif`, content: ``, isCompressed: false }],
-    [`structure`, {
-      filename: `test.cif`,
-      content: `<script>alert("xss")</script>`,
-      isCompressed: false,
-    }],
-    [`structure`, {
-      filename: `large.cif`,
-      content: `x`.repeat(100000),
-      isCompressed: false,
-    }],
-  ])(`HTML generation: %s files`, (type, data) => {
-    const webview_data = { type: type as `structure` | `trajectory`, data }
-    const html = create_html(
-      mock_webview as vscode.Webview,
-      mock_context as vscode.ExtensionContext,
-      webview_data,
-    )
+  test.each(
+    [
+      [`structure`, {
+        filename: `test.cif`,
+        content: `content`,
+        isCompressed: false,
+      }],
+      [`trajectory`, {
+        filename: `test.traj`,
+        content: `YmluYXJ5`,
+        isCompressed: true,
+      }],
+      [`structure`, {
+        filename: `test"quotes.cif`,
+        content: `content`,
+        isCompressed: false,
+      }],
+      [`structure`, { filename: `test.cif`, content: ``, isCompressed: false }],
+      [`structure`, {
+        filename: `test.cif`,
+        content: `<script>alert("xss")</script>`,
+        isCompressed: false,
+      }],
+      [`structure`, {
+        filename: `large.cif`,
+        content: `x`.repeat(100_000),
+        isCompressed: false,
+      }],
+    ] as const,
+  )(`HTML generation: %s files`, (type, data) => {
+    const webview_data = { type, data, theme: `light` } as const
+    const html = create_html(mock_webview, mock_context, webview_data)
 
     expect(html).toContain(`<!DOCTYPE html>`)
     expect(html).toContain(`Content-Security-Policy`)
@@ -286,10 +272,7 @@ describe(`MatterViz Extension`, () => {
   test.each([
     [{ command: `info`, text: `Test message` }, `showInformationMessage`],
     [{ command: `error`, text: `Error message` }, `showErrorMessage`],
-    [
-      { command: `info`, text: `"><script>alert(1)</script>` },
-      `showInformationMessage`,
-    ],
+    [{ command: `info`, text: `"><script>alert(1)</script>` }, `showInformationMessage`],
     [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
   ])(`message handling: %s`, async (message, expected_method) => {
     await handle_msg(message)
@@ -383,7 +366,7 @@ describe(`MatterViz Extension`, () => {
       document: { fileName: `/test/active.cif`, getText: () => `content` },
     } as vscode.TextEditor
 
-    render(mock_context as vscode.ExtensionContext)
+    render(mock_context)
     expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
       `matterviz`,
       `MatterViz - active.cif`,
@@ -395,24 +378,20 @@ describe(`MatterViz Extension`, () => {
   test(`render handles errors`, () => {
     mock_vscode.window.activeTextEditor = null
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = null
-    render(mock_context as vscode.ExtensionContext)
+    render(mock_context)
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
       `Failed: No file selected. MatterViz needs an active editor to know what to render.`,
     )
   })
 
   test(`extension activation`, () => {
-    activate(mock_context as vscode.ExtensionContext)
+    activate(mock_context)
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
       `matterviz.renderStructure`,
       expect.any(Function),
     )
     expect(mock_vscode.window.registerCustomEditorProvider)
-      .toHaveBeenCalledWith(
-        `matterviz.viewer`,
-        expect.any(Object),
-        expect.any(Object),
-      )
+      .toHaveBeenCalledWith(`matterviz.viewer`, expect.any(Object), expect.any(Object))
   })
 
   test(`performance benchmarks`, () => {
@@ -427,35 +406,25 @@ describe(`MatterViz Extension`, () => {
 
     // HTML generation performance
     const large_data = {
-      type: `structure` as const,
-      data: {
-        filename: `large.cif`,
-        content: `x`.repeat(100000),
-        isCompressed: false,
-      },
-    }
+      type: `structure`,
+      data: { filename: `large.cif`, content: `x`.repeat(100_000), isCompressed: false },
+      theme: `light`,
+    } as const
     const html_start = performance.now()
-    create_html(
-      mock_webview as vscode.Webview,
-      mock_context as vscode.ExtensionContext,
-      large_data,
-    )
+    create_html(mock_webview, mock_context, large_data)
     expect(performance.now() - html_start).toBeLessThan(50)
   })
 
   test(`nonce uniqueness`, () => {
     const data = {
-      type: `structure` as const,
+      type: `structure`,
       data: { filename: `test.cif`, content: `content`, isCompressed: false },
-    }
+      theme: `light`,
+    } as const
     const nonces = new Set<string>()
 
     for (let idx = 0; idx < 1000; idx++) {
-      const html = create_html(
-        mock_webview as vscode.Webview,
-        mock_context as vscode.ExtensionContext,
-        data,
-      )
+      const html = create_html(mock_webview, mock_context, data)
       const nonce_match = html.match(/nonce="([a-zA-Z0-9]+)"/)
       if (nonce_match) nonces.add(nonce_match[1])
     }
@@ -474,14 +443,11 @@ describe(`MatterViz Extension`, () => {
 
     dangerous_payloads.forEach((payload) => {
       const data = {
-        type: `structure` as const,
+        type: `structure`,
         data: { filename: `test.cif`, content: payload, isCompressed: false },
-      }
-      const html = create_html(
-        mock_webview as vscode.Webview,
-        mock_context as vscode.ExtensionContext,
-        data,
-      )
+        theme: `light`,
+      } as const
+      const html = create_html(mock_webview, mock_context, data)
 
       expect(html).toContain(JSON.stringify(data))
       if (payload.includes(`<script>`)) {
@@ -503,22 +469,23 @@ describe(`MatterViz Extension`, () => {
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledTimes(50)
   })
 
-  // Theme functionality tests
   describe(`Theme functionality`, () => {
-    test.each([
-      [mock_vscode.ColorThemeKind.Light, `auto`, `light`], // Light VSCode theme, auto setting → light
-      [mock_vscode.ColorThemeKind.Dark, `auto`, `dark`], // Dark VSCode theme, auto setting → dark
-      [mock_vscode.ColorThemeKind.HighContrast, `auto`, `black`], // High contrast VSCode theme, auto setting → black
-      [mock_vscode.ColorThemeKind.HighContrastLight, `auto`, `white`], // High contrast light VSCode theme, auto setting → white
-      [mock_vscode.ColorThemeKind.Light, `light`, `light`], // Light VSCode theme, light setting → light
-      [mock_vscode.ColorThemeKind.Light, `dark`, `dark`], // Light VSCode theme, dark setting → dark
-      [mock_vscode.ColorThemeKind.Light, `white`, `white`], // Light VSCode theme, white setting → white
-      [mock_vscode.ColorThemeKind.Light, `black`, `black`], // Light VSCode theme, black setting → black
-      [mock_vscode.ColorThemeKind.Dark, `light`, `light`], // Dark VSCode theme, light setting → light
-      [mock_vscode.ColorThemeKind.Dark, `dark`, `dark`], // Dark VSCode theme, dark setting → dark
-      [mock_vscode.ColorThemeKind.Dark, `white`, `white`], // Dark VSCode theme, white setting → white
-      [mock_vscode.ColorThemeKind.Dark, `black`, `black`], // Dark VSCode theme, black setting → black
-    ])(
+    test.each(
+      [
+        [mock_vscode.ColorThemeKind.Light, `auto`, `light`], // Light VSCode theme, auto setting → light
+        [mock_vscode.ColorThemeKind.Dark, `auto`, `dark`], // Dark VSCode theme, auto setting → dark
+        [mock_vscode.ColorThemeKind.HighContrast, `auto`, `black`], // High contrast VSCode theme, auto setting → black
+        [mock_vscode.ColorThemeKind.HighContrastLight, `auto`, `white`], // High contrast light VSCode theme, auto setting → white
+        [mock_vscode.ColorThemeKind.Light, `light`, `light`], // Light VSCode theme, light setting → light
+        [mock_vscode.ColorThemeKind.Light, `dark`, `dark`], // Light VSCode theme, dark setting → dark
+        [mock_vscode.ColorThemeKind.Light, `white`, `white`], // Light VSCode theme, white setting → white
+        [mock_vscode.ColorThemeKind.Light, `black`, `black`], // Light VSCode theme, black setting → black
+        [mock_vscode.ColorThemeKind.Dark, `light`, `light`], // Dark VSCode theme, light setting → light
+        [mock_vscode.ColorThemeKind.Dark, `dark`, `dark`], // Dark VSCode theme, dark setting → dark
+        [mock_vscode.ColorThemeKind.Dark, `white`, `white`], // Dark VSCode theme, white setting → white
+        [mock_vscode.ColorThemeKind.Dark, `black`, `black`], // Dark VSCode theme, black setting → black
+      ] as const,
+    )(
       `theme detection: VSCode theme %i, setting '%s' → '%s'`,
       (vscode_theme_kind: number, setting: string, expected: ThemeName) => {
         const mock_config = {
@@ -548,33 +515,12 @@ describe(`MatterViz Extension`, () => {
         theme: get_theme(),
       }
 
-      const html = create_html(
-        mock_webview as vscode.Webview,
-        mock_context as vscode.ExtensionContext,
-        data,
-      )
+      const html = create_html(mock_webview, mock_context, data)
 
       const parsed_data = JSON.parse(
         html.match(/mattervizData=(.+?)</s)?.[1] || `{}`,
       )
       expect(parsed_data.theme).toBe(`dark`)
-    })
-
-    test(`HTML includes themes.js script`, () => {
-      const data = {
-        type: `structure` as const,
-        data: { filename: `test.cif`, content: `content`, isCompressed: false },
-        theme: `light` as const,
-      }
-
-      const html = create_html(
-        mock_webview as vscode.Webview,
-        mock_context as vscode.ExtensionContext,
-        data,
-      )
-
-      expect(html).toContain(`themes.js`)
-      expect(html).toMatch(/<script[^>]*src="[^"]*themes\.js"[^>]*>/)
     })
 
     test(`invalid theme setting falls back to auto`, () => {
@@ -618,11 +564,7 @@ describe(`MatterViz Extension`, () => {
     const setup_panel = (options = {}) => {
       const mock_dispose = vi.fn()
       const mock_panel = {
-        webview: {
-          html: `initial`,
-          onDidReceiveMessage: vi.fn(),
-          ...mock_webview,
-        },
+        webview: { ...mock_webview },
         onDidDispose: vi.fn(),
         visible: true,
         ...options,
@@ -645,7 +587,7 @@ describe(`MatterViz Extension`, () => {
     test(`sets up and cleans up theme listeners`, () => {
       const { mock_dispose, mock_panel } = setup_panel()
 
-      render(mock_context as vscode.ExtensionContext)
+      render(mock_context)
 
       expect(mock_vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled()
       expect(mock_panel.onDidDispose).toHaveBeenCalled()
@@ -657,11 +599,7 @@ describe(`MatterViz Extension`, () => {
 
     test(`respects panel visibility for theme updates`, () => {
       const mock_panel = {
-        webview: {
-          html: ``,
-          onDidReceiveMessage: vi.fn(),
-          ...mock_webview,
-        },
+        webview: { ...mock_webview },
         onDidDispose: vi.fn(),
         visible: false,
       }
@@ -677,7 +615,7 @@ describe(`MatterViz Extension`, () => {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
       } as vscode.TextEditor
 
-      render(mock_context as vscode.ExtensionContext)
+      render(mock_context)
 
       // Store initial HTML after render (render always sets HTML initially)
       const initial_html = mock_panel.webview.html
@@ -716,8 +654,8 @@ describe(`MatterViz Extension`, () => {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
       } as vscode.TextEditor
 
-      render(mock_context as vscode.ExtensionContext)
-      render(mock_context as vscode.ExtensionContext)
+      render(mock_context)
+      render(mock_context)
 
       panel1.onDidDispose.mock.calls[0][0]()
       expect(dispose1).toHaveBeenCalledTimes(2)
@@ -728,11 +666,7 @@ describe(`MatterViz Extension`, () => {
   describe(`File Watching`, () => {
     describe(`message handling`, () => {
       test(`should handle startWatching message`, async () => {
-        const message = {
-          command: `startWatching`,
-          file_path: `/test/file.cif`,
-        }
-
+        const message = { command: `startWatching`, file_path: `/test/file.cif` }
         await handle_msg(message, mock_webview)
 
         expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith(

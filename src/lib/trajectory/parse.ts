@@ -7,7 +7,7 @@ import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
-import type { Trajectory, TrajectoryFrame } from './index'
+import type { TrajectoryFrame, TrajectoryType } from './index'
 
 // Common interfaces
 export interface ParseProgress {
@@ -252,7 +252,7 @@ const is_xyz_multi_frame = (content: string, filename?: string): boolean => {
 const parse_torch_sim_hdf5 = async (
   buffer: ArrayBuffer,
   filename?: string,
-): Promise<Trajectory> => {
+): Promise<TrajectoryType> => {
   await h5wasm.ready
   const { FS } = await h5wasm.ready
   const temp_filename = filename || `temp.h5`
@@ -436,7 +436,7 @@ const parse_torch_sim_hdf5 = async (
   }
 }
 
-const parse_vasp_xdatcar = (content: string, filename?: string): Trajectory => {
+const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType => {
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
@@ -505,7 +505,7 @@ const parse_vasp_xdatcar = (content: string, filename?: string): Trajectory => {
   }
 }
 
-const parse_xyz_trajectory = (content: string): Trajectory => {
+const parse_xyz_trajectory = (content: string): TrajectoryType => {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
   let line_idx = 0
@@ -625,7 +625,7 @@ const parse_xyz_trajectory = (content: string): Trajectory => {
 const parse_pymatgen_trajectory = (
   data: Record<string, unknown>,
   filename?: string,
-): Trajectory => {
+): TrajectoryType => {
   const species = data.species as Array<{ element: ElementSymbol }>
   const coords = data.coords as number[][][]
   const matrix = data.lattice as Matrix3x3
@@ -674,7 +674,7 @@ const parse_pymatgen_trajectory = (
   }
 }
 
-const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajectory => {
+const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): TrajectoryType => {
   const view = new DataView(buffer)
   let offset = 0
 
@@ -814,7 +814,7 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
 export async function parse_trajectory_data(
   data: unknown,
   filename?: string,
-): Promise<Trajectory> {
+): Promise<TrajectoryType> {
   if (data instanceof ArrayBuffer) {
     if (is_ase_format(data, filename)) return parse_ase_trajectory(data, filename)
     if (is_torch_sim_hdf5(data, filename)) {
@@ -921,7 +921,7 @@ export async function parse_trajectory_async(
   data: ArrayBuffer | string,
   filename: string,
   on_progress?: (progress: ParseProgress) => void,
-): Promise<Trajectory> {
+): Promise<TrajectoryType> {
   const update_progress = (current: number, stage: string) =>
     on_progress?.({ current, total: 100, stage })
 
@@ -929,7 +929,7 @@ export async function parse_trajectory_async(
     update_progress(0, `Detecting format...`)
 
     // Format detection and parsing in one step
-    let result: Trajectory
+    let result: TrajectoryType
     if (data instanceof ArrayBuffer) {
       if (is_ase_format(data, filename)) {
         update_progress(50, `Parsing ASE trajectory...`)

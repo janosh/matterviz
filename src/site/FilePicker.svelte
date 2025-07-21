@@ -107,7 +107,7 @@
   )
 </script>
 
-<div class="file-carousel" {...rest}>
+<div class="file-picker" {...rest}>
   <div class="legend">
     {#if show_category_filters}
       {#each uniq_categories as category (category)}
@@ -192,7 +192,7 @@
 </div>
 
 <style>
-  .file-carousel {
+  .file-picker {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5em;

@@ -51,12 +51,6 @@ export const resolve_theme_mode = (
   system_preference: ThemeType = COLOR_THEMES.light,
 ): ThemeName => (mode === AUTO_THEME ? system_preference : mode)
 
-// Global theme objects
-declare global {
-  var MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
-  var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
-}
-
 // Theme preference management
 export const get_theme_preference = (): ThemeMode => {
   if (!is_browser) return AUTO_THEME
@@ -87,6 +81,9 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
 
   const resolved = resolve_theme_mode(mode, get_system_mode())
+  if (!resolved || !(resolved in THEME_TYPE)) {
+    throw new Error(`Invalid theme mode: ${resolved}`)
+  }
   const theme = globalThis.MATTERVIZ_THEMES?.[resolved] || {}
   const css_vars = globalThis.MATTERVIZ_CSS_MAP || {}
 
@@ -99,6 +96,9 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
   })
 
   root.setAttribute(`data-theme`, resolved)
+  // Set color-scheme to ensure form elements respect the theme
+  const color_scheme = THEME_TYPE[resolved]
+  root.style.setProperty(`color-scheme`, color_scheme)
 }
 
 // Theme getters

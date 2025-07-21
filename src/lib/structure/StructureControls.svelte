@@ -609,25 +609,3 @@
     />
   </span>
 </DraggablePanel>
-
-<style>
-  h4 {
-    margin: 8pt 0 2pt;
-    font-size: 0.9em;
-  }
-  .panel-row {
-    display: flex;
-    gap: 4pt;
-    align-items: flex-start;
-  }
-  .panel-row label {
-    min-width: 0;
-  }
-  .panel-row label.compact {
-    flex: 0 0 auto;
-    margin-right: 8pt;
-  }
-  .panel-row label.slider-control {
-    flex: 1;
-  }
-</style>

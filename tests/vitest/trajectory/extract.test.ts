@@ -1,6 +1,6 @@
 import type { ElementSymbol, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
-import type { Trajectory, TrajectoryFrame } from '$lib/trajectory'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
   energy_data_extractor,
   force_stress_data_extractor,
@@ -116,7 +116,7 @@ describe(`Energy Data Extractor`, () => {
     },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
-    const data = energy_data_extractor(frame, {} as Trajectory)
+    const data = energy_data_extractor(frame, {} as TrajectoryType)
     expect(data).toEqual(expected)
   })
 })
@@ -167,7 +167,7 @@ describe(`Force and Stress Data Extractor`, () => {
     },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
-    const data = force_stress_data_extractor(frame, {} as Trajectory)
+    const data = force_stress_data_extractor(frame, {} as TrajectoryType)
     expect(data).toEqual(expected)
   })
 })
@@ -215,7 +215,7 @@ describe(`Structural Data Extractor`, () => {
       ? create_frame_with_lattice(step, lattice_params, metadata)
       : create_basic_frame(step, metadata)
 
-    const data = structural_data_extractor(frame, {} as Trajectory)
+    const data = structural_data_extractor(frame, {} as TrajectoryType)
     expect(data).toEqual(expected)
   })
 
@@ -227,7 +227,7 @@ describe(`Structural Data Extractor`, () => {
       {}, // No density in metadata
     )
 
-    const data = structural_data_extractor(frame, {} as Trajectory)
+    const data = structural_data_extractor(frame, {} as TrajectoryType)
 
     // Should calculate density from structure
     expect(data.density).toBeDefined()
@@ -242,7 +242,7 @@ describe(`Structural Data Extractor`, () => {
       { density: 5.0 }, // Explicit density in metadata
     )
 
-    const data = structural_data_extractor(frame, {} as Trajectory)
+    const data = structural_data_extractor(frame, {} as TrajectoryType)
 
     // Should use metadata density
     expect(data.density).toBe(5.0)
@@ -251,7 +251,7 @@ describe(`Structural Data Extractor`, () => {
 
 describe(`Full Data Extractor`, () => {
   it(`should combine all extractors`, () => {
-    const trajectory: Trajectory = {
+    const trajectory: TrajectoryType = {
       frames: [
         create_frame_with_lattice(
           0,
@@ -305,7 +305,7 @@ describe(`Full Data Extractor`, () => {
   })
 
   it(`should detect constant lattice parameters`, () => {
-    const constant_trajectory: Trajectory = {
+    const constant_trajectory: TrajectoryType = {
       frames: [
         create_frame_with_lattice(
           0,
@@ -386,7 +386,7 @@ describe(`Default Plotting Behavior`, () => {
       should_vary: false,
     },
   ])(`should $name`, ({ trajectory_frames, expected_volumes, should_vary }) => {
-    const trajectory: Trajectory = {
+    const trajectory: TrajectoryType = {
       frames: trajectory_frames,
       metadata: {
         source_format: `test`,
@@ -492,7 +492,7 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
 describe(`regression tests for trajectory plotting integration`, () => {
   it(`should provide consistent units and handle mixed data for plotting`, () => {
     // Test lattice parameters with consistent units
-    const lattice_trajectory: Trajectory = {
+    const lattice_trajectory: TrajectoryType = {
       frames: [
         create_frame_with_lattice(
           0,
@@ -518,7 +518,7 @@ describe(`regression tests for trajectory plotting integration`, () => {
     expect(lattice_data.volume).toBeDefined()
 
     // Test mixed structural and energy data
-    const mixed_trajectory: Trajectory = {
+    const mixed_trajectory: TrajectoryType = {
       frames: [
         create_frame_with_lattice(
           0,
@@ -560,7 +560,7 @@ describe(`regression tests for trajectory plotting integration`, () => {
 
   it(`should handle edge cases for plotting compatibility`, () => {
     // Single varying property
-    const single_prop_trajectory: Trajectory = {
+    const single_prop_trajectory: TrajectoryType = {
       frames: [
         create_frame_with_lattice(0, { a: 5.0 }, { energy: -100.0 }),
         create_frame_with_lattice(1, { a: 5.0 }, { energy: -101.0 }), // Only energy varies

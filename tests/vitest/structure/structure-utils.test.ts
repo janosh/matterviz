@@ -1,3 +1,5 @@
+import type { AnyStructure, Matrix3x3, Site, Vec3 } from '$lib'
+import { euclidean_dist, pbc_dist } from '$lib/math'
 import * as struct_utils from '$lib/structure'
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
@@ -174,4 +176,151 @@ test.each(structures)(`symmetrize_structure`, (structure) => {
     const image_atoms = struct_utils.find_image_atoms(structure)
     expect(symmetrized.sites.length, msg).toBe(orig_len + image_atoms.length)
   }
+})
+
+// Coordinate calculation tests
+describe(`Coordinate Calculations`, () => {
+  describe(`euclidean_dist`, () => {
+    test.each(
+      [
+        {
+          point1: [0, 0, 0],
+          point2: [1, 0, 0],
+          expected: 1.0,
+          desc: `unit distance along x-axis`,
+        },
+        {
+          point1: [0, 0, 0],
+          point2: [0, 1, 0],
+          expected: 1.0,
+          desc: `unit distance along y-axis`,
+        },
+        {
+          point1: [0, 0, 0],
+          point2: [0, 0, 1],
+          expected: 1.0,
+          desc: `unit distance along z-axis`,
+        },
+        {
+          point1: [0, 0, 0],
+          point2: [1, 1, 1],
+          expected: Math.sqrt(3),
+          desc: `diagonal distance`,
+        },
+        {
+          point1: [1, 2, 3],
+          point2: [4, 6, 8],
+          expected: Math.sqrt(9 + 16 + 25),
+          desc: `arbitrary points`,
+        },
+        {
+          point1: [-1, -1, -1],
+          point2: [1, 1, 1],
+          expected: Math.sqrt(12),
+          desc: `negative to positive`,
+        },
+        { point1: [1, 2, 3], point2: [1, 2, 3], expected: 0.0, desc: `identical points` },
+      ] as const,
+    )(
+      `should calculate $desc correctly`,
+      ({ point1, point2, expected }) => {
+        const result = euclidean_dist(point1 as Vec3, point2 as Vec3)
+        expect(result).toBeCloseTo(expected, 6)
+      },
+    )
+  })
+
+  describe(`pbc_dist`, () => {
+    const lattice_matrix: Matrix3x3 = [
+      [4.0, 0.0, 0.0],
+      [0.0, 4.0, 0.0],
+      [0.0, 0.0, 4.0],
+    ]
+
+    test.each([
+      {
+        point1: [0, 0, 0],
+        point2: [1, 0, 0],
+        expected: 1.0,
+        desc: `direct distance within cell`,
+      },
+      {
+        point1: [0, 0, 0],
+        point2: [3.9, 0, 0],
+        expected: 0.1,
+        desc: `wraps around periodic boundary`,
+      },
+      {
+        point1: [0.1, 0, 0],
+        point2: [3.9, 0, 0],
+        expected: 0.2,
+        desc: `shortest path across boundary`,
+      },
+      {
+        point1: [0, 0, 0],
+        point2: [3.9, 3.9, 0],
+        expected: Math.sqrt(0.02),
+        desc: `2D boundary wrapping`,
+      },
+      {
+        point1: [0, 0, 0],
+        point2: [3.9, 3.9, 3.9],
+        expected: Math.sqrt(0.03),
+        desc: `3D boundary wrapping`,
+      },
+    ])(
+      `should calculate $desc correctly`,
+      ({ point1, point2, expected }) => {
+        const result = pbc_dist(point1 as Vec3, point2 as Vec3, lattice_matrix)
+        expect(result).toBeCloseTo(expected, 6)
+      },
+    )
+  })
+
+  describe(`get_center_of_mass`, () => {
+    const create_simple_structure = (
+      sites: Array<{ element: string; xyz: Vec3; occu: number }>,
+    ): AnyStructure => ({
+      sites: sites.map((site, idx) => ({
+        species: [{ element: site.element, occu: site.occu, oxidation_state: 0 }],
+        abc: site.xyz,
+        xyz: site.xyz,
+        label: `${site.element}${idx + 1}`,
+        properties: {},
+      })) as Site[],
+      charge: 0,
+    })
+
+    test.each([
+      {
+        sites: [
+          { element: `H`, xyz: [0, 0, 0] as Vec3, occu: 1 },
+          { element: `O`, xyz: [2, 2, 2] as Vec3, occu: 1 },
+          { element: `H`, xyz: [4, 4, 4] as Vec3, occu: 1 },
+        ],
+        expected: [2.0, 2.0, 2.0] as Vec3,
+        desc: `simple structure with equal occupancies`,
+      },
+      {
+        sites: [
+          { element: `H`, xyz: [0, 0, 0] as Vec3, occu: 0.5 },
+          { element: `O`, xyz: [2, 2, 2] as Vec3, occu: 2.0 },
+        ],
+        expected: [1.6, 1.6, 1.6] as Vec3,
+        desc: `weighted occupancies`,
+      },
+      {
+        sites: [{ element: `H`, xyz: [1, 2, 3] as Vec3, occu: 1 }],
+        expected: [1, 2, 3] as Vec3,
+        desc: `single atom structure`,
+      },
+    ])(
+      `should calculate center of mass for $desc`,
+      ({ sites, expected }) => {
+        const structure = create_simple_structure(sites)
+        const result = struct_utils.get_center_of_mass(structure)
+        expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 6))
+      },
+    )
+  })
 })

@@ -48,6 +48,8 @@
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
+    // Performance mode: 'quality' (default) or 'speed' for large structures
+    performance_mode?: `quality` | `speed`
     [key: string]: unknown
   }
   let {
@@ -95,6 +97,7 @@
     spinner_props = {},
     loading = $bindable(false),
     error_msg = $bindable(undefined),
+    performance_mode = $bindable(`quality`),
     ...rest
   }: Props = $props()
 
@@ -163,6 +166,22 @@
           force_vector_color: scene_props.force_vector_color || `#ff6b6b`,
         }
         force_vectors_auto_enabled = true
+      }
+    }
+  })
+
+  // Optimize scene props for performance based on structure size and mode
+  $effect(() => {
+    if (structure?.sites && performance_mode === `speed`) {
+      const site_count = structure.sites.length
+      const current_sphere_segments = scene_props.sphere_segments || 20
+
+      // Reduce sphere segments for large structures in speed mode
+      if (site_count > 200 && current_sphere_segments > 12) {
+        scene_props = {
+          ...scene_props,
+          sphere_segments: Math.min(current_sphere_segments, 12),
+        }
       }
     }
   })

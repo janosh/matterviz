@@ -6,10 +6,10 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { Trajectory } from './index'
+  import type { TrajectoryType } from './index'
 
   interface Props {
-    trajectory: Trajectory
+    trajectory: TrajectoryType
     current_step_idx: number
     current_filename?: string | null
     current_file_path?: string | null

@@ -196,14 +196,16 @@ describe(`Theme System`, () => {
 
         apply_theme_to_dom(`auto`)
         expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
+        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
+          THEME_TYPE[expected_theme as ThemeName],
+        )
       },
     )
 
-    test(`apply_theme_to_dom falls back to light for unknown themes`, () => {
-      apply_theme_to_dom(`unknown` as ThemeName)
-      // For unknown themes, THEME_TYPE[theme] is undefined, so color-scheme might not be set
-      // The test should check that it doesn't crash and handles the case gracefully
-      expect(document.documentElement.getAttribute(`data-theme`)).toBe(`unknown`)
+    test(`apply_theme_to_dom throws error for unknown themes`, () => {
+      expect(() => apply_theme_to_dom(`unknown` as ThemeName)).toThrow(
+        `Invalid theme mode: unknown`,
+      )
     })
 
     test(`apply_theme_to_dom handles missing theme data gracefully`, () => {
@@ -261,6 +263,9 @@ describe(`Theme System`, () => {
       }
       expect(root.style.getPropertyValue(`--surface-bg`)).toBe(expected.surface_bg)
       expect(root.style.getPropertyValue(`--text-color`)).toBe(expected.text_color)
+      expect(root.style.getPropertyValue(`color-scheme`)).toBe(
+        THEME_TYPE[theme as ThemeName],
+      )
     })
 
     test.each([
@@ -281,6 +286,9 @@ describe(`Theme System`, () => {
         apply_theme_to_dom(`auto`)
 
         expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
+        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
+          THEME_TYPE[expected_theme as ThemeName],
+        )
       },
     )
   })

@@ -270,7 +270,7 @@
           x2={width - padding.r}
           y1={height - padding.b}
           y2={height - padding.b}
-          stroke="var(--histogram-axis-color)"
+          stroke="var(--border-color, gray)"
           stroke-width="1"
         />
 
@@ -281,23 +281,23 @@
               <line
                 y1={-(height - padding.b - padding.t)}
                 y2="0"
-                stroke="var(--histogram-grid-stroke, gray)"
-                stroke-dasharray="var(--histogram-grid-dash, 4)"
-                stroke-width="var(--histogram-grid-width, 0.4)"
+                stroke="var(--border-color, gray)"
+                stroke-dasharray="4"
+                stroke-width="0.4"
                 {...typeof x_grid === `object` ? x_grid : {}}
               />
             {/if}
             <line
               y1="0"
               y2="5"
-              stroke="var(--histogram-axis-color)"
+              stroke="var(--border-color, gray)"
               stroke-width="1"
             />
             <text
               y="18"
               text-anchor="middle"
-              font-size="12"
-              fill="var(--histogram-text-color)"
+              font-size="14"
+              fill="var(--text-color)"
             >
               {format_value(tick, x_format)}
             </text>
@@ -309,8 +309,8 @@
           x={padding.l + chart_width / 2}
           y={height - 10}
           text-anchor="middle"
-          font-size="14"
-          fill="var(--histogram-text-color)"
+          font-size="16"
+          fill="var(--text-color)"
         >
           {x_label}
         </text>
@@ -322,7 +322,7 @@
           x2={padding.l}
           y1={padding.t}
           y2={height - padding.b}
-          stroke="var(--histogram-axis-color)"
+          stroke="var(--border-color, gray)"
           stroke-width="1"
         />
 
@@ -333,24 +333,24 @@
               <line
                 x1="0"
                 x2={width - padding.l - padding.r}
-                stroke="var(--histogram-grid-stroke, gray)"
-                stroke-dasharray="var(--histogram-grid-dash, 4)"
-                stroke-width="var(--histogram-grid-width, 0.4)"
+                stroke="var(--border-color, gray)"
+                stroke-dasharray="4"
+                stroke-width="0.4"
                 {...typeof y_grid === `object` ? y_grid : {}}
               />
             {/if}
             <line
               x1="-5"
               x2="0"
-              stroke="var(--histogram-axis-color)"
+              stroke="var(--border-color, gray)"
               stroke-width="1"
             />
             <text
               x="-10"
               text-anchor="end"
               dominant-baseline="central"
-              font-size="12"
-              fill="var(--histogram-text-color)"
+              font-size="14"
+              fill="var(--text-color)"
             >
               {format_value(tick, y_format)}
             </text>
@@ -362,8 +362,8 @@
           x={15}
           y={padding.t + chart_height / 2}
           text-anchor="middle"
-          font-size="14"
-          fill="var(--histogram-text-color)"
+          font-size="16"
+          fill="var(--text-color)"
           transform="rotate(-90, 15, {padding.t + chart_height / 2})"
         >
           {y_label}
@@ -372,7 +372,6 @@
     </svg>
   {/if}
 
-  <!-- Control Panel -->
   {#if show_controls}
     <HistogramControls
       toggle_props={controls_toggle_props}
@@ -397,7 +396,6 @@
     />
   {/if}
 
-  <!-- Legend -->
   {#if show_legend && legend && series.length > 1}
     <PlotLegend
       {...legend}
@@ -420,14 +418,14 @@
     height: 100%;
   }
   .tooltip {
-    background: var(--histogram-tooltip-bg);
-    color: var(--histogram-tooltip-color);
+    background: var(--tooltip-bg);
+    color: var(--text-color);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
     pointer-events: none;
     white-space: nowrap;
-    border: 1px solid var(--histogram-tooltip-border);
+    border: var(--tooltip-border);
   }
   .histogram-series rect {
     transition: opacity 0.2s ease;

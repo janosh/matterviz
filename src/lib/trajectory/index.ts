@@ -1,9 +1,11 @@
 // Utility functions for working with trajectory data
 import type { AnyStructure } from '$lib'
+import type { ComponentProps } from 'svelte'
+import Trajectory from './Trajectory.svelte'
 
-export { default as TrajectoryViewer } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryInfoPanel } from './TrajectoryInfoPanel.svelte'
+export { Trajectory }
 
 // Trajectory types for pymatgen trajectory data
 export type TrajectoryFrame = {
@@ -12,19 +14,33 @@ export type TrajectoryFrame = {
   metadata?: Record<string, unknown>
 }
 
-export type Trajectory = {
+export type TrajectoryType = {
   frames: TrajectoryFrame[]
   metadata?: Record<string, unknown>
+}
+
+export interface TrajHandlerData {
+  trajectory?: TrajectoryType
+  step_idx?: number
+  frame_count?: number
+  frame?: TrajectoryFrame
+  filename?: string
+  file_size?: number
+  total_atoms?: number
+  error_msg?: string
+  fps?: number
+  mode?: ComponentProps<typeof Trajectory>[`display_mode`]
+  is_fullscreen?: boolean
 }
 
 // Function signature for extracting plot data from trajectory frames
 export type TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  trajectory: Trajectory,
+  trajectory: TrajectoryType,
 ) => Record<string, number>
 
 // Validate trajectory data
-export function validate_trajectory(trajectory: Trajectory): string[] {
+export function validate_trajectory(trajectory: TrajectoryType): string[] {
   const errors: string[] = []
 
   if (!trajectory.frames || trajectory.frames.length === 0) {
@@ -50,7 +66,7 @@ export function validate_trajectory(trajectory: Trajectory): string[] {
 
 // Get trajectory statistics
 export function get_trajectory_stats(
-  trajectory: Trajectory,
+  trajectory: TrajectoryType,
 ): Record<string, unknown> {
   const stats: Record<string, unknown> = {
     frame_count: trajectory.frames.length,

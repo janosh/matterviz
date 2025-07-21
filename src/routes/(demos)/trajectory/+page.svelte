@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TrajectoryViewer } from '$lib/trajectory'
+  import { Trajectory } from '$lib/trajectory'
   import { FilePicker } from '$site'
 
   const trajectory_files = import.meta.glob(`$site/trajectories/*`, {
@@ -28,7 +28,7 @@
 <h1>Trajectory Viewer</h1>
 
 {#each trajectory_files_paths as file (file)}
-  <TrajectoryViewer
+  <Trajectory
     data_url={file}
     class="full-bleed"
     style="margin-top: 5em"

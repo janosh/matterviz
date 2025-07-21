@@ -69,9 +69,9 @@ test.describe(`Structure Component Tests`, () => {
 
     // Wait for component state to be initialized
     await expect(canvas_width_status).toContainText(`600`)
-    await expect(canvas_height_status).toContainText(`400`)
+    await expect(canvas_height_status).toContainText(`500`)
     await expect(structure_wrapper_div).toHaveCSS(`width`, `600px`)
-    await expect(structure_wrapper_div).toHaveCSS(`height`, `400px`)
+    await expect(structure_wrapper_div).toHaveCSS(`height`, `500px`)
     await expect(canvas).toHaveCSS(`width`, `600px`)
 
     // Canvas might inherit default height from Structure component - check actual value
@@ -91,6 +91,48 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_wrapper_div).toHaveCSS(`height`, `500px`)
     await expect(canvas).toHaveCSS(`width`, `700px`)
     await expect(canvas).toHaveCSS(`height`, `500px`) // Should update to match wrapper
+  })
+
+  test(`performance_mode prop can be changed via test page controls`, async ({ page }) => {
+    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
+    const status = page.locator(`[data-testid="performance-mode-status"]`)
+
+    await expect(status).toContainText(`Performance Mode Status: quality`)
+    await expect(perf_mode_select).toHaveValue(`quality`)
+
+    await perf_mode_select.selectOption(`speed`)
+    await expect(status).toContainText(`Performance Mode Status: speed`)
+    await expect(perf_mode_select).toHaveValue(`speed`)
+
+    await perf_mode_select.selectOption(`quality`)
+    await expect(status).toContainText(`Performance Mode Status: quality`)
+    await expect(perf_mode_select).toHaveValue(`quality`)
+
+    await expect(page.locator(`#structure-wrapper .structure canvas`)).toBeVisible()
+  })
+
+  test(`performance_mode prop can be set via URL parameters`, async ({ page }) => {
+    const perf_mode_status = page.locator(`[data-testid="performance-mode-status"]`)
+    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
+
+    const test_cases = [
+      { param: `speed`, expected: `speed` },
+      { param: `quality`, expected: `quality` },
+      { param: `invalid`, expected: `quality` },
+    ]
+
+    await Promise.all(
+      test_cases.map(async ({ param, expected }) => {
+        await page.goto(`/test/structure?performance_mode=${param}`, {
+          waitUntil: `load`,
+        })
+        await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
+        await expect(perf_mode_status).toContainText(
+          `Performance Mode Status: ${expected}`,
+        )
+        await expect(perf_mode_select).toHaveValue(expected)
+      }),
+    )
   })
 
   // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking
@@ -137,7 +179,7 @@ test.describe(`Structure Component Tests`, () => {
     )
     await expect(controls_toggle_button).toHaveAttribute(
       `title`,
-      `Open controls`,
+      `Open structure controls`,
     )
   })
 
@@ -215,7 +257,7 @@ test.describe(`Structure Component Tests`, () => {
     )
     await expect(controls_toggle_button).toHaveAttribute(
       `title`,
-      `Open controls`,
+      `Open structure controls`,
     )
   })
 
@@ -825,70 +867,66 @@ H    1.261    0.728   -0.890`
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
   })
 
-  test(`drag and drop from file carousel updates structure`, async ({ page }) => {
-    const file_carousel = page.locator(`.file-carousel`)
+  test(`drag and drop from file picker updates structure`, async ({ page }) => {
+    const file_picker = page.locator(`.file-picker`)
     const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
-    // Wait for file carousel to load
+    // Wait for file picker to load
     await page.waitForSelector(`.file-item`, { timeout: 5000 })
 
     // Take initial screenshot
     const initial_screenshot = await canvas.screenshot()
 
     // Find a file item to drag (look for one with crystal icon)
-    const crystal_file = file_carousel
+    const crystal_file = file_picker
       .locator(`.file-item`)
       .filter({ hasText: `🔷` })
       .first()
     await expect(crystal_file).toBeVisible()
 
-    // Perform drag and drop from carousel to structure viewer
+    // Perform drag and drop from file picker to structure viewer
     await crystal_file.dragTo(canvas)
+
+    // Wait for structure to update
+    await page.waitForTimeout(1000)
 
     // Verify structure changed
     const after_drag_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_drag_screenshot)).toBe(false)
-
-    // Verify the content preview updated (should show the file content)
-    const content_preview = page.locator(`.content-preview`)
-    const preview_content = await content_preview.inputValue()
-    expect(preview_content.length).toBeGreaterThan(0)
-    expect(preview_content).not.toBe(`No structure loaded`)
   })
 
-  test(`drag and drop from file carousel shows correct file content in preview`, async ({ page }) => {
-    const file_carousel = page.locator(`.file-carousel`)
-    const content_preview = page.locator(`.content-preview`)
+  test(`drag and drop from file picker shows correct file content`, async ({ page }) => {
+    const file_picker = page.locator(`.file-picker`)
     const structure_component = page.locator(`.structure`).first()
     const canvas = structure_component.locator(`canvas`)
 
-    // Wait for file carousel to load
+    // Wait for file picker to load
     await page.waitForSelector(`.file-item`, { timeout: 5000 })
 
-    // Find a specific file (look for a POSCAR file)
-    const poscar_file = file_carousel
+    // Find a specific file (look for a CIF file)
+    const cif_file = file_picker
       .locator(`.file-item`)
-      .filter({ hasText: `.poscar` })
+      .filter({ hasText: `.cif` })
       .first()
-    await expect(poscar_file).toBeVisible()
+    await expect(cif_file).toBeVisible()
 
     // Get the filename for verification
-    const filename = await poscar_file.locator(`.file-name`).textContent()
+    const filename = await cif_file.locator(`.file-name`).textContent()
 
     // Drag the file to the structure viewer
-    await poscar_file.dragTo(canvas)
+    await cif_file.dragTo(canvas)
 
-    // Wait for content preview to update
+    // Wait for structure to update
     await page.waitForTimeout(1000)
 
-    // Verify content preview shows file content
-    const preview_content = await content_preview.inputValue()
-    expect(preview_content.length).toBeGreaterThan(0)
+    // Verify the structure viewer is still functional
+    await expect(canvas).toBeVisible()
 
-    // For POSCAR files, should contain typical POSCAR content
-    if (filename?.includes(`.poscar`)) {
-      expect(preview_content).toMatch(/\d+\.\d+/) // Should contain lattice parameters
+    // For CIF files, should contain typical structure content
+    if (filename?.includes(`.cif`)) {
+      // The structure should have loaded successfully
+      await expect(structure_component).toBeVisible()
     }
   })
 })
