@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { detect_structure_type, Structure } from '$lib'
+  import { detect_structure_type, get_electro_neg_formula, Structure } from '$lib'
   import type { FileInfo } from '$site'
   import { FilePicker, PeriodicTableDemo } from '$site'
 
@@ -30,9 +30,14 @@
 <h2>Structure Viewers</h2>
 
 <div class="structure-viewers">
-  {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_url (file_url)}
+  {#each [[`Li4Fe3Mn1(PO4)4.cif`], [`mp-756175.json`, `Zr2Bi2O7`]] as
+    [file_url, formula]
+    (file_url)
+  }
     <div style="flex: 1">
-      <h3 style="margin: 0 0 1ex">{file_url.split(`.`)[0]}</h3>
+      <h3 style="margin: 0 0 1ex">
+        {@html get_electro_neg_formula(formula ?? file_url.split(`.`)[0], false, ``)}
+      </h3>
       <Structure
         data_url="/structures/{file_url}"
         scene_props={{ auto_rotate: 0.5 }}

@@ -15,21 +15,21 @@
 
 `matterviz` is a toolkit for building interactive web UIs for materials science: periodic tables, 3d crystal structures (and molecules, though needs some improvements!), Bohr atoms, nuclei, heatmaps, scatter plots. It's under active development and not yet ready for production use but we appreciate any feedback from beta testers! 🙏
 
-## 🔌 &thinsp; [VSCode Extension][MatterViz extension]
+## 🔌 &thinsp; [MatterViz VSCode Extension]
 
-Visualize crystal structures and molecular dynamics trajectories directly in VSCode with the [MatterViz extension]. Features include:
+Visualize crystal structures and molecular dynamics trajectories directly in VSCode with the [MatterViz VSCode Extension]. Features include:
 
 - Native support for common file formats (CIF, POSCAR, XYZ, TRAJ, HDF5, etc.)
 - Context menu (right click > "Render with MatterViz") and keyboard shortcuts (<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Windows, <kbd>cmd</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Mac) for quick access
 - Custom viewer for MD trajectories/geometry optimizations
 
-[MatterViz extension]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
+[matterviz vscode extension]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
 
 ## 🗺️ &thinsp; Roadmap
 
 - **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev) (works but under active development)
 - **✅ MatterViz VSCode**: [marketplace.visualstudio.com/items?itemName=janosh.matterviz](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz) (works but under active development)
-- **🚧 MatterViz iPython**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for interactive Python-based visualization in notebooks and batch processing/screenshot automation (still prototyping)
+- **✅ pymatviz**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for Python notebooks. Read about widgets in [`pymatviz` readme](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets) for details.
 
 ![Screenshot of landing page](static/2023-02-13-landing-page.webp)
 

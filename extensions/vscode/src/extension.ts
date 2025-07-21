@@ -1,9 +1,10 @@
-import type { ThemeName } from '$lib/theme/index'
-import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode } from '$lib/theme/index'
+import type { ThemeName } from '$lib/theme'
+import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode } from '$lib/theme'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
+
 interface FileData {
   filename: string
   content: string
@@ -33,13 +34,10 @@ export const read_file = (file_path: string): FileData => {
   // Binary files that should be read as base64
   const is_binary = /\.(gz|traj|h5|hdf5)$/.test(filename)
 
-  return {
-    filename,
-    content: is_binary
-      ? fs.readFileSync(file_path).toString(`base64`)
-      : fs.readFileSync(file_path, `utf8`),
-    isCompressed: is_binary,
-  }
+  const content = is_binary
+    ? fs.readFileSync(file_path).toString(`base64`)
+    : fs.readFileSync(file_path, `utf8`)
+  return { filename, content, isCompressed: is_binary }
 }
 
 // Get file data from URI or active editor
@@ -47,20 +45,16 @@ export const get_file = (uri?: vscode.Uri): FileData => {
   if (uri) return read_file(uri.fsPath)
 
   if (vscode.window.activeTextEditor) {
-    return {
-      filename: path.basename(vscode.window.activeTextEditor.document.fileName),
-      content: vscode.window.activeTextEditor.document.getText(),
-      isCompressed: false,
-    }
+    const filename = path.basename(vscode.window.activeTextEditor.document.fileName)
+    const content = vscode.window.activeTextEditor.document.getText()
+    return { filename, content, isCompressed: false }
   }
 
   const active_tab = vscode.window.tabGroups.activeTabGroup.activeTab
   if (
     active_tab?.input && typeof active_tab.input === `object` &&
     active_tab.input !== null && `uri` in active_tab.input
-  ) {
-    return read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
-  }
+  ) return read_file(active_tab.input.uri.fsPath)
 
   throw new Error(
     `No file selected. MatterViz needs an active editor to know what to render.`,
@@ -80,13 +74,9 @@ export const get_theme = (): ThemeName => {
     return get_system_theme()
   }
 
-  // Handle manual theme selection
-  if (theme_setting !== AUTO_THEME) {
-    return theme_setting as ThemeName
-  }
+  if (theme_setting !== AUTO_THEME) return theme_setting // Handle manual theme selection
 
-  // Auto-detect from VSCode color theme
-  return get_system_theme()
+  return get_system_theme() // Auto-detect from VSCode color theme
 }
 
 // Get system theme based on VSCode's current color theme
@@ -113,17 +103,12 @@ export const create_html = (
   const js_uri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, `dist`, `webview.js`),
   )
-  const themes_uri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri, `../../static`, `themes.js`),
-  )
 
   return `<!DOCTYPE html>
 <html>
   <head>
-    <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script nonce="${nonce}" src="${themes_uri}"></script>
     <script nonce="${nonce}">window.mattervizData=${JSON.stringify(data)}</script>
   </head>
   <body>

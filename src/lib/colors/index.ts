@@ -33,20 +33,12 @@ export const default_category_colors: Record<string, string> = {
 export type RGBColor = [number, number, number]
 export type ElementColorScheme = Record<(typeof elem_symbols)[number], RGBColor>
 
-function rgb_scheme_to_hex(
-  obj: Record<string, number[]>,
-): Record<string, string> {
-  const result: Record<string, string> = {}
-  for (const key in obj) {
-    if (Object.hasOwn(obj, key)) {
-      const val = obj[key]
-      if (val.length >= 3) {
-        result[key] = rgb(val[0], val[1], val[2]).formatHex()
-      }
-    }
-  }
-  return result
-}
+const rgb_scheme_to_hex = (obj: Record<string, number[]>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(obj)
+      .filter(([, val]) => val.length >= 3)
+      .map(([key, val]) => [key, rgb(val[0], val[1], val[2]).formatHex()]),
+  )
 
 export const vesta_hex = rgb_scheme_to_hex(vesta_colors)
 export const jmol_hex = rgb_scheme_to_hex(jmol_colors)

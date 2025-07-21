@@ -270,6 +270,10 @@
     left: auto !important;
   }
   /* Panel content styling */
+  .draggable-panel :global(h4) {
+    margin: 8pt 0 2pt;
+    font-size: 0.9em;
+  }
   .draggable-panel :global(hr) {
     border: none;
     background: var(--panel-hr-bg, rgba(255, 255, 255, 0.1));
@@ -281,13 +285,26 @@
     align-items: center;
     gap: 2pt;
   }
+  .draggable-panel :global(input[type='text']) {
+    flex: 1;
+    padding: 4px 6px;
+  }
+  .draggable-panel :global(input[type='text'].invalid) {
+    border-color: var(--error-color, #ff6b6b);
+    background: rgba(255, 107, 107, 0.1);
+  }
+  .draggable-panel :global(input[type='text'].invalid):focus {
+    outline-color: var(--error-color, #ff6b6b);
+    box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
+  }
   .draggable-panel :global(input[type='range']) {
     margin-left: auto;
     width: 100px;
     flex-shrink: 0;
   }
-  .draggable-panel :global(.slider-control input[type='range']) {
-    margin-left: 0;
+  .draggable-panel :global(input[type='range']) {
+    flex: 1;
+    min-width: 60px;
   }
   .draggable-panel :global(input[type='number']) {
     box-sizing: border-box;
@@ -309,6 +326,10 @@
   }
   .draggable-panel :global(select) {
     margin: 0 0 0 5pt;
+    flex: 1;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 0.8em;
   }
   .draggable-panel :global(input[type='color']) {
     width: 40px;
@@ -319,15 +340,8 @@
   }
   .draggable-panel :global(.panel-row) {
     display: flex;
-    gap: 4pt;
-    align-items: flex-start;
-  }
-  .draggable-panel :global(.panel-row label) {
-    min-width: 0;
-  }
-  .draggable-panel :global(.panel-row label.compact) {
-    flex: 0 0 auto;
-    margin-right: 8pt;
+    gap: 8pt;
+    align-items: center;
   }
   .draggable-panel :global(.panel-row label.slider-control) {
     flex: 1;

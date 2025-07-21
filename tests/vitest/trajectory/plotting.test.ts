@@ -1,6 +1,6 @@
 import type { ElementSymbol, Vec3 } from '$lib'
 import type { DataSeries } from '$lib/plot'
-import type { Trajectory, TrajectoryFrame } from '$lib/trajectory'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
   generate_axis_labels,
   generate_plot_series,
@@ -36,7 +36,7 @@ const COMMON_TRAJECTORIES = {
 }
 
 // Helper functions
-function create_trajectory(property_frames: Record<string, number>[]): Trajectory {
+function create_trajectory(property_frames: Record<string, number>[]): TrajectoryType {
   return {
     frames: property_frames.map((props, step) => ({
       structure: {

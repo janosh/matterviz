@@ -1,4 +1,6 @@
-# MatterViz VS Code Extension
+# [MatterViz VSCode Extension]
+
+[matterviz vscode extension]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
 
 **MatterViz** offers a VSCode extension for rendering crystal structures and molecular dynamics (MD) or geometry optimization trajectories directly in the editor to speed up typical materials science/computational chemistry workflows.
 
@@ -61,9 +63,7 @@ MatterViz automatically registers as a custom editor for trajectory files such a
 
 ## ⌨️ Keyboard Shortcuts
 
-| Shortcut                       | Action                          |
-| ------------------------------ | ------------------------------- |
-| `Ctrl+Shift+V` / `Cmd+Shift+V` | Render structure with MatterViz |
+- `Ctrl+Shift+V` / `Cmd+Shift+V` → Render structure/trajectory with MatterViz
 
 ## 📄 License
 
@@ -72,7 +72,7 @@ This extension is [MIT-Licensed](./license).
 ## 🔗 Related Projects
 
 - **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev)
-- **✅ pymatviz**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for Python notebooks. See [`pymatviz` readme](https://github.com/janosh/pymatviz/blob/widgets/readme.md#interactive-widgets) for details.
+- **✅ pymatviz**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for Python notebooks. Read about widgets in [`pymatviz` readme](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets) for details.
 
 ## 🤝 Contributing
 
@@ -80,17 +80,9 @@ We welcome contributions! Please see our [Contributing Guide](../../contributing
 
 ## 🛠️ Development
 
-This extension is built with:
-
-- **TypeScript** - Main extension logic
-- **Svelte 5** - Modern reactive webview components
-- **Vite** - Fast build tooling
-- **Three.js** - 3D visualization engine
-
-### Building from Source
-
 ```bash
-cd extensions/vscode
+git clone https://github.com/janosh/matterviz
+cd matterviz/extensions/vscode
 pnpm install
 pnpm build
 vsce package
