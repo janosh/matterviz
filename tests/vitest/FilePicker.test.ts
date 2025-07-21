@@ -58,7 +58,7 @@ describe(`FilePicker`, () => {
 
         mount(FilePicker, { target: document.body, props })
 
-        const carousel = doc_query(`.file-carousel`)
+        const carousel = doc_query(`.file-picker`)
         expect(carousel).toBeTruthy()
 
         if (is_active_test) {
@@ -270,7 +270,7 @@ describe(`FilePicker`, () => {
         props: { files: [] },
       })
 
-      const carousel = doc_query(`.file-carousel`)
+      const carousel = doc_query(`.file-picker`)
       expect(carousel).toBeTruthy()
       expect(carousel.children.length).toBe(1) // Only legend
     })

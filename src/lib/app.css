@@ -118,7 +118,7 @@ input {
   border-radius: 3pt;
 }
 input[type='number'] {
-  min-width: 60px;
+  min-width: 40px;
   width: auto;
 }
 input[type='color'] {

@@ -1,9 +1,11 @@
 // Utility functions for working with trajectory data
 import type { AnyStructure } from '$lib'
+import type { ComponentProps } from 'svelte'
+import TrajectoryViewer from './Trajectory.svelte'
 
-export { default as TrajectoryViewer } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryInfoPanel } from './TrajectoryInfoPanel.svelte'
+export { TrajectoryViewer }
 
 // Trajectory types for pymatgen trajectory data
 export type TrajectoryFrame = {
@@ -15,6 +17,20 @@ export type TrajectoryFrame = {
 export type Trajectory = {
   frames: TrajectoryFrame[]
   metadata?: Record<string, unknown>
+}
+
+export interface TrajHandlerData {
+  trajectory?: Trajectory
+  step_idx?: number
+  frame_count?: number
+  frame?: TrajectoryFrame
+  filename?: string
+  file_size?: number
+  total_atoms?: number
+  error_msg?: string
+  fps?: number
+  mode?: ComponentProps<typeof TrajectoryViewer>[`display_mode`]
+  is_fullscreen?: boolean
 }
 
 // Function signature for extracting plot data from trajectory frames

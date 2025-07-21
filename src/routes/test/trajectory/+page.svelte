@@ -351,3 +351,66 @@
   })}
   layout="horizontal"
 />
+
+<TrajectoryViewer
+  id="event-handlers"
+  trajectory={test_trajectory}
+  layout="horizontal"
+  on_play={(data) => {
+    console.log(`Play event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-play`, { detail: data }))
+  }}
+  on_pause={(data) => {
+    console.log(`Pause event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-pause`, { detail: data }))
+  }}
+  on_step_change={(data) => {
+    console.log(`Step change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-step-change`, { detail: data }),
+    )
+  }}
+  on_end={(data) => {
+    console.log(`End event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-end`, { detail: data }))
+  }}
+  on_loop={(data) => {
+    console.log(`Loop event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-loop`, { detail: data }))
+  }}
+  on_frame_rate_change={(data) => {
+    console.log(`Frame rate change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-frame-rate-change`, { detail: data }),
+    )
+  }}
+  on_display_mode_change={(data) => {
+    console.log(`Display mode change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-display-mode-change`, { detail: data }),
+    )
+  }}
+  on_fullscreen_change={(data) => {
+    console.log(`Fullscreen change event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-fullscreen-change`, { detail: data }),
+    )
+  }}
+  on_file_load={(data) => {
+    console.log(`File load event triggered:`, data)
+    window.dispatchEvent(
+      new CustomEvent(`trajectory-file-load`, { detail: data }),
+    )
+  }}
+  on_error={(data) => {
+    console.log(`Error event triggered:`, data)
+    window.dispatchEvent(new CustomEvent(`trajectory-error`, { detail: data }))
+  }}
+/>
+
+<TrajectoryViewer
+  id="custom-fps-range"
+  trajectory={test_trajectory}
+  layout="horizontal"
+  fps_range={[1, 10]}
+/>

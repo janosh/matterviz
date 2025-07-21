@@ -77,7 +77,7 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     `handles typical ASE trajectory file size: %i bytes`,
     (size) => {
       const data = new Uint8Array(size)
-      for (let i = 0; i < size; i++) data[i] = i % 256
+      for (let idx = 0; idx < size; idx++) data[idx] = idx % 256
 
       const base64 = btoa(String.fromCharCode(...data))
       const result = base64_to_array_buffer(base64)

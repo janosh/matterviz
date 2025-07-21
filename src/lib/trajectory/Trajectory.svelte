@@ -9,7 +9,7 @@
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import { full_data_extractor } from './extract'
-  import type { Trajectory, TrajectoryDataExtractor } from './index'
+  import type { Trajectory, TrajectoryDataExtractor, TrajHandlerData } from './index'
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
   import type { ParseProgress } from './parse'
   import { get_unsupported_format_message, parse_trajectory_async } from './parse'
@@ -62,6 +62,8 @@
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
     show_fullscreen_button?: boolean
+    // automatically start playing when trajectory data is loaded
+    auto_play?: boolean
     // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
     display_mode?:
       | `structure+scatter`
@@ -94,6 +96,19 @@
       c?: string
       [key: string]: string | undefined
     }
+    // FPS range configuration [min_fps, max_fps]
+    fps_range?: [number, number]
+    // Event handlers for trajectory playback and navigation
+    on_play?: (data: TrajHandlerData) => void
+    on_pause?: (data: TrajHandlerData) => void
+    on_step_change?: (data: TrajHandlerData) => void
+    on_end?: (data: TrajHandlerData) => void
+    on_loop?: (data: TrajHandlerData) => void
+    on_frame_rate_change?: (data: TrajHandlerData) => void
+    on_display_mode_change?: (data: TrajHandlerData) => void
+    on_fullscreen_change?: (data: TrajHandlerData) => void
+    on_file_load?: (data: TrajHandlerData) => void
+    on_error?: (data: TrajHandlerData) => void
     [key: string]: unknown
   }
   let {
@@ -112,8 +127,21 @@
     error_snippet,
     show_controls = true,
     show_fullscreen_button = true,
+    auto_play = false,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
+    on_play,
+    on_pause,
+    on_step_change,
+    on_end,
+    on_loop,
+    on_frame_rate_change,
+    on_display_mode_change,
+    on_fullscreen_change,
+    on_file_load,
+    on_error,
+    fps_range = [0.2, 30],
+    frame_rate_fps = $bindable(5),
     ...rest
   }: Props = $props()
 
@@ -121,8 +149,16 @@
   let loading = $state(false)
   let error_msg = $state<string | null>(null)
   let is_playing = $state(false)
-  let frame_rate_fps = $state(5)
   let play_interval: ReturnType<typeof setInterval> | undefined = $state(undefined)
+
+  // Ensure frame_rate_fps is within the allowed range
+  $effect(() => {
+    if (frame_rate_fps < fps_range[0]) {
+      frame_rate_fps = fps_range[0]
+    } else if (frame_rate_fps > fps_range[1]) {
+      frame_rate_fps = fps_range[1]
+    }
+  })
   let current_filename = $state<string | null>(null)
   let current_file_path = $state<string | null>(null)
   let file_size = $state<number | null>(null)
@@ -132,11 +168,9 @@
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
 
-  // Reactive layout that chooses based on viewport aspect ratio when layout is 'auto'
+  // Reactive layout based on viewport aspect ratio
   let actual_layout = $derived.by((): `horizontal` | `vertical` => {
-    if (layout === `horizontal` || layout === `vertical`) return layout // Explicit layout override
-
-    // Auto layout: choose based on viewport aspect ratio
+    if (layout === `horizontal` || layout === `vertical`) return layout
     if (viewport.width > 0 && viewport.height > 0) {
       return viewport.width > viewport.height ? `horizontal` : `vertical`
     }
@@ -182,16 +216,16 @@
     return []
   })
 
-  // Generate plot data using extracted plotting utilities
-  let plot_series = $derived.by((): DataSeries[] => {
-    if (!trajectory) return []
+  // Generate plot data
+  let plot_series = $derived(
+    trajectory
+      ? generate_plot_series(trajectory, data_extractor, {
+        property_config: trajectory_property_config,
+      })
+      : [],
+  )
 
-    return generate_plot_series(trajectory, data_extractor, {
-      property_config: trajectory_property_config,
-    })
-  })
-
-  // Check if all plotted values are constant (no variation) using extracted utility
+  // hide plot if all plotted values are constant (no variation)
   let show_plot = $derived(
     display_mode !== `structure` && !should_hide_plot(trajectory, plot_series),
   )
@@ -200,7 +234,7 @@
   let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
-  // Generate intelligent axis labels based on first visible series on each axis
+  // Generate axis labels based on first visible series on each axis
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
 
   // Check if there are any Y2 series to determine padding
@@ -214,7 +248,7 @@
     dragover = false
     if (!allow_file_drop) return
 
-    // Handle URL-based files (e.g. from FilePicker)
+    // --- Handle URL-based files (e.g. from FilePicker)
     loading = true
     error_msg = null
 
@@ -231,7 +265,7 @@
       return
     }
 
-    // Handle file system drops
+    // --- Handle file system drops
     const file = event.dataTransfer?.files[0]
     if (file) {
       file_size = file.size
@@ -248,44 +282,60 @@
   function next_step() {
     if (trajectory && current_step_idx < trajectory.frames.length - 1) {
       current_step_idx++
+      on_step_change?.({
+        trajectory,
+        step_idx: current_step_idx,
+        frame_count: trajectory.frames.length,
+        frame: trajectory.frames[current_step_idx],
+      })
     }
   }
 
   function prev_step() {
-    if (current_step_idx > 0) current_step_idx--
+    if (current_step_idx > 0) {
+      current_step_idx--
+      on_step_change?.({
+        trajectory,
+        step_idx: current_step_idx,
+        frame_count: trajectory?.frames.length ?? 0,
+        frame: (trajectory?.frames ?? [])[current_step_idx],
+      })
+    }
   }
 
   function go_to_step(idx: number) {
     if (trajectory && idx >= 0 && idx < trajectory.frames.length) {
       current_step_idx = idx
+      on_step_change?.({
+        trajectory,
+        step_idx: current_step_idx,
+        frame_count: trajectory.frames.length,
+        frame: trajectory.frames[current_step_idx],
+      })
     }
   }
 
   // Handle plot point clicks to jump to that step
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
     if (data?.x !== undefined && typeof data.x === `number`) {
-      const step_idx = Math.round(data.x)
-      go_to_step(step_idx)
+      go_to_step(Math.round(data.x))
     }
   }
 
-  // Handle legend toggling with unit-aware visibility management
+  // Handle legend toggling
   function handle_legend_toggle(series_idx: number): void {
     plot_series = toggle_series_visibility(plot_series, series_idx)
   }
 
-  // Legend configuration with unit-aware toggle handlers
-  let legend_config = $derived.by(() => {
-    const config = {
-      responsive: true,
-      layout: `horizontal`,
-      layout_tracks: 3,
-      item_gap: 0,
-      padding: { t: 5, b: 5, l: 5, r: 5 },
-      ...scatter_props?.legend,
-      on_toggle: scatter_props?.legend?.on_toggle ?? handle_legend_toggle,
-    }
-    return config
+  // Legend configuration
+  let legend_config = $derived({
+    responsive: true,
+    layout: `horizontal`,
+    layout_tracks: 3,
+    item_gap: 0,
+    padding: { t: 5, b: 5, l: 5, r: 5 },
+    ...scatter_props?.legend,
+    on_toggle: scatter_props?.legend?.on_toggle ?? handle_legend_toggle,
   })
 
   // Play/pause functionality
@@ -293,18 +343,24 @@
     if (is_playing) pause_playback()
     else start_playback()
   }
-
   function start_playback() {
     if (!trajectory || trajectory.frames.length <= 1) return
     is_playing = true
+    on_play?.({
+      trajectory,
+      step_idx: current_step_idx,
+      frame_count: trajectory.frames.length,
+    })
   }
-
   function pause_playback() {
     is_playing = false
+    on_pause?.({
+      trajectory: trajectory!,
+      step_idx: current_step_idx,
+      frame_count: trajectory!.frames.length,
+    })
   }
-
-  // Effect to manage playback interval
-  $effect(() => {
+  $effect(() => { // Effect to manage playback interval
     // Only watch is_playing and frame_rate_ms, not play_interval itself
     const playing = is_playing
     const rate_ms = 1000 / frame_rate_fps
@@ -316,8 +372,19 @@
 
       // Create new interval with current frame rate
       play_interval = setInterval(() => {
-        if (current_step_idx >= trajectory!.frames.length - 1) go_to_step(0) // Loop back to 1st step
-        else next_step()
+        if (current_step_idx >= trajectory!.frames.length - 1) {
+          on_end?.({
+            trajectory: trajectory!,
+            step_idx: current_step_idx,
+            frame_count: trajectory!.frames.length,
+            frame: trajectory!.frames[current_step_idx],
+          })
+          go_to_step(0) // Loop back to 1st step
+          on_loop?.({
+            trajectory: trajectory!,
+            frame_count: trajectory!.frames.length,
+          })
+        } else next_step()
       }, rate_ms)
     } else {
       // Clear interval when not playing - use untrack to avoid circular dependency
@@ -330,10 +397,8 @@
   })
 
   // Cleanup interval on component destroy
-  $effect(() => {
-    return () => {
-      if (play_interval !== undefined) clearInterval(play_interval)
-    }
+  $effect(() => () => {
+    if (play_interval !== undefined) clearInterval(play_interval)
   })
 
   $effect(() => { // Load trajectory from URL when data_url is provided
@@ -357,11 +422,20 @@
           current_filename = null
           file_size = null
           loading = false
+          on_error?.({
+            error_msg,
+            filename: current_filename || undefined,
+            file_size: file_size || undefined,
+          })
         })
     }
   })
 
-  // Consolidated trajectory loading function
+  // Watch for frame rate changes
+  $effect(() => {
+    on_frame_rate_change?.({ trajectory, fps: frame_rate_fps })
+  })
+
   async function load_trajectory_data(data: string | ArrayBuffer, filename: string) {
     loading = true
     error_msg = null
@@ -373,6 +447,20 @@
       })
       current_step_idx = 0
       current_filename = filename
+
+      const file_size_bytes = data instanceof ArrayBuffer
+        ? data.byteLength
+        : new Blob([data]).size
+      on_file_load?.({ // emit file load event
+        trajectory,
+        frame_count: trajectory.frames.length,
+        total_atoms: trajectory.frames[0]?.structure.sites.length || 0,
+        filename,
+        file_size: file_size_bytes,
+      })
+
+      // Auto-play if enabled and trajectory has multiple frames
+      if (auto_play && trajectory.frames.length > 1) start_playback()
     } catch (err) {
       const unsupported_message = get_unsupported_format_message(
         filename,
@@ -381,6 +469,12 @@
       error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
       current_filename = null
       file_size = null
+
+      on_error?.({ // emit error event
+        error_msg,
+        filename: current_filename || undefined,
+        file_size: file_size || undefined,
+      })
     } finally {
       parsing_progress = null
       loading = false
@@ -408,11 +502,9 @@
   // Handle click outside to close dropdowns
   function handle_click_outside(event: MouseEvent) {
     const target = event.target as Element
-
-    // Handle view mode dropdown
     if (view_mode_dropdown_open) {
       const dropdown_wrapper = target.closest(`.view-mode-dropdown-wrapper`)
-      // Don't close if clicking on dropdown wrapper (which contains both button and menu)
+      // Don't close if clicking on dropdown wrapper (contains both button and menu)
       if (!dropdown_wrapper) view_mode_dropdown_open = false
     }
   }
@@ -463,9 +555,11 @@
     // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
-      frame_rate_fps = Math.min(30, frame_rate_fps + 0.2)
+      frame_rate_fps = Math.min(fps_range[1], frame_rate_fps + 0.2)
+      on_frame_rate_change?.({ trajectory, fps: frame_rate_fps })
     } else if (event.key === `-` && is_playing) {
-      frame_rate_fps = Math.max(0.2, frame_rate_fps - 0.2)
+      frame_rate_fps = Math.max(fps_range[0], frame_rate_fps - 0.2)
+      on_frame_rate_change?.({ trajectory, fps: frame_rate_fps })
     } // System shortcuts
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
@@ -488,6 +582,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = !!document.fullscreenElement
+    on_fullscreen_change?.({ trajectory, is_fullscreen: fullscreen })
   }}
 />
 
@@ -630,8 +725,8 @@
               <input
                 id="step-rate-slider"
                 type="range"
-                min="0.2"
-                max="30"
+                min={fps_range[0]}
+                max={fps_range[1]}
                 step="0.1"
                 bind:value={frame_rate_fps}
                 class="speed-slider"
@@ -639,8 +734,8 @@
               />
               <input
                 type="number"
-                min="0.2"
-                max="30"
+                min={fps_range[0]}
+                max={fps_range[1]}
                 step="0.1"
                 bind:value={frame_rate_fps}
                 class="speed-input"
@@ -712,6 +807,7 @@
                         class:selected={display_mode === option.mode}
                         onclick={() => {
                           display_mode = option.mode
+                          on_display_mode_change?.({ trajectory, mode: option.mode })
                           view_mode_dropdown_open = false
                         }}
                       >
