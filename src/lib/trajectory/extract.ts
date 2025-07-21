@@ -1,11 +1,11 @@
 // Data extraction functions for trajectory analysis and plotting
 import { get_density, type PymatgenStructure } from '$lib/structure'
-import type { Trajectory, TrajectoryDataExtractor, TrajectoryFrame } from './index'
+import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
 // Common data extractor that extracts energy and structural properties
 export const energy_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  _trajectory: Trajectory,
+  _trajectory: TrajectoryType,
 ): Record<string, number> => {
   const data: Record<string, number> = {
     Step: frame.step,
@@ -37,7 +37,7 @@ export const energy_data_extractor: TrajectoryDataExtractor = (
 // Data extractor for forces and stresses
 export const force_stress_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  _trajectory: Trajectory,
+  _trajectory: TrajectoryType,
 ): Record<string, number> => {
   const data: Record<string, number> = {
     Step: frame.step,
@@ -102,7 +102,7 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
 // Data extractor for structural properties
 export const structural_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  _trajectory: Trajectory,
+  _trajectory: TrajectoryType,
 ): Record<string, number> => {
   const data: Record<string, number> = {
     Step: frame.step,
@@ -166,7 +166,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
 
 // Helper function to check if a property varies across trajectory frames
 function property_varies(
-  trajectory: Trajectory,
+  trajectory: TrajectoryType,
   property_key: string,
   tolerance = 1e-10,
 ): boolean {
@@ -221,7 +221,7 @@ function property_varies(
 // Combined data extractor that extracts all common properties
 export const full_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  trajectory: Trajectory,
+  trajectory: TrajectoryType,
 ): Record<string, number> => {
   const base_data = {
     ...energy_data_extractor(frame, trajectory),

@@ -9,7 +9,11 @@
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import { full_data_extractor } from './extract'
-  import type { Trajectory, TrajectoryDataExtractor, TrajHandlerData } from './index'
+  import type {
+    TrajectoryDataExtractor,
+    TrajectoryType,
+    TrajHandlerData,
+  } from './index'
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
   import type { ParseProgress } from './parse'
   import { get_unsupported_format_message, parse_trajectory_async } from './parse'
@@ -22,7 +26,7 @@
 
   interface Props {
     // trajectory data - can be provided directly or loaded from file
-    trajectory?: Trajectory | undefined
+    trajectory?: TrajectoryType | undefined
     // URL to load trajectory from (alternative to providing trajectory directly)
     data_url?: string
     // current step index being displayed
@@ -49,7 +53,7 @@
     trajectory_controls?: Snippet<
       [
         {
-          trajectory: Trajectory
+          trajectory: TrajectoryType
           current_step_idx: number
           total_frames: number
           on_step_change: (idx: number) => void
