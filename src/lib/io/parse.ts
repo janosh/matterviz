@@ -2,6 +2,7 @@ import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
+import { is_trajectory_file } from '$lib/trajectory/parse'
 import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {
@@ -1096,4 +1097,23 @@ export function parse_any_structure(
       }
       : null
   }
+}
+
+// Check if filename indicates a structure file
+export function is_structure_file(filename: string): boolean {
+  const name = filename.toLowerCase()
+
+  // First check if this is a trajectory file and so not a structure file
+  if (is_trajectory_file(filename)) return false
+
+  const structure_extensions =
+    /\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|xml|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/
+  const structure_keywords = /(poscar|contcar|potcar|incar|kpoints|outcar)/
+
+  return (
+    structure_extensions.test(name) ||
+    structure_keywords.test(name) || // Files with structure-related keywords
+    (name.endsWith(`.gz`) && // Compressed structure files
+      (structure_extensions.test(name.slice(0, -3)) || structure_keywords.test(name)))
+  )
 }

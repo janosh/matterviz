@@ -3,9 +3,7 @@
   import { selected } from '$lib/state.svelte'
 
   interface Props {
-    // either array of length 118 (one heat value for each element) or
-    // object with element symbol as key and heat value as value
-    y: number[]
+    y: number[] // array of length 118 (one value for each element)
     x_label?: string
     y_label?: string
     y_unit?: string | null

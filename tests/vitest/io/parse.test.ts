@@ -1,4 +1,5 @@
 import {
+  is_structure_file,
   parse_any_structure,
   parse_cif,
   parse_phonopy_yaml,
@@ -20,6 +21,7 @@ import process from 'node:process'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
+import { get_test_structure } from '../setup'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -1024,37 +1026,17 @@ describe(`parse_structure_file`, () => {
   })
 
   describe(`comprehensive nested structure parsing`, () => {
-    const make_valid_struct = (element = `Fe`) => ({
-      sites: [
-        {
-          species: [{ element, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `${element}1`,
-          properties: {},
-        },
-      ],
-      lattice: {
-        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-        a: 1,
-        b: 1,
-        c: 1,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 1,
-      },
-    })
-
     test.each([
-      [`simple object wrapper`, { data: make_valid_struct() }],
-      [`nested object`, { results: { structure: make_valid_struct() } }],
-      [`array wrapper`, [{ structure: make_valid_struct() }]],
-      [`mixed nesting`, { data: [{ item: { structure: make_valid_struct() } }] }],
-      [`deep nesting`, { a: { b: { c: { d: make_valid_struct() } } } }],
-      [`structure array`, { structures: [make_valid_struct()] }],
+      [`simple object wrapper`, { data: get_test_structure(`Fe`, 1, true) }],
+      [`nested object`, { results: { structure: get_test_structure(`Fe`, 1, true) } }],
+      [`array wrapper`, [{ structure: get_test_structure(`Fe`, 1, true) }]],
+      [`mixed nesting`, {
+        data: [{ item: { structure: get_test_structure(`Fe`, 1, true) } }],
+      }],
+      [`deep nesting`, { a: { b: { c: { d: get_test_structure(`Fe`, 1, true) } } } }],
+      [`structure array`, { structures: [get_test_structure(`Fe`, 1, true)] }],
       [`multiple items with structure`, [{ id: 1 }, {
-        structure: make_valid_struct(),
+        structure: get_test_structure(`Fe`, 1, true),
       }]],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const content = JSON.stringify(wrapper)
@@ -1063,7 +1045,7 @@ describe(`parse_structure_file`, () => {
       expect(result).toBeTruthy()
       expect(result?.sites.length).toBe(1)
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
-      expect(result?.lattice?.volume).toBe(1)
+      expect(result?.lattice?.volume).toBe(125)
     })
 
     test.each([
@@ -1087,7 +1069,7 @@ describe(`parse_structure_file`, () => {
       [`moderate nesting`, 5],
       [`minimal nesting`, 2],
     ])(`handles %s (depth %d)`, (_description, depth) => {
-      let nested_obj: object = make_valid_struct()
+      let nested_obj: object = get_test_structure(`Fe`, 1, true)
       for (let idx = 0; idx < depth; idx++) {
         nested_obj = { [`level_${idx}`]: nested_obj }
       }
@@ -1100,8 +1082,8 @@ describe(`parse_structure_file`, () => {
     })
 
     test(`finds valid structure when multiple structures exist`, () => {
-      const structure_a = make_valid_struct(`Li`)
-      const structure_b = make_valid_struct(`Na`)
+      const structure_a = get_test_structure(`Li`, 1, true)
+      const structure_b = get_test_structure(`Na`, 1, true)
 
       // Test with multiple structures - should find at least one
       const data = [
@@ -1120,13 +1102,13 @@ describe(`parse_structure_file`, () => {
     })
 
     test(`handles arrays with mixed valid/invalid structures`, () => {
-      const test_structure = make_valid_struct(`Cu`)
+      const test_structure = get_test_structure(`Cu`, 1, true)
 
       const mixed_array = [
         { invalid: `data` },
         { sites: `not_array` }, // Invalid structure
         test_structure, // First valid structure - should be found
-        { another: `structure`, ...make_valid_struct() }, // Another valid one with Fe
+        { another: `structure`, ...get_test_structure(`Fe`, 1, true) }, // Another valid one with Fe
       ]
 
       const content = JSON.stringify(mixed_array)
@@ -1295,5 +1277,89 @@ describe(`parse_structure_file`, () => {
     // This ensures the recursive parser is efficient and doesn't degrade
     // significantly with nesting depth
     expect(end_time - start_time).toBeLessThan(100)
+  })
+})
+
+describe(`Structure File Detection`, () => {
+  // only checking filename recognition, files don't need to exist
+  test.each([
+    // Basic structure file extensions
+    [`test.cif`, true],
+    [`test.poscar`, true],
+    [`test.vasp`, true],
+    [`test.xyz`, true],
+    [`test.extxyz`, true],
+    [`test.json`, true],
+    [`test.yaml`, true],
+    [`test.yml`, true],
+    [`test.xml`, true],
+    [`test.lmp`, true],
+    [`test.data`, true],
+    [`test.dump`, true],
+    [`test.pdb`, true],
+    [`test.mol`, true],
+    [`test.mol2`, true],
+    [`test.sdf`, true],
+    [`test.mmcif`, true],
+    // VASP and special files
+    [`POSCAR`, true],
+    [`CONTCAR`, true],
+    [`POTCAR`, true],
+    [`INCAR`, true],
+    [`KPOINTS`, true],
+    [`OUTCAR`, true],
+    // Compressed structure files
+    [`structure.cif.gz`, true],
+    [`molecule.xyz.gz`, true],
+    [`crystal.poscar.gz`, true],
+    [`data.json.gz`, true],
+    [`config.yaml.gz`, true],
+    [`structure.xml.gz`, true],
+    [`molecule.pdb.gz`, true],
+    [`compound.mol.gz`, true],
+    [`structure.mol2.gz`, true],
+    [`data.sdf.gz`, true],
+    [`crystal.mmcif.gz`, true],
+    // Case insensitive
+    [`STRUCTURE.CIF`, true],
+    [`MOLECULE.XYZ`, true],
+    [`CRYSTAL.POSCAR`, true],
+    [`DATA.JSON`, true],
+    [`CONFIG.YAML`, true],
+    // Unicode filenames
+    [`مەركەزیstructure.cif`, true],
+    [`日本語.xyz`, true],
+    [`file🔥emoji.poscar`, true],
+    [`Мой_файл.json`, true],
+    // Non-structure files
+    [`test.traj`, false],
+    [`test.h5`, false],
+    [`test.hdf5`, false],
+    [`random.txt`, false],
+    [`test.xyz.backup`, false],
+    // Edge cases
+    [``, false],
+    [`no.extension`, false],
+    [`.`, false],
+    [`file.xyz.`, false],
+    // Very long filename
+    [`${`a`.repeat(1000)}.cif`, true],
+    // Specific test cases
+    [`Li4Fe3Mn1(PO4)4.cif`, true],
+    [`mp-756175.json`, true],
+    [`BaTiO3-tetragonal.poscar`, true],
+    [`cyclohexane.xyz`, true],
+    [`extended-xyz-quartz.xyz`, true],
+    [`AgI-fq978185p-phono3py_params.yaml.gz`, true],
+    [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, true],
+    [`BeO-zw12zc18p-phono3py_params.yaml.gz`, true],
+    // Trajectory files should not be detected as structure files
+    [`trajectory.traj`, false],
+    [`md.xyz.gz`, false],
+    [`simulation.h5`, false],
+    [`XDATCAR`, false],
+    [`relax.extxyz`, false],
+  ])(`structure detection: "%s" → %s`, (filename, expected) => {
+    expect(is_structure_file(filename)).toBe(expected)
   })
 })

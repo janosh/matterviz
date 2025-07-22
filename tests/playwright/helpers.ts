@@ -23,7 +23,6 @@ export async function open_draggable_panel(page: Page, options: OpenPanelOptions
 
     // First ensure the checkbox is unchecked to reset state
     await test_page_checkbox.uncheck()
-    await page.waitForTimeout(100)
 
     // Now check the checkbox to open the panel
     await test_page_checkbox.check()

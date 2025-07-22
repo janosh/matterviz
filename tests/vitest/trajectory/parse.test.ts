@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it, test } from 'vitest'
+import { get_test_structure } from '../setup'
 
 // Helper to read test files
 const read_test_file = (filename: string): string => {
@@ -25,25 +26,11 @@ const read_binary_test_file = (filename: string): ArrayBuffer => {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
-// Test data factory
-const create_test_structure = (element = `H`, atoms = 3) => ({
-  sites: Array.from({ length: atoms }, (_, idx) => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
-    abc: [0, 0, 0],
-    xyz: [idx, 0, 0],
-    label: `${element}${idx + 1}`,
-    properties: {},
-  })),
-  charge: 0,
-})
-
 describe(`Trajectory File Detection`, () => {
   // only checking filename recognition, files don't need to exist
   test.each([
     // Basic trajectory files
     [`test.traj`, true],
-    [`test.xyz`, true],
-    [`test.extxyz`, true],
     [`test.h5`, true],
     [`data.hdf5`, true],
     // VASP and special files
@@ -60,14 +47,15 @@ describe(`Trajectory File Detection`, () => {
     [`optimization_relax.traj`, true],
     // Case insensitive
     [`FILE.TRAJ`, true],
-    [`TrAjEcToRy.XyZ`, true],
     [`trajectory`, true],
-    [`.hidden.xyz`, true],
     // Unicode filenames
     [`مەركەزیtrajectory.traj`, true],
-    [`日本語.xyz`, true],
     [`file🔥emoji.h5`, true],
-    [`Мой_файл.extxyz`, true],
+    // XYZ/EXTXYZ files with trajectory keywords
+    [`md-run.xyz`, true],
+    [`relax-simulation.xyz`, true],
+    [`trajectory-data.extxyz`, true],
+    [`npt-dynamics.extxyz`, true],
     // Non-trajectory files
     [`test.cif`, false],
     [`test.json`, false],
@@ -79,14 +67,13 @@ describe(`Trajectory File Detection`, () => {
     [`.`, false],
     [`file.xyz.`, false],
     // Very long filename
-    [`${`a`.repeat(1000)}.xyz`, true],
+    [`${`a`.repeat(1000)}.traj`, true],
     // check the bug reported with Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz doesn't regress
-    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true],
-    [`single-molecule.xyz`, true],
-    [`md-run.xyz`, true],
-    [`trajectory_data.json`, true],
-    [`md_simulation.cif`, true],
-    [`relax_output.poscar`, true],
+    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true], // has "qha" keyword
+    [`single-molecule.xyz`, false], // no trajectory keywords
+    [`trajectory_data.json`, true], // has "trajectory" keyword
+    [`md_simulation.cif`, true], // has "md" keyword
+    [`relax_output.poscar`, true], // has "relax" keyword
     [`structure.cif`, false],
     [`molecule.json`, false],
     [`POSCAR`, false],
@@ -419,13 +406,13 @@ describe(`JSON Formats`, () => {
   })
 
   it.each([
-    [`array`, JSON.stringify([{ structure: create_test_structure(), step: 0 }]), `array`],
+    [`array`, JSON.stringify([{ structure: get_test_structure(), step: 0 }]), `array`],
     [
       `object_with_frames`,
-      JSON.stringify({ frames: [{ structure: create_test_structure(), step: 0 }] }),
+      JSON.stringify({ frames: [{ structure: get_test_structure(), step: 0 }] }),
       `object_with_frames`,
     ],
-    [`single_structure`, JSON.stringify(create_test_structure()), `single_structure`],
+    [`single_structure`, JSON.stringify(get_test_structure()), `single_structure`],
   ])(`should parse %s format`, async (_, content, expected_format) => {
     const trajectory = await parse_trajectory_data(content, `test.json`)
     expect(trajectory.metadata?.source_format).toBe(expected_format)

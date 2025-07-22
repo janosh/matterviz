@@ -695,7 +695,9 @@
               class="step-input"
               title="Enter step number to jump to"
             />
-            <span>/ {trajectory.frames.length}</span>
+            <span style="font-size: clamp(0.7rem, 2cqw, 0.875rem)">/ {
+                trajectory.frames.length
+              }</span>
             <div class="slider-container">
               <input
                 type="range"
@@ -724,7 +726,9 @@
           <!-- Frame rate control - only shown when playing -->
           {#if is_playing}
             <div class="speed-section">
-              <label for="step-rate-slider" style="font-weight: 500; white-space: nowrap"
+              <label
+                for="step-rate-slider"
+                style="font-weight: 500; white-space: nowrap; font-size: clamp(0.7rem, 2cqw, 0.875rem)"
               >Speed:</label>
               <input
                 id="step-rate-slider"
@@ -745,7 +749,7 @@
                 class="speed-input"
                 title="Enter precise FPS value"
               />
-              fps
+              <span style="font-size: clamp(0.7rem, 2cqw, 0.875rem)">fps</span>
             </div>
           {/if}
 
@@ -1022,36 +1026,36 @@
   .trajectory-controls {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.5rem;
+    gap: clamp(2pt, 1cqw, 1ex);
+    padding: clamp(2pt, 0.5cqw, 1ex);
     z-index: var(--traj-controls-z-index, 1);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
     border-radius: var(--border-radius) var(--border-radius) 0 0;
+    container-type: inline-size;
   }
   .nav-section {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: clamp(1pt, 0.5cqw, 5pt);
   }
   .step-section {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: clamp(0.25rem, 1.5cqw, 0.5rem);
     flex: 1;
     min-width: 0;
   }
   .step-input {
     border: 1px solid rgba(99, 179, 237, 0.3);
-    border-radius: 3px;
     text-align: center;
-    margin: 1.5px -5px 0 0;
+    margin: 0 -5px 0 0;
   }
   .slider-container {
     position: relative;
     flex: 1;
-    min-width: 80px;
+    min-width: 100px;
   }
   .step-slider {
     width: 100%;
@@ -1059,67 +1063,53 @@
   }
   .step-labels {
     position: absolute;
-    top: 100%;
     left: 0;
     right: 0;
-    height: 16px;
-    pointer-events: none;
   }
   .step-tick {
     position: absolute;
     transform: translateX(-50%);
-    width: 2px;
+    width: 1px;
     height: 4px;
     background: var(--text-color-muted);
-    top: -10px;
+    top: -9pt;
   }
   .step-label {
     position: absolute;
     transform: translateX(-50%);
-    font-size: 0.65rem;
+    font-size: clamp(0.5rem, 1.2cqw, 0.65rem);
     color: var(--text-color-muted);
     white-space: nowrap;
     text-align: center;
-    top: -6px;
+    top: -1.7ex;
   }
   .speed-slider {
-    width: 90px;
+    width: clamp(60px, 8cqw, 90px);
     accent-color: var(--accent-color);
   }
   .speed-input {
-    width: 45px;
+    width: clamp(35px, 4cqw, 45px);
     text-align: center;
-    border-radius: 3px;
-    font-size: 0.8rem;
-    padding: 0.125rem 0.25rem;
+    border: 1px solid rgba(99, 179, 237, 0.3);
     box-sizing: border-box;
   }
   .speed-section {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: clamp(0.125rem, 0.75cqw, 0.25rem);
   }
   button.filename {
     align-items: center;
     white-space: nowrap;
-    padding: 0.125rem 0.375rem;
+    padding: clamp(0.125rem, 0.5cqw, 0.375rem);
     border-radius: 2px;
-    max-width: 250px;
+    max-width: clamp(150px, 20cqw, 250px);
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
-  }
-  .display-mode {
-    min-width: 28px;
-    height: 28px;
-    background: var(--traj-display-mode-bg, rgba(255, 255, 255, 0.05));
-  }
-  .display-mode:hover:not(:disabled) {
-    background: var(--traj-display-mode-hover-bg, #6b7280);
+    font-size: clamp(0.75rem, 2cqw, 0.875rem);
   }
   .fullscreen-button {
-    min-width: 28px;
-    height: 28px;
     background: transparent;
   }
   .fullscreen-button:hover:not(:disabled) {
@@ -1127,14 +1117,13 @@
   }
   .info-section {
     display: flex;
-    align-items: center;
-    gap: 2px;
-    margin-left: auto;
+    place-items: center;
+    gap: clamp(3pt, 0.5cqw, 1ex);
   }
 
   .play-button {
-    min-width: 36px;
-    font-size: 0.9rem;
+    min-width: clamp(32px, 4cqw, 36px);
+    font-size: clamp(0.8rem, 2.5cqw, 0.9rem);
   }
   .play-button:hover:not(:disabled) {
     background: var(--traj-play-button-hover-bg, #7f8793);
@@ -1169,15 +1158,6 @@
   .supported-formats li {
     color: var(--text-color-muted);
   }
-  button {
-    background: var(--border-color);
-    border: none;
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-    min-width: 2rem;
-    transition: background-color 0.2s;
-  }
   button:hover:not(:disabled) {
     background: var(--border-color);
   }
@@ -1202,39 +1182,23 @@
     position: relative;
     display: inline-block;
   }
-  .view-mode-button {
-    padding-right: 0;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    min-width: 50px;
-    max-width: 120px;
-    background: var(--traj-view-mode-bg, rgba(255, 255, 255, 0.05));
-    overflow: hidden;
-  }
   .view-mode-dropdown {
     position: absolute;
-    top: 100%;
+    top: 115%;
     right: 0;
     background: var(--surface-bg);
-    backdrop-filter: blur(4px);
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    margin-top: 2px;
-    min-width: 180px;
   }
   .view-mode-option {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 1ex;
     width: 100%;
-    padding: 8px;
+    padding: 5pt;
     background: transparent;
     border-radius: 0;
     text-align: left;
-    font-size: 0.8rem;
-    line-height: 1.2;
-    cursor: pointer;
     transition: background-color 0.15s ease;
   }
   .view-mode-option:first-child {
