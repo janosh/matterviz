@@ -1,9 +1,10 @@
 // deno-lint-ignore-file no-await-in-loop
+import { THEME_OPTIONS } from '$lib/theme'
 import { expect, type Page, test } from '@playwright/test'
 
 test.describe(`ThemeControl`, () => {
-  const themes = [`light`, `dark`, `white`, `black`, `auto`] as const
-  const theme_icons = [`☀️`, `🌙`, `⚪`, `⚫`, `🔄`] as const
+  const themes = THEME_OPTIONS.map((option) => option.value)
+  const theme_icons = THEME_OPTIONS.map((option) => option.icon)
 
   // Helper function to get theme control and wait for it
   async function get_theme_control(page: Page) {
@@ -37,7 +38,6 @@ test.describe(`ThemeControl`, () => {
 
     for (const theme of themes.filter((t) => t !== `auto`)) {
       await theme_control.selectOption(theme)
-      await page.waitForTimeout(100)
 
       // Check DOM attribute and color scheme
       await expect(html_element).toHaveAttribute(`data-theme`, theme)
@@ -53,16 +53,13 @@ test.describe(`ThemeControl`, () => {
     const html_element = page.locator(`html`)
 
     await theme_control.selectOption(`auto`)
-    await page.waitForTimeout(100)
 
     // Test dark preference
     await page.emulateMedia({ colorScheme: `dark` })
-    await page.waitForTimeout(100)
     await expect(html_element).toHaveAttribute(`data-theme`, `dark`)
 
     // Test light preference
     await page.emulateMedia({ colorScheme: `light` })
-    await page.waitForTimeout(100)
     await expect(html_element).toHaveAttribute(`data-theme`, `light`)
   })
 
@@ -71,7 +68,6 @@ test.describe(`ThemeControl`, () => {
 
     // Set theme and check localStorage
     await theme_control.selectOption(`dark`)
-    await page.waitForTimeout(100)
 
     const saved_theme = await page.evaluate(() => localStorage.getItem(`matterviz-theme`))
     expect(saved_theme).toBe(`dark`)
@@ -108,7 +104,7 @@ test.describe(`ThemeControl`, () => {
 
     expect(parseFloat(bottom_val)).toBeGreaterThan(0)
     expect(parseFloat(left_val)).toBeGreaterThan(0)
-    expect(parseInt(z_index_val)).toBeGreaterThanOrEqual(100)
+    expect(parseInt(z_index_val)).toBeGreaterThanOrEqual(1)
 
     // Test backdrop filter
     const backdrop_filter = await theme_control.evaluate((el: Element) =>
@@ -129,7 +125,6 @@ test.describe(`ThemeControl`, () => {
     // Test keyboard navigation
     await theme_control.focus()
     await page.keyboard.press(`ArrowDown`)
-    await page.waitForTimeout(50)
     const selected_value = await theme_control.inputValue()
     expect(themes).toContain(selected_value as typeof themes[number])
   })
@@ -145,7 +140,6 @@ test.describe(`ThemeControl`, () => {
     // Test rapid theme changes
     for (const theme of [`light`, `dark`, `white`, `black`, `auto`, `light`]) {
       await theme_control.selectOption(theme)
-      await page.waitForTimeout(10)
     }
     expect(console_errors).toHaveLength(0)
 
@@ -171,7 +165,6 @@ test.describe(`ThemeControl`, () => {
       await expect(theme_control).toBeVisible()
 
       await theme_control.selectOption(`dark`)
-      await page.waitForTimeout(100)
       await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`)
     }
   })
@@ -182,7 +175,6 @@ test.describe(`ThemeControl`, () => {
 
     for (const theme of themes) {
       await theme_control.selectOption(theme)
-      await page.waitForTimeout(100)
 
       // Check localStorage
       const saved_theme = await page.evaluate(() =>

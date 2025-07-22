@@ -236,10 +236,11 @@
     box-sizing: border-box;
     display: flex;
     place-items: center;
-    padding: 4pt;
+    padding: var(--panel-toggle-padding, 2pt);
     border-radius: var(--panel-toggle-border-radius, 3pt);
     background-color: transparent;
     transition: background-color 0.2s;
+    font-size: clamp(1em, 2cqw, 1.6em);
   }
   button.panel-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);

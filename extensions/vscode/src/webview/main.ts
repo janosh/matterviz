@@ -2,7 +2,7 @@
 import '$lib/app.css'
 import { parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
-import { is_valid_theme_name, type ThemeName } from '$lib/theme/index'
+import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
 import '$lib/theme/themes'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
@@ -95,7 +95,9 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
 
   if (message.command === `fileUpdated` && message.data) {
     try {
-      if (message.theme && is_valid_theme_name(message.theme)) apply_theme(message.theme)
+      if (message.theme && is_valid_theme_name(message.theme)) {
+        apply_theme_to_dom(message.theme)
+      }
 
       const { content, filename, isCompressed } = message.data
       const result = await parse_file_content(content, filename, isCompressed)
@@ -131,25 +133,6 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
     bytes[idx] = binary.charCodeAt(idx)
   }
   return bytes.buffer
-}
-
-// Apply theme to the webview DOM
-const apply_theme = (theme: ThemeName): void => {
-  const root = document.documentElement
-  root.setAttribute(`data-theme`, theme)
-
-  if (!globalThis.MATTERVIZ_THEMES) throw new Error(`No themes found`)
-
-  const matterviz_theme = globalThis.MATTERVIZ_THEMES[theme]
-  if (!matterviz_theme) throw new Error(`Theme ${theme} not found`)
-
-  const css_map = globalThis.MATTERVIZ_CSS_MAP || {}
-
-  // Apply MatterViz theme CSS variables to root element
-  for (const [key, value] of Object.entries(matterviz_theme)) {
-    const css_var = css_map[key]
-    if (css_var && value) root.style.setProperty(css_var, value)
-  }
 }
 
 // Parse file content and determine if it's a structure or trajectory
@@ -289,7 +272,7 @@ const initialize_app = async (): Promise<MatterVizApp> => {
   }
 
   // Apply theme early
-  if (theme) apply_theme(theme)
+  if (theme) apply_theme_to_dom(theme)
 
   const container = document.getElementById(`matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)

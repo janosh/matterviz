@@ -387,10 +387,7 @@
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
             {:else}
-              <Icon
-                icon="{fullscreen ? `Exit` : ``}Fullscreen"
-                style="transform: scale(0.9)"
-              />
+              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
             {/if}
           </button>
         {/if}
@@ -501,7 +498,7 @@
     justify-content: end;
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: var(--struct-buttons-gap, 3pt);
+    gap: clamp(2pt, 0.5cqw, 6pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
     z-index: var(--struct-buttons-z-index, 2);
     opacity: 0;
@@ -514,6 +511,7 @@
   }
   section.control-buttons button {
     background-color: transparent;
+    font-size: clamp(1em, 2cqw, 1.6em);
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--panel-btn-hover-bg);
