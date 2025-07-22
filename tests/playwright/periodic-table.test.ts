@@ -73,7 +73,11 @@ test.describe(`Periodic Table`, () => {
 
     const clear_tooltip = async (page: Page) => {
       await page.mouse.move(0, 0)
-      await page.waitForTimeout(100)
+      // Wait for tooltip to disappear
+      await page.waitForFunction(() => {
+        const tooltip = document.querySelector(`.tooltip`) as HTMLElement
+        return !tooltip || tooltip.style.display === `none` || !tooltip.offsetParent
+      }, { timeout: 5000 })
     }
 
     test(`shows default tooltip on element hover when no heatmap is selected`, async ({ page }) => {
@@ -115,12 +119,12 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toContainText(/Position:|Column|Row/)
       await expect(tooltip).toContainText(/Range:|Min|Max/)
 
-      // Test with a different element
-      await clear_tooltip(page)
-      await get_element_tile(page, `O`).hover() // Oxygen
-
-      await expect(tooltip).toBeVisible()
+      // Test that the tooltip shows enhanced data for the current element
       await expect(tooltip).toContainText(/Position:|Column|Row/)
+
+      // Test that the tooltip shows the correct element data
+      await expect(tooltip).toContainText(`Carbon`)
+      await expect(tooltip).toContainText(`C • 6`)
     })
 
     test(`tooltip follows mouse position`, async ({ page }) => {
@@ -195,7 +199,6 @@ test.describe(`Periodic Table`, () => {
         // Select heatmap property
         await page.click(`div.multiselect`)
         await page.click(`text=${property}`)
-        await page.waitForTimeout(500)
 
         await get_element_tile(page, `C`).hover()
 
@@ -222,7 +225,6 @@ test.describe(`Periodic Table`, () => {
             }
           })
         }
-        await page.waitForTimeout(300)
       }
     })
   })

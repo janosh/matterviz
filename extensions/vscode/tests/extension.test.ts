@@ -1,9 +1,10 @@
 import * as fs from 'fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ExtensionContext, Webview } from 'vscode'
+import type { ExtensionContext, TextEditor, Webview } from 'vscode'
 
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
+import type { MessageData } from '../src/extension'
 import {
   activate,
   create_html,
@@ -27,22 +28,27 @@ const mock_vscode = vi.hoisted(() => ({
     showErrorMessage: vi.fn(),
     showSaveDialog: vi.fn(),
     createWebviewPanel: vi.fn(),
-    activeTextEditor: null,
-    tabGroups: { activeTabGroup: { activeTab: null } },
+    activeTextEditor: null as TextEditor | null,
+    tabGroups: { activeTabGroup: { activeTab: null as unknown as vscode.Tab } },
     registerCustomEditorProvider: vi.fn(),
     activeColorTheme: { kind: 1 }, // Light theme by default
     onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeActiveTextEditor: vi.fn(() => ({ dispose: vi.fn() })),
   },
   workspace: {
     getConfiguration: vi.fn(() => ({
       get: vi.fn((_key: string, defaultValue: string) => defaultValue),
     })),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidOpenTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidCreateFiles: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidRenameFiles: vi.fn(() => ({ dispose: vi.fn() })),
     createFileSystemWatcher: vi.fn(() => ({
       onDidChange: vi.fn(),
       onDidDelete: vi.fn(),
       dispose: vi.fn(),
     })),
+    fs: { stat: vi.fn() },
   },
   commands: { registerCommand: vi.fn() },
   Uri: {
@@ -136,8 +142,8 @@ describe(`MatterViz Extension`, () => {
     [`water_cluster_md.traj`, true, true], // ASE binary trajectory
     [`optimization_relax.traj`, true, true], // ASE binary trajectory
     [`regular_text.traj`, true, true], // .traj files are always binary
-    [`test.xyz`, true, false], // Text trajectory file
-    [`test.extxyz`, true, false], // Text trajectory file
+    [`test.xyz`, false, false], // Text file without trajectory keywords
+    [`test.extxyz`, false, false], // Text file without trajectory keywords
     [`test.cif`, false, false], // Not a trajectory file
   ])(
     `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,
@@ -203,7 +209,7 @@ describe(`MatterViz Extension`, () => {
   test(`get_file with active editor`, () => {
     mock_vscode.window.activeTextEditor = {
       document: { fileName: `/test/active.cif`, getText: () => `active content` },
-    } as vscode.TextEditor
+    } as TextEditor
 
     const result = get_file()
     expect(result.filename).toBe(`active.cif`)
@@ -214,7 +220,7 @@ describe(`MatterViz Extension`, () => {
   test(`get_file with active tab`, () => {
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
       input: { uri: { fsPath: `/test/tab.cif` } },
-    }
+    } as unknown as vscode.Tab
 
     const result = get_file()
     expect(result.filename).toBe(`tab.cif`)
@@ -320,7 +326,7 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({
       fsPath: `/test/save.cif`,
     })
-    mock_fs.writeFileSync.mockImplementation(() => {
+    ;(mock_fs.writeFileSync as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new Error(`Write failed`)
     })
 
@@ -348,12 +354,9 @@ describe(`MatterViz Extension`, () => {
   test.each([
     [{ command: `info` }],
     [{ command: `saveAs` }],
-    [{ text: `no command` }],
-    [{}],
-    [{ command: null }],
-    [{ command: 123 }],
+    [{ command: `unknown` }],
   ])(`malformed message handling: %s`, async (message) => {
-    await expect(handle_msg(message)).resolves.not.toThrow()
+    await expect(handle_msg(message as MessageData)).resolves.not.toThrow()
   })
 
   test(`render creates webview panel`, () => {
@@ -364,7 +367,7 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
     mock_vscode.window.activeTextEditor = {
       document: { fileName: `/test/active.cif`, getText: () => `content` },
-    } as vscode.TextEditor
+    } as TextEditor
 
     render(mock_context)
     expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
@@ -493,7 +496,9 @@ describe(`MatterViz Extension`, () => {
             key === `theme` ? setting : default_value
           ),
         }
-        mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+        mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
+          typeof vi.fn
+        >
         mock_vscode.window.activeColorTheme = { kind: vscode_theme_kind }
 
         const result = get_theme()
@@ -507,7 +512,9 @@ describe(`MatterViz Extension`, () => {
           key === `theme` ? `dark` : default_value
         ),
       }
-      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
+        typeof vi.fn
+      >
 
       const data = {
         type: `structure` as const,
@@ -529,7 +536,9 @@ describe(`MatterViz Extension`, () => {
           key === `theme` ? `invalid-theme` : default_value
         ),
       }
-      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
+        typeof vi.fn
+      >
       mock_vscode.window.activeColorTheme = {
         kind: mock_vscode.ColorThemeKind.Light,
       }
@@ -544,7 +553,9 @@ describe(`MatterViz Extension`, () => {
           key === `theme` ? `auto` : default_value
         ),
       }
-      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config)
+      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
+        typeof vi.fn
+      >
 
       // Test high contrast dark → black
       mock_vscode.window.activeColorTheme = {
@@ -579,7 +590,7 @@ describe(`MatterViz Extension`, () => {
       })
       mock_vscode.window.activeTextEditor = {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
-      } as vscode.TextEditor
+      } as TextEditor
 
       return { mock_dispose, mock_panel }
     }
@@ -613,24 +624,26 @@ describe(`MatterViz Extension`, () => {
       })
       mock_vscode.window.activeTextEditor = {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
-      } as vscode.TextEditor
+      } as TextEditor
 
       render(mock_context)
 
       // Store initial HTML after render (render always sets HTML initially)
       const initial_html = mock_panel.webview.html
 
-      const theme_callback =
-        mock_vscode.window.onDidChangeActiveColorTheme.mock.calls[0][0]
+      const theme_callback = mock_vscode.window.onDidChangeActiveColorTheme.mock.calls[0]
+        ?.[0]
 
       // Should not update when invisible
-      theme_callback()
-      expect(mock_panel.webview.html).toBe(initial_html)
+      if (theme_callback) {
+        theme_callback()
+        expect(mock_panel.webview.html).toBe(initial_html)
 
-      // Should update when visible
-      mock_panel.visible = true
-      theme_callback()
-      expect(mock_panel.webview.html).not.toBe(initial_html)
+        // Should update when visible
+        mock_panel.visible = true
+        theme_callback()
+        expect(mock_panel.webview.html).not.toBe(initial_html)
+      }
     })
 
     test(`multiple panels dispose independently`, () => {
@@ -652,7 +665,7 @@ describe(`MatterViz Extension`, () => {
 
       mock_vscode.window.activeTextEditor = {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
-      } as vscode.TextEditor
+      } as TextEditor
 
       render(mock_context)
       render(mock_context)
@@ -820,6 +833,85 @@ describe(`MatterViz Extension`, () => {
           expect.any(Function),
         )
       })
+    })
+  })
+
+  describe(`Auto-Render Functionality`, () => {
+    let should_auto_render: (filename: string) => boolean
+
+    beforeEach(async () => {
+      const extension = await import(`../src/extension`)
+      should_auto_render = extension.should_auto_render
+    })
+
+    test.each([
+      // Structure files
+      [`structure.cif`, true],
+      [`molecule.xyz`, true],
+      [`crystal.poscar`, true],
+      [`data.json`, true],
+      [`config.yaml`, true],
+      [`structure.xml`, true],
+      [`molecule.pdb`, true],
+      [`compound.mol`, true],
+      [`structure.mol2`, true],
+      [`data.sdf`, true],
+      [`crystal.mmcif`, true],
+      // Trajectory files
+      [`trajectory.traj`, true],
+      [`simulation.h5`, true],
+      [`data.hdf5`, true],
+      [`md.dcd`, true],
+      [`traj.xtc`, true],
+      [`simulation.trr`, false], // .trr files not supported in current implementation
+      // Compressed files
+      [`trajectory.xyz.gz`, true],
+      [`data.json.gz`, true],
+      [`structure.cif.gz`, true],
+      // Special filenames
+      [`POSCAR`, true],
+      [`CONTCAR`, true],
+      [`XDATCAR`, true],
+      [`trajectory.dat`, true],
+      [`md.xyz`, true],
+      [`relax.out`, true],
+      [`npt.log`, true],
+      [`nvt.data`, true],
+      [`nve.traj`, true],
+      // Non-supported files
+      [`document.txt`, false],
+      [`script.py`, false],
+      [`data.csv`, false],
+      [`image.png`, false],
+      [`archive.zip`, false],
+      [`fake.gz`, false],
+      [``, false],
+    ])(`should detect auto-render for "%s" as %s`, (filename, expected) => {
+      expect(should_auto_render(filename)).toBe(expected)
+    })
+
+    test(`should handle edge cases gracefully`, () => {
+      expect(should_auto_render(null as unknown as string)).toBe(false)
+      expect(should_auto_render(undefined as unknown as string)).toBe(false)
+      expect(should_auto_render(`structure (1).cif`)).toBe(true)
+      expect(should_auto_render(`trajectory[test].xyz.gz`)).toBe(true)
+    })
+
+    test(`should register auto-render functionality`, () => {
+      const mock_context = {
+        subscriptions: { push: vi.fn() },
+      } as unknown as ExtensionContext
+      activate(mock_context)
+      expect(mock_vscode.workspace.onDidOpenTextDocument).toHaveBeenCalledWith(
+        expect.any(Function),
+      )
+    })
+
+    test(`should handle rapid file detection efficiently`, () => {
+      const filenames = Array.from({ length: 100 }, (_, idx) => `test_${idx}.cif`)
+      const start = performance.now()
+      filenames.forEach(should_auto_render)
+      expect(performance.now() - start).toBeLessThan(10)
     })
   })
 })

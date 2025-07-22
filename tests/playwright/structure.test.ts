@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-await-in-loop
 import { expect, type Page, test } from '@playwright/test'
 import { open_structure_controls_panel } from './helpers.ts'
 
@@ -121,18 +122,17 @@ test.describe(`Structure Component Tests`, () => {
       { param: `invalid`, expected: `quality` },
     ]
 
-    await Promise.all(
-      test_cases.map(async ({ param, expected }) => {
-        await page.goto(`/test/structure?performance_mode=${param}`, {
-          waitUntil: `load`,
-        })
-        await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
-        await expect(perf_mode_status).toContainText(
-          `Performance Mode Status: ${expected}`,
-        )
-        await expect(perf_mode_select).toHaveValue(expected)
-      }),
-    )
+    // Test sequentially to avoid navigation conflicts
+    for (const { param, expected } of test_cases) {
+      await page.goto(`/test/structure?performance_mode=${param}`, {
+        waitUntil: `load`,
+      })
+      await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
+      await expect(perf_mode_status).toContainText(
+        `Performance Mode Status: ${expected}`,
+      )
+      await expect(perf_mode_select).toHaveValue(expected)
+    }
   })
 
   // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking
@@ -224,7 +224,6 @@ test.describe(`Structure Component Tests`, () => {
     }, is_mac)
 
     // Verify no errors occurred and component still functions
-    await page.waitForTimeout(100)
     expect(page_errors).toBe(false)
     await expect(structure_component.locator(`canvas`)).toBeVisible()
   })
@@ -355,8 +354,6 @@ test.describe(`Structure Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
     await expect(canvas).toBeVisible()
 
-    await page.waitForTimeout(1000)
-
     const initial_screenshot = await canvas.screenshot()
 
     const box = await canvas.boundingBox()
@@ -365,8 +362,6 @@ test.describe(`Structure Component Tests`, () => {
         sourcePosition: { x: box.width / 2 - 100, y: box.height / 2 },
         targetPosition: { x: box.width / 2 + 100, y: box.height / 2 },
       })
-
-      await page.waitForTimeout(500)
 
       const after_screenshot = await canvas.screenshot()
 
@@ -377,7 +372,6 @@ test.describe(`Structure Component Tests`, () => {
           targetPosition: { x: box.width / 2, y: box.height / 2 + 100 },
         })
 
-        await page.waitForTimeout(500)
         const final_screenshot = await canvas.screenshot()
         expect(initial_screenshot.equals(final_screenshot)).toBe(false)
       } else {
@@ -805,8 +799,6 @@ H    1.261    0.728   -0.890`
     await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
 
-    await page.waitForTimeout(1000)
-
     const after_drop_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
   })
@@ -860,7 +852,6 @@ H    1.261    0.728   -0.890`
     await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
 
     // Wait for structure to update after file drop
-    await page.waitForTimeout(1000)
 
     // Verify structure changed
     const after_drop_screenshot = await canvas.screenshot()
@@ -889,7 +880,6 @@ H    1.261    0.728   -0.890`
     await crystal_file.dragTo(canvas)
 
     // Wait for structure to update
-    await page.waitForTimeout(1000)
 
     // Verify structure changed
     const after_drag_screenshot = await canvas.screenshot()
@@ -918,7 +908,6 @@ H    1.261    0.728   -0.890`
     await cif_file.dragTo(canvas)
 
     // Wait for structure to update
-    await page.waitForTimeout(1000)
 
     // Verify the structure viewer is still functional
     await expect(canvas).toBeVisible()
@@ -1578,7 +1567,6 @@ test.describe(`Show Buttons Tests`, () => {
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`400`)
 
     // Wait for the width change to take effect
-    await page.waitForTimeout(300)
 
     // Control buttons should not be visible since width (400) < show_controls (600)
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
@@ -1599,7 +1587,6 @@ test.describe(`Show Buttons Tests`, () => {
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`800`)
 
     // Wait for the width change to take effect
-    await page.waitForTimeout(300)
 
     // Control buttons should be visible since width (800) > show_controls (600)
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))
@@ -1620,7 +1607,6 @@ test.describe(`Show Buttons Tests`, () => {
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`200`)
 
     // Wait for the width change to take effect
-    await page.waitForTimeout(300)
 
     // Control buttons should still be visible when show_controls is true (regardless of width)
     await expect(page.locator(`#structure-wrapper .structure section.control-buttons`))

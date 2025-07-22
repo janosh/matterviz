@@ -2,10 +2,6 @@
 import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
 
-const n_tests = 2
-// Increase timeout for this specific test file as it loads n_tests pages
-test.setTimeout(10_000 * n_tests)
-
 test.describe(`Element detail page`, () => {
   test(`has periodicity plot`, async ({ page }) => {
     // test specific elements (consistent rather than random)
@@ -33,7 +29,6 @@ test.describe(`Element detail page`, () => {
         } catch (error) {
           retries--
           if (retries === 0) throw error
-          await page.waitForTimeout(1000)
         }
       }
 
