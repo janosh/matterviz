@@ -169,7 +169,6 @@
     title: `${controls_open ? `Close` : `Open`} structure controls`,
     ...toggle_props,
   }}
-  icon_style="transform: scale(1.2);"
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Controls</h4>

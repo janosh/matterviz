@@ -86,7 +86,6 @@ const get_legend_position = async (
 
 /** Set density sliders for colorbar placement tests */
 const set_density = async (
-  page: Page,
   section_locator: Locator,
   densities: { tl: number; tr: number; bl: number; br: number },
 ): Promise<void> => {
@@ -106,7 +105,6 @@ const set_density = async (
   await set_slider(`Top Right`, densities.tr)
   await set_slider(`Bottom Left`, densities.bl)
   await set_slider(`Bottom Right`, densities.br)
-  await page.waitForTimeout(500)
 }
 
 /** Get colorbar transform for placement tests */
@@ -677,12 +675,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test dense cluster repositioning
     await expect(checkbox).toBeChecked()
-    await page.waitForTimeout(1200) // Wait for force simulation
     const positions_auto = await get_label_positions(plot_locator)
 
     await checkbox.uncheck()
     await expect(checkbox).not.toBeChecked()
-    await page.waitForTimeout(400)
     const positions_manual = await get_label_positions(plot_locator)
 
     // Verify dense labels moved
@@ -889,7 +885,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   colorbar_test_cases.forEach(({ position, densities, expected_transform }) => {
     test(`colorbar moves to ${position} when least dense`, async ({ page }) => {
       const section = page.locator(`#auto-colorbar-placement`)
-      await set_density(page, section, densities)
+      await set_density(section, densities)
       const transform = await get_colorbar_transform(section)
       if (expected_transform === ``) {
         expect(transform).toBe(``)
@@ -970,7 +966,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const hover_y = (plot_bbox?.height ?? 0) - pad.b - y_rel * plot_inner_height
 
     await page.mouse.move(hover_x, hover_y)
-    await page.waitForTimeout(50)
     await page.mouse.down()
     await page.mouse.up()
   })
@@ -1007,11 +1002,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(initial_count).toBeGreaterThan(0)
 
       await checkbox.uncheck()
-      await page.waitForTimeout(200)
       expect(await scatter_plot.locator(selector).count()).toBe(0)
 
       await checkbox.check()
-      await page.waitForTimeout(200)
       expect(await scatter_plot.locator(selector).count()).toBe(initial_count)
     }
 
@@ -1030,11 +1023,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(initial_count).toBeGreaterThan(0)
 
       await checkbox.uncheck()
-      await page.waitForTimeout(200)
       expect(await scatter_plot.locator(selector).count()).toBe(0)
 
       await checkbox.check()
-      await page.waitForTimeout(200)
       expect(await scatter_plot.locator(selector).count()).toBe(initial_count)
     }
 
@@ -1049,7 +1040,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(point_size_number).toBeVisible()
 
     await point_size_range.fill(`10`)
-    await page.waitForTimeout(200)
     await expect(point_size_number).toHaveValue(`10`)
 
     // Test zero lines control
@@ -1058,11 +1048,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(zero_lines_checkbox).toBeChecked()
 
     await zero_lines_checkbox.uncheck()
-    await page.waitForTimeout(200)
     await expect(zero_lines_checkbox).not.toBeChecked()
 
     await zero_lines_checkbox.check()
-    await page.waitForTimeout(200)
     await expect(zero_lines_checkbox).toBeChecked()
 
     // Test state persistence
@@ -1119,7 +1107,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test valid formats
     await x_format_input.fill(`.2e`)
-    await page.waitForTimeout(300)
 
     const updated_x_tick_text = await scatter_plot.locator(`g.x-axis .tick text`).first()
       .textContent()
@@ -1128,7 +1115,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(x_format_input).not.toHaveClass(/invalid/)
 
     await y_format_input.fill(`.0%`)
-    await page.waitForTimeout(300)
 
     const updated_y_tick_text = await scatter_plot.locator(`g.y-axis .tick text`).first()
       .textContent()
@@ -1138,22 +1124,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test invalid formats
     await x_format_input.fill(`.3e3`)
-    await page.waitForTimeout(200)
     await expect(x_format_input).toHaveClass(/invalid/)
 
     await y_format_input.fill(`.`)
-    await page.waitForTimeout(200)
     await expect(y_format_input).toHaveClass(/invalid/)
 
     // Test recovery
     await y_format_input.fill(`.2f`)
-    await page.waitForTimeout(300)
     await expect(y_format_input).not.toHaveClass(/invalid/)
 
     // Test empty strings
     await x_format_input.fill(``)
     await y_format_input.fill(``)
-    await page.waitForTimeout(200)
     await expect(x_format_input).not.toHaveClass(/invalid/)
     await expect(y_format_input).not.toHaveClass(/invalid/)
 
@@ -1388,7 +1370,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Test that style changes only affect selected series
       const point_color_input = control_panel.locator(`input[type="color"]`).first()
       await point_color_input.fill(`#ff0000`)
-      await page.waitForTimeout(200)
 
       // Switch to different series
       await series_selector.selectOption(`1`)
@@ -1408,13 +1389,13 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const section = page.locator(`#auto-colorbar-placement`)
 
     // Test all corners with extreme density settings
-    await set_density(page, section, { tl: 100, tr: 0, bl: 0, br: 0 })
+    await set_density(section, { tl: 100, tr: 0, bl: 0, br: 0 })
     const transform_extreme = await get_colorbar_transform(section)
     // Should position away from high density area
     expect(transform_extreme.length).toBeGreaterThan(0)
 
     // Test equal density (should pick default position)
-    await set_density(page, section, { tl: 50, tr: 50, bl: 50, br: 50 })
+    await set_density(section, { tl: 50, tr: 50, bl: 50, br: 50 })
     const transform_equal = await get_colorbar_transform(section)
     // Should have some positioning or default to empty
     expect(typeof transform_equal).toBe(`string`)
@@ -1525,7 +1506,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Switch scale types to test null handling
     const log_radio = section.locator(`input[value="log"]`)
     await log_radio.click()
-    await page.waitForTimeout(500)
 
     expect(console_errors).toHaveLength(0)
   })
@@ -1545,7 +1525,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       for (let size = 2; size <= 20; size += 2) {
         await point_size_range.fill(size.toString())
         // Small delay to allow rendering but test performance
-        await page.waitForTimeout(10)
       }
 
       // Plot should still be responsive and visible
@@ -1574,7 +1553,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     for (const invalid_format of invalid_formats) {
       await x_format_input.fill(invalid_format)
-      await page.waitForTimeout(100)
 
       // Check if input exists and is visible (validation styling may vary)
       await expect(x_format_input).toBeVisible()
@@ -1585,7 +1563,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test recovery with valid format
     await x_format_input.fill(`.2f`)
-    await page.waitForTimeout(200)
 
     // Verify input still works and plot is functional
     await expect(x_format_input).toBeVisible()
@@ -1623,7 +1600,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Simulate viewport resize (if supported)
     await page.setViewportSize({ width: 800, height: 600 })
-    await page.waitForTimeout(200)
 
     // Plot should still be visible and functional
     await expect(plot_locator).toBeVisible()
@@ -1631,7 +1607,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test with smaller viewport
     await page.setViewportSize({ width: 400, height: 300 })
-    await page.waitForTimeout(200)
 
     // Plot should adapt to smaller size
     await expect(plot_locator).toBeVisible()

@@ -919,7 +919,6 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#structure-wrapper canvas`)
 
     await expect(canvas).toBeVisible()
-    await page.waitForTimeout(200)
 
     // Test rotation behavior - should not move structure off-canvas
     const box = await canvas.boundingBox()

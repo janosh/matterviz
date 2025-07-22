@@ -70,13 +70,11 @@ export const save_theme_preference = (mode: ThemeMode): void => {
   }
 }
 
-// System color scheme
 export const get_system_mode = (): ThemeType =>
   is_browser && matchMedia(`(prefers-color-scheme: dark)`).matches
     ? COLOR_THEMES.dark
     : COLOR_THEMES.light
 
-// DOM manipulation
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
 

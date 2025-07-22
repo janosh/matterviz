@@ -266,7 +266,6 @@
   }}
   open_icon="Cross"
   closed_icon="Info"
-  icon_style="transform: scale(1.3);"
   panel_props={{
     class: `trajectory-info-panel`,
     style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${

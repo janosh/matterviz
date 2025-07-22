@@ -1,3 +1,4 @@
+import { is_structure_file } from '$lib/io/parse'
 import type { ThemeName } from '$lib/theme'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode } from '$lib/theme'
 import { is_trajectory_file } from '$lib/trajectory/parse'
@@ -17,7 +18,7 @@ interface WebviewData {
   theme: ThemeName
 }
 
-interface MessageData {
+export interface MessageData {
   command: string
   text?: string
   filename?: string
@@ -27,6 +28,12 @@ interface MessageData {
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
+
+// Check if a file should be auto-rendered
+export const should_auto_render = (filename: string): boolean => {
+  if (!filename || typeof filename !== `string`) return false
+  return is_structure_file(filename) || is_trajectory_file(filename)
+}
 
 // Read file from filesystem
 export const read_file = (file_path: string): FileData => {
@@ -242,6 +249,69 @@ function stop_watching_file(file_path: string): void {
   }
 }
 
+// Create webview panel with common setup
+function create_webview_panel(
+  context: vscode.ExtensionContext,
+  file_data: FileData,
+  file_path?: string,
+  view_column: vscode.ViewColumn = vscode.ViewColumn.Beside,
+): vscode.WebviewPanel {
+  const panel = vscode.window.createWebviewPanel(
+    `matterviz`,
+    `MatterViz - ${file_data.filename}`,
+    view_column,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, `dist`),
+        vscode.Uri.joinPath(context.extensionUri, `../../static`),
+      ],
+    },
+  )
+
+  if (file_path) start_watching_file(file_path, panel.webview)
+
+  panel.webview.html = create_html(panel.webview, context, {
+    type: is_trajectory_file(file_data.filename) ? `trajectory` : `structure`,
+    data: file_data,
+    theme: get_theme(),
+  })
+
+  panel.webview.onDidReceiveMessage(
+    (msg: MessageData) => handle_msg(msg, panel.webview),
+    undefined,
+    context.subscriptions,
+  )
+
+  // Theme change handling
+  const update_theme = () => {
+    if (panel.visible) {
+      const current_file = file_path ? read_file(file_path) : file_data
+      panel.webview.html = create_html(panel.webview, context, {
+        type: is_trajectory_file(file_data.filename) ? `trajectory` : `structure`,
+        data: current_file,
+        theme: get_theme(),
+      })
+    }
+  }
+
+  const theme_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
+  const config_listener = vscode.workspace.onDidChangeConfiguration(
+    (event: vscode.ConfigurationChangeEvent) => {
+      if (event.affectsConfiguration(`matterviz.theme`)) update_theme()
+    },
+  )
+
+  panel.onDidDispose(() => {
+    theme_listener.dispose()
+    config_listener.dispose()
+    if (file_path) stop_watching_file(file_path)
+  })
+
+  return panel
+}
+
 // Enhanced render function with file watching
 export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
   try {
@@ -249,63 +319,7 @@ export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
     const file_path = uri?.fsPath ||
       vscode.window.activeTextEditor?.document.fileName
 
-    const panel = vscode.window.createWebviewPanel(
-      `matterviz`,
-      `MatterViz - ${file.filename}`,
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(context.extensionUri, `dist`),
-          vscode.Uri.joinPath(context.extensionUri, `../../static`),
-        ],
-      },
-    )
-
-    if (file_path) start_watching_file(file_path, panel.webview)
-
-    panel.webview.html = create_html(panel.webview, context, {
-      type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
-      data: file,
-      theme: get_theme(),
-    })
-
-    panel.webview.onDidReceiveMessage(
-      (msg: MessageData) => handle_msg(msg, panel.webview),
-      undefined,
-      context.subscriptions,
-    )
-
-    // Listen for theme changes and update webview
-    const update_theme = () => {
-      if (panel.visible) {
-        const current_file = file_path ? read_file(file_path) : file
-        panel.webview.html = create_html(panel.webview, context, {
-          type: is_trajectory_file(file.filename) ? `trajectory` : `structure`,
-          data: current_file,
-          theme: get_theme(),
-        })
-      }
-    }
-
-    const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(
-      update_theme,
-    )
-    const config_change_listener = vscode.workspace.onDidChangeConfiguration(
-      (event: vscode.ConfigurationChangeEvent) => {
-        if (event.affectsConfiguration(`matterviz.theme`)) update_theme()
-      },
-    )
-
-    // Dispose listeners when panel is closed
-    panel.onDidDispose(() => {
-      theme_change_listener.dispose()
-      config_change_listener.dispose()
-
-      // Clean up file watcher
-      if (file_path) stop_watching_file(file_path)
-    })
+    create_webview_panel(context, file, file_path)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     vscode.window.showErrorMessage(`Failed: ${message}`)
@@ -414,6 +428,36 @@ export const activate = (context: vscode.ExtensionContext): void => {
       new Provider(context),
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
+    vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
+      if (
+        document.uri.scheme === `file` &&
+        should_auto_render(path.basename(document.uri.fsPath))
+      ) {
+        setTimeout(() => {
+          try {
+            if (
+              !vscode.workspace.getConfiguration(`matterviz`).get<boolean>(
+                `autoRender`,
+                true,
+              )
+            ) return
+            const file_data = read_file(document.uri.fsPath)
+            create_webview_panel(
+              context,
+              file_data,
+              document.uri.fsPath,
+              vscode.ViewColumn.One,
+            )
+          } catch (error: unknown) {
+            vscode.window.showErrorMessage(
+              `MatterViz auto-render failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            )
+          }
+        }, 100)
+      }
+    }),
   )
 }
 

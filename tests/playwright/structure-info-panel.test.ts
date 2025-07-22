@@ -133,8 +133,8 @@ test.describe(`StructureInfoPanel`, () => {
     // Panel should still be visible
     await expect(page.locator(`.structure-info-panel`)).toBeVisible()
 
-    // Click outside (on canvas)
-    await page.locator(`canvas`).click({ position: { x: 100, y: 100 } })
+    // Click outside (on body) to avoid control button interception
+    await page.locator(`body`).click({ position: { x: 10, y: 10 } })
 
     // Panel should still be visible (not closed)
     await expect(page.locator(`.structure-info-panel`)).toBeVisible()
@@ -161,8 +161,15 @@ test.describe(`StructureInfoPanel`, () => {
     // Panel should be closed
     await expect(page.locator(`.structure-info-panel`)).not.toBeVisible()
 
-    // Reopen panel - close button should not be visible (drag state reset)
+    // Reopen panel - close button should still be visible (drag state persists)
     await page.locator(`button[title*="structure info"]`).click()
+    // Wait for panel to fully open
+    await expect(page.locator(`.structure-info-panel`)).toBeVisible()
+    // Close button should still be visible since drag state persists
+    await expect(page.locator(`.close-button`)).toBeVisible()
+    // Click reset button to reset drag state
+    await page.locator(`.reset-button`).click()
+    // Close button should now be hidden after reset
     await expect(page.locator(`.close-button`)).not.toBeVisible()
   })
 
@@ -183,8 +190,7 @@ test.describe(`StructureInfoPanel`, () => {
     const clipboard_text = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard_text).toContain(`Formula:`)
 
-    // Checkmark should disappear after timeout
-    await page.waitForTimeout(1100) // Wait for 1.1 seconds (checkmark disappears after 1s)
+    // Checkmark should disappear
     await expect(page.locator(`.copy-checkmark-overlay`)).not.toBeVisible()
   })
 
@@ -206,7 +212,7 @@ test.describe(`StructureInfoPanel`, () => {
     await expect(page.locator(`text=File Drop`)).toBeVisible()
     await expect(page.locator(`text=Atom Selection`)).toBeVisible()
     await expect(page.locator(`text=Navigation`)).toBeVisible()
-    await expect(page.locator(`text=Colors`)).toBeVisible()
+    await expect(page.locator(`text=Colors`).first()).toBeVisible()
     await expect(page.locator(`text=Keyboard`)).toBeVisible()
 
     // Check tips have descriptions

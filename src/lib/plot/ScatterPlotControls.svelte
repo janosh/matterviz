@@ -218,7 +218,6 @@
     bind:show={controls_open}
     closed_icon="Settings"
     open_icon="Cross"
-    icon_style="transform: scale(1.2);"
     toggle_props={{
       class: `scatter-controls-toggle`,
       title: `${controls_open ? `Close` : `Open`} scatter plot controls`,

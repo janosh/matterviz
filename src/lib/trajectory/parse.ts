@@ -28,14 +28,20 @@ interface ParsedFrame {
 export function is_trajectory_file(filename: string): boolean {
   const name = filename.toLowerCase()
   return (
-    // Standard trajectory file extensions
-    name.match(/\.(traj|xyz|extxyz|h5|hdf5)$/) !== null ||
+    // Standard trajectory file extensions (excluding xyz/extxyz which can be either)
+    name.match(/\.(traj|h5|hdf5)$/) !== null ||
     // Files with trajectory-related keywords
-    /(xdatcar|trajectory|traj|md|relax|npt|nvt|nve)/.test(name) ||
+    /(xdatcar|trajectory|traj|md|relax|npt|nvt|nve|qha)/.test(name) ||
+    // XYZ/EXTXYZ files with trajectory keywords
+    (name.match(/\.(xyz|extxyz)$/) !== null &&
+      /(trajectory|traj|md|relax|npt|nvt|nve|qha)/.test(name)) ||
     // Compressed trajectory files
-    /\.(xyz|extxyz|traj)\.gz$/.test(name) ||
+    /\.(traj|h5|hdf5)\.gz$/.test(name) ||
+    // Compressed XYZ files with trajectory keywords
+    (/\.(xyz|extxyz)\.gz$/.test(name) &&
+      /(trajectory|traj|md|relax|npt|nvt|nve|qha)/.test(name)) ||
     (name.endsWith(`.gz`) &&
-      /(traj|xdatcar|trajectory|relax|xyz|md|npt|nvt|nve)/.test(name))
+      /(traj|xdatcar|trajectory|relax|md|npt|nvt|nve|qha)/.test(name))
   )
 }
 
