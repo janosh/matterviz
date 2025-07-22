@@ -1028,7 +1028,7 @@
     align-items: center;
     gap: clamp(2pt, 1cqw, 1ex);
     padding: clamp(2pt, 0.5cqw, 1ex);
-    z-index: var(--traj-controls-z-index, 1);
+    z-index: var(--traj-controls-z-index, 3);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;

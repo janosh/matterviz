@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.1.5](https://github.com/janosh/matterviz/compare/v0.1.4...v0.1.5)
+
+> 22 July 2025
+
+### 🛠 Enhancements
+
+- Significant speedups of Trajectory and Structure viewers by @janosh in https://github.com/janosh/matterviz/pull/96
+- Add `auto-render` setting to VSCode extension by @janosh in https://github.com/janosh/matterviz/pull/97
+
 ## [v0.1.4](https://github.com/janosh/matterviz/compare/v0.1.3...v0.1.4)
 
 > 20 July 2025
@@ -18,8 +27,6 @@
 
 - Structure.svelte rename prop `show_buttons` to `show_controls` for consistency with other components by @janosh
 
-**Full Changelog**: https://github.com/janosh/matterviz/compare/v0.1.3...v0.1.4
-
 ## [v0.1.3](https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.3)
 
 > 9 July 2025
@@ -34,8 +41,6 @@
 
 - Add `HistogramControls` using `DraggablePanel`, rename `TrajectorySidebar` to `TrajectoryInfoPanel` now also using `DraggablePanel` by @janosh in https://github.com/janosh/matterviz/pull/90
 
-**Full Changelog**: https://github.com/janosh/matterviz/compare/v0.1.2...v0.1.3
-
 ## [v0.1.2](https://github.com/janosh/matterviz/compare/v0.1.1...v0.1.2)
 
 > 4 July 2025
@@ -44,8 +49,6 @@
 
 - Allow toggling between histogram and line plot of properties in Trajectory viewer by @janosh in https://github.com/janosh/matterviz/pull/85
 - VSCode extension for rendering structures and trajectories with MatterViz directly in editor tabs by @janosh in https://github.com/janosh/matterviz/pull/82
-
-**Full Changelog**: https://github.com/janosh/matterviz/compare/v0.1.0...v0.1.2
 
 #### [v0.1.1](https://github.com/janosh/matterviz/compare/v0.1.1...v0.1.2)
 
@@ -56,7 +59,7 @@
 - Big speedup of binary trajectory parsing by avoiding data-URI conversion, use ArrayBuffer directly by @janosh in https://github.com/janosh/matterviz/pull/81
 - Force vectors by @janosh in https://github.com/janosh/matterviz/pull/80
 
-## [v0.1.0](https://github.com/janosh/matterviz/compare/v0.1.0...v0.1.0)
+## [v0.1.0](https://github.com/janosh/matterviz/commits/v0.1.0)
 
 > 19 June 2025
 
@@ -127,5 +130,3 @@
 - Couple new unit tests by @janosh in https://github.com/janosh/matterviz/pull/52
 - Add `color_scale_type`, `color_scheme`, `color_range` props to `ScatterPlot` for coloring points by numeric values by @janosh in https://github.com/janosh/matterviz/pull/58
 - `Trajectory` viewer by @janosh in https://github.com/janosh/matterviz/pull/75
-
-**Full Changelog**: https://github.com/janosh/matterviz/commits/v0.1.0
