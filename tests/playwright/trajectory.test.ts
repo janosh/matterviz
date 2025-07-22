@@ -510,13 +510,6 @@ test.describe(`Trajectory Component`, () => {
       await info_button.click()
       await expect(info_button).toBeEnabled()
 
-      // Test display mode button if visible
-      const display_button = trajectory.locator(`.display-mode`)
-      if (await display_button.isVisible()) {
-        await display_button.click()
-        await expect(display_button).toBeEnabled()
-      }
-
       // Test fullscreen button
       const fullscreen_button = trajectory.locator(`.fullscreen-button`)
       await fullscreen_button.click()

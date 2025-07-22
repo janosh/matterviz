@@ -1106,16 +1106,14 @@ export function is_structure_file(filename: string): boolean {
   // First check if this is a trajectory file and so not a structure file
   if (is_trajectory_file(filename)) return false
 
-  return ( // Standard structure file extensions
-    name.match(
-        /\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|xml|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/,
-      ) !== null ||
-    // Files with structure-related keywords
-    /(poscar|contcar|potcar|incar|kpoints|outcar)/.test(name) ||
-    // Compressed structure files
-    /\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|xml|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)\.gz$/
-      .test(name) ||
-    (name.endsWith(`.gz`) &&
-      /(poscar|contcar|potcar|incar|kpoints|outcar)/.test(name))
+  const structure_extensions =
+    /\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|xml|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/
+  const structure_keywords = /(poscar|contcar|potcar|incar|kpoints|outcar)/
+
+  return (
+    structure_extensions.test(name) ||
+    structure_keywords.test(name) || // Files with structure-related keywords
+    (name.endsWith(`.gz`) && // Compressed structure files
+      (structure_extensions.test(name.slice(0, -3)) || structure_keywords.test(name)))
   )
 }

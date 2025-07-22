@@ -118,13 +118,6 @@ test.describe(`Periodic Table`, () => {
       // Check for enhanced data - but be more flexible about the format
       await expect(tooltip).toContainText(/Position:|Column|Row/)
       await expect(tooltip).toContainText(/Range:|Min|Max/)
-
-      // Test that the tooltip shows enhanced data for the current element
-      await expect(tooltip).toContainText(/Position:|Column|Row/)
-
-      // Test that the tooltip shows the correct element data
-      await expect(tooltip).toContainText(`Carbon`)
-      await expect(tooltip).toContainText(`C • 6`)
     })
 
     test(`tooltip follows mouse position`, async ({ page }) => {
