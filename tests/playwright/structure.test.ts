@@ -1825,14 +1825,24 @@ test.describe(`Structure Event Handler Tests`, () => {
   })
 
   test.describe(`Event Handlers`, () => {
+    test.beforeEach(async () => {
+      // The test page will initialize event_calls when it loads
+      // We just need to ensure it's available
+    })
+
     // Helper function to clear events and wait
     const clear_events_and_wait = async (page: Page) => {
       await page.evaluate(() => {
         const event_calls = (globalThis as Record<string, unknown>).event_calls as
           | unknown[]
           | undefined
-        if (event_calls) event_calls.length = 0
+        if (event_calls) {
+          // Clear the array by setting length to 0
+          event_calls.length = 0
+        }
       })
+      // Wait a bit for the reactive update to propagate
+      await page.waitForTimeout(100)
     }
 
     // Helper function to check event was triggered
@@ -1844,6 +1854,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       const event_calls = await page.evaluate(() =>
         (globalThis as Record<string, unknown>).event_calls as unknown[] || []
       )
+
       const events = event_calls.filter((call) => {
         const call_obj = call as Record<string, unknown>
         return call_obj.event === event_name
@@ -1878,5 +1889,46 @@ test.describe(`Structure Event Handler Tests`, () => {
         await expect(fullscreen_button).toBeVisible()
       }
     })
+
+    test(`should trigger on_file_load event when structure is loaded via data_url`, async ({ page }) => {
+      await clear_events_and_wait(page)
+      // Use a valid structure file that exists in the static directory
+      await page.goto(`/test/structure?data_url=/structures/mp-1.json`)
+      await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 10000 })
+
+      // Wait for the file load event to be processed
+      await page.waitForTimeout(2000)
+
+      await check_event_triggered(page, `on_file_load`, [`structure`, `filename`])
+    })
+
+    test(`should trigger on_error event when file loading fails`, async ({ page }) => {
+      await clear_events_and_wait(page)
+      await page.goto(`/test/structure?data_url=non-existent.json`)
+
+      // Wait for the error to be processed
+      await page.waitForTimeout(3000)
+
+      // Check for error event without using the helper function to avoid execution context issues
+      const event_calls = await page.evaluate(() =>
+        (globalThis as Record<string, unknown>).event_calls as unknown[] || []
+      )
+
+      const error_events = event_calls.filter((call) => {
+        const call_obj = call as Record<string, unknown>
+        return call_obj.event === `on_error`
+      })
+
+      expect(error_events.length).toBeGreaterThan(0)
+
+      const error_event = error_events[0] as Record<string, unknown>
+      expect(error_event.data as Record<string, unknown>).toHaveProperty(`error_msg`)
+      expect(error_event.data as Record<string, unknown>).toHaveProperty(`filename`)
+    })
+
+    // Skip this test for now as camera movement/reset is hard to trigger reliably in headless mode
+    // The camera move event is triggered by Three.js OrbitControls which requires proper mouse interaction
+    test.skip(`should trigger on_camera_move event when camera is moved`, () => {})
+    test.skip(`should trigger on_camera_reset event when camera is reset`, () => {})
   })
 })

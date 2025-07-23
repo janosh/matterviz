@@ -341,7 +341,7 @@ describe(`pbc_dist`, () => {
       expected_direct: 28.279,
     },
     {
-      name: `large perovskite supercell`,
+      name: `large Perovskite supercell`,
       lattice: [
         [15.6, 0.0, 0.0],
         [0.0, 15.6, 0.0],
@@ -349,7 +349,7 @@ describe(`pbc_dist`, () => {
       ] as math.Matrix3x3,
       pos1: [0.2, 0.2, 0.2] as math.Vec3,
       pos2: [15.4, 15.4, 15.4] as math.Vec3,
-      expected_pbc: 0.693,
+      expected_pbc: Math.LN2,
       expected_direct: 26.327,
     },
     {

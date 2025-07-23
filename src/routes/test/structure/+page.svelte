@@ -14,6 +14,11 @@
   // capture event data for testing
   let event_calls = $state<Array<{ event: string; data: unknown }>>([])
 
+  // Structure state - can be overridden by data_url
+  let structure = $state<PymatgenStructure | undefined>(
+    mp1_struct as unknown as PymatgenStructure,
+  )
+
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
     cell_edge_color: `white`,
@@ -32,6 +37,15 @@
   $effect(() => {
     if (typeof window === `undefined`) return
     const url_params = new URLSearchParams(window.location.search)
+
+    // Data URL for loading external structures
+    if (url_params.has(`data_url`)) {
+      const data_url = url_params.get(`data_url`)
+      if (data_url) {
+        // Clear the static structure to allow data_url loading
+        structure = undefined
+      }
+    }
 
     // Lattice properties
     if (url_params.has(`cell_edge_color`)) {
@@ -148,7 +162,10 @@
     </label>
   </section>
   <Structure
-    structure={mp1_struct as unknown as PymatgenStructure}
+    {structure}
+    data_url={typeof window !== `undefined`
+    ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
+    : undefined}
     bind:controls_open
     bind:info_panel_open
     bind:width={canvas.width}
