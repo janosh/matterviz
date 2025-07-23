@@ -2,6 +2,7 @@ import {
   is_structure_file,
   parse_any_structure,
   parse_cif,
+  parse_optimade_json,
   parse_phonopy_yaml,
   parse_poscar,
   parse_structure_file,
@@ -12,6 +13,7 @@ import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
+import optimade_json_alpha_quartz from '$site/structures/mp-7000-optimade.json?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
@@ -1277,6 +1279,206 @@ describe(`parse_structure_file`, () => {
     // This ensures the recursive parser is efficient and doesn't degrade
     // significantly with nesting depth
     expect(end_time - start_time).toBeLessThan(100)
+  })
+})
+
+describe(`OPTIMADE JSON parser`, () => {
+  it.each([
+    {
+      name: `crystalline structure with lattice`,
+      data: {
+        id: `test-crystalline`,
+        attributes: {
+          elements: [`Si`, `O`],
+          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575], [
+            2.455,
+            0.0,
+            2.715,
+          ], [0.0, 2.455, 4.0725]],
+          species_at_sites: [`Si`, `O`, `O`, `O`],
+        },
+      },
+      expected: {
+        sites: 4,
+        has_lattice: true,
+        lattice_matrix: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+        first_element: `Si`,
+      },
+    },
+    {
+      name: `molecular structure without lattice`,
+      data: {
+        id: `test-molecule`,
+        attributes: {
+          elements: [`H`, `O`],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0], [
+            0.24,
+            0.927,
+            0.0,
+          ]],
+          species_at_sites: [`O`, `H`, `H`],
+        },
+      },
+      expected: { sites: 3, has_lattice: false, first_element: `O` },
+    },
+    {
+      name: `minimal structure with required fields only`,
+      data: {
+        id: `test-minimal`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          species_at_sites: [`Fe`, `Fe`],
+        },
+      },
+      expected: { sites: 2, has_lattice: false, first_element: `Fe` },
+    },
+    {
+      name: `Simple MP alpha-quartz`,
+      content: optimade_json_alpha_quartz,
+      expected: {
+        sites: 9,
+        has_lattice: true,
+        lattice_matrix: [[4.914966, -1e-8, 0.0], [-2.45748252, 4.2564861, -0.0], [
+          0.0,
+          0.0,
+          5.43130114,
+        ]],
+        first_element: `Si`,
+      },
+    },
+  ])(`should parse $name`, ({ data, content, expected }) => {
+    const test_content = content ||
+      JSON.stringify({ data: { ...data, type: `structures` } })
+    const result = parse_optimade_json(test_content)
+    if (!result) throw `Failed to parse OPTIMADE JSON`
+
+    expect(result.sites).toHaveLength(expected.sites)
+    expect(result.sites[0].species[0].element).toBe(expected.first_element)
+
+    if (expected.has_lattice) {
+      expect(result.lattice?.matrix).toEqual(expected.lattice_matrix)
+      // Verify coordinate transformation works
+      result.sites.forEach((site) => {
+        const latt_mat = result.lattice?.matrix
+        if (!latt_mat) throw `Lattice matrix is undefined`
+        const reconstructed_xyz = [
+          site.abc[0] * latt_mat[0][0] + site.abc[1] * latt_mat[1][0] +
+          site.abc[2] * latt_mat[2][0],
+          site.abc[0] * latt_mat[0][1] + site.abc[1] * latt_mat[1][1] +
+          site.abc[2] * latt_mat[2][1],
+          site.abc[0] * latt_mat[0][2] + site.abc[1] * latt_mat[1][2] +
+          site.abc[2] * latt_mat[2][2],
+        ]
+        expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
+        expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
+        expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
+      })
+    } else {
+      expect(result.lattice).toBeUndefined()
+    }
+  })
+
+  it.each([
+    {
+      name: `missing required fields`,
+      data: { id: `test-invalid`, attributes: { elements: [`Fe`] } },
+      expected_error: `OPTIMADE JSON missing required position or species data`,
+    },
+    {
+      name: `mismatched positions and species count`,
+      data: {
+        id: `test-mismatched`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          species_at_sites: [`Fe`], // Only one species for two positions
+        },
+      },
+      expected_error: `OPTIMADE JSON position/species count mismatch`,
+    },
+    {
+      name: `invalid JSON`,
+      content: `{ invalid json }`,
+      expected_error: `Error parsing OPTIMADE JSON:`,
+    },
+    {
+      name: `empty string`,
+      content: ``,
+      expected_error: `Error parsing OPTIMADE JSON:`,
+    },
+  ])(`should handle $name gracefully`, ({ data, content, expected_error }) => {
+    const test_content = content ||
+      JSON.stringify({ data: { ...data, type: `structures` } })
+    const result = parse_optimade_json(test_content)
+    expect(result).toBeNull()
+
+    // Verify the expected error was logged
+    if (expected_error) {
+      const errorCalls = console_error_spy.mock.calls
+      expect(errorCalls.length).toBeGreaterThan(0)
+      expect(errorCalls[0][0]).toContain(expected_error)
+    }
+  })
+
+  it.each([
+    {
+      name: `fractional coordinates calculation`,
+      lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+      positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
+      expected_abc: [[0.0, 0.0, 0.0], [0.5, 0.5, 0.25]],
+    },
+    {
+      name: `singular lattice matrix`,
+      lattice_vectors: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      positions: [[0.0, 0.0, 0.0]],
+      expected_abc: [[0.0, 0.0, 0.0]],
+    },
+    {
+      name: `non-orthogonal lattice matrix`,
+      lattice_vectors: [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]],
+      positions: [[0.0, 0.0, 0.0], [2.5, 2.165, 2.0]],
+      expected_abc: [[0.0, 0.0, 0.0], [0.2077367205542725, 0.38452655889145493, 0.5]],
+    },
+  ])(`should handle $name`, ({ lattice_vectors, positions, expected_abc }) => {
+    const data = {
+      id: `test`,
+      attributes: {
+        cartesian_site_positions: positions,
+        species_at_sites: positions.map(() => `Fe`),
+        lattice_vectors,
+      },
+    }
+    const result = parse_optimade_json(
+      JSON.stringify({ data: { ...data, type: `structures` } }),
+    )
+    if (!result) throw `Failed to parse OPTIMADE JSON`
+
+    expect(result.sites).toHaveLength(positions.length)
+    result.sites.forEach((site, idx) => expect(site.abc).toEqual(expected_abc[idx]))
+
+    // For non-orthogonal lattices, verify matrix and coordinate transformation
+    if (
+      lattice_vectors[0][1] !== 0 || lattice_vectors[0][2] !== 0 ||
+      lattice_vectors[1][0] !== 0 || lattice_vectors[1][2] !== 0 ||
+      lattice_vectors[2][0] !== 0 || lattice_vectors[2][1] !== 0
+    ) {
+      expect(result.lattice?.matrix).toEqual(lattice_vectors)
+      result.sites.forEach((site) => {
+        const latt_mat = result.lattice?.matrix
+        if (!latt_mat) throw `Lattice matrix is undefined`
+        const reconstructed_xyz = [
+          site.abc[0] * latt_mat[0][0] + site.abc[1] * latt_mat[1][0] +
+          site.abc[2] * latt_mat[2][0],
+          site.abc[0] * latt_mat[0][1] + site.abc[1] * latt_mat[1][1] +
+          site.abc[2] * latt_mat[2][1],
+          site.abc[0] * latt_mat[0][2] + site.abc[1] * latt_mat[1][2] +
+          site.abc[2] * latt_mat[2][2],
+        ]
+        expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
+        expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
+        expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
+      })
+    }
   })
 })
 

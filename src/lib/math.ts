@@ -239,7 +239,7 @@ export function tensor_to_flat_array(tensor: number[][]): number[] {
 }
 
 // Transpose a 3x3 matrix
-export const transpose_matrix = (matrix: Matrix3x3): Matrix3x3 => [
+export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][0], matrix[1][0], matrix[2][0]],
   [matrix[0][1], matrix[1][1], matrix[2][1]],
   [matrix[0][2], matrix[1][2], matrix[2][2]],
@@ -282,6 +282,17 @@ export function cell_to_lattice_matrix(
     [b * cos_gamma, b * sin_gamma, 0],
     [c1, c2, c3],
   ]
+}
+
+export function det_3x3(matrix: Matrix3x3): number {
+  // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
+  // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
+  const [row0, row1, row2] = matrix
+  return (
+    row0[0] * (row1[1] * row2[2] - row1[2] * row2[1]) -
+    row0[1] * (row1[0] * row2[2] - row1[2] * row2[0]) +
+    row0[2] * (row1[0] * row2[1] - row1[1] * row2[0])
+  )
 }
 
 export const LOG_MIN_EPS = 1e-9 // Constants
