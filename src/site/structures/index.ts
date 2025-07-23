@@ -2,9 +2,6 @@ import { type PymatgenStructure } from '$lib/index'
 import { detect_structure_type, is_optimade_json, parse_optimade_json } from '$lib/io'
 import type { FileInfo } from '$site'
 
-const get_padded_number = (struct: PymatgenStructure) =>
-  (struct.id?.split(`-`)[1] ?? ``).padStart(6, `0`)
-
 export const structures = Object.entries(
   import.meta.glob(`./*.json`, {
     eager: true,
@@ -13,10 +10,10 @@ export const structures = Object.entries(
 )
   .map(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
-
+    const data_str = JSON.stringify(data)
     // Convert OPTIMADE to pymatgen format
-    if (is_optimade_json(JSON.stringify(data))) {
-      const parsed = parse_optimade_json(JSON.stringify(data))
+    if (is_optimade_json(data_str)) {
+      const parsed = parse_optimade_json(data_str)
       if (parsed) return { ...parsed, id } as PymatgenStructure
     }
 
@@ -29,17 +26,18 @@ export const structures = Object.entries(
     structure && `sites` in structure && Array.isArray(structure.sites)
   )
   .sort((struct_a, struct_b) =>
-    get_padded_number(struct_a).localeCompare(get_padded_number(struct_b))
+    (struct_a.id?.split(`-`)[1] ?? ``).padStart(6, `0`).localeCompare(
+      (struct_b.id?.split(`-`)[1] ?? ``).padStart(6, `0`),
+    )
   )
 
 export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
 
 export const structure_files: FileInfo[] = (Object.entries(
-  import.meta.glob(`$site/structures/*.{poscar,xyz,cif,yaml}`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  }),
+  import.meta.glob(
+    `$site/structures/*.{poscar,xyz,cif,yaml}`,
+    { eager: true, query: `?raw`, import: `default` },
+  ),
 ) as [string, string][]).map(
   ([path, content]) => {
     const filename = path.split(`/`).pop() || path

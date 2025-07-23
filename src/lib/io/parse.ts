@@ -314,24 +314,10 @@ export function parse_poscar(content: string): ParsedStructure | null {
             // Store fractional coordinates
             abc = [coords[0], coords[1], coords[2]]
             // Convert fractional to Cartesian coordinates
-            xyz = [
-              coords[0] * scaled_lattice[0][0] +
-              coords[1] * scaled_lattice[1][0] +
-              coords[2] * scaled_lattice[2][0],
-              coords[0] * scaled_lattice[0][1] +
-              coords[1] * scaled_lattice[1][1] +
-              coords[2] * scaled_lattice[2][1],
-              coords[0] * scaled_lattice[0][2] +
-              coords[1] * scaled_lattice[1][2] +
-              coords[2] * scaled_lattice[2][2],
-            ]
+            xyz = math.mat3x3_vec3_multiply(scaled_lattice, coords as Vec3)
           } else {
             // Already Cartesian, scale if needed
-            xyz = [
-              coords[0] * scale_factor,
-              coords[1] * scale_factor,
-              coords[2] * scale_factor,
-            ]
+            xyz = math.scale([coords[0], coords[1], coords[2]], scale_factor)
             // Calculate fractional coordinates using proper matrix inversion
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
@@ -345,7 +331,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
                 xyz[0] / scaled_lattice[0][0],
                 xyz[1] / scaled_lattice[1][1],
                 xyz[2] / scaled_lattice[2][2],
-              ]
+              ] as Vec3
             }
           }
 
@@ -718,10 +704,7 @@ export function parse_cif(
 
     const structure: ParsedStructure = {
       sites,
-      lattice: {
-        matrix: lattice_matrix,
-        ...calculated_lattice_params,
-      },
+      lattice: { matrix: lattice_matrix, ...calculated_lattice_params },
     }
 
     return structure
@@ -734,13 +717,8 @@ export function parse_cif(
 // Convert phonopy cell to ParsedStructure
 function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   const sites: Site[] = []
-
   // Phonopy stores lattice vectors as rows, use them directly
-  const lattice_matrix: Matrix3x3 = [
-    [cell.lattice[0][0], cell.lattice[0][1], cell.lattice[0][2]],
-    [cell.lattice[1][0], cell.lattice[1][1], cell.lattice[1][2]],
-    [cell.lattice[2][0], cell.lattice[2][1], cell.lattice[2][2]],
-  ]
+  const lattice_matrix = cell.lattice as Matrix3x3
 
   // Process each atomic site
   for (const point of cell.points) {
@@ -1122,19 +1100,6 @@ export interface OptimadeStructure {
   links?: unknown
 }
 
-// Helper function to construct lattice matrix from OPTIMADE lattice vectors
-function build_lattice_matrix(lattice_vectors: number[][] | undefined): Matrix3x3 | null {
-  if (!lattice_vectors || lattice_vectors.length !== 3) {
-    return null
-  }
-
-  return [
-    [lattice_vectors[0][0], lattice_vectors[0][1], lattice_vectors[0][2]],
-    [lattice_vectors[1][0], lattice_vectors[1][1], lattice_vectors[1][2]],
-    [lattice_vectors[2][0], lattice_vectors[2][1], lattice_vectors[2][2]],
-  ]
-}
-
 // Parse OPTIMADE JSON format
 export function parse_optimade_json(content: string): ParsedStructure | null {
   try {
@@ -1157,8 +1122,8 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
       return null
     }
 
-    // Extract lattice matrix if available
-    const lattice_matrix = build_lattice_matrix(attrs.lattice_vectors)
+    // Optimade stores lattice vectors as rows, so use as is
+    const lattice_matrix = attrs.lattice_vectors as Matrix3x3 | undefined
 
     // Parse atomic sites
     const sites: Site[] = []
