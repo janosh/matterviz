@@ -166,17 +166,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
 
     // Handle negative scale factor (volume-based scaling)
     if (scale_factor < 0) {
-      const volume = Math.abs(
-        lattice_vecs[0][0] *
-            (lattice_vecs[1][1] * lattice_vecs[2][2] -
-              lattice_vecs[1][2] * lattice_vecs[2][1]) +
-          lattice_vecs[0][1] *
-            (lattice_vecs[1][2] * lattice_vecs[2][0] -
-              lattice_vecs[1][0] * lattice_vecs[2][2]) +
-          lattice_vecs[0][2] *
-            (lattice_vecs[1][0] * lattice_vecs[2][1] -
-              lattice_vecs[1][1] * lattice_vecs[2][0]),
-      )
+      const volume = Math.abs(math.det_3x3(lattice_vecs))
       scale_factor = Math.pow(-scale_factor / volume, 1 / 3)
     }
 
@@ -324,29 +314,15 @@ export function parse_poscar(content: string): ParsedStructure | null {
             // Store fractional coordinates
             abc = [coords[0], coords[1], coords[2]]
             // Convert fractional to Cartesian coordinates
-            xyz = [
-              coords[0] * scaled_lattice[0][0] +
-              coords[1] * scaled_lattice[1][0] +
-              coords[2] * scaled_lattice[2][0],
-              coords[0] * scaled_lattice[0][1] +
-              coords[1] * scaled_lattice[1][1] +
-              coords[2] * scaled_lattice[2][1],
-              coords[0] * scaled_lattice[0][2] +
-              coords[1] * scaled_lattice[1][2] +
-              coords[2] * scaled_lattice[2][2],
-            ]
+            xyz = math.mat3x3_vec3_multiply(scaled_lattice, coords as Vec3)
           } else {
             // Already Cartesian, scale if needed
-            xyz = [
-              coords[0] * scale_factor,
-              coords[1] * scale_factor,
-              coords[2] * scale_factor,
-            ]
+            xyz = math.scale([coords[0], coords[1], coords[2]], scale_factor)
             // Calculate fractional coordinates using proper matrix inversion
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
             try {
-              const lattice_transposed = math.transpose_matrix(scaled_lattice)
+              const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
               const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
               abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
             } catch {
@@ -355,7 +331,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
                 xyz[0] / scaled_lattice[0][0],
                 xyz[1] / scaled_lattice[1][1],
                 xyz[2] / scaled_lattice[2][2],
-              ]
+              ] as Vec3
             }
           }
 
@@ -499,7 +475,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
         // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
         // we need column vectors, so we transpose before inversion
         try {
-          const lattice_transposed = math.transpose_matrix(lattice.matrix)
+          const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
           const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
           abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
         } catch {
@@ -692,7 +668,7 @@ export function parse_cif(
 
               // Convert fractional to Cartesian coordinates
               const xyz = math.mat3x3_vec3_multiply(
-                math.transpose_matrix(lattice_matrix),
+                math.transpose_3x3_matrix(lattice_matrix),
                 abc_wrapped,
               )
 
@@ -728,10 +704,7 @@ export function parse_cif(
 
     const structure: ParsedStructure = {
       sites,
-      lattice: {
-        matrix: lattice_matrix,
-        ...calculated_lattice_params,
-      },
+      lattice: { matrix: lattice_matrix, ...calculated_lattice_params },
     }
 
     return structure
@@ -744,13 +717,8 @@ export function parse_cif(
 // Convert phonopy cell to ParsedStructure
 function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   const sites: Site[] = []
-
   // Phonopy stores lattice vectors as rows, use them directly
-  const lattice_matrix: Matrix3x3 = [
-    [cell.lattice[0][0], cell.lattice[0][1], cell.lattice[0][2]],
-    [cell.lattice[1][0], cell.lattice[1][1], cell.lattice[1][2]],
-    [cell.lattice[2][0], cell.lattice[2][1], cell.lattice[2][2]],
-  ]
+  const lattice_matrix = cell.lattice as Matrix3x3
 
   // Process each atomic site
   for (const point of cell.points) {
@@ -763,7 +731,7 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
 
     // Convert fractional to Cartesian coordinates
     const xyz = math.mat3x3_vec3_multiply(
-      math.transpose_matrix(lattice_matrix),
+      math.transpose_3x3_matrix(lattice_matrix),
       abc,
     )
 
@@ -950,9 +918,15 @@ export function parse_structure_file(
       return parse_cif(content)
     }
 
-    // JSON files (pymatgen structures) - parse and search for nested structures
+    // JSON files - try OPTIMADE first, then pymatgen structures
     if (ext === `json`) {
       try {
+        // Check if it's OPTIMADE JSON format
+        if (is_optimade_json(content)) {
+          return parse_optimade_json(content)
+        }
+
+        // Otherwise, try to parse as pymatgen/nested structure JSON
         const parsed = JSON.parse(content)
         const structure = find_structure_in_json(parsed)
         if (structure) {
@@ -985,8 +959,13 @@ export function parse_structure_file(
 
   // JSON format detection: try to parse as JSON first
   try {
+    // Check if it's OPTIMADE JSON format
+    if (is_optimade_json(content)) {
+      return parse_optimade_json(content)
+    }
+
+    // Otherwise try parsing as regular JSON structure
     const parsed = JSON.parse(content)
-    // If it parses as JSON, search for a valid structure
     const structure = find_structure_in_json(parsed)
     if (structure) {
       return structure
@@ -1096,6 +1075,132 @@ export function parse_any_structure(
         }),
       }
       : null
+  }
+}
+
+// OPTIMADE JSON structure interface
+export interface OptimadeStructure {
+  data: {
+    attributes: {
+      cartesian_site_positions: number[][]
+      species_at_sites: string[]
+      lattice_vectors?: number[][]
+      chemical_formula_descriptive?: string
+      chemical_formula_reduced?: string
+      chemical_formula_hill?: string
+      nsites?: number
+      elements?: string[]
+      nelements?: number
+      dimension_types?: number[]
+      [key: string]: unknown
+    }
+    id: string
+    type: string
+  }
+  links?: unknown
+}
+
+// Parse OPTIMADE JSON format
+export function parse_optimade_json(content: string): ParsedStructure | null {
+  try {
+    const response = JSON.parse(content) as OptimadeStructure
+
+    // Use the first structure in the data array
+    const structure = response.data
+    const attrs = structure.attributes
+
+    if (!attrs.cartesian_site_positions || !attrs.species_at_sites) {
+      console.error(`OPTIMADE JSON missing required position or species data`)
+      return null
+    }
+
+    const positions = attrs.cartesian_site_positions
+    const species = attrs.species_at_sites
+
+    if (positions.length !== species.length) {
+      console.error(`OPTIMADE JSON position/species count mismatch`)
+      return null
+    }
+
+    // Optimade stores lattice vectors as rows, so use as is
+    const lattice_matrix = attrs.lattice_vectors as Matrix3x3 | undefined
+
+    // Parse atomic sites
+    const sites: Site[] = []
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i]
+      const element_symbol = species[i]
+
+      if (!pos || pos.length < 3) {
+        console.warn(`Invalid position data at site ${i}`)
+        continue
+      }
+
+      const element = validate_element_symbol(element_symbol, i)
+      const xyz: Vec3 = [pos[0], pos[1], pos[2]]
+
+      // Calculate fractional coordinates if lattice is available
+      let abc: Vec3 = [0, 0, 0]
+      if (lattice_matrix) {
+        try {
+          const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
+          const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+          abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
+        } catch {
+          // Fallback if matrix inversion fails
+          console.warn(
+            `Failed to calculate fractional coordinates for OPTIMADE structure`,
+          )
+        }
+      }
+
+      const site: Site = {
+        species: [{ element, occu: 1, oxidation_state: 0 }],
+        abc,
+        xyz,
+        label: `${element}${i + 1}`,
+        properties: {},
+      }
+
+      sites.push(site)
+    }
+
+    if (sites.length === 0) {
+      console.error(`No valid sites found in OPTIMADE JSON`)
+      return null
+    }
+
+    // Create structure object
+    let lattice: ParsedStructure[`lattice`] | undefined
+    if (lattice_matrix) {
+      const lattice_params = math.calc_lattice_params(lattice_matrix)
+      lattice = { matrix: lattice_matrix, ...lattice_params }
+    }
+
+    const structure_result: ParsedStructure = {
+      sites,
+      ...(lattice && { lattice }),
+    }
+
+    return structure_result
+  } catch (error) {
+    console.error(`Error parsing OPTIMADE JSON:`, error)
+    return null
+  }
+}
+
+// Check if JSON content is OPTIMADE format just by looking for
+// data -> attributes key, data -> ID and data -> type.
+export function is_optimade_json(content: string): boolean {
+  try {
+    const response = JSON.parse(content)
+    let data = response.data
+    if (Array.isArray(data)) {
+      data = data[0]
+    }
+    return (data !== null && data.type === `structures` && data.id && data.attributes)
+  } catch {
+    return false
   }
 }
 

@@ -1,0 +1,186 @@
+{
+    "data": {
+        "id": "mp-7000",
+        "type": "structures",
+        "attributes": {
+            "immutable_id": "645d2ba4bcd30f748b475981",
+            "last_modified": "2023-03-11T14:56:30.545000",
+            "elements": [
+                "O",
+                "Si"
+            ],
+            "nelements": 2,
+            "elements_ratios": [
+                0.3333333333333333,
+                0.6666666666666666
+            ],
+            "chemical_formula_descriptive": "O6Si3",
+            "chemical_formula_reduced": "O2Si",
+            "chemical_formula_hill": "O6Si3",
+            "chemical_formula_anonymous": "A2B",
+            "dimension_types": [
+                1,
+                1,
+                1
+            ],
+            "nperiodic_dimensions": 3,
+            "lattice_vectors": [
+                [
+                    4.914966,
+                    -1E-8,
+                    0.0
+                ],
+                [
+                    -2.45748252,
+                    4.2564861,
+                    -0.0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    5.43130114
+                ]
+            ],
+            "cartesian_site_positions": [
+                [
+                    1.305141436341493,
+                    2.260571195892713,
+                    0.0
+                ],
+                [
+                    -1.1523415935035533,
+                    1.9959148987964008,
+                    3.62086923710038
+                ],
+                [
+                    2.30468363716206,
+                    -4.6891141E-9,
+                    1.81043190289962
+                ],
+                [
+                    0.307313190521449,
+                    1.7596070465121378,
+                    4.262979274449718
+                ],
+                [
+                    0.779965212276153,
+                    3.642819213957245,
+                    0.6421154686504772
+                ],
+                [
+                    -1.087270070349083,
+                    3.1105416730445072,
+                    2.4525473715500974
+                ],
+                [
+                    1.3702077931391026,
+                    1.145944421379828,
+                    1.168321865550283
+                ],
+                [
+                    3.237442955715446,
+                    0.6136668728689292,
+                    2.978753768449903
+                ],
+                [
+                    2.76479135869693,
+                    2.4968790422373526,
+                    4.789185671349523
+                ]
+            ],
+            "nsites": 9,
+            "species": [
+                {
+                    "name": "Si",
+                    "chemical_symbols": [
+                        "Si"
+                    ],
+                    "concentration": [
+                        1.0
+                    ],
+                    "mass": null,
+                    "original_name": null,
+                    "attached": null,
+                    "nattached": null
+                },
+                {
+                    "name": "O",
+                    "chemical_symbols": [
+                        "O"
+                    ],
+                    "concentration": [
+                        1.0
+                    ],
+                    "mass": null,
+                    "original_name": null,
+                    "attached": null,
+                    "nattached": null
+                }
+            ],
+            "species_at_sites": [
+                "Si",
+                "Si",
+                "Si",
+                "O",
+                "O",
+                "O",
+                "O",
+                "O",
+                "O"
+            ],
+            "assemblies": null,
+            "structure_features": [],
+            "_mp_chemical_system": "O-Si",
+            "_mp_stability": {
+                "r2scan": {
+                    "thermo_id": "mp-7000_R2SCAN",
+                    "energy_above_hull": 0.0,
+                    "formation_energy_per_atom": -3.045818020555556,
+                    "last_updated_thermo": "2023-04-27T01:10:53.136000"
+                },
+                "gga_gga+u_r2scan": {
+                    "thermo_id": "mp-7000_GGA_GGA+U_R2SCAN",
+                    "energy_above_hull": 0.0,
+                    "formation_energy_per_atom": -3.045818020555556,
+                    "last_updated_thermo": "2023-04-27T01:11:13.062000"
+                },
+                "gga_gga+u": {
+                    "thermo_id": "mp-7000_GGA_GGA+U",
+                    "energy_above_hull": 0.010580068888888405,
+                    "formation_energy_per_atom": -3.257452020277777,
+                    "last_updated_thermo": "2023-04-27T01:12:06.873000"
+                }
+            }
+        }
+    },
+    "meta": {
+        "query": {
+            "representation": "/structures/mp-7000?"
+        },
+        "api_version": "1.1.0",
+        "more_data_available": false,
+        "schema": "https://schemas.optimade.org/openapi/v1.1.0/optimade.json",
+        "time_stamp": "2025-07-23T13:04:16.544585",
+        "data_returned": 1,
+        "provider": {
+            "name": "Materials Project - OPTIMADE",
+            "description": "The Materials Project OPTIMADE endpoint",
+            "prefix": "mp",
+            "homepage": "https://materialsproject.org/"
+        },
+        "data_available": 154387,
+        "implementation": {
+            "name": "OPTIMADE Python Tools",
+            "version": "1.1.11",
+            "source_url": "https://github.com/Materials-Consortia/optimade-python-tools",
+            "maintainer": {
+                "email": "dev@optimade.org"
+            },
+            "issue_tracker": "https://github.com/Materials-Consortia/optimade-python-tools/issues"
+        }
+    },
+    "included": [],
+    "links": {
+        "next": null
+    }
+}

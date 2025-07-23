@@ -479,7 +479,7 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
       if (coords.length === 3 && !coords.some(isNaN)) {
         const abc = coords as Vec3
         positions.push(
-          math.mat3x3_vec3_multiply(math.transpose_matrix(lattice_matrix), abc),
+          math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(lattice_matrix), abc),
         )
       }
       line_idx++
@@ -656,7 +656,7 @@ const parse_pymatgen_trajectory = (
     }
 
     const positions = frame_coords.map((abc) =>
-      math.mat3x3_vec3_multiply(math.transpose_matrix(matrix), abc as Vec3)
+      math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(matrix), abc as Vec3)
     )
 
     return create_trajectory_frame({
