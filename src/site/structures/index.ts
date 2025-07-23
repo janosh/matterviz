@@ -1,5 +1,5 @@
 import { type PymatgenStructure } from '$lib/index'
-import { detect_structure_type } from '$lib/io'
+import { detect_structure_type, is_optimade_json, parse_optimade_json } from '$lib/io'
 import type { FileInfo } from '$site'
 
 const get_padded_number = (struct: PymatgenStructure) =>
@@ -9,13 +9,25 @@ export const structures = Object.entries(
   import.meta.glob(`./*.json`, {
     eager: true,
     import: `default`,
-  }) as Record<string, PymatgenStructure>,
+  }) as Record<string, unknown>,
 )
-  .map(([path, structure]) => {
+  .map(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
+
+    // Convert OPTIMADE to pymatgen format
+    if (is_optimade_json(JSON.stringify(data))) {
+      const parsed = parse_optimade_json(JSON.stringify(data))
+      if (parsed) return { ...parsed, id } as PymatgenStructure
+    }
+
+    // Assume pymatgen format
+    const structure = data as PymatgenStructure
     structure.id = id
     return structure
   })
+  .filter((structure): structure is PymatgenStructure =>
+    structure && `sites` in structure && Array.isArray(structure.sites)
+  )
   .sort((struct_a, struct_b) =>
     get_padded_number(struct_a).localeCompare(get_padded_number(struct_b))
   )
