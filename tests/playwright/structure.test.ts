@@ -1825,11 +1825,6 @@ test.describe(`Structure Event Handler Tests`, () => {
   })
 
   test.describe(`Event Handlers`, () => {
-    test.beforeEach(async () => {
-      // The test page will initialize event_calls when it loads
-      // We just need to ensure it's available
-    })
-
     // Helper function to clear events and wait
     const clear_events_and_wait = async (page: Page) => {
       await page.evaluate(() => {
@@ -1909,21 +1904,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       // Wait for the error to be processed
       await page.waitForTimeout(3000)
 
-      // Check for error event without using the helper function to avoid execution context issues
-      const event_calls = await page.evaluate(() =>
-        (globalThis as Record<string, unknown>).event_calls as unknown[] || []
-      )
-
-      const error_events = event_calls.filter((call) => {
-        const call_obj = call as Record<string, unknown>
-        return call_obj.event === `on_error`
-      })
-
-      expect(error_events.length).toBeGreaterThan(0)
-
-      const error_event = error_events[0] as Record<string, unknown>
-      expect(error_event.data as Record<string, unknown>).toHaveProperty(`error_msg`)
-      expect(error_event.data as Record<string, unknown>).toHaveProperty(`filename`)
+      await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
     })
 
     // Skip this test for now as camera movement/reset is hard to trigger reliably in headless mode

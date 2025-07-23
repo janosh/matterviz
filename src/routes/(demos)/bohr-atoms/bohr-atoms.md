@@ -1,4 +1,4 @@
-## Bohr Atoms
+# Bohr Atoms
 
 <main>
 

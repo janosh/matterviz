@@ -25,7 +25,7 @@
   }
 </script>
 
-<h1>Trajectory Viewer</h1>
+<h1>Trajectory</h1>
 
 {#each trajectory_files_paths as file (file)}
   <Trajectory

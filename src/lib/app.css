@@ -73,9 +73,9 @@ pre code {
 pre {
   position: relative;
   border-radius: 4pt;
-  font-size: 8pt;
+  font-size: 0.95em;
   background-color: var(--pre-bg);
-  padding: 1em;
+  padding: 1ex 1em;
   overflow-x: auto;
 }
 blockquote {

@@ -79,12 +79,3 @@
     </text>
   {/if}
 </svg>
-
-<style>
-  text {
-    font-size: 11pt;
-  }
-  text.symbol {
-    font-size: 15pt;
-  }
-</style>

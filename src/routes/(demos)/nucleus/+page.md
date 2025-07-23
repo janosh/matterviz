@@ -1,4 +1,4 @@
-`Nucleus.svelte`
+# Nucleus
 
 ```svelte example code_above
 <script>
