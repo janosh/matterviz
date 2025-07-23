@@ -1,6 +1,7 @@
 import {
   is_structure_file,
   parse_any_structure,
+  parse_optimade_json,
   parse_cif,
   parse_phonopy_yaml,
   parse_poscar,
@@ -16,6 +17,7 @@ import scientific_notation_poscar from '$site/structures/scientific-notation.pos
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
+import optimade_json_alpha_quartz from '$site/structures/mp-7000.json?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
 import { join } from 'path'
@@ -1277,6 +1279,25 @@ describe(`parse_structure_file`, () => {
     // This ensures the recursive parser is efficient and doesn't degrade
     // significantly with nesting depth
     expect(end_time - start_time).toBeLessThan(100)
+  })
+})
+
+describe(`OPTIMADE JSON parser`, () => {
+  it.each([
+    {
+      name: `Simple MP alpha-quartz`,
+      content: optimade_json_alpha_quartz,
+      sites: 9,
+      element: `Si`,
+      lattice_a: 4.91,
+    },
+  ])(`should parse $name`, ({ content, sites, element, lattice_a }) => {
+    const result = parse_optimade_json(content)
+    if (!result) throw `Failed to parse OPTIMADE JSON`
+    expect(result.sites).toHaveLength(sites)
+    expect(result.sites[0].species[0].element).toBe(element)
+    expect(result.lattice).toBeTruthy()
+    if (lattice_a) expect(result.lattice?.a).toBeCloseTo(lattice_a, 2)
   })
 })
 
