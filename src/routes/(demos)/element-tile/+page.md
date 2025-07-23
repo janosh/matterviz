@@ -4,7 +4,7 @@
 
 ```svelte example code_above
 <script>
-  import { element_data, ElementTile } from '$lib'
+  import { element_data, ElementTile } from 'matterviz'
 
   const rand_color = () =>
     `hsl(${Math.random() * 360}, ${Math.random() * 50 + 50}%, ${
@@ -31,7 +31,7 @@ Displaying values instead of element names by passing the `value` prop.
 
 ```svelte example code_above
 <script>
-  import { element_data, ElementTile } from '$lib'
+  import { element_data, ElementTile } from 'matterviz'
 
   const bg_colors = 'red green blue yellow cyan magenta black white'.split()
 </script>
@@ -63,7 +63,7 @@ ElementTile supports displaying multiple values per tile with different split la
 
 ```svelte example code_above
 <script>
-  import { element_data, ElementTile } from '$lib'
+  import { element_data, ElementTile } from 'matterviz'
 
   const values = {
     two: [1.2, 2.5],

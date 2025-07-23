@@ -4,7 +4,7 @@
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
   let bins = $state(50)
@@ -40,7 +40,7 @@
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import { generate_normal, generate_exponential, generate_uniform, generate_gamma } from '$site/plot-utils'
 
   let opacity = $state(0.6)
@@ -102,7 +102,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_sc
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import {
     generate_log_normal,
     generate_pareto,
@@ -175,7 +175,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import {
     generate_age_distribution,
     generate_bimodal,
@@ -269,7 +269,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import { generate_mixed_data, generate_complex_distribution } from '$site/plot-utils'
 
   let bin_counts = $state([10, 25, 50, 100])
@@ -323,7 +323,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import { generate_financial_data, generate_scientific_data } from '$site/plot-utils'
 
   let color_scheme = $state(`default`)
@@ -385,7 +385,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
 
 ```svelte example
 <script>
-  import { Histogram } from '$lib'
+  import { Histogram } from 'matterviz'
   import { generate_large_dataset, generate_sparse_data } from '$site/plot-utils'
 
   let dataset_size = $state(10000)

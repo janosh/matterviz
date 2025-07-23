@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { CompositionType } from '$lib'
+  import type { CompositionType } from 'matterviz'
   import {
     Composition,
     get_electro_neg_formula,
     parse_composition,
-  } from '$lib/composition'
+  } from 'matterviz/composition'
 
   let formula = $state(`LiFePO4`)
   let parsed_composition: CompositionType = $derived(parse_composition(formula))
