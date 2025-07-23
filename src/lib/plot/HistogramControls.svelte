@@ -20,12 +20,18 @@
     bar_opacity?: number
     bar_stroke_width?: number
     show_legend?: boolean
-    // Grid controls
+    // Display controls
+    show_zero_lines?: boolean
     x_grid?: boolean | Record<string, unknown>
     y_grid?: boolean | Record<string, unknown>
     // Scale type controls
     x_scale_type?: `linear` | `log`
     y_scale_type?: `linear` | `log`
+    // Range controls
+    x_range?: [number, number]
+    y_range?: [number, number]
+    auto_x_range?: [number, number]
+    auto_y_range?: [number, number]
     // Tick controls
     x_ticks?: TicksOption
     y_ticks?: TicksOption
@@ -47,12 +53,22 @@
     bar_opacity = $bindable(0.7),
     bar_stroke_width = $bindable(1),
     show_legend = $bindable(true),
+    // Display controls
+    show_zero_lines = $bindable(true),
     x_grid = $bindable(true),
     y_grid = $bindable(true),
+    // Scale type controls
     x_scale_type = $bindable(`linear`),
     y_scale_type = $bindable(`linear`),
+    // Range controls
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
+    auto_x_range = [0, 1],
+    auto_y_range = [0, 1],
+    // Tick controls
     x_ticks = $bindable(8),
     y_ticks = $bindable(6),
+    // Format controls
     x_format = $bindable(`.2~s`),
     y_format = $bindable(`d`),
     selected_property = $bindable(``),
@@ -113,11 +129,64 @@
     }
   }
 
+  // Range control helpers
+  const range_complete = (axis: `x` | `y`) => {
+    const [min_el, max_el] = [`min`, `max`].map((b) =>
+      document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
+    )
+    if (!min_el || !max_el) return
+
+    const [min, max] = [min_el, max_el].map(
+      (el) => (el.classList.remove(`invalid`), el.value === `` ? null : +el.value),
+    )
+    const auto = { x: auto_x_range, y: auto_y_range }[axis]
+
+    if (min !== null && max !== null && min >= max) {
+      ;[min_el, max_el].forEach((el) => el.classList.add(`invalid`))
+      return
+    }
+
+    const ranges = {
+      x: (r: typeof x_range) => x_range = r,
+      y: (r: typeof y_range) => y_range = r,
+    }
+    ranges[axis](
+      min === null && max === null ? undefined : [min ?? auto[0], max ?? auto[1]],
+    )
+  }
+
+  const input_props = (
+    axis: `x` | `y`,
+    bound: `min` | `max`,
+    range?: [number, number],
+  ) => ({
+    id: `${axis}-range-${bound}`,
+    type: `number`,
+    value: range?.[bound === `min` ? 0 : 1] ?? ``,
+    placeholder: `auto`,
+    class: `range-input`,
+    onblur: () => range_complete(axis),
+    onkeydown: (e: KeyboardEvent) =>
+      e.key === `Enter` && (e.target as HTMLElement).blur(),
+  })
+
   // Sync local format inputs with props
   $effect(() => {
     x_format_input = x_format
     y_format_input = y_format
   })
+
+  // Update range inputs when ranges change
+  $effect(() =>
+    [[x_range, `x`], [y_range, `y`]].forEach(([range, axis]) => {
+      if (!range) {
+        ;[`min`, `max`].forEach((b) => {
+          const el = document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
+          if (el) el.value = ``
+        })
+      }
+    })
+  )
 </script>
 
 {#if show_controls}
@@ -143,6 +212,39 @@
       {@render plot_controls()}
     {:else}
       <h4 style="margin-top: 0">Histogram Controls</h4>
+
+      <!-- Display Controls -->
+      <h4>Display</h4>
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={show_zero_lines} />
+        Show zero lines
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={x_grid as boolean} />
+        X-axis grid
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={y_grid as boolean} />
+        Y-axis grid
+      </label>
+
+      <!-- Range Controls -->
+      <h4>Axis Range</h4>
+      <div class="panel-row">
+        <label for="x-range-min">X-axis:</label>
+        <input {...input_props(`x`, `min`, x_range)} />
+        &nbsp;to
+        <input {...input_props(`x`, `max`, x_range)} />
+      </div>
+      <div class="panel-row">
+        <label for="y-range-min">Y-axis:</label>
+        <input {...input_props(`y`, `min`, y_range)} />
+        &nbsp;to
+        <input {...input_props(`y`, `max`, y_range)} />
+      </div>
+
+      <!-- Histogram Controls -->
+      <h4>Histogram</h4>
       <div class="panel-row">
         <label for="bins-input">Bins:</label>
         <input
@@ -175,7 +277,7 @@
             <label for="property-select">Property:</label>
             <select bind:value={selected_property} id="property-select">
               <option value="">All</option>
-              {#each series_options as option (option)} 
+              {#each series_options as option (option)}
                 <option value={option}>{option}</option>
               {/each}
             </select>
@@ -227,17 +329,6 @@
           class="number-input"
         />
       </div>
-
-      <!-- Display Controls -->
-      <h4>Display</h4>
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={x_grid as boolean} />
-        X-axis grid
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={y_grid as boolean} />
-        Y-axis grid
-      </label>
 
       <!-- Scale Type Controls -->
       <h4>Scale Type</h4>

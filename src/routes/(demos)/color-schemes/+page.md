@@ -10,8 +10,8 @@ Compare three element color palettes side by side using horizontal bars within e
 
 ```svelte example
 <script>
-  import { element_data, PeriodicTable, TableInset } from '$lib'
-  import { element_color_schemes } from '$lib/colors'
+  import { element_data, PeriodicTable, TableInset } from 'matterviz'
+  import { element_color_schemes } from 'matterviz/colors'
 
   // Create multi-scheme color data - each element gets an array of 3 colors
   const multi_scheme_colors = element_data.map((el) => [
@@ -84,9 +84,9 @@ Compare three element color palettes side by side using horizontal bars within e
 
 ```svelte example
 <script>
-  import { PeriodicTable } from '$lib'
-  import { element_color_schemes } from '$lib/colors'
-  import { elem_symbols } from '$lib/labels'
+  import { PeriodicTable } from 'matterviz'
+  import { element_color_schemes } from 'matterviz/colors'
+  import { elem_symbols } from 'matterviz/labels'
 
   const subtitles = {
     Vesta:
