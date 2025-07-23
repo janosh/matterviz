@@ -34,8 +34,9 @@
 
 <p>
   Either from the set of example files or drag a local <code>extXYZ</code>,
-  <code>POSCAR</code>, <code>CIF</code>, <code>YAML</code>, <code>pymatgen</code> JSON
-  files, or compressed versions of these files onto either structure viewer.
+  <code>POSCAR</code>, <code>CIF</code>, <code>YAML</code>, <code>OPTIMADE</code> JSON,
+  <code>pymatgen</code> JSON files, or compressed versions of these files onto either
+  structure viewer.
 </p>
 
 <FilePicker

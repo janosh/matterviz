@@ -1,6 +1,7 @@
 import type { AnyStructure } from '$lib'
 import { electro_neg_formula } from '$lib'
 import { download } from '$lib/io/fetch'
+import * as math from '$lib/math'
 import type * as THREE from 'three'
 import { Vector2, WebGLRenderer } from 'three'
 
@@ -105,17 +106,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
         Array.isArray(lattice.matrix) &&
         lattice.matrix.length >= 3
       ) {
-        coords = [
-          a * lattice.matrix[0][0] +
-          b * lattice.matrix[1][0] +
-          c * lattice.matrix[2][0],
-          a * lattice.matrix[0][1] +
-          b * lattice.matrix[1][1] +
-          c * lattice.matrix[2][1],
-          a * lattice.matrix[0][2] +
-          b * lattice.matrix[1][2] +
-          c * lattice.matrix[2][2],
-        ]
+        coords = math.mat3x3_vec3_multiply(lattice.matrix, [a, b, c])
       } else {
         coords = [0, 0, 0] // fallback
       }

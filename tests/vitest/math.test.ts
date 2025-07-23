@@ -722,14 +722,14 @@ describe(`tensor conversion utilities`, () => {
         -9,
       ]]],
     ])(`%s matrix`, (_, input, expected) => {
-      expect(math.transpose_matrix(input as [Vec3, Vec3, Vec3])).toEqual(
+      expect(math.transpose_3x3_matrix(input as [Vec3, Vec3, Vec3])).toEqual(
         expected,
       )
     })
 
     it(`is involution (A^T^T = A)`, () => {
       const matrix: [Vec3, Vec3, Vec3] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-      expect(math.transpose_matrix(math.transpose_matrix(matrix))).toEqual(matrix)
+      expect(math.transpose_3x3_matrix(math.transpose_3x3_matrix(matrix))).toEqual(matrix)
     })
   })
 
@@ -966,4 +966,27 @@ describe(`tensor conversion utilities`, () => {
       }
     })
   })
+})
+
+test.each([
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], 1, `identity`],
+  [[[0, 0, 0], [0, 0, 0], [0, 0, 0]], 0, `zero`],
+  [[[1, 2, 3], [2, 4, 6], [3, 6, 9]], 0, `singular`],
+  [[[2, 0, 0], [0, 3, 0], [0, 0, 4]], 24, `diagonal`],
+  [[[1, 2, 3], [0, 4, 5], [0, 0, 6]], 24, `upper triangular`],
+  [[[1, 0, 0], [2, 3, 0], [4, 5, 6]], 18, `lower triangular`],
+  [[[0, -1, 0], [1, 0, 0], [0, 0, 1]], 1, `rotation`],
+  [[[2, 0, 0], [0, 2, 0], [0, 0, 2]], 8, `scaling`],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 0, `zero det`],
+  [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], 1, `positive det`],
+  [[[2, 1, 1], [1, 3, 2], [1, 0, 0]], -1, `negative det`],
+  [[[1.5, 2.5, 3.5], [4.5, 5.5, 6.5], [7.5, 8.5, 9.5]], 0, `decimals`],
+  [[[1000, 2000, 3000], [4000, 5000, 6000], [7000, 8000, 9000]], 0, `large nums`],
+  [
+    [[0.001, 0.002, 0.003], [0.004, 0.005, 0.006], [0.007, 0.008, 0.009]],
+    0,
+    `small nums`,
+  ],
+])(`det_3x3 $3`, (matrix, expected) => {
+  expect(math.det_3x3(matrix as math.Matrix3x3)).toBeCloseTo(expected, 10)
 })
