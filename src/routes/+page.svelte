@@ -1,22 +1,9 @@
 <script lang="ts">
-  import { detect_structure_type, get_electro_neg_formula, Structure } from '$lib'
-  import type { FileInfo } from '$site'
+  import { get_electro_neg_formula, Structure } from '$lib'
   import { FilePicker, PeriodicTableDemo } from '$site'
+  import { structure_files } from '$site/structures'
 
-  const sample_files: FileInfo[] = Object.keys(import.meta.glob(
-    `$site/structures/*.{poscar,xyz,cif,yaml}`,
-  )).map(
-    (path) => {
-      const filename = path.split(`/`).pop() || path
-      // Simple categorization based on file extension and name patterns
-      const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
-
-      const structure_type = detect_structure_type(filename, ``)
-      const category =
-        { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] || `📄`
-      return { name: filename, url: path.replace(`/src/site`, ``), type, category }
-    },
-  )
+  let scene_props = $state({ auto_rotate: 0.5 })
 </script>
 
 <h1 style="margin: 0">MatterViz</h1>
@@ -38,11 +25,7 @@
       <h3 style="margin: 0 0 1ex">
         {@html get_electro_neg_formula(formula ?? file_url.split(`.`)[0], false, ``)}
       </h3>
-      <Structure
-        data_url="/structures/{file_url}"
-        scene_props={{ auto_rotate: 0.5 }}
-        style="--struct-height: 400px; flex: 1"
-      />
+      <Structure data_url="/structures/{file_url}" bind:scene_props style="flex: 1" />
     </div>
   {/each}
 </div>
@@ -56,7 +39,7 @@
 </p>
 
 <FilePicker
-  files={sample_files}
+  files={structure_files}
   show_category_filters
   category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
   style="max-width: var(--max-text-width); margin: 0 auto"

@@ -32,24 +32,20 @@ export function detect_compression_format(
 }
 
 export async function decompress_data(
-  data: ArrayBuffer,
+  data: ArrayBuffer | ReadableStream<Uint8Array> | null,
   format: CompressionFormat,
 ): Promise<string> {
-  if (!(`DecompressionStream` in window)) {
-    throw `DecompressionStream API not supported`
-  }
-
   try {
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array(data))
-        controller.close()
-      },
-    })
-
-    return await new Response(
-      stream.pipeThrough(new DecompressionStream(format)),
-    ).text()
+    const stream = data instanceof ArrayBuffer
+      ? new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(data))
+          controller.close()
+        },
+      })
+      : data
+    const unzip = new DecompressionStream(format)
+    return await new Response(stream?.pipeThrough(unzip)).text()
   } catch (error) {
     throw `Failed to decompress ${format} file: ${error}`
   }

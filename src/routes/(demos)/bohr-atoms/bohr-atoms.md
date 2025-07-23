@@ -1,4 +1,4 @@
-## Bohr Atoms
+# Bohr Atoms
 
 <main>
 
@@ -14,9 +14,6 @@ In fact this 2d visualization is a simplification even of the incorrect Bohr mod
 </main>
 
 <style>
-  h2 {
-    text-align: center;
-  }
   p {
     text-align: justify;
   }

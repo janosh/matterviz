@@ -272,14 +272,14 @@
   }
   /* Panel content styling */
   .draggable-panel :global(h4) {
-    margin: 8pt 0 2pt;
+    margin: 2pt 0;
     font-size: 0.9em;
   }
   .draggable-panel :global(hr) {
     border: none;
     background: var(--panel-hr-bg, rgba(255, 255, 255, 0.1));
-    margin: 0;
-    height: 0.5px;
+    margin: 4pt 0;
+    height: 1px;
   }
   .draggable-panel :global(label) {
     display: flex;

@@ -80,7 +80,7 @@ describe(`decompress utility functions`, () => {
       delete globalThis.DecompressionStream
 
       await expect(decompress_data(new ArrayBuffer(0), `gzip`)).rejects.toThrow(
-        `DecompressionStream API not supported`,
+        `Failed to decompress gzip file: ReferenceError: DecompressionStream is not defined`,
       )
 
       globalThis.DecompressionStream = original_decompression_stream

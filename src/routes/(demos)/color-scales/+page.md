@@ -16,6 +16,8 @@
   let nice_range = $state([])
 </script>
 
+<h1>Color Scales</h1>
+
 <h2>{data == 'MP' ? 'Materials Project' : 'WBM'} Element Occurrence Counts</h2>
 
 <PeriodicTable
