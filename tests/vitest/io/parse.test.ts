@@ -13,11 +13,11 @@ import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
+import optimade_json_alpha_quartz from '$site/structures/mp-7000.json?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
-import optimade_json_alpha_quartz from '$site/structures/mp-7000.json?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
 import { join } from 'path'
@@ -1285,19 +1285,178 @@ describe(`parse_structure_file`, () => {
 describe(`OPTIMADE JSON parser`, () => {
   it.each([
     {
+      name: `crystalline structure with lattice`,
+      data: {
+        id: `test-crystalline`,
+        attributes: {
+          elements: [`Si`, `O`],
+          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575], [
+            2.455,
+            0.0,
+            2.715,
+          ], [0.0, 2.455, 4.0725]],
+          species_at_sites: [`Si`, `O`, `O`, `O`],
+        },
+      },
+      expected: {
+        sites: 4,
+        has_lattice: true,
+        lattice_a: 4.91,
+        first_element: `Si`,
+        first_abc: [0.0, 0.0, 0.0],
+      },
+    },
+    {
+      name: `molecular structure without lattice`,
+      data: {
+        id: `test-molecule`,
+        attributes: {
+          elements: [`H`, `O`],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0], [
+            0.24,
+            0.927,
+            0.0,
+          ]],
+          species_at_sites: [`O`, `H`, `H`],
+        },
+      },
+      expected: {
+        sites: 3,
+        has_lattice: false,
+        first_element: `O`,
+        first_abc: [0.0, 0.0, 0.0],
+      },
+    },
+    {
+      name: `minimal structure with required fields only`,
+      data: {
+        id: `test-minimal`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          species_at_sites: [`Fe`, `Fe`],
+        },
+      },
+      expected: {
+        sites: 2,
+        has_lattice: false,
+        first_element: `Fe`,
+        first_abc: [0.0, 0.0, 0.0],
+      },
+    },
+    {
       name: `Simple MP alpha-quartz`,
       content: optimade_json_alpha_quartz,
-      sites: 9,
-      element: `Si`,
-      lattice_a: 4.91,
+      expected: {
+        sites: 9,
+        has_lattice: true,
+        lattice_a: 4.91,
+        first_element: `Si`,
+        first_abc: [0.53108859, 0.53108859, 0.0],
+      },
     },
-  ])(`should parse $name`, ({ content, sites, element, lattice_a }) => {
+  ])(`should parse $name`, ({ data, content, expected }) => {
+    const test_content = content ||
+      JSON.stringify({ data: { ...data, type: `structures` } })
+    const result = parse_optimade_json(test_content)
+    if (!result) throw `Failed to parse OPTIMADE JSON`
+
+    expect(result.sites).toHaveLength(expected.sites)
+    if (expected.has_lattice) {
+      expect(result.lattice).toBeTruthy()
+    } else {
+      expect(result.lattice).toBeUndefined()
+    }
+    if (expected.has_lattice && expected.lattice_a) {
+      expect(result.lattice?.a).toBeCloseTo(expected.lattice_a, 2)
+    }
+
+    const first_site = result.sites[0]
+    expect(first_site.species[0].element).toBe(expected.first_element)
+    expect(first_site.abc).toEqual(expected.first_abc)
+    expect(first_site.species[0].occu).toBe(1)
+    expect(first_site.species[0].oxidation_state).toBe(0)
+    expect(first_site.label).toMatch(new RegExp(`^${expected.first_element}\\d+$`))
+
+    // Validate all sites have proper structure
+    result.sites.forEach((site) => {
+      expect(site.species).toHaveLength(1)
+      expect(site.xyz).toHaveLength(3)
+      expect(site.abc).toHaveLength(3)
+    })
+  })
+
+  it.each([
+    {
+      name: `missing required fields`,
+      data: { id: `test-invalid`, attributes: { elements: [`Fe`] } },
+      expected_error: `OPTIMADE JSON missing required position or species data`,
+    },
+    {
+      name: `mismatched positions and species count`,
+      data: {
+        id: `test-mismatched`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          species_at_sites: [`Fe`], // Only one species for two positions
+        },
+      },
+      expected_error: `OPTIMADE JSON position/species count mismatch`,
+    },
+    {
+      name: `invalid JSON`,
+      content: `{ invalid json }`,
+      expected_error: `Error parsing OPTIMADE JSON:`,
+    },
+    {
+      name: `empty string`,
+      content: ``,
+      expected_error: `Error parsing OPTIMADE JSON:`,
+    },
+  ])(`should handle $name gracefully`, ({ data, content, expected_error }) => {
+    const test_content = content ||
+      JSON.stringify({ data: { ...data, type: `structures` } })
+    const result = parse_optimade_json(test_content)
+    expect(result).toBeNull()
+
+    // Verify the expected error was logged
+    if (expected_error) {
+      const errorCalls = console_error_spy.mock.calls
+      expect(errorCalls.length).toBeGreaterThan(0)
+      expect(errorCalls[0][0]).toContain(expected_error)
+    }
+  })
+
+  it.each([
+    {
+      name: `fractional coordinates calculation`,
+      lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+      positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
+      expected_abc: [[0.0, 0.0, 0.0], [0.5, 0.5, 0.25]],
+    },
+    {
+      name: `singular lattice matrix`,
+      lattice_vectors: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      positions: [[0.0, 0.0, 0.0]],
+      expected_abc: [[0.0, 0.0, 0.0]],
+    },
+  ])(`should handle $name`, ({ lattice_vectors, positions, expected_abc }) => {
+    const data = {
+      id: `test-${lattice_vectors[0][0] === 0 ? `singular` : `fractional`}`,
+      attributes: {
+        cartesian_site_positions: positions,
+        species_at_sites: positions.map(() => `Fe`),
+        lattice_vectors,
+      },
+    }
+    const content = JSON.stringify({ data: { ...data, type: `structures` } })
     const result = parse_optimade_json(content)
     if (!result) throw `Failed to parse OPTIMADE JSON`
-    expect(result.sites).toHaveLength(sites)
-    expect(result.sites[0].species[0].element).toBe(element)
-    expect(result.lattice).toBeTruthy()
-    if (lattice_a) expect(result.lattice?.a).toBeCloseTo(lattice_a, 2)
+
+    expect(result.sites).toHaveLength(positions.length)
+    result.sites.forEach((site, idx) => {
+      expect(site.abc).toEqual(expected_abc[idx])
+    })
   })
 })
 

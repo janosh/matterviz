@@ -1128,8 +1128,21 @@ export interface OptimadeStructure {
     }
     id: string
     type: string
-  }[]
+  }
   links?: unknown
+}
+
+// Helper function to construct lattice matrix from OPTIMADE lattice vectors
+function build_lattice_matrix(lattice_vectors: number[][] | undefined): Matrix3x3 | null {
+  if (!lattice_vectors || lattice_vectors.length !== 3) {
+    return null
+  }
+
+  return [
+    [lattice_vectors[0][0], lattice_vectors[0][1], lattice_vectors[0][2]],
+    [lattice_vectors[1][0], lattice_vectors[1][1], lattice_vectors[1][2]],
+    [lattice_vectors[2][0], lattice_vectors[2][1], lattice_vectors[2][2]],
+  ]
 }
 
 // Parse OPTIMADE JSON format
@@ -1154,6 +1167,9 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
       return null
     }
 
+    // Extract lattice matrix if available
+    const lattice_matrix = build_lattice_matrix(attrs.lattice_vectors)
+
     // Parse atomic sites
     const sites: Site[] = []
     for (let i = 0; i < positions.length; i++) {
@@ -1170,25 +1186,7 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
 
       // Calculate fractional coordinates if lattice is available
       let abc: Vec3 = [0, 0, 0]
-      if (attrs.lattice_vectors && attrs.lattice_vectors.length === 3) {
-        const lattice_matrix: Matrix3x3 = [
-          [
-            attrs.lattice_vectors[0][0],
-            attrs.lattice_vectors[0][1],
-            attrs.lattice_vectors[0][2],
-          ],
-          [
-            attrs.lattice_vectors[1][0],
-            attrs.lattice_vectors[1][1],
-            attrs.lattice_vectors[1][2],
-          ],
-          [
-            attrs.lattice_vectors[2][0],
-            attrs.lattice_vectors[2][1],
-            attrs.lattice_vectors[2][2],
-          ],
-        ]
-
+      if (lattice_matrix) {
         try {
           const lattice_transposed = math.transpose_matrix(lattice_matrix)
           const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
@@ -1219,25 +1217,7 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
 
     // Create structure object
     let lattice: ParsedStructure[`lattice`] | undefined
-    if (attrs.lattice_vectors && attrs.lattice_vectors.length === 3) {
-      const lattice_matrix: Matrix3x3 = [
-        [
-          attrs.lattice_vectors[0][0],
-          attrs.lattice_vectors[0][1],
-          attrs.lattice_vectors[0][2],
-        ],
-        [
-          attrs.lattice_vectors[1][0],
-          attrs.lattice_vectors[1][1],
-          attrs.lattice_vectors[1][2],
-        ],
-        [
-          attrs.lattice_vectors[2][0],
-          attrs.lattice_vectors[2][1],
-          attrs.lattice_vectors[2][2],
-        ],
-      ]
-
+    if (lattice_matrix) {
       const lattice_params = math.calc_lattice_params(lattice_matrix)
       lattice = { matrix: lattice_matrix, ...lattice_params }
     }
