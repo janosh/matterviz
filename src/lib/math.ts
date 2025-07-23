@@ -239,7 +239,7 @@ export function tensor_to_flat_array(tensor: number[][]): number[] {
 }
 
 // Transpose a 3x3 matrix
-export const transpose_matrix = (matrix: Matrix3x3): Matrix3x3 => [
+export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][0], matrix[1][0], matrix[2][0]],
   [matrix[0][1], matrix[1][1], matrix[2][1]],
   [matrix[0][2], matrix[1][2], matrix[2][2]],

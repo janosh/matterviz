@@ -346,7 +346,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
             try {
-              const lattice_transposed = math.transpose_matrix(scaled_lattice)
+              const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
               const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
               abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
             } catch {
@@ -499,7 +499,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
         // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
         // we need column vectors, so we transpose before inversion
         try {
-          const lattice_transposed = math.transpose_matrix(lattice.matrix)
+          const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
           const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
           abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
         } catch {
@@ -692,7 +692,7 @@ export function parse_cif(
 
               // Convert fractional to Cartesian coordinates
               const xyz = math.mat3x3_vec3_multiply(
-                math.transpose_matrix(lattice_matrix),
+                math.transpose_3x3_matrix(lattice_matrix),
                 abc_wrapped,
               )
 
@@ -763,7 +763,7 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
 
     // Convert fractional to Cartesian coordinates
     const xyz = math.mat3x3_vec3_multiply(
-      math.transpose_matrix(lattice_matrix),
+      math.transpose_3x3_matrix(lattice_matrix),
       abc,
     )
 
@@ -1188,7 +1188,7 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
       let abc: Vec3 = [0, 0, 0]
       if (lattice_matrix) {
         try {
-          const lattice_transposed = math.transpose_matrix(lattice_matrix)
+          const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
           const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
           abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
         } catch {

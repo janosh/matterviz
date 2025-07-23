@@ -722,14 +722,14 @@ describe(`tensor conversion utilities`, () => {
         -9,
       ]]],
     ])(`%s matrix`, (_, input, expected) => {
-      expect(math.transpose_matrix(input as [Vec3, Vec3, Vec3])).toEqual(
+      expect(math.transpose_3x3_matrix(input as [Vec3, Vec3, Vec3])).toEqual(
         expected,
       )
     })
 
     it(`is involution (A^T^T = A)`, () => {
       const matrix: [Vec3, Vec3, Vec3] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-      expect(math.transpose_matrix(math.transpose_matrix(matrix))).toEqual(matrix)
+      expect(math.transpose_3x3_matrix(math.transpose_3x3_matrix(matrix))).toEqual(matrix)
     })
   })
 
