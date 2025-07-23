@@ -70,7 +70,6 @@ test.describe(`StructureInfoPanel`, () => {
   test(`should show drag handle and not show close button initially`, async ({ page }) => {
     await page.locator(`button[title*="structure info"]`).click()
 
-    // Drag handle should be visible - use more specific selector for structure info panel
     await expect(
       page.getByRole(`dialog`, { name: `Draggable panel` }).locator(`.drag-handle`),
     ).toBeVisible()

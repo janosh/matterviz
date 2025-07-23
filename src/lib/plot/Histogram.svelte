@@ -143,11 +143,19 @@
   $effect(() => {
     const new_x = x_range ?? auto_ranges.x
     const new_y = y_range ?? auto_ranges.y
-    if (new_x[0] !== ranges.initial.x[0] || new_x[1] !== ranges.initial.x[1]) {
+
+    const x_changed =
+      (x_range !== undefined) !== (ranges.initial.x === auto_ranges.x) ||
+      new_x[0] !== ranges.initial.x[0] || new_x[1] !== ranges.initial.x[1]
+    const y_changed =
+      (y_range !== undefined) !== (ranges.initial.y === auto_ranges.y) ||
+      new_y[0] !== ranges.initial.y[0] || new_y[1] !== ranges.initial.y[1]
+
+    if (x_changed) {
       ranges.initial.x = new_x as [number, number]
       ranges.current.x = new_x as [number, number]
     }
-    if (new_y[0] !== ranges.initial.y[0] || new_y[1] !== ranges.initial.y[1]) {
+    if (y_changed) {
       ranges.initial.y = new_y as [number, number]
       ranges.current.y = new_y as [number, number]
     }

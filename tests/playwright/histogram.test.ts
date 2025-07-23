@@ -252,27 +252,10 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { type, min_bars, max_bars } of distributions) {
-      // Use a simpler approach - find all selects and use the one that's not in a controls panel
-      const selects = page.locator(`select`)
-      const select_count = await selects.count()
-
-      // Find the select that has the distribution options
-      let target_select = null
-      for (let i = 0; i < select_count; i++) {
-        const select = selects.nth(i)
-        const options = await select.locator(`option`).all()
-        const option_texts = await Promise.all(options.map((opt) => opt.textContent()))
-        if (option_texts.includes(`Bimodal`) && option_texts.includes(`Skewed`)) {
-          target_select = select
-          break
-        }
-      }
-
-      if (!target_select) {
-        throw new Error(`Could not find distribution type select`)
-      }
-
-      await target_select.selectOption(type)
+      const distribution_select = page.locator(
+        `label:has-text("Distribution Type:") select`,
+      )
+      await distribution_select.selectOption(type)
 
       // Wait for histogram to re-render with new data
       await expect(histogram).toBeVisible()
