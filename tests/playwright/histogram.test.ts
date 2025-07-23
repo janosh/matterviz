@@ -113,10 +113,17 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { selector, values } of controls) {
+      let previous_bar_count = await get_bar_count(histogram)
       for (const value of values) {
         await set_range_value(page, `#basic-single-series ${selector}`, value)
         const bar_count = await get_bar_count(histogram)
         expect(bar_count).toBeGreaterThan(0)
+
+        // For bin count changes, verify it affects the histogram
+        if (selector.includes(`first-of-type`) && value !== values[0]) {
+          expect(bar_count).not.toBe(previous_bar_count)
+        }
+        previous_bar_count = bar_count
       }
     }
   })
@@ -641,6 +648,12 @@ test.describe(`Histogram Component Tests`, () => {
     // Should not crash and may render some bars for valid data
     const bar_count = await get_bar_count(histogram)
     expect(bar_count).toBeGreaterThanOrEqual(0)
+
+    // Since we have 10 valid data points (1-10), we should see some bars
+    // even if NaN and Infinity values are filtered out
+    if (bar_count > 0) {
+      expect(bar_count).toBeGreaterThanOrEqual(5) // At least some bars for valid data
+    }
   })
 
   test(`maintains minimum bar width for very narrow bins`, async ({ page }) => {
@@ -1339,47 +1352,37 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`zoom rectangle positioning fix is applied correctly`, async ({ page }) => {
-    // This test verifies that the zoom rectangle positioning fix has been applied
-    // by checking that the histogram renders correctly and has zoom functionality
+    // Test actual zoom functionality with mouse interactions
 
     const histogram = page.locator(`#basic-single-series svg`).first()
     await expect(histogram).toBeVisible()
 
-    // Wait for histogram to render with bars
     await expect(histogram.locator(`rect[fill]:not([fill="none"])`).first()).toBeVisible({
       timeout: 5000,
     })
 
-    // Verify that the histogram has the correct structure for zoom functionality
-    await expect(histogram).toBeVisible()
-
-    // Check that the histogram has the correct cursor style for zoom functionality
     const cursor_style = await histogram.evaluate((el) => {
       return getComputedStyle(el).cursor
     })
     expect(cursor_style).toBe(`crosshair`)
 
-    // Verify that the zoom rectangle CSS class is defined in the stylesheet
-    const has_zoom_rect_css = await page.evaluate(() => {
-      const styleSheets = Array.from(document.styleSheets)
-      for (const sheet of styleSheets) {
-        try {
-          const rules = Array.from(sheet.cssRules || [])
-          for (const rule of rules) {
-            if (
-              `selectorText` in rule &&
-              typeof rule.selectorText === `string` &&
-              rule.selectorText.includes(`.zoom-rect`)
-            ) {
-              return true
-            }
-          }
-        } catch {
-          // Skip cross-origin stylesheets
-        }
-      }
-      return false
-    })
-    expect(has_zoom_rect_css).toBe(true)
+    // Test actual zoom interaction by simulating mouse events
+    const chart_area = histogram.locator(`g`).first()
+
+    // Start drag operation
+    await chart_area.hover()
+    await page.mouse.down()
+    await page.mouse.move(200, 200)
+
+    // Verify zoom rectangle appears during drag
+    const zoom_rect = histogram.locator(`.zoom-rect`)
+    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+
+    // Complete drag operation
+    await page.mouse.up()
+
+    // Test double-click reset
+    await histogram.dblclick()
+    await expect(zoom_rect).not.toBeVisible({ timeout: 1000 })
   })
 })

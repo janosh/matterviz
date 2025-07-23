@@ -10,11 +10,15 @@ export function box_muller(mean = 0, std_dev = 1): number {
 
 // Generate normal distribution data
 export function generate_normal(count: number, mean = 0, std_dev = 1): number[] {
+  if (count <= 0) throw new Error(`Count must be positive`)
   return Array.from({ length: count }, () => box_muller(mean, std_dev))
 }
 
 // Generate exponential distribution data
 export function generate_exponential(count: number, lambda: number): number[] {
+  if (count <= 0) throw new Error(`Count must be positive`)
+  if (lambda <= 0) throw new Error(`Lambda must be positive`)
+
   return Array.from({ length: count }, () => {
     const u = Math.max(Math.random(), Number.EPSILON)
     return -Math.log(1 - u) / lambda
@@ -27,6 +31,9 @@ export function generate_uniform(
   min_val: number,
   max_val: number,
 ): number[] {
+  if (count <= 0) throw new Error(`Count must be positive`)
+  if (min_val >= max_val) throw new Error(`min_val must be less than max_val`)
+
   return Array.from(
     { length: count },
     () => min_val + Math.random() * (max_val - min_val),
@@ -55,18 +62,33 @@ export function generate_pareto(count: number, x_min: number, alpha: number): nu
 }
 
 // Generate gamma distribution data (approximation)
+// Note: This approximation works best for integer alpha values
 export function generate_gamma(count: number, alpha: number, beta: number): number[] {
+  if (count <= 0) throw new Error(`Count must be positive`)
+  if (alpha <= 0) throw new Error(`Alpha must be positive`)
+  if (beta <= 0) throw new Error(`Beta must be positive`)
+
   return Array.from({ length: count }, () => {
-    // Sum of exponentials approximates gamma
+    // For integer alpha, sum of exponentials is exact
+    const is_integer = Math.abs(alpha - Math.round(alpha)) < 1e-10
+    const floor_alpha = Math.floor(alpha)
+    const frac_alpha = alpha - floor_alpha
+
     let sum = 0
-    for (let k = 0; k < Math.floor(alpha); k++) {
+    // Integer part: sum of exponentials
+    for (let k = 0; k < floor_alpha; k++) {
       sum += -Math.log(Math.max(Math.random(), Number.EPSILON)) / beta
     }
-    // Add fractional part
-    const frac = alpha - Math.floor(alpha)
-    if (frac > 0) {
-      sum += -Math.log(Math.max(Math.random(), Number.EPSILON)) * frac / beta
+
+    // Fractional part: beta distribution approximation
+    if (frac_alpha > 0 && !is_integer) {
+      const u1 = Math.max(Math.random(), Number.EPSILON)
+      const u2 = Math.max(Math.random(), Number.EPSILON)
+      const beta_sample = Math.pow(u1, 1 / frac_alpha) /
+        (Math.pow(u1, 1 / frac_alpha) + Math.pow(u2, 1 / (1 - frac_alpha)))
+      sum += -Math.log(Math.max(Math.random(), Number.EPSILON)) * beta_sample / beta
     }
+
     return sum
   })
 }
@@ -87,6 +109,8 @@ export function generate_large_dataset(
   count: number,
   type: `normal` | `uniform`,
 ): number[] {
+  if (count <= 0) throw new Error(`Count must be positive`)
+
   switch (type) {
     case `normal`:
       return generate_normal(count, 50, 15)

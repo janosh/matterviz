@@ -271,7 +271,6 @@
 
 <div class="histogram" bind:clientWidth={width} bind:clientHeight={height} {...rest}>
   {#if width && height}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
       bind:this={svg_element}
       onmouseenter={() => (hovered = true)}
@@ -282,7 +281,18 @@
       }}
       ondblclick={handle_double_click}
       style:cursor="crosshair"
-      role="img"
+      role="button"
+      aria-label="Interactive histogram with zoom and pan controls"
+      tabindex="0"
+      onkeydown={(event) => {
+        if (event.key === `Escape` && drag_state.start) {
+          drag_state = { start: null, current: null, bounds: null }
+        }
+        if (event.key === `Enter` || event.key === ` `) {
+          event.preventDefault()
+          handle_double_click()
+        }
+      }}
     >
       <g transform="translate({padding.l}, {padding.t})">
         <!-- Zero lines -->
