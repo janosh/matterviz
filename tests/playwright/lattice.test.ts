@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.describe(`Lattice Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `load` })
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     await expect(page.locator(`#structure-wrapper canvas`)).toBeVisible()
 
     // Use test page checkbox to open controls

@@ -89,7 +89,7 @@
   }
 
   // Get trajectory info organized by sections
-  let info_sections = $derived.by(() => {
+  let info_panel_data = $derived.by(() => {
     if (
       !trajectory?.frames?.length || current_step_idx < 0 ||
       current_step_idx >= trajectory.frames.length
@@ -98,7 +98,7 @@
     const current_frame = trajectory.frames[current_step_idx]
     if (!current_frame?.structure?.sites) return []
 
-    const sections: InfoItem[][] = []
+    const sections = []
 
     // File info section
     const file_items = [
@@ -121,7 +121,9 @@
       safe_item(`Format`, String(trajectory.metadata.source_format), `file-format`),
     ].filter(is_info_item)
 
-    if (file_items.length > 0) sections.push(file_items)
+    if (file_items.length > 0) {
+      sections.push({ title: `File`, items: file_items })
+    }
 
     // Structure info section
     const { structure } = current_frame
@@ -158,7 +160,9 @@
       ),
     ].filter(is_info_item)
 
-    if (structure_items.length > 0) sections.push(structure_items)
+    if (structure_items.length > 0) {
+      sections.push({ title: `Structure`, items: structure_items })
+    }
 
     // Trajectory info section
     const times = extract_numeric_array(trajectory.frames, `time`)
@@ -190,7 +194,9 @@
       }),
     ].filter(is_info_item)
 
-    if (traj_items.length > 0) sections.push(traj_items)
+    if (traj_items.length > 0) {
+      sections.push({ title: `Trajectory`, items: traj_items })
+    }
 
     // Energy section
     const energies = extract_numeric_array(trajectory.frames, `energy`)
@@ -208,7 +214,9 @@
         energy_range && safe_item(`Energy Range`, energy_range, `energy-range`),
       ].filter(is_info_item)
 
-      if (energy_items.length > 0) sections.push(energy_items)
+      if (energy_items.length > 0) {
+        sections.push({ title: `Energy`, items: energy_items })
+      }
     }
 
     // Forces section
@@ -227,7 +235,9 @@
         force_range && safe_item(`Force Range`, force_range, `force-range`),
       ].filter(is_info_item)
 
-      if (force_items.length > 0) sections.push(force_items)
+      if (force_items.length > 0) {
+        sections.push({ title: `Forces`, items: force_items })
+      }
     }
 
     // Volume change section
@@ -247,12 +257,14 @@
             `vol-change`,
           )].filter(is_info_item)
 
-          if (vol_items.length > 0) sections.push(vol_items)
+          if (vol_items.length > 0) {
+            sections.push({ title: `Volume`, items: vol_items })
+          }
         }
       }
     }
 
-    return sections.filter((section) => section.length > 0)
+    return sections
   })
 </script>
 
@@ -275,101 +287,79 @@
   }}
   {...rest}
 >
-  <h4>Trajectory Info</h4>
-  {#each info_sections as section, section_idx (section_idx)}
-    {#if section_idx > 0}
-      <hr class="section-divider" />
-    {/if}
-    {#each section as { label, value, key, tooltip } (key)}
-      <div
-        class="info-item"
-        title="Click to copy: {label}: {value}"
-        onclick={() => copy_item(label, value, key)}
-        role="button"
-        tabindex="0"
-        onkeydown={(event) => {
-          if (event.key === `Enter` || event.key === ` `) {
-            event.preventDefault()
-            copy_item(label, value, key)
-          }
-        }}
-      >
-        <span>{label}</span>
-        <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
-        {#if copied_items.has(key)}
-          <div class="copy-check">
-            <Icon
-              icon="Check"
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-            />
-          </div>
-        {/if}
-      </div>
-    {/each}
+  <h4 style="margin-top: 0">Trajectory Info</h4>
+  {#each info_panel_data as section (section.title)}
+    <section>
+      {#if section.title && section.title !== `File`}
+        <h4>{section.title}</h4>
+      {/if}
+      {#each section.items as item (item.key)}
+        <div
+          class="clickable"
+          title="Click to copy: {item.label}: {item.value}"
+          onclick={() => copy_item(item.label, item.value, item.key)}
+          role="button"
+          tabindex="0"
+          onkeydown={(event) => {
+            if (event.key === `Enter` || event.key === ` `) {
+              event.preventDefault()
+              copy_item(item.label, item.value, item.key)
+            }
+          }}
+        >
+          <span>{item.label}</span>
+          <span title={item.tooltip} {@attach create_tooltip()}>{@html item.value}</span>
+          {#if copied_items.has(item.key)}
+            <div class="copy-checkmark-overlay">
+              <Icon
+                icon="Check"
+                style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+              />
+            </div>
+          {/if}
+        </div>
+      {/each}
+      {#if section !== info_panel_data[info_panel_data.length - 1]}
+        <hr />
+      {/if}
+    </section>
   {/each}
 </DraggablePanel>
 
 <style>
-  h4 {
-    margin: 8pt 0 6pt;
-    font-size: 0.9em;
-    color: var(--text-muted, #ccc);
-  }
-  .section-divider {
-    margin: 12pt 0;
-    border: none;
-    border-top: 1px solid var(--border-color, #444);
-  }
-  .info-item {
+  section div {
     display: flex;
-    align-items: center;
     justify-content: space-between;
     gap: 6pt;
-    padding: var(--panel-padding, 1pt 5pt);
-    border-radius: var(--panel-border-radius, 3pt);
+    padding: 1pt;
+    line-height: 1.5;
+  }
+  section div.clickable {
     cursor: pointer;
-    transition: all 0.2s ease;
     position: relative;
   }
-  .info-item:hover {
-    background: var(--panel-btn-hover-bg, var(--tooltip-bg));
+  section div:hover {
+    background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.03));
   }
-  .info-item span:first-child {
-    font-size: 0.85em;
-    font-weight: 500;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .info-item span:last-child {
-    font-size: 0.8em;
-    font-weight: 500;
-    text-align: right;
-    flex-shrink: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .copy-check {
+  .copy-checkmark-overlay {
     position: absolute;
     top: 50%;
     right: 3pt;
     transform: translateY(-50%);
-    background: var(--panel-bg, rgba(0, 0, 0, 0.9));
+    z-index: 10;
+    background: var(--panel-bg);
     border-radius: 50%;
-    width: 18px;
-    height: 18px;
+    padding: 3pt;
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: appear 0.1s ease-out;
+    animation: checkmark-appear 0.1s ease-out;
   }
-  @keyframes appear {
-    from {
+  @keyframes checkmark-appear {
+    0% {
       opacity: 0;
     }
-    to {
+    100% {
       opacity: 1;
     }
   }

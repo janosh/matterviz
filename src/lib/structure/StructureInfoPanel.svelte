@@ -332,37 +332,24 @@
 </DraggablePanel>
 
 <style>
-  h4 {
-    margin: 8pt 0 6pt;
-    font-size: 0.9em;
-  }
-  section {
-    margin-bottom: 6pt;
-  }
   section div {
     display: flex;
-    align-items: center;
     justify-content: space-between;
     gap: 6pt;
-    padding: 1pt 0;
-    margin-bottom: 1pt;
-    transition: all 0.2s ease;
-    position: relative;
+    padding: 1pt;
+    line-height: 1.5;
   }
   section div.clickable {
     cursor: pointer;
   }
   section div:hover {
     background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.03));
-    padding-left: 3pt;
-    padding-right: 3pt;
   }
   .copy-checkmark-overlay {
     position: absolute;
     top: 50%;
     right: 3pt;
     transform: translateY(-50%);
-    z-index: 10;
     background: var(--panel-bg);
     border-radius: 50%;
     padding: 3pt;
@@ -385,69 +372,10 @@
     padding-left: 6pt;
   }
   section div.tips-item {
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin-bottom: 4pt;
     flex-direction: column;
-    align-items: flex-start;
     gap: 2pt;
   }
-  section div.tips-item:hover {
-    background: transparent;
-    border: none;
-    padding-left: 0;
-    padding-right: 0;
-  }
-  section div span:first-child {
-    font-size: 0.85em;
-    font-weight: 500;
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
-  }
-  section div span:last-child {
-    font-size: 0.8em;
-    font-weight: 500;
-    text-align: right;
-    font-family: inherit;
-    flex-shrink: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  section div.tips-item span:first-child {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: unset;
-    opacity: 1;
-  }
   section div.tips-item span:last-child {
-    font-size: 0.8em;
     opacity: 0.8;
-    font-weight: 400;
-    text-align: left;
-    white-space: normal;
-  }
-  section div.toggle-item {
-    margin: 2pt 0;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  section div.toggle-item:hover {
-    background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.1));
-    border: var(--panel-border, 1px solid rgba(255, 255, 255, 0.3));
-  }
-  section div.toggle-item span:first-child {
-    font-size: 0.9em;
-    font-weight: 600;
-  }
-  section div.toggle-item span:last-child {
-    font-size: 1em;
-    font-weight: 600;
   }
 </style>

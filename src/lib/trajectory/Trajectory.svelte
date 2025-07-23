@@ -24,7 +24,20 @@
     toggle_series_visibility,
   } from './plotting'
 
-  interface Props {
+  type EventHandlers = {
+    on_play?: (data: TrajHandlerData) => void
+    on_pause?: (data: TrajHandlerData) => void
+    on_step_change?: (data: TrajHandlerData) => void
+    on_end?: (data: TrajHandlerData) => void
+    on_loop?: (data: TrajHandlerData) => void
+    on_frame_rate_change?: (data: TrajHandlerData) => void
+    on_display_mode_change?: (data: TrajHandlerData) => void
+    on_fullscreen_change?: (data: TrajHandlerData) => void
+    on_file_load?: (data: TrajHandlerData) => void
+    on_error?: (data: TrajHandlerData) => void
+  }
+
+  interface Props extends EventHandlers {
     // trajectory data - can be provided directly or loaded from file
     trajectory?: TrajectoryType | undefined
     // URL to load trajectory from (alternative to providing trajectory directly)
@@ -102,17 +115,6 @@
     }
     fps_range?: [number, number] // allowed FPS range [min_fps, max_fps]
     fps?: number // frame rate for playback
-    // Event handlers for trajectory playback and navigation
-    on_play?: (data: TrajHandlerData) => void
-    on_pause?: (data: TrajHandlerData) => void
-    on_step_change?: (data: TrajHandlerData) => void
-    on_end?: (data: TrajHandlerData) => void
-    on_loop?: (data: TrajHandlerData) => void
-    on_frame_rate_change?: (data: TrajHandlerData) => void
-    on_display_mode_change?: (data: TrajHandlerData) => void
-    on_fullscreen_change?: (data: TrajHandlerData) => void
-    on_file_load?: (data: TrajHandlerData) => void
-    on_error?: (data: TrajHandlerData) => void
     [key: string]: unknown
   }
   let {
@@ -764,6 +766,7 @@
                 {file_size}
                 {file_object}
                 bind:panel_open={info_panel_open}
+                toggle_props={{ style: `width: 1em` }}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -1035,6 +1038,12 @@
     border-radius: var(--border-radius) var(--border-radius) 0 0;
     container-type: inline-size;
   }
+  .trajectory-controls button {
+    background: var(--btn-bg);
+  }
+  .trajectory-controls button:hover {
+    background: var(--btn-hover-bg);
+  }
   .nav-section {
     display: flex;
     align-items: center;
@@ -1179,8 +1188,8 @@
     }
   }
   .view-mode-dropdown-wrapper {
+    display: flex;
     position: relative;
-    display: inline-block;
   }
   .view-mode-dropdown {
     position: absolute;

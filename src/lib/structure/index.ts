@@ -1,9 +1,10 @@
 // Utilities for dealing with pymatgen Structures
-import type { ElementSymbol, Vec3 } from '$lib'
+import type { ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { atomic_weights } from '$lib/composition/parse'
 import element_data from '$lib/element/data'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { ComponentProps } from 'svelte'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
@@ -191,4 +192,19 @@ export function get_center_of_mass(struct_or_mol: AnyStructure): Vec3 {
   }
 
   return math.scale(center, 1 / total_weight)
+}
+
+export interface StructureHandlerData {
+  structure?: AnyStructure
+  filename?: string
+  file_size?: number
+  total_atoms?: number
+  error_msg?: string
+  is_fullscreen?: boolean
+  camera_position?: [number, number, number]
+  camera_has_moved?: boolean
+  color_scheme?: string
+  performance_mode?: `quality` | `speed`
+  scene_props?: ComponentProps<typeof StructureScene>
+  lattice_props?: ComponentProps<typeof Lattice>
 }
