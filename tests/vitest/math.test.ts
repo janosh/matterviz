@@ -10,8 +10,57 @@ test(`scale vector`, () => {
   expect(math.scale([1, 2, 3], 3)).toEqual([3, 6, 9])
 })
 
-test(`euclidean_dist between two vectors`, () => {
-  expect(math.euclidean_dist([1, 2, 3], [4, 5, 6])).toEqual(Math.sqrt(27))
+describe(`euclidean_dist`, () => {
+  test.each([
+    {
+      point1: [0, 0, 0],
+      point2: [1, 0, 0],
+      expected: 1.0,
+      desc: `unit distance along x-axis`,
+    },
+    {
+      point1: [0, 0, 0],
+      point2: [0, 1, 0],
+      expected: 1.0,
+      desc: `unit distance along y-axis`,
+    },
+    {
+      point1: [0, 0, 0],
+      point2: [0, 0, 1],
+      expected: 1.0,
+      desc: `unit distance along z-axis`,
+    },
+    {
+      point1: [0, 0, 0],
+      point2: [1, 1, 1],
+      expected: Math.sqrt(3),
+      desc: `diagonal distance`,
+    },
+    {
+      point1: [1, 2, 3],
+      point2: [4, 6, 8],
+      expected: Math.sqrt(9 + 16 + 25),
+      desc: `arbitrary points`,
+    },
+    {
+      point1: [-1, -1, -1],
+      point2: [1, 1, 1],
+      expected: Math.sqrt(12),
+      desc: `negative to positive`,
+    },
+    {
+      point1: [1, 2, 3],
+      point2: [1, 2, 3],
+      expected: 0.0,
+      desc: `identical points`,
+    },
+  ])(
+    `should calculate $desc correctly`,
+    ({ point1, point2, expected }) => {
+      const result = math.euclidean_dist(point1 as math.Vec3, point2 as math.Vec3)
+      expect(result).toBeCloseTo(expected, 6)
+    },
+  )
 })
 
 test.each([
@@ -131,32 +180,373 @@ test.each([
   expect(result.volume).toBeCloseTo(expected.volume, 1)
 })
 
-test(`pbc_dist`, () => {
-  const cubic_lattice: [Vec3, Vec3, Vec3] = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+describe(`pbc_dist`, () => {
+  test(`basic functionality with comprehensive scenarios`, () => {
+    const cubic_lattice: [Vec3, Vec3, Vec3] = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
 
-  // Opposite corners via PBC
-  expect(math.pbc_dist([1, 1, 1], [9, 9, 9], cubic_lattice)).toBeCloseTo(Math.sqrt(12), 3)
-  expect(math.euclidean_dist([1, 1, 1], [9, 9, 9])).toBeCloseTo(13.856, 3)
+    // Opposite corners via PBC
+    expect(math.pbc_dist([1, 1, 1], [9, 9, 9], cubic_lattice)).toBeCloseTo(
+      Math.sqrt(12),
+      3,
+    )
+    expect(math.euclidean_dist([1, 1, 1], [9, 9, 9])).toBeCloseTo(13.856, 3)
 
-  // Extreme PBC case
-  expect(math.pbc_dist([0.5, 0.5, 0.5], [9.7, 9.7, 9.7], cubic_lattice)).toBeCloseTo(
-    1.386,
-    3,
+    // Extreme PBC case
+    expect(math.pbc_dist([0.5, 0.5, 0.5], [9.7, 9.7, 9.7], cubic_lattice)).toBeCloseTo(
+      1.386,
+      3,
+    )
+
+    // Close points
+    const close_direct = math.euclidean_dist([2, 2, 2], [3, 3, 3])
+    const close_pbc = math.pbc_dist([2, 2, 2], [3, 3, 3], cubic_lattice)
+    expect(close_pbc).toBeCloseTo(close_direct, 5)
+    expect(close_pbc).toBeCloseTo(1.732, 3)
+
+    // 1D PBC
+    expect(math.pbc_dist([0.5, 5, 5], [9.7, 5, 5], cubic_lattice)).toBeCloseTo(0.8, 5)
+
+    // Hexagonal lattice
+    const hex_lattice: [Vec3, Vec3, Vec3] = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
+    expect(math.euclidean_dist([0.2, 0.2, 1], [3.8, 3.264, 7])).toBeCloseTo(7.639, 3)
+    expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.3, 3)
+
+    // Additional comprehensive scenarios
+    const cubic_lattice_2: math.Matrix3x3 = [
+      [6.256930122878799, 0.0, 0.0],
+      [0.0, 6.256930122878799, 0.0],
+      [0.0, 0.0, 6.256930122878799],
+    ]
+
+    // Atoms at optimal separation - PBC should match direct distance
+    const center1: math.Vec3 = [0.0, 0.0, 0.0]
+    const center2: math.Vec3 = [3.1284650614394, 3.1284650614393996, 3.1284650614394]
+    const center_direct = math.euclidean_dist(center1, center2)
+    const center_pbc = math.pbc_dist(center1, center2, cubic_lattice_2)
+    expect(center_pbc).toBeCloseTo(center_direct, 3)
+    expect(center_pbc).toBeCloseTo(5.419, 3)
+
+    // Corner atoms - PBC improvement
+    const corner1: math.Vec3 = [0.1, 0.1, 0.1]
+    const corner2: math.Vec3 = [6.156930122878799, 6.156930122878799, 6.156930122878799]
+    const corner_direct = math.euclidean_dist(corner1, corner2)
+    const corner_pbc = math.pbc_dist(corner1, corner2, cubic_lattice_2)
+    expect(corner_pbc).toBeCloseTo(0.346, 3)
+    expect(corner_direct).toBeCloseTo(10.491, 3)
+
+    // Long cell scenario - extreme aspect ratio
+    const long_cell: math.Matrix3x3 = [
+      [20.0, 0.0, 0.0],
+      [0.0, 5.0, 0.0],
+      [0.0, 0.0, 5.0],
+    ]
+    const long1: math.Vec3 = [1.0, 2.5, 2.5]
+    const long2: math.Vec3 = [19.0, 2.5, 2.5]
+    const long_pbc = math.pbc_dist(long1, long2, long_cell)
+    const long_direct = math.euclidean_dist(long1, long2)
+    expect(long_pbc).toBeCloseTo(2.0, 3)
+    expect(long_direct).toBeCloseTo(18.0, 3)
+  })
+
+  test.each([
+    {
+      pos1: [5.0, 5.0, 5.0],
+      pos2: [5.0, 5.0, 5.0],
+      expected: 0.0,
+      desc: `identical atoms`,
+    },
+    {
+      pos1: [0.0, 0.0, 0.0],
+      pos2: [10.0, 0.0, 0.0],
+      expected: 0.0,
+      desc: `boundary atoms`,
+    },
+    {
+      pos1: [0.0, 0.0, 0.0],
+      pos2: [5.0, 0.0, 0.0],
+      expected: 5.0,
+      desc: `exactly 0.5 fractional`,
+    },
+    {
+      pos1: [0.01, 5.0, 5.0],
+      pos2: [9.99, 5.0, 5.0],
+      expected: 0.02,
+      desc: `face-to-face x`,
+    },
+    {
+      pos1: [5.0, 0.01, 5.0],
+      pos2: [5.0, 9.99, 5.0],
+      expected: 0.02,
+      desc: `face-to-face y`,
+    },
+    {
+      pos1: [5.0, 5.0, 0.01],
+      pos2: [5.0, 5.0, 9.99],
+      expected: 0.02,
+      desc: `face-to-face z`,
+    },
+    {
+      pos1: [0.0000001, 0.0, 0.0],
+      pos2: [9.9999999, 0.0, 0.0],
+      expected: 0.0000002,
+      desc: `numerical precision`,
+    },
+  ])(`edge cases: $desc`, ({ pos1, pos2, expected }) => {
+    const lattice: math.Matrix3x3 = [
+      [10.0, 0.0, 0.0],
+      [0.0, 10.0, 0.0],
+      [0.0, 0.0, 10.0],
+    ]
+
+    const result = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, lattice)
+    const precision = expected < 0.001 ? 7 : expected < 0.1 ? 4 : 3
+    expect(result).toBeCloseTo(expected, precision)
+  })
+
+  test.each([
+    {
+      name: `orthorhombic`,
+      lattice: [
+        [8.0, 0.0, 0.0],
+        [0.0, 12.0, 0.0],
+        [0.0, 0.0, 6.0],
+      ] as math.Matrix3x3,
+      pos1: [0.5, 0.5, 0.5] as math.Vec3,
+      pos2: [7.7, 11.7, 5.7] as math.Vec3,
+      expected_pbc: 1.386,
+      expected_direct: 14.294,
+    },
+    {
+      name: `triclinic with 60° angle`,
+      lattice: [
+        [5.0, 0.0, 0.0],
+        [2.5, 4.33, 0.0],
+        [1.0, 1.0, 4.0],
+      ] as math.Matrix3x3,
+      pos1: [0.2, 0.2, 0.2] as math.Vec3,
+      pos2: [7.3, 4.9, 3.9] as math.Vec3,
+      expected_pbc: 3.308,
+      expected_direct: 9.284,
+    },
+    {
+      name: `anisotropic layered material`,
+      lattice: [
+        [3.0, 0.0, 0.0],
+        [0.0, 3.0, 0.0],
+        [0.0, 0.0, 30.0],
+      ] as math.Matrix3x3,
+      pos1: [0.1, 0.1, 1.0] as math.Vec3,
+      pos2: [2.9, 2.9, 29.0] as math.Vec3,
+      expected_pbc: 2.02,
+      expected_direct: 28.279,
+    },
+    {
+      name: `large Perovskite supercell`,
+      lattice: [
+        [15.6, 0.0, 0.0],
+        [0.0, 15.6, 0.0],
+        [0.0, 0.0, 15.6],
+      ] as math.Matrix3x3,
+      pos1: [0.2, 0.2, 0.2] as math.Vec3,
+      pos2: [15.4, 15.4, 15.4] as math.Vec3,
+      expected_pbc: Math.LN2,
+      expected_direct: 26.327,
+    },
+    {
+      name: `polymer chain with extreme aspect ratio`,
+      lattice: [
+        [50.0, 0.0, 0.0],
+        [0.0, 4.0, 0.0],
+        [0.0, 0.0, 4.0],
+      ] as math.Matrix3x3,
+      pos1: [1.0, 2.0, 2.0] as math.Vec3,
+      pos2: [49.0, 2.0, 2.0] as math.Vec3,
+      expected_pbc: 2.0,
+      expected_direct: 48.0,
+    },
+    {
+      name: `small molecular crystal`,
+      lattice: [
+        [2.1, 0.0, 0.0],
+        [0.0, 2.1, 0.0],
+        [0.0, 0.0, 2.1],
+      ] as math.Matrix3x3,
+      pos1: [0.05, 0.05, 0.05] as math.Vec3,
+      pos2: [2.05, 2.05, 2.05] as math.Vec3,
+      expected_pbc: 0.173,
+      expected_direct: 3.464,
+    },
+  ])(
+    `crystal systems and scenarios: $name`,
+    ({ lattice, pos1, pos2, expected_pbc, expected_direct }) => {
+      const pbc_result = math.pbc_dist(pos1, pos2, lattice)
+      const direct_result = math.euclidean_dist(pos1, pos2)
+
+      expect(pbc_result).toBeCloseTo(expected_pbc, 3)
+      expect(direct_result).toBeCloseTo(expected_direct, 3)
+    },
   )
 
-  // Close points
-  const close_direct = math.euclidean_dist([2, 2, 2], [3, 3, 3])
-  const close_pbc = math.pbc_dist([2, 2, 2], [3, 3, 3], cubic_lattice)
-  expect(close_pbc).toBeCloseTo(close_direct, 5)
-  expect(close_pbc).toBeCloseTo(1.732, 3)
+  test(`symmetry equivalence`, () => {
+    const sym_lattice: math.Matrix3x3 = [
+      [6.0, 0.0, 0.0],
+      [0.0, 6.0, 0.0],
+      [0.0, 0.0, 6.0],
+    ]
+    const equiv_cases = [
+      { pos1: [0.1, 3.0, 3.0], pos2: [5.9, 3.0, 3.0] },
+      { pos1: [3.0, 0.1, 3.0], pos2: [3.0, 5.9, 3.0] },
+      { pos1: [3.0, 3.0, 0.1], pos2: [3.0, 3.0, 5.9] },
+    ]
 
-  // 1D PBC
-  expect(math.pbc_dist([0.5, 5, 5], [9.7, 5, 5], cubic_lattice)).toBeCloseTo(0.8, 5)
+    const equiv_distances = equiv_cases.map(({ pos1, pos2 }) =>
+      math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, sym_lattice)
+    )
 
-  // Hexagonal lattice
-  const hex_lattice: [Vec3, Vec3, Vec3] = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
-  expect(math.euclidean_dist([0.2, 0.2, 1], [3.8, 3.264, 7])).toBeCloseTo(7.639, 3)
-  expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.3, 3)
+    // All should be equal (0.2 Å)
+    for (let idx = 1; idx < equiv_distances.length; idx++) {
+      expect(equiv_distances[idx]).toBeCloseTo(equiv_distances[0], 5)
+    }
+    expect(equiv_distances[0]).toBeCloseTo(0.2, 3)
+  })
+
+  test.each([
+    { pos1: [0.5, 0.5, 0.5], pos2: [7.7, 11.7, 5.7], desc: `corner to corner` },
+    { pos1: [1.0, 2.0, 3.0], pos2: [6.0, 10.0, 4.0], desc: `mid-cell positions` },
+    { pos1: [0.1, 0.1, 0.1], pos2: [7.9, 11.9, 5.9], desc: `near boundaries` },
+    { pos1: [4.0, 6.0, 3.0], pos2: [4.1, 6.1, 3.1], desc: `close positions` },
+  ])(`optimized path consistency: $desc`, ({ pos1, pos2 }) => {
+    const lattice: math.Matrix3x3 = [
+      [8.0, 0.0, 0.0],
+      [0.0, 12.0, 0.0],
+      [0.0, 0.0, 6.0],
+    ]
+
+    const lattice_inv: math.Matrix3x3 = [
+      [1 / 8.0, 0.0, 0.0],
+      [0.0, 1 / 12.0, 0.0],
+      [0.0, 0.0, 1 / 6.0],
+    ]
+
+    const standard = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, lattice)
+    const optimized = math.pbc_dist(
+      pos1 as math.Vec3,
+      pos2 as math.Vec3,
+      lattice,
+      lattice_inv,
+    )
+
+    expect(optimized).toBeCloseTo(standard, 10)
+    expect(optimized).toBeGreaterThanOrEqual(0)
+    expect(isFinite(optimized)).toBe(true)
+  })
+
+  test.each([
+    {
+      pos1: [0.0, 0.0, 0.0],
+      pos2: [0.5, 0.5, 0.5],
+      desc: `exactly 0.5 fractional`,
+    },
+    { pos1: [0.0, 0.0, 0.0], pos2: [1.0, 0.0, 0.0], desc: `exactly at boundary` },
+    {
+      pos1: [0.1, 0.1, 0.1],
+      pos2: [0.9, 0.9, 0.9],
+      desc: `close to 0.5 fractional`,
+    },
+    { pos1: [0.0, 0.0, 0.0], pos2: [0.0, 0.0, 0.0], desc: `identical positions` },
+    {
+      pos1: [0.0000001, 0.0, 0.0],
+      pos2: [0.0000002, 0.0, 0.0],
+      desc: `tiny distance`,
+    },
+    {
+      pos1: [0.9999999, 0.0, 0.0],
+      pos2: [0.0000001, 0.0, 0.0],
+      desc: `across boundary`,
+    },
+  ])(`optimization boundary conditions: $desc`, ({ pos1, pos2 }) => {
+    const unit_lattice: math.Matrix3x3 = [
+      [1.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [0.0, 0.0, 1.0],
+    ]
+
+    const unit_lattice_inv: math.Matrix3x3 = [
+      [1.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [0.0, 0.0, 1.0],
+    ]
+
+    const standard = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, unit_lattice)
+    const optimized = math.pbc_dist(
+      pos1 as math.Vec3,
+      pos2 as math.Vec3,
+      unit_lattice,
+      unit_lattice_inv,
+    )
+
+    const precision = pos1[0] < 0.001 ? 8 : 12
+    expect(optimized).toBeCloseTo(standard, precision)
+    expect(optimized).toBeGreaterThanOrEqual(0)
+    expect(isFinite(optimized)).toBe(true)
+  })
+
+  test(`optimization advanced scenarios`, () => {
+    // Test with triclinic lattice determinism
+    const triclinic_lattice: math.Matrix3x3 = [
+      [5.0, 0.0, 0.0],
+      [2.5, 4.33, 0.0],
+      [1.0, 1.0, 4.0],
+    ]
+
+    const tri_pos1: math.Vec3 = [0.2, 0.2, 0.2]
+    const tri_pos2: math.Vec3 = [4.8, 4.1, 3.8]
+
+    const tri_standard = math.pbc_dist(tri_pos1, tri_pos2, triclinic_lattice)
+    const tri_standard_repeat = math.pbc_dist(tri_pos1, tri_pos2, triclinic_lattice)
+    expect(tri_standard_repeat).toBeCloseTo(tri_standard, 10)
+
+    // Test large lattice wrap-around behavior
+    const large_lattice: math.Matrix3x3 = [
+      [100.0, 0.0, 0.0],
+      [0.0, 200.0, 0.0],
+      [0.0, 0.0, 50.0],
+    ]
+
+    const large_lattice_inv: math.Matrix3x3 = [
+      [0.01, 0.0, 0.0],
+      [0.0, 0.005, 0.0],
+      [0.0, 0.0, 0.02],
+    ]
+
+    const wrap_around_case = { pos1: [1.0, 1.0, 1.0], pos2: [99.0, 199.0, 49.0] }
+    const center_case = { pos1: [50.0, 100.0, 25.0], pos2: [51.0, 101.0, 26.0] }
+
+    for (const { pos1, pos2 } of [wrap_around_case, center_case]) {
+      const standard = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, large_lattice)
+      const optimized = math.pbc_dist(
+        pos1 as math.Vec3,
+        pos2 as math.Vec3,
+        large_lattice,
+        large_lattice_inv,
+      )
+
+      expect(optimized).toBeCloseTo(standard, 10)
+
+      // Verify the distances are reasonable and finite
+      expect(standard).toBeGreaterThanOrEqual(0)
+      expect(optimized).toBeGreaterThanOrEqual(0)
+      expect(isFinite(standard)).toBe(true)
+      expect(isFinite(optimized)).toBe(true)
+
+      // For wrap-around case, PBC should be shorter than direct distance
+      if (pos1[0] === 1.0 && pos2[0] === 99.0) {
+        const direct = math.euclidean_dist(pos1 as math.Vec3, pos2 as math.Vec3)
+        expect(standard).toBeLessThan(direct)
+        expect(optimized).toBeLessThan(direct)
+      }
+    }
+  })
 })
 
 describe(`tensor conversion utilities`, () => {
@@ -167,11 +557,8 @@ describe(`tensor conversion utilities`, () => {
   const tensor_3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 
   describe(`to_voigt`, () => {
-    it(`converts symmetric tensor to Voigt notation`, () => {
-      expect(math.to_voigt(symmetric_tensor)).toEqual(expected_voigt)
-    })
-
     it.each([
+      [`symmetric tensor`, symmetric_tensor, expected_voigt],
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 1, 1, 0, 0, 0]],
       [`diagonal`, [[2, 0, 0], [0, 3, 0], [0, 0, 4]], [2, 3, 4, 0, 0, 0]],
       [`zero`, [[0, 0, 0], [0, 0, 0], [0, 0, 0]], [0, 0, 0, 0, 0, 0]],
@@ -183,7 +570,7 @@ describe(`tensor conversion utilities`, () => {
         -0.3,
         -0.5,
       ]],
-    ])(`handles %s matrix`, (_, tensor, expected) => {
+    ])(`converts %s to Voigt notation`, (_, tensor, expected) => {
       expect(math.to_voigt(tensor)).toEqual(expected)
     })
 
@@ -211,8 +598,13 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`from_voigt`, () => {
-    it(`converts Voigt notation to symmetric tensor`, () => {
-      expect(math.from_voigt(expected_voigt)).toEqual(symmetric_tensor)
+    it.each([
+      [`symmetric tensor`, expected_voigt, symmetric_tensor],
+      [`identity`, [1, 1, 1, 0, 0, 0], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
+      [`diagonal`, [2, 3, 4, 0, 0, 0], [[2, 0, 0], [0, 3, 0], [0, 0, 4]]],
+      [`zero`, [0, 0, 0, 0, 0, 0], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]],
+    ])(`converts %s from Voigt notation`, (_, voigt, expected) => {
+      expect(math.from_voigt(voigt)).toEqual(expected)
     })
 
     it(`is inverse of to_voigt`, () => {
@@ -225,14 +617,6 @@ describe(`tensor conversion utilities`, () => {
           expect(reconstructed[idx][j]).toBeCloseTo(tensor[idx][j], 10)
         }
       }
-    })
-
-    it.each([
-      [`identity`, [1, 1, 1, 0, 0, 0], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
-      [`diagonal`, [2, 3, 4, 0, 0, 0], [[2, 0, 0], [0, 3, 0], [0, 0, 4]]],
-      [`zero`, [0, 0, 0, 0, 0, 0], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]],
-    ])(`handles %s tensor`, (_, voigt, expected) => {
-      expect(math.from_voigt(voigt)).toEqual(expected)
     })
 
     it.each([
@@ -254,13 +638,9 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`vec9_to_mat3x3`, () => {
-    it(`converts 9-element array to 3x3 tensor`, () => {
-      expect(math.vec9_to_mat3x3(flat_array)).toEqual(tensor_3x3)
-    })
-
     it.each([
+      [`sequential array`, flat_array, tensor_3x3],
       [`identity`, [1, 0, 0, 0, 1, 0, 0, 0, 1], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
-      [`sequential`, [1, 2, 3, 4, 5, 6, 7, 8, 9], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]],
       [`negative`, [-1, -2, -3, -4, -5, -6, -7, -8, -9], [[-1, -2, -3], [-4, -5, -6], [
         -7,
         -8,
@@ -271,7 +651,7 @@ describe(`tensor conversion utilities`, () => {
         5.5,
         6.6,
       ], [7.7, 8.8, 9.9]]],
-    ])(`handles %s numbers`, (_, input, expected) => {
+    ])(`converts %s to 3x3 tensor`, (_, input, expected) => {
       expect(math.vec9_to_mat3x3(input)).toEqual(expected)
     })
 
@@ -295,17 +675,8 @@ describe(`tensor conversion utilities`, () => {
   })
 
   describe(`tensor_to_flat_array`, () => {
-    it(`converts 3x3 tensor to 9-element array`, () => {
-      expect(math.tensor_to_flat_array(tensor_3x3)).toEqual(flat_array)
-    })
-
-    it(`is inverse of vec9_to_mat3x3`, () => {
-      const original = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]
-      const tensor = math.vec9_to_mat3x3(original)
-      expect(math.tensor_to_flat_array(tensor)).toEqual(original)
-    })
-
     it.each([
+      [`sequential tensor`, tensor_3x3, flat_array],
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 0, 0, 0, 1, 0, 0, 0, 1]],
       [`symmetric`, [[1, 2, 3], [2, 4, 5], [3, 5, 6]], [1, 2, 3, 2, 4, 5, 3, 5, 6]],
       [`negative`, [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]], [
@@ -319,8 +690,14 @@ describe(`tensor conversion utilities`, () => {
         -8,
         -9,
       ]],
-    ])(`handles %s matrix`, (_, tensor, expected) => {
+    ])(`converts %s to flat array`, (_, tensor, expected) => {
       expect(math.tensor_to_flat_array(tensor)).toEqual(expected)
+    })
+
+    it(`is inverse of vec9_to_mat3x3`, () => {
+      const original = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]
+      const tensor = math.vec9_to_mat3x3(original)
+      expect(math.tensor_to_flat_array(tensor)).toEqual(original)
     })
 
     it.each([

@@ -84,7 +84,7 @@ function setup_console_monitoring(page: Page): string[] {
 
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `load` })
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     const canvas = page.locator(`#structure-wrapper canvas`)
     await canvas.waitFor({ state: `visible`, timeout: 5000 })
     // Wait for canvas to be properly initialized by checking it has dimensions

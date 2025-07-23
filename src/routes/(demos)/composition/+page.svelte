@@ -40,7 +40,7 @@
   }
 </script>
 
-<h1>Chemical Compositions</h1>
+<h1>Chemical Composition</h1>
 <p>Interactive visualizations for chemical compositions using SVG charts.</p>
 
 {#each [`pie`, `bubble`, `bar`] as const as mode (mode)}

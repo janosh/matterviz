@@ -16,10 +16,16 @@
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
+  import { error } from '@sveltejs/kit'
   import { PrevNext } from 'svelte-multiselect'
 
-  let { data } = $props()
-  let element = $derived(data.element)
+  let element = $derived.by(() => {
+    const data = element_data.find((elem) =>
+      elem.name.toLowerCase() === page.params.slug
+    )
+    if (!data) throw error(404, `Page '${page.params.slug}' not found`)
+    return data
+  })
   $effect(() => {
     selected.element = element
   })

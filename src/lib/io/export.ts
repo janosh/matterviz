@@ -1,6 +1,6 @@
 import type { AnyStructure } from '$lib'
 import { electro_neg_formula } from '$lib'
-import { download } from '$lib/mp-api'
+import { download } from '$lib/io/fetch'
 import type * as THREE from 'three'
 import { Vector2, WebGLRenderer } from 'three'
 
