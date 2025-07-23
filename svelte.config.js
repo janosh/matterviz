@@ -54,7 +54,7 @@ export default {
   kit: {
     adapter: adapter({ fallback: `404.html` }),
 
-    alias: { $site: `src/site`, $root: `.` },
+    alias: { $site: `src/site`, $root: `.`, 'matterviz': `./src/lib` },
 
     prerender: {
       handleHttpError: ({ path, message }) => {

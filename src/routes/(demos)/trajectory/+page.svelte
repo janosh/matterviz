@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Trajectory } from '$lib/trajectory'
   import { FilePicker } from '$site'
+  import { Trajectory } from 'matterviz/trajectory'
 
   const trajectory_files = import.meta.glob(`$site/trajectories/*`, {
     query: `?url`,

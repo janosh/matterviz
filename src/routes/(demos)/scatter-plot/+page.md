@@ -6,7 +6,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Basic single series data
   const basic_data = {
@@ -107,7 +107,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Generate data for demonstration
   const point_count = 10
@@ -260,8 +260,8 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
-  import { symbol_names } from '$lib/plot'
+  import { ScatterPlot } from 'matterviz'
+  import { symbol_names } from 'matterviz/plot'
 
   let show_labels = $state(true)
   let label_size = $state(14)
@@ -384,7 +384,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Define categories
   const categories = ['Category A', 'Category B', 'Category C', 'Category D']
@@ -478,7 +478,7 @@ Using time data on the x-axis with custom formatting:
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Generate dates for the past 30 days
   const dates = Array(30).fill(0).map((_, idx) => {
@@ -571,7 +571,7 @@ This example demonstrates how points with identical coordinates can still be ind
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Create points with shared X or Y coordinates
   const shared_coords_data = {
@@ -638,7 +638,7 @@ This example shows how to add permanent text labels to your scatter points:
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Data with text labels
   const data = {
@@ -673,7 +673,7 @@ You can position labels in different directions relative to each point:
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   const position_data = {
     x: [5, 5, 5, 5, 5],
@@ -707,9 +707,9 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
-  import { symbol_names } from '$lib/plot'
-  import * as math from '$lib/math'
+  import { ScatterPlot } from 'matterviz'
+  import { symbol_names } from 'matterviz/plot'
+  import * as math from 'matterviz/math'
 
   const point_count = 50
 
@@ -888,8 +888,8 @@ This example combines multiple features including different display modes, custo
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
-  import { symbol_names } from '$lib/plot'
+  import { ScatterPlot } from 'matterviz'
+  import { symbol_names } from 'matterviz/plot'
 
   // Define categories and colors for data points
   const categories = ['Group A', 'Group B', 'Group C']
@@ -1096,7 +1096,7 @@ This example demonstrates how the color bar automatically positions itself in on
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // State for controlling point density in each quadrant
   let density = $state({
@@ -1227,7 +1227,7 @@ This example demonstrates automatic placement with several clusters of points:
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Function to generate a cluster of points
   const generate_cluster = (center_x, center_y, count, radius, label_prefix) => {
@@ -1314,7 +1314,7 @@ This example shows how to place the color bar vertically on the right side of th
 
 ```svelte example
 <script>
-  import { ColorScaleSelect, ScatterPlot } from '$lib'
+  import { ColorScaleSelect, ScatterPlot } from 'matterviz'
 
   // Generate data where color value relates to y-value
   const point_count = 50
@@ -1407,7 +1407,7 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 
 ```svelte example
 <script>
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from 'matterviz'
 
   // Define fixed plot limits
   const x_limits = [-5, 5]

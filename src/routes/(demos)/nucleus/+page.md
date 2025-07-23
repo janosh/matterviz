@@ -2,7 +2,7 @@
 
 ```svelte example code_above
 <script>
-  import { element_data, Nucleus } from '$lib'
+  import { element_data, Nucleus } from 'matterviz'
 </script>
 
 <ul>

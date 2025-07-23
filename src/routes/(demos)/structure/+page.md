@@ -5,7 +5,7 @@
 
 ```svelte example
 <script>
-  import { Structure } from '$lib'
+  import { Structure } from 'matterviz'
   import { structures } from '$site/structures'
   import Select from 'svelte-multiselect'
   import { FilePicker } from '$site'
@@ -35,7 +35,7 @@ Showcasing structures with different crystal systems.
 
 ```svelte example
 <script>
-  import { crystal_systems, Structure } from '$lib'
+  import { crystal_systems, Structure } from 'matterviz'
   import { structures } from '$site/structures'
 </script>
 

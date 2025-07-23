@@ -4,7 +4,7 @@ Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 
 ```svelte example
 <script>
-  import { ColorBar } from '$lib'
+  import { ColorBar } from 'matterviz'
 </script>
 
 {#each [
@@ -32,7 +32,7 @@ You can make fat and skinny bars:
 
 ```svelte example
 <script>
-  import { ColorBar } from '$lib'
+  import { ColorBar } from 'matterviz'
 
   const wrapper_style = 'margin: auto;'
 </script>
@@ -54,9 +54,9 @@ You can make fat and skinny bars:
 
 ```svelte example code_above
 <script>
-  import { element_data } from '$lib'
-  import { ColorBar, ColorScaleSelect } from '$lib/plot'
-  import { PeriodicTable, PropertySelect, TableInset } from '$lib/periodic-table'
+  import { element_data } from 'matterviz'
+  import { ColorBar, ColorScaleSelect } from 'matterviz/plot'
+  import { PeriodicTable, PropertySelect, TableInset } from 'matterviz/periodic-table'
 
   let color_scale = $state(`interpolateCividis`)
   let heatmap_key = $state(``)
@@ -110,7 +110,7 @@ Example demonstrating `title_side` and `tick_side` interaction:
 
 ```svelte example
 <script>
-  import { ColorBar } from '$lib'
+  import { ColorBar } from 'matterviz'
 
   const title_sides = [`top`, `bottom`, `left`, `right`]
   const tick_sides = [`primary`, `secondary`, `inside`]
@@ -172,7 +172,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
 ```svelte example
 <script>
-  import { ColorBar } from '$lib'
+  import { ColorBar } from 'matterviz'
 
   // Example date range (e.g., start and end of 2024)
   const date_range = [
@@ -215,7 +215,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
 
 ```svelte example
 <script>
-  import { ColorBar } from '$lib'
+  import { ColorBar } from 'matterviz'
 </script>
 
 <div
