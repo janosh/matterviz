@@ -1,8 +1,8 @@
 import {
   is_structure_file,
   parse_any_structure,
-  parse_optimade_json,
   parse_cif,
+  parse_optimade_json,
   parse_phonopy_yaml,
   parse_poscar,
   parse_structure_file,

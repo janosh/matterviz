@@ -1263,7 +1263,7 @@ export function is_optimade_json(content: string): boolean {
     if (Array.isArray(data)) {
       data = data[0]
     }
-    return (data != null && data.type === `structures` && data.id && data.attributes)
+    return (data !== null && data.type === `structures` && data.id && data.attributes)
   } catch {
     return false
   }
