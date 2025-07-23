@@ -22,15 +22,18 @@ export const structures = Object.entries(
 
 export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
 
-export const structure_files: FileInfo[] = Object.keys(import.meta.glob(
-  `$site/structures/*.{poscar,xyz,cif,yaml}`,
-)).map(
-  (path) => {
+export const structure_files: FileInfo[] = (Object.entries(
+  import.meta.glob(`$site/structures/*.{poscar,xyz,cif,yaml}`, {
+    eager: true,
+    query: `?raw`,
+    import: `default`,
+  }),
+) as [string, string][]).map(
+  ([path, content]) => {
     const filename = path.split(`/`).pop() || path
-    // Simple categorization based on file extension and name patterns
     const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
 
-    const structure_type = detect_structure_type(filename, ``)
+    const structure_type = detect_structure_type(filename, content)
     const category = { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] ||
       `📄`
     return { name: filename, url: path.replace(`/src/site`, ``), type, category }

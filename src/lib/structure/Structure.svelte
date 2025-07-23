@@ -234,6 +234,7 @@
   let camera_is_moving = $state(false)
   let scene: Scene | undefined = $state(undefined)
   let camera: Camera | undefined = $state(undefined)
+  let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
 
   // Custom toggle handlers for mutual exclusion
   function toggle_info() {
@@ -254,11 +255,15 @@
   $effect(() => {
     if (camera_is_moving) {
       camera_has_moved = true
-      on_camera_move?.({
-        structure,
-        camera_has_moved,
-        camera_position: scene_props.camera_position,
-      })
+      // Debounce camera move events to avoid excessive emissions
+      if (camera_move_timeout) clearTimeout(camera_move_timeout)
+      camera_move_timeout = setTimeout(() => {
+        on_camera_move?.({
+          structure,
+          camera_has_moved,
+          camera_position: scene_props.camera_position,
+        })
+      }, 200)
     }
   })
   function reset_camera() {
@@ -267,6 +272,20 @@
     camera_has_moved = false
     on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
   }
+
+  const emit_file_load_event = (
+    structure: AnyStructure,
+    filename: string,
+    content: string | ArrayBuffer,
+  ) =>
+    on_file_load?.({
+      structure: structure,
+      filename,
+      file_size: typeof content === `string`
+        ? new Blob([content]).size
+        : content.byteLength,
+      total_atoms: structure.sites?.length || 0,
+    })
 
   async function handle_file_drop(event: DragEvent) {
     event.preventDefault()
@@ -283,14 +302,7 @@
         const parsed_structure = parse_any_structure(text_content, filename)
         if (parsed_structure) {
           structure = parsed_structure
-          on_file_load?.({
-            structure: parsed_structure,
-            filename,
-            file_size: typeof content === `string`
-              ? new Blob([content]).size
-              : content.byteLength,
-            total_atoms: parsed_structure.sites?.length || 0,
-          })
+          emit_file_load_event(parsed_structure, filename, content)
         } else {
           error_msg = `Failed to parse structure from ${filename}`
           on_error?.({ error_msg, filename })
@@ -312,12 +324,7 @@
             const parsed_structure = parse_any_structure(content, filename)
             if (parsed_structure) {
               structure = parsed_structure
-              on_file_load?.({
-                structure: parsed_structure,
-                filename,
-                file_size: new Blob([content]).size,
-                total_atoms: parsed_structure.sites?.length || 0,
-              })
+              emit_file_load_event(parsed_structure, filename, content)
             } else {
               error_msg = `Failed to parse structure from ${filename}`
               on_error?.({ error_msg, filename })

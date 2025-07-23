@@ -1,5 +1,5 @@
 // TODO update to get MP details pages working again
-export const mp_build_bucket =
+export const mp_bucket =
   `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28`
 
 export async function decompress(blob: ReadableStream<Uint8Array> | null) {
@@ -47,4 +47,22 @@ export function download(data: string | Blob, filename: string, type: string): v
 
   // Use default browser download
   return default_download(data, filename, type)
+}
+
+// Fetch all material data in parallel
+export async function fetch_material_data<T extends Record<string, unknown>>(
+  material_id: string,
+  bucket: string = mp_bucket,
+): Promise<{ summary: T | null; similarity: T | null; robocrys: T | null }> {
+  try {
+    const [summary, similarity, robocrys] = await Promise.all([
+      fetch_zipped<T>(`${bucket}/summary/${material_id}.json.gz`),
+      fetch_zipped<T>(`${bucket}/similarity/${material_id}.json.gz`),
+      fetch_zipped<T>(`${bucket}/robocrys/${material_id}.json.gz`),
+    ])
+    return { summary, similarity, robocrys }
+  } catch (err) {
+    console.error(`Failed to fetch material data:`, err)
+    return { summary: null, similarity: null, robocrys: null }
+  }
 }

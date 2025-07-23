@@ -2,13 +2,13 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { format_num, MaterialCard, Structure } from '$lib'
-  import { download, fetch_zipped, mp_build_bucket } from '$lib/mp-api'
+  import { download, fetch_material_data, fetch_zipped, mp_bucket } from '$lib/mp-api'
   import type { RobocrystallogapherDoc, SimilarityDoc, SummaryDoc } from '$types'
 
   const file = `mp-${page.params.slug}.json.gz`
-  const summary_url = `${mp_build_bucket}/summary/${file}`
-  const similarity_url = `${mp_build_bucket}/similarity/${file}`
-  const robocrys_url = `${mp_build_bucket}/robocrys/${file}`
+  const summary_url = `${mp_bucket}/summary/${file}`
+  const similarity_url = `${mp_bucket}/similarity/${file}`
+  const robocrys_url = `${mp_bucket}/robocrys/${file}`
 
   let summary = $state(await fetch_zipped<SummaryDoc>(summary_url))
   let similarity = $state(await fetch_zipped<SimilarityDoc>(similarity_url))
@@ -17,7 +17,7 @@
   let input_value = $state(`mp-${page.params.slug}`)
   let mp_id = $derived(input_value.trim().toLowerCase())
   let href = $derived(`https://materialsproject.org/materials/${mp_id}`)
-  let aws_url = $derived(`${mp_build_bucket}/summary/${mp_id}.json.gz`)
+  let aws_url = $derived(`${mp_bucket}/summary/${mp_id}.json.gz`)
 </script>
 
 <main>
@@ -33,14 +33,14 @@
       onkeydown={async (event) => {
         if (event.key === `Enter`) {
           goto(`/${mp_id}`)
-          summary = await fetch_zipped(aws_url)
+          ;({ summary, similarity, robocrys } = await fetch_material_data(mp_id))
         }
       }}
     />
     <button
       onclick={async () => {
         goto(`/${mp_id}`)
-        summary = await fetch_zipped(aws_url)
+        ;({ summary, similarity, robocrys } = await fetch_material_data(mp_id))
       }}
     >
       Fetch material

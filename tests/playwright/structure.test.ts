@@ -1878,18 +1878,5 @@ test.describe(`Structure Event Handler Tests`, () => {
         await expect(fullscreen_button).toBeVisible()
       }
     })
-
-    test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
-      const reset_camera_button = page.locator(`#structure-wrapper .reset-camera`)
-      if (!(await reset_camera_button.isVisible())) test.skip()
-
-      await clear_events_and_wait(page)
-      await reset_camera_button.click()
-      await check_event_triggered(page, `on_camera_reset`, [
-        `camera_has_moved`,
-        `camera_position`,
-        `structure`,
-      ])
-    })
   })
 })

@@ -84,7 +84,7 @@
     }
 
     window.addEventListener(`set-lattice-props`, handle_lattice_props)
-    window.addEventListener(`set-show-buttons`, handle_show_controls) // Store event calls for testing
+    window.addEventListener(`set-show-buttons`, handle_show_controls)
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
 
     return () => {
