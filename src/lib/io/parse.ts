@@ -166,17 +166,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
 
     // Handle negative scale factor (volume-based scaling)
     if (scale_factor < 0) {
-      const volume = Math.abs(
-        lattice_vecs[0][0] *
-            (lattice_vecs[1][1] * lattice_vecs[2][2] -
-              lattice_vecs[1][2] * lattice_vecs[2][1]) +
-          lattice_vecs[0][1] *
-            (lattice_vecs[1][2] * lattice_vecs[2][0] -
-              lattice_vecs[1][0] * lattice_vecs[2][2]) +
-          lattice_vecs[0][2] *
-            (lattice_vecs[1][0] * lattice_vecs[2][1] -
-              lattice_vecs[1][1] * lattice_vecs[2][0]),
-      )
+      const volume = Math.abs(math.det_3x3(lattice_vecs))
       scale_factor = Math.pow(-scale_factor / volume, 1 / 3)
     }
 

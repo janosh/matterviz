@@ -284,4 +284,15 @@ export function cell_to_lattice_matrix(
   ]
 }
 
+export function det_3x3(matrix: Matrix3x3): number {
+  // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
+  // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
+  const [row0, row1, row2] = matrix
+  return (
+    row0[0] * (row1[1] * row2[2] - row1[2] * row2[1]) -
+    row0[1] * (row1[0] * row2[2] - row1[2] * row2[0]) +
+    row0[2] * (row1[0] * row2[1] - row1[1] * row2[0])
+  )
+}
+
 export const LOG_MIN_EPS = 1e-9 // Constants
