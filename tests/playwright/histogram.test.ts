@@ -58,7 +58,7 @@ const get_histogram_tick_range = async (
 
 test.describe(`Histogram Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/histogram`, { waitUntil: `load` })
+    await page.goto(`/test/histogram`, { waitUntil: `networkidle` })
   })
 
   test(`renders basic histogram with correct structure`, async ({ page }) => {

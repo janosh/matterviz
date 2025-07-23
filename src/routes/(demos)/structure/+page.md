@@ -1,12 +1,4 @@
 <script>
-  const structure_files = import.meta.glob('$lib/Structure*', {
-    query: '?raw',
-    import: 'default',
-    eager: true,
-  })
-  const files = Object.entries(structure_files).map(
-    ([path, content]) => ({ title: path, content })
-  )
 </script>
 
 # Structure
@@ -16,6 +8,8 @@
   import { Structure } from '$lib'
   import { structures } from '$site/structures'
   import Select from 'svelte-multiselect'
+  import { FilePicker } from '$site'
+  import { structure_files } from '$site/structures'
 
   let formula = $state(`Bi2Zr2O7-Fm3m`)
   let width = $state(0)
@@ -23,29 +17,16 @@
   let structure = $derived(structures.find((struct) => struct.id === formula) || {})
 </script>
 
-<form>
-  <label for="select">Select a structure:</label>
-  <Select
-    id="select"
-    options={structures.map((struct) => struct.id)}
-    selected={[formula]}
-    bind:value={formula}
-    maxSelect={1}
-    minSelect={1}
-  />
+<Structure {structure} bind:width bind:height>
+  <h3 style="position: absolute; left: 0; margin: 1ex 1em">{formula}</h3>
+</Structure>
 
-  <details>
-    <summary>JSON for structure {formula}</summary>
-    <pre>
-    <code>
-    {JSON.stringify(structure, null, 2)}
-    </code>
-  </pre>
-  </details>
-</form>
-
-<h3 align="center">{formula}</h3>
-<Structure {structure} bind:width bind:height />
+<FilePicker
+  files={structure_files}
+  show_category_filters
+  category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
+  style="max-width: var(--max-text-width); margin-block: 2em"
+/>
 
 <style>
   form {

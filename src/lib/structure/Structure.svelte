@@ -14,6 +14,7 @@
   import { tooltip } from 'svelte-multiselect'
   import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
+  import type { StructureHandlerData } from './index'
   import {
     STRUCT_DEFAULTS,
     StructureControls,
@@ -23,7 +24,17 @@
   } from './index'
   import type { Props as ControlProps } from './StructureControls.svelte'
 
-  interface Props extends ControlProps {
+  // Type alias for event handlers to reduce verbosity
+  type EventHandler = (data: StructureHandlerData) => void
+  type EventHandlers = {
+    on_file_load?: EventHandler
+    on_error?: EventHandler
+    on_fullscreen_change?: EventHandler
+    on_camera_move?: EventHandler
+    on_camera_reset?: EventHandler
+  }
+
+  interface Props extends ControlProps, EventHandlers {
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
@@ -50,6 +61,7 @@
     error_msg?: string
     // Performance mode: 'quality' (default) or 'speed' for large structures
     performance_mode?: `quality` | `speed`
+    children?: Snippet<[{ structure?: AnyStructure }]>
     [key: string]: unknown
   }
   let {
@@ -98,6 +110,12 @@
     loading = $bindable(false),
     error_msg = $bindable(undefined),
     performance_mode = $bindable(`quality`),
+    on_file_load,
+    on_error,
+    on_fullscreen_change,
+    on_camera_move,
+    on_camera_reset,
+    children,
     ...rest
   }: Props = $props()
 
@@ -108,9 +126,8 @@
       error_msg = undefined
 
       load_from_url(data_url, (content, filename) => {
-        if (on_file_drop) {
-          on_file_drop(content, filename)
-        } else {
+        if (on_file_drop) on_file_drop(content, filename)
+        else {
           // Parse structure internally when no handler provided
           try {
             const text_content = content instanceof ArrayBuffer
@@ -119,13 +136,22 @@
             const parsed_structure = parse_any_structure(text_content, filename)
             if (parsed_structure) {
               structure = parsed_structure
+              // Emit file load event
+              on_file_load?.({
+                structure,
+                filename,
+                file_size: new Blob([content]).size,
+                total_atoms: structure.sites?.length || 0,
+              })
             } else {
               error_msg = `Failed to parse structure from ${filename}`
+              on_error?.({ error_msg, filename })
             }
           } catch (error) {
             error_msg = `Failed to parse structure: ${
               error instanceof Error ? error.message : String(error)
             }`
+            on_error?.({ error_msg, filename })
           }
         }
       })
@@ -134,6 +160,7 @@
           console.error(`Failed to load structure from URL:`, error)
           error_msg = `Failed to load structure: ${error.message}`
           loading = false
+          on_error?.({ error_msg, filename: data_url })
         })
     }
   })
@@ -186,7 +213,7 @@
     }
   })
 
-  $effect.pre(() => {
+  $effect(() => {
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
   })
 
@@ -225,12 +252,20 @@
   })
   // Set camera_has_moved to true when camera starts moving
   $effect(() => {
-    if (camera_is_moving) camera_has_moved = true
+    if (camera_is_moving) {
+      camera_has_moved = true
+      on_camera_move?.({
+        structure,
+        camera_has_moved,
+        camera_position: scene_props.camera_position,
+      })
+    }
   })
   function reset_camera() {
     // Reset camera position to trigger automatic positioning
     scene_props.camera_position = [0, 0, 0]
     camera_has_moved = false
+    on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
   }
 
   async function handle_file_drop(event: DragEvent) {
@@ -246,8 +281,20 @@
           ? new TextDecoder().decode(content)
           : content
         const parsed_structure = parse_any_structure(text_content, filename)
-        if (parsed_structure) structure = parsed_structure
-        else error_msg = `Failed to parse structure from ${filename}`
+        if (parsed_structure) {
+          structure = parsed_structure
+          on_file_load?.({
+            structure: parsed_structure,
+            filename,
+            file_size: typeof content === `string`
+              ? new Blob([content]).size
+              : content.byteLength,
+            total_atoms: parsed_structure.sites?.length || 0,
+          })
+        } else {
+          error_msg = `Failed to parse structure from ${filename}`
+          on_error?.({ error_msg, filename })
+        }
       }),
     ).catch(() => false)
 
@@ -263,14 +310,25 @@
           else {
             // Parse structure internally when no handler provided
             const parsed_structure = parse_any_structure(content, filename)
-            if (parsed_structure) structure = parsed_structure
-            else error_msg = `Failed to parse structure from ${filename}`
+            if (parsed_structure) {
+              structure = parsed_structure
+              on_file_load?.({
+                structure: parsed_structure,
+                filename,
+                file_size: new Blob([content]).size,
+                total_atoms: parsed_structure.sites?.length || 0,
+              })
+            } else {
+              error_msg = `Failed to parse structure from ${filename}`
+              on_error?.({ error_msg, filename })
+            }
           }
         }
       } catch (error) {
         error_msg = `Failed to load file ${file.name}: ${
           error instanceof Error ? error.message : String(error)
         }`
+        on_error?.({ error_msg, filename: file.name })
       }
     }
   }
@@ -336,6 +394,10 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
+    on_fullscreen_change?.({
+      structure,
+      is_fullscreen: fullscreen,
+    })
   }}
 />
 
@@ -362,6 +424,7 @@
   {onkeydown}
   {...rest}
 >
+  {@render children?.({ structure })}
   {#if loading}
     <Spinner text="Loading structure..." {...spinner_props} />
   {:else if error_msg}

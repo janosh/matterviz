@@ -232,7 +232,7 @@ const get_tooltip_colors = async (
 
 test.describe(`ScatterPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
   })
 
   // BASIC RENDERING TESTS
@@ -1245,7 +1245,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`handles empty and invalid data gracefully`, async ({ page }) => {
     // Go to a test page with edge case data scenarios
-    await page.goto(`/test/scatter-plot`, { waitUntil: `load` })
+    await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
 
     // Test empty data series (if such a test case exists in the test page)
     // This tests the resilience of the component when no data is provided

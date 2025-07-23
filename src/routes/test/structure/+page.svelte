@@ -11,6 +11,9 @@
   let scene_props = $state({ gizmo: true, show_atoms: true })
   let performance_mode = $state<`quality` | `speed`>(`quality`)
 
+  // capture event data for testing
+  let event_calls = $state<Array<{ event: string; data: unknown }>>([])
+
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
     cell_edge_color: `white`,
@@ -20,6 +23,10 @@
     cell_line_width: 1.5,
     show_vectors: true,
   })
+
+  const create_event_handler = (event_name: string) => (data: unknown) => {
+    event_calls = [...event_calls, { event: event_name, data }]
+  }
 
   // React to URL parameters for testing
   $effect(() => {
@@ -77,7 +84,8 @@
     }
 
     window.addEventListener(`set-lattice-props`, handle_lattice_props)
-    window.addEventListener(`set-show-buttons`, handle_show_controls)
+    window.addEventListener(`set-show-buttons`, handle_show_controls) // Store event calls for testing
+    ;(globalThis as Record<string, unknown>).event_calls = event_calls
 
     return () => {
       window.removeEventListener(`set-lattice-props`, handle_lattice_props)
@@ -86,64 +94,59 @@
   })
 </script>
 
-<svelte:head>
-  <title>Structure Component Test</title>
-</svelte:head>
-
-<h1>Structure Component Test Page</h1>
-
-<section>
-  <h2>Controls for Test Page</h2>
-  <label>Controls Open: <input
-      type="checkbox"
-      bind:checked={controls_open}
-    /></label><br />
-  <label>Canvas Width: <input
-      type="number"
-      bind:value={canvas.width}
-      data-testid="canvas-width-input"
-    /></label><br />
-  <label>Canvas Height: <input
-      type="number"
-      bind:value={canvas.height}
-      data-testid="canvas-height-input"
-    /></label><br />
-  <label>Background Color: <input
-      type="color"
-      bind:value={background_color}
-    /></label><br />
-  <label>Show Gizmo: <input
-      type="checkbox"
-      bind:checked={scene_props.gizmo}
-    /></label><br />
-  <label>Show Atoms: <input
-      type="checkbox"
-      bind:checked={scene_props.show_atoms}
-    /></label><br />
-  <label>
-    Show Buttons:
-    <select bind:value={show_controls}>
-      <option value={true}>Always (true)</option>
-      <option value={false}>Never (false)</option>
-      <option value={400}>When width > 400px</option>
-      <option value={600}>When width > 600px</option>
-      <option value={800}>When width > 800px</option>
-    </select>
-  </label><br />
-  <label>
-    Performance Mode:
-    <select bind:value={performance_mode}>
-      <option value="quality">Quality</option>
-      <option value="speed">Speed</option>
-    </select>
-  </label>
-</section>
-
-<div
+<main
   id="structure-wrapper"
   style:width="{canvas.width}px"
   style:height="{canvas.height}px"
 >
+  <h1>Structure Component Test Page</h1>
+
+  <section>
+    <h2>Controls for Test Page</h2>
+    <label>Controls Open: <input
+        type="checkbox"
+        bind:checked={controls_open}
+      /></label><br />
+    <label>Canvas Width: <input
+        type="number"
+        bind:value={canvas.width}
+        data-testid="canvas-width-input"
+      /></label><br />
+    <label>Canvas Height: <input
+        type="number"
+        bind:value={canvas.height}
+        data-testid="canvas-height-input"
+      /></label><br />
+    <label>Background Color: <input
+        type="color"
+        bind:value={background_color}
+      /></label><br />
+    <label>Show Gizmo: <input
+        type="checkbox"
+        bind:checked={scene_props.gizmo}
+      /></label><br />
+    <label>Show Atoms: <input
+        type="checkbox"
+        bind:checked={scene_props.show_atoms}
+      /></label><br />
+    <label>
+      Show Buttons:
+      <select bind:value={show_controls}>
+        <option value={true}>Always (true)</option>
+        <option value={false}>Never (false)</option>
+        <option value={400}>When width > 400px</option>
+        <option value={600}>When width > 600px</option>
+        <option value={800}>When width > 800px</option>
+      </select>
+    </label><br />
+    <label>
+      Performance Mode:
+      <select bind:value={performance_mode}>
+        <option value="quality">Quality</option>
+        <option value="speed">Speed</option>
+      </select>
+    </label>
+  </section>
   <Structure
     structure={mp1_struct as unknown as PymatgenStructure}
     bind:controls_open
@@ -153,18 +156,28 @@
     {background_color}
     {show_controls}
     bind:scene_props
-    {lattice_props}
+    bind:lattice_props
     {performance_mode}
+    on_file_load={create_event_handler(`on_file_load`)}
+    on_error={create_event_handler(`on_error`)}
+    on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
+    on_camera_move={create_event_handler(`on_camera_move`)}
+    on_camera_reset={create_event_handler(`on_camera_reset`)}
   />
-</div>
 
-<div data-testid="panel-open-status" style="margin-top: 10px">
-  Controls Open Status: {controls_open}
-</div>
-<div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
-<div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
-<div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
-<div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
-<div data-testid="performance-mode-status">
-  Performance Mode Status: {performance_mode}
-</div>
+  <div data-testid="panel-open-status" style="margin-top: 10px">
+    Controls Open Status: {controls_open}
+  </div>
+  <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
+  <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
+  <div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
+  <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
+  <div data-testid="performance-mode-status">
+    Performance Mode Status: {performance_mode}
+  </div>
+
+  <div data-testid="event-calls-status" style="max-height: 50vh; overflow-y: auto">
+    <h3>Event Calls ({event_calls.length})</h3>
+    <pre>{JSON.stringify(event_calls, null, 2)}</pre>
+  </div>
+</main>

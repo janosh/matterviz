@@ -26,7 +26,7 @@ test.describe(`Trajectory Component`, () => {
   test.beforeEach(async ({ page }) => {
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
-    await page.goto(`/test/trajectory`, { waitUntil: `load` })
+    await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
   })
 
   test(`empty state displays correctly`, async ({ page }) => {
@@ -1383,7 +1383,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`Progress Reporting`, () => {
     test(`should display loading indicators and accessibility features`, async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `load` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       const viewers = page.locator(`.trajectory`)
 
@@ -1431,7 +1431,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should handle file upload and error states correctly`, async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `load` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       // Test file upload UI
       const empty_viewer = page.locator(`#empty-state`)
@@ -1461,7 +1461,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should show proper states during URL loading`, async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `load` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       const url_section = page.locator(`#trajectory-url`)
       await expect(url_section).toBeVisible()
@@ -1632,7 +1632,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`Event Handlers`, () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `load` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     })
 
     test(`should trigger step change events on navigation`, async ({ page }) => {
