@@ -8,8 +8,8 @@ describe(`composition module exports`, () => {
     expect(parse_module.composition_to_percentages).toBeDefined()
     expect(parse_module.get_total_atoms).toBeDefined()
     expect(parse_module.parse_composition).toBeDefined()
-    expect(parse_module.convert_atomic_numbers_to_symbols).toBeDefined()
-    expect(parse_module.convert_symbols_to_atomic_numbers).toBeDefined()
+    expect(parse_module.atomic_num_to_symbols).toBeDefined()
+    expect(parse_module.atomic_symbol_to_num).toBeDefined()
   })
 
   test(`exports all components and utilities from main index`, async () => {

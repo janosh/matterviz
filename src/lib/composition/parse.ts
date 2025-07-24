@@ -28,7 +28,7 @@ function is_atomic_number_composition(obj: Record<string | number, number>): boo
 
 // Convert a composition with atomic numbers to element symbols
 // Example: {26: 2, 8: 3} -> {Fe: 2, O: 3}
-export function convert_atomic_numbers_to_symbols(
+export function atomic_num_to_symbols(
   atomic_composition: Record<number, number>,
 ): CompositionType {
   const composition: CompositionType = {}
@@ -48,7 +48,7 @@ export function convert_atomic_numbers_to_symbols(
 
 // Convert a composition with element symbols to atomic numbers
 // Example: {Fe: 2, O: 3} -> {26: 2, 8: 3}
-export function convert_symbols_to_atomic_numbers(
+export function atomic_symbol_to_num(
   symbol_composition: CompositionType,
 ): Record<number, number> {
   const atomic_composition: Record<number, number> = {}
@@ -129,7 +129,7 @@ export function normalize_composition(
   // If it's an atomic number composition, convert to symbols first
   if (is_atomic_number_composition(composition)) {
     const atomic_comp = composition as Record<number, number>
-    const symbol_comp = convert_atomic_numbers_to_symbols(atomic_comp)
+    const symbol_comp = atomic_num_to_symbols(atomic_comp)
     return normalize_composition(symbol_comp)
   }
 

@@ -4,6 +4,7 @@ import type { ExtensionContext, TextEditor, Webview } from 'vscode'
 
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
+import { Buffer } from 'node:buffer'
 import type { MessageData } from '../src/extension'
 import {
   activate,
@@ -123,15 +124,13 @@ describe(`MatterViz Extension`, () => {
     [`test.json`, false],
     [``, false],
   ])(`file reading: "%s" → compressed:%s`, (filename, expected_compressed) => {
-    const file_path = `/test/${filename}`
-    const result = read_file(file_path)
-
+    const result = read_file(`/test/${filename}`)
     expect(result.filename).toBe(filename)
     expect(result.isCompressed).toBe(expected_compressed)
     if (expected_compressed) {
-      expect(mock_fs.readFileSync).toHaveBeenCalledWith(file_path)
+      expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`)
     } else {
-      expect(mock_fs.readFileSync).toHaveBeenCalledWith(file_path, `utf8`)
+      expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`, `utf8`)
     }
   })
 
@@ -149,10 +148,10 @@ describe(`MatterViz Extension`, () => {
     `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,
     (filename, is_trajectory, is_binary) => {
       expect(is_trajectory_file(filename)).toBe(is_trajectory)
-
       if (is_trajectory) {
-        const result = read_file(`/test/${filename}`)
-        expect(result.isCompressed).toBe(is_binary)
+        expect(read_file(`/test/${filename}`).isCompressed).toBe(
+          is_binary,
+        )
       }
     },
   )
@@ -202,15 +201,13 @@ describe(`MatterViz Extension`, () => {
     [{ fsPath: `/test/file.cif` }, `file.cif`],
     [{ fsPath: `/test/structure.xyz` }, `structure.xyz`],
   ])(`get_file with URI`, (uri, expected_filename) => {
-    const result = get_file(uri)
-    expect(result.filename).toBe(expected_filename)
+    expect(get_file(uri).filename).toBe(expected_filename)
   })
 
   test(`get_file with active editor`, () => {
     mock_vscode.window.activeTextEditor = {
       document: { fileName: `/test/active.cif`, getText: () => `active content` },
     } as TextEditor
-
     const result = get_file()
     expect(result.filename).toBe(`active.cif`)
     expect(result.content).toBe(`active content`)
@@ -221,9 +218,7 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
       input: { uri: { fsPath: `/test/tab.cif` } },
     } as unknown as vscode.Tab
-
-    const result = get_file()
-    expect(result.filename).toBe(`tab.cif`)
+    expect(get_file().filename).toBe(`tab.cif`)
   })
 
   test(`get_file throws when no file found`, () => {
@@ -235,16 +230,8 @@ describe(`MatterViz Extension`, () => {
 
   test.each(
     [
-      [`structure`, {
-        filename: `test.cif`,
-        content: `content`,
-        isCompressed: false,
-      }],
-      [`trajectory`, {
-        filename: `test.traj`,
-        content: `YmluYXJ5`,
-        isCompressed: true,
-      }],
+      [`structure`, { filename: `test.cif`, content: `content`, isCompressed: false }],
+      [`trajectory`, { filename: `test.traj`, content: `YmluYXJ5`, isCompressed: true }],
       [`structure`, {
         filename: `test"quotes.cif`,
         content: `content`,
@@ -265,14 +252,13 @@ describe(`MatterViz Extension`, () => {
   )(`HTML generation: %s files`, (type, data) => {
     const webview_data = { type, data, theme: `light` } as const
     const html = create_html(mock_webview, mock_context, webview_data)
-
     expect(html).toContain(`<!DOCTYPE html>`)
     expect(html).toContain(`Content-Security-Policy`)
     expect(html).toContain(`default-src 'none'`)
     expect(html).toContain(`script-src 'nonce-`)
     expect(html).toMatch(/nonce="[a-zA-Z0-9]{8,32}"/)
     expect(html).toContain(JSON.stringify(webview_data))
-    expect(html).toContain(`matterviz-app`) // App container exists
+    expect(html).toContain(`matterviz-app`)
   })
 
   test.each([
@@ -282,9 +268,7 @@ describe(`MatterViz Extension`, () => {
     [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
   ])(`message handling: %s`, async (message, expected_method) => {
     await handle_msg(message)
-    expect(
-      mock_vscode.window[expected_method as keyof typeof mock_vscode.window],
-    )
+    expect(mock_vscode.window[expected_method as keyof typeof mock_vscode.window])
       .toHaveBeenCalledWith(message.text)
   })
 
@@ -304,12 +288,8 @@ describe(`MatterViz Extension`, () => {
       `Saved: save.cif`,
     ],
   ])(`saveAs success: %s`, async (message, should_succeed, expected_info) => {
-    mock_vscode.window.showSaveDialog.mockResolvedValue({
-      fsPath: `/test/save.cif`,
-    })
-
+    mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/save.cif` })
     await handle_msg(message)
-
     if (should_succeed) {
       expect(mock_fs.writeFileSync).toHaveBeenCalledWith(
         `/test/save.cif`,
@@ -320,6 +300,39 @@ describe(`MatterViz Extension`, () => {
         expected_info,
       )
     }
+  })
+
+  test.each([
+    [
+      `PNG image`,
+      `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
+      `structure.png`,
+      true,
+    ],
+    [
+      `JPEG image`,
+      `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A`,
+      `plot.jpg`,
+      true,
+    ],
+    [
+      `PDF document`,
+      `data:application/pdf;base64,JVBERi0xLjQKJcOkw7zDtsO8DQoxIDAgb2JqDQo8PA0KL1R5cGUgL0NhdGFsb2cNCi9QYWdlcyAyIDAgUg0KPj4NCmVuZG9iag0KMiAwIG9iag0KPDwNCi9UeXBlIC9QYWdlcw0KL0tpZHMgWzMgMCBSXQ0KL0NvdW50IDENCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdDQo+Pg0KZW5kb2JqDQozIDAgb2JqDQo8PA0KL1R5cGUgL1BhZ2UNCi9QYXJlbnQgMiAwIFINCi9SZXNvdXJjZXMgPDwNCi9Gb250IDw8DQovRjEgNCAwIFINCj4+DQo+Pg0KL0NvbnRlbnRzIDUgMCBSDQo+Pg0KZW5kb2JqDQo0IDAgb2JqDQo8PA0KL1R5cGUgL0ZvbnQNCi9TdWJ0eXBlIC9UeXBlMQ0KL0Jhc2VGb250IC9IZWx2ZXRpY2ENCi9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nDQo+Pg0KZW5kb2JqDQo1IDAgb2JqDQo8PA0KL0xlbmd0aCA0NA0KPj4NCnN0cmVhbQ0KQlQNCjEyIDAgVGQKL0YxIDEyIFRqDQooSGVsbG8gV29ybGQpIFRqDQpFVA0KZW5kc3RyZWFtDQplbmRvYmoNCnhyZWYNCjAgNg0KMDAwMDAwMDAwMCA2NTUzNSBmDQowMDAwMDAwMDEwIDAwMDAwIG4NCjAwMDAwMDAwNzkgMDAwMDAgbg0KMDAwMDAwMDE3MyAwMDAwMCBuDQowMDAwMDAwMzAxIDAwMDAwIG4NCjAwMDAwMDAzODAgMDAwMDAgbg0KdHJhaWxlcg0KPDwNCi9TaXplIDYNCi9Sb290IDEgMCBSDQo+Pg0Kc3RhcnR4cmVmDQo0OTINCiUlRU9G`,
+      `report.pdf`,
+      true,
+    ],
+  ])(`saveAs binary data: %s`, async (_description, data_url, filename, is_binary) => {
+    mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/${filename}` })
+    await handle_msg({ command: `saveAs`, content: data_url, filename, is_binary })
+    const base64_data = data_url.replace(/^data:[^;]+;base64,/, ``)
+    const expected_buffer = Buffer.from(base64_data, `base64`)
+    expect(mock_fs.writeFileSync).toHaveBeenCalledWith(
+      `/test/${filename}`,
+      expected_buffer,
+    )
+    expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      `Saved: ${filename}`,
+    )
   })
 
   test(`saveAs error handling`, async () => {
@@ -348,6 +361,22 @@ describe(`MatterViz Extension`, () => {
       content: `content`,
       filename: `test.cif`,
     })
+    expect(mock_fs.writeFileSync).not.toHaveBeenCalled()
+  })
+
+  test(`saveAs binary data validation: empty base64 data`, async () => {
+    mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/test.png` })
+
+    await handle_msg({
+      command: `saveAs`,
+      content: `data:image/png;base64,`,
+      filename: `test.png`,
+      is_binary: true,
+    })
+
+    expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      `Failed to save binary data: Invalid data URL: missing base64 data`,
+    )
     expect(mock_fs.writeFileSync).not.toHaveBeenCalled()
   })
 
@@ -863,7 +892,7 @@ describe(`MatterViz Extension`, () => {
       [`data.hdf5`, true],
       [`md.dcd`, true],
       [`traj.xtc`, true],
-      [`simulation.trr`, false], // .trr files not supported in current implementation
+      [`simulation.trr`, false], // .trr files not supported
       // Compressed files
       [`trajectory.xyz.gz`, true],
       [`data.json.gz`, true],
