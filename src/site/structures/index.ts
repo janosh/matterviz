@@ -2,7 +2,7 @@ import { type PymatgenStructure } from '$lib/index'
 import { detect_structure_type, is_optimade_json, parse_optimade_json } from '$lib/io'
 import type { FileInfo } from '$site'
 
-export const structures = Object.entries(
+export const structures = Object.entries( // JSON structure files (OPTIMADE/pymatgen format) as JS objects
   import.meta.glob(`./*.json`, {
     eager: true,
     import: `default`,
@@ -33,9 +33,9 @@ export const structures = Object.entries(
 
 export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
 
-export const structure_files: FileInfo[] = (Object.entries(
+export const structure_files: FileInfo[] = (Object.entries( // all structure files as raw text
   import.meta.glob(
-    `$site/structures/*.{poscar,xyz,cif,yaml}`,
+    `$site/structures/*`,
     { eager: true, query: `?raw`, import: `default` },
   ),
 ) as [string, string][]).map(
