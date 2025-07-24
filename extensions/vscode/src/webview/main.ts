@@ -97,6 +97,11 @@ export const setup_vscode_download = (): void => {
     data: string | Blob,
     filename: string,
   ): void => {
+    if (!filename || filename.trim() === ``) {
+      console.error(`Invalid filename=${filename} provided to download`)
+      return
+    }
+
     try {
       if (typeof data === `string`) {
         vscode.postMessage({
@@ -115,6 +120,11 @@ export const setup_vscode_download = (): void => {
             filename,
             is_binary: true,
           })
+        }
+        reader.onerror = () => {
+          const msg = `Failed to read binary data for download`
+          console.error(msg)
+          vscode.postMessage({ command: `error`, text: msg })
         }
         reader.readAsDataURL(data)
       }

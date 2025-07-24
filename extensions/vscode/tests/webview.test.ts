@@ -162,4 +162,69 @@ describe(`VSCode Download Integration`, () => {
       is_binary: true,
     })
   })
+
+  test.each([``, `   `])(`rejects invalid filename: "%s"`, async (filename) => {
+    vi.resetModules()
+    const mock_post_message = vi.fn()
+    globalThis.acquireVsCodeApi = vi.fn(() => ({
+      postMessage: mock_post_message,
+      setState: vi.fn(),
+      getState: vi.fn(),
+    }))
+    const { setup_vscode_download } = await import(`../src/webview/main`)
+    setup_vscode_download()
+
+    globalThis.download(`test content`, filename, `application/json`)
+    expect(mock_post_message).not.toHaveBeenCalled()
+  })
+
+  test(`handles FileReader errors for binary data`, async () => {
+    vi.resetModules()
+    const mock_file_reader = {
+      onload: null as ((event: { target: { result: string } }) => void) | null,
+      onerror: null as (() => void) | null,
+      readAsDataURL: vi.fn(),
+    }
+    globalThis.FileReader = vi.fn(() => mock_file_reader) as unknown as typeof FileReader
+    const mock_post_message = vi.fn()
+    globalThis.acquireVsCodeApi = vi.fn(() => ({
+      postMessage: mock_post_message,
+      setState: vi.fn(),
+      getState: vi.fn(),
+    }))
+    const { setup_vscode_download } = await import(`../src/webview/main`)
+    setup_vscode_download()
+
+    globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
+    expect(mock_file_reader.readAsDataURL).toHaveBeenCalledWith(expect.any(Blob))
+
+    // Simulate FileReader error
+    if (mock_file_reader.onerror) mock_file_reader.onerror()
+    expect(mock_post_message).toHaveBeenCalledWith({
+      command: `error`,
+      text: `Failed to read binary data for download`,
+    })
+  })
+
+  test(`handles general exceptions during download`, async () => {
+    vi.resetModules()
+    const mock_post_message = vi.fn()
+    globalThis.acquireVsCodeApi = vi.fn(() => ({
+      postMessage: mock_post_message,
+      setState: vi.fn(),
+      getState: vi.fn(),
+    }))
+    const { setup_vscode_download } = await import(`../src/webview/main`)
+    setup_vscode_download()
+
+    mock_post_message.mockImplementationOnce(() => {
+      throw new Error(`Network error`)
+    })
+
+    globalThis.download(`test content`, `test.json`, `application/json`)
+    expect(mock_post_message).toHaveBeenCalledWith({
+      command: `error`,
+      text: `Download failed: Error: Network error`,
+    })
+  })
 })
