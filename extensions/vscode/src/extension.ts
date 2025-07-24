@@ -3,6 +3,7 @@ import type { ThemeName } from '$lib/theme'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode } from '$lib/theme'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import * as fs from 'fs'
+import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
 
@@ -24,6 +25,7 @@ export interface MessageData {
   filename?: string
   content?: string
   file_path?: string
+  is_binary?: boolean
 }
 
 // Track active file watchers by file path
@@ -145,7 +147,24 @@ export const handle_msg = async (
       })
 
       if (uri && msg.content) {
-        fs.writeFileSync(uri.fsPath, msg.content, `utf8`)
+        if (msg.is_binary) {
+          // Handle binary data (PNG images) - extract base64 from data URL
+          try {
+            const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
+            if (!base64_data) {
+              throw new Error(`Invalid data URL: missing base64 data`)
+            }
+            const buffer = Buffer.from(base64_data, `base64`)
+            fs.writeFileSync(uri.fsPath, buffer)
+          } catch (error) {
+            const error_message = error instanceof Error ? error.message : String(error)
+            vscode.window.showErrorMessage(`Failed to save binary data: ${error_message}`)
+            return
+          }
+        } else {
+          // Handle text data (JSON, XYZ)
+          fs.writeFileSync(uri.fsPath, msg.content, `utf8`)
+        }
         vscode.window.showInformationMessage(
           `Saved: ${path.basename(uri.fsPath)}`,
         )

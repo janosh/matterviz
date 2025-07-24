@@ -592,7 +592,7 @@
           console.warn(`Canvas element not found for PNG export`)
         }
       }}
-      title="{save_png_btn_text} (${png_dpi} DPI)"
+      title="{save_png_btn_text} ({png_dpi} DPI)"
     >
       {save_png_btn_text}
     </button>
