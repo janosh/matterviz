@@ -156,7 +156,8 @@
     if (!show || has_been_dragged || currently_dragging) return
 
     if (resize_timeout) clearTimeout(resize_timeout)
-    resize_timeout = setTimeout(() => {
+    const current_timeout = setTimeout(() => {
+      if (resize_timeout !== current_timeout) return
       if (show && toggle_panel_btn && !has_been_dragged && panel_div) {
         const pos = calculate_position()
         initial_position = pos
@@ -164,6 +165,7 @@
         panel_div.style.top = pos.top
       }
     }, 50) // Debounce resize events
+    resize_timeout = current_timeout
   }
 
   // Position panel when shown

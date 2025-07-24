@@ -38,9 +38,18 @@ interface FileChangeMessage {
   theme?: ThemeName
 }
 
+interface SaveMessage {
+  command: `saveAs`
+  content: string
+  filename: string
+  is_binary?: boolean
+}
+
+type VSCodeMessage = FileChangeMessage | SaveMessage | { command: string; text: string }
+
 // VSCode webview API type (available globally in webview context)
 interface WebviewApi {
-  postMessage(message: { command: string; text: string }): void
+  postMessage(message: VSCodeMessage): void
   setState(state: unknown): void
   getState(): unknown
 }
@@ -75,6 +84,48 @@ const get_vscode_api = (): WebviewApi | null => {
   }
 
   return null
+}
+
+// Set up VSCode-specific download override for file exports
+export const setup_vscode_download = (): void => {
+  const vscode = get_vscode_api()
+  if (!vscode) {
+    console.debug(`VSCode API not available, skipping download override setup`)
+    return
+  }
+  ;(globalThis as Record<string, unknown>).download = (
+    data: string | Blob,
+    filename: string,
+  ): void => {
+    try {
+      if (typeof data === `string`) {
+        vscode.postMessage({
+          command: `saveAs`,
+          content: data,
+          filename,
+          is_binary: false,
+        })
+      } else {
+        // Handle binary data (like PNG images)
+        const reader = new FileReader()
+        reader.onload = () => {
+          vscode.postMessage({
+            command: `saveAs`,
+            content: reader.result as string,
+            filename,
+            is_binary: true,
+          })
+        }
+        reader.readAsDataURL(data)
+      }
+    } catch (error) {
+      console.error(`VSCode download failed:`, error)
+      vscode.postMessage({
+        command: `error`,
+        text: `Download failed: ${error}`,
+      })
+    }
+  }
 }
 
 // Handle file change events from extension
@@ -270,6 +321,9 @@ const initialize_app = async (): Promise<MatterVizApp> => {
   if (!content || !filename) {
     throw new Error(`No data provided to MatterViz app`)
   }
+
+  // Set up VSCode-specific download override
+  setup_vscode_download()
 
   // Apply theme early
   if (theme) apply_theme_to_dom(theme)
