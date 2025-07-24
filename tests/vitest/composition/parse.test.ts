@@ -1,9 +1,9 @@
 import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition'
 import {
+  atomic_num_to_symbols,
+  atomic_symbol_to_num,
   composition_to_percentages,
-  convert_atomic_numbers_to_symbols,
-  convert_symbols_to_atomic_numbers,
   get_alphabetical_formula,
   get_electro_neg_formula,
   get_total_atoms,
@@ -21,13 +21,13 @@ describe(`atomic number utilities`, () => {
   ])(
     `should convert atomic numbers to symbols for %s (%s)`,
     (input, expected, _description) => {
-      expect(convert_atomic_numbers_to_symbols(input)).toEqual(expected)
+      expect(atomic_num_to_symbols(input)).toEqual(expected)
     },
   )
 
   test(`should handle duplicate atomic numbers in conversion`, () => {
     // This would be represented as an object with the same key, so it should sum
-    expect(convert_atomic_numbers_to_symbols({ 1: 1, 8: 1 })).toEqual({
+    expect(atomic_num_to_symbols({ 1: 1, 8: 1 })).toEqual({
       H: 1,
       O: 1,
     })
@@ -39,7 +39,7 @@ describe(`atomic number utilities`, () => {
   ])(
     `should throw error for invalid atomic numbers %o`,
     (input, expected_error) => {
-      expect(() => convert_atomic_numbers_to_symbols(input)).toThrow(
+      expect(() => atomic_num_to_symbols(input)).toThrow(
         expected_error,
       )
     },
@@ -52,12 +52,12 @@ describe(`atomic number utilities`, () => {
   ])(
     `should convert symbols to atomic numbers for %s (%s)`,
     (input, expected, _description) => {
-      expect(convert_symbols_to_atomic_numbers(input)).toEqual(expected)
+      expect(atomic_symbol_to_num(input)).toEqual(expected)
     },
   )
 
   test(`should throw error for invalid element symbols in conversion`, () => {
-    expect(() => convert_symbols_to_atomic_numbers({ Xx: 1 } as CompositionType)).toThrow(
+    expect(() => atomic_symbol_to_num({ Xx: 1 } as CompositionType)).toThrow(
       `Invalid element symbol: Xx`,
     )
   })
@@ -391,8 +391,8 @@ describe(`edge cases and error handling`, () => {
 
   test(`should be consistent between conversion functions`, () => {
     const original_symbols = { Fe: 2, O: 3, H: 1 }
-    const atomic_numbers = convert_symbols_to_atomic_numbers(original_symbols)
-    const back_to_symbols = convert_atomic_numbers_to_symbols(atomic_numbers)
+    const atomic_numbers = atomic_symbol_to_num(original_symbols)
+    const back_to_symbols = atomic_num_to_symbols(atomic_numbers)
 
     expect(back_to_symbols).toEqual(original_symbols)
   })

@@ -149,6 +149,23 @@
     action()
   }
 
+  // Debounced resize handler for better performance
+  let resize_timeout: ReturnType<typeof setTimeout> | undefined = $state(undefined)
+
+  function handle_resize() { // Only reposition if panel is visible and hasn't been manually dragged
+    if (!show || has_been_dragged || currently_dragging) return
+
+    if (resize_timeout) clearTimeout(resize_timeout)
+    resize_timeout = setTimeout(() => {
+      if (show && toggle_panel_btn && !has_been_dragged && panel_div) {
+        const pos = calculate_position()
+        initial_position = pos
+        panel_div.style.left = pos.left
+        panel_div.style.top = pos.top
+      }
+    }, 50) // Debounce resize events
+  }
+
   // Position panel when shown
   $effect(() => {
     if (show && toggle_panel_btn && !has_been_dragged) {
@@ -166,7 +183,7 @@
   })
 </script>
 
-<svelte:window onkeydown={on_keydown} />
+<svelte:window onkeydown={on_keydown} onresize={handle_resize} />
 <svelte:document onclick={handle_click_outside} />
 
 {#if show_panel}

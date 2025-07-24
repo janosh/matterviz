@@ -35,7 +35,7 @@ export const structure_map = new Map(structures.map((struct) => [struct.id, stru
 
 export const structure_files: FileInfo[] = (Object.entries(
   import.meta.glob(
-    `$site/structures/*.{poscar,xyz,cif,yaml}`,
+    `$site/structures/*.{json,poscar,xyz,cif,yaml}`,
     { eager: true, query: `?raw`, import: `default` },
   ),
 ) as [string, string][]).map(
