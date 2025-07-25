@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PymatgenStructure } from '$lib'
+  import { type PymatgenStructure, STRUCT_DEFAULTS } from '$lib'
   import Structure from '$lib/structure/Structure.svelte'
   import mp1_struct from '$site/structures/mp-1.json'
 
@@ -8,7 +8,11 @@
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<boolean | number>(true)
-  let scene_props = $state({ gizmo: true, show_atoms: true })
+  let scene_props = $state({
+    gizmo: true,
+    show_atoms: true,
+    camera_projection: `perspective` as `perspective` | `orthographic`,
+  })
   let performance_mode = $state<`quality` | `speed`>(`quality`)
 
   // capture event data for testing
@@ -44,6 +48,14 @@
       if (data_url) {
         // Clear the static structure to allow data_url loading
         structure = undefined
+      }
+    }
+
+    // Camera projection setting
+    if (url_params.has(`camera_projection`)) {
+      const projection = url_params.get(`camera_projection`)
+      if (projection === `perspective` || projection === `orthographic`) {
+        scene_props = { ...scene_props, camera_projection: projection }
       }
     }
 
@@ -191,6 +203,12 @@
   <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
   <div data-testid="performance-mode-status">
     Performance Mode Status: {performance_mode}
+  </div>
+  <div data-testid="camera-projection-status">
+    Camera Projection Status: {
+      scene_props.camera_projection ||
+      STRUCT_DEFAULTS.scene_props.camera_projection
+    }
   </div>
 
   <div data-testid="event-calls-status" style="max-height: 50vh; overflow-y: auto">

@@ -1,6 +1,10 @@
 // deno-lint-ignore-file no-await-in-loop
+import { STRUCT_DEFAULTS } from '$lib'
 import { expect, type Page, test } from '@playwright/test'
+import { Buffer } from 'node:buffer'
 import { open_structure_controls_panel } from './helpers.ts'
+
+const default_cam_projection = STRUCT_DEFAULTS.scene_props.camera_projection
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
@@ -1809,6 +1813,51 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(show_atoms_checkbox).not.toBeChecked()
   })
 
+  test(`should handle camera projection toggle correctly`, async ({ page }) => {
+    // Open the structure controls panel to access camera controls
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.check()
+
+    // Wait for controls panel to open
+    const controls_dialog = page.locator(`#structure-wrapper .structure .controls-panel`)
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    // Find the camera projection select dropdown
+    const camera_projection_select = controls_dialog.locator(
+      `label:has-text("Projection") select`,
+    )
+    await expect(camera_projection_select).toBeVisible()
+
+    // Check initial state
+    await expect(camera_projection_select).toHaveValue(default_cam_projection)
+    await expect(page.locator(`[data-testid="camera-projection-status"]`))
+      .toContainText(`Camera Projection Status: ${default_cam_projection}`)
+
+    // Switch to orthographic projection
+    await camera_projection_select.selectOption(`orthographic`)
+
+    // Verify the change was applied
+    await expect(camera_projection_select).toHaveValue(`orthographic`)
+    await expect(page.locator(`[data-testid="camera-projection-status"]`))
+      .toContainText(`Camera Projection Status: orthographic`)
+
+    // Switch back to perspective projection
+    await camera_projection_select.selectOption(`perspective`)
+
+    // Verify the change was applied
+    await expect(camera_projection_select).toHaveValue(
+      default_cam_projection,
+    )
+    await expect(page.locator(`[data-testid="camera-projection-status"]`))
+      .toContainText(`Camera Projection Status: ${default_cam_projection}`)
+
+    // Verify the canvas is still visible and functional
+    const canvas = page.locator(`#structure-wrapper canvas`)
+    await expect(canvas).toBeVisible()
+  })
+
   test(`should handle error states gracefully`, async ({ page }) => {
     // Try to load a non-existent file
     await page.goto(`/test/structure?data_url=non-existent-file.json`)
@@ -1911,5 +1960,229 @@ test.describe(`Structure Event Handler Tests`, () => {
     // The camera move event is triggered by Three.js OrbitControls which requires proper mouse interaction
     test.skip(`should trigger on_camera_move event when camera is moved`, () => {})
     test.skip(`should trigger on_camera_reset event when camera is reset`, () => {})
+  })
+})
+
+test.describe(`Camera Projection Toggle Tests`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.waitForSelector(`#structure-wrapper canvas`, { timeout: 5000 })
+  })
+
+  // Helper for camera projection toggle tests
+  async function test_camera_projection_toggle(
+    page: Page,
+    initial: string,
+    target: string,
+  ) {
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.check()
+
+    const controls_dialog = page.locator(`#structure-wrapper .structure .controls-panel`)
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    const camera_projection_select = controls_dialog.locator(
+      `label:has-text("Projection") select`,
+    )
+
+    if (initial !== default_cam_projection) { // Set initial state if not default
+      await camera_projection_select.selectOption(initial)
+      await expect(camera_projection_select).toHaveValue(initial)
+    }
+
+    // Change to target projection
+    await camera_projection_select.selectOption(target)
+    await expect(camera_projection_select).toHaveValue(target)
+    await expect(page.locator(`[data-testid="camera-projection-status"]`))
+      .toContainText(`Camera Projection Status: ${target}`)
+    await expect(page.locator(`#structure-wrapper canvas`)).toBeVisible()
+  }
+
+  test(`camera projection can be toggled from perspective to orthographic`, async ({ page }) => {
+    await test_camera_projection_toggle(page, `perspective`, `orthographic`)
+  })
+
+  test(`camera projection can be toggled from orthographic to perspective`, async ({ page }) => {
+    await test_camera_projection_toggle(page, `orthographic`, `perspective`)
+  })
+
+  test(`camera projection behavior and visual differences`, async ({ page }) => {
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.check()
+
+    const controls_dialog = page.locator(`#structure-wrapper .structure .controls-panel`)
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    const camera_projection_select = controls_dialog.locator(
+      `label:has-text("Projection") select`,
+    )
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Test both projections produce different visuals and respond to zoom
+    const screenshots: Record<string, Buffer> = {}
+
+    for (const projection of [`perspective`, `orthographic`]) {
+      await camera_projection_select.selectOption(projection)
+      await expect(page.locator(`[data-testid="camera-projection-status"]`))
+        .toContainText(projection)
+
+      screenshots[`${projection}_initial`] = await canvas.screenshot()
+      await canvas.hover({ force: true })
+      await page.mouse.wheel(0, -200)
+      await page.waitForTimeout(100)
+      screenshots[`${projection}_zoomed`] = await canvas.screenshot()
+    }
+
+    // Verify zoom responsiveness and visual differences
+    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(
+      false,
+    )
+    expect(screenshots.orthographic_initial.equals(screenshots.orthographic_zoomed)).toBe(
+      false,
+    )
+    expect(screenshots.perspective_initial.equals(screenshots.orthographic_initial)).toBe(
+      false,
+    )
+  })
+
+  test(`camera projection settings integration and persistence`, async ({ page }) => {
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.check()
+
+    const controls_dialog = page.locator(`#structure-wrapper .structure .controls-panel`)
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    const camera_projection_select = controls_dialog.locator(
+      `label:has-text("Projection") select`,
+    )
+    const atom_radius_input = controls_dialog.locator(
+      `label:has-text("Radius") input[type="number"]`,
+    )
+    const auto_rotate_input = controls_dialog.locator(
+      `label:has-text("Auto rotate speed") input[type="number"]`,
+    )
+
+    // Test 1: Settings preservation across projection changes
+    await atom_radius_input.fill(`1.5`)
+    await auto_rotate_input.fill(`0.5`)
+    await camera_projection_select.selectOption(`orthographic`)
+
+    await expect(atom_radius_input).toHaveValue(`1.5`)
+    await expect(auto_rotate_input).toHaveValue(`0.5`)
+    await expect(camera_projection_select).toHaveValue(`orthographic`)
+
+    // Test 2: State persistence across panel close/open
+    await test_page_controls_checkbox.uncheck()
+    await expect(controls_dialog).not.toHaveClass(/panel-open/)
+    await expect(page.locator(`[data-testid="camera-projection-status"]`)).toContainText(
+      `orthographic`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+    await expect(camera_projection_select).toHaveValue(`orthographic`)
+    await expect(atom_radius_input).toHaveValue(`1.5`)
+  })
+
+  test(`camera projection UI accessibility and interactions`, async ({ page }) => {
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.check()
+
+    const controls_dialog = page.locator(`#structure-wrapper .structure .controls-panel`)
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    // Test 1: UI controls accessibility and options
+    const projection_label = controls_dialog.locator(`label:has-text("Projection")`)
+    const projection_select = projection_label.locator(`select`)
+    await expect(projection_select).toBeVisible()
+
+    const options = await projection_select.locator(`option`).allTextContents()
+    expect(options).toEqual([`Perspective`, `Orthographic`])
+
+    // Test 2: Canvas interactions work with both projections
+    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas_box = await canvas.boundingBox()
+
+    for (const projection of [`perspective`, `orthographic`]) {
+      await projection_select.selectOption(projection)
+
+      if (canvas_box) {
+        await canvas.click({
+          position: { x: canvas_box.width / 2, y: canvas_box.height / 2 },
+          force: true,
+        })
+        await canvas.hover({ force: true })
+        await page.mouse.wheel(0, -100)
+      }
+    }
+
+    // Verify canvas remains responsive
+    await expect(canvas).toBeVisible()
+    const canvas_size = await canvas.evaluate((el) => ({
+      width: (el as HTMLCanvasElement).width,
+      height: (el as HTMLCanvasElement).height,
+    }))
+    expect(canvas_size.width).toBeGreaterThan(0)
+  })
+
+  test(`camera projection controls integration and functionality`, async ({ page }) => {
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.check()
+
+    const controls_dialog = page.locator(`#structure-wrapper .structure .controls-panel`)
+    await expect(controls_dialog).toHaveClass(/panel-open/, { timeout: 2000 })
+
+    const camera_projection_select = controls_dialog.locator(
+      `label:has-text("Projection") select`,
+    )
+    const auto_rotate_input = controls_dialog.locator(
+      `label:has-text("Auto rotate speed") input[type="number"]`,
+    )
+    const zoom_speed_input = controls_dialog.locator(
+      `label:has-text("Zoom speed") input[type="number"]`,
+    )
+    const canvas = page.locator(`#structure-wrapper canvas`)
+
+    // Test camera controls integration across both projections
+    const test_values = {
+      perspective: [`1.0`, `0.5`],
+      orthographic: [`0.8`, `0.4`],
+    } as const
+
+    for (const [projection, [auto_rotate, zoom_speed]] of Object.entries(test_values)) {
+      await camera_projection_select.selectOption(projection)
+      await auto_rotate_input.fill(auto_rotate)
+      await zoom_speed_input.fill(zoom_speed)
+
+      await expect(auto_rotate_input).toHaveValue(auto_rotate)
+      await expect(zoom_speed_input).toHaveValue(zoom_speed)
+      await expect(camera_projection_select).toHaveValue(projection)
+    }
+
+    // Test visual rendering differences
+    await camera_projection_select.selectOption(`perspective`)
+    const perspective_visual = await canvas.screenshot()
+
+    await camera_projection_select.selectOption(`orthographic`)
+    const orthographic_visual = await canvas.screenshot()
+
+    expect(perspective_visual.equals(orthographic_visual)).toBe(false)
+    expect(perspective_visual.length).toBeGreaterThan(1000)
+    expect(orthographic_visual.length).toBeGreaterThan(1000)
+
+    // Verify status display updates correctly (validates UI state connection)
+    await expect(page.locator(`[data-testid="camera-projection-status"]`)).toContainText(
+      `orthographic`,
+    )
   })
 })

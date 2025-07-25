@@ -921,10 +921,7 @@ export function parse_structure_file(
     // JSON files - try OPTIMADE first, then pymatgen structures
     if (ext === `json`) {
       try {
-        // Check if it's OPTIMADE JSON format
-        if (is_optimade_json(content)) {
-          return parse_optimade_json(content)
-        }
+        if (is_optimade_json(content)) return parse_optimade_json(content)
 
         // Otherwise, try to parse as pymatgen/nested structure JSON
         const parsed = JSON.parse(content)
@@ -959,10 +956,7 @@ export function parse_structure_file(
 
   // JSON format detection: try to parse as JSON first
   try {
-    // Check if it's OPTIMADE JSON format
-    if (is_optimade_json(content)) {
-      return parse_optimade_json(content)
-    }
+    if (is_optimade_json(content)) return parse_optimade_json(content)
 
     // Otherwise try parsing as regular JSON structure
     const parsed = JSON.parse(content)
@@ -1195,9 +1189,7 @@ export function is_optimade_json(content: string): boolean {
   try {
     const response = JSON.parse(content)
     let data = response.data
-    if (Array.isArray(data)) {
-      data = data[0]
-    }
+    if (Array.isArray(data)) data = data[0]
     return (data !== null && data.type === `structures` && data.id && data.attributes)
   } catch {
     return false

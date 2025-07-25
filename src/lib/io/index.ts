@@ -4,6 +4,9 @@ export * from './decompress'
 export * from './export'
 export * from './parse'
 
+// TODO figure out why this is needed (likely circular import, breaks HMR)
+export { is_optimade_json } from './parse'
+
 // Handle URL-based file drop data by fetching content lazily
 export async function handle_url_drop(
   drag_event: DragEvent,
