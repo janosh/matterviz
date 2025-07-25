@@ -62,6 +62,7 @@
       same_size_atoms: false,
       bond_thickness: STRUCT_DEFAULTS.bond.thickness,
       camera_projection: STRUCT_DEFAULTS.scene_props.camera_projection,
+      zoom_speed: STRUCT_DEFAULTS.scene_props.zoom_speed,
     }),
     lattice_props = $bindable({
       cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,

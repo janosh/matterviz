@@ -1,5 +1,5 @@
 import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
-import { elem_symbols } from '$lib'
+import { elem_symbols, format_num } from '$lib'
 import element_data from '$lib/element/data'
 
 // Create a mapping from atomic numbers to element symbols
@@ -221,12 +221,14 @@ export function parse_composition(
 // @param sort_fn - Function to sort element symbols
 // @param plain_text - If true, output plain text without HTML tags
 // @param delim - Delimiter between elements (default: space)
+// @param amount_format - Float format for element amounts (default: .3~s)
 // @returns Formatted chemical formula with or without subscripts
 export function format_composition_formula(
   composition: CompositionType,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
   plain_text = false,
   delim = ` `,
+  amount_format = `.3~s`,
 ): string {
   const formula = []
   const symbols = Object.keys(composition) as ElementSymbol[]
@@ -235,7 +237,12 @@ export function format_composition_formula(
     const amount = composition[el]
     if (amount && amount > 0) {
       if (amount === 1) formula.push(el)
-      else formula.push(plain_text ? `${el}${amount}` : `${el}<sub>${amount}</sub>`)
+      else {
+        const formatted_amount = format_num(amount, amount_format)
+        formula.push(
+          plain_text ? `${el}${formatted_amount}` : `${el}<sub>${formatted_amount}</sub>`,
+        )
+      }
     }
   }
   return formula.join(delim)
@@ -245,11 +252,13 @@ export function format_composition_formula(
 // @param input - String formula, composition object, or structure
 // @param plain_text - If true, output plain text without HTML tags
 // @param delim - Delimiter between elements (default: space)
+// @param amount_format - Float format for element amounts (default: .3~s)
 // @returns Alphabetically sorted chemical formula
 export function get_alphabetical_formula(
   input: string | CompositionType | AnyStructure,
   plain_text = false,
   delim = ` `,
+  amount_format = `.3~s`,
 ): string {
   if (typeof input === `string`) {
     // If it's already a string, parse it and reformat alphabetically
@@ -260,6 +269,7 @@ export function get_alphabetical_formula(
         (symbols) => symbols.sort(),
         plain_text,
         delim,
+        amount_format,
       )
     } catch {
       // If parsing fails, return the original string
@@ -274,6 +284,7 @@ export function get_alphabetical_formula(
         (symbols) => symbols.sort(),
         plain_text,
         delim,
+        amount_format,
       )
     } catch {
       return `Unknown`
@@ -284,6 +295,7 @@ export function get_alphabetical_formula(
       (symbols) => symbols.sort(),
       plain_text,
       delim,
+      amount_format,
     )
   }
 }
@@ -292,11 +304,13 @@ export function get_alphabetical_formula(
 // @param input - String formula, composition object, or structure
 // @param plain_text - If true, output plain text without HTML tags
 // @param delim - Delimiter between elements (default: space)
+// @param amount_format - Float format for element amounts (default: .3~s)
 // @returns Electronegativity-sorted chemical formula
 export function get_electro_neg_formula(
   input: string | CompositionType | AnyStructure,
   plain_text = false,
   delim = ` `,
+  amount_format = `.3~s`,
 ): string {
   const sort_by_electronegativity = (symbols: ElementSymbol[]) => {
     return symbols.sort((el1, el2) => {
@@ -318,6 +332,7 @@ export function get_electro_neg_formula(
         sort_by_electronegativity,
         plain_text,
         delim,
+        amount_format,
       )
     } catch {
       return input // If parsing fails, return the original string
@@ -330,6 +345,7 @@ export function get_electro_neg_formula(
         sort_by_electronegativity,
         plain_text,
         delim,
+        amount_format,
       )
     } catch {
       return `Unknown`
@@ -340,6 +356,7 @@ export function get_electro_neg_formula(
       sort_by_electronegativity,
       plain_text,
       delim,
+      amount_format,
     )
   }
 }

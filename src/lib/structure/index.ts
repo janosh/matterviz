@@ -45,6 +45,7 @@ export const STRUCT_DEFAULTS = {
     auto_rotate: 0,
     same_size_atoms: false,
     camera_projection: `perspective`,
+    zoom_speed: 0.3,
   },
 } as const
 

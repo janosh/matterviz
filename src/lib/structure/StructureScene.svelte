@@ -75,7 +75,7 @@
     rotation_damping = STRUCT_DEFAULTS.scene_props.rotation_damping,
     max_zoom = undefined,
     min_zoom = undefined,
-    zoom_speed = 0.3,
+    zoom_speed = STRUCT_DEFAULTS.scene_props.zoom_speed,
     pan_speed = 1,
     show_atoms = true,
     show_bonds = false,
