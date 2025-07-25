@@ -27,7 +27,6 @@
     // Display options (bindable from parent)
     show_image_atoms?: boolean
     show_site_labels?: boolean
-    show_full_controls?: boolean
     // Background settings (bindable from parent)
     background_color?: string
     background_opacity?: number
@@ -62,6 +61,8 @@
       force_vector_color: STRUCT_DEFAULTS.vector.color,
       same_size_atoms: false,
       bond_thickness: STRUCT_DEFAULTS.bond.thickness,
+      camera_projection: STRUCT_DEFAULTS.scene_props.camera_projection,
+      zoom_speed: STRUCT_DEFAULTS.scene_props.zoom_speed,
     }),
     lattice_props = $bindable({
       cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
@@ -73,7 +74,6 @@
     }),
     show_image_atoms = $bindable(true),
     show_site_labels = $bindable(false),
-    show_full_controls = $bindable(false),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     color_scheme = $bindable(`Vesta`),
@@ -207,11 +207,162 @@
         force vectors
       </label>
     {/if}
-    <label>
-      <input type="checkbox" bind:checked={show_full_controls} />
-      full controls
-    </label>
   </div>
+
+  <!-- Export Controls -->
+  <hr />
+  <h4>Export</h4>
+  <span
+    style="display: flex; gap: 6pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
+  >
+    <button
+      type="button"
+      onclick={() => exports.export_structure_as_json(structure)}
+      title={save_json_btn_text}
+    >
+      {save_json_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => handle_copy(`json`)}
+      title={current_copy_json_btn_text}
+    >
+      {current_copy_json_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => exports.export_structure_as_xyz(structure)}
+      title={save_xyz_btn_text}
+    >
+      {save_xyz_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => handle_copy(`xyz`)}
+      title={current_copy_xyz_btn_text}
+    >
+      {current_copy_xyz_btn_text}
+    </button>
+    <label>
+      <button
+        type="button"
+        onclick={() => {
+          const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
+          if (canvas) {
+            exports.export_canvas_as_png(
+              canvas,
+              structure,
+              png_dpi,
+              scene,
+              camera,
+            )
+          } else console.warn(`Canvas element not found for PNG export`)
+        }}
+        title="{save_png_btn_text} ({png_dpi} DPI)"
+      >
+        {save_png_btn_text}
+      </button>
+      &nbsp;DPI:
+      <input
+        type="number"
+        min={50}
+        max={500}
+        bind:value={png_dpi}
+        title="Export resolution in dots per inch"
+      />
+    </label>
+  </span>
+
+  <hr />
+  <!-- Camera Controls -->
+  <h4>Camera</h4>
+  <label>
+    <span
+      title="Switch between perspective and orthographic projection"
+      {@attach tooltip()}
+    >
+      Projection
+    </span>
+    <select bind:value={scene_props.camera_projection}>
+      <option value="perspective">Perspective</option>
+      <option value="orthographic">Orthographic</option>
+    </select>
+  </label>
+  <label>
+    Auto rotate speed
+    <input
+      type="number"
+      min={0}
+      max={2}
+      step={0.01}
+      bind:value={scene_props.auto_rotate}
+    />
+    <input
+      type="range"
+      min={0}
+      max={2}
+      step={0.01}
+      bind:value={scene_props.auto_rotate}
+    />
+  </label>
+  <label>
+    Zoom speed
+    <input
+      type="number"
+      min={0.1}
+      max={0.8}
+      step={0.02}
+      bind:value={scene_props.zoom_speed}
+    />
+    <input
+      type="range"
+      min={0.1}
+      max={0.8}
+      step={0.02}
+      bind:value={scene_props.zoom_speed}
+    />
+  </label>
+  <label>
+    <span
+      title="Pan by clicking and dragging while holding cmd, ctrl or shift"
+      {@attach tooltip()}
+    >
+      Pan speed
+    </span>
+    <input
+      type="number"
+      min={0}
+      max={2}
+      step={0.01}
+      bind:value={scene_props.pan_speed}
+    />
+    <input
+      type="range"
+      min={0}
+      max={2}
+      step={0.01}
+      bind:value={scene_props.pan_speed}
+    />
+  </label>
+  <label>
+    <span title="Damping factor for rotation" {@attach tooltip()}>
+      Rotation damping
+    </span>
+    <input
+      type="number"
+      min={0.01}
+      max={0.3}
+      step={0.01}
+      bind:value={scene_props.rotation_damping}
+    />
+    <input
+      type="range"
+      min={0.01}
+      max={0.3}
+      step={0.01}
+      bind:value={scene_props.rotation_damping}
+    />
+  </label>
 
   <hr />
 
@@ -390,128 +541,46 @@
     </label>
   </div>
 
-  {#if show_full_controls}
-    <!-- Camera Controls -->
-    <h4>Camera</h4>
-    <label>
-      Auto rotate speed
-      <input
-        type="number"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.auto_rotate}
-      />
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.auto_rotate}
-      />
-    </label>
-    <label>
-      Zoom speed
-      <input
-        type="number"
-        min={0.1}
-        max={0.8}
-        step={0.02}
-        bind:value={scene_props.zoom_speed}
-      />
-      <input
-        type="range"
-        min={0.1}
-        max={0.8}
-        step={0.02}
-        bind:value={scene_props.zoom_speed}
-      />
-    </label>
-    <label>
-      <span
-        title="Pan by clicking and dragging while holding cmd, ctrl or shift"
-        {@attach tooltip()}
-      >
-        Pan speed
-      </span>
-      <input
-        type="number"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.pan_speed}
-      />
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.01}
-        bind:value={scene_props.pan_speed}
-      />
-    </label>
-    <label>
-      <span title="Damping factor for rotation" {@attach tooltip()}>
-        Rotation damping
-      </span>
-      <input
-        type="number"
-        min={0}
-        max={0.3}
-        step={0.01}
-        bind:value={scene_props.rotation_damping}
-      />
-      <input
-        type="range"
-        min={0}
-        max={0.3}
-        step={0.01}
-        bind:value={scene_props.rotation_damping}
-      />
-    </label>
-
-    <hr />
-
-    <!-- Lighting Controls -->
-    <h4>Lighting</h4>
-    <label>
-      <span title="Intensity of the directional light" {@attach tooltip()}>
-        Directional light
-      </span>
-      <input
-        type="number"
-        min={0}
-        max={4}
-        step={0.01}
-        bind:value={scene_props.directional_light}
-      />
-      <input
-        type="range"
-        min={0}
-        max={4}
-        step={0.01}
-        bind:value={scene_props.directional_light}
-      />
-    </label>
-    <label>
-      <span title="Intensity of the ambient light" {@attach tooltip()}>
-        Ambient light
-      </span>
-      <input
-        type="number"
-        min={0.5}
-        max={3}
-        step={0.05}
-        bind:value={scene_props.ambient_light}
-      />
-      <input
-        type="range"
-        min={0.5}
-        max={3}
-        step={0.05}
-        bind:value={scene_props.ambient_light}
-      />
-    </label>
-  {/if}
+  <!-- Lighting Controls -->
+  <h4>Lighting</h4>
+  <label>
+    <span title="Intensity of the directional light" {@attach tooltip()}>
+      Directional light
+    </span>
+    <input
+      type="number"
+      min={0}
+      max={4}
+      step={0.01}
+      bind:value={scene_props.directional_light}
+    />
+    <input
+      type="range"
+      min={0}
+      max={4}
+      step={0.01}
+      bind:value={scene_props.directional_light}
+    />
+  </label>
+  <label>
+    <span title="Intensity of the ambient light" {@attach tooltip()}>
+      Ambient light
+    </span>
+    <input
+      type="number"
+      min={0.5}
+      max={3}
+      step={0.05}
+      bind:value={scene_props.ambient_light}
+    />
+    <input
+      type="range"
+      min={0.5}
+      max={3}
+      step={0.05}
+      bind:value={scene_props.ambient_light}
+    />
+  </label>
 
   <hr />
 
@@ -547,64 +616,4 @@
       />
     </label>
   {/if}
-
-  <!-- Export Controls -->
-  <hr />
-  <h4>Export</h4>
-  <span
-    style="display: flex; gap: 4pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
-  >
-    <button
-      type="button"
-      onclick={() => exports.export_structure_as_json(structure)}
-      title={save_json_btn_text}
-    >
-      {save_json_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => handle_copy(`json`)}
-      title={current_copy_json_btn_text}
-    >
-      {current_copy_json_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => exports.export_structure_as_xyz(structure)}
-      title={save_xyz_btn_text}
-    >
-      {save_xyz_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => handle_copy(`xyz`)}
-      title={current_copy_xyz_btn_text}
-    >
-      {current_copy_xyz_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => {
-        const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
-        if (canvas) {
-          exports.export_canvas_as_png(canvas, structure, png_dpi, scene, camera)
-        } else {
-          console.warn(`Canvas element not found for PNG export`)
-        }
-      }}
-      title="{save_png_btn_text} ({png_dpi} DPI)"
-    >
-      {save_png_btn_text}
-    </button>
-    <small style="margin-left: 4pt">DPI:</small>
-    <input
-      type="number"
-      min={72}
-      max={300}
-      step={25}
-      bind:value={png_dpi}
-      style="width: 3.5em"
-      title="Export resolution in dots per inch"
-    />
-  </span>
 </DraggablePanel>

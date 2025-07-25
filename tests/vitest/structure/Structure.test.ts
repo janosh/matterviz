@@ -479,3 +479,110 @@ describe(`Structure component nested JSON handling`, () => {
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
   })
 })
+
+// Combined camera projection functionality tests
+test.each([
+  [`perspective`, `orthographic`],
+  [`orthographic`, `perspective`],
+])(
+  `camera projection %s: UI toggle, rendering, zoom settings, and integration`,
+  async (initial_projection, target_projection) => {
+    const scene_props = {
+      camera_projection: initial_projection,
+      atom_radius: 1.5,
+      auto_rotate: 0.5,
+    }
+    mount(Structure, {
+      target: document.body,
+      props: { structure, controls_open: true, show_controls: true, scene_props },
+    })
+    await tick()
+
+    // Test 1: UI controls are accessible with correct options
+    const projection_label = Array.from(document.querySelectorAll(`label`))
+      .find((label) => label.textContent?.includes(`Projection`))
+    expect(projection_label).toBeTruthy()
+
+    const projection_select = doc_query<HTMLSelectElement>(`.controls-panel select`)
+    expect(projection_select?.value).toBe(initial_projection)
+
+    const options = Array.from(projection_select?.querySelectorAll(`option`) || [])
+    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual(
+      [`perspective`, `orthographic`],
+    )
+
+    // Test 2: Component renders correctly without errors
+    const structure_component = document.querySelector(`.structure`)
+    expect(structure_component).toBeTruthy()
+    expect(document.body.textContent).not.toContain(`No structure provided`)
+
+    // Test 3: Toggle projection and verify change
+    projection_select.value = target_projection
+    projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(projection_select.value).toBe(target_projection)
+
+    // Test 4: Other scene properties remain functional after projection change
+    const radius_input = document.querySelector(
+      `.controls-panel input[type="number"][step="0.05"]`,
+    ) as HTMLInputElement
+    const auto_rotate_input = document.querySelector(
+      `.controls-panel input[type="number"][max="2"]`,
+    ) as HTMLInputElement
+
+    expect(parseFloat(radius_input?.value || `0`)).toBeCloseTo(1.5, 1)
+    expect(parseFloat(auto_rotate_input?.value || `0`)).toBeCloseTo(0.5, 1)
+
+    radius_input.value = `2.0`
+    radius_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(parseFloat(radius_input.value)).toBeCloseTo(2.0, 1)
+
+    // Test 5: State persistence across component updates (simplified for Svelte 5)
+    // In a real app, scene_props would be reactive - here we just verify the projection persists
+    await tick()
+    if (projection_select) {
+      expect(projection_select.value).toBe(target_projection) // Projection should persist
+    }
+  },
+)
+
+// Test advanced camera logic functionality
+test(`camera projection conditional logic and zoom speed handling`, async () => {
+  const _component = mount(Structure, {
+    target: document.body,
+    props: {
+      structure,
+      controls_open: true,
+      scene_props: { camera_projection: `perspective`, zoom_speed: 0.5 },
+      show_controls: true,
+    },
+  })
+  await tick()
+
+  const projection_select = doc_query<HTMLSelectElement>(`.controls-panel select`)
+  const zoom_speed_input = document.querySelector(
+    `input[type="number"][min="0.1"][max="0.8"]`,
+  ) as HTMLInputElement
+
+  // Test zoom speed logic exists and functions for both projections
+  expect(zoom_speed_input).toBeTruthy()
+
+  // Test orbit controls conditional logic by switching projections via UI
+  const test_projections = [`orthographic`, `perspective`] as const
+  const promises: Promise<void>[] = []
+
+  for (const projection of test_projections) {
+    if (projection_select) {
+      projection_select.value = projection
+      projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      promises.push(tick())
+    }
+
+    // Component should render without errors (would fail if conditional logic is broken)
+    expect(document.querySelector(`.structure`)).toBeTruthy()
+    expect(zoom_speed_input).toBeTruthy() // Controls should remain functional
+  }
+
+  await Promise.all(promises)
+})

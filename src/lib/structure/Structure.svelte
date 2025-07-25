@@ -11,6 +11,7 @@
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { Camera, Scene } from 'three'
   import { WebGLRenderer } from 'three'
@@ -66,12 +67,7 @@
   }
   let {
     structure = $bindable(undefined),
-    scene_props = $bindable({
-      atom_radius: 1,
-      show_atoms: true,
-      auto_rotate: 0,
-      same_size_atoms: false,
-    }),
+    scene_props = $bindable({ ...STRUCT_DEFAULTS.scene_props }),
     lattice_props = $bindable({
       cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
       cell_surface_opacity: STRUCT_DEFAULTS.cell.surface_opacity,
@@ -101,7 +97,6 @@
     png_dpi = $bindable(150),
     show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
-    show_full_controls = $bindable(false),
     fullscreen_toggle = true,
     bottom_left,
     data_url,
@@ -252,20 +247,20 @@
     if (structure) camera_has_moved = false
   })
   // Set camera_has_moved to true when camera starts moving
-  $effect(() => {
-    if (camera_is_moving) {
-      camera_has_moved = true
-      // Debounce camera move events to avoid excessive emissions
-      if (camera_move_timeout) clearTimeout(camera_move_timeout)
-      camera_move_timeout = setTimeout(() => {
-        on_camera_move?.({
-          structure,
-          camera_has_moved,
-          camera_position: scene_props.camera_position,
-        })
-      }, 200)
-    }
-  })
+  $effect(() =>
+    untrack(() => {
+      if (camera_is_moving) {
+        camera_has_moved = true
+        const { camera_position } = scene_props
+        // Debounce camera move events to avoid excessive emissions
+        if (camera_move_timeout) clearTimeout(camera_move_timeout)
+        camera_move_timeout = setTimeout(() => {
+          on_camera_move?.({ structure, camera_has_moved, camera_position })
+        }, 200)
+      }
+    })
+  )
+
   function reset_camera() {
     // Reset camera position to trigger automatic positioning
     scene_props.camera_position = [0, 0, 0]
@@ -477,7 +472,6 @@
           bind:lattice_props
           bind:show_image_atoms
           bind:show_site_labels
-          bind:show_full_controls
           bind:background_color
           bind:background_opacity
           bind:color_scheme
