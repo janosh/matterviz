@@ -526,4 +526,36 @@ describe(`formula formatting functions`, () => {
       expect(get_electro_neg_formula(input, plain_text, delim)).toBe(expected)
     },
   )
+
+  test.each([
+    [{ Fe: 2.5, O: 3.75 }, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
+    [{ Fe: 1000, O: 1500 }, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
+    [{ Fe: 0.001, O: 0.002 }, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
+    // Note: parse_formula doesn't handle decimal numbers in strings, so these will parse as integers
+    [`Fe2.5O3.75`, `.1f`, `Fe<sub>2.0</sub> O<sub>3.0</sub>`],
+    [`Fe2.5O3.75`, `.2f`, `Fe<sub>2.00</sub> O<sub>3.00</sub>`],
+  ])(
+    `get_electro_neg_formula amount_format parameter: input %p, amount_format=%p → %p`,
+    (input, amount_format, expected) => {
+      expect(get_electro_neg_formula(input, false, ` `, amount_format)).toBe(expected)
+    },
+  )
+
+  test.each([
+    [{ Fe: 2.5, O: 3.75 }, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    [{ Fe: 2.5, O: 3.75 }, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
+    [{ Fe: 1000, O: 1500 }, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
+    [{ Fe: 0.001, O: 0.002 }, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
+    // Note: parse_formula doesn't handle decimal numbers in strings, so these will parse as integers
+    [`Fe2.5O3.75`, `.1f`, `Fe<sub>2.0</sub> O<sub>3.0</sub>`],
+    [`Fe2.5O3.75`, `.2f`, `Fe<sub>2.00</sub> O<sub>3.00</sub>`],
+  ])(
+    `get_alphabetical_formula amount_format parameter: input %p, amount_format=%p → %p`,
+    (input, amount_format, expected) => {
+      expect(get_alphabetical_formula(input, false, ` `, amount_format)).toBe(expected)
+    },
+  )
 })

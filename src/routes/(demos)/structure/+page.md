@@ -10,15 +10,17 @@
   import Select from 'svelte-multiselect'
   import { FilePicker } from '$site'
   import { structure_files } from '$site/structures'
+  import { get_electro_neg_formula } from '$lib'
 
-  let formula = $state(`Bi2Zr2O7-Fm3m`)
-  let width = $state(0)
-  let height = $state(0)
-  let structure = $derived(structures.find((struct) => struct.id === formula) || {})
+  let structure = $state(
+    structures.find((struct) => struct.id === `Bi2Zr2O8-Fm3m`) || {},
+  )
 </script>
 
-<Structure {structure} bind:width bind:height>
-  <h3 style="position: absolute; left: 0; margin: 1ex 1em">{formula}</h3>
+<Structure bind:structure>
+  <h3 style="position: absolute; left: 0; margin: 1ex 1em">
+    {@html get_electro_neg_formula(structure, false, ` `, `.3~s`)}
+  </h3>
 </Structure>
 
 <FilePicker
