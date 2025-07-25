@@ -1,5 +1,5 @@
 import { type PymatgenStructure } from '$lib/index'
-import { detect_structure_type, is_optimade_json, parse_optimade_json } from '$lib/io'
+import * as io from '$lib/io'
 import type { FileInfo } from '$site'
 
 export const structures = Object.entries( // JSON structure files (OPTIMADE/pymatgen format) as JS objects
@@ -12,8 +12,8 @@ export const structures = Object.entries( // JSON structure files (OPTIMADE/pyma
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
     const data_str = JSON.stringify(data)
     // Convert OPTIMADE to pymatgen format
-    if (is_optimade_json(data_str)) {
-      const parsed = parse_optimade_json(data_str)
+    if (io.is_optimade_json(data_str)) {
+      const parsed = io.parse_optimade_json(data_str)
       if (parsed) return { ...parsed, id } as PymatgenStructure
     }
 
@@ -43,7 +43,7 @@ export const structure_files: FileInfo[] = (Object.entries( // all structure fil
     const filename = path.split(`/`).pop() || path
     const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
 
-    const structure_type = detect_structure_type(filename, content)
+    const structure_type = io.detect_structure_type(filename, content)
     const category = { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] ||
       `📄`
     return { name: filename, url: path.replace(`/src/site`, ``), type, category }

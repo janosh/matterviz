@@ -32,6 +32,7 @@
     same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
     // determined by the atomic radius of the element
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
+    camera_projection?: `perspective` | `orthographic` // camera projection type
     rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
     // zoom level of the camera
     max_zoom?: number | undefined
@@ -70,7 +71,8 @@
     atom_radius = 0.5,
     same_size_atoms = false,
     camera_position = [0, 0, 0],
-    rotation_damping = 0.1,
+    camera_projection = STRUCT_DEFAULTS.scene_props.camera_projection,
+    rotation_damping = STRUCT_DEFAULTS.scene_props.rotation_damping,
     max_zoom = undefined,
     min_zoom = undefined,
     zoom_speed = 0.3,
@@ -124,17 +126,34 @@
       ? get_center_of_mass(structure)
       : [0, 0, 0] as Vec3,
   )
+
+  // Calculate structure size for camera setup
+  let structure_size = $derived(
+    lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
+  )
+
   $effect.pre(() => {
     // Simple camera auto-positioning if not already set: use sum of lattice dimensions for size estimate
     if (camera_position.every((val) => val === 0) && structure) {
-      const size = lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10
-      const distance = size * (65 / fov)
+      const distance = structure_size * (65 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
   $effect.pre(() => {
     if (structure && show_bonds) {
       bond_pairs = bonding_strategies[bonding_strategy](structure, bonding_options)
+    }
+  })
+
+  // Update orbit controls when switching between camera projections to ensure proper centering
+  $effect(() => {
+    if (orbit_controls && camera_projection) {
+      // Small delay to ensure camera switch is complete
+      setTimeout(() => {
+        // Explicitly set the target to the rotation center
+        orbit_controls.target.set(...rotation_target)
+        orbit_controls.update()
+      }, 10)
     }
   })
 
@@ -245,36 +264,55 @@
       ...(typeof gizmo === `boolean` ? {} : gizmo),
     }
   })
+
+  let orbit_controls_props = $derived({
+    'bind:ref': orbit_controls,
+    position: [0, 0, 0],
+    enableZoom: zoom_speed > 0,
+    zoomSpeed: camera_projection === `orthographic` ? zoom_speed * 2 : zoom_speed,
+    enablePan: pan_speed > 0,
+    panSpeed: pan_speed,
+    target: rotation_target,
+    maxZoom: camera_projection === `orthographic` ? (max_zoom || 200) : max_zoom,
+    minZoom: camera_projection === `orthographic` ? (min_zoom || 0.1) : min_zoom,
+    autoRotate: Boolean(auto_rotate),
+    autoRotateSpeed: auto_rotate,
+    enableDamping: Boolean(rotation_damping),
+    dampingFactor: rotation_damping,
+    onstart: () => {
+      camera_is_moving = true
+      hovered_idx = null
+    },
+    onend: () => {
+      camera_is_moving = false
+    },
+  })
 </script>
 
-<T.PerspectiveCamera makeDefault position={camera_position} {fov}>
-  <OrbitControls
-    bind:ref={orbit_controls}
-    position={[0, 0, 0]}
-    enableZoom={zoom_speed > 0}
-    zoomSpeed={zoom_speed}
-    enablePan={pan_speed > 0}
-    panSpeed={pan_speed}
-    target={rotation_target}
-    maxZoom={max_zoom}
-    minZoom={min_zoom}
-    autoRotate={Boolean(auto_rotate)}
-    autoRotateSpeed={auto_rotate}
-    enableDamping={Boolean(rotation_damping)}
-    dampingFactor={rotation_damping}
-    onstart={() => {
-      camera_is_moving = true
-      hovered_idx = null // Clear existing hover state to hide tooltips
-    }}
-    onend={() => {
-      camera_is_moving = false
-    }}
+{#if camera_projection === `perspective`}
+  <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
+    <OrbitControls {...orbit_controls_props}>
+      {#if gizmo}<Gizmo {...gizmo_props} />{/if}
+    </OrbitControls>
+  </T.PerspectiveCamera>
+{:else}
+  {@const ortho_size = structure_size * 1.5}
+  <T.OrthographicCamera
+    makeDefault
+    position={camera_position}
+    zoom={50}
+    left={-ortho_size}
+    right={ortho_size}
+    top={ortho_size}
+    bottom={-ortho_size}
+    near={0.1}
+    far={1000}
   >
-    {#if gizmo}
-      <Gizmo {...gizmo_props} />
-    {/if}
-  </OrbitControls>
-</T.PerspectiveCamera>
+    <OrbitControls {...orbit_controls_props}>
+      {#if gizmo}<Gizmo {...gizmo_props} />{/if}
+    </OrbitControls>
+  </T.OrthographicCamera>
+{/if}
 
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />

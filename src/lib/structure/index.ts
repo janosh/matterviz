@@ -38,6 +38,14 @@ export const STRUCT_DEFAULTS = {
     arrow_head_radius: 0.08,
     arrow_head_length: 0.2,
   },
+  scene_props: {
+    rotation_damping: 0.05,
+    atom_radius: 1,
+    show_atoms: true,
+    auto_rotate: 0,
+    same_size_atoms: false,
+    camera_projection: `perspective`,
+  },
 } as const
 
 export type Species = {
