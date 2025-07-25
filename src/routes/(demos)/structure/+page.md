@@ -13,13 +13,13 @@
   import { get_electro_neg_formula } from '$lib'
 
   let structure = $state(
-    structures.find((struct) => struct.id === `Bi2Zr2O7-Fm3m`) || {},
+    structures.find((struct) => struct.id === `Bi2Zr2O8-Fm3m`) || {},
   )
 </script>
 
 <Structure bind:structure>
   <h3 style="position: absolute; left: 0; margin: 1ex 1em">
-    {@html get_electro_neg_formula(structure)}
+    {@html get_electro_neg_formula(structure, false, ` `, `.3~s`)}
   </h3>
 </Structure>
 
