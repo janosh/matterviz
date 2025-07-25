@@ -225,13 +225,10 @@ const format_formula_generic = (
   try {
     let composition: CompositionType
 
-    if (typeof input === `string`) {
-      composition = parse_composition(input)
-    } else if (`sites` in input || `lattice` in input) {
+    if (typeof input === `string`) composition = parse_composition(input)
+    else if (`sites` in input || `lattice` in input) {
       composition = structure_to_composition(input)
-    } else {
-      composition = input as CompositionType
-    }
+    } else composition = input as CompositionType
 
     return format_composition_formula(
       composition,
