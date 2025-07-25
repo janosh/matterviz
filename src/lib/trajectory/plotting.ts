@@ -3,6 +3,7 @@ import { plot_colors } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
 import type { TrajectoryDataExtractor, TrajectoryType } from '$lib/trajectory'
+import type { TrajectoryMetadata } from './StreamingParsers'
 
 // Priority order for y1 axis (higher priority = more likely to be on y1)
 const Y1_PRIORITY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`] // Energy units get highest priority
@@ -488,5 +489,194 @@ export function generate_axis_labels(
   return {
     y1: get_axis_label(y1_series),
     y2: get_axis_label(y2_series),
+  }
+}
+
+// Streaming plot generation from metadata (no full frames required)
+interface StreamingPlotOptions {
+  property_config?: Record<string, { label: string; unit: string }>
+  colors?: string[]
+  default_visible_properties?: Set<string>
+  max_points?: number // Limit points for performance (default: 10000)
+}
+
+export function generate_streaming_plot_series(
+  metadata_list: TrajectoryMetadata[],
+  options: StreamingPlotOptions = {},
+): DataSeries[] {
+  if (!metadata_list.length) return []
+
+  const {
+    property_config = trajectory_property_config,
+    colors = plot_colors,
+    default_visible_properties = new Set([`energy`, `force_max`, `stress_frobenius`]),
+    max_points = 10000,
+  } = options
+
+  // Apply downsampling if we have too many points
+  const sampled_metadata = metadata_list.length > max_points
+    ? downsample_metadata(metadata_list, max_points)
+    : metadata_list
+
+  // Collect all properties across all frames
+  const all_properties = new Set<string>()
+  for (const metadata of sampled_metadata) {
+    Object.keys(metadata.properties).forEach((prop) => all_properties.add(prop))
+  }
+
+  // Generate series for each property
+  const all_series: DataSeries[] = []
+  let color_idx = 0
+
+  for (const property_key of all_properties) {
+    // Extract data for this property
+    const data_points: { x: number; y: number }[] = []
+
+    for (const metadata of sampled_metadata) {
+      if (property_key in metadata.properties) {
+        data_points.push({
+          x: metadata.step,
+          y: metadata.properties[property_key],
+        })
+      }
+    }
+
+    // Skip properties with insufficient data
+    if (data_points.length < 2) continue
+
+    // Check for variation (skip constant properties except energy)
+    const is_energy = property_key.toLowerCase() === `energy`
+    if (!is_energy && !has_significant_variation(data_points.map((p) => p.y))) continue
+
+    // Extract clean label and unit
+    const { clean_label, unit } = extract_label_and_unit(property_key, property_config)
+    const color = colors[color_idx % colors.length]
+
+    // Determine visibility based on property importance
+    const important_property_types = [`energy`, `force`, `stress`, `volume`]
+    const is_important = important_property_types.some((type) =>
+      property_key.toLowerCase().includes(type)
+    )
+
+    const is_visible = is_important ||
+      default_visible_properties.has(property_key) ||
+      (color_idx < 2 && !is_important) // Show first 2 non-important properties
+
+    const y_axis = determine_y_axis_streaming(property_key, unit)
+
+    all_series.push({
+      x: data_points.map((p) => p.x),
+      y: data_points.map((p) => p.y),
+      label: clean_label,
+      unit,
+      y_axis,
+      visible: is_visible,
+      markers: data_points.length < 1000 ? `line+points` : `line`,
+      metadata: data_points.map(() => ({
+        series_label: unit ? `${clean_label} (${unit})` : clean_label,
+      })),
+      line_style: {
+        stroke: color,
+        stroke_width: 2,
+      },
+      point_style: {
+        fill: color,
+        radius: 4,
+        stroke: color,
+        stroke_width: 1,
+      },
+    })
+
+    color_idx++
+  }
+
+  // Group series by units and assign axes
+  return assign_axes_by_units_streaming(all_series)
+}
+
+// Helper functions for streaming plots
+function downsample_metadata(
+  metadata_list: TrajectoryMetadata[],
+  target_points: number,
+): TrajectoryMetadata[] {
+  if (metadata_list.length <= target_points) return metadata_list
+
+  const step = Math.floor(metadata_list.length / target_points)
+  const sampled: TrajectoryMetadata[] = []
+
+  // Always include first and last frames
+  sampled.push(metadata_list[0])
+
+  // Sample intermediate frames
+  for (let idx = step; idx < metadata_list.length - step; idx += step) {
+    sampled.push(metadata_list[idx])
+  }
+
+  // Always include last frame
+  if (metadata_list.length > 1) {
+    sampled.push(metadata_list[metadata_list.length - 1])
+  }
+
+  return sampled
+}
+
+function has_significant_variation(values: number[], tolerance = 1e-6): boolean {
+  if (values.length <= 1) return false
+
+  const mean = values.reduce((sum, val) => sum + val, 0) / values.length
+  const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
+  const coefficient_of_variation = Math.abs(mean) > 1e-10
+    ? Math.sqrt(variance) / Math.abs(mean)
+    : Math.sqrt(variance)
+
+  return coefficient_of_variation >= tolerance
+}
+
+// Determine Y axis assignment for streaming plots (simplified)
+function determine_y_axis_streaming(property_key: string, unit: string): `y1` | `y2` {
+  const lower_key = property_key.toLowerCase()
+  const lower_unit = unit.toLowerCase()
+
+  // Energy properties and energy units go to y1
+  const energy_indicators = [`energy`, `ev`, `ev/atom`, `hartree`, `kcal/mol`, `kj/mol`]
+  if (
+    energy_indicators.some((indicator) =>
+      lower_key.includes(indicator) || lower_unit.includes(indicator)
+    )
+  ) {
+    return `y1`
+  }
+
+  // Force properties go to y2
+  if (lower_key.includes(`force`)) return `y2`
+
+  return `y1` // Default
+}
+
+// Simplified axis assignment for streaming plots
+function assign_axes_by_units_streaming(series: DataSeries[]): DataSeries[] {
+  const energy_units = new Set([`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`])
+
+  for (const s of series) {
+    s.y_axis = energy_units.has(s.unit || ``) ? `y1` : `y2`
+  }
+
+  return series
+}
+
+// Generate axis labels for streaming plots
+export function generate_streaming_axis_labels(
+  series: DataSeries[],
+): { y1: string; y2: string } {
+  const y1_series = series.find((s) => s.y_axis === `y1` && s.visible)
+  const y2_series = series.find((s) => s.y_axis === `y2` && s.visible)
+
+  return {
+    y1: y1_series?.unit
+      ? `${y1_series.label} (${y1_series.unit})`
+      : y1_series?.label || ``,
+    y2: y2_series?.unit
+      ? `${y2_series.label} (${y2_series.unit})`
+      : y2_series?.label || ``,
   }
 }

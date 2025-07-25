@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon, Spinner, Structure } from '$lib'
-  import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
@@ -8,9 +8,14 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import { create_streaming_parser } from './StreamingParsers'
+  import type { StreamingTrajectoryData } from './StreamingTrajectoryLoader'
+  import { create_streaming_trajectory_loader } from './StreamingTrajectoryLoader'
+
   import { full_data_extractor } from './extract'
   import type {
     TrajectoryDataExtractor,
+    TrajectoryFrame,
     TrajectoryType,
     TrajHandlerData,
   } from './index'
@@ -20,6 +25,8 @@
   import {
     generate_axis_labels,
     generate_plot_series,
+    generate_streaming_axis_labels,
+    generate_streaming_plot_series,
     should_hide_plot,
     toggle_series_visibility,
   } from './plotting'
@@ -165,14 +172,27 @@
       fps = fps_range[1]
     }
   })
-  let current_filename = $state<string | null>(null)
+  let current_filename = $state<string | undefined>(undefined)
   let current_file_path = $state<string | null>(null)
-  let file_size = $state<number | null>(null)
+  let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let info_panel_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
+
+  // Streaming loading state
+  let is_streaming_mode = $state(false)
+  let streaming_data = $state<StreamingTrajectoryData | null>(null)
+  let streaming_current_frame = $state<TrajectoryFrame | null>(null)
+  let streaming_buffer_info = $state({
+    buffered_frames: [] as number[],
+    current_position: 0,
+  })
+
+  // Thresholds for streaming loading
+  const STREAMING_THRESHOLD_BINARY = 100 * 1024 * 1024 // 100MB
+  const STREAMING_THRESHOLD_TEXT = 50 * 1024 * 1024 // 50MB
 
   // Reactive layout based on viewport aspect ratio
   let actual_layout = $derived.by((): `horizontal` | `vertical` => {
@@ -186,50 +206,57 @@
 
   // Current frame structure for display
   let current_structure = $derived(
-    trajectory && current_step_idx < trajectory.frames.length
+    is_streaming_mode
+      ? streaming_current_frame?.structure
+      : trajectory && current_step_idx < trajectory.frames.length
       ? trajectory.frames[current_step_idx]?.structure
       : undefined,
   )
 
   let step_label_positions = $derived.by((): number[] => {
-    if (!trajectory?.frames.length || !step_labels) return []
-
-    const total = trajectory.frames.length
-    if (total <= 1) return []
+    if (!step_labels || total_frames <= 1) return []
 
     if (Array.isArray(step_labels)) {
-      return step_labels.filter((idx) => idx >= 0 && idx < total)
+      return step_labels.filter((idx) => idx >= 0 && idx < total_frames)
     }
 
     if (typeof step_labels === `number`) {
       if (step_labels > 0) {
-        return scaleLinear().domain([0, total - 1]).nice()
-          .ticks(Math.min(step_labels, total))
+        return scaleLinear().domain([0, total_frames - 1]).nice()
+          .ticks(Math.min(step_labels, total_frames))
           .map((t) => Math.round(t))
-          .filter((t, i, arr) => t >= 0 && t < total && arr.indexOf(t) === i)
+          .filter((t, i, arr) => t >= 0 && t < total_frames && arr.indexOf(t) === i)
       }
       if (step_labels < 0) {
         const spacing = Math.abs(step_labels)
         const positions = Array.from(
-          { length: Math.ceil(total / spacing) },
+          { length: Math.ceil(total_frames / spacing) },
           (_, idx) => idx * spacing,
         )
-        return positions[positions.length - 1] === total - 1
+        return positions[positions.length - 1] === total_frames - 1
           ? positions
-          : [...positions, total - 1]
+          : [...positions, total_frames - 1]
       }
     }
     return []
   })
 
   // Generate plot data
-  let plot_series = $derived(
-    trajectory
+  let plot_series = $derived.by(() => {
+    // In streaming mode, use metadata for plots if available
+    if (is_streaming_mode && streaming_data?.metadata.all_metadata) {
+      return generate_streaming_plot_series(streaming_data.metadata.all_metadata, {
+        property_config: trajectory_property_config,
+      })
+    }
+
+    // Traditional mode: use trajectory frames
+    return trajectory
       ? generate_plot_series(trajectory, data_extractor, {
         property_config: trajectory_property_config,
       })
-      : [],
-  )
+      : []
+  })
 
   // hide plot if all plotted values are constant (no variation)
   let show_plot = $derived(
@@ -241,83 +268,98 @@
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
 
   // Generate axis labels based on first visible series on each axis
-  let y_axis_labels = $derived(generate_axis_labels(plot_series))
+  let y_axis_labels = $derived(
+    is_streaming_mode
+      ? generate_streaming_axis_labels(plot_series)
+      : generate_axis_labels(plot_series),
+  )
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(
     plot_series.some((s) => s.y_axis === `y2` && s.visible),
   )
 
-  // Handle file drop events
-  async function handle_file_drop(event: DragEvent) {
-    event.preventDefault()
-    dragover = false
-    if (!allow_file_drop) return
+  // Load frame in streaming mode
+  async function load_streaming_frame(frame_idx: number) {
+    if (!streaming_data) return
+    try {
+      await streaming_data.seek_to_frame(frame_idx)
+      streaming_current_frame = streaming_data.get_current_frame()
+      streaming_buffer_info = streaming_data.get_buffer_info()
+    } catch (error) {
+      console.error(`Failed to load streaming frame ${frame_idx}:`, error)
+      streaming_current_frame = null
 
-    // --- Handle URL-based files (e.g. from FilePicker)
-    loading = true
-    error_msg = null
-
-    const handled = await handle_url_drop(event, async (content, filename) => {
-      current_filename = filename
-      file_size = content instanceof ArrayBuffer
-        ? content.byteLength
-        : new Blob([content]).size
-      await load_trajectory_data(content, filename)
-    }).catch(() => false)
-
-    if (handled) {
-      loading = false
-      return
+      // Emit error event for external handling
+      on_error?.({
+        error_msg: `Failed to load streaming frame ${frame_idx}: ${error}`,
+        filename: current_filename || undefined,
+        file_size: file_size || undefined,
+        step_idx: frame_idx,
+        frame_count: streaming_data.metadata.total_frames,
+      })
     }
-
-    // --- Handle file system drops
-    const file = event.dataTransfer?.files[0]
-    if (file) {
-      file_size = file.size
-      current_file_path = file.webkitRelativePath || file.name
-      file_object = file
-
-      const { content, filename } = await decompress_file(file)
-      if (content) await on_file_drop(content, filename)
-    }
-    loading = false
   }
+
+  // Reactive effect for streaming frame changes
+  $effect(() => {
+    if (is_streaming_mode && streaming_data) {
+      load_streaming_frame(current_step_idx)
+    }
+  })
+
+  // Get total frame count for current mode
+  let total_frames = $derived.by(() => {
+    if (is_streaming_mode && streaming_data) {
+      return streaming_data.metadata.total_frames
+    }
+    return trajectory?.frames.length || 0
+  })
 
   // Step navigation functions
   function next_step() {
-    if (trajectory && current_step_idx < trajectory.frames.length - 1) {
+    if (current_step_idx < total_frames - 1) {
       current_step_idx++
-      on_step_change?.({
-        trajectory,
-        step_idx: current_step_idx,
-        frame_count: trajectory.frames.length,
-        frame: trajectory.frames[current_step_idx],
-      })
+      // Streaming frame loading handled by reactive effect
+      if (trajectory && !is_streaming_mode) {
+        on_step_change?.({
+          trajectory,
+          step_idx: current_step_idx,
+          frame_count: trajectory.frames.length,
+          frame: trajectory.frames[current_step_idx],
+        })
+      }
     }
   }
 
   function prev_step() {
     if (current_step_idx > 0) {
       current_step_idx--
-      on_step_change?.({
-        trajectory,
-        step_idx: current_step_idx,
-        frame_count: trajectory?.frames.length ?? 0,
-        frame: (trajectory?.frames ?? [])[current_step_idx],
-      })
+      // Streaming frame loading handled by reactive effect
+      if (trajectory && !is_streaming_mode) {
+        on_step_change?.({
+          trajectory,
+          step_idx: current_step_idx,
+          frame_count: trajectory?.frames.length ?? 0,
+          frame: (trajectory?.frames ?? [])[current_step_idx],
+        })
+      }
     }
   }
 
   function go_to_step(idx: number) {
-    if (trajectory && idx >= 0 && idx < trajectory.frames.length) {
+    if (idx >= 0 && idx < total_frames) {
       current_step_idx = idx
-      on_step_change?.({
-        trajectory,
-        step_idx: current_step_idx,
-        frame_count: trajectory.frames.length,
-        frame: trajectory.frames[current_step_idx],
-      })
+      // Note: streaming frame loading is handled by reactive effect
+      // Only handle traditional trajectory callbacks here
+      if (trajectory && !is_streaming_mode) {
+        on_step_change?.({
+          trajectory,
+          step_idx: current_step_idx,
+          frame_count: trajectory.frames.length,
+          frame: trajectory.frames[current_step_idx],
+        })
+      }
     }
   }
 
@@ -331,6 +373,22 @@
   // Handle legend toggling
   function handle_legend_toggle(series_idx: number): void {
     plot_series = toggle_series_visibility(plot_series, series_idx)
+  }
+
+  // Helper function to read file content
+  async function read_file_content(file: File): Promise<string | ArrayBuffer> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string | ArrayBuffer)
+      reader.onerror = () => reject(new Error(`Failed to read file`))
+
+      // Read as text for text-based formats, binary for others
+      if (file.name.toLowerCase().match(/\.(xyz|json|extxyz)$/)) {
+        reader.readAsText(file)
+      } else {
+        reader.readAsArrayBuffer(file)
+      }
+    })
   }
 
   // Legend configuration
@@ -350,21 +408,25 @@
     else start_playback()
   }
   function start_playback() {
-    if (!trajectory || trajectory.frames.length <= 1) return
+    if (total_frames <= 1) return
     is_playing = true
-    on_play?.({
-      trajectory,
-      step_idx: current_step_idx,
-      frame_count: trajectory.frames.length,
-    })
+    if (trajectory) {
+      on_play?.({
+        trajectory,
+        step_idx: current_step_idx,
+        frame_count: total_frames,
+      })
+    }
   }
   function pause_playback() {
     is_playing = false
-    on_pause?.({
-      trajectory: trajectory!,
-      step_idx: current_step_idx,
-      frame_count: trajectory!.frames.length,
-    })
+    if (trajectory) {
+      on_pause?.({
+        trajectory: trajectory,
+        step_idx: current_step_idx,
+        frame_count: total_frames,
+      })
+    }
   }
   $effect(() => { // Effect to manage playback interval
     // Only watch is_playing and frame_rate_ms, not play_interval itself
@@ -378,18 +440,19 @@
 
       // Create new interval with current frame rate
       play_interval = setInterval(() => {
-        if (current_step_idx >= trajectory!.frames.length - 1) {
-          on_end?.({
-            trajectory: trajectory!,
-            step_idx: current_step_idx,
-            frame_count: trajectory!.frames.length,
-            frame: trajectory!.frames[current_step_idx],
-          })
+        if (current_step_idx >= total_frames - 1) {
+          if (trajectory) {
+            on_end?.({
+              trajectory: trajectory,
+              step_idx: current_step_idx,
+              frame_count: total_frames,
+              frame: trajectory.frames[current_step_idx],
+            })
+          }
           go_to_step(0) // Loop back to 1st step
-          on_loop?.({
-            trajectory: trajectory!,
-            frame_count: trajectory!.frames.length,
-          })
+          if (trajectory) {
+            on_loop?.({ trajectory: trajectory, frame_count: total_frames })
+          }
         } else next_step()
       }, rate_ms)
     } else {
@@ -406,6 +469,88 @@
   $effect(() => () => {
     if (play_interval !== undefined) clearInterval(play_interval)
   })
+
+  // Handle file drop events with enhanced large file support
+  async function handle_file_drop(event: DragEvent) {
+    event.preventDefault()
+    dragover = false
+    if (!allow_file_drop) return
+
+    loading = true
+
+    try {
+      // Check for our custom internal file format first
+      const internal_data = event.dataTransfer?.getData(
+        `application/x-matterviz-file`,
+      )
+      if (internal_data) {
+        try {
+          const file_info = JSON.parse(internal_data)
+
+          // Check if this is a binary file
+          if (file_info.is_binary) {
+            if (file_info.content instanceof ArrayBuffer) {
+              await load_trajectory_data(file_info.content, file_info.name)
+            } else if (file_info.content_url) {
+              const response = await fetch(file_info.content_url)
+              const array_buffer = await response.arrayBuffer()
+              await load_trajectory_data(array_buffer, file_info.name)
+            } else {
+              console.warn(
+                `Binary file without ArrayBuffer or blob URL:`,
+                file_info.name,
+              )
+            }
+          } else {
+            await load_trajectory_data(file_info.content, file_info.name)
+          }
+          return
+        } catch (error) {
+          console.warn(`Failed to parse internal file data:`, error)
+          // Fall through to other methods
+        }
+      }
+
+      // Handle URL-based files (e.g. from FilePicker)
+      const handled = await handle_url_drop(event, async (content, filename) => {
+        current_filename = filename
+        file_size = content instanceof ArrayBuffer
+          ? content.byteLength
+          : new Blob([content]).size
+        await load_trajectory_data(content, filename)
+      }).catch(() => false)
+
+      if (handled) {
+        return
+      }
+
+      // Handle file system drops with enhanced large file support
+      const file = event.dataTransfer?.files[0]
+      if (file) {
+        file_size = file.size
+        current_file_path = file.webkitRelativePath || file.name
+        file_object = file
+
+        // Read file content directly
+        const content = await read_file_content(file)
+        await load_trajectory_data(content, file.name)
+      }
+
+      // Check for plain text data (fallback)
+      const text_data = event.dataTransfer?.getData(`text/plain`)
+      if (text_data) {
+        file_size = null // Size not available for text drops
+        await load_trajectory_data(text_data, `trajectory.json`)
+        return
+      }
+    } catch (error) {
+      console.error(`File drop failed:`, error)
+      error_msg = `Failed to load file: ${error}`
+      on_error?.({ error_msg, filename: current_filename, file_size })
+    } finally {
+      loading = false
+    }
+  }
 
   $effect(() => { // Load trajectory from URL when data_url is provided
     if (data_url && !trajectory) {
@@ -447,10 +592,28 @@
     error_msg = null
     parsing_progress = null
 
+    // Reset previous loading states
+    is_streaming_mode = false
+    streaming_data = null
+    streaming_current_frame = null
+
     try {
-      trajectory = await parse_trajectory_async(data, filename, (progress) => {
-        parsing_progress = progress
-      })
+      const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
+
+      // Determine loading strategy based on file size
+      if (
+        (data instanceof ArrayBuffer && data_size > STREAMING_THRESHOLD_BINARY) ||
+        (typeof data === `string` && data_size > STREAMING_THRESHOLD_TEXT)
+      ) {
+        // Large files: Use streaming loading
+        await load_with_streaming_reader(data, filename)
+      } else {
+        // Small files: Use regular loading
+        trajectory = await parse_trajectory_async(data, filename, (progress) => {
+          parsing_progress = progress
+        })
+      }
+
       current_step_idx = 0
       current_filename = filename
 
@@ -459,14 +622,14 @@
         : new Blob([data]).size
       on_file_load?.({ // emit file load event
         trajectory,
-        frame_count: trajectory.frames.length,
-        total_atoms: trajectory.frames[0]?.structure.sites.length || 0,
+        frame_count: trajectory?.frames.length ?? 0,
+        total_atoms: trajectory?.frames[0]?.structure.sites.length ?? 0,
         filename,
         file_size: file_size_bytes,
       })
 
       // Auto-play if enabled and trajectory has multiple frames
-      if (auto_play && trajectory.frames.length > 1) start_playback()
+      if (auto_play && trajectory && trajectory.frames.length > 1) start_playback()
     } catch (err) {
       const unsupported_message = get_unsupported_format_message(
         filename,
@@ -484,6 +647,56 @@
     } finally {
       parsing_progress = null
       loading = false
+    }
+  }
+
+  // Load using streaming reader for large files
+  async function load_with_streaming_reader(
+    data: string | ArrayBuffer,
+    filename: string,
+  ) {
+    try {
+      const parser = create_streaming_parser(filename)
+      streaming_data = await create_streaming_trajectory_loader(
+        data,
+        filename,
+        parser,
+        {
+          buffer_size: 20, // Small buffer for memory efficiency
+          prefetch_ahead: 5, // Prefetch a few frames ahead
+          index_sample_rate: 100, // Index every 100th frame
+        },
+        (progress) => {
+          parsing_progress = progress
+        },
+      )
+
+      is_streaming_mode = true
+      console.log(
+        `Loaded trajectory in streaming mode: ${streaming_data.metadata.total_frames} frames`,
+      )
+
+      // Extract metadata for plots in the background
+      try {
+        parsing_progress = {
+          current: 0,
+          total: 100,
+          stage: `Extracting metadata for plots...`,
+        }
+        await streaming_data.extract_all_metadata(1) // Extract from all frames
+        parsing_progress = null
+        console.log(
+          `Metadata extracted for plots: ${
+            streaming_data.metadata.all_metadata?.length || 0
+          } entries`,
+        )
+      } catch (error) {
+        console.warn(`Failed to extract metadata for plots:`, error)
+        parsing_progress = null
+      }
+    } catch (error) {
+      console.error(`Streaming loading failed:`, error)
+      throw error
     }
   }
 
@@ -517,7 +730,7 @@
 
   // Handle keyboard shortcuts
   function onkeydown(event: KeyboardEvent) {
-    if (!trajectory) return
+    if (!trajectory && !is_streaming_mode) return
 
     // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
     const target = event.target as HTMLElement
@@ -535,7 +748,6 @@
       return
     }
 
-    const total_frames = trajectory.frames.length
     const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
 
     // Navigation shortcuts
@@ -640,7 +852,6 @@
         on_step_change: go_to_step,
       })}
         {:else}
-          {@const input_width = Math.max(25, String(current_step_idx).length * 8 + 6)}
           {#if current_filename}
             <button
               class="filename"
@@ -686,25 +897,20 @@
             <input
               type="number"
               min="0"
-              max={trajectory.frames.length - 1}
+              max={total_frames - 1}
               bind:value={current_step_idx}
-              oninput={(event) => {
-                const target = event.target as HTMLInputElement
-                const width = Math.max(25, Math.min(80, target.value.length * 8 + 6))
-                target.style.width = `${width}px`
-              }}
-              style:width="{input_width}px"
               class="step-input"
               title="Enter step number to jump to"
+              {@attach tooltip()}
             />
             <span style="font-size: clamp(0.7rem, 2cqw, 0.875rem)">/ {
-                trajectory.frames.length
+                format_num(total_frames, `.3~s`)
               }</span>
             <div class="slider-container">
               <input
                 type="range"
                 min="0"
-                max={trajectory.frames.length - 1}
+                max={total_frames - 1}
                 bind:value={current_step_idx}
                 class="step-slider"
                 title="Drag to navigate steps"
@@ -712,12 +918,13 @@
               {#if step_label_positions.length > 0}
                 <div class="step-labels">
                   {#each step_label_positions as step_idx (step_idx)}
-                    {@const position_percent = (step_idx / (trajectory.frames.length - 1)) *
-              100}
+                    {@const position_percent = total_frames > 1
+              ? (step_idx / (total_frames - 1)) * 100
+              : 0}
                     {@const adjusted_position = 1.5 + (position_percent * (100 - 2)) / 100}
                     <div class="step-tick" style:left="{adjusted_position}%"></div>
                     <div class="step-label" style:left="{adjusted_position}%">
-                      {step_idx}
+                      {format_num(step_idx, `.3~s`)}
                     </div>
                   {/each}
                 </div>
@@ -757,7 +964,7 @@
 
           <!-- Frame info section -->
           <div class="info-section">
-            {#if trajectory}
+            {#if trajectory || is_streaming_mode}
               <TrajectoryInfoPanel
                 {trajectory}
                 {current_step_idx}
@@ -765,6 +972,9 @@
                 {current_file_path}
                 {file_size}
                 {file_object}
+                {is_streaming_mode}
+                {streaming_data}
+                {streaming_buffer_info}
                 bind:panel_open={info_panel_open}
                 toggle_props={{ style: `width: 1em` }}
               />
@@ -880,6 +1090,7 @@
             current_x_value={current_step_idx}
             change={handle_plot_change}
             markers="line"
+            x_format=".3~s"
             x_ticks={step_label_positions}
             show_controls
             bind:controls_open={panels_open.plot_controls}
@@ -905,6 +1116,8 @@
             series={plot_series}
             x_label={String(histogram_props.x_label ?? y_axis_labels.y1)}
             y_label={(`y_label` in histogram_props) ? histogram_props.y_label as string : `Count`}
+            x_format=".3~s"
+            y_format=".3~s"
             mode={(`mode` in histogram_props)
             ? histogram_props.mode as `overlay` | `single`
             : `overlay`}
@@ -1060,6 +1273,7 @@
     border: 1px solid rgba(99, 179, 237, 0.3);
     text-align: center;
     margin: 0 -5px 0 0;
+    padding: 2px 5px;
   }
   .slider-container {
     position: relative;

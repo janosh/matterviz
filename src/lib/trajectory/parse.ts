@@ -10,6 +10,11 @@ import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
 import type { TrajectoryFrame, TrajectoryType } from './index'
 
+// Constants for large file handling
+const MAX_STRING_LENGTH = 0x1fffffe8 // JavaScript's maximum string length
+const MAX_SAFE_STRING_LENGTH = MAX_STRING_LENGTH * 0.5 // Use 50% as safety margin
+const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024 // 100MB
+
 // Common interfaces
 export interface ParseProgress {
   current: number
@@ -702,6 +707,15 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
   const view = new DataView(buffer)
   let offset = 0
 
+  // Check if file is too large for safe processing
+  if (buffer.byteLength > LARGE_FILE_THRESHOLD) {
+    console.warn(
+      `Large trajectory file detected (${
+        Math.round(buffer.byteLength / 1024 / 1024)
+      }MB). Processing may be slow.`,
+    )
+  }
+
   // Validate signature
   const signature = new TextDecoder().decode(new Uint8Array(buffer, 0, 8))
   if (signature !== `- of Ulm`) throw new Error(`Invalid ASE trajectory`)
@@ -723,6 +737,11 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
   offset += 8
 
   if (n_items <= 0) throw new Error(`Invalid frame count`)
+  if (n_items > 100_000) {
+    console.warn(
+      `Large number of frames detected (${n_items}). Consider using a smaller trajectory file for better performance.`,
+    )
+  }
 
   // Read offsets
   const frame_offsets = []
@@ -769,50 +788,96 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
   const frames: TrajectoryFrame[] = []
   let global_numbers: number[] | undefined
 
+  // Process frames in chunks to avoid memory issues
   for (let idx = 0; idx < n_items; idx++) {
-    offset = frame_offsets[idx]
-    const json_length = Number(view.getBigInt64(offset, true))
-    offset += 8
+    try {
+      offset = frame_offsets[idx]
+      const json_length = Number(view.getBigInt64(offset, true))
+      offset += 8
 
-    const json_str = new TextDecoder().decode(new Uint8Array(buffer, offset, json_length))
-    const frame_data = JSON.parse(json_str)
+      // Check if JSON length would exceed safe string size
+      if (json_length > MAX_SAFE_STRING_LENGTH) {
+        console.warn(
+          `Skipping frame ${idx + 1}/${n_items}: JSON metadata too large (${
+            Math.round(json_length / 1024 / 1024)
+          }MB)`,
+        )
+        continue
+      }
 
-    const positions_ref = frame_data[`positions.`] || frame_data.positions
-    const positions = positions_ref?.ndarray ? read_ndarray(positions_ref) : positions_ref
-    const cell = frame_data.cell as Matrix3x3
-    const numbers_ref: unknown = frame_data[`numbers.`] || frame_data.numbers ||
-      global_numbers
-    const numbers: number[] = (numbers_ref as { ndarray?: unknown })?.ndarray
-      ? read_ndarray(numbers_ref as { ndarray: unknown[] }).flat()
-      : numbers_ref as number[]
+      // Safely decode JSON string
+      let frame_data: Record<string, unknown>
+      try {
+        const json_str = new TextDecoder().decode(
+          new Uint8Array(buffer, offset, json_length),
+        )
+        frame_data = JSON.parse(json_str)
+      } catch (error) {
+        console.warn(`Failed to parse frame ${idx + 1}/${n_items}: ${error}`)
+        continue
+      }
 
-    if (numbers) global_numbers = numbers
+      const positions_ref = frame_data[`positions.`] || frame_data.positions
+      const positions = (positions_ref as { ndarray?: unknown[] })?.ndarray
+        ? read_ndarray(positions_ref as { ndarray: unknown[] })
+        : positions_ref as number[][]
+      const cell = frame_data.cell as Matrix3x3
+      const numbers_ref: unknown = frame_data[`numbers.`] || frame_data.numbers ||
+        global_numbers
+      const numbers: number[] = (numbers_ref as { ndarray?: unknown })?.ndarray
+        ? read_ndarray(numbers_ref as { ndarray: unknown[] }).flat()
+        : numbers_ref as number[]
 
-    const elements = convert_atomic_numbers(numbers)
-    const metadata = {
-      filename,
-      title: `ASE Trajectory`,
-      program: `ASE`,
-      num_atoms: global_numbers?.length || 0,
-      num_frames: frames.length,
-      source_format: `ase_trajectory`,
-      periodic_boundary_conditions: [true, true, true],
-      element_counts: global_numbers?.reduce((acc, num) => {
-        const el = atomic_number_to_symbol[num] || `X`
-        acc[el] = (acc[el] || 0) + 1
-        return acc
-      }, {} as Record<string, number>),
-      ...(frame_data.calculator && { ...frame_data.calculator }),
-      ...(frame_data.info && { ...frame_data.info }),
+      if (numbers) global_numbers = numbers
+
+      const elements = convert_atomic_numbers(numbers)
+      const metadata = {
+        filename,
+        title: `ASE Trajectory`,
+        program: `ASE`,
+        num_atoms: global_numbers?.length || 0,
+        num_frames: frames.length,
+        source_format: `ase_trajectory`,
+        periodic_boundary_conditions: [true, true, true],
+        element_counts: global_numbers?.reduce((acc, num) => {
+          const el = atomic_number_to_symbol[num] || `X`
+          acc[el] = (acc[el] || 0) + 1
+          return acc
+        }, {} as Record<string, number>),
+        ...(frame_data.calculator && typeof frame_data.calculator === `object` &&
+            frame_data.calculator !== null
+          ? frame_data.calculator
+          : {}),
+        ...(frame_data.info && typeof frame_data.info === `object` &&
+            frame_data.info !== null
+          ? frame_data.info
+          : {}),
+      }
+
+      frames.push(create_trajectory_frame({
+        positions,
+        elements,
+        lattice_matrix: cell,
+        pbc: (frame_data.pbc as [boolean, boolean, boolean]) || [true, true, true],
+        metadata,
+      }, idx))
+
+      // Log progress for large files
+      if (buffer.byteLength > LARGE_FILE_THRESHOLD && (idx + 1) % 100 === 0) {
+        console.log(
+          `Processed ${idx + 1}/${n_items} frames (${
+            Math.round(((idx + 1) / n_items) * 100)
+          }%)`,
+        )
+      }
+    } catch (error) {
+      console.warn(`Error processing frame ${idx + 1}/${n_items}: ${error}`)
+      continue
     }
+  }
 
-    frames.push(create_trajectory_frame({
-      positions,
-      elements,
-      lattice_matrix: cell,
-      pbc: frame_data.pbc || [true, true, true],
-      metadata,
-    }, idx))
+  if (frames.length === 0) {
+    throw new Error(`No valid frames could be parsed from trajectory file`)
   }
 
   return {
@@ -941,6 +1006,7 @@ export function get_unsupported_format_message(
     : null
 }
 
+// Enhanced async parser with better progress reporting for large files
 export async function parse_trajectory_async(
   data: ArrayBuffer | string,
   filename: string,
@@ -952,14 +1018,24 @@ export async function parse_trajectory_async(
   try {
     update_progress(0, `Detecting format...`)
 
+    // Check file size and warn about large files
+    const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
+    if (data_size > LARGE_FILE_THRESHOLD) {
+      const size_mb = Math.round(data_size / 1024 / 1024)
+      update_progress(
+        5,
+        `Large file detected (${size_mb}MB). Processing may take time...`,
+      )
+    }
+
     // Format detection and parsing in one step
     let result: TrajectoryType
     if (data instanceof ArrayBuffer) {
       if (is_ase_format(data, filename)) {
-        update_progress(50, `Parsing ASE trajectory...`)
+        update_progress(10, `Parsing ASE trajectory...`)
         result = parse_ase_trajectory(data, filename)
       } else if (is_torch_sim_hdf5(data, filename)) {
-        update_progress(50, `Parsing TorchSim HDF5...`)
+        update_progress(10, `Parsing TorchSim HDF5...`)
         result = await parse_torch_sim_hdf5(data, filename)
       } else {
         throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
@@ -967,13 +1043,13 @@ export async function parse_trajectory_async(
     } else {
       const content = data.trim()
       if (is_xyz_multi_frame(content, filename)) {
-        update_progress(50, `Parsing XYZ trajectory...`)
+        update_progress(10, `Parsing XYZ trajectory...`)
         result = parse_xyz_trajectory(content)
       } else if (is_vasp_format(content, filename)) {
-        update_progress(50, `Parsing VASP XDATCAR...`)
+        update_progress(10, `Parsing VASP XDATCAR...`)
         result = parse_vasp_xdatcar(content, filename)
       } else if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
-        update_progress(50, `Parsing single XYZ...`)
+        update_progress(10, `Parsing single XYZ...`)
         const { parse_xyz } = await import(`../io/parse`)
         const structure = parse_xyz(content)
         if (!structure) throw new Error(`Failed to parse XYZ structure`)
@@ -982,7 +1058,7 @@ export async function parse_trajectory_async(
           metadata: { source_format: `single_xyz`, frame_count: 1 },
         }
       } else {
-        update_progress(50, `Parsing JSON trajectory...`)
+        update_progress(10, `Parsing JSON trajectory...`)
         try {
           result = await parse_trajectory_data(JSON.parse(content), filename)
         } catch {
@@ -997,13 +1073,31 @@ export async function parse_trajectory_async(
     if (result.metadata) {
       result.metadata.frame_count ??= result.frames.length
     }
+
+    const final_frame_count = result.frames.length
+    if (data_size > LARGE_FILE_THRESHOLD) {
+      update_progress(95, `Successfully parsed ${final_frame_count} frames`)
+    }
+
     update_progress(100, `Complete`)
     return result
   } catch (error) {
-    update_progress(
-      100,
-      `Error: ${error instanceof Error ? error.message : `Unknown error`}`,
-    )
+    const error_message = error instanceof Error ? error.message : `Unknown error`
+    update_progress(100, `Error: ${error_message}`)
+
+    // Provide more specific error messages for large files
+    if (data instanceof ArrayBuffer && data.byteLength > LARGE_FILE_THRESHOLD) {
+      if (
+        error_message.includes(`string longer than`) ||
+        error_message.includes(`Maximum string length`)
+      ) {
+        const file_size_mb = Math.round(data.byteLength / 1024 / 1024)
+        throw new Error(
+          `File too large: ${file_size_mb}MB. Files larger than 512MB require chunked loading. Please use the chunked trajectory loader for this file.`,
+        )
+      }
+    }
+
     throw error
   }
 }

@@ -8,6 +8,9 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
+  interface StreamingData {
+    metadata: { total_frames: number; source_format?: string }
+  }
   interface Props {
     trajectory: TrajectoryType
     current_step_idx: number
@@ -15,6 +18,9 @@
     current_file_path?: string | null
     file_size?: number | null
     file_object?: File | null
+    is_streaming_mode?: boolean
+    streaming_data?: StreamingData
+    streaming_buffer_info?: { buffered_frames: number[]; current_position: number }
     panel_open?: boolean
     toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
     panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
@@ -27,6 +33,9 @@
     current_file_path,
     file_size,
     file_object,
+    is_streaming_mode = false,
+    streaming_data,
+    streaming_buffer_info,
     panel_open = $bindable(false),
     toggle_props,
     panel_props,
@@ -90,6 +99,92 @@
 
   // Get trajectory info organized by sections
   let info_panel_data = $derived.by(() => {
+    // Handle streaming mode
+    if (is_streaming_mode && streaming_data) {
+      const total_frames = streaming_data?.metadata?.total_frames
+      if (!total_frames || current_step_idx < 0 || current_step_idx >= total_frames) {
+        return []
+      }
+      // For streaming mode, we might not have a current frame yet
+      const current_frame = trajectory?.frames?.[current_step_idx]
+
+      const sections = []
+
+      // File info section (same as regular mode)
+      const file_items = [
+        current_filename &&
+        safe_item(
+          `Name`,
+          current_filename,
+          `file-name`,
+          current_file_path || undefined,
+        ),
+        file_size && file_size > 0 &&
+        safe_item(`File Size`, format_size(file_size), `file-size`),
+        file_object?.lastModified &&
+        safe_item(
+          `Modified`,
+          new Date(file_object.lastModified).toLocaleString(),
+          `file-modified`,
+        ),
+        streaming_data.metadata.source_format &&
+        safe_item(
+          `Format`,
+          String(streaming_data.metadata.source_format),
+          `file-format`,
+        ),
+      ].filter(is_info_item)
+
+      if (file_items.length > 0) {
+        sections.push({ title: `File`, items: file_items })
+      }
+
+      // Streaming info section
+      const streaming_items = [
+        safe_item(
+          `Total Frames`,
+          `${format_num(total_frames, `.3~s`)} (current: ${
+            format_num(current_step_idx + 1, `.3~s`)
+          })`,
+          `streaming-frames`,
+        ),
+        streaming_buffer_info &&
+        safe_item(
+          `Buffered Frames`,
+          `${streaming_buffer_info.buffered_frames.length}`,
+          `streaming-buffer`,
+          `Frames currently loaded in memory for smooth playback`,
+        ),
+        safe_item(`Streaming Mode`, `Active`, `streaming-mode`),
+      ].filter(is_info_item)
+
+      if (streaming_items.length > 0) {
+        sections.push({ title: `Streaming`, items: streaming_items })
+      }
+
+      // If we have a current frame in streaming mode, add structure info
+      if (current_frame?.structure?.sites) {
+        const { structure } = current_frame
+        const lattice = `lattice` in structure ? structure.lattice : null
+        const { volume, a, b, c, alpha, beta, gamma } = lattice || {}
+        const formula = safe_formula(structure)
+
+        const structure_items = [
+          safe_item(`Atoms`, `${structure.sites.length}`, `atoms`),
+          formula && safe_item(`Formula`, String(formula), `formula`),
+          is_valid_number(volume) && volume > 0 &&
+          safe_item(`Volume`, `${format_num(volume, `.3~s`)} Å³`, `volume`),
+        ].filter(is_info_item)
+
+        if (structure_items.length > 0) {
+          sections.push({ title: `Structure`, items: structure_items })
+        }
+      }
+
+      return sections
+    }
+
+    // Regular trajectory mode
     if (
       !trajectory?.frames?.length || current_step_idx < 0 ||
       current_step_idx >= trajectory.frames.length
@@ -177,7 +272,9 @@
     const traj_items = [
       safe_item(
         `Steps`,
-        `${trajectory.frames.length} (current: ${current_step_idx + 1})`,
+        `${format_num(trajectory.frames.length, `.3~s`)} (current: ${
+          format_num(current_step_idx + 1, `.3~s`)
+        })`,
         `steps`,
       ),
       duration > 0 &&
