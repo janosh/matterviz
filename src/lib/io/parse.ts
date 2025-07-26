@@ -508,207 +508,199 @@ export function parse_xyz(content: string): ParsedStructure | null {
   }
 }
 
+const extract_cif_cell_parameters = (text: string, type: string): number[] => {
+  return text
+    .split(`\n`)
+    .filter((line) => line.startsWith(`_${type}`))
+    .map((line) => {
+      const tokens = line.split(/\s+/)
+      const value = tokens[tokens.length - 1] // Last token contains the value
+      return parseFloat(value.split(`(`)[0]) // Remove uncertainty notation
+    })
+}
+
+// build header index mapping for atom site data
+const build_cif_atom_site_header_indices = (
+  headers: string[],
+): Record<string, number> => {
+  const indices: Record<string, number> = {}
+
+  headers.forEach((header, idx) => {
+    const trimmed = header.trim()
+    if (trimmed.endsWith(`_atom_site_label`)) indices.label = idx
+    else if (trimmed.endsWith(`_atom_site_type_symbol`)) indices.symbol = idx
+    else if (trimmed.endsWith(`_atom_site_fract_x`)) indices.x = idx
+    else if (trimmed.endsWith(`_atom_site_fract_y`)) indices.y = idx
+    else if (trimmed.endsWith(`_atom_site_fract_z`)) indices.z = idx
+    else if (trimmed.endsWith(`_atom_site_occupancy`)) indices.occupancy = idx
+    else if (trimmed.endsWith(`_atom_site_disorder_group`)) indices.disorder = idx
+  })
+
+  return indices
+}
+
+// Parse atom data from CIF with robust error handling
+const parse_cif_atom_data = (raw_data: string[], indices: Record<string, number>) => {
+  const { label = 0, x = -1, y = -1, z = -1, symbol = -1, occupancy = -1 } = indices
+
+  if (x === -1 || y === -1 || z === -1) throw new Error(`Missing coordinate indices`)
+
+  // Parse coordinates with validation
+  const fract_coords = [x, y, z].map((idx) => {
+    const coord_str = raw_data[idx]
+    if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
+    const coord = parseFloat(coord_str.split(`(`)[0])
+    if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
+    return coord
+  })
+
+  // Parse occupancy (default 1.0 if not present)
+  const occu = occupancy >= 0 && raw_data[occupancy]
+    ? (() => {
+      const parsed = parseFloat(raw_data[occupancy].split(`(`)[0])
+      if (isNaN(parsed)) throw new Error(`Invalid occupancy: ${raw_data[occupancy]}`)
+      return parsed
+    })()
+    : 1.0
+
+  // Extract element symbol: type symbol first, then label
+  const element_symbol =
+    (symbol >= 0 && raw_data[symbol]?.match(/^([A-Z][a-z]*)/)?.[1]) ||
+    (raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0]) ||
+    (() => {
+      throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
+    })()
+
+  return {
+    id: raw_data[label],
+    element: element_symbol,
+    fract_coords: fract_coords as [number, number, number],
+    occupancy: occu,
+  }
+}
+
 // Parse CIF (Crystallographic Information File) format
 export function parse_cif(
   content: string,
   wrap_frac: boolean = true,
 ): ParsedStructure | null {
   try {
-    const lines = content.trim().split(/\r?\n/)
-
-    if (lines.length < 2) {
-      console.error(`CIF file too short`)
+    const text = content.trim()
+    if (!text) {
+      console.error(`CIF file is empty`)
       return null
     }
 
-    // Parse unit cell parameters
-    let [cell_a, cell_b, cell_c] = [1, 1, 1]
-    let [alpha, beta, gamma] = [90, 90, 90]
+    // Find atom site loop
+    const lines = text.split(`\n`)
+    let atom_headers: string[] = []
+    const atom_data_lines: string[] = []
 
-    // Find unit cell parameters
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith(`_cell_length_a`)) {
-        cell_a = parseFloat(trimmed.split(/\s+/)[1])
-      } else if (trimmed.startsWith(`_cell_length_b`)) {
-        cell_b = parseFloat(trimmed.split(/\s+/)[1])
-      } else if (trimmed.startsWith(`_cell_length_c`)) {
-        cell_c = parseFloat(trimmed.split(/\s+/)[1])
-      } else if (trimmed.startsWith(`_cell_angle_alpha`)) {
-        alpha = parseFloat(trimmed.split(/\s+/)[1])
-      } else if (trimmed.startsWith(`_cell_angle_beta`)) {
-        beta = parseFloat(trimmed.split(/\s+/)[1])
-      } else if (trimmed.startsWith(`_cell_angle_gamma`)) {
-        gamma = parseFloat(trimmed.split(/\s+/)[1])
+    for (let ii = 0; ii < lines.length; ii++) {
+      if (lines[ii].trim() === `loop_`) {
+        let jj = ii + 1
+        const headers: string[] = []
+
+        // Collect headers
+        while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
+          headers.push(lines[jj].trim())
+          jj++
+        }
+
+        // Check if this is an atom site loop
+        if (headers.some((h) => h.includes(`_atom_site_`))) {
+          atom_headers = headers
+          // Collect data lines
+          while (jj < lines.length) {
+            const line = lines[jj].trim()
+            if (line === `loop_` || line.startsWith(`data_`) || line === ``) break
+            if (line && !line.startsWith(`#`)) atom_data_lines.push(line)
+            jj++
+          }
+          break
+        }
       }
     }
 
-    // Calculate lattice vectors from unit cell parameters using math utility
-    const lattice_matrix = math.cell_to_lattice_matrix(
-      ...[cell_a, cell_b, cell_c, alpha, beta, gamma],
-    )
-
-    // Calculate lattice parameters (including volume)
-    const calculated_lattice_params = math.calc_lattice_params(lattice_matrix)
-
-    // Find atom site data
-    const sites: Site[] = []
-    let in_atom_site_loop = false
-    let atom_site_headers: string[] = []
-    let header_indices: Record<string, number> = {}
-
-    for (let line_idx = 0; line_idx < lines.length; line_idx++) {
-      const line = lines[line_idx].trim()
-
-      // Look for atom site loop
-      if (line === `loop_`) {
-        // Check if next few lines contain atom site labels
-        let next_line_idx = line_idx + 1
-        const potential_headers: string[] = []
-
-        while (next_line_idx < lines.length) {
-          const next_line = lines[next_line_idx].trim()
-          if (next_line.startsWith(`_atom_site_`)) {
-            potential_headers.push(next_line)
-            next_line_idx++
-          } else break
-        }
-
-        if (potential_headers.length > 0) {
-          in_atom_site_loop = true
-          atom_site_headers = potential_headers
-
-          // Build header-to-index mapping once
-          header_indices = {}
-          for (
-            let header_idx = 0;
-            header_idx < atom_site_headers.length;
-            header_idx++
-          ) {
-            const header = atom_site_headers[header_idx]
-            if (header.includes(`_atom_site_label`)) {
-              header_indices.label = header_idx
-            } else if (header.includes(`_atom_site_type_symbol`)) {
-              header_indices.symbol = header_idx
-            } else if (header.includes(`_atom_site_fract_x`)) {
-              header_indices.x = header_idx
-            } else if (header.includes(`_atom_site_fract_y`)) {
-              header_indices.y = header_idx
-            } else if (header.includes(`_atom_site_fract_z`)) {
-              header_indices.z = header_idx
-            } else if (header.includes(`_atom_site_occupancy`)) {
-              header_indices.occupancy = header_idx
-            }
-          }
-
-          line_idx = next_line_idx - 1 // Skip to data section
-          continue
-        }
-      }
-
-      // Parse atom site data
-      if (
-        in_atom_site_loop &&
-        line &&
-        !line.startsWith(`_`) &&
-        !line.startsWith(`#`)
-      ) {
-        const tokens = line.split(/\s+/)
-
-        if (tokens.length >= atom_site_headers.length) {
-          // Use precomputed header indices
-          const label_idx = header_indices.label >= 0 ? header_indices.label : -1
-          const symbol_idx = header_indices.symbol >= 0 ? header_indices.symbol : -1
-          const x_idx = header_indices.x >= 0 ? header_indices.x : -1
-          const y_idx = header_indices.y >= 0 ? header_indices.y : -1
-          const z_idx = header_indices.z >= 0 ? header_indices.z : -1
-          const occ_idx = header_indices.occupancy >= 0 ? header_indices.occupancy : -1
-
-          if (
-            (symbol_idx >= 0 || label_idx >= 0) && x_idx >= 0 && y_idx >= 0 && z_idx >= 0
-          ) {
-            try {
-              // Get element symbol from type_symbol field or extract from label
-              let element_symbol = null
-              if (symbol_idx >= 0) {
-                // Use dedicated type_symbol field if available
-                element_symbol = tokens[symbol_idx]
-              } else if (label_idx >= 0) {
-                // Extract element symbol from label (e.g., "C1" -> "C", "Fe_oct" -> "Fe")
-                const label = tokens[label_idx]
-                const extracted_symbol = label.match(/^([A-Z][a-z]?)/)?.[1]
-                element_symbol = extracted_symbol || label
-              }
-
-              if (!element_symbol) continue
-
-              const fract_x = parseFloat(tokens[x_idx])
-              const fract_y = parseFloat(tokens[y_idx])
-              const fract_z = parseFloat(tokens[z_idx])
-              const occupancy = occ_idx >= 0 ? parseFloat(tokens[occ_idx]) : 1.0
-              const label = label_idx >= 0 ? tokens[label_idx] : element_symbol
-
-              if (isNaN(fract_x) || isNaN(fract_y) || isNaN(fract_z)) {
-                continue
-              }
-
-              const element = validate_element_symbol(
-                element_symbol,
-                sites.length,
-              )
-              const abc: Vec3 = [fract_x, fract_y, fract_z]
-
-              // Conditionally wrap fractional coordinates to [0,1) (i.e. inside the cell) before converting to Cartesian
-              const abc_wrapped: Vec3 = wrap_frac
-                ? [
-                  abc[0] - Math.floor(abc[0]),
-                  abc[1] - Math.floor(abc[1]),
-                  abc[2] - Math.floor(abc[2]),
-                ]
-                : abc
-
-              // Convert fractional to Cartesian coordinates
-              const xyz = math.mat3x3_vec3_multiply(
-                math.transpose_3x3_matrix(lattice_matrix),
-                abc_wrapped,
-              )
-
-              const site: Site = {
-                species: [{ element, occu: occupancy, oxidation_state: 0 }],
-                abc: abc_wrapped,
-                xyz,
-                label,
-                properties: {},
-              }
-
-              sites.push(site)
-            } catch (error) {
-              console.warn(`Error parsing CIF atom site line: ${line}`, error)
-            }
-          }
-        }
-      }
-
-      // End of loop or start of new section
-      if (
-        in_atom_site_loop &&
-        (line.startsWith(`loop_`) || line.startsWith(`data_`) || line === ``)
-      ) {
-        in_atom_site_loop = false
-      }
-    }
-
-    if (sites.length === 0) {
-      console.error(`No atom sites found in CIF file`)
+    if (!atom_headers.length || !atom_data_lines.length) {
+      console.error(`No valid atom site loop found in CIF file`)
       return null
     }
 
-    const structure: ParsedStructure = {
-      sites,
-      lattice: { matrix: lattice_matrix, ...calculated_lattice_params },
+    // Parse atom data with error handling
+    const header_indices = build_cif_atom_site_header_indices(atom_headers)
+    const atoms = atom_data_lines
+      .map((line) => line.split(/\s+/).filter(Boolean))
+      .filter((tokens) => {
+        const { disorder } = header_indices
+        return !(disorder !== undefined && tokens[disorder] === `2`) &&
+          tokens.length >=
+            Math.max(
+                header_indices.x ?? 0,
+                header_indices.y ?? 0,
+                header_indices.z ?? 0,
+              ) + 1
+      })
+      .map((tokens) => {
+        try {
+          return parse_cif_atom_data(tokens, header_indices)
+        } catch (error) {
+          console.warn(`Skipping invalid atom data: ${error}`)
+          return null
+        }
+      })
+      .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
+
+    if (!atoms.length) {
+      console.error(`No valid atoms found in CIF file`)
+      return null
     }
 
-    return structure
+    // Extract cell parameters and build lattice
+    const lengths = extract_cif_cell_parameters(text, `cell_length`)
+    const angles = extract_cif_cell_parameters(text, `cell_angle`)
+
+    if (lengths.length < 3 || angles.length < 3) {
+      console.error(`Insufficient cell parameters in CIF file`)
+      return null
+    }
+
+    // Build lattice and create sites
+    const [a, b, c] = lengths
+    const [alpha, beta, gamma] = angles
+    const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+    const lattice_params = math.calc_lattice_params(lattice_matrix)
+
+    // Create sites with coordinate conversion
+    const sites: Site[] = atoms.map((atom, idx) => {
+      const element = validate_element_symbol(atom.element, idx)
+      const [fract_x, fract_y, fract_z] = atom.fract_coords
+
+      // Wrap fractional coordinates if requested
+      const abc: Vec3 = wrap_frac
+        ? [
+          fract_x - Math.floor(fract_x),
+          fract_y - Math.floor(fract_y),
+          fract_z - Math.floor(fract_z),
+        ]
+        : [fract_x, fract_y, fract_z]
+
+      // Convert to Cartesian coordinates
+      const xyz = math.mat3x3_vec3_multiply(
+        math.transpose_3x3_matrix(lattice_matrix),
+        abc,
+      )
+
+      return {
+        species: [{ element, occu: atom.occupancy, oxidation_state: 0 }],
+        abc,
+        xyz,
+        label: atom.id,
+        properties: {},
+      }
+    })
+
+    return { sites, lattice: { matrix: lattice_matrix, ...lattice_params } }
   } catch (error) {
     console.error(`Error parsing CIF file:`, error)
     return null
