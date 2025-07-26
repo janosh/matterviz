@@ -1723,3 +1723,37 @@ describe(`Structure File Detection`, () => {
     expect(is_structure_file(filename)).toBe(expected)
   })
 })
+
+describe(`CIF strict mode`, () => {
+  const cif_invalid_length = `data_test
+_cell_length_a  invalid
+_cell_length_b  5.0
+_cell_length_c  5.0
+_cell_angle_alpha  90
+_cell_angle_beta   90
+_cell_angle_gamma  90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0 0 0`
+
+  it(`should return null and log an error in strict mode (default)`, () => {
+    const result = parse_cif(cif_invalid_length)
+    expect(result).toBeNull()
+    expect(console_error_spy).toHaveBeenCalledWith(
+      `Error parsing CIF file:`,
+      new Error(`Invalid CIF cell parameter in line: _cell_length_a  invalid`),
+    )
+  })
+
+  it(`should return null in non-strict mode`, () => {
+    const result = parse_cif(cif_invalid_length, true, false)
+    expect(result).toBeNull()
+    expect(console_error_spy).toHaveBeenCalledWith(
+      `Insufficient cell parameters in CIF file`,
+    )
+  })
+})

@@ -92,7 +92,6 @@
     allow_file_drop = true,
     enable_info_panel = true,
     save_json_btn_text = `⬇ JSON`,
-    save_png_btn_text = `⬇ PNG`,
     save_xyz_btn_text = `⬇ XYZ`,
     png_dpi = $bindable(150),
     show_site_labels = $bindable(false),
@@ -479,7 +478,6 @@
           {structure}
           {wrapper}
           {save_json_btn_text}
-          {save_png_btn_text}
           {save_xyz_btn_text}
           {scene}
           {camera}

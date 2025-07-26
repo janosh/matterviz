@@ -38,11 +38,6 @@
     wrapper?: HTMLDivElement
     // Export settings
     png_dpi?: number
-    save_json_btn_text?: string
-    save_png_btn_text?: string
-    save_xyz_btn_text?: string
-    copy_json_btn_text?: string
-    copy_xyz_btn_text?: string
     scene?: Scene
     camera?: Camera
     panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
@@ -80,11 +75,6 @@
     structure = undefined,
     wrapper = undefined,
     png_dpi = $bindable(150),
-    save_json_btn_text = `⬇ JSON`,
-    save_png_btn_text = `⬇ PNG`,
-    save_xyz_btn_text = `⬇ XYZ`,
-    copy_json_btn_text = `📋 JSON`,
-    copy_xyz_btn_text = `📋 XYZ`,
     scene = undefined,
     camera = undefined,
     panel_props = $bindable({}),
@@ -101,19 +91,24 @@
   })
 
   // Copy button feedback state
-  let copy_status = $state<{ json: boolean; xyz: boolean }>({
+  let copy_status = $state<
+    { json: boolean; xyz: boolean; cif: boolean; poscar: boolean }
+  >({
     json: false,
     xyz: false,
+    cif: false,
+    poscar: false,
   })
 
   // Dynamic button text based on copy status
-  const copy_confirm = `✅ Copied!`
-  let current_copy_json_btn_text = $derived(
-    copy_status.json ? copy_confirm : copy_json_btn_text,
-  )
-  let current_copy_xyz_btn_text = $derived(
-    copy_status.xyz ? copy_confirm : copy_xyz_btn_text,
-  )
+  const copy_confirm = `✅`
+
+  const export_formats = [
+    { label: `JSON`, format: `json` },
+    { label: `XYZ`, format: `xyz` },
+    { label: `CIF`, format: `cif` },
+    { label: `POSCAR`, format: `poscar` },
+  ] as const
 
   // Detect if structure has force data
   let has_forces = $derived(
@@ -135,8 +130,20 @@
       .filter(Boolean)
   }
 
+  // Helper function to export structure to file
+  function export_structure(format: `json` | `xyz` | `cif` | `poscar`) {
+    if (!structure) return
+    const export_fns = {
+      json: exports.export_structure_as_json,
+      xyz: exports.export_structure_as_xyz,
+      cif: exports.export_structure_as_cif,
+      poscar: exports.export_structure_as_poscar,
+    }
+    export_fns[format](structure)
+  }
+
   // Handle clipboard copy with user feedback
-  async function handle_copy(format: `json` | `xyz`) {
+  async function handle_copy(format: `json` | `xyz` | `cif` | `poscar`) {
     if (!structure) {
       console.warn(`No structure available for copying`)
       return
@@ -146,7 +153,10 @@
       let content: string
       if (format === `json`) content = exports.structure_to_json_str(structure)
       else if (format === `xyz`) content = exports.structure_to_xyz_str(structure)
-      else throw new Error(`Invalid format: ${format}`)
+      else if (format === `cif`) content = exports.structure_to_cif_str(structure)
+      else if (format === `poscar`) {
+        content = exports.structure_to_poscar_str(structure)
+      } else throw new Error(`Invalid format: ${format}`)
 
       await exports.copy_to_clipboard(content)
 
@@ -212,38 +222,28 @@
   <!-- Export Controls -->
   <hr />
   <h4>Export</h4>
-  <span
-    style="display: flex; gap: 6pt; margin: 3pt 0 0; align-items: center; flex-wrap: wrap"
-  >
-    <button
-      type="button"
-      onclick={() => exports.export_structure_as_json(structure)}
-      title={save_json_btn_text}
-    >
-      {save_json_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => handle_copy(`json`)}
-      title={current_copy_json_btn_text}
-    >
-      {current_copy_json_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => exports.export_structure_as_xyz(structure)}
-      title={save_xyz_btn_text}
-    >
-      {save_xyz_btn_text}
-    </button>
-    <button
-      type="button"
-      onclick={() => handle_copy(`xyz`)}
-      title={current_copy_xyz_btn_text}
-    >
-      {current_copy_xyz_btn_text}
-    </button>
+  <div class="export-buttons">
+    {#each export_formats as { label, format } (format)}
+      <div style="display: flex; align-items: center; gap: 4pt">
+        {label}
+        <button
+          type="button"
+          onclick={() => export_structure(format)}
+          title="Download {label}"
+        >
+          ⬇
+        </button>
+        <button
+          type="button"
+          onclick={() => handle_copy(format)}
+          title="Copy {label} to clipboard"
+        >
+          {copy_status[format] ? copy_confirm : `📋`}
+        </button>
+      </div>
+    {/each}
     <label>
+      PNG
       <button
         type="button"
         onclick={() => {
@@ -258,20 +258,21 @@
             )
           } else console.warn(`Canvas element not found for PNG export`)
         }}
-        title="{save_png_btn_text} ({png_dpi} DPI)"
+        title="PNG ({png_dpi} DPI)"
       >
-        {save_png_btn_text}
+        ⬇
       </button>
-      &nbsp;DPI:
+      &nbsp;(DPI:
       <input
         type="number"
         min={50}
         max={500}
         bind:value={png_dpi}
         title="Export resolution in dots per inch"
-      />
+        style="margin: 0 0 0 2pt"
+      />)
     </label>
-  </span>
+  </div>
 
   <hr />
   <!-- Camera Controls -->
@@ -617,3 +618,19 @@
     </label>
   {/if}
 </DraggablePanel>
+
+<style>
+  .export-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1ex;
+    font-size: 0.95em;
+  }
+  .export-buttons button {
+    width: 1.6em;
+    height: 1.6em;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+</style>
