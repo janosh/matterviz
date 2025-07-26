@@ -101,9 +101,13 @@
   })
 
   // Copy button feedback state
-  let copy_status = $state<{ json: boolean; xyz: boolean }>({
+  let copy_status = $state<
+    { json: boolean; xyz: boolean; cif: boolean; poscar: boolean }
+  >({
     json: false,
     xyz: false,
+    cif: false,
+    poscar: false,
   })
 
   // Dynamic button text based on copy status
@@ -113,6 +117,12 @@
   )
   let current_copy_xyz_btn_text = $derived(
     copy_status.xyz ? copy_confirm : copy_xyz_btn_text,
+  )
+  let current_copy_cif_btn_text = $derived(
+    copy_status.cif ? copy_confirm : `📋 CIF`,
+  )
+  let current_copy_poscar_btn_text = $derived(
+    copy_status.poscar ? copy_confirm : `📋 POSCAR`,
   )
 
   // Detect if structure has force data
@@ -136,7 +146,7 @@
   }
 
   // Handle clipboard copy with user feedback
-  async function handle_copy(format: `json` | `xyz`) {
+  async function handle_copy(format: `json` | `xyz` | `cif` | `poscar`) {
     if (!structure) {
       console.warn(`No structure available for copying`)
       return
@@ -146,7 +156,10 @@
       let content: string
       if (format === `json`) content = exports.structure_to_json_str(structure)
       else if (format === `xyz`) content = exports.structure_to_xyz_str(structure)
-      else throw new Error(`Invalid format: ${format}`)
+      else if (format === `cif`) content = exports.structure_to_cif_str(structure)
+      else if (format === `poscar`) {
+        content = exports.structure_to_poscar_str(structure)
+      } else throw new Error(`Invalid format: ${format}`)
 
       await exports.copy_to_clipboard(content)
 
@@ -242,6 +255,34 @@
       title={current_copy_xyz_btn_text}
     >
       {current_copy_xyz_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => exports.export_structure_as_cif(structure)}
+      title="⬇ CIF"
+    >
+      ⬇ CIF
+    </button>
+    <button
+      type="button"
+      onclick={() => handle_copy(`cif`)}
+      title={current_copy_cif_btn_text}
+    >
+      {current_copy_cif_btn_text}
+    </button>
+    <button
+      type="button"
+      onclick={() => exports.export_structure_as_poscar(structure)}
+      title="⬇ POSCAR"
+    >
+      ⬇ POSCAR
+    </button>
+    <button
+      type="button"
+      onclick={() => handle_copy(`poscar`)}
+      title={current_copy_poscar_btn_text}
+    >
+      {current_copy_poscar_btn_text}
     </button>
     <label>
       <button

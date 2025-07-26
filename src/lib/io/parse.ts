@@ -508,14 +508,22 @@ export function parse_xyz(content: string): ParsedStructure | null {
   }
 }
 
-const extract_cif_cell_parameters = (text: string, type: string): number[] => {
+const extract_cif_cell_parameters = (
+  text: string,
+  type: string,
+  strict = true,
+): number[] => {
   return text
     .split(`\n`)
     .filter((line) => line.startsWith(`_${type}`))
     .map((line) => {
       const tokens = line.split(/\s+/)
-      const value = tokens[tokens.length - 1] // Last token contains the value
-      return parseFloat(value.split(`(`)[0]) // Remove uncertainty notation
+      const value_str = tokens[tokens.length - 1] // Last token contains the value
+      const value = parseFloat(value_str.split(`(`)[0]) // Remove uncertainty notation
+      if (isNaN(value) && strict) {
+        throw new Error(`Invalid CIF cell parameter in line: ${line}`)
+      }
+      return value
     })
 }
 
@@ -583,6 +591,7 @@ const parse_cif_atom_data = (raw_data: string[], indices: Record<string, number>
 export function parse_cif(
   content: string,
   wrap_frac: boolean = true,
+  strict: boolean = true,
 ): ParsedStructure | null {
   try {
     const text = content.trim()
@@ -657,8 +666,8 @@ export function parse_cif(
     }
 
     // Extract cell parameters and build lattice
-    const lengths = extract_cif_cell_parameters(text, `cell_length`)
-    const angles = extract_cif_cell_parameters(text, `cell_angle`)
+    const lengths = extract_cif_cell_parameters(text, `cell_length`, strict)
+    const angles = extract_cif_cell_parameters(text, `cell_angle`, strict)
 
     if (lengths.length < 3 || angles.length < 3) {
       console.error(`Insufficient cell parameters in CIF file`)
