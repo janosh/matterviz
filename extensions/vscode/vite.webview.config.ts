@@ -13,7 +13,7 @@ export default defineConfig({
       fileName: () => `extension.cjs`,
     },
     rollupOptions: {
-      external: [`vscode`, `fs`, `path`],
+      external: [`vscode`, `fs`, `path`, `node:buffer`],
     },
     minify: false,
   },
