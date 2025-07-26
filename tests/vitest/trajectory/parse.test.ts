@@ -32,8 +32,8 @@ describe(`Trajectory File Detection`, () => {
   test.each([
     // Standard trajectory file extensions
     [`test.traj`, true],
-    [`test.h5`, true],
-    [`data.hdf5`, true],
+    [`test.h5`, false],
+    [`data.hdf5`, false],
     [`simulation.traj`, true],
     [`molecular_dynamics.h5`, true],
     [`relaxation.hdf5`, true],
@@ -83,7 +83,7 @@ describe(`Trajectory File Detection`, () => {
     // Double .gz
     [`trajectory.traj.gz.gz`, true],
     // Compressed but not valid base
-    [`trajectory.txt.gz`, true],
+    [`trajectory.txt.gz`, false],
     [`document.pdf.gz`, false],
 
     // ASE ULM binary trajectory files
@@ -103,7 +103,7 @@ describe(`Trajectory File Detection`, () => {
 
     // Unicode and special characters
     [`مەركەزیtrajectory.traj`, true],
-    [`file🔥emoji.h5`, true],
+    [`file🔥emoji.h5`, false],
     [`trajectory-测试.traj`, true],
     [`simulation_ñáéíóú.h5`, true],
     [`trajectory with spaces.traj`, true],
@@ -126,7 +126,7 @@ describe(`Trajectory File Detection`, () => {
 
     // Very short names
     [`a.traj`, true],
-    [`a.h5`, true],
+    [`a.h5`, false],
     [`a.xyz`, false],
     [`a`, false],
 

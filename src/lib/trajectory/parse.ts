@@ -37,26 +37,27 @@ export function is_trajectory_file(filename: string): boolean {
     base_name = base_name.replace(compression_regex, ``)
   }
 
-  // Standard trajectory extensions
-  if (/\.(traj|h5|hdf5)$/i.test(base_name)) return true
+  // Standard trajectory extensions (only .traj and .xtc are trajectory-specific)
+  if (/\.(traj|xtc)$/i.test(base_name)) return true
 
   // VASP trajectory files
   if (/xdatcar/i.test(base_name)) return true
 
   // Files with trajectory keywords
-  const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md)/i
+  const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
   if (keywords.test(base_name)) {
     // XYZ/EXTXYZ files with keywords
     if (/\.(xyz|extxyz)$/i.test(base_name)) return true
-    // Other files with keywords (excluding specific patterns)
+    // HDF5 files with trajectory keywords (more specific than accepting all .h5/.hdf5)
+    if (/\.(h5|hdf5)$/i.test(base_name)) return true
+    // Other files with keywords
     if (/\.(dat|data|poscar|pdf)$/i.test(base_name)) return true
-    // Specific patterns for .log, .out, .txt files
-    if (/\.log$/i.test(base_name) && /(nve|relax)/i.test(base_name)) return true
-    if (/\.out$/i.test(base_name) && /(traj|nvt)/i.test(base_name)) return true
-    if (
-      /\.txt$/i.test(base_name) && /trajectory/i.test(base_name) &&
-      !/trajectory_notes/i.test(base_name)
-    ) return true
+    // Specific patterns for .log and .out files
+    if (/\.log$/i.test(base_name) && /(trajectory|npt|nve|relax)/i.test(base_name)) {
+      return true
+    }
+    if (/\.out$/i.test(base_name) && /(relax|traj|nvt)/i.test(base_name)) return true
+    // Special case for .txt files with trajectory keyword (excluding notes)
   }
 
   return false

@@ -52,7 +52,7 @@ const mock_vscode = vi.hoisted(() => ({
     })),
     fs: { stat: vi.fn() },
   },
-  commands: { registerCommand: vi.fn() },
+  commands: { registerCommand: vi.fn(), executeCommand: vi.fn() },
   Uri: {
     file: vi.fn((p: string) => ({ fsPath: p })),
     joinPath: vi.fn((_base: unknown, ...paths: string[]) => ({
@@ -311,7 +311,7 @@ describe(`MatterViz Extension`, () => {
     ],
     [
       `JPEG image`,
-      `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxAAPwA/8A`,
+      `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AP/Z`,
       `plot.jpg`,
       true,
     ],
@@ -881,7 +881,7 @@ describe(`MatterViz Extension`, () => {
       // Supported trajectory files
       [`trajectory.traj`, true],
       [`simulation.h5`, true],
-      [`data.hdf5`, true],
+      [`data.hdf5`, false],
       [`traj.xtc`, true],
       // Compressed supported files
       [`trajectory.xyz.gz`, true],

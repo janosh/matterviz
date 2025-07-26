@@ -1,8 +1,9 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
-const __dirname = dirname(new URL(import.meta.url).pathname)
+const __dirname = fileURLToPath(new URL(`.`, import.meta.url))
 
 export default defineConfig({
   build: {
