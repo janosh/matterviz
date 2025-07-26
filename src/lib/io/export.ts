@@ -192,7 +192,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
         first_species && `element` in first_species && first_species.element
       ) {
         element_symbol = first_species.element
-        occupancy = first_species.occu
+        occupancy = first_species?.occu ?? 1
       }
     }
 

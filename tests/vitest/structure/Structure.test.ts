@@ -1,5 +1,6 @@
 import type { AnyStructure, Vec3 } from '$lib'
 import { Structure } from '$lib'
+import * as exports from '$lib/io/export'
 import { euclidean_dist, type Matrix3x3, pbc_dist } from '$lib/math'
 import { structures } from '$site/structures'
 import { readFileSync } from 'fs'
@@ -76,6 +77,11 @@ describe(`Structure`, () => {
     ]),
   )(`$format $action button works`, async ({ format, action }) => {
     // Mount component and open controls
+    const export_fn_name = action === `Download`
+      ? `export_structure_as_${format.toLowerCase()}`
+      : `structure_to_${format.toLowerCase()}_str`
+    const export_spy = vi.spyOn(exports, export_fn_name as keyof typeof exports)
+
     mount(Structure, {
       target: document.body,
       props: { structure, show_controls: true },
@@ -98,6 +104,10 @@ describe(`Structure`, () => {
       download_btn.click()
 
       expect(spy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement))
+      expect(export_spy).toHaveBeenCalledOnce()
+      // For download, the function is called with the structure, not returning a string directly
+      // so we can't easily check content here without more complex mocking.
+      // We'll rely on the correct high-level export function being called.
 
       spy.mockRestore()
       // @ts-expect-error - function is mocked
@@ -119,6 +129,9 @@ describe(`Structure`, () => {
 
       expect(clipboard_spy).toHaveBeenCalledOnce()
       expect(copy_btn.textContent).toContain(`✅`)
+      expect(export_spy).toHaveBeenCalledOnce()
+      const content = export_spy.mock.results[0].value
+      expect(content).toContain(structure.sites[0].species[0].element)
 
       clipboard_spy.mockRestore()
     }

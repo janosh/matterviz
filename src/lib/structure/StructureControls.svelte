@@ -225,7 +225,7 @@
   <div class="export-buttons">
     {#each export_formats as { label, format } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
-        <strong>{label}</strong>
+        {label}
         <button
           type="button"
           onclick={() => export_structure(format)}
@@ -243,7 +243,7 @@
       </div>
     {/each}
     <label>
-      <strong>PNG</strong>
+      PNG
       <button
         type="button"
         onclick={() => {
@@ -622,10 +622,9 @@
 <style>
   .export-buttons {
     display: flex;
-    gap: 10pt;
-    margin: 3pt 0 0;
-    align-items: center;
     flex-wrap: wrap;
+    gap: 1ex;
+    font-size: 0.95em;
   }
   .export-buttons button {
     width: 1.6em;
