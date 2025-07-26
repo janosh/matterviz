@@ -10,6 +10,7 @@ import {
 } from '$lib/io/parse'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
+import tio2_cif from '$site/structures/TiO2.cif?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
@@ -552,8 +553,8 @@ H1   H   2.100  0.900  0.500  1.000`
 
   describe(`CIF Error Handling`, () => {
     it.each([
-      [`empty file`, ``, `CIF file too short`],
-      [`single line`, `data_test`, `CIF file too short`],
+      [`empty file`, ``, `CIF file is empty`],
+      [`single line`, `data_test`, `No valid atom site loop found in CIF file`],
       [
         `missing cell params`,
         `data_test\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Si  0.000  0.000  0.000`,
@@ -618,7 +619,7 @@ H1   H   0.500  0.500  0.500  1.000  1.000`
       expect(result).not.toBeNull()
       if (result) {
         expect(result.sites.length).toBeGreaterThan(0)
-        expect(result.sites.length).toBeLessThan(3)
+        expect(result.sites.length).toBe(3)
         expect(result.sites[0].species[0].occu).toBe(1.0)
       }
     })
@@ -649,6 +650,150 @@ H1   H   0.500  0.500  0.500`
       if (result) {
         expect(result.sites).toHaveLength(3)
       }
+    })
+  })
+
+  describe(`TiO2 CIF Oxidation State Tests`, () => {
+    const expected_labels = [`Ti0`, `Ti1`, `O2`, `O3`, `O4`, `O5`]
+    const expected_coords = [
+      [0.5, 0.5, 0.0],
+      [0.0, 0.0, 0.5],
+      [0.69567869, 0.69567869, 0.5],
+      [0.19567869, 0.80432131, 0.0],
+      [0.80432131, 0.19567869, 0.0],
+      [0.30432131, 0.30432131, 0.5],
+    ]
+    const expected_elements = [`Ti`, `Ti`, `O`, `O`, `O`, `O`]
+
+    function check_tio2_structure(result: ReturnType<typeof parse_cif>) {
+      expect(result).toBeTruthy()
+      expect(result?.sites).toHaveLength(6)
+      expect(result?.lattice?.a).toBeCloseTo(4.59983732, 8)
+      expect(result?.lattice?.b).toBeCloseTo(4.59983732, 8)
+      expect(result?.lattice?.c).toBeCloseTo(2.95921356, 8)
+      expect(result?.lattice?.alpha).toBeCloseTo(90.0, 8)
+      expect(result?.lattice?.beta).toBeCloseTo(90.0, 8)
+      expect(result?.lattice?.gamma).toBeCloseTo(90.0, 8)
+    }
+
+    test(`should parse TiO2 CIF with oxidation states correctly`, () => {
+      const result = parse_cif(tio2_cif)
+      check_tio2_structure(result)
+    })
+
+    test(`should extract correct element symbols and labels`, () => {
+      const result = parse_cif(tio2_cif)
+      expect(result?.sites.map((site) => site.label)).toEqual(expected_labels)
+      expect(result?.sites.map((site) => site.species[0].element)).toEqual(
+        expected_elements,
+      )
+    })
+
+    test(`should parse fractional coordinates correctly`, () => {
+      const result = parse_cif(tio2_cif)
+      result?.sites.forEach((site, idx) => {
+        expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
+        expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
+        expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+      })
+    })
+
+    test(`should handle wrap_frac=true`, () => {
+      const result = parse_cif(tio2_cif, true)
+      check_tio2_structure(result)
+    })
+
+    test(`should handle wrap_frac=false`, () => {
+      const result = parse_cif(tio2_cif, false)
+      check_tio2_structure(result)
+    })
+
+    test(`should calculate correct Cartesian coordinates`, () => {
+      const result = parse_cif(tio2_cif)
+      // Check that Cartesian coordinates are reasonable (not NaN, finite)
+      result?.sites.forEach((site) => {
+        expect(Number.isFinite(site.xyz[0])).toBe(true)
+        expect(Number.isFinite(site.xyz[1])).toBe(true)
+        expect(Number.isFinite(site.xyz[2])).toBe(true)
+        expect(site.xyz[0]).not.toBeNaN()
+        expect(site.xyz[1]).not.toBeNaN()
+        expect(site.xyz[2]).not.toBeNaN()
+      })
+    })
+  })
+
+  describe(`CIF Parser Edge Cases`, () => {
+    test(`should handle complex element extraction from labels`, () => {
+      const cif_with_complex_labels = `
+data_test
+_cell_length_a 4.0
+_cell_length_b 4.0
+_cell_length_c 4.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+site1_Fe_center 0.0 0.0 0.0 1.0
+site2_Cu_surface 0.5 0.5 0.5 1.0
+`
+      const result = parse_cif(cif_with_complex_labels)
+      expect(result).toBeTruthy()
+      expect(result?.sites).toHaveLength(2)
+      expect(result?.sites[0].species[0].element).toBe(`Fe`)
+      expect(result?.sites[1].species[0].element).toBe(`Cu`)
+    })
+
+    test(`should fail gracefully with missing coordinates`, () => {
+      const cif_missing_coords = `
+data_test
+_cell_length_a 4.0
+_cell_length_b 4.0
+_cell_length_c 4.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Fe1 0.0 0.0 1.0
+Cu1 0.5 0.5
+`
+      const result = parse_cif(cif_missing_coords)
+      expect(result).toBeTruthy()
+      expect(result?.sites).toHaveLength(1) // Only Fe1 should be parsed
+    })
+
+    test(`should handle invalid element symbols with fallback`, () => {
+      const cif_invalid_elements = `
+data_test
+_cell_length_a 4.0
+_cell_length_b 4.0
+_cell_length_c 4.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Fe1 0.0 0.0 0.0 1.0
+Xx1 0.5 0.5 0.5 1.0
+`
+      const result = parse_cif(cif_invalid_elements)
+      expect(result).toBeTruthy()
+      expect(result?.sites).toHaveLength(2) // Both atoms parsed, Xx1 uses fallback
+      expect(result?.sites[0].species[0].element).toBe(`Fe`)
+      expect(result?.sites[1].species[0].element).toBe(`He`) // Fallback from validate_element_symbol
     })
   })
 })
