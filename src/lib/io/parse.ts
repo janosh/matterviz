@@ -526,51 +526,50 @@ const build_cif_atom_site_header_indices = (
   const indices: Record<string, number> = {}
 
   headers.forEach((header, idx) => {
-    if (header.includes(`_atom_site_label`)) indices.label = idx
-    else if (header.includes(`_atom_site_type_symbol`)) indices.symbol = idx
-    else if (header.includes(`_atom_site_fract_x`)) indices.x = idx
-    else if (header.includes(`_atom_site_fract_y`)) indices.y = idx
-    else if (header.includes(`_atom_site_fract_z`)) indices.z = idx
-    else if (header.includes(`_atom_site_occupancy`)) indices.occupancy = idx
-    else if (header.includes(`_atom_site_disorder_group`)) indices.disorder = idx
+    const trimmed = header.trim()
+    if (trimmed.endsWith(`_atom_site_label`)) indices.label = idx
+    else if (trimmed.endsWith(`_atom_site_type_symbol`)) indices.symbol = idx
+    else if (trimmed.endsWith(`_atom_site_fract_x`)) indices.x = idx
+    else if (trimmed.endsWith(`_atom_site_fract_y`)) indices.y = idx
+    else if (trimmed.endsWith(`_atom_site_fract_z`)) indices.z = idx
+    else if (trimmed.endsWith(`_atom_site_occupancy`)) indices.occupancy = idx
+    else if (trimmed.endsWith(`_atom_site_disorder_group`)) indices.disorder = idx
   })
 
   return indices
 }
 
-// Utility function to parse atom data from CIF
+// Parse atom data from CIF with robust error handling
 const parse_cif_atom_data = (raw_data: string[], indices: Record<string, number>) => {
   const { label = 0, x = -1, y = -1, z = -1, symbol = -1, occupancy = -1 } = indices
 
-  if (x === -1 || y === -1 || z === -1) {
-    throw new Error(`Missing coordinate indices`)
-  }
+  if (x === -1 || y === -1 || z === -1) throw new Error(`Missing coordinate indices`)
 
-  // Parse coordinates with uncertainty notation removed
-  const fract_coords = [x, y, z].map((idx) =>
-    parseFloat(raw_data[idx]?.split(`(`)[0] || `0`)
-  )
+  // Parse coordinates with validation
+  const fract_coords = [x, y, z].map((idx) => {
+    const coord_str = raw_data[idx]
+    if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
+    const coord = parseFloat(coord_str.split(`(`)[0])
+    if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
+    return coord
+  })
 
-  if (fract_coords.some(isNaN)) {
-    throw new Error(`Invalid coordinates: ${fract_coords}`)
-  }
-
-  // Parse occupancy
-  const occu = occupancy >= 0
-    ? parseFloat(raw_data[occupancy]?.split(`(`)[0] || `1`)
+  // Parse occupancy (default 1.0 if not present)
+  const occu = occupancy >= 0 && raw_data[occupancy]
+    ? (() => {
+      const parsed = parseFloat(raw_data[occupancy].split(`(`)[0])
+      if (isNaN(parsed)) throw new Error(`Invalid occupancy: ${raw_data[occupancy]}`)
+      return parsed
+    })()
     : 1.0
 
-  // Extract element symbol
-  let element_symbol = `C`
-  if (symbol >= 0 && raw_data[symbol]) {
-    // Extract element from type symbol (e.g., "Ti4+" -> "Ti", "O2-" -> "O")
-    const match = raw_data[symbol].match(/^([A-Z][a-z]*)/)
-    element_symbol = match?.[1] || `C`
-  } else {
-    // Extract from label (e.g., "Fe1" -> "Fe")
-    const match = raw_data[label]?.match(/([A-Z][a-z]*)/)
-    element_symbol = match?.[0] || `C`
-  }
+  // Extract element symbol: type symbol first, then label
+  const element_symbol =
+    (symbol >= 0 && raw_data[symbol]?.match(/^([A-Z][a-z]*)/)?.[1]) ||
+    (raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0]) ||
+    (() => {
+      throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
+    })()
 
   return {
     id: raw_data[label],
@@ -592,33 +591,47 @@ export function parse_cif(
       return null
     }
 
-    // Find and parse atom site loop
-    const loops = text.split(`loop_`)
-    const atom_loop = loops.find((loop) => loop.includes(`_atom_site_label`))
+    // Find atom site loop
+    const lines = text.split(`\n`)
+    let atom_headers: string[] = []
+    const atom_data_lines: string[] = []
 
-    if (!atom_loop) {
-      console.error(`No atom site loop found in CIF file`)
+    for (let ii = 0; ii < lines.length; ii++) {
+      if (lines[ii].trim() === `loop_`) {
+        let jj = ii + 1
+        const headers: string[] = []
+
+        // Collect headers
+        while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
+          headers.push(lines[jj].trim())
+          jj++
+        }
+
+        // Check if this is an atom site loop
+        if (headers.some((h) => h.includes(`_atom_site_`))) {
+          atom_headers = headers
+          // Collect data lines
+          while (jj < lines.length) {
+            const line = lines[jj].trim()
+            if (line === `loop_` || line.startsWith(`data_`) || line === ``) break
+            if (line && !line.startsWith(`#`)) atom_data_lines.push(line)
+            jj++
+          }
+          break
+        }
+      }
+    }
+
+    if (!atom_headers.length || !atom_data_lines.length) {
+      console.error(`No valid atom site loop found in CIF file`)
       return null
     }
 
-    const lines = atom_loop.split(`\n`)
-    const headers = lines.filter((line) => line.trim().startsWith(`_`))
-    const data_lines = lines.filter((line) => {
-      const trimmed = line.trim()
-      return !trimmed.startsWith(`_`) && trimmed && !trimmed.startsWith(`#`)
-    })
-
-    if (!headers.length || !data_lines.length) {
-      console.error(`No valid atom site data found`)
-      return null
-    }
-
-    // Parse atom site data
-    const header_indices = build_cif_atom_site_header_indices(headers)
-    const atoms = data_lines
+    // Parse atom data with error handling
+    const header_indices = build_cif_atom_site_header_indices(atom_headers)
+    const atoms = atom_data_lines
       .map((line) => line.split(/\s+/).filter(Boolean))
       .filter((tokens) => {
-        // Skip disorder group 2 and insufficient data
         const { disorder } = header_indices
         return !(disorder !== undefined && tokens[disorder] === `2`) &&
           tokens.length >=
@@ -643,7 +656,7 @@ export function parse_cif(
       return null
     }
 
-    // Extract and validate cell parameters
+    // Extract cell parameters and build lattice
     const lengths = extract_cif_cell_parameters(text, `cell_length`)
     const angles = extract_cif_cell_parameters(text, `cell_angle`)
 
@@ -658,6 +671,7 @@ export function parse_cif(
     const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
     const lattice_params = math.calc_lattice_params(lattice_matrix)
 
+    // Create sites with coordinate conversion
     const sites: Site[] = atoms.map((atom, idx) => {
       const element = validate_element_symbol(atom.element, idx)
       const [fract_x, fract_y, fract_z] = atom.fract_coords
@@ -686,10 +700,7 @@ export function parse_cif(
       }
     })
 
-    return {
-      sites,
-      lattice: { matrix: lattice_matrix, ...lattice_params },
-    }
+    return { sites, lattice: { matrix: lattice_matrix, ...lattice_params } }
   } catch (error) {
     console.error(`Error parsing CIF file:`, error)
     return null
