@@ -1,5 +1,6 @@
 import type { AnyStructure, Vec3 } from '$lib'
 import { Structure } from '$lib'
+import * as exports from '$lib/io/export'
 import { euclidean_dist, type Matrix3x3, pbc_dist } from '$lib/math'
 import { structures } from '$site/structures'
 import { readFileSync } from 'fs'
@@ -67,37 +68,73 @@ describe(`Structure`, () => {
     expect(document.querySelector(`.controls-panel`)).toBeTruthy()
   })
 
-  test(`JSON file download when clicking download button`, async () => {
-    globalThis.URL.createObjectURL = vi.fn()
+  const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
+
+  test.each(
+    formats.flatMap((format) => [
+      { format, action: `Download` },
+      { format, action: `Copy` },
+    ]),
+  )(`$format $action button works`, async ({ format, action }) => {
+    // Mount component and open controls
+    const export_fn_name = action === `Download`
+      ? `export_structure_as_${format.toLowerCase()}`
+      : `structure_to_${format.toLowerCase()}_str`
+    const export_spy = vi.spyOn(exports, export_fn_name as keyof typeof exports)
 
     mount(Structure, {
       target: document.body,
       props: { structure, show_controls: true },
     })
-
-    // First, open the structure control panel by clicking the correct toggle button
-    // Look for the structure controls toggle button specifically
-    const structure_controls_toggle = document.querySelector(
+    const structure_controls_toggle = doc_query<HTMLButtonElement>(
       `button.structure-controls-toggle`,
-    ) as HTMLButtonElement
+    )
     expect(structure_controls_toggle).toBeTruthy()
     structure_controls_toggle.click()
     await tick()
 
-    const spy = vi.spyOn(document.body, `appendChild`)
-    // Use title attribute to find the download button
-    const download_btn = document.querySelector(
-      `button[title="⬇ JSON"]`,
-    ) as HTMLButtonElement
-    expect(download_btn).toBeTruthy()
+    if (action === `Download`) {
+      globalThis.URL.createObjectURL = vi.fn()
+      const spy = vi.spyOn(document.body, `appendChild`)
+      const download_btn = doc_query<HTMLButtonElement>(
+        `button[title="Download ${format}"]`,
+      )
+      expect(download_btn, `download button for ${format}`).toBeTruthy()
 
-    download_btn?.click()
+      download_btn.click()
 
-    expect(spy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement))
+      expect(spy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement))
+      expect(export_spy).toHaveBeenCalledOnce()
+      // For download, the function is called with the structure, not returning a string directly
+      // so we can't easily check content here without more complex mocking.
+      // We'll rely on the correct high-level export function being called.
 
-    spy.mockRestore()
-    // @ts-expect-error - function is mocked
-    globalThis.URL.createObjectURL.mockRestore()
+      spy.mockRestore()
+      // @ts-expect-error - function is mocked
+      globalThis.URL.createObjectURL.mockRestore()
+    } else if (action === `Copy`) {
+      const clipboard_spy = vi
+        .spyOn(navigator.clipboard, `writeText`)
+        .mockResolvedValue()
+
+      const copy_btn = doc_query<HTMLButtonElement>(
+        `button[title="Copy ${format} to clipboard"]`,
+      )
+      expect(copy_btn, `copy button for ${format}`).toBeTruthy()
+
+      copy_btn.click()
+      await tick()
+      // Wait for Svelte to re-render the component
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      expect(clipboard_spy).toHaveBeenCalledOnce()
+      expect(copy_btn.textContent).toContain(`✅`)
+      expect(export_spy).toHaveBeenCalledOnce()
+      const content = export_spy.mock.results[0].value
+      expect(content).toContain(structure.sites[0].species[0].element)
+
+      clipboard_spy.mockRestore()
+    }
   })
 
   test(`toggle fullscreen mode`, async () => {
