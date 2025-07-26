@@ -1,22 +1,24 @@
-// Browser-supported compression formats and their file extensions
+// compression formats and their file extensions
 const COMPRESSION_FORMATS = {
   gzip: [`.gz`, `.gzip`],
   deflate: [`.deflate`],
   'deflate-raw': [`.z`],
+  zip: [`.zip`], // Browser DecompressionStream doesn't support ZIP
+  xz: [`.xz`], // Browser DecompressionStream doesn't support XZ
+  bz2: [`.bz2`], // Browser DecompressionStream doesn't support BZ2
 } as const
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 
-export function is_compressed_file(filename: string): boolean {
-  return Object.values(COMPRESSION_FORMATS)
-    .flat()
-    .some((ext) => filename.endsWith(ext))
-}
+// All detectable compression extensions
+export const COMPRESSION_EXTENSIONS = [
+  ...Object.values(COMPRESSION_FORMATS).flat(),
+] as const
+
+export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 
 export function remove_compression_extension(filename: string): string {
-  const extensions = Object.values(COMPRESSION_FORMATS)
-    .flat()
-    .map((ext) => ext.slice(1))
+  const extensions = COMPRESSION_EXTENSIONS.map((ext) => ext.slice(1))
   return filename.replace(new RegExp(`\\.(${extensions.join(`|`)})$`), ``)
 }
 
@@ -36,6 +38,13 @@ export async function decompress_data(
   format: CompressionFormat,
 ): Promise<string> {
   try {
+    // Handle unsupported formats
+    if (format === `zip` || format === `xz` || format === `bz2`) {
+      throw new Error(
+        `${format.toUpperCase()} decompression is not supported in the browser. Please extract the ${format.toUpperCase()} file first.`,
+      )
+    }
+
     const stream = data instanceof ArrayBuffer
       ? new ReadableStream({
         start(controller) {
@@ -54,7 +63,8 @@ export async function decompress_data(
 export function decompress_file(
   file: File,
 ): Promise<{ content: string; filename: string }> {
-  const compressed = is_compressed_file(file.name)
+  const format = detect_compression_format(file.name)
+  const compressed = format && format !== `zip` && format !== `xz` && format !== `bz2` // Treat unsupported as uncompressed
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -65,14 +75,9 @@ export function decompress_file(
         if (!result) throw `Failed to read file`
 
         if (compressed) {
-          const format = detect_compression_format(file.name)
-          if (!format) throw `Unsupported compression format: ${file.name}`
-
           const content = await decompress_data(result as ArrayBuffer, format)
-          resolve({
-            content,
-            filename: remove_compression_extension(file.name),
-          })
+          const filename = remove_compression_extension(file.name)
+          resolve({ content, filename })
         } else {
           resolve({ content: result as string, filename: file.name })
         }

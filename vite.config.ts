@@ -4,7 +4,18 @@ import mdsvexamples from 'mdsvexamples/vite'
 import { defineConfig } from 'vite'
 
 export default defineConfig(({ mode }) => ({
-  plugins: [sveltekit(), mdsvexamples, yaml()],
+  plugins: [
+    sveltekit(),
+    mdsvexamples,
+    yaml(),
+    mode === `test`
+      ? { // Mock vscode module for tests
+        name: `vscode-mock`,
+        resolveId: (id: string) => id === `vscode` ? id : null,
+        load: (id: string) => id === `vscode` ? `export default {}` : null,
+      }
+      : null,
+  ].filter(Boolean),
 
   test: {
     environment: `happy-dom`,
@@ -13,7 +24,11 @@ export default defineConfig(({ mode }) => ({
       reporter: [`text`, `json-summary`],
     },
     setupFiles: `tests/vitest/setup.ts`,
-    include: [`tests/vitest/**/*.test.ts`, `tests/vitest/**/*.test.svelte.ts`],
+    include: [
+      `tests/vitest/**/*.test.ts`,
+      `tests/vitest/**/*.test.svelte.ts`,
+      `extensions/vscode/tests/**/*.test.ts`,
+    ],
   },
 
   server: {

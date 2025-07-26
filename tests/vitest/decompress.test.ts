@@ -1,37 +1,12 @@
 import {
-  type CompressionFormat,
   decompress_data,
   decompress_file,
   detect_compression_format,
-  is_compressed_file,
   remove_compression_extension,
 } from '$lib/io/decompress'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 describe(`decompress utility functions`, () => {
-  describe(`is_compressed_file`, () => {
-    test.each([
-      [`test.json.gz`, true],
-      [`test.json.gzip`, true],
-      [`structure.poscar.gz`, true],
-      [`data.xyz.gzip`, true],
-      [`file.deflate`, true], // deflate format
-      [`data.z`, true], // deflate-raw format
-      [`test.json`, false],
-      [`structure.poscar`, false],
-      [`data.xyz`, false],
-      [`file.txt`, false],
-      [``, false],
-      [`file.gz.txt`, false], // gz not at the end
-      [`file.deflate.txt`, false], // deflate not at the end
-    ])(
-      `should return %s for filename "%s"`,
-      (filename: string, expected: boolean) => {
-        expect(is_compressed_file(filename)).toBe(expected)
-      },
-    )
-  })
-
   describe(`remove_compression_extension`, () => {
     test.each([
       [`test.json.gz`, `test.json`],
@@ -40,11 +15,17 @@ describe(`decompress utility functions`, () => {
       [`file.cif.gzip`, `file.cif`],
       [`data.deflate`, `data`], // deflate format
       [`structure.z`, `structure`], // deflate-raw format
+      [`archive.zip`, `archive`], // zip format
+      [`file.xz`, `file`], // xz format
+      [`data.bz2`, `data`], // bz2 format
       [`test.json`, `test.json`], // no compression extension
       [`file.txt`, `file.txt`],
       [`multiple.gz.json.gz`, `multiple.gz.json`], // only removes last .gz
       [`file.gzip.txt`, `file.gzip.txt`], // gzip not at end
       [`file.deflate.txt`, `file.deflate.txt`], // deflate not at end
+      [`file.zip.txt`, `file.zip.txt`], // zip not at end
+      [`file.xz.txt`, `file.xz.txt`], // xz not at end
+      [`file.bz2.txt`, `file.bz2.txt`], // bz2 not at end
       [``, ``],
     ])(`should transform "%s" to "%s"`, (input: string, expected: string) => {
       expect(remove_compression_extension(input)).toBe(expected)
@@ -57,10 +38,13 @@ describe(`decompress utility functions`, () => {
       [`structure.gzip`, `gzip`],
       [`data.deflate`, `deflate`],
       [`file.z`, `deflate-raw`],
+      [`archive.zip`, `zip`],
+      [`data.zip`, `zip`],
       [`test.json`, null], // no compression
       [`file.txt`, null],
       [``, null],
       [`file.gz.txt`, null], // extension not at end
+      [`file.zip.txt`, null], // zip not at end
     ])(
       `should detect "%s" format for filename "%s"`,
       (filename: string, expected: string | null) => {
@@ -86,9 +70,15 @@ describe(`decompress utility functions`, () => {
       globalThis.DecompressionStream = original_decompression_stream
     })
 
-    test.each([[`gzip`], [`deflate`], [`deflate-raw`]])(
+    test(`should throw error for ZIP format since browser doesn't support it`, async () => {
+      await expect(decompress_data(new ArrayBuffer(0), `zip`)).rejects.toThrow(
+        `ZIP decompression is not supported in the browser. Please extract the ZIP file first.`,
+      )
+    })
+
+    test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
       `should handle %s decompression errors gracefully`,
-      async (format: string) => {
+      async (format) => {
         if (!globalThis.DecompressionStream) {
           return
         }
@@ -98,14 +88,14 @@ describe(`decompress utility functions`, () => {
         view.fill(255)
 
         await expect(
-          decompress_data(invalid_data, format as CompressionFormat),
+          decompress_data(invalid_data, format),
         ).rejects.toThrow(`Failed to decompress ${format} file`)
       },
     )
 
-    test.each([[`gzip`], [`deflate`], [`deflate-raw`]])(
+    test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
       `should successfully decompress valid %s data`,
-      async (format: string) => {
+      async (format) => {
         if (!globalThis.CompressionStream || !globalThis.DecompressionStream) {
           return
         }
@@ -121,16 +111,11 @@ describe(`decompress utility functions`, () => {
           },
         })
 
-        const compressed_stream = stream.pipeThrough(
-          new CompressionStream(format as CompressionFormat),
-        )
+        const compressed_stream = stream.pipeThrough(new CompressionStream(format))
         const response = new Response(compressed_stream)
         const compressed_buffer = await response.arrayBuffer()
 
-        const decompressed = await decompress_data(
-          compressed_buffer,
-          format as CompressionFormat,
-        )
+        const decompressed = await decompress_data(compressed_buffer, format)
         expect(decompressed).toBe(test_string)
       },
     )
@@ -161,13 +146,15 @@ describe(`decompress utility functions`, () => {
       expect(JSON.parse(result.content)).toEqual(test_json)
     })
 
-    test.each([
-      [`gzip`, `test.json.gz`],
-      [`deflate`, `test.json.deflate`],
-      [`deflate-raw`, `test.json.z`],
-    ])(
+    test.each(
+      [
+        [`gzip`, `test.json.gz`],
+        [`deflate`, `test.json.deflate`],
+        [`deflate-raw`, `test.json.z`],
+      ] as const,
+    )(
       `should process %s compressed files and remove extension`,
-      async (format: string, filename: string) => {
+      async (format, filename) => {
         if (!globalThis.CompressionStream || !globalThis.DecompressionStream) {
           return
         }
@@ -183,9 +170,7 @@ describe(`decompress utility functions`, () => {
           },
         })
 
-        const compressed_stream = stream.pipeThrough(
-          new CompressionStream(format as CompressionFormat),
-        )
+        const compressed_stream = stream.pipeThrough(new CompressionStream(format))
         const response = new Response(compressed_stream)
         const compressed_buffer = await response.arrayBuffer()
 
@@ -211,6 +196,19 @@ describe(`decompress utility functions`, () => {
       const result = await decompress_file(file)
       expect(result.content).toBe(test_content)
       expect(result.filename).toBe(`test.json.bz2`) // Extension not removed
+    })
+
+    test(`should handle ZIP files as unsupported compression format`, async () => {
+      // Create a file with ZIP extension
+      const test_content = `fake zip data`
+      const file = new File([test_content], `test.json.zip`, {
+        type: `application/octet-stream`,
+      })
+
+      // Since ZIP decompression is not supported in browser, this should be treated as uncompressed
+      const result = await decompress_file(file)
+      expect(result.content).toBe(test_content)
+      expect(result.filename).toBe(`test.json.zip`) // Extension not removed
     })
 
     // Note: FileReader error handling tests are complex to mock in vitest
