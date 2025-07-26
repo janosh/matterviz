@@ -10,6 +10,7 @@ import {
 } from '$lib/io/parse'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
+import tio2_cif from '$site/structures/TiO2.cif?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
@@ -552,8 +553,8 @@ H1   H   2.100  0.900  0.500  1.000`
 
   describe(`CIF Error Handling`, () => {
     it.each([
-      [`empty file`, ``, `CIF file too short`],
-      [`single line`, `data_test`, `CIF file too short`],
+      [`empty file`, ``, `CIF file is empty`],
+      [`single line`, `data_test`, `No atom site loop found in CIF file`],
       [
         `missing cell params`,
         `data_test\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Si  0.000  0.000  0.000`,
@@ -618,7 +619,7 @@ H1   H   0.500  0.500  0.500  1.000  1.000`
       expect(result).not.toBeNull()
       if (result) {
         expect(result.sites.length).toBeGreaterThan(0)
-        expect(result.sites.length).toBeLessThan(3)
+        expect(result.sites.length).toBe(3)
         expect(result.sites[0].species[0].occu).toBe(1.0)
       }
     })
@@ -649,6 +650,92 @@ H1   H   0.500  0.500  0.500`
       if (result) {
         expect(result.sites).toHaveLength(3)
       }
+    })
+  })
+
+  describe(`TiO2 CIF Oxidation State Tests`, () => {
+    const expected_labels = [`Ti0`, `Ti1`, `O2`, `O3`, `O4`, `O5`]
+    const expected_coords = [
+      [0.5, 0.5, 0.0],
+      [0.0, 0.0, 0.5],
+      [0.69567869, 0.69567869, 0.5],
+      [0.19567869, 0.80432131, 0.0],
+      [0.80432131, 0.19567869, 0.0],
+      [0.30432131, 0.30432131, 0.5],
+    ]
+    const expected_elements = [`Ti`, `Ti`, `O`, `O`, `O`, `O`]
+
+    it(`should parse TiO2 CIF with oxidation states correctly`, () => {
+      const result = parse_cif(tio2_cif)
+      expect(result).toBeTruthy()
+      expect(result?.sites).toHaveLength(6)
+      expect(result?.lattice).toBeDefined()
+      expect(result?.lattice?.a).toBeCloseTo(4.59983732, 8)
+      expect(result?.lattice?.b).toBeCloseTo(4.59983732, 8)
+      expect(result?.lattice?.c).toBeCloseTo(2.95921356, 8)
+      expect(result?.lattice?.alpha).toBeCloseTo(90.0, 8)
+      expect(result?.lattice?.beta).toBeCloseTo(90.0, 8)
+      expect(result?.lattice?.gamma).toBeCloseTo(90.0, 8)
+      expect(result?.sites.map((s) => s.label)).toEqual(expected_labels)
+      expect(result?.sites.map((s) => s.species[0].element)).toEqual(expected_elements)
+      result?.sites.forEach((site, idx) => {
+        expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
+        expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
+        expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+      })
+    })
+
+    it(`should extract correct element symbols and labels`, () => {
+      const result = parse_cif(tio2_cif)
+      expect(result?.sites.map((s) => s.species[0].element)).toEqual(expected_elements)
+      expect(result?.sites.map((s) => s.label)).toEqual(expected_labels)
+    })
+
+    it(`should parse fractional coordinates correctly`, () => {
+      const result = parse_cif(tio2_cif)
+      result?.sites.forEach((site, idx) => {
+        expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
+        expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
+        expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+      })
+    })
+
+    it.each([
+      [true, `wraps fractional coordinates to [0,1)`],
+      [false, `preserves original fractional coordinates`],
+    ])(`should handle wrap_frac=%s`, (wrap_frac: boolean) => {
+      const result = parse_cif(tio2_cif, wrap_frac)
+      result?.sites.forEach((site, idx) => {
+        if (wrap_frac) {
+          expect(site.abc[0]).toBeGreaterThanOrEqual(0)
+          expect(site.abc[0]).toBeLessThan(1)
+          expect(site.abc[1]).toBeGreaterThanOrEqual(0)
+          expect(site.abc[1]).toBeLessThan(1)
+          expect(site.abc[2]).toBeGreaterThanOrEqual(0)
+          expect(site.abc[2]).toBeLessThan(1)
+        } else {
+          expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
+          expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
+          expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+        }
+      })
+    })
+
+    it(`should calculate correct Cartesian coordinates`, () => {
+      const result = parse_cif(tio2_cif)
+      result?.sites.forEach((site) => {
+        const lattice = result.lattice?.matrix
+        if (!lattice) throw `No lattice matrix`
+        const [a, b, c] = site.abc
+        const reconstructed = [
+          a * lattice[0][0] + b * lattice[1][0] + c * lattice[2][0],
+          a * lattice[0][1] + b * lattice[1][1] + c * lattice[2][1],
+          a * lattice[0][2] + b * lattice[1][2] + c * lattice[2][2],
+        ]
+        expect(site.xyz[0]).toBeCloseTo(reconstructed[0], 12)
+        expect(site.xyz[1]).toBeCloseTo(reconstructed[1], 12)
+        expect(site.xyz[2]).toBeCloseTo(reconstructed[2], 12)
+      })
     })
   })
 })

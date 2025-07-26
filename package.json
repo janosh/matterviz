@@ -10,7 +10,7 @@
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/matterviz/issues",
   "dependencies": {
-    "@sveltejs/kit": "^2.25.2",
+    "@sveltejs/kit": "^2.26.1",
     "@threlte/core": "^8.1.3",
     "@threlte/extras": "^9.4.2",
     "@types/d3-force": "^3.0.10",
@@ -29,7 +29,7 @@
     "h5wasm": "^0.8.3",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.0",
-    "svelte": "^5.36.15",
+    "svelte": "^5.36.17",
     "svelte-multiselect": "11.2.2",
     "three": "^0.178.0"
   },
@@ -51,7 +51,7 @@
     "@types/three": "^0.178.1",
     "@vitest/coverage-v8": "^3.2.4",
     "d3-time-format": "^4.1.0",
-    "eslint": "^9.31.0",
+    "eslint": "^9.32.0",
     "eslint-plugin-svelte": "^3.11.0",
     "happy-dom": "^18.0.1",
     "hastscript": "^9.0.1",
