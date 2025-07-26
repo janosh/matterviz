@@ -3,6 +3,7 @@ import {
   is_trajectory_file,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
+import { Buffer } from 'node:buffer'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -29,58 +30,202 @@ const read_binary_test_file = (filename: string): ArrayBuffer => {
 describe(`Trajectory File Detection`, () => {
   // only checking filename recognition, files don't need to exist
   test.each([
-    // Basic trajectory files
+    // Standard trajectory file extensions
     [`test.traj`, true],
-    [`test.h5`, true],
-    [`data.hdf5`, true],
-    // VASP and special files
+    [`test.h5`, false],
+    [`data.hdf5`, false],
+    [`simulation.traj`, true],
+    [`molecular_dynamics.h5`, true],
+    [`relaxation.hdf5`, true],
+
+    // VASP trajectory files
     [`XDATCAR`, true],
+    [`xdatcar`, true],
+    [`Xdatcar`, true],
+    [`XDATCAR.out`, true],
+    [`xdatcar.out`, true],
+
+    // XYZ/EXTXYZ files with trajectory keywords
+    [`relax-simulation.xyz`, true],
+    [`trajectory-data.extxyz`, true],
+    [`npt-dynamics.extxyz`, true],
+    [`nvt-simulation.xyz`, true],
+    [`nve-dynamics.extxyz`, true],
+    [`qha-analysis.xyz`, true],
+    [`traj-data.xyz`, true],
+    [`relaxation.extxyz`, true],
+    [`md-run.xyz`, true],
+
+    // Other files with trajectory keywords (excluding specific extensions)
     [`trajectory.dat`, true],
+    [`relax_output.log`, true],
+    [`npt_dynamics.data`, true],
+    [`nvt_simulation.out`, true],
+    [`nve_dynamics.log`, true],
+    [`qha_analysis.dat`, true],
+    [`traj_data.out`, true],
+    [`relaxation.data`, true],
+    // Negative: not in keywords
+    [`md_simulation.out`, false],
+
+    // Compressed trajectory files
+    [`relax.extxyz.gz`, true],
+    [`trajectory.traj.gz`, true],
+    [`simulation.h5.gz`, true],
+    [`dynamics.hdf5.gz`, true],
+    [`XDATCAR.gz`, true],
+    [`xdatcar.gz`, true],
     [`md.xyz.gz`, true],
-    [`relax.extxyz`, true],
-    // ASE ULM binary trajectory files (specific to this fix)
+    // Compressed with other extensions
+    [`trajectory.traj.xz`, true],
+    [`trajectory.traj.bz2`, true],
+    [`trajectory.traj.zip`, true],
+    // Double .gz
+    [`trajectory.traj.gz.gz`, true],
+    // Compressed but not valid base
+    [`trajectory.txt.gz`, false],
+    [`document.pdf.gz`, false],
+
+    // ASE ULM binary trajectory files
     [`md_npt_300K.traj`, true],
     [`ase-LiMnO2-chgnet-relax.traj`, true],
     [`simulation_nvt_250K.traj`, true],
     [`molecular_dynamics_nve.traj`, true],
     [`water_cluster_md.traj`, true],
     [`optimization_relax.traj`, true],
-    // Case insensitive
+
+    // Case insensitive tests
     [`FILE.TRAJ`, true],
-    [`trajectory`, true],
-    // Unicode filenames
+    [`TRAJECTORY.H5`, true],
+    [`XDATCAR.HDF5`, true],
+    [`RELAX.EXTXYZ`, true],
+    [`MD.XYZ`, true],
+
+    // Unicode and special characters
     [`مەركەزیtrajectory.traj`, true],
-    [`file🔥emoji.h5`, true],
-    // XYZ/EXTXYZ files with trajectory keywords
-    [`md-run.xyz`, true],
-    [`relax-simulation.xyz`, true],
-    [`trajectory-data.extxyz`, true],
-    [`npt-dynamics.extxyz`, true],
-    // Non-trajectory files
+    [`file🔥emoji.h5`, false],
+    [`trajectory-测试.traj`, true],
+    [`simulation_ñáéíóú.h5`, true],
+    [`trajectory with spaces.traj`, true],
+    [`trajectory-with-dashes.traj`, true],
+    [`trajectory_with_underscores.traj`, true],
+    [`trajectory.with.dots.traj`, true],
+    [`trajectory+with+plus.traj`, true],
+    [`trajectory=with=equals.traj`, true],
+    [`trajectory#with#hash.traj`, true],
+    [`trajectory@with@at.traj`, true],
+    [`trajectory%with%percent.traj`, true],
+    [`trajectory^with^caret.traj`, true],
+    [`trajectory&with&ampersand.traj`, true],
+    [`trajectory*with*asterisk.traj`, true],
+    [`trajectory|with|pipe.traj`, true],
+    [`trajectory~with~tilde.traj`, true],
+    [`trajectory123.traj`, true],
+    [`123trajectory.traj`, true],
+    [`trajectory_123.traj`, true],
+
+    // Very short names
+    [`a.traj`, true],
+    [`a.h5`, false],
+    [`a.xyz`, false],
+    [`a`, false],
+
+    // Very long filename
+    [`${`a`.repeat(1000)}.traj`, true],
+    [`${`a`.repeat(1000)}.xyz`, false],
+
+    // Specific regression tests
+    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true],
+    [`single-molecule.xyz`, false],
+    [`trajectory_data.json`, false],
+    [`md_simulation.cif`, false],
+    [`relax_output.poscar`, true],
+
+    // Files that should NOT be detected as trajectory files
     [`test.cif`, false],
     [`test.json`, false],
     [`random.txt`, false],
     [`test.xyz.backup`, false],
-    // Edge cases
-    [``, false],
-    [`no.extension`, false],
-    [`.`, false],
-    [`file.xyz.`, false],
-    // Very long filename
-    [`${`a`.repeat(1000)}.traj`, true],
-    // check the bug reported with Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz doesn't regress
-    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true], // has "qha" keyword
-    [`single-molecule.xyz`, false], // no trajectory keywords
-    [`trajectory_data.json`, true], // has "trajectory" keyword
-    [`md_simulation.cif`, true], // has "md" keyword
-    [`relax_output.poscar`, true], // has "relax" keyword
     [`structure.cif`, false],
     [`molecule.json`, false],
     [`POSCAR`, false],
     [`data.txt`, false],
+
+    // Files with trajectory keywords but excluded extensions
+    [`trajectory.md`, false],
+    [`md_simulation.txt`, false],
+    [`relax_output.py`, false],
+    [`npt_dynamics.csv`, false],
+    [`nvt_simulation.png`, false],
+    [`nve_dynamics.zip`, false],
+    [`qha_analysis.ini`, false],
+    [`traj_data.sql`, false],
+    [`relaxation.tar`, false],
+    [`simulation.7z`, false],
+    [`dynamics.bin`, false],
+    [`trajectory.yaml`, false],
+    [`md_simulation.yml`, false],
+    [`relax_output.js`, false],
+    [`npt_dynamics.ts`, false],
+    [`nvt_simulation.html`, false],
+    [`nve_dynamics.css`, false],
+
+    // Mixed case with excluded extensions
+    [`TRAJECTORY.MD`, false],
+    [`MD_SIMULATION.TXT`, false],
+    [`RELAX_OUTPUT.PY`, false],
+    [`NPT_DYNAMICS.CSV`, false],
+
+    // Files with partial matches that should not trigger
+    [`trajectory_notes.txt`, false],
+    [`md_documentation.md`, false],
+    [`relax_manual.pdf`, true],
+    [`npt_analysis.py`, false],
+    [`nvt_report.csv`, false],
+    [`nve_summary.html`, false],
+    [`qha_paper.md`, false],
+
+    // Compressed files that should not be detected
+    [`document.txt.gz`, false],
+    [`script.py.gz`, false],
+    [`data.csv.gz`, false],
+    [`image.png.gz`, false],
+    [`archive.zip.gz`, false],
+    [`config.yaml.gz`, false],
+    [`trajectory_notes.md.gz`, false],
+
+    // Keyword matching edge cases
+    [`trajectory_analysis.xyz`, true],
+    [`md_simulation.xyz`, true],
+    [`relaxation_study.xyz`, true],
+    [`npt_ensemble.xyz`, true],
+    [`nvt_canonical.xyz`, true],
+    [`nve_microcanonical.xyz`, true],
+    [`qha_thermodynamics.xyz`, true],
+    [`analysis_trajectory.xyz`, true],
+    [`simulation_md.xyz`, true],
+    [`study_relax.xyz`, true],
+    [`ensemble_npt.xyz`, true],
+    [`canonical_nvt.xyz`, true],
+    [`microcanonical_nve.xyz`, true],
+    [`thermodynamics_qha.xyz`, true],
+    [`TRAJECTORY.xyz`, true],
+    [`Trajectory.xyz`, true],
+    [`trajectory.xyz`, true],
+    [`MD.xyz`, true],
+    [`Md.xyz`, true],
+    [`md.xyz`, true],
   ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
     expect(is_trajectory_file(filename)).toBe(expected)
   })
+
+  it.each([null, undefined, 1, true, false, [], {}, Symbol(`test`), Buffer.from(`test`)])(
+    `should throw for %s`,
+    (filename) => {
+      // @ts-expect-error - filename is not a string
+      expect(() => is_trajectory_file(filename)).toThrow()
+    },
+  )
 })
 
 describe(`VASP XDATCAR Parser`, () => {

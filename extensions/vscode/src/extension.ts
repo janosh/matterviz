@@ -37,6 +37,17 @@ export const should_auto_render = (filename: string): boolean => {
   return is_structure_file(filename) || is_trajectory_file(filename)
 }
 
+// Update the shared VS Code context for supported resources
+const update_supported_resource_context = (uri?: vscode.Uri): void => {
+  const filename = uri?.fsPath ? path.basename(uri.fsPath) : ``
+  const is_supported = should_auto_render(filename)
+  vscode.commands.executeCommand(
+    `setContext`,
+    `matterviz.supportedResource`,
+    is_supported,
+  )
+}
+
 // Read file from filesystem
 export const read_file = (file_path: string): FileData => {
   const filename = path.basename(file_path)
@@ -437,6 +448,9 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
 
 // Activate extension
 export const activate = (context: vscode.ExtensionContext): void => {
+  // Set initial context for currently active editor
+  update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       `matterviz.renderStructure`,
@@ -468,14 +482,14 @@ export const activate = (context: vscode.ExtensionContext): void => {
               vscode.ViewColumn.One,
             )
           } catch (error: unknown) {
-            vscode.window.showErrorMessage(
-              `MatterViz auto-render failed: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            )
+            console.error(`Error auto-rendering file:`, error)
+            vscode.window.showErrorMessage(`MatterViz auto-render failed: ${error}`)
           }
-        }, 100)
+        }, 100) // Small delay to allow VS Code to finish opening the document
       }
+    }),
+    vscode.window.onDidChangeActiveTextEditor((editor: vscode.TextEditor | undefined) => {
+      update_supported_resource_context(editor?.document.uri)
     }),
   )
 }

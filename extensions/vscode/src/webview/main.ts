@@ -1,5 +1,10 @@
 // Import MatterViz parsing functions and components
 import '$lib/app.css'
+import {
+  decompress_data,
+  detect_compression_format,
+  remove_compression_extension,
+} from '$lib/io/decompress'
 import { parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
@@ -218,12 +223,15 @@ const parse_file_content = async (
       return { type: `trajectory`, filename, data }
     }
 
-    // For .gz files, decompress first
-    if (filename.endsWith(`.gz`)) {
-      const { decompress_data } = await import(`$lib/io/decompress`)
-      content = await decompress_data(buffer, `gzip`)
-      // Remove .gz extension to get the original filename for parsing
-      filename = filename.slice(0, -3)
+    // Unified handling for all supported compression formats
+    const format = detect_compression_format(filename)
+    if (format && format !== `zip`) { // Skip ZIP as it's not supported in browser
+      try {
+        content = await decompress_data(buffer, format)
+        filename = remove_compression_extension(filename)
+      } catch (error) {
+        console.warn(`Failed to decompress file ${filename}:`, error)
+      }
     }
   }
 

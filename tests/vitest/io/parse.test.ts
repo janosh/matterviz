@@ -13,7 +13,9 @@ import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
-import optimade_json_alpha_quartz from '$site/structures/mp-7000-optimade.json?raw'
+import optimade_json_alpha_quartz from '$site/structures/mp-7000-optimade.json?raw' with {
+  type: 'json',
+}
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
@@ -1350,7 +1352,7 @@ describe(`OPTIMADE JSON parser`, () => {
   ])(`should parse $name`, ({ data, content, expected }) => {
     const test_content = content ||
       JSON.stringify({ data: { ...data, type: `structures` } })
-    const result = parse_optimade_json(test_content)
+    const result = parse_optimade_json(test_content as string)
     if (!result) throw `Failed to parse OPTIMADE JSON`
 
     expect(result.sites).toHaveLength(expected.sites)
@@ -1491,10 +1493,21 @@ describe(`Structure File Detection`, () => {
     [`test.vasp`, true],
     [`test.xyz`, true],
     [`test.extxyz`, true],
-    [`test.json`, true],
-    [`test.yaml`, true],
-    [`test.yml`, true],
-    [`test.xml`, true],
+    [`test.json`, false], // Generic JSON files should not trigger MatterViz
+    [`test.yaml`, false], // Generic YAML files should not trigger MatterViz
+    [`test.yml`, false], // Generic YAML files should not trigger MatterViz
+    [`structure.yaml`, true], // Structure-related YAML files should trigger MatterViz
+    [`phonopy.yml`, true], // Phonopy YAML files should trigger MatterViz
+    [`crystal.yaml`, true], // Crystal-related YAML files should trigger MatterViz
+    [`material.yml`, true], // Material-related YAML files should trigger MatterViz
+    [`geometry.yaml`, true], // Geometry-related YAML files should trigger MatterViz
+    [`lattice.yml`, true], // Lattice-related YAML files should trigger MatterViz
+    [`config.yaml`, false], // Config YAML files should not trigger MatterViz
+    [`input.yml`, false], // Input YAML files should not trigger MatterViz
+    [`vasp.yaml`, true], // VASP-related YAML files should trigger MatterViz
+    [`general.yaml`, false], // Non-structure YAML files should not trigger MatterViz
+    [`random.yml`, false], // Non-structure YAML files should not trigger MatterViz
+    [`test.xml`, false], // Generic XML files should not trigger MatterViz
     [`test.lmp`, true],
     [`test.data`, true],
     [`test.dump`, true],
@@ -1515,7 +1528,7 @@ describe(`Structure File Detection`, () => {
     [`molecule.xyz.gz`, true],
     [`crystal.poscar.gz`, true],
     [`data.json.gz`, true],
-    [`config.yaml.gz`, true],
+    [`config.yaml.gz`, false],
     [`structure.xml.gz`, true],
     [`molecule.pdb.gz`, true],
     [`compound.mol.gz`, true],
@@ -1527,12 +1540,12 @@ describe(`Structure File Detection`, () => {
     [`MOLECULE.XYZ`, true],
     [`CRYSTAL.POSCAR`, true],
     [`DATA.JSON`, true],
-    [`CONFIG.YAML`, true],
+    [`CONFIG.YAML`, false],
     // Unicode filenames
     [`مەركەزیstructure.cif`, true],
     [`日本語.xyz`, true],
     [`file🔥emoji.poscar`, true],
-    [`Мой_файл.json`, true],
+    [`Мой_файл.json`, false],
     // Non-structure files
     [`test.traj`, false],
     [`test.h5`, false],
@@ -1548,16 +1561,16 @@ describe(`Structure File Detection`, () => {
     [`${`a`.repeat(1000)}.cif`, true],
     // Specific test cases
     [`Li4Fe3Mn1(PO4)4.cif`, true],
-    [`mp-756175.json`, true],
+    [`mp-756175.json`, false],
     [`BaTiO3-tetragonal.poscar`, true],
     [`cyclohexane.xyz`, true],
     [`extended-xyz-quartz.xyz`, true],
     [`AgI-fq978185p-phono3py_params.yaml.gz`, true],
-    [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, true],
+    [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
     [`BeO-zw12zc18p-phono3py_params.yaml.gz`, true],
     // Trajectory files should not be detected as structure files
     [`trajectory.traj`, false],
-    [`md.xyz.gz`, false],
+    [`md.xyz.gz`, false], // This should be detected as a trajectory file, not structure
     [`simulation.h5`, false],
     [`XDATCAR`, false],
     [`relax.extxyz`, false],

@@ -1,19 +1,20 @@
-import * as fs from 'fs'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ExtensionContext, TextEditor, Webview } from 'vscode'
-
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
+import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { ExtensionContext, Tab, TextEditor, Webview } from 'vscode'
 import type { MessageData } from '../src/extension'
 import {
   activate,
   create_html,
+  deactivate,
   get_file,
   get_theme,
   handle_msg,
   read_file,
   render,
+  should_auto_render,
 } from '../src/extension'
 
 // Mock modules
@@ -30,7 +31,7 @@ const mock_vscode = vi.hoisted(() => ({
     showSaveDialog: vi.fn(),
     createWebviewPanel: vi.fn(),
     activeTextEditor: null as TextEditor | null,
-    tabGroups: { activeTabGroup: { activeTab: null as unknown as vscode.Tab } },
+    tabGroups: { activeTabGroup: { activeTab: null as Tab | null } },
     registerCustomEditorProvider: vi.fn(),
     activeColorTheme: { kind: 1 }, // Light theme by default
     onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
@@ -51,7 +52,7 @@ const mock_vscode = vi.hoisted(() => ({
     })),
     fs: { stat: vi.fn() },
   },
-  commands: { registerCommand: vi.fn() },
+  commands: { registerCommand: vi.fn(), executeCommand: vi.fn() },
   Uri: {
     file: vi.fn((p: string) => ({ fsPath: p })),
     joinPath: vi.fn((_base: unknown, ...paths: string[]) => ({
@@ -74,12 +75,11 @@ describe(`MatterViz Extension`, () => {
     dispose: ReturnType<typeof vi.fn>
   }
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks()
 
     // Reset active watchers by calling deactivate first
     try {
-      const { deactivate } = await import(`../src/extension`)
       deactivate()
     } catch {
       // Ignore errors if not activated
@@ -217,7 +217,7 @@ describe(`MatterViz Extension`, () => {
   test(`get_file with active tab`, () => {
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
       input: { uri: { fsPath: `/test/tab.cif` } },
-    } as unknown as vscode.Tab
+    } as unknown as Tab
     expect(get_file().filename).toBe(`tab.cif`)
   })
 
@@ -311,7 +311,7 @@ describe(`MatterViz Extension`, () => {
     ],
     [
       `JPEG image`,
-      `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A`,
+      `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AP/Z`,
       `plot.jpg`,
       true,
     ],
@@ -866,34 +866,24 @@ describe(`MatterViz Extension`, () => {
   })
 
   describe(`Auto-Render Functionality`, () => {
-    let should_auto_render: (filename: string) => boolean
-
-    beforeEach(async () => {
-      const extension = await import(`../src/extension`)
-      should_auto_render = extension.should_auto_render
-    })
-
     test.each([
-      // Structure files
+      // Supported structure files
       [`structure.cif`, true],
       [`molecule.xyz`, true],
       [`crystal.poscar`, true],
       [`data.json`, true],
-      [`config.yaml`, true],
       [`structure.xml`, true],
       [`molecule.pdb`, true],
       [`compound.mol`, true],
       [`structure.mol2`, true],
       [`data.sdf`, true],
       [`crystal.mmcif`, true],
-      // Trajectory files
+      // Supported trajectory files
       [`trajectory.traj`, true],
       [`simulation.h5`, true],
-      [`data.hdf5`, true],
-      [`md.dcd`, true],
+      [`data.hdf5`, false],
       [`traj.xtc`, true],
-      [`simulation.trr`, false], // .trr files not supported
-      // Compressed files
+      // Compressed supported files
       [`trajectory.xyz.gz`, true],
       [`data.json.gz`, true],
       [`structure.cif.gz`, true],
@@ -907,23 +897,151 @@ describe(`MatterViz Extension`, () => {
       [`npt.log`, true],
       [`nvt.data`, true],
       [`nve.traj`, true],
-      // Non-supported files
+      // Files with special characters
+      [`structure (1).cif`, true],
+      [`trajectory[test].xyz.gz`, true],
+      [`crystal@test.poscar`, true],
+      [`molecule#test.xyz`, true],
+      [`structure$test.json`, true],
+      [`trajectory%test.h5`, true],
+      [`crystal^test.traj`, true],
+      [`molecule&test.extxyz`, true],
+      [`structure*test.xml`, true],
+      [`trajectory+test.pdb`, true],
+      [`crystal=test.mol`, true],
+      [`molecule|test.mol2`, true],
+      [`structure\`test.sdf`, true],
+      [`trajectory~test.mmcif`, true],
+      // Case sensitivity tests
+      [`STRUCTURE.CIF`, true],
+      [`structure.CIF`, true],
+      [`Structure.cif`, true],
+      [`TRAJECTORY.XYZ`, true],
+      [`trajectory.XYZ`, true],
+      [`Trajectory.xyz`, true],
+      [`POSCAR`, true],
+      [`poscar`, true],
+      [`Poscar`, true],
+      [`CONTCAR`, true],
+      [`contcar`, true],
+      [`Contcar`, true],
+      [`XDATCAR`, true],
+      [`xdatcar`, true],
+      [`Xdatcar`, true],
+      // Files that look like structure files but are supported
+      [`structure_copy.cif`, true],
+      [`trajectory_backup.xyz`, true],
+      [`trajectory.log`, true], // Contains "trajectory" keyword
+      // Very long filenames
+      [`structure`.repeat(100) + `.cif`, true],
+      // Unsupported files
+      [`config.yaml`, false],
+      [`simulation.trr`, false], // .trr files not supported
+      [`md.dcd`, false], // .dcd files not supported
       [`document.txt`, false],
       [`script.py`, false],
       [`data.csv`, false],
       [`image.png`, false],
       [`archive.zip`, false],
       [`fake.gz`, false],
+      [`config.ini`, false],
+      [`log.txt`, false],
+      [`README.md`, false],
+      [`readme.md`, false],
+      [`ReadMe.Md`, false],
+      [`vite.config.ts`, false],
+      [`test.spec.ts`, false],
+      [`index.html`, false],
+      [`style.css`, false],
+      [`app.js`, false],
+      [`data.sql`, false],
+      [`backup.tar`, false],
+      [`compressed.7z`, false],
+      [`binary.bin`, false],
+      [`.pre-commit-config.yaml`, false],
+      [`changelog.md`, false],
+      [`.prettierrc`, false],
+      [`.gitignore`, false],
+      [`dockerfile`, false],
+      [`makefile`, false],
+      [`.env`, false],
+      [`.env.local`, false],
+      [`.env.production`, false],
+      [`.github/workflows/ci.yml`, false],
+      [`dist/bundle.js`, false],
+      [`build/index.html`, false],
+      [`coverage/lcov.info`, false],
+      [`.cache/build.js`, false],
+      [`structure.json.bak`, false],
+      [`crystal.poscar.lock`, true],
+      [`simulation.log`, false],
+      [`backup.old`, false],
+      [`original.orig`, false],
+      [`patch.diff`, false],
+      [`structure.txt`, false],
+      [`crystal.md`, false],
+      [`molecule.doc`, false],
+      [`poscar.bak`, true],
+      [`contcar.old`, true],
+      [`document.txt.gz`, false],
+      [`script.py.gz`, false],
+      [`data.csv.gz`, false],
+      [`image.png.gz`, false],
+      [`archive.zip.gz`, false],
+      [`structure.cif.bak`, false],
+      [`crystal.poscar.old`, true],
+      [`molecule.xyz~`, false],
+      [`structure.cif.swp`, false],
+      [`DOCUMENT.TXT`, false],
+      [`document.TXT`, false],
+      [`Document.txt`, false],
+      [`SCRIPT.PY`, false],
+      [`script.PY`, false],
+      [`Script.py`, false],
+      [`DATA.CSV`, false],
+      [`data.CSV`, false],
+      [`Data.csv`, false],
+      // Configuration files that should never auto-render
+      [`package.json`, false],
+      [`tsconfig.json`, false],
+      [`vite.config.ts`, false],
+      [`webpack.config.js`, false],
+      [`rollup.config.js`, false],
+      [`eslint.config.js`, false],
+      [`prettier.config.js`, false],
+      [`babel.config.js`, false],
+      [`jest.config.js`, false],
+      [`karma.conf.js`, false],
+      [`cypress.json`, false],
+      [`playwright.config.ts`, false],
+      [`.eslintrc.json`, false],
+      [`.prettierrc`, false],
+      [`.babelrc`, false],
+      [`.jest.config.js`, false],
+      [`.karma.conf.js`, false],
+      [`.cypress.json`, false],
+      [`.playwright.config.ts`, false],
+      [`.npmrc`, false],
+      [`.yarnrc`, false],
+      [`.vscode/settings.json`, false],
+      [`.idea/workspace.xml`, false],
+      [`.nyc_output/coverage.json`, false],
+      [`.tmp/temp.json`, false],
+      [`.temp/structure.json`, false],
+      [`node_modules/package.json`, false],
+      // Edge cases
       [``, false],
+      [`   `, false],
+      [`.`, false],
+      [`..`, false],
+      [`/`, false],
+      [`\\`, false],
+      [`a`.repeat(1000) + `.txt`, false],
+      // Null/undefined inputs
+      [null as unknown as string, false],
+      [undefined as unknown as string, false],
     ])(`should detect auto-render for "%s" as %s`, (filename, expected) => {
       expect(should_auto_render(filename)).toBe(expected)
-    })
-
-    test(`should handle edge cases gracefully`, () => {
-      expect(should_auto_render(null as unknown as string)).toBe(false)
-      expect(should_auto_render(undefined as unknown as string)).toBe(false)
-      expect(should_auto_render(`structure (1).cif`)).toBe(true)
-      expect(should_auto_render(`trajectory[test].xyz.gz`)).toBe(true)
     })
 
     test(`should register auto-render functionality`, () => {
@@ -941,6 +1059,86 @@ describe(`MatterViz Extension`, () => {
       const start = performance.now()
       filenames.forEach(should_auto_render)
       expect(performance.now() - start).toBeLessThan(10)
+    })
+
+    test(`should not trigger on non-file URIs`, () => {
+      const mock_context = {
+        subscriptions: { push: vi.fn() },
+      } as unknown as ExtensionContext
+
+      activate(mock_context)
+
+      // Get the registered callback
+      const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
+        .mock.calls[0]?.[0]
+      expect(onDidOpenTextDocument_callback).toBeDefined()
+
+      // Mock document with non-file URI
+      const mock_document = {
+        uri: { scheme: `untitled` },
+      }
+
+      expect(() => onDidOpenTextDocument_callback(mock_document)).not.toThrow()
+    })
+
+    test(`should respect autoRender configuration setting`, () => {
+      const mock_context = {
+        subscriptions: { push: vi.fn() },
+      } as unknown as ExtensionContext
+
+      // Mock configuration to disable autoRender
+      mock_vscode.workspace.getConfiguration.mockReturnValue({
+        get: vi.fn((key: string, defaultValue: string) => {
+          if (key === `autoRender`) return `false`
+          return defaultValue
+        }),
+      })
+
+      activate(mock_context)
+
+      // Get the registered callback
+      const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
+        .mock.calls[0]?.[0]
+      expect(onDidOpenTextDocument_callback).toBeDefined()
+
+      // Mock document with supported file
+      const mock_document = {
+        uri: { scheme: `file`, fsPath: `/test/structure.cif` },
+      }
+
+      expect(() => onDidOpenTextDocument_callback(mock_document)).not.toThrow()
+    })
+
+    test(`should handle file reading errors gracefully during auto-render`, async () => {
+      const mock_context = {
+        subscriptions: { push: vi.fn() },
+      } as unknown as ExtensionContext
+
+      // Mock fs.readFileSync to throw an error
+      vi.mocked(mock_fs.readFileSync).mockImplementation(() => {
+        throw new Error(`File not found`)
+      })
+
+      activate(mock_context)
+
+      // Get the registered callback
+      const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
+        .mock.calls[0]?.[0]
+      expect(onDidOpenTextDocument_callback).toBeDefined()
+
+      // Mock document with supported file
+      const mock_document = {
+        uri: { scheme: `file`, fsPath: `/test/structure.cif` },
+      }
+
+      // Should show error message when file reading fails
+      expect(() => onDidOpenTextDocument_callback(mock_document)).not.toThrow()
+
+      await vi.waitFor(() => { // Wait for error message to be called
+        expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+          expect.stringContaining(`MatterViz auto-render failed:`),
+        )
+      })
     })
   })
 })

@@ -25,21 +25,22 @@
       "command": "matterviz.renderStructure",
       "key": "ctrl+shift+v",
       "mac": "cmd+shift+v",
-      "when": "resourceExtname =~ /\\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|traj|gz|h5|hdf5|xdatcar|contcar|outcar|xml|lmp|data|dump|dcd|xtc|trr|pdb|mol|mol2|sdf|mmcif)$/i || resourceFilename =~ /(poscar|contcar|xdatcar|potcar|incar|kpoints|outcar|trajectory|traj|md|relax|npt|nvt|nve)/i || editorLangId =~ /^(json|yaml|xml)$/"
+      "when": "matterviz.supportedResource"
     }],
     "menus": {
       "explorer/context": [{
         "command": "matterviz.renderStructure",
-        "when": "resourceExtname =~ /\\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|traj|gz|h5|hdf5|xdatcar|contcar|outcar|xml|lmp|data|dump|dcd|xtc|trr|pdb|mol|mol2|sdf|mmcif)$/i || resourceFilename =~ /(poscar|contcar|xdatcar|potcar|incar|kpoints|outcar|trajectory|traj|md|relax|npt|nvt|nve)/i"
+        "when": "matterviz.supportedResource"
       }]
     },
     "customEditors": [{
       "viewType": "matterviz.viewer",
       "displayName": "MatterViz Viewer",
       "selector": [
-        { "filenamePattern": "*.{traj,gz,h5,hdf5,dcd,xtc,trr}" },
+        { "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr}" },
+        { "filenamePattern": "*.{cif,xyz,extxyz,poscar,json,yaml,yml}.gz" },
         { "filenamePattern": "*{xdatcar,contcar,outcar}" },
-        { "filenamePattern": "*{trajectory,relax,md,npt,nvt,nve}*" }
+        { "filenamePattern": "*{trajectory,relax,npt,nvt,nve}*" }
       ],
       "priority": "option"
     }],
