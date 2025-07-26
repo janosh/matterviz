@@ -520,11 +520,15 @@ const extract_cif_cell_parameters = (
       const tokens = line.split(/\s+/)
       const value_str = tokens[tokens.length - 1] // Last token contains the value
       const value = parseFloat(value_str.split(`(`)[0]) // Remove uncertainty notation
-      if (isNaN(value) && strict) {
-        throw new Error(`Invalid CIF cell parameter in line: ${line}`)
+      if (isNaN(value)) {
+        if (strict) {
+          throw new Error(`Invalid CIF cell parameter in line: ${line}`)
+        }
+        return null // Return null for invalid values in non-strict mode
       }
       return value
     })
+    .filter((v): v is number => v !== null) // Filter out null values
 }
 
 // build header index mapping for atom site data
@@ -619,14 +623,30 @@ export function parse_cif(
         // Check if this is an atom site loop
         if (headers.some((h) => h.includes(`_atom_site_`))) {
           atom_headers = headers
-          // Collect data lines
+          // Collect data lines until the next loop_ or end of file
           while (jj < lines.length) {
             const line = lines[jj].trim()
-            if (line === `loop_` || line.startsWith(`data_`) || line === ``) break
-            if (line && !line.startsWith(`#`)) atom_data_lines.push(line)
+            if (line === `loop_` || line.startsWith(`data_`)) break
+            if (line && !line.startsWith(`#`)) {
+              // Handle multi-line data blocks that are quoted
+              if (line.startsWith(`;`)) {
+                let multi_line_data = ``
+                while (jj < lines.length && !lines[jj].trim().endsWith(`;`)) {
+                  multi_line_data += lines[jj] + `\n`
+                  jj++
+                }
+                multi_line_data += lines[jj] // Add the last line with the closing semicolon
+                atom_data_lines.push(multi_line_data.trim())
+              } else {
+                atom_data_lines.push(line)
+              }
+            }
             jj++
           }
-          break
+          // If we found atom data, break out of the main loop
+          if (atom_data_lines.length > 0) {
+            break
+          }
         }
       }
     }
@@ -639,7 +659,12 @@ export function parse_cif(
     // Parse atom data with error handling
     const header_indices = build_cif_atom_site_header_indices(atom_headers)
     const atoms = atom_data_lines
-      .map((line) => line.split(/\s+/).filter(Boolean))
+      .map((line) => {
+        // Handle quoted multi-word values by splitting only on whitespace
+        // that is not inside quotes.
+        const tokens = line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []
+        return tokens.map((token) => token.replace(/['"]/g, ``))
+      })
       .filter((tokens) => {
         const { disorder } = header_indices
         return !(disorder !== undefined && tokens[disorder] === `2`) &&

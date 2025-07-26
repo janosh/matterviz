@@ -14,7 +14,7 @@ import {
 } from '$lib/io/export'
 import { parse_structure_file } from '$lib/io/parse'
 import type { AnyStructure } from '$lib/structure'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Mock the download function
 vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
@@ -783,5 +783,117 @@ describe(`Export functionality`, () => {
       expect(mock_canvas.width).toBe(101)
       expect(mock_canvas.height).toBe(151)
     })
+  })
+})
+
+// Helper function to sort sites for consistent comparison
+const sort_sites = (sites: AnyStructure[`sites`]): AnyStructure[`sites`] =>
+  [...sites].sort((site_a, site_b) => {
+    const elem_a = site_a.species[0].element
+    const elem_b = site_b.species[0].element
+    if (elem_a !== elem_b) {
+      return elem_a.localeCompare(elem_b)
+    }
+    // Sort by fractional coordinates if elements are the same
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(site_a.abc[i] - site_b.abc[i]) > 1e-4) {
+        return site_a.abc[i] - site_b.abc[i]
+      }
+    }
+    return 0
+  })
+
+// Helper function to assert structure equality
+function assert_structures_equal(
+  struct1: AnyStructure,
+  struct2: AnyStructure,
+  filename: string,
+) {
+  expect(struct2.sites, `Site count mismatch in ${filename}`).toHaveLength(
+    struct1.sites.length,
+  )
+
+  // Compare lattice for structures that have one
+  if (
+    `lattice` in struct1 && struct1.lattice && `lattice` in struct2 && struct2.lattice
+  ) {
+    const params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
+    for (const p of params) {
+      expect(
+        struct2.lattice[p],
+        `Lattice param '${p}' mismatch in ${filename}`,
+      ).toBeCloseTo(struct1.lattice[p])
+    }
+  } else {
+    expect(`lattice` in struct1).toBe(`lattice` in struct2)
+  }
+
+  // Compare sites after sorting to handle potential reordering
+  const sorted_sites1 = sort_sites(struct1.sites)
+  const sorted_sites2 = sort_sites(struct2.sites)
+
+  for (const [idx, site1] of sorted_sites1.entries()) {
+    const site2 = sorted_sites2[idx]
+
+    expect(site2.species, `Species mismatch for site ${idx} in ${filename}`).toEqual(
+      site1.species,
+    )
+
+    // Compare fractional coordinates
+    for (const j of [0, 1, 2]) {
+      expect(
+        site2.abc[j],
+        `Coord mismatch for site ${idx}, component ${j} in ${filename}`,
+      ).toBeCloseTo(site1.abc[j], 4)
+    }
+
+    // POSCAR files can have selective_dynamics
+    if (site1.properties?.selective_dynamics) {
+      expect(
+        site2.properties?.selective_dynamics,
+        `selective_dynamics mismatch for site ${idx} in ${filename}`,
+      ).toEqual(site1.properties.selective_dynamics)
+    }
+  }
+}
+
+describe(`Round-trip CIF and POSCAR exports`, () => {
+  const cif_files = import.meta.glob(
+    [`/src/site/structures/*.cif`, `!/src/site/structures/P24Ru4H252C296S24N16.cif`],
+    {
+      eager: true,
+      query: `?raw`,
+      import: `default`,
+    },
+  )
+  const poscar_files = import.meta.glob(`/src/site/structures/*.{poscar,vasp}`, {
+    eager: true,
+    query: `?raw`,
+    import: `default`,
+  })
+
+  const structure_files = { ...cif_files, ...poscar_files }
+
+  const test_cases = Object.entries(structure_files).map(([path, content]) => ({
+    filename: path.split(`/`).pop() ?? path,
+    content: content as string,
+  }))
+
+  test.each(test_cases)(`round-trips $filename correctly`, ({ filename, content }) => {
+    const original = parse_structure_file(content, filename)
+    expect(original, `Failed to parse original file ${filename}`).not.toBeNull()
+    if (!original) return
+
+    const exporter = filename.endsWith(`.cif`)
+      ? structure_to_cif_str
+      : structure_to_poscar_str
+
+    const exported_content = exporter(original)
+
+    const round_tripped = parse_structure_file(exported_content, filename)
+    expect(round_tripped, `Failed to parse exported file ${filename}`).not.toBeNull()
+    if (!round_tripped) return
+
+    assert_structures_equal(original, round_tripped, filename)
   })
 })

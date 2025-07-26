@@ -172,13 +172,16 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   lines.push(`_atom_site_fract_x`)
   lines.push(`_atom_site_fract_y`)
   lines.push(`_atom_site_fract_z`)
+  lines.push(`_atom_site_occupancy`)
 
   // Atom sites
   for (let idx = 0; idx < structure.sites.length; idx++) {
     const site = structure.sites[idx]
+    if (!site) continue // Skip if site is undefined
 
     // Extract element symbol from species
     let element_symbol = `X` // default fallback
+    let occupancy = 1
     if (
       site.species &&
       Array.isArray(site.species) &&
@@ -189,6 +192,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
         first_species && `element` in first_species && first_species.element
       ) {
         element_symbol = first_species.element
+        occupancy = first_species.occu
       }
     }
 
@@ -219,7 +223,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     lines.push(
       `${label} ${element_symbol} ${frac_coords[0].toFixed(6)} ${
         frac_coords[1].toFixed(6)
-      } ${frac_coords[2].toFixed(6)}`,
+      } ${frac_coords[2].toFixed(6)} ${occupancy.toFixed(6)}`,
     )
   }
 
@@ -293,6 +297,14 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   // Atom counts line
   lines.push(element_symbols.map((el) => element_counts.get(el)).join(` `))
 
+  // Check if any site has selective dynamics
+  const has_selective_dynamics = structure.sites.some(
+    (site) => site.properties?.selective_dynamics,
+  )
+  if (has_selective_dynamics) {
+    lines.push(`Selective dynamics`)
+  }
+
   // Coordinate mode (Direct = fractional coordinates)
   lines.push(`Direct`)
 
@@ -336,10 +348,22 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
           throw new Error(`No valid coordinates found for site`)
         }
 
+        let selective_dynamics_str = ``
+        if (has_selective_dynamics) {
+          const sd = (site.properties?.selective_dynamics ?? [
+            true,
+            true,
+            true,
+          ]) as boolean[]
+          selective_dynamics_str = ` ${sd[0] ? `T` : `F`} ${sd[1] ? `T` : `F`} ${
+            sd[2] ? `T` : `F`
+          }`
+        }
+
         lines.push(
           `${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(8)} ${
             frac_coords[2].toFixed(8)
-          }`,
+          }${selective_dynamics_str}`,
         )
       }
     }

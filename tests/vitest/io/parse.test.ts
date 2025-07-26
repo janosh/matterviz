@@ -1753,7 +1753,7 @@ C1 C 0 0 0`
     const result = parse_cif(cif_invalid_length, true, false)
     expect(result).toBeNull()
     expect(console_error_spy).toHaveBeenCalledWith(
-      `Invalid cell parameters in CIF file`,
+      `Insufficient cell parameters in CIF file`,
     )
   })
 })

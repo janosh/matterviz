@@ -67,37 +67,61 @@ describe(`Structure`, () => {
     expect(document.querySelector(`.controls-panel`)).toBeTruthy()
   })
 
-  test(`JSON file download when clicking download button`, async () => {
-    globalThis.URL.createObjectURL = vi.fn()
+  const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
 
+  test.each(
+    formats.flatMap((format) => [
+      { format, action: `Download` },
+      { format, action: `Copy` },
+    ]),
+  )(`$format $action button works`, async ({ format, action }) => {
+    // Mount component and open controls
     mount(Structure, {
       target: document.body,
       props: { structure, show_controls: true },
     })
-
-    // First, open the structure control panel by clicking the correct toggle button
-    // Look for the structure controls toggle button specifically
-    const structure_controls_toggle = document.querySelector(
+    const structure_controls_toggle = doc_query<HTMLButtonElement>(
       `button.structure-controls-toggle`,
-    ) as HTMLButtonElement
+    )
     expect(structure_controls_toggle).toBeTruthy()
     structure_controls_toggle.click()
     await tick()
 
-    const spy = vi.spyOn(document.body, `appendChild`)
-    // Use title attribute to find the download button
-    const download_btn = document.querySelector(
-      `button[title="⬇ JSON"]`,
-    ) as HTMLButtonElement
-    expect(download_btn).toBeTruthy()
+    if (action === `Download`) {
+      globalThis.URL.createObjectURL = vi.fn()
+      const spy = vi.spyOn(document.body, `appendChild`)
+      const download_btn = doc_query<HTMLButtonElement>(
+        `button[title="Download ${format}"]`,
+      )
+      expect(download_btn, `download button for ${format}`).toBeTruthy()
 
-    download_btn?.click()
+      download_btn.click()
 
-    expect(spy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement))
+      expect(spy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement))
 
-    spy.mockRestore()
-    // @ts-expect-error - function is mocked
-    globalThis.URL.createObjectURL.mockRestore()
+      spy.mockRestore()
+      // @ts-expect-error - function is mocked
+      globalThis.URL.createObjectURL.mockRestore()
+    } else if (action === `Copy`) {
+      const clipboard_spy = vi
+        .spyOn(navigator.clipboard, `writeText`)
+        .mockResolvedValue()
+
+      const copy_btn = doc_query<HTMLButtonElement>(
+        `button[title="Copy ${format} to clipboard"]`,
+      )
+      expect(copy_btn, `copy button for ${format}`).toBeTruthy()
+
+      copy_btn.click()
+      await tick()
+      // Wait for Svelte to re-render the component
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      expect(clipboard_spy).toHaveBeenCalledOnce()
+      expect(copy_btn.textContent).toContain(`✅`)
+
+      clipboard_spy.mockRestore()
+    }
   })
 
   test(`toggle fullscreen mode`, async () => {
