@@ -292,7 +292,7 @@
   /* Panel content styling */
   .draggable-panel :global(h4) {
     margin: 2pt 0;
-    font-size: 0.9em;
+    font-size: 0.95em;
   }
   .draggable-panel :global(hr) {
     border: none;
