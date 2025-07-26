@@ -1,9 +1,8 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { defineConfig } from 'vite'
 
-const __dirname = fileURLToPath(new URL(`.`, import.meta.url))
+const __dirname = dirname(new URL(import.meta.url).pathname)
 
 export default defineConfig({
   build: {
@@ -13,7 +12,7 @@ export default defineConfig({
       fileName: () => `extension.cjs`,
     },
     rollupOptions: {
-      external: [`vscode`, `fs`, `path`],
+      external: [`vscode`, `fs`, `path`, `node:buffer`],
     },
     minify: false,
   },

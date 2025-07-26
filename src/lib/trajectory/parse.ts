@@ -2,6 +2,7 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
+import { COMPRESSION_EXTENSIONS } from '$lib/io/decompress'
 import { parse_xyz } from '$lib/io/parse'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -27,22 +28,38 @@ interface ParsedFrame {
 // Check if filename indicates a trajectory file
 export function is_trajectory_file(filename: string): boolean {
   const name = filename.toLowerCase()
-  return (
-    // Standard trajectory file extensions (excluding xyz/extxyz which can be either)
-    name.match(/\.(traj|h5|hdf5)$/) !== null ||
-    // Files with trajectory-related keywords
-    /(xdatcar|trajectory|traj|md|relax|npt|nvt|nve|qha)/.test(name) ||
-    // XYZ/EXTXYZ files with trajectory keywords
-    (name.match(/\.(xyz|extxyz)$/) !== null &&
-      /(trajectory|traj|md|relax|npt|nvt|nve|qha)/.test(name)) ||
-    // Compressed trajectory files
-    /\.(traj|h5|hdf5)\.gz$/.test(name) ||
-    // Compressed XYZ files with trajectory keywords
-    (/\.(xyz|extxyz)\.gz$/.test(name) &&
-      /(trajectory|traj|md|relax|npt|nvt|nve|qha)/.test(name)) ||
-    (name.endsWith(`.gz`) &&
-      /(traj|xdatcar|trajectory|relax|md|npt|nvt|nve|qha)/.test(name))
-  )
+
+  // Remove all compression extensions to check base file
+  let base_name = name
+  const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
+  const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
+  while (compression_regex.test(base_name)) {
+    base_name = base_name.replace(compression_regex, ``)
+  }
+
+  // Standard trajectory extensions
+  if (/\.(traj|h5|hdf5)$/i.test(base_name)) return true
+
+  // VASP trajectory files
+  if (/xdatcar/i.test(base_name)) return true
+
+  // Files with trajectory keywords
+  const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md)/i
+  if (keywords.test(base_name)) {
+    // XYZ/EXTXYZ files with keywords
+    if (/\.(xyz|extxyz)$/i.test(base_name)) return true
+    // Other files with keywords (excluding specific patterns)
+    if (/\.(dat|data|poscar|pdf)$/i.test(base_name)) return true
+    // Specific patterns for .log, .out, .txt files
+    if (/\.log$/i.test(base_name) && /(nve|relax)/i.test(base_name)) return true
+    if (/\.out$/i.test(base_name) && /(traj|nvt)/i.test(base_name)) return true
+    if (
+      /\.txt$/i.test(base_name) && /trajectory/i.test(base_name) &&
+      !/trajectory_notes/i.test(base_name)
+    ) return true
+  }
+
+  return false
 }
 
 // Type guard to check if an entity is a Dataset

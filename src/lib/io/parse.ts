@@ -4,6 +4,7 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { load as yaml_load } from 'js-yaml'
+import { COMPRESSION_EXTENSIONS } from './decompress'
 
 export interface ParsedStructure {
   sites: Site[]
@@ -902,9 +903,13 @@ export function parse_structure_file(
 ): ParsedStructure | null {
   // If a filename is provided, try to detect format by file extension first
   if (filename) {
-    // Handle compressed files by removing .gz extension
+    // Handle compressed files by removing compression extensions
     let base_filename = filename.toLowerCase()
-    if (base_filename.endsWith(`.gz`)) base_filename = base_filename.slice(0, -3) // Remove .gz
+    const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
+    const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
+    while (compression_regex.test(base_filename)) {
+      base_filename = base_filename.replace(compression_regex, ``)
+    }
 
     const ext = base_filename.split(`.`).pop()
 
@@ -1200,17 +1205,45 @@ export function is_optimade_json(content: string): boolean {
 export function is_structure_file(filename: string): boolean {
   const name = filename.toLowerCase()
 
-  // First check if this is a trajectory file and so not a structure file
+  // Not a structure file if it's a trajectory file
   if (is_trajectory_file(filename)) return false
 
-  const structure_extensions =
-    /\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|xml|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/
-  const structure_keywords = /(poscar|contcar|potcar|incar|kpoints|outcar)/
+  // Direct structure file extensions
+  if (
+    /\.(cif|poscar|vasp|xyz|extxyz|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/i.test(name)
+  ) return true
 
-  return (
-    structure_extensions.test(name) ||
-    structure_keywords.test(name) || // Files with structure-related keywords
-    (name.endsWith(`.gz`) && // Compressed structure files
-      (structure_extensions.test(name.slice(0, -3)) || structure_keywords.test(name)))
-  )
+  // VASP files (no extension or .out)
+  if (/(poscar|contcar|potcar|incar|kpoints|outcar)/i.test(name)) return true
+  // YAML files with structure keywords
+  if (
+    /\.(yaml|yml)$/i.test(name) &&
+    /(structure|phono|vasp|crystal|material|lattice|geometry|unit_?cell|phono3?py)/i.test(
+      name,
+    )
+  ) return true
+
+  // JSON files with structure keywords (excluding config directories)
+  if (
+    /\.json$/i.test(name) &&
+    /(structure|crystal|material|lattice|geometry|unit_?cell|atoms|sites|data)/i.test(
+      name,
+    ) &&
+    !/(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)\//i
+      .test(name)
+  ) return true
+
+  // XML files with structure keywords
+  if (
+    /\.xml$/i.test(name) &&
+    /(structure|crystal|material|lattice|geometry|unit_?cell|atoms|sites)/i.test(name)
+  ) return true
+
+  // Compressed files - check the base filename
+  if (name.endsWith(`.gz`) || name.endsWith(`.zip`) || name.endsWith(`.xz`)) {
+    const base_name = name.split(`.`).slice(0, -1).join(`.`)
+    return is_structure_file(base_name)
+  }
+
+  return false
 }

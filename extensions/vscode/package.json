@@ -25,21 +25,22 @@
       "command": "matterviz.renderStructure",
       "key": "ctrl+shift+v",
       "mac": "cmd+shift+v",
-      "when": "resourceExtname =~ /\\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|traj|gz|h5|hdf5|xdatcar|contcar|outcar|xml|lmp|data|dump|dcd|xtc|trr|pdb|mol|mol2|sdf|mmcif)$/i || resourceFilename =~ /(poscar|contcar|xdatcar|potcar|incar|kpoints|outcar|trajectory|traj|md|relax|npt|nvt|nve)/i || editorLangId =~ /^(json|yaml|xml)$/"
+      "when": "resourceExtname =~ /\\.(cif|poscar|vasp|xyz|extxyz|traj|gz|h5|hdf5|xdatcar|contcar|outcar|xml|lmp|data|dump|dcd|xtc|trr|pdb|mol|mol2|sdf|mmcif)$/i || resourceFilename =~ /(poscar|contcar|xdatcar|potcar|incar|kpoints|outcar|trajectory|traj|relax|npt|nvt|nve|.*mp-.*\\.json|.*optimade.*\\.json|.*pymatgen.*\\.json|.*structure.*\\.json|.*crystal.*\\.json|.*material.*\\.json|.*lattice.*\\.json|.*geometry.*\\.json|.*unit_?cell.*\\.json|.*phono.*\\.(yaml|yml)|.*structure.*\\.(yaml|yml)|.*crystal.*\\.(yaml|yml)|.*material.*\\.(yaml|yml)|.*lattice.*\\.(yaml|yml)|.*geometry.*\\.(yaml|yml)|.*unit_?cell.*\\.(yaml|yml)|.*vasp.*\\.(yaml|yml)|phono3py.*\\.(yaml|yml)|phonopy.*\\.(yaml|yml))/i"
     }],
     "menus": {
       "explorer/context": [{
         "command": "matterviz.renderStructure",
-        "when": "resourceExtname =~ /\\.(cif|poscar|vasp|xyz|extxyz|json|yaml|yml|traj|gz|h5|hdf5|xdatcar|contcar|outcar|xml|lmp|data|dump|dcd|xtc|trr|pdb|mol|mol2|sdf|mmcif)$/i || resourceFilename =~ /(poscar|contcar|xdatcar|potcar|incar|kpoints|outcar|trajectory|traj|md|relax|npt|nvt|nve)/i"
+        "when": "resourceExtname =~ /\\.(cif|poscar|vasp|xyz|extxyz|traj|gz|h5|hdf5|xdatcar|contcar|outcar|xml|lmp|data|dump|dcd|xtc|trr|pdb|mol|mol2|sdf|mmcif)$/i || resourceFilename =~ /(poscar|contcar|xdatcar|potcar|incar|kpoints|outcar|trajectory|traj|relax|npt|nvt|nve|.*mp-.*\\.json|.*optimade.*\\.json|.*pymatgen.*\\.json|.*structure.*\\.json|.*crystal.*\\.json|.*material.*\\.json|.*lattice.*\\.json|.*geometry.*\\.json|.*unit_?cell.*\\.json|.*phono.*\\.(yaml|yml)|.*structure.*\\.(yaml|yml)|.*crystal.*\\.(yaml|yml)|.*material.*\\.(yaml|yml)|.*lattice.*\\.(yaml|yml)|.*geometry.*\\.(yaml|yml)|.*unit_?cell.*\\.(yaml|yml)|.*vasp.*\\.(yaml|yml)|phono3py.*\\.(yaml|yml)|phonopy.*\\.(yaml|yml))/i"
       }]
     },
     "customEditors": [{
       "viewType": "matterviz.viewer",
       "displayName": "MatterViz Viewer",
       "selector": [
-        { "filenamePattern": "*.{traj,gz,h5,hdf5,dcd,xtc,trr}" },
+        { "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr}" },
+        { "filenamePattern": "*.{cif,xyz,extxyz,poscar,json,yaml,yml}.gz" },
         { "filenamePattern": "*{xdatcar,contcar,outcar}" },
-        { "filenamePattern": "*{trajectory,relax,md,npt,nvt,nve}*" }
+        { "filenamePattern": "*{trajectory,relax,npt,nvt,nve}*" }
       ],
       "priority": "option"
     }],
@@ -63,6 +64,7 @@
   "scripts": {
     "build": "rm -rf dist && vite build --config vite.webview.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
     "package": "pnpm build && vsce package",
+    "ext-install": "pnpm package && code --install-extension matterviz-0.1.5.vsix",
     "test": "vitest"
   },
   "devDependencies": {
