@@ -1,4 +1,4 @@
-import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
+import type { AnyStructure, CompositionType } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition'
 import {
   atomic_num_to_symbols,
@@ -453,35 +453,35 @@ describe(`formula formatting functions`, () => {
     const structure = {
       sites: [
         {
-          species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
           abc: [0, 0, 0],
           xyz: [0, 0, 0],
           label: `Fe1`,
           properties: {},
         },
         {
-          species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
           abc: [0.5, 0.5, 0.5],
           xyz: [0.5, 0.5, 0.5],
           label: `Fe2`,
           properties: {},
         },
         {
-          species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
           abc: [0.25, 0.25, 0.25],
           xyz: [0.25, 0.25, 0.25],
           label: `O1`,
           properties: {},
         },
         {
-          species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
           abc: [0.75, 0.75, 0.75],
           xyz: [0.75, 0.75, 0.75],
           label: `O2`,
           properties: {},
         },
         {
-          species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
           abc: [0.5, 0, 0],
           xyz: [0.5, 0, 0],
           label: `O3`,

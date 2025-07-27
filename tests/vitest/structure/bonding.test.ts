@@ -17,7 +17,7 @@ function measure_performance(func: () => void): number {
 function make_site(xyz: Vec3, element = `C`): Site {
   return {
     xyz,
-    abc: [0, 0, 0] as [number, number, number], // Placeholder fractional coordinates
+    abc: [0, 0, 0], // Placeholder fractional coords
     species: [
       { element: element as ElementSymbol, occu: 1, oxidation_state: 0 },
     ],
