@@ -6,7 +6,7 @@
   let scene_props = $state({ auto_rotate: 0.5 })
 </script>
 
-<h1 style="margin: 0">MatterViz</h1>
+<h1>MatterViz</h1>
 
 <p>
   <code>matterviz</code> is a toolkit for building interactive web UIs for materials
@@ -84,7 +84,6 @@
     gap: 2em;
     max-width: 1400px;
     margin-inline: auto;
-    text-align: center;
     min-width: 300px;
   }
 </style>

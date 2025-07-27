@@ -29,23 +29,14 @@ describe(`Trajectory Validation`, () => {
     {
       name: `validate correct trajectory`,
       trajectory: {
-        frames: [
-          create_frame(0, [
-            create_site(
-              `H` as ElementSymbol,
-              [0, 0, 0] as Vec3,
-              [0, 0, 0] as Vec3,
-              `H1`,
-            ),
-          ]),
-        ],
+        frames: [create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])],
         metadata: {},
-      } as TrajectoryType,
+      },
       expected_errors: [],
     },
     {
       name: `detect missing frames`,
-      trajectory: { frames: [], metadata: {} } as TrajectoryType,
+      trajectory: { frames: [], metadata: {} },
       expected_errors: [`Trajectory must have at least one frame`],
     },
     {
@@ -59,33 +50,18 @@ describe(`Trajectory Validation`, () => {
     },
     {
       name: `detect empty sites`,
-      trajectory: {
-        frames: [create_frame(0, [])],
-        metadata: {},
-      } as TrajectoryType,
+      trajectory: { frames: [create_frame(0, [])], metadata: {} },
       expected_errors: [`Frame 0 structure has no sites`],
     },
     {
       name: `detect invalid step numbers`,
       // @ts-expect-error Testing invalid step type
       trajectory: {
-        frames: [
-          {
-            structure: {
-              sites: [
-                create_site(
-                  `H` as ElementSymbol,
-                  [0, 0, 0] as Vec3,
-                  [0, 0, 0] as Vec3,
-                  `H1`,
-                ),
-              ],
-              charge: 0,
-            },
-            step: `invalid`,
-            metadata: {},
-          },
-        ],
+        frames: [{
+          structure: { sites: [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)], charge: 0 },
+          step: `invalid`,
+          metadata: {},
+        }],
         metadata: {},
       } as TrajectoryType,
       expected_errors: [`Frame 0 missing or invalid step number`],
@@ -103,50 +79,20 @@ describe(`Trajectory Statistics`, () => {
       trajectory: {
         frames: [
           create_frame(1, [
-            create_site(
-              `H` as ElementSymbol,
-              [0, 0, 0] as Vec3,
-              [0, 0, 0] as Vec3,
-              `H1`,
-            ),
-            create_site(
-              `O` as ElementSymbol,
-              [0.5, 0.5, 0.5] as Vec3,
-              [1, 1, 1] as Vec3,
-              `O1`,
-            ),
+            create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
+            create_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`),
           ]),
           create_frame(2, [
-            create_site(
-              `H` as ElementSymbol,
-              [0.1, 0, 0] as Vec3,
-              [0.1, 0, 0] as Vec3,
-              `H1`,
-            ),
-            create_site(
-              `O` as ElementSymbol,
-              [0.6, 0.5, 0.5] as Vec3,
-              [1.1, 1, 1] as Vec3,
-              `O1`,
-            ),
+            create_site(`H`, [0.1, 0, 0], [0.1, 0, 0], `H1`),
+            create_site(`O`, [0.6, 0.5, 0.5], [1.1, 1, 1], `O1`),
           ]),
           create_frame(5, [
-            create_site(
-              `H` as ElementSymbol,
-              [0.2, 0, 0] as Vec3,
-              [0.2, 0, 0] as Vec3,
-              `H1`,
-            ),
-            create_site(
-              `O` as ElementSymbol,
-              [0.7, 0.5, 0.5] as Vec3,
-              [1.2, 1, 1] as Vec3,
-              `O1`,
-            ),
+            create_site(`H`, [0.2, 0, 0], [0.2, 0, 0], `H1`),
+            create_site(`O`, [0.7, 0.5, 0.5], [1.2, 1, 1], `O1`),
           ]),
         ],
         metadata: {},
-      } as TrajectoryType,
+      },
       expected: {
         frame_count: 3,
         steps: [1, 2, 5],
@@ -160,51 +106,19 @@ describe(`Trajectory Statistics`, () => {
       name: `handle variable atom counts`,
       trajectory: {
         frames: [
-          create_frame(0, [
-            create_site(
-              `H` as ElementSymbol,
-              [0, 0, 0] as Vec3,
-              [0, 0, 0] as Vec3,
-              `H1`,
-            ),
-          ]),
+          create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)]),
           create_frame(1, [
-            create_site(
-              `H` as ElementSymbol,
-              [0, 0, 0] as Vec3,
-              [0, 0, 0] as Vec3,
-              `H1`,
-            ),
-            create_site(
-              `H` as ElementSymbol,
-              [0.5, 0.5, 0.5] as Vec3,
-              [1, 1, 1] as Vec3,
-              `H2`,
-            ),
+            create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
+            create_site(`H`, [0.5, 0.5, 0.5], [1, 1, 1], `H2`),
           ]),
           create_frame(2, [
-            create_site(
-              `H` as ElementSymbol,
-              [0, 0, 0] as Vec3,
-              [0, 0, 0] as Vec3,
-              `H1`,
-            ),
-            create_site(
-              `H` as ElementSymbol,
-              [0.3, 0.3, 0.3] as Vec3,
-              [0.6, 0.6, 0.6] as Vec3,
-              `H2`,
-            ),
-            create_site(
-              `O` as ElementSymbol,
-              [0.7, 0.7, 0.7] as Vec3,
-              [1.4, 1.4, 1.4] as Vec3,
-              `O1`,
-            ),
+            create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
+            create_site(`H`, [0.3, 0.3, 0.3], [0.6, 0.6, 0.6], `H2`),
+            create_site(`O`, [0.7, 0.7, 0.7], [1.4, 1.4, 1.4], `O1`),
           ]),
         ],
         metadata: {},
-      } as TrajectoryType,
+      },
       expected: {
         frame_count: 3,
         steps: [0, 1, 2],
@@ -217,18 +131,9 @@ describe(`Trajectory Statistics`, () => {
     {
       name: `handle single frame trajectory`,
       trajectory: {
-        frames: [
-          create_frame(42, [
-            create_site(
-              `H` as ElementSymbol,
-              [0, 0, 0] as Vec3,
-              [0, 0, 0] as Vec3,
-              `H1`,
-            ),
-          ]),
-        ],
+        frames: [create_frame(42, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])],
         metadata: {},
-      } as TrajectoryType,
+      },
       expected: {
         frame_count: 1,
         steps: [42],
@@ -240,7 +145,7 @@ describe(`Trajectory Statistics`, () => {
     },
     {
       name: `handle empty trajectory gracefully`,
-      trajectory: { frames: [], metadata: {} } as TrajectoryType,
+      trajectory: { frames: [], metadata: {} },
       expected: {
         frame_count: 0,
         steps: [],

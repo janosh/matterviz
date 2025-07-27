@@ -1,4 +1,3 @@
-import type { ElementSymbol, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
@@ -30,15 +29,13 @@ function create_basic_frame(
 ) {
   return {
     structure: {
-      sites: [
-        {
-          species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0] as Vec3,
-          xyz: [0, 0, 0] as Vec3,
-          label: `H1`,
-          properties: {},
-        },
-      ],
+      sites: [{
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `H1`,
+        properties: {},
+      }],
       charge: 0,
     },
     step,
@@ -54,17 +51,13 @@ function create_frame_with_lattice(
 ) {
   return {
     structure: {
-      sites: [
-        {
-          species: [
-            { element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 },
-          ],
-          abc: [0, 0, 0] as Vec3,
-          xyz: [0, 0, 0] as Vec3,
-          label: `H1`,
-          properties: {},
-        },
-      ],
+      sites: [{
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `H1`,
+        properties: {},
+      }],
       charge: 0,
       lattice: {
         matrix: [
@@ -116,7 +109,7 @@ describe(`Energy Data Extractor`, () => {
     },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
-    const data = energy_data_extractor(frame, {} as TrajectoryType)
+    const data = energy_data_extractor(frame, {})
     expect(data).toEqual(expected)
   })
 })
@@ -167,7 +160,7 @@ describe(`Force and Stress Data Extractor`, () => {
     },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
-    const data = force_stress_data_extractor(frame, {} as TrajectoryType)
+    const data = force_stress_data_extractor(frame, {})
     expect(data).toEqual(expected)
   })
 })
@@ -215,7 +208,7 @@ describe(`Structural Data Extractor`, () => {
       ? create_frame_with_lattice(step, lattice_params, metadata)
       : create_basic_frame(step, metadata)
 
-    const data = structural_data_extractor(frame, {} as TrajectoryType)
+    const data = structural_data_extractor(frame, {})
     expect(data).toEqual(expected)
   })
 
@@ -227,7 +220,7 @@ describe(`Structural Data Extractor`, () => {
       {}, // No density in metadata
     )
 
-    const data = structural_data_extractor(frame, {} as TrajectoryType)
+    const data = structural_data_extractor(frame, {})
 
     // Should calculate density from structure
     expect(data.density).toBeDefined()
@@ -242,7 +235,7 @@ describe(`Structural Data Extractor`, () => {
       { density: 5.0 }, // Explicit density in metadata
     )
 
-    const data = structural_data_extractor(frame, {} as TrajectoryType)
+    const data = structural_data_extractor(frame, {})
 
     // Should use metadata density
     expect(data.density).toBe(5.0)
@@ -253,24 +246,16 @@ describe(`Full Data Extractor`, () => {
   it(`should combine all extractors`, () => {
     const trajectory: TrajectoryType = {
       frames: [
-        create_frame_with_lattice(
-          0,
-          { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 },
-          {
-            energy: -10.0,
-            force_max: 2.0,
-            density: 2.5,
-          },
-        ),
-        create_frame_with_lattice(
-          1,
-          { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 },
-          {
-            energy: -10.5,
-            force_max: 1.5,
-            density: 2.3,
-          },
-        ),
+        create_frame_with_lattice(0, { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 }, {
+          energy: -10.0,
+          force_max: 2.0,
+          density: 2.5,
+        }),
+        create_frame_with_lattice(1, { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 }, {
+          energy: -10.5,
+          force_max: 1.5,
+          density: 2.3,
+        }),
       ],
       metadata: {
         source_format: `test`,

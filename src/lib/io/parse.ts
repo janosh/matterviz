@@ -114,18 +114,7 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   }
 
   // Fallback to default elements by atomic number
-  const fallback_elements = [
-    `H`,
-    `He`,
-    `Li`,
-    `Be`,
-    `B`,
-    `C`,
-    `N`,
-    `O`,
-    `F`,
-    `Ne`,
-  ]
+  const fallback_elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
   const fallback = fallback_elements[index % fallback_elements.length]
   console.warn(
     `Invalid element symbol '${symbol}', using fallback '${fallback}'`,
@@ -583,12 +572,7 @@ const parse_cif_atom_data = (raw_data: string[], indices: Record<string, number>
       throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
     })()
 
-  return {
-    id: raw_data[label],
-    element: element_symbol,
-    fract_coords: fract_coords as [number, number, number],
-    occupancy: occu,
-  }
+  return { id: raw_data[label], element: element_symbol, fract_coords, occupancy: occu }
 }
 
 // Parse CIF (Crystallographic Information File) format

@@ -1,4 +1,3 @@
-import type { ElementSymbol, Vec3 } from '$lib'
 import type { DataSeries } from '$lib/plot'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
@@ -41,9 +40,9 @@ function create_trajectory(property_frames: Record<string, number>[]): Trajector
     frames: property_frames.map((props, step) => ({
       structure: {
         sites: [{
-          species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0] as Vec3,
-          xyz: [0, 0, 0] as Vec3,
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
           label: `H1`,
           properties: {},
         }],

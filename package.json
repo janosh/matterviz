@@ -29,7 +29,7 @@
     "h5wasm": "^0.8.3",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.0",
-    "svelte": "^5.36.17",
+    "svelte": "^5.37.0",
     "svelte-multiselect": "11.2.2",
     "three": "^0.178.0"
   },

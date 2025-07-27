@@ -623,3 +623,204 @@ test(`camera projection conditional logic and zoom speed handling`, async () => 
 
   await Promise.all(promises)
 })
+
+// Atom label controls tests
+describe(`atom label controls`, () => {
+  test.each([
+    { axis: `X`, idx: 0, initial: 0.2, new_value: 0.5 },
+    { axis: `Y`, idx: 1, initial: -0.5, new_value: 0.1 },
+    { axis: `Z`, idx: 2, initial: 0.8, new_value: -0.3 },
+  ])(
+    `$axis offset control works correctly`,
+    async ({ idx, initial, new_value }) => {
+      const offset = [0, 0, 0] as Vec3
+      offset[idx] = initial
+
+      mount(Structure, {
+        target: document.body,
+        props: {
+          structure,
+          controls_open: true,
+          show_controls: true,
+          scene_props: { show_site_labels: true, atom_label_offset: offset },
+        },
+      })
+      await tick()
+
+      const offset_inputs = document.querySelectorAll(
+        `input[type="number"][min="-1"][max="1"][step="0.1"]`,
+      )
+      expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
+
+      const input = offset_inputs[idx] as HTMLInputElement
+      expect(parseFloat(input.value)).toBeCloseTo(initial, 1)
+
+      input.value = new_value.toString()
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      expect(parseFloat(input.value)).toBeCloseTo(new_value, 1)
+    },
+  )
+
+  test(`color controls work correctly`, async () => {
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        controls_open: true,
+        show_controls: true,
+        scene_props: { show_site_labels: true, atom_label_color: `#ff0000` },
+      },
+    })
+    await tick()
+
+    const color_inputs = document.querySelectorAll(`input[type="color"]`)
+    expect(color_inputs.length).toBeGreaterThanOrEqual(2)
+
+    // Test text color
+    const text_color = color_inputs[0] as HTMLInputElement
+    text_color.value = `#00ff00`
+    text_color.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(text_color.value).toBe(`#00ff00`)
+
+    // Test background color
+    const bg_color = color_inputs[1] as HTMLInputElement
+    bg_color.value = `#0000ff`
+    bg_color.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(bg_color.value).toBe(`#0000ff`)
+
+    // Test opacity
+    const opacity_input = document.querySelector(
+      `input[type="number"][min="0"][max="1"][step="0.01"]`,
+    ) as HTMLInputElement
+    opacity_input.value = `0.5`
+    opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(parseFloat(opacity_input.value)).toBeCloseTo(0.5, 2)
+  })
+
+  test(`size and padding controls work correctly`, async () => {
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        controls_open: true,
+        show_controls: true,
+        scene_props: {
+          show_site_labels: true,
+          atom_label_size: 1.2,
+          atom_label_padding: 4,
+        },
+      },
+    })
+    await tick()
+
+    const size_input = document.querySelector(
+      `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
+    ) as HTMLInputElement
+    const padding_input = document.querySelector(
+      `input[type="number"][min="0"][max="10"][step="1"]`,
+    ) as HTMLInputElement
+
+    expect(parseFloat(size_input.value)).toBeCloseTo(1.2, 1)
+    expect(parseInt(padding_input.value)).toBe(4)
+
+    size_input.value = `1.8`
+    padding_input.value = `6`
+    size_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    padding_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    expect(parseFloat(size_input.value)).toBeCloseTo(1.8, 1)
+    expect(parseInt(padding_input.value)).toBe(6)
+  })
+
+  test(`input constraints are correct`, async () => {
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        controls_open: true,
+        show_controls: true,
+        scene_props: { show_site_labels: true },
+      },
+    })
+    await tick()
+
+    const size_input = document.querySelector(
+      `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
+    ) as HTMLInputElement
+    const padding_input = document.querySelector(
+      `input[type="number"][min="0"][max="10"][step="1"]`,
+    ) as HTMLInputElement
+    const offset_inputs = document.querySelectorAll(
+      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
+    )
+    const opacity_input = document.querySelector(
+      `input[type="number"][min="0"][max="1"][step="0.01"]`,
+    ) as HTMLInputElement
+
+    expect(size_input.min).toBe(`0.5`)
+    expect(size_input.max).toBe(`2`)
+    expect(size_input.step).toBe(`0.1`)
+    expect(padding_input.min).toBe(`0`)
+    expect(padding_input.max).toBe(`10`)
+    expect(padding_input.step).toBe(`1`)
+    expect(opacity_input.min).toBe(`0`)
+    expect(opacity_input.max).toBe(`1`)
+    expect(opacity_input.step).toBe(`0.01`)
+    expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
+    offset_inputs.forEach((input) => {
+      const input_element = input as HTMLInputElement
+      expect(input_element.min).toBe(`-1`)
+      expect(input_element.max).toBe(`1`)
+      expect(input_element.step).toBe(`0.1`)
+    })
+  })
+
+  test(`state isolation between instances works`, async () => {
+    // Mount first instance
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        controls_open: true,
+        show_controls: true,
+        scene_props: { show_site_labels: true, atom_label_offset: [0, 0.75, 0.2] },
+      },
+    })
+    await tick()
+
+    // Mount second instance
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        controls_open: true,
+        show_controls: true,
+        scene_props: { show_site_labels: true, atom_label_offset: [0, 0.75, 0.7] },
+      },
+    })
+    await tick()
+
+    const all_offset_inputs = document.querySelectorAll(
+      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
+    )
+    expect(all_offset_inputs.length).toBeGreaterThanOrEqual(6)
+
+    const instance1_z = all_offset_inputs[2] as HTMLInputElement
+    const instance2_z = all_offset_inputs[5] as HTMLInputElement
+
+    expect(parseFloat(instance1_z.value)).toBeCloseTo(0.2, 1)
+    expect(parseFloat(instance2_z.value)).toBeCloseTo(0.7, 1)
+
+    instance1_z.value = `0.9`
+    instance1_z.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    expect(parseFloat(instance1_z.value)).toBeCloseTo(0.9, 1)
+    expect(parseFloat(instance2_z.value)).toBeCloseTo(0.7, 1)
+  })
+})

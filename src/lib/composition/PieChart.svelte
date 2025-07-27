@@ -143,11 +143,10 @@
           label_text,
           available_space,
         )
-
-        const color = element_colors[element as ElementSymbol] || `#cccccc`
+        const color = element_colors[element] || `#cccccc`
 
         return {
-          element: element as ElementSymbol,
+          element,
           amount: amount!,
           percentage,
           color,

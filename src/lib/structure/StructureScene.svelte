@@ -63,6 +63,11 @@
     sphere_segments?: number
     lattice_props?: ComponentProps<typeof Lattice>
     atom_label?: Snippet<[Site, number]>
+    atom_label_size?: number
+    atom_label_offset?: Vec3
+    atom_label_bg_color?: string
+    atom_label_color?: string
+    atom_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
   }
@@ -80,6 +85,11 @@
     show_atoms = true,
     show_bonds = false,
     show_site_labels = false,
+    atom_label_size = STRUCT_DEFAULTS.scene_props.atom_label_size,
+    atom_label_offset = $bindable(STRUCT_DEFAULTS.scene_props.atom_label_offset),
+    atom_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
+    atom_label_color = `#ffffff`,
+    atom_label_padding = 3,
     show_force_vectors = false,
     force_vector_scale = STRUCT_DEFAULTS.vector.scale,
     force_vector_color = STRUCT_DEFAULTS.vector.color,
@@ -289,6 +299,23 @@
   })
 </script>
 
+{#snippet atom_label_snippet(element: string, position: Vec3, site_idx: number)}
+  {@const [x, y, z] = math.add(position, atom_label_offset)}
+  <HTML center {position} position.x={x} position.y={y} position.z={z}>
+    {#if atom_label}
+      {@render atom_label(structure!.sites[site_idx], site_idx)}
+    {:else}
+      <span
+        class="atom-label"
+        style:font-size="{atom_label_size}em"
+        style:background={atom_label_bg_color}
+        style:padding="{atom_label_padding}px"
+        style:color={atom_label_color}
+      >{element}</span>
+    {/if}
+  </HTML>
+{/snippet}
+
 {#if camera_projection === `perspective`}
   <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
     <OrbitControls {...orbit_controls_props}>
@@ -373,13 +400,7 @@
     </T.Group>
 
     {#if show_site_labels}
-      <HTML center position={atom.position}>
-        {#if atom_label}
-          {@render atom_label(structure!.sites[atom.site_idx], atom.site_idx)}
-        {:else}
-          <span class="atom-label">{atom.element}</span>
-        {/if}
-      </HTML>
+      {@render atom_label_snippet(atom.element, atom.position, atom.site_idx)}
     {/if}
   {/each}
 
@@ -387,13 +408,7 @@
   {#if show_site_labels}
     {#each instanced_atom_groups as group (group.element + group.radius)}
       {#each group.atoms as atom (atom.site_idx)}
-        <HTML center position={atom.position}>
-          {#if atom_label}
-            {@render atom_label(structure!.sites[atom.site_idx], atom.site_idx)}
-          {:else}
-            <span class="atom-label">{atom.element}</span>
-          {/if}
-        </HTML>
+        {@render atom_label_snippet(atom.element, atom.position, atom.site_idx)}
       {/each}
     {/each}
   {/if}
