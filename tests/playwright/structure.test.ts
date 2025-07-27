@@ -322,6 +322,563 @@ test.describe(`Structure Component Tests`, () => {
     expect(await site_labels_checkbox.count()).toBe(1)
   })
 
+  test(`label controls appear when site labels are enabled`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels first
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Check that Labels section appears
+    const labels_section = controls_dialog.locator(`h4:has-text("Labels")`)
+    await expect(labels_section).toBeVisible()
+
+    // Check that all label controls are present
+    const text_color_label = controls_dialog.locator(`label:has-text("Text Color")`)
+    const background_color_label = controls_dialog.locator(
+      `label:has-text("Background Color")`,
+    )
+    const padding_label = controls_dialog.locator(`label:has-text("Padding")`)
+    const offset_x_label = controls_dialog.locator(`label:has-text("X")`)
+    const offset_y_label = controls_dialog.locator(`label:has-text("Y")`)
+    const offset_z_label = controls_dialog.locator(`label:has-text("Z")`)
+
+    await expect(text_color_label).toBeVisible()
+    await expect(background_color_label).toBeVisible()
+    await expect(padding_label).toBeVisible()
+    await expect(offset_x_label).toBeVisible()
+    await expect(offset_y_label).toBeVisible()
+    await expect(offset_z_label).toBeVisible()
+  })
+
+  test(`label text color control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find text color input
+    const text_color_input = controls_dialog.locator(
+      `label:has-text("Text Color") input[type="color"]`,
+    )
+    await expect(text_color_input).toBeVisible()
+
+    // Get initial value
+    const initial_color = await text_color_input.inputValue()
+    expect(initial_color).toMatch(/^#[0-9a-fA-F]{6}$/)
+
+    // Change color
+    await text_color_input.fill(`#ff0000`)
+    const new_color = await text_color_input.inputValue()
+    expect(new_color).toBe(`#ff0000`)
+
+    // Change to another color
+    await text_color_input.fill(`#00ff00`)
+    const final_color = await text_color_input.inputValue()
+    expect(final_color).toBe(`#00ff00`)
+  })
+
+  test(`label background color control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find background color input
+    const background_color_input = controls_dialog.locator(
+      `label:has-text("Background Color") input[type="color"]`,
+    )
+    await expect(background_color_input).toBeVisible()
+
+    // Get initial value
+    const initial_color = await background_color_input.inputValue()
+    expect(initial_color).toMatch(/^#[0-9a-fA-F]{6}$/)
+
+    // Change color
+    await background_color_input.fill(`#0000ff`)
+    const new_color = await background_color_input.inputValue()
+    expect(new_color).toBe(`#0000ff`)
+
+    // Change to another color
+    await background_color_input.fill(`#ffff00`)
+    const final_color = await background_color_input.inputValue()
+    expect(final_color).toBe(`#ffff00`)
+  })
+
+  test(`label background opacity control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find background opacity controls
+    const opacity_label = controls_dialog.locator(
+      `label:has-text("Background Opacity")`,
+    )
+    const opacity_number_input = opacity_label.locator(`input[type="number"]`)
+    const opacity_range_input = opacity_label.locator(`input[type="range"]`)
+
+    await expect(opacity_label).toBeVisible()
+    await expect(opacity_number_input).toBeVisible()
+    await expect(opacity_range_input).toBeVisible()
+
+    // Check initial value (should be 0 for transparent)
+    const initial_value = await opacity_number_input.inputValue()
+    expect(parseFloat(initial_value)).toBe(0)
+
+    // Test number input
+    await opacity_number_input.fill(`0.5`)
+    const number_value = await opacity_number_input.inputValue()
+    expect(parseFloat(number_value)).toBe(0.5)
+
+    // Test range input
+    await opacity_range_input.fill(`0.8`)
+    const range_value = await opacity_range_input.inputValue()
+    expect(parseFloat(range_value)).toBe(0.8)
+
+    // Verify both inputs are synchronized
+    const final_number_value = await opacity_number_input.inputValue()
+    const final_range_value = await opacity_range_input.inputValue()
+    expect(parseFloat(final_number_value)).toBe(parseFloat(final_range_value))
+  })
+
+  test(`label padding control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find padding controls
+    const padding_label = controls_dialog.locator(
+      `label:has-text("Padding")`,
+    )
+    const padding_number_input = padding_label.locator(`input[type="number"]`)
+    const padding_range_input = padding_label.locator(`input[type="range"]`)
+
+    await expect(padding_label).toBeVisible()
+    await expect(padding_number_input).toBeVisible()
+    await expect(padding_range_input).toBeVisible()
+
+    // Check initial value
+    const initial_value = await padding_number_input.inputValue()
+    expect(parseInt(initial_value)).toBeGreaterThanOrEqual(0)
+
+    // Test number input
+    await padding_number_input.fill(`5`)
+    const number_value = await padding_number_input.inputValue()
+    expect(parseInt(number_value)).toBe(5)
+
+    // Test range input
+    await padding_range_input.fill(`8`)
+    const range_value = await padding_range_input.inputValue()
+    expect(parseInt(range_value)).toBe(8)
+
+    // Verify both inputs are synchronized
+    const final_number_value = await padding_number_input.inputValue()
+    const final_range_value = await padding_range_input.inputValue()
+    expect(parseInt(final_number_value)).toBe(parseInt(final_range_value))
+  })
+
+  test(`label offset X control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find offset X controls
+    const offset_x_label = controls_dialog.locator(
+      `label:has-text("X")`,
+    )
+    const offset_x_number_input = offset_x_label.locator(`input[type="number"]`)
+    const offset_x_range_input = offset_x_label.locator(`input[type="range"]`)
+
+    await expect(offset_x_label).toBeVisible()
+    await expect(offset_x_number_input).toBeVisible()
+    await expect(offset_x_range_input).toBeVisible()
+
+    // Check initial value
+    const initial_value = await offset_x_number_input.inputValue()
+    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(-1)
+    expect(parseFloat(initial_value)).toBeLessThanOrEqual(1)
+
+    // Test number input
+    await offset_x_number_input.fill(`0.5`)
+    const number_value = await offset_x_number_input.inputValue()
+    expect(parseFloat(number_value)).toBe(0.5)
+
+    // Test range input
+    await offset_x_range_input.fill(`-0.3`)
+    const range_value = await offset_x_range_input.inputValue()
+    expect(parseFloat(range_value)).toBe(-0.3)
+
+    // Verify both inputs are synchronized
+    const final_number_value = await offset_x_number_input.inputValue()
+    const final_range_value = await offset_x_range_input.inputValue()
+    expect(parseFloat(final_number_value)).toBe(parseFloat(final_range_value))
+  })
+
+  test(`label offset Y control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find offset Y controls
+    const offset_y_label = controls_dialog.locator(
+      `label:has-text("Y")`,
+    )
+    const offset_y_number_input = offset_y_label.locator(`input[type="number"]`)
+    const offset_y_range_input = offset_y_label.locator(`input[type="range"]`)
+
+    await expect(offset_y_label).toBeVisible()
+    await expect(offset_y_number_input).toBeVisible()
+    await expect(offset_y_range_input).toBeVisible()
+
+    // Check initial value
+    const initial_value = await offset_y_number_input.inputValue()
+    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(-1)
+    expect(parseFloat(initial_value)).toBeLessThanOrEqual(1)
+
+    // Test number input
+    await offset_y_number_input.fill(`0.2`)
+    const number_value = await offset_y_number_input.inputValue()
+    expect(parseFloat(number_value)).toBe(0.2)
+
+    // Test range input
+    await offset_y_range_input.fill(`-0.7`)
+    const range_value = await offset_y_range_input.inputValue()
+    expect(parseFloat(range_value)).toBe(-0.7)
+
+    // Verify both inputs are synchronized
+    const final_number_value = await offset_y_number_input.inputValue()
+    const final_range_value = await offset_y_range_input.inputValue()
+    expect(parseFloat(final_number_value)).toBe(parseFloat(final_range_value))
+  })
+
+  test(`label offset Z control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find offset Z controls
+    const offset_z_label = controls_dialog.locator(
+      `label:has-text("Z")`,
+    )
+    const offset_z_number_input = offset_z_label.locator(`input[type="number"]`)
+
+    await expect(offset_z_label).toBeVisible()
+    await expect(offset_z_number_input).toBeVisible()
+
+    // Check initial value
+    const initial_value = await offset_z_number_input.inputValue()
+    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(-1)
+    expect(parseFloat(initial_value)).toBeLessThanOrEqual(1)
+
+    // Test number input
+    await offset_z_number_input.fill(`0.3`)
+    const number_value = await offset_z_number_input.inputValue()
+    expect(parseFloat(number_value)).toBe(0.3)
+
+    // Test another value
+    await offset_z_number_input.fill(`-0.5`)
+    const final_value = await offset_z_number_input.inputValue()
+    expect(parseFloat(final_value)).toBe(-0.5)
+  })
+
+  test(`label font size control works correctly`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Find font size control
+    const size_label = controls_dialog.locator(
+      `label:has-text("Size")`,
+    )
+    const size_range_input = size_label.locator(`input[type="range"]`)
+
+    await expect(size_label).toBeVisible()
+    await expect(size_range_input).toBeVisible()
+
+    // Check initial value
+    const initial_value = await size_range_input.inputValue()
+    expect(parseFloat(initial_value)).toBeGreaterThanOrEqual(0.5)
+    expect(parseFloat(initial_value)).toBeLessThanOrEqual(2)
+
+    // Test range input
+    await size_range_input.fill(`1.5`)
+    const new_value = await size_range_input.inputValue()
+    expect(parseFloat(new_value)).toBe(1.5)
+
+    // Test another value
+    await size_range_input.fill(`0.8`)
+    const final_value = await size_range_input.inputValue()
+    expect(parseFloat(final_value)).toBe(0.8)
+  })
+
+  test(`label controls have correct input constraints`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Check opacity constraints
+    const opacity_number_input = controls_dialog.locator(
+      `label:has-text("Background Opacity") input[type="number"]`,
+    )
+    await expect(opacity_number_input).toHaveAttribute(`min`, `0`)
+    await expect(opacity_number_input).toHaveAttribute(`max`, `1`)
+    await expect(opacity_number_input).toHaveAttribute(`step`, `0.01`)
+
+    // Check padding constraints
+    const padding_number_input = controls_dialog.locator(
+      `label:has-text("Padding") input[type="number"]`,
+    )
+    await expect(padding_number_input).toHaveAttribute(`min`, `0`)
+    await expect(padding_number_input).toHaveAttribute(`max`, `10`)
+    await expect(padding_number_input).toHaveAttribute(`step`, `1`)
+
+    // Check offset X constraints
+    const offset_x_number_input = controls_dialog.locator(
+      `label:has-text("X") input[type="number"]`,
+    )
+    await expect(offset_x_number_input).toHaveAttribute(`min`, `-1`)
+    await expect(offset_x_number_input).toHaveAttribute(`max`, `1`)
+    await expect(offset_x_number_input).toHaveAttribute(`step`, `0.1`)
+
+    // Check offset Y constraints
+    const offset_y_number_input = controls_dialog.locator(
+      `label:has-text("Y") input[type="number"]`,
+    )
+    await expect(offset_y_number_input).toHaveAttribute(`min`, `-1`)
+    await expect(offset_y_number_input).toHaveAttribute(`max`, `1`)
+    await expect(offset_y_number_input).toHaveAttribute(`step`, `0.1`)
+
+    // Check offset Z constraints
+    const offset_z_number_input = controls_dialog.locator(
+      `label:has-text("Z") input[type="number"]`,
+    )
+    await expect(offset_z_number_input).toHaveAttribute(`min`, `-1`)
+    await expect(offset_z_number_input).toHaveAttribute(`max`, `1`)
+    await expect(offset_z_number_input).toHaveAttribute(`step`, `0.1`)
+
+    // Check font size constraints
+    const size_range_input = controls_dialog.locator(
+      `label:has-text("Size") input[type="range"]`,
+    )
+    await expect(size_range_input).toHaveAttribute(`min`, `0.5`)
+    await expect(size_range_input).toHaveAttribute(`max`, `2`)
+    await expect(size_range_input).toHaveAttribute(`step`, `0.1`)
+  })
+
+  test(`label controls are properly organized in rows`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Check that controls are organized in panel-row divs
+    const panel_rows = controls_dialog.locator(`.panel-row`)
+    const row_count = await panel_rows.count()
+    expect(row_count).toBeGreaterThan(0)
+
+    // Check that text color and size are in the same row
+    const first_row = panel_rows.first()
+    const text_color_in_first_row = first_row.locator(`label:has-text("Text Color")`)
+    const size_in_first_row = first_row.locator(`label:has-text("Size")`)
+    await expect(text_color_in_first_row).toBeVisible()
+    await expect(size_in_first_row).toBeVisible()
+
+    // Check that background color and opacity are in the same row
+    const second_row = panel_rows.nth(1)
+    const background_in_second_row = second_row.locator(
+      `label:has-text("Background Color")`,
+    )
+    const opacity_in_second_row = second_row.locator(
+      `label:has-text("Background Opacity")`,
+    )
+    await expect(background_in_second_row).toBeVisible()
+    await expect(opacity_in_second_row).toBeVisible()
+
+    // Check that offset X, Y, and Z are in the same row
+    const offset_row = panel_rows.nth(3) // Assuming this is the offset row
+    const offset_x_in_row = offset_row.locator(`label:has-text("X")`)
+    const offset_y_in_row = offset_row.locator(`label:has-text("Y")`)
+    const offset_z_in_row = offset_row.locator(`label:has-text("Z")`)
+    await expect(offset_x_in_row).toBeVisible()
+    await expect(offset_y_in_row).toBeVisible()
+    await expect(offset_z_in_row).toBeVisible()
+  })
+
+  test(`label controls persist when toggling site labels`, async ({ page }) => {
+    const controls_dialog = page.locator(
+      `#structure-wrapper .structure .controls-panel`,
+    )
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+
+    await test_page_controls_checkbox.check()
+    await expect(controls_dialog).toBeVisible()
+
+    // Enable site labels
+    const site_labels_checkbox = controls_dialog.locator(
+      `label:has-text("site labels") input[type="checkbox"]`,
+    )
+    await site_labels_checkbox.check()
+
+    // Set some values
+    const text_color_input = controls_dialog.locator(
+      `label:has-text("Text Color") input[type="color"]`,
+    )
+    const background_color_input = controls_dialog.locator(
+      `label:has-text("Background Color") input[type="color"]`,
+    )
+    const opacity_input = controls_dialog.locator(
+      `label:has-text("Background Opacity") input[type="number"]`,
+    )
+
+    await text_color_input.fill(`#ff0000`)
+    await background_color_input.fill(`#0000ff`)
+    await opacity_input.fill(`0.7`)
+
+    // Disable site labels
+    await site_labels_checkbox.uncheck()
+
+    // Re-enable site labels
+    await site_labels_checkbox.check()
+
+    // Check that values are preserved
+    const new_text_color = await text_color_input.inputValue()
+    const new_background_color = await background_color_input.inputValue()
+    const new_opacity = await opacity_input.inputValue()
+
+    expect(new_text_color).toBe(`#ff0000`)
+    expect(new_background_color).toBe(`#0000ff`)
+    expect(parseFloat(new_opacity)).toBe(0.7)
+  })
+
   test(`gizmo is hidden when prop is set to false`, async ({ page }) => {
     const gizmo_checkbox = page.locator(
       `label:has-text("Show Gizmo") input[type="checkbox"]`,

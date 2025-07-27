@@ -1,4 +1,4 @@
-import type { ElementSymbol, Species, Vec3 } from '$lib'
+import type { Vec3 } from '$lib'
 import {
   copy_to_clipboard,
   create_structure_filename,
@@ -37,21 +37,21 @@ const simple_structure: AnyStructure = {
   id: `test_h2o`,
   sites: [
     {
-      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 1 }],
-      xyz: [0.757, 0.586, 0.0] as [number, number, number],
-      abc: [0.1, 0.1, 0.0] as [number, number, number],
+      species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
+      xyz: [0.757, 0.586, 0.0],
+      abc: [0.1, 0.1, 0.0],
       label: `H`,
       properties: {},
     },
     {
-      species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: -2 }],
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
       xyz: [0.0, 0.0, 0.0],
       abc: [0.0, 0.0, 0.0],
       label: `O`,
       properties: {},
     },
     {
-      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 1 }],
+      species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
       xyz: [-0.757, 0.586, 0.0],
       abc: [-0.1, 0.1, 0.0],
       label: `H`,
@@ -61,12 +61,7 @@ const simple_structure: AnyStructure = {
   lattice: {
     matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
     pbc: [true, true, true],
-    a: 10.0,
-    b: 10.0,
-    c: 10.0,
-    alpha: 90.0,
-    beta: 90.0,
-    gamma: 90.0,
+    ...{ a: 10.0, b: 10.0, c: 10.0, alpha: 90.0, beta: 90.0, gamma: 90.0 },
     volume: 1000.0,
   },
 }
@@ -75,49 +70,49 @@ const complex_structure: AnyStructure = {
   id: `test_complex`,
   sites: [
     {
-      species: [{ element: `Li` as ElementSymbol, occu: 1, oxidation_state: 1 }],
+      species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
       xyz: [0.0, 0.0, 0.0],
       abc: [0.0, 0.0, 0.0],
       label: `Li`,
       properties: {},
     },
     {
-      species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 2 }],
+      species: [{ element: `Fe`, occu: 1, oxidation_state: 2 }],
       xyz: [2.5, 0.0, 0.0],
       abc: [0.5, 0.0, 0.0],
       label: `Fe`,
       properties: {},
     },
     {
-      species: [{ element: `P` as ElementSymbol, occu: 1, oxidation_state: 5 }],
+      species: [{ element: `P`, occu: 1, oxidation_state: 5 }],
       xyz: [0.0, 2.5, 0.0],
       abc: [0.0, 0.5, 0.0],
       label: `P`,
       properties: {},
     },
     {
-      species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: -2 }],
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
       xyz: [1.25, 1.25, 0.0],
       abc: [0.25, 0.25, 0.0],
       label: `O`,
       properties: {},
     },
     {
-      species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: -2 }],
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
       xyz: [3.75, 1.25, 0.0],
       abc: [0.75, 0.25, 0.0],
       label: `O`,
       properties: {},
     },
     {
-      species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: -2 }],
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
       xyz: [1.25, 3.75, 0.0],
       abc: [0.25, 0.75, 0.0],
       label: `O`,
       properties: {},
     },
     {
-      species: [{ element: `O` as ElementSymbol, occu: 1, oxidation_state: -2 }],
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
       xyz: [3.75, 3.75, 0.0],
       abc: [0.75, 0.75, 0.0],
       label: `O`,
@@ -127,12 +122,7 @@ const complex_structure: AnyStructure = {
   lattice: {
     matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
     pbc: [true, true, true],
-    a: 5.0,
-    b: 5.0,
-    c: 5.0,
-    alpha: 90.0,
-    beta: 90.0,
-    gamma: 90.0,
+    ...{ a: 5.0, b: 5.0, c: 5.0, alpha: 90.0, beta: 90.0, gamma: 90.0 },
     volume: 125.0,
   },
 }
@@ -349,7 +339,7 @@ describe(`Export functionality`, () => {
       const structure_with_abc: AnyStructure = {
         id: `frac_coords`,
         sites: [{
-          species: [{ element: `C` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
           abc: [0.5, 0.5, 0.5],
           xyz: [0, 0, 0],
           label: `C`,
@@ -385,7 +375,7 @@ describe(`Export functionality`, () => {
         structure: {
           id: `water_molecule`,
           sites: Array(2).fill({
-            species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 1 }],
+            species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
             abc: [0, 0, 0],
             xyz: [0, 0, 0],
             label: `H`,
@@ -400,7 +390,7 @@ describe(`Export functionality`, () => {
         structure: {
           id: `complex_crystal`,
           sites: Array(24).fill({
-            species: [{ element: `Si` as ElementSymbol, occu: 1, oxidation_state: 4 }],
+            species: [{ element: `Si`, occu: 1, oxidation_state: 4 }],
             abc: [0, 0, 0],
             xyz: [0, 0, 0],
             label: `Si`,
@@ -420,7 +410,7 @@ describe(`Export functionality`, () => {
       const structure = {
         id: `lithium_oxide`,
         sites: Array(3).fill({
-          species: [{ element: `Li` as ElementSymbol, occu: 1, oxidation_state: 1 }],
+          species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
           abc: [0, 0, 0],
           xyz: [0, 0, 0],
           label: `Li`,
@@ -463,9 +453,8 @@ describe(`Export functionality`, () => {
       const structure_no_element: AnyStructure = {
         sites: [{
           species: [
-            { element: undefined, occu: 1, oxidation_state: 0 } as Species & {
-              element: undefined
-            },
+            // @ts-expect-error - test invalid undefined element
+            { element: undefined, occu: 1, oxidation_state: 0 },
           ],
           xyz: [0.0, 0.0, 0.0],
           abc: [0.0, 0.0, 0.0],

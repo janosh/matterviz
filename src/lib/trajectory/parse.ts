@@ -92,7 +92,7 @@ const get_inverse_matrix = (matrix: Matrix3x3): Matrix3x3 => {
 }
 
 const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
-  numbers.map((num) => atomic_number_to_symbol[num] || (`X` as ElementSymbol))
+  numbers.map((num) => atomic_number_to_symbol[num] || `X`)
 
 const create_site = (
   element: ElementSymbol,

@@ -279,7 +279,8 @@
     transition: opacity 0.3s, background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
     width: 28em;
     max-width: 90cqw;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     max-height: calc(100vh - 3em);
     pointer-events: auto;
   }
@@ -318,7 +319,7 @@
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }
   .draggable-panel :global(input[type='range']) {
-    margin-left: auto;
+    margin-left: 4pt;
     width: 100px;
     flex-shrink: 0;
   }

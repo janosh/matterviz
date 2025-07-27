@@ -1,4 +1,4 @@
-import type { AnyStructure } from '$lib'
+import type { AnyStructure, Vec3 } from '$lib'
 import { electro_neg_formula } from '$lib'
 import { download } from '$lib/io/fetch'
 import * as math from '$lib/math'
@@ -210,10 +210,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
       // Convert cartesian to fractional coordinates
       const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
       const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-      frac_coords = math.mat3x3_vec3_multiply(
-        lattice_inv,
-        site.xyz.slice(0, 3) as [number, number, number],
-      )
+      frac_coords = math.mat3x3_vec3_multiply(lattice_inv, site.xyz.slice(0, 3) as Vec3)
     } else {
       throw new Error(`No valid coordinates found for site ${idx}`)
     }
@@ -236,18 +233,13 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   if (!(`lattice` in structure) || !structure.lattice) {
     throw new Error(`No lattice information for POSCAR export`)
   }
-
   const lines: string[] = []
 
-  // Title line
   const title = structure.id || electro_neg_formula(structure) ||
     `Generated from structure`
   lines.push(title)
+  lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)
 
-  // Scale factor (1.0 for direct coordinates)
-  lines.push(`1.0`)
-
-  // Lattice vectors
   const lattice = structure.lattice
   if (lattice.matrix && Array.isArray(lattice.matrix) && lattice.matrix.length >= 3) {
     // Convert 3x3 matrix to 3 vectors
@@ -342,7 +334,7 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
           const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
           frac_coords = math.mat3x3_vec3_multiply(
             lattice_inv,
-            site.xyz.slice(0, 3) as [number, number, number],
+            site.xyz.slice(0, 3) as Vec3,
           )
         } else {
           throw new Error(`No valid coordinates found for site`)
