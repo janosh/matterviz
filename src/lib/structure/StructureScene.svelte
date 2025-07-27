@@ -85,7 +85,7 @@
     show_atoms = true,
     show_bonds = false,
     show_site_labels = false,
-    atom_label_size = 1,
+    atom_label_size = STRUCT_DEFAULTS.scene_props.atom_label_size,
     atom_label_offset = $bindable(STRUCT_DEFAULTS.scene_props.atom_label_offset),
     atom_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
     atom_label_color = `#ffffff`,

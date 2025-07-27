@@ -519,7 +519,7 @@
   <h4>Cell</h4>
   <label>
     <input type="checkbox" bind:checked={lattice_props.show_vectors} />
-    lattice vectors
+    Lattice Vectors
   </label>
   {#each [
       {

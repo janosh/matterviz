@@ -233,18 +233,13 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   if (!(`lattice` in structure) || !structure.lattice) {
     throw new Error(`No lattice information for POSCAR export`)
   }
-
   const lines: string[] = []
 
-  // Title line
   const title = structure.id || electro_neg_formula(structure) ||
     `Generated from structure`
   lines.push(title)
+  lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)
 
-  // Scale factor (1.0 for direct coordinates)
-  lines.push(`1.0`)
-
-  // Lattice vectors
   const lattice = structure.lattice
   if (lattice.matrix && Array.isArray(lattice.matrix) && lattice.matrix.length >= 3) {
     // Convert 3x3 matrix to 3 vectors
