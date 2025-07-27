@@ -6,7 +6,7 @@ test.describe(`Trajectory Performance Tests`, () => {
   test(`large MOF5 trajectory playback performance`, async ({ page }) => {
     test.setTimeout(120000) // 2 minutes timeout for performance test
     // Navigate to dedicated performance test page
-    await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
+    await page.goto(`/test/trajectory-performance`, { waitUntil: `domcontentloaded` })
 
     // Wait for trajectory to load
     const trajectory = page.locator(`.trajectory`)
@@ -113,7 +113,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
   test(`trajectory loading performance with large file`, async ({ page }) => {
     // Navigate to dedicated performance test page
-    await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
+    await page.goto(`/test/trajectory-performance`, { waitUntil: `domcontentloaded` })
 
     const trajectory = page.locator(`.trajectory`)
 
@@ -150,7 +150,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
   test(`memory usage during playback`, async ({ page }) => {
     // Navigate to dedicated performance test page
-    await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
+    await page.goto(`/test/trajectory-performance`, { waitUntil: `domcontentloaded` })
 
     const trajectory = page.locator(`.trajectory`)
     await expect(trajectory).toBeVisible({ timeout: 30000 })

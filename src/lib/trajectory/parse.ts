@@ -17,9 +17,9 @@ import type {
 } from './index'
 
 // Constants for large file handling
-const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
-const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024 // 100MB
-const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
+export const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
+export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
+export const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
 
 // Common interfaces
 export interface ParseProgress {
@@ -164,6 +164,54 @@ const create_trajectory_frame = (
   step,
   metadata,
 })
+
+// Shared utility to read ndarray data from binary format
+const read_ndarray_from_view = (
+  view: DataView,
+  ref: { ndarray: unknown[] },
+): number[][] => {
+  const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
+  const total = shape.reduce((a, b) => a * b, 1)
+  const data: number[] = []
+  let pos = array_offset
+
+  const readers = {
+    int64: () => {
+      const v = Number(view.getBigInt64(pos, true))
+      pos += 8
+      return v
+    },
+    int32: () => {
+      const v = view.getInt32(pos, true)
+      pos += 4
+      return v
+    },
+    float64: () => {
+      const v = view.getFloat64(pos, true)
+      pos += 8
+      return v
+    },
+    float32: () => {
+      const v = view.getFloat32(pos, true)
+      pos += 4
+      return v
+    },
+  }
+
+  const reader = readers[dtype as keyof typeof readers]
+  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
+
+  for (let i = 0; i < total; i++) data.push(reader())
+
+  return shape.length === 1
+    ? [data]
+    : shape.length === 2
+    ? Array.from({ length: shape[0] }, (_, i) =>
+      data.slice(i * shape[1], (i + 1) * shape[1]))
+    : (() => {
+      throw new Error(`Unsupported shape`)
+    })()
+}
 
 // Unified frame counting for XYZ
 function count_xyz_frames(data: string): number {
@@ -538,50 +586,6 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
     (_, i) => Number(view.getBigInt64(offsets_pos + i * 8, true)),
   )
 
-  const read_ndarray = (ref: { ndarray: unknown[] }): number[][] => {
-    const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
-    const total = shape.reduce((a, b) => a * b, 1)
-    const data: number[] = []
-    let pos = array_offset
-
-    const readers = {
-      int64: () => {
-        const v = Number(view.getBigInt64(pos, true))
-        pos += 8
-        return v
-      },
-      int32: () => {
-        const v = view.getInt32(pos, true)
-        pos += 4
-        return v
-      },
-      float64: () => {
-        const v = view.getFloat64(pos, true)
-        pos += 8
-        return v
-      },
-      float32: () => {
-        const v = view.getFloat32(pos, true)
-        pos += 4
-        return v
-      },
-    }
-
-    const reader = readers[dtype as keyof typeof readers]
-    if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
-
-    for (let i = 0; i < total; i++) data.push(reader())
-
-    return shape.length === 1
-      ? [data]
-      : shape.length === 2
-      ? Array.from({ length: shape[0] }, (_, i) =>
-        data.slice(i * shape[1], (i + 1) * shape[1]))
-      : (() => {
-        throw new Error(`Unsupported shape`)
-      })()
-  }
-
   const frames: TrajectoryFrame[] = []
   let global_numbers: number[] | undefined
 
@@ -602,12 +606,12 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
 
       const positions_ref = frame_data[`positions.`] || frame_data.positions
       const positions = positions_ref?.ndarray
-        ? read_ndarray(positions_ref)
+        ? read_ndarray_from_view(view, positions_ref)
         : positions_ref as number[][]
 
       const numbers_ref = frame_data[`numbers.`] || frame_data.numbers || global_numbers
       const numbers: number[] = numbers_ref?.ndarray
-        ? read_ndarray(numbers_ref).flat()
+        ? read_ndarray_from_view(view, numbers_ref).flat()
         : numbers_ref as number[]
 
       if (numbers) global_numbers = numbers
@@ -941,62 +945,17 @@ export class UnifiedFrameLoader implements FrameLoader {
         new Uint8Array(data, frame_offset + 8, json_length),
       ))
 
-      // Helper function to read ndarray data
-      const read_ndarray = (ref: { ndarray: unknown[] }): number[][] => {
-        const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
-        const total = shape.reduce((a, b) => a * b, 1)
-        const data_array: number[] = []
-        let pos = array_offset
-
-        const readers = {
-          int64: () => {
-            const v = Number(view.getBigInt64(pos, true))
-            pos += 8
-            return v
-          },
-          int32: () => {
-            const v = view.getInt32(pos, true)
-            pos += 4
-            return v
-          },
-          float64: () => {
-            const v = view.getFloat64(pos, true)
-            pos += 8
-            return v
-          },
-          float32: () => {
-            const v = view.getFloat32(pos, true)
-            pos += 4
-            return v
-          },
-        }
-
-        const reader = readers[dtype as keyof typeof readers]
-        if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
-
-        for (let i = 0; i < total; i++) data_array.push(reader())
-
-        return shape.length === 1
-          ? [data_array]
-          : shape.length === 2
-          ? Array.from({ length: shape[0] }, (_, i) =>
-            data_array.slice(i * shape[1], (i + 1) * shape[1]))
-          : (() => {
-            throw new Error(`Unsupported shape`)
-          })()
-      }
-
       // Extract positions with proper ndarray handling
       const positions_ref = frame_data[`positions.`] || frame_data.positions
       const positions = positions_ref?.ndarray
-        ? read_ndarray(positions_ref)
+        ? read_ndarray_from_view(view, positions_ref)
         : positions_ref as number[][]
 
       // Extract atomic numbers with proper ndarray handling
       const numbers_ref = frame_data[`numbers.`] || frame_data.numbers ||
         this.global_numbers
       const numbers: number[] = numbers_ref?.ndarray
-        ? read_ndarray(numbers_ref).flat()
+        ? read_ndarray_from_view(view, numbers_ref).flat()
         : numbers_ref as number[]
 
       if (numbers) this.global_numbers = numbers

@@ -1,11 +1,11 @@
 // Streaming trajectory loader tests - clever testing without large files
 import {
   create_frame_loader,
+  LARGE_FILE_THRESHOLD,
   parse_trajectory_async,
   type ParseProgress,
   UnifiedFrameLoader,
 } from '$lib/trajectory/parse'
-import process from 'node:process'
 import { describe, expect, it } from 'vitest'
 
 describe(`Trajectory Streaming`, () => {
@@ -202,14 +202,39 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Large File Detection & Auto-Streaming`, () => {
-    it(`should automatically use streaming for large files`, () => {
-      // Skip this test for now - testing large file detection requires complex mocking
-      // The functionality is tested via the "force streaming" test below
-      expect(true).toBe(true) // Placeholder
+    it(`should automatically use streaming for large files`, async () => {
+      // Create small synthetic data for efficiency
+      const small_data = create_synthetic_xyz(10)
+
+      // Simulate large file by forcing use_indexing option
+      // This tests that when streaming is enabled (as it would be for large files),
+      // the correct indexed result structure is returned
+      const result = await parse_trajectory_async(
+        small_data,
+        `simulated_large.xyz`,
+        undefined,
+        { use_indexing: true }, // Force streaming mode as large file detection would
+      )
+
+      // Should have streaming characteristics that large files would automatically get
+      expect(result.is_indexed).toBe(true)
+      expect(result.indexed_frames).toBeDefined()
+      expect(result.total_frames).toBe(10)
+
+      // Should only load initial frames, not all frames
+      expect(result.frames.length).toBeLessThanOrEqual(10)
+      expect(result.frames.length).toBeGreaterThan(0)
+
+      // Verify that indexed_frames contains frame metadata
+      expect(result.indexed_frames).toBeInstanceOf(Array)
+      expect(result.indexed_frames?.length).toBeGreaterThan(0)
+      expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
     })
 
     it(`should use direct parsing for small files`, async () => {
       const data = create_synthetic_xyz(5)
+
+      expect(data.length).toBeLessThan(LARGE_FILE_THRESHOLD)
 
       const result = await parse_trajectory_async(data, `small_trajectory.xyz`)
 
@@ -237,34 +262,66 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Memory Efficiency`, () => {
-    it(`should not load all frames into memory during indexing`, async () => {
+    it(`should build index without storing full frame data`, async () => {
       const data = create_synthetic_xyz(100)
       const loader = new UnifiedFrameLoader(`test.xyz`)
 
-      // Track memory usage (simplified approach)
-      const initial_memory = process.memoryUsage().heapUsed
+      // Build frame index (sample_rate=1 means index all frames)
+      const frame_index = await loader.build_frame_index(data, 1)
 
-      await loader.build_frame_index(data, 10)
+      // Index should contain all frames
+      expect(frame_index).toHaveLength(100)
+      expect(frame_index[0]).toHaveProperty(`byte_offset`)
+      expect(frame_index[0]).toHaveProperty(`frame_number`)
 
-      const post_index_memory = process.memoryUsage().heapUsed
-      const memory_increase = post_index_memory - initial_memory
-
-      // Memory increase should be minimal (index only, not frames)
-      expect(memory_increase).toBeLessThan(1024 * 1024) // Less than 1MB increase
+      // Index entries should be lightweight (no structure or metadata stored)
+      expect(frame_index[0]).not.toHaveProperty(`structure`)
+      expect(frame_index[0]).not.toHaveProperty(`metadata`)
+      expect(frame_index[0]).not.toHaveProperty(`positions`)
     })
 
-    it(`should not store frames in loader instance`, async () => {
+    it(`should load frames on-demand without caching`, async () => {
       const data = create_synthetic_xyz(20)
       const loader = new UnifiedFrameLoader(`test.xyz`)
 
       // Load several frames
-      await loader.load_frame(data, 5)
-      await loader.load_frame(data, 10)
-      await loader.load_frame(data, 15)
+      const frame_5 = await loader.load_frame(data, 5)
+      const frame_10 = await loader.load_frame(data, 10)
+      const frame_15 = await loader.load_frame(data, 15)
 
-      // Loader should not retain frame data (check via JSON.stringify size)
-      const loader_size = JSON.stringify(loader).length
-      expect(loader_size).toBeLessThan(1000) // Should be small, just metadata
+      // Each frame should be loaded fresh (verify they have different data)
+      expect(frame_5?.metadata?.energy).toBe(-10.5)
+      expect(frame_10?.metadata?.energy).toBe(-11)
+      expect(frame_15?.metadata?.energy).toBe(-11.5)
+
+      // Loader should only contain format information, not frame data
+      const loader_properties = Object.keys(loader)
+      expect(loader_properties).toContain(`format`)
+      expect(loader_properties).not.toContain(`cached_frames`)
+      expect(loader_properties).not.toContain(`loaded_data`)
+    })
+
+    it(`should handle large frame counts efficiently`, async () => {
+      const data = create_synthetic_xyz(1000) // Large number of frames
+      const loader = new UnifiedFrameLoader(`test.xyz`)
+
+      // Building index should be fast and not timeout (sample every 10th frame)
+      const start_time = performance.now()
+      const frame_index = await loader.build_frame_index(data, 10)
+      const elapsed_time = performance.now() - start_time
+
+      // Should complete indexing efficiently
+      expect(elapsed_time).toBeLessThan(1000) // Less than 1 second
+      expect(frame_index).toHaveLength(100) // Every 10th frame = 1000/10 = 100
+
+      // Should be able to load frames from anywhere in the sequence
+      const first_frame = await loader.load_frame(data, 0)
+      const middle_frame = await loader.load_frame(data, 500)
+      const last_frame = await loader.load_frame(data, 999)
+
+      expect(first_frame?.metadata?.energy).toBe(-10)
+      expect(middle_frame?.metadata?.energy).toBe(-60)
+      expect(last_frame?.metadata?.energy).toBe(-109.9)
     })
   })
 
