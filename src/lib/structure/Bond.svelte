@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { Vec3 } from '$lib'
   import { STRUCT_DEFAULTS } from '$lib/structure'
   import { T } from '@threlte/core'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
   interface Props {
-    from: [number, number, number]
-    to: [number, number, number]
+    from: Vec3
+    to: Vec3
     color?: string
     thickness?: number
     offset?: number
@@ -66,13 +67,9 @@
     // length of the bond
     const height = delta_vec.length()
     // calculate position
-    let position: [number, number, number]
+    let position: Vec3
     if (offset === 0) {
-      position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).toArray() as [
-        number,
-        number,
-        number,
-      ]
+      position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).toArray()
     } else {
       const offset_vec = new Vector3()
         .crossVectors(delta_vec, new Vector3(1, 0, 0))

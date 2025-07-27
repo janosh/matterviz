@@ -10,7 +10,7 @@ const ref_data: Record<
   {
     amounts: Record<string, number>
     density: number
-    center_of_mass: [number, number, number]
+    center_of_mass: Vec3
     elements: string[]
     alphabetical_formula: string
     electro_neg_formula: string

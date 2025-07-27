@@ -26,7 +26,6 @@
     }
     // Display options (bindable from parent)
     show_image_atoms?: boolean
-    show_site_labels?: boolean
     // Background settings (bindable from parent)
     background_color?: string
     background_opacity?: number
@@ -46,19 +45,7 @@
   }
   let {
     controls_open = $bindable(false),
-    scene_props = $bindable({
-      atom_radius: 1,
-      show_atoms: true,
-      auto_rotate: 0,
-      show_bonds: false,
-      show_force_vectors: false,
-      force_vector_scale: STRUCT_DEFAULTS.vector.scale,
-      force_vector_color: STRUCT_DEFAULTS.vector.color,
-      same_size_atoms: false,
-      bond_thickness: STRUCT_DEFAULTS.bond.thickness,
-      camera_projection: STRUCT_DEFAULTS.scene_props.camera_projection,
-      zoom_speed: STRUCT_DEFAULTS.scene_props.zoom_speed,
-    }),
+    scene_props = $bindable({ ...STRUCT_DEFAULTS.scene_props }),
     lattice_props = $bindable({
       cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
       cell_surface_opacity: STRUCT_DEFAULTS.cell.surface_opacity,
@@ -68,7 +55,6 @@
       show_vectors: true,
     }),
     show_image_atoms = $bindable(true),
-    show_site_labels = $bindable(false),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     color_scheme = $bindable(`Vesta`),
@@ -87,6 +73,29 @@
   $effect(() => {
     if (color_scheme_selected.length > 0) {
       color_scheme = color_scheme_selected[0] as string
+    }
+  })
+
+  // Atom label background color management
+  let atom_label_hex_color = $state(scene_props.atom_label_color || `#ffffff`)
+  let atom_label_background_opacity = $state(0)
+
+  $effect(() => { // Update scene props when color inputs change
+    scene_props.atom_label_color = atom_label_hex_color
+
+    const hex = atom_label_hex_color.replace(`#`, ``)
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    scene_props.atom_label_bg_color =
+      `rgba(${r}, ${g}, ${b}, ${atom_label_background_opacity})`
+  })
+
+  $effect(() => { // Ensure atom_label_offset is always available
+    if (!scene_props.atom_label_offset) {
+      scene_props.atom_label_offset = [
+        ...STRUCT_DEFAULTS.scene_props.atom_label_offset,
+      ]
     }
   })
 
@@ -187,17 +196,11 @@
     style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap; max-width: 90%"
   >
     Show <label>
-      <input
-        type="checkbox"
-        bind:checked={scene_props.show_atoms}
-      />
+      <input type="checkbox" bind:checked={scene_props.show_atoms} />
       atoms
     </label>
     <label>
-      <input
-        type="checkbox"
-        bind:checked={scene_props.show_bonds}
-      />
+      <input type="checkbox" bind:checked={scene_props.show_bonds} />
       bonds
     </label>
     <label>
@@ -205,15 +208,12 @@
       image atoms
     </label>
     <label>
-      <input type="checkbox" bind:checked={show_site_labels} />
+      <input type="checkbox" bind:checked={scene_props.show_site_labels} />
       site labels
     </label>
     {#if has_forces}
       <label>
-        <input
-          type="checkbox"
-          bind:checked={scene_props.show_force_vectors}
-        />
+        <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
         force vectors
       </label>
     {/if}
@@ -262,8 +262,7 @@
       >
         ⬇
       </button>
-      &nbsp;(DPI:
-      <input
+      &nbsp;(DPI: <input
         type="number"
         min={50}
         max={500}
@@ -274,8 +273,8 @@
     </label>
   </div>
 
-  <hr />
   <!-- Camera Controls -->
+  <hr />
   <h4>Camera</h4>
   <label>
     <span
@@ -330,20 +329,8 @@
     >
       Pan speed
     </span>
-    <input
-      type="number"
-      min={0}
-      max={2}
-      step={0.01}
-      bind:value={scene_props.pan_speed}
-    />
-    <input
-      type="range"
-      min={0}
-      max={2}
-      step={0.01}
-      bind:value={scene_props.pan_speed}
-    />
+    <input type="number" min={0} max={2} step={0.01} bind:value={scene_props.pan_speed} />
+    <input type="range" min={0} max={2} step={0.01} bind:value={scene_props.pan_speed} />
   </label>
   <label>
     <span title="Damping factor for rotation" {@attach tooltip()}>
@@ -365,22 +352,21 @@
     />
   </label>
 
-  <hr />
-
   <!-- Atom Controls -->
+  <hr />
   <h4>Atoms</h4>
   <label class="slider-control">
     Radius <small>(Å)</small>
     <input
       type="number"
-      min="0.2"
+      min={0.2}
       max={2}
       step={0.05}
       bind:value={scene_props.atom_radius}
     />
     <input
       type="range"
-      min="0.2"
+      min={0.2}
       max={2}
       step={0.05}
       bind:value={scene_props.atom_radius}
@@ -391,10 +377,7 @@
     {@attach tooltip()}
   >
     Same size atoms
-    <input
-      type="checkbox"
-      bind:checked={scene_props.same_size_atoms}
-    />
+    <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
   </label>
   <label style="align-items: flex-start">
     Color scheme
@@ -423,43 +406,117 @@
     </Select>
   </label>
 
-  <hr />
+  <!-- Label Controls -->
+  {#if scene_props.show_site_labels}
+    <hr />
+    <h4>Labels</h4>
+    <div class="panel-row">
+      <label>
+        Color
+        <input type="color" bind:value={atom_label_hex_color} />
+      </label>
+      <label>
+        Size
+        <input
+          type="range"
+          min="0.5"
+          max="2"
+          step="0.1"
+          bind:value={scene_props.atom_label_size}
+        />
+      </label>
+    </div>
+    <div class="panel-row">
+      <label>
+        Background
+        <input type="color" bind:value={atom_label_hex_color} />
+      </label>
+      <label class="slider-control">
+        Opacity
+        <input
+          type="number"
+          min="0"
+          max="1"
+          step="0.01"
+          bind:value={atom_label_background_opacity}
+        />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          bind:value={atom_label_background_opacity}
+        />
+      </label>
+    </div>
+    <div class="panel-row">
+      <label class="slider-control">
+        Padding
+        <input
+          type="number"
+          min="0"
+          max="10"
+          step="1"
+          bind:value={scene_props.atom_label_padding}
+        />
+        <input
+          type="range"
+          min="0"
+          max="10"
+          step="1"
+          bind:value={scene_props.atom_label_padding}
+        />
+      </label>
+    </div>
+    <div class="panel-row">
+      Offset
+      {#each [`X`, `Y`, `Z`] as axis, idx (axis)}
+        <label>
+          {axis}
+          <input
+            type="number"
+            min="-1"
+            max="1"
+            step="0.1"
+            bind:value={scene_props.atom_label_offset![idx]}
+          />
+        </label>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Force Vector Controls -->
   {#if has_forces && scene_props.show_force_vectors}
+    <hr />
     <h4>Force Vectors</h4>
     <label class="slider-control">
       Scale
       <input
         type="number"
-        min="0.001"
-        max="5"
-        step="0.001"
+        min={0.001}
+        max={5}
+        step={0.001}
         bind:value={scene_props.force_vector_scale}
       />
       <input
         type="range"
-        min="0.001"
-        max="5"
-        step="0.001"
+        min={0.001}
+        max={5}
+        step={0.001}
         bind:value={scene_props.force_vector_scale}
       />
     </label>
-    <label class="compact">
+    <label>
       Color
       <input type="color" bind:value={scene_props.force_vector_color} />
     </label>
-
-    <hr />
   {/if}
 
   <!-- Cell Controls -->
+  <hr />
   <h4>Cell</h4>
   <label>
-    <input
-      type="checkbox"
-      bind:checked={lattice_props.show_vectors}
-    />
+    <input type="checkbox" bind:checked={lattice_props.show_vectors} />
     lattice vectors
   </label>
   {#each [
@@ -480,7 +537,7 @@
     (label)
   }
     <div class="panel-row">
-      <label class="compact">
+      <label>
         {label}
         <input
           type="color"
@@ -507,12 +564,11 @@
     </div>
   {/each}
 
-  <hr />
-
   <!-- Background Controls -->
+  <hr />
   <h4>Background</h4>
   <div class="panel-row">
-    <label class="compact">
+    <label>
       Color
       <!-- not using bind:value to not give a default value of #000000 to background_color, needs to stay undefined to not override --struct-bg theme color -->
       <input
@@ -525,24 +581,13 @@
     </label>
     <label class="slider-control">
       Opacity
-      <input
-        type="number"
-        min={0}
-        max={1}
-        step={0.02}
-        bind:value={background_opacity}
-      />
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.02}
-        bind:value={background_opacity}
-      />
+      <input type="number" min={0} max={1} step={0.02} bind:value={background_opacity} />
+      <input type="range" min={0} max={1} step={0.02} bind:value={background_opacity} />
     </label>
   </div>
 
   <!-- Lighting Controls -->
+  <hr />
   <h4>Lighting</h4>
   <label>
     <span title="Intensity of the directional light" {@attach tooltip()}>
@@ -583,9 +628,10 @@
     />
   </label>
 
-  <hr />
-
+  <!-- Bond Controls -->
   {#if scene_props.show_bonds}
+    <hr />
+    <h4>Bonds</h4>
     <label>
       Bonding strategy
       <select bind:value={scene_props.bonding_strategy}>
@@ -594,7 +640,6 @@
         <option value="vdw_radius_based">Van der Waals Radii</option>
       </select>
     </label>
-
     <label>
       Bond color
       <input type="color" bind:value={scene_props.bond_color} />
