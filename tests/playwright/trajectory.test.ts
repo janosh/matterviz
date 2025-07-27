@@ -151,7 +151,7 @@ test.describe(`Trajectory Component`, () => {
 
       // Check some key data exists in info panel
       await expect(info_panel).toContainText(`Atoms`)
-      await expect(info_panel).toContainText(`Steps`)
+      await expect(info_panel).toContainText(`Total Frames`)
       await expect(info_panel).toContainText(`Volume`)
 
       // Test component-specific timestamp formatting
@@ -224,7 +224,7 @@ test.describe(`Trajectory Component`, () => {
       )
       await expect(speed_section.locator(`.speed-input`)).toHaveAttribute(
         `max`,
-        `5`,
+        `30`,
       )
       await expect(speed_section).toContainText(`fps`)
     }

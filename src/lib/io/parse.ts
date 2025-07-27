@@ -1136,16 +1136,16 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
 
     // Parse atomic sites
     const sites: Site[] = []
-    for (let i = 0; i < positions.length; i++) {
-      const pos = positions[i]
-      const element_symbol = species[i]
+    for (let idx = 0; idx < positions.length; idx++) {
+      const pos = positions[idx]
+      const element_symbol = species[idx]
 
       if (!pos || pos.length < 3) {
-        console.warn(`Invalid position data at site ${i}`)
+        console.warn(`Invalid position data at site ${idx}`)
         continue
       }
 
-      const element = validate_element_symbol(element_symbol, i)
+      const element = validate_element_symbol(element_symbol, idx)
       const xyz: Vec3 = [pos[0], pos[1], pos[2]]
 
       // Calculate fractional coordinates if lattice is available
@@ -1167,7 +1167,7 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
         species: [{ element, occu: 1, oxidation_state: 0 }],
         abc,
         xyz,
-        label: `${element}${i + 1}`,
+        label: `${element}${idx + 1}`,
         properties: {},
       }
 

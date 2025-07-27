@@ -2,84 +2,66 @@
 import { plot_colors } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
-import type { TrajectoryDataExtractor, TrajectoryType } from '$lib/trajectory'
+import type { TrajectoryDataExtractor, TrajectoryMetadata, TrajectoryType } from './index'
 
-// Priority order for y1 axis (higher priority = more likely to be on y1)
-const Y1_PRIORITY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`] // Energy units get highest priority
-const Y1_PRIORITY_PROPERTIES = [`energy`, `total_energy`, `potential_energy`]
+// Configuration constants
+const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
+const ENERGY_PROPERTIES = [`energy`, `total_energy`, `potential_energy`]
+const FORCE_PROPERTIES = [`force`, `fmax`, `f`]
+const DEFAULT_VISIBLE = new Set([`energy`, `force_max`, `stress_frobenius`])
 
 export interface PlotSeriesOptions {
   property_config?: Record<string, { label: string; unit: string }>
-  colors?: string[]
+  colors?: readonly string[]
   default_visible_properties?: Set<string>
 }
 
-export interface UnitGroup {
+interface UnitGroup {
   unit: string
   series: DataSeries[]
-  priority: number // Lower number = higher priority for y1 axis
+  priority: number
   is_visible: boolean
 }
 
-// Helper function to extract clean label and unit from property configuration
-function extract_label_and_unit(
-  key: string,
-  property_config: Record<string, { label: string; unit: string }>,
-): { clean_label: string; unit: string } {
-  const lower_key = key.toLowerCase()
-  const config = property_config[key] || property_config[lower_key]
-
-  if (config) {
-    return { clean_label: config.label, unit: config.unit }
-  } else { // Use key as fallback label if no config found
-    return {
-      clean_label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ` `),
-      unit: ``,
-    }
-  }
-}
-
-// Helper function to calculate unit group priority based on unit and series
-function calculate_unit_group_priority(unit: string, group_series: DataSeries[]): number {
-  let priority = 1000 // Default low priority
-
-  // Check for energy units (highest priority)
-  const unit_priority = Y1_PRIORITY_UNITS.indexOf(unit)
-  if (unit_priority !== -1) priority = unit_priority
-
-  // Check for energy properties (high priority)
-  const has_priority_property = group_series.some((srs) => {
-    const label_lower = srs.label?.toLowerCase() || ``
-    return Y1_PRIORITY_PROPERTIES.some((prop) => label_lower.includes(prop))
-  })
-  if (has_priority_property) priority = Math.min(priority, 10)
-
-  // Force-related properties have medium priority (should go to y2 when energy is present)
-  const has_force_property = group_series.some((srs) => {
-    const label_lower = srs.label?.toLowerCase() || ``
-    return label_lower.includes(`force`) || label_lower.includes(`f`)
-  })
-  if (has_force_property && priority > 100) priority = 100 // Medium priority, lower than energy
-
-  return priority
-}
-
-// Generate plot data series from trajectory with robust unit-based grouping
+// Unified property extraction and series generation
 export function generate_plot_series(
   trajectory: TrajectoryType,
   data_extractor: TrajectoryDataExtractor,
   options: PlotSeriesOptions = {},
 ): DataSeries[] {
-  if (!trajectory || trajectory.frames.length === 0) return []
+  if (!trajectory?.frames?.length) return []
 
   const {
     property_config = trajectory_property_config,
     colors = plot_colors,
-    default_visible_properties = new Set([`energy`, `force_max`, `stress_frobenius`]),
+    default_visible_properties = DEFAULT_VISIBLE,
   } = options
 
-  // Single pass: extract data and detect constants simultaneously
-  const property_data = new Map<string, {
+  // Single-pass data extraction with variance detection
+  const property_stats = extract_property_statistics(trajectory, data_extractor)
+
+  // Create all series
+  const all_series = create_series_from_stats(property_stats, property_config, colors)
+
+  // Group by units and assign axes/visibility
+  const unit_groups = group_and_assign_series(all_series, default_visible_properties)
+
+  // Apply final assignments to series
+  apply_group_assignments(all_series, unit_groups)
+
+  return all_series.sort((a, b) => Number(b.visible) - Number(a.visible))
+}
+
+// Extract statistics for all properties in a single pass
+function extract_property_statistics(
+  trajectory: TrajectoryType,
+  data_extractor: TrajectoryDataExtractor,
+): Map<string, {
+  values: number[]
+  has_variation: boolean
+  is_energy: boolean
+}> {
+  const property_stats = new Map<string, {
     values: number[]
     sum: number
     sum_squares: number
@@ -87,406 +69,513 @@ export function generate_plot_series(
     max: number
   }>()
 
-  // Extract data from all frames in a single pass
+  // Extract all data in single pass
   trajectory.frames.forEach((frame) => {
     const data = data_extractor(frame, trajectory)
 
-    for (const [key, value] of Object.entries(data)) {
-      // Skip non-numeric values, step, and marker properties
+    Object.entries(data).forEach(([key, value]) => {
       if (typeof value !== `number` || key === `Step` || key.startsWith(`_constant_`)) {
-        continue
+        return
       }
 
-      if (!property_data.has(key)) {
-        property_data.set(key, {
-          values: [],
-          sum: 0,
-          sum_squares: 0,
-          min: value,
-          max: value,
-        })
+      if (!property_stats.has(key)) {
+        const stats = { values: [], sum: 0, sum_squares: 0, min: value, max: value }
+        property_stats.set(key, stats)
       }
 
-      const prop = property_data.get(key)
-      if (!prop) continue
-
-      prop.values.push(value)
-      prop.sum += value
-      prop.sum_squares += value * value
-      prop.min = Math.min(prop.min, value)
-      prop.max = Math.max(prop.max, value)
-    }
+      const stat = property_stats.get(key)
+      if (stat) {
+        stat.values.push(value)
+        stat.sum += value
+        stat.sum_squares += value * value
+        stat.min = Math.min(stat.min, value)
+        stat.max = Math.max(stat.max, value)
+      }
+    })
   })
 
-  // Create all series first (without visibility assignment)
-  const all_series: DataSeries[] = []
-  let color_idx = 0
+  // Convert to final format with variation detection
+  const result = new Map<string, {
+    values: number[]
+    has_variation: boolean
+    is_energy: boolean
+  }>()
 
-  for (const [key, prop] of property_data) {
-    const n = prop.values.length
+  for (const [key, stat] of property_stats) {
+    const n = stat.values.length
     if (n <= 1) continue
 
-    // Fast constant detection using coefficient of variation
-    const mean = prop.sum / n
-    const variance = (prop.sum_squares - prop.sum * prop.sum / n) / n
+    const mean = stat.sum / n
+    const variance = (stat.sum_squares - stat.sum * stat.sum / n) / n
     const coefficient_of_variation = Math.abs(mean) > 1e-10
       ? Math.sqrt(variance) / Math.abs(mean)
       : Math.sqrt(variance)
 
     const lower_key = key.toLowerCase()
     const is_energy = lower_key === `energy`
-    const has_significant_variation = coefficient_of_variation >= 1e-6
+    const has_variation = coefficient_of_variation >= 1e-6
 
-    // Skip properties with very low variation (effectively constant)
-    // Exception: always include energy regardless of variation
-    if (!has_significant_variation && !is_energy) continue
+    // Skip constant properties except energy
+    if (!has_variation && !is_energy) continue
 
-    // Create series data
-    const x_values = Array.from({ length: n }, (_, idx) => idx)
-    const y_values = prop.values
+    result.set(key, {
+      values: stat.values,
+      has_variation,
+      is_energy,
+    })
+  }
+
+  return result
+}
+
+// Create series from statistics
+function create_series_from_stats(
+  property_stats: Map<string, {
+    values: number[]
+    has_variation: boolean
+    is_energy: boolean
+  }>,
+  property_config: Record<string, { label: string; unit: string }>,
+  colors: readonly string[],
+): DataSeries[] {
+  const all_series: DataSeries[] = []
+  let color_idx = 0
+
+  for (const [key, stat] of property_stats) {
+    if (!stat) continue
+    const n = stat.values.length
+    const { clean_label, unit } = extract_label_and_unit(key, property_config)
     const color = colors[color_idx % colors.length]
 
-    // Extract clean label and unit using structured configuration
-    const { clean_label, unit } = extract_label_and_unit(key, property_config)
-
-    const full_label = unit ? `${clean_label} (${unit})` : clean_label
-
     all_series.push({
-      x: x_values,
-      y: y_values,
-      label: clean_label, // Use clean label without units for legend (units added by axis labeling)
+      x: Array.from({ length: n }, (_, idx) => idx),
+      y: stat.values,
+      label: clean_label,
       unit,
-      y_axis: `y1`, // Will be reassigned later based on unit groups
-      visible: false, // Will be assigned later based on unit group logic
+      y_axis: `y1`, // Will be reassigned
+      visible: false, // Will be assigned
       markers: n < 30 ? `line+points` : `line`,
-      metadata: x_values.map(() => ({ series_label: full_label })), // Use full label with units for tooltips
-      line_style: {
-        stroke: color,
-        stroke_width: 2,
-      },
-      point_style: {
-        fill: color,
-        radius: 4,
-        stroke: color,
-        stroke_width: 1,
-      },
+      metadata: Array(n).fill({
+        series_label: unit ? `${clean_label} (${unit})` : clean_label,
+      }),
+      line_style: { stroke: color, stroke_width: 2 },
+      point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
     })
     color_idx++
   }
 
-  // Group series by units
-  const unit_groups = group_series_by_units(all_series, default_visible_properties)
-
-  // Apply robust visibility and axis assignment
-  const { axis_assignments } = assign_visibility_and_axes(unit_groups)
-
-  // Apply the assignments back to series
-  all_series.forEach((series) => {
-    const group = unit_groups.find((g) => g.series.some((srs) => srs === series))
-    if (group) {
-      series.visible = group.is_visible
-      series.y_axis = axis_assignments.get(group) || `y1`
-    }
-  })
-
-  // Sort by visibility for legend ordering
-  all_series.sort((a, b) => Number(b.visible) - Number(a.visible))
-
   return all_series
 }
 
-// Group series by their units and calculate priority
-function group_series_by_units(
+// Group series and assign visibility/axes
+function group_and_assign_series(
   series: DataSeries[],
   default_visible_properties: Set<string>,
 ): UnitGroup[] {
+  // Group by unit
   const unit_map = new Map<string, DataSeries[]>()
-
-  // Group series by unit
   series.forEach((srs) => {
     const unit = srs.unit || `dimensionless`
     if (!unit_map.has(unit)) unit_map.set(unit, [])
-    unit_map.get(unit)?.push(srs)
+    const unit_group = unit_map.get(unit)
+    if (unit_group) unit_group.push(srs)
   })
 
-  // Create unit groups with priority calculation
-  const groups: UnitGroup[] = Array.from(unit_map.entries()).map(
-    ([unit, group_series]) => {
-      // Calculate priority using shared helper
-      const priority = calculate_unit_group_priority(unit, group_series)
+  // Create unit groups with priority and visibility
+  const groups = Array.from(unit_map.entries()).map(([unit, group_series]) => {
+    const priority = calculate_priority(unit, group_series)
+    const has_default_visible = group_series.some((srs) =>
+      is_default_visible(srs.label || ``, default_visible_properties)
+    )
 
-      // Check if any series in this group should be visible by default
-      const has_default_visible = group_series.some((srs) => {
-        const label = srs.label?.toLowerCase().replace(/<[^>]*>/g, ``) || ``
-        return Array.from(default_visible_properties).some((prop) => {
-          const prop_lower = prop.toLowerCase()
-          // Special case for force_max which might appear as 'fmax' or just 'f'
-          if (prop_lower === `force_max`) {
-            return label.includes(`force`) || label.includes(`fmax`) || label === `f`
-          }
-          return label.includes(prop_lower)
-        })
-      })
+    return {
+      unit,
+      series: group_series,
+      priority,
+      is_visible: has_default_visible,
+    }
+  }).sort((a, b) => a.priority - b.priority)
 
-      return {
-        unit,
-        series: group_series,
-        priority,
-        is_visible: has_default_visible,
-      }
-    },
-  )
-
-  // Sort groups by priority (ascending = higher priority first)
-  groups.sort((a, b) => a.priority - b.priority)
+  // Apply 2-group visibility limit
+  const visible_groups = groups.filter((g) => g.is_visible)
+  if (visible_groups.length > 2) {
+    // Keep only first 2 (highest priority)
+    groups.forEach((group) => {
+      group.is_visible = visible_groups.slice(0, 2).includes(group)
+    })
+  } else if (visible_groups.length === 0 && groups.length > 0) {
+    groups[0].is_visible = true
+  }
 
   return groups
 }
 
-// Assign visibility and axes ensuring max 2 unit groups visible
-function assign_visibility_and_axes(unit_groups: UnitGroup[]): {
-  visible_groups: UnitGroup[]
-  axis_assignments: Map<UnitGroup, `y1` | `y2`>
-} {
-  const axis_assignments = new Map<UnitGroup, `y1` | `y2`>()
-
-  // First, identify which groups should be visible
-  let visible_groups = unit_groups.filter((g) => g.is_visible)
-
-  // If more than 2 groups are visible, keep only the highest priority ones
-  if (visible_groups.length > 2) {
-    visible_groups = visible_groups.slice(0, 2) // Keep first 2 (highest priority)
-    // Mark the rest as not visible
-    unit_groups.forEach((group) => {
-      group.is_visible = visible_groups.includes(group)
-    })
-  }
-
-  // If no groups are visible, make the highest priority group visible
-  if (visible_groups.length === 0 && unit_groups.length > 0) {
-    unit_groups[0].is_visible = true
-    visible_groups = [unit_groups[0]]
-  }
+// Apply group assignments to individual series
+function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[]): void {
+  const visible_groups = unit_groups.filter((g) => g.is_visible)
+  const axis_map = new Map<UnitGroup, `y1` | `y2`>()
 
   // Assign axes
   if (visible_groups.length === 1) {
-    // Single group goes to y1
-    axis_assignments.set(visible_groups[0], `y1`)
+    axis_map.set(visible_groups[0], `y1`)
   } else if (visible_groups.length === 2) {
-    // Two groups: higher priority goes to y1, other to y2
-    axis_assignments.set(visible_groups[0], `y1`)
-    axis_assignments.set(visible_groups[1], `y2`)
+    axis_map.set(visible_groups[0], `y1`)
+    axis_map.set(visible_groups[1], `y2`)
   }
 
-  return { visible_groups, axis_assignments }
+  // Apply to series
+  series.forEach((srs) => {
+    const group = unit_groups.find((g) => g.series.includes(srs))
+    if (group) {
+      srs.visible = group.is_visible
+      srs.y_axis = axis_map.get(group) || `y1`
+    }
+  })
 }
 
-// Toggle visibility of a series, respecting unit group constraints
+// Helper functions
+function extract_label_and_unit(
+  key: string,
+  property_config: Record<string, { label: string; unit: string }>,
+): { clean_label: string; unit: string } {
+  const config = property_config[key] || property_config[key.toLowerCase()]
+  return config ? { clean_label: config.label, unit: config.unit } : {
+    clean_label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ` `),
+    unit: ``,
+  }
+}
+
+function calculate_priority(unit: string, group_series: DataSeries[]): number {
+  // Energy units get highest priority
+  const unit_priority = ENERGY_UNITS.indexOf(unit)
+  if (unit_priority !== -1) return unit_priority
+
+  // Energy properties get high priority
+  const has_energy = group_series.some((srs) => {
+    const label = srs.label?.toLowerCase() || ``
+    return ENERGY_PROPERTIES.some((prop) => label.includes(prop))
+  })
+  if (has_energy) return 10
+
+  // Force properties get medium priority
+  const has_force = group_series.some((srs) => {
+    const label = srs.label?.toLowerCase() || ``
+    return FORCE_PROPERTIES.some((prop) => label.includes(prop))
+  })
+  if (has_force) return 100
+
+  return 1000 // Default low priority
+}
+
+function is_default_visible(label: string, default_properties: Set<string>): boolean {
+  const clean_label = label.toLowerCase().replace(/<[^>]*>/g, ``)
+  return Array.from(default_properties).some((prop) => {
+    const prop_lower = prop.toLowerCase()
+    if (prop_lower === `force_max`) {
+      return clean_label.includes(`force`) || clean_label.includes(`fmax`) ||
+        clean_label === `f`
+    }
+    return clean_label.includes(prop_lower)
+  })
+}
+
+// Optimized series visibility toggling
 export function toggle_series_visibility(
   series: DataSeries[],
   target_series_idx: number,
 ): DataSeries[] {
-  if (target_series_idx < 0 || target_series_idx >= series.length) {
-    return series
-  }
+  if (target_series_idx < 0 || target_series_idx >= series.length) return series
 
   const target_series = series[target_series_idx]
   const new_visibility = !target_series.visible
 
-  const series_map = new Map(series.map((s, idx) => [`${s.label}|${s.unit}`, idx])) // use map for O(1) series lookup
-
-  // Group current series by units, preserve current visibility state
-  const unit_groups = series.reduce((groups, s) => {
-    const unit = s.unit || `dimensionless`
-    let group = groups.find((g) => g.unit === unit)
-
-    if (!group) {
-      group = {
-        unit,
-        series: [],
-        priority: calculate_unit_group_priority(unit, [s]), // Use shared helper
-        is_visible: false,
-      }
-      groups.push(group)
-    }
-
-    group.series.push(s)
-    // If any series in the group is visible, mark group as visible
-    if (s.visible) group.is_visible = true
-
-    return groups
-  }, [] as UnitGroup[])
-
-  // Update priorities after all series are grouped (more accurate)
-  unit_groups.forEach((group) => {
-    group.priority = calculate_unit_group_priority(group.unit, group.series)
-  })
-
-  // Sort by priority
-  unit_groups.sort((a, b) => a.priority - b.priority)
-
-  // Find the target unit group and update its visibility
-  const target_group = unit_groups.find((g) =>
-    g.series.some((srs) => srs === target_series)
-  )
+  // Create unit groups from current state
+  const unit_groups = create_unit_groups_from_series(series)
+  const target_group = unit_groups.find((g) => g.series.includes(target_series))
   if (!target_group) return series
 
-  // Handle smart unit group replacement when turning ON a series
-  if (new_visibility && target_group) {
-    // Count currently visible groups (before the toggle)
-    const currently_visible_groups = unit_groups.filter((g) => g.is_visible)
+  // Start with updating the target series visibility
+  const updated_series = series.map((srs) =>
+    srs === target_series ? { ...srs, visible: new_visibility } : { ...srs }
+  )
 
-    // Only make room if we're adding a NEW unit group (not already visible)
-    if (currently_visible_groups.length >= 2 && !target_group.is_visible) {
-      // We need to make room for the new group
-      // Sort existing visible groups by priority (descending = lowest priority first)
-      currently_visible_groups.sort((a, b) => b.priority - a.priority)
+  // Handle smart group replacement for new groups
+  if (new_visibility && !target_group.is_visible) {
+    const visible_groups = unit_groups.filter((g) => g.is_visible)
+    if (visible_groups.length >= 2) {
+      // Hide lowest priority group (highest priority number)
+      const lowest_priority_group = visible_groups.sort((a, b) => a.priority - b.priority)
+        .pop() // Get the last (lowest priority) group
+      if (lowest_priority_group) {
+        lowest_priority_group.is_visible = false
+        // Also hide the actual series in this group
+        lowest_priority_group.series.forEach((srs) => {
+          const series_idx = updated_series.findIndex((s) =>
+            s.label === srs.label && s.unit === srs.unit
+          )
+          if (series_idx !== -1) {
+            updated_series[series_idx] = { ...updated_series[series_idx], visible: false }
+          }
+        })
+      }
+    }
+    target_group.is_visible = true
+  }
 
-      // Hide the lowest priority group to make room
-      const group_to_hide = currently_visible_groups[0]
-      group_to_hide.is_visible = false
+  // Recalculate group visibility and reassign axes
+  update_group_visibility_and_axes(updated_series, unit_groups)
 
-      // Also hide all individual series in this group to prevent recalculation from overriding
-      group_to_hide.series.forEach((srs) => {
-        const series_idx = series_map.get(`${srs.label}|${srs.unit}`)
-        if (series_idx !== undefined && series_idx !== -1) {
+  return updated_series
+}
+
+function create_unit_groups_from_series(series: DataSeries[]): UnitGroup[] {
+  const unit_map = new Map<string, DataSeries[]>()
+
+  series.forEach((srs) => {
+    const unit = srs.unit || `dimensionless`
+    if (!unit_map.has(unit)) unit_map.set(unit, [])
+    const unit_group = unit_map.get(unit)
+    if (unit_group) unit_group.push(srs)
+  })
+
+  return Array.from(unit_map.entries()).map(([unit, group_series]) => ({
+    unit,
+    series: group_series,
+    priority: calculate_priority(unit, group_series),
+    is_visible: group_series.some((srs) => srs.visible),
+  })).sort((a, b) => a.priority - b.priority)
+}
+
+function update_group_visibility_and_axes(
+  series: DataSeries[],
+  unit_groups: UnitGroup[],
+): void {
+  // Update group visibility based on series
+  unit_groups.forEach((group) => {
+    group.is_visible = group.series.some((srs) =>
+      series.find((s) => s.label === srs.label && s.unit === srs.unit)?.visible || false
+    )
+  })
+
+  // Apply 2-group limit
+  const visible_groups = unit_groups.filter((g) => g.is_visible)
+  if (visible_groups.length > 2) {
+    const groups_to_hide = visible_groups.slice(2)
+    groups_to_hide.forEach((group) => {
+      group.is_visible = false
+      group.series.forEach((srs) => {
+        const series_idx = series.findIndex((s) =>
+          s.label === srs.label && s.unit === srs.unit
+        )
+        if (series_idx !== -1) {
           series[series_idx] = { ...series[series_idx], visible: false }
         }
       })
-    }
-  }
-
-  // Toggle the target series specifically
-  const updated_series = series.map((srs) => {
-    if (srs === target_series) return { ...srs, visible: new_visibility }
-    return { ...srs }
-  })
-
-  // Recalculate unit group visibility based on individual series
-  unit_groups.forEach((group) => {
-    group.is_visible = group.series.some((srs) => {
-      const series_idx = series_map.get(`${srs.label}|${srs.unit}`)
-      if (series_idx !== undefined) {
-        const updated_s = updated_series[series_idx]
-        return updated_s?.visible || false
-      }
-      return false
-    })
-  })
-
-  // Apply standard 2-group limit (fallback safety)
-  const visible_groups = unit_groups.filter((g) => g.is_visible)
-  if (visible_groups.length > 2) {
-    // Default behavior: keep the 2 highest priority groups
-    visible_groups.sort((a, b) => a.priority - b.priority)
-    const groups_to_hide = visible_groups.slice(2)
-
-    groups_to_hide.forEach((group) => {
-      group.is_visible = false
-      // Hide all series in this group
-      group.series.forEach((srs) => {
-        const idx = series_map.get(`${srs.label}|${srs.unit}`)
-        if (idx !== undefined && idx !== -1) {
-          updated_series[idx] = { ...updated_series[idx], visible: false }
-        }
-      })
     })
   }
 
-  // Reassign axes
-  const final_visible_groups = unit_groups.filter((g) => g.is_visible)
-  const axis_assignments = new Map<UnitGroup, `y1` | `y2`>()
+  // Assign axes
+  const final_visible = unit_groups.filter((g) => g.is_visible)
+  final_visible.sort((a, b) => a.priority - b.priority)
 
-  if (final_visible_groups.length === 1) {
-    axis_assignments.set(final_visible_groups[0], `y1`)
-  } else if (final_visible_groups.length === 2) {
-    // Sort by priority to ensure consistent assignment
-    final_visible_groups.sort((a, b) => a.priority - b.priority)
-    axis_assignments.set(final_visible_groups[0], `y1`)
-    axis_assignments.set(final_visible_groups[1], `y2`)
+  const axis_map = new Map<UnitGroup, `y1` | `y2`>()
+  if (final_visible.length === 1) {
+    axis_map.set(final_visible[0], `y1`)
+  } else if (final_visible.length === 2) {
+    axis_map.set(final_visible[0], `y1`)
+    axis_map.set(final_visible[1], `y2`)
   }
 
-  // Apply axis assignments
-  return updated_series.map((srs) => {
+  // Apply to series
+  series.forEach((srs, idx) => {
     const group = unit_groups.find((g) =>
       g.series.some((gs) => gs.label === srs.label && gs.unit === srs.unit)
     )
-    if (group && axis_assignments.has(group)) {
-      return { ...srs, y_axis: axis_assignments.get(group) }
+    if (group && axis_map.has(group)) {
+      series[idx] = { ...srs, y_axis: axis_map.get(group) }
     }
-    return srs
   })
 }
 
-// Check if all plotted values are constant (should hide plot)
+// Utility functions
 export function should_hide_plot(
   trajectory: TrajectoryType | undefined,
   plot_series: DataSeries[],
   tolerance = 1e-10,
 ): boolean {
-  if (!trajectory) return false
-
-  // Hide plot for single-frame trajectories (single data points)
-  if (trajectory.frames.length <= 1) return true
-
-  // If there are no series to plot, hide the plot
-  if (plot_series.length === 0) return true
-
-  const visible_series = plot_series.filter((srs) => srs.visible)
-  // Don't hide plot when all series are manually disabled, show empty plot with legend. allows users to re-enable series via legend
-  if (visible_series.length === 0) return false
-
-  for (const srs of visible_series) {
-    if (srs.y.length <= 1) continue
-
-    const first_value = srs.y[0]
-    const has_variation = srs.y.some(
-      (value) => Math.abs(value - first_value) > tolerance,
-    )
-
-    if (has_variation) {
-      return false // Found variation, don't hide plot
-    }
+  if (!trajectory || trajectory.frames.length <= 1 || plot_series.length === 0) {
+    return true
   }
 
-  return true // All visible series are constant, hide plot
+  const visible_series = plot_series.filter((srs) => srs.visible)
+  if (visible_series.length === 0) return false // Show empty plot with legend
+
+  return visible_series.every((srs) => {
+    if (srs.y.length <= 1) return true
+
+    // Check if all values are NaN
+    if (srs.y.every((value) => isNaN(value))) return true
+
+    // Check if values are constant (ignoring NaN values)
+    const valid_values = srs.y.filter((value) => !isNaN(value))
+    if (valid_values.length <= 1) return true
+
+    const first_valid = valid_values[0]
+    return valid_values.every((value) => Math.abs(value - first_valid) <= tolerance)
+  })
 }
 
-// Generate dynamic y-axis labels based on visible series with proper concatenation
 export function generate_axis_labels(
   plot_series: DataSeries[],
 ): { y1: string; y2: string } {
-  if (plot_series.length === 0) return { y1: `Value`, y2: `Value` }
+  if (!plot_series.length) return { y1: `Value`, y2: `Value` }
 
   const get_axis_label = (axis_series: DataSeries[]): string => {
     const visible_series = axis_series.filter((srs) => srs.visible)
-    if (visible_series.length === 0) return `Value`
+    if (!visible_series.length) return `Value`
 
-    // Group by unit
     const unit_groups = new Map<string, string[]>()
     visible_series.forEach((srs) => {
       const unit = srs.unit || ``
       const label = srs.label || `Value`
       if (!unit_groups.has(unit)) unit_groups.set(unit, [])
-      unit_groups.get(unit)?.push(label)
+      const group = unit_groups.get(unit)
+      if (group) group.push(label)
     })
 
-    // Should only have one unit group per axis due to our grouping logic
     const unit_entries = Array.from(unit_groups.entries())
-    if (unit_entries.length === 0) return `Value`
+    if (!unit_entries.length) return `Value`
 
     const [unit, labels] = unit_entries[0]
-    const unique_labels = [...new Set(labels)].sort()
-    const concatenated_labels = unique_labels.join(` / `)
-
-    return unit ? `${concatenated_labels} (${unit})` : concatenated_labels
+    const unique_labels = [...new Set(labels)].sort().join(` / `)
+    return unit ? `${unique_labels} (${unit})` : unique_labels
   }
-
-  const y1_series = plot_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`)
-  const y2_series = plot_series.filter((srs) => srs.y_axis === `y2`)
 
   return {
-    y1: get_axis_label(y1_series),
-    y2: get_axis_label(y2_series),
+    y1: get_axis_label(plot_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`)),
+    y2: get_axis_label(plot_series.filter((srs) => srs.y_axis === `y2`)),
   }
 }
+
+// Streaming plot generation (simplified)
+interface StreamingPlotOptions {
+  property_config?: Record<string, { label: string; unit: string }>
+  colors?: readonly string[]
+  default_visible_properties?: Set<string>
+  max_points?: number
+}
+
+export function generate_streaming_plot_series(
+  metadata_list: TrajectoryMetadata[],
+  options: StreamingPlotOptions = {},
+): DataSeries[] {
+  if (!metadata_list.length) return []
+
+  const {
+    property_config = trajectory_property_config,
+    colors = plot_colors,
+    default_visible_properties = DEFAULT_VISIBLE,
+    max_points = 10000,
+  } = options
+
+  const sampled_metadata = metadata_list.length > max_points
+    ? downsample_metadata(metadata_list, max_points)
+    : metadata_list
+
+  const all_properties = new Set<string>()
+  sampled_metadata.forEach((metadata) => {
+    Object.keys(metadata.properties).forEach((prop) => all_properties.add(prop))
+  })
+
+  const all_series: DataSeries[] = []
+  let color_idx = 0
+
+  for (const property_key of all_properties) {
+    const data_points = sampled_metadata
+      .filter((metadata) => property_key in metadata.properties)
+      .map((metadata) => ({
+        x: metadata.step,
+        y: metadata.properties[property_key],
+      }))
+
+    if (data_points.length < 2) continue
+
+    const is_energy = property_key.toLowerCase() === `energy`
+    if (!is_energy && !has_significant_variation(data_points.map((p) => p.y))) continue
+
+    const { clean_label, unit } = extract_label_and_unit(property_key, property_config)
+    const color = colors[color_idx % colors.length]
+    const is_visible = is_default_visible(property_key, default_visible_properties) ||
+      color_idx < 2
+
+    all_series.push({
+      x: data_points.map((p) => p.x),
+      y: data_points.map((p) => p.y),
+      label: clean_label,
+      unit,
+      y_axis: determine_y_axis(property_key, unit),
+      visible: is_visible,
+      markers: data_points.length < 1000 ? `line+points` : `line`,
+      metadata: data_points.map(() => ({
+        series_label: unit ? `${clean_label} (${unit})` : clean_label,
+      })),
+      line_style: { stroke: color, stroke_width: 2 },
+      point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
+    })
+
+    color_idx++
+  }
+
+  return all_series
+}
+
+// Helper functions for streaming
+function downsample_metadata(
+  metadata_list: TrajectoryMetadata[],
+  target_points: number,
+): TrajectoryMetadata[] {
+  if (metadata_list.length <= target_points) return metadata_list
+
+  const step = Math.floor(metadata_list.length / target_points)
+  const sampled = [metadata_list[0]] // Always include first
+
+  for (let i = step; i < metadata_list.length - step; i += step) {
+    sampled.push(metadata_list[i])
+  }
+
+  if (metadata_list.length > 1) {
+    sampled.push(metadata_list[metadata_list.length - 1]) // Always include last
+  }
+
+  return sampled
+}
+
+function has_significant_variation(values: number[], tolerance = 1e-6): boolean {
+  if (values.length <= 1) return false
+
+  const mean = values.reduce((sum, val) => sum + val, 0) / values.length
+  const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
+  const coefficient_of_variation = Math.abs(mean) > 1e-10
+    ? Math.sqrt(variance) / Math.abs(mean)
+    : Math.sqrt(variance)
+
+  return coefficient_of_variation >= tolerance
+}
+
+function determine_y_axis(property_key: string, unit: string): `y1` | `y2` {
+  const lower_key = property_key.toLowerCase()
+  const lower_unit = unit.toLowerCase()
+
+  const energy_indicators = [`energy`, `ev`, `ev/atom`, `hartree`, `kcal/mol`, `kj/mol`]
+  if (
+    energy_indicators.some((indicator) =>
+      lower_key.includes(indicator) || lower_unit.includes(indicator)
+    )
+  ) {
+    return `y1`
+  }
+
+  return lower_key.includes(`force`) ? `y2` : `y1`
+}
+
+export const generate_streaming_axis_labels = generate_axis_labels

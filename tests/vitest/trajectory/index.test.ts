@@ -46,12 +46,12 @@ describe(`Trajectory Validation`, () => {
         frames: [{ structure: null, step: 0, metadata: {} }],
         metadata: {},
       } as TrajectoryType,
-      expected_errors: [`Frame 0 missing structure`],
+      expected_errors: [`Frame 0 missing structure or sites`],
     },
     {
       name: `detect empty sites`,
       trajectory: { frames: [create_frame(0, [])], metadata: {} },
-      expected_errors: [`Frame 0 structure has no sites`],
+      expected_errors: [`Frame 0 missing structure or sites`],
     },
     {
       name: `detect invalid step numbers`,

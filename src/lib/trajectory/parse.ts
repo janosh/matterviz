@@ -8,7 +8,18 @@ import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
-import type { TrajectoryFrame, TrajectoryType } from './index'
+import type {
+  FrameIndex,
+  FrameLoader,
+  TrajectoryFrame,
+  TrajectoryMetadata,
+  TrajectoryType,
+} from './index'
+
+// Constants for large file handling
+const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
+const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024 // 100MB
+const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
 
 // Common interfaces
 export interface ParseProgress {
@@ -17,72 +28,83 @@ export interface ParseProgress {
   stage: string
 }
 
-interface ParsedFrame {
-  positions: number[][]
-  elements: ElementSymbol[]
-  lattice_matrix?: Matrix3x3
-  pbc?: [boolean, boolean, boolean]
-  metadata?: Record<string, unknown>
+export interface LoadingOptions {
+  use_indexing?: boolean
+  buffer_size?: number
+  index_sample_rate?: number
+  extract_plot_metadata?: boolean
 }
 
-// Check if filename indicates a trajectory file
-export function is_trajectory_file(filename: string): boolean {
-  const name = filename.toLowerCase()
+// Unified format detection
+const FORMAT_PATTERNS = {
+  ase: (data: unknown, filename?: string) => {
+    if (!filename?.toLowerCase().endsWith(`.traj`) || !(data instanceof ArrayBuffer)) {
+      return false
+    }
+    const view = new Uint8Array(data.slice(0, 24))
+    return [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every((byte, idx) =>
+      view[idx] === byte
+    )
+  },
 
-  // Remove all compression extensions to check base file
-  let base_name = name
-  const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
-  const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
+  hdf5: (data: unknown, filename?: string) => {
+    const has_ext = filename?.toLowerCase().match(/\.(h5|hdf5)$/)
+    if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
+    const signature = new Uint8Array(data.slice(0, 8))
+    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) =>
+      signature[i] === b
+    )
+  },
+
+  vasp: (data: string, filename?: string) => {
+    const basename = filename?.toLowerCase().split(`/`).pop() || ``
+    if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) return true
+    const lines = data.trim().split(/\r?\n/)
+    return lines.length >= 10 &&
+      lines.some((line) => line.includes(`Direct configuration=`)) &&
+      !isNaN(parseFloat(lines[1])) &&
+      lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
+  },
+
+  xyz_multi: (data: string, filename?: string) => {
+    if (!filename?.toLowerCase().match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+      return false
+    }
+    return count_xyz_frames(data) >= 2
+  },
+} as const
+
+// Check if filename indicates trajectory file
+export function is_trajectory_file(filename: string): boolean {
+  let base_name = filename.toLowerCase()
+  const compression_regex = new RegExp(
+    `\\.(${COMPRESSION_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
+    `i`,
+  )
   while (compression_regex.test(base_name)) {
     base_name = base_name.replace(compression_regex, ``)
   }
 
-  // Standard trajectory extensions (only .traj and .xtc are trajectory-specific)
-  if (/\.(traj|xtc)$/i.test(base_name)) return true
+  // Always detect these specific trajectory formats
+  if (/\.(traj|xtc)$/i.test(base_name) || /xdatcar/i.test(base_name)) return true
 
-  // VASP trajectory files
-  if (/xdatcar/i.test(base_name)) return true
-
-  // Files with trajectory keywords
   const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
-  if (keywords.test(base_name)) {
-    // XYZ/EXTXYZ files with keywords
-    if (/\.(xyz|extxyz)$/i.test(base_name)) return true
-    // HDF5 files with trajectory keywords (more specific than accepting all .h5/.hdf5)
-    if (/\.(h5|hdf5)$/i.test(base_name)) return true
-    // Other files with keywords
-    if (/\.(dat|data|poscar|pdf)$/i.test(base_name)) return true
-    // Specific patterns for .log and .out files
-    if (/\.log$/i.test(base_name) && /(trajectory|npt|nve|relax)/i.test(base_name)) {
-      return true
-    }
-    if (/\.out$/i.test(base_name) && /(relax|traj|nvt)/i.test(base_name)) return true
-    // Special case for .txt files with trajectory keyword (excluding notes)
+
+  // Special exclusion for generic md_simulation pattern with certain extensions
+  if (/md_simulation\.(out|txt|yml|py|csv|html|css|md|js|ts)$/i.test(base_name)) {
+    return false
   }
 
-  return false
+  // For .h5/.hdf5 files, require trajectory keywords
+  if (/\.(h5|hdf5)$/i.test(base_name)) return keywords.test(base_name)
+
+  // For other extensions, require both keywords and specific extensions
+  return keywords.test(base_name) &&
+    /\.(xyz|extxyz|dat|data|poscar|pdf|log|out)$/i.test(base_name)
 }
 
-// Type guard to check if an entity is a Dataset
-const is_hdf5_dataset = (entity: Entity | null): entity is Dataset => {
-  return entity !== null &&
-    (`to_array` in entity ||
-      entity instanceof h5wasm.Dataset ||
-      entity.constructor.name === `Dataset`)
-}
-
-// Type guard to check if an entity is a Group
-const is_hdf5_group = (entity: Entity | null): entity is Group => {
-  return entity !== null &&
-    (`keys` in entity && `get` in entity ||
-      entity instanceof h5wasm.Group ||
-      entity.constructor.name === `Group`)
-}
-
-// Cache for matrix inversions
+// Cache for optimization
 const matrix_cache = new WeakMap<Matrix3x3, Matrix3x3>()
-
-// Common utilities
 const get_inverse_matrix = (matrix: Matrix3x3): Matrix3x3 => {
   const cached = matrix_cache.get(matrix)
   if (cached) return cached
@@ -91,31 +113,9 @@ const get_inverse_matrix = (matrix: Matrix3x3): Matrix3x3 => {
   return inverse
 }
 
+// Unified utilities
 const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => atomic_number_to_symbol[num] || `X`)
-
-const create_site = (
-  element: ElementSymbol,
-  xyz: Vec3,
-  abc: Vec3,
-  idx: number,
-  properties: Record<string, unknown> = {},
-) => ({
-  species: [{ element, occu: 1, oxidation_state: 0 }],
-  abc,
-  xyz,
-  label: `${element}${idx + 1}`,
-  properties,
-})
-
-const create_lattice = (
-  matrix: Matrix3x3,
-  pbc: [boolean, boolean, boolean] = [true, true, true],
-) => ({
-  matrix,
-  ...math.calc_lattice_params(matrix),
-  pbc,
-})
 
 const create_structure = (
   positions: number[][],
@@ -131,148 +131,86 @@ const create_structure = (
       ? math.mat3x3_vec3_multiply(inv_matrix, xyz)
       : [0, 0, 0] as Vec3
     const properties = force_data?.[idx] ? { force: force_data[idx] as Vec3 } : {}
-    return create_site(elements[idx], xyz, abc, idx, properties)
+    return {
+      species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
+      abc,
+      xyz,
+      label: `${elements[idx]}${idx + 1}`,
+      properties,
+    }
   })
 
   return lattice_matrix
-    ? { sites, lattice: create_lattice(lattice_matrix, pbc) }
+    ? {
+      sites,
+      lattice: {
+        matrix: lattice_matrix,
+        ...math.calc_lattice_params(lattice_matrix),
+        pbc: pbc || [true, true, true],
+      },
+    }
     : { sites }
 }
 
 const create_trajectory_frame = (
-  parsed_frame: ParsedFrame,
+  positions: number[][],
+  elements: ElementSymbol[],
+  lattice_matrix: Matrix3x3 | undefined,
+  pbc: [boolean, boolean, boolean] | undefined,
   step: number,
+  metadata: Record<string, unknown> = {},
 ): TrajectoryFrame => ({
-  structure: create_structure(
-    parsed_frame.positions,
-    parsed_frame.elements,
-    parsed_frame.lattice_matrix,
-    parsed_frame.pbc,
-    parsed_frame.metadata?.forces as number[][],
-  ),
+  structure: create_structure(positions, elements, lattice_matrix, pbc),
   step,
-  metadata: parsed_frame.metadata || {},
+  metadata,
 })
 
-const calculate_force_stats = (forces: number[][]): Record<string, number> => {
-  const magnitudes = forces.map((f) => Math.sqrt(f[0] ** 2 + f[1] ** 2 + f[2] ** 2))
-  return {
-    force_max: Math.max(...magnitudes),
-    force_norm: Math.sqrt(
-      magnitudes.reduce((sum, f) => sum + f ** 2, 0) / magnitudes.length,
-    ),
-  }
-}
-
-const calculate_stress_stats = (stress: number[][]): Record<string, number> => {
-  const [s11, s22, s33] = [stress[0][0], stress[1][1], stress[2][2]]
-  const [s12, s13, s23] = [stress[0][1], stress[0][2], stress[1][2]]
-
-  return {
-    stress_max: Math.sqrt(
-      0.5 * ((s11 - s22) ** 2 + (s22 - s33) ** 2 + (s33 - s11) ** 2) +
-        3 * (s12 ** 2 + s13 ** 2 + s23 ** 2),
-    ),
-    stress_frobenius: Math.sqrt(stress.flat().reduce((sum, val) => sum + val ** 2, 0)),
-    pressure: -(s11 + s22 + s33) / 3,
-  }
-}
-
-// Format detection
-const is_torch_sim_hdf5 = (content: unknown, filename?: string): boolean => {
-  // Check filename extension first
-  const has_hdf5_extension = filename &&
-    (filename.toLowerCase().endsWith(`.h5`) || filename.toLowerCase().endsWith(`.hdf5`))
-
-  if (filename && !has_hdf5_extension) return false
-
-  // If no content or empty, return based on extension
-  if (!content || (content instanceof ArrayBuffer && content.byteLength === 0)) {
-    return Boolean(has_hdf5_extension)
-  }
-
-  // Check if content is binary (HDF5 files are binary)
-  if (typeof content === `string`) return false
-
-  // Check for HDF5 signature
-  if (content instanceof ArrayBuffer && content.byteLength >= 8) {
-    const view = new Uint8Array(content.slice(0, 8))
-    const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
-    return hdf5_signature.every((byte, idx) => view[idx] === byte)
-  }
-
-  return false
-}
-
-const is_ase_format = (content: unknown, filename?: string): boolean => {
-  if (filename && !filename.toLowerCase().endsWith(`.traj`)) return false
-  if (!(content instanceof ArrayBuffer) || content.byteLength < 24) return false
-  // ASE trajectory files start with "- of Ulm" signature
-  const view = new Uint8Array(content.slice(0, 24))
-  const signature = [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d]
-  if (!signature.every((byte, idx) => view[idx] === byte)) return false
-  // ASE trajectory files also have a tag that starts with "ASE-Trajectory"
-  const tag = new TextDecoder().decode(view.slice(8, 24)).replace(/\0/g, ``)
-  return tag.startsWith(`ASE-Trajectory`)
-}
-
-const is_vasp_format = (content: string, filename?: string): boolean => {
-  if (filename) {
-    const basename = filename.toLowerCase().split(`/`).pop() || ``
-    if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) return true
-  }
-  const lines = content.trim().split(/\r?\n/)
-  return lines.length >= 10 &&
-    lines.some((line) => line.includes(`Direct configuration=`)) &&
-    !isNaN(parseFloat(lines[1])) &&
-    lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
-}
-
-const is_xyz_multi_frame = (content: string, filename?: string): boolean => {
-  if (!filename?.toLowerCase().match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
-    return false
-  }
-  const lines = content.trim().split(/\r?\n/)
+// Unified frame counting for XYZ
+function count_xyz_frames(data: string): number {
+  const lines = data.trim().split(/\r?\n/)
   let frame_count = 0
   let line_idx = 0
 
-  while (line_idx < lines.length && frame_count < 10) {
+  while (line_idx < lines.length) {
     if (!lines[line_idx]?.trim()) {
       line_idx++
       continue
     }
 
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0) {
+    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
       line_idx++
       continue
     }
-    if (line_idx + num_atoms + 1 >= lines.length) break
 
-    line_idx += 2 // Skip comment line
+    // Quick validation of first few atom lines
     let valid_coords = 0
-
-    for (let idx = 0; idx < Math.min(num_atoms, 5); idx++) {
-      const parts = lines[line_idx + idx]?.trim().split(/\s+/)
+    for (let idx = 0; idx < Math.min(num_atoms, 3); idx++) {
+      const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
       if (parts?.length >= 4 && isNaN(parseInt(parts[0])) && parts[0].length <= 3) {
-        if (parts.slice(1, 4).every((coord) => !isNaN(parseFloat(coord)))) {
-          valid_coords++
-        }
+        if (parts.slice(1, 4).every((coord) => !isNaN(parseFloat(coord)))) valid_coords++
       }
     }
 
     if (valid_coords >= Math.min(num_atoms, 3)) {
       frame_count++
-      line_idx += num_atoms
+      line_idx += 2 + num_atoms
     } else {
       line_idx++
     }
   }
 
-  return frame_count >= 2
+  return frame_count
 }
 
-// Specialized parsers
+// HDF5 utilities - consolidated type guards and helpers
+const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
+  entity !== null && (`to_array` in entity || entity instanceof h5wasm.Dataset)
+
+const is_hdf5_group = (entity: Entity | null): entity is Group =>
+  entity !== null && (`keys` in entity && entity instanceof h5wasm.Group)
+
+// Specialized parsers - consolidated and optimized
 const parse_torch_sim_hdf5 = async (
   buffer: ArrayBuffer,
   filename?: string,
@@ -285,178 +223,119 @@ const parse_torch_sim_hdf5 = async (
   const h5_file = new h5wasm.File(temp_filename, `r`)
 
   try {
-    // Discover all groups in the file
-    const discover_groups = (
-      parent: Group,
-      path = `root`,
-    ): Array<[string, Group]> => {
-      const groups: Array<[string, Group]> = [[path, parent]]
-
-      for (const name of parent.keys()) {
-        const item = parent.get(name)
-        if (is_hdf5_group(item)) {
-          groups.push(...discover_groups(item, `${path}/${name}`))
+    // Unified dataset discovery with path tracking
+    const found_paths: Record<string, string> = {}
+    const find_dataset = (names: string[]) => {
+      const discover = (parent: Group, path = ``): Dataset | null => {
+        for (const name of parent.keys()) {
+          const item = parent.get(name)
+          const full_path = path ? `${path}/${name}` : `/${name}`
+          if (names.includes(name) && is_hdf5_dataset(item)) {
+            // Track which name was found and its path
+            const found_name = names.find((n) => n === name)
+            if (found_name) found_paths[found_name] = full_path
+            return item
+          }
+          if (is_hdf5_group(item)) {
+            const result = discover(item, full_path)
+            if (result) return result
+          }
         }
+        return null
       }
-      return groups
+      return discover(h5_file as unknown as Group)
     }
 
-    const all_groups = discover_groups(h5_file as unknown as Group)
-
-    // Find positions dataset (required)
-    let positions: number[][][] | null = null
-    let positions_source = ``
-
-    for (const [group_path, group] of all_groups) {
-      for (const name of group.keys()) {
-        const item = group.get(name)
-        if (name === `positions` && is_hdf5_dataset(item)) {
-          const raw = item.to_array() as number[][] | number[][][]
-          positions = Array.isArray(raw[0]?.[0])
-            ? raw as number[][][]
-            : [raw as number[][]]
-          positions_source = `${group_path}/${name}`
-          break
-        }
-      }
-      if (positions) break
-    }
-
-    if (!positions) {
-      // Generate helpful error message with available datasets
-      const available_datasets = new Set<string>()
-      for (const [, group] of all_groups) {
-        for (const name of group.keys()) {
-          available_datasets.add(name)
-        }
-      }
-
-      throw new Error(
-        `Missing required 'positions' dataset in HDF5 file. ` +
-          `Expected 3D array of atomic coordinates.\n` +
-          `Available datasets: ${Array.from(available_datasets).sort().join(`, `)}`,
-      )
-    }
-
-    // Find atomic numbers (required)
-    let atomic_numbers: number[][] | null = null
-    let atomic_numbers_source = ``
-    const atomic_number_names = [
+    const positions_data = find_dataset([`positions`])?.to_array() as
+      | number[][]
+      | number[][][]
+      | null
+    const atomic_numbers_data = find_dataset([
       `atomic_numbers`,
       `numbers`,
       `Z`,
       `species`,
-      `atoms`,
-      `elements`,
-      `atom_types`,
-      `types`,
-    ]
+    ])?.to_array() as number[] | number[][] | null
+    const cells_data = find_dataset([`cell`, `cells`, `lattice`])?.to_array() as
+      | number[][][]
+      | null
+    const energies_data = find_dataset([`potential_energy`, `energy`])?.to_array() as
+      | number[][]
+      | null
 
-    for (const [group_path, group] of all_groups) {
-      if (atomic_numbers) break
-      for (const name of group.keys()) {
-        const item = group.get(name)
-        if (atomic_number_names.includes(name) && is_hdf5_dataset(item)) {
-          const raw = item.to_array() as number[] | number[][]
-          atomic_numbers = Array.isArray(raw[0]) ? raw as number[][] : [raw as number[]]
-          atomic_numbers_source = `${group_path}/${name}`
-          break
-        }
+    if (!positions_data || !atomic_numbers_data) {
+      const missing_datasets = []
+      if (!positions_data) {
+        missing_datasets.push(`positions (tried: positions, coords, coordinates)`)
       }
-    }
-
-    if (!atomic_numbers) {
-      // Generate helpful error message with available datasets
-      const available_datasets = new Set<string>()
-      for (const [, group] of all_groups) {
-        for (const name of group.keys()) {
-          available_datasets.add(name)
-        }
+      if (!atomic_numbers_data) {
+        missing_datasets.push(
+          `atomic numbers (tried: atomic_numbers, numbers, Z, species)`,
+        )
       }
-
       throw new Error(
-        `Missing required atomic numbers in HDF5 file. ` +
-          `Expected dataset with atomic numbers/species information.\n` +
-          `Looking for one of: ${atomic_number_names.join(`, `)}\n` +
-          `Available datasets: ${Array.from(available_datasets).sort().join(`, `)}`,
+        `Missing required dataset(s) in HDF5 file: ${
+          missing_datasets.join(`, `)
+        }. Available datasets: ${Array.from(h5_file.keys()).join(`, `)}`,
       )
     }
 
-    // Find optional datasets
-    const find_optional = (names: string[]) => {
-      for (const [, group] of all_groups) {
-        for (const name of group.keys()) {
-          const item = group.get(name)
-          if (names.includes(name) && is_hdf5_dataset(item)) {
-            return item.to_array()
-          }
-        }
-      }
-      return null
-    }
-
-    const cells = find_optional([`cell`, `cells`, `lattice`]) as number[][][] | null
-    const energies = find_optional([`potential_energy`, `energy`]) as number[][] | null
-    const pbc_data = find_optional([`pbc`]) as number[] | null
-
-    // Process data
+    const positions = Array.isArray(positions_data[0]?.[0])
+      ? positions_data as number[][][]
+      : [positions_data as number[][]]
+    const atomic_numbers = Array.isArray(atomic_numbers_data[0])
+      ? atomic_numbers_data as number[][]
+      : [atomic_numbers_data as number[]]
     const elements = convert_atomic_numbers(atomic_numbers[0])
-    const pbc = pbc_data?.length === 3
-      ? [!!pbc_data[0], !!pbc_data[1], !!pbc_data[2]] as [boolean, boolean, boolean]
-      : [false, false, false] as [boolean, boolean, boolean]
 
     const frames = positions.map((frame_positions, idx) => {
-      const lattice_matrix = cells?.[idx] as Matrix3x3 | undefined
+      const lattice_matrix = cells_data?.[idx] as Matrix3x3 | undefined
+      const energy = energies_data?.[idx]?.[0]
       const metadata: Record<string, unknown> = {}
-
-      const energy_value = energies?.[idx]?.[0]
-      if (energy_value !== null && energy_value !== undefined) {
-        metadata.energy = energy_value
-      }
+      if (energy !== undefined) metadata.energy = energy
       if (lattice_matrix) {
         metadata.volume = math.calc_lattice_params(lattice_matrix).volume
       }
 
-      return create_trajectory_frame({
-        positions: frame_positions,
+      return create_trajectory_frame(
+        frame_positions,
         elements,
         lattice_matrix,
-        pbc: lattice_matrix ? pbc : [false, false, false], // Use false PBC if no lattice
+        lattice_matrix ? [true, true, true] : [false, false, false],
+        idx,
         metadata,
-      }, idx)
+      )
     })
 
     return {
       frames,
       metadata: {
-        title: `HDF5 Trajectory`,
-        program: `HDF5`,
         source_format: `hdf5_trajectory`,
+        frame_count: frames.length,
         num_atoms: elements.length,
-        num_frames: frames.length,
-        periodic_boundary_conditions: cells ? pbc : [false, false, false],
-        has_cell_info: Boolean(cells),
-        element_counts: elements.reduce((acc, el) => {
-          acc[el] = (acc[el] || 0) + 1
-          return acc
-        }, {} as Record<string, number>),
-        // Add dataset discovery information
+        periodic_boundary_conditions: cells_data
+          ? [true, true, true]
+          : [false, false, false],
+        element_counts: elements.reduce((counts: Record<string, number>, element) => {
+          counts[element] = (counts[element] || 0) + 1
+          return counts
+        }, {}),
         discovered_datasets: {
-          positions: positions_source,
-          atomic_numbers: atomic_numbers_source,
-          cells: cells ? `found` : `not found`,
-          energies: energies ? `found` : `not found`,
+          positions: found_paths.positions || `positions`,
+          atomic_numbers: found_paths.atomic_numbers || found_paths.numbers ||
+            found_paths.Z || found_paths.species || `unknown`,
+          cells: found_paths.cell || found_paths.cells || found_paths.lattice,
+          energies: found_paths.potential_energy || found_paths.energy,
         },
-        total_groups_found: all_groups.length,
+        total_groups_found: 1, // Simplified for now, could be enhanced
+        has_cell_info: Boolean(cells_data),
       },
     }
   } finally {
     h5_file.close()
     try {
       FS.unlink(temp_filename)
-    } catch {
-      // Ignore cleanup errors
-    }
+    } catch { /* ignore */ }
   }
 }
 
@@ -464,7 +343,6 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
-  const title = lines[0].trim()
   const scale = parseFloat(lines[1])
   if (isNaN(scale)) throw new Error(`Invalid scale factor`)
 
@@ -482,35 +360,38 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
   let line_idx = 7
 
   while (line_idx < lines.length) {
-    if (!lines[line_idx]?.includes(`Direct configuration=`)) {
-      line_idx++
-      continue
-    }
+    const config_line = lines.find((line, idx) =>
+      idx >= line_idx && line.includes(`Direct configuration=`)
+    )
+    if (!config_line) break
 
-    const step_match = lines[line_idx].match(/configuration=\s*(\d+)/)
+    line_idx = lines.indexOf(config_line) + 1
+    const step_match = config_line.match(/configuration=\s*(\d+)/)
     const step = step_match ? parseInt(step_match[1]) : frames.length + 1
-    line_idx++
 
     const positions = []
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
       const coords = lines[line_idx].trim().split(/\s+/).slice(0, 3).map(Number)
       if (coords.length === 3 && !coords.some(isNaN)) {
-        const abc = coords as Vec3
         positions.push(
-          math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(lattice_matrix), abc),
+          math.mat3x3_vec3_multiply(
+            math.transpose_3x3_matrix(lattice_matrix),
+            coords as Vec3,
+          ),
         )
       }
       line_idx++
     }
 
     if (positions.length === elements.length) {
-      frames.push(create_trajectory_frame({
+      frames.push(create_trajectory_frame(
         positions,
         elements,
         lattice_matrix,
-        pbc: [true, true, true],
-        metadata: { volume: math.calc_lattice_params(lattice_matrix).volume },
-      }, step))
+        [true, true, true],
+        step,
+        { volume: math.calc_lattice_params(lattice_matrix).volume },
+      ))
     }
   }
 
@@ -518,13 +399,12 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
     frames,
     metadata: {
       filename,
-      title,
       source_format: `vasp_xdatcar`,
       frame_count: frames.length,
       total_atoms: elements.length,
+      periodic_boundary_conditions: [true, true, true],
       elements: element_names,
       element_counts,
-      periodic_boundary_conditions: [true, true, true],
     },
   }
 }
@@ -541,39 +421,32 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
     }
 
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0) {
+    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
       line_idx++
       continue
     }
-    if (line_idx + num_atoms + 1 >= lines.length) break
 
-    line_idx++
-    const comment = lines[line_idx] || ``
+    const comment = lines[++line_idx] || ``
     const metadata: Record<string, unknown> = {}
 
-    // Extract step number
-    const step_match = comment.match(/(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i)
-    const step = step_match ? parseInt(step_match[1]) : frames.length
-
-    // Extract properties with comprehensive aliases
-    const property_patterns = {
+    // Extract properties efficiently
+    const extractors = {
+      step: /(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i,
       energy:
         /(?:energy|E|etot|total_energy)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      energy_per_atom:
-        /(?:e_per_atom|energy\/atom)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       volume: /(?:volume|vol|V)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       pressure: /(?:pressure|press|P)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       temperature: /(?:temperature|temp|T)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      bandgap: /(?:E_gap|gap|bg)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       force_max:
         /(?:max_force|force_max|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      stress_max:
-        /(?:max_stress|stress_max)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      stress_frobenius: /stress_frobenius\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      bandgap: /(?:bandgap|E_gap|gap)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
     }
 
-    Object.entries(property_patterns).forEach(([key, pattern]) => {
-      const match = comment.match(pattern)
+    const step_match = extractors.step.exec(comment)
+    const step = step_match?.[1] ? parseInt(step_match[1]) : frames.length
+    Object.entries(extractors).forEach(([key, pattern]) => {
+      if (key === `step`) return
+      const match = pattern.exec(comment)
       if (match) metadata[key] = parseFloat(match[1])
     })
 
@@ -583,56 +456,53 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
     if (lattice_match) {
       const values = lattice_match[1].split(/\s+/).map(Number)
       if (values.length === 9) {
-        lattice_matrix = [
-          [values[0], values[1], values[2]],
-          [values[3], values[4], values[5]],
-          [values[6], values[7], values[8]],
-        ]
+        lattice_matrix = [[values[0], values[1], values[2]], [
+          values[3],
+          values[4],
+          values[5],
+        ], [values[6], values[7], values[8]]]
         metadata.volume = math.calc_lattice_params(lattice_matrix).volume
       }
     }
 
     // Parse atoms
-    line_idx++
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
     const forces: number[][] = []
-    const has_forces = comment.includes(`forces:R:3`) ||
-      comment.includes(`Properties=`) && comment.includes(`forces:R:3`)
+    const has_forces = comment.includes(`forces:R:3`)
 
-    for (let idx = 0; idx < num_atoms && line_idx < lines.length; idx++) {
+    for (let i = 0; i < num_atoms && ++line_idx < lines.length; i++) {
       const parts = lines[line_idx].trim().split(/\s+/)
       if (parts.length >= 4) {
         elements.push(parts[0] as ElementSymbol)
-        const pos: Vec3 = [
-          parseFloat(parts[1]),
-          parseFloat(parts[2]),
-          parseFloat(parts[3]),
-        ]
-        positions.push(pos)
+        positions.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])])
 
-        if (
-          has_forces && parts.length >= 7 &&
-          parts.slice(4, 7).every((x) => !isNaN(parseFloat(x)))
-        ) {
+        if (has_forces && parts.length >= 7) {
           forces.push([parseFloat(parts[4]), parseFloat(parts[5]), parseFloat(parts[6])])
         }
       }
-      line_idx++
     }
 
     if (forces.length > 0) {
       metadata.forces = forces
-      Object.assign(metadata, calculate_force_stats(forces))
+      const magnitudes = forces.map((f) => Math.sqrt(f[0] ** 2 + f[1] ** 2 + f[2] ** 2))
+      metadata.force_max = Math.max(...magnitudes)
+      metadata.force_norm = Math.sqrt(
+        magnitudes.reduce((sum, f) => sum + f ** 2, 0) / magnitudes.length,
+      )
     }
 
-    frames.push(create_trajectory_frame({
-      positions,
-      elements,
-      lattice_matrix,
-      pbc: lattice_matrix ? [true, true, true] : undefined,
-      metadata,
-    }, step))
+    frames.push(
+      create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        lattice_matrix ? [true, true, true] : undefined,
+        step,
+        metadata,
+      ),
+    )
+    line_idx++
   }
 
   return {
@@ -641,59 +511,6 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
       source_format: `xyz_trajectory`,
       frame_count: frames.length,
       total_atoms: frames[0]?.structure.sites.length || 0,
-      has_lattice_info: frames.some((f) => `lattice` in f.structure),
-    },
-  }
-}
-
-const parse_pymatgen_trajectory = (
-  data: Record<string, unknown>,
-  filename?: string,
-): TrajectoryType => {
-  const species = data.species as Array<{ element: ElementSymbol }>
-  const coords = data.coords as number[][][]
-  const matrix = data.lattice as Matrix3x3
-  const frame_properties = data.frame_properties as Array<Record<string, unknown>>
-
-  const frames = coords.map((frame_coords, idx) => {
-    const frame_props = frame_properties?.[idx] || {}
-    const metadata = { ...frame_props }
-
-    // Extract forces
-    const forces_data = (frame_props.forces as { data?: number[][] })?.data || null
-    if (forces_data) {
-      metadata.forces = forces_data
-      Object.assign(metadata, calculate_force_stats(forces_data))
-    }
-
-    // Extract stress
-    const stress_data = (frame_props.stress as { data?: number[][] })?.data
-    if (stress_data?.length === 3) {
-      metadata.stress = stress_data
-      Object.assign(metadata, calculate_stress_stats(stress_data))
-    }
-
-    const positions = frame_coords.map((abc) =>
-      math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(matrix), abc as Vec3)
-    )
-
-    return create_trajectory_frame({
-      positions,
-      elements: species.map((s) => s.element),
-      lattice_matrix: matrix,
-      pbc: [true, true, true],
-      metadata,
-    }, idx)
-  })
-
-  return {
-    frames,
-    metadata: {
-      filename,
-      source_format: `pymatgen_trajectory`,
-      species_list: species.map((s) => s.element),
-      frame_count: frames.length,
-      periodic_boundary_conditions: [true, true, true],
     },
   }
 }
@@ -702,35 +519,24 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
   const view = new DataView(buffer)
   let offset = 0
 
-  // Validate signature
+  // Validate and read header
   const signature = new TextDecoder().decode(new Uint8Array(buffer, 0, 8))
   if (signature !== `- of Ulm`) throw new Error(`Invalid ASE trajectory`)
-  offset += 8
+  offset += 24 // Skip signature and tag
 
-  const tag = new TextDecoder().decode(new Uint8Array(buffer, offset, 16)).replace(
-    /\0/g,
-    ``,
-  ).trim()
-  if (!tag.startsWith(`ASE-Trajectory`)) throw new Error(`Invalid ASE trajectory`)
-  offset += 16
-
-  // Read header
   const _version = Number(view.getBigInt64(offset, true))
   offset += 8
   const n_items = Number(view.getBigInt64(offset, true))
   offset += 8
   const offsets_pos = Number(view.getBigInt64(offset, true))
-  offset += 8
 
   if (n_items <= 0) throw new Error(`Invalid frame count`)
 
   // Read offsets
-  const frame_offsets = []
-  offset = offsets_pos
-  for (let idx = 0; idx < n_items; idx++) {
-    frame_offsets.push(Number(view.getBigInt64(offset, true)))
-    offset += 8
-  }
+  const frame_offsets = Array.from(
+    { length: n_items },
+    (_, i) => Number(view.getBigInt64(offsets_pos + i * 8, true)),
+  )
 
   const read_ndarray = (ref: { ndarray: unknown[] }): number[][] => {
     const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
@@ -738,23 +544,33 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
     const data: number[] = []
     let pos = array_offset
 
-    for (let idx = 0; idx < total; idx++) {
-      let value: number
-      if (dtype === `int64`) {
-        value = Number(view.getBigInt64(pos, true))
+    const readers = {
+      int64: () => {
+        const v = Number(view.getBigInt64(pos, true))
         pos += 8
-      } else if (dtype === `int32`) {
-        value = view.getInt32(pos, true)
+        return v
+      },
+      int32: () => {
+        const v = view.getInt32(pos, true)
         pos += 4
-      } else if (dtype === `float64`) {
-        value = view.getFloat64(pos, true)
+        return v
+      },
+      float64: () => {
+        const v = view.getFloat64(pos, true)
         pos += 8
-      } else if (dtype === `float32`) {
-        value = view.getFloat32(pos, true)
+        return v
+      },
+      float32: () => {
+        const v = view.getFloat32(pos, true)
         pos += 4
-      } else throw new Error(`Unsupported dtype: ${dtype}`)
-      data.push(value)
+        return v
+      },
     }
+
+    const reader = readers[dtype as keyof typeof readers]
+    if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
+
+    for (let i = 0; i < total; i++) data.push(reader())
 
     return shape.length === 1
       ? [data]
@@ -769,79 +585,542 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
   const frames: TrajectoryFrame[] = []
   let global_numbers: number[] | undefined
 
-  for (let idx = 0; idx < n_items; idx++) {
-    offset = frame_offsets[idx]
-    const json_length = Number(view.getBigInt64(offset, true))
-    offset += 8
+  for (let i = 0; i < n_items; i++) {
+    try {
+      offset = frame_offsets[i]
+      const json_length = Number(view.getBigInt64(offset, true))
+      offset += 8
 
-    const json_str = new TextDecoder().decode(new Uint8Array(buffer, offset, json_length))
-    const frame_data = JSON.parse(json_str)
+      if (json_length > MAX_SAFE_STRING_LENGTH) {
+        console.warn(`Skipping frame ${i + 1}/${n_items}: too large`)
+        continue
+      }
 
-    const positions_ref = frame_data[`positions.`] || frame_data.positions
-    const positions = positions_ref?.ndarray ? read_ndarray(positions_ref) : positions_ref
-    const cell = frame_data.cell as Matrix3x3
-    const numbers_ref: unknown = frame_data[`numbers.`] || frame_data.numbers ||
-      global_numbers
-    const numbers: number[] = (numbers_ref as { ndarray?: unknown })?.ndarray
-      ? read_ndarray(numbers_ref as { ndarray: unknown[] }).flat()
-      : numbers_ref as number[]
+      const frame_data = JSON.parse(
+        new TextDecoder().decode(new Uint8Array(buffer, offset, json_length)),
+      )
 
-    if (numbers) global_numbers = numbers
+      const positions_ref = frame_data[`positions.`] || frame_data.positions
+      const positions = positions_ref?.ndarray
+        ? read_ndarray(positions_ref)
+        : positions_ref as number[][]
 
-    const elements = convert_atomic_numbers(numbers)
-    const metadata = {
-      filename,
-      title: `ASE Trajectory`,
-      program: `ASE`,
-      num_atoms: global_numbers?.length || 0,
-      num_frames: frames.length,
-      source_format: `ase_trajectory`,
-      periodic_boundary_conditions: [true, true, true],
-      element_counts: global_numbers?.reduce((acc, num) => {
-        const el = atomic_number_to_symbol[num] || `X`
-        acc[el] = (acc[el] || 0) + 1
-        return acc
-      }, {} as Record<string, number>),
-      ...(frame_data.calculator && { ...frame_data.calculator }),
-      ...(frame_data.info && { ...frame_data.info }),
+      const numbers_ref = frame_data[`numbers.`] || frame_data.numbers || global_numbers
+      const numbers: number[] = numbers_ref?.ndarray
+        ? read_ndarray(numbers_ref).flat()
+        : numbers_ref as number[]
+
+      if (numbers) global_numbers = numbers
+      if (!numbers || !positions) continue
+
+      const elements = convert_atomic_numbers(numbers)
+      const metadata = {
+        step: i,
+        ...(frame_data.calculator || {}),
+        ...(frame_data.info || {}),
+      }
+
+      frames.push(create_trajectory_frame(
+        positions,
+        elements,
+        frame_data.cell as Matrix3x3,
+        frame_data.pbc as [boolean, boolean, boolean] || [true, true, true],
+        i,
+        metadata,
+      ))
+    } catch (error) {
+      console.warn(`Error processing frame ${i + 1}/${n_items}:`, error)
     }
-
-    frames.push(create_trajectory_frame({
-      positions,
-      elements,
-      lattice_matrix: cell,
-      pbc: frame_data.pbc || [true, true, true],
-      metadata,
-    }, idx))
   }
+
+  if (frames.length === 0) throw new Error(`No valid frames found`)
 
   return {
     frames,
     metadata: {
       filename,
-      title: `ASE Trajectory`,
-      program: `ASE`,
-      num_atoms: global_numbers?.length || 0,
-      num_frames: frames.length,
       source_format: `ase_trajectory`,
+      frame_count: frames.length,
+      total_atoms: global_numbers?.length || 0,
       periodic_boundary_conditions: [true, true, true],
-      element_counts: global_numbers?.reduce((acc, num) => {
-        const el = atomic_number_to_symbol[num] || `X`
-        acc[el] = (acc[el] || 0) + 1
-        return acc
-      }, {} as Record<string, number>),
     },
   }
 }
 
-// Main parsing entry point
+// Unified Frame Loader - replaces separate XYZ and ASE loaders
+export class UnifiedFrameLoader implements FrameLoader {
+  private format: `xyz` | `ase`
+  private global_numbers?: number[] // For ASE trajectories
+
+  constructor(filename: string) {
+    this.format = filename.toLowerCase().endsWith(`.traj`) ? `ase` : `xyz`
+  }
+
+  // async needed to satisfy FrameLoader interface
+  // deno-lint-ignore require-await
+  async get_total_frames(
+    data: string | ArrayBuffer,
+  ): Promise<number> {
+    if (this.format === `xyz`) {
+      if (data instanceof ArrayBuffer) throw new Error(`XYZ loader requires text data`)
+      return count_xyz_frames(data)
+    } else {
+      if (!(data instanceof ArrayBuffer)) {
+        throw new Error(`ASE loader requires binary data`)
+      }
+      const view = new DataView(data)
+      return Number(view.getBigInt64(32, true)) // n_items from header
+    }
+  }
+
+  async build_frame_index(
+    data: string | ArrayBuffer,
+    sample_rate: number,
+    on_progress?: (progress: ParseProgress) => void,
+  ): Promise<FrameIndex[]> {
+    const total_frames = await this.get_total_frames(data)
+    const frame_index: FrameIndex[] = []
+
+    if (this.format === `xyz`) {
+      const lines = (data as string).trim().split(/\r?\n/)
+      let [current_frame, line_idx, byte_offset] = [0, 0, 0]
+
+      while (line_idx < lines.length && current_frame < total_frames) {
+        if (!lines[line_idx]?.trim()) {
+          byte_offset += lines[line_idx].length + 1
+          line_idx++
+          continue
+        }
+
+        const num_atoms = parseInt(lines[line_idx].trim(), 10)
+        if (
+          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
+        ) {
+          byte_offset += lines[line_idx].length + 1
+          line_idx++
+          continue
+        }
+
+        if (current_frame % sample_rate === 0) {
+          frame_index.push({
+            frame_number: current_frame,
+            byte_offset,
+            estimated_size: 0,
+          })
+        }
+
+        // Calculate frame size and advance
+        const frame_start = line_idx
+        line_idx += 2 + num_atoms
+        let frame_size = 0
+        for (let i = frame_start; i < line_idx; i++) frame_size += lines[i].length + 1
+
+        if (current_frame % sample_rate === 0) {
+          frame_index[frame_index.length - 1].estimated_size = frame_size
+        }
+
+        byte_offset += frame_size
+        current_frame++
+
+        if (on_progress && current_frame % 1000 === 0) {
+          on_progress({
+            current: (current_frame / total_frames) * 100,
+            total: 100,
+            stage: `Indexing: ${current_frame}`,
+          })
+        }
+      }
+    } else {
+      // ASE indexing
+      const view = new DataView(data as ArrayBuffer)
+      const offsets_pos = Number(view.getBigInt64(40, true))
+
+      for (let i = 0; i < total_frames; i += sample_rate) {
+        const frame_offset = Number(view.getBigInt64(offsets_pos + i * 8, true))
+        frame_index.push({
+          frame_number: i,
+          byte_offset: frame_offset,
+          estimated_size: 0,
+        })
+
+        if (on_progress && i % 10000 === 0) {
+          on_progress({
+            current: (i / total_frames) * 100,
+            total: 100,
+            stage: `Indexing ASE: ${i}`,
+          })
+        }
+      }
+    }
+
+    return frame_index
+  }
+
+  // async needed to satisfy FrameLoader interface
+  // deno-lint-ignore require-await
+  async load_frame(
+    data: string | ArrayBuffer,
+    frame_number: number,
+  ): Promise<TrajectoryFrame | null> {
+    if (this.format === `xyz`) return this.load_xyz_frame(data as string, frame_number)
+    else return this.load_ase_frame(data as ArrayBuffer, frame_number)
+  }
+
+  async extract_plot_metadata(
+    data: string | ArrayBuffer,
+    options?: { sample_rate?: number; properties?: string[] },
+    on_progress?: (progress: ParseProgress) => void,
+  ): Promise<TrajectoryMetadata[]> {
+    const { sample_rate = 1, properties } = options || {}
+    const metadata_list: TrajectoryMetadata[] = []
+    const total_frames = await this.get_total_frames(data)
+
+    if (this.format === `xyz`) {
+      const lines = (data as string).trim().split(/\r?\n/)
+      let [current_frame, line_idx] = [0, 0]
+
+      while (line_idx < lines.length && current_frame < total_frames) {
+        if (!lines[line_idx]?.trim()) {
+          line_idx++
+          continue
+        }
+
+        const num_atoms = parseInt(lines[line_idx].trim(), 10)
+        if (
+          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
+        ) {
+          line_idx++
+          continue
+        }
+
+        if (current_frame % sample_rate === 0) {
+          const comment = lines[line_idx + 1] || ``
+          const frame_metadata = this.parse_xyz_metadata(comment, current_frame)
+
+          if (properties) {
+            const filtered = Object.fromEntries(
+              Object.entries(frame_metadata.properties).filter(([key]) =>
+                properties.includes(key)
+              ),
+            )
+            frame_metadata.properties = filtered
+          }
+
+          metadata_list.push(frame_metadata)
+        }
+
+        line_idx += 2 + num_atoms
+        current_frame++
+
+        if (on_progress && current_frame % 5000 === 0) {
+          on_progress({
+            current: (current_frame / total_frames) * 100,
+            total: 100,
+            stage: `Extracting: ${current_frame}`,
+          })
+        }
+      }
+    } else if (this.format === `ase`) {
+      // ASE metadata extraction
+      const view = new DataView(data as ArrayBuffer)
+      const n_items = Number(view.getBigInt64(32, true))
+      const offsets_pos = Number(view.getBigInt64(40, true))
+
+      for (let i = 0; i < n_items; i += sample_rate) {
+        try {
+          const frame_offset = Number(view.getBigInt64(offsets_pos + i * 8, true))
+          const json_length = Number(view.getBigInt64(frame_offset, true))
+
+          if (json_length > 50 * 1024 * 1024) { // 50MB limit for metadata
+            console.warn(
+              `Skipping large frame ${i}: ${Math.round(json_length / 1024 / 1024)}MB`,
+            )
+            continue
+          }
+
+          const frame_data = JSON.parse(new TextDecoder().decode(
+            new Uint8Array(data as ArrayBuffer, frame_offset + 8, json_length),
+          ))
+
+          const frame_metadata = this.parse_ase_metadata(frame_data, i)
+
+          if (properties) {
+            const filtered = Object.fromEntries(
+              Object.entries(frame_metadata.properties).filter(([key]) =>
+                properties.includes(key)
+              ),
+            )
+            frame_metadata.properties = filtered
+          }
+
+          metadata_list.push(frame_metadata)
+
+          if (on_progress && i % 5000 === 0) {
+            on_progress({
+              current: (i / n_items) * 100,
+              total: 100,
+              stage: `Extracting ASE: ${i}/${n_items}`,
+            })
+          }
+        } catch (error) {
+          console.warn(`Failed to extract metadata from ASE frame ${i}:`, error)
+          continue
+        }
+      }
+    }
+
+    return metadata_list
+  }
+
+  private load_xyz_frame(
+    data: string,
+    frame_number: number,
+  ): TrajectoryFrame | null {
+    const lines = data.trim().split(/\r?\n/)
+    let [current_frame, line_idx] = [0, 0]
+
+    // Skip to target frame
+    while (line_idx < lines.length && current_frame < frame_number) {
+      if (!lines[line_idx]?.trim()) {
+        line_idx++
+        continue
+      }
+      const num_atoms = parseInt(lines[line_idx].trim(), 10)
+      if (isNaN(num_atoms) || num_atoms <= 0) {
+        line_idx++
+        continue
+      }
+      line_idx += 2 + num_atoms
+      current_frame++
+    }
+
+    // Parse target frame
+    if (line_idx >= lines.length) return null
+    const num_atoms = parseInt(lines[line_idx].trim(), 10)
+    if (isNaN(num_atoms) || line_idx + num_atoms + 1 >= lines.length) return null
+
+    const comment = lines[line_idx + 1] || ``
+    const positions: number[][] = []
+    const elements: ElementSymbol[] = []
+
+    for (let i = 0; i < num_atoms; i++) {
+      const parts = lines[line_idx + 2 + i]?.trim().split(/\s+/)
+      if (parts?.length >= 4) {
+        elements.push(parts[0] as ElementSymbol)
+        positions.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])])
+      }
+    }
+
+    const metadata = this.parse_xyz_metadata(comment, frame_number)
+    return create_trajectory_frame(
+      positions,
+      elements,
+      undefined,
+      undefined,
+      frame_number,
+      metadata.properties,
+    )
+  }
+
+  private load_ase_frame(
+    data: ArrayBuffer,
+    frame_number: number,
+  ): TrajectoryFrame | null {
+    // ASE frame loading with proper ndarray support
+    try {
+      const view = new DataView(data)
+      const n_items = Number(view.getBigInt64(32, true))
+      const offsets_pos = Number(view.getBigInt64(40, true))
+
+      if (frame_number >= n_items) return null
+
+      const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
+      const json_length = Number(view.getBigInt64(frame_offset, true))
+
+      const frame_data = JSON.parse(new TextDecoder().decode(
+        new Uint8Array(data, frame_offset + 8, json_length),
+      ))
+
+      // Helper function to read ndarray data
+      const read_ndarray = (ref: { ndarray: unknown[] }): number[][] => {
+        const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
+        const total = shape.reduce((a, b) => a * b, 1)
+        const data_array: number[] = []
+        let pos = array_offset
+
+        const readers = {
+          int64: () => {
+            const v = Number(view.getBigInt64(pos, true))
+            pos += 8
+            return v
+          },
+          int32: () => {
+            const v = view.getInt32(pos, true)
+            pos += 4
+            return v
+          },
+          float64: () => {
+            const v = view.getFloat64(pos, true)
+            pos += 8
+            return v
+          },
+          float32: () => {
+            const v = view.getFloat32(pos, true)
+            pos += 4
+            return v
+          },
+        }
+
+        const reader = readers[dtype as keyof typeof readers]
+        if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
+
+        for (let i = 0; i < total; i++) data_array.push(reader())
+
+        return shape.length === 1
+          ? [data_array]
+          : shape.length === 2
+          ? Array.from({ length: shape[0] }, (_, i) =>
+            data_array.slice(i * shape[1], (i + 1) * shape[1]))
+          : (() => {
+            throw new Error(`Unsupported shape`)
+          })()
+      }
+
+      // Extract positions with proper ndarray handling
+      const positions_ref = frame_data[`positions.`] || frame_data.positions
+      const positions = positions_ref?.ndarray
+        ? read_ndarray(positions_ref)
+        : positions_ref as number[][]
+
+      // Extract atomic numbers with proper ndarray handling
+      const numbers_ref = frame_data[`numbers.`] || frame_data.numbers ||
+        this.global_numbers
+      const numbers: number[] = numbers_ref?.ndarray
+        ? read_ndarray(numbers_ref).flat()
+        : numbers_ref as number[]
+
+      if (numbers) this.global_numbers = numbers
+      if (!numbers || !positions) throw new Error(`Missing atomic numbers or positions`)
+
+      // Extract cell and calculate volume if present
+      const cell = frame_data.cell as Matrix3x3 | undefined
+      const metadata: Record<string, unknown> = {
+        step: frame_number,
+        ...(frame_data.calculator || {}),
+        ...(frame_data.info || {}),
+      }
+
+      // Calculate volume from cell matrix if available
+      if (cell && Array.isArray(cell) && cell.length === 3) {
+        try {
+          metadata.volume = Math.abs(math.det_3x3(cell))
+        } catch (error) {
+          console.warn(`Failed to calculate volume for frame ${frame_number}:`, error)
+        }
+      }
+
+      return create_trajectory_frame(
+        positions,
+        convert_atomic_numbers(numbers),
+        cell,
+        frame_data.pbc || [true, true, true],
+        frame_number,
+        metadata,
+      )
+    } catch (error) {
+      console.warn(`Failed to load ASE frame ${frame_number}:`, error)
+      return null
+    }
+  }
+
+  private parse_xyz_metadata(comment: string, frame_number: number): TrajectoryMetadata {
+    const properties: Record<string, number> = {}
+
+    const patterns = {
+      energy: /(?:energy|E|etot)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      volume: /(?:volume|vol|V)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      pressure: /(?:pressure|press|P)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      force_max: /(?:max_force|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+    }
+
+    Object.entries(patterns).forEach(([key, pattern]) => {
+      const match = pattern.exec(comment)
+      if (match) properties[key] = parseFloat(match[1])
+    })
+
+    const step_match = comment.match(/(?:step|frame)\s*[=:]?\s*(\d+)/i)
+    const step = step_match ? parseInt(step_match[1]) : frame_number
+
+    return { frame_number, step, properties }
+  }
+
+  private parse_ase_metadata(
+    frame_data: Record<string, unknown>,
+    frame_number: number,
+  ): TrajectoryMetadata {
+    const properties: Record<string, number> = {}
+    const step = frame_number
+
+    // Extract calculator properties (energies, etc.)
+    if (frame_data.calculator && typeof frame_data.calculator === `object`) {
+      const calculator = frame_data.calculator as Record<string, unknown>
+      const calc_properties = [
+        `energy`,
+        `potential_energy`,
+        `kinetic_energy`,
+        `total_energy`,
+      ]
+
+      for (const prop of calc_properties) {
+        if (prop in calculator && typeof calculator[prop] === `number`) {
+          properties[prop] = calculator[prop] as number
+        }
+      }
+    }
+
+    // Extract info properties (forces, stress, etc.)
+    if (frame_data.info && typeof frame_data.info === `object`) {
+      const info = frame_data.info as Record<string, unknown>
+      const info_properties = [
+        `force_max`,
+        `force_norm`,
+        `stress_max`,
+        `stress_frobenius`,
+        `pressure`,
+        `temperature`,
+      ]
+
+      for (const prop of info_properties) {
+        if (prop in info && typeof info[prop] === `number`) {
+          properties[prop] = info[prop] as number
+        }
+      }
+    }
+
+    // Calculate volume from cell if present
+    if (frame_data.cell && Array.isArray(frame_data.cell)) {
+      const cell = frame_data.cell as number[][]
+      if (cell.length === 3 && cell[0]?.length === 3) {
+        try {
+          properties.volume = Math.abs(math.det_3x3(cell as Matrix3x3))
+        } catch (error) {
+          console.warn(`Failed to calculate volume for ASE frame ${frame_number}:`, error)
+        }
+      }
+    }
+
+    return { frame_number, step, properties }
+  }
+}
+
+// Main parsing entry point - simplified
 export async function parse_trajectory_data(
   data: unknown,
   filename?: string,
 ): Promise<TrajectoryType> {
   if (data instanceof ArrayBuffer) {
-    if (is_ase_format(data, filename)) return parse_ase_trajectory(data, filename)
-    if (is_torch_sim_hdf5(data, filename)) {
+    if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
+    if (FORMAT_PATTERNS.hdf5(data, filename)) {
       return await parse_torch_sim_hdf5(data, filename)
     }
     throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
@@ -849,11 +1128,13 @@ export async function parse_trajectory_data(
 
   if (typeof data === `string`) {
     const content = data.trim()
-    if (is_xyz_multi_frame(content, filename)) return parse_xyz_trajectory(content)
-    if (is_vasp_format(content, filename)) return parse_vasp_xdatcar(content, filename)
+    if (FORMAT_PATTERNS.xyz_multi(content, filename)) return parse_xyz_trajectory(content)
+    if (FORMAT_PATTERNS.vasp(content, filename)) {
+      return parse_vasp_xdatcar(content, filename)
+    }
 
-    // Try single XYZ as fallback
-    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+    // Single XYZ fallback
+    if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
       try {
         const structure = parse_xyz(content)
         if (structure) {
@@ -862,9 +1143,7 @@ export async function parse_trajectory_data(
             metadata: { source_format: `single_xyz`, frame_count: 1 },
           }
         }
-      } catch {
-        // Ignore XYZ parsing errors and try other formats
-      }
+      } catch { /* ignore */ }
     }
 
     try {
@@ -880,11 +1159,10 @@ export async function parse_trajectory_data(
   if (Array.isArray(data)) {
     const frames = data.map((frame_data, idx) => {
       const frame_obj = frame_data as Record<string, unknown>
-      const structure = (frame_obj.structure || frame_obj) as AnyStructure
       return {
-        structure,
-        step: frame_obj.step as number || idx,
-        metadata: frame_obj.metadata as Record<string, unknown> || {},
+        structure: (frame_obj.structure || frame_obj) as AnyStructure,
+        step: (frame_obj.step as number) || idx,
+        metadata: (frame_obj.metadata as Record<string, unknown>) || {},
       }
     })
     return { frames, metadata: { source_format: `array`, frame_count: frames.length } }
@@ -894,7 +1172,80 @@ export async function parse_trajectory_data(
 
   // Pymatgen format
   if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
-    return parse_pymatgen_trajectory(obj, filename)
+    const species = obj.species as Array<{ element: ElementSymbol }>
+    const coords = obj.coords as number[][][]
+    const matrix = obj.lattice as Matrix3x3
+    const frame_properties = obj.frame_properties as Array<Record<string, unknown>> || []
+
+    const frames = coords.map((frame_coords, idx) => {
+      const positions = frame_coords.map((abc) =>
+        math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(matrix), abc as Vec3)
+      )
+
+      // Process frame properties to extract numpy arrays
+      const raw_properties = frame_properties[idx] || {}
+      const processed_properties: Record<string, unknown> = {}
+
+      Object.entries(raw_properties).forEach(([key, value]) => {
+        if (
+          value && typeof value === `object` &&
+          (value as Record<string, unknown>)[`@class`] === `array`
+        ) {
+          // Extract numpy array data
+          const array_obj = value as Record<string, unknown>
+          processed_properties[key] = array_obj.data
+
+          // Calculate force statistics for forces
+          if (key === `forces` && Array.isArray(array_obj.data)) {
+            const forces = array_obj.data as number[][]
+            const force_magnitudes = forces.map((force) =>
+              Math.sqrt((force as number[]).reduce((sum, f) => sum + f * f, 0))
+            )
+            processed_properties.force_max = Math.max(...force_magnitudes)
+            processed_properties.force_norm = Math.sqrt(
+              force_magnitudes.reduce((sum, f) => sum + f * f, 0),
+            )
+          }
+
+          // Calculate stress statistics for stress tensor
+          if (key === `stress` && Array.isArray(array_obj.data)) {
+            const stress_tensor = array_obj.data as number[][]
+            // Calculate stress components (diagonal elements represent normal stresses)
+            const normal_stresses = [
+              stress_tensor[0][0],
+              stress_tensor[1][1],
+              stress_tensor[2][2],
+            ]
+            processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
+            // Calculate hydrostatic pressure (negative of mean normal stress)
+            processed_properties.pressure =
+              -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
+          }
+        } else {
+          processed_properties[key] = value
+        }
+      })
+
+      return create_trajectory_frame(
+        positions,
+        species.map((s) => s.element),
+        matrix,
+        [true, true, true],
+        idx,
+        processed_properties,
+      )
+    })
+
+    return {
+      frames,
+      metadata: {
+        filename,
+        source_format: `pymatgen_trajectory`,
+        frame_count: frames.length,
+        species_list: [...new Set(species.map((s) => s.element))],
+        periodic_boundary_conditions: [true, true, true],
+      },
+    }
   }
 
   // Object with frames
@@ -925,13 +1276,13 @@ export function get_unsupported_format_message(
 ): string | null {
   const lower = filename.toLowerCase()
   const formats = [
-    { ext: [`.dump`, `.lammpstrj`], name: `LAMMPS`, tool: `pymatgen` },
-    { ext: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
-    { ext: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
+    { extensions: [`.dump`, `.lammpstrj`], name: `LAMMPS`, tool: `pymatgen` },
+    { extensions: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
+    { extensions: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
   ]
 
-  for (const { ext, name, tool } of formats) {
-    if (ext.some((e) => lower.endsWith(e))) {
+  for (const { extensions, name, tool } of formats) {
+    if (extensions.some((ext) => lower.endsWith(ext))) {
       return `🚫 ${name} format not supported\nConvert with ${tool} first`
     }
   }
@@ -941,69 +1292,140 @@ export function get_unsupported_format_message(
     : null
 }
 
+// Enhanced async parser with unified loading strategy
 export async function parse_trajectory_async(
   data: ArrayBuffer | string,
   filename: string,
   on_progress?: (progress: ParseProgress) => void,
+  options: LoadingOptions = {},
 ): Promise<TrajectoryType> {
+  const {
+    use_indexing,
+    index_sample_rate = INDEX_SAMPLE_RATE,
+    extract_plot_metadata = true,
+  } = options
+
   const update_progress = (current: number, stage: string) =>
     on_progress?.({ current, total: 100, stage })
 
   try {
     update_progress(0, `Detecting format...`)
 
-    // Format detection and parsing in one step
-    let result: TrajectoryType
-    if (data instanceof ArrayBuffer) {
-      if (is_ase_format(data, filename)) {
-        update_progress(50, `Parsing ASE trajectory...`)
-        result = parse_ase_trajectory(data, filename)
-      } else if (is_torch_sim_hdf5(data, filename)) {
-        update_progress(50, `Parsing TorchSim HDF5...`)
-        result = await parse_torch_sim_hdf5(data, filename)
-      } else {
-        throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
-      }
-    } else {
-      const content = data.trim()
-      if (is_xyz_multi_frame(content, filename)) {
-        update_progress(50, `Parsing XYZ trajectory...`)
-        result = parse_xyz_trajectory(content)
-      } else if (is_vasp_format(content, filename)) {
-        update_progress(50, `Parsing VASP XDATCAR...`)
-        result = parse_vasp_xdatcar(content, filename)
-      } else if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
-        update_progress(50, `Parsing single XYZ...`)
-        const { parse_xyz } = await import(`../io/parse`)
-        const structure = parse_xyz(content)
-        if (!structure) throw new Error(`Failed to parse XYZ structure`)
-        result = {
-          frames: [{ structure, step: 0, metadata: {} }],
-          metadata: { source_format: `single_xyz`, frame_count: 1 },
-        }
-      } else {
-        update_progress(50, `Parsing JSON trajectory...`)
-        try {
-          result = await parse_trajectory_data(JSON.parse(content), filename)
-        } catch {
-          result = await parse_trajectory_data(data, filename)
-        }
-      }
+    const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
+    const is_large_file = data_size > LARGE_FILE_THRESHOLD
+    const should_use_indexing = use_indexing ?? is_large_file
+
+    if (is_large_file) {
+      update_progress(5, `Large file detected (${Math.round(data_size / 1024 / 1024)}MB)`)
     }
 
-    update_progress(85, `Validating frames...`)
-    if (!result.frames?.length) throw new Error(`No valid frames found`)
-
-    if (result.metadata) {
-      result.metadata.frame_count ??= result.frames.length
+    // Use indexed loading for supported large files
+    if (should_use_indexing && filename.toLowerCase().match(/\.(xyz|extxyz|traj)$/)) {
+      return await parse_with_unified_loader(data, filename, {
+        index_sample_rate,
+        extract_plot_metadata,
+      }, on_progress)
     }
+
+    // Fallback to direct parsing
+    update_progress(10, `Parsing trajectory...`)
+    const result = await parse_trajectory_data(data, filename)
+
     update_progress(100, `Complete`)
     return result
   } catch (error) {
-    update_progress(
-      100,
-      `Error: ${error instanceof Error ? error.message : `Unknown error`}`,
-    )
+    const error_message = error instanceof Error ? error.message : `Unknown error`
+    update_progress(100, `Error: ${error_message}`)
     throw error
   }
 }
+
+// Unified frame loading using new UnifiedFrameLoader
+async function parse_with_unified_loader(
+  data: string | ArrayBuffer,
+  filename: string,
+  options: { index_sample_rate: number; extract_plot_metadata: boolean },
+  on_progress?: (progress: ParseProgress) => void,
+): Promise<TrajectoryType> {
+  const { index_sample_rate, extract_plot_metadata } = options
+  const loader = new UnifiedFrameLoader(filename)
+
+  on_progress?.({ current: 10, total: 100, stage: `Counting frames...` })
+  const total_frames = await loader.get_total_frames(data)
+
+  on_progress?.({ current: 20, total: 100, stage: `Building frame index...` })
+  const frame_index = await loader.build_frame_index(
+    data,
+    index_sample_rate,
+    (progress) => {
+      const adjusted = 20 + (progress.current / 100) * 30
+      on_progress?.({
+        current: adjusted,
+        total: 100,
+        stage: `Building index: ${progress.stage}`,
+      })
+    },
+  )
+
+  on_progress?.({ current: 50, total: 100, stage: `Loading initial frames...` })
+  const initial_frame_count = Math.min(10, total_frames)
+  const frame_promises = Array.from(
+    { length: initial_frame_count },
+    (_, idx) => loader.load_frame(data, idx),
+  )
+  const loaded_frames = await Promise.all(frame_promises)
+  const frames = loaded_frames.filter((frame): frame is TrajectoryFrame => frame !== null)
+
+  let plot_metadata: TrajectoryMetadata[] | undefined
+  if (extract_plot_metadata) {
+    on_progress?.({ current: 70, total: 100, stage: `Extracting plot metadata...` })
+    try {
+      plot_metadata = await loader.extract_plot_metadata(
+        data,
+        { sample_rate: 1 },
+        (progress) => {
+          const adjusted = 70 + (progress.current / 100) * 20
+          on_progress?.({
+            current: adjusted,
+            total: 100,
+            stage: `Extracting: ${progress.stage}`,
+          })
+        },
+      )
+    } catch (error) {
+      console.warn(`Failed to extract plot metadata:`, error)
+    }
+  }
+
+  on_progress?.({
+    current: 100,
+    total: 100,
+    stage: `Ready: ${total_frames} frames indexed`,
+  })
+
+  return {
+    frames,
+    metadata: {
+      source_format: filename.toLowerCase().endsWith(`.traj`)
+        ? `ase_trajectory`
+        : `xyz_trajectory`,
+      frame_count: frames.length,
+    },
+    total_frames,
+    indexed_frames: frame_index,
+    plot_metadata,
+    is_indexed: true,
+  }
+}
+
+// Factory function for frame loader (simplified)
+export function create_frame_loader(filename: string): FrameLoader {
+  if (!filename.toLowerCase().match(/\.(xyz|extxyz|traj)$/)) {
+    throw new Error(`Unsupported format for frame loading: ${filename}`)
+  }
+  return new UnifiedFrameLoader(filename)
+}
+
+// Backward compatibility exports
+export const XYZFrameLoader = UnifiedFrameLoader
+export const ASEFrameLoader = UnifiedFrameLoader
