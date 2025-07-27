@@ -47,14 +47,13 @@ export const STRUCT_DEFAULTS = {
     camera_projection: `perspective`,
     zoom_speed: 0.3,
     atom_label_color: `#ffffff`,
-    atom_label_bg_color: `rgba(0, 0, 0, 0)`,
-    atom_label_padding: 3,
-    atom_label_offset: [0, 0.75, 0] as Vec3,
+    atom_label_bg_color: `color-mix(in srgb, #000000 0%, transparent)`,
+    atom_label_padding: 0,
+    atom_label_offset: [0, 0.75, 0] as Vec3, // 3D offset for atom label positioning relative to atom center
   },
   atom: {
     font_size: 1,
     label_font_size: 1,
-    label_offset: [0, 1.5],
     material_type: `MeshPhongMaterial`,
     radius: 0.5,
   },

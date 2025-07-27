@@ -319,7 +319,7 @@
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
   }
   .draggable-panel :global(input[type='range']) {
-    margin-left: auto;
+    margin-left: 4pt;
     width: 100px;
     flex-shrink: 0;
   }

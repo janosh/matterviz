@@ -560,7 +560,7 @@
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(2pt, 0.5cqw, 6pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
-    /* we also need crazy high z-index to to make info/control panel occlude threlte/extras' <HTML> elements for site labels */
+    /* we also need crazy high z-index to make info/control panel occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
     opacity: 0;
     pointer-events: none;

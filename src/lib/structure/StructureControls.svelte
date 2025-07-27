@@ -76,28 +76,30 @@
     }
   })
 
-  // Atom label background color management
-  let atom_label_hex_color = $state(scene_props.atom_label_color || `#ffffff`)
+  // Atom label color management
+  let atom_label_hex_color = $state(
+    scene_props.atom_label_color || STRUCT_DEFAULTS.scene_props.atom_label_color,
+  )
+  let atom_label_bg_hex_color = $state(
+    scene_props.atom_label_bg_color ||
+      STRUCT_DEFAULTS.scene_props.atom_label_bg_color,
+  )
   let atom_label_background_opacity = $state(0)
 
-  $effect(() => { // Update scene props when color inputs change
+  $effect(() => {
     scene_props.atom_label_color = atom_label_hex_color
-
-    const hex = atom_label_hex_color.replace(`#`, ``)
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
     scene_props.atom_label_bg_color =
-      `rgba(${r}, ${g}, ${b}, ${atom_label_background_opacity})`
+      `color-mix(in srgb, ${atom_label_bg_hex_color} ${
+        atom_label_background_opacity * 100
+      }%, transparent)`
   })
 
-  $effect(() => { // Ensure atom_label_offset is always available
-    if (!scene_props.atom_label_offset) {
-      scene_props.atom_label_offset = [
-        ...STRUCT_DEFAULTS.scene_props.atom_label_offset,
-      ]
-    }
-  })
+  // Ensure atom_label_offset is always available
+  if (!scene_props.atom_label_offset) {
+    scene_props.atom_label_offset = [
+      ...STRUCT_DEFAULTS.scene_props.atom_label_offset,
+    ]
+  }
 
   // Copy button feedback state
   let copy_status = $state<
@@ -415,7 +417,7 @@
         Color
         <input type="color" bind:value={atom_label_hex_color} />
       </label>
-      <label>
+      <label class="slider-control">
         Size
         <input
           type="range"
@@ -429,7 +431,7 @@
     <div class="panel-row">
       <label>
         Background
-        <input type="color" bind:value={atom_label_hex_color} />
+        <input type="color" bind:value={atom_label_bg_hex_color} />
       </label>
       <label class="slider-control">
         Opacity
