@@ -46,6 +46,11 @@ export const STRUCT_DEFAULTS = {
     same_size_atoms: false,
     camera_projection: `perspective`,
     zoom_speed: 0.3,
+    atom_label_size: 1,
+    atom_label_color: `#ffffff`,
+    atom_label_bg_color: `color-mix(in srgb, #000000 0%, transparent)`,
+    atom_label_padding: 0,
+    atom_label_offset: [0, 0.75, 0] as Vec3, // 3D offset for atom label positioning relative to atom center
   },
 } as const
 
@@ -83,11 +88,7 @@ export type PymatgenLattice = {
 export type PymatgenMolecule = { sites: Site[]; charge?: number; id?: string }
 export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
 
-export type Edge = {
-  to_jimage: [number, number, number]
-  id: number
-  key: number
-}
+export type Edge = { to_jimage: Vec3; id: number; key: number }
 
 export type Graph = {
   directed: boolean
@@ -210,7 +211,7 @@ export interface StructureHandlerData {
   total_atoms?: number
   error_msg?: string
   is_fullscreen?: boolean
-  camera_position?: [number, number, number]
+  camera_position?: Vec3
   camera_has_moved?: boolean
   color_scheme?: string
   performance_mode?: `quality` | `speed`

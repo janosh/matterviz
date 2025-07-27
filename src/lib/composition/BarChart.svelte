@@ -76,15 +76,15 @@
   let segments = $derived.by(() => {
     const element_entries = Object.entries(composition).filter(([_, amount]) =>
       amount && amount > 0
-    )
+    ) as [ElementSymbol, number][]
     if (element_entries.length === 0) return []
 
     let [above_labels, below_labels] = [0, 0]
     let current_x = 0
 
     return element_entries.map(([element, amount]) => {
-      const percentage = percentages[element as ElementSymbol] || 0
-      const color = element_colors[element as ElementSymbol] || `#cccccc`
+      const percentage = percentages[element] || 0
+      const color = element_colors[element] || `#cccccc`
       const width = (percentage / 100) * size
       const x = current_x
       current_x += width
@@ -115,7 +115,7 @@
       }
 
       return {
-        element: element as ElementSymbol,
+        element,
         amount: amount!,
         percentage,
         color,

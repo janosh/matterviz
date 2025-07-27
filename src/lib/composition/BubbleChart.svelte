@@ -57,9 +57,9 @@
     // Create hierarchy data structure for D3 pack
     const hierarchy_data = {
       children: element_entries.map(([element, amount]) => ({
-        element: element as ElementSymbol,
+        element,
         amount: amount!,
-        color: element_colors[element as ElementSymbol] || `#cccccc`,
+        color: element_colors[element] || `#cccccc`,
       })),
     }
 

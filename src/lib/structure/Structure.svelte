@@ -470,7 +470,6 @@
           bind:scene_props
           bind:lattice_props
           bind:show_image_atoms
-          bind:show_site_labels
           bind:background_color
           bind:background_opacity
           bind:color_scheme
@@ -503,7 +502,6 @@
         <StructureScene
           structure={scene_structure}
           {...scene_props}
-          {show_site_labels}
           {lattice_props}
           bind:camera_is_moving
         />
@@ -562,7 +560,8 @@
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(2pt, 0.5cqw, 6pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
-    z-index: var(--struct-buttons-z-index, 2);
+    /* we also need crazy high z-index to make info/control panel occlude threlte/extras' <HTML> elements for site labels */
+    z-index: var(--struct-buttons-z-index, 100000000);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
