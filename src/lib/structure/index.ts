@@ -17,43 +17,6 @@ export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export { default as Vector } from './Vector.svelte'
 
-export const STRUCT_DEFAULTS = {
-  cell: {
-    edge_color: `#ffffff`,
-    edge_opacity: 0.4,
-    surface_color: `#ffffff`,
-    surface_opacity: 0.05,
-    color: `#ffffff`,
-    line_width: 1.5,
-  },
-  bond: {
-    thickness: 0.1,
-    offset: 0,
-    color: `#ffffff`,
-  },
-  vector: {
-    scale: 1,
-    color: `#ff6b6b`,
-    shaft_radius: 0.02,
-    arrow_head_radius: 0.08,
-    arrow_head_length: 0.2,
-  },
-  scene_props: {
-    rotation_damping: 0.05,
-    atom_radius: 1,
-    show_atoms: true,
-    auto_rotate: 0,
-    same_size_atoms: false,
-    camera_projection: `perspective`,
-    zoom_speed: 0.3,
-    atom_label_size: 1,
-    atom_label_color: `#ffffff`,
-    atom_label_bg_color: `color-mix(in srgb, #000000 0%, transparent)`,
-    atom_label_padding: 0,
-    atom_label_offset: [0, 0.75, 0] as Vec3, // 3D offset for atom label positioning relative to atom center
-  },
-} as const
-
 export type Species = {
   element: ElementSymbol
   occu: number

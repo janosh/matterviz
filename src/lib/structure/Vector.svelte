@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Vec3 } from '$lib'
   import * as math from '$lib/math'
-  import { STRUCT_DEFAULTS } from '$lib/structure'
+  import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
   import { Euler, Quaternion, Vector3 } from 'three'
 
@@ -18,11 +18,11 @@
   let {
     position,
     vector,
-    scale = STRUCT_DEFAULTS.vector.scale,
-    color = STRUCT_DEFAULTS.vector.color,
-    shaft_radius = STRUCT_DEFAULTS.vector.shaft_radius,
-    arrow_head_radius = STRUCT_DEFAULTS.vector.arrow_head_radius,
-    arrow_head_length = STRUCT_DEFAULTS.vector.arrow_head_length,
+    scale = DEFAULTS.structure.force_scale,
+    color = DEFAULTS.structure.force_color,
+    shaft_radius = DEFAULTS.structure.force_shaft_radius,
+    arrow_head_radius = DEFAULTS.structure.force_arrow_head_radius,
+    arrow_head_length = DEFAULTS.structure.force_arrow_head_length,
   }: Props = $props()
 
   // Calculate vector magnitude and normalized direction

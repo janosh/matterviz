@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Vec3 } from '$lib'
-  import { STRUCT_DEFAULTS } from '$lib/structure'
+  import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
@@ -16,8 +16,8 @@
   let {
     from,
     to,
-    color = STRUCT_DEFAULTS.bond.color,
-    thickness = STRUCT_DEFAULTS.bond.thickness,
+    color = DEFAULTS.structure.bond_color,
+    thickness = DEFAULTS.structure.bond_thickness,
     offset = 0,
     from_color,
     to_color,
