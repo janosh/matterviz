@@ -296,3 +296,12 @@ export function det_3x3(matrix: Matrix3x3): number {
 }
 
 export const LOG_MIN_EPS = 1e-9 // Constants
+
+export function get_coefficient_of_variation(values: number[]): number {
+  if (values.length <= 1) return 0
+  const mean = values.reduce((sum, val) => sum + val, 0) / values.length
+  const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
+  return Math.abs(mean) > 1e-10
+    ? Math.sqrt(variance) / Math.abs(mean)
+    : Math.sqrt(variance)
+}

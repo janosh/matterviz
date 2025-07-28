@@ -346,8 +346,8 @@
                   stroke-width={mode === `overlay` ? bar_stroke_width : 0}
                   role="button"
                   tabindex="0"
-                  onmousemove={(e) =>
-                  handle_mouse_move(e, (bin.x0! + bin.x1!) / 2, bin.length, label)}
+                  onmousemove={(evt) =>
+                  handle_mouse_move(evt, (bin.x0! + bin.x1!) / 2, bin.length, label)}
                   onmouseleave={() => {
                     hover_info = null
                     change(null)

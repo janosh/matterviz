@@ -102,9 +102,9 @@
 
   let electronegativity_range = $derived([
     Math.min(
-      ...element_data.map((el) => (el.electronegativity || 0) * 100).filter((e) =>
-        e > 0
-      ),
+      ...element_data.map((el) => (el.electronegativity || 0) * 100).filter((
+        elec_neg,
+      ) => elec_neg > 0),
     ),
     Math.max(...element_data.map((el) => (el.electronegativity || 0) * 100)),
   ] as [number, number])
@@ -120,7 +120,7 @@
     Math.min(
       ...element_data
         .map((el) => Math.abs(el.electron_affinity || 0))
-        .filter((e) => e > 0),
+        .filter((elec_aff) => elec_aff > 0),
     ),
     Math.max(...element_data.map((el) => Math.abs(el.electron_affinity || 0))),
   ] as [number, number])

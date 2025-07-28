@@ -990,3 +990,30 @@ test.each([
 ])(`det_3x3 $3`, (matrix, expected) => {
   expect(math.det_3x3(matrix as math.Matrix3x3)).toBeCloseTo(expected, 10)
 })
+
+describe(`get_coefficient_of_variation`, () => {
+  test.each([
+    { values: [], expected: 0, desc: `empty array` },
+    { values: [5], expected: 0, desc: `single value` },
+    { values: [5, 5, 5, 5], expected: 0, desc: `constant values` },
+    { values: [10, 20], expected: 1 / 3, desc: `simple case` }, // std=5, mean=15, CoV=5/15=1/3
+    { values: [1, 2, 3, 4, 5], expected: Math.sqrt(2) / 3, desc: `sequential values` }, // std=sqrt(2), mean=3
+    { values: [-2, -1, 0, 1, 2], expected: Math.sqrt(2), desc: `zero mean returns std` }, // returns sqrt(variance)
+    {
+      values: [1e-11, 2e-11, 3e-11],
+      expected: Math.sqrt(2 / 3) * 1e-11,
+      desc: `near-zero mean case`,
+    }, // mean=2e-11 < 1e-10, returns sqrt(variance)
+    {
+      values: [100, 200, 300],
+      expected: Math.sqrt(20000 / 3) / 200,
+      desc: `large values`,
+    }, // std=sqrt(20000/3), mean=200
+  ])(
+    `$desc: get_coefficient_of_variation($values) = $expected`,
+    ({ values, expected }) => {
+      const result = math.get_coefficient_of_variation(values)
+      expect(result).toBeCloseTo(expected, 3)
+    },
+  )
+})
