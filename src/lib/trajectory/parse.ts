@@ -654,7 +654,7 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
 }
 
 // Unified Frame Loader - replaces separate XYZ and ASE loaders
-export class UnifiedFrameLoader implements FrameLoader {
+export class TrajFrameReader implements FrameLoader {
   private format: `xyz` | `ase`
   private global_numbers?: number[] // For ASE trajectories
 
@@ -1312,7 +1312,7 @@ export async function parse_trajectory_async(
   }
 }
 
-// Unified frame loading using new UnifiedFrameLoader
+// Unified frame loading using new TrajFrameReader
 async function parse_with_unified_loader(
   data: string | ArrayBuffer,
   filename: string,
@@ -1320,7 +1320,7 @@ async function parse_with_unified_loader(
   on_progress?: (progress: ParseProgress) => void,
 ): Promise<TrajectoryType> {
   const { index_sample_rate, extract_plot_metadata } = options
-  const loader = new UnifiedFrameLoader(filename)
+  const loader = new TrajFrameReader(filename)
 
   on_progress?.({ current: 10, total: 100, stage: `Counting frames...` })
   const total_frames = await loader.get_total_frames(data)
@@ -1395,9 +1395,9 @@ export function create_frame_loader(filename: string): FrameLoader {
   if (!filename.toLowerCase().match(/\.(xyz|extxyz|traj)$/)) {
     throw new Error(`Unsupported format for frame loading: ${filename}`)
   }
-  return new UnifiedFrameLoader(filename)
+  return new TrajFrameReader(filename)
 }
 
 // Backward compatibility exports
-export const XYZFrameLoader = UnifiedFrameLoader
-export const ASEFrameLoader = UnifiedFrameLoader
+export const XYZFrameLoader = TrajFrameReader
+export const ASEFrameLoader = TrajFrameReader

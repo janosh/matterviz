@@ -4,7 +4,7 @@ import {
   create_frame_loader,
   LARGE_FILE_THRESHOLD,
   parse_trajectory_async,
-  UnifiedFrameLoader,
+  TrajFrameReader,
 } from '$lib/trajectory/parse'
 import { describe, expect, it } from 'vitest'
 
@@ -79,7 +79,7 @@ describe(`Trajectory Streaming`, () => {
   describe(`Frame Indexing`, () => {
     it(`should build frame index for XYZ trajectory`, async () => {
       const data = create_synthetic_xyz(10)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       const index = await loader.build_frame_index(data, 2) // Every 2nd frame
 
@@ -96,7 +96,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should build frame index for ASE trajectory`, async () => {
       const data = create_synthetic_ase(20)
-      const loader = new UnifiedFrameLoader(`test.traj`)
+      const loader = new TrajFrameReader(`test.traj`)
 
       const index = await loader.build_frame_index(data, 5) // Every 5th frame
 
@@ -109,7 +109,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should report progress during indexing`, async () => {
       const data = create_synthetic_xyz(1000) // Larger for progress testing
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
       const progress_calls: ParseProgress[] = []
 
       await loader.build_frame_index(data, 1, (progress) => {
@@ -125,7 +125,7 @@ describe(`Trajectory Streaming`, () => {
   describe(`Lazy Frame Loading`, () => {
     it(`should load specific frames without loading all`, async () => {
       const data = create_synthetic_xyz(50)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Load frames 5, 10, 45 - non-sequential access
       const frame_5 = await loader.load_frame(data, 5)
@@ -144,7 +144,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should handle out-of-bounds frame requests gracefully`, async () => {
       const data = create_synthetic_xyz(10)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       const invalid_frame = await loader.load_frame(data, 15) // Beyond available frames
       expect(invalid_frame).toBeNull()
@@ -152,7 +152,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should work with frame index for faster access`, async () => {
       const data = create_synthetic_xyz(20)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Load frame using index (should be faster for large files)
       const frame = await loader.load_frame(data, 8)
@@ -163,7 +163,7 @@ describe(`Trajectory Streaming`, () => {
   describe(`Plot Metadata Extraction`, () => {
     it(`should extract metadata without loading full frames`, async () => {
       const data = create_synthetic_xyz(30)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       const metadata = await loader.extract_plot_metadata(data, { sample_rate: 3 })
 
@@ -176,7 +176,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should filter properties when requested`, async () => {
       const data = create_synthetic_xyz(10)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       const metadata = await loader.extract_plot_metadata(data, {
         sample_rate: 1,
@@ -189,7 +189,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should report progress during metadata extraction`, async () => {
       const data = create_synthetic_xyz(5000) // Larger to trigger progress
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
       const progress_calls: ParseProgress[] = []
 
       await loader.extract_plot_metadata(data, { sample_rate: 1 }, (progress) => {
@@ -264,7 +264,7 @@ describe(`Trajectory Streaming`, () => {
   describe(`Memory Efficiency`, () => {
     it(`should build index without storing full frame data`, async () => {
       const data = create_synthetic_xyz(100)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Build frame index (sample_rate=1 means index all frames)
       const frame_index = await loader.build_frame_index(data, 1)
@@ -282,7 +282,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should load frames on-demand without caching`, async () => {
       const data = create_synthetic_xyz(20)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Load several frames
       const frame_5 = await loader.load_frame(data, 5)
@@ -303,7 +303,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should handle large frame counts efficiently`, async () => {
       const data = create_synthetic_xyz(1000) // Large number of frames
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Building index should be fast and not timeout (sample every 10th frame)
       const start_time = performance.now()
@@ -331,7 +331,7 @@ describe(`Trajectory Streaming`, () => {
       // Corrupt one frame by replacing valid atom count with invalid text
       data = data.replace(`3\nenergy=-10.5`, `invalid\nenergy=-10.5`)
 
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Should skip corrupted frame and continue
       const total_frames = await loader.get_total_frames(data)
@@ -347,7 +347,7 @@ describe(`Trajectory Streaming`, () => {
     })
 
     it(`should handle empty or invalid trajectory data`, async () => {
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       const empty_frames = await loader.get_total_frames(``)
       expect(empty_frames).toBe(0)
@@ -358,7 +358,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should handle progress callback errors gracefully`, async () => {
       const data = create_synthetic_xyz(20)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       const failing_callback = () => {
         throw new Error(`Progress callback failed`)
@@ -397,8 +397,8 @@ describe(`Trajectory Streaming`, () => {
       const xyz_loader = create_frame_loader(`trajectory.xyz`)
       const ase_loader = create_frame_loader(`trajectory.traj`)
 
-      expect(xyz_loader).toBeInstanceOf(UnifiedFrameLoader)
-      expect(ase_loader).toBeInstanceOf(UnifiedFrameLoader)
+      expect(xyz_loader).toBeInstanceOf(TrajFrameReader)
+      expect(ase_loader).toBeInstanceOf(TrajFrameReader)
 
       // Should throw for unsupported formats
       expect(() => create_frame_loader(`trajectory.pdb`)).toThrow()
@@ -408,7 +408,7 @@ describe(`Trajectory Streaming`, () => {
   describe(`Performance Characteristics`, () => {
     it(`should have O(1) frame access time with indexing`, async () => {
       const data = create_synthetic_xyz(100)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Time frame access at different positions
       const measure_access = async (frame_num: number) => {
@@ -430,7 +430,7 @@ describe(`Trajectory Streaming`, () => {
 
     it(`should extract metadata faster than loading full frames`, async () => {
       const data = create_synthetic_xyz(50)
-      const loader = new UnifiedFrameLoader(`test.xyz`)
+      const loader = new TrajFrameReader(`test.xyz`)
 
       // Time metadata extraction
       const metadata_start = performance.now()
