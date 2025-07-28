@@ -116,13 +116,13 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 
 ### Setting Categories
 
-| Category        | Description                     | Example Settings                                            |
-| --------------- | ------------------------------- | ----------------------------------------------------------- |
-| **General**     | Global appearance and behavior  | `color_scheme`, `background_color`, `show_image_atoms`      |
-| **Structure**   | 3D structure visualization      | `atom_radius`, `bond_thickness`, `show_lattice`, `lighting` |
-| **Trajectory**  | Animation and playback controls | `fps`, `auto_play`, `display_mode`, `show_controls`         |
-| **Plots**       | Scatter plots and histograms    | `scatter_point_size`, `plot_grid_lines`, `auto_fit_range`   |
-| **Performance** | Memory and processing options   | `chunk_size`, `use_indexing`, `sphere_segments`             |
+| Category        | Description                     | Example Settings                                          |
+| --------------- | ------------------------------- | --------------------------------------------------------- |
+| **General**     | Global appearance and behavior  | `color_scheme`, `background_color`, `show_image_atoms`    |
+| **Structure**   | 3D structure visualization      | `atom_radius`, `bond_thickness`, `show_cell`, `lighting`  |
+| **Trajectory**  | Animation and playback controls | `fps`, `auto_play`, `display_mode`, `show_controls`       |
+| **Plots**       | Scatter plots and histograms    | `scatter_point_size`, `plot_grid_lines`, `auto_fit_range` |
+| **Performance** | Memory and processing options   | `chunk_size`, `use_indexing`, `sphere_segments`           |
 
 ### Pro Tips
 

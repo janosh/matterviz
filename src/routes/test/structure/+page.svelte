@@ -29,7 +29,7 @@
     cell_surface_color: `white`,
     cell_edge_opacity: 0.4,
     cell_surface_opacity: 0.01, // Very subtle surface visibility
-    cell_line_width: DEFAULTS.structure.lattice_line_width,
+    cell_line_width: DEFAULTS.structure.cell_line_width,
     show_vectors: true,
   })
 

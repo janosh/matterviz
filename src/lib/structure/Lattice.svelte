@@ -26,11 +26,11 @@
   }
   let {
     matrix = undefined,
-    cell_edge_color = DEFAULTS.structure.lattice_edge_color,
-    cell_surface_color = DEFAULTS.structure.lattice_surface_color,
-    cell_line_width = DEFAULTS.structure.lattice_line_width,
-    cell_edge_opacity = DEFAULTS.structure.lattice_edge_opacity,
-    cell_surface_opacity = DEFAULTS.structure.lattice_surface_opacity,
+    cell_edge_color = DEFAULTS.structure.cell_edge_color,
+    cell_surface_color = DEFAULTS.structure.cell_surface_color,
+    cell_line_width = DEFAULTS.structure.cell_line_width,
+    cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
+    cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
     show_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] as Vec3,

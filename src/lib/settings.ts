@@ -59,13 +59,13 @@ export interface SettingsConfig {
     force_shaft_radius: SettingType<number>
     force_arrow_head_radius: SettingType<number>
     force_arrow_head_length: SettingType<number>
-    show_lattice: SettingType<boolean>
+    show_cell: SettingType<boolean>
     show_vectors: SettingType<boolean>
-    lattice_edge_opacity: SettingType<number>
-    lattice_surface_opacity: SettingType<number>
-    lattice_edge_color: SettingType<string>
-    lattice_surface_color: SettingType<string>
-    lattice_line_width: SettingType<number>
+    cell_edge_opacity: SettingType<number>
+    cell_surface_opacity: SettingType<number>
+    cell_edge_color: SettingType<string>
+    cell_surface_color: SettingType<string>
+    cell_line_width: SettingType<number>
   }
 
   // Trajectory viewer settings
@@ -344,37 +344,37 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0.05,
       maximum: 0.5,
     },
-    show_lattice: {
+    show_cell: {
       value: false,
-      description: `Display unit cell lattice`,
+      description: `Display system cell`,
     },
     show_vectors: {
       value: false,
-      description: `Display lattice vectors`,
+      description: `Display cell vectors`,
     },
-    lattice_edge_opacity: {
+    cell_edge_opacity: {
       value: 0.3,
-      description: `Opacity of lattice edge lines`,
+      description: `Opacity of cell edge lines`,
       minimum: 0,
       maximum: 1,
     },
-    lattice_surface_opacity: {
+    cell_surface_opacity: {
       value: 0.1,
-      description: `Opacity of lattice surfaces`,
+      description: `Opacity of cell surfaces`,
       minimum: 0,
       maximum: 1,
     },
-    lattice_edge_color: {
+    cell_edge_color: {
       value: `#808080`,
-      description: `Color of lattice edges`,
+      description: `Color of cell edges`,
     },
-    lattice_surface_color: {
+    cell_surface_color: {
       value: `#e0e0e0`,
-      description: `Color of lattice surfaces`,
+      description: `Color of cell surfaces`,
     },
-    lattice_line_width: {
+    cell_line_width: {
       value: 1.5,
-      description: `Width of lattice edge lines`,
+      description: `Width of cell edge lines`,
       minimum: 0.5,
       maximum: 5.0,
     },
