@@ -50,12 +50,7 @@ export async function load_from_url(
   const known_bin_extensions = `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz`.split(` `)
   if (known_bin_extensions.includes(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
-    const resp = await fetch(url, {
-      headers: {
-        // Add headers to hint at binary content expectation
-        'Accept': `application/octet-stream, */*`,
-      },
-    })
+    const resp = await fetch(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
 
     // Handle gzipped files with proper content-encoding detection
@@ -103,8 +98,7 @@ export async function load_from_url(
     return callback(await resp.arrayBuffer(), filename)
   }
 
-  // Check for magic bytes
-  try {
+  try { // Check for magic bytes
     const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
     if (head.ok) {
       const buf = new Uint8Array(await head.arrayBuffer())
@@ -149,7 +143,7 @@ export const detect_structure_type = (
       : `unknown`
   }
 
-  if (lower_filename.match(/\.xyz(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+  if (lower_filename.match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
     const lines = content.trim().split(/\r?\n/)
     return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
   }

@@ -73,7 +73,7 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
   const is_supported = should_auto_render(filename)
   vscode.commands.executeCommand(
     `setContext`,
-    `matterviz.supportedResource`,
+    `matterviz.supported_resource`,
     is_supported,
   )
 }
@@ -147,7 +147,6 @@ const get_system_theme = (): ThemeName => {
 export const get_defaults = (): DefaultSettings => {
   try {
     const config = vscode.workspace.getConfiguration(`matterviz`)
-    const defaults_config = config.get(`defaults`, {})
     const user_settings: Partial<DefaultSettings> = {}
 
     // Helper to read settings section
@@ -156,11 +155,9 @@ export const get_defaults = (): DefaultSettings => {
       defaults_section: Record<string, unknown>,
     ) => {
       const settings: Record<string, unknown> = {}
+      const section_config = config.get(section_key, {})
       for (const key of Object.keys(defaults_section)) {
-        const value = section_key === `structure` || section_key === `trajectory` ||
-            section_key === `composition`
-          ? defaults_config?.[section_key]?.[key]
-          : defaults_config?.[key]
+        const value = section_config?.[key]
         if (value !== undefined) settings[key] = value
       }
       return Object.keys(settings).length > 0 ? settings : undefined
@@ -175,9 +172,8 @@ export const get_defaults = (): DefaultSettings => {
       `show_gizmo`,
     ] as const
     for (const key of general_keys) {
-      if (defaults_config && defaults_config[key] !== undefined) {
-        user_settings[key] = defaults_config[key]
-      }
+      const value = config.get(key)
+      if (value !== undefined) user_settings[key] = value
     }
 
     const structure_settings = read_section(`structure`, DEFAULTS.structure)
@@ -421,10 +417,7 @@ function create_webview_panel(
   const theme_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
   const config_listener = vscode.workspace.onDidChangeConfiguration(
     (event: vscode.ConfigurationChangeEvent) => {
-      if (
-        event.affectsConfiguration(`matterviz.theme`) ||
-        event.affectsConfiguration(`matterviz.defaults`)
-      ) update_theme()
+      if (event.affectsConfiguration(`matterviz`)) update_theme()
     },
   )
 
@@ -522,10 +515,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       )
       const config_change_listener = vscode.workspace.onDidChangeConfiguration(
         (event: vscode.ConfigurationChangeEvent) => {
-          if (
-            event.affectsConfiguration(`matterviz.theme`) ||
-            event.affectsConfiguration(`matterviz.defaults`)
-          ) update_theme()
+          if (event.affectsConfiguration(`matterviz`)) update_theme()
         },
       )
 
@@ -551,7 +541,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      `matterviz.renderStructure`,
+      `matterviz.render_structure`,
       (uri?: vscode.Uri) => render(context, uri),
     ),
     vscode.window.registerCustomEditorProvider(
@@ -567,10 +557,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
         setTimeout(() => {
           try {
             if (
-              !vscode.workspace.getConfiguration(`matterviz`).get<boolean>(
-                `autoRender`,
-                true,
-              )
+              !vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true)
             ) return
             const file_data = read_file(document.uri.fsPath)
             create_webview_panel(

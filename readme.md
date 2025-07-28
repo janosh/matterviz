@@ -21,6 +21,7 @@ Visualize crystal structures and molecular dynamics trajectories directly in VSC
 - Native support for common file formats (CIF, POSCAR, XYZ, TRAJ, HDF5, etc.)
 - Context menu (right click > "Render with MatterViz") and keyboard shortcuts (<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Windows, <kbd>cmd</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Mac) for quick access
 - Custom viewer for MD trajectories/geometry optimizations
+- **Extensive customization options** via VSCode settings - see [Configuration Guide](extensions/vscode/readme.md#️-configuration--customization) for examples
 
 [matterviz vscode extension]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
 

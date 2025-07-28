@@ -65,18 +65,22 @@ function sync_package_config() {
 
   // Process all settings from SETTINGS_CONFIG
   Object.entries(SETTINGS_CONFIG).forEach(([key, value]) => {
-    const base_key = `matterviz.defaults.${key}`
+    const base_key = `matterviz.${key}`
     process_setting_schema(value, base_key)
   })
 
-  // Preserve existing non-defaults settings
+  // Preserve existing non-schema settings (like auto_render, theme, etc.)
   const existing_props = package_content.contributes?.configuration?.properties || {}
   const preserved_props: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(existing_props)) {
-    if (!key.startsWith(`matterviz.defaults.`)) {
-      preserved_props[key] = value
-    }
+    // Preserve settings that aren't auto-generated from SETTINGS_CONFIG
+    // Exclude both old .defaults.* settings and new schema-generated settings
+    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some((config_key) =>
+      key.startsWith(`matterviz.${config_key}`) ||
+      key.startsWith(`matterviz.defaults.${config_key}`)
+    )
+    if (!is_schema_setting) preserved_props[key] = value
   }
 
   // Update package.json with generated + preserved settings
