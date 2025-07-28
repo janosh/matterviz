@@ -1,5 +1,5 @@
 import { is_structure_file } from '$lib/io/parse'
-import type { ThemeName } from '$lib/theme'
+import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
@@ -57,18 +57,6 @@ export interface MessageData {
   is_binary?: boolean
   file_path?: string
 }
-
-// Theme constants (copied from $lib/theme to avoid import issues)
-const AUTO_THEME = `auto` as const
-const COLOR_THEMES = {
-  light: `light`,
-  dark: `dark`,
-  white: `white`,
-  black: `black`,
-} as const
-
-const is_valid_theme_mode = (value: string): value is ThemeName | typeof AUTO_THEME =>
-  Object.keys(COLOR_THEMES).includes(value) || value === AUTO_THEME
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
@@ -155,58 +143,63 @@ const get_system_theme = (): ThemeName => {
   } else return COLOR_THEMES.light
 }
 
-// Settings reader with nested structure support
+// Settings reader with nested structure support and built-in error handling
 export const get_defaults = (): DefaultSettings => {
-  const config = vscode.workspace.getConfiguration(`matterviz`)
-  const defaults_config = config.get(`defaults`, {})
-  const user_settings: Partial<DefaultSettings> = {}
+  try {
+    const config = vscode.workspace.getConfiguration(`matterviz`)
+    const defaults_config = config.get(`defaults`, {})
+    const user_settings: Partial<DefaultSettings> = {}
 
-  // Helper to read settings section
-  const read_section = (
-    section_key: keyof DefaultSettings,
-    defaults_section: Record<string, unknown>,
-  ) => {
-    const settings: Record<string, unknown> = {}
-    for (const key of Object.keys(defaults_section)) {
-      const value = section_key === `structure` || section_key === `trajectory` ||
-          section_key === `composition`
-        ? defaults_config[section_key]?.[key]
-        : defaults_config[key]
-      if (value !== undefined) settings[key] = value
+    // Helper to read settings section
+    const read_section = (
+      section_key: keyof DefaultSettings,
+      defaults_section: Record<string, unknown>,
+    ) => {
+      const settings: Record<string, unknown> = {}
+      for (const key of Object.keys(defaults_section)) {
+        const value = section_key === `structure` || section_key === `trajectory` ||
+            section_key === `composition`
+          ? defaults_config?.[section_key]?.[key]
+          : defaults_config?.[key]
+        if (value !== undefined) settings[key] = value
+      }
+      return Object.keys(settings).length > 0 ? settings : undefined
     }
-    return Object.keys(settings).length > 0 ? settings : undefined
-  }
 
-  // Read all settings sections
-  const general_keys = [
-    `color_scheme`,
-    `background_color`,
-    `background_opacity`,
-    `show_image_atoms`,
-    `show_gizmo`,
-  ] as const
-  for (const key of general_keys) {
-    if (defaults_config[key] !== undefined) {
-      user_settings[key] = defaults_config[key]
+    // Read all settings sections
+    const general_keys = [
+      `color_scheme`,
+      `background_color`,
+      `background_opacity`,
+      `show_image_atoms`,
+      `show_gizmo`,
+    ] as const
+    for (const key of general_keys) {
+      if (defaults_config && defaults_config[key] !== undefined) {
+        user_settings[key] = defaults_config[key]
+      }
     }
-  }
 
-  const structure_settings = read_section(`structure`, DEFAULTS.structure)
-  if (structure_settings) {
-    user_settings.structure = structure_settings as DefaultSettings[`structure`]
-  }
+    const structure_settings = read_section(`structure`, DEFAULTS.structure)
+    if (structure_settings) {
+      user_settings.structure = structure_settings as DefaultSettings[`structure`]
+    }
 
-  const trajectory_settings = read_section(`trajectory`, DEFAULTS.trajectory)
-  if (trajectory_settings) {
-    user_settings.trajectory = trajectory_settings as DefaultSettings[`trajectory`]
-  }
+    const trajectory_settings = read_section(`trajectory`, DEFAULTS.trajectory)
+    if (trajectory_settings) {
+      user_settings.trajectory = trajectory_settings as DefaultSettings[`trajectory`]
+    }
 
-  const composition_settings = read_section(`composition`, DEFAULTS.composition)
-  if (composition_settings) {
-    user_settings.composition = composition_settings as DefaultSettings[`composition`]
-  }
+    const composition_settings = read_section(`composition`, DEFAULTS.composition)
+    if (composition_settings) {
+      user_settings.composition = composition_settings as DefaultSettings[`composition`]
+    }
 
-  return merge(user_settings)
+    return merge(user_settings)
+  } catch (error) {
+    console.error(`Failed to get defaults:`, error)
+    return DEFAULTS
+  }
 }
 
 // Create HTML content for webview

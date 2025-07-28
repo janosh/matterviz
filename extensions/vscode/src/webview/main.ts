@@ -338,7 +338,10 @@ const create_display = (
   return app
 }
 
-// Map defaults to structure component props
+// Map defaults in settings.ts to structure component props
+// TIGHT COUPLING WARNING: settings-to-props mapping functions create a direct dependency between the centralized settings schema
+// (src/lib/settings.ts) and component prop interfaces. Changes to either side
+// require manual updates here.
 const structure_props = (defaults: DefaultSettings) => {
   const { structure } = defaults
   return {

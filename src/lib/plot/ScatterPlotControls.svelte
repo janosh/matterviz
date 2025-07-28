@@ -240,13 +240,15 @@
       </label>
       <label
         class="checkbox-label"
-        {@attach tooltip({ content: SETTINGS_CONFIG.trajectory.scatter_point_size.description })}
+        {@attach tooltip({ content: `Toggle visibility of data points in the scatter plot` })}
       >
         <input type="checkbox" bind:checked={show_points} /> Show points
       </label>
       <label
         class="checkbox-label"
-        {@attach tooltip({ content: SETTINGS_CONFIG.trajectory.scatter_line_width.description })}
+        {@attach tooltip({
+          content: `Toggle visibility of connecting lines between data points`,
+        })}
       >
         <input type="checkbox" bind:checked={show_lines} /> Show lines
       </label>

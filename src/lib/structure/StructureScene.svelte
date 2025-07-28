@@ -94,7 +94,7 @@
     hovered_site = $bindable(null),
     active_site = $bindable(null),
     precision = `.3~f`,
-    auto_rotate = 0,
+    auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
     bonding_strategy = `nearest_neighbor`,

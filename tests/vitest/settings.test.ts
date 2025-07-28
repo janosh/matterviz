@@ -51,7 +51,7 @@ describe(`Settings`, () => {
       enum_settings.forEach((setting) => {
         expect(Array.isArray(setting.enum)).toBe(true)
         expect(setting.enum?.length).toBeGreaterThan(0)
-        expect(setting.enum).toContain(setting.value)
+        expect(setting?.enum).toContain(setting?.value)
       })
     })
   })

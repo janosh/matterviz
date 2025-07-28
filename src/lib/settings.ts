@@ -1,7 +1,7 @@
 // Universal settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-export interface SettingSchema<T = unknown> {
+export interface SettingType<T = unknown> {
   value: T
   description: string
   enum?: readonly string[]
@@ -13,135 +13,135 @@ export interface SettingSchema<T = unknown> {
 
 export interface SettingsConfig {
   // General display settings
-  color_scheme: SettingSchema<string>
-  background_color: SettingSchema<string>
-  background_opacity: SettingSchema<number>
-  show_image_atoms: SettingSchema<boolean>
-  show_gizmo: SettingSchema<boolean>
+  color_scheme: SettingType<string>
+  background_color: SettingType<string>
+  background_opacity: SettingType<number>
+  show_image_atoms: SettingType<boolean>
+  show_gizmo: SettingType<boolean>
 
   // Structure viewer settings
   structure: {
     // Atoms & Bonds
-    atom_radius: SettingSchema<number>
-    same_size_atoms: SettingSchema<boolean>
-    show_atoms: SettingSchema<boolean>
-    sphere_segments: SettingSchema<number>
-    bond_thickness: SettingSchema<number>
-    show_bonds: SettingSchema<boolean>
-    bond_color: SettingSchema<string>
-    bonding_strategy: SettingSchema<string>
+    atom_radius: SettingType<number>
+    same_size_atoms: SettingType<boolean>
+    show_atoms: SettingType<boolean>
+    sphere_segments: SettingType<number>
+    bond_thickness: SettingType<number>
+    show_bonds: SettingType<boolean>
+    bond_color: SettingType<string>
+    bonding_strategy: SettingType<string>
 
     // Camera & Controls
-    camera_position: SettingSchema<[number, number, number]>
-    projection: SettingSchema<`perspective` | `orthographic`>
-    fov: SettingSchema<number>
-    rotation_damping: SettingSchema<number>
-    zoom_speed: SettingSchema<number>
-    pan_speed: SettingSchema<number>
-    max_zoom: SettingSchema<number | undefined>
-    min_zoom: SettingSchema<number | undefined>
-    auto_rotate: SettingSchema<number>
+    camera_position: SettingType<[number, number, number]>
+    projection: SettingType<`perspective` | `orthographic`>
+    fov: SettingType<number>
+    rotation_damping: SettingType<number>
+    zoom_speed: SettingType<number>
+    pan_speed: SettingType<number>
+    max_zoom: SettingType<number | undefined>
+    min_zoom: SettingType<number | undefined>
+    auto_rotate: SettingType<number>
 
     // Labels & Lighting
-    show_site_labels: SettingSchema<boolean>
-    site_label_size: SettingSchema<number>
-    site_label_color: SettingSchema<string>
-    site_label_bg_color: SettingSchema<string>
-    site_label_padding: SettingSchema<number>
-    site_label_offset: SettingSchema<[number, number, number]>
-    ambient_light: SettingSchema<number>
-    directional_light: SettingSchema<number>
+    show_site_labels: SettingType<boolean>
+    site_label_size: SettingType<number>
+    site_label_color: SettingType<string>
+    site_label_bg_color: SettingType<string>
+    site_label_padding: SettingType<number>
+    site_label_offset: SettingType<[number, number, number]>
+    ambient_light: SettingType<number>
+    directional_light: SettingType<number>
 
     // Forces & Lattice
-    show_force_vectors: SettingSchema<boolean>
-    force_scale: SettingSchema<number>
-    force_color: SettingSchema<string>
-    force_shaft_radius: SettingSchema<number>
-    force_arrow_head_radius: SettingSchema<number>
-    force_arrow_head_length: SettingSchema<number>
-    show_lattice: SettingSchema<boolean>
-    show_vectors: SettingSchema<boolean>
-    lattice_edge_opacity: SettingSchema<number>
-    lattice_surface_opacity: SettingSchema<number>
-    lattice_edge_color: SettingSchema<string>
-    lattice_surface_color: SettingSchema<string>
-    lattice_line_width: SettingSchema<number>
+    show_force_vectors: SettingType<boolean>
+    force_scale: SettingType<number>
+    force_color: SettingType<string>
+    force_shaft_radius: SettingType<number>
+    force_arrow_head_radius: SettingType<number>
+    force_arrow_head_length: SettingType<number>
+    show_lattice: SettingType<boolean>
+    show_vectors: SettingType<boolean>
+    lattice_edge_opacity: SettingType<number>
+    lattice_surface_opacity: SettingType<number>
+    lattice_edge_color: SettingType<string>
+    lattice_surface_color: SettingType<string>
+    lattice_line_width: SettingType<number>
   }
 
   // Trajectory viewer settings
   trajectory: {
     // Core trajectory settings
-    auto_play: SettingSchema<boolean>
-    fps: SettingSchema<number>
-    fps_range: SettingSchema<[number, number]>
-    display_mode: SettingSchema<
+    auto_play: SettingType<boolean>
+    fps: SettingType<number>
+    fps_range: SettingType<[number, number]>
+    display_mode: SettingType<
       | `structure+scatter`
       | `structure`
       | `scatter`
       | `histogram`
       | `structure+histogram`
     >
-    show_controls: SettingSchema<boolean>
-    show_fullscreen_button: SettingSchema<boolean>
-    step_labels: SettingSchema<number>
-    layout: SettingSchema<`auto` | `horizontal` | `vertical`>
+    show_controls: SettingType<boolean>
+    show_fullscreen_button: SettingType<boolean>
+    step_labels: SettingType<number>
+    layout: SettingType<`auto` | `horizontal` | `vertical`>
 
     // File handling and loading
-    allow_file_drop: SettingSchema<boolean>
-    array_buffer_threshold: SettingSchema<number>
-    str_threshold: SettingSchema<number>
-    use_indexing: SettingSchema<boolean>
-    chunk_size: SettingSchema<number>
+    allow_file_drop: SettingType<boolean>
+    array_buffer_threshold: SettingType<number>
+    str_threshold: SettingType<number>
+    use_indexing: SettingType<boolean>
+    chunk_size: SettingType<number>
 
     // Histogram specific
-    histogram_mode: SettingSchema<`overlay` | `single`>
-    histogram_show_legend: SettingSchema<boolean>
-    histogram_bin_count: SettingSchema<number>
+    histogram_mode: SettingType<`overlay` | `single`>
+    histogram_show_legend: SettingType<boolean>
+    histogram_bin_count: SettingType<number>
 
     // Scatter plot specific
-    scatter_line_width: SettingSchema<number>
-    scatter_point_size: SettingSchema<number>
-    scatter_show_legend: SettingSchema<boolean>
+    scatter_line_width: SettingType<number>
+    scatter_point_size: SettingType<number>
+    scatter_show_legend: SettingType<boolean>
 
     // Plot general
-    plot_animation_duration: SettingSchema<number>
-    enable_plot_zoom: SettingSchema<boolean>
-    plot_zoom_factor: SettingSchema<number>
-    auto_fit_plot_range: SettingSchema<boolean>
-    plot_grid_lines: SettingSchema<boolean>
-    plot_axis_labels: SettingSchema<boolean>
+    plot_animation_duration: SettingType<number>
+    enable_plot_zoom: SettingType<boolean>
+    plot_zoom_factor: SettingType<number>
+    auto_fit_plot_range: SettingType<boolean>
+    plot_grid_lines: SettingType<boolean>
+    plot_axis_labels: SettingType<boolean>
 
     // Formatting
-    step_label_format: SettingSchema<string>
-    property_value_format: SettingSchema<string>
-    tooltip_format: SettingSchema<string>
+    step_label_format: SettingType<string>
+    property_value_format: SettingType<string>
+    tooltip_format: SettingType<string>
 
     // UI/UX
-    enable_keyboard_shortcuts: SettingSchema<boolean>
-    show_parsing_progress: SettingSchema<boolean>
-    compact_controls: SettingSchema<boolean>
-    show_filename_in_controls: SettingSchema<boolean>
-    enable_fullscreen: SettingSchema<boolean>
+    enable_keyboard_shortcuts: SettingType<boolean>
+    show_parsing_progress: SettingType<boolean>
+    compact_controls: SettingType<boolean>
+    show_filename_in_controls: SettingType<boolean>
+    enable_fullscreen: SettingType<boolean>
 
     // Playback behavior
-    smooth_playback: SettingSchema<boolean>
-    loop_playback: SettingSchema<boolean>
-    pause_on_hover: SettingSchema<boolean>
-    highlight_current_frame: SettingSchema<boolean>
-    show_frame_info: SettingSchema<boolean>
+    smooth_playback: SettingType<boolean>
+    loop_playback: SettingType<boolean>
+    pause_on_hover: SettingType<boolean>
+    highlight_current_frame: SettingType<boolean>
+    show_frame_info: SettingType<boolean>
 
     // Performance
-    max_frames_in_memory: SettingSchema<number>
-    memory_usage_warning_threshold: SettingSchema<number>
-    enable_performance_monitoring: SettingSchema<boolean>
-    prefetch_frames: SettingSchema<number>
-    cache_parsed_data: SettingSchema<boolean>
+    max_frames_in_memory: SettingType<number>
+    memory_usage_warning_threshold: SettingType<number>
+    enable_performance_monitoring: SettingType<boolean>
+    prefetch_frames: SettingType<number>
+    cache_parsed_data: SettingType<boolean>
   }
 
   // Composition specific
   composition: {
-    composition_mode: SettingSchema<`pie` | `bubble` | `bar`>
-    composition_color_scheme: SettingSchema<string>
+    composition_mode: SettingType<`pie` | `bubble` | `bar`>
+    composition_color_scheme: SettingType<string>
   }
 }
 
@@ -260,7 +260,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Minimum zoom level (undefined = no limit)`,
     },
     auto_rotate: {
-      value: 0,
+      value: 0.02,
       description: `Automatic rotation speed (0 = disabled, positive = clockwise)`,
       minimum: 0,
       maximum: 10,
@@ -626,10 +626,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
 // Extract the value types for runtime use
 export type DefaultSettings = {
-  [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingSchema<infer T> ? T
+  [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingType<infer T> ? T
     : SettingsConfig[K] extends Record<string, unknown> ? {
         [NK in keyof SettingsConfig[K]]: SettingsConfig[K][NK] extends
-          SettingSchema<infer T> ? T
+          SettingType<infer T> ? T
           : never
       }
     : never
@@ -637,12 +637,12 @@ export type DefaultSettings = {
 
 // Extract values from settings config for runtime use
 const extract_values = (
-  config: SettingsConfig | SettingSchema | Record<string, unknown>,
+  config: SettingsConfig | SettingType | Record<string, unknown>,
 ): DefaultSettings => {
   const result = {} as Record<string, unknown>
   for (const [key, value] of Object.entries(config)) {
     if (value && typeof value === `object` && `value` in value) {
-      result[key] = (value as SettingSchema).value
+      result[key] = (value as SettingType).value
     } else if (value && typeof value === `object`) {
       result[key] = extract_values(value as Record<string, unknown>)
     }
@@ -657,7 +657,7 @@ export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   ...DEFAULTS,
   ...user,
-  structure: { ...DEFAULTS.structure, ...user?.structure },
-  trajectory: { ...DEFAULTS.trajectory, ...user?.trajectory },
-  composition: { ...DEFAULTS.composition, ...user?.composition },
+  structure: { ...DEFAULTS.structure, ...(user?.structure || {}) },
+  trajectory: { ...DEFAULTS.trajectory, ...(user?.trajectory || {}) },
+  composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
 })

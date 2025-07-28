@@ -1147,18 +1147,24 @@ describe(`MatterViz Extension`, () => {
     describe(`get_defaults function`, () => {
       test(`should return merged defaults with user settings`, () => {
         const mock_config = {
-          get: vi.fn((key: string) => {
-            if (key === `defaults.structure.atom_radius`) return 1.5
-            if (key === `defaults.structure.show_bonds`) return true
-            if (key === `defaults.structure.bond_color`) return `#ff0000`
-            if (key === `defaults.trajectory.auto_play`) return true
-            return undefined
+          get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+            if (key === `defaults`) {
+              return {
+                structure: {
+                  atom_radius: 1.5,
+                  show_bonds: true,
+                  bond_color: `#ff0000`,
+                },
+                trajectory: {
+                  auto_play: true,
+                },
+              }
+            }
+            return defaultValue
           }),
         }
-        mock_vscode.workspace.getConfiguration.mockImplementation((section: string) => {
-          if (section === `matterviz`) return mock_config
-          return { get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue) }
-        })
+        // @ts-expect-error: Mock type override needed for testing
+        mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
         const result = get_defaults()
 
@@ -1172,12 +1178,10 @@ describe(`MatterViz Extension`, () => {
 
       test(`should handle missing config values gracefully`, () => {
         const mock_config = {
-          get: vi.fn(() => undefined),
+          get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
         }
-        mock_vscode.workspace.getConfiguration.mockImplementation((section: string) => {
-          if (section === `matterviz`) return mock_config
-          return { get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue) }
-        })
+        // @ts-expect-error: Mock type override needed for testing
+        mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
         const result = get_defaults()
 
@@ -1261,9 +1265,25 @@ describe(`MatterViz Extension`, () => {
       ])(
         `should handle number setting: %s = %s`,
         (result_path, expected_value, config_key) => {
-          const mock_config = {
-            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          // Extract the nested path from config_key (e.g., "defaults.structure.atom_radius" -> ["structure", "atom_radius"])
+          const parts = config_key.replace(`defaults.`, ``).split(`.`)
+          const nested_config: Record<string, unknown> = {}
+
+          if (parts.length === 2) {
+            // Structure like "structure.atom_radius"
+            nested_config[parts[0]] = { [parts[1]]: expected_value }
+          } else {
+            // Top-level like "background_opacity"
+            nested_config[parts[0]] = expected_value
           }
+
+          const mock_config = {
+            get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+              if (key === `defaults`) return nested_config
+              return defaultValue
+            }),
+          }
+          // @ts-expect-error: Mock type override needed for testing
           mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
           const result = get_defaults()
@@ -1298,9 +1318,23 @@ describe(`MatterViz Extension`, () => {
       ])(
         `should handle boolean setting: %s = %s`,
         (result_path, expected_value, config_key) => {
-          const mock_config = {
-            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          // Extract the nested path from config_key
+          const parts = config_key.replace(`defaults.`, ``).split(`.`)
+          const nested_config: Record<string, unknown> = {}
+
+          if (parts.length === 2) {
+            nested_config[parts[0]] = { [parts[1]]: expected_value }
+          } else {
+            nested_config[parts[0]] = expected_value
           }
+
+          const mock_config = {
+            get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+              if (key === `defaults`) return nested_config
+              return defaultValue
+            }),
+          }
+          // @ts-expect-error: Mock type override needed for testing
           mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
           const result = get_defaults()
@@ -1338,9 +1372,22 @@ describe(`MatterViz Extension`, () => {
       ])(
         `should handle color setting: %s = %s`,
         (result_path, expected_value, config_key) => {
-          const mock_config = {
-            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          const parts = config_key.replace(`defaults.`, ``).split(`.`)
+          const nested_config: Record<string, unknown> = {}
+
+          if (parts.length === 2) {
+            nested_config[parts[0]] = { [parts[1]]: expected_value }
+          } else {
+            nested_config[parts[0]] = expected_value
           }
+
+          const mock_config = {
+            get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+              if (key === `defaults`) return nested_config
+              return defaultValue
+            }),
+          }
+          // @ts-expect-error: Mock type override needed for testing
           mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
           const result = get_defaults()
@@ -1374,9 +1421,22 @@ describe(`MatterViz Extension`, () => {
       ])(
         `should handle string enum setting: %s = %s`,
         (result_path, expected_value, config_key) => {
-          const mock_config = {
-            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          const parts = config_key.replace(`defaults.`, ``).split(`.`)
+          const nested_config: Record<string, unknown> = {}
+
+          if (parts.length === 2) {
+            nested_config[parts[0]] = { [parts[1]]: expected_value }
+          } else {
+            nested_config[parts[0]] = expected_value
           }
+
+          const mock_config = {
+            get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+              if (key === `defaults`) return nested_config
+              return defaultValue
+            }),
+          }
+          // @ts-expect-error: Mock type override needed for testing
           mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
           const result = get_defaults()
@@ -1402,9 +1462,22 @@ describe(`MatterViz Extension`, () => {
       ])(
         `should handle array setting: %s = %s`,
         (result_path, expected_value, config_key) => {
-          const mock_config = {
-            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          const parts = config_key.replace(`defaults.`, ``).split(`.`)
+          const nested_config: Record<string, unknown> = {}
+
+          if (parts.length === 2) {
+            nested_config[parts[0]] = { [parts[1]]: expected_value }
+          } else {
+            nested_config[parts[0]] = expected_value
           }
+
+          const mock_config = {
+            get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+              if (key === `defaults`) return nested_config
+              return defaultValue
+            }),
+          }
+          // @ts-expect-error: Mock type override needed for testing
           mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
           const result = get_defaults()
@@ -1421,10 +1494,12 @@ describe(`MatterViz Extension`, () => {
 
       test(`should handle step_labels integer setting`, () => {
         const mock_config = {
-          get: vi.fn((key: string) =>
-            key === `defaults.trajectory.step_labels` ? 10 : undefined
-          ),
+          get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+            if (key === `defaults`) return { trajectory: { step_labels: 10 } }
+            return defaultValue
+          }),
         }
+        // @ts-expect-error: Mock type override needed for testing
         mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
         const result = get_defaults()
@@ -1436,14 +1511,20 @@ describe(`MatterViz Extension`, () => {
     describe(`Edge cases and validation`, () => {
       test(`should handle invalid config values gracefully`, () => {
         const mock_config = {
-          get: vi.fn((key: string) => {
-            // Return invalid values for some settings
-            if (key === `defaults.structure.atom_radius`) return `invalid`
-            else if (key === `defaults.structure.show_bonds`) return `not-a-boolean`
-            else if (key === `defaults.structure.bond_color`) return 12345
-            else return undefined
+          get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+            if (key === `defaults`) {
+              return {
+                structure: {
+                  atom_radius: `invalid`,
+                  show_bonds: `not-a-boolean`,
+                  bond_color: 12345,
+                },
+              }
+            }
+            return defaultValue
           }),
         }
+        // @ts-expect-error: Mock type override needed for testing
         mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
         expect(() => get_defaults()).not.toThrow()
@@ -1478,7 +1559,15 @@ describe(`MatterViz Extension`, () => {
           throw new Error(`Config access failed`)
         })
 
-        expect(() => get_defaults()).toThrow(`Config access failed`)
+        expect(() => get_defaults()).not.toThrow()
+        const result = get_defaults()
+
+        // Should return default values when config access fails
+        expect(result).toEqual(expect.objectContaining({
+          structure: expect.any(Object),
+          trajectory: expect.any(Object),
+          composition: expect.any(Object),
+        }))
       })
     })
   })

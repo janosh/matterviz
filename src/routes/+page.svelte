@@ -3,7 +3,7 @@
   import { FilePicker, PeriodicTableDemo } from '$site'
   import { structure_files } from '$site/structures'
 
-  let scene_props = $state({ auto_rotate: 0.5 })
+  let scene_props = $state({ auto_rotate: 0.25 })
 </script>
 
 <h1>MatterViz</h1>
@@ -33,10 +33,11 @@
 <h3>Try dragging files onto the structure viewers</h3>
 
 <p>
-  Either from the set of example files below or drag a local file in <code>extXYZ</code>,
-  <code>POSCAR</code>, <code>CIF</code>, <code>YAML</code>, <code>OPTIMADE</code> JSON,
-  <code>pymatgen</code> JSON format onto either structure viewer. Compressed versions of
-  these structure formats are also supported.
+  Pick one of the example files below, or drag a local structure file onto a viewer:
+  <code>.xyz</code>/<code>EXTXYZ</code>, <code>POSCAR</code>, <code>.cif</code>,
+  <code>.yaml</code>, <code>OPTIMADE&nbsp;JSON</code>, or <code>pymatgen&nbsp;JSON</code>.
+  Compressed variants (e.g.&nbsp;<code>.gz</code>, <code>.bz2</code>) are supported as
+  well.
 </p>
 
 <FilePicker

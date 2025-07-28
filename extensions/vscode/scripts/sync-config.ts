@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
 
-import { SETTINGS_CONFIG } from '../../../src/lib/settings.ts'
+import { SETTINGS_CONFIG, type SettingType } from '../../../src/lib/settings.ts'
 
 const readFileSync = (path: string) => Deno.readTextFileSync(path)
 const writeFileSync = (path: string, data: string) => Deno.writeTextFileSync(path, data)
@@ -19,9 +19,9 @@ function sync_package_config() {
   const vscode_config: Record<string, unknown> = {}
 
   // Helper to process settings schema
-  function process_setting_schema(schema: unknown, key_path: string) {
+  function process_setting_schema(schema: SettingType, key_path: string) {
     if (schema && typeof schema === `object` && `value` in schema) {
-      // This is a SettingSchema
+      // This is a SettingSchema - cast to any to access dynamic properties
       const config: Record<string, unknown> = {
         type: typeof schema.value === `boolean`
           ? `boolean`
@@ -42,14 +42,23 @@ function sync_package_config() {
       if (schema.enum) config.enum = schema.enum
 
       // Add array item type for arrays
-      if (Array.isArray(schema.value)) config.items = { type: `number` }
+      if (Array.isArray(schema.value)) {
+        const first_item = schema.value[0]
+        config.items = {
+          type: typeof first_item === `boolean`
+            ? `boolean`
+            : typeof first_item === `string`
+            ? `string`
+            : `number`,
+        }
+      }
 
       vscode_config[key_path] = config
     } else if (schema && typeof schema === `object`) {
       // This is a nested object, recurse
       Object.entries(schema).forEach(([key, value]) => {
         const nested_key = key_path ? `${key_path}.${key}` : key
-        process_setting_schema(value, nested_key)
+        process_setting_schema(value as SettingType, nested_key)
       })
     }
   }

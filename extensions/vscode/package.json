@@ -317,6 +317,27 @@
           "default": "#ff0000",
           "description": "Color for force vectors"
         },
+        "matterviz.defaults.structure.force_shaft_radius": {
+          "type": "number",
+          "default": 0.02,
+          "description": "Radius of force vector shaft",
+          "minimum": 0.005,
+          "maximum": 0.1
+        },
+        "matterviz.defaults.structure.force_arrow_head_radius": {
+          "type": "number",
+          "default": 0.08,
+          "description": "Radius of force vector arrow head",
+          "minimum": 0.02,
+          "maximum": 0.2
+        },
+        "matterviz.defaults.structure.force_arrow_head_length": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Length of force vector arrow head",
+          "minimum": 0.05,
+          "maximum": 0.5
+        },
         "matterviz.defaults.structure.show_lattice": {
           "type": "boolean",
           "default": false,
@@ -350,6 +371,13 @@
           "type": "string",
           "default": "#e0e0e0",
           "description": "Color of lattice surfaces"
+        },
+        "matterviz.defaults.structure.lattice_line_width": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Width of lattice edge lines",
+          "minimum": 0.5,
+          "maximum": 5
         },
         "matterviz.defaults.trajectory.auto_play": {
           "type": "boolean",
