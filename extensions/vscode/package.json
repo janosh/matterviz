@@ -111,7 +111,7 @@
         },
         "matterviz.background_opacity": {
           "type": "number",
-          "default": 1,
+          "default": 0,
           "description": "Opacity of the background (0.0 = transparent, 1.0 = opaque)",
           "minimum": 0,
           "maximum": 1
@@ -238,7 +238,7 @@
         },
         "matterviz.structure.auto_rotate": {
           "type": "number",
-          "default": 0.02,
+          "default": 0.2,
           "description": "Automatic rotation speed (0 = disabled, positive = clockwise)",
           "minimum": 0,
           "maximum": 10
@@ -288,14 +288,14 @@
         },
         "matterviz.structure.ambient_light": {
           "type": "number",
-          "default": 0.4,
+          "default": 1.5,
           "description": "Ambient light intensity (0 = dark, 1 = bright)",
           "minimum": 0,
           "maximum": 1
         },
         "matterviz.structure.directional_light": {
           "type": "number",
-          "default": 0.6,
+          "default": 2.2,
           "description": "Directional light intensity (0 = no shadows, 1 = strong shadows)",
           "minimum": 0,
           "maximum": 1

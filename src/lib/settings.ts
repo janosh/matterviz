@@ -158,7 +158,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     description: `Background color of the 3D viewport`,
   },
   background_opacity: {
-    value: 1.0,
+    value: 0,
     description: `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
     minimum: 0,
     maximum: 1,
@@ -260,7 +260,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Minimum zoom level (undefined = no limit)`,
     },
     auto_rotate: {
-      value: 0.02,
+      value: 0.2,
       description: `Automatic rotation speed (0 = disabled, positive = clockwise)`,
       minimum: 0,
       maximum: 10,
@@ -298,13 +298,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maxItems: 3,
     },
     ambient_light: {
-      value: 0.4,
+      value: 1.5,
       description: `Ambient light intensity (0 = dark, 1 = bright)`,
       minimum: 0,
       maximum: 1,
     },
     directional_light: {
-      value: 0.6,
+      value: 2.2,
       description: `Directional light intensity (0 = no shadows, 1 = strong shadows)`,
       minimum: 0,
       maximum: 1,
@@ -387,7 +387,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Automatically start playing trajectory when opened`,
     },
     fps: {
-      value: 5,
+      value: 10,
       description: `Frames per second for trajectory playback`,
       minimum: 0.1,
       maximum: 60,

@@ -2,8 +2,6 @@
   import { get_electro_neg_formula, Structure } from '$lib'
   import { FilePicker, PeriodicTableDemo } from '$site'
   import { structure_files } from '$site/structures'
-
-  let scene_props = $state({ auto_rotate: 0.25 })
 </script>
 
 <h1>MatterViz</h1>
@@ -25,7 +23,7 @@
       <h3 style="margin: 0 0 1ex">
         {@html get_electro_neg_formula(formula ?? file_url.split(`.`)[0], false, ``)}
       </h3>
-      <Structure data_url="/structures/{file_url}" bind:scene_props style="flex: 1" />
+      <Structure data_url="/structures/{file_url}" style="flex: 1" />
     </div>
   {/each}
 </div>
