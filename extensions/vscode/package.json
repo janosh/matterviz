@@ -18,14 +18,8 @@
   },
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onFileSystem:*.xyz",
-    "onFileSystem:*.cif",
-    "onFileSystem:*.traj",
-    "onFileSystem:*.h5",
-    "onFileSystem:*.hdf5",
-    "onFileSystem:*poscar*",
-    "onFileSystem:*contcar*",
-    "onFileSystem:*xdatcar*"
+    "workspaceContains:**/*.{cif,xyz,poscar,contcar,xdatcar,traj,h5,hdf5}",
+    "workspaceContains:**/*{trajectory,relax}*"
   ],
   "contributes": {
     "commands": [
@@ -289,16 +283,16 @@
         "matterviz.structure.ambient_light": {
           "type": "number",
           "default": 1.5,
-          "description": "Ambient light intensity (0 = dark, 1 = bright)",
+          "description": "Ambient light intensity (0 = dark, higher = brighter)",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 4
         },
         "matterviz.structure.directional_light": {
           "type": "number",
           "default": 2.2,
-          "description": "Directional light intensity (0 = no shadows, 1 = strong shadows)",
+          "description": "Directional light intensity (0 = no shadows, higher = stronger shadows)",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 4
         },
         "matterviz.structure.show_force_vectors": {
           "type": "boolean",

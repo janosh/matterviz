@@ -299,15 +299,16 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     ambient_light: {
       value: 1.5,
-      description: `Ambient light intensity (0 = dark, 1 = bright)`,
+      description: `Ambient light intensity (0 = dark, higher = brighter)`,
       minimum: 0,
-      maximum: 1,
+      maximum: 4,
     },
     directional_light: {
       value: 2.2,
-      description: `Directional light intensity (0 = no shadows, 1 = strong shadows)`,
+      description:
+        `Directional light intensity (0 = no shadows, higher = stronger shadows)`,
       minimum: 0,
-      maximum: 1,
+      maximum: 4,
     },
 
     // Forces & Lattice
