@@ -974,7 +974,7 @@ describe(`MatterViz Extension`, () => {
       [`.cache/build.js`, false],
       [`structure.json.bak`, false],
       [`crystal.poscar.lock`, true],
-      [`simulation.log`, false],
+      [`simulation.log`, true],
       [`backup.old`, false],
       [`original.orig`, false],
       [`patch.diff`, false],
