@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { Matrix3x3, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
+  import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
   import {
     BoxGeometry,
@@ -11,7 +12,6 @@
     Quaternion,
     Vector3,
   } from 'three'
-  import { STRUCT_DEFAULTS } from './index'
 
   interface Props {
     matrix?: Matrix3x3 | undefined
@@ -26,11 +26,11 @@
   }
   let {
     matrix = undefined,
-    cell_edge_color = STRUCT_DEFAULTS.cell.color,
-    cell_surface_color = STRUCT_DEFAULTS.cell.color,
-    cell_line_width = STRUCT_DEFAULTS.cell.line_width,
-    cell_edge_opacity = STRUCT_DEFAULTS.cell.edge_opacity,
-    cell_surface_opacity = STRUCT_DEFAULTS.cell.surface_opacity,
+    cell_edge_color = DEFAULTS.structure.lattice_edge_color,
+    cell_surface_color = DEFAULTS.structure.lattice_surface_color,
+    cell_line_width = DEFAULTS.structure.lattice_line_width,
+    cell_edge_opacity = DEFAULTS.structure.lattice_edge_opacity,
+    cell_surface_opacity = DEFAULTS.structure.lattice_surface_opacity,
     show_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] as Vec3,

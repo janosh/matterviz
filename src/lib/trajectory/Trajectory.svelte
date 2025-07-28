@@ -203,6 +203,11 @@
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
 
+  // Auto-play when trajectory changes (handles both props and file loading)
+  $effect(() => {
+    if (auto_play && trajectory && !is_playing && total_frames > 1) start_playback()
+  })
+
   // Update current frame when step changes
   $effect(() => {
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
@@ -628,9 +633,6 @@
         filename,
         file_size: file_size_bytes,
       })
-
-      // Auto-play if enabled and trajectory has multiple frames
-      if (auto_play && trajectory && trajectory.frames.length > 1) start_playback()
     } catch (err) {
       const unsupported_message = get_unsupported_format_message(
         filename,

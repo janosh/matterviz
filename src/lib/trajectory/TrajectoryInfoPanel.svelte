@@ -1,6 +1,7 @@
 <script lang="ts">
   import { DraggablePanel, Icon } from '$lib'
   import { format_num } from '$lib/labels'
+  import { SETTINGS_CONFIG } from '$lib/settings'
   import { theme_state } from '$lib/state.svelte'
   import { type AnyStructure, electro_neg_formula } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
@@ -140,7 +141,7 @@
         `Indexed`,
         `Yes`,
         `indexed-mode`,
-        `This trajectory uses frame indexing for efficient loading`,
+        SETTINGS_CONFIG.trajectory.use_indexing.description,
       ),
       trajectory.indexed_frames &&
       safe_item(

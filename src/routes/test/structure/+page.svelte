@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type PymatgenStructure, STRUCT_DEFAULTS } from '$lib'
+  import { DEFAULTS, type PymatgenStructure } from '$lib'
   import Structure from '$lib/structure/Structure.svelte'
   import mp1_struct from '$site/structures/mp-1.json'
 
@@ -29,7 +29,7 @@
     cell_surface_color: `white`,
     cell_edge_opacity: 0.4,
     cell_surface_opacity: 0.01, // Very subtle surface visibility
-    cell_line_width: 1.5,
+    cell_line_width: DEFAULTS.structure.lattice_line_width,
     show_vectors: true,
   })
 
@@ -206,8 +206,7 @@
   </div>
   <div data-testid="camera-projection-status">
     Camera Projection Status: {
-      scene_props.camera_projection ||
-      STRUCT_DEFAULTS.scene_props.camera_projection
+      scene_props.camera_projection || DEFAULTS.structure.projection
     }
   </div>
 

@@ -2,8 +2,6 @@
   import { get_electro_neg_formula, Structure } from '$lib'
   import { FilePicker, PeriodicTableDemo } from '$site'
   import { structure_files } from '$site/structures'
-
-  let scene_props = $state({ auto_rotate: 0.5 })
 </script>
 
 <h1>MatterViz</h1>
@@ -25,7 +23,7 @@
       <h3 style="margin: 0 0 1ex">
         {@html get_electro_neg_formula(formula ?? file_url.split(`.`)[0], false, ``)}
       </h3>
-      <Structure data_url="/structures/{file_url}" bind:scene_props style="flex: 1" />
+      <Structure data_url="/structures/{file_url}" style="flex: 1" />
     </div>
   {/each}
 </div>
@@ -33,10 +31,11 @@
 <h3>Try dragging files onto the structure viewers</h3>
 
 <p>
-  Either from the set of example files or drag a local <code>extXYZ</code>,
-  <code>POSCAR</code>, <code>CIF</code>, <code>YAML</code>, <code>OPTIMADE</code> JSON,
-  <code>pymatgen</code> JSON files, or compressed versions of these files onto either
-  structure viewer.
+  Pick one of the example files below, or drag a local structure file onto a viewer:
+  <code>.xyz</code>/<code>EXTXYZ</code>, <code>POSCAR</code>, <code>.cif</code>,
+  <code>.yaml</code>, <code>OPTIMADE&nbsp;JSON</code>, or <code>pymatgen&nbsp;JSON</code>.
+  Compressed variants (e.g.&nbsp;<code>.gz</code>, <code>.bz2</code>) are supported as
+  well.
 </p>
 
 <FilePicker

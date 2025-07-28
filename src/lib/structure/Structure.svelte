@@ -8,6 +8,7 @@
     load_from_url,
     parse_any_structure,
   } from '$lib/io'
+  import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -17,7 +18,6 @@
   import { WebGLRenderer } from 'three'
   import type { StructureHandlerData } from './index'
   import {
-    STRUCT_DEFAULTS,
     StructureControls,
     StructureInfoPanel,
     StructureLegend,
@@ -67,13 +67,44 @@
   }
   let {
     structure = $bindable(undefined),
-    scene_props = $bindable({ ...STRUCT_DEFAULTS.scene_props }),
+    // TODO figure out a way to avoid having to explicitly set default scene_props keys for them to take effect
+    scene_props = $bindable({
+      // Atoms & Display
+      show_atoms: DEFAULTS.structure.show_atoms,
+      show_bonds: DEFAULTS.structure.show_bonds,
+      same_size_atoms: DEFAULTS.structure.same_size_atoms,
+      atom_radius: DEFAULTS.structure.atom_radius,
+      sphere_segments: DEFAULTS.structure.sphere_segments,
+      // Camera & Controls
+      auto_rotate: DEFAULTS.structure.auto_rotate,
+      zoom_speed: DEFAULTS.structure.zoom_speed,
+      pan_speed: DEFAULTS.structure.pan_speed,
+      rotation_damping: DEFAULTS.structure.rotation_damping,
+      camera_projection: DEFAULTS.structure.projection,
+      // Bonds
+      bond_thickness: DEFAULTS.structure.bond_thickness,
+      bond_color: DEFAULTS.structure.bond_color,
+      // Labels
+      show_site_labels: DEFAULTS.structure.show_site_labels,
+      site_label_size: DEFAULTS.structure.site_label_size,
+      site_label_padding: DEFAULTS.structure.site_label_padding,
+      site_label_offset: [...DEFAULTS.structure.site_label_offset],
+      site_label_color: DEFAULTS.structure.site_label_color,
+      site_label_bg_color: DEFAULTS.structure.site_label_bg_color,
+      // Forces
+      show_force_vectors: DEFAULTS.structure.show_force_vectors,
+      force_vector_scale: DEFAULTS.structure.force_scale,
+      force_vector_color: DEFAULTS.structure.force_color,
+      // Lighting
+      directional_light: DEFAULTS.structure.directional_light,
+      ambient_light: DEFAULTS.structure.ambient_light,
+    }),
     lattice_props = $bindable({
-      cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
-      cell_surface_opacity: STRUCT_DEFAULTS.cell.surface_opacity,
-      cell_edge_color: STRUCT_DEFAULTS.cell.color,
-      cell_surface_color: STRUCT_DEFAULTS.cell.color,
-      cell_line_width: STRUCT_DEFAULTS.cell.line_width,
+      cell_edge_opacity: DEFAULTS.structure.lattice_edge_opacity,
+      cell_surface_opacity: DEFAULTS.structure.lattice_surface_opacity,
+      cell_edge_color: DEFAULTS.structure.lattice_edge_color,
+      cell_surface_color: DEFAULTS.structure.lattice_surface_color,
+      cell_line_width: DEFAULTS.structure.lattice_line_width,
       show_vectors: true,
     }),
     controls_open = $bindable(false),
@@ -159,14 +190,6 @@
     }
   })
 
-  // Ensure scene_props defaults to show_atoms=true on component mount
-  $effect.pre(() => {
-    // show_atoms undefined check is important to avoid infinite $effect loop
-    if (scene_props.show_atoms === undefined) {
-      scene_props = { show_atoms: true, ...scene_props }
-    }
-  })
-
   // Track if force vectors have been auto-enabled to prevent repeated triggering
   let force_vectors_auto_enabled = $state(false)
 
@@ -183,7 +206,7 @@
           ...scene_props,
           show_force_vectors: true,
           force_vector_scale: scene_props.force_vector_scale ||
-            STRUCT_DEFAULTS.vector.scale,
+            DEFAULTS.structure.force_scale,
           force_vector_color: scene_props.force_vector_color || `#ff6b6b`,
         }
         force_vectors_auto_enabled = true

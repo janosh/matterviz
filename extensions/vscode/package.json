@@ -13,55 +13,660 @@
     "Notebooks",
     "Education"
   ],
-  "engines": { "vscode": "^1.96.0" },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
   "main": "./dist/extension.cjs",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "workspaceContains:**/*.{cif,xyz,poscar,contcar,xdatcar,traj,h5,hdf5}",
+    "workspaceContains:**/*{trajectory,relax}*"
+  ],
   "contributes": {
-    "commands": [{
-      "command": "matterviz.renderStructure",
-      "title": "Render with MatterViz"
-    }],
-    "keybindings": [{
-      "command": "matterviz.renderStructure",
-      "key": "ctrl+shift+v",
-      "mac": "cmd+shift+v",
-      "when": "matterviz.supportedResource"
-    }],
+    "commands": [
+      {
+        "command": "matterviz.render_structure",
+        "title": "Render with MatterViz"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "matterviz.render_structure",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "matterviz.supported_resource"
+      }
+    ],
     "menus": {
-      "explorer/context": [{
-        "command": "matterviz.renderStructure",
-        "when": "matterviz.supportedResource"
-      }]
+      "explorer/context": [
+        {
+          "command": "matterviz.render_structure",
+          "when": "matterviz.supported_resource"
+        }
+      ]
     },
-    "customEditors": [{
-      "viewType": "matterviz.viewer",
-      "displayName": "MatterViz Viewer",
-      "selector": [
-        { "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr}" },
-        { "filenamePattern": "*.{cif,xyz,extxyz,poscar,json,yaml,yml}.gz" },
-        { "filenamePattern": "*{xdatcar,contcar,outcar}" },
-        { "filenamePattern": "*{trajectory,relax,npt,nvt,nve}*" }
-      ],
-      "priority": "option"
-    }],
+    "customEditors": [
+      {
+        "viewType": "matterviz.viewer",
+        "displayName": "MatterViz Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr}"
+          },
+          {
+            "filenamePattern": "*.{cif,xyz,extxyz,poscar,json,yaml,yml}.gz"
+          },
+          {
+            "filenamePattern": "*{xdatcar,contcar,outcar}"
+          },
+          {
+            "filenamePattern": "*{trajectory,relax,npt,nvt,nve}*"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
     "configuration": {
       "title": "MatterViz",
       "properties": {
         "matterviz.theme": {
           "type": "string",
-          "enum": ["auto", "light", "dark", "white", "black"],
+          "enum": [
+            "auto",
+            "light",
+            "dark",
+            "white",
+            "black"
+          ],
           "default": "auto",
-          "description": "Theme for MatterViz visualizations. 'auto' follows VSCode's theme (selecting either 'light' or 'dark'), other options override it."
+          "description": "Theme for MatterViz visualizations. 'auto' follows VSCode's theme."
         },
-        "matterviz.autoRender": {
+        "matterviz.auto_render": {
           "type": "boolean",
           "default": true,
           "description": "Automatically render supported file types (structures and trajectories) when opening them. If rendering fails, falls back to regular editor."
+        },
+        "matterviz.color_scheme": {
+          "type": "string",
+          "default": "Vesta",
+          "description": "Color scheme for atoms and bonds",
+          "enum": [
+            "Vesta",
+            "Jmol",
+            "Alloy",
+            "Pastel",
+            "Muted",
+            "Dark Mode"
+          ]
+        },
+        "matterviz.background_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Background color of the 3D viewport"
+        },
+        "matterviz.background_opacity": {
+          "type": "number",
+          "default": 0,
+          "description": "Opacity of the background (0.0 = transparent, 1.0 = opaque)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.show_image_atoms": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show atoms outside the unit cell for better visualization"
+        },
+        "matterviz.show_gizmo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show orientation gizmo in the corner"
+        },
+        "matterviz.structure.atom_radius": {
+          "type": "number",
+          "default": 1,
+          "description": "Radius multiplier for atoms (1.0 = standard atomic radii)",
+          "minimum": 0.1,
+          "maximum": 3
+        },
+        "matterviz.structure.same_size_atoms": {
+          "type": "boolean",
+          "default": false,
+          "description": "Render all atoms with the same size regardless of element"
+        },
+        "matterviz.structure.show_atoms": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display atoms in the structure"
+        },
+        "matterviz.structure.sphere_segments": {
+          "type": "number",
+          "default": 20,
+          "description": "Number of segments for sphere rendering (higher = smoother)",
+          "minimum": 8,
+          "maximum": 64
+        },
+        "matterviz.structure.bond_thickness": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Thickness of bonds relative to atom radius",
+          "minimum": 0.01,
+          "maximum": 1
+        },
+        "matterviz.structure.show_bonds": {
+          "type": "boolean",
+          "default": false,
+          "description": "Display bonds between atoms"
+        },
+        "matterviz.structure.bond_color": {
+          "type": "string",
+          "default": "#ffffff",
+          "description": "Color for bonds (hex color code)"
+        },
+        "matterviz.structure.bonding_strategy": {
+          "type": "string",
+          "default": "nearest_neighbor",
+          "description": "Method for determining bonds between atoms",
+          "enum": [
+            "nearest_neighbor",
+            "covalent_radius",
+            "distance_cutoff"
+          ]
+        },
+        "matterviz.structure.camera_position": {
+          "type": "array",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "description": "Initial camera position [x, y, z]",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
+        },
+        "matterviz.structure.projection": {
+          "type": "string",
+          "default": "perspective",
+          "description": "Camera projection type",
+          "enum": [
+            "perspective",
+            "orthographic"
+          ]
+        },
+        "matterviz.structure.fov": {
+          "type": "number",
+          "default": 75,
+          "description": "Field of view in degrees for perspective projection",
+          "minimum": 10,
+          "maximum": 150
+        },
+        "matterviz.structure.rotation_damping": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Camera rotation damping factor (0 = no damping, 1 = heavy damping)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.structure.zoom_speed": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Mouse wheel zoom sensitivity",
+          "minimum": 0.1,
+          "maximum": 2
+        },
+        "matterviz.structure.pan_speed": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Mouse pan sensitivity",
+          "minimum": 0.1,
+          "maximum": 2
+        },
+        "matterviz.structure.max_zoom": {
+          "type": "string",
+          "description": "Maximum zoom level (undefined = no limit)"
+        },
+        "matterviz.structure.min_zoom": {
+          "type": "string",
+          "description": "Minimum zoom level (undefined = no limit)"
+        },
+        "matterviz.structure.auto_rotate": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Automatic rotation speed (0 = disabled, positive = clockwise)",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "matterviz.structure.show_site_labels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show element labels on atoms"
+        },
+        "matterviz.structure.site_label_size": {
+          "type": "number",
+          "default": 12,
+          "description": "Font size for atom labels",
+          "minimum": 8,
+          "maximum": 32
+        },
+        "matterviz.structure.site_label_color": {
+          "type": "string",
+          "default": "#ffffff",
+          "description": "Text color for atom labels"
+        },
+        "matterviz.structure.site_label_bg_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Background color for atom labels"
+        },
+        "matterviz.structure.site_label_padding": {
+          "type": "number",
+          "default": 2,
+          "description": "Padding around atom labels in pixels",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "matterviz.structure.site_label_offset": {
+          "type": "array",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "description": "3D offset for atom labels [x, y, z]",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
+        },
+        "matterviz.structure.ambient_light": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Ambient light intensity (0 = dark, higher = brighter)",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "matterviz.structure.directional_light": {
+          "type": "number",
+          "default": 2.2,
+          "description": "Directional light intensity (0 = no shadows, higher = stronger shadows)",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "matterviz.structure.show_force_vectors": {
+          "type": "boolean",
+          "default": false,
+          "description": "Display force vectors on atoms"
+        },
+        "matterviz.structure.force_scale": {
+          "type": "number",
+          "default": 1,
+          "description": "Scale factor for force vector arrows",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        "matterviz.structure.force_color": {
+          "type": "string",
+          "default": "#ff0000",
+          "description": "Color for force vectors"
+        },
+        "matterviz.structure.force_shaft_radius": {
+          "type": "number",
+          "default": 0.02,
+          "description": "Radius of force vector shaft",
+          "minimum": 0.005,
+          "maximum": 0.1
+        },
+        "matterviz.structure.force_arrow_head_radius": {
+          "type": "number",
+          "default": 0.08,
+          "description": "Radius of force vector arrow head",
+          "minimum": 0.02,
+          "maximum": 0.2
+        },
+        "matterviz.structure.force_arrow_head_length": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Length of force vector arrow head",
+          "minimum": 0.05,
+          "maximum": 0.5
+        },
+        "matterviz.structure.show_lattice": {
+          "type": "boolean",
+          "default": false,
+          "description": "Display unit cell lattice"
+        },
+        "matterviz.structure.show_vectors": {
+          "type": "boolean",
+          "default": false,
+          "description": "Display lattice vectors"
+        },
+        "matterviz.structure.lattice_edge_opacity": {
+          "type": "number",
+          "default": 0.3,
+          "description": "Opacity of lattice edge lines",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.structure.lattice_surface_opacity": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Opacity of lattice surfaces",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.structure.lattice_edge_color": {
+          "type": "string",
+          "default": "#808080",
+          "description": "Color of lattice edges"
+        },
+        "matterviz.structure.lattice_surface_color": {
+          "type": "string",
+          "default": "#e0e0e0",
+          "description": "Color of lattice surfaces"
+        },
+        "matterviz.structure.lattice_line_width": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Width of lattice edge lines",
+          "minimum": 0.5,
+          "maximum": 5
+        },
+        "matterviz.trajectory.auto_play": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start playing trajectory when opened"
+        },
+        "matterviz.trajectory.fps": {
+          "type": "number",
+          "default": 5,
+          "description": "Frames per second for trajectory playback",
+          "minimum": 0.1,
+          "maximum": 60
+        },
+        "matterviz.trajectory.fps_range": {
+          "type": "array",
+          "default": [
+            0.2,
+            30
+          ],
+          "description": "Allowed range for playback speed [min, max]",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "matterviz.trajectory.display_mode": {
+          "type": "string",
+          "default": "structure+scatter",
+          "description": "Visualization mode for trajectory data",
+          "enum": [
+            "structure+scatter",
+            "structure",
+            "scatter",
+            "histogram",
+            "structure+histogram"
+          ]
+        },
+        "matterviz.trajectory.show_controls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show playback controls"
+        },
+        "matterviz.trajectory.show_fullscreen_button": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show fullscreen toggle button"
+        },
+        "matterviz.trajectory.step_labels": {
+          "type": "number",
+          "default": 5,
+          "description": "Number of frame labels to display",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "matterviz.trajectory.layout": {
+          "type": "string",
+          "default": "auto",
+          "description": "Layout arrangement for trajectory viewer",
+          "enum": [
+            "auto",
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "matterviz.trajectory.allow_file_drop": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow drag-and-drop of trajectory files"
+        },
+        "matterviz.trajectory.array_buffer_threshold": {
+          "type": "number",
+          "default": 50000000,
+          "description": "File size threshold for binary loading (bytes)",
+          "minimum": 1000000,
+          "maximum": 500000000
+        },
+        "matterviz.trajectory.str_threshold": {
+          "type": "number",
+          "default": 25000000,
+          "description": "File size threshold for text loading (bytes)",
+          "minimum": 500000,
+          "maximum": 250000000
+        },
+        "matterviz.trajectory.use_indexing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use frame indexing for large trajectories"
+        },
+        "matterviz.trajectory.chunk_size": {
+          "type": "number",
+          "default": 1000,
+          "description": "Number of frames to process at once",
+          "minimum": 10,
+          "maximum": 10000
+        },
+        "matterviz.trajectory.histogram_mode": {
+          "type": "string",
+          "default": "overlay",
+          "description": "Histogram display mode",
+          "enum": [
+            "overlay",
+            "single"
+          ]
+        },
+        "matterviz.trajectory.histogram_show_legend": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show legend in histogram plots"
+        },
+        "matterviz.trajectory.histogram_bin_count": {
+          "type": "number",
+          "default": 30,
+          "description": "Number of bins for histogram plots",
+          "minimum": 5,
+          "maximum": 200
+        },
+        "matterviz.trajectory.scatter_line_width": {
+          "type": "number",
+          "default": 2,
+          "description": "Line width for scatter plot connections",
+          "minimum": 0.5,
+          "maximum": 10
+        },
+        "matterviz.trajectory.scatter_point_size": {
+          "type": "number",
+          "default": 3,
+          "description": "Point size for scatter plots",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "matterviz.trajectory.scatter_show_legend": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show legend in scatter plots"
+        },
+        "matterviz.trajectory.plot_animation_duration": {
+          "type": "number",
+          "default": 200,
+          "description": "Duration of plot animations in milliseconds",
+          "minimum": 0,
+          "maximum": 2000
+        },
+        "matterviz.trajectory.enable_plot_zoom": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable zooming in plots"
+        },
+        "matterviz.trajectory.plot_zoom_factor": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Zoom factor for plot interactions",
+          "minimum": 1.1,
+          "maximum": 5
+        },
+        "matterviz.trajectory.auto_fit_plot_range": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically fit plot range to data"
+        },
+        "matterviz.trajectory.plot_grid_lines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show grid lines in plots"
+        },
+        "matterviz.trajectory.plot_axis_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show axis labels in plots"
+        },
+        "matterviz.trajectory.step_label_format": {
+          "type": "string",
+          "default": ".3~s",
+          "description": "Number format for step labels (D3 format specifier)"
+        },
+        "matterviz.trajectory.property_value_format": {
+          "type": "string",
+          "default": ".2~s",
+          "description": "Number format for property values (D3 format specifier)"
+        },
+        "matterviz.trajectory.tooltip_format": {
+          "type": "string",
+          "default": ".3~s",
+          "description": "Number format for tooltips (D3 format specifier)"
+        },
+        "matterviz.trajectory.enable_keyboard_shortcuts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable keyboard shortcuts for playback"
+        },
+        "matterviz.trajectory.show_parsing_progress": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show progress indicator while parsing files"
+        },
+        "matterviz.trajectory.compact_controls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use compact layout for playback controls"
+        },
+        "matterviz.trajectory.show_filename_in_controls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display filename in control panel"
+        },
+        "matterviz.trajectory.enable_fullscreen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow fullscreen mode"
+        },
+        "matterviz.trajectory.smooth_playback": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use smooth interpolation between frames"
+        },
+        "matterviz.trajectory.loop_playback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Loop trajectory playback"
+        },
+        "matterviz.trajectory.pause_on_hover": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pause playback when hovering over controls"
+        },
+        "matterviz.trajectory.highlight_current_frame": {
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight current frame in timeline"
+        },
+        "matterviz.trajectory.show_frame_info": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show frame information overlay"
+        },
+        "matterviz.trajectory.max_frames_in_memory": {
+          "type": "number",
+          "default": 1000,
+          "description": "Maximum frames to keep in memory",
+          "minimum": 10,
+          "maximum": 10000
+        },
+        "matterviz.trajectory.memory_usage_warning_threshold": {
+          "type": "number",
+          "default": 500,
+          "description": "Frame count threshold for memory warnings",
+          "minimum": 10,
+          "maximum": 5000
+        },
+        "matterviz.trajectory.enable_performance_monitoring": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable performance monitoring"
+        },
+        "matterviz.trajectory.prefetch_frames": {
+          "type": "number",
+          "default": 5,
+          "description": "Number of frames to prefetch ahead",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "matterviz.trajectory.cache_parsed_data": {
+          "type": "boolean",
+          "default": true,
+          "description": "Cache parsed trajectory data"
+        },
+        "matterviz.composition.composition_mode": {
+          "type": "string",
+          "default": "pie",
+          "description": "Display mode for composition data",
+          "enum": [
+            "pie",
+            "bubble",
+            "bar"
+          ]
+        },
+        "matterviz.composition.composition_color_scheme": {
+          "type": "string",
+          "default": "Vesta",
+          "description": "Color scheme for composition visualization",
+          "enum": [
+            "Vesta",
+            "Jmol",
+            "Alloy",
+            "Pastel",
+            "Muted",
+            "Dark Mode"
+          ]
         }
       }
     }
   },
   "scripts": {
+    "sync-config": "deno run -A scripts/sync-config.ts",
+    "prebuild": "pnpm sync-config",
     "build": "rm -rf dist && vite build --config vite.webview.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
     "package": "pnpm build && vsce package",
     "test": "vitest"

@@ -642,7 +642,7 @@ describe(`atom label controls`, () => {
           structure,
           controls_open: true,
           show_controls: true,
-          scene_props: { show_site_labels: true, atom_label_offset: offset },
+          scene_props: { show_site_labels: true, site_label_offset: offset },
         },
       })
       await tick()
@@ -669,7 +669,7 @@ describe(`atom label controls`, () => {
         structure,
         controls_open: true,
         show_controls: true,
-        scene_props: { show_site_labels: true, atom_label_color: `#ff0000` },
+        scene_props: { show_site_labels: true, site_label_color: `#ff0000` },
       },
     })
     await tick()
@@ -710,8 +710,8 @@ describe(`atom label controls`, () => {
         show_controls: true,
         scene_props: {
           show_site_labels: true,
-          atom_label_size: 1.2,
-          atom_label_padding: 4,
+          site_label_size: 1.2,
+          site_label_padding: 4,
         },
       },
     })
@@ -788,7 +788,7 @@ describe(`atom label controls`, () => {
         structure,
         controls_open: true,
         show_controls: true,
-        scene_props: { show_site_labels: true, atom_label_offset: [0, 0.75, 0.2] },
+        scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
       },
     })
     await tick()
@@ -800,7 +800,7 @@ describe(`atom label controls`, () => {
         structure,
         controls_open: true,
         show_controls: true,
-        scene_props: { show_site_labels: true, atom_label_offset: [0, 0.75, 0.7] },
+        scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.7] },
       },
     })
     await tick()

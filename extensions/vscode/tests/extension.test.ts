@@ -9,6 +9,7 @@ import {
   activate,
   create_html,
   deactivate,
+  get_defaults,
   get_file,
   get_theme,
   handle_msg,
@@ -419,7 +420,7 @@ describe(`MatterViz Extension`, () => {
   test(`extension activation`, () => {
     activate(mock_context)
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-      `matterviz.renderStructure`,
+      `matterviz.render_structure`,
       expect.any(Function),
     )
     expect(mock_vscode.window.registerCustomEditorProvider)
@@ -660,6 +661,7 @@ describe(`MatterViz Extension`, () => {
       // Store initial HTML after render (render always sets HTML initially)
       const initial_html = mock_panel.webview.html
 
+      // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
       const theme_callback = mock_vscode.window.onDidChangeActiveColorTheme.mock.calls[0]
         ?.[0]
 
@@ -858,7 +860,7 @@ describe(`MatterViz Extension`, () => {
         expect(() => activate(mock_context)).not.toThrow()
 
         expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-          `matterviz.renderStructure`,
+          `matterviz.render_structure`,
           expect.any(Function),
         )
       })
@@ -1069,6 +1071,7 @@ describe(`MatterViz Extension`, () => {
       activate(mock_context)
 
       // Get the registered callback
+      // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
       const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
         .mock.calls[0]?.[0]
       expect(onDidOpenTextDocument_callback).toBeDefined()
@@ -1078,18 +1081,18 @@ describe(`MatterViz Extension`, () => {
         uri: { scheme: `untitled` },
       }
 
-      expect(() => onDidOpenTextDocument_callback(mock_document)).not.toThrow()
+      expect(() => onDidOpenTextDocument_callback?.(mock_document)).not.toThrow()
     })
 
-    test(`should respect autoRender configuration setting`, () => {
+    test(`should respect auto_render configuration setting`, () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
 
-      // Mock configuration to disable autoRender
+      // Mock configuration to disable auto_render
       mock_vscode.workspace.getConfiguration.mockReturnValue({
         get: vi.fn((key: string, defaultValue: string) => {
-          if (key === `autoRender`) return `false`
+          if (key === `auto_render`) return `false`
           return defaultValue
         }),
       })
@@ -1106,7 +1109,7 @@ describe(`MatterViz Extension`, () => {
         uri: { scheme: `file`, fsPath: `/test/structure.cif` },
       }
 
-      expect(() => onDidOpenTextDocument_callback(mock_document)).not.toThrow()
+      expect(() => onDidOpenTextDocument_callback?.(mock_document)).not.toThrow()
     })
 
     test(`should handle file reading errors gracefully during auto-render`, async () => {
@@ -1122,6 +1125,7 @@ describe(`MatterViz Extension`, () => {
       activate(mock_context)
 
       // Get the registered callback
+      // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
       const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
         .mock.calls[0]?.[0]
       expect(onDidOpenTextDocument_callback).toBeDefined()
@@ -1132,13 +1136,172 @@ describe(`MatterViz Extension`, () => {
       }
 
       // Should show error message when file reading fails
-      expect(() => onDidOpenTextDocument_callback(mock_document)).not.toThrow()
+      expect(() => onDidOpenTextDocument_callback?.(mock_document)).not.toThrow()
 
       await vi.waitFor(() => { // Wait for error message to be called
         expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
           expect.stringContaining(`MatterViz auto-render failed:`),
         )
       })
+    })
+  })
+
+  describe(`Default Settings`, () => {
+    // Helper to create mock config and test setting
+    const test_setting = (
+      result_path: string,
+      expected_value: unknown,
+      config_key: string,
+    ) => {
+      const parts = config_key.split(`.`)
+
+      const mock_config = {
+        get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+          if (parts.length === 2 && key === parts[0]) {
+            return { [parts[1]]: expected_value }
+          } else if (parts.length === 1 && key === parts[0]) return expected_value
+          return defaultValue
+        }),
+      }
+      // @ts-expect-error: Mock type override needed for testing
+      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+      const result = get_defaults()
+      const value = result_path.split(`.`).reduce(
+        (obj: Record<string, unknown>, key: string) =>
+          obj?.[key] as Record<string, unknown>,
+        result,
+      )
+
+      return Array.isArray(expected_value)
+        ? expect(value).toEqual(expected_value)
+        : expect(value).toBe(expected_value)
+    }
+
+    test(`should merge user settings with defaults`, () => {
+      const user_config = {
+        structure: { atom_radius: 1.5, show_bonds: true, bond_color: `#ff0000` },
+        trajectory: { auto_play: true },
+      }
+      const mock_config = {
+        get: vi.fn((key: string, defaultValue?: unknown) => {
+          if (key === `structure`) return user_config.structure
+          if (key === `trajectory`) return user_config.trajectory
+          return defaultValue
+        }),
+      }
+      // @ts-expect-error: Mock type override needed for testing
+      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+      const result = get_defaults()
+
+      expect(result.structure.atom_radius).toBe(1.5)
+      expect(result.structure.show_bonds).toBe(true)
+      expect(result.structure.bond_color).toBe(`#ff0000`)
+      expect(result.trajectory.auto_play).toBe(true)
+      expect(result.structure.same_size_atoms).toBe(false) // Falls back to default
+    })
+
+    test.each([
+      // Numbers
+      [`structure.atom_radius`, 1.5],
+      [`structure.sphere_segments`, 24],
+      [`structure.bond_thickness`, 0.2],
+      [`structure.rotation_damping`, 0.2],
+      [`structure.zoom_speed`, 1.0],
+      [`structure.pan_speed`, 1.0],
+      [`structure.auto_rotate`, 2.0],
+      [`structure.site_label_size`, 14],
+      [`structure.site_label_padding`, 4],
+      [`structure.ambient_light`, 0.6],
+      [`structure.directional_light`, 0.8],
+      [`structure.force_scale`, 2.0],
+      [`structure.lattice_edge_opacity`, 0.5],
+      [`structure.lattice_surface_opacity`, 0.2],
+      [`background_opacity`, 0.8],
+      [`trajectory.fps`, 10],
+      [`trajectory.step_labels`, 10],
+
+      // Booleans
+      [`structure.same_size_atoms`, true],
+      [`structure.show_atoms`, false],
+      [`structure.show_bonds`, true],
+      [`structure.show_site_labels`, true],
+      [`structure.show_force_vectors`, true],
+      [`structure.show_lattice`, true],
+      [`structure.show_vectors`, true],
+      [`show_image_atoms`, true],
+      [`show_gizmo`, false],
+      [`trajectory.auto_play`, true],
+      [`trajectory.show_controls`, false],
+      [`trajectory.show_fullscreen_button`, false],
+
+      // Colors (strings)
+      [`structure.bond_color`, `#ff0000`],
+      [`structure.site_label_color`, `#00ff00`],
+      [`structure.site_label_bg_color`, `#333333`],
+      [`structure.lattice_edge_color`, `#aaaaaa`],
+      [`structure.lattice_surface_color`, `#bbbbbb`],
+      [`structure.force_color`, `#ffff00`],
+      [`background_color`, `#111111`],
+
+      // String enums
+      [`structure.bonding_strategy`, `covalent_radius`],
+      [`structure.projection`, `orthographic`],
+      [`color_scheme`, `Jmol`],
+      [`composition.composition_color_scheme`, `Alloy`],
+      [`trajectory.display_mode`, `scatter`],
+      [`trajectory.layout`, `vertical`],
+      [`composition.composition_mode`, `bar`],
+
+      // Arrays
+      [`structure.camera_position`, [1, 2, 3]],
+      [`structure.site_label_offset`, [0.5, 1.0, 0]],
+      [`trajectory.fps_range`, [0.5, 60]],
+    ])(`should handle setting: %s = %s`, (result_path, expected_value) => {
+      test_setting(result_path, expected_value, result_path)
+    })
+
+    test.each([
+      [{ get: vi.fn(() => undefined) }, `missing config`],
+      [
+        {
+          get: vi.fn((key: string, defaultValue?: unknown) =>
+            key === `defaults`
+              ? {
+                structure: {
+                  atom_radius: `invalid`,
+                  show_bonds: `not-bool`,
+                  bond_color: 123,
+                },
+              }
+              : defaultValue
+          ),
+        },
+        `invalid values`,
+      ],
+    ])(`should handle %s gracefully`, (mock_config, _description) => {
+      // @ts-expect-error: Mock type override needed for testing
+      mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+      expect(() => get_defaults()).not.toThrow()
+      const result = get_defaults()
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          structure: expect.any(Object),
+          trajectory: expect.any(Object),
+          composition: expect.any(Object),
+        }),
+      )
+    })
+
+    test(`should handle workspace config errors`, () => {
+      mock_vscode.workspace.getConfiguration.mockImplementation(() => {
+        throw new Error(`Config access failed`)
+      })
+
+      expect(() => get_defaults()).not.toThrow()
     })
   })
 })

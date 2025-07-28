@@ -1,11 +1,39 @@
 import { is_structure_file } from '$lib/io/parse'
-import type { ThemeName } from '$lib/theme'
-import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode } from '$lib/theme'
+import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import { DEFAULTS, type DefaultSettings, merge } from '../../../src/lib/settings'
+
+// WebviewLike and ExtensionContextLike are unions to allow both real vscode types and mock types for testing
+type WebviewLike = vscode.Webview | {
+  cspSource: string
+  asWebviewUri: (uri: { fsPath: string }) => string | { toString(): string }
+  onDidReceiveMessage: (
+    listener: (message: unknown) => void,
+  ) => { dispose(): void } | void
+  postMessage: (message: unknown) => Promise<boolean> | void
+  html: string
+}
+
+type ExtensionContextLike = vscode.ExtensionContext | {
+  extensionUri: { fsPath: string }
+  subscriptions: Array<{ dispose(): void }>
+  workspaceState?: {
+    get<T>(key: string): T | undefined
+    update(key: string, value: unknown): Promise<void>
+  }
+  globalState?: {
+    get<T>(key: string): T | undefined
+    update(key: string, value: unknown): Promise<void>
+  }
+  extensionPath?: string
+  storageUri?: { fsPath: string }
+  globalStorageUri?: { fsPath: string }
+  logUri?: { fsPath: string }
+}
 
 interface FileData {
   filename: string
@@ -17,15 +45,17 @@ interface WebviewData {
   type: `trajectory` | `structure`
   data: FileData
   theme: ThemeName
+  defaults?: DefaultSettings
 }
 
 export interface MessageData {
   command: string
   text?: string
   filename?: string
+  file_size?: number
   content?: string
-  file_path?: string
   is_binary?: boolean
+  file_path?: string
 }
 
 // Track active file watchers by file path
@@ -43,7 +73,7 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
   const is_supported = should_auto_render(filename)
   vscode.commands.executeCommand(
     `setContext`,
-    `matterviz.supportedResource`,
+    `matterviz.supported_resource`,
     is_supported,
   )
 }
@@ -113,16 +143,72 @@ const get_system_theme = (): ThemeName => {
   } else return COLOR_THEMES.light
 }
 
+// Settings reader with nested structure support and built-in error handling
+export const get_defaults = (): DefaultSettings => {
+  try {
+    const config = vscode.workspace.getConfiguration(`matterviz`)
+    const user_settings: Partial<DefaultSettings> = {}
+
+    // Helper to read settings section
+    const read_section = (
+      section_key: keyof DefaultSettings,
+      defaults_section: Record<string, unknown>,
+    ) => {
+      const settings: Record<string, unknown> = {}
+      const section_config = config.get(section_key, {})
+      for (const key of Object.keys(defaults_section)) {
+        const value = section_config?.[key]
+        if (value !== undefined) settings[key] = value
+      }
+      return Object.keys(settings).length > 0 ? settings : undefined
+    }
+
+    // Read all settings sections
+    const general_keys = [
+      `color_scheme`,
+      `background_color`,
+      `background_opacity`,
+      `show_image_atoms`,
+      `show_gizmo`,
+    ] as const
+    for (const key of general_keys) {
+      const value = config.get(key)
+      if (value !== undefined) user_settings[key] = value
+    }
+
+    const structure_settings = read_section(`structure`, DEFAULTS.structure)
+    if (structure_settings) {
+      user_settings.structure = structure_settings as DefaultSettings[`structure`]
+    }
+
+    const trajectory_settings = read_section(`trajectory`, DEFAULTS.trajectory)
+    if (trajectory_settings) {
+      user_settings.trajectory = trajectory_settings as DefaultSettings[`trajectory`]
+    }
+
+    const composition_settings = read_section(`composition`, DEFAULTS.composition)
+    if (composition_settings) {
+      user_settings.composition = composition_settings as DefaultSettings[`composition`]
+    }
+
+    return merge(user_settings)
+  } catch (error) {
+    console.error(`Failed to get defaults:`, error)
+    return DEFAULTS
+  }
+}
+
 // Create HTML content for webview
 export const create_html = (
-  webview: vscode.Webview,
-  context: vscode.ExtensionContext,
+  webview: WebviewLike,
+  context: ExtensionContextLike,
   data: WebviewData,
 ): string => {
   const nonce = Math.random().toString(36).slice(2, 34)
-  const js_uri = webview.asWebviewUri(
+  const webview_uri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, `dist`, `webview.js`),
   )
+  const js_uri = typeof webview_uri === `string` ? webview_uri : webview_uri.toString()
 
   return `<!DOCTYPE html>
 <html>
@@ -144,7 +230,7 @@ export const create_html = (
 // Handle messages from webview
 export const handle_msg = async (
   msg: MessageData,
-  webview?: vscode.Webview,
+  webview?: WebviewLike,
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     vscode.window.showInformationMessage(msg.text)
@@ -194,7 +280,7 @@ export const handle_msg = async (
 }
 
 // Start watching a file using VS Code's built-in file system watcher
-function start_watching_file(file_path: string, webview: vscode.Webview): void {
+function start_watching_file(file_path: string, webview: WebviewLike): void {
   try {
     // Stop existing watcher for this file if any
     stop_watching_file(file_path)
@@ -232,7 +318,7 @@ function start_watching_file(file_path: string, webview: vscode.Webview): void {
 function handle_file_change(
   event_type: `change` | `delete`,
   file_path: string,
-  webview: vscode.Webview,
+  webview: WebviewLike,
 ): void {
   if (event_type === `delete`) {
     try { // File was deleted - send notification
@@ -306,6 +392,7 @@ function create_webview_panel(
     type: is_trajectory_file(file_data.filename) ? `trajectory` : `structure`,
     data: file_data,
     theme: get_theme(),
+    defaults: get_defaults(),
   })
 
   panel.webview.onDidReceiveMessage(
@@ -322,6 +409,7 @@ function create_webview_panel(
         type: is_trajectory_file(file_data.filename) ? `trajectory` : `structure`,
         data: current_file,
         theme: get_theme(),
+        defaults: get_defaults(),
       })
     }
   }
@@ -329,7 +417,7 @@ function create_webview_panel(
   const theme_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
   const config_listener = vscode.workspace.onDidChangeConfiguration(
     (event: vscode.ConfigurationChangeEvent) => {
-      if (event.affectsConfiguration(`matterviz.theme`)) update_theme()
+      if (event.affectsConfiguration(`matterviz`)) update_theme()
     },
   )
 
@@ -394,6 +482,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
           type: is_trajectory_file(filename) ? `trajectory` : `structure`,
           data: read_file(document.uri.fsPath),
           theme: get_theme(),
+          defaults: get_defaults(),
         },
       )
       webview_panel.webview.onDidReceiveMessage(
@@ -415,6 +504,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
               type: is_trajectory_file(filename) ? `trajectory` : `structure`,
               data: read_file(document.uri.fsPath),
               theme: get_theme(),
+              defaults: get_defaults(),
             },
           )
         }
@@ -425,9 +515,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       )
       const config_change_listener = vscode.workspace.onDidChangeConfiguration(
         (event: vscode.ConfigurationChangeEvent) => {
-          if (event.affectsConfiguration(`matterviz.theme`)) {
-            update_theme()
-          }
+          if (event.affectsConfiguration(`matterviz`)) update_theme()
         },
       )
 
@@ -453,7 +541,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      `matterviz.renderStructure`,
+      `matterviz.render_structure`,
       (uri?: vscode.Uri) => render(context, uri),
     ),
     vscode.window.registerCustomEditorProvider(
@@ -469,10 +557,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
         setTimeout(() => {
           try {
             if (
-              !vscode.workspace.getConfiguration(`matterviz`).get<boolean>(
-                `autoRender`,
-                true,
-              )
+              !vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true)
             ) return
             const file_data = read_file(document.uri.fsPath)
             create_webview_panel(
