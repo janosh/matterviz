@@ -1,0 +1,93 @@
+/// <reference lib="deno.ns" />
+
+import { SETTINGS_CONFIG } from '../../../src/lib/settings.ts'
+
+const readFileSync = (path: string) => Deno.readTextFileSync(path)
+const writeFileSync = (path: string, data: string) => Deno.writeTextFileSync(path, data)
+const join = (...paths: string[]) => {
+  const separator = Deno.build.os === `windows` ? `\\` : `/`
+  return paths.join(separator).replace(/[\/\\]+/g, separator)
+}
+
+// VSCode configuration generator that derives from your central settings schema
+function sync_package_config() {
+  const script_dir = new URL(`.`, import.meta.url).pathname
+  const package_path = join(script_dir, `..`, `package.json`)
+  const package_content = JSON.parse(readFileSync(package_path))
+
+  // Auto-generate VSCode settings from SETTINGS_CONFIG
+  const vscode_config: Record<string, unknown> = {}
+
+  // Helper to process settings schema
+  function process_setting_schema(schema: unknown, key_path: string) {
+    if (schema && typeof schema === `object` && `value` in schema) {
+      // This is a SettingSchema
+      const config: Record<string, unknown> = {
+        type: typeof schema.value === `boolean`
+          ? `boolean`
+          : typeof schema.value === `number`
+          ? `number`
+          : Array.isArray(schema.value)
+          ? `array`
+          : `string`,
+        default: schema.value,
+        description: schema.description,
+      }
+
+      // Add constraints from schema
+      if (schema.minimum !== undefined) config.minimum = schema.minimum
+      if (schema.maximum !== undefined) config.maximum = schema.maximum
+      if (schema.minItems !== undefined) config.minItems = schema.minItems
+      if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
+      if (schema.enum) config.enum = schema.enum
+
+      // Add array item type for arrays
+      if (Array.isArray(schema.value)) config.items = { type: `number` }
+
+      vscode_config[key_path] = config
+    } else if (schema && typeof schema === `object`) {
+      // This is a nested object, recurse
+      Object.entries(schema).forEach(([key, value]) => {
+        const nested_key = key_path ? `${key_path}.${key}` : key
+        process_setting_schema(value, nested_key)
+      })
+    }
+  }
+
+  // Process all settings from SETTINGS_CONFIG
+  Object.entries(SETTINGS_CONFIG).forEach(([key, value]) => {
+    const base_key = `matterviz.defaults.${key}`
+    process_setting_schema(value, base_key)
+  })
+
+  // Preserve existing non-defaults settings
+  const existing_props = package_content.contributes?.configuration?.properties || {}
+  const preserved_props: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(existing_props)) {
+    if (!key.startsWith(`matterviz.defaults.`)) {
+      preserved_props[key] = value
+    }
+  }
+
+  // Update package.json with generated + preserved settings
+  if (!package_content.contributes) package_content.contributes = {}
+  if (!package_content.contributes.configuration) {
+    package_content.contributes.configuration = { title: `MatterViz`, properties: {} }
+  }
+
+  package_content.contributes.configuration.properties = {
+    ...preserved_props,
+    ...vscode_config,
+  }
+
+  writeFileSync(package_path, JSON.stringify(package_content, null, 2) + `\n`)
+  console.log(
+    `✅ Synced ${
+      Object.keys(vscode_config).length
+    } settings from SETTINGS_CONFIG to package.json`,
+  )
+}
+
+// Run the sync
+sync_package_config()

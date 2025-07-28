@@ -1,10 +1,10 @@
 // deno-lint-ignore-file no-await-in-loop
-import { STRUCT_DEFAULTS } from '$lib'
+import { DEFAULTS } from '$lib'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import { open_structure_controls_panel } from './helpers.ts'
 
-const default_cam_projection = STRUCT_DEFAULTS.scene_props.camera_projection
+const default_cam_projection = DEFAULTS.structure.projection
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

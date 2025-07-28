@@ -33,10 +33,10 @@
 <h3>Try dragging files onto the structure viewers</h3>
 
 <p>
-  Either from the set of example files or drag a local <code>extXYZ</code>,
+  Either from the set of example files below or drag a local file in <code>extXYZ</code>,
   <code>POSCAR</code>, <code>CIF</code>, <code>YAML</code>, <code>OPTIMADE</code> JSON,
-  <code>pymatgen</code> JSON files, or compressed versions of these files onto either
-  structure viewer.
+  <code>pymatgen</code> JSON format onto either structure viewer. Compressed versions of
+  these structure formats are also supported.
 </p>
 
 <FilePicker

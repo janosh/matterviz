@@ -8,6 +8,7 @@
     load_from_url,
     parse_any_structure,
   } from '$lib/io'
+  import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -17,7 +18,6 @@
   import { WebGLRenderer } from 'three'
   import type { StructureHandlerData } from './index'
   import {
-    STRUCT_DEFAULTS,
     StructureControls,
     StructureInfoPanel,
     StructureLegend,
@@ -67,13 +67,13 @@
   }
   let {
     structure = $bindable(undefined),
-    scene_props = $bindable({ ...STRUCT_DEFAULTS.scene_props }),
+    scene_props = $bindable({}),
     lattice_props = $bindable({
-      cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
-      cell_surface_opacity: STRUCT_DEFAULTS.cell.surface_opacity,
-      cell_edge_color: STRUCT_DEFAULTS.cell.color,
-      cell_surface_color: STRUCT_DEFAULTS.cell.color,
-      cell_line_width: STRUCT_DEFAULTS.cell.line_width,
+      cell_edge_opacity: DEFAULTS.structure.lattice_edge_opacity,
+      cell_surface_opacity: DEFAULTS.structure.lattice_surface_opacity,
+      cell_edge_color: DEFAULTS.structure.lattice_edge_color,
+      cell_surface_color: DEFAULTS.structure.lattice_surface_color,
+      cell_line_width: DEFAULTS.structure.lattice_line_width,
       show_vectors: true,
     }),
     controls_open = $bindable(false),
@@ -183,7 +183,7 @@
           ...scene_props,
           show_force_vectors: true,
           force_vector_scale: scene_props.force_vector_scale ||
-            STRUCT_DEFAULTS.vector.scale,
+            DEFAULTS.structure.force_scale,
           force_vector_color: scene_props.force_vector_color || `#ff6b6b`,
         }
         force_vectors_auto_enabled = true

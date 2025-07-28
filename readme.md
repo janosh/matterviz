@@ -6,7 +6,6 @@
 
 [![Tests](https://github.com/janosh/matterviz/actions/workflows/test.yml/badge.svg)](https://github.com/janosh/matterviz/actions/workflows/test.yml)
 [![GH Pages](https://github.com/janosh/matterviz/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/janosh/matterviz/actions/workflows/gh-pages.yml)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/janosh/matterviz/main.svg?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)](https://results.pre-commit.ci/latest/github/janosh/matterviz/main?badge_token=nUqJfPCFS4uyMwcFSDIfdQ)
 [![VSCode Extension](https://img.shields.io/badge/Install%20VSCode-Extension-blue?logo=typescript&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz)
 [![Docs](https://img.shields.io/badge/Read-the%20docs-blue?logo=googledocs&logoColor=white)](https://matterviz.janosh.dev)
 [![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/janosh/matterviz)

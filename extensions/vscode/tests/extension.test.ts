@@ -9,6 +9,7 @@ import {
   activate,
   create_html,
   deactivate,
+  get_defaults,
   get_file,
   get_theme,
   handle_msg,
@@ -1138,6 +1139,346 @@ describe(`MatterViz Extension`, () => {
         expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
           expect.stringContaining(`MatterViz auto-render failed:`),
         )
+      })
+    })
+  })
+
+  describe(`Default Settings`, () => {
+    describe(`get_defaults function`, () => {
+      test(`should return merged defaults with user settings`, () => {
+        const mock_config = {
+          get: vi.fn((key: string) => {
+            if (key === `defaults.structure.atom_radius`) return 1.5
+            if (key === `defaults.structure.show_bonds`) return true
+            if (key === `defaults.structure.bond_color`) return `#ff0000`
+            if (key === `defaults.trajectory.auto_play`) return true
+            return undefined
+          }),
+        }
+        mock_vscode.workspace.getConfiguration.mockImplementation((section: string) => {
+          if (section === `matterviz`) return mock_config
+          return { get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue) }
+        })
+
+        const result = get_defaults()
+
+        expect(result.structure.atom_radius).toBe(1.5)
+        expect(result.structure.show_bonds).toBe(true)
+        expect(result.structure.bond_color).toBe(`#ff0000`)
+        expect(result.trajectory.auto_play).toBe(true)
+        // Should fall back to defaults for unset values
+        expect(result.structure.same_size_atoms).toBe(false) // Default value
+      })
+
+      test(`should handle missing config values gracefully`, () => {
+        const mock_config = {
+          get: vi.fn(() => undefined),
+        }
+        mock_vscode.workspace.getConfiguration.mockImplementation((section: string) => {
+          if (section === `matterviz`) return mock_config
+          return { get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue) }
+        })
+
+        const result = get_defaults()
+
+        // Should return all default values
+        expect(result.structure.atom_radius).toBe(1.0)
+        expect(result.structure.show_bonds).toBe(false)
+        expect(result.structure.bond_color).toBe(`#ffffff`)
+        expect(result.structure.same_size_atoms).toBe(false)
+        expect(result.trajectory.auto_play).toBe(false)
+        expect(result.trajectory.fps).toBe(5)
+      })
+    })
+
+    describe(`WebviewData with defaults`, () => {
+      test(`should include defaults in webview data`, () => {
+        const mock_config = {
+          get: vi.fn((key: string) => {
+            if (key === `defaults.structure.atom_radius`) return 1.2
+            return undefined
+          }),
+        }
+        mock_vscode.workspace.getConfiguration.mockImplementation((section: string) => {
+          if (section === `matterviz`) return mock_config
+          return { get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue) }
+        })
+
+        const webview_data = {
+          type: `structure` as const,
+          data: { filename: `test.cif`, content: `content`, isCompressed: false },
+          theme: `light` as const,
+          defaults: {
+            structure: {
+              atom_radius: 1.2,
+              show_bonds: false,
+              bond_color: `#ffffff`,
+              same_size_atoms: false,
+            },
+            trajectory: {
+              auto_play: false,
+              fps: 5,
+            },
+          },
+        }
+
+        const html = create_html(mock_webview, mock_context, webview_data)
+        const parsed_data = JSON.parse(
+          html.match(/mattervizData=(.+?)</s)?.[1] || `{}`,
+        )
+
+        expect(parsed_data.defaults).toBeDefined()
+        expect(parsed_data.defaults.structure.atom_radius).toBe(1.2)
+      })
+    })
+
+    describe(`Nested Settings`, () => {
+      test.each([
+        [`structure.atom_radius`, 1.5, `defaults.structure.atom_radius`],
+        [`structure.sphere_segments`, 24, `defaults.structure.sphere_segments`],
+        [`structure.bond_thickness`, 0.2, `defaults.structure.bond_thickness`],
+        [`structure.rotation_damping`, 0.2, `defaults.structure.rotation_damping`],
+        [`structure.zoom_speed`, 1.0, `defaults.structure.zoom_speed`],
+        [`structure.pan_speed`, 1.0, `defaults.structure.pan_speed`],
+        [`structure.auto_rotate`, 2.0, `defaults.structure.auto_rotate`],
+        [`structure.site_label_size`, 14, `defaults.structure.site_label_size`],
+        [`structure.site_label_padding`, 4, `defaults.structure.site_label_padding`],
+        [`structure.ambient_light`, 0.6, `defaults.structure.ambient_light`],
+        [`structure.directional_light`, 0.8, `defaults.structure.directional_light`],
+        [`structure.force_scale`, 2.0, `defaults.structure.force_scale`],
+        [
+          `structure.lattice_edge_opacity`,
+          0.5,
+          `defaults.structure.lattice_edge_opacity`,
+        ],
+        [
+          `structure.lattice_surface_opacity`,
+          0.2,
+          `defaults.structure.lattice_surface_opacity`,
+        ],
+        [`background_opacity`, 0.8, `defaults.background_opacity`],
+        [`trajectory.fps`, 10, `defaults.trajectory.fps`],
+      ])(
+        `should handle number setting: %s = %s`,
+        (result_path, expected_value, config_key) => {
+          const mock_config = {
+            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          }
+          mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+          const result = get_defaults()
+
+          // Navigate nested path like 'structure.atom_radius'
+          const value = result_path.split(`.`).reduce(
+            (obj: Record<string, unknown>, key: string) =>
+              obj?.[key] as Record<string, unknown>,
+            result,
+          )
+          expect(value).toBe(expected_value)
+        },
+      )
+
+      test.each([
+        [`structure.same_size_atoms`, true, `defaults.structure.same_size_atoms`],
+        [`structure.show_atoms`, false, `defaults.structure.show_atoms`],
+        [`structure.show_bonds`, true, `defaults.structure.show_bonds`],
+        [`structure.show_site_labels`, true, `defaults.structure.show_site_labels`],
+        [`structure.show_force_vectors`, true, `defaults.structure.show_force_vectors`],
+        [`structure.show_lattice`, true, `defaults.structure.show_lattice`],
+        [`structure.show_vectors`, true, `defaults.structure.show_vectors`],
+        [`show_image_atoms`, true, `defaults.show_image_atoms`],
+        [`show_gizmo`, false, `defaults.show_gizmo`],
+        [`trajectory.auto_play`, true, `defaults.trajectory.auto_play`],
+        [`trajectory.show_controls`, false, `defaults.trajectory.show_controls`],
+        [
+          `trajectory.show_fullscreen_button`,
+          false,
+          `defaults.trajectory.show_fullscreen_button`,
+        ],
+      ])(
+        `should handle boolean setting: %s = %s`,
+        (result_path, expected_value, config_key) => {
+          const mock_config = {
+            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          }
+          mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+          const result = get_defaults()
+
+          // Navigate nested path like 'structure.show_atoms'
+          const value = result_path.split(`.`).reduce(
+            (obj: Record<string, unknown>, key: string) =>
+              obj?.[key] as Record<string, unknown>,
+            result,
+          )
+          expect(value).toBe(expected_value)
+        },
+      )
+
+      test.each([
+        [`structure.bond_color`, `#ff0000`, `defaults.structure.bond_color`],
+        [`structure.site_label_color`, `#00ff00`, `defaults.structure.site_label_color`],
+        [
+          `structure.site_label_bg_color`,
+          `#333333`,
+          `defaults.structure.site_label_bg_color`,
+        ],
+        [
+          `structure.lattice_edge_color`,
+          `#aaaaaa`,
+          `defaults.structure.lattice_edge_color`,
+        ],
+        [
+          `structure.lattice_surface_color`,
+          `#bbbbbb`,
+          `defaults.structure.lattice_surface_color`,
+        ],
+        [`structure.force_color`, `#ffff00`, `defaults.structure.force_color`],
+        [`background_color`, `#111111`, `defaults.background_color`],
+      ])(
+        `should handle color setting: %s = %s`,
+        (result_path, expected_value, config_key) => {
+          const mock_config = {
+            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          }
+          mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+          const result = get_defaults()
+
+          // Navigate nested path like 'structure.bond_color'
+          const value = result_path.split(`.`).reduce(
+            (obj: Record<string, unknown>, key: string) =>
+              obj?.[key] as Record<string, unknown>,
+            result,
+          )
+          expect(value).toBe(expected_value)
+        },
+      )
+
+      test.each([
+        [
+          `structure.bonding_strategy`,
+          `covalent_radius`,
+          `defaults.structure.bonding_strategy`,
+        ],
+        [`structure.projection`, `orthographic`, `defaults.structure.projection`],
+        [`color_scheme`, `Jmol`, `defaults.color_scheme`],
+        [
+          `composition.composition_color_scheme`,
+          `Alloy`,
+          `defaults.composition.composition_color_scheme`,
+        ],
+        [`trajectory.display_mode`, `scatter`, `defaults.trajectory.display_mode`],
+        [`trajectory.layout`, `vertical`, `defaults.trajectory.layout`],
+        [`composition.composition_mode`, `bar`, `defaults.composition.composition_mode`],
+      ])(
+        `should handle string enum setting: %s = %s`,
+        (result_path, expected_value, config_key) => {
+          const mock_config = {
+            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          }
+          mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+          const result = get_defaults()
+
+          // Navigate nested path like 'structure.bonding_strategy'
+          const value = result_path.split(`.`).reduce(
+            (obj: Record<string, unknown>, key: string) =>
+              obj?.[key] as Record<string, unknown>,
+            result,
+          )
+          expect(value).toBe(expected_value)
+        },
+      )
+
+      test.each([
+        [`structure.camera_position`, [1, 2, 3], `defaults.structure.camera_position`],
+        [
+          `structure.site_label_offset`,
+          [0.5, 1.0, 0],
+          `defaults.structure.site_label_offset`,
+        ],
+        [`trajectory.fps_range`, [0.5, 60], `defaults.trajectory.fps_range`],
+      ])(
+        `should handle array setting: %s = %s`,
+        (result_path, expected_value, config_key) => {
+          const mock_config = {
+            get: vi.fn((key: string) => key === config_key ? expected_value : undefined),
+          }
+          mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+          const result = get_defaults()
+
+          // Navigate nested path like 'structure.camera_position'
+          const value = result_path.split(`.`).reduce(
+            (obj: Record<string, unknown>, key: string) =>
+              obj?.[key] as Record<string, unknown>,
+            result,
+          )
+          expect(value).toEqual(expected_value)
+        },
+      )
+
+      test(`should handle step_labels integer setting`, () => {
+        const mock_config = {
+          get: vi.fn((key: string) =>
+            key === `defaults.trajectory.step_labels` ? 10 : undefined
+          ),
+        }
+        mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+        const result = get_defaults()
+
+        expect(result.trajectory.step_labels).toBe(10)
+      })
+    })
+
+    describe(`Edge cases and validation`, () => {
+      test(`should handle invalid config values gracefully`, () => {
+        const mock_config = {
+          get: vi.fn((key: string) => {
+            // Return invalid values for some settings
+            if (key === `defaults.structure.atom_radius`) return `invalid`
+            else if (key === `defaults.structure.show_bonds`) return `not-a-boolean`
+            else if (key === `defaults.structure.bond_color`) return 12345
+            else return undefined
+          }),
+        }
+        mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+        expect(() => get_defaults()).not.toThrow()
+        const result = get_defaults()
+
+        // Should include the invalid values as-is (merge doesn't validate)
+        expect(result.structure.atom_radius).toBe(`invalid`)
+        expect(result.structure.show_bonds).toBe(`not-a-boolean`)
+        expect(result.structure.bond_color).toBe(12345)
+      })
+
+      test(`should handle empty config gracefully`, () => {
+        const mock_config = {
+          get: vi.fn(() => undefined),
+        }
+        mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
+
+        const result = get_defaults()
+
+        // Should return default values with nested structure
+        expect(typeof result).toBe(`object`)
+        expect(result).toHaveProperty(`structure`)
+        expect(result).toHaveProperty(`trajectory`)
+        expect(result).toHaveProperty(`composition`)
+        expect(result.structure).toHaveProperty(`atom_radius`)
+        expect(result.structure).toHaveProperty(`show_bonds`)
+        expect(result.structure).toHaveProperty(`bond_color`)
+      })
+
+      test(`should handle workspace config errors gracefully`, () => {
+        mock_vscode.workspace.getConfiguration.mockImplementation(() => {
+          throw new Error(`Config access failed`)
+        })
+
+        expect(() => get_defaults()).toThrow(`Config access failed`)
       })
     })
   })

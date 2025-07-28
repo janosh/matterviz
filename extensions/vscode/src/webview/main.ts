@@ -11,7 +11,8 @@ import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/th
 import '$lib/theme/themes'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
-import { mount } from 'svelte'
+import { mount, unmount } from 'svelte'
+import { type DefaultSettings, merge } from '../../../../src/lib/settings'
 
 interface FileData {
   filename: string
@@ -23,6 +24,7 @@ interface MatterVizData {
   type: `trajectory` | `structure`
   data: FileData
   theme: ThemeName
+  defaults?: DefaultSettings
 }
 
 interface ParseResult {
@@ -32,7 +34,8 @@ interface ParseResult {
 }
 
 interface MatterVizApp {
-  destroy(): void
+  $on?(type: string, callback: (event: Event) => void): () => void
+  $set?(props: Partial<Record<string, unknown>>): void
 }
 
 interface FileChangeMessage {
@@ -43,52 +46,46 @@ interface FileChangeMessage {
   theme?: ThemeName
 }
 
-interface SaveMessage {
-  command: `saveAs`
-  content: string
-  filename: string
-  is_binary?: boolean
+interface TrajectoryData {
+  frames?: Array<{ structure?: { sites?: unknown[] } }>
 }
 
-type VSCodeMessage = FileChangeMessage | SaveMessage | { command: string; text: string }
-
-// VSCode webview API type (available globally in webview context)
-interface WebviewApi {
-  postMessage(message: VSCodeMessage): void
-  setState(state: unknown): void
-  getState(): unknown
+interface StructureData {
+  sites?: unknown[]
 }
 
+interface VSCodeAPI {
+  postMessage(message: unknown): void
+}
+
+// Extend globalThis interface for MatterViz data
 declare global {
   interface Window {
     mattervizData?: MatterVizData
-    MatterVizApp?: MatterVizApp
-    initializeMatterViz?: () => Promise<MatterVizApp | null>
+    initializeMatterViz?: () => void
   }
+  var mattervizData: MatterVizData | undefined
 
-  // VSCode webview API is available globally
-  function acquireVsCodeApi(): WebviewApi
-  const vscode: WebviewApi | undefined
+  // VSCode webview API
+  function acquireVsCodeApi(): VSCodeAPI
 }
 
-// Global VSCode API instance
-let vscode_api: WebviewApi | null = null
+// Store VSCode API instance to avoid multiple acquisitions
+let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
 
-// Initialize VSCode API once
-const get_vscode_api = (): WebviewApi | null => {
-  if (vscode_api) return vscode_api
+const get_matterviz_data = (): MatterVizData | undefined =>
+  (globalThis as unknown as { mattervizData?: MatterVizData }).mattervizData
 
-  if (typeof acquireVsCodeApi !== `undefined`) {
+function get_vscode_api(): VSCodeAPI | null {
+  if (!vscode_api) {
     try {
-      vscode_api = acquireVsCodeApi()
-      return vscode_api
+      vscode_api = globalThis.acquireVsCodeApi?.()
     } catch (error) {
-      console.warn(`Failed to acquire VSCode API:`, error)
+      console.warn(`VSCode API already acquired or not available:`, error)
     }
   }
-
-  return null
+  return vscode_api
 }
 
 // Set up VSCode-specific download override for file exports
@@ -171,7 +168,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       // Update the display
       const container = document.getElementById(`matterviz-app`)
       if (container && current_app) {
-        current_app.destroy()
+        await unmount(current_app) // unmount the existing component to prevent memory leaks
         current_app = create_display(container, result, result.filename)
       }
 
@@ -305,51 +302,132 @@ const create_display = (
 
   const is_trajectory = result.type === `trajectory`
   const Component = is_trajectory ? Trajectory : Structure
-  const props = is_trajectory
-    ? { trajectory: result.data, show_fullscreen_button: false, layout: `horizontal` }
-    : { structure: result.data, fullscreen_toggle: false }
 
-  if (!is_trajectory) container.style.setProperty(`--struct-height`, `100vh`)
+  // Get defaults and create props
+  const matterviz_data = get_matterviz_data()
+  const defaults = merge(matterviz_data?.defaults)
 
-  const component = mount(Component, { target: container, props })
+  // Create component props by mapping defaults to component props
+  const props = {
+    ...(is_trajectory
+      ? { trajectory: result.data as TrajectoryData, ...trajectory_props(defaults) }
+      : { structure: result.data as StructureData, ...structure_props(defaults) }),
+    allow_file_drop: false,
+    style: `height: 100%; border-radius: 0`,
+    enable_tips: false,
+  }
 
-  const message = is_trajectory
-    ? `Trajectory rendered: ${filename} (${result.data.frames.length} frames, ${
-      result.data.frames[0]?.structure?.sites?.length || 0
-    } sites)`
-    : `Structure rendered: ${filename} (${result.data.sites.length} sites)`
+  const app = mount(Component, { target: container, props })
 
-  // Get VSCode API if available
-  const vscode = get_vscode_api()
-  vscode?.postMessage({ command: `info`, text: message })
+  // VSCode message logging
+  try {
+    const vs_code_api = get_vscode_api()
+    const trajectory_data = result.data as TrajectoryData
+    const structure_data = result.data as StructureData
+    const message = is_trajectory
+      ? `Trajectory rendered: ${filename} (${
+        trajectory_data.frames?.length || 0
+      } frames, ${trajectory_data.frames?.[0]?.structure?.sites?.length || 0} sites)`
+      : `Structure rendered: ${filename} (${structure_data.sites?.length || 0} sites)`
 
+    vs_code_api?.postMessage({ command: `log`, text: message })
+  } catch (error) {
+    console.warn(`VSCode API messaging failed:`, error)
+  }
+
+  return app
+}
+
+// Map defaults to structure component props
+const structure_props = (defaults: DefaultSettings) => {
+  const { structure } = defaults
   return {
-    destroy: () => {
-      component.$destroy?.()
-      container.innerHTML = ``
+    scene_props: {
+      ...structure,
+      camera_projection: structure.projection,
+      force_vector_scale: structure.force_scale,
+      force_vector_color: structure.force_color,
+      gizmo: defaults.show_gizmo,
     },
+    lattice_props: {
+      show_vectors: structure.show_vectors,
+      cell_edge_opacity: structure.lattice_edge_opacity,
+      cell_surface_opacity: structure.lattice_surface_opacity,
+      cell_edge_color: structure.lattice_edge_color,
+      cell_surface_color: structure.lattice_surface_color,
+    },
+    color_scheme: defaults.color_scheme,
+    background_color: defaults.background_color,
+    background_opacity: defaults.background_opacity,
+    show_image_atoms: defaults.show_image_atoms,
+  }
+}
+
+// Map defaults to trajectory component props
+const trajectory_props = (defaults: DefaultSettings) => {
+  const { trajectory } = defaults
+  return {
+    ...trajectory,
+    structure_props: structure_props(defaults),
+    loading_options: {
+      array_buffer_threshold: trajectory.array_buffer_threshold,
+      str_threshold: trajectory.str_threshold,
+      use_indexing: trajectory.use_indexing,
+      chunk_size: trajectory.chunk_size,
+      max_frames_in_memory: trajectory.max_frames_in_memory,
+      enable_performance_monitoring: trajectory.enable_performance_monitoring,
+      prefetch_frames: trajectory.prefetch_frames,
+      cache_parsed_data: trajectory.cache_parsed_data,
+    },
+    scatter_props: {
+      line_width: trajectory.scatter_line_width,
+      point_size: trajectory.scatter_point_size,
+      show_legend: trajectory.scatter_show_legend,
+      enable_zoom: trajectory.enable_plot_zoom,
+      zoom_factor: trajectory.plot_zoom_factor,
+      auto_fit_range: trajectory.auto_fit_plot_range,
+      show_grid: trajectory.plot_grid_lines,
+      show_axis_labels: trajectory.plot_axis_labels,
+      animation_duration: trajectory.plot_animation_duration,
+      legend: { show: trajectory.scatter_show_legend },
+    },
+    histogram_props: {
+      mode: trajectory.histogram_mode,
+      show_legend: trajectory.histogram_show_legend,
+      bin_count: trajectory.histogram_bin_count,
+      enable_zoom: trajectory.enable_plot_zoom,
+      zoom_factor: trajectory.plot_zoom_factor,
+      auto_fit_range: trajectory.auto_fit_plot_range,
+      show_grid: trajectory.plot_grid_lines,
+      show_axis_labels: trajectory.plot_axis_labels,
+      animation_duration: trajectory.plot_animation_duration,
+      legend: { show: trajectory.histogram_show_legend },
+    },
+    spinner_props: { show_progress: trajectory.show_parsing_progress },
+    property_labels: {},
   }
 }
 
 // Initialize the MatterViz application
-const initialize_app = async (): Promise<MatterVizApp> => {
-  const matterviz_data = globalThis.mattervizData
-  const { content, filename, isCompressed } = matterviz_data?.data || {}
-  const theme = matterviz_data?.theme
-  if (!content || !filename) {
-    throw new Error(`No data provided to MatterViz app`)
-  }
-
-  // Set up VSCode-specific download override
-  setup_vscode_download()
-
-  // Apply theme early
-  if (theme) apply_theme_to_dom(theme)
-
-  const container = document.getElementById(`matterviz-app`)
-  if (!container) throw new Error(`Target container not found in DOM`)
-
+async function initialize() {
   try {
+    // Get MatterViz data passed from extension
+    const matterviz_data = get_matterviz_data()
+    const { content, filename, isCompressed } = matterviz_data?.data || {}
+    const theme = matterviz_data?.theme
+    if (!content || !filename) {
+      throw new Error(`No data provided to MatterViz app`)
+    }
+
+    // Set up VSCode-specific download override
+    setup_vscode_download()
+
+    // Apply theme early
+    if (theme) apply_theme_to_dom(theme)
+
+    const container = document.getElementById(`matterviz-app`)
+    if (!container) throw new Error(`Target container not found in DOM`)
+
     const result = await parse_file_content(content, filename, isCompressed)
     const app = create_display(container, result, result.filename)
 
@@ -372,25 +450,45 @@ const initialize_app = async (): Promise<MatterVizApp> => {
     return app
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error))
-    create_error_display(container, err, filename)
+    const container = document.getElementById(`matterviz-app`)
+    if (container) {
+      create_error_display(
+        container,
+        err,
+        get_matterviz_data()?.data?.filename || `Unknown file`,
+      )
+    }
     // Get VSCode API if available
     const vscode = get_vscode_api()
-    vscode?.postMessage({
-      command: `error`,
-      text: `Failed to render file: ${err.message}`,
-    })
+    if (vscode) {
+      const filename = get_matterviz_data()?.data?.filename || `Unknown file`
+      const text = `Error rendering ${filename}: ${err.message}`
+      vscode.postMessage({ command: `error`, text })
+    }
     throw error
   }
-}
+} // Cleanup function to properly dispose of components
+async function cleanup_matterviz(): Promise<void> {
+  if (current_app) {
+    try {
+      await unmount(current_app)
+      current_app = null
+    } catch (error) {
+      console.error(`Error unmounting MatterViz component:`, error)
+    }
+  }
+} // Export initialization and cleanup functions to global scope
 
-// Export initialization function to global scope
-globalThis.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
-  if (!globalThis.mattervizData) {
+;(globalThis as unknown as {
+  initializeMatterViz?: () => Promise<MatterVizApp | null>
+  cleanupMatterViz?: () => Promise<void>
+}).initializeMatterViz = async (): Promise<MatterVizApp | null> => {
+  if (!get_matterviz_data()) {
     console.warn(`No mattervizData found on window`)
     return null
   }
   try {
-    const app = await initialize_app()
+    const app = await initialize()
     current_app = app
     return app
   } catch (error) {
@@ -398,3 +496,5 @@ globalThis.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
     return null
   }
 }
+;(globalThis as unknown as { cleanupMatterViz?: () => Promise<void> })
+  .cleanupMatterViz = cleanup_matterviz
