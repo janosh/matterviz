@@ -3,7 +3,8 @@
   import { DraggablePanel } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import * as exports from '$lib/io/export'
-  import { STRUCT_DEFAULTS, StructureScene } from '$lib/structure'
+  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  import { StructureScene } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -45,13 +46,13 @@
   }
   let {
     controls_open = $bindable(false),
-    scene_props = $bindable({ ...STRUCT_DEFAULTS.scene_props }),
+    scene_props = $bindable({}),
     lattice_props = $bindable({
-      cell_edge_opacity: STRUCT_DEFAULTS.cell.edge_opacity,
-      cell_surface_opacity: STRUCT_DEFAULTS.cell.surface_opacity,
-      cell_edge_color: STRUCT_DEFAULTS.cell.edge_color,
-      cell_surface_color: STRUCT_DEFAULTS.cell.surface_color,
-      cell_line_width: STRUCT_DEFAULTS.cell.line_width,
+      cell_edge_opacity: DEFAULTS.structure.lattice_edge_opacity,
+      cell_surface_opacity: DEFAULTS.structure.lattice_surface_opacity,
+      cell_edge_color: DEFAULTS.structure.lattice_edge_color,
+      cell_surface_color: DEFAULTS.structure.lattice_surface_color,
+      cell_line_width: DEFAULTS.structure.lattice_line_width,
       show_vectors: true,
     }),
     show_image_atoms = $bindable(true),
@@ -77,28 +78,25 @@
   })
 
   // Atom label color management
-  let atom_label_hex_color = $state(
-    scene_props.atom_label_color || STRUCT_DEFAULTS.scene_props.atom_label_color,
+  let site_label_hex_color = $state(
+    scene_props.site_label_color || DEFAULTS.structure.site_label_color,
   )
-  let atom_label_bg_hex_color = $state(
-    scene_props.atom_label_bg_color ||
-      STRUCT_DEFAULTS.scene_props.atom_label_bg_color,
+  let site_label_bg_hex_color = $state(
+    scene_props.site_label_bg_color || DEFAULTS.structure.site_label_bg_color,
   )
-  let atom_label_background_opacity = $state(0)
+  let site_label_background_opacity = $state(0)
 
   $effect(() => {
-    scene_props.atom_label_color = atom_label_hex_color
-    scene_props.atom_label_bg_color =
-      `color-mix(in srgb, ${atom_label_bg_hex_color} ${
-        atom_label_background_opacity * 100
+    scene_props.site_label_color = site_label_hex_color
+    scene_props.site_label_bg_color =
+      `color-mix(in srgb, ${site_label_bg_hex_color} ${
+        site_label_background_opacity * 100
       }%, transparent)`
   })
 
-  // Ensure atom_label_offset is always available
-  if (!scene_props.atom_label_offset) {
-    scene_props.atom_label_offset = [
-      ...STRUCT_DEFAULTS.scene_props.atom_label_offset,
-    ]
+  // Ensure site_label_offset is always available
+  if (!scene_props.site_label_offset) {
+    scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
   }
 
   // Copy button feedback state
@@ -197,24 +195,34 @@
   <div
     style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap; max-width: 90%"
   >
-    Show <label>
+    Show <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
+    >
       <input type="checkbox" bind:checked={scene_props.show_atoms} />
       atoms
     </label>
-    <label>
+    <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+    >
       <input type="checkbox" bind:checked={scene_props.show_bonds} />
       bonds
     </label>
-    <label>
+    <label {@attach tooltip({ content: SETTINGS_CONFIG.show_image_atoms.description })}>
       <input type="checkbox" bind:checked={show_image_atoms} />
       image atoms
     </label>
-    <label>
+    <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_site_labels.description })}
+    >
       <input type="checkbox" bind:checked={scene_props.show_site_labels} />
       site labels
     </label>
     {#if has_forces}
-      <label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.show_force_vectors.description,
+        })}
+      >
         <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
         force vectors
       </label>
@@ -280,8 +288,7 @@
   <h4>Camera</h4>
   <label>
     <span
-      title="Switch between perspective and orthographic projection"
-      {@attach tooltip()}
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.projection.description })}
     >
       Projection
     </span>
@@ -290,7 +297,9 @@
       <option value="orthographic">Orthographic</option>
     </select>
   </label>
-  <label>
+  <label
+    {@attach tooltip({ content: SETTINGS_CONFIG.structure.auto_rotate.description })}
+  >
     Auto rotate speed
     <input
       type="number"
@@ -307,7 +316,7 @@
       bind:value={scene_props.auto_rotate}
     />
   </label>
-  <label>
+  <label {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_speed.description })}>
     Zoom speed
     <input
       type="number"
@@ -324,20 +333,15 @@
       bind:value={scene_props.zoom_speed}
     />
   </label>
-  <label>
-    <span
-      title="Pan by clicking and dragging while holding cmd, ctrl or shift"
-      {@attach tooltip()}
-    >
-      Pan speed
-    </span>
+  <label {@attach tooltip({ content: SETTINGS_CONFIG.structure.pan_speed.description })}>
+    Pan speed
     <input type="number" min={0} max={2} step={0.01} bind:value={scene_props.pan_speed} />
     <input type="range" min={0} max={2} step={0.01} bind:value={scene_props.pan_speed} />
   </label>
-  <label>
-    <span title="Damping factor for rotation" {@attach tooltip()}>
-      Rotation damping
-    </span>
+  <label
+    {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotation_damping.description })}
+  >
+    Rotation damping
     <input
       type="number"
       min={0.01}
@@ -357,7 +361,10 @@
   <!-- Atom Controls -->
   <hr />
   <h4>Atoms</h4>
-  <label class="slider-control">
+  <label
+    class="slider-control"
+    {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_radius.description })}
+  >
     Radius <small>(Å)</small>
     <input
       type="number"
@@ -375,13 +382,15 @@
     />
   </label>
   <label
-    title="If true, all atoms have same size. If false, scale according to atomic radii"
-    {@attach tooltip()}
+    {@attach tooltip({ content: SETTINGS_CONFIG.structure.same_size_atoms.description })}
   >
     Same size atoms
     <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
   </label>
-  <label style="align-items: flex-start">
+  <label
+    style="align-items: flex-start"
+    {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}
+  >
     Color scheme
     <Select
       options={Object.keys(element_color_schemes)}
@@ -415,7 +424,7 @@
     <div class="panel-row">
       <label>
         Color
-        <input type="color" bind:value={atom_label_hex_color} />
+        <input type="color" bind:value={site_label_hex_color} />
       </label>
       <label class="slider-control">
         Size
@@ -424,14 +433,14 @@
           min="0.5"
           max="2"
           step="0.1"
-          bind:value={scene_props.atom_label_size}
+          bind:value={scene_props.site_label_size}
         />
       </label>
     </div>
     <div class="panel-row">
       <label>
         Background
-        <input type="color" bind:value={atom_label_bg_hex_color} />
+        <input type="color" bind:value={site_label_bg_hex_color} />
       </label>
       <label class="slider-control">
         Opacity
@@ -440,14 +449,14 @@
           min="0"
           max="1"
           step="0.01"
-          bind:value={atom_label_background_opacity}
+          bind:value={site_label_background_opacity}
         />
         <input
           type="range"
           min="0"
           max="1"
           step="0.01"
-          bind:value={atom_label_background_opacity}
+          bind:value={site_label_background_opacity}
         />
       </label>
     </div>
@@ -459,14 +468,14 @@
           min="0"
           max="10"
           step="1"
-          bind:value={scene_props.atom_label_padding}
+          bind:value={scene_props.site_label_padding}
         />
         <input
           type="range"
           min="0"
           max="10"
           step="1"
-          bind:value={scene_props.atom_label_padding}
+          bind:value={scene_props.site_label_padding}
         />
       </label>
     </div>
@@ -480,7 +489,7 @@
             min="-1"
             max="1"
             step="0.1"
-            bind:value={scene_props.atom_label_offset![idx]}
+            bind:value={scene_props.site_label_offset![idx]}
           />
         </label>
       {/each}

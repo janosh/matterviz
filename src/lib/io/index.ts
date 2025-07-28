@@ -19,7 +19,26 @@ export async function handle_url_drop(
   return true
 }
 
-// Generic function to load data from URL and call callback
+async function load_binary_traj(
+  resp: Response,
+  filename: string,
+  type: string,
+  fallback = false,
+): Promise<ArrayBuffer | string> {
+  try {
+    const buffer = await resp.arrayBuffer()
+    console.log(`Loaded ${type} as binary:`, { filename, size: buffer.byteLength })
+    return buffer
+  } catch (error) {
+    if (fallback) {
+      console.warn(`Binary load failed for ${type}, using text:`, error)
+      return await resp.text()
+    }
+    console.error(`Binary load failed for ${type}:`, error)
+    throw new Error(`Failed to load ${type} as binary: ${error}`)
+  }
+}
+
 export async function load_from_url(
   url: string,
   callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
@@ -30,6 +49,7 @@ export async function load_from_url(
   // Check for known binary file extensions
   const known_bin_extensions = `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz`.split(` `)
   if (known_bin_extensions.includes(ext)) {
+    // Force binary mode for known binary files to handle GitHub Pages content-type issues
     const resp = await fetch(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
 
@@ -51,22 +71,24 @@ export async function load_from_url(
     // For H5 files, always load as binary regardless of signature
     // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
     if ([`h5`, `hdf5`].includes(ext)) {
-      try {
-        const buffer = await resp.arrayBuffer()
-        // Log warning if signature doesn't match but still return as binary
-        if (buffer.byteLength >= 8) {
-          const view = new Uint8Array(buffer.slice(0, 8))
-          const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
-          if (!hdf5_signature.every((byte, idx) => view[idx] === byte)) {
-            console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
-          }
+      const result = await load_binary_traj(resp, filename, `H5`, true)
+
+      // Log warning if signature doesn't match (only for ArrayBuffer results)
+      if (result instanceof ArrayBuffer && result.byteLength >= 8) {
+        const view = new Uint8Array(result.slice(0, 8))
+        const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
+        if (!hdf5_signature.every((byte, idx) => view[idx] === byte)) {
+          console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
         }
-        return callback(buffer, filename)
-      } catch (error) {
-        console.warn(`Failed to load H5 file as binary:`, error)
-        // Fall back to text if binary loading fails
-        return callback(await resp.text(), filename)
       }
+
+      return callback(result, filename)
+    }
+
+    // For .traj files, ensure we always get ArrayBuffer for proper ASE parsing
+    if (ext === `traj`) {
+      const buffer = await load_binary_traj(resp, filename, `.traj`)
+      return callback(buffer, filename)
     }
 
     if (resp.headers.get(`content-encoding`) === `gzip`) {
@@ -76,22 +98,30 @@ export async function load_from_url(
     return callback(await resp.arrayBuffer(), filename)
   }
 
-  // Check for magic bytes
-  try {
-    const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
-    if (head.ok) {
-      const buf = new Uint8Array(await head.arrayBuffer())
-      const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
-      const is_hdf5 = buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 &&
-        buf[3] === 0x46
-      if (is_gzip || is_hdf5) {
-        const resp = await fetch(url)
-        if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-        return callback(await resp.arrayBuffer(), filename)
+  // Skip Range requests for known text formats to avoid production server issues
+  const known_text_extensions =
+    `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `)
+  // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
+  const is_known_text = known_text_extensions.includes(ext) ||
+    filename.toLowerCase().match(/^(poscar|xdatcar|contcar)$/i)
+
+  if (!is_known_text) {
+    try { // Check for magic bytes only for unknown formats
+      const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
+      if (head.ok) {
+        const buf = new Uint8Array(await head.arrayBuffer())
+        const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
+        const is_hdf5 = buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 &&
+          buf[3] === 0x46
+        if (is_gzip || is_hdf5) {
+          const resp = await fetch(url)
+          if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+          return callback(await resp.arrayBuffer(), filename)
+        }
       }
+    } catch {
+      // Fall through to text fetch if HEAD request fails
     }
-  } catch {
-    // Fall through to text fetch if HEAD request fails
   }
 
   const resp = await fetch(url)
@@ -122,7 +152,7 @@ export const detect_structure_type = (
       : `unknown`
   }
 
-  if (lower_filename.match(/\.xyz(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+  if (lower_filename.match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
     const lines = content.trim().split(/\r?\n/)
     return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
   }

@@ -61,6 +61,76 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 MatterViz automatically registers as a custom editor for trajectory files such as `.traj`, `.h5`, `.hdf5`, `.xyz.gz`, etc.
 
+## ⚙️ Configuration & Customization
+
+MatterViz provides extensive customization options through VSCode settings. Access these via:
+
+- **Settings UI**: `File → Preferences → Settings` → Search for "MatterViz"
+- **JSON Settings**: `Ctrl+Shift+P` → "Preferences: Open Settings (JSON)"
+
+### Common Configuration Scenarios
+
+#### 🎨 **Visual Appearance**
+
+```json
+{
+  "matterviz.color_scheme": "Jmol",
+  "matterviz.background_color": "#ffffff",
+  "matterviz.background_opacity": 0.8,
+  "matterviz.structure.atom_radius": 1.2,
+  "matterviz.structure.bond_thickness": 0.8
+}
+```
+
+#### 🎬 **Trajectory Playback**
+
+```json
+{
+  "matterviz.trajectory.auto_play": true,
+  "matterviz.trajectory.fps": 10,
+  "matterviz.trajectory.display_mode": "structure+scatter",
+  "matterviz.trajectory.show_controls": true
+}
+```
+
+#### 📊 **Plot Customization**
+
+```json
+{
+  "matterviz.trajectory.scatter_point_size": 5,
+  "matterviz.trajectory.scatter_line_width": 3,
+  "matterviz.trajectory.plot_grid_lines": true,
+  "matterviz.trajectory.scatter_show_legend": true
+}
+```
+
+#### 🔧 **Performance Optimization**
+
+```json
+{
+  "matterviz.trajectory.chunk_size": 500,
+  "matterviz.trajectory.array_buffer_threshold": 10485760,
+  "matterviz.structure.sphere_segments": 16
+}
+```
+
+### Setting Categories
+
+| Category        | Description                     | Example Settings                                            |
+| --------------- | ------------------------------- | ----------------------------------------------------------- |
+| **General**     | Global appearance and behavior  | `color_scheme`, `background_color`, `show_image_atoms`      |
+| **Structure**   | 3D structure visualization      | `atom_radius`, `bond_thickness`, `show_lattice`, `lighting` |
+| **Trajectory**  | Animation and playback controls | `fps`, `auto_play`, `display_mode`, `show_controls`         |
+| **Plots**       | Scatter plots and histograms    | `scatter_point_size`, `plot_grid_lines`, `auto_fit_range`   |
+| **Performance** | Memory and processing options   | `chunk_size`, `use_indexing`, `sphere_segments`             |
+
+### Pro Tips
+
+- **Reset to defaults**: Remove custom settings from your JSON config
+- **Project-specific settings**: Use workspace settings (`.vscode/settings.json`) for per-project customization
+- **Theme integration**: MatterViz automatically adapts to your VSCode color theme
+- **Performance**: Reduce `sphere_segments` for better performance with large structures
+
 ## ⌨️ Keyboard Shortcuts
 
 - `Ctrl+Shift+V` / `Cmd+Shift+V` → Render structure/trajectory with MatterViz

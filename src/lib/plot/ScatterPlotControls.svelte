@@ -1,9 +1,11 @@
 <script lang="ts">
   import { DraggablePanel } from '$lib'
   import type { DataSeries } from '$lib/plot'
+  import { SETTINGS_CONFIG } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { tooltip } from 'svelte-multiselect/attachments'
 
   interface Props {
     // Control panel visibility
@@ -236,16 +238,30 @@
       <label class="checkbox-label">
         <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
       </label>
-      <label class="checkbox-label">
+      <label
+        class="checkbox-label"
+        {@attach tooltip({ content: `Toggle visibility of data points in the scatter plot` })}
+      >
         <input type="checkbox" bind:checked={show_points} /> Show points
       </label>
-      <label class="checkbox-label">
+      <label
+        class="checkbox-label"
+        {@attach tooltip({
+          content: `Toggle visibility of connecting lines between data points`,
+        })}
+      >
         <input type="checkbox" bind:checked={show_lines} /> Show lines
       </label>
-      <label class="checkbox-label">
+      <label
+        class="checkbox-label"
+        {@attach tooltip({ content: SETTINGS_CONFIG.trajectory.plot_grid_lines.description })}
+      >
         <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
       </label>
-      <label class="checkbox-label">
+      <label
+        class="checkbox-label"
+        {@attach tooltip({ content: SETTINGS_CONFIG.trajectory.plot_grid_lines.description })}
+      >
         <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
       </label>
       {#if has_y2_points}
