@@ -2,7 +2,7 @@
   "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -332,44 +332,44 @@
           "minimum": 0.05,
           "maximum": 0.5
         },
-        "matterviz.structure.show_lattice": {
+        "matterviz.structure.show_cell": {
           "type": "boolean",
           "default": false,
-          "description": "Display unit cell lattice"
+          "description": "Display system cell"
         },
         "matterviz.structure.show_vectors": {
           "type": "boolean",
           "default": false,
-          "description": "Display lattice vectors"
+          "description": "Display cell vectors"
         },
-        "matterviz.structure.lattice_edge_opacity": {
+        "matterviz.structure.cell_edge_opacity": {
           "type": "number",
           "default": 0.3,
-          "description": "Opacity of lattice edge lines",
+          "description": "Opacity of cell edge lines",
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.structure.lattice_surface_opacity": {
+        "matterviz.structure.cell_surface_opacity": {
           "type": "number",
           "default": 0.1,
-          "description": "Opacity of lattice surfaces",
+          "description": "Opacity of cell surfaces",
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.structure.lattice_edge_color": {
+        "matterviz.structure.cell_edge_color": {
           "type": "string",
           "default": "#808080",
-          "description": "Color of lattice edges"
+          "description": "Color of cell edges"
         },
-        "matterviz.structure.lattice_surface_color": {
+        "matterviz.structure.cell_surface_color": {
           "type": "string",
           "default": "#e0e0e0",
-          "description": "Color of lattice surfaces"
+          "description": "Color of cell surfaces"
         },
-        "matterviz.structure.lattice_line_width": {
+        "matterviz.structure.cell_line_width": {
           "type": "number",
           "default": 1.5,
-          "description": "Width of lattice edge lines",
+          "description": "Width of cell edge lines",
           "minimum": 0.5,
           "maximum": 5
         },
@@ -380,7 +380,7 @@
         },
         "matterviz.trajectory.fps": {
           "type": "number",
-          "default": 5,
+          "default": 10,
           "description": "Frames per second for trajectory playback",
           "minimum": 0.1,
           "maximum": 60

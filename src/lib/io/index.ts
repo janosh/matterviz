@@ -21,13 +21,11 @@ export async function handle_url_drop(
 
 async function load_binary_traj(
   resp: Response,
-  filename: string,
   type: string,
   fallback = false,
 ): Promise<ArrayBuffer | string> {
   try {
     const buffer = await resp.arrayBuffer()
-    console.log(`Loaded ${type} as binary:`, { filename, size: buffer.byteLength })
     return buffer
   } catch (error) {
     if (fallback) {
@@ -71,7 +69,7 @@ export async function load_from_url(
     // For H5 files, always load as binary regardless of signature
     // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
     if ([`h5`, `hdf5`].includes(ext)) {
-      const result = await load_binary_traj(resp, filename, `H5`, true)
+      const result = await load_binary_traj(resp, `H5`, true)
 
       // Log warning if signature doesn't match (only for ArrayBuffer results)
       if (result instanceof ArrayBuffer && result.byteLength >= 8) {
@@ -87,7 +85,7 @@ export async function load_from_url(
 
     // For .traj files, ensure we always get ArrayBuffer for proper ASE parsing
     if (ext === `traj`) {
-      const buffer = await load_binary_traj(resp, filename, `.traj`)
+      const buffer = await load_binary_traj(resp, `.traj`)
       return callback(buffer, filename)
     }
 
