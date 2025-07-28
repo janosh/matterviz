@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.1.6](https://github.com/janosh/matterviz/compare/v0.1.5...v0.1.6)
+
+> 28 July 2025
+
+### 🛠 Enhancements
+
+- More `Histogram.svelte` features (near parity with `ScatterPlot.svelte`) by @janosh in https://github.com/janosh/matterviz/pull/101
+- Add parsing routines for single OPTIMADE JSON by @ml-evs in https://github.com/janosh/matterviz/pull/100
+- Add camera projection selector to `StructureControls.svelte`: perspective (default) or orthographic by @janosh in https://github.com/janosh/matterviz/pull/105
+- StructureControls.svelte add CIF and POSCAR file export and clipboard copy buttons by @janosh in https://github.com/janosh/matterviz/pull/110
+- Customize site labels (size, color, padding, bg color, offset) via `StructureControls.svelte` by @janosh in https://github.com/janosh/matterviz/pull/111
+- Streaming trajectory loader and parser to support large MD files by @janosh in https://github.com/janosh/matterviz/pull/112
+- Add lots of VSCode extension settings for customizing default appearance by @janosh in https://github.com/janosh/matterviz/pull/114
+
+### 🐛 Bug Fixes
+
+- Fix VSCode PNG export by @janosh in https://github.com/janosh/matterviz/pull/103
+- Fix Matterviz auto-render triggering on unsupported files by @janosh in https://github.com/janosh/matterviz/pull/108
+- Fix CIF parsing of TiO2 (mp-2657) by @janosh in https://github.com/janosh/matterviz/pull/109
+
+## New Contributors
+
+- @ml-evs made their first contribution in https://github.com/janosh/matterviz/pull/100
+
 ## [v0.1.5](https://github.com/janosh/matterviz/compare/v0.1.4...v0.1.5)
 
 > 22 July 2025
