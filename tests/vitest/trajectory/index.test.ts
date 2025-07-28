@@ -74,186 +74,102 @@ describe(`Trajectory Validation`, () => {
 
 describe(`Trajectory Streaming Validation`, () => {
   const base_frame = create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])
+  const valid_idx = { frame_number: 0, byte_offset: 0, estimated_size: 100 }
+  const valid_meta = { frame_number: 0, step: 0, properties: { energy: -1.0 } }
 
   it.each([
-    {
-      name: `validate trajectory with streaming properties`,
-      trajectory: {
-        frames: [base_frame],
-        total_frames: 1,
-        indexed_frames: [{ frame_number: 0, byte_offset: 0, estimated_size: 100 }],
-        plot_metadata: [{ frame_number: 0, step: 0, properties: { energy: -1.0 } }],
-        is_indexed: true,
-      },
-      expected_errors: [],
-    },
-    {
-      name: `detect invalid total_frames type`,
-      trajectory: {
-        frames: [base_frame],
-        total_frames: `invalid`,
-      } as unknown as TrajectoryType,
-      expected_errors: [`total_frames must be a positive number, got invalid`],
-    },
-    {
-      name: `detect negative total_frames`,
-      trajectory: {
-        frames: [base_frame],
-        total_frames: -5,
-      },
-      expected_errors: [`total_frames must be a positive number, got -5`],
-    },
-    {
-      name: `detect total_frames inconsistent with indexed_frames length`,
-      trajectory: {
-        frames: [base_frame],
-        total_frames: 5,
-        indexed_frames: [
-          { frame_number: 0, byte_offset: 0, estimated_size: 100 },
-          { frame_number: 1, byte_offset: 200, estimated_size: 100 },
-        ],
-      },
-      expected_errors: [`total_frames (5) inconsistent with indexed_frames length (2)`],
-    },
-    {
-      name: `detect is_indexed true but no indexed_frames`,
-      trajectory: {
-        frames: [base_frame],
-        is_indexed: true,
-      },
-      expected_errors: [`is_indexed is true but indexed_frames is missing or empty`],
-    },
-    {
-      name: `detect is_indexed true with empty indexed_frames`,
-      trajectory: {
-        frames: [base_frame],
-        is_indexed: true,
-        indexed_frames: [],
-      },
-      expected_errors: [`is_indexed is true but indexed_frames is missing or empty`],
-    },
-    {
-      name: `detect invalid indexed_frames type`,
-      trajectory: {
-        frames: [base_frame],
-        indexed_frames: `not_array`,
-      } as unknown as TrajectoryType,
-      expected_errors: [`indexed_frames must be an array`],
-    },
-    {
-      name: `detect missing frame_number in indexed_frames`,
-      trajectory: {
-        frames: [base_frame],
-        indexed_frames: [
-          { byte_offset: 0, estimated_size: 100 },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`indexed_frames[0] missing or invalid frame_number`],
-    },
-    {
-      name: `detect missing byte_offset in indexed_frames`,
-      trajectory: {
-        frames: [base_frame],
-        indexed_frames: [
-          { frame_number: 0, estimated_size: 100 },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`indexed_frames[0] missing or invalid byte_offset`],
-    },
-    {
-      name: `detect missing estimated_size in indexed_frames`,
-      trajectory: {
-        frames: [base_frame],
-        indexed_frames: [
-          { frame_number: 0, byte_offset: 0 },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`indexed_frames[0] missing or invalid estimated_size`],
-    },
-    {
-      name: `detect non-sequential frame_number in indexed_frames`,
-      trajectory: {
-        frames: [base_frame],
-        indexed_frames: [
-          { frame_number: 5, byte_offset: 0, estimated_size: 100 },
-        ],
-      },
-      expected_errors: [`indexed_frames[0] frame_number (5) should equal index (0)`],
-    },
-    {
-      name: `detect invalid plot_metadata type`,
-      trajectory: {
-        frames: [base_frame],
-        plot_metadata: `not_array`,
-      } as unknown as TrajectoryType,
-      expected_errors: [`plot_metadata must be an array`],
-    },
-    {
-      name: `detect missing frame_number in plot_metadata`,
-      trajectory: {
-        frames: [base_frame],
-        plot_metadata: [
-          { step: 0, properties: { energy: -1.0 } },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`plot_metadata[0] missing or invalid frame_number`],
-    },
-    {
-      name: `detect missing step in plot_metadata`,
-      trajectory: {
-        frames: [base_frame],
-        plot_metadata: [
-          { frame_number: 0, properties: { energy: -1.0 } },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`plot_metadata[0] missing or invalid step`],
-    },
-    {
-      name: `detect missing properties in plot_metadata`,
-      trajectory: {
-        frames: [base_frame],
-        plot_metadata: [
-          { frame_number: 0, step: 0 },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`plot_metadata[0] missing or invalid properties object`],
-    },
-    {
-      name: `detect invalid properties type in plot_metadata`,
-      trajectory: {
-        frames: [base_frame],
-        plot_metadata: [
-          { frame_number: 0, step: 0, properties: `not_object` },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [`plot_metadata[0] missing or invalid properties object`],
-    },
-    {
-      name: `collect multiple streaming validation errors`,
-      trajectory: {
-        frames: [base_frame],
-        total_frames: -1,
-        is_indexed: true,
-        indexed_frames: [
-          { frame_number: 5 },
-        ],
-        plot_metadata: [
-          { frame_number: 0 },
-        ],
-      } as unknown as TrajectoryType,
-      expected_errors: [
-        `total_frames must be a positive number, got -1`,
-        `indexed_frames[0] frame_number (5) should equal index (0)`,
-        `indexed_frames[0] missing or invalid byte_offset`,
-        `indexed_frames[0] missing or invalid estimated_size`,
-        `plot_metadata[0] missing or invalid step`,
-        `plot_metadata[0] missing or invalid properties object`,
+    [`valid streaming trajectory`, {
+      frames: [base_frame],
+      total_frames: 1,
+      indexed_frames: [valid_idx],
+      plot_metadata: [valid_meta],
+      is_indexed: true,
+    }, []],
+    [`invalid total_frames type`, { frames: [base_frame], total_frames: `invalid` }, [
+      `total_frames must be a positive number, got invalid`,
+    ]],
+    [`negative total_frames`, { frames: [base_frame], total_frames: -5 }, [
+      `total_frames must be a positive number, got -5`,
+    ]],
+    [`total_frames/indexed_frames mismatch`, {
+      frames: [base_frame],
+      total_frames: 5,
+      indexed_frames: [valid_idx, { ...valid_idx, frame_number: 1, byte_offset: 200 }],
+    }, [`total_frames (5) inconsistent with indexed_frames length (2)`]],
+    [
+      `is_indexed true without indexed_frames`,
+      { frames: [base_frame], is_indexed: true },
+      [
+        `is_indexed is true but indexed_frames is missing or empty`,
       ],
+    ],
+    [`is_indexed true with empty indexed_frames`, {
+      frames: [base_frame],
+      is_indexed: true,
+      indexed_frames: [],
+    }, [`is_indexed is true but indexed_frames is missing or empty`]],
+    [
+      `invalid indexed_frames type`,
+      { frames: [base_frame], indexed_frames: `not_array` },
+      [
+        `indexed_frames must be an array`,
+      ],
+    ],
+    [`missing frame_number in indexed_frames`, {
+      frames: [base_frame],
+      indexed_frames: [{ byte_offset: 0, estimated_size: 100 }],
+    }, [`indexed_frames[0] missing or invalid frame_number`]],
+    [`missing byte_offset in indexed_frames`, {
+      frames: [base_frame],
+      indexed_frames: [{ frame_number: 0, estimated_size: 100 }],
+    }, [`indexed_frames[0] missing or invalid byte_offset`]],
+    [`missing estimated_size in indexed_frames`, {
+      frames: [base_frame],
+      indexed_frames: [{ frame_number: 0, byte_offset: 0 }],
+    }, [`indexed_frames[0] missing or invalid estimated_size`]],
+    [`non-sequential frame_number`, {
+      frames: [base_frame],
+      indexed_frames: [{ frame_number: 5, byte_offset: 0, estimated_size: 100 }],
+    }, [`indexed_frames[0] frame_number (5) should equal index (0)`]],
+    [`invalid plot_metadata type`, { frames: [base_frame], plot_metadata: `not_array` }, [
+      `plot_metadata must be an array`,
+    ]],
+    [`missing frame_number in plot_metadata`, {
+      frames: [base_frame],
+      plot_metadata: [{ step: 0, properties: { energy: -1.0 } }],
+    }, [`plot_metadata[0] missing or invalid frame_number`]],
+    [`missing step in plot_metadata`, {
+      frames: [base_frame],
+      plot_metadata: [{ frame_number: 0, properties: { energy: -1.0 } }],
+    }, [`plot_metadata[0] missing or invalid step`]],
+    [`missing properties in plot_metadata`, {
+      frames: [base_frame],
+      plot_metadata: [{ frame_number: 0, step: 0 }],
+    }, [`plot_metadata[0] missing or invalid properties object`]],
+    [`invalid properties type in plot_metadata`, {
+      frames: [base_frame],
+      plot_metadata: [{ frame_number: 0, step: 0, properties: `not_object` }],
+    }, [`plot_metadata[0] missing or invalid properties object`]],
+    [`multiple errors`, {
+      frames: [base_frame],
+      total_frames: -1,
+      is_indexed: true,
+      indexed_frames: [{ frame_number: 5 }],
+      plot_metadata: [{ frame_number: 0 }],
+    }, [
+      `total_frames must be a positive number, got -1`,
+      `indexed_frames[0] frame_number (5) should equal index (0)`,
+      `indexed_frames[0] missing or invalid byte_offset`,
+      `indexed_frames[0] missing or invalid estimated_size`,
+      `plot_metadata[0] missing or invalid step`,
+      `plot_metadata[0] missing or invalid properties object`,
+    ]],
+  ])(
+    `should validate %s`,
+    (_test_name: string, trajectory: unknown, expected_errors: string[]) => {
+      expect(validate_trajectory(trajectory as TrajectoryType)).toEqual(expected_errors)
     },
-  ])(`should $name`, ({ trajectory, expected_errors }) => {
-    const errors = validate_trajectory(trajectory)
-    expect(errors).toEqual(expected_errors)
-  })
+  )
 })
 
 describe(`Trajectory Statistics`, () => {

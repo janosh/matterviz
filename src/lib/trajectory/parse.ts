@@ -690,16 +690,17 @@ export class UnifiedFrameLoader implements FrameLoader {
     if (this.format === `xyz`) {
       const data_str = data as string
       const lines = data_str.trim().split(/\r?\n/)
+      const encoder = new TextEncoder() // Reuse single encoder instance
 
       // Detect the actual newline sequence used in the file
       const newline_sequence = data_str.includes(`\r\n`) ? `\r\n` : `\n`
-      const newline_byte_len = new TextEncoder().encode(newline_sequence).length
+      const newline_byte_len = encoder.encode(newline_sequence).length
 
       let [current_frame, line_idx, byte_offset] = [0, 0, 0]
 
       while (line_idx < lines.length && current_frame < total_frames) {
         if (!lines[line_idx]?.trim()) {
-          byte_offset += new TextEncoder().encode(lines[line_idx]).length +
+          byte_offset += encoder.encode(lines[line_idx]).length +
             newline_byte_len
           line_idx++
           continue
@@ -709,7 +710,7 @@ export class UnifiedFrameLoader implements FrameLoader {
         if (
           isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
         ) {
-          byte_offset += new TextEncoder().encode(lines[line_idx]).length +
+          byte_offset += encoder.encode(lines[line_idx]).length +
             newline_byte_len
           line_idx++
           continue
@@ -728,7 +729,7 @@ export class UnifiedFrameLoader implements FrameLoader {
         line_idx += 2 + num_atoms
         let frame_size = 0
         for (let i = frame_start; i < line_idx; i++) {
-          frame_size += new TextEncoder().encode(lines[i]).length + newline_byte_len
+          frame_size += encoder.encode(lines[i]).length + newline_byte_len
         }
 
         if (current_frame % sample_rate === 0) {
@@ -1263,7 +1264,7 @@ export function get_unsupported_format_message(
     : null
 }
 
-// Enhanced async parser with unified loading strategy
+// Unified async parser with streaming support
 export async function parse_trajectory_async(
   data: ArrayBuffer | string,
   filename: string,

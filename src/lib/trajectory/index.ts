@@ -32,7 +32,7 @@ export interface TrajectoryMetadata {
   properties: Record<string, number>
 }
 
-// Enhanced trajectory type with streaming support
+// Trajectory type with streaming support
 export interface TrajectoryType {
   frames: TrajectoryFrame[]
   metadata?: Record<string, unknown>

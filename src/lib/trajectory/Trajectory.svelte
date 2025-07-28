@@ -493,7 +493,7 @@
     }
   }
 
-  // Handle file drop events with enhanced large file support
+  // Handle file drop events with optimized large file support
   async function handle_file_drop(event: DragEvent) {
     event.preventDefault()
     dragover = false
@@ -524,7 +524,7 @@
         return
       }
 
-      // Handle file system drops with enhanced large file support
+      // Handle file system drops with optimized large file support
       const file = event.dataTransfer?.files[0]
       if (file) {
         file_size = file.size
@@ -606,9 +606,8 @@
       if (
         (data instanceof ArrayBuffer && data_size > array_buffer_threshold) ||
         (typeof data === `string` && data_size > str_threshold)
-      ) {
-        // Large files: Use enhanced loading
-        await load_with_enhanced_reader(data, filename)
+      ) { // Large files: Use indexed loading
+        await load_with_indexing(data, filename)
       } else {
         // Small files: Use regular loading
         trajectory = await parse_trajectory_async(data, filename, (progress) => {
@@ -652,13 +651,12 @@
     }
   }
 
-  // Load using enhanced reader for large files
-  async function load_with_enhanced_reader(
+  // Load using indexed parsing for large files
+  async function load_with_indexing(
     data: string | ArrayBuffer,
     filename: string,
   ) {
-    try {
-      // Use the enhanced parsing with indexing
+    try { // Use indexed parsing for efficient large file handling
       trajectory = await parse_trajectory_async(data, filename, (progress) => {
         parsing_progress = progress
       }, { use_indexing: true, ...loading_options })
@@ -672,7 +670,7 @@
         } frames`,
       )
     } catch (error) {
-      console.error(`Enhanced loading failed:`, error)
+      console.error(`Indexed loading failed:`, error)
       throw error
     }
   }

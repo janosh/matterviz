@@ -1,6 +1,7 @@
 // Plotting utilities for trajectory visualization
 import { plot_colors } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
+import { get_coefficient_of_variation } from '$lib/math'
 import type { DataSeries } from '$lib/plot'
 import type { TrajectoryDataExtractor, TrajectoryMetadata, TrajectoryType } from './index'
 
@@ -105,11 +106,7 @@ function extract_property_statistics(
     const n = stat.values.length
     if (n <= 1) continue
 
-    const mean = stat.sum / n
-    const variance = (stat.sum_squares - stat.sum * stat.sum / n) / n
-    const coefficient_of_variation = Math.abs(mean) > 1e-10
-      ? Math.sqrt(variance) / Math.abs(mean)
-      : Math.sqrt(variance)
+    const coefficient_of_variation = get_coefficient_of_variation(stat.values)
 
     const lower_key = key.toLowerCase()
     const is_energy = lower_key === `energy`
@@ -553,12 +550,7 @@ function downsample_metadata(
 function has_significant_variation(values: number[], tolerance = 1e-6): boolean {
   if (values.length <= 1) return false
 
-  const mean = values.reduce((sum, val) => sum + val, 0) / values.length
-  const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
-  const coefficient_of_variation = Math.abs(mean) > 1e-10
-    ? Math.sqrt(variance) / Math.abs(mean)
-    : Math.sqrt(variance)
-
+  const coefficient_of_variation = get_coefficient_of_variation(values)
   return coefficient_of_variation >= tolerance
 }
 
@@ -581,5 +573,3 @@ function determine_axis_from_groups(
     ? `y2`
     : `y1`
 }
-
-export const generate_streaming_axis_labels = generate_axis_labels
