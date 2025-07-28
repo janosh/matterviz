@@ -98,21 +98,30 @@ export async function load_from_url(
     return callback(await resp.arrayBuffer(), filename)
   }
 
-  try { // Check for magic bytes
-    const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
-    if (head.ok) {
-      const buf = new Uint8Array(await head.arrayBuffer())
-      const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
-      const is_hdf5 = buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 &&
-        buf[3] === 0x46
-      if (is_gzip || is_hdf5) {
-        const resp = await fetch(url)
-        if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-        return callback(await resp.arrayBuffer(), filename)
+  // Skip Range requests for known text formats to avoid production server issues
+  const known_text_extensions =
+    `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `)
+  // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
+  const is_known_text = known_text_extensions.includes(ext) ||
+    filename.toLowerCase().match(/^(poscar|xdatcar|contcar)$/i)
+
+  if (!is_known_text) {
+    try { // Check for magic bytes only for unknown formats
+      const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
+      if (head.ok) {
+        const buf = new Uint8Array(await head.arrayBuffer())
+        const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
+        const is_hdf5 = buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 &&
+          buf[3] === 0x46
+        if (is_gzip || is_hdf5) {
+          const resp = await fetch(url)
+          if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+          return callback(await resp.arrayBuffer(), filename)
+        }
       }
+    } catch {
+      // Fall through to text fetch if HEAD request fails
     }
-  } catch {
-    // Fall through to text fetch if HEAD request fails
   }
 
   const resp = await fetch(url)

@@ -139,16 +139,12 @@ describe(`load_from_url`, () => {
     [`https://example.com/script.py`, `script.py`],
     [`https://example.com/style.css`, `style.css`],
   ])(`text files %s`, async (url, expected_filename) => {
-    const mock_head_response = create_mock_response(new ArrayBuffer(16), {
-      'content-type': `application/octet-stream`,
-    })
-    const mock_full_response = create_mock_response(`text content`, {
+    // Known text formats skip Range requests and fetch directly
+    const mock_response = create_mock_response(`text content`, {
       'content-type': `text/plain`,
     })
 
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce(mock_head_response)
-      .mockResolvedValueOnce(mock_full_response)
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
 
     let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
@@ -161,7 +157,7 @@ describe(`load_from_url`, () => {
     expect(typeof received_content).toBe(`string`)
     expect(received_content).toBe(`text content`)
     expect(received_filename).toBe(expected_filename)
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1) // Only one fetch for known text formats
   })
 
   test(`gzip files with content-encoding are handled as text`, async () => {
@@ -268,14 +264,15 @@ describe(`load_from_url`, () => {
     let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
 
-    await load_from_url(`https://example.com/unknown.xyz`, (content, filename) => {
+    // Use an unknown format that will trigger Range request
+    await load_from_url(`https://example.com/data.unknown`, (content, filename) => {
       received_content = content
       received_filename = filename
     })
 
     expect(typeof received_content).toBe(`string`)
     expect(received_content).toBe(`fallback content`)
-    expect(received_filename).toBe(`unknown.xyz`)
+    expect(received_filename).toBe(`data.unknown`)
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
