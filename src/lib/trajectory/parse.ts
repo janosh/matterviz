@@ -11,6 +11,7 @@ import * as h5wasm from 'h5wasm'
 import type {
   FrameIndex,
   FrameLoader,
+  ParseProgress,
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryType,
@@ -18,21 +19,21 @@ import type {
 
 // Constants for large file handling
 export const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
+export const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
 export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
 export const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
+export const ARRAY_BUFFER_THRESHOLD = 100 * 1024 * 1024 // 100MB default for ArrayBuffer files
+export const STR_THRESHOLD = 50 * 1024 * 1024 // 50MB default for string files
 
 // Common interfaces
-export interface ParseProgress {
-  current: number
-  total: number
-  stage: string
-}
 
 export interface LoadingOptions {
   use_indexing?: boolean
   buffer_size?: number
   index_sample_rate?: number
   extract_plot_metadata?: boolean
+  array_buffer_threshold?: number // Threshold in bytes for ArrayBuffer files (default: ARRAY_BUFFER_THRESHOLD)
+  str_threshold?: number // Threshold in bytes for string files (default: STR_THRESHOLD)
 }
 
 // Unified format detection
@@ -88,6 +89,7 @@ export function is_trajectory_file(filename: string): boolean {
   // Always detect these specific trajectory formats
   if (/\.(traj|xtc)$/i.test(base_name) || /xdatcar/i.test(base_name)) return true
 
+  // Exclude common non-trajectory files that might contain "md_simulation"
   const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
 
   // Special exclusion for generic md_simulation pattern with certain extensions
@@ -686,12 +688,19 @@ export class UnifiedFrameLoader implements FrameLoader {
     const frame_index: FrameIndex[] = []
 
     if (this.format === `xyz`) {
-      const lines = (data as string).trim().split(/\r?\n/)
+      const data_str = data as string
+      const lines = data_str.trim().split(/\r?\n/)
+
+      // Detect the actual newline sequence used in the file
+      const newline_sequence = data_str.includes(`\r\n`) ? `\r\n` : `\n`
+      const newline_byte_len = new TextEncoder().encode(newline_sequence).length
+
       let [current_frame, line_idx, byte_offset] = [0, 0, 0]
 
       while (line_idx < lines.length && current_frame < total_frames) {
         if (!lines[line_idx]?.trim()) {
-          byte_offset += lines[line_idx].length + 1
+          byte_offset += new TextEncoder().encode(lines[line_idx]).length +
+            newline_byte_len
           line_idx++
           continue
         }
@@ -700,7 +709,8 @@ export class UnifiedFrameLoader implements FrameLoader {
         if (
           isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
         ) {
-          byte_offset += lines[line_idx].length + 1
+          byte_offset += new TextEncoder().encode(lines[line_idx]).length +
+            newline_byte_len
           line_idx++
           continue
         }
@@ -713,11 +723,13 @@ export class UnifiedFrameLoader implements FrameLoader {
           })
         }
 
-        // Calculate frame size and advance
+        // Calculate frame size and advance using actual byte lengths
         const frame_start = line_idx
         line_idx += 2 + num_atoms
         let frame_size = 0
-        for (let i = frame_start; i < line_idx; i++) frame_size += lines[i].length + 1
+        for (let i = frame_start; i < line_idx; i++) {
+          frame_size += new TextEncoder().encode(lines[i]).length + newline_byte_len
+        }
 
         if (current_frame % sample_rate === 0) {
           frame_index[frame_index.length - 1].estimated_size = frame_size
@@ -835,7 +847,7 @@ export class UnifiedFrameLoader implements FrameLoader {
           const frame_offset = Number(view.getBigInt64(offsets_pos + i * 8, true))
           const json_length = Number(view.getBigInt64(frame_offset, true))
 
-          if (json_length > 50 * 1024 * 1024) { // 50MB limit for metadata
+          if (json_length > MAX_METADATA_SIZE) {
             console.warn(
               `Skipping large frame ${i}: ${Math.round(json_length / 1024 / 1024)}MB`,
             )

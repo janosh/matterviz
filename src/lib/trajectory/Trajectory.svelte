@@ -10,17 +10,20 @@
   import { tooltip } from 'svelte-multiselect/attachments'
   import { full_data_extractor } from './extract'
   import type {
+    ParseProgress,
     TrajectoryDataExtractor,
     TrajectoryFrame,
     TrajectoryType,
     TrajHandlerData,
   } from './index'
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
-  import type { LoadingOptions, ParseProgress } from './parse'
+  import type { LoadingOptions } from './parse'
   import {
+    ARRAY_BUFFER_THRESHOLD,
     create_frame_loader,
     get_unsupported_format_message,
     parse_trajectory_async,
+    STR_THRESHOLD,
   } from './parse'
   import {
     generate_axis_labels,
@@ -597,9 +600,12 @@
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
 
       // Determine loading strategy based on file size
+      const array_buffer_threshold = loading_options.array_buffer_threshold ??
+        ARRAY_BUFFER_THRESHOLD
+      const str_threshold = loading_options.str_threshold ?? STR_THRESHOLD
       if (
-        (data instanceof ArrayBuffer && data_size > 100 * 1024 * 1024) || // 100MB
-        (typeof data === `string` && data_size > 50 * 1024 * 1024) // 50MB
+        (data instanceof ArrayBuffer && data_size > array_buffer_threshold) ||
+        (typeof data === `string` && data_size > str_threshold)
       ) {
         // Large files: Use enhanced loading
         await load_with_enhanced_reader(data, filename)

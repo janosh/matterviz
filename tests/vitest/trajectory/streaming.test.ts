@@ -1,9 +1,9 @@
 // Streaming trajectory loader tests - clever testing without large files
+import type { ParseProgress } from '$lib/trajectory'
 import {
   create_frame_loader,
   LARGE_FILE_THRESHOLD,
   parse_trajectory_async,
-  type ParseProgress,
   UnifiedFrameLoader,
 } from '$lib/trajectory/parse'
 import { describe, expect, it } from 'vitest'
@@ -338,9 +338,11 @@ describe(`Trajectory Streaming`, () => {
       expect(total_frames).toBe(9) // One less due to corruption
 
       const frame_4 = await loader.load_frame(data, 4)
+      const frame_5 = await loader.load_frame(data, 5) // Try to load the corrupted frame
       const frame_6 = await loader.load_frame(data, 6) // Skip the corrupted frame
 
       expect(frame_4).toBeTruthy()
+      expect(frame_5).toBeNull() // Corrupted frame should return null
       expect(frame_6).toBeTruthy()
     })
 

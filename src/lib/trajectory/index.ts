@@ -8,6 +8,12 @@ export { default as TrajectoryInfoPanel } from './TrajectoryInfoPanel.svelte'
 export { Trajectory }
 
 // Core trajectory types
+export interface ParseProgress {
+  current: number
+  total: number
+  stage: string
+}
+
 export interface TrajectoryFrame {
   structure: AnyStructure
   step: number
@@ -63,7 +69,7 @@ export interface FrameLoader {
   build_frame_index: (
     data: string | ArrayBuffer,
     sample_rate: number,
-    on_progress?: (progress: import('./parse').ParseProgress) => void,
+    on_progress?: (progress: ParseProgress) => void,
   ) => Promise<FrameIndex[]>
   load_frame: (
     data: string | ArrayBuffer,
@@ -72,19 +78,15 @@ export interface FrameLoader {
   extract_plot_metadata: (
     data: string | ArrayBuffer,
     options?: { sample_rate?: number; properties?: string[] },
-    on_progress?: (progress: import('./parse').ParseProgress) => void,
+    on_progress?: (progress: ParseProgress) => void,
   ) => Promise<TrajectoryMetadata[]>
 }
 
-// Compact validation with detailed error reporting
-export function validate_trajectory(trajectory: TrajectoryType): string[] {
+export function validate_trajectory(trajectory: TrajectoryType): string[] { // with detailed error reporting
   const errors: string[] = []
-  const { frames } = trajectory
+  const { frames, total_frames, indexed_frames, plot_metadata, is_indexed } = trajectory
 
-  if (!frames?.length) {
-    errors.push(`Trajectory must have at least one frame`)
-    return errors // Early return if no frames
-  }
+  if (!frames?.length) return [`Trajectory must have at least one frame`]
 
   frames.forEach((frame, idx) => {
     if (!frame.structure?.sites?.length) {
@@ -95,34 +97,101 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
     }
   })
 
+  // Validate streaming-related properties
+  if (total_frames !== undefined) {
+    if (typeof total_frames !== `number` || total_frames < 1) {
+      errors.push(`total_frames must be a positive number, got ${total_frames}`)
+    } else if (indexed_frames && total_frames !== indexed_frames.length) {
+      errors.push(
+        `total_frames (${total_frames}) inconsistent with indexed_frames length (${indexed_frames.length})`,
+      )
+    }
+  }
+
+  if (is_indexed === true && !indexed_frames?.length) {
+    errors.push(`is_indexed is true but indexed_frames is missing or empty`)
+  }
+
+  if (indexed_frames) {
+    if (!Array.isArray(indexed_frames)) {
+      errors.push(`indexed_frames must be an array`)
+    } else {
+      indexed_frames.forEach((frame_idx, idx) => {
+        if (typeof frame_idx.frame_number !== `number`) {
+          errors.push(`indexed_frames[${idx}] missing or invalid frame_number`)
+        } else if (frame_idx.frame_number !== idx) {
+          errors.push(
+            `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) should equal index (${idx})`,
+          )
+        }
+        if (typeof frame_idx.byte_offset !== `number`) {
+          errors.push(`indexed_frames[${idx}] missing or invalid byte_offset`)
+        }
+        if (typeof frame_idx.estimated_size !== `number`) {
+          errors.push(`indexed_frames[${idx}] missing or invalid estimated_size`)
+        }
+      })
+    }
+  }
+
+  if (plot_metadata) {
+    if (!Array.isArray(plot_metadata)) {
+      errors.push(`plot_metadata must be an array`)
+    } else {
+      plot_metadata.forEach((meta, idx) => {
+        if (typeof meta.frame_number !== `number`) {
+          errors.push(`plot_metadata[${idx}] missing or invalid frame_number`)
+        }
+        if (typeof meta.step !== `number`) {
+          errors.push(`plot_metadata[${idx}] missing or invalid step`)
+        }
+        if (!meta.properties || typeof meta.properties !== `object`) {
+          errors.push(`plot_metadata[${idx}] missing or invalid properties object`)
+        }
+      })
+    }
+  }
+
   return errors
 }
 
-// Comprehensive trajectory statistics
 export function get_trajectory_stats(
   trajectory: TrajectoryType,
 ): Record<string, unknown> {
   const { frames, total_frames, indexed_frames, plot_metadata } = trajectory
   const frame_count = total_frames || frames.length
-
   const stats: Record<string, unknown> = {
     frame_count,
     is_indexed: trajectory.is_indexed || false,
   }
 
   if (frames.length > 0) {
-    const first_frame = frames[0]
-    const last_frame = frames[frames.length - 1]
-    const atom_counts = frames.map((f) => f.structure.sites.length)
-    const constant_atoms = atom_counts.every((count) => count === atom_counts[0])
+    const [first_frame, last_frame] = [frames[0], frames.at(-1)]
+    const max_sample = 100
+
+    const sampled = frames.length <= max_sample ? frames : (() => {
+      const interval = Math.floor(frames.length / max_sample)
+      const result = [first_frame]
+      for (let idx = interval; idx < frames.length - 1; idx += interval) {
+        result.push(frames[idx])
+      }
+      if (result[result.length - 1] !== last_frame) result.push(last_frame)
+      return result
+    })()
+
+    const counts = sampled.map((f) => f.structure.sites.length)
+    const constant = counts.every((c) => c === counts[0])
+    const all_counts = constant
+      ? [first_frame.structure.sites.length]
+      : frames.map((f) => f.structure.sites.length)
 
     Object.assign(stats, {
       steps: frames.map((f) => f.step),
       step_range: [first_frame.step, last_frame.step],
-      constant_atom_count: constant_atoms,
-      ...(constant_atoms
-        ? { total_atoms: first_frame.structure.sites.length }
-        : { atom_count_range: [Math.min(...atom_counts), Math.max(...atom_counts)] }),
+      constant_atom_count: constant,
+      ...(constant ? { total_atoms: first_frame.structure.sites.length } : {
+        atom_count_range: [Math.min(...all_counts), Math.max(...all_counts)],
+      }),
     })
   } else {
     // Handle empty trajectory case
@@ -137,6 +206,5 @@ export function get_trajectory_stats(
   // Additional metadata for large files
   if (indexed_frames) stats.indexed_frame_count = indexed_frames.length
   if (plot_metadata) stats.plot_metadata_count = plot_metadata.length
-
   return stats
 }

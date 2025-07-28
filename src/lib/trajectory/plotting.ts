@@ -475,7 +475,7 @@ export function generate_streaming_plot_series(
     property_config = trajectory_property_config,
     colors = plot_colors,
     default_visible_properties = DEFAULT_VISIBLE,
-    max_points = 10000,
+    max_points = 10_000, // 10,000 plot points provides good visual fidelity while maintaining browser performance
   } = options
 
   const sampled_metadata = metadata_list.length > max_points
@@ -488,15 +488,13 @@ export function generate_streaming_plot_series(
   })
 
   const all_series: DataSeries[] = []
+  const visible_props: Array<{ property: string; unit: string }> = []
   let color_idx = 0
 
   for (const property_key of all_properties) {
     const data_points = sampled_metadata
       .filter((metadata) => property_key in metadata.properties)
-      .map((metadata) => ({
-        x: metadata.step,
-        y: metadata.properties[property_key],
-      }))
+      .map((metadata) => ({ x: metadata.step, y: metadata.properties[property_key] }))
 
     if (data_points.length < 2) continue
 
@@ -504,16 +502,18 @@ export function generate_streaming_plot_series(
     if (!is_energy && !has_significant_variation(data_points.map((p) => p.y))) continue
 
     const { clean_label, unit } = extract_label_and_unit(property_key, property_config)
-    const color = colors[color_idx % colors.length]
     const is_visible = is_default_visible(property_key, default_visible_properties) ||
       color_idx < 2
+    const color = colors[color_idx % colors.length]
+
+    if (is_visible) visible_props.push({ property: property_key, unit })
 
     all_series.push({
       x: data_points.map((p) => p.x),
       y: data_points.map((p) => p.y),
       label: clean_label,
       unit,
-      y_axis: determine_y_axis(property_key, unit),
+      y_axis: determine_axis_from_groups(property_key, unit, visible_props),
       visible: is_visible,
       markers: data_points.length < 1000 ? `line+points` : `line`,
       metadata: data_points.map(() => ({
@@ -562,20 +562,24 @@ function has_significant_variation(values: number[], tolerance = 1e-6): boolean 
   return coefficient_of_variation >= tolerance
 }
 
-function determine_y_axis(property_key: string, unit: string): `y1` | `y2` {
-  const lower_key = property_key.toLowerCase()
-  const lower_unit = unit.toLowerCase()
+function determine_axis_from_groups(
+  property: string,
+  unit: string,
+  visible_properties: Array<{ property: string; unit: string }>,
+): `y1` | `y2` {
+  const mock_series = visible_properties.map(({ property: prop, unit: u }) => ({
+    label: prop,
+    unit: u,
+  })) as DataSeries[]
 
-  const energy_indicators = [`energy`, `ev`, `ev/atom`, `hartree`, `kcal/mol`, `kj/mol`]
-  if (
-    energy_indicators.some((indicator) =>
-      lower_key.includes(indicator) || lower_unit.includes(indicator)
-    )
-  ) {
-    return `y1`
-  }
+  const groups = group_and_assign_series(mock_series, new Set([property]))
+  const target_group = groups.find((g) =>
+    g.series.some((s) => s.label === property && s.unit === unit)
+  )
 
-  return lower_key.includes(`force`) ? `y2` : `y1`
+  return target_group && groups.filter((g) => g.is_visible).indexOf(target_group) === 1
+    ? `y2`
+    : `y1`
 }
 
 export const generate_streaming_axis_labels = generate_axis_labels

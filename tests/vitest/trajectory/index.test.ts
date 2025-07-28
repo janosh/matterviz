@@ -1,5 +1,5 @@
 import type { ElementSymbol, Vec3 } from '$lib'
-import type { TrajectoryType } from '$lib/trajectory'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
 import { describe, expect, it } from 'vitest'
 
@@ -65,6 +65,190 @@ describe(`Trajectory Validation`, () => {
         metadata: {},
       } as TrajectoryType,
       expected_errors: [`Frame 0 missing or invalid step number`],
+    },
+  ])(`should $name`, ({ trajectory, expected_errors }) => {
+    const errors = validate_trajectory(trajectory)
+    expect(errors).toEqual(expected_errors)
+  })
+})
+
+describe(`Trajectory Streaming Validation`, () => {
+  const base_frame = create_frame(0, [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)])
+
+  it.each([
+    {
+      name: `validate trajectory with streaming properties`,
+      trajectory: {
+        frames: [base_frame],
+        total_frames: 1,
+        indexed_frames: [{ frame_number: 0, byte_offset: 0, estimated_size: 100 }],
+        plot_metadata: [{ frame_number: 0, step: 0, properties: { energy: -1.0 } }],
+        is_indexed: true,
+      },
+      expected_errors: [],
+    },
+    {
+      name: `detect invalid total_frames type`,
+      trajectory: {
+        frames: [base_frame],
+        total_frames: `invalid`,
+      } as unknown as TrajectoryType,
+      expected_errors: [`total_frames must be a positive number, got invalid`],
+    },
+    {
+      name: `detect negative total_frames`,
+      trajectory: {
+        frames: [base_frame],
+        total_frames: -5,
+      },
+      expected_errors: [`total_frames must be a positive number, got -5`],
+    },
+    {
+      name: `detect total_frames inconsistent with indexed_frames length`,
+      trajectory: {
+        frames: [base_frame],
+        total_frames: 5,
+        indexed_frames: [
+          { frame_number: 0, byte_offset: 0, estimated_size: 100 },
+          { frame_number: 1, byte_offset: 200, estimated_size: 100 },
+        ],
+      },
+      expected_errors: [`total_frames (5) inconsistent with indexed_frames length (2)`],
+    },
+    {
+      name: `detect is_indexed true but no indexed_frames`,
+      trajectory: {
+        frames: [base_frame],
+        is_indexed: true,
+      },
+      expected_errors: [`is_indexed is true but indexed_frames is missing or empty`],
+    },
+    {
+      name: `detect is_indexed true with empty indexed_frames`,
+      trajectory: {
+        frames: [base_frame],
+        is_indexed: true,
+        indexed_frames: [],
+      },
+      expected_errors: [`is_indexed is true but indexed_frames is missing or empty`],
+    },
+    {
+      name: `detect invalid indexed_frames type`,
+      trajectory: {
+        frames: [base_frame],
+        indexed_frames: `not_array`,
+      } as unknown as TrajectoryType,
+      expected_errors: [`indexed_frames must be an array`],
+    },
+    {
+      name: `detect missing frame_number in indexed_frames`,
+      trajectory: {
+        frames: [base_frame],
+        indexed_frames: [
+          { byte_offset: 0, estimated_size: 100 },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`indexed_frames[0] missing or invalid frame_number`],
+    },
+    {
+      name: `detect missing byte_offset in indexed_frames`,
+      trajectory: {
+        frames: [base_frame],
+        indexed_frames: [
+          { frame_number: 0, estimated_size: 100 },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`indexed_frames[0] missing or invalid byte_offset`],
+    },
+    {
+      name: `detect missing estimated_size in indexed_frames`,
+      trajectory: {
+        frames: [base_frame],
+        indexed_frames: [
+          { frame_number: 0, byte_offset: 0 },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`indexed_frames[0] missing or invalid estimated_size`],
+    },
+    {
+      name: `detect non-sequential frame_number in indexed_frames`,
+      trajectory: {
+        frames: [base_frame],
+        indexed_frames: [
+          { frame_number: 5, byte_offset: 0, estimated_size: 100 },
+        ],
+      },
+      expected_errors: [`indexed_frames[0] frame_number (5) should equal index (0)`],
+    },
+    {
+      name: `detect invalid plot_metadata type`,
+      trajectory: {
+        frames: [base_frame],
+        plot_metadata: `not_array`,
+      } as unknown as TrajectoryType,
+      expected_errors: [`plot_metadata must be an array`],
+    },
+    {
+      name: `detect missing frame_number in plot_metadata`,
+      trajectory: {
+        frames: [base_frame],
+        plot_metadata: [
+          { step: 0, properties: { energy: -1.0 } },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`plot_metadata[0] missing or invalid frame_number`],
+    },
+    {
+      name: `detect missing step in plot_metadata`,
+      trajectory: {
+        frames: [base_frame],
+        plot_metadata: [
+          { frame_number: 0, properties: { energy: -1.0 } },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`plot_metadata[0] missing or invalid step`],
+    },
+    {
+      name: `detect missing properties in plot_metadata`,
+      trajectory: {
+        frames: [base_frame],
+        plot_metadata: [
+          { frame_number: 0, step: 0 },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`plot_metadata[0] missing or invalid properties object`],
+    },
+    {
+      name: `detect invalid properties type in plot_metadata`,
+      trajectory: {
+        frames: [base_frame],
+        plot_metadata: [
+          { frame_number: 0, step: 0, properties: `not_object` },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [`plot_metadata[0] missing or invalid properties object`],
+    },
+    {
+      name: `collect multiple streaming validation errors`,
+      trajectory: {
+        frames: [base_frame],
+        total_frames: -1,
+        is_indexed: true,
+        indexed_frames: [
+          { frame_number: 5 },
+        ],
+        plot_metadata: [
+          { frame_number: 0 },
+        ],
+      } as unknown as TrajectoryType,
+      expected_errors: [
+        `total_frames must be a positive number, got -1`,
+        `indexed_frames[0] frame_number (5) should equal index (0)`,
+        `indexed_frames[0] missing or invalid byte_offset`,
+        `indexed_frames[0] missing or invalid estimated_size`,
+        `plot_metadata[0] missing or invalid step`,
+        `plot_metadata[0] missing or invalid properties object`,
+      ],
     },
   ])(`should $name`, ({ trajectory, expected_errors }) => {
     const errors = validate_trajectory(trajectory)
@@ -164,5 +348,54 @@ describe(`Trajectory Statistics`, () => {
     expect(stats.total_atoms).toBe(expected.total_atoms)
     expect(stats.constant_atom_count).toBe(expected.constant_atom_count)
     expect(stats.atom_count_range).toEqual(expected.atom_count_range)
+  })
+})
+
+describe(`Trajectory Statistics Optimization`, () => {
+  it(`should optimize atom count calculation for large trajectories`, () => {
+    // Create a large trajectory with constant atom count
+    const large_frames: TrajectoryFrame[] = []
+    for (let idx = 0; idx < 1000; idx++) {
+      large_frames.push(create_frame(idx, [
+        create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
+        create_site(`H`, [1, 0, 0], [1, 0, 0], `H2`),
+      ]))
+    }
+
+    const large_trajectory: TrajectoryType = { frames: large_frames }
+    const stats = get_trajectory_stats(large_trajectory)
+
+    // Should correctly identify constant atom count despite large size
+    expect(stats.constant_atom_count).toBe(true)
+    expect(stats.total_atoms).toBe(2) // Each frame has 2 atoms by default
+    expect(stats.frame_count).toBe(1000)
+  })
+
+  it(`should detect variable atom counts efficiently in large trajectories`, () => {
+    // Create large trajectory with varying atom counts
+    const large_frames: TrajectoryFrame[] = []
+    for (let idx = 0; idx < 1000; idx++) {
+      // Every 100th frame has different atom count
+      const sites = idx % 100 === 0
+        ? [create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`)] // 1 atom
+        : [
+          create_site(`H`, [0, 0, 0], [0, 0, 0], `H1`),
+          create_site(`H`, [1, 0, 0], [1, 0, 0], `H2`),
+        ] // 2 atoms
+
+      large_frames.push({
+        structure: { sites, charge: 0 },
+        step: idx,
+        metadata: {},
+      })
+    }
+
+    const large_trajectory: TrajectoryType = { frames: large_frames }
+    const stats = get_trajectory_stats(large_trajectory)
+
+    // Should correctly detect variable atom count
+    expect(stats.constant_atom_count).toBe(false)
+    expect(stats.atom_count_range).toEqual([1, 2])
+    expect(stats.frame_count).toBe(1000)
   })
 })
