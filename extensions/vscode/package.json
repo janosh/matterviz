@@ -366,7 +366,7 @@
           "default": "#e0e0e0",
           "description": "Color of cell surfaces"
         },
-        "matterviz.structure.cell_line_width": {
+        "matterviz.structure.cell_edge_width": {
           "type": "number",
           "default": 1.5,
           "description": "Width of cell edge lines",

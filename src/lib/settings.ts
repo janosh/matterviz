@@ -1,4 +1,4 @@
-// Universal settings schema - single source of truth for all MatterViz settings
+// MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
 export interface SettingType<T = unknown> {
@@ -65,7 +65,7 @@ export interface SettingsConfig {
     cell_surface_opacity: SettingType<number>
     cell_edge_color: SettingType<string>
     cell_surface_color: SettingType<string>
-    cell_line_width: SettingType<number>
+    cell_edge_width: SettingType<number>
   }
 
   // Trajectory viewer settings
@@ -372,7 +372,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: `#e0e0e0`,
       description: `Color of cell surfaces`,
     },
-    cell_line_width: {
+    cell_edge_width: {
       value: 1.5,
       description: `Width of cell edge lines`,
       minimum: 0.5,

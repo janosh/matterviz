@@ -17,7 +17,7 @@
     matrix?: Matrix3x3 | undefined
     cell_edge_color?: string
     cell_surface_color?: string
-    cell_line_width?: number // thickness of the cell edges
+    cell_edge_width?: number // thickness of the cell edges
     cell_edge_opacity?: number // opacity of the cell edges
     cell_surface_opacity?: number // opacity of the cell surfaces
     show_vectors?: boolean // whether to show the lattice vectors
@@ -28,7 +28,7 @@
     matrix = undefined,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
     cell_surface_color = DEFAULTS.structure.cell_surface_color,
-    cell_line_width = DEFAULTS.structure.cell_line_width,
+    cell_edge_width = DEFAULTS.structure.cell_edge_width,
     cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
     show_vectors = true,
@@ -108,7 +108,7 @@
           {@const { position, rotation, length } = get_cylinder_transform(start, end)}
           <T.Mesh {position} {rotation}>
             <T.CylinderGeometry
-              args={[cell_line_width * 0.01, cell_line_width * 0.01, length, 8]}
+              args={[cell_edge_width * 0.01, cell_edge_width * 0.01, length, 8]}
             />
             <T.MeshStandardMaterial
               color={cell_edge_color}

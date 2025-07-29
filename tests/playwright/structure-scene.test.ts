@@ -484,7 +484,7 @@ test.describe(`StructureScene Component Tests`, () => {
             cell_surface_color: `#ff0000`,
             cell_edge_opacity: 0.8,
             cell_surface_opacity: 0.1,
-            cell_line_width: 2,
+            cell_edge_width: 2,
           },
         })
         globalThis.dispatchEvent(event)
@@ -629,7 +629,7 @@ test.describe(`StructureScene Component Tests`, () => {
           cell_surface_color: `#ffffff`,
           cell_edge_opacity: 1.0,
           cell_surface_opacity: 0,
-          cell_line_width: 3,
+          cell_edge_width: 3,
         },
       })
       globalThis.dispatchEvent(event)
@@ -674,7 +674,7 @@ test.describe(`StructureScene Component Tests`, () => {
             cell_surface_color: `#ffffff`,
             cell_edge_opacity: 1.0,
             cell_surface_opacity: 0,
-            cell_line_width: test_width,
+            cell_edge_width: test_width,
           },
         })
         globalThis.dispatchEvent(event)
