@@ -1,8 +1,10 @@
 <!-- Export default values for use in other components -->
 <script lang="ts">
+  import { format_num } from '$lib/labels'
   import type { Matrix3x3, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
+  import { CanvasTooltip } from '$lib/structure'
   import { T } from '@threlte/core'
   import {
     BoxGeometry,
@@ -23,6 +25,7 @@
     show_vectors?: boolean // whether to show the lattice vectors
     vector_colors?: [string, string, string] // lattice vector colors
     vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
+    float_fmt?: string
   }
   let {
     matrix = undefined,
@@ -34,7 +37,10 @@
     show_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] as Vec3,
+    float_fmt = `.2f`,
   }: Props = $props()
+
+  let hovered_idx = $state<number | null>(null) // track hovered vector
 
   let lattice_center = $derived(
     matrix ? (math.scale(math.add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
@@ -152,18 +158,38 @@
           <!-- Arrow shaft - position at center of shaft length -->
           {@const shaft_center = math.scale(vec, 0.425) as Vec3}
           <!-- Center at 42.5% = half of 85% -->
-          <T.Mesh position={shaft_center} {rotation}>
+          <T.Mesh
+            position={shaft_center}
+            {rotation}
+            onpointerenter={() => hovered_idx = idx}
+            onpointerleave={() => hovered_idx = null}
+          >
             <T.CylinderGeometry args={[0.05, 0.05, shaft_length, 16]} />
             <T.MeshStandardMaterial color={vector_colors[idx]} />
           </T.Mesh>
 
           <!-- Arrow tip -->
-          <T.Mesh position={tip_start_position} {rotation}>
+          <T.Mesh
+            position={tip_start_position}
+            {rotation}
+            onpointerenter={() => hovered_idx = idx}
+            onpointerleave={() => hovered_idx = null}
+          >
             <T.ConeGeometry args={[0.175, 0.5, 16]} />
             <T.MeshStandardMaterial color={vector_colors[idx]} />
           </T.Mesh>
         {/each}
       </T.Group>
+
+      <!-- Tooltip for hovered vector -->
+      {#if hovered_idx !== null && matrix}
+        {@const hovered_vec = matrix[hovered_idx]}
+        {@const tooltip_position = math.add(vector_origin, hovered_vec) as Vec3}
+        <CanvasTooltip position={tooltip_position}>
+          <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
+          ({hovered_vec.map((coord) => format_num(coord, float_fmt)).join(`, `)}) Å
+        </CanvasTooltip>
+      {/if}
     {/if}
   {/key}
 {/if}
