@@ -1299,7 +1299,7 @@
   button.filename {
     align-items: center;
     white-space: nowrap;
-    padding: clamp(0.125rem, 0.5cqw, 0.375rem);
+    padding: 2pt 4pt;
     border-radius: 2px;
     max-width: clamp(150px, 20cqw, 250px);
     overflow: hidden;

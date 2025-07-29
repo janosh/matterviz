@@ -595,7 +595,7 @@
   }
   section.control-buttons button {
     background-color: transparent;
-    font-size: clamp(1em, 2cqw, 1.6em);
+    font-size: clamp(1em, 2cqw, 1.3em);
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--panel-btn-hover-bg);
