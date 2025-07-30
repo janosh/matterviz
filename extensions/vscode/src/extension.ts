@@ -11,6 +11,12 @@ import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
 
+interface FrameLoaderData {
+  loader: FrameLoader
+  file_data: ArrayBuffer
+  filename: string
+}
+
 // WebviewLike and ExtensionContextLike are unions to allow both real vscode types and mock types for testing
 type WebviewLike = vscode.Webview | {
   cspSource: string
@@ -69,11 +75,7 @@ export interface MessageData {
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 
 // Track active frame loaders by file path
-const active_frame_loaders = new Map<string, {
-  loader: { load_frame: (data: ArrayBuffer, frame_index: number) => Promise<unknown> }
-  file_data: ArrayBuffer
-  filename: string
-}>()
+const active_frame_loaders = new Map<string, FrameLoaderData>()
 
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {

@@ -314,7 +314,14 @@ const parse_file_content = async (
   filename: string,
   loading_options?: LoadingOptions,
   is_compressed: boolean = false,
+  recursion_depth: number = 0,
 ): Promise<ParseResult> => {
+  if (recursion_depth > 2) {
+    throw new Error(
+      `parse_file_content exceeded max recursion depth=2 while parsing file ${filename}`,
+    )
+  }
+
   // Check if this is a large file marker from the extension
   if (content.startsWith(`LARGE_FILE:`)) {
     const [, file_path, file_size_str] = content.split(`:`)
@@ -346,6 +353,7 @@ const parse_file_content = async (
       filename,
       loading_options,
       is_compressed,
+      recursion_depth + 1,
     )
   }
 
@@ -496,8 +504,8 @@ const create_display = (
     const structure_data = result.data as StructureData
     const message = is_trajectory
       ? `Trajectory rendered: ${filename} (${
-        trajectory_data.frames?.length || 0
-      } initial frames, ${trajectory_data.total_frames || 0} total)`
+        trajectory_data.frames?.length || NaN
+      } initial frames, ${trajectory_data?.total_frames || NaN} total)`
       : `Structure rendered: ${filename} (${structure_data.sites?.length || 0} sites)`
 
     vs_code_api?.postMessage({ command: `log`, text: message })
