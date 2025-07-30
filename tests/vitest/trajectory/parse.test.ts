@@ -127,17 +127,17 @@ describe(`Trajectory File Detection`, () => {
     // Very short names
     [`a.traj`, true],
     [`a.h5`, false],
-    [`a.xyz`, false],
+    [`a.xyz`, true], // .xyz files are now always considered potential trajectories
     [`a`, false],
 
     // Very long filename
     [`${`a`.repeat(1000)}.traj`, true],
-    [`${`a`.repeat(1000)}.xyz`, false],
+    [`${`a`.repeat(1000)}.xyz`, true], // .xyz files are now always considered potential trajectories
 
     // Specific regression tests
     [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true],
-    [`single-molecule.xyz`, false],
-    [`trajectory_data.json`, false],
+    [`single-molecule.xyz`, true], // .xyz files are now always considered potential trajectories
+    [`trajectory_data.json`, true], // JSON files with trajectory keywords are now supported
     [`md_simulation.cif`, false],
     [`relax_output.poscar`, true],
 

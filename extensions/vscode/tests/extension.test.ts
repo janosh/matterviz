@@ -117,7 +117,7 @@ describe(`MatterViz Extension`, () => {
     [`md_npt_300K.traj`, true], // Specific ASE ULM binary file
     [`ase-LiMnO2-chgnet-relax.traj`, true], // Another ASE ULM binary file
     [`test.cif`, false],
-    [`test.xyz`, false],
+    [`test.xyz`, false], // .xyz files are text format, not compressed binary
     [`test.json`, false],
     [``, false],
   ])(`file reading: "%s" → compressed:%s`, (filename, expected_compressed) => {
@@ -138,8 +138,8 @@ describe(`MatterViz Extension`, () => {
     [`water_cluster_md.traj`, true, true], // ASE binary trajectory
     [`optimization_relax.traj`, true, true], // ASE binary trajectory
     [`regular_text.traj`, true, true], // .traj files are always binary
-    [`test.xyz`, false, false], // Text file without trajectory keywords
-    [`test.extxyz`, false, false], // Text file without trajectory keywords
+    [`test.xyz`, true, false], // .xyz files are now always considered potential trajectories
+    [`test.extxyz`, true, false], // .extxyz files are always considered potential trajectories
     [`test.cif`, false, false], // Not a trajectory file
   ])(
     `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,

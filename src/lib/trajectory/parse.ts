@@ -87,7 +87,9 @@ export function is_trajectory_file(filename: string): boolean {
   }
 
   // Always detect these specific trajectory formats
-  if (/\.(traj|xtc)$/i.test(base_name) || /xdatcar/i.test(base_name)) return true
+  if (/\.(traj|xtc|xyz|extxyz)$/i.test(base_name) || /xdatcar/i.test(base_name)) {
+    return true
+  }
 
   // Exclude common non-trajectory files that might contain "md_simulation"
   const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
@@ -102,7 +104,7 @@ export function is_trajectory_file(filename: string): boolean {
 
   // For other extensions, require both keywords and specific extensions
   return keywords.test(base_name) &&
-    /\.(xyz|extxyz|dat|data|poscar|pdf|log|out)$/i.test(base_name)
+    /\.(xyz|extxyz|dat|data|poscar|pdf|log|out|json)$/i.test(base_name)
 }
 
 // Cache for optimization
