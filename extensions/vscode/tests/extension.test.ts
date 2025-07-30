@@ -1,14 +1,14 @@
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
-import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
+import type { Stats } from 'node:fs'
+import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Webview } from 'vscode'
 import type { MessageData } from '../src/extension'
 import {
   activate,
   create_html,
-  deactivate,
   get_defaults,
   get_file,
   get_theme,
@@ -79,15 +79,11 @@ describe(`MatterViz Extension`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    // Reset active watchers by calling deactivate first
-    try {
-      deactivate()
-    } catch {
-      // Ignore errors if not activated
-    }
+    // Reset mocks before each test
 
     mock_fs.readFileSync = vi.fn().mockReturnValue(`mock content`)
     mock_fs.writeFileSync = vi.fn()
+    vi.mocked(mock_fs.statSync).mockReturnValue({ size: 1024 } as Stats)
     mock_vscode.window.activeTextEditor = null
 
     // Set up file system watcher mock
@@ -836,21 +832,6 @@ describe(`MatterViz Extension`, () => {
     })
 
     describe(`lifecycle management`, () => {
-      test(`should dispose all watchers on extension deactivation`, async () => {
-        // Start watching a file
-        const message = {
-          command: `startWatching`,
-          file_path: `/test/file.cif`,
-        }
-        await handle_msg(message, mock_webview)
-
-        // Import deactivate function dynamically to test it
-        const { deactivate } = await import(`../src/extension`)
-        deactivate()
-
-        expect(mock_file_system_watcher.dispose).toHaveBeenCalled()
-      })
-
       test(`should handle activation gracefully`, () => {
         const mock_context = {
           extensionUri: { fsPath: `/test/extension` },

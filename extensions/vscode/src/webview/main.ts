@@ -40,6 +40,8 @@ interface ParseResult {
   type: `trajectory` | `structure`
   data: unknown
   filename: string
+  // For trajectories that support VS Code streaming
+  streaming_info?: { supports_streaming: boolean; file_path: string }
 }
 
 interface MatterVizApp {
@@ -260,7 +262,14 @@ function request_large_file_content(
   file_path: string,
   filename: string,
   is_compressed: boolean,
-): Promise<string | ArrayBuffer> {
+  timeout: number = 30_000, // 30 seconds
+): Promise<
+  string | ArrayBuffer | {
+    trajectory: TrajectoryData
+    supports_streaming: boolean
+    file_path: string
+  }
+> {
   const vscode = get_vscode_api()
   if (!vscode) throw new Error(`VS Code API not available`)
 
@@ -274,8 +283,9 @@ function request_large_file_content(
         if (error) return reject(new Error(error))
         if (is_parsed && parsed_trajectory) {
           return resolve({
-            ...parsed_trajectory,
-            _vscode_streaming: { supports_frame_streaming: true, file_path },
+            trajectory: parsed_trajectory,
+            supports_streaming: true,
+            file_path,
           })
         }
         resolve(event.data.content)
@@ -294,7 +304,7 @@ function request_large_file_content(
     setTimeout(() => {
       globalThis.removeEventListener(`message`, handler)
       reject(new Error(`Large file timeout`))
-    }, 120000)
+    }, timeout)
   })
 }
 
@@ -323,9 +333,11 @@ const parse_file_content = async (
     // Check if we received a pre-parsed trajectory with VS Code streaming support
     if (
       parsed_trajectory && typeof parsed_trajectory === `object` &&
-      (`frames` in parsed_trajectory || `total_frames` in parsed_trajectory)
+      `trajectory` in parsed_trajectory && `supports_streaming` in parsed_trajectory
     ) {
-      return { type: `trajectory`, data: parsed_trajectory, filename }
+      const { trajectory, supports_streaming, file_path } = parsed_trajectory
+      const streaming_info = { supports_streaming, file_path }
+      return { type: `trajectory`, data: trajectory, filename, streaming_info }
     }
 
     // Fallback: if not pre-parsed, treat as raw content
@@ -443,28 +455,19 @@ const create_display = (
   // Prepare trajectory data for VS Code streaming if supported
   let final_trajectory_data = result.data
 
-  if (is_trajectory && result.data && typeof result.data === `object`) {
-    const trajectory_data = result.data as TrajectoryData & {
-      _vscode_streaming?: { supports_frame_streaming?: boolean; file_path?: string }
-    }
+  if (is_trajectory && result.streaming_info?.supports_streaming) {
+    const vscode = get_vscode_api()
+    const trajectory_data = result.data as TrajectoryData
 
-    // Check if this trajectory supports VS Code frame streaming
-    if (trajectory_data._vscode_streaming?.supports_frame_streaming) {
-      const { file_path } = trajectory_data._vscode_streaming
-      const vscode = get_vscode_api()
-
-      if (vscode && file_path) {
-        // Clean up the streaming metadata and create trajectory with frame loader
-        const clean_trajectory = { ...trajectory_data }
-        delete clean_trajectory._vscode_streaming
-        final_trajectory_data = {
-          ...clean_trajectory,
-          is_indexed: true, // Mark as indexed so component uses frame loading logic
-          // Keep existing frames for initial display
-          frames: clean_trajectory.frames || [],
-          // Attach frame loader directly to trajectory
-          frame_loader: new VSCodeFrameLoader(file_path, vscode),
-        }
+    if (vscode && result.streaming_info.file_path) {
+      // Create trajectory with frame loader for streaming
+      final_trajectory_data = {
+        ...trajectory_data,
+        is_indexed: true, // Mark as indexed so component uses frame loading logic
+        // Keep existing frames for initial display
+        frames: trajectory_data.frames || [],
+        // Attach frame loader directly to trajectory
+        frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode),
       }
     }
   }

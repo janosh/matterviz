@@ -99,8 +99,14 @@ export const read_file = (file_path: string): FileData => {
   const is_binary = /\.(gz|traj|h5|hdf5)$/.test(filename)
 
   // Check file size to avoid loading huge files into memory
-  const stats = fs.statSync(file_path)
-  const file_size = stats.size
+  let file_size = 0
+  try {
+    const stats = fs.statSync(file_path)
+    file_size = stats?.size || 0
+  } catch (error) {
+    console.warn(`Failed to get file stats for ${file_path}:`, error)
+  }
+
   const threshold = is_binary ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
 
   if (file_size > threshold) {
