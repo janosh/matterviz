@@ -611,12 +611,13 @@
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
 
       // Determine loading strategy based on file size
-      const array_buffer_threshold = loading_options.array_buffer_threshold ??
+      const bin_file_threshold = loading_options.bin_file_threshold ??
         MAX_BIN_FILE_SIZE
-      const str_threshold = loading_options.str_threshold ?? MAX_TEXT_FILE_SIZE
+      const text_file_threshold = loading_options.text_file_threshold ??
+        MAX_TEXT_FILE_SIZE
       if (
-        (data instanceof ArrayBuffer && data_size > array_buffer_threshold) ||
-        (typeof data === `string` && data_size > str_threshold)
+        (data instanceof ArrayBuffer && data_size > bin_file_threshold) ||
+        (typeof data === `string` && data_size > text_file_threshold)
       ) { // Large files: Use indexed loading
         await load_with_indexing(data, filename)
       } else {

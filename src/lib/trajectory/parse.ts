@@ -32,8 +32,8 @@ export interface LoadingOptions {
   buffer_size?: number
   index_sample_rate?: number
   extract_plot_metadata?: boolean
-  array_buffer_threshold?: number // Threshold in bytes for ArrayBuffer files (default: MAX_BIN_FILE_SIZE)
-  str_threshold?: number // Threshold in bytes for string files (default: MAX_TEXT_FILE_SIZE)
+  bin_file_threshold?: number // Threshold in bytes for ArrayBuffer files (default: MAX_BIN_FILE_SIZE)
+  text_file_threshold?: number // Threshold in bytes for string files (default: MAX_TEXT_FILE_SIZE)
 }
 
 // Unified format detection

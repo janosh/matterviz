@@ -88,8 +88,8 @@ export interface SettingsConfig {
 
     // File handling and loading
     allow_file_drop: SettingType<boolean>
-    array_buffer_threshold: SettingType<number>
-    str_threshold: SettingType<number>
+    bin_file_threshold: SettingType<number>
+    text_file_threshold: SettingType<number>
     use_indexing: SettingType<boolean>
     chunk_size: SettingType<number>
 
@@ -435,13 +435,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Allow drag-and-drop of trajectory files`,
     },
-    array_buffer_threshold: {
+    bin_file_threshold: {
       value: 50000000,
       description: `File size threshold for binary loading (bytes)`,
       minimum: 1000000,
       maximum: 500000000,
     },
-    str_threshold: {
+    text_file_threshold: {
       value: 25000000,
       description: `File size threshold for text loading (bytes)`,
       minimum: 500000,

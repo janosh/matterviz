@@ -63,7 +63,7 @@ class VSCodeFrameLoader implements FrameLoader {
 
   // Only implement the method we actually use
   async load_frame(
-    _: string | ArrayBuffer,
+    _data: string | ArrayBuffer,
     frame_index: number,
   ): Promise<TrajectoryFrame | null> {
     return new Promise((resolve, reject) => {
@@ -543,8 +543,8 @@ const trajectory_props = (defaults: DefaultSettings) => {
     ...trajectory,
     structure_props: structure_props(defaults),
     loading_options: {
-      array_buffer_threshold: trajectory.array_buffer_threshold,
-      str_threshold: trajectory.str_threshold,
+      bin_file_threshold: trajectory.bin_file_threshold,
+      text_file_threshold: trajectory.text_file_threshold,
       use_indexing: trajectory.use_indexing,
       chunk_size: trajectory.chunk_size,
       max_frames_in_memory: trajectory.max_frames_in_memory,
