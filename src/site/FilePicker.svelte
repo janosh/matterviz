@@ -45,11 +45,11 @@
     // Use custom type mapper if provided
     if (type_mapper) return type_mapper(filename)
 
-    let base_name = filename
+    let base_name = filename.toLowerCase()
     // Remove .gz extension if present
-    if (base_name.toLowerCase().endsWith(`.gz`)) base_name = base_name.slice(0, -3)
+    if (base_name.endsWith(`.gz`)) base_name = base_name.slice(0, -3)
 
-    return base_name.split(`.`).pop()?.toLowerCase() || `file`
+    return base_name.split(`.`).pop() || `file`
   }
 
   // Filter files based on active filters

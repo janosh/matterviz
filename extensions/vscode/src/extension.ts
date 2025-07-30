@@ -1,11 +1,23 @@
 import { is_structure_file } from '$lib/io/parse'
+import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
-import { is_trajectory_file } from '$lib/trajectory/parse'
+import type { FrameLoader } from '$lib/trajectory/index'
+import {
+  is_trajectory_file,
+  MAX_BIN_FILE_SIZE,
+  MAX_TEXT_FILE_SIZE,
+} from '$lib/trajectory/parse'
 import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
-import { DEFAULTS, type DefaultSettings, merge } from '../../../src/lib/settings'
+import { stream_file_to_buffer } from './node-io'
+
+interface FrameLoaderData {
+  loader: FrameLoader
+  file_data: ArrayBuffer
+  filename: string
+}
 
 // WebviewLike and ExtensionContextLike are unions to allow both real vscode types and mock types for testing
 type WebviewLike = vscode.Webview | {
@@ -56,10 +68,16 @@ export interface MessageData {
   content?: string
   is_binary?: boolean
   file_path?: string
+  // Add frame loading support
+  request_id?: string
+  frame_index?: number
 }
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
+
+// Track active frame loaders by file path
+const active_frame_loaders = new Map<string, FrameLoaderData>()
 
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
@@ -84,6 +102,27 @@ export const read_file = (file_path: string): FileData => {
   // Binary files that should be read as base64
   const is_binary = /\.(gz|traj|h5|hdf5)$/.test(filename)
 
+  // Check file size to avoid loading huge files into memory
+  let file_size: number
+  try {
+    const stats = fs.statSync(file_path)
+    file_size = stats.size // For missing files, still access .size to get proper error
+  } catch (error) {
+    console.warn(`Failed to get file stats for ${file_path}:`, error)
+    file_size = 0
+  }
+
+  const threshold = is_binary ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
+
+  if (file_size > threshold) {
+    return {
+      filename,
+      content: `LARGE_FILE:${file_path}:${file_size}`,
+      isCompressed: is_binary,
+    }
+  }
+
+  // For normal-sized files, read normally
   const content = is_binary
     ? fs.readFileSync(file_path).toString(`base64`)
     : fs.readFileSync(file_path, `utf8`)
@@ -229,13 +268,87 @@ export const create_html = (
 
 // Handle messages from webview
 export const handle_msg = async (
-  msg: MessageData,
+  msg: MessageData & {
+    request_id: string
+    file_path: string
+    filename: string
+    frame_index: number
+  },
   webview?: WebviewLike,
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     vscode.window.showInformationMessage(msg.text)
   } else if (msg.command === `error` && msg.text) {
     vscode.window.showErrorMessage(msg.text)
+  } else if (msg.command === `request_large_file` && msg.file_path && webview) {
+    // Handle large file by parsing with indexing and setting up frame loader
+    try {
+      const { request_id, file_path, filename } = msg
+      // Import and read file
+      const { parse_trajectory_async, create_frame_loader } = await import(
+        `$lib/trajectory/parse`
+      )
+      const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
+        webview.postMessage({
+          command: `largefile_progress`,
+          request_id,
+          stage: `Reading file`,
+          progress: Math.round(progress_data.progress * 100),
+        })
+      })
+
+      // Parse with indexing and create frame loader
+      const parsed_trajectory = await parse_trajectory_async(
+        array_buffer,
+        filename,
+        undefined,
+        { use_indexing: true, extract_plot_metadata: true },
+      )
+
+      active_frame_loaders.set(file_path, {
+        loader: create_frame_loader(filename),
+        file_data: array_buffer,
+        filename,
+      })
+
+      webview.postMessage({
+        command: `largefile_response`,
+        request_id,
+        parsed_trajectory,
+        is_parsed: true,
+        supports_frame_streaming: true,
+        file_path,
+      })
+    } catch (error) {
+      const error_message = error instanceof Error ? error.message : String(error)
+      console.error(`Failed to setup indexed parsing:`, error_message)
+      webview.postMessage({
+        command: `largefile_response`,
+        request_id: msg.request_id,
+        error: error_message,
+      })
+    }
+  } else if (msg.command === `request_frame` && msg.file_path && webview) {
+    try {
+      const { request_id, file_path, frame_index } = msg
+      const loader_data = active_frame_loaders.get(file_path)
+      if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
+
+      const frame = await loader_data.loader.load_frame(
+        loader_data.file_data,
+        frame_index,
+      )
+      webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
+    } catch (error) {
+      const error_message = error instanceof Error ? error.message : String(error)
+      console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
+      webview.postMessage({
+        command: `frame_response`,
+        request_id: msg.request_id,
+        error: error_message,
+        frame_index: msg.frame_index,
+      })
+    }
   } else if (msg.command === `saveAs` && msg.content) {
     try {
       const uri = await vscode.window.showSaveDialog({
@@ -362,6 +475,11 @@ function stop_watching_file(file_path: string): void {
   if (watcher) {
     watcher.dispose()
     active_watchers.delete(file_path)
+  }
+
+  // Also clean up frame loader for this file
+  if (active_frame_loaders.has(file_path)) {
+    active_frame_loaders.delete(file_path)
   }
 }
 
@@ -572,18 +690,11 @@ export const activate = (context: vscode.ExtensionContext): void => {
           }
         }, 100) // Small delay to allow VS Code to finish opening the document
       }
+      // Update context whenever any document is opened
+      update_supported_resource_context(document.uri)
     }),
     vscode.window.onDidChangeActiveTextEditor((editor: vscode.TextEditor | undefined) => {
       update_supported_resource_context(editor?.document.uri)
     }),
   )
-}
-
-// Deactivate extension
-export const deactivate = (): void => {
-  // Clean up all active file watchers
-  for (const watcher of active_watchers.values()) {
-    watcher.dispose()
-  }
-  active_watchers.clear()
 }

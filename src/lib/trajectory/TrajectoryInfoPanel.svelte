@@ -92,8 +92,9 @@
   // Get trajectory info organized by sections
   let info_panel_data = $derived.by(() => {
     if (
-      !trajectory?.frames?.length || current_step_idx < 0 ||
-      current_step_idx >= (trajectory.total_frames ?? 0)
+      (!trajectory?.frames?.length && !trajectory?.total_frames) ||
+      current_step_idx < 0 ||
+      current_step_idx >= (trajectory.total_frames ?? trajectory.frames?.length ?? 0)
     ) return []
 
     // For indexed trajectories, we might not have the current frame loaded

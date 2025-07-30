@@ -29,7 +29,7 @@
     cell_surface_color: `white`,
     cell_edge_opacity: 0.4,
     cell_surface_opacity: 0.01, // Very subtle surface visibility
-    cell_line_width: DEFAULTS.structure.cell_line_width,
+    cell_edge_width: DEFAULTS.structure.cell_edge_width,
     show_vectors: true,
   })
 
@@ -75,9 +75,9 @@
       const opacity = parseFloat(url_params.get(`cell_surface_opacity`) || `0.01`)
       if (!isNaN(opacity)) lattice_props.cell_surface_opacity = opacity
     }
-    if (url_params.has(`cell_line_width`)) {
-      const line_width = parseInt(url_params.get(`cell_line_width`) || `1`)
-      if (!isNaN(line_width)) lattice_props.cell_line_width = line_width
+    if (url_params.has(`cell_edge_width`)) {
+      const line_width = parseInt(url_params.get(`cell_edge_width`) || `1`)
+      if (!isNaN(line_width)) lattice_props.cell_edge_width = line_width
     }
 
     // Component properties

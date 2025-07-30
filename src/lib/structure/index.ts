@@ -8,6 +8,7 @@ import type { ComponentProps } from 'svelte'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
+export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Lattice } from './Lattice.svelte'
 export * from './pbc'
 export { default as Structure } from './Structure.svelte'

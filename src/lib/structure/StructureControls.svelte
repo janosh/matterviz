@@ -21,7 +21,7 @@
       cell_surface_opacity: number
       cell_edge_color: string
       cell_surface_color: string
-      cell_line_width: number
+      cell_edge_width: number
       show_vectors: boolean
       [key: string]: unknown
     }
@@ -52,7 +52,7 @@
       cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
       cell_surface_color: DEFAULTS.structure.cell_surface_color,
-      cell_line_width: DEFAULTS.structure.cell_line_width,
+      cell_edge_width: DEFAULTS.structure.cell_edge_width,
       show_vectors: true,
     }),
     show_image_atoms = $bindable(true),

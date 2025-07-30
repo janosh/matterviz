@@ -104,7 +104,7 @@
       cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
       cell_surface_color: DEFAULTS.structure.cell_surface_color,
-      cell_line_width: DEFAULTS.structure.cell_line_width,
+      cell_edge_width: DEFAULTS.structure.cell_edge_width,
       show_vectors: true,
     }),
     controls_open = $bindable(false),
@@ -595,7 +595,7 @@
   }
   section.control-buttons button {
     background-color: transparent;
-    font-size: clamp(1em, 2cqw, 1.6em);
+    font-size: clamp(1em, 2cqw, 1.3em);
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--panel-btn-hover-bg);

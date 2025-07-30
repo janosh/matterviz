@@ -1637,7 +1637,7 @@ describe(`Structure File Detection`, () => {
     [`test.poscar`, true],
     [`test.vasp`, true],
     [`test.xyz`, true],
-    [`test.extxyz`, true],
+    [`test.extxyz`, false], // .extxyz files are now classified as potential trajectories
     [`test.json`, false], // Generic JSON files should not trigger MatterViz
     [`test.yaml`, false], // Generic YAML files should not trigger MatterViz
     [`test.yml`, false], // Generic YAML files should not trigger MatterViz
