@@ -19,11 +19,11 @@
   import { TrajectoryError, TrajectoryInfoPanel } from './index'
   import type { LoadingOptions } from './parse'
   import {
-    ARRAY_BUFFER_THRESHOLD,
     create_frame_loader,
     get_unsupported_format_message,
+    MAX_BIN_FILE_SIZE,
+    MAX_TEXT_FILE_SIZE,
     parse_trajectory_async,
-    STR_THRESHOLD,
   } from './parse'
   import {
     generate_axis_labels,
@@ -55,6 +55,7 @@
     current_step_idx?: number
     // custom function to extract plot data from trajectory frames
     data_extractor?: TrajectoryDataExtractor
+
     // file drop handlers
     allow_file_drop?: boolean
     // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
@@ -181,8 +182,6 @@
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
 
-  // Frame loader for indexed trajectories
-  let frame_loader = $state<ReturnType<typeof create_frame_loader> | null>(null)
   let original_data = $state<string | ArrayBuffer | null>(null)
 
   // Reactive layout based on viewport aspect ratio
@@ -205,15 +204,18 @@
 
   // Auto-play when trajectory changes (handles both props and file loading)
   $effect(() => {
-    if (auto_play && trajectory && !is_playing && total_frames > 1) start_playback()
+    if (auto_play && trajectory && !untrack(() => is_playing) && total_frames > 1) {
+      start_playback()
+    }
   })
 
   // Update current frame when step changes
   $effect(() => {
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
-      if (trajectory.is_indexed && frame_loader && original_data) {
-        // Load frame on demand for indexed trajectories
-        load_indexed_frame(current_step_idx)
+      // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
+      if (trajectory.frame_loader) {
+        // Load frame on demand (works for both indexed files and external streaming)
+        load_frame_on_demand(current_step_idx)
       } else {
         // Use in-memory frame for regular trajectories
         current_frame = trajectory.frames[current_step_idx] || null
@@ -223,12 +225,17 @@
     }
   })
 
-  // Load a specific frame for indexed trajectories
-  async function load_indexed_frame(frame_idx: number) {
-    if (!frame_loader || !original_data || !trajectory?.indexed_frames) return
+  // Load frame on demand - works for both indexed files and external streaming
+  async function load_frame_on_demand(frame_idx: number) {
+    // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
+    if (!trajectory?.frame_loader) return
 
     try {
-      const frame = await frame_loader.load_frame(original_data, frame_idx)
+      // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
+      const frame = await trajectory.frame_loader.load_frame(
+        original_data || ``, // Use original_data for indexed files, empty string for external streaming
+        frame_idx,
+      )
       current_frame = frame
     } catch (error) {
       console.error(`Failed to load frame ${frame_idx}:`, error)
@@ -322,7 +329,7 @@
     if (current_step_idx < total_frames - 1) {
       current_step_idx++
       // Streaming frame loading handled by reactive effect
-      if (trajectory || frame_loader) {
+      if (trajectory) {
         const { frame } = get_current_frame_data()
         on_step_change?.({
           trajectory,
@@ -338,7 +345,7 @@
     if (current_step_idx > 0) {
       current_step_idx--
       // Streaming frame loading handled by reactive effect
-      if (trajectory || frame_loader) {
+      if (trajectory) {
         const { frame } = get_current_frame_data()
         on_step_change?.({
           trajectory,
@@ -355,7 +362,7 @@
       current_step_idx = idx
       // Note: streaming frame loading is handled by reactive effect
       // Handle callbacks for both traditional and streaming modes
-      if (trajectory || frame_loader) {
+      if (trajectory) {
         const { frame } = get_current_frame_data()
         on_step_change?.({
           trajectory,
@@ -440,7 +447,7 @@
       play_interval = setInterval(() => {
         if (current_step_idx >= total_frames - 1) {
           const { frame } = get_current_frame_data()
-          if (trajectory || frame_loader) {
+          if (trajectory) {
             on_end?.({
               trajectory,
               step_idx: current_step_idx,
@@ -449,7 +456,7 @@
             })
           }
           go_to_step(0) // Loop back to 1st step
-          if (trajectory || frame_loader) {
+          if (trajectory) {
             on_loop?.({ trajectory, frame_count: total_frames })
           }
         } else next_step()
@@ -597,8 +604,7 @@
     error_msg = null
     parsing_progress = null
 
-    // Reset previous loading states
-    frame_loader = null
+    // Reset previous loading state
     original_data = null
 
     try {
@@ -606,8 +612,8 @@
 
       // Determine loading strategy based on file size
       const array_buffer_threshold = loading_options.array_buffer_threshold ??
-        ARRAY_BUFFER_THRESHOLD
-      const str_threshold = loading_options.str_threshold ?? STR_THRESHOLD
+        MAX_BIN_FILE_SIZE
+      const str_threshold = loading_options.str_threshold ?? MAX_TEXT_FILE_SIZE
       if (
         (data instanceof ArrayBuffer && data_size > array_buffer_threshold) ||
         (typeof data === `string` && data_size > str_threshold)
@@ -663,8 +669,10 @@
         parsing_progress = progress
       }, { use_indexing: true, ...loading_options })
 
+      // Attach frame loader and original data directly to trajectory for unified access
       original_data = data
-      frame_loader = create_frame_loader(filename)
+      // @ts-expect-error - dynamically adding frame_loader for indexed trajectories
+      trajectory.frame_loader = create_frame_loader(filename)
 
       console.log(
         `Loaded trajectory with indexing: ${
@@ -707,7 +715,7 @@
 
   // Handle keyboard shortcuts
   function onkeydown(event: KeyboardEvent) {
-    if (!trajectory && !frame_loader) return
+    if (!trajectory) return
 
     // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
     const target = event.target as HTMLElement
@@ -941,7 +949,7 @@
 
           <!-- Frame info section -->
           <div class="info-section">
-            {#if trajectory || frame_loader}
+            {#if trajectory}
               <TrajectoryInfoPanel
                 {trajectory}
                 {current_step_idx}
@@ -949,7 +957,6 @@
                 {current_file_path}
                 {file_size}
                 {file_object}
-                {frame_loader}
                 bind:panel_open={info_panel_open}
                 toggle_props={{ style: `width: 1em` }}
               />

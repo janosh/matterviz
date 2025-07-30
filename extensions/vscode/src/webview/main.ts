@@ -1,3 +1,4 @@
+// deno-lint-ignore-file require-await
 // Import MatterViz parsing functions and components
 import '$lib/app.css'
 import {
@@ -9,10 +10,18 @@ import { parse_structure_file } from '$lib/io/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
 import '$lib/theme/themes'
+import type { LoadingOptions } from '$lib/trajectory/parse'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
+// Add frame loader import
+import { type DefaultSettings, merge } from '$lib/settings'
+import type {
+  FrameIndex,
+  FrameLoader,
+  TrajectoryFrame,
+  TrajectoryMetadata,
+} from '$lib/trajectory/index'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
-import { type DefaultSettings, merge } from '../../../../src/lib/settings'
 
 interface FileData {
   filename: string
@@ -44,6 +53,54 @@ interface FileChangeMessage {
   data?: FileData
   type?: `trajectory` | `structure`
   theme?: ThemeName
+}
+
+// VS Code Frame Loader - streams frames via extension communication
+class VSCodeFrameLoader implements FrameLoader {
+  constructor(private file_path: string, private vscode_api: VSCodeAPI) {}
+
+  // Only implement the method we actually use
+  async load_frame(
+    _: string | ArrayBuffer,
+    frame_index: number,
+  ): Promise<TrajectoryFrame | null> {
+    return new Promise((resolve, reject) => {
+      const request_id = Math.random().toString(36).slice(2, 15)
+
+      const handler = (event: MessageEvent) => {
+        const { command, request_id: id, error, frame } = event.data
+        if (command === `frame_response` && id === request_id) {
+          globalThis.removeEventListener(`message`, handler)
+          if (error) reject(new Error(error))
+          else resolve(frame)
+        }
+      }
+
+      globalThis.addEventListener(`message`, handler)
+      this.vscode_api.postMessage({
+        command: `request_frame`,
+        request_id,
+        file_path: this.file_path,
+        frame_index,
+      })
+
+      setTimeout(() => {
+        globalThis.removeEventListener(`message`, handler)
+        reject(new Error(`Frame ${frame_index} timeout`))
+      }, 30000)
+    })
+  }
+
+  // Unused methods - just throw errors
+  async get_total_frames(): Promise<number> {
+    throw new Error(`Not implemented`)
+  }
+  async build_frame_index(): Promise<FrameIndex[]> {
+    throw new Error(`Not implemented`)
+  }
+  async extract_plot_metadata(): Promise<TrajectoryMetadata[]> {
+    throw new Error(`Not implemented`)
+  }
 }
 
 interface TrajectoryData {
@@ -163,7 +220,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       }
 
       const { content, filename, isCompressed } = message.data
-      const result = await parse_file_content(content, filename, isCompressed)
+      const result = await parse_file_content(content, filename, undefined, isCompressed)
 
       // Update the display
       const container = document.getElementById(`matterviz-app`)
@@ -198,12 +255,88 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
+// Request large file content from the extension using chunked streaming
+function request_large_file_content(
+  file_path: string,
+  filename: string,
+  is_compressed: boolean,
+): Promise<string | ArrayBuffer> {
+  const vscode = get_vscode_api()
+  if (!vscode) throw new Error(`VS Code API not available`)
+
+  return new Promise((resolve, reject) => {
+    const request_id = Math.random().toString(36).slice(2, 15)
+
+    const handler = (event: MessageEvent) => {
+      const { command, request_id: id, error, parsed_trajectory, is_parsed } = event.data
+      if (command === `largefile_response` && id === request_id) {
+        globalThis.removeEventListener(`message`, handler)
+        if (error) return reject(new Error(error))
+        if (is_parsed && parsed_trajectory) {
+          return resolve({
+            ...parsed_trajectory,
+            _vscode_streaming: { supports_frame_streaming: true, file_path },
+          })
+        }
+        resolve(event.data.content)
+      }
+    }
+
+    globalThis.addEventListener(`message`, handler)
+    vscode.postMessage({
+      command: `request_large_file`,
+      request_id,
+      file_path,
+      filename,
+      is_compressed,
+    })
+
+    setTimeout(() => {
+      globalThis.removeEventListener(`message`, handler)
+      reject(new Error(`Large file timeout`))
+    }, 120000)
+  })
+}
+
 // Parse file content and determine if it's a structure or trajectory
 const parse_file_content = async (
   content: string,
   filename: string,
+  loading_options?: LoadingOptions,
   is_compressed: boolean = false,
 ): Promise<ParseResult> => {
+  // Check if this is a large file marker from the extension
+  if (content.startsWith(`LARGE_FILE:`)) {
+    const [, file_path, file_size_str] = content.split(`:`)
+    const file_size = parseInt(file_size_str, 10)
+
+    console.log(
+      `Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`,
+    )
+
+    const parsed_trajectory = await request_large_file_content(
+      file_path,
+      filename,
+      is_compressed,
+    )
+
+    // Check if we received a pre-parsed trajectory with VS Code streaming support
+    if (
+      parsed_trajectory && typeof parsed_trajectory === `object` &&
+      (`frames` in parsed_trajectory || `total_frames` in parsed_trajectory)
+    ) {
+      return { type: `trajectory`, data: parsed_trajectory, filename }
+    }
+
+    // Fallback: if not pre-parsed, treat as raw content
+    return parse_file_content(
+      parsed_trajectory as string,
+      filename,
+      loading_options,
+      is_compressed,
+    )
+  }
+
   // Handle compressed/binary files by converting from base64 first
   if (is_compressed) {
     const buffer = base64_to_array_buffer(content)
@@ -307,10 +440,42 @@ const create_display = (
   const matterviz_data = get_matterviz_data()
   const defaults = merge(matterviz_data?.defaults)
 
+  // Prepare trajectory data for VS Code streaming if supported
+  let final_trajectory_data = result.data
+
+  if (is_trajectory && result.data && typeof result.data === `object`) {
+    const trajectory_data = result.data as TrajectoryData & {
+      _vscode_streaming?: { supports_frame_streaming?: boolean; file_path?: string }
+    }
+
+    // Check if this trajectory supports VS Code frame streaming
+    if (trajectory_data._vscode_streaming?.supports_frame_streaming) {
+      const { file_path } = trajectory_data._vscode_streaming
+      const vscode = get_vscode_api()
+
+      if (vscode && file_path) {
+        // Clean up the streaming metadata and create trajectory with frame loader
+        const clean_trajectory = { ...trajectory_data }
+        delete clean_trajectory._vscode_streaming
+        final_trajectory_data = {
+          ...clean_trajectory,
+          is_indexed: true, // Mark as indexed so component uses frame loading logic
+          // Keep existing frames for initial display
+          frames: clean_trajectory.frames || [],
+          // Attach frame loader directly to trajectory
+          frame_loader: new VSCodeFrameLoader(file_path, vscode),
+        }
+      }
+    }
+  }
+
   // Create component props by mapping defaults to component props
   const props = {
     ...(is_trajectory
-      ? { trajectory: result.data as TrajectoryData, ...trajectory_props(defaults) }
+      ? {
+        trajectory: final_trajectory_data as TrajectoryData,
+        ...trajectory_props(defaults),
+      }
       : { structure: result.data as StructureData, ...structure_props(defaults) }),
     allow_file_drop: false,
     style: `height: 100%; border-radius: 0`,
@@ -322,12 +487,14 @@ const create_display = (
   // VSCode message logging
   try {
     const vs_code_api = get_vscode_api()
-    const trajectory_data = result.data as TrajectoryData
+    const trajectory_data = final_trajectory_data as TrajectoryData & {
+      total_frames?: number
+    }
     const structure_data = result.data as StructureData
     const message = is_trajectory
       ? `Trajectory rendered: ${filename} (${
         trajectory_data.frames?.length || 0
-      } frames, ${trajectory_data.frames?.[0]?.structure?.sites?.length || 0} sites)`
+      } initial frames, ${trajectory_data.total_frames || 0} total)`
       : `Structure rendered: ${filename} (${structure_data.sites?.length || 0} sites)`
 
     vs_code_api?.postMessage({ command: `log`, text: message })
@@ -431,7 +598,7 @@ async function initialize() {
     const container = document.getElementById(`matterviz-app`)
     if (!container) throw new Error(`Target container not found in DOM`)
 
-    const result = await parse_file_content(content, filename, isCompressed)
+    const result = await parse_file_content(content, filename, undefined, isCompressed)
     const app = create_display(container, result, result.filename)
 
     // Store the app instance for file watching
