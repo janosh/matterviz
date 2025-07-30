@@ -109,7 +109,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 ```json
 {
   "matterviz.trajectory.chunk_size": 500,
-  "matterviz.trajectory.array_buffer_threshold": 10485760,
+  "matterviz.trajectory.bin_file_threshold": 10485760,
   "matterviz.structure.sphere_segments": 16
 }
 ```

@@ -259,7 +259,7 @@
     border-radius: var(--panel-toggle-border-radius, 3pt);
     background-color: transparent;
     transition: background-color 0.2s;
-    font-size: clamp(1em, 2cqw, 1.6em);
+    font-size: clamp(1em, 2cqw, 1.3em);
   }
   button.panel-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);

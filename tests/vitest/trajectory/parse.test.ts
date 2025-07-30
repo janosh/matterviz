@@ -127,17 +127,17 @@ describe(`Trajectory File Detection`, () => {
     // Very short names
     [`a.traj`, true],
     [`a.h5`, false],
-    [`a.xyz`, false],
+    [`a.xyz`, true], // .xyz files are now always considered potential trajectories
     [`a`, false],
 
     // Very long filename
     [`${`a`.repeat(1000)}.traj`, true],
-    [`${`a`.repeat(1000)}.xyz`, false],
+    [`${`a`.repeat(1000)}.xyz`, true], // .xyz files are now always considered potential trajectories
 
     // Specific regression tests
     [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true],
-    [`single-molecule.xyz`, false],
-    [`trajectory_data.json`, false],
+    [`single-molecule.xyz`, true], // .xyz files are now always considered potential trajectories
+    [`trajectory_data.json`, true], // JSON files with trajectory keywords are now supported
     [`md_simulation.cif`, false],
     [`relax_output.poscar`, true],
 
@@ -215,6 +215,19 @@ describe(`Trajectory File Detection`, () => {
     [`MD.xyz`, true],
     [`Md.xyz`, true],
     [`md.xyz`, true],
+    // Machine learning potential trajectories (no traditional keywords)
+    [`V8_Ta12_W71_Re8-mace-omat.xyz`, true],
+    [`CuAgAu_chgnet_relax.xyz`, true],
+    [`bulk_water_dpmd.xyz`, true],
+    [`alloy_simulation_m3gnet.xyz`, true],
+    // Compressed JSON trajectories from various sources
+    [`pymatgen-trajectory-data.json.gz`, true],
+    [`ase-md-output.json.bz2`, true],
+    [`simulation-results.json.xz`, true],
+    // Edge cases that should still work
+    [`dataset_structure_0001.xyz`, true], // No keywords but .xyz extension
+    [`crystal_optimization.xyz`, true], // Has keyword but also .xyz
+    [`mp-1184225.extxyz`, true], // Materials Project format
   ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
     expect(is_trajectory_file(filename)).toBe(expected)
   })

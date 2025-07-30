@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
 
-import { SETTINGS_CONFIG, type SettingType } from '../../../src/lib/settings.ts'
+import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 
 const readFileSync = (path: string) => Deno.readTextFileSync(path)
 const writeFileSync = (path: string, data: string) => Deno.writeTextFileSync(path, data)
