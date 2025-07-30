@@ -67,7 +67,8 @@ class VSCodeFrameLoader implements FrameLoader {
     frame_index: number,
   ): Promise<TrajectoryFrame | null> {
     return new Promise((resolve, reject) => {
-      const request_id = Math.random().toString(36).slice(2, 15)
+      const request_id = globalThis.crypto?.randomUUID?.() ??
+        Math.random().toString(36).slice(2, 15)
 
       const handler = (event: MessageEvent) => {
         const { command, request_id: id, error, frame } = event.data
