@@ -181,7 +181,7 @@
   let info_panel_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
-
+  let filename_copied = $state(false)
   let original_data = $state<string | ArrayBuffer | null>(null)
 
   // Reactive layout based on viewport aspect ratio
@@ -844,10 +844,20 @@
               title="Click to copy filename <code>{current_filename}</code>"
               {@attach tooltip()}
               onclick={() => {
-                if (current_filename) navigator.clipboard.writeText(current_filename)
+                if (current_filename) {
+                  navigator.clipboard.writeText(current_filename)
+                  filename_copied = true
+                  setTimeout(() => filename_copied = false, 1000)
+                }
               }}
             >
               {current_filename}
+              {#if filename_copied}
+                <Icon
+                  icon="Check"
+                  style="color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); font-size: 16px; animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%"
+                />
+              {/if}
             </button>
           {/if}
 
@@ -1314,6 +1324,12 @@
     text-overflow: ellipsis;
     display: inline-block;
     font-size: clamp(0.75rem, 2cqw, 0.875rem);
+    position: relative;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
   }
   .fullscreen-button {
     background: transparent;
