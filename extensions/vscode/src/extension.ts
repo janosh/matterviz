@@ -1,6 +1,7 @@
 import { is_structure_file } from '$lib/io/parse'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
+import type { FrameLoader } from '$lib/trajectory/index'
 import {
   is_trajectory_file,
   MAX_BIN_FILE_SIZE,
@@ -10,6 +11,7 @@ import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import { stream_file_to_buffer } from './node-io'
 
 interface FrameLoaderData {
   loader: FrameLoader
@@ -101,12 +103,13 @@ export const read_file = (file_path: string): FileData => {
   const is_binary = /\.(gz|traj|h5|hdf5)$/.test(filename)
 
   // Check file size to avoid loading huge files into memory
-  let file_size = 0
+  let file_size: number
   try {
     const stats = fs.statSync(file_path)
-    file_size = stats?.size || 0
+    file_size = stats.size // For missing files, still access .size to get proper error
   } catch (error) {
     console.warn(`Failed to get file stats for ${file_path}:`, error)
+    file_size = 0
   }
 
   const threshold = is_binary ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
@@ -285,11 +288,14 @@ export const handle_msg = async (
       const { parse_trajectory_async, create_frame_loader } = await import(
         `$lib/trajectory/parse`
       )
-      const buffer = fs.readFileSync(file_path)
-      const array_buffer = buffer.buffer.slice(
-        buffer.byteOffset,
-        buffer.byteOffset + buffer.byteLength,
-      )
+      const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
+        webview.postMessage({
+          command: `largefile_progress`,
+          request_id,
+          stage: `Reading file`,
+          progress: Math.round(progress_data.progress * 100),
+        })
+      })
 
       // Parse with indexing and create frame loader
       const parsed_trajectory = await parse_trajectory_async(
