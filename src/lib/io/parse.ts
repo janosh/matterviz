@@ -2,7 +2,7 @@ import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import { is_trajectory_file } from '$lib/trajectory/parse'
+
 import { load as yaml_load } from 'js-yaml'
 import { COMPRESSION_EXTENSIONS } from './decompress'
 
@@ -1215,44 +1215,37 @@ export function is_optimade_json(content: string): boolean {
 export function is_structure_file(filename: string): boolean {
   const name = filename.toLowerCase()
 
-  // Not a structure file if it's a trajectory file
-  if (is_trajectory_file(filename)) return false
+  // Trajectory-only formats (can't be structures)
+  if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
 
-  // Direct structure file extensions
-  if (
-    /\.(cif|poscar|vasp|xyz|extxyz|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/i.test(name)
-  ) return true
-
-  // VASP files (no extension or .out)
+  // Always structure formats
+  if (/\.(cif|poscar|vasp|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/i.test(name)) return true
   if (/(poscar|contcar|potcar|incar|kpoints|outcar)/i.test(name)) return true
-  // YAML files with structure keywords
+
+  // .xyz files: structure unless they have trajectory keywords, .extxyz files: trajectory by default
+  if (/\.extxyz$/i.test(name)) return false
+  if (/\.xyz$/i.test(name)) {
+    return !/(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i.test(name)
+  }
+
+  // Keyword-based detection for YAML/JSON/XML
+  const structure_keywords =
+    /(structure|phono|vasp|crystal|material|lattice|geometry|unit_?cell|atoms|sites|data|phono3?py)/i
+  const trajectory_keywords =
+    /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
+  const config_dirs =
+    /(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)\//i
+
+  if (/\.(yaml|yml)$/i.test(name) && structure_keywords.test(name)) return true
+  if (/\.xml$/i.test(name) && structure_keywords.test(name)) return true
   if (
-    /\.(yaml|yml)$/i.test(name) &&
-    /(structure|phono|vasp|crystal|material|lattice|geometry|unit_?cell|phono3?py)/i.test(
-      name,
-    )
+    /\.json$/i.test(name) && structure_keywords.test(name) &&
+    !trajectory_keywords.test(name) && !config_dirs.test(name)
   ) return true
 
-  // JSON files with structure keywords (excluding config directories)
-  if (
-    /\.json$/i.test(name) &&
-    /(structure|crystal|material|lattice|geometry|unit_?cell|atoms|sites|data)/i.test(
-      name,
-    ) &&
-    !/(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)\//i
-      .test(name)
-  ) return true
-
-  // XML files with structure keywords
-  if (
-    /\.xml$/i.test(name) &&
-    /(structure|crystal|material|lattice|geometry|unit_?cell|atoms|sites)/i.test(name)
-  ) return true
-
-  // Compressed files - check the base filename
-  if (name.endsWith(`.gz`) || name.endsWith(`.zip`) || name.endsWith(`.xz`)) {
-    const base_name = name.split(`.`).slice(0, -1).join(`.`)
-    return is_structure_file(base_name)
+  // Compressed files - check base filename recursively
+  if (/\.(gz|zip|xz)$/i.test(name)) {
+    return is_structure_file(name.replace(/\.(gz|zip|xz)$/i, ``))
   }
 
   return false

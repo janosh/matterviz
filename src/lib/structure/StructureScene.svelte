@@ -18,6 +18,7 @@
   import type { ComponentProps } from 'svelte'
   import { type Snippet } from 'svelte'
   import * as bonding_strategies from './bonding'
+  import { CanvasTooltip } from './index'
 
   type ActiveHoveredDist = { color: string; width: number; opacity: number }
 
@@ -466,52 +467,46 @@
 
 <!-- hovered site tooltip -->
 {#if hovered_site && !camera_is_moving}
-  <HTML position={hovered_site.xyz} pointerEvents="none">
-    <div class="tooltip">
-      <!-- Element symbols with occupancies for disordered sites -->
-      <div class="elements">
-        {#each hovered_site.species ?? [] as
-          { element, occu, oxidation_state: oxi_state },
-          idx
-          ([element, occu, oxi_state])
-        }
-          {@const oxi_str = oxi_state != null && oxi_state !== 0
-          ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
-          : ``}
-          {@const element_name = element_data.find((elem) =>
-          elem.symbol === element
-        )?.name ?? ``}
-          {#if idx > 0}&thinsp;{/if}
-          {#if occu !== 1}<span class="occupancy">{format_num(occu, `.3~f`)}</span>{/if}
-          <strong>{element}{@html oxi_str}</strong>
-          {#if element_name}<span class="elem-name">{element_name}</span>{/if}
-        {/each}
-      </div>
-
-      <div class="coordinates fractional">
-        abc: ({hovered_site.abc.map((num) => format_num(num, precision)).join(`, `)})
-      </div>
-
-      <div class="coordinates cartesian">
-        xyz: ({hovered_site.xyz.map((num) => format_num(num, precision)).join(`, `)}) Å
-      </div>
-
-      <!-- distance from hovered to active site -->
-      {#if active_site && active_site != hovered_site && active_hovered_dist}
-        {@const direct_distance = math.euclidean_dist(hovered_site.xyz, active_site.xyz)}
-        {@const pbc_distance = lattice
-        ? math.pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
-        : direct_distance}
-        <div class="distance">
-          <strong>dist:</strong>
-          {format_num(pbc_distance, precision)} Å{lattice ? ` (PBC)` : ``}
-          {#if lattice && Math.abs(pbc_distance - direct_distance) > 0.1}
-            <small> | direct: {format_num(direct_distance, precision)} Å</small>
-          {/if}
-        </div>
-      {/if}
+  <CanvasTooltip position={hovered_site.xyz}>
+    <!-- Element symbols with occupancies for disordered sites -->
+    <div class="elements">
+      {#each hovered_site.species ?? [] as
+        { element, occu, oxidation_state: oxi_state },
+        idx
+        ([element, occu, oxi_state])
+      }
+        {@const oxi_str = oxi_state != null && oxi_state !== 0
+        ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
+        : ``}
+        {@const element_name = element_data.find((elem) => elem.symbol === element)?.name ??
+        ``}
+        {#if idx > 0}&thinsp;{/if}
+        {#if occu !== 1}<span class="occupancy">{format_num(occu, `.3~f`)}</span>{/if}
+        <strong>{element}{@html oxi_str}</strong>
+        {#if element_name}<span class="elem-name">{element_name}</span>{/if}
+      {/each}
     </div>
-  </HTML>
+    <div class="coordinates fractional">
+      abc: ({hovered_site.abc.map((num) => format_num(num, precision)).join(`, `)})
+    </div>
+    <div class="coordinates cartesian">
+      xyz: ({hovered_site.xyz.map((num) => format_num(num, precision)).join(`, `)}) Å
+    </div>
+    <!-- distance from hovered to active site -->
+    {#if active_site && active_site != hovered_site && active_hovered_dist}
+      {@const direct_distance = math.euclidean_dist(hovered_site.xyz, active_site.xyz)}
+      {@const pbc_distance = lattice
+      ? math.pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
+      : direct_distance}
+      <div class="distance">
+        <strong>dist:</strong>
+        {format_num(pbc_distance, precision)} Å{lattice ? ` (PBC)` : ``}
+        {#if lattice && Math.abs(pbc_distance - direct_distance) > 0.1}
+          <small> | direct: {format_num(direct_distance, precision)} Å</small>
+        {/if}
+      </div>
+    {/if}
+  </CanvasTooltip>
 {/if}
 
 {#if lattice}
@@ -523,40 +518,28 @@
     width: clamp(70px, 12cqw, 100px) !important;
     height: clamp(70px, 12cqw, 100px) !important;
   }
-  div.tooltip {
-    width: max-content;
-    box-sizing: border-box;
-    border-radius: var(--struct-tooltip-border-radius, 5pt);
-    background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.5));
-    padding: var(--struct-tooltip-padding, 1pt 5pt);
-    text-align: left;
-    color: var(--struct-tooltip-text-color);
-    font-family: var(--struct-tooltip-font-family);
-    font-size: var(--struct-tooltip-font-size);
-    line-height: var(--struct-tooltip-line-height);
+  .atom-label {
+    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
+    border-radius: var(--struct-atom-label-border-radius, 3pt);
+    padding: var(--struct-atom-label-padding, 0 3px);
   }
-  div.tooltip .elements {
+  .elements {
     margin-bottom: var(--struct-tooltip-elements-margin);
   }
-  div.tooltip .occupancy {
+  .occupancy {
     font-size: var(--struct-tooltip-occu-font-size);
     opacity: var(--struct-tooltip-occu-opacity);
     margin-right: var(--struct-tooltip-occu-margin);
   }
-  div.tooltip .elem-name {
+  .elem-name {
     font-size: var(--struct-tooltip-elem-name-font-size, 0.85em);
     opacity: var(--struct-tooltip-elem-name-opacity, 0.7);
     margin: var(--struct-tooltip-elem-name-margin, 0 0 0 0.3em);
     font-weight: var(--struct-tooltip-elem-name-font-weight, normal);
   }
-  div.tooltip .coordinates,
-  div.tooltip .distance {
+  .coordinates,
+  .distance {
     font-size: var(--struct-tooltip-coords-font-size);
     margin: var(--struct-tooltip-coords-margin);
-  }
-  .atom-label {
-    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
-    border-radius: var(--struct-atom-label-border-radius, 3pt);
-    padding: var(--struct-atom-label-padding, 0 3px);
   }
 </style>

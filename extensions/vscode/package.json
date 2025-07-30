@@ -366,7 +366,7 @@
           "default": "#e0e0e0",
           "description": "Color of cell surfaces"
         },
-        "matterviz.structure.cell_line_width": {
+        "matterviz.structure.cell_edge_width": {
           "type": "number",
           "default": 1.5,
           "description": "Width of cell edge lines",
@@ -442,14 +442,14 @@
           "default": true,
           "description": "Allow drag-and-drop of trajectory files"
         },
-        "matterviz.trajectory.array_buffer_threshold": {
+        "matterviz.trajectory.bin_file_threshold": {
           "type": "number",
           "default": 50000000,
           "description": "File size threshold for binary loading (bytes)",
           "minimum": 1000000,
           "maximum": 500000000
         },
-        "matterviz.trajectory.str_threshold": {
+        "matterviz.trajectory.text_file_threshold": {
           "type": "number",
           "default": 25000000,
           "description": "File size threshold for text loading (bytes)",

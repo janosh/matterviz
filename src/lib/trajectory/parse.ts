@@ -22,8 +22,8 @@ export const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string l
 export const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
 export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
 export const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
-export const ARRAY_BUFFER_THRESHOLD = 100 * 1024 * 1024 // 100MB default for ArrayBuffer files
-export const STR_THRESHOLD = 50 * 1024 * 1024 // 50MB default for string files
+export const MAX_BIN_FILE_SIZE = 100 * 1024 * 1024 // 100MB default for ArrayBuffer files
+export const MAX_TEXT_FILE_SIZE = 50 * 1024 * 1024 // 50MB default for string files
 
 // Common interfaces
 
@@ -32,8 +32,8 @@ export interface LoadingOptions {
   buffer_size?: number
   index_sample_rate?: number
   extract_plot_metadata?: boolean
-  array_buffer_threshold?: number // Threshold in bytes for ArrayBuffer files (default: ARRAY_BUFFER_THRESHOLD)
-  str_threshold?: number // Threshold in bytes for string files (default: STR_THRESHOLD)
+  bin_file_threshold?: number // Threshold in bytes for ArrayBuffer files (default: MAX_BIN_FILE_SIZE)
+  text_file_threshold?: number // Threshold in bytes for string files (default: MAX_TEXT_FILE_SIZE)
 }
 
 // Unified format detection
@@ -87,7 +87,9 @@ export function is_trajectory_file(filename: string): boolean {
   }
 
   // Always detect these specific trajectory formats
-  if (/\.(traj|xtc)$/i.test(base_name) || /xdatcar/i.test(base_name)) return true
+  if (/\.(traj|xtc|xyz|extxyz)$/i.test(base_name) || /xdatcar/i.test(base_name)) {
+    return true
+  }
 
   // Exclude common non-trajectory files that might contain "md_simulation"
   const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
@@ -102,7 +104,7 @@ export function is_trajectory_file(filename: string): boolean {
 
   // For other extensions, require both keywords and specific extensions
   return keywords.test(base_name) &&
-    /\.(xyz|extxyz|dat|data|poscar|pdf|log|out)$/i.test(base_name)
+    /\.(xyz|extxyz|dat|data|poscar|pdf|log|out|json)$/i.test(base_name)
 }
 
 // Cache for optimization
