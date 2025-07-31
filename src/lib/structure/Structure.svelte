@@ -418,10 +418,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({
-      structure,
-      is_fullscreen: fullscreen,
-    })
+    on_fullscreen_change?.({ structure, is_fullscreen: fullscreen })
   }}
 />
 
@@ -474,7 +471,10 @@
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
             {:else}
-              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+              <Icon
+                icon="{fullscreen ? `Exit` : ``}Fullscreen"
+                style="padding: var(--panel-toggle-padding, 2pt)"
+              />
             {/if}
           </button>
         {/if}

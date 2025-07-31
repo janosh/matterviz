@@ -272,10 +272,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show element labels on atoms`,
     },
     site_label_size: {
-      value: 12,
+      value: 1,
       description: `Font size for atom labels`,
-      minimum: 8,
-      maximum: 32,
+      minimum: 0.5,
+      maximum: 5,
     },
     site_label_color: {
       value: `#ffffff`,
@@ -292,7 +292,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 20,
     },
     site_label_offset: {
-      value: [0, 0, 0] as [number, number, number],
+      value: [0, 0.5, 0] as [number, number, number],
       description: `3D offset for atom labels [x, y, z]`,
       minItems: 3,
       maxItems: 3,
