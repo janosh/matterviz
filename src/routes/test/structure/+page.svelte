@@ -30,7 +30,7 @@
     cell_edge_opacity: 0.4,
     cell_surface_opacity: 0.01, // Very subtle surface visibility
     cell_edge_width: DEFAULTS.structure.cell_edge_width,
-    show_vectors: true,
+    show_cell_vectors: true,
   })
 
   const create_event_handler = (event_name: string) => (data: unknown) => {

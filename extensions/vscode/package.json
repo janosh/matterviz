@@ -337,7 +337,7 @@
           "default": false,
           "description": "Display system cell"
         },
-        "matterviz.structure.show_vectors": {
+        "matterviz.structure.show_cell_vectors": {
           "type": "boolean",
           "default": false,
           "description": "Display cell vectors"

@@ -22,7 +22,7 @@
     cell_edge_width?: number // thickness of the cell edges
     cell_edge_opacity?: number // opacity of the cell edges
     cell_surface_opacity?: number // opacity of the cell surfaces
-    show_vectors?: boolean // whether to show the lattice vectors
+    show_cell_vectors?: boolean // whether to show the lattice vectors
     vector_colors?: [string, string, string] // lattice vector colors
     vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
     float_fmt?: string
@@ -34,7 +34,7 @@
     cell_edge_width = DEFAULTS.structure.cell_edge_width,
     cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
-    show_vectors = true,
+    show_cell_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] as Vec3,
     float_fmt = `.2f`,
@@ -139,7 +139,7 @@
 
     <!-- NOTE below is an untested fix for the lattice vectors being much too small when deployed even though they look correct in local dev -->
 
-    {#if show_vectors}
+    {#if show_cell_vectors}
       <T.Group position={vector_origin}>
         {#each matrix as vec, idx (vec)}
           {@const vector_length = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)}

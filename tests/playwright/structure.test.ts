@@ -1023,14 +1023,14 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_open_status).toContainText(`true`)
     await expect(controls_dialog).toHaveClass(/panel-open/)
 
-    const show_vectors_label = controls_dialog
+    const show_cell_vectors_label = controls_dialog
       .locator(`label`)
       .filter({ hasText: /lattice vectors/ })
-    const show_vectors_checkbox = show_vectors_label.locator(
+    const show_cell_vectors_checkbox = show_cell_vectors_label.locator(
       `input[type="checkbox"]`,
     )
-    await expect(show_vectors_checkbox).toBeVisible()
-    await show_vectors_checkbox.click()
+    await expect(show_cell_vectors_checkbox).toBeVisible()
+    await show_cell_vectors_checkbox.click()
     await expect(controls_open_status).toContainText(`true`)
     await expect(controls_dialog).toHaveClass(/panel-open/)
 

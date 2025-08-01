@@ -105,7 +105,7 @@
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
       cell_surface_color: DEFAULTS.structure.cell_surface_color,
       cell_edge_width: DEFAULTS.structure.cell_edge_width,
-      show_vectors: true,
+      show_cell_vectors: true,
     }),
     controls_open = $bindable(false),
     info_panel_open = $bindable(false),

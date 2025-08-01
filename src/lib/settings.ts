@@ -60,7 +60,7 @@ export interface SettingsConfig {
     force_arrow_head_radius: SettingType<number>
     force_arrow_head_length: SettingType<number>
     show_cell: SettingType<boolean>
-    show_vectors: SettingType<boolean>
+    show_cell_vectors: SettingType<boolean>
     cell_edge_opacity: SettingType<number>
     cell_surface_opacity: SettingType<number>
     cell_edge_color: SettingType<string>
@@ -164,7 +164,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     maximum: 1,
   },
   show_image_atoms: {
-    value: false,
+    value: true,
     description: `Show atoms outside the unit cell for better visualization`,
   },
   show_gizmo: {
@@ -348,8 +348,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: false,
       description: `Display system cell`,
     },
-    show_vectors: {
-      value: false,
+    show_cell_vectors: {
+      value: true,
       description: `Display cell vectors`,
     },
     cell_edge_opacity: {

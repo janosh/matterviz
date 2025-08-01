@@ -22,7 +22,7 @@
       cell_edge_color: string
       cell_surface_color: string
       cell_edge_width: number
-      show_vectors: boolean
+      show_cell_vectors: boolean
       [key: string]: unknown
     }
     // Display options (bindable from parent)
