@@ -135,7 +135,19 @@ export const detect_structure_type = (
 
   if (filename.endsWith(`.json`)) {
     try {
-      return JSON.parse(content).lattice ? `crystal` : `molecule`
+      const parsed = JSON.parse(content)
+      // Check for OPTIMADE JSON format (has data.attributes.lattice_vectors)
+      if (parsed.data?.attributes?.lattice_vectors) return `crystal`
+      // Check for dimension_types (OPTIMADE format)
+      if (parsed.data?.attributes?.dimension_types?.some((dim: number) => dim > 0)) {
+        return `crystal`
+      }
+      // Check for pymatgen JSON format (has lattice property)
+      if (parsed.lattice) return `crystal`
+      // Check for other crystal indicators
+      if (parsed.data?.attributes?.nperiodic_dimensions > 0) return `crystal`
+
+      return `molecule`
     } catch {
       return `unknown`
     }

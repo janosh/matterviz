@@ -11,25 +11,21 @@ interface OpenPanelOptions {
 export async function open_draggable_panel(page: Page, options: OpenPanelOptions) {
   const { panel_selector, parent_selector, checkbox_text, timeout = 5000 } = options
 
-  const parent_component = parent_selector ? page.locator(parent_selector) : page
+  const container = parent_selector ? page.locator(parent_selector) : page
 
-  const panel_dialog = parent_component.locator(panel_selector)
+  const panel_div = container.locator(panel_selector)
 
-  // If checkbox_text is provided, use checkbox-based opening
-  if (checkbox_text) {
+  if (checkbox_text) { // If checkbox_text is provided, use checkbox-based opening
     const test_page_checkbox = page.locator(
       `label:has-text("${checkbox_text}") input[type="checkbox"]`,
     )
 
-    // First ensure the checkbox is unchecked to reset state
-    await test_page_checkbox.uncheck()
-
-    // Now check the checkbox to open the panel
-    await test_page_checkbox.check()
+    await test_page_checkbox.uncheck() // First ensure the checkbox is unchecked to reset state
+    await test_page_checkbox.check() // Now check the checkbox to open the panel
   }
 
   // Wait for the panel to be visible
-  await expect(panel_dialog).toBeVisible({ timeout: 2000 })
+  await expect(panel_div).toBeVisible({ timeout: 2000 })
 
   // Wait for panel to be properly positioned and rendered
   await page.waitForFunction(
@@ -44,29 +40,25 @@ export async function open_draggable_panel(page: Page, options: OpenPanelOptions
     { timeout },
   )
 
-  return { parent_component, panel_dialog }
+  return { container, panel_div }
 }
 
-export function open_structure_controls_panel(page: Page) {
-  return open_draggable_panel(page, {
+export const open_structure_controls_panel = (page: Page) =>
+  open_draggable_panel(page, {
     panel_selector: `.controls-panel`,
     parent_selector: `#structure-wrapper .structure`,
     checkbox_text: `Controls Open`,
   })
-}
 
-export function open_trajectory_info_panel(page: Page) {
-  return open_draggable_panel(page, {
+export const open_trajectory_info_panel = (page: Page) =>
+  open_draggable_panel(page, {
     panel_selector: `.trajectory-info-panel`,
     // No checkbox - trajectory panels are typically opened via toggle button
   })
-}
 
 export function random_sample<T>(input_list: T[], n_samples: number): T[] {
   // If the subset size is greater than the list size, return the original list
-  if (n_samples >= input_list.length) {
-    return input_list
-  }
+  if (n_samples >= input_list.length) return input_list
 
   // Generate a random subset
   const rand_sample = []

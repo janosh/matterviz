@@ -532,7 +532,7 @@ const structure_props = (defaults: DefaultSettings) => {
       gizmo: defaults.show_gizmo,
     },
     lattice_props: {
-      show_vectors: structure.show_vectors,
+      show_cell_vectors: structure.show_cell_vectors,
       cell_edge_opacity: structure.cell_edge_opacity,
       cell_surface_opacity: structure.cell_surface_opacity,
       cell_edge_color: structure.cell_edge_color,

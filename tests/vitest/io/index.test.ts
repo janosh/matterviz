@@ -338,6 +338,29 @@ describe(`detect_structure_type`, () => {
     [`data.CIF`, `content`, `crystal`],
     [`PHONOPY.YAML`, `content`, `unknown`],
     [`test.YML`, `content`, `unknown`],
+    // Test OPTIMADE JSON format
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"lattice_vectors": [[1,0,0],[0,1,0],[0,0,1]]}}}`,
+      `crystal`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`,
+      `molecule`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`,
+      `crystal`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"nperiodic_dimensions": 0}}}`,
+      `molecule`,
+    ],
+    [`optimade.json`, `{"data": {"attributes": {"nperiodic_dimensions": 3}}}`, `crystal`],
+    [`molecule.json`, `{"data": {"attributes": {"species": []}}}`, `molecule`],
   ])(`%s -> %s`, (filename, content, expected) => {
     expect(detect_structure_type(filename, content)).toBe(expected)
   })
