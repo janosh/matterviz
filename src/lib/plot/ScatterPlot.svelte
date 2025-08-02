@@ -862,9 +862,8 @@
 
     if (is_fixed_position) return null // Fixed position, no auto-placement needed
 
-    if (is_responsive) {
-      return legend_cell // Use the current dynamically best cell
-    } else {
+    if (is_responsive) return legend_cell // Use the current dynamically best cell
+    else {
       // Not responsive, use initial cell if calculated, else the current best as fallback
       return is_initial_legend_placement_calculated
         ? initial_legend_cell
@@ -873,10 +872,10 @@
   })
 
   // Initialize tweened values for color bar position
-  const tweened_colorbar_coords = new Tween(
-    { x: 0, y: 0 },
-    { duration: 400, ...(color_bar?.tween ?? {}) },
-  )
+  const tweened_colorbar_coords = new Tween({ x: 0, y: 0 }, {
+    duration: 400,
+    ...(color_bar?.tween ?? {}),
+  })
   // Initialize tweened values for legend position
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },

@@ -76,7 +76,7 @@
     }
   }
 
-  const handle_drag_start = (file: FileInfo, event: DragEvent) => {
+  const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
     const file_url = file.url || file.name // Get the URL to drag (falling back to name)
 
     const payload = JSON.stringify({
@@ -172,7 +172,7 @@
       class:compressed={is_compressed}
       style:background-color={file_type_colors[base_type]?.replace(`0.8`, `0.08`)}
       draggable="true"
-      ondragstart={(event) => handle_drag_start(file, event)}
+      ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
       role="button"
       tabindex="0"

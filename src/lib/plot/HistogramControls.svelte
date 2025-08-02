@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { DraggablePanel } from '$lib'
+  import { DraggablePanel, SettingsSection } from '$lib'
   import type { DataSeries } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -48,29 +49,33 @@
     controls_open = $bindable(false),
     plot_controls,
     series = [],
-    bins = $bindable(20),
-    mode = $bindable(`single`),
-    bar_opacity = $bindable(0.7),
-    bar_stroke_width = $bindable(1),
-    show_legend = $bindable(true),
+    bins = $bindable(DEFAULTS.trajectory.histogram_bin_count),
+    mode = $bindable(DEFAULTS.trajectory.histogram_mode),
+    bar_opacity = $bindable(DEFAULTS.trajectory.histogram_bar_opacity),
+    bar_stroke_width = $bindable(DEFAULTS.trajectory.histogram_bar_stroke_width),
+    show_legend = $bindable(DEFAULTS.trajectory.histogram_show_legend),
     // Display controls
-    show_zero_lines = $bindable(true),
-    x_grid = $bindable(true),
-    y_grid = $bindable(true),
+    show_zero_lines = $bindable(DEFAULTS.trajectory.plot_show_zero_lines),
+    x_grid = $bindable(DEFAULTS.trajectory.plot_x_grid),
+    y_grid = $bindable(DEFAULTS.trajectory.plot_y_grid),
     // Scale type controls
-    x_scale_type = $bindable(`linear`),
-    y_scale_type = $bindable(`linear`),
+    x_scale_type = $bindable(
+      DEFAULTS.trajectory.plot_x_scale_type as `linear` | `log`,
+    ),
+    y_scale_type = $bindable(
+      DEFAULTS.trajectory.plot_y_scale_type as `linear` | `log`,
+    ),
     // Range controls
     x_range = $bindable(undefined),
     y_range = $bindable(undefined),
     auto_x_range = [0, 1],
     auto_y_range = [0, 1],
     // Tick controls
-    x_ticks = $bindable(8),
-    y_ticks = $bindable(6),
+    x_ticks = $bindable(DEFAULTS.trajectory.plot_x_ticks),
+    y_ticks = $bindable(DEFAULTS.trajectory.plot_y_ticks),
     // Format controls
-    x_format = $bindable(`.2~s`),
-    y_format = $bindable(`d`),
+    x_format = $bindable(DEFAULTS.trajectory.plot_x_format),
+    y_format = $bindable(DEFAULTS.trajectory.plot_y_format),
     selected_property = $bindable(``),
     toggle_props,
     panel_props,
@@ -103,7 +108,7 @@
   }
 
   // Handle format input changes - only update prop if valid
-  function handle_format_input(event: Event, format_type: `x` | `y`) {
+  const format_input_handler = (format_type: `x` | `y`) => (event: Event) => {
     const input = event.target as HTMLInputElement
 
     // Update local variable
@@ -119,7 +124,7 @@
   }
 
   // Handle ticks input changes
-  function handle_ticks_input(event: Event, axis: `x` | `y`) {
+  const ticks_input_handler = (axis: `x` | `y`) => (event: Event) => {
     const input = event.target as HTMLInputElement
     const value = parseInt(input.value, 10)
 
@@ -213,85 +218,115 @@
     {:else}
       <h4 style="margin-top: 0">Histogram Controls</h4>
 
-      <!-- Display Controls -->
-      <h4>Display</h4>
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={show_zero_lines} />
-        Show zero lines
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={x_grid as boolean} />
-        X-axis grid
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={y_grid as boolean} />
-        Y-axis grid
-      </label>
+      <SettingsSection
+        title="Display"
+        current_values={{ show_zero_lines, x_grid, y_grid }}
+        on_reset={() => {
+          show_zero_lines = DEFAULTS.trajectory.plot_show_zero_lines
+          x_grid = DEFAULTS.trajectory.plot_x_grid
+          y_grid = DEFAULTS.trajectory.plot_y_grid
+        }}
+      >
+        <label>
+          <input type="checkbox" bind:checked={show_zero_lines} />
+          Show zero lines
+        </label>
+        <label>
+          <input type="checkbox" bind:checked={x_grid as boolean} />
+          X-axis grid
+        </label>
+        <label>
+          <input type="checkbox" bind:checked={y_grid as boolean} />
+          Y-axis grid
+        </label>
+      </SettingsSection>
 
-      <!-- Range Controls -->
-      <h4>Axis Range</h4>
-      <div class="panel-row">
+      <hr />
+      <SettingsSection
+        title="Axis Range"
+        current_values={{ x_range, y_range }}
+        on_reset={() => {
+          x_range = undefined
+          y_range = undefined
+        }}
+        class="panel-grid"
+        style="grid-template-columns: repeat(4, max-content)"
+      >
         <label for="x-range-min">X-axis:</label>
         <input {...input_props(`x`, `min`, x_range)} />
         &nbsp;to
         <input {...input_props(`x`, `max`, x_range)} />
-      </div>
-      <div class="panel-row">
         <label for="y-range-min">Y-axis:</label>
         <input {...input_props(`y`, `min`, y_range)} />
         &nbsp;to
         <input {...input_props(`y`, `max`, y_range)} />
-      </div>
+      </SettingsSection>
 
-      <!-- Histogram Controls -->
-      <h4>Histogram</h4>
-      <div class="panel-row">
-        <label for="bins-input">Bins:</label>
-        <input
-          id="bins-input"
-          type="range"
-          min="5"
-          max="100"
-          step="5"
-          bind:value={bins}
-        />
-        <input
-          type="number"
-          min="5"
-          max="100"
-          step="5"
-          bind:value={bins}
-          class="number-input"
-        />
-      </div>
-      {#if has_multiple_series}
+      <hr />
+      <SettingsSection
+        title="Histogram"
+        current_values={{ bins, mode, show_legend }}
+        on_reset={() => {
+          bins = DEFAULTS.trajectory.histogram_bin_count
+          mode = DEFAULTS.trajectory.histogram_mode
+          show_legend = DEFAULTS.trajectory.histogram_show_legend
+        }}
+      >
         <div class="panel-row">
-          <label for="mode-select">Mode:</label>
-          <select bind:value={mode} id="mode-select">
-            <option value="single">Single</option>
-            <option value="overlay">Overlay</option>
-          </select>
+          <label for="bins-input">Bins:</label>
+          <input
+            id="bins-input"
+            type="range"
+            min="5"
+            max="100"
+            step="5"
+            bind:value={bins}
+          />
+          <input
+            type="number"
+            min="5"
+            max="100"
+            step="5"
+            bind:value={bins}
+          />
         </div>
-        {#if mode === `single`}
+        {#if has_multiple_series}
           <div class="panel-row">
-            <label for="property-select">Property:</label>
-            <select bind:value={selected_property} id="property-select">
-              <option value="">All</option>
-              {#each series_options as option (option)}
-                <option value={option}>{option}</option>
-              {/each}
+            <label for="mode-select">Mode:</label>
+            <select bind:value={mode} id="mode-select">
+              <option value="single">Single</option>
+              <option value="overlay">Overlay</option>
             </select>
           </div>
+          {#if mode === `single`}
+            <div class="panel-row">
+              <label for="property-select">Property:</label>
+              <select bind:value={selected_property} id="property-select">
+                <option value="">All</option>
+                {#each series_options as option (option)}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+          {/if}
         {/if}
-      {/if}
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={show_legend} />
-        Show legend
-      </label>
+        <label>
+          <input type="checkbox" bind:checked={show_legend} />
+          Show legend
+        </label>
+      </SettingsSection>
 
-      <!-- Bar Style Controls -->
-      <h4>Bar Style</h4>
-      <div class="panel-row">
+      <hr />
+      <SettingsSection
+        title="Bar Style"
+        current_values={{ bar_opacity, bar_stroke_width }}
+        on_reset={() => {
+          bar_opacity = DEFAULTS.trajectory.histogram_bar_opacity
+          bar_stroke_width = DEFAULTS.trajectory.histogram_bar_stroke_width
+        }}
+        class="panel-grid"
+        style="grid-template-columns: auto 1fr auto"
+      >
         <label for="bar-opacity-range">Opacity:</label>
         <input
           id="bar-opacity-range"
@@ -307,10 +342,7 @@
           max="1"
           step="0.05"
           bind:value={bar_opacity}
-          class="number-input"
         />
-      </div>
-      <div class="panel-row">
         <label for="bar-stroke-width-range">Stroke Width:</label>
         <input
           id="bar-stroke-width-range"
@@ -326,30 +358,43 @@
           max="5"
           step="0.1"
           bind:value={bar_stroke_width}
-          class="number-input"
         />
-      </div>
+      </SettingsSection>
 
-      <!-- Scale Type Controls -->
-      <h4>Scale Type</h4>
-      <div class="panel-row">
+      <hr />
+      <SettingsSection
+        title="Scale Type"
+        current_values={{ x_scale_type, y_scale_type }}
+        on_reset={() => {
+          x_scale_type = DEFAULTS.trajectory.plot_x_scale_type as `linear` | `log`
+          y_scale_type = DEFAULTS.trajectory.plot_y_scale_type as `linear` | `log`
+        }}
+        class="panel-grid"
+        style="grid-template-columns: auto 1fr"
+      >
         <label for="x-scale-select">X-axis:</label>
         <select bind:value={x_scale_type} id="x-scale-select">
           <option value="linear">Linear</option>
           <option value="log">Log</option>
         </select>
-      </div>
-      <div class="panel-row">
         <label for="y-scale-select">Y-axis:</label>
         <select bind:value={y_scale_type} id="y-scale-select">
           <option value="linear">Linear</option>
           <option value="log">Log</option>
         </select>
-      </div>
+      </SettingsSection>
 
-      <!-- Tick Controls -->
-      <h4>Ticks</h4>
-      <div class="panel-row">
+      <hr />
+      <SettingsSection
+        title="Ticks"
+        current_values={{ x_ticks, y_ticks }}
+        on_reset={() => {
+          x_ticks = DEFAULTS.trajectory.plot_x_ticks
+          y_ticks = DEFAULTS.trajectory.plot_y_ticks
+        }}
+        class="panel-grid"
+        style="grid-template-columns: auto 1fr"
+      >
         <label for="x-ticks-input">X-axis:</label>
         <input
           id="x-ticks-input"
@@ -358,11 +403,8 @@
           max="20"
           step="1"
           value={typeof x_ticks === `number` ? x_ticks : 8}
-          oninput={(event) => handle_ticks_input(event, `x`)}
-          class="number-input"
+          oninput={ticks_input_handler(`x`)}
         />
-      </div>
-      <div class="panel-row">
         <label for="y-ticks-input">Y-axis:</label>
         <input
           id="y-ticks-input"
@@ -371,35 +413,38 @@
           max="20"
           step="1"
           value={typeof y_ticks === `number` ? y_ticks : 6}
-          oninput={(event) => handle_ticks_input(event, `y`)}
-          class="number-input"
+          oninput={ticks_input_handler(`y`)}
         />
-      </div>
+      </SettingsSection>
 
-      <!-- Format Controls -->
-      <h4>Tick Format</h4>
-      <div class="panel-row">
+      <hr />
+      <SettingsSection
+        title="Tick Format"
+        current_values={{ x_format, y_format }}
+        on_reset={() => {
+          x_format = DEFAULTS.trajectory.plot_x_format
+          y_format = DEFAULTS.trajectory.plot_y_format
+        }}
+        class="panel-grid"
+        style="grid-template-columns: auto 1fr"
+      >
         <label for="x-format">X-axis:</label>
         <input
           id="x-format"
           type="text"
           bind:value={x_format_input}
           placeholder=".2~s / .0% / %Y-%m-%d"
-          class="format-input"
-          oninput={(event) => handle_format_input(event, `x`)}
+          oninput={format_input_handler(`x`)}
         />
-      </div>
-      <div class="panel-row">
         <label for="y-format">Y-axis:</label>
         <input
           id="y-format"
           type="text"
           bind:value={y_format_input}
           placeholder="d / .1e / .0%"
-          class="format-input"
-          oninput={(event) => handle_format_input(event, `y`)}
+          oninput={format_input_handler(`y`)}
         />
-      </div>
+      </SettingsSection>
     {/if}
   </DraggablePanel>
 {/if}

@@ -82,9 +82,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
       const first_species = site.species[0]
       if (
         first_species && `element` in first_species && first_species.element
-      ) {
-        element_symbol = first_species.element
-      }
+      ) element_symbol = first_species.element
     }
 
     // Get coordinates - prefer abc (fractional) converted to cartesian, fallback to xyz
@@ -105,14 +103,9 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
         lattice.matrix &&
         Array.isArray(lattice.matrix) &&
         lattice.matrix.length >= 3
-      ) {
-        coords = math.mat3x3_vec3_multiply(lattice.matrix, [a, b, c])
-      } else {
-        coords = [0, 0, 0] // fallback
-      }
-    } else {
-      coords = [0, 0, 0] // fallback
-    }
+      ) coords = math.mat3x3_vec3_multiply(lattice.matrix, [a, b, c])
+      else coords = [0, 0, 0] // fallback
+    } else coords = [0, 0, 0] // fallback
 
     // Format coordinates to reasonable precision
     const [x, y, z] = coords.map((coord) => coord.toFixed(6))

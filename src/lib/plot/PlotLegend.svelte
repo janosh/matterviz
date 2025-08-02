@@ -48,18 +48,6 @@
   }
   onDestroy(cleanup_drag_listeners)
 
-  function handle_click(event: MouseEvent, series_idx: number) {
-    event.preventDefault() // Prevent any default browser behavior
-    event.stopPropagation() // Prevent event bubbling to SVG
-    on_toggle(series_idx)
-  }
-
-  function handle_double_click(event: MouseEvent, series_idx: number) {
-    event.preventDefault()
-    event.stopPropagation()
-    on_double_click(series_idx)
-  }
-
   function handle_legend_mouse_down(event: MouseEvent) {
     if (!draggable) return
 
@@ -119,8 +107,16 @@
     <div
       class="legend-item {series.visible ? `` : `hidden`}"
       style={item_style}
-      onclick={(event) => handle_click(event, series.series_idx)}
-      ondblclick={(event) => handle_double_click(event, series.series_idx)}
+      onclick={(event: MouseEvent) => {
+        event.preventDefault() // Prevent any default browser behavior
+        event.stopPropagation() // Prevent event bubbling to SVG
+        on_toggle(series.series_idx)
+      }}
+      ondblclick={(event: MouseEvent) => {
+        event.preventDefault()
+        event.stopPropagation()
+        on_double_click(series.series_idx)
+      }}
       onkeydown={(event) => {
         if (event.key === `Enter` || event.key === ` `) {
           event.preventDefault()

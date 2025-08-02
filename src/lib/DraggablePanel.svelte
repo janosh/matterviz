@@ -138,13 +138,11 @@
     if (
       !is_toggle_button && !is_inside_panel && !has_been_dragged &&
       !currently_dragging
-    ) {
-      close_panel()
-    }
+    ) close_panel()
   }
 
   // Button click handler
-  function handle_button_click(event: MouseEvent, action: () => void) {
+  const handle_button_click = (action: () => void) => (event: MouseEvent) => {
     event.stopPropagation()
     action()
   }
@@ -191,7 +189,7 @@
 {#if show_panel}
   <button
     bind:this={toggle_panel_btn}
-    onclick={(event) => handle_button_click(event, custom_toggle || toggle_panel)}
+    onclick={handle_button_click(custom_toggle || toggle_panel)}
     aria-expanded={show}
     aria-controls="draggable-panel"
     {...toggle_props}
@@ -223,7 +221,7 @@
         {#if show_control_buttons}
           <button
             class="reset-button"
-            onclick={(event) => handle_button_click(event, reset_position)}
+            onclick={handle_button_click(reset_position)}
             title="Reset panel position"
             aria-label="Reset panel position"
           >
@@ -231,7 +229,7 @@
           </button>
           <button
             class="close-button"
-            onclick={(event) => handle_button_click(event, close_panel)}
+            onclick={handle_button_click(close_panel)}
             title="Close panel"
             aria-label="Close panel"
           >
@@ -322,8 +320,6 @@
     margin-left: 4pt;
     width: 100px;
     flex-shrink: 0;
-  }
-  .draggable-panel :global(input[type='range']) {
     flex: 1;
     min-width: 60px;
   }
@@ -364,7 +360,12 @@
     gap: 8pt;
     align-items: center;
   }
-  .draggable-panel :global(.panel-row label.slider-control) {
+  .draggable-panel :global(.panel-grid) {
+    display: grid;
+    gap: 8pt;
+    align-items: center;
+  }
+  .draggable-panel :global(label:has(input[type='range'])) {
     flex: 1;
   }
   /* Panel header styling */

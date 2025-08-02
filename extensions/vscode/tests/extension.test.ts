@@ -1210,7 +1210,7 @@ describe(`MatterViz Extension`, () => {
       [`structure.show_site_labels`, true],
       [`structure.show_force_vectors`, true],
       [`structure.show_cell`, true],
-      [`structure.show_vectors`, true],
+      [`structure.show_cell_vectors`, true],
       [`show_image_atoms`, true],
       [`show_gizmo`, false],
       [`trajectory.auto_play`, true],

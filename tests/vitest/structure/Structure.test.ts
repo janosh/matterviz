@@ -2,6 +2,7 @@ import type { AnyStructure, Vec3 } from '$lib'
 import { Structure } from '$lib'
 import * as exports from '$lib/io/export'
 import { euclidean_dist, type Matrix3x3, pbc_dist } from '$lib/math'
+import { DEFAULTS } from '$lib/settings'
 import { structures } from '$site/structures'
 import { readFileSync } from 'fs'
 import { mount, tick } from 'svelte'
@@ -622,6 +623,38 @@ test(`camera projection conditional logic and zoom speed handling`, async () => 
   }
 
   await Promise.all(promises)
+})
+
+// Test critical default value validation that could cause runtime errors
+test(`critical default values are valid to prevent runtime errors`, () => {
+  // These tests catch issues that would cause actual component failures
+
+  // Projection must be valid enum value
+  expect([`perspective`, `orthographic`]).toContain(DEFAULTS.structure.projection)
+
+  // Bonding strategy must be valid or undefined
+  expect([`max_dist`, `nearest_neighbor`, `vdw_radius_based`, undefined]).toContain(
+    DEFAULTS.structure.bonding_strategy,
+  )
+
+  // Scale types must be valid
+  expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_x_scale_type)
+  expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_y_scale_type)
+
+  // Marker types must be valid
+  expect([`line`, `points`, `line+points`]).toContain(DEFAULTS.trajectory.scatter_markers)
+
+  // Critical numeric values must be in valid ranges to prevent rendering issues
+  expect(DEFAULTS.structure.atom_radius).toBeGreaterThan(0)
+  expect(DEFAULTS.structure.zoom_speed).toBeGreaterThan(0)
+  expect(DEFAULTS.structure.zoom_speed).toBeLessThanOrEqual(1)
+
+  // Label offset must be array of 3 numbers for 3D positioning
+  expect(Array.isArray(DEFAULTS.structure.site_label_offset)).toBe(true)
+  expect(DEFAULTS.structure.site_label_offset).toHaveLength(3)
+  DEFAULTS.structure.site_label_offset.forEach((offset: unknown) => {
+    expect(typeof offset).toBe(`number`)
+  })
 })
 
 // Atom label controls tests
