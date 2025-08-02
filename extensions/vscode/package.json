@@ -112,8 +112,8 @@
         },
         "matterviz.show_image_atoms": {
           "type": "boolean",
-          "default": false,
-          "description": "Show atoms outside the unit cell for better visualization"
+          "default": true,
+          "description": "Show atoms on the edge of the cell that are not part of the primitive basis"
         },
         "matterviz.show_gizmo": {
           "type": "boolean",
@@ -244,10 +244,10 @@
         },
         "matterviz.structure.site_label_size": {
           "type": "number",
-          "default": 12,
+          "default": 1,
           "description": "Font size for atom labels",
-          "minimum": 8,
-          "maximum": 32
+          "minimum": 0.5,
+          "maximum": 5
         },
         "matterviz.structure.site_label_color": {
           "type": "string",
@@ -270,7 +270,7 @@
           "type": "array",
           "default": [
             0,
-            0,
+            0.5,
             0
           ],
           "description": "3D offset for atom labels [x, y, z]",
@@ -339,7 +339,7 @@
         },
         "matterviz.structure.show_cell_vectors": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Display cell vectors"
         },
         "matterviz.structure.cell_edge_opacity": {
@@ -470,7 +470,7 @@
         },
         "matterviz.trajectory.histogram_mode": {
           "type": "string",
-          "default": "overlay",
+          "default": "single",
           "description": "Histogram display mode",
           "enum": [
             "overlay",
@@ -484,10 +484,24 @@
         },
         "matterviz.trajectory.histogram_bin_count": {
           "type": "number",
-          "default": 30,
+          "default": 100,
           "description": "Number of bins for histogram plots",
-          "minimum": 5,
-          "maximum": 200
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "matterviz.trajectory.histogram_bar_opacity": {
+          "type": "number",
+          "default": 0.7,
+          "description": "Opacity of histogram bars",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.trajectory.histogram_bar_stroke_width": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke width for histogram bars",
+          "minimum": 0,
+          "maximum": 5
         },
         "matterviz.trajectory.scatter_line_width": {
           "type": "number",
@@ -498,7 +512,7 @@
         },
         "matterviz.trajectory.scatter_point_size": {
           "type": "number",
-          "default": 3,
+          "default": 4,
           "description": "Point size for scatter plots",
           "minimum": 1,
           "maximum": 20
@@ -541,6 +555,141 @@
           "type": "boolean",
           "default": true,
           "description": "Show axis labels in plots"
+        },
+        "matterviz.trajectory.plot_show_zero_lines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show zero reference lines in plots"
+        },
+        "matterviz.trajectory.plot_x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.trajectory.plot_y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.trajectory.plot_y2_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show secondary Y-axis grid lines"
+        },
+        "matterviz.trajectory.plot_x_format": {
+          "type": "string",
+          "default": ".2~s",
+          "description": "Number format for X-axis ticks (D3 format specifier)"
+        },
+        "matterviz.trajectory.plot_y_format": {
+          "type": "string",
+          "default": "d",
+          "description": "Number format for Y-axis ticks (D3 format specifier)"
+        },
+        "matterviz.trajectory.plot_y2_format": {
+          "type": "string",
+          "default": "",
+          "description": "Number format for secondary Y-axis ticks (D3 format specifier)"
+        },
+        "matterviz.trajectory.plot_x_scale_type": {
+          "type": "string",
+          "default": "linear",
+          "description": "Scale type for X-axis",
+          "enum": [
+            "linear",
+            "log"
+          ]
+        },
+        "matterviz.trajectory.plot_y_scale_type": {
+          "type": "string",
+          "default": "linear",
+          "description": "Scale type for Y-axis",
+          "enum": [
+            "linear",
+            "log"
+          ]
+        },
+        "matterviz.trajectory.plot_x_ticks": {
+          "type": "number",
+          "default": 8,
+          "description": "Number of ticks on X-axis",
+          "minimum": 2,
+          "maximum": 20
+        },
+        "matterviz.trajectory.plot_y_ticks": {
+          "type": "number",
+          "default": 6,
+          "description": "Number of ticks on Y-axis",
+          "minimum": 2,
+          "maximum": 20
+        },
+        "matterviz.trajectory.scatter_markers": {
+          "type": "string",
+          "default": "line+points",
+          "description": "Scatter plot marker type",
+          "enum": [
+            "line",
+            "points",
+            "line+points"
+          ]
+        },
+        "matterviz.trajectory.scatter_point_color": {
+          "type": "string",
+          "default": "#4682b4",
+          "description": "Default color for scatter plot points"
+        },
+        "matterviz.trajectory.scatter_point_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Opacity of scatter plot points",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.trajectory.scatter_point_stroke_width": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke width for scatter plot points",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "matterviz.trajectory.scatter_point_stroke_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Stroke color for scatter plot points"
+        },
+        "matterviz.trajectory.scatter_point_stroke_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke opacity for scatter plot points",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.trajectory.scatter_line_color": {
+          "type": "string",
+          "default": "#4682b4",
+          "description": "Default color for scatter plot lines"
+        },
+        "matterviz.trajectory.scatter_line_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Opacity of scatter plot lines",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.trajectory.scatter_line_dash": {
+          "type": "string",
+          "default": "solid",
+          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
+        },
+        "matterviz.trajectory.scatter_show_points": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show points in scatter plots"
+        },
+        "matterviz.trajectory.scatter_show_lines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show connecting lines in scatter plots"
         },
         "matterviz.trajectory.step_label_format": {
           "type": "string",

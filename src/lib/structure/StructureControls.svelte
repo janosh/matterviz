@@ -220,6 +220,7 @@
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
       show_image_atoms = DEFAULTS.show_image_atoms
+      lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
   >
     <div
@@ -650,7 +651,6 @@
     }}
     on_reset={() => {
       Object.assign(lattice_props, {
-        show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
         cell_edge_color: DEFAULTS.structure.cell_edge_color,
         cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
         cell_surface_color: DEFAULTS.structure.cell_surface_color,

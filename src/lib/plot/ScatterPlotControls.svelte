@@ -89,7 +89,7 @@
     line_width = $bindable(DEFAULTS.trajectory.scatter_line_width),
     line_color = $bindable(DEFAULTS.trajectory.scatter_line_color),
     line_opacity = $bindable(DEFAULTS.trajectory.scatter_line_opacity),
-    line_dash = $bindable(undefined),
+    line_dash = $bindable(DEFAULTS.trajectory.scatter_line_dash),
     show_points = $bindable(DEFAULTS.trajectory.scatter_show_points),
     show_lines = $bindable(DEFAULTS.trajectory.scatter_show_lines),
     selected_series_idx = $bindable(0),

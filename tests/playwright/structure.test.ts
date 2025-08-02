@@ -2,7 +2,7 @@
 import { DEFAULTS } from '$lib'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import { open_structure_controls_panel } from './helpers.ts'
+import { open_structure_controls_panel } from './helpers'
 
 const default_cam_projection = DEFAULTS.structure.projection
 
@@ -2741,5 +2741,303 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(page.locator(`[data-testid="camera-projection-status"]`)).toContainText(
       `orthographic`,
     )
+  })
+
+  test.describe(`Structure Controls Reset Functionality`, () => {
+    test.beforeEach(async ({ page }: { page: Page }) => {
+      // Open structure controls panel
+      await open_structure_controls_panel(page)
+    })
+
+    test(`reset buttons do not appear initially`, async ({ page }) => {
+      // All reset buttons should be hidden when values are at defaults
+      const reset_buttons = page.locator(`button`, { hasText: `Reset` })
+      await expect(reset_buttons).toHaveCount(0)
+    })
+
+    test(`visibility section reset button appears and works`, async ({ page }) => {
+      // Change a visibility setting
+      const show_atoms_checkbox = page.locator(`input[type="checkbox"]`).first()
+      await show_atoms_checkbox.uncheck()
+
+      // Reset button should appear in Visibility section
+      const visibility_reset = page.locator(`text=Visibility`).locator(`..`).locator(
+        `button`,
+        { hasText: `Reset` },
+      )
+      await expect(visibility_reset).toBeVisible()
+
+      // Click reset button
+      await visibility_reset.click()
+
+      // Checkbox should be checked again
+      await expect(show_atoms_checkbox).toBeChecked()
+
+      // Reset button should disappear
+      await expect(visibility_reset).not.toBeVisible()
+    })
+
+    test(`camera section reset button appears and works`, async ({ page }) => {
+      // Change camera projection
+      const projection_select = page.locator(`select`).first()
+      await projection_select.selectOption(`orthographic`)
+
+      // Reset button should appear in Camera section
+      const camera_reset = page.locator(`text=Camera`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      await expect(camera_reset).toBeVisible()
+
+      // Click reset button
+      await camera_reset.click()
+
+      // Projection should be back to perspective
+      await expect(projection_select).toHaveValue(`perspective`)
+
+      // Reset button should disappear
+      await expect(camera_reset).not.toBeVisible()
+    })
+
+    test(`atoms section reset button appears and works`, async ({ page }) => {
+      // Change atom radius
+      const radius_input = page.locator(`input[type="number"]`).first()
+      await radius_input.fill(`1.5`)
+
+      // Reset button should appear in Atoms section
+      const atoms_reset = page.locator(`text=Atoms`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      await expect(atoms_reset).toBeVisible()
+
+      // Click reset button
+      await atoms_reset.click()
+
+      // Radius should be back to default (need to check the actual default value)
+      const default_radius = await radius_input.inputValue()
+      await expect(radius_input).toHaveValue(default_radius)
+
+      // Reset button should disappear
+      await expect(atoms_reset).not.toBeVisible()
+    })
+
+    test(`cell section reset button appears and works`, async ({ page }) => {
+      // Change cell edge opacity
+      const opacity_input = page.locator(`text=Edge color`).locator(`..`).locator(
+        `input[type="number"]`,
+      )
+      const original_value = await opacity_input.inputValue()
+      await opacity_input.fill(`0.8`)
+
+      // Reset button should appear in Cell section
+      const cell_reset = page.locator(`text=Cell`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      await expect(cell_reset).toBeVisible()
+
+      // Click reset button
+      await cell_reset.click()
+
+      // Opacity should be back to original
+      await expect(opacity_input).toHaveValue(original_value)
+
+      // Reset button should disappear
+      await expect(cell_reset).not.toBeVisible()
+    })
+
+    test(`background section reset button appears and works`, async ({ page }) => {
+      // Change background opacity
+      const bg_opacity_input = page.locator(`text=Background`).locator(`..`).locator(
+        `input[type="number"]`,
+      )
+      await bg_opacity_input.fill(`0.5`)
+
+      // Reset button should appear in Background section
+      const bg_reset = page.locator(`text=Background`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      await expect(bg_reset).toBeVisible()
+
+      // Click reset button
+      await bg_reset.click()
+
+      // Opacity should be back to default (background_color resets to undefined to use theme color)
+      await expect(bg_opacity_input).toHaveValue(`0`)
+
+      // Reset button should disappear
+      await expect(bg_reset).not.toBeVisible()
+    })
+
+    test(`lighting section reset button appears and works`, async ({ page }) => {
+      // Change directional light
+      const directional_input = page.locator(`text=Directional light`).locator(`..`)
+        .locator(`input[type="number"]`)
+      const original_value = await directional_input.inputValue()
+      await directional_input.fill(`2.5`)
+
+      // Reset button should appear in Lighting section
+      const lighting_reset = page.locator(`text=Lighting`).locator(`..`).locator(
+        `button`,
+        { hasText: `Reset` },
+      )
+      await expect(lighting_reset).toBeVisible()
+
+      // Click reset button
+      await lighting_reset.click()
+
+      // Directional light should be back to original
+      await expect(directional_input).toHaveValue(original_value)
+
+      // Reset button should disappear
+      await expect(lighting_reset).not.toBeVisible()
+    })
+
+    test(`bonds section reset button appears when bonds are shown`, async ({ page }) => {
+      // Enable bonds first
+      const show_bonds_checkbox = page.locator(`text=bonds`).locator(`..`).locator(
+        `input[type="checkbox"]`,
+      )
+      await show_bonds_checkbox.check()
+
+      // Wait for bonds section to appear
+      await expect(page.locator(`text=Bonds`)).toBeVisible()
+
+      // Change bonding strategy
+      const bonding_select = page.locator(`text=Bonding strategy`).locator(`..`).locator(
+        `select`,
+      )
+      await bonding_select.selectOption(`nearest_neighbor`)
+
+      // Reset button should appear in Bonds section
+      const bonds_reset = page.locator(`text=Bonds`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      await expect(bonds_reset).toBeVisible()
+
+      // Click reset button
+      await bonds_reset.click()
+
+      // Bonding strategy should be back to default
+      await expect(bonding_select).toHaveValue(`max_dist`)
+
+      // Reset button should disappear
+      await expect(bonds_reset).not.toBeVisible()
+    })
+
+    test(`labels section reset button appears when labels are shown`, async ({ page }) => {
+      // Enable site labels first
+      const show_labels_checkbox = page.locator(`text=site labels`).locator(`..`).locator(
+        `input[type="checkbox"]`,
+      )
+      await show_labels_checkbox.check()
+
+      // Wait for labels section to appear
+      await expect(page.locator(`text=Labels`)).toBeVisible()
+
+      // Change label size
+      const size_range = page.locator(`text=Size`).locator(`..`).locator(
+        `input[type="range"]`,
+      )
+      await size_range.fill(`1.5`)
+
+      // Reset button should appear in Labels section
+      const labels_reset = page.locator(`text=Labels`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      await expect(labels_reset).toBeVisible()
+
+      // Click reset button
+      await labels_reset.click()
+
+      // Size should be back to default
+      await expect(size_range).toHaveValue(`1`)
+
+      // Reset button should disappear
+      await expect(labels_reset).not.toBeVisible()
+    })
+
+    test(`multiple sections can have reset buttons simultaneously`, async ({ page }) => {
+      // Change settings in multiple sections
+      const show_atoms_checkbox = page.locator(`input[type="checkbox"]`).first()
+      await show_atoms_checkbox.uncheck()
+
+      const projection_select = page.locator(`select`).first()
+      await projection_select.selectOption(`orthographic`)
+
+      const bg_opacity_input = page.locator(`text=Background`).locator(`..`).locator(
+        `input[type="number"]`,
+      )
+      await bg_opacity_input.fill(`0.5`)
+
+      // All three reset buttons should be visible
+      const visibility_reset = page.locator(`text=Visibility`).locator(`..`).locator(
+        `button`,
+        { hasText: `Reset` },
+      )
+      const camera_reset = page.locator(`text=Camera`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+      const bg_reset = page.locator(`text=Background`).locator(`..`).locator(`button`, {
+        hasText: `Reset`,
+      })
+
+      await expect(visibility_reset).toBeVisible()
+      await expect(camera_reset).toBeVisible()
+      await expect(bg_reset).toBeVisible()
+
+      // Reset one section
+      await camera_reset.click()
+
+      // Only camera reset should disappear
+      await expect(visibility_reset).toBeVisible()
+      await expect(camera_reset).not.toBeVisible()
+      await expect(bg_reset).toBeVisible()
+
+      // Projection should be reset but other changes remain
+      await expect(projection_select).toHaveValue(`perspective`)
+      await expect(show_atoms_checkbox).not.toBeChecked()
+      await expect(bg_opacity_input).toHaveValue(`0.5`)
+    })
+
+    test(`reset buttons prevent event propagation`, async ({ page }) => {
+      // Change a setting to make reset button appear
+      const show_atoms_checkbox = page.locator(`input[type="checkbox"]`).first()
+      await show_atoms_checkbox.uncheck()
+
+      // Get the reset button
+      const visibility_reset = page.locator(`text=Visibility`).locator(`..`).locator(
+        `button`,
+        { hasText: `Reset` },
+      )
+      await expect(visibility_reset).toBeVisible()
+
+      // Click reset button - panel should stay open
+      await visibility_reset.click()
+
+      // Control panel should still be visible (not closed by the click)
+      await expect(page.locator(`.structure-controls-toggle`)).toBeVisible()
+      await expect(page.locator(`text=Structure Controls`)).toBeVisible()
+    })
+
+    test(`reset buttons have proper accessibility attributes`, async ({ page }) => {
+      // Change a setting to make reset button appear
+      const show_atoms_checkbox = page.locator(`input[type="checkbox"]`).first()
+      await show_atoms_checkbox.uncheck()
+
+      const visibility_reset = page.locator(`text=Visibility`).locator(`..`).locator(
+        `button`,
+        { hasText: `Reset` },
+      )
+      await expect(visibility_reset).toBeVisible()
+
+      // Check accessibility attributes
+      await expect(visibility_reset).toHaveAttribute(
+        `title`,
+        `Reset visibility to defaults`,
+      )
+      await expect(visibility_reset).toHaveAttribute(
+        `aria-label`,
+        `Reset visibility to defaults`,
+      )
+    })
   })
 })

@@ -98,11 +98,6 @@ export interface SettingsConfig {
     histogram_show_legend: SettingType<boolean>
     histogram_bin_count: SettingType<number>
 
-    // Scatter plot specific
-    scatter_line_width: SettingType<number>
-    scatter_point_size: SettingType<number>
-    scatter_show_legend: SettingType<boolean>
-
     // Plot general
     plot_animation_duration: SettingType<number>
     enable_plot_zoom: SettingType<boolean>
@@ -123,15 +118,18 @@ export interface SettingsConfig {
     plot_y_ticks: SettingType<number>
 
     // Scatter plot specific
+    scatter_point_size: SettingType<number>
+    scatter_show_legend: SettingType<boolean>
     scatter_markers: SettingType<string>
     scatter_point_color: SettingType<string>
     scatter_point_opacity: SettingType<number>
     scatter_point_stroke_width: SettingType<number>
     scatter_point_stroke_color: SettingType<string>
     scatter_point_stroke_opacity: SettingType<number>
+    scatter_line_width: SettingType<number>
     scatter_line_color: SettingType<string>
     scatter_line_opacity: SettingType<number>
-    scatter_line_dash: SettingType<string | undefined>
+    scatter_line_dash: SettingType<string>
     scatter_show_points: SettingType<boolean>
     scatter_show_lines: SettingType<boolean>
 
@@ -193,7 +191,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   },
   show_image_atoms: {
     value: true,
-    description: `Show atoms outside the unit cell for better visualization`,
+    description:
+      `Show atoms on the edge of the cell that are not part of the primitive basis`,
   },
   show_gizmo: {
     value: true,
@@ -497,10 +496,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show legend in histogram plots`,
     },
     histogram_bin_count: {
-      value: 20,
+      value: 100,
       description: `Number of bins for histogram plots`,
-      minimum: 5,
-      maximum: 200,
+      minimum: 1,
+      maximum: 1000,
     },
     histogram_bar_opacity: {
       value: 0.7,
@@ -656,7 +655,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1,
     },
     scatter_line_dash: {
-      value: undefined,
+      value: `solid`,
       description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
     },
     scatter_show_points: {
