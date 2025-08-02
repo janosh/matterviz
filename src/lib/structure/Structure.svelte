@@ -105,7 +105,7 @@
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
       cell_surface_color: DEFAULTS.structure.cell_surface_color,
       cell_edge_width: DEFAULTS.structure.cell_edge_width,
-      show_vectors: true,
+      show_cell_vectors: true,
     }),
     controls_open = $bindable(false),
     info_panel_open = $bindable(false),
@@ -418,10 +418,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({
-      structure,
-      is_fullscreen: fullscreen,
-    })
+    on_fullscreen_change?.({ structure, is_fullscreen: fullscreen })
   }}
 />
 
@@ -474,7 +471,10 @@
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
             {:else}
-              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+              <Icon
+                icon="{fullscreen ? `Exit` : ``}Fullscreen"
+                style="padding: var(--panel-toggle-padding, 2pt)"
+              />
             {/if}
           </button>
         {/if}
