@@ -487,8 +487,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
     // Histogram specific
     histogram_mode: {
-      value: `single` as const,
-      description: `Histogram display mode`,
+      value: `overlay` as const,
+      description:
+        `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
       enum: [`overlay`, `single`],
     },
     histogram_show_legend: {

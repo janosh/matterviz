@@ -470,7 +470,7 @@
         },
         "matterviz.trajectory.histogram_mode": {
           "type": "string",
-          "default": "single",
+          "default": "overlay",
           "description": "Histogram display mode",
           "enum": [
             "overlay",

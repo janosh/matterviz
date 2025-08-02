@@ -20,6 +20,8 @@
   // Create a deep copy of current_values on mount to use as reference values
   function deep_copy(obj: unknown): unknown {
     if (obj === null || typeof obj !== `object`) return obj
+    if (obj instanceof Date) return new Date(obj.getTime())
+    if (obj instanceof RegExp) return new RegExp(obj)
     if (Array.isArray(obj)) {
       return obj.map((item) =>
         typeof item === `object` && item !== null ? deep_copy(item) : item
@@ -45,7 +47,17 @@
       // Deep comparison for arrays
       if (Array.isArray(reference_value) && Array.isArray(current_value)) {
         if (reference_value.length !== current_value.length) return true
-        if (reference_value.some((val, idx) => val !== current_value[idx])) {
+        if (
+          reference_value.some((val, idx) => {
+            const curr_val = current_value[idx]
+            // Handle nested objects/arrays in arrays
+            if (
+              typeof val === `object` && val !== null &&
+              typeof curr_val === `object` && curr_val !== null
+            ) return JSON.stringify(val) !== JSON.stringify(curr_val) // Quick deep comparison fallback
+            return val !== curr_val
+          })
+        ) {
           return true
         }
         continue

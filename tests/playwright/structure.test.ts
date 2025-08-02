@@ -1025,7 +1025,7 @@ test.describe(`Structure Component Tests`, () => {
 
     const show_cell_vectors_label = controls_dialog
       .locator(`label`)
-      .filter({ hasText: /lattice vectors/ })
+      .filter({ hasText: `Lattice Vectors` })
     const show_cell_vectors_checkbox = show_cell_vectors_label.locator(
       `input[type="checkbox"]`,
     )
