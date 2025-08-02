@@ -110,6 +110,34 @@ export interface SettingsConfig {
     auto_fit_plot_range: SettingType<boolean>
     plot_grid_lines: SettingType<boolean>
     plot_axis_labels: SettingType<boolean>
+    plot_show_zero_lines: SettingType<boolean>
+    plot_x_grid: SettingType<boolean>
+    plot_y_grid: SettingType<boolean>
+    plot_y2_grid: SettingType<boolean>
+    plot_x_format: SettingType<string>
+    plot_y_format: SettingType<string>
+    plot_y2_format: SettingType<string>
+    plot_x_scale_type: SettingType<string>
+    plot_y_scale_type: SettingType<string>
+    plot_x_ticks: SettingType<number>
+    plot_y_ticks: SettingType<number>
+
+    // Scatter plot specific
+    scatter_markers: SettingType<string>
+    scatter_point_color: SettingType<string>
+    scatter_point_opacity: SettingType<number>
+    scatter_point_stroke_width: SettingType<number>
+    scatter_point_stroke_color: SettingType<string>
+    scatter_point_stroke_opacity: SettingType<number>
+    scatter_line_color: SettingType<string>
+    scatter_line_opacity: SettingType<number>
+    scatter_line_dash: SettingType<string | undefined>
+    scatter_show_points: SettingType<boolean>
+    scatter_show_lines: SettingType<boolean>
+
+    // Histogram specific (additional to existing)
+    histogram_bar_opacity: SettingType<number>
+    histogram_bar_stroke_width: SettingType<number>
 
     // Formatting
     step_label_format: SettingType<string>
@@ -460,7 +488,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
     // Histogram specific
     histogram_mode: {
-      value: `overlay` as const,
+      value: `single` as const,
       description: `Histogram display mode`,
       enum: [`overlay`, `single`],
     },
@@ -469,10 +497,22 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show legend in histogram plots`,
     },
     histogram_bin_count: {
-      value: 30,
+      value: 20,
       description: `Number of bins for histogram plots`,
       minimum: 5,
       maximum: 200,
+    },
+    histogram_bar_opacity: {
+      value: 0.7,
+      description: `Opacity of histogram bars`,
+      minimum: 0,
+      maximum: 1,
+    },
+    histogram_bar_stroke_width: {
+      value: 1,
+      description: `Stroke width for histogram bars`,
+      minimum: 0,
+      maximum: 5,
     },
 
     // Scatter plot specific
@@ -483,7 +523,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 10,
     },
     scatter_point_size: {
-      value: 3,
+      value: 4,
       description: `Point size for scatter plots`,
       minimum: 1,
       maximum: 20,
@@ -521,6 +561,111 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     plot_axis_labels: {
       value: true,
       description: `Show axis labels in plots`,
+    },
+    plot_show_zero_lines: {
+      value: true,
+      description: `Show zero reference lines in plots`,
+    },
+    plot_x_grid: {
+      value: true,
+      description: `Show X-axis grid lines`,
+    },
+    plot_y_grid: {
+      value: true,
+      description: `Show Y-axis grid lines`,
+    },
+    plot_y2_grid: {
+      value: true,
+      description: `Show secondary Y-axis grid lines`,
+    },
+    plot_x_format: {
+      value: `.2~s`,
+      description: `Number format for X-axis ticks (D3 format specifier)`,
+    },
+    plot_y_format: {
+      value: `d`,
+      description: `Number format for Y-axis ticks (D3 format specifier)`,
+    },
+    plot_y2_format: {
+      value: ``,
+      description: `Number format for secondary Y-axis ticks (D3 format specifier)`,
+    },
+    plot_x_scale_type: {
+      value: `linear`,
+      description: `Scale type for X-axis`,
+      enum: [`linear`, `log`],
+    },
+    plot_y_scale_type: {
+      value: `linear`,
+      description: `Scale type for Y-axis`,
+      enum: [`linear`, `log`],
+    },
+    plot_x_ticks: {
+      value: 8,
+      description: `Number of ticks on X-axis`,
+      minimum: 2,
+      maximum: 20,
+    },
+    plot_y_ticks: {
+      value: 6,
+      description: `Number of ticks on Y-axis`,
+      minimum: 2,
+      maximum: 20,
+    },
+
+    // Scatter plot specific
+    scatter_markers: {
+      value: `line+points`,
+      description: `Scatter plot marker type`,
+      enum: [`line`, `points`, `line+points`],
+    },
+    scatter_point_color: {
+      value: `#4682b4`,
+      description: `Default color for scatter plot points`,
+    },
+    scatter_point_opacity: {
+      value: 1,
+      description: `Opacity of scatter plot points`,
+      minimum: 0,
+      maximum: 1,
+    },
+    scatter_point_stroke_width: {
+      value: 1,
+      description: `Stroke width for scatter plot points`,
+      minimum: 0,
+      maximum: 5,
+    },
+    scatter_point_stroke_color: {
+      value: `#000000`,
+      description: `Stroke color for scatter plot points`,
+    },
+    scatter_point_stroke_opacity: {
+      value: 1,
+      description: `Stroke opacity for scatter plot points`,
+      minimum: 0,
+      maximum: 1,
+    },
+    scatter_line_color: {
+      value: `#4682b4`,
+      description: `Default color for scatter plot lines`,
+    },
+    scatter_line_opacity: {
+      value: 1,
+      description: `Opacity of scatter plot lines`,
+      minimum: 0,
+      maximum: 1,
+    },
+    scatter_line_dash: {
+      value: undefined,
+      description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
+    },
+    scatter_show_points: {
+      value: true,
+      description: `Show points in scatter plots`,
+    },
+    scatter_show_lines: {
+      value: true,
+      description: `Show connecting lines in scatter plots`,
     },
 
     // Formatting

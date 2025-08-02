@@ -168,15 +168,11 @@
         if (
           Math.abs(Math.log10(nice_min) % 1) < math.LOG_MIN_EPS &&
           !power_of_10_ticks.includes(nice_min)
-        ) {
-          power_of_10_ticks.unshift(nice_min)
-        }
+        ) power_of_10_ticks.unshift(nice_min)
         if (
           Math.abs(Math.log10(nice_max) % 1) < math.LOG_MIN_EPS &&
           !power_of_10_ticks.includes(nice_max)
-        ) {
-          power_of_10_ticks.push(nice_max)
-        }
+        ) power_of_10_ticks.push(nice_max)
 
         // If no powers of 10 are within range (e.g., [0.1, 0.9]), fall back to D3 ticks?
         // Or just return filtered list which might be empty?
