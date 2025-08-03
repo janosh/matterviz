@@ -55,7 +55,11 @@ export function find_image_atoms(
       let img_xyz: Vec3 = [0, 0, 0]
       if (is_supercell) {
         // For supercells: wrap coordinates and recalculate xyz
-        const wrapped_abc = img_abc.map((coord) => coord < 0 ? 1.0 + coord : coord)
+        const wrapped_abc = img_abc.map((coord) => {
+          let wrapped = coord % 1
+          if (wrapped < 0) wrapped += 1
+          return wrapped
+        })
 
         img_xyz = math.add(
           math.scale(lattice_vecs[0], wrapped_abc[0]),

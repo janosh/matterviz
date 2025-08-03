@@ -376,9 +376,7 @@
   export function toggle_fullscreen() {
     if (!document.fullscreenElement && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
-    } else {
-      document.exitFullscreen()
-    }
+    } else document.exitFullscreen()
   }
 
   // Handle keyboard shortcuts
@@ -395,11 +393,9 @@
     else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
       info_panel_open = !info_panel_open
     } else if (event.key === `Escape`) {
-      if (document.fullscreenElement) document.exitFullscreen()
-      else {
-        info_panel_open = false
-        controls_open = false
-      }
+      // Prioritize closing panels over exiting fullscreen
+      if (info_panel_open) info_panel_open = false
+      else if (controls_open) controls_open = false
     }
   }
 
