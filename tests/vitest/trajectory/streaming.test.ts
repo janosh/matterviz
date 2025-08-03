@@ -1,4 +1,5 @@
 // Streaming trajectory loader tests - clever testing without large files
+import { trajectory_property_config } from '$lib/labels'
 import type { ParseProgress } from '$lib/trajectory'
 import {
   create_frame_loader,
@@ -6,6 +7,7 @@ import {
   parse_trajectory_async,
   TrajFrameReader,
 } from '$lib/trajectory/parse'
+import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
 
 describe(`Trajectory Streaming`, () => {
@@ -483,11 +485,7 @@ describe(`Trajectory Streaming`, () => {
       expect(streaming_frame.step).toBe(direct_frame.step)
     })
 
-    it(`should properly label plot series from streaming metadata (volume fix)`, async () => {
-      // Import the generate_streaming_plot_series function
-      const { generate_streaming_plot_series } = await import(`$lib/trajectory/plotting`)
-      const { trajectory_property_config } = await import(`$lib/labels`)
-
+    it(`should properly label plot series from streaming metadata (volume fix)`, () => {
       // Create metadata with volume and energy properties
       const metadata = [
         { frame_number: 0, step: 0, properties: { volume: 100, energy: -10 } },
