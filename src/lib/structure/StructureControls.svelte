@@ -5,6 +5,7 @@
   import * as exports from '$lib/io/export'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
+  import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -27,6 +28,8 @@
     }
     // Display options (bindable from parent)
     show_image_atoms?: boolean
+    // Supercell options (bindable from parent)
+    supercell_scaling?: string
     // Background settings (bindable from parent)
     background_color?: string
     background_opacity?: number
@@ -56,6 +59,7 @@
       cell_edge_width: DEFAULTS.structure.cell_edge_width,
     }),
     show_image_atoms = $bindable(DEFAULTS.show_image_atoms),
+    supercell_scaling = $bindable(`1x1x1`),
     background_color = $bindable(undefined),
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
@@ -135,6 +139,14 @@
       site.properties?.force && Array.isArray(site.properties.force)
     ) ?? false,
   )
+
+  // Detect if structure has lattice (can create supercells)
+  let has_lattice = $derived(
+    structure && `lattice` in structure && structure.lattice !== undefined,
+  )
+
+  // Validate supercell input
+  let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))
 
   // Helper function to get example set of colors from an element color scheme
   function get_representative_colors(scheme_name: string): string[] {
@@ -640,25 +652,54 @@
     </SettingsSection>
   {/if}
 
-  <hr />
-  <SettingsSection
-    title="Cell"
-    current_values={{
-      cell_edge_color: lattice_props.cell_edge_color,
-      cell_edge_opacity: lattice_props.cell_edge_opacity,
-      cell_surface_color: lattice_props.cell_surface_color,
-      cell_surface_opacity: lattice_props.cell_surface_opacity,
-    }}
-    on_reset={() => {
-      Object.assign(lattice_props, {
-        cell_edge_color: DEFAULTS.structure.cell_edge_color,
-        cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-        cell_surface_color: DEFAULTS.structure.cell_surface_color,
-        cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-      })
-    }}
-  >
-    {#each [
+  {#if has_lattice}
+    <hr />
+    <SettingsSection
+      title="Cell"
+      current_values={{
+        cell_edge_color: lattice_props.cell_edge_color,
+        cell_edge_opacity: lattice_props.cell_edge_opacity,
+        cell_surface_color: lattice_props.cell_surface_color,
+        cell_surface_opacity: lattice_props.cell_surface_opacity,
+        supercell_scaling,
+      }}
+      on_reset={() => {
+        Object.assign(lattice_props, {
+          cell_edge_color: DEFAULTS.structure.cell_edge_color,
+          cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
+          cell_surface_color: DEFAULTS.structure.cell_surface_color,
+          cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
+        })
+        supercell_scaling = `1x1x1`
+      }}
+    >
+      <label>
+        <span
+          {@attach tooltip({
+            content:
+              `Create supercells by repeating the unit cell. Examples: "2x2x2", "3x1x2", or "2"`,
+          })}
+        >
+          Supercell Scaling
+        </span>
+        <input
+          type="text"
+          bind:value={supercell_scaling}
+          placeholder="1x1x1"
+          style:border={supercell_input_valid ? undefined : `1px dashed red`}
+          title={supercell_input_valid
+          ? `Valid supercell scaling: ${supercell_scaling}`
+          : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}
+        />
+      </label>
+
+      {#if !supercell_input_valid}
+        <div style="color: red; font-size: 0.8em; margin-top: 4pt">
+          Invalid format. Use patterns like "2x2x2", "3x1x2", or "2".
+        </div>
+      {/if}
+
+      {#each [
         {
           label: `Edge color`,
           color_prop: `cell_edge_color`,
@@ -672,37 +713,38 @@
           step: 0.01,
         },
       ] as const as
-      { label, color_prop, opacity_prop, step }
-      (label)
-    }
-      <div class="panel-row">
-        <label>
-          {label}
-          <input
-            type="color"
-            bind:value={lattice_props[color_prop]}
-          />
-        </label>
-        <label>
-          opacity
-          <input
-            type="number"
-            min={0}
-            max={1}
-            {step}
-            bind:value={lattice_props[opacity_prop]}
-          />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            {step}
-            bind:value={lattice_props[opacity_prop]}
-          />
-        </label>
-      </div>
-    {/each}
-  </SettingsSection>
+        { label, color_prop, opacity_prop, step }
+        (label)
+      }
+        <div class="panel-row">
+          <label>
+            {label}
+            <input
+              type="color"
+              bind:value={lattice_props[color_prop]}
+            />
+          </label>
+          <label>
+            opacity
+            <input
+              type="number"
+              min={0}
+              max={1}
+              {step}
+              bind:value={lattice_props[opacity_prop]}
+            />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              {step}
+              bind:value={lattice_props[opacity_prop]}
+            />
+          </label>
+        </div>
+      {/each}
+    </SettingsSection>
+  {/if}
 
   <hr />
   <SettingsSection

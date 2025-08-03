@@ -79,11 +79,6 @@ function doc_query<T extends Element = Element>(selector: string): T {
 }
 
 describe(`BarChart component`, () => {
-  test(`imports without errors`, async () => {
-    const module = await import(`$lib/composition/BarChart.svelte`)
-    expect(module.default).toBeDefined()
-  })
-
   test(`renders container with correct dimensions`, () => {
     mount(BarChart, {
       target: document.body,

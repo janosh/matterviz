@@ -16,6 +16,7 @@ export { default as StructureControls } from './StructureControls.svelte'
 export { default as StructureInfoPanel } from './StructureInfoPanel.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
+export * from './supercell'
 export { default as Vector } from './Vector.svelte'
 
 export type Species = {
