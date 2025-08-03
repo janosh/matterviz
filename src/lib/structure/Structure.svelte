@@ -420,9 +420,7 @@
     if (typeof window !== `undefined`) {
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
+      } else if (!fullscreen && document.fullscreenElement) document.exitFullscreen()
     }
   })
 </script>

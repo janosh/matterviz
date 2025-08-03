@@ -1,4 +1,5 @@
 import { BarChart } from '$lib/composition'
+import { composition_to_percentages, get_total_atoms } from '$lib/composition/parse'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -312,11 +313,7 @@ describe(`BarChart calculations`, () => {
     ],
   ])(
     `processes composition correctly`,
-    async (composition, expected_percentages, expected_total) => {
-      const { composition_to_percentages, get_total_atoms } = await import(
-        `$lib/composition/parse`
-      )
-
+    (composition, expected_percentages, expected_total) => {
       expect(get_total_atoms(composition)).toBe(expected_total)
 
       const percentages = composition_to_percentages(composition)
