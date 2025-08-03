@@ -1,6 +1,7 @@
 import { parse_structure_file } from '$lib/io/parse'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
+import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
@@ -269,11 +270,7 @@ test(`image atoms should have fractional coordinates related by lattice translat
 
     // Verify xyz and abc coordinates are consistent
     const lattice_matrix = structure.lattice.matrix
-    const expected_xyz: Vec3 = [
-      image_abc[0] * lattice_matrix[0][0],
-      image_abc[1] * lattice_matrix[1][1],
-      image_abc[2] * lattice_matrix[2][2],
-    ]
+    const expected_xyz = mat3x3_vec3_multiply(lattice_matrix, image_abc)
 
     for (let dim = 0; dim < 3; dim++) {
       expect(image_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
@@ -571,11 +568,7 @@ test(`comprehensive image atom validation`, () => {
 
     // 6. Validate xyz and abc coordinates are consistent
     const lattice_matrix = structure.lattice.matrix
-    const expected_xyz: Vec3 = [
-      image_abc[0] * lattice_matrix[0][0],
-      image_abc[1] * lattice_matrix[1][1],
-      image_abc[2] * lattice_matrix[2][2],
-    ]
+    const expected_xyz = mat3x3_vec3_multiply(lattice_matrix, image_abc)
 
     for (let dim = 0; dim < 3; dim++) {
       expect(image_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
@@ -747,11 +740,7 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
 
     // Verify consistency between abc and xyz coordinates in the image site
     const lattice_matrix = test_structure.lattice.matrix
-    const computed_xyz: Vec3 = [
-      image_site.abc[0] * lattice_matrix[0][0],
-      image_site.abc[1] * lattice_matrix[1][1],
-      image_site.abc[2] * lattice_matrix[2][2],
-    ]
+    const computed_xyz = mat3x3_vec3_multiply(lattice_matrix, image_site.abc)
 
     for (let dim = 0; dim < 3; dim++) {
       expect(image_site.xyz[dim]).toBeCloseTo(computed_xyz[dim], 10)

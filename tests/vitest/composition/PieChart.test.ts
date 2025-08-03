@@ -1,3 +1,5 @@
+import { composition_to_percentages, get_total_atoms, PieChart } from '$lib/composition'
+import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 // Mock colors module
@@ -16,16 +18,7 @@ vi.mock(`$lib/state.svelte`, () => ({
 }))
 
 describe(`PieChart component`, () => {
-  test(`imports without errors`, async () => {
-    const module = await import(`$lib/composition/PieChart.svelte`)
-    expect(module.default).toBeDefined()
-    expect(typeof module.default).toBe(`function`)
-  })
-
-  test(`renders SVG with correct viewBox`, async () => {
-    const { mount } = await import(`svelte`)
-    const PieChart = (await import(`$lib/composition/PieChart.svelte`)).default
-
+  test(`renders SVG with correct viewBox`, () => {
     mount(PieChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size: 200 },
@@ -36,10 +29,7 @@ describe(`PieChart component`, () => {
     expect(svg?.getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 
-  test(`renders pie slices for each element`, async () => {
-    const { mount } = await import(`svelte`)
-    const PieChart = (await import(`$lib/composition/PieChart.svelte`)).default
-
+  test(`renders pie slices for each element`, () => {
     mount(PieChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1, C: 1 }, size: 200 },
@@ -48,10 +38,7 @@ describe(`PieChart component`, () => {
     expect(document.querySelectorAll(`path`)).toHaveLength(3)
   })
 
-  test(`handles interactive mode`, async () => {
-    const { mount } = await import(`svelte`)
-    const PieChart = (await import(`$lib/composition/PieChart.svelte`)).default
-
+  test(`handles interactive mode`, () => {
     mount(PieChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size: 200, interactive: true },
@@ -75,11 +62,7 @@ describe(`PieChart data processing`, () => {
     ],
   ])(
     `processes composition correctly`,
-    async (composition, expected_percentages, expected_total) => {
-      const { composition_to_percentages, get_total_atoms } = await import(
-        `$lib/composition/parse`
-      )
-
+    (composition, expected_percentages, expected_total) => {
       expect(get_total_atoms(composition)).toBe(expected_total)
 
       const percentages = composition_to_percentages(composition)

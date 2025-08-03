@@ -307,6 +307,7 @@
   .draggable-panel :global(input[type='text']) {
     flex: 1;
     padding: 4px 6px;
+    margin: var(--panel-input-margin, 0 0 0 5pt);
   }
   .draggable-panel :global(input[type='text'].invalid) {
     border-color: var(--error-color, #ff6b6b);

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { base64_to_array_buffer } from '../src/webview/main'
+import { base64_to_array_buffer, setup_vscode_download } from '../src/webview/main'
 
 declare global { // download function added by VSCode integration
   var download: (content: string | Blob, filename: string, contentType: string) => void
@@ -111,14 +111,13 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
 })
 
 describe(`VSCode Download Integration`, () => {
-  test(`sets up global download override when VSCode API is available`, async () => {
+  test(`sets up global download override when VSCode API is available`, () => {
     const mock_post_message = vi.fn()
     globalThis.acquireVsCodeApi = vi.fn(() => ({
       postMessage: mock_post_message,
       setState: vi.fn(),
       getState: vi.fn(),
     }))
-    const { setup_vscode_download } = await import(`../src/webview/main`)
     setup_vscode_download()
     expect(typeof globalThis.download).toBe(`function`)
     globalThis.download(`test content`, `test.json`, `application/json`)
@@ -163,7 +162,7 @@ describe(`VSCode Download Integration`, () => {
     })
   })
 
-  test.each([``, `   `])(`rejects invalid filename: "%s"`, async (filename) => {
+  test.each([``, `   `])(`rejects invalid filename: "%s"`, (filename) => {
     vi.resetModules()
     const mock_post_message = vi.fn()
     globalThis.acquireVsCodeApi = vi.fn(() => ({
@@ -171,7 +170,6 @@ describe(`VSCode Download Integration`, () => {
       setState: vi.fn(),
       getState: vi.fn(),
     }))
-    const { setup_vscode_download } = await import(`../src/webview/main`)
     setup_vscode_download()
 
     globalThis.download(`test content`, filename, `application/json`)

@@ -343,7 +343,10 @@
 {#if show_atoms}
   <!-- Instanced rendering for full occupancy atoms -->
   {#each instanced_atom_groups as group (group.element + group.radius)}
-    <InstancedMesh limit={group.atoms.length} range={group.atoms.length}>
+    <InstancedMesh
+      key="{group.element}-{group.radius}-{group.atoms.length}"
+      range={group.atoms.length}
+    >
       <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
       <T.MeshStandardMaterial color={group.color} />
       {#each group.atoms as atom (atom.site_idx)}

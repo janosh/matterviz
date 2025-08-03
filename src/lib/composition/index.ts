@@ -1,8 +1,12 @@
+import type { ElementSymbol } from '$lib'
+
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
 export { default as Composition } from './Composition.svelte'
 export * from './parse'
 export { default as PieChart } from './PieChart.svelte'
+
+export type CompositionType = Partial<Record<ElementSymbol, number>>
 
 export function get_chart_font_scale(
   base_scale: number,

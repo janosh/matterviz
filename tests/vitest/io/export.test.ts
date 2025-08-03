@@ -12,6 +12,7 @@ import {
   structure_to_poscar_str,
   structure_to_xyz_str,
 } from '$lib/io/export'
+import { download } from '$lib/io/fetch'
 import { parse_structure_file } from '$lib/io/parse'
 import type { AnyStructure } from '$lib/structure'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
@@ -26,7 +27,6 @@ vi.mock(`$lib`, async (import_original) => {
 })
 
 // Get the mocked functions for type-safe access
-const { download } = await import(`$lib/io/fetch`)
 const { electro_neg_formula } = await import(`$lib`)
 const mock_download = vi.mocked(download)
 const mock_electro_neg_formula = vi.mocked(electro_neg_formula)

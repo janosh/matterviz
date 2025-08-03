@@ -1,8 +1,9 @@
+import * as composition_module from '$lib/composition'
+import * as parse_module from '$lib/composition/parse'
 import { describe, expect, test } from 'vitest'
 
 describe(`composition module exports`, () => {
-  test(`exports all parsing utilities`, async () => {
-    const parse_module = await import(`$lib/composition/parse`)
+  test(`exports all parsing utilities`, () => {
     expect(parse_module.parse_formula).toBeDefined()
     expect(parse_module.normalize_composition).toBeDefined()
     expect(parse_module.composition_to_percentages).toBeDefined()
@@ -12,8 +13,7 @@ describe(`composition module exports`, () => {
     expect(parse_module.atomic_symbol_to_num).toBeDefined()
   })
 
-  test(`exports all components and utilities from main index`, async () => {
-    const composition_module = await import(`$lib/composition`)
+  test(`exports all components and utilities from main index`, () => {
     expect(composition_module.Composition).toBeDefined()
     expect(composition_module.PieChart).toBeDefined()
     expect(composition_module.BubbleChart).toBeDefined()

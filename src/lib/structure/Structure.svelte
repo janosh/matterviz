@@ -10,6 +10,8 @@
   } from '$lib/io'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
+  import type { PymatgenStructure } from '$lib/structure/index'
+  import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -52,7 +54,7 @@
     enable_info_panel?: boolean
     info_panel_open?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
-    bottom_left?: Snippet<[{ structure: AnyStructure }]>
+    bottom_left?: Snippet<[{ structure?: AnyStructure }]>
     data_url?: string // URL to load structure from (alternative to providing structure directly)
     // Generic callback for when files are dropped - receives raw content and filename
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
@@ -127,6 +129,7 @@
     png_dpi = $bindable(150),
     show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
+    supercell_scaling = $bindable(`1x1x1`),
     fullscreen_toggle = true,
     bottom_left,
     data_url,
@@ -239,11 +242,24 @@
       (typeof show_controls === `number` && width > show_controls),
   )
 
-  // only updates when structure or show_image_atoms change
+  // Create supercell if needed
+  let supercell_structure = $state(structure)
+  $effect(() => {
+    if (!structure || !(`lattice` in structure)) {
+      supercell_structure = structure
+    } else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
+      supercell_structure = structure
+    } else if (!is_valid_supercell_input(supercell_scaling)) {
+      supercell_structure = structure
+    } else supercell_structure = make_supercell(structure, supercell_scaling)
+  })
+
+  // Apply image atoms to the supercell structure
   let scene_structure = $derived(
-    show_image_atoms && structure && `lattice` in structure
-      ? get_pbc_image_sites(structure)
-      : structure,
+    show_image_atoms && supercell_structure && `lattice` in supercell_structure &&
+      supercell_structure.lattice
+      ? get_pbc_image_sites(supercell_structure as PymatgenStructure)
+      : supercell_structure,
   )
 
   // Track if camera has ever been moved from initial position
@@ -360,9 +376,7 @@
   export function toggle_fullscreen() {
     if (!document.fullscreenElement && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
-    } else {
-      document.exitFullscreen()
-    }
+    } else document.exitFullscreen()
   }
 
   // Handle keyboard shortcuts
@@ -379,11 +393,9 @@
     else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
       info_panel_open = !info_panel_open
     } else if (event.key === `Escape`) {
-      if (document.fullscreenElement) document.exitFullscreen()
-      else {
-        info_panel_open = false
-        controls_open = false
-      }
+      // Prioritize closing panels over exiting fullscreen
+      if (info_panel_open) info_panel_open = false
+      else if (controls_open) controls_open = false
     }
   }
 
@@ -408,9 +420,7 @@
     if (typeof window !== `undefined`) {
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
+      } else if (!fullscreen && document.fullscreenElement) document.exitFullscreen()
     }
   })
 </script>
@@ -493,6 +503,7 @@
           bind:scene_props
           bind:lattice_props
           bind:show_image_atoms
+          bind:supercell_scaling
           bind:background_color
           bind:background_opacity
           bind:color_scheme
@@ -508,7 +519,7 @@
       {/if}
     </section>
 
-    <StructureLegend elements={get_elem_amounts(structure!)} />
+    <StructureLegend elements={get_elem_amounts(scene_structure ?? structure!)} />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
@@ -532,7 +543,7 @@
     {/if}
 
     <div class="bottom-left">
-      {@render bottom_left?.({ structure: structure! })}
+      {@render bottom_left?.({ structure: scene_structure })}
     </div>
   {:else if structure}
     <p class="warn">No sites found in structure</p>

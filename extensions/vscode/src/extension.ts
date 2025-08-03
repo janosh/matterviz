@@ -3,9 +3,11 @@ import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import type { FrameLoader } from '$lib/trajectory/index'
 import {
+  create_frame_loader,
   is_trajectory_file,
   MAX_BIN_FILE_SIZE,
   MAX_TEXT_FILE_SIZE,
+  parse_trajectory_async,
 } from '$lib/trajectory/parse'
 import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
@@ -284,10 +286,6 @@ export const handle_msg = async (
     // Handle large file by parsing with indexing and setting up frame loader
     try {
       const { request_id, file_path, filename } = msg
-      // Import and read file
-      const { parse_trajectory_async, create_frame_loader } = await import(
-        `$lib/trajectory/parse`
-      )
       const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
         webview.postMessage({
           command: `largefile_progress`,

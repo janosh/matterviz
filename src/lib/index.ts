@@ -25,8 +25,6 @@ export type Category = (typeof categories)[number]
 
 export type ElementSymbol = (typeof elem_symbols)[number]
 
-export type CompositionType = Partial<Record<ElementSymbol, number>>
-
 export type ChemicalElement = {
   'cpk-hex': string | null
   appearance: string | null
