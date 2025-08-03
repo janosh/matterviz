@@ -781,7 +781,6 @@ describe(`MatterViz Extension`, () => {
 
     describe(`file change notifications`, () => {
       test(`should send file change notification to webview`, async () => {
-        const fs = await import(`fs`)
         vi.mocked(fs.readFileSync).mockReturnValue(`updated content`)
 
         const message = {

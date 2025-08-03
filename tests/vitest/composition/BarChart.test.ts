@@ -1,4 +1,5 @@
 import { BarChart } from '$lib/composition'
+import { composition_to_percentages, get_total_atoms } from '$lib/composition/parse'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -79,11 +80,6 @@ function doc_query<T extends Element = Element>(selector: string): T {
 }
 
 describe(`BarChart component`, () => {
-  test(`imports without errors`, async () => {
-    const module = await import(`$lib/composition/BarChart.svelte`)
-    expect(module.default).toBeDefined()
-  })
-
   test(`renders container with correct dimensions`, () => {
     mount(BarChart, {
       target: document.body,
@@ -317,11 +313,7 @@ describe(`BarChart calculations`, () => {
     ],
   ])(
     `processes composition correctly`,
-    async (composition, expected_percentages, expected_total) => {
-      const { composition_to_percentages, get_total_atoms } = await import(
-        `$lib/composition/parse`
-      )
-
+    (composition, expected_percentages, expected_total) => {
       expect(get_total_atoms(composition)).toBe(expected_total)
 
       const percentages = composition_to_percentages(composition)

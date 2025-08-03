@@ -1,4 +1,6 @@
 import type { CompositionType } from '$lib'
+import { BubbleChart, get_total_atoms } from '$lib/composition'
+import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 // Mock composition parsing utilities
@@ -24,17 +26,7 @@ vi.mock(`$lib/state.svelte`, () => ({
 }))
 
 describe(`BubbleChart component`, () => {
-  test(`imports without errors`, async () => {
-    const module = await import(`$lib/composition/BubbleChart.svelte`)
-    expect(module.default).toBeDefined()
-    expect(typeof module.default).toBe(`function`)
-  })
-
-  test(`renders SVG with correct viewBox`, async () => {
-    const { mount } = await import(`svelte`)
-    const BubbleChart = (await import(`$lib/composition/BubbleChart.svelte`))
-      .default
-
+  test(`renders SVG with correct viewBox`, () => {
     mount(BubbleChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size: 200 },
@@ -45,11 +37,7 @@ describe(`BubbleChart component`, () => {
     expect(svg?.getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 
-  test(`renders circles for each element`, async () => {
-    const { mount } = await import(`svelte`)
-    const BubbleChart = (await import(`$lib/composition/BubbleChart.svelte`))
-      .default
-
+  test(`renders circles for each element`, () => {
     mount(BubbleChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1, C: 1 }, size: 200 },
@@ -58,19 +46,14 @@ describe(`BubbleChart component`, () => {
     expect(document.querySelectorAll(`circle`)).toHaveLength(3)
   })
 
-  test(`handles interactive mode`, async () => {
-    const { mount } = await import(`svelte`)
-    const BubbleChart = (await import(`$lib/composition/BubbleChart.svelte`))
-      .default
-
+  test(`handles interactive mode`, () => {
     mount(BubbleChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size: 200, interactive: true },
     })
 
-    expect(
-      document.querySelectorAll(`circle[role="button"]`).length,
-    ).toBeGreaterThan(0)
+    const n_buttons = document.querySelectorAll(`circle[role="button"]`).length
+    expect(n_buttons).toBeGreaterThan(0)
   })
 })
 
@@ -103,8 +86,7 @@ describe(`BubbleChart calculations`, () => {
     [{}, 0],
     [{ C: 60 }, 60],
     [{ H: 0.1, O: 0.2 }, 0.3],
-  ])(`processes data correctly`, async (composition, expected_total) => {
-    const { get_total_atoms } = await import(`$lib/composition/parse`)
+  ])(`processes data correctly`, (composition, expected_total) => {
     const total = get_total_atoms(composition)
 
     if (expected_total < 1) {
