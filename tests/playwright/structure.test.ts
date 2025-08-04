@@ -1015,11 +1015,13 @@ test.describe(`Structure Component Tests`, () => {
     const show_bonds_label = control_panel
       .locator(`label`)
       .filter({ hasText: /^ bonds$/ })
-    const show_bonds_checkbox = show_bonds_label.locator(
-      `input[type="checkbox"]`,
+    const show_bonds_select = show_bonds_label.locator(
+      `.multiselect`,
     )
-    await expect(show_bonds_checkbox).toBeVisible()
-    await show_bonds_checkbox.click()
+    await expect(show_bonds_select).toBeVisible()
+    await show_bonds_select.click()
+    // Select "always" option
+    await page.locator(`.multiselect-option`).filter({ hasText: `Always` }).click()
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_panel).toHaveClass(/panel-open/)
 
@@ -1205,11 +1207,13 @@ test.describe(`Structure Component Tests`, () => {
     const show_bonds_label = control_panel
       .locator(`label`)
       .filter({ hasText: /^ bonds$/ })
-    const show_bonds_checkbox = show_bonds_label.locator(
-      `input[type="checkbox"]`,
+    const show_bonds_select = show_bonds_label.locator(
+      `.multiselect`,
     )
-    await expect(show_bonds_checkbox).toBeVisible()
-    await show_bonds_checkbox.check()
+    await expect(show_bonds_select).toBeVisible()
+    await show_bonds_select.click()
+    // Select "always" option
+    await page.locator(`.multiselect-option`).filter({ hasText: `Always` }).click()
     // Wait for conditional controls to appear
     await expect(
       control_panel.locator(`label:has-text("Bonding strategy")`),
@@ -2893,10 +2897,12 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
     test(`bonds section reset button appears when bonds are shown`, async ({ page }) => {
       // Enable bonds first
-      const show_bonds_checkbox = page.locator(`text=bonds`).locator(`..`).locator(
-        `input[type="checkbox"]`,
+      const show_bonds_select = page.locator(`text=bonds`).locator(`..`).locator(
+        `.multiselect`,
       )
-      await show_bonds_checkbox.check()
+      await show_bonds_select.click()
+      // Select "always" option
+      await page.locator(`.multiselect-option`).filter({ hasText: `Always` }).click()
 
       // Wait for bonds section to appear
       await expect(page.locator(`text=Bonds`)).toBeVisible()

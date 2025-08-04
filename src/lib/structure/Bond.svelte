@@ -1,7 +1,11 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib'
+  import type { BondPair, Vec3 } from '$lib'
+  import { format_num } from '$lib/labels'
   import { DEFAULTS } from '$lib/settings'
+  import { CanvasTooltip } from '$lib/structure'
+  import type { BondingStrategy } from '$lib/structure/bonding'
   import { T } from '@threlte/core'
+  import { interactivity } from '@threlte/extras'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
   interface Props {
@@ -12,6 +16,12 @@
     offset?: number
     from_color?: string // color of atom 1
     to_color?: string // color of atom 2
+    bond_data?: BondPair // full bond data for tooltips
+    bonding_strategy?: BondingStrategy // current bonding algorithm
+    active_tooltip?: `atom` | `bond` | null // global tooltip state
+    hovered_bond_data?: BondPair | null // currently hovered bond
+    onbondhover?: (bond_data: BondPair | null) => void // callback for bond hover
+    ontooltipchange?: (type: `atom` | `bond` | null) => void // callback for tooltip state
   }
   let {
     from,
@@ -21,7 +31,15 @@
     offset = 0,
     from_color,
     to_color,
+    bond_data,
+    bonding_strategy,
+    active_tooltip,
+    hovered_bond_data,
+    onbondhover,
+    ontooltipchange,
   }: Props = $props()
+
+  interactivity()
 
   const from_vec = new Vector3(...from)
   const to_vec = new Vector3(...to)
@@ -91,14 +109,61 @@
 
 {#if gradient_texture}
   <!-- Use gradient material for bonds with two colors -->
-  <T.Mesh {position} {rotation} scale={[thickness, height, thickness]}>
+  <T.Mesh
+    {position}
+    {rotation}
+    scale={[thickness, height, thickness]}
+    onpointerenter={() => {
+      if (bond_data) {
+        onbondhover?.(bond_data)
+        ontooltipchange?.(`bond`)
+      }
+    }}
+    onpointerleave={() => {
+      onbondhover?.(null)
+      ontooltipchange?.(null)
+    }}
+  >
     <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
     <T.MeshStandardMaterial map={gradient_texture} />
   </T.Mesh>
 {:else}
   <!-- Fallback to solid color -->
-  <T.Mesh {position} {rotation} scale={[thickness, height, thickness]}>
+  <T.Mesh
+    {position}
+    {rotation}
+    scale={[thickness, height, thickness]}
+    onpointerenter={() => {
+      if (bond_data) {
+        onbondhover?.(bond_data)
+        ontooltipchange?.(`bond`)
+      }
+    }}
+    onpointerleave={() => {
+      onbondhover?.(null)
+      ontooltipchange?.(null)
+    }}
+  >
     <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
     <T.MeshStandardMaterial {color} />
   </T.Mesh>
+{/if}
+
+<!-- Bond tooltip on hover -->
+{#if active_tooltip === `bond` && hovered_bond_data && bond_data &&
+    hovered_bond_data === bond_data}
+  {@const midpoint = [
+    (from[0] + to[0]) / 2,
+    (from[1] + to[1]) / 2,
+    (from[2] + to[2]) / 2,
+  ] as Vec3}
+  <CanvasTooltip position={midpoint}>
+    <strong>Distance:</strong> {format_num(bond_data.bond_length, `.3f`)} Å (sites {
+      bond_data.site_idx_1
+    } ↔ {bond_data.site_idx_2})<br>
+    {#if bond_data.strength}
+      <strong>Strength:</strong> {format_num(bond_data.strength, `.3f`)}
+      {#if bonding_strategy}({bonding_strategy.replace(/_/g, ` `)}){/if}
+    {/if}
+  </CanvasTooltip>
 {/if}

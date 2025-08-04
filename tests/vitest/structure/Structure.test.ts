@@ -576,11 +576,6 @@ test(`critical default values are valid to prevent runtime errors`, () => {
   // Projection must be valid enum value
   expect([`perspective`, `orthographic`]).toContain(DEFAULTS.structure.projection)
 
-  // Bonding strategy must be valid or undefined
-  expect([`max_dist`, `nearest_neighbor`, `vdw_radius_based`, undefined]).toContain(
-    DEFAULTS.structure.bonding_strategy,
-  )
-
   // Scale types must be valid
   expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_x_scale_type)
   expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_y_scale_type)

@@ -1155,7 +1155,7 @@ describe(`MatterViz Extension`, () => {
 
     test(`should merge user settings with defaults`, () => {
       const user_config = {
-        structure: { atom_radius: 1.5, show_bonds: true, bond_color: `#ff0000` },
+        structure: { atom_radius: 1.5, show_bonds: `always`, bond_color: `#ff0000` },
         trajectory: { auto_play: true },
       }
       const mock_config = {
@@ -1171,7 +1171,7 @@ describe(`MatterViz Extension`, () => {
       const result = get_defaults()
 
       expect(result.structure.atom_radius).toBe(1.5)
-      expect(result.structure.show_bonds).toBe(true)
+      expect(result.structure.show_bonds).toBe(`always`)
       expect(result.structure.bond_color).toBe(`#ff0000`)
       expect(result.trajectory.auto_play).toBe(true)
       expect(result.structure.same_size_atoms).toBe(false) // Falls back to default
@@ -1200,7 +1200,7 @@ describe(`MatterViz Extension`, () => {
       // Booleans
       [`structure.same_size_atoms`, true],
       [`structure.show_atoms`, false],
-      [`structure.show_bonds`, true],
+      [`structure.show_bonds`, `always`],
       [`structure.show_site_labels`, true],
       [`structure.show_force_vectors`, true],
       [`structure.show_cell`, true],
@@ -1246,7 +1246,7 @@ describe(`MatterViz Extension`, () => {
               ? {
                 structure: {
                   atom_radius: `invalid`,
-                  show_bonds: `not-bool`,
+                  show_bonds: `invalid-value`,
                   bond_color: 123,
                 },
               }

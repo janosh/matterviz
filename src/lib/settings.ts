@@ -1,6 +1,8 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
+import type { BondingStrategy } from '$lib/structure/bonding'
+
 export interface SettingType<T = unknown> {
   value: T
   description: string
@@ -10,6 +12,9 @@ export interface SettingType<T = unknown> {
   minItems?: number
   maxItems?: number
 }
+
+export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
+export type ShowBonds = (typeof show_bonds_options)[number]
 
 export interface SettingsConfig {
   // General display settings
@@ -27,9 +32,9 @@ export interface SettingsConfig {
     show_atoms: SettingType<boolean>
     sphere_segments: SettingType<number>
     bond_thickness: SettingType<number>
-    show_bonds: SettingType<boolean>
+    show_bonds: SettingType<ShowBonds>
     bond_color: SettingType<string>
-    bonding_strategy: SettingType<string>
+    bonding_strategy: SettingType<BondingStrategy>
 
     // Camera & Controls
     camera_position: SettingType<[number, number, number]>
@@ -223,23 +228,28 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 64,
     },
     bond_thickness: {
-      value: 0.1,
+      value: 0.25,
       description: `Thickness of bonds relative to atom radius`,
       minimum: 0.01,
       maximum: 1.0,
     },
     show_bonds: {
-      value: false,
-      description: `Display bonds between atoms`,
+      value: `molecules`,
+      description: `When to display bonds between atoms`,
+      enum: show_bonds_options,
     },
     bond_color: {
       value: `#ffffff`,
       description: `Color for bonds (hex color code)`,
     },
     bonding_strategy: {
-      value: `nearest_neighbor`,
+      value: `electroneg_ratio`,
       description: `Method for determining bonds between atoms`,
-      enum: [`nearest_neighbor`, `covalent_radius`, `distance_cutoff`],
+      enum: [
+        `electroneg_ratio`,
+        `max_dist`,
+        `nearest_neighbor`,
+      ],
     },
 
     // Camera & Controls

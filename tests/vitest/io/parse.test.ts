@@ -26,7 +26,7 @@ import process from 'node:process'
 import { join } from 'path'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
-import { get_test_structure } from '../setup'
+import { get_dummy_structure } from '../setup'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -1173,16 +1173,16 @@ describe(`parse_structure_file`, () => {
 
   describe(`comprehensive nested structure parsing`, () => {
     test.each([
-      [`simple object wrapper`, { data: get_test_structure(`Fe`, 1, true) }],
-      [`nested object`, { results: { structure: get_test_structure(`Fe`, 1, true) } }],
-      [`array wrapper`, [{ structure: get_test_structure(`Fe`, 1, true) }]],
+      [`simple object wrapper`, { data: get_dummy_structure(`Fe`, 1, true) }],
+      [`nested object`, { results: { structure: get_dummy_structure(`Fe`, 1, true) } }],
+      [`array wrapper`, [{ structure: get_dummy_structure(`Fe`, 1, true) }]],
       [`mixed nesting`, {
-        data: [{ item: { structure: get_test_structure(`Fe`, 1, true) } }],
+        data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }],
       }],
-      [`deep nesting`, { a: { b: { c: { d: get_test_structure(`Fe`, 1, true) } } } }],
-      [`structure array`, { structures: [get_test_structure(`Fe`, 1, true)] }],
+      [`deep nesting`, { a: { b: { c: { d: get_dummy_structure(`Fe`, 1, true) } } } }],
+      [`structure array`, { structures: [get_dummy_structure(`Fe`, 1, true)] }],
       [`multiple items with structure`, [{ id: 1 }, {
-        structure: get_test_structure(`Fe`, 1, true),
+        structure: get_dummy_structure(`Fe`, 1, true),
       }]],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const content = JSON.stringify(wrapper)
@@ -1215,7 +1215,7 @@ describe(`parse_structure_file`, () => {
       [`moderate nesting`, 5],
       [`minimal nesting`, 2],
     ])(`handles %s (depth %d)`, (_description, depth) => {
-      let nested_obj: object = get_test_structure(`Fe`, 1, true)
+      let nested_obj: object = get_dummy_structure(`Fe`, 1, true)
       for (let idx = 0; idx < depth; idx++) {
         nested_obj = { [`level_${idx}`]: nested_obj }
       }
@@ -1228,8 +1228,8 @@ describe(`parse_structure_file`, () => {
     })
 
     test(`finds valid structure when multiple structures exist`, () => {
-      const structure_a = get_test_structure(`Li`, 1, true)
-      const structure_b = get_test_structure(`Na`, 1, true)
+      const structure_a = get_dummy_structure(`Li`, 1, true)
+      const structure_b = get_dummy_structure(`Na`, 1, true)
 
       // Test with multiple structures - should find at least one
       const data = [
@@ -1248,13 +1248,13 @@ describe(`parse_structure_file`, () => {
     })
 
     test(`handles arrays with mixed valid/invalid structures`, () => {
-      const test_structure = get_test_structure(`Cu`, 1, true)
+      const test_structure = get_dummy_structure(`Cu`, 1, true)
 
       const mixed_array = [
         { invalid: `data` },
         { sites: `not_array` }, // Invalid structure
         test_structure, // First valid structure - should be found
-        { another: `structure`, ...get_test_structure(`Fe`, 1, true) }, // Another valid one with Fe
+        { another: `structure`, ...get_dummy_structure(`Fe`, 1, true) }, // Another valid one with Fe
       ]
 
       const content = JSON.stringify(mixed_array)
