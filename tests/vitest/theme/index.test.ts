@@ -14,12 +14,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 describe(`Theme System`, () => {
   beforeEach(() => {
-    // Reset DOM and localStorage before each test
-    document.documentElement.style.cssText = ``
-    document.documentElement.removeAttribute(`data-theme`)
-    localStorage.clear()
-    vi.clearAllMocks()
-
     // Mock global theme data
     globalThis.MATTERVIZ_THEMES = {
       light: { surface_bg: `#ffffff`, text_color: `#000000` },

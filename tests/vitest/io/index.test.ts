@@ -12,7 +12,6 @@ describe(`handle_url_drop`, () => {
     callback = vi.fn()
     get_data = vi.fn()
     drag_event = { dataTransfer: { getData: get_data } } as unknown as DragEvent
-    vi.clearAllMocks()
   })
 
   test.each([
@@ -44,10 +43,6 @@ describe(`handle_url_drop`, () => {
 })
 
 describe(`load_from_url`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
   const create_mock_response = (content: string | ArrayBuffer, headers = {}) => {
     const response = new Response(content, { headers })
     if (content instanceof ArrayBuffer) {

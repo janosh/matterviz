@@ -1,6 +1,6 @@
 import ThemeControl from '$lib/theme/ThemeControl.svelte'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 vi.mock(`$lib/theme`, () => ({
@@ -16,11 +16,6 @@ vi.mock(`$lib/theme`, () => ({
 vi.mock(`$lib/state.svelte`, () => ({ theme_state: { mode: `light` } }))
 
 describe(`ThemeControl`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    document.body.innerHTML = ``
-  })
-
   test(`renders select element with theme options`, () => {
     mount(ThemeControl, { target: document.body, props: {} })
 

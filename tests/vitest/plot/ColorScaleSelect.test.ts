@@ -1,14 +1,10 @@
 import { ColorScaleSelect } from '$lib'
 import type { D3ColorSchemeName } from '$lib/colors'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
   test(`renders with default options derived from d3-scale-chromatic`, () => {
     /** Renders the component with default props. */
     mount(ColorScaleSelect, { target: document.body })

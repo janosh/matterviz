@@ -257,9 +257,7 @@ describe(`ScatterPoint`, () => {
   )
 
   describe(`Tween Behavior`, () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-    })
+    beforeEach(vi.useFakeTimers)
 
     test.each([
       {

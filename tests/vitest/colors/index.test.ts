@@ -7,13 +7,9 @@ import {
   pick_color_for_contrast,
   plot_colors,
 } from '$lib/colors'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 describe(`colors module`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
   describe(`color constants`, () => {
     it(`has valid hex colors in all schemes`, () => {
       // Test category colors

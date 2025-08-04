@@ -6,7 +6,7 @@ import { DEFAULTS } from '$lib/settings'
 import { structures } from '$site/structures'
 import { readFileSync } from 'fs'
 import { mount, tick } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
 import { doc_query } from '../setup'
 
@@ -347,10 +347,6 @@ test(`pbc_dist with realistic structure scenarios`, () => {
 })
 
 describe(`Structure component nested JSON handling`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test.each([
     [`valid structure with sites`, {
       sites: [{

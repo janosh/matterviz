@@ -8,20 +8,7 @@ import {
   tooltip,
 } from '$lib/state.svelte'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-
-// Mock localStorage for theme state tests
-const local_storage_mock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
-}
-
-Object.defineProperty(globalThis, `localStorage`, {
-  value: local_storage_mock,
-  writable: true,
-})
+import { describe, expect, test } from 'vitest'
 
 test(`theme_state has correct initial values`, () => {
   // This test checks the actual initial values without any beforeEach reset
@@ -31,28 +18,6 @@ test(`theme_state has correct initial values`, () => {
 })
 
 describe(`State Management`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    // Reset all states to initial values
-    Object.assign(selected, {
-      category: null,
-      element: null,
-      last_element: null,
-      heatmap_key: null,
-    })
-    Object.assign(colors, {
-      category: { ...default_category_colors },
-      element: { ...default_element_colors },
-    })
-    Object.assign(tooltip, { show: false, x: 0, y: 0, title: ``, items: [] })
-    Object.assign(periodic_table_state, {
-      show_bonding_info: false,
-      show_oxidation_state: false,
-      highlighted_elements: [],
-    })
-    Object.assign(theme_state, { mode: AUTO_THEME, system_mode: COLOR_THEMES.light })
-  })
-
   describe(`selected state`, () => {
     test(`allows category mutations`, () => {
       selected.category = `alkali metal`

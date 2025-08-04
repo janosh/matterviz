@@ -13,12 +13,6 @@ const mock_create_object_url = vi.fn()
 const mock_revoke_object_url = vi.fn()
 
 describe(`fetch_zipped`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    // Reset globalThis.download
-    delete (globalThis as Record<string, unknown>).download
-  })
-
   test(`fetches and decompresses data successfully`, async () => {
     const mock_data = { test: `data` }
     const mock_response = {
@@ -108,7 +102,6 @@ describe(`download`, () => {
         createObjectURL: mock_create_object_url,
         revokeObjectURL: mock_revoke_object_url,
       },
-      writable: true,
     })
     mock_create_object_url.mockReturnValue(`blob:mock-url`)
   })

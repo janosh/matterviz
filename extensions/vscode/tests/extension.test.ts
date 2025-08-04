@@ -1,7 +1,6 @@
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
-import type { Stats } from 'node:fs'
 import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Webview } from 'vscode'
@@ -79,11 +78,7 @@ describe(`MatterViz Extension`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    // Reset mocks before each test
-
     mock_fs.readFileSync = vi.fn().mockReturnValue(`mock content`)
-    mock_fs.writeFileSync = vi.fn()
-    vi.mocked(mock_fs.statSync).mockReturnValue({ size: 1024 } as Stats)
     mock_vscode.window.activeTextEditor = null
 
     // Set up file system watcher mock

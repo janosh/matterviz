@@ -1,56 +1,11 @@
 import DraggablePanel from '$lib/DraggablePanel.svelte'
 import { mount, tick } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
 
-// Mock svelte-multiselect attachments
-vi.mock(`svelte-multiselect/attachments`, () => ({
-  draggable: vi.fn(() => vi.fn()),
-  tooltip: vi.fn(() => vi.fn()),
-}))
-
-// Mock Icon component
-vi.mock(`$lib`, () => ({
-  Icon: vi.fn(({ class: className }) => {
-    // Create a simple span element that Svelte can render
-    const span = document.createElement(`span`)
-    if (className) span.className = className
-    span.textContent = `Icon`
-    return span
-  }),
-}))
-
 describe(`DraggablePanel`, () => {
-  const default_props = {
-    children: () => `Panel Content`,
-    show_panel: true,
-  }
-
-  beforeEach(() => {
-    // Mock getBoundingClientRect
-    Element.prototype.getBoundingClientRect = vi.fn(() => ({
-      width: 200,
-      height: 100,
-      top: 0,
-      left: 0,
-      right: 200,
-      bottom: 100,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect))
-
-    // Mock offsetParent
-    Object.defineProperty(Element.prototype, `offsetParent`, {
-      value: null,
-      writable: true,
-    })
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
+  const default_props = { children: () => `Panel Content` }
 
   test(`renders toggle button when show_panel is true`, () => {
     mount(DraggablePanel, { target: document.body, props: default_props })
