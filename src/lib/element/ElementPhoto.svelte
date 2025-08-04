@@ -41,13 +41,13 @@
     width: 100%;
     object-fit: cover;
     margin: 0;
-    border-radius: 4pt;
+    border-radius: var(--element-photo-border-radius, 4pt);
   }
   div {
     aspect-ratio: 1;
     text-align: center;
     display: flex;
-    padding: 3pt;
+    padding: var(--element-photo-padding, 3pt);
     box-sizing: border-box;
     place-items: center;
     background-image: linear-gradient(
@@ -56,7 +56,7 @@
       rgba(0, 0, 100, 0.3)
     );
     color: var(--text-color);
-    border-radius: 4pt;
+    border-radius: var(--element-photo-border-radius, 4pt);
     width: 100%;
     container-type: inline-size;
   }

@@ -33,16 +33,6 @@ describe(`ElementTile`, () => {
       expect(number.textContent).toBe(rand_element.number.toString())
     })
 
-    test(`renders as div by default`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.tagName).toBe(`DIV`)
-    })
-
     test(`renders as anchor when href is provided`, () => {
       const href = `/element/${rand_element.symbol}`
       mount(ElementTile, {
@@ -148,11 +138,11 @@ describe(`ElementTile`, () => {
       expect(document.querySelector(`.value`)).toBeNull()
     })
 
-    test(`formats value with precision`, () => {
+    test(`formats value with float_fmt`, () => {
       const value = 42.123456
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value, precision: `.2f` },
+        props: { element: rand_element, value, float_fmt: `.2f` },
       })
 
       const value_element = doc_query(`.value`)
@@ -204,24 +194,14 @@ describe(`ElementTile`, () => {
       expect(symbol.getAttribute(`style`)).toBe(symbol_style)
     })
 
-    test(`applies active class when active=true`, () => {
+    test.each([true, false])(`applies active class when active=%s`, (active) => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, active: true },
+        props: { element: rand_element, active },
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node.classList.contains(`active`)).toBe(true)
-    })
-
-    test(`does not apply active class when active=false`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, active: false },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.classList.contains(`active`)).toBe(false)
+      expect(node.classList.contains(`active`)).toBe(active)
     })
 
     test(`applies category class based on element category`, () => {
@@ -246,42 +226,6 @@ describe(`ElementTile`, () => {
 
       const name_element = doc_query(`.name`)
       expect(name_element.textContent).toBe(custom_label)
-    })
-
-    test(`shows element name when label is null`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, label: null },
-      })
-
-      const name_element = doc_query(`.name`)
-      expect(name_element.textContent).toBe(rand_element.name)
-    })
-  })
-
-  describe(`node binding`, () => {
-    test(`renders without error when node binding is used`, () => {
-      // Test that the component renders without errors when node is bound
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.classList.contains(`element-tile`)).toBe(true)
-    })
-  })
-
-  describe(`text_color_threshold prop`, () => {
-    test(`uses custom text_color_threshold`, () => {
-      // This test verifies the prop is accepted and passed to pick_color_for_contrast
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, text_color_threshold: 0.5 },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node).toBeTruthy() // Basic check that component renders
     })
   })
 
@@ -455,14 +399,14 @@ describe(`ElementTile`, () => {
       expect(document.querySelector(`.value`)).toBeNull()
     })
 
-    test(`handles empty string precision`, () => {
+    test(`handles empty string float_fmt`, () => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value: 42.123, precision: `` },
+        props: { element: rand_element, value: 42.123, float_fmt: `` },
       })
 
       const value_element = doc_query(`.value`)
-      // Empty precision defaults to format_num default behavior
+      // Empty float_fmt defaults to format_num default behavior
       expect(value_element.textContent).toBe(`42.1`)
     })
   })

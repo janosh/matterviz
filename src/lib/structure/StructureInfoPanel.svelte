@@ -357,14 +357,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: checkmark-appear 0.1s ease-out;
+    animation: fade-in 0.1s ease-out;
   }
-  @keyframes checkmark-appear {
+  @keyframes fade-in {
     0% {
       opacity: 0;
-    }
-    100% {
-      opacity: 1;
     }
   }
   section div.site-item {

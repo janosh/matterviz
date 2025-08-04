@@ -25,10 +25,9 @@ test(`format_num`, () => {
   expect(format_num(0.1)).toBe(`0.1`)
   expect(format_num(0.01)).toBe(`0.01`)
   expect(format_num(0.001)).toBe(`0.001`)
-  // TODO: figure out how to make format_num(-0.0001) = '1e-4'
-  expect(format_num(-0.000_1)).toBe(`−0.0001`) // want −1e-4
-  expect(format_num(-0.000_01)).toBe(`−0.00001`) // want −1e-5
-  expect(format_num(-0.000_001)).toBe(`−0.000001`) // want −1e-6
+  expect(format_num(-0.000_1)).toBe(`−0.0001`)
+  expect(format_num(-0.000_01)).toBe(`−0.00001`)
+  expect(format_num(-0.000_001)).toBe(`−0.000001`)
   expect(format_num(-0.000_000_1)).toBe(`−1e-7`)
 
   expect(format_num(-1.1)).toBe(`−1.1`)

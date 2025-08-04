@@ -1271,7 +1271,7 @@
   .slider-container {
     position: relative;
     flex: 1;
-    min-width: 100px;
+    min-width: var(--trajectory-slider-min-width, 100px);
   }
   .step-slider {
     width: 100%;
@@ -1285,8 +1285,8 @@
   .step-tick {
     position: absolute;
     transform: translateX(-50%);
-    width: 1px;
-    height: 4px;
+    width: var(--trajectory-step-tick-width, 1px);
+    height: var(--trajectory-step-tick-height, 4px);
     background: var(--text-color-muted);
     top: -9pt;
   }
@@ -1317,8 +1317,8 @@
   button.filename {
     align-items: center;
     white-space: nowrap;
-    padding: 2pt 4pt;
-    border-radius: 2px;
+    padding: var(--trajectory-filename-padding, 2pt 4pt);
+    border-radius: var(--trajectory-filename-border-radius, 2px);
     max-width: clamp(150px, 20cqw, 250px);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1366,7 +1366,7 @@
     color: var(--text-color-muted);
   }
   .empty-state :where(h3, p, ul, li, strong) {
-    max-width: 500px;
+    max-width: var(--trajectory-empty-state-max-width, 500px);
     margin-inline: auto;
   }
   .supported-formats {
@@ -1417,7 +1417,7 @@
     align-items: center;
     gap: 1ex;
     width: 100%;
-    padding: 5pt;
+    padding: var(--trajectory-view-mode-option-padding, 5pt);
     background: transparent;
     border-radius: 0;
     text-align: left;

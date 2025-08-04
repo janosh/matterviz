@@ -533,7 +533,8 @@
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 300px;
+    min-height: var(--histogram-min-height, 300px);
+    container-type: inline-size;
   }
   svg {
     width: 100%;

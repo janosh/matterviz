@@ -23,6 +23,7 @@
     XyObj,
   } from '$lib/plot'
   import { ColorBar, PlotLegend, ScatterPlotControls, ScatterPoint } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
   import {
@@ -130,7 +131,7 @@
     line_width?: number
     line_color?: string
     line_opacity?: number
-    line_dash?: string | undefined
+    line_dash?: string
     show_points?: boolean
     show_lines?: boolean
     selected_series_idx?: number
@@ -204,7 +205,7 @@
     line_width = $bindable(2),
     line_color = $bindable(`#4682b4`),
     line_opacity = $bindable(1),
-    line_dash = $bindable(undefined),
+    line_dash = $bindable(DEFAULTS.trajectory.scatter_line_dash),
     show_points = $bindable(true),
     show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
@@ -2030,7 +2031,10 @@
     color: var(--text-color);
     white-space: nowrap;
     /* Use line-height to center text vertically without flexbox */
-    line-height: 20px; /* Match foreignObject height */
+    line-height: var(
+      --scatter-axis-label-line-height,
+      20px
+    ); /* Match foreignObject height */
     display: block;
   }
   .current-frame-indicator {

@@ -4,7 +4,7 @@ import {
   detect_compression_format,
   remove_compression_extension,
 } from '$lib/io/decompress'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 describe(`decompress utility functions`, () => {
   describe(`remove_compression_extension`, () => {
@@ -54,10 +54,6 @@ describe(`decompress utility functions`, () => {
   })
 
   describe(`decompress_data`, () => {
-    beforeEach(() => {
-      vi.clearAllMocks()
-    })
-
     test(`should throw error when DecompressionStream is not supported`, async () => {
       const original_decompression_stream = globalThis.DecompressionStream
       // @ts-expect-error - intentionally deleting for test
@@ -211,8 +207,7 @@ describe(`decompress utility functions`, () => {
       expect(result.filename).toBe(`test.json.zip`) // Extension not removed
     })
 
-    // Note: FileReader error handling tests are complex to mock in vitest
     // The main functionality (reading regular and compressed files) is tested above
-    // Error handling would be better tested in integration tests
+    // Error handling is better tested in integration tests
   })
 })

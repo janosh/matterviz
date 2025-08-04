@@ -1,11 +1,9 @@
 import { ScatterPlot } from '$lib'
 import type { DataSeries } from '$lib/plot'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // Test helpers
-const container_style = `width: 800px; height: 600px; position: relative;`
-
 function mount_scatter(props: Record<string, unknown>) {
   const component = mount(ScatterPlot, { target: document.body, props })
   const scatter = document.querySelector(`.scatter`)
@@ -50,12 +48,6 @@ const multi_series = [
 ]
 
 describe(`ScatterPlot`, () => {
-  beforeEach(() => {
-    const container = document.createElement(`div`)
-    container.setAttribute(`style`, container_style)
-    document.body.appendChild(container)
-  })
-
   test.each([
     {
       name: `basic`,

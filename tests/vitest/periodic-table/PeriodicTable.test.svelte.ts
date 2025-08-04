@@ -422,11 +422,7 @@ describe(`PeriodicTable`, () => {
 
   describe(`color value heatmaps`, () => {
     test.each([
-      [
-        [`#ff0000`, `#00ff00`, `#0000ff`],
-        [`#ff0000`, `#00ff00`, `#0000ff`],
-        `array`,
-      ],
+      [[`#ff0000`, `#00ff00`, `#0000ff`], [`#ff0000`, `#00ff00`, `#0000ff`], `array`],
       [
         { H: `#ff0000`, He: `#00ff00`, Li: `#0000ff` },
         [`#ff0000`, `#00ff00`, `#0000ff`],
@@ -456,18 +452,12 @@ describe(`PeriodicTable`, () => {
 
     test.each([
       [
-        [
-          [`#ff0000`, `#00ff00`],
-          [`#0000ff`, `#ffff00`],
-        ],
+        [[`#ff0000`, `#00ff00`], [`#0000ff`, `#ffff00`]],
         [`diagonal-top`, `diagonal-bottom`],
         `two colors`,
       ],
       [
-        [
-          [`#ff0000`, `#00ff00`, `#0000ff`],
-          [`#ffff00`, `#ff00ff`, `#00ffff`],
-        ],
+        [[`#ff0000`, `#00ff00`, `#0000ff`], [`#ffff00`, `#ff00ff`, `#00ffff`]],
         [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
         `three colors`,
       ],

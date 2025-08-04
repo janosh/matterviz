@@ -199,7 +199,7 @@ describe(`is_color function`, () => {
     [`transparent`, true],
     [`currentcolor`, true],
 
-    // Invalid patterns - incomplete functions (old behavior that should now fail)
+    // Invalid patterns - incomplete functions
     [`rgb`, false],
     [`hsl`, false],
     [`var`, false],

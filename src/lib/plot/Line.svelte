@@ -13,7 +13,7 @@
     area_color?: string
     area_stroke?: string | null
     line_tween?: TweenedOptions<string>
-    line_dash?: string | null
+    line_dash?: string
     [key: string]: unknown
   }
   let {
@@ -24,7 +24,7 @@
     area_color = `rgba(255, 255, 255, 0.1)`,
     area_stroke = null,
     line_tween = {},
-    line_dash = null,
+    line_dash = undefined,
     ...rest
   }: Props = $props()
 
