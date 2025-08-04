@@ -1,27 +1,30 @@
-import * as composition_module from '$lib/composition'
-import * as parse_module from '$lib/composition/parse'
-import { describe, expect, test } from 'vitest'
+import { get_chart_font_scale } from '$lib/composition'
+import { describe, expect, it } from 'vitest'
 
-describe(`composition module exports`, () => {
-  test(`exports all parsing utilities`, () => {
-    expect(parse_module.parse_formula).toBeDefined()
-    expect(parse_module.normalize_composition).toBeDefined()
-    expect(parse_module.composition_to_percentages).toBeDefined()
-    expect(parse_module.get_total_atoms).toBeDefined()
-    expect(parse_module.parse_composition).toBeDefined()
-    expect(parse_module.atomic_num_to_symbols).toBeDefined()
-    expect(parse_module.atomic_symbol_to_num).toBeDefined()
+describe(`get_chart_font_scale`, () => {
+  it(`returns base scale when text fits`, () => {
+    expect(get_chart_font_scale(1.0, `Short`, 100)).toBe(1.0)
   })
 
-  test(`exports all components and utilities from main index`, () => {
-    expect(composition_module.Composition).toBeDefined()
-    expect(composition_module.PieChart).toBeDefined()
-    expect(composition_module.BubbleChart).toBeDefined()
-    expect(composition_module.BarChart).toBeDefined()
-    expect(composition_module.parse_formula).toBeDefined()
-    expect(composition_module.normalize_composition).toBeDefined()
-    expect(composition_module.composition_to_percentages).toBeDefined()
-    expect(composition_module.get_total_atoms).toBeDefined()
-    expect(composition_module.parse_composition).toBeDefined()
+  it(`scales down when text is too wide`, () => {
+    const result = get_chart_font_scale(1.0, `Very Long Text`, 50)
+    expect(result).toBeLessThan(1.0)
+    expect(result).toBeGreaterThan(0)
+  })
+
+  it(`respects minimum scale factor`, () => {
+    const result = get_chart_font_scale(1.0, `Extremely Long Text`, 10, 0.5)
+    expect(result).toBe(0.5)
+  })
+
+  it(`handles edge cases`, () => {
+    expect(get_chart_font_scale(1.0, `Text`, 0)).toBe(1.0) // zero space
+    expect(get_chart_font_scale(1.0, `Text`, -10)).toBe(1.0) // negative space
+    expect(get_chart_font_scale(1.0, ``, 100)).toBe(1.0) // empty text
+  })
+
+  it(`uses custom parameters`, () => {
+    const result = get_chart_font_scale(1.0, `Test`, 20, 0.7, 20)
+    expect(result).toBeLessThan(1.0)
   })
 })

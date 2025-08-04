@@ -24,7 +24,7 @@ import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
 import { join } from 'path'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
 import { get_test_structure } from '../setup'
 
@@ -33,9 +33,6 @@ import { get_test_structure } from '../setup'
 let console_error_spy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-})
-afterEach(() => {
-  console_error_spy.mockRestore()
 })
 
 // Load compressed phonopy files using Node.js built-in decompression
@@ -1269,10 +1266,6 @@ describe(`parse_structure_file`, () => {
   })
 
   describe(`data passing and transformation logic`, () => {
-    // Using the actual implementation from shared utility
-    // This ensures tests validate the real production logic
-    // rather than potentially outdated mock implementations
-
     test.each([
       [`simple direct structure`, {
         sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }],
