@@ -211,8 +211,7 @@ describe(`decompress utility functions`, () => {
       expect(result.filename).toBe(`test.json.zip`) // Extension not removed
     })
 
-    // Note: FileReader error handling tests are complex to mock in vitest
     // The main functionality (reading regular and compressed files) is tested above
-    // Error handling would be better tested in integration tests
+    // Error handling is better tested in integration tests
   })
 })

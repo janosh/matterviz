@@ -380,21 +380,17 @@
     top: 50%;
     right: 3pt;
     transform: translateY(-50%);
-    z-index: 10;
     background: var(--panel-bg);
     border-radius: 50%;
     padding: 3pt;
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: checkmark-appear 0.1s ease-out;
+    animation: fade-in 0.1s ease-out;
   }
-  @keyframes checkmark-appear {
+  @keyframes fade-in {
     0% {
       opacity: 0;
-    }
-    100% {
-      opacity: 1;
     }
   }
 </style>

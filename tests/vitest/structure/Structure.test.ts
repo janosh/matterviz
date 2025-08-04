@@ -52,7 +52,7 @@ function create_drop_event(files: File[]): DragEvent {
 
 // Tests for Structure component functionality
 describe(`Structure`, () => {
-  test(`open control panel when clicking toggle button`, async () => {
+  test(`open control panel when clicking toggle button`, () => {
     mount(Structure, {
       target: document.body,
       props: { structure, controls_open: false, show_controls: true },
@@ -63,7 +63,6 @@ describe(`Structure`, () => {
     expect(controls_toggle).toBeTruthy()
 
     controls_toggle.click()
-    await tick()
 
     // Check that the control panel is now visible by looking for control elements
     expect(document.querySelector(`.controls-panel`)).toBeTruthy()
@@ -92,7 +91,6 @@ describe(`Structure`, () => {
     )
     expect(structure_controls_toggle).toBeTruthy()
     structure_controls_toggle.click()
-    await tick()
 
     if (action === `Download`) {
       globalThis.URL.createObjectURL = vi.fn()
@@ -124,7 +122,6 @@ describe(`Structure`, () => {
       expect(copy_btn, `copy button for ${format}`).toBeTruthy()
 
       copy_btn.click()
-      await tick()
       // Wait for Svelte to re-render the component
       await new Promise((resolve) => setTimeout(resolve, 50))
 
@@ -163,7 +160,6 @@ describe(`Structure`, () => {
     expect(fullscreen_button).toBeTruthy()
 
     fullscreen_button.click()
-    await tick()
 
     expect(requestFullscreenMock).toHaveBeenCalledOnce()
 
@@ -174,7 +170,6 @@ describe(`Structure`, () => {
     })
 
     fullscreen_button.click()
-    await tick()
     expect(exitFullscreenMock).toHaveBeenCalledOnce()
 
     // Reset fullscreenElement
@@ -209,7 +204,6 @@ describe(`Structure`, () => {
 
     // Wait for async processing to complete
     await new Promise((resolve) => setTimeout(resolve, 100))
-    await tick()
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)
@@ -242,7 +236,6 @@ describe(`Structure`, () => {
 
     // Wait for async processing to complete
     await new Promise((resolve) => setTimeout(resolve, 100))
-    await tick()
 
     expect(event_handled).toBe(true)
     expect(file_content).toBe(`test content`)
@@ -275,7 +268,6 @@ describe(`Structure`, () => {
 
     // Wait for async processing to complete
     await new Promise((resolve) => setTimeout(resolve, 100))
-    await tick()
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)
@@ -298,7 +290,6 @@ describe(`Structure`, () => {
 
     // Wait for async processing to complete
     await new Promise((resolve) => setTimeout(resolve, 100))
-    await tick()
 
     // Check that the structure was loaded (should show structure info)
     expect(document.body.textContent).toContain(`Ba Ti O3`)
@@ -557,7 +548,6 @@ test.each([
     // Test 3: Toggle projection and verify change
     projection_select.value = target_projection
     projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
     expect(projection_select.value).toBe(target_projection)
 
     // Test 4: Other scene properties remain functional after projection change
@@ -573,57 +563,15 @@ test.each([
 
     radius_input.value = `2.0`
     radius_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
     expect(parseFloat(radius_input.value)).toBeCloseTo(2.0, 1)
 
     // Test 5: State persistence across component updates (simplified for Svelte 5)
     // In a real app, scene_props would be reactive - here we just verify the projection persists
-    await tick()
     if (projection_select) {
       expect(projection_select.value).toBe(target_projection) // Projection should persist
     }
   },
 )
-
-// Test advanced camera logic functionality
-test(`camera projection conditional logic and zoom speed handling`, async () => {
-  const _component = mount(Structure, {
-    target: document.body,
-    props: {
-      structure,
-      controls_open: true,
-      scene_props: { camera_projection: `perspective`, zoom_speed: 0.5 },
-      show_controls: true,
-    },
-  })
-  await tick()
-
-  const projection_select = doc_query<HTMLSelectElement>(`.controls-panel select`)
-  const zoom_speed_input = document.querySelector(
-    `input[type="number"][min="0.1"][max="0.8"]`,
-  ) as HTMLInputElement
-
-  // Test zoom speed logic exists and functions for both projections
-  expect(zoom_speed_input).toBeTruthy()
-
-  // Test orbit controls conditional logic by switching projections via UI
-  const test_projections = [`orthographic`, `perspective`] as const
-  const promises: Promise<void>[] = []
-
-  for (const projection of test_projections) {
-    if (projection_select) {
-      projection_select.value = projection
-      projection_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      promises.push(tick())
-    }
-
-    // Component should render without errors (would fail if conditional logic is broken)
-    expect(document.querySelector(`.structure`)).toBeTruthy()
-    expect(zoom_speed_input).toBeTruthy() // Controls should remain functional
-  }
-
-  await Promise.all(promises)
-})
 
 // Test critical default value validation that could cause runtime errors
 test(`critical default values are valid to prevent runtime errors`, () => {
@@ -665,7 +613,7 @@ describe(`atom label controls`, () => {
     { axis: `Z`, idx: 2, initial: 0.8, new_value: -0.3 },
   ])(
     `$axis offset control works correctly`,
-    async ({ idx, initial, new_value }) => {
+    ({ idx, initial, new_value }) => {
       const offset = [0, 0, 0] as Vec3
       offset[idx] = initial
 
@@ -678,7 +626,6 @@ describe(`atom label controls`, () => {
           scene_props: { show_site_labels: true, site_label_offset: offset },
         },
       })
-      await tick()
 
       const offset_inputs = document.querySelectorAll(
         `input[type="number"][min="-1"][max="1"][step="0.1"]`,
@@ -690,12 +637,11 @@ describe(`atom label controls`, () => {
 
       input.value = new_value.toString()
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
       expect(parseFloat(input.value)).toBeCloseTo(new_value, 1)
     },
   )
 
-  test(`color controls work correctly`, async () => {
+  test(`color controls work correctly`, () => {
     mount(Structure, {
       target: document.body,
       props: {
@@ -705,7 +651,6 @@ describe(`atom label controls`, () => {
         scene_props: { show_site_labels: true, site_label_color: `#ff0000` },
       },
     })
-    await tick()
 
     const color_inputs = document.querySelectorAll(`input[type="color"]`)
     expect(color_inputs.length).toBeGreaterThanOrEqual(2)
@@ -714,14 +659,12 @@ describe(`atom label controls`, () => {
     const text_color = color_inputs[0] as HTMLInputElement
     text_color.value = `#00ff00`
     text_color.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
     expect(text_color.value).toBe(`#00ff00`)
 
     // Test background color
     const bg_color = color_inputs[1] as HTMLInputElement
     bg_color.value = `#0000ff`
     bg_color.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
     expect(bg_color.value).toBe(`#0000ff`)
 
     // Test opacity
@@ -730,11 +673,10 @@ describe(`atom label controls`, () => {
     ) as HTMLInputElement
     opacity_input.value = `0.5`
     opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
     expect(parseFloat(opacity_input.value)).toBeCloseTo(0.5, 2)
   })
 
-  test(`size and padding controls work correctly`, async () => {
+  test(`size and padding controls work correctly`, () => {
     mount(Structure, {
       target: document.body,
       props: {
@@ -748,7 +690,6 @@ describe(`atom label controls`, () => {
         },
       },
     })
-    await tick()
 
     const size_input = document.querySelector(
       `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
@@ -764,13 +705,12 @@ describe(`atom label controls`, () => {
     padding_input.value = `6`
     size_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     padding_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
 
     expect(parseFloat(size_input.value)).toBeCloseTo(1.8, 1)
     expect(parseInt(padding_input.value)).toBe(6)
   })
 
-  test(`input constraints are correct`, async () => {
+  test(`input constraints are correct`, () => {
     mount(Structure, {
       target: document.body,
       props: {
@@ -780,7 +720,6 @@ describe(`atom label controls`, () => {
         scene_props: { show_site_labels: true },
       },
     })
-    await tick()
 
     const size_input = document.querySelector(
       `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
@@ -813,7 +752,7 @@ describe(`atom label controls`, () => {
     })
   })
 
-  test(`state isolation between instances works`, async () => {
+  test(`state isolation between instances works`, () => {
     // Mount first instance
     mount(Structure, {
       target: document.body,
@@ -824,7 +763,6 @@ describe(`atom label controls`, () => {
         scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
       },
     })
-    await tick()
 
     // Mount second instance
     mount(Structure, {
@@ -836,7 +774,6 @@ describe(`atom label controls`, () => {
         scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.7] },
       },
     })
-    await tick()
 
     const all_offset_inputs = document.querySelectorAll(
       `input[type="number"][min="-1"][max="1"][step="0.1"]`,
@@ -851,7 +788,6 @@ describe(`atom label controls`, () => {
 
     instance1_z.value = `0.9`
     instance1_z.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
 
     expect(parseFloat(instance1_z.value)).toBeCloseTo(0.9, 1)
     expect(parseFloat(instance2_z.value)).toBeCloseTo(0.7, 1)

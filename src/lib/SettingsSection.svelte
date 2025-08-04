@@ -113,9 +113,9 @@
     display: flex;
     align-items: center;
     gap: 2pt;
-    padding: 1pt 4pt;
+    padding: var(--reset-btn-padding, 1pt 4pt);
     font-size: 0.65em;
-    border-radius: 2pt;
+    border-radius: var(--reset-btn-border-radius, 2pt);
     background: var(--btn-bg, rgba(0, 0, 0, 0.1));
     color: var(--text-color-muted, #6b7280);
     border: 1px solid var(--border-color, #d1d5db);

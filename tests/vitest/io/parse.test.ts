@@ -1269,10 +1269,6 @@ describe(`parse_structure_file`, () => {
   })
 
   describe(`data passing and transformation logic`, () => {
-    // Using the actual implementation from shared utility
-    // This ensures tests validate the real production logic
-    // rather than potentially outdated mock implementations
-
     test.each([
       [`simple direct structure`, {
         sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }],

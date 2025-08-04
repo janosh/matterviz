@@ -46,7 +46,7 @@
     active_idx?: number | null
     hovered_site?: Site | null
     active_site?: Site | null
-    precision?: string
+    float_fmt?: string
     auto_rotate?: number
     bond_thickness?: number
     bond_color?: string
@@ -94,7 +94,7 @@
     active_idx = $bindable(null),
     hovered_site = $bindable(null),
     active_site = $bindable(null),
-    precision = `.3~f`,
+    float_fmt = `.3~f`,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
@@ -490,10 +490,10 @@
       {/each}
     </div>
     <div class="coordinates fractional">
-      abc: ({hovered_site.abc.map((num) => format_num(num, precision)).join(`, `)})
+      abc: ({hovered_site.abc.map((num) => format_num(num, float_fmt)).join(`, `)})
     </div>
     <div class="coordinates cartesian">
-      xyz: ({hovered_site.xyz.map((num) => format_num(num, precision)).join(`, `)}) Å
+      xyz: ({hovered_site.xyz.map((num) => format_num(num, float_fmt)).join(`, `)}) Å
     </div>
     <!-- distance from hovered to active site -->
     {#if active_site && active_site != hovered_site && active_hovered_dist}
@@ -503,9 +503,9 @@
       : direct_distance}
       <div class="distance">
         <strong>dist:</strong>
-        {format_num(pbc_distance, precision)} Å{lattice ? ` (PBC)` : ``}
+        {format_num(pbc_distance, float_fmt)} Å{lattice ? ` (PBC)` : ``}
         {#if lattice && Math.abs(pbc_distance - direct_distance) > 0.1}
-          <small> | direct: {format_num(direct_distance, precision)} Å</small>
+          <small> | direct: {format_num(direct_distance, float_fmt)} Å</small>
         {/if}
       </div>
     {/if}
@@ -527,22 +527,22 @@
     padding: var(--struct-atom-label-padding, 0 3px);
   }
   .elements {
-    margin-bottom: var(--struct-tooltip-elements-margin);
+    margin-bottom: var(--canvas-tooltip-elements-margin);
   }
   .occupancy {
-    font-size: var(--struct-tooltip-occu-font-size);
-    opacity: var(--struct-tooltip-occu-opacity);
-    margin-right: var(--struct-tooltip-occu-margin);
+    font-size: var(--canvas-tooltip-occu-font-size);
+    opacity: var(--canvas-tooltip-occu-opacity);
+    margin-right: var(--canvas-tooltip-occu-margin);
   }
   .elem-name {
-    font-size: var(--struct-tooltip-elem-name-font-size, 0.85em);
-    opacity: var(--struct-tooltip-elem-name-opacity, 0.7);
-    margin: var(--struct-tooltip-elem-name-margin, 0 0 0 0.3em);
-    font-weight: var(--struct-tooltip-elem-name-font-weight, normal);
+    font-size: var(--canvas-tooltip-elem-name-font-size, 0.85em);
+    opacity: var(--canvas-tooltip-elem-name-opacity, 0.7);
+    margin: var(--canvas-tooltip-elem-name-margin, 0 0 0 0.3em);
+    font-weight: var(--canvas-tooltip-elem-name-font-weight, normal);
   }
   .coordinates,
   .distance {
-    font-size: var(--struct-tooltip-coords-font-size);
-    margin: var(--struct-tooltip-coords-margin);
+    font-size: var(--canvas-tooltip-coords-font-size);
+    margin: var(--canvas-tooltip-coords-margin);
   }
 </style>

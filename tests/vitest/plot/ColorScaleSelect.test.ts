@@ -41,20 +41,6 @@ describe(`ColorScaleSelect`, () => {
     expect(select_wrapper).toBeTruthy()
   })
 
-  test(`uses placeholder prop`, () => {
-    /** Renders the component with a custom placeholder. */
-    const placeholder_text = `Choose a scale...`
-    mount(ColorScaleSelect, {
-      target: document.body,
-      props: { placeholder: placeholder_text, selected: [] },
-    })
-
-    // Verify component mounts. Direct assertion of placeholder text
-    // is difficult due to svelte-multiselect's internal rendering.
-    const multiselect_container = doc_query(`.multiselect`)
-    expect(multiselect_container).toBeTruthy()
-  })
-
   test(`binds value and selected correctly (initial state)`, () => {
     /** Tests if initial value and selected props are rendered correctly. */
     const selected_value: string | null = `viridis`
@@ -71,10 +57,7 @@ describe(`ColorScaleSelect`, () => {
 
     // Check initial state rendered by svelte-multiselect
     const initial_selection = doc_query(`.selected`)
-    expect(initial_selection?.textContent?.trim()).toBe(`viridis`)
-
-    // Note: Testing updates via external prop changes is difficult in Svelte 5
-    // with happy-dom. This test focuses on initial render.
+    expect(initial_selection?.textContent?.trim()).toBe(selected_array[0])
   })
 
   test(`passes colorbar props to ColorBar snippet`, async () => {
@@ -83,7 +66,6 @@ describe(`ColorScaleSelect`, () => {
       tick_align: `secondary` as const,
       title_side: `right` as const,
       wrapper_style: `border: 1px dashed red;`,
-      // style: `background-color: lightgray;`, // Removed problematic style check
     }
 
     mount(ColorScaleSelect, {

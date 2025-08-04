@@ -21,13 +21,14 @@
   .tooltip {
     width: max-content;
     box-sizing: border-box;
-    border-radius: var(--struct-tooltip-border-radius, 5pt);
-    background: var(--struct-tooltip-bg, rgba(0, 0, 0, 0.5));
-    padding: var(--struct-tooltip-padding, 1pt 5pt);
-    color: var(--struct-tooltip-text-color);
-    font-family: var(--struct-tooltip-font-family);
-    font-size: var(--struct-tooltip-font-size);
-    line-height: var(--struct-tooltip-line-height);
+    text-align: var(--canvas-tooltip-text-align, left);
+    border-radius: var(--canvas-tooltip-border-radius, 5pt);
+    background: var(--canvas-tooltip-bg, rgba(0, 0, 0, 0.5));
+    padding: var(--canvas-tooltip-padding, 1pt 5pt);
+    color: var(--canvas-tooltip-text-color);
+    font-family: var(--canvas-tooltip-font-family);
+    font-size: var(--canvas-tooltip-font-size);
+    line-height: var(--canvas-tooltip-line-height);
     pointer-events: none;
   }
 </style>

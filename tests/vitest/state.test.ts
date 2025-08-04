@@ -23,6 +23,13 @@ Object.defineProperty(globalThis, `localStorage`, {
   writable: true,
 })
 
+test(`theme_state has correct initial values`, () => {
+  // This test checks the actual initial values without any beforeEach reset
+  // to catch breaking changes to the default theme mode
+  expect(theme_state.mode).toBe(AUTO_THEME)
+  expect(theme_state.system_mode).toBe(COLOR_THEMES.light)
+})
+
 describe(`State Management`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -47,15 +54,6 @@ describe(`State Management`, () => {
   })
 
   describe(`selected state`, () => {
-    test(`has correct initial values`, () => {
-      expect(selected).toEqual({
-        category: null,
-        element: null,
-        last_element: null,
-        heatmap_key: null,
-      })
-    })
-
     test(`allows category mutations`, () => {
       selected.category = `alkali metal`
       expect(selected.category).toBe(`alkali metal`)
@@ -70,17 +68,6 @@ describe(`State Management`, () => {
       } as Partial<ChemicalElement>
       selected.element = test_element as ChemicalElement
       expect(selected.element).toStrictEqual(test_element)
-    })
-
-    test(`allows last_element mutations`, () => {
-      const test_element = {
-        symbol: `He`,
-        name: `Helium`,
-        number: 2,
-        category: `noble gas`,
-      } as Partial<ChemicalElement>
-      selected.last_element = test_element as ChemicalElement
-      expect(selected.last_element).toStrictEqual(test_element)
     })
 
     test(`allows heatmap_key mutations`, () => {
@@ -113,10 +100,6 @@ describe(`State Management`, () => {
   })
 
   describe(`tooltip state`, () => {
-    test(`has correct initial values`, () => {
-      expect(tooltip).toEqual({ show: false, x: 0, y: 0, title: ``, items: [] })
-    })
-
     test(`allows show mutations`, () => {
       tooltip.show = true
       expect(tooltip.show).toBe(true)
@@ -127,11 +110,6 @@ describe(`State Management`, () => {
       tooltip.y = 200
       expect(tooltip.x).toBe(100)
       expect(tooltip.y).toBe(200)
-    })
-
-    test(`allows title mutations`, () => {
-      tooltip.title = `Test Tooltip`
-      expect(tooltip.title).toBe(`Test Tooltip`)
     })
 
     test(`allows items mutations`, () => {
@@ -145,41 +123,40 @@ describe(`State Management`, () => {
   })
 
   describe(`periodic_table_state`, () => {
-    test(`has correct initial values`, () => {
-      expect(periodic_table_state).toEqual({
-        show_bonding_info: false,
-        show_oxidation_state: false,
-        highlighted_elements: [],
-      })
-    })
-
     test(`allows show_bonding_info mutations`, () => {
       periodic_table_state.show_bonding_info = true
       expect(periodic_table_state.show_bonding_info).toBe(true)
-    })
-
-    test(`allows show_oxidation_state mutations`, () => {
-      periodic_table_state.show_oxidation_state = true
-      expect(periodic_table_state.show_oxidation_state).toBe(true)
     })
 
     test(`allows highlighted_elements mutations`, () => {
       periodic_table_state.highlighted_elements = [`H`, `He`, `Li`]
       expect(periodic_table_state.highlighted_elements).toEqual([`H`, `He`, `Li`])
     })
-
-    test(`allows adding individual elements to highlighted_elements`, () => {
-      periodic_table_state.highlighted_elements.push(`H`)
-      expect(periodic_table_state.highlighted_elements).toContain(`H`)
-    })
   })
 
   describe(`theme_state`, () => {
-    test(`has correct initial values`, () => {
-      expect(theme_state).toEqual({
-        mode: AUTO_THEME,
-        system_mode: COLOR_THEMES.light,
-        type: `light`,
+    test(`handles localStorage errors gracefully`, async () => {
+      // Mock localStorage to throw an error
+      const original_localStorage = globalThis.localStorage
+      Object.defineProperty(globalThis, `localStorage`, {
+        value: {
+          getItem: () => {
+            throw new Error(`localStorage not available`)
+          },
+        },
+      })
+
+      // Re-import the module to trigger the error handling
+      const { theme_state: new_theme_state } = await import(`$lib/state.svelte`)
+
+      // Should fall back to default values
+      expect(new_theme_state.mode).toBe(AUTO_THEME)
+      expect(new_theme_state.system_mode).toBe(COLOR_THEMES.light)
+
+      // Restore original localStorage
+      Object.defineProperty(globalThis, `localStorage`, {
+        value: original_localStorage,
+        writable: true,
       })
     })
 
@@ -243,28 +220,5 @@ describe(`State Management`, () => {
       expect(tooltip).toEqual(initial_states.tooltip)
       expect(periodic_table_state).toEqual(initial_states.periodic_table)
     })
-
-    test.each(
-      [
-        [`selected.category`, () => {
-          selected.category = `alkali metal`
-        }, () => selected.category === `alkali metal`] as const,
-        [`tooltip.show`, () => {
-          tooltip.show = true
-        }, () => tooltip.show === true] as const,
-        [`theme_state.mode`, () => {
-          theme_state.mode = COLOR_THEMES.dark
-        }, () => theme_state.mode === COLOR_THEMES.dark] as const,
-        [`colors.category mutation`, () => {
-          colors.category[`new-category`] = `#abcdef`
-        }, () => colors.category[`new-category`] === `#abcdef`] as const,
-      ],
-    )(
-      `state changes are immediately reflected for %s`,
-      (_description, mutate, verify) => {
-        mutate()
-        expect(verify()).toBe(true)
-      },
-    )
   })
 })

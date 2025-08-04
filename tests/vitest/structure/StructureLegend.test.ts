@@ -2,21 +2,12 @@ import type { CompositionType } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import StructureLegend from '$lib/structure/StructureLegend.svelte'
-import { mount, tick } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { mount } from 'svelte'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`StructureLegend Component`, () => {
-  const mock_elements: CompositionType = {
-    Fe: 2,
-    O: 3,
-    H: 1.5,
-    C: 12.123456789,
-  }
-
-  beforeEach(() => {
-    colors.element = { ...default_element_colors }
-  })
+  const mock_elements = { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }
 
   test.each([
     {
@@ -73,7 +64,7 @@ describe(`StructureLegend Component`, () => {
     }
   })
 
-  test(`color picker functionality`, async () => {
+  test(`color picker functionality`, () => {
     mount(StructureLegend, {
       target: document.body,
       props: { elements: { Fe: 2 }, elem_color_picker_title: `Custom title` },
@@ -87,11 +78,9 @@ describe(`StructureLegend Component`, () => {
     // Test color change and reset
     color_input.value = `#ff0000`
     color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
     expect(colors.element.Fe).toBe(`#ff0000`)
 
     label.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    await tick()
     expect(colors.element.Fe).toBe(default_element_colors.Fe)
   })
 
