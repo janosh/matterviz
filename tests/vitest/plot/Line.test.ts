@@ -2,19 +2,9 @@ import { Line } from '$lib'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
 import { sineIn } from 'svelte/easing'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 describe(`Line`, () => {
-  // Setup container
-  const container_style = `width: 800px; height: 600px; position: relative;`
-  let target_div: HTMLDivElement
-
-  beforeEach(() => {
-    target_div = document.createElement(`div`)
-    target_div.setAttribute(`style`, container_style)
-    document.body.appendChild(target_div)
-  })
-
   // Parameterized test for default and custom styles
   test.each([
     {
@@ -71,12 +61,12 @@ describe(`Line`, () => {
     const origin: [number, number] = [0, 200]
 
     const component = mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, ...props }, // Spread additional props
     })
 
     expect(component).toBeTruthy()
-    const paths = target_div.querySelectorAll(`path`)
+    const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
 
     const line_path = paths[0]
@@ -107,15 +97,15 @@ describe(`Line`, () => {
       [200, 100],
     ] as [number, number][]
     mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points: points_3, origin, line_tween: { duration: 0 } },
     })
 
-    const paths_3 = target_div.querySelectorAll(`path`)
+    const paths_3 = document.querySelectorAll(`path`)
     expect(paths_3[0].getAttribute(`d`)).toMatch(/^M0,100C.*100,0.*C.*200,100$/)
 
     // Clean up target before remounting
-    target_div.innerHTML = ``
+    document.body.innerHTML = ``
 
     // Test with 2 points (expects line 'L')
     const points_2 = [
@@ -123,11 +113,11 @@ describe(`Line`, () => {
       [100, 0],
     ] as [number, number][]
     mount(Line, {
-      target: target_div, // Reuse the cleaned div
+      target: document.body, // Reuse the cleaned div
       props: { points: points_2, origin, line_tween: { duration: 0 } },
     })
 
-    const paths_2 = target_div.querySelectorAll(`path`)
+    const paths_2 = document.querySelectorAll(`path`)
     expect(paths_2[0].getAttribute(`d`)).toMatch(/^M0,100L100,0$/)
   })
 
@@ -139,11 +129,11 @@ describe(`Line`, () => {
     const origin: [number, number] = [0, 100] // Y origin at 100
 
     mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, line_tween: { duration: 0 } },
     })
 
-    const area_path = target_div.querySelectorAll(`path`)[1]
+    const area_path = document.querySelectorAll(`path`)[1]
     expect(area_path.getAttribute(`d`)).toMatch(/^M0,50L100,0L100,100L0,100Z$/)
   })
 
@@ -155,12 +145,12 @@ describe(`Line`, () => {
     const origin: [number, number] = [0, 100]
 
     const component = mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, tween_duration: 100 },
     })
 
     expect(component).toBeTruthy() // Verify component mounts
-    const paths = target_div.querySelectorAll(`path`)
+    const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2) // Check paths exist
   })
 
@@ -169,11 +159,11 @@ describe(`Line`, () => {
     const origin: [number, number] = [0, 100]
 
     mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, tween_duration: 0 },
     })
 
-    const paths = target_div.querySelectorAll(`path`)
+    const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
     expect(paths[0].getAttribute(`d`)).toBe(``)
     expect(paths[1].getAttribute(`d`)).toBe(``)
@@ -184,11 +174,11 @@ describe(`Line`, () => {
     const origin: [number, number] = [0, 100]
 
     mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, line_tween: { duration: 0 } },
     })
 
-    const paths = target_div.querySelectorAll(`path`)
+    const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
     expect(paths[0].getAttribute(`d`)).toMatch(/^M50,50Z?$/)
     expect(paths[1].getAttribute(`d`)).toMatch(/^M50,50Z?L50,100L50,100Z$/)
@@ -208,12 +198,12 @@ describe(`Line`, () => {
     }
 
     const component = mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, line_tween: custom_tween },
     })
 
     expect(component).toBeTruthy() // Primary check: Component mounts without error
-    const paths = target_div.querySelectorAll(`path`)
+    const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
     // Further checks on internal tween state are difficult in unit tests,
     // but mounting confirms the props were accepted.
@@ -231,11 +221,11 @@ describe(`Line`, () => {
     }
 
     mount(Line, {
-      target: target_div,
+      target: document.body,
       props: { points, origin, ...rest_props },
     })
 
-    const paths = target_div.querySelectorAll(`path`)
+    const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
 
     // Check that both paths received the rest props
