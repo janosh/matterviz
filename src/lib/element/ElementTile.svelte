@@ -24,7 +24,7 @@
     // at what background color lightness text color switches from black to white
     text_color_threshold?: number
     text_color?: string | null
-    precision?: string | undefined
+    float_fmt?: string
     node?: HTMLElement | null
     label?: string | null
     // array of background colors for multi-segment tiles
@@ -46,7 +46,7 @@
     href = null,
     text_color_threshold = 0.7,
     text_color = $bindable(null),
-    precision = undefined,
+    float_fmt = undefined,
     node = $bindable(null),
     label = null,
     bg_colors = [],
@@ -78,13 +78,13 @@
     }
 
     // Handle numeric values
-    if (typeof val === `number`) return format_num(val, precision)
+    if (typeof val === `number`) return format_num(val, float_fmt)
 
     // Handle string values - check if it's a numeric string
     if (typeof val === `string`) {
       const parsed_num = parseFloat(val)
       if (!isNaN(parsed_num) && isFinite(parsed_num)) {
-        return format_num(parsed_num, precision)
+        return format_num(parsed_num, float_fmt)
       }
       // If show_values is true, return the string as-is to preserve non-numeric strings
       return show_values === true ? val : ``

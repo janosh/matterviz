@@ -215,7 +215,7 @@
     align-items: center;
     cursor: pointer;
     white-space: nowrap;
-    padding: var(--plot-legend-item-padding, 3px 6px);
+    padding: var(--plot-legend-item-padding, 1px 3px);
     opacity: var(--plot-legend-item-opacity, 1);
     transition: var(--plot-legend-item-transition, opacity 0.3s ease);
     color: var(--plot-legend-item-color);

@@ -144,7 +144,7 @@ test.each([
   {
     content: nacl_poscar,
     filename: `NaCl-cubic.poscar`,
-    expected_min_images: 19, // Updated after fixing duplicates bug: 19 images found (was 28 with duplicates)
+    expected_min_images: 19,
     expected_max_images: 25,
     description: `8 atoms (4 Na + 4 Cl) in cubic structure`,
   },
@@ -609,7 +609,7 @@ test(`image atom generation should not create duplicates`, () => {
       const distance = euclidean_dist(pos1, pos2)
 
       // No two image atoms should be at exactly the same position
-      // Fail test if image atoms are too close (likely duplicates pointing at a bug in the detection algorithm)
+      // Fail test if image atoms are too close (likely duplicates suggesting a bug in the detection logic)
       expect(distance).toBeGreaterThan(1e-6)
     }
   }
