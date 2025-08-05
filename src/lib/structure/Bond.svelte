@@ -74,6 +74,19 @@
     return texture
   })
 
+  const pointer_handlers = {
+    onpointerenter: () => {
+      if (bond_data) {
+        onbondhover?.(bond_data)
+        ontooltipchange?.(`bond`)
+      }
+    },
+    onpointerleave: () => {
+      onbondhover?.(null)
+      ontooltipchange?.(null)
+    },
+  }
+
   function calc_bond(
     from_vec: Vector3,
     to_vec: Vector3,
@@ -113,16 +126,7 @@
     {position}
     {rotation}
     scale={[thickness, height, thickness]}
-    onpointerenter={() => {
-      if (bond_data) {
-        onbondhover?.(bond_data)
-        ontooltipchange?.(`bond`)
-      }
-    }}
-    onpointerleave={() => {
-      onbondhover?.(null)
-      ontooltipchange?.(null)
-    }}
+    {...pointer_handlers}
   >
     <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
     <T.MeshStandardMaterial map={gradient_texture} />
@@ -133,16 +137,7 @@
     {position}
     {rotation}
     scale={[thickness, height, thickness]}
-    onpointerenter={() => {
-      if (bond_data) {
-        onbondhover?.(bond_data)
-        ontooltipchange?.(`bond`)
-      }
-    }}
-    onpointerleave={() => {
-      onbondhover?.(null)
-      ontooltipchange?.(null)
-    }}
+    {...pointer_handlers}
   >
     <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
     <T.MeshStandardMaterial {color} />

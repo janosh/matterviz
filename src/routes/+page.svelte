@@ -1,6 +1,7 @@
 <script lang="ts">
   import { get_electro_neg_formula, Structure } from '$lib'
-  import { FilePicker, PeriodicTableDemo } from '$site'
+  import { CompositionDemo, FilePicker, PeriodicTableDemo } from '$site'
+  import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
 </script>
 
@@ -39,10 +40,10 @@
 </p>
 
 <FilePicker
-  files={structure_files}
+  files={[...structure_files, ...molecule_files]}
   show_category_filters
   category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
-  style="max-width: var(--max-text-width); margin: 0 auto"
+  style="margin: 2em auto"
 />
 
 <p>
@@ -63,19 +64,13 @@
 
 <PeriodicTableDemo />
 
+<h2>Composition</h2>
+
+<CompositionDemo show_interactive />
+
 <style>
   h1 {
-    text-align: center;
     font-size: clamp(20pt, 5.5vw, 42pt);
-  }
-  :is(h2, h3) {
-    text-align: center;
-    transform: scale(1.1);
-  }
-  p {
-    max-width: var(--max-text-width);
-    margin: 1em auto;
-    text-align: center;
   }
   .structure-viewers {
     display: flex;

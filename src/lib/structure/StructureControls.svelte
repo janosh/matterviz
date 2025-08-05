@@ -245,19 +245,6 @@
         <input type="checkbox" bind:checked={scene_props.show_atoms} />
         Atoms
       </label>
-      <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
-      >
-        Bonds:
-        <Select
-          options={[...SETTINGS_CONFIG.structure.show_bonds.enum!]}
-          maxSelect={1}
-          minSelect={1}
-          bind:selected={show_bonds_selected}
-          liOptionStyle="padding: 3pt 6pt;"
-          style="width: 10em; border: none"
-        />
-      </label>
       <label {@attach tooltip({ content: SETTINGS_CONFIG.show_image_atoms.description })}>
         <input type="checkbox" bind:checked={show_image_atoms} />
         Image Atoms
@@ -283,6 +270,16 @@
       <label>
         <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
         Lattice Vectors
+      </label>
+      <label
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+      >
+        Bonds:
+        <select bind:value={scene_props.show_bonds}>
+          {#each SETTINGS_CONFIG.structure.show_bonds.enum! as option (option)}
+            <option value={option}>{option}</option>
+          {/each}
+        </select>
       </label>
     </div>
   </SettingsSection>

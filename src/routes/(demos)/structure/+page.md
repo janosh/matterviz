@@ -28,7 +28,7 @@
   files={[...structure_files, ...molecule_files]}
   show_category_filters
   category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
-  style="max-width: var(--max-text-width); margin-block: 2em"
+  style="margin-block: 2em"
 />
 ```
 
