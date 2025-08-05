@@ -587,20 +587,20 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
   // Read offsets
   const frame_offsets = Array.from(
     { length: n_items },
-    (_, i) => Number(view.getBigInt64(offsets_pos + i * 8, true)),
+    (_, idx) => Number(view.getBigInt64(offsets_pos + idx * 8, true)),
   )
 
   const frames: TrajectoryFrame[] = []
   let global_numbers: number[] | undefined
 
-  for (let i = 0; i < n_items; i++) {
+  for (let idx = 0; idx < n_items; idx++) {
     try {
-      offset = frame_offsets[i]
+      offset = frame_offsets[idx]
       const json_length = Number(view.getBigInt64(offset, true))
       offset += 8
 
       if (json_length > MAX_SAFE_STRING_LENGTH) {
-        console.warn(`Skipping frame ${i + 1}/${n_items}: too large`)
+        console.warn(`Skipping frame ${idx + 1}/${n_items}: too large`)
         continue
       }
 
@@ -623,7 +623,7 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
 
       const elements = convert_atomic_numbers(numbers)
       const metadata = {
-        step: i,
+        step: idx,
         ...(frame_data.calculator || {}),
         ...(frame_data.info || {}),
       }
@@ -632,12 +632,12 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
         positions,
         elements,
         frame_data.cell as Matrix3x3,
-        frame_data.pbc as [boolean, boolean, boolean] || [true, true, true],
-        i,
+        frame_data.pbc || [true, true, true],
+        idx,
         metadata,
       ))
     } catch (error) {
-      console.warn(`Error processing frame ${i + 1}/${n_items}:`, error)
+      console.warn(`Error processing frame ${idx + 1}/${n_items}:`, error)
     }
   }
 

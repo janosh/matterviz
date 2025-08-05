@@ -10,6 +10,7 @@
   import Select from 'svelte-multiselect'
   import { FilePicker } from '$site'
   import { structure_files } from '$site/structures'
+  import { molecule_files } from '$site/molecules'
   import { get_electro_neg_formula } from '$lib'
 
   let structure = $state(
@@ -24,10 +25,10 @@
 </Structure>
 
 <FilePicker
-  files={structure_files}
+  files={[...structure_files, ...molecule_files]}
   show_category_filters
   category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
-  style="max-width: var(--max-text-width); margin-block: 2em"
+  style="margin-block: 2em"
 />
 ```
 

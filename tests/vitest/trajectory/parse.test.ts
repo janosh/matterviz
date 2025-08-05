@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it, test } from 'vitest'
-import { get_test_structure } from '../setup'
+import { get_dummy_structure } from '../setup'
 
 // Helper to read test files
 const read_test_file = (filename: string): string => {
@@ -564,13 +564,13 @@ describe(`JSON Formats`, () => {
   })
 
   it.each([
-    [`array`, JSON.stringify([{ structure: get_test_structure(), step: 0 }]), `array`],
+    [`array`, JSON.stringify([{ structure: get_dummy_structure(), step: 0 }]), `array`],
     [
       `object_with_frames`,
-      JSON.stringify({ frames: [{ structure: get_test_structure(), step: 0 }] }),
+      JSON.stringify({ frames: [{ structure: get_dummy_structure(), step: 0 }] }),
       `object_with_frames`,
     ],
-    [`single_structure`, JSON.stringify(get_test_structure()), `single_structure`],
+    [`single_structure`, JSON.stringify(get_dummy_structure()), `single_structure`],
   ])(`should parse %s format`, async (_, content, expected_format) => {
     const trajectory = await parse_trajectory_data(content, `test.json`)
     expect(trajectory.metadata?.source_format).toBe(expected_format)

@@ -4,6 +4,7 @@
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -153,7 +154,7 @@
     on_fullscreen_change,
     on_file_load,
     on_error,
-    fps_range = [0.2, 30],
+    fps_range = DEFAULTS.trajectory.fps_range,
     fps = $bindable(5),
     loading_options = {},
     ...rest

@@ -283,11 +283,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`renders line styles correctly`, async ({ page }) => {
-    const section = `#line-styling-test`
-
-    const solid_plot = page.locator(`${section} #solid-line-plot .scatter`)
-    const dashed_plot = page.locator(`${section} #dashed-line-plot .scatter`)
-    const custom_plot = page.locator(`${section} #custom-dash-plot .scatter`)
+    const solid_plot = page.locator(`#solid-line-plot.scatter`)
+    const dashed_plot = page.locator(`#dashed-line-plot.scatter`)
+    const custom_plot = page.locator(`#custom-dash-plot.scatter`)
 
     // Check solid lines (no stroke-dasharray)
     const solid_line_paths = solid_plot.locator(`path[fill='none'][stroke='steelblue']`)

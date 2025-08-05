@@ -145,7 +145,7 @@
     if (num_ticks_to_generate === 1) return [scale_for_ticks.domain()[0]]
 
     const scale = scale_for_ticks // Use derived scale (which handles log validation for ticks)
-    const [scale_min, scale_max] = scale.domain() as [number, number]
+    const [scale_min, scale_max] = scale.domain()
 
     // check scale_type prop for log tick generation
     const use_log_ticks = scale_type === `log` && scale_min > 0 && scale_max > 0
@@ -154,7 +154,7 @@
       // Use D3's ticks for log scale if snapping is enabled
       if (snap_ticks) {
         // For snapped log ticks, manually generate integer powers of 10 within niced domain.
-        const [nice_min, nice_max] = scale.domain() as [number, number]
+        const [nice_min, nice_max] = scale.domain()
 
         const start_exp = Math.ceil(Math.log10(nice_min))
         const end_exp = Math.floor(Math.log10(nice_max))

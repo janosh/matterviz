@@ -96,59 +96,52 @@
 
 <h1>PlotLegend Integration Test Page</h1>
 
-<div>
-  <div>
-    <h2>Legend Component</h2>
-    <PlotLegend
-      {series_data}
-      layout={legend_layout}
-      layout_tracks={legend_n_items}
-      wrapper_style={legend_wrapper_style}
-      item_style={legend_item_style}
-      on_toggle={handle_toggle}
-      on_double_click={handle_double_click}
-    />
-  </div>
+<h2>Legend Component</h2>
+<PlotLegend
+  {series_data}
+  layout={legend_layout}
+  layout_tracks={legend_n_items}
+  wrapper_style={legend_wrapper_style}
+  item_style={legend_item_style}
+  on_toggle={handle_toggle}
+  on_double_click={handle_double_click}
+/>
 
-  <div>
-    <h2>Controls</h2>
-    <label for="layout">Layout:</label>
-    <select bind:value={legend_layout} id="layout">
-      <option value="vertical">Vertical</option>
-      <option value="horizontal">Horizontal</option>
-    </select>
-    <br />
+<h2>Controls</h2>
+<label for="layout">Layout:</label>
+<select bind:value={legend_layout} id="layout">
+  <option value="vertical">Vertical</option>
+  <option value="horizontal">Horizontal</option>
+</select>
+<br />
 
-    <label for="n_items">n_items (columns if horizontal, rows if vertical):</label>
-    <input type="number" bind:value={legend_n_items} min="1" id="n_items" />
-    <br />
+<label for="n_items">n_items (columns if horizontal, rows if vertical):</label>
+<input type="number" bind:value={legend_n_items} min="1" id="n_items" />
+<br />
 
-    <label for="wrapper_style">Wrapper Style:</label>
-    <input type="text" bind:value={legend_wrapper_style} id="wrapper_style" />
-    <br />
+<label for="wrapper_style">Wrapper Style:</label>
+<input type="text" bind:value={legend_wrapper_style} id="wrapper_style" />
+<br />
 
-    <label for="item_style">Item Style:</label>
-    <input type="text" bind:value={legend_item_style} id="item_style" />
-    <br />
-    <br />
+<label for="item_style">Item Style:</label>
+<input type="text" bind:value={legend_item_style} id="item_style" />
+<br />
+<br />
 
-    <h2>State Trackers</h2>
-    <p data-testid="last-toggled">
-      Last Toggled Index: {last_toggled_idx ?? `null`}
-    </p>
-    <p data-testid="last-isolated">
-      Last Isolated Index: {last_isolated_idx ?? `null`}
-    </p>
-  </div>
-</div>
+<h2>State Trackers</h2>
+<p data-testid="last-toggled">
+  Last Toggled Index: {last_toggled_idx ?? `null`}
+</p>
+<p data-testid="last-isolated">
+  Last Isolated Index: {last_isolated_idx ?? `null`}
+</p>
 
 <h2>Custom Style Test Case</h2>
-<div id="custom-style-legend">
-  <PlotLegend
-    series_data={series_data.slice(0, 2)}
-    layout="horizontal"
-    layout_tracks={2}
-    on_toggle={() => {}}
-    on_double_click={() => {}}
-  />
-</div>
+<PlotLegend
+  id="custom-style-legend"
+  series_data={series_data.slice(0, 2)}
+  layout="horizontal"
+  layout_tracks={2}
+  on_toggle={() => {}}
+  on_double_click={() => {}}
+/>

@@ -227,21 +227,13 @@
     font-weight: bold;
   }
   .clear-filter {
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-sizing: border-box;
+    background-color: var(--btn-bg);
     border-radius: 50%;
-    cursor: pointer;
-    font-size: inherit;
-    transition: all 0.2s ease;
-    width: 1.5em;
-    height: 1.5em;
     display: flex;
-    justify-content: center;
+    place-content: center;
   }
   .clear-filter:hover {
-    background: rgba(255, 100, 100, 0.2);
-    border-color: rgba(255, 100, 100, 0.5);
-    color: var(--error-color, #ff6666);
+    background-color: var(--btn-hover-bg);
   }
   .format-item {
     display: flex;

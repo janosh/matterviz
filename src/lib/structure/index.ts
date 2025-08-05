@@ -72,8 +72,15 @@ export type StructureGraph = {
   graphs: Graph[]
 }
 
-// [atom_pos_1, atom_pos_2, atom_idx_1, atom_idx_2, bond_length]
-export type BondPair = [Vec3, Vec3, number, number, number]
+// Bond pair with position vectors, site indices, bond length, and strength score
+export type BondPair = {
+  pos_1: Vec3
+  pos_2: Vec3
+  site_idx_1: number
+  site_idx_2: number
+  bond_length: number
+  strength: number
+}
 
 export type IdStructure = PymatgenStructure & { id: string }
 export type StructureWithGraph = IdStructure & { graph: Graph }

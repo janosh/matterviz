@@ -58,7 +58,7 @@ describe(`PeriodicTable`, () => {
     expect(document.querySelector(`img`)).toBeNull()
   })
 
-  test(`keyboard navigation works`, async () => {
+  test(`keyboard navigation works`, () => {
     let active_element: (typeof element_data)[0] | null = null
 
     mount(PeriodicTable, {
@@ -75,9 +75,7 @@ describe(`PeriodicTable`, () => {
 
     // Set initial active element
     active_element = element_data[0]
-    await tick()
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
-    await tick()
     expect(active_element?.symbol).toBe(`Li`)
   })
 
@@ -96,14 +94,13 @@ describe(`PeriodicTable`, () => {
     expect(doc_query(`.periodic-table`)?.textContent?.trim()).toBe(``)
   })
 
-  test(`PropertySelect integration`, async () => {
+  test(`PropertySelect integration`, () => {
     const props: { heatmap_values?: number[] } = {}
     mount(PeriodicTable, { target: document.body, props })
     mount(PropertySelect, { target: document.body })
 
     const li = doc_query(`ul.options > li`)
     li.dispatchEvent(new MouseEvent(`mouseup`))
-    await tick()
 
     const selected_text = doc_query(
       `div.multiselect > ul.selected`,
@@ -114,7 +111,6 @@ describe(`PeriodicTable`, () => {
       props.heatmap_values = element_data.map(
         (elem) => elem[heatmap_key] as number,
       )
-      await tick()
       // Check that a background color has been applied (exact color may vary based on color scale)
       const bg_color = doc_query(`div.element-tile`).style.backgroundColor
       expect(bg_color).not.toBe(`transparent`)
@@ -247,29 +243,25 @@ describe(`PeriodicTable`, () => {
       [true, null, null, `disabled prevents hover`],
       [false, null, `H`, `enabled allows hover`],
     ] as const,
-  )(
-    `disabled=%s (%s)`,
-    async (disabled, initial, expected, _description) => {
-      let active_element: ChemicalElement | null = initial
-      mount(PeriodicTable, {
-        target: document.body,
-        props: {
-          disabled,
-          get active_element() {
-            return active_element
-          },
-          set active_element(val) {
-            active_element = val
-          },
+  )(`disabled=%s (%s)`, (disabled, initial, expected, _description) => {
+    let active_element: ChemicalElement | null = initial
+    mount(PeriodicTable, {
+      target: document.body,
+      props: {
+        disabled,
+        get active_element() {
+          return active_element
         },
-      })
-      ;(document.querySelector(`.element-tile`) as HTMLElement).dispatchEvent(
-        mouseenter,
-      )
-      await tick()
-      expect((active_element as ChemicalElement | null)?.symbol || null).toBe(expected)
-    },
-  )
+        set active_element(val) {
+          active_element = val
+        },
+      },
+    })
+    ;(document.querySelector(`.element-tile`) as HTMLElement).dispatchEvent(
+      mouseenter,
+    )
+    expect((active_element as ChemicalElement | null)?.symbol || null).toBe(expected)
+  })
 
   test.each(
     [
@@ -277,23 +269,20 @@ describe(`PeriodicTable`, () => {
       [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
       [null, `DIV`, null],
     ] as const,
-  )(
-    `links=%o -> %s tag, %s href`,
-    (links, expected_tag, expected_href) => {
-      mount(PeriodicTable, { target: document.body, props: { links } })
-      const hydrogen_tile = document.querySelector(
-        `.element-tile`,
-      ) as HTMLElement
-      expect(hydrogen_tile.tagName).toBe(expected_tag)
-      expect(hydrogen_tile.getAttribute(`href`)).toBe(expected_href)
-    },
-  )
+  )(`links=%o -> %s tag, %s href`, (links, expected_tag, expected_href) => {
+    mount(PeriodicTable, { target: document.body, props: { links } })
+    const hydrogen_tile = document.querySelector(
+      `.element-tile`,
+    ) as HTMLElement
+    expect(hydrogen_tile.tagName).toBe(expected_tag)
+    expect(hydrogen_tile.getAttribute(`href`)).toBe(expected_href)
+  })
 
   test(`multiple props`, () => {
     // Test multiple props affecting appearance and behavior in one test
     const props = {
       heatmap_values: [1, 2, 3, 4],
-      color_scale_range: [0, 10] as [number, number],
+      color_scale_range: [0, 10],
       color_overrides: { H: `#ff0000`, He: `#00ff00` },
       tile_props: { show_name: false }, // Use show_name: false to test labels prop
       lanth_act_style: `background-color: red;`,
@@ -559,7 +548,6 @@ describe(`PeriodicTable`, () => {
         `Hydrogen`,
       )
       tiles[0].dispatchEvent(mouseleave)
-      await tick()
 
       // Multi-color tooltip
       tiles[1].dispatchEvent(mouseenter)
@@ -568,7 +556,6 @@ describe(`PeriodicTable`, () => {
       expect(tooltip?.textContent).toContain(`Helium`)
       expect(tooltip?.textContent).toContain(`Values:`)
       tiles[1].dispatchEvent(mouseleave)
-      await tick()
     })
   })
 })

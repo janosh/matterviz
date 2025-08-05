@@ -519,7 +519,7 @@
       {/if}
     </section>
 
-    <StructureLegend elements={get_elem_amounts(scene_structure ?? structure!)} />
+    <StructureLegend elements={get_elem_amounts(supercell_structure ?? structure!)} />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}

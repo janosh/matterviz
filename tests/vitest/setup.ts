@@ -1,3 +1,7 @@
+import type { ElementSymbol, Vec3 } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
+import * as math from '$lib/math'
+import type { PymatgenStructure, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
 
 beforeEach(() => {
@@ -11,7 +15,7 @@ export function doc_query<T extends HTMLElement>(selector: string): T {
 }
 
 // Test data factory for creating mock structures
-export const get_test_structure = (
+export const get_dummy_structure = (
   element = `H`,
   atoms = 3,
   with_lattice = false,
@@ -37,6 +41,36 @@ export const get_test_structure = (
   }
 
   return structure
+}
+
+// Helper to create test crystal structures with proper lattice handling
+export function create_test_structure(
+  lattice: Matrix3x3,
+  elements: ElementSymbol[],
+  frac_coords: Vec3[],
+): PymatgenStructure {
+  const sites: Site[] = frac_coords.map((frac_coord, idx) => ({
+    xyz: math.mat3x3_vec3_multiply(lattice, frac_coord),
+    abc: frac_coord,
+    species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
+    label: elements[idx],
+    properties: {},
+  }))
+
+  return {
+    lattice: {
+      matrix: lattice,
+      pbc: [true, true, true],
+      volume: math.det_3x3(lattice),
+      a: math.norm(lattice[0]),
+      b: math.norm(lattice[1]),
+      c: math.norm(lattice[2]),
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+    },
+    sites,
+  }
 }
 
 // ResizeObserver mock

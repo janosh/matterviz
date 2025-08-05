@@ -59,45 +59,41 @@ A simple scatter plot showing different display modes (points, lines, or both). 
       double_clicked_point_info += `, Metadata ID: ${metadata.id}`
     }
   }
+
+  const style =
+    'margin: 1em 0; padding: 2pt 5pt; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px'
 </script>
 
-<div id="basic-example-container">
-  <label style="margin-bottom: 1em; display: block">
-    Display Mode:
-    <select bind:value={display_mode}>
-      {#each [['points', 'Points only'], ['line', 'Lines only'], [
-          'line+points',
-          'Lines and Points',
-        ]] as
-        [value, label]
-        (value)
-      }
-        <option {value}>{label}</option>
-      {/each}
-    </select>
-  </label>
+<label style="margin-bottom: 1em; display: block">
+  Display Mode:
+  <select bind:value={display_mode}>
+    {#each [
+        ['points', 'Points only'],
+        ['line', 'Lines only'],
+        ['line+points', 'Lines and Points'],
+      ] as
+      [value, label]
+      (value)
+    }
+      <option {value}>{label}</option>
+    {/each}
+  </select>
+</label>
 
-  <ScatterPlot
-    series={[basic_data, second_series]}
-    x_label="X Axis"
-    y_label="Y Value"
-    markers={display_mode}
-    point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
-    show_controls
-    style="height: 300px"
-  />
-  <div
-    id="basic-plot-click-display"
-    style="margin-top: 1em; padding: 1ex 1em; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px"
-  >
-    {clicked_point_info}
-  </div>
-  <div
-    id="basic-plot-double-click-display"
-    style="margin-top: 1em; padding: 1ex 1em; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px"
-  >
-    {double_clicked_point_info}
-  </div>
+<ScatterPlot
+  series={[basic_data, second_series]}
+  x_label="X Axis"
+  y_label="Y Value"
+  markers={display_mode}
+  point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
+  show_controls
+  style="height: 300px"
+/>
+<div {style}>
+  {clicked_point_info}
+</div>
+<div {style}>
+  {double_clicked_point_info}
 </div>
 ```
 
@@ -326,56 +322,52 @@ This example demonstrates how to apply different styles _and sizes_ to individua
   })
 </script>
 
-<div id="point-sizing">
-  <div
-    style="display: flex; flex-wrap: wrap; gap: 1em 2em; margin-bottom: 1em; align-items: center"
-  >
-    <label>
-      Label Size: {label_size}
-      <input type="range" bind:value={label_size} min="8" max="20">
-    </label>
-    <label>
-      <input type="checkbox" bind:checked={show_labels}>
-      Show Labels
-    </label>
-    <label>
-      Max Size (px):
-      <input
-        type="number"
-        bind:value={size_scale.radius_range[1]}
-        min="5"
-        max="30"
-        step="1"
-        style="width: 50px"
-      >
-    </label>
-    <label>
-      Size Scale:
-      <select bind:value={size_scale.type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select>
-    </label>
-  </div>
-
-  <ScatterPlot
-    series={[spiral_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    x_lim={[-15, 15]}
-    y_lim={[-15, 15]}
-    markers="points"
-    {size_scale}
-    style="height: 500px"
-  >
-    {#snippet tooltip({ x, y, metadata })}
-      <strong>Spiral Point</strong><br>
-      Position: ({x.toFixed(2)}, {y.toFixed(2)})<br>
-      Angle: {metadata.angle.toFixed(2)} rad<br>
-      Value (Radius): {metadata.radius.toFixed(2)}
-    {/snippet}
-  </ScatterPlot>
+<div style="display: flex; flex-wrap: wrap; gap: 1em 2em; margin: 1em">
+  <label>
+    Label Size: {label_size}
+    <input type="range" bind:value={label_size} min="8" max="20">
+  </label>
+  <label>
+    <input type="checkbox" bind:checked={show_labels}>
+    Show Labels
+  </label>
+  <label>
+    Max Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[1]}
+      min="5"
+      max="30"
+      step="1"
+      style="width: 50px"
+    >
+  </label>
+  <label>
+    Size Scale:
+    <select bind:value={size_scale.type}>
+      <option value="linear">Linear</option>
+      <option value="log">Log</option>
+    </select>
+  </label>
 </div>
+
+<ScatterPlot
+  series={[spiral_data]}
+  x_label="X Axis"
+  y_label="Y Axis"
+  x_lim={[-15, 15]}
+  y_lim={[-15, 15]}
+  markers="points"
+  {size_scale}
+  style="height: 500px"
+>
+  {#snippet tooltip({ x, y, metadata })}
+    <strong>Spiral Point</strong><br>
+    Position: ({x.toFixed(2)}, {y.toFixed(2)})<br>
+    Angle: {metadata.angle.toFixed(2)} rad<br>
+    Value (Radius): {metadata.radius.toFixed(2)}
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Categorized Data and Custom Axis Tick Intervals
@@ -431,44 +423,42 @@ This example shows categorized data with color coding, custom tick intervals, an
   const ticks = $state({ x: -5, y: -5 }) // Tick interval settings
 </script>
 
-<div>
-  {#each Object.keys(ticks) as axis (axis)}
-    <label style="display: inline-block; margin: 1em;">
-      {axis} Tick Interval:
-      <select bind:value={ticks[axis]}>
-      {#each [2, 5, 10] as num (num)}
-        <option value={-num}>{num} units</option>
-      {/each}
-      </select>
-    </label>
-  {/each}
-
-  <ScatterPlot
-    series={series_data}
-    x_label="X Value"
-    y_label="Y Value"
-    x_lim={[-15, 15]}
-    y_lim={[-15, 15]}
-    x_ticks={ticks.x}
-    y_ticks={ticks.y}
-    markers="points"
-    style="height: 400px;"
-  >
-    {#snippet tooltip({ x, y, metadata })}
-      <strong>{metadata.category}</strong><br>
-      Position: ({x.toFixed(2)}, {y.toFixed(2)})
-    {/snippet}
-  </ScatterPlot>
-
-  <!-- Legend -->
-  <div style="display: flex; justify-content: center; margin-top: 1em;">
-    {#each categories as category, idx}
-      <div style="margin: 0 1em; display: flex; align-items: center;">
-        <span style="display: inline-block; width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%; margin-right: 0.5em;"></span>
-        {category}
-      </div>
+{#each Object.keys(ticks) as axis (axis)}
+  <label style="display: inline-block; margin: 1em;">
+    {axis} Tick Interval:
+    <select bind:value={ticks[axis]}>
+    {#each [2, 5, 10] as num (num)}
+      <option value={-num}>{num} units</option>
     {/each}
-  </div>
+    </select>
+  </label>
+{/each}
+
+<ScatterPlot
+  series={series_data}
+  x_label="X Value"
+  y_label="Y Value"
+  x_lim={[-15, 15]}
+  y_lim={[-15, 15]}
+  x_ticks={ticks.x}
+  y_ticks={ticks.y}
+  markers="points"
+  style="height: 400px;"
+>
+  {#snippet tooltip({ x, y, metadata })}
+    <strong>{metadata.category}</strong><br>
+    Position: ({x.toFixed(2)}, {y.toFixed(2)})
+  {/snippet}
+</ScatterPlot>
+
+<!-- Legend -->
+<div style="display: flex; justify-content: center; margin: 1em; gap: 3ex;">
+  {#each categories as category, idx}
+    <div style="display: flex; align-items: center;">
+      <span style="width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%;"></span>
+      &ensp;{category}
+    </div>
+  {/each}
 </div>
 ```
 
@@ -1173,48 +1163,48 @@ This example demonstrates how the color bar automatically positions itself in on
   })
 </script>
 
-<div id="auto-colorbar-placement">
-  <div
-    style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center"
-  >
-    {#each [['top_left', 'Top Left'], ['top_right', 'Top Right'], [
-        'bottom_left',
-        'Bottom Left',
-      ], ['bottom_right', 'Bottom Right']] as
-      [quadrant, label]
-    }
-      <label>{label}: {density[quadrant]}
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={density[quadrant]}
-          onchange={(evt) => (density[quadrant] = Number(evt.target.value))}
-          style="width: 100px; margin-left: 0.5em"
-        />
-      </label>
-    {/each}
-  </div>
-
-  <ScatterPlot
-    series={plot_series}
-    x_label="X Position"
-    y_label="Y Position"
-    x_lim={[0, 100]}
-    y_lim={[0, 100]}
-    x_format=".2"
-    y_format=".2"
-    markers="points+text"
-    color_scale={{ scheme: `turbo` }}
-    color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
-    style="height: 450px"
-  >
-    {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
-      Point ({x_formatted}, {y_formatted})<br />
-      Color value: {color_value?.toFixed(2)}
-    {/snippet}
-  </ScatterPlot>
+<div
+  style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1em 2em; place-content: center; margin: 1em"
+>
+  {#each [
+      ['top_left', 'Top Left'],
+      ['top_right', 'Top Right'],
+      ['bottom_left', 'Bottom Left'],
+      ['bottom_right', 'Bottom Right'],
+    ] as
+    [quadrant, label]
+  }
+    <label>{label}: {density[quadrant]}
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={density[quadrant]}
+        onchange={(evt) => (density[quadrant] = Number(evt.target.value))}
+        style="width: 100px; margin-left: 0.5em"
+      />
+    </label>
+  {/each}
 </div>
+
+<ScatterPlot
+  series={plot_series}
+  x_label="X Position"
+  y_label="Y Position"
+  x_lim={[0, 100]}
+  y_lim={[0, 100]}
+  x_format=".2"
+  y_format=".2"
+  markers="points+text"
+  color_scale={{ scheme: `turbo` }}
+  color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
+  style="height: 450px; margin-block: 1em"
+>
+  {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
+    Point ({x_formatted}, {y_formatted})<br />
+    Color value: {color_value?.toFixed(2)}
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Automatic Label Placement (Repel Mode)
@@ -1506,12 +1496,8 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
   show_zero_lines
   padding={{ l: 150 }}
   legend={{
-    wrapper_style: `
-      position: absolute;
-      right: 0;
-      transform: translateX(100%);
-      max-width: 400px;
-    `,
+    wrapper_style:
+      `position: absolute; right: 0; transform: translateX(100%); max-width: 400px;`,
   }}
 />
 ```

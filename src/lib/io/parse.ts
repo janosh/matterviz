@@ -1056,10 +1056,7 @@ export function parse_any_structure(
     const parsed = JSON.parse(content)
 
     // Check if it's already a valid structure
-    if (parsed.sites && Array.isArray(parsed.sites)) {
-      return parsed as AnyStructure
-    }
-
+    if (parsed.sites && Array.isArray(parsed.sites)) return parsed
     // If not, use parse_structure_file to find nested structures
     const structure = parse_structure_file(content, filename)
 
@@ -1075,15 +1072,15 @@ export function parse_any_structure(
   } catch {
     // Try structure file formats
     const parsed = parse_structure_file(content, filename)
-    return parsed
-      ? {
+    if (parsed) {
+      return {
         sites: parsed.sites,
         charge: 0,
         ...(parsed.lattice && {
           lattice: { ...parsed.lattice, pbc: [true, true, true] },
         }),
       }
-      : null
+    } else return null
   }
 }
 

@@ -97,6 +97,9 @@ blockquote p:last-child {
 :where(h1, h2, h3, h4, h5, h6) {
   scroll-margin-top: 100px;
 }
+body main > :where(h1, h2, h3, h4, h5, h6) {
+  text-align: center;
+}
 /* style heading anchors added by rehype-autolink-headings, see svelte.config.js */
 :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
   transition: 0.3s;

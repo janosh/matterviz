@@ -39,7 +39,7 @@ const mock_vscode = vi.hoisted(() => ({
   },
   workspace: {
     getConfiguration: vi.fn(() => ({
-      get: vi.fn((_key: string, defaultValue: string) => defaultValue),
+      get: vi.fn((_key: string, default_val: string) => default_val),
     })),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     onDidOpenTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
@@ -1066,9 +1066,9 @@ describe(`MatterViz Extension`, () => {
 
       // Mock configuration to disable auto_render
       mock_vscode.workspace.getConfiguration.mockReturnValue({
-        get: vi.fn((key: string, defaultValue: string) => {
+        get: vi.fn((key: string, default_val: string) => {
           if (key === `auto_render`) return `false`
-          return defaultValue
+          return default_val
         }),
       })
 
@@ -1131,11 +1131,11 @@ describe(`MatterViz Extension`, () => {
       const parts = config_key.split(`.`)
 
       const mock_config = {
-        get: vi.fn((key: string, defaultValue?: unknown): unknown => {
+        get: vi.fn((key: string, default_val?: unknown): unknown => {
           if (parts.length === 2 && key === parts[0]) {
             return { [parts[1]]: expected_value }
           } else if (parts.length === 1 && key === parts[0]) return expected_value
-          return defaultValue
+          return default_val
         }),
       }
       // @ts-expect-error: Mock type override needed for testing
@@ -1155,14 +1155,14 @@ describe(`MatterViz Extension`, () => {
 
     test(`should merge user settings with defaults`, () => {
       const user_config = {
-        structure: { atom_radius: 1.5, show_bonds: true, bond_color: `#ff0000` },
+        structure: { atom_radius: 1.5, show_bonds: `always`, bond_color: `#ff0000` },
         trajectory: { auto_play: true },
       }
       const mock_config = {
-        get: vi.fn((key: string, defaultValue?: unknown) => {
+        get: vi.fn((key: string, default_val?: unknown) => {
           if (key === `structure`) return user_config.structure
           if (key === `trajectory`) return user_config.trajectory
-          return defaultValue
+          return default_val
         }),
       }
       // @ts-expect-error: Mock type override needed for testing
@@ -1171,7 +1171,7 @@ describe(`MatterViz Extension`, () => {
       const result = get_defaults()
 
       expect(result.structure.atom_radius).toBe(1.5)
-      expect(result.structure.show_bonds).toBe(true)
+      expect(result.structure.show_bonds).toBe(`always`)
       expect(result.structure.bond_color).toBe(`#ff0000`)
       expect(result.trajectory.auto_play).toBe(true)
       expect(result.structure.same_size_atoms).toBe(false) // Falls back to default
@@ -1200,7 +1200,7 @@ describe(`MatterViz Extension`, () => {
       // Booleans
       [`structure.same_size_atoms`, true],
       [`structure.show_atoms`, false],
-      [`structure.show_bonds`, true],
+      [`structure.show_bonds`, `always`],
       [`structure.show_site_labels`, true],
       [`structure.show_force_vectors`, true],
       [`structure.show_cell`, true],
@@ -1241,16 +1241,16 @@ describe(`MatterViz Extension`, () => {
       [{ get: vi.fn(() => undefined) }, `missing config`],
       [
         {
-          get: vi.fn((key: string, defaultValue?: unknown) =>
+          get: vi.fn((key: string, default_val?: unknown) =>
             key === `defaults`
               ? {
                 structure: {
                   atom_radius: `invalid`,
-                  show_bonds: `not-bool`,
+                  show_bonds: `invalid-value`,
                   bond_color: 123,
                 },
               }
-              : defaultValue
+              : default_val
           ),
         },
         `invalid values`,

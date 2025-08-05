@@ -27,18 +27,8 @@
           ],
           charge: 0,
           lattice: {
-            matrix: [
-              [2, 0, 0],
-              [0, 2, 0],
-              [0, 0, 2],
-            ],
-            a: 2,
-            b: 2,
-            c: 2,
-            alpha: 90,
-            beta: 90,
-            gamma: 90,
-            volume: 8,
+            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            ...{ a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
             pbc: [true, true, true],
           },
         } as AnyStructure,
@@ -65,18 +55,8 @@
           ],
           charge: 0,
           lattice: {
-            matrix: [
-              [2, 0, 0],
-              [0, 2, 0],
-              [0, 0, 2],
-            ],
-            a: 2,
-            b: 2,
-            c: 2,
-            alpha: 90,
-            beta: 90,
-            gamma: 90,
-            volume: 8,
+            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            ...{ a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
             pbc: [true, true, true],
           },
         } as AnyStructure,
@@ -103,29 +83,15 @@
           ],
           charge: 0,
           lattice: {
-            matrix: [
-              [2, 0, 0],
-              [0, 2, 0],
-              [0, 0, 2],
-            ],
-            a: 2,
-            b: 2,
-            c: 2,
-            alpha: 90,
-            beta: 90,
-            gamma: 90,
-            volume: 8,
+            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            ...{ a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
             pbc: [true, true, true],
           },
         } as AnyStructure,
         metadata: { energy: -11.2, force_max: 0.02 },
       },
     ],
-    metadata: {
-      source_format: `test_data`,
-      frame_count: 3,
-      total_atoms: 2,
-    },
+    metadata: { source_format: `test_data`, frame_count: 3, total_atoms: 2 },
   }
 
   // Constant values trajectory for testing plot hiding
@@ -164,11 +130,7 @@
         metadata: { energy: -10.0, force_max: 0.1 },
       },
     ],
-    metadata: {
-      source_format: `test_data`,
-      frame_count: 2,
-      total_atoms: 1,
-    },
+    metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
   }
 
   // Dual axis trajectory with different property types
@@ -207,11 +169,7 @@
         metadata: { energy: -12.0, temperature: 350, pressure: 1.2 },
       },
     ],
-    metadata: {
-      source_format: `test_data`,
-      frame_count: 2,
-      total_atoms: 1,
-    },
+    metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
   }
 
   let empty_trajectory = $state<TrajectoryType | undefined>(undefined)
@@ -238,12 +196,7 @@
   step_labels={3}
 />
 
-<Trajectory
-  id="auto-layout"
-  trajectory={test_trajectory}
-  show_controls
-  step_labels={3}
-/>
+<Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
 
 <Trajectory
   id="vertical-layout"
@@ -302,21 +255,13 @@
   layout="horizontal"
 />
 
-<Trajectory
-  id="trajectory-url"
-  data_url="/test-trajectory.json"
-  allow_file_drop
-/>
+<Trajectory id="trajectory-url" data_url="/test-trajectory.json" allow_file_drop />
 
 <Trajectory id="custom-controls" trajectory={test_trajectory} layout="horizontal">
-  {#snippet trajectory_controls(
-    { current_step_idx, total_frames, on_step_change },
-  )}
-    <div class="custom-trajectory-controls">
-      <button onclick={() => on_step_change(0)}>First</button>
-      <span>Step {current_step_idx + 1} of {total_frames}</span>
-      <button onclick={() => on_step_change(total_frames - 1)}>Last</button>
-    </div>
+  {#snippet trajectory_controls({ current_step_idx, total_frames, on_step_change })}
+    <button onclick={() => on_step_change(0)}>First</button>
+    <span>Step {current_step_idx + 1} of {total_frames}</span>
+    <button onclick={() => on_step_change(total_frames - 1)}>Last</button>
   {/snippet}
 </Trajectory>
 
@@ -326,11 +271,9 @@
   data_url="/non-existent-file.json"
 >
   {#snippet error_snippet({ error_msg, on_dismiss })}
-    <div class="custom-error">
-      <h3>Custom Error Handler</h3>
-      <p>{error_msg}</p>
-      <button onclick={on_dismiss}>Dismiss Error</button>
-    </div>
+    <h3>Custom Error Handler</h3>
+    <p>{error_msg}</p>
+    <button onclick={on_dismiss}>Dismiss Error</button>
   {/snippet}
 </Trajectory>
 
