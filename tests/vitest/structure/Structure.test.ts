@@ -528,7 +528,9 @@ test.each([
       .find((label) => label.textContent?.includes(`Projection`))
     expect(projection_label).toBeTruthy()
 
-    const projection_select = doc_query<HTMLSelectElement>(`.controls-panel select`)
+    const projection_select = projection_label?.querySelector(
+      `select`,
+    ) as HTMLSelectElement
     expect(projection_select?.value).toBe(initial_projection)
 
     const options = Array.from(projection_select?.querySelectorAll(`option`) || [])

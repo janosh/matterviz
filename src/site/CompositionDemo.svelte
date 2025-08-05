@@ -37,7 +37,13 @@
 
   // Function to get formula display text
   function get_formula_display(formula: string): string {
-    const parsed = formula.startsWith(`{`) ? JSON.parse(formula) : formula
+    let parsed
+    try {
+      parsed = formula.startsWith(`{`) ? JSON.parse(formula) : formula
+    } catch (err) {
+      console.error(`Invalid JSON formula:`, err)
+      parsed = formula
+    }
     return get_electro_neg_formula(parsed)
   }
 </script>
@@ -89,7 +95,7 @@
 <style>
   .composition-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
     gap: 0.75rem;
     margin-block: 1rem;
     text-align: center;

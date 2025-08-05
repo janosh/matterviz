@@ -16,6 +16,7 @@
   )
 
   const onenter = (element: ChemicalElement) => {
+    if (!element?.name) return
     goto(`/${element.name.toLowerCase()}`)
   }
 
@@ -72,7 +73,7 @@
 
     const full_values = element_data.map(missing_get_element_value)
 
-    // Always show partial data for demo (every 3rd element)
+    // only show every 3rd element to demo missing color
     return full_values.map((value, idx) => (idx % 3 === 0 ? value : 0))
   })
 </script>

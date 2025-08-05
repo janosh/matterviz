@@ -26,15 +26,14 @@
   let inner_transition_offset: number = $state(0.5)
   let tile_font_color: string = $state(`#ffffff`)
 
-  // Extract shared logic for mapping element values
-  let get_element_value = $derived((el: ChemicalElement) => {
-    if (!heatmap_key) return 0
-    const value = el[heatmap_key as keyof typeof el]
-    return typeof value === `number` ? value : 0
-  })
-
   let heatmap_values = $derived(
-    heatmap_key ? element_data.map(get_element_value) : [],
+    heatmap_key
+      ? element_data.map((el) => {
+        if (!heatmap_key || !(heatmap_key in el)) return 0
+        const value = el[heatmap_key as keyof ChemicalElement]
+        return typeof value === `number` ? value : 0
+      })
+      : [],
   )
 
   let [y_label, y_unit] = $derived(
@@ -60,6 +59,7 @@
   ] as [number, number])
 
   const onenter = (element: ChemicalElement) => {
+    if (!element?.name) return
     goto(`/${element.name.toLowerCase()}`)
   }
 </script>
