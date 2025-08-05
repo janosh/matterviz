@@ -211,7 +211,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     // Check item color (inherited or set by --plot-legend-item-color)
     await expect(legend_item).toHaveCSS(`color`, `rgb(55, 65, 81)`) // Check color applied to item text
     // Check item padding set by --plot-legend-item-padding
-    await expect(legend_item).toHaveCSS(`padding`, `3px 6px`) // Check padding applied to item
+    await expect(legend_item).toHaveCSS(`padding`, `1px 3px`) // Check padding applied to item
   })
 
   test(`should display correct line colors in legend markers`, async ({ page }) => {

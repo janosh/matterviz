@@ -81,6 +81,16 @@
     }
   })
 
+  // Bond display mode selection state
+  let show_bonds_selected = $state([
+    scene_props.show_bonds || DEFAULTS.structure.show_bonds,
+  ])
+  $effect(() => {
+    if (show_bonds_selected.length > 0) {
+      scene_props.show_bonds = show_bonds_selected[0]
+    }
+  })
+
   // Atom label color management
   let site_label_hex_color = $state(
     scene_props.site_label_color || DEFAULTS.structure.site_label_color,
@@ -102,16 +112,6 @@
   if (!scene_props.site_label_offset) {
     scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
   }
-
-  // Type-safe default extractors
-  const projection_default = DEFAULTS.structure.projection as
-    | `perspective`
-    | `orthographic`
-  const bonding_strategy_default = DEFAULTS.structure.bonding_strategy as
-    | `max_dist`
-    | `nearest_neighbor`
-    | `vdw_radius_based`
-    | undefined
 
   // Copy button feedback state
   let copy_status = $state<
@@ -231,6 +231,7 @@
         show_site_labels: DEFAULTS.structure.show_site_labels,
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
+      show_bonds_selected = [DEFAULTS.structure.show_bonds]
       show_image_atoms = DEFAULTS.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
@@ -243,12 +244,6 @@
       >
         <input type="checkbox" bind:checked={scene_props.show_atoms} />
         Atoms
-      </label>
-      <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
-      >
-        <input type="checkbox" bind:checked={scene_props.show_bonds} />
-        Bonds
       </label>
       <label {@attach tooltip({ content: SETTINGS_CONFIG.show_image_atoms.description })}>
         <input type="checkbox" bind:checked={show_image_atoms} />
@@ -275,6 +270,16 @@
       <label>
         <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
         Lattice Vectors
+      </label>
+      <label
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+      >
+        Bonds:
+        <select bind:value={scene_props.show_bonds}>
+          {#each SETTINGS_CONFIG.structure.show_bonds.enum! as option (option)}
+            <option value={option}>{option}</option>
+          {/each}
+        </select>
       </label>
     </div>
   </SettingsSection>
@@ -344,7 +349,7 @@
     }}
     on_reset={() => {
       Object.assign(scene_props, {
-        camera_projection: projection_default,
+        camera_projection: DEFAULTS.structure.projection,
         auto_rotate: DEFAULTS.structure.auto_rotate,
         zoom_speed: DEFAULTS.structure.zoom_speed,
         pan_speed: DEFAULTS.structure.pan_speed,
@@ -838,7 +843,7 @@
     </label>
   </SettingsSection>
 
-  {#if scene_props.show_bonds}
+  {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
     <hr />
     <SettingsSection
       title="Bonds"
@@ -849,7 +854,7 @@
       }}
       on_reset={() => {
         Object.assign(scene_props, {
-          bonding_strategy: bonding_strategy_default,
+          bonding_strategy: DEFAULTS.structure.bonding_strategy,
           bond_color: DEFAULTS.structure.bond_color,
           bond_thickness: DEFAULTS.structure.bond_thickness,
         })
@@ -858,9 +863,9 @@
       <label>
         Bonding strategy
         <select bind:value={scene_props.bonding_strategy}>
+          <option value="electroneg_ratio">Electronegativity Ratio</option>
           <option value="max_dist">Max Distance</option>
           <option value="nearest_neighbor">Nearest Neighbor</option>
-          <option value="vdw_radius_based">Van der Waals Radii</option>
         </select>
       </label>
       <label>

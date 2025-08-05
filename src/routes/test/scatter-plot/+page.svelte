@@ -481,594 +481,513 @@
   ]
 </script>
 
-<div class="demo-container">
-  <h1>ScatterPlot Component E2E Test Page</h1>
+<h1>ScatterPlot Component E2E Test Page</h1>
 
-  <section class="demo-section" id="basic-example">
-    <h2>Basic Example</h2>
-    <div class="demo-plot">
-      <ScatterPlot
-        series={[basic_data]}
-        x_label="X Axis"
-        y_label="Y Axis"
-        markers="line+points"
-        show_controls
-      />
-    </div>
-  </section>
+<section id="basic-example">
+  <h2>Basic Example</h2>
+  <ScatterPlot
+    series={[basic_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="line+points"
+    show_controls
+  />
+</section>
 
-  <section class="demo-section" id="marker-types">
-    <h2>Marker Types</h2>
-    <div class="demo-row">
-      <div class="demo-plot" id="points-only">
-        <h3>Points Only</h3>
-        <ScatterPlot
-          series={[points_data]}
-          x_label="X Axis"
-          y_label="Y Axis (Points)"
-          markers="points"
-        />
-      </div>
-      <div class="demo-plot" id="line-only">
-        <h3>Line Only</h3>
-        <ScatterPlot
-          series={[line_data]}
-          x_label="X Axis"
-          y_label="Y Axis (Line)"
-          markers="line"
-        />
-      </div>
-      <div class="demo-plot" id="line-points">
-        <h3>Line + Points</h3>
-        <ScatterPlot
-          series={[line_points_data]}
-          x_label="X Axis"
-          y_label="Y Axis (Line+Points)"
-          markers="line+points"
-        />
-      </div>
-    </div>
-  </section>
+<section id="marker-types">
+  <h2>Marker Types</h2>
+  <h3>Points Only</h3>
+  <ScatterPlot
+    series={[points_data]}
+    x_label="X Axis"
+    y_label="Y Axis (Points)"
+    markers="points"
+  />
+  <h3>Line Only</h3>
+  <ScatterPlot
+    series={[line_data]}
+    x_label="X Axis"
+    y_label="Y Axis (Line)"
+    markers="line"
+  />
+  <h3>Line + Points</h3>
+  <ScatterPlot
+    series={[line_points_data]}
+    x_label="X Axis"
+    y_label="Y Axis (Line+Points)"
+    markers="line+points"
+  />
+</section>
 
-  <section class="demo-section" id="range-test">
-    <h2>Data Range Examples</h2>
-    <div class="demo-row">
-      <div class="demo-plot" id="wide-range">
-        <h3>Wide Range (-1000 to 1000)</h3>
-        <ScatterPlot
-          series={[wide_range_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          x_lim={[-1100, 1100]}
-          y_lim={[-550, 550]}
-          markers="line+points"
-        />
-      </div>
-      <div class="demo-plot" id="small-range">
-        <h3>Very Small Range</h3>
-        <ScatterPlot
-          series={[small_range_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          x_lim={[0, 0.0006]}
-          y_lim={[0, 0.00006]}
-          markers="line+points"
-        />
-      </div>
-    </div>
-  </section>
+<section id="range-test">
+  <h2>Data Range Examples</h2>
 
-  <section class="demo-section" id="log-scale">
-    <h2>Logarithmic Scale Examples</h2>
-    <div class="demo-row">
-      <div class="demo-plot" id="log-y">
-        <h3>Y-Axis Log Scale</h3>
-        <ScatterPlot
-          series={[log_scale_data]}
-          x_label="X Axis (Linear)"
-          y_label="Y Axis (Log)"
-          x_lim={[-1100, 1100]}
-          y_lim={[1, 6000]}
-          markers="line+points"
-          y_scale_type="log"
-        />
-      </div>
-      <div class="demo-plot" id="log-x">
-        <h3>X-Axis Log Scale</h3>
-        <ScatterPlot
-          series={[log_scale_data2]}
-          x_label="X Axis (Log)"
-          y_label="Y Axis (Linear)"
-          y_format="~s"
-          x_format="~s"
-          x_lim={[0.01, 1100]}
-          markers="line+points"
-          x_scale_type="log"
-        />
-      </div>
-    </div>
-  </section>
+  <h3>Wide Range (-1000 to 1000)</h3>
+  <ScatterPlot
+    series={[wide_range_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    x_lim={[-1100, 1100]}
+    y_lim={[-550, 550]}
+    markers="line+points"
+  />
 
-  <section class="demo-section" id="custom-style">
-    <h2>Custom Styling Examples</h2>
-    <div class="demo-row">
-      <div class="demo-plot" id="rainbow-points">
-        <h3>Rainbow Points</h3>
-        <ScatterPlot
-          series={[rainbow_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          markers="points"
-        />
-      </div>
-      <div class="demo-plot" id="multi-series">
-        <h3>Multiple Series</h3>
-        <ScatterPlot
-          series={[multi_series_data1, multi_series_data2]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          markers="line+points"
-        />
-      </div>
-    </div>
-  </section>
+  <h3>Very Small Range</h3>
+  <ScatterPlot
+    series={[small_range_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    x_lim={[0, 0.0006]}
+    y_lim={[0, 0.00006]}
+    markers="line+points"
+  />
+</section>
 
-  <section class="demo-section" id="color-scale">
-    <h2>Color Scale Examples</h2>
-    <div class="demo-row">
-      <div class="demo-plot" id="color-scale-toggle">
-        <h3>Color Scale with Toggle</h3>
-        <div style="display: flex; justify-content: center; gap: 1em">
-          {#each [`linear`, `log`] as scale_type (scale_type)}
-            <label>
-              <input type="radio" value={scale_type} bind:group={color_scale.type} />
-              {scale_type}
-            </label>
-          {/each}
-        </div>
-        <ScatterPlot
-          series={[color_scale_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          markers="points"
-          {color_scale}
-          color_bar={{}}
-        />
-      </div>
-    </div>
-  </section>
+<section id="log-scale">
+  <h2>Logarithmic Scale Examples</h2>
+  <h3>Y-Axis Log Scale</h3>
+  <ScatterPlot
+    series={[log_scale_data]}
+    x_label="X Axis (Linear)"
+    y_label="Y Axis (Log)"
+    x_lim={[-1100, 1100]}
+    y_lim={[1, 6000]}
+    markers="line+points"
+    y_scale_type="log"
+  />
+  <h3>X-Axis Log Scale</h3>
+  <ScatterPlot
+    series={[log_scale_data2]}
+    x_label="X Axis (Log)"
+    y_label="Y Axis (Linear)"
+    y_format="~s"
+    x_format="~s"
+    x_lim={[0.01, 1100]}
+    markers="line+points"
+    x_scale_type="log"
+  />
+</section>
 
-  <section class="demo-section" id="custom-tooltip">
-    <h2>Custom Tooltip Example</h2>
-    <div class="demo-plot">
-      <ScatterPlot series={[custom_tooltip_data]} markers="points">
-        {#snippet tooltip(props)}
-          Point Info: <strong>{props.metadata?.info}</strong><br />
-          Coords: ({props.x_formatted}, {props.y_formatted})
-        {/snippet}
-      </ScatterPlot>
-    </div>
-  </section>
+<section id="custom-style">
+  <h2>Custom Styling Examples</h2>
+  <h3>Rainbow Points</h3>
+  <ScatterPlot
+    series={[rainbow_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="points"
+  />
+  <h3>Multiple Series</h3>
+  <ScatterPlot
+    series={[multi_series_data1, multi_series_data2]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="line+points"
+  />
+</section>
 
-  <section class="demo-section" id="bind-hovered">
-    <h2>bind:hovered Example</h2>
-    <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
-    <div class="demo-plot">
-      <ScatterPlot
-        series={[bind_hovered_data]}
-        markers="points"
-        bind:hovered={is_plot_hovered}
-      />
-    </div>
-  </section>
-
-  <section
-    class="demo-section"
-    id="label-auto-placement-test"
-    style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
-  >
-    <h2>Label Auto Placement Test</h2>
-    <label>
-      <input type="checkbox" bind:checked={enable_auto_placement} />
-      Enable Auto Placement
-    </label>
-    {#key enable_auto_placement}
-      <ScatterPlot
-        series={auto_placement_test_series}
-        x_label="X"
-        y_label="Y"
-        x_lim={[0, 100]}
-        y_lim={[0, 100]}
-        markers="points"
-        style="height: 450px; width: 100%"
-      />
-    {/key}
-  </section>
-
-  <section class="demo-section" id="auto-colorbar-placement">
-    <h2>Automatic Color Bar Placement</h2>
-    <p>
-      This example demonstrates how the color bar automatically positions itself based on
-      point density.
-    </p>
-    <div
-      style="display: grid; grid-template-columns: repeat(2, max-content); gap: 1.5em; place-items: center; place-content: center; margin-bottom: 1em"
-    >
-      {#each [
-          [`top_left`, `Top Left`],
-          [`top_right`, `Top Right`],
-          [`bottom_left`, `Bottom Left`],
-          [`bottom_right`, `Bottom Right`],
-        ] as const as
-        [quadrant, label]
-        (label)
-      }
-        <label>
-          {label}: {auto_placement_density[quadrant]}
-          <input
-            type="range"
-            min="0"
-            max="100"
-            bind:value={auto_placement_density[quadrant]}
-            style="width: 100px; margin-left: 0.5em"
-          />
-        </label>
-      {/each}
-    </div>
-
-    <div class="demo-plot" style="height: 450px">
-      <ScatterPlot
-        series={auto_placement_plot_series}
-        x_label="X Position"
-        y_label="Y Position"
-        x_lim={[0, 100]}
-        y_lim={[0, 100]}
-        markers="points"
-        color_scale={{ scheme: `Turbo` }}
-        color_bar={{ title: `Color Bar Title` }}
-      >
-        {#snippet tooltip({ x, y, color_value })}
-          Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
-          Color value: {color_value?.toFixed(2)}
-        {/snippet}
-      </ScatterPlot>
-    </div>
-  </section>
-
-  <section id="legend-tests">
-    <h2>Legend Rendering Tests</h2>
-    <div class="plot-grid">
-      <div id="legend-single-default" class="plot-container">
-        <h3>Single Series (Default Legend) - No Legend Expected</h3>
-        <ScatterPlot series={legend_single_series} markers="points" />
-      </div>
-      <div id="legend-single-null" class="plot-container">
-        <h3>Single Series (legend=null) - No Legend Expected</h3>
-        <ScatterPlot series={legend_single_series} legend={null} markers="points" />
-      </div>
-      <div id="legend-single-config" class="plot-container">
-        <h3>Single Series (Configured Legend) - Legend Expected</h3>
-        <ScatterPlot
-          series={legend_single_series}
-          legend={{ layout: `horizontal` }}
-          markers="points"
-        />
-      </div>
-      <div id="legend-multi-default" class="plot-container">
-        <h3>Multi Series (Default Legend) - Legend Expected</h3>
-        <ScatterPlot
-          series={legend_multi_series}
-          legend={{ draggable: true }}
-          show_controls
-          markers="points"
-        />
-      </div>
-      <div id="legend-zero" class="plot-container">
-        <h3>Zero Series - No Legend Expected</h3>
-        <ScatterPlot series={legend_zero_series} />
-      </div>
-    </div>
-  </section>
-
-  <section class="demo-section" id="lin-log-transition">
-    <h2>Linear-to-Log Scale Transition Test</h2>
-    <p>
-      Test switching between linear and log scales. Values near zero previously caused NaN
-      errors during the tweening animation.
-    </p>
-    <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em">
-      {#each [`linear`, `log`] as scale_type (scale_type)}
-        <label>
-          <input
-            type="radio"
-            name="lin_log_y_scale_type"
-            value={scale_type}
-            bind:group={lin_log_y_scale_type}
-          />
-          {scale_type} y-axis
-        </label>
-      {/each}
-    </div>
-    <div class="demo-plot" style="height: 400px">
-      <ScatterPlot
-        series={[lin_log_transition_data]}
-        x_label="X Axis (Linear)"
-        y_label="Y Axis"
-        markers="line+points"
-        y_scale_type={lin_log_y_scale_type}
-        y_lim={lin_log_y_scale_type === `log` ? [math.LOG_MIN_EPS, null] : [null, null]}
-      />
-    </div>
-  </section>
-
-  <!-- Added Point Sizing Example -->
-  <h2>Point Sizing Test with Spiral Data</h2>
-  <div id="point-sizing">
-    <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center">
+<section id="color-scale">
+  <h2>Color Scale Examples</h2>
+  <h3>Color Scale with Toggle</h3>
+  <div style="display: flex; justify-content: center; gap: 1em">
+    {#each [`linear`, `log`] as scale_type (scale_type)}
       <label>
-        Min Size (px):
-        <input
-          type="number"
-          bind:value={size_scale.radius_range[0]}
-          min="0.5"
-          max="10"
-          step="0.5"
-          style="width: 50px"
-          aria-label="Min Size (px)"
-        />
+        <input type="radio" value={scale_type} bind:group={color_scale.type} />
+        {scale_type}
       </label>
-      <label>
-        Max Size (px):
-        <input
-          type="number"
-          bind:value={size_scale.radius_range[1]}
-          min="5"
-          max="30"
-          step="1"
-          style="width: 50px"
-          aria-label="Max Size (px)"
-        />
-      </label>
-      <label>
-        Size Scale:
-        <select bind:value={size_scale.type} aria-label="Size Scale">
-          <option value="linear">Linear</option>
-          <option value="log">Log</option>
-        </select>
-      </label>
-    </div>
-
-    <ScatterPlot
-      series={[spiral_data]}
-      x_label="X Axis"
-      y_label="Y Axis"
-      x_lim={[-15, 15]}
-      y_lim={[-15, 15]}
-      markers="points"
-      {size_scale}
-      style="height: 500px; width: 100%"
-    >
-      {#snippet tooltip({ x, y, metadata })}
-        <strong>Spiral Point</strong><br />
-        Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
-        {#if metadata}
-          Angle: {(metadata.angle as number).toFixed(2)} rad<br />
-          Value (Radius): {(metadata.radius as number).toFixed(2)}
-        {/if}
-      {/snippet}
-    </ScatterPlot>
+    {/each}
   </div>
+  <ScatterPlot
+    series={[color_scale_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="points"
+    {color_scale}
+    color_bar={{}}
+  />
+</section>
 
-  <section>
-    <h2>Line Styling Test</h2>
-    <div id="line-styling-test">
-      <section id="solid-line-plot">
-        <h3>Solid Lines</h3>
-        <ScatterPlot
-          series={[solid_line_data_1, solid_line_data_2]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          markers="line"
-        />
-      </section>
-      <section id="dashed-line-plot">
-        <h3>Dashed Line</h3>
-        <ScatterPlot
-          series={[dashed_line_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          markers="line"
-        />
-      </section>
-      <section id="custom-dash-plot">
-        <h3>Custom Dashed Line</h3>
-        <ScatterPlot
-          series={[custom_dash_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-          markers="line"
-        />
-      </section>
-    </div>
-  </section>
+<section id="custom-tooltip">
+  <h2>Custom Tooltip Example</h2>
+  <ScatterPlot series={[custom_tooltip_data]} markers="points">
+    {#snippet tooltip(props)}
+      Point Info: <strong>{props.metadata?.info}</strong><br />
+      Coords: ({props.x_formatted}, {props.y_formatted})
+    {/snippet}
+  </ScatterPlot>
+</section>
 
-  <!-- Added Tooltip Precedence Test -->
-  <section id="tooltip-precedence-test">
-    <h2>Tooltip Background Color Precedence Test</h2>
-    <div class="plot-grid">
-      <div id="fill-plot" class="plot-container">
-        <h3>Fill Color Precedence (Purple)</h3>
-        <ScatterPlot
-          series={[{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }]}
-          hover_config={{ threshold_px: 100 }}
-        />
-      </div>
-      <div id="stroke-plot" class="plot-container">
-        <h3>Stroke Color Precedence (Orange)</h3>
-        <ScatterPlot
-          series={[
-            {
-              x: [1],
-              y: [1],
-              point_style: {
-                fill: `transparent`,
-                stroke: `orange`,
-                stroke_width: 2,
-                radius: 8,
-              },
-            },
-          ]}
-          hover_config={{ threshold_px: 100 }}
-        />
-      </div>
-      <div id="line-plot" class="plot-container">
-        <h3>Line Color Precedence (Green)</h3>
-        <ScatterPlot
-          series={[
-            {
-              x: [1],
-              y: [1],
-              point_style: {
-                fill: `transparent`,
-                stroke: `transparent`,
-                radius: 8,
-              },
-              line_style: { stroke: `green`, stroke_width: 3 },
-              markers: `line+points`, // Need line+points for hover to work on the point
-            },
-          ]}
-          hover_config={{ threshold_px: 100 }}
-        />
-      </div>
-    </div>
-  </section>
+<section id="bind-hovered">
+  <h2>bind:hovered Example</h2>
+  <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
+  <ScatterPlot
+    series={[bind_hovered_data]}
+    markers="points"
+    bind:hovered={is_plot_hovered}
+  />
+</section>
 
-  <!-- Axis Color Test -->
-  <section id="axis-color-test" class="demo-section">
-    <h2>Axis Label Coloring Test</h2>
-    <p>
-      Tests axis label coloring behavior with different configurations.
-    </p>
-
-    <div class="plot-grid">
-      <!-- Single axis plot (no coloring) -->
-      <div id="single-axis-plot" class="plot-container">
-        <h3>Single Axis (No Coloring)</h3>
-        <ScatterPlot
-          series={[basic_data]}
-          x_label="X Axis"
-          y_label="Y Axis"
-        />
-      </div>
-
-      <!-- Dual axis plot (with coloring) -->
-      <div id="dual-axis-plot" class="plot-container">
-        <h3>Dual Axis (With Coloring)</h3>
-        <ScatterPlot
-          series={[
-            {
-              ...multi_series_data1,
-              y_axis: `y1`,
-              line_style: { stroke: `#ff5555`, stroke_width: 2 },
-            },
-            {
-              ...multi_series_data2,
-              y_axis: `y2`,
-              line_style: { stroke: `#5555ff`, stroke_width: 2 },
-            },
-          ]}
-          x_label="X Axis"
-          y_label="Y1 Axis"
-          y2_label="Y2 Axis"
-        />
-      </div>
-
-      <!-- Color scale plot (no axis coloring) -->
-      <div id="color-scale-axis-plot" class="plot-container">
-        <h3>Color Scale (No Axis Coloring)</h3>
-        <ScatterPlot
-          series={[
-            {
-              ...multi_series_data1,
-              y_axis: `y1`,
-              color_values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            },
-            {
-              ...multi_series_data2,
-              y_axis: `y2`,
-            },
-          ]}
-          x_label="X Axis"
-          y_label="Y1 Axis"
-          y2_label="Y2 Axis"
-        />
-      </div>
-
-      <!-- Custom axis colors -->
-      <div id="custom-axis-colors-plot" class="plot-container">
-        <h3>Custom Axis Colors</h3>
-        <ScatterPlot
-          series={[
-            {
-              ...multi_series_data1,
-              y_axis: `y1`,
-            },
-            {
-              ...multi_series_data2,
-              y_axis: `y2`,
-            },
-          ]}
-          color_axis_labels={{ y1: `#ff0000`, y2: `#00ff00` }}
-          x_label="X Axis"
-          y_label="Y1 Axis (Custom Red)"
-          y2_label="Y2 Axis (Custom Green)"
-        />
-      </div>
-
-      <!-- Disabled axis coloring -->
-      <div id="disabled-axis-colors-plot" class="plot-container">
-        <h3>Disabled Axis Coloring</h3>
-        <ScatterPlot
-          series={[
-            {
-              ...multi_series_data1,
-              y_axis: `y1`,
-              line_style: { stroke: `#ff5555`, stroke_width: 2 },
-            },
-            {
-              ...multi_series_data2,
-              y_axis: `y2`,
-              line_style: { stroke: `#5555ff`, stroke_width: 2 },
-            },
-          ]}
-          color_axis_labels={false}
-          x_label="X Axis"
-          y_label="Y1 Axis"
-          y2_label="Y2 Axis"
-        />
-      </div>
-    </div>
-  </section>
-
-  <!-- Point Event Test -->
-  <div id="point-event-test" class="test-section">
-    <h2>Point Event Test</h2>
-    <p>Clicking a point should update the text below.</p>
+<section
+  id="label-auto-placement-test"
+  style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
+>
+  <h2>Label Auto Placement Test</h2>
+  <label>
+    <input type="checkbox" bind:checked={enable_auto_placement} />
+    Enable Auto Placement
+  </label>
+  {#key enable_auto_placement}
     <ScatterPlot
-      series={point_event_data}
+      series={auto_placement_test_series}
       x_label="X"
       y_label="Y"
+      x_lim={[0, 100]}
+      y_lim={[0, 100]}
       markers="points"
-      point_events={{
-        onclick: handle_point_click,
-        ondblclick: handle_point_double_click,
-      }}
+      style="height: 450px; width: 100%"
     />
-    <p data-testid="last-clicked-point">
-      Last Clicked Point: {last_clicked_point_id ?? `none`}
-    </p>
-    <p data-testid="last-double-clicked-point">
-      Last Double-Clicked Point: {last_double_clicked_point_id ?? `none`}
-    </p>
+  {/key}
+</section>
+
+<section id="auto-colorbar-placement">
+  <h2>Automatic Color Bar Placement</h2>
+  This example demonstrates how the color bar automatically positions itself based on
+  point density.
+  <div>
+    {#each [
+        [`top_left`, `Top Left`],
+        [`top_right`, `Top Right`],
+        [`bottom_left`, `Bottom Left`],
+        [`bottom_right`, `Bottom Right`],
+      ] as const as
+      [quadrant, label]
+      (label)
+    }
+      <label>
+        {label}: {auto_placement_density[quadrant]}
+        <input
+          type="range"
+          min="0"
+          max="100"
+          bind:value={auto_placement_density[quadrant]}
+          style="width: 100px; margin-left: 0.5em"
+        />
+      </label>
+    {/each}
   </div>
-</div>
+
+  <ScatterPlot
+    series={auto_placement_plot_series}
+    x_label="X Position"
+    y_label="Y Position"
+    x_lim={[0, 100]}
+    y_lim={[0, 100]}
+    markers="points"
+    color_scale={{ scheme: `Turbo` }}
+    color_bar={{ title: `Color Bar Title` }}
+  >
+    {#snippet tooltip({ x, y, color_value })}
+      Point ({x.toFixed(1)}, {y.toFixed(1)})<br />
+      Color value: {color_value?.toFixed(2)}
+    {/snippet}
+  </ScatterPlot>
+</section>
+
+<section id="legend-tests">
+  <h2>Legend Rendering Tests</h2>
+  <h3>Single Series (Default Legend) - No Legend Expected</h3>
+  <ScatterPlot
+    series={legend_single_series}
+    markers="points"
+    id="legend-single-default"
+  />
+  <h3>Single Series (legend=null) - No Legend Expected</h3>
+  <ScatterPlot
+    series={legend_single_series}
+    legend={null}
+    markers="points"
+    id="legend-single-null"
+  />
+  <h3>Single Series (Configured Legend) - Legend Expected</h3>
+  <ScatterPlot
+    series={legend_single_series}
+    legend={{ layout: `horizontal` }}
+    markers="points"
+    id="legend-single-config"
+  />
+  <h3>Multi Series (Default Legend) - Legend Expected</h3>
+  <ScatterPlot
+    series={legend_multi_series}
+    legend={{ draggable: true }}
+    show_controls
+    markers="points"
+    id="legend-multi-default"
+  />
+  <h3>Zero Series - No Legend Expected</h3>
+  <ScatterPlot series={legend_zero_series} id="legend-zero" />
+</section>
+
+<section id="lin-log-transition">
+  <h2>Linear-to-Log Scale Transition Test</h2>
+  <p>
+    Test switching between linear and log scales. Values near zero previously caused NaN
+    errors during the tweening animation.
+  </p>
+  <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em">
+    {#each [`linear`, `log`] as scale_type (scale_type)}
+      <label>
+        <input
+          type="radio"
+          name="lin_log_y_scale_type"
+          value={scale_type}
+          bind:group={lin_log_y_scale_type}
+        />
+        {scale_type} y-axis
+      </label>
+    {/each}
+  </div>
+  <ScatterPlot
+    series={[lin_log_transition_data]}
+    x_label="X Axis (Linear)"
+    y_label="Y Axis"
+    markers="line+points"
+    y_scale_type={lin_log_y_scale_type}
+    y_lim={lin_log_y_scale_type === `log` ? [math.LOG_MIN_EPS, null] : [null, null]}
+  />
+</section>
+
+<!-- Added Point Sizing Example -->
+<h2>Point Sizing Test with Spiral Data</h2>
+<label>
+  Min Size (px):
+  <input
+    type="number"
+    bind:value={size_scale.radius_range[0]}
+    min="0.5"
+    max="10"
+    step="0.5"
+    style="width: 50px"
+    aria-label="Min Size (px)"
+  />
+</label>
+<label>
+  Max Size (px):
+  <input
+    type="number"
+    bind:value={size_scale.radius_range[1]}
+    min="5"
+    max="30"
+    step="1"
+    style="width: 50px"
+    aria-label="Max Size (px)"
+  />
+</label>
+<label>
+  Size Scale:
+  <select bind:value={size_scale.type} aria-label="Size Scale">
+    <option value="linear">Linear</option>
+    <option value="log">Log</option>
+  </select>
+</label>
+
+<ScatterPlot
+  series={[spiral_data]}
+  x_label="X Axis"
+  y_label="Y Axis"
+  x_lim={[-15, 15]}
+  y_lim={[-15, 15]}
+  markers="points"
+  {size_scale}
+  style="height: 500px; width: 100%"
+>
+  {#snippet tooltip({ x, y, metadata })}
+    <strong>Spiral Point</strong><br />
+    Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
+    {#if metadata}
+      Angle: {(metadata.angle as number).toFixed(2)} rad<br />
+      Value (Radius): {(metadata.radius as number).toFixed(2)}
+    {/if}
+  {/snippet}
+</ScatterPlot>
+
+<section>
+  <h2>Line Styling Test</h2>
+  <h3>Solid Lines</h3>
+  <ScatterPlot
+    id="solid-line-plot"
+    series={[solid_line_data_1, solid_line_data_2]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="line"
+  />
+  <h3>Dashed Line</h3>
+  <ScatterPlot
+    id="dashed-line-plot"
+    series={[dashed_line_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="line"
+  />
+  <h3>Custom Dashed Line</h3>
+  <ScatterPlot
+    id="custom-dash-plot"
+    series={[custom_dash_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+    markers="line"
+  />
+</section>
+
+<!-- Added Tooltip Precedence Test -->
+<section id="tooltip-precedence-test">
+  <h2>Tooltip Background Color Precedence Test</h2>
+  <h3>Fill Color Precedence (Purple)</h3>
+  <ScatterPlot
+    id="fill-plot"
+    series={[{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }]}
+    hover_config={{ threshold_px: 100 }}
+  />
+
+  <h3>Stroke Color Precedence (Orange)</h3>
+  <ScatterPlot
+    id="stroke-plot"
+    series={[
+      {
+        x: [1],
+        y: [1],
+        point_style: {
+          fill: `transparent`,
+          stroke: `orange`,
+          stroke_width: 2,
+          radius: 8,
+        },
+      },
+    ]}
+    hover_config={{ threshold_px: 100 }}
+  />
+
+  <h3>Line Color Precedence (Green)</h3>
+  <ScatterPlot
+    id="line-plot"
+    series={[
+      {
+        x: [1],
+        y: [1],
+        point_style: {
+          fill: `transparent`,
+          stroke: `transparent`,
+          radius: 8,
+        },
+        line_style: { stroke: `green`, stroke_width: 3 },
+        markers: `line+points`, // Need line+points for hover to work on the point
+      },
+    ]}
+    hover_config={{ threshold_px: 100 }}
+  />
+</section>
+
+<!-- Axis Color Test -->
+<section id="axis-color-test">
+  <h2>Axis Label Coloring Test</h2>
+  <p>
+    Tests axis label coloring behavior with different configurations.
+  </p>
+
+  <h3>Single Axis (No Coloring)</h3>
+  <ScatterPlot
+    id="single-axis-plot"
+    series={[basic_data]}
+    x_label="X Axis"
+    y_label="Y Axis"
+  />
+
+  <h3>Dual Axis (With Coloring)</h3>
+  <ScatterPlot
+    id="dual-axis-plot"
+    series={[
+      {
+        ...multi_series_data1,
+        y_axis: `y1`,
+        line_style: { stroke: `#ff5555`, stroke_width: 2 },
+      },
+      {
+        ...multi_series_data2,
+        y_axis: `y2`,
+        line_style: { stroke: `#5555ff`, stroke_width: 2 },
+      },
+    ]}
+    x_label="X Axis"
+    y_label="Y1 Axis"
+    y2_label="Y2 Axis"
+  />
+
+  <h3>Color Scale (No Axis Coloring)</h3>
+  <ScatterPlot
+    id="color-scale-axis-plot"
+    series={[
+      {
+        ...multi_series_data1,
+        y_axis: `y1`,
+        color_values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      },
+      { ...multi_series_data2, y_axis: `y2` },
+    ]}
+    x_label="X Axis"
+    y_label="Y1 Axis"
+    y2_label="Y2 Axis"
+  />
+
+  <h3>Custom Axis Colors</h3>
+  <ScatterPlot
+    id="custom-axis-colors-plot"
+    series={[
+      { ...multi_series_data1, y_axis: `y1` },
+      { ...multi_series_data2, y_axis: `y2` },
+    ]}
+    color_axis_labels={{ y1: `#ff0000`, y2: `#00ff00` }}
+    x_label="X Axis"
+    y_label="Y1 Axis (Custom Red)"
+    y2_label="Y2 Axis (Custom Green)"
+  />
+
+  <h3>Disabled Axis Coloring</h3>
+  <ScatterPlot
+    series={[
+      {
+        ...multi_series_data1,
+        y_axis: `y1`,
+        line_style: { stroke: `#ff5555`, stroke_width: 2 },
+      },
+      {
+        ...multi_series_data2,
+        y_axis: `y2`,
+        line_style: { stroke: `#5555ff`, stroke_width: 2 },
+      },
+    ]}
+    color_axis_labels={false}
+    x_label="X Axis"
+    y_label="Y1 Axis"
+    y2_label="Y2 Axis"
+  />
+</section>
+
+<!-- Point Event Test -->
+<h2>Point Event Test</h2>
+<p>Clicking a point should update the text below.</p>
+<ScatterPlot
+  id="point-event-test"
+  series={point_event_data}
+  x_label="X"
+  y_label="Y"
+  markers="points"
+  point_events={{
+    onclick: handle_point_click,
+    ondblclick: handle_point_double_click,
+  }}
+/>
+<p data-testid="last-clicked-point">
+  Last Clicked Point: {last_clicked_point_id ?? `none`}
+</p>
+<p data-testid="last-double-clicked-point">
+  Last Double-Clicked Point: {last_double_clicked_point_id ?? `none`}
+</p>

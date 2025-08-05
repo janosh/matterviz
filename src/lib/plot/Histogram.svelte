@@ -151,14 +151,8 @@
       (y_range !== undefined) !== (ranges.initial.y === auto_ranges.y) ||
       new_y[0] !== ranges.initial.y[0] || new_y[1] !== ranges.initial.y[1]
 
-    if (x_changed) {
-      ranges.initial.x = new_x as [number, number]
-      ranges.current.x = new_x as [number, number]
-    }
-    if (y_changed) {
-      ranges.initial.y = new_y as [number, number]
-      ranges.current.y = new_y as [number, number]
-    }
+    if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
+    if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
   })
 
   // Scales and data
@@ -511,8 +505,8 @@
       bind:show_zero_lines
       bind:x_range
       bind:y_range
-      auto_x_range={auto_ranges.x as [number, number]}
-      auto_y_range={auto_ranges.y as [number, number]}
+      auto_x_range={auto_ranges.x}
+      auto_y_range={auto_ranges.y}
       {series}
       {plot_controls}
     />

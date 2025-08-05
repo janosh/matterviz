@@ -3,7 +3,7 @@
   import { atomic_radii, element_data } from '$lib'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
-  import { DEFAULTS } from '$lib/settings'
+  import { DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import { T } from '@threlte/core'
@@ -17,7 +17,7 @@
   } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet } from 'svelte'
-  import * as bonding_strategies from './bonding'
+  import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
   type ActiveHoveredDist = { color: string; width: number; opacity: number }
@@ -36,7 +36,7 @@
     zoom_speed?: number // zoom speed. set to 0 to disable zooming.
     pan_speed?: number // pan speed. set to 0 to disable panning.
     show_atoms?: boolean
-    show_bonds?: boolean
+    show_bonds?: ShowBonds
     show_site_labels?: boolean
     show_force_vectors?: boolean
     force_vector_scale?: number
@@ -50,7 +50,7 @@
     auto_rotate?: number
     bond_thickness?: number
     bond_color?: string
-    bonding_strategy?: keyof typeof bonding_strategies
+    bonding_strategy?: BondingStrategy
     bonding_options?: Record<string, unknown>
     active_hovered_dist?: ActiveHoveredDist | null // set to null to disable showing distance between hovered and active sites
     fov?: number
@@ -79,7 +79,7 @@
     zoom_speed = DEFAULTS.structure.zoom_speed,
     pan_speed = 1,
     show_atoms = true,
-    show_bonds = false,
+    show_bonds = DEFAULTS.structure.show_bonds,
     show_site_labels = false,
     site_label_size = DEFAULTS.structure.site_label_size,
     site_label_offset = $bindable(DEFAULTS.structure.site_label_offset),
@@ -98,7 +98,7 @@
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
-    bonding_strategy = `nearest_neighbor`,
+    bonding_strategy = DEFAULTS.structure.bonding_strategy,
     bonding_options = {},
     active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
     fov = 10,
@@ -112,6 +112,8 @@
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
+  let active_tooltip = $state<`atom` | `bond` | null>(null)
+  let hovered_bond_data: BondPair | null = $state(null)
 
   interactivity()
   $effect.pre(() => {
@@ -146,9 +148,16 @@
     }
   })
   $effect.pre(() => {
-    if (structure && show_bonds) {
-      bond_pairs = bonding_strategies[bonding_strategy](structure, bonding_options)
-    }
+    if (structure && show_bonds !== `never`) {
+      // Determine if we should show bonds based on the setting and structure type
+      const should_show_bonds = show_bonds === `always` ||
+        (show_bonds === `crystals` && lattice) ||
+        (show_bonds === `molecules` && !lattice)
+
+      if (should_show_bonds) {
+        bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
+      } else bond_pairs = []
+    } else bond_pairs = []
   })
 
   // Update orbit controls when switching between camera projections to ensure proper centering
@@ -353,8 +362,15 @@
         <Instance
           position={atom.position}
           scale={atom.radius}
-          onpointerenter={() => hovered_idx = atom.site_idx}
-          onpointerleave={() => hovered_idx = null}
+          onpointerenter={() => {
+            hovered_idx = atom.site_idx
+            active_tooltip = `atom`
+            hovered_bond_data = null
+          }}
+          onpointerleave={() => {
+            hovered_idx = null
+            active_tooltip = null
+          }}
           onclick={() => active_idx = active_idx === atom.site_idx ? null : atom.site_idx}
         />
       {/each}
@@ -369,8 +385,15 @@
     <T.Group
       position={atom.position}
       scale={atom.radius}
-      onpointerenter={() => hovered_idx = atom.site_idx}
-      onpointerleave={() => hovered_idx = null}
+      onpointerenter={() => {
+        hovered_idx = atom.site_idx
+        active_tooltip = `atom`
+        hovered_bond_data = null
+      }}
+      onpointerleave={() => {
+        hovered_idx = null
+        active_tooltip = null
+      }}
       onclick={() => active_idx = active_idx === atom.site_idx ? null : atom.site_idx}
     >
       <T.Mesh>
@@ -419,10 +442,10 @@
   {/each}
 {/if}
 
-{#if show_bonds}
-  {#each bond_pairs as [from, to, idx_a, idx_b] ([from, to, idx_a, idx_b])}
-    {@const site_a = structure?.sites[idx_a]}
-    {@const site_b = structure?.sites[idx_b]}
+{#if bond_pairs.length > 0}
+  {#each bond_pairs as bond_data (JSON.stringify(bond_data))}
+    {@const site_a = structure?.sites[bond_data.site_idx_1]}
+    {@const site_b = structure?.sites[bond_data.site_idx_2]}
     {@const get_majority_color = (site: typeof site_a) => {
     if (!site?.species || site.species.length === 0) return bond_color
     // Find species with highest occupancy
@@ -434,12 +457,18 @@
     {@const from_color = get_majority_color(site_a)}
     {@const to_color = get_majority_color(site_b)}
     <Bond
-      {from}
-      {to}
+      from={bond_data.pos_1}
+      to={bond_data.pos_2}
       thickness={bond_thickness}
       {from_color}
       {to_color}
       color={bond_color}
+      {bond_data}
+      {bonding_strategy}
+      {active_tooltip}
+      {hovered_bond_data}
+      onbondhover={(data) => hovered_bond_data = data}
+      ontooltipchange={(type) => active_tooltip = type}
     />
   {/each}
 {/if}
@@ -469,7 +498,7 @@
 {/if}
 
 <!-- hovered site tooltip -->
-{#if hovered_site && !camera_is_moving}
+{#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
   <CanvasTooltip position={hovered_site.xyz}>
     <!-- Element symbols with occupancies for disordered sites -->
     <div class="elements">

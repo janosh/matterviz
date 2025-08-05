@@ -89,7 +89,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_sc
   x_grid={show_grid}
   y_grid={show_grid}
   show_controls
-  style="height: 450px"
+  style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
     <strong style="color: {series.find(s => s.label === property)?.line_style?.stroke}">{property}</strong><br>
@@ -132,16 +132,16 @@ Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_sc
   ])
 </script>
 
-X: {#each [`linear`, `log`] as scale}<label><input
-      type="radio"
-      bind:group={x_scale}
-      value={scale}
-    />{scale}</label>{/each}
-Y: {#each [`linear`, `log`] as scale}<label><input
-      type="radio"
-      bind:group={y_scale}
-      value={scale}
-    />{scale}</label>{/each}
+X: {#each [`linear`, `log`] as scale (scale)}
+  <label>
+    <input type="radio" bind:group={x_scale} value={scale} />{scale}
+  </label>
+{/each}
+Y: {#each [`linear`, `log`] as scale (scale)}
+  <label>
+    <input type="radio" bind:group={y_scale} value={scale} />{scale}
+  </label>
+{/each}
 
 <label>Bins: {bins}<input
     type="range"
@@ -162,7 +162,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
   x_format="~s"
   y_format={y_scale === `log` ? `~s` : `d`}
   show_controls
-  style="height: 450px"
+  style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
     <strong>{property}</strong><br>
@@ -253,7 +253,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
   x_format={selected === `discrete` ? `.1f` : `.0f`}
   show_controls
   show_legend={mode === `overlay`}
-  style="height: 450px"
+  style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
     <strong>{property}</strong><br>
@@ -291,7 +291,10 @@ Y: {#each [`linear`, `log`] as scale}<label><input
   )
 </script>
 
-{#each [`mixed`, `complex`] as type}<label><input type="radio" bind:group={data_type} value={type} />{type}</label>{/each}
+{#each [`mixed`, `complex`] as type (type)}
+  <label><input type="radio" bind:group={data_type} value={type} />{type}</label>
+{/each}
+
 <label><input type="checkbox" bind:checked={show_overlay} />Multiple Bin Sizes</label>
 
 <label>Opacity: {opacity}<input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" /></label>
@@ -299,7 +302,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
 {#if !show_overlay}
   <label>Bins: {bin_counts[1]}<input type="range" bind:value={bin_counts[1]} min="5" max="200" step="5" /></label>
 {:else}
-  {#each bin_counts as count, idx}
+  {#each bin_counts as count, idx (count)}
     <label style="color: {colors[idx]}">{count} bins: <input type="range" bind:value={bin_counts[idx]} min="5" max="200" step="5" /></label>
   {/each}
 {/if}
@@ -311,7 +314,7 @@ Y: {#each [`linear`, `log`] as scale}<label><input
   bar_opacity={opacity}
   show_controls
   show_legend={show_overlay}
-  style="height: 450px"
+  style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
     <strong>{property}</strong><br>Range: {value.toFixed(1)}<br>Count: {count}
@@ -460,7 +463,7 @@ points, {bins} bins, {mode} mode
   {bins}
   show_controls
   show_legend={mode === `overlay`}
-  style="height: 450px"
+  style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
     <strong>{property}</strong><br>Value: {value.toFixed(2)}<br>Count: {count}

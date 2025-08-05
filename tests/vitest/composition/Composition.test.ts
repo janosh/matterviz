@@ -142,14 +142,15 @@ describe(`Composition component`, () => {
     open_context_menu()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    const bubble_option = Array.from(document.querySelectorAll(`.context-menu button`))
+    const bubble_option = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
+    )
       .find((opt) => opt.textContent?.includes(`Bubble Chart`))
-    expect(bubble_option).toBeTruthy()
-    ;(bubble_option as HTMLElement).click()
-    await tick()
+    if (!bubble_option) throw new Error(`Bubble Chart option not found`)
+    bubble_option.click()
 
     open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await tick()
     expect(doc_query(`.bubble-chart`)).toBeTruthy()
   })
 

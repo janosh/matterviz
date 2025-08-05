@@ -10,12 +10,8 @@
   )
 </script>
 
-<main style="max-width: 45em; margin: 0 auto;">
-
-# End-to-End Testing
+# Pages for End-to-End Testing
 
 The files in this directory are used for end-to-end testing with Playwright. Run with `pnpm test:e2e`.
 
 <DemoNav {routes} />
-
-</main>

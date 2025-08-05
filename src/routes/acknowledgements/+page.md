@@ -4,8 +4,6 @@
   import pkg from '$root/package.json'
 </script>
 
-<main>
-
 # 🙏 &thinsp; Acknowledgements
 
 - Element properties in `src/lib/element-data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
@@ -37,7 +35,6 @@ Big thanks to the element image providers listed below. Each image caption links
       </li>
     {/each}
   </ul>
-</main>
 
 <style>
   h1 {

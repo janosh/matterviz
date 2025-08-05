@@ -23,62 +23,58 @@ function read_binary_test_file(filename: string): ArrayBuffer {
 }
 
 // Helper to create a basic frame structure
-function create_basic_frame(
+const create_basic_frame = (
   step: number,
   metadata: Record<string, unknown> = {},
-) {
-  return {
-    structure: {
-      sites: [{
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `H1`,
-        properties: {},
-      }],
-      charge: 0,
-    },
-    step,
-    metadata,
-  }
-}
+): TrajectoryFrame => ({
+  structure: {
+    sites: [{
+      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+      abc: [0, 0, 0],
+      xyz: [0, 0, 0],
+      label: `H1`,
+      properties: {},
+    }],
+    charge: 0,
+  },
+  step,
+  metadata,
+})
 
 // Helper to create frame with lattice
-function create_frame_with_lattice(
+const create_frame_with_lattice = (
   step: number,
   lattice_params: Record<string, number>,
   metadata: Record<string, unknown> = {},
-) {
-  return {
-    structure: {
-      sites: [{
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `H1`,
-        properties: {},
-      }],
-      charge: 0,
-      lattice: {
-        matrix: [
-          [lattice_params.a || 1, 0, 0],
-          [0, lattice_params.b || 1, 0],
-          [0, 0, lattice_params.c || 1],
-        ] as Matrix3x3,
-        pbc: [true, true, true] as [boolean, boolean, boolean],
-        a: lattice_params.a || 1,
-        b: lattice_params.b || 1,
-        c: lattice_params.c || 1,
-        alpha: lattice_params.alpha || 90,
-        beta: lattice_params.beta || 90,
-        gamma: lattice_params.gamma || 90,
-        volume: lattice_params.volume || 1,
-      },
+): TrajectoryFrame => ({
+  structure: {
+    sites: [{
+      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+      abc: [0, 0, 0],
+      xyz: [0, 0, 0],
+      label: `H1`,
+      properties: {},
+    }],
+    charge: 0,
+    lattice: {
+      matrix: [
+        [lattice_params.a || 1, 0, 0],
+        [0, lattice_params.b || 1, 0],
+        [0, 0, lattice_params.c || 1],
+      ] as Matrix3x3,
+      pbc: [true, true, true],
+      a: lattice_params.a || 1,
+      b: lattice_params.b || 1,
+      c: lattice_params.c || 1,
+      alpha: lattice_params.alpha || 90,
+      beta: lattice_params.beta || 90,
+      gamma: lattice_params.gamma || 90,
+      volume: lattice_params.volume || 1,
     },
-    step,
-    metadata,
-  }
-}
+  },
+  step,
+  metadata,
+})
 
 describe(`Energy Data Extractor`, () => {
   it.each([
@@ -101,12 +97,7 @@ describe(`Energy Data Extractor`, () => {
         total_energy: -10.5,
       },
     },
-    {
-      name: `handles missing metadata`,
-      step: 0,
-      metadata: {},
-      expected: { Step: 0 },
-    },
+    { name: `handles missing metadata`, step: 0, metadata: {}, expected: { Step: 0 } },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
     const data = energy_data_extractor(frame, {})
@@ -119,13 +110,7 @@ describe(`Force and Stress Data Extractor`, () => {
     {
       name: `calculate force properties from forces array`,
       step: 1,
-      metadata: {
-        forces: [
-          [1.0, 0.0, 0.0],
-          [0.0, 2.0, 0.0],
-          [0.0, 0.0, 3.0],
-        ],
-      },
+      metadata: { forces: [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]] },
       expected: {
         Step: 1,
         force_max: 3.0, // max magnitude
@@ -135,12 +120,7 @@ describe(`Force and Stress Data Extractor`, () => {
     {
       name: `use metadata force values as fallback`,
       step: 2,
-      metadata: {
-        force_max: 5.0,
-        force_norm: 3.5,
-        stress_max: 2.1,
-        pressure: 1.5,
-      },
+      metadata: { force_max: 5.0, force_norm: 3.5, stress_max: 2.1, pressure: 1.5 },
       expected: {
         Step: 2,
         force_max: 5.0,
