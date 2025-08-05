@@ -102,7 +102,7 @@ export function calculate_domain(
   values: number[],
   scale_type: ScaleType = `linear`,
 ): [number, number] {
-  const [min_val, max_val] = extent(values) as [number, number]
+  const [min_val, max_val] = extent(values)
   if (min_val === undefined || max_val === undefined) return [0, 1]
 
   return scale_type === `log`

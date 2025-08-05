@@ -1,7 +1,7 @@
 import StructureInfoPanel from '$lib/structure/StructureInfoPanel.svelte'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
-import { get_test_structure } from '../setup'
+import { get_dummy_structure } from '../setup'
 
 test.each([
   [2, true, `Small structure should show sites by default`],
@@ -13,7 +13,7 @@ test.each([
 ])(
   `%i atoms: %s`,
   (atom_count, should_show_sites, _description) => {
-    const structure = get_test_structure(`H`, atom_count, true)
+    const structure = get_dummy_structure(`H`, atom_count, true)
     const atom_count_thresholds = [50, 500]
     mount(StructureInfoPanel, {
       target: document.body,
@@ -56,7 +56,7 @@ test.each([
 )
 
 test(`structure with > 500 atoms should not create sites section`, () => {
-  const structure = get_test_structure(`H`, 600, true)
+  const structure = get_dummy_structure(`H`, 600, true)
   mount(StructureInfoPanel, {
     target: document.body,
     props: { structure, panel_open: true },

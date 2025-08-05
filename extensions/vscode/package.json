@@ -152,9 +152,15 @@
           "maximum": 1
         },
         "matterviz.structure.show_bonds": {
-          "type": "boolean",
-          "default": false,
-          "description": "Display bonds between atoms"
+          "type": "string",
+          "default": "molecules",
+          "description": "When to display bonds between atoms",
+          "enum": [
+            "never",
+            "always",
+            "crystals",
+            "molecules"
+          ]
         },
         "matterviz.structure.bond_color": {
           "type": "string",

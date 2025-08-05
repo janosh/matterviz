@@ -438,16 +438,10 @@
     // Only update if the initial range fundamentally changes, force type
     if (
       new_init_x[0] !== initial_x_range[0] || new_init_x[1] !== initial_x_range[1]
-    ) {
-      initial_x_range = new_init_x as [number, number]
-      current_x_range = new_init_x as [number, number]
-    }
+    ) [initial_x_range, current_x_range] = [new_init_x, new_init_x]
     if (
       new_init_y[0] !== initial_y_range[0] || new_init_y[1] !== initial_y_range[1]
-    ) {
-      initial_y_range = new_init_y as [number, number]
-      current_y_range = new_init_y as [number, number]
-    }
+    ) [initial_y_range, current_y_range] = [new_init_y, new_init_y]
     if (
       new_init_y2[0] !== initial_y2_range[0] ||
       new_init_y2[1] !== initial_y2_range[1]

@@ -203,7 +203,7 @@ describe(`Structure`, () => {
     wrapper.dispatchEvent(drag_event)
 
     // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)
@@ -235,7 +235,7 @@ describe(`Structure`, () => {
     wrapper.dispatchEvent(drag_event)
 
     // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(event_handled).toBe(true)
     expect(file_content).toBe(`test content`)
@@ -267,7 +267,7 @@ describe(`Structure`, () => {
     wrapper.dispatchEvent(drag_event)
 
     // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)
@@ -289,7 +289,7 @@ describe(`Structure`, () => {
     wrapper.dispatchEvent(drag_event)
 
     // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     // Check that the structure was loaded (should show structure info)
     expect(document.body.textContent).toContain(`Ba Ti O3`)
@@ -528,7 +528,9 @@ test.each([
       .find((label) => label.textContent?.includes(`Projection`))
     expect(projection_label).toBeTruthy()
 
-    const projection_select = doc_query<HTMLSelectElement>(`.controls-panel select`)
+    const projection_select = projection_label?.querySelector(
+      `select`,
+    ) as HTMLSelectElement
     expect(projection_select?.value).toBe(initial_projection)
 
     const options = Array.from(projection_select?.querySelectorAll(`option`) || [])
@@ -575,11 +577,6 @@ test(`critical default values are valid to prevent runtime errors`, () => {
 
   // Projection must be valid enum value
   expect([`perspective`, `orthographic`]).toContain(DEFAULTS.structure.projection)
-
-  // Bonding strategy must be valid or undefined
-  expect([`max_dist`, `nearest_neighbor`, `vdw_radius_based`, undefined]).toContain(
-    DEFAULTS.structure.bonding_strategy,
-  )
 
   // Scale types must be valid
   expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_x_scale_type)
