@@ -7,7 +7,7 @@
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { DemoNav, Footer } from '$site'
-  import { demos } from '$site/state.svelte'
+  import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
   import { CmdPalette, CopyButton, GitHubCorner } from 'svelte-multiselect'
 
@@ -47,21 +47,6 @@
     }
   })
 
-  const routes = Object.keys(import.meta.glob(`./**/+page.{svx,svelte,md}`)).map(
-    (filename) => {
-      const parts = filename.split(`/`).filter((part) => !part.startsWith(`(`)) // remove hidden route segments
-      return { route: `/${parts.slice(1, -1).join(`/`)}`, filename }
-    },
-  )
-
-  if (routes.length < 3) {
-    console.error(`Too few demo routes found: ${routes.length}`)
-  }
-
-  demos.routes = routes
-    .filter(({ filename }) => filename.includes(`/(demos)/`))
-    .map(({ route }) => route)
-
   const actions = routes
     .map(({ route }) => route)
     .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
@@ -79,7 +64,13 @@
 
 <ThemeControl />
 
-<DemoNav />
+<DemoNav
+  routes={[
+    [`/`, `/home`],
+    ...demo_routes.map((route) => [route, route] as [string, string]),
+    [`/optimade-mp-1226325`, `/optimade`],
+  ]}
+/>
 
 <main>
   {@render children?.()}

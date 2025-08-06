@@ -1,7 +1,7 @@
 import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
+import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 
 import { load as yaml_load } from 'js-yaml'
 import { COMPRESSION_EXTENSIONS } from './decompress'
@@ -1205,6 +1205,78 @@ export function is_optimade_json(content: string): boolean {
     return (data !== null && data.type === `structures` && data.id && data.attributes)
   } catch {
     return false
+  }
+}
+
+// Convert OPTIMADE structure to Pymatgen format
+export function optimade_to_pymatgen(optimade_structure: {
+  id: string
+  attributes: {
+    lattice_vectors?: number[][]
+    cartesian_site_positions?: number[][]
+    species_at_sites?: string[]
+    [key: string]: unknown
+  }
+}): PymatgenStructure | null {
+  const attrs = optimade_structure.attributes
+
+  if (
+    !attrs.lattice_vectors || !attrs.cartesian_site_positions || !attrs.species_at_sites
+  ) {
+    console.error(`Missing required OPTIMADE structure data`)
+    return null
+  }
+
+  try {
+    // Convert lattice vectors to matrix format
+    const lattice_matrix: [Vec3, Vec3, Vec3] = [
+      attrs.lattice_vectors[0] as Vec3,
+      attrs.lattice_vectors[1] as Vec3,
+      attrs.lattice_vectors[2] as Vec3,
+    ]
+
+    // Use math utilities to calculate lattice parameters
+    const lattice_params = math.calc_lattice_params(lattice_matrix)
+
+    // Create sites with proper fractional coordinate conversion
+    const sites = attrs.cartesian_site_positions.map((pos, idx) => {
+      const element_symbol = attrs.species_at_sites?.[idx]
+      if (!element_symbol) {
+        throw new Error(`Missing species for site ${idx}`)
+      }
+      const element = element_symbol as ElementSymbol
+
+      // Convert to fractional coordinates using matrix inversion
+      const xyz: Vec3 = [pos[0], pos[1], pos[2]]
+      const inv_matrix = math.matrix_inverse_3x3(lattice_matrix)
+
+      const abc: Vec3 = [
+        inv_matrix[0][0] * xyz[0] + inv_matrix[0][1] * xyz[1] + inv_matrix[0][2] * xyz[2],
+        inv_matrix[1][0] * xyz[0] + inv_matrix[1][1] * xyz[1] + inv_matrix[1][2] * xyz[2],
+        inv_matrix[2][0] * xyz[0] + inv_matrix[2][1] * xyz[1] + inv_matrix[2][2] * xyz[2],
+      ]
+
+      return {
+        species: [{ element, occu: 1, oxidation_state: 0 }],
+        abc,
+        xyz,
+        label: `${element}${idx + 1}`,
+        properties: {},
+      }
+    })
+
+    return {
+      sites,
+      lattice: {
+        matrix: lattice_matrix,
+        ...lattice_params,
+        pbc: [true, true, true],
+      },
+      id: optimade_structure.id,
+    }
+  } catch (err) {
+    console.error(`Error converting OPTIMADE to Pymatgen format:`, err)
+    return null
   }
 }
 
