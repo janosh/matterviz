@@ -46,7 +46,7 @@ export async function open_draggable_panel(page: Page, options: OpenPanelOptions
 export const open_structure_controls_panel = (page: Page) =>
   open_draggable_panel(page, {
     panel_selector: `.controls-panel`,
-    parent_selector: `#structure-wrapper .structure`,
+    parent_selector: `#test-structure`,
     checkbox_text: `Controls Open`,
   })
 

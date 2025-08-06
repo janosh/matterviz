@@ -4,11 +4,12 @@
   interface Props {
     element: ChemicalElement
     style?: string
+    [key: string]: unknown
   }
-  let { element, style = `` }: Props = $props()
+  let { element, ...rest }: Props = $props()
 </script>
 
-<h2 {style}>
+<h2 {...rest}>
   {element.number} - {element.name} <small>{element.category}</small>
 </h2>
 

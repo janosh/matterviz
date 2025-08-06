@@ -853,11 +853,11 @@ describe(`tensor conversion utilities`, () => {
 
     it(`handles edge cases`, () => {
       // Very small determinant
-      const small_det_matrix: math.Matrix3x3 = [[1e-10, 0, 0], [0, 1e-10, 0], [
-        0,
-        0,
-        1e-10,
-      ]]
+      const small_det_matrix: math.Matrix3x3 = [
+        [1e-10, 0, 0],
+        [0, 1e-10, 0],
+        [0, 0, 1e-10],
+      ]
       expect(() => math.matrix_inverse_3x3(small_det_matrix)).toThrow(
         `Matrix is singular and cannot be inverted`,
       )

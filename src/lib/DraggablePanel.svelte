@@ -172,12 +172,7 @@
       const pos = calculate_position()
       initial_position = pos
       if (panel_div) {
-        Object.assign(panel_div.style, {
-          left: pos.left,
-          top: pos.top,
-          right: `auto`,
-          bottom: `auto`,
-        })
+        Object.assign(panel_div.style, { left: pos.left, top: pos.top })
       }
     }
   })
@@ -216,32 +211,30 @@
     {...panel_props}
     class="draggable-panel {show ? `panel-open` : ``} {panel_props.class ?? ``}"
   >
-    <div class="panel-header">
-      <div class="control-buttons">
-        {#if show_control_buttons}
-          <button
-            class="reset-button"
-            onclick={handle_button_click(reset_position)}
-            title="Reset panel position"
-            aria-label="Reset panel position"
-          >
-            <Icon icon="Reset" style="width: 1.25em; height: 1.25em" />
-          </button>
-          <button
-            class="close-button"
-            onclick={handle_button_click(close_panel)}
-            title="Close panel"
-            aria-label="Close panel"
-          >
-            <Icon icon="Cross" style="width: 1.25em; height: 1.25em" />
-          </button>
-        {/if}
-        <Icon
-          icon="DragIndicator"
-          class="drag-handle"
-          style="width: 1.25em; height: 1.25em"
-        />
-      </div>
+    <div class="control-buttons">
+      {#if show_control_buttons}
+        <button
+          class="reset-button"
+          onclick={handle_button_click(reset_position)}
+          title="Reset panel position"
+          aria-label="Reset panel position"
+        >
+          <Icon icon="Reset" style="width: 1.25em; height: 1.25em" />
+        </button>
+        <button
+          class="close-button"
+          onclick={handle_button_click(close_panel)}
+          title="Close panel"
+          aria-label="Close panel"
+        >
+          <Icon icon="Cross" style="width: 1.25em; height: 1.25em" />
+        </button>
+      {/if}
+      <Icon
+        icon="DragIndicator"
+        class="drag-handle"
+        style="width: 1.25em; height: 1.25em"
+      />
     </div>
 
     {@render children()}
@@ -369,24 +362,18 @@
   .draggable-panel :global(label:has(input[type='range'])) {
     flex: 1;
   }
-  /* Panel header styling */
-  .draggable-panel .panel-header {
+  .draggable-panel .control-buttons {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    position: absolute;
-    top: 5px;
-    left: 5px;
-    right: 5px;
-    height: 1.3em;
-    z-index: 10;
-    pointer-events: none; /* Allow events to pass through to children */
-  }
-  .draggable-panel .control-buttons {
-    display: flex;
+    position: sticky;
+    top: 0;
+    right: 0;
+    height: 0;
     gap: 5px;
-    align-items: center;
-    pointer-events: auto; /* Re-enable pointer events for buttons */
+    padding: 12pt 3pt;
+    box-sizing: border-box;
+    justify-self: end;
   }
   .draggable-panel :global(.drag-handle) {
     width: 1.3em;

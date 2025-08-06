@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test.describe(`Lattice Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await expect(page.locator(`#structure-wrapper canvas`)).toBeVisible()
+    await expect(page.locator(`#test-structure canvas`)).toBeVisible()
 
     // Use test page checkbox to open controls
     await page
@@ -15,13 +15,13 @@ test.describe(`Lattice Component Tests`, () => {
   })
 
   test(`renders lattice with default properties`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const screenshot = await canvas.screenshot()
     expect(screenshot.length).toBeGreaterThan(1000)
   })
 
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const checkbox = page.locator(
       `.draggable-panel label:has-text("lattice vectors") input[type="checkbox"]`,
     )
@@ -35,7 +35,7 @@ test.describe(`Lattice Component Tests`, () => {
   })
 
   test(`color controls work`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     // Target Edge color input by its label text
     const edge_color = page.locator(
       `.draggable-panel label:has-text("Edge color") input[type="color"]`,
@@ -56,7 +56,7 @@ test.describe(`Lattice Component Tests`, () => {
   })
 
   test(`opacity controls work`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const edge_opacity = page.locator(
       `.draggable-panel label:has-text("Edge color") + label input[type="range"]`,
     )
