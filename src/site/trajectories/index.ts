@@ -1,8 +1,12 @@
+import type { TrajectoryFormat } from '$lib/trajectory'
+
+// Auto-updating object storing all trajectory files
 export const trajectory_files = import.meta.glob(`$site/trajectories/*`, {
   query: `?url`,
 })
 
-export const get_trajectory_type = (filename: string): string => {
+// Determines the trajectory file type based on filename
+export function get_trajectory_type(filename: string): TrajectoryFormat {
   if (filename.match(/\.(h5|hdf5)$/i)) return `hdf5`
   if (filename.match(/\.json/i)) return `json`
   if (filename.match(/\.(xyz|extxyz)/i)) return `xyz`

@@ -172,7 +172,11 @@
       const pos = calculate_position()
       initial_position = pos
       if (panel_div) {
-        Object.assign(panel_div.style, { left: pos.left, top: pos.top })
+        Object.assign(panel_div.style, {
+          left: pos.left,
+          top: pos.top,
+          right: `auto`,
+        })
       }
     }
   })

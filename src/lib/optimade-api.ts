@@ -48,7 +48,8 @@ export async function fetch_optimade_providers(): Promise<OptimadeProvider[]> {
     const response = await fetch(`/api/optimade?endpoint=providers`)
     const data = await response.json()
     return data.data || []
-  } catch {
+  } catch (error) {
+    console.error(`Failed to fetch OPTIMADE providers:`, error)
     return []
   }
 }
@@ -60,8 +61,6 @@ export async function detect_provider_from_slug(slug: string): Promise<string> {
   // Get live provider list to check if prefix matches any provider
   const providers = await fetch_optimade_providers()
   const found_provider = providers.find((p) => p.id === prefix)
-
-  // Default to mp if no match found
   return found_provider?.id ?? ``
 }
 

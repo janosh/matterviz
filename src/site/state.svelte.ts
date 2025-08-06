@@ -6,9 +6,7 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svel
     },
   )
 
-if (routes.length < 3) {
-  console.error(`Too few demo routes found: ${routes.length}`)
-}
+if (routes.length === 0) console.error(`No routes found: ${routes.length}`)
 
 export const demo_routes = $state<string[]>(
   routes

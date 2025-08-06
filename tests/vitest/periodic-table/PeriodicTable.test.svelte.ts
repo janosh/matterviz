@@ -392,7 +392,7 @@ describe(`PeriodicTable`, () => {
       expect(document.querySelector(`.segment.horizontal-top`)).toBeTruthy()
 
       // Tooltip should display array values
-      const multi_value_tile = document.querySelectorAll(`.element-tile`)[1]
+      const multi_value_tile = document.querySelectorAll<HTMLElement>(`.element-tile`)[1]
       multi_value_tile.dispatchEvent(mouseenter)
       await tick()
 

@@ -79,10 +79,10 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`button.provider-card:has-text("cod")`).first())
       .toHaveClass(/selected/)
 
-    // Switch back to MP provider (use nth to get the exact MP provider)
-    await page.locator(`button.provider-card:has-text("mp")`).nth(1).click()
+    // Switch back to MP provider
+    await page.locator(`button.provider-card:has-text("mp")`).first().click()
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
-    await expect(page.locator(`button.provider-card:has-text("mp")`).nth(1)).toHaveClass(
+    await expect(page.locator(`button.provider-card:has-text("mp")`).first()).toHaveClass(
       /selected/,
     )
   })
@@ -93,11 +93,16 @@ test.describe(`OPTIMADE route`, () => {
     // Wait for suggestions to load
     await expect(page.locator(`text=Suggested Structures from`)).toBeVisible()
 
-    // Click on the first suggestion card
-    await page.locator(`.suggestion-card`).first().click()
+    // Capture the structure ID from first suggestion card
+    const first_suggestion_card = page.locator(`.suggestion-card`).first()
+    const structure_id = await first_suggestion_card.locator(`.suggestion-id`)
+      .textContent()
 
-    // Verify that the input is filled with the structure ID
-    await expect(page.locator(`input.structure-input`)).not.toHaveValue(``)
+    // Click on first suggestion card
+    await first_suggestion_card.click()
+
+    // Verify that the input is filled with the correct structure ID
+    await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id ?? ``)
 
     // Verify loading state appears
     await expect(page.locator(`text=Loading structure data from`)).toBeVisible()

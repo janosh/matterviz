@@ -122,8 +122,9 @@ export function make_supercell(
   for (const original_site of structure.sites) {
     for (const lattice_point of lattice_points) {
       // Convert lattice point to cartesian coordinates using original lattice
+      // Use transpose of lattice matrix for proper coordinate conversion
       const translation_cart = math.mat3x3_vec3_multiply(
-        structure.lattice.matrix,
+        math.transpose_3x3_matrix(structure.lattice.matrix),
         lattice_point,
       )
 
@@ -131,8 +132,9 @@ export function make_supercell(
       const new_xyz = math.add(original_site.xyz, translation_cart) as Vec3
 
       // Calculate new fractional coordinates in the supercell lattice
+      // Use transpose convention for coordinate conversion
       let new_abc = math.mat3x3_vec3_multiply(
-        math.matrix_inverse_3x3(new_lattice_matrix),
+        math.matrix_inverse_3x3(math.transpose_3x3_matrix(new_lattice_matrix)),
         new_xyz,
       ) as Vec3
 
@@ -142,14 +144,23 @@ export function make_supercell(
           // Use modulo to wrap coordinates to [0, 1)
           let wrapped = coord % 1
           if (wrapped < 0) wrapped += 1
+          // Handle floating point precision: if very close to 1, set to 0
+          if (Math.abs(wrapped - 1) < 1e-10) wrapped = 0
           return wrapped
         }) as Vec3
       }
 
+      // Recalculate cartesian coordinates from wrapped fractional coordinates
+      // to ensure consistency
+      const final_xyz = math.mat3x3_vec3_multiply(
+        math.transpose_3x3_matrix(new_lattice_matrix),
+        new_abc,
+      ) as Vec3
+
       // Create new site
       const new_site: Site = {
         ...original_site,
-        xyz: new_xyz,
+        xyz: final_xyz,
         abc: new_abc,
         // Update label to indicate supercell position if it has numeric suffix
         label: lattice_points.length > 1

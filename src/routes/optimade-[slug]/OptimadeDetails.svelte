@@ -22,7 +22,7 @@
   let pretty_formula = $state<string>(``)
   let available_providers = $state<OptimadeProvider[]>([])
   let selected_provider = $state<string>(`mp`)
-  let input_value = $state(`mp-1226325`)
+  let input_value = $state(``)
   let suggested_structures = $state<OptimadeStructure[]>([])
   let loading_suggestions = $state(false)
 
@@ -30,9 +30,11 @@
   $effect(() => {
     if (page.params.slug) {
       input_value = page.params.slug
-      detect_provider_from_slug(page.params.slug).then((provider) => {
-        selected_provider = provider
-      })
+      detect_provider_from_slug(page.params.slug)
+        .then((provider) => {
+          if (provider) selected_provider = provider
+        })
+        .catch((err) => console.error(`Failed to detect provider:`, err))
     }
   })
 
@@ -98,13 +100,9 @@
     }
   }
 
-  async function handle_fetch() {
-    goto(`/optimade-${structure_id}`)
-    await load_structure_data()
-  }
-
-  async function load_structure_from_suggestion(structure_id: string) {
-    input_value = structure_id
+  async function navigate_to_structure(id: string) {
+    input_value = id
+    goto(`/optimade-${id}`)
     await load_structure_data()
   }
 </script>
@@ -117,11 +115,15 @@
     placeholder="Enter OPTIMADE structure ID"
     bind:value={input_value}
     onkeydown={async (event) => {
-      if (event.key === `Enter`) await handle_fetch()
+      if (event.key === `Enter`) await navigate_to_structure(structure_id)
     }}
   />
 
-  <button class="fetch-button" onclick={handle_fetch} disabled={loading}>
+  <button
+    class="fetch-button"
+    onclick={() => navigate_to_structure(structure_id)}
+    disabled={loading}
+  >
     {loading ? `Loading...` : `Fetch structure`}
   </button>
 </div>
@@ -136,7 +138,6 @@
         selected_provider = id
         input_value = ``
         load_suggested_structures()
-        if (structure_id) load_structure_data()
       }}
     >
       <a href={attributes.base_url} title="API Endpoint" class="provider-link">
@@ -159,9 +160,7 @@
         {#each suggested_structures as structure (structure.id)}
           <button
             class="suggestion-card"
-            onclick={() => {
-              load_structure_from_suggestion(structure.id)
-            }}
+            onclick={() => navigate_to_structure(structure.id)}
           >
             <div style="flex: 1">
               <div class="suggestion-id">{structure.id}</div>
@@ -171,9 +170,6 @@
               structure.attributes.chemical_formula_descriptive,
             )}
                 </div>
-              {/if}
-              {#if structure.attributes.n_sites}
-                <div class="suggestion-sites">{structure.attributes.n_sites} sites</div>
               {/if}
             </div>
             {#if structure.attributes.chemical_formula_descriptive}
@@ -208,7 +204,7 @@
     {/if}
   </h2>
 
-  <Structure {structure} class="full-bleed" style="height: auto" />
+  <Structure {structure} class="bleed-1400" style="height: auto" />
 {/if}
 
 <style>
@@ -296,9 +292,5 @@
   .suggestion-formula {
     color: var(--text-color);
     font-size: 0.9em;
-  }
-  .suggestion-sites {
-    color: var(--text-color-muted);
-    font-size: 0.8em;
   }
 </style>

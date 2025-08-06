@@ -2,7 +2,7 @@
   import { page } from '$app/state'
 
   interface Props {
-    routes: [string, string][]
+    routes: (string | [string, string])[]
   }
   let { routes }: Props = $props()
 
@@ -14,7 +14,8 @@
 </script>
 
 <nav>
-  {#each routes as [href, label] (href)}
+  {#each routes as route (route)}
+    {@const [href, label] = Array.isArray(route) ? route : [route, route]}
     <a {href} aria-current={is_current(href)}>{label}</a>
   {/each}
 </nav>

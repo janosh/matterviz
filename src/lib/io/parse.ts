@@ -1,6 +1,7 @@
 import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { OptimadeStructure } from '$lib/optimade-api'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 
 import { load as yaml_load } from 'js-yaml'
@@ -1084,35 +1085,13 @@ export function parse_any_structure(
   }
 }
 
-// OPTIMADE JSON structure interface
-export interface OptimadeStructure {
-  data: {
-    attributes: {
-      cartesian_site_positions: number[][]
-      species_at_sites: string[]
-      lattice_vectors?: number[][]
-      chemical_formula_descriptive?: string
-      chemical_formula_reduced?: string
-      chemical_formula_hill?: string
-      nsites?: number
-      elements?: string[]
-      nelements?: number
-      dimension_types?: number[]
-      [key: string]: unknown
-    }
-    id: string
-    type: string
-  }
-  links?: unknown
-}
-
 // Parse OPTIMADE JSON format
 export function parse_optimade_json(content: string): ParsedStructure | null {
   try {
     const response = JSON.parse(content) as OptimadeStructure
 
-    // Use the first structure in the data array
-    const structure = response.data
+    // Handle both single structure and array of structures
+    const structure = Array.isArray(response) ? response[0] : response
     const attrs = structure.attributes
 
     if (!attrs.cartesian_site_positions || !attrs.species_at_sites) {
@@ -1195,29 +1174,25 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
   }
 }
 
-// Check if JSON content is OPTIMADE format just by looking for
-// data -> attributes key, data -> ID and data -> type.
+// Check if JSON content is OPTIMADE format by looking for structure attributes
 export function is_optimade_json(content: string): boolean {
   try {
     const response = JSON.parse(content)
-    let data = response.data
-    if (Array.isArray(data)) data = data[0]
-    return (data !== null && data.type === `structures` && data.id && data.attributes)
+    // Handle both single structure and array of structures
+    const structure = Array.isArray(response) ? response[0] : response
+    return Boolean(
+      structure !== null && structure.type === `structures` && structure.id &&
+        structure.attributes,
+    )
   } catch {
     return false
   }
 }
 
 // Convert OPTIMADE structure to Pymatgen format
-export function optimade_to_pymatgen(optimade_structure: {
-  id: string
-  attributes: {
-    lattice_vectors?: number[][]
-    cartesian_site_positions?: number[][]
-    species_at_sites?: string[]
-    [key: string]: unknown
-  }
-}): PymatgenStructure | null {
+export function optimade_to_pymatgen(
+  optimade_structure: OptimadeStructure,
+): PymatgenStructure | null {
   const attrs = optimade_structure.attributes
 
   if (
@@ -1244,17 +1219,19 @@ export function optimade_to_pymatgen(optimade_structure: {
       if (!element_symbol) {
         throw new Error(`Missing species for site ${idx}`)
       }
-      const element = element_symbol as ElementSymbol
+      const element = validate_element_symbol(element_symbol, idx)
 
       // Convert to fractional coordinates using matrix inversion
       const xyz: Vec3 = [pos[0], pos[1], pos[2]]
-      const inv_matrix = math.matrix_inverse_3x3(lattice_matrix)
-
-      const abc: Vec3 = [
-        inv_matrix[0][0] * xyz[0] + inv_matrix[0][1] * xyz[1] + inv_matrix[0][2] * xyz[2],
-        inv_matrix[1][0] * xyz[0] + inv_matrix[1][1] * xyz[1] + inv_matrix[1][2] * xyz[2],
-        inv_matrix[2][0] * xyz[0] + inv_matrix[2][1] * xyz[1] + inv_matrix[2][2] * xyz[2],
-      ]
+      let abc: Vec3
+      try {
+        const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
+        const inv_matrix = math.matrix_inverse_3x3(lattice_transposed)
+        abc = math.mat3x3_vec3_multiply(inv_matrix, xyz)
+      } catch (err) {
+        console.warn(`Failed to convert to fractional coordinates for site ${idx}:`, err)
+        abc = [0, 0, 0] // Fallback to origin
+      }
 
       return {
         species: [{ element, occu: 1, oxidation_state: 0 }],

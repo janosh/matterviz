@@ -165,6 +165,13 @@ tbody tr:nth-child(odd) {
 
 .full-bleed {
   --margin: 5vw;
-  width: calc(100vw - 2 * var(--margin));
+  width: calc(100vw - 2 * var(--margin)) !important;
   margin-left: calc(-50vw + 50% + var(--margin));
+  max-width: none !important;
+}
+.bleed-1400 {
+  --margin: 5vw;
+  width: min(1400px, calc(100vw - 2 * var(--margin))) !important;
+  margin-left: calc(-50vw + 50% + max(var(--margin), (100vw - 1400px) / 2));
+  max-width: none !important;
 }
