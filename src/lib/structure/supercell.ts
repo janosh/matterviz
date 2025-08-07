@@ -144,8 +144,9 @@ export function make_supercell(
           // Use modulo to wrap coordinates to [0, 1)
           let wrapped = coord % 1
           if (wrapped < 0) wrapped += 1
-          // Handle floating point precision: if very close to 1, set to 0
-          if (Math.abs(wrapped - 1) < 1e-10) wrapped = 0
+          // Handle floating point precision: if wrapped value is very close to 1 or exactly 1 due to
+          // numerical errors, set to 0
+          if (wrapped >= 1 - 1e-10) wrapped = 0
           return wrapped
         }) as Vec3
       }

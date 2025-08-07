@@ -5,42 +5,53 @@ const headers = {
   'User-Agent': `MatterViz/1.0`,
 }
 
+// TypeScript interfaces for OPTIMADE API responses
+interface OptimadeLink {
+  id: string
+  type: string
+  attributes?: {
+    base_url?: string
+    link_type?: string
+    [key: string]: unknown
+  }
+}
+
+interface OptimadeResponse {
+  data?: OptimadeLink[]
+}
+
+interface ResolvedProvider extends OptimadeLink {
+  attributes: {
+    base_url: string
+    [key: string]: unknown
+  }
+}
+
 // Get providers with resolved endpoints
-async function get_resolved_providers() {
+async function get_resolved_providers(): Promise<ResolvedProvider[]> {
   try {
     const response = await fetch(`https://providers.optimade.org/v1/links`, { headers })
-    const registry_data = await response.json()
+    const registry_data: OptimadeResponse = await response.json()
 
     // Resolve index URLs to actual endpoints
     const resolved_providers = await Promise.all(
       (registry_data.data || [])
-        .filter((p: Record<string, unknown>) =>
-          (p.attributes as Record<string, unknown>)?.base_url?.toString().startsWith(
-            `http`,
-          )
-        )
-        .map(async (provider: Record<string, unknown>) => {
-          let base_url = (provider.attributes as Record<string, unknown>)
-            .base_url as string
+        .filter((p) => p.attributes?.base_url?.toString().startsWith(`http`))
+        .map(async (provider): Promise<ResolvedProvider> => {
+          let base_url = provider.attributes?.base_url
 
           // Try to resolve index URLs
-          if (base_url.includes(`providers.optimade.org/index-metadbs/`)) {
+          if (base_url?.includes(`providers.optimade.org/index-metadbs/`)) {
             try {
               const index_response = await fetch(`${base_url}/v1/links`, { headers })
               if (index_response.ok) {
-                const index_data = await index_response.json()
-                const child_link = (index_data.data as Record<string, unknown>[])?.find((
-                  link: Record<string, unknown>,
-                ) =>
-                  (link.attributes as Record<string, unknown>)?.link_type === `child` &&
-                  (link.attributes as Record<string, unknown>)?.base_url
+                const index_data: OptimadeResponse = await index_response.json()
+                const child_link = index_data.data?.find(
+                  (link: OptimadeLink) =>
+                    link.attributes?.link_type === `child` && link.attributes?.base_url,
                 )
-                if (
-                  child_link &&
-                  (child_link.attributes as Record<string, unknown>)?.base_url
-                ) {
-                  base_url = (child_link.attributes as Record<string, unknown>)
-                    .base_url as string
+                if (child_link?.attributes?.base_url) {
+                  base_url = child_link.attributes.base_url
                   base_url = base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
                 }
               }
@@ -49,10 +60,8 @@ async function get_resolved_providers() {
             }
           }
 
-          return {
-            ...provider,
-            attributes: { ...(provider.attributes as Record<string, unknown>), base_url },
-          }
+          const attributes = { ...provider.attributes ?? {}, base_url }
+          return { ...provider, attributes } as ResolvedProvider
         }),
     )
 
@@ -64,7 +73,7 @@ async function get_resolved_providers() {
 
 export const GET = async ({ url }: { url: URL }) => {
   const structure_id = url.searchParams.get(`structure_id`)
-  const provider = url.searchParams.get(`provider`) || `mp`
+  const provider = url.searchParams.get(`provider`)
   const endpoint = url.searchParams.get(`endpoint`) || `structure`
   const limit = url.searchParams.get(`limit`) || `12`
 
@@ -82,9 +91,7 @@ export const GET = async ({ url }: { url: URL }) => {
 
     try {
       const providers = await get_resolved_providers()
-      const provider_info = providers.find((p: Record<string, unknown>) =>
-        p.id === provider
-      )
+      const provider_info = providers.find(({ id }) => id === provider)
 
       if (!provider_info?.attributes?.base_url) {
         return json({ error: `Provider ${provider} not found` }, { status: 400 })
@@ -114,9 +121,7 @@ export const GET = async ({ url }: { url: URL }) => {
   try {
     // Find the provider and use its resolved endpoint
     const providers = await get_resolved_providers()
-    const provider_info = providers.find((p: Record<string, unknown>) =>
-      p.id === provider
-    )
+    const provider_info = providers.find(({ id }) => id === provider)
 
     if (!provider_info?.attributes?.base_url) {
       return json({ error: `Provider ${provider} not found` }, { status: 400 })
