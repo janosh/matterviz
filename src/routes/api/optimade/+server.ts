@@ -110,6 +110,7 @@ export const GET = async ({ url }: { url: URL }) => {
       const data = await response.json()
       return json(data)
     } catch (error) {
+      console.error(`Failed to fetch suggestions:`, error)
       return json({ error: `Failed to fetch suggestions: ${error}` }, { status: 500 })
     }
   }
@@ -137,7 +138,8 @@ export const GET = async ({ url }: { url: URL }) => {
     }
 
     return json(await response.json())
-  } catch {
-    return json({ error: `Failed to fetch structure` }, { status: 500 })
+  } catch (error) {
+    console.error(`Failed to fetch structure:`, error)
+    return json({ error: `Failed to fetch structure: ${error}` }, { status: 500 })
   }
 }

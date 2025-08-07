@@ -10,15 +10,16 @@ import {
   parse_structure_file,
   parse_xyz,
 } from '$lib/io/parse'
+import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
-import tio2_cif from '$site/structures/TiO2.cif?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
+import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
+import tio2_cif from '$site/structures/TiO2.cif?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
@@ -94,7 +95,7 @@ describe(`POSCAR Parser`, () => {
       name: `malformed coordinates`,
       content:
         `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.1-0.2-0.3`,
-      expected: { abc: [0.1, -0.2, -0.3] },
+      expected: { abc: [0.1, 0.8, 0.7] }, // Negative coordinates are wrapped: -0.2 -> 0.8, -0.3 -> 0.7
     },
     {
       name: `element symbol cleaning`,
@@ -112,6 +113,62 @@ describe(`POSCAR Parser`, () => {
     if (expected.elements) {
       expect(result.sites[0].species[0].element).toBe(expected.elements[0])
       expect(result.sites[1].species[0].element).toBe(expected.elements[1])
+    }
+  })
+
+  it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
+    const result = parse_poscar(aviary_CuF3K_triolith)
+    if (!result) throw `Failed to parse aviary-CuF3K-triolith.poscar`
+
+    expect(result.sites).toHaveLength(10) // 2 Zr + 2 Zn + 6 N atoms
+
+    // Check that all fractional coordinates are within [0, 1)
+    for (const site of result.sites) {
+      for (let coord_idx = 0; coord_idx < 3; coord_idx++) {
+        expect(site.abc[coord_idx]).toBeGreaterThanOrEqual(0)
+        expect(site.abc[coord_idx]).toBeLessThan(1)
+      }
+    }
+
+    // Verify elements are correct
+    expect(result.sites[0].species[0].element).toBe(`Zr`)
+    expect(result.sites[2].species[0].element).toBe(`Zn`)
+    expect(result.sites[4].species[0].element).toBe(`N`)
+
+    // Check specific problematic coordinate that should be wrapped
+    // The original coordinate 1.00000000 should be wrapped to 0.00000000
+    const problematic_site = result.sites[4] // First N atom with z=1.0
+    expect(problematic_site.abc[2]).toBe(0.0)
+
+    // Verify coordinate transformation consistency
+    if (result.lattice) {
+      for (const site of result.sites) {
+        // Reconstruct Cartesian coordinates from fractional coordinates
+        const reconstructed_xyz = [
+          site.abc[0] * result.lattice.matrix[0][0] +
+          site.abc[1] * result.lattice.matrix[1][0] +
+          site.abc[2] * result.lattice.matrix[2][0],
+          site.abc[0] * result.lattice.matrix[0][1] +
+          site.abc[1] * result.lattice.matrix[1][1] +
+          site.abc[2] * result.lattice.matrix[2][1],
+          site.abc[0] * result.lattice.matrix[0][2] +
+          site.abc[1] * result.lattice.matrix[1][2] +
+          site.abc[2] * result.lattice.matrix[2][2],
+        ]
+
+        // Verify coordinate consistency and bounds
+        expect(reconstructed_xyz).toEqual(expect.arrayContaining([
+          expect.closeTo(site.xyz[0], 10),
+          expect.closeTo(site.xyz[1], 10),
+          expect.closeTo(site.xyz[2], 10),
+        ]))
+        expect(site.xyz[0]).toBeGreaterThanOrEqual(-0.1)
+        expect(site.xyz[0]).toBeLessThan(result.lattice.a + 0.1)
+        expect(site.xyz[1]).toBeGreaterThanOrEqual(-0.1)
+        expect(site.xyz[1]).toBeLessThan(result.lattice.b + 0.1)
+        expect(site.xyz[2]).toBeGreaterThanOrEqual(-0.1)
+        expect(site.xyz[2]).toBeLessThan(result.lattice.c + 0.1)
+      }
     }
   })
 

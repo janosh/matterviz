@@ -297,33 +297,43 @@ export function parse_poscar(content: string): ParsedStructure | null {
               ]
             }
           }
-
           let xyz: Vec3
           let abc: Vec3
 
           if (is_direct) {
-            // Store fractional coordinates
-            abc = [coords[0], coords[1], coords[2]]
+            // Store fractional coordinates, wrapping to [0, 1) range
+            abc = [
+              coords[0] - Math.floor(coords[0]),
+              coords[1] - Math.floor(coords[1]),
+              coords[2] - Math.floor(coords[2]),
+            ]
             // Convert fractional to Cartesian coordinates
-            xyz = math.mat3x3_vec3_multiply(scaled_lattice, coords as Vec3)
-          } else {
-            // Already Cartesian, scale if needed
+            const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
+            xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
+          } else { // Already Cartesian, scale if needed
             xyz = math.scale([coords[0], coords[1], coords[2]], scale_factor)
             // Calculate fractional coordinates using proper matrix inversion
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
+            let raw_abc: Vec3
             try {
               const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
               const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-              abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
+              raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
             } catch {
               // Fallback to simplified method if matrix is singular
-              abc = [
+              raw_abc = [
                 xyz[0] / scaled_lattice[0][0],
                 xyz[1] / scaled_lattice[1][1],
                 xyz[2] / scaled_lattice[2][2],
-              ] as Vec3
+              ]
             }
+            // Wrap fractional coordinates to [0, 1) range
+            abc = [
+              raw_abc[0] - Math.floor(raw_abc[0]),
+              raw_abc[1] - Math.floor(raw_abc[1]),
+              raw_abc[2] - Math.floor(raw_abc[2]),
+            ]
           }
 
           const site: Site = {
@@ -343,13 +353,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
       }
 
       const lattice_params = math.calc_lattice_params(scaled_lattice)
-
       const structure: ParsedStructure = {
         sites,
-        lattice: {
-          matrix: scaled_lattice,
-          ...lattice_params,
-        },
+        lattice: { matrix: scaled_lattice, ...lattice_params },
       }
 
       return structure

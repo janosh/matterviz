@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { get_electro_neg_formula, Structure, Trajectory } from '$lib'
+  import { Structure, Trajectory } from '$lib'
+  import type { StructureHandlerData } from '$lib/structure'
   import type { TrajHandlerData } from '$lib/trajectory'
   import { CompositionDemo, FilePicker, PeriodicTableDemo } from '$site'
   import { molecule_files } from '$site/molecules'
@@ -8,6 +9,7 @@
 
   // Track the currently loaded trajectory file
   let active_trajectory_file = $state(`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`)
+  let structure_filenames = $state([`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`])
 </script>
 
 <h1 style="font-size: clamp(20pt, 5.5vw, 42pt)">MatterViz</h1>
@@ -21,15 +23,18 @@
 <h2><a href="/structure">Structure Viewer</a></h2>
 
 <div class="full-bleed" style="display: flex; flex-wrap: wrap; gap: 2em">
-  {#each [[`Li4Fe3Mn1(PO4)4.cif`], [`mp-756175.json`, `Zr2Bi2O7`]] as
-    [file_url, formula]
-    (file_url)
-  }
+  {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_url, idx (file_url)}
     <div style="flex: 1">
-      <h3 style="margin: 0 0 1ex; text-align: center">
-        {@html get_electro_neg_formula(formula ?? file_url.split(`.`)[0], false, ``)}
+      <h3 style="margin: 0 0 1ex; text-align: center; font-family: monospace">
+        {structure_filenames[idx]}
       </h3>
-      <Structure data_url="/structures/{file_url}" style="flex: 1" />
+      <Structure
+        data_url="/structures/{file_url}"
+        style="flex: 1"
+        on_file_load={(data: StructureHandlerData) => {
+          if (data.filename) structure_filenames[idx] = data.filename
+        }}
+      />
     </div>
   {/each}
 </div>
