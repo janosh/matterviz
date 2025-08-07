@@ -1,8 +1,14 @@
 <script lang="ts">
-  import { get_electro_neg_formula, Structure } from '$lib'
+  import { Structure, Trajectory } from '$lib'
+  import type { TrajHandlerData } from '$lib/trajectory'
   import { CompositionDemo, FilePicker, PeriodicTableDemo } from '$site'
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
+  import { get_trajectory_type, trajectory_files } from '$site/trajectories'
+
+  // Track the currently loaded trajectory file
+  let active_trajectory_file = $state(`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`)
+  let structure_filenames = $state([`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`])
 </script>
 
 <h1 style="font-size: clamp(20pt, 5.5vw, 42pt)">MatterViz</h1>
@@ -13,18 +19,21 @@
   heatmaps, scatter plots. Check out some of the examples in the navigation bar above.
 </p>
 
-<h2>Structure Viewers</h2>
+<h2><a href="/structure">Structure Viewer</a></h2>
 
 <div class="full-bleed" style="display: flex; flex-wrap: wrap; gap: 2em">
-  {#each [[`Li4Fe3Mn1(PO4)4.cif`], [`mp-756175.json`, `Zr2Bi2O7`]] as
-    [file_url, formula]
-    (file_url)
-  }
+  {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_name, idx (file_name)}
     <div style="flex: 1">
-      <h3 style="margin: 0 0 1ex; text-align: center">
-        {@html get_electro_neg_formula(formula ?? file_url.split(`.`)[0], false, ``)}
+      <h3 style="margin: 0 0 1ex; text-align: center; font-family: monospace">
+        {structure_filenames[idx]}
       </h3>
-      <Structure data_url="/structures/{file_url}" style="flex: 1" />
+      <Structure
+        data_url="/structures/{file_name}"
+        style="flex: 1"
+        on_file_load={(data) => {
+          if (data.filename) structure_filenames[idx] = data.filename
+        }}
+      />
     </div>
   {/each}
 </div>
@@ -60,10 +69,41 @@
   and a lithium iron manganese phosphate structure from a CIF file.
 </p>
 
-<h2>Periodic Table</h2>
+<h2><a href="/trajectory">Trajectory Viewer</a></h2>
+
+<Trajectory
+  data_url="/trajectories/{active_trajectory_file}"
+  class="full-bleed"
+  on_file_load={(data: TrajHandlerData) => {
+    if (data.filename) active_trajectory_file = data.filename
+  }}
+  style="max-height: 700px"
+/>
+
+<p style="margin: 2em auto; text-align: center">
+  Drag any of these trajectory files onto a viewer above to load them:
+</p>
+
+<FilePicker
+  files={Object.keys(trajectory_files).map((file_path) => ({
+    name: file_path.split(`/`).pop() || file_path,
+    url: file_path.split(`/site`).at(-1) || ``,
+  }))}
+  show_category_filters={false}
+  type_mapper={get_trajectory_type}
+  active_files={[active_trajectory_file]}
+/>
+
+<h2><a href="/periodic-table">Periodic Table</a></h2>
 
 <PeriodicTableDemo />
 
-<h2>Composition</h2>
+<h2><a href="/composition">Composition</a></h2>
 
 <CompositionDemo show_interactive />
+
+<style>
+  h2 {
+    margin-top: 2em;
+  }
+</style>
