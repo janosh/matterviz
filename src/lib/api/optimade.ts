@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-await-in-loop
 // OPTIMADE API utilities for fetching structure data
 // Based on OPTIMADE 1.2.0 specification
 
@@ -69,21 +70,17 @@ async function fetch_with_cors_proxy(url: string): Promise<Response> {
     // Direct access failed, will try CORS proxies
   }
 
-  const proxy_promises = CORS_PROXIES.map(async (proxy) => {
+  for (const proxy of CORS_PROXIES) {
     try {
       const response = await fetch(`${proxy}${encodeURIComponent(url)}`, {
         headers: { 'Accept': `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
       })
-      return response.ok ? response : null
+      if (response.ok) return response
     } catch {
-      return null
+      // Try next proxy
     }
-  })
+  }
 
-  const responses = await Promise.all(proxy_promises)
-  const successful_response = responses.find((response) => response !== null)
-
-  if (successful_response) return successful_response
   throw new Error(`All CORS proxies failed for ${url}`)
 }
 
@@ -96,7 +93,7 @@ async function resolve_provider_url(provider_base_url: string): Promise<string> 
     return resolved_provider_urls[provider_base_url]
   }
 
-  const endpoint_promises = [`/links`, `/v1/links`].map(async (endpoint) => {
+  for (const endpoint of [`/links`, `/v1/links`]) {
     try {
       const response = await fetch_with_cors_proxy(`${provider_base_url}${endpoint}`)
       const data = await response.json()
@@ -108,19 +105,14 @@ async function resolve_provider_url(provider_base_url: string): Promise<string> 
         link.attributes.link_type === `child`
       )
 
-      return self_link?.attributes.base_url || null
+      if (self_link?.attributes.base_url) {
+        resolved_provider_urls[provider_base_url] = self_link.attributes.base_url
+        resolved_urls_cache_time = now
+        return self_link.attributes.base_url
+      }
     } catch {
-      return null
+      // Try next endpoint
     }
-  })
-
-  const results = await Promise.all(endpoint_promises)
-  const resolved_url = results.find((url) => url !== null)
-
-  if (resolved_url) {
-    resolved_provider_urls[provider_base_url] = resolved_url
-    resolved_urls_cache_time = now
-    return resolved_url
   }
 
   resolved_provider_urls[provider_base_url] = provider_base_url

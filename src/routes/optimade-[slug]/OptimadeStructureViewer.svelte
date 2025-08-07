@@ -147,23 +147,36 @@
 
 <div class="providers-grid">
   {#each available_providers as { id, attributes } (id)}
-    <button
-      class="provider-card"
-      class:selected={id === selected_provider}
-      {@attach tooltip({ content: attributes.name })}
-      onclick={() => {
-        selected_provider = id
-        input_value = ``
-        load_suggested_structures()
-      }}
-    >
-      <a href={attributes.base_url} title="API Endpoint" class="provider-link">
+    <div class="provider-card">
+      <button
+        class="provider-select"
+        class:selected={id === selected_provider}
+        {@attach tooltip({ content: attributes.name })}
+        onclick={() => {
+          selected_provider = id
+          input_value = ``
+          load_suggested_structures()
+        }}
+      >
         <Icon icon="Database" /> {id}
-      </a>
-      <a href={attributes.homepage} title="Homepage">
-        <Icon icon="Link" />
-      </a>
-    </button>
+      </button>
+      <div class="provider-links">
+        <a
+          href={attributes.base_url}
+          title="API Endpoint"
+          onclick={(evt) => evt.stopPropagation()}
+        >
+          <Icon icon="Link" />
+        </a>
+        <a
+          href={attributes.homepage}
+          title="Homepage"
+          onclick={(evt) => evt.stopPropagation()}
+        >
+          <Icon icon="Globe" />
+        </a>
+      </div>
+    </div>
   {/each}
 </div>
 
@@ -235,25 +248,38 @@
     display: flex;
     align-items: center;
     gap: 0.5em;
-    padding: 0.5em;
+    padding: 4pt 6pt;
     border: 1px solid var(--border-color);
     border-radius: 4pt;
+    background: none;
+  }
+  .provider-select {
+    display: flex;
+    align-items: center;
+    gap: 8pt;
     cursor: pointer;
     background: none;
     font: inherit;
+    flex: 1;
   }
-  .provider-card:hover {
+  .provider-select:hover {
     background: var(--surface-bg-hover);
   }
-  .provider-card.selected {
-    border-color: var(--accent-color);
+  .provider-select.selected {
+    background: var(--accent-color);
+    color: white;
   }
-  .provider-card a {
-    padding: 0 3pt;
+  .provider-links {
+    display: flex;
+    gap: 4pt;
+  }
+  .provider-links a {
+    padding: 1pt;
     color: var(--text-color-muted);
     border-radius: 3pt;
+    font-size: 0.9em;
   }
-  .provider-card a:hover {
+  .provider-links a:hover {
     background: var(--surface-bg-hover);
   }
   .structure-input, .fetch-button {
