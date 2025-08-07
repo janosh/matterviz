@@ -1,11 +1,9 @@
 <script lang="ts">
   import { FilePicker } from '$site'
-  import { Trajectory } from 'matterviz/trajectory'
+  import { get_trajectory_type, trajectory_files } from '$site/trajectories'
+  import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 
-  const trajectory_files = import.meta.glob(`$site/trajectories/*`, {
-    query: `?url`,
-  })
-  let active_files = $state<string[]>([])
+  let active_file = $state(``) // last drag-and-dropped trajectory file
 
   const trajectory_files_paths = [
     `/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
@@ -14,15 +12,6 @@
     `/trajectories/ase-images-Ag-0-to-97.xyz.gz`,
     undefined, //create one empty viewer
   ]
-
-  const trajectory_type_mapper = (filename: string): string => {
-    if (filename.match(/\.(h5|hdf5)$/i)) return `hdf5`
-    if (filename.match(/\.json/i)) return `json`
-    if (filename.match(/\.(xyz|extxyz)/i)) return `xyz`
-    if (filename.match(/xdatcar/i)) return `xdatcar`
-    if (filename.match(/\.traj$/i)) return `traj`
-    return `unknown`
-  }
 </script>
 
 <h1>Trajectory</h1>
@@ -31,7 +20,10 @@
   <Trajectory
     data_url={file}
     class="full-bleed"
-    style="margin-top: 5em"
+    style="margin-top: 5em; max-height: 700px"
+    on_file_load={(data: TrajHandlerData) => {
+      if (data.filename) active_file = data.filename
+    }}
   />
 {/each}
 
@@ -44,7 +36,7 @@
     name: file_path.split(`/`).pop() || file_path,
     url: file_path.split(`/site`).at(-1) || ``,
   }))}
-  {active_files}
+  active_files={[active_file]}
   show_category_filters={false}
-  type_mapper={trajectory_type_mapper}
+  type_mapper={get_trajectory_type}
 />

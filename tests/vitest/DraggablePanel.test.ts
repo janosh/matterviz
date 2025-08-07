@@ -185,16 +185,15 @@ describe(`DraggablePanel`, () => {
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
   })
 
-  test(`renders panel header with control buttons`, () => {
+  test(`renders control buttons`, () => {
     mount(DraggablePanel, {
       target: document.body,
       props: { ...default_props, show: true },
     })
-    const header = document.querySelector(`.panel-header`)
     const control_buttons = document.querySelector(`.control-buttons`)
 
-    expect(header).toBeTruthy()
     expect(control_buttons).toBeTruthy()
+    expect(control_buttons).toBeInstanceOf(HTMLDivElement)
   })
 
   test(`has correct CSS classes`, () => {

@@ -222,9 +222,7 @@ describe(`PeriodicTable`, () => {
         target: document.body,
         props: { heatmap_values: values as never, missing_color, log },
       })
-      const tiles = document.querySelectorAll(
-        `.element-tile`,
-      ) as NodeListOf<HTMLElement>
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
 
       // First two tiles should use missing color
       expect(tiles[0].style.backgroundColor).toBe(missing_color)
@@ -394,9 +392,7 @@ describe(`PeriodicTable`, () => {
       expect(document.querySelector(`.segment.horizontal-top`)).toBeTruthy()
 
       // Tooltip should display array values
-      const multi_value_tile = document.querySelectorAll(
-        `.element-tile`,
-      )[1] as HTMLElement
+      const multi_value_tile = document.querySelectorAll<HTMLElement>(`.element-tile`)[1]
       multi_value_tile.dispatchEvent(mouseenter)
       await tick()
 
@@ -431,9 +427,7 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      const tiles = document.querySelectorAll(
-        `.element-tile`,
-      ) as NodeListOf<HTMLElement>
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
       expected_colors.forEach((color, idx) => {
         expect(tiles[idx].style.backgroundColor).toBe(color)
       })
@@ -471,9 +465,7 @@ describe(`PeriodicTable`, () => {
         expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
       )
 
-      const multi_tiles = document.querySelectorAll(
-        `.element-tile`,
-      ) as NodeListOf<HTMLElement>
+      const multi_tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
       expect(multi_tiles[0].style.backgroundColor).toBe(`transparent`)
       expect(document.querySelectorAll(`.segment`).length).toBeGreaterThan(0)
     })
@@ -488,9 +480,7 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      const tiles = document.querySelectorAll(
-        `.element-tile`,
-      ) as NodeListOf<HTMLElement>
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
       expect(tiles[0].style.backgroundColor).toBe(`#ff0000`) // single color
       expect(tiles[1].style.backgroundColor).toBe(`transparent`) // numeric array
       expect(tiles[2].style.backgroundColor).toBe(`transparent`) // color array
@@ -518,9 +508,7 @@ describe(`PeriodicTable`, () => {
       })
 
       if (`color_overrides` in extra_props) {
-        const tiles = document.querySelectorAll(
-          `.element-tile`,
-        ) as NodeListOf<HTMLElement>
+        const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
         expect(tiles[0].style.backgroundColor).toBe(`purple`)
         expect(tiles[1].style.backgroundColor).toBe(`orange`)
       } else {
@@ -539,14 +527,12 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      const tiles = document.querySelectorAll(`.element-tile`) as NodeListOf<HTMLElement>
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
 
       // Single color tooltip
       tiles[0].dispatchEvent(mouseenter)
       await tick()
-      expect(document.querySelector(`.tooltip`)?.textContent).toContain(
-        `Hydrogen`,
-      )
+      expect(document.querySelector(`.tooltip`)?.textContent).toContain(`Hydrogen`)
       tiles[0].dispatchEvent(mouseleave)
 
       // Multi-color tooltip

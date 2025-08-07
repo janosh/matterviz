@@ -1,23 +1,22 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { demos } from './state.svelte'
 
   interface Props {
-    routes?: string[]
-    labels?: Record<string, string>
+    routes: (string | [string, string])[]
   }
-  let { routes = demos.routes, labels = {} }: Props = $props()
+  let { routes }: Props = $props()
 
   let is_current = $derived((path: string) => {
+    if (path === `/`) return page.url.pathname === `/` ? `page` : undefined
     if (page.url.pathname.startsWith(path)) return `page`
     return undefined
   })
 </script>
 
 <nav>
-  <a href="/" aria-current={page.url.pathname === `/` ? `page` : undefined}>/home</a>
-  {#each routes as href (href)}
-    <a {href} aria-current={is_current(href)}>{labels[href] ?? href}</a>
+  {#each routes as route (route)}
+    {@const [href, label] = Array.isArray(route) ? route : [route, route]}
+    <a {href} aria-current={is_current(href)}>{label}</a>
   {/each}
 </nav>
 
@@ -28,7 +27,7 @@
     place-content: center;
     margin: -1em auto 2em;
     padding: 1em;
-    max-width: 45em;
+    max-width: 55em;
     flex-wrap: wrap;
   }
   nav > a {

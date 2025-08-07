@@ -7,7 +7,7 @@
   }
   let { icon, ...rest }: Props = $props()
 
-  const data = $derived.by(() => {
+  const { path, ...svg_props } = $derived.by(() => {
     if (!(icon in icon_data)) {
       console.error(`Icon '${icon}' not found`)
       return icon_data.Alert // fallback
@@ -16,8 +16,12 @@
   })
 </script>
 
-<svg viewBox={data.viewBox} fill="currentColor" {...rest}>
-  <path d={data.path} />
+<svg fill="currentColor" {...svg_props} {...rest}>
+  {#if path.trim().startsWith(`<`)}
+    {@html path}
+  {:else}
+    <path d={path} />
+  {/if}
 </svg>
 
 <style>
