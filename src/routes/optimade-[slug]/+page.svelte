@@ -1,5 +1,5 @@
 <script lang="ts">
-  import OptimadeDetails from './OptimadeDetails.svelte'
+  import OptimadeStructureViewer from './OptimadeStructureViewer.svelte'
 </script>
 
-<OptimadeDetails />
+<OptimadeStructureViewer />

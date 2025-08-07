@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Structure, Trajectory } from '$lib'
-  import type { StructureHandlerData } from '$lib/structure'
   import type { TrajHandlerData } from '$lib/trajectory'
   import { CompositionDemo, FilePicker, PeriodicTableDemo } from '$site'
   import { molecule_files } from '$site/molecules'
@@ -23,15 +22,15 @@
 <h2><a href="/structure">Structure Viewer</a></h2>
 
 <div class="full-bleed" style="display: flex; flex-wrap: wrap; gap: 2em">
-  {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_url, idx (file_url)}
+  {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_name, idx (file_name)}
     <div style="flex: 1">
       <h3 style="margin: 0 0 1ex; text-align: center; font-family: monospace">
         {structure_filenames[idx]}
       </h3>
       <Structure
-        data_url="/structures/{file_url}"
+        data_url="/structures/{file_name}"
         style="flex: 1"
-        on_file_load={(data: StructureHandlerData) => {
+        on_file_load={(data) => {
           if (data.filename) structure_filenames[idx] = data.filename
         }}
       />

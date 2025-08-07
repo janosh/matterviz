@@ -1,9 +1,8 @@
 import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
+import type { OptimadeStructure } from '$lib/api/optimade'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { OptimadeStructure } from '$lib/optimade-api'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
-
 import { load as yaml_load } from 'js-yaml'
 import { COMPRESSION_EXTENSIONS } from './decompress'
 

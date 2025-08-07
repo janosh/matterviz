@@ -2,16 +2,16 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { Icon } from '$lib'
-  import { Composition } from '$lib/composition'
-  import { get_electro_neg_formula } from '$lib/composition/parse'
-  import { optimade_to_pymatgen } from '$lib/io/parse'
-  import type { OptimadeProvider, OptimadeStructure } from '$lib/optimade-api'
+  import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
   import {
     detect_provider_from_slug,
     fetch_optimade_providers,
     fetch_optimade_structure,
     fetch_suggested_structures,
-  } from '$lib/optimade-api'
+  } from '$lib/api/optimade'
+  import { Composition } from '$lib/composition'
+  import { get_electro_neg_formula } from '$lib/composition/parse'
+  import { optimade_to_pymatgen } from '$lib/io/parse'
   import type { PymatgenStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { tooltip } from 'svelte-multiselect'
@@ -29,10 +29,19 @@
   // Set input_value and provider from page params on mount
   $effect(() => {
     if (page.params.slug) {
-      input_value = page.params.slug
-      detect_provider_from_slug(page.params.slug)
+      const slug = page.params.slug
+      input_value = slug
+      detect_provider_from_slug(slug)
         .then((provider) => {
-          if (provider) selected_provider = provider
+          if (provider) {
+            selected_provider = provider
+            // If the slug starts with the provider prefix, use the full slug as structure ID
+            if (slug.startsWith(`${provider}-`)) {
+              input_value = slug
+            } else {
+              input_value = `${provider}-${slug}`
+            }
+          }
         })
         .catch((err) => console.error(`Failed to detect provider:`, err))
     }
@@ -44,8 +53,13 @@
   })
 
   async function load_providers() {
-    const providers = await fetch_optimade_providers()
-    available_providers = providers
+    try {
+      const providers = await fetch_optimade_providers()
+      available_providers = providers
+    } catch (error) {
+      console.error(`Failed to load providers:`, error)
+      available_providers = []
+    }
   }
 
   let structure_id = $derived(input_value.trim())
@@ -77,11 +91,14 @@
         structure = optimade_to_pymatgen(structure_data)
         if (structure) {
           pretty_formula = get_electro_neg_formula(structure)
+        } else {
+          error = `Failed to convert structure data`
         }
       } else {
         error = `Structure ${structure_id} not found`
       }
     } catch (err) {
+      console.error(`Error loading structure:`, err)
       error = `Failed to load structure data from ${selected_provider}: ${err}`
     } finally {
       loading = false
