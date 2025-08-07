@@ -1,4 +1,5 @@
 import type { Matrix3x3, PymatgenStructure, Vec3 } from '$lib'
+import * as math from '$lib/math'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   format_supercell_scaling,
@@ -317,6 +318,162 @@ describe(`image atom behavior`, () => {
       xyz.some((coord) => coord < -1.0)
     )
     expect(distant_negative.length).toBe(0)
+  })
+})
+
+describe(`oblique cell bug tests`, () => {
+  test(`handles oblique cells like MgNiF6 correctly`, () => {
+    // MgNiF6.cif structure with oblique lattice (56.455° angles)
+    const mgf6_structure: PymatgenStructure = {
+      lattice: {
+        matrix: math.cell_to_lattice_matrix(
+          5.2219,
+          5.2219,
+          5.2219,
+          56.455,
+          56.455,
+          56.455,
+        ),
+        pbc: [true, true, true],
+        volume: 92.43478979,
+        a: 5.2219,
+        b: 5.2219,
+        c: 5.2219,
+        alpha: 56.455,
+        beta: 56.455,
+        gamma: 56.455,
+      },
+      sites: [
+        {
+          species: [{ element: `Mg`, occu: 1.0, oxidation_state: 2 }],
+          abc: [0.5, 0.5, 0.5],
+          xyz: [0, 0, 0], // Will be calculated properly
+          label: `Mg0`,
+          properties: {},
+        },
+        {
+          species: [{ element: `Ni`, occu: 1.0, oxidation_state: 2 }],
+          abc: [0.0, 0.0, 0.0],
+          xyz: [0, 0, 0], // Will be calculated properly
+          label: `Ni1`,
+          properties: {},
+        },
+      ],
+      charge: 0,
+    }
+
+    // Calculate correct cartesian coordinates
+    for (const site of mgf6_structure.sites) {
+      site.xyz = math.mat3x3_vec3_multiply(
+        math.transpose_3x3_matrix(mgf6_structure.lattice.matrix),
+        site.abc,
+      )
+    }
+
+    const supercell = make_supercell(mgf6_structure, [2, 2, 2])
+
+    // Verify all atoms are within the supercell volume bounds
+    const lattice_matrix = supercell.lattice.matrix
+    const det = math.det_3x3(lattice_matrix)
+
+    expect(det).toBeGreaterThan(0) // Positive determinant
+    expect(supercell.sites).toHaveLength(16) // 2 atoms × 8 cells
+
+    // Check that all fractional coordinates are within [0, 1) after folding
+    for (const site of supercell.sites) {
+      for (const coord of site.abc) {
+        expect(coord).toBeGreaterThanOrEqual(0)
+        expect(coord).toBeLessThan(1)
+      }
+    }
+
+    // Verify coordinate consistency: fractional → cartesian → fractional should match
+    for (const site of supercell.sites) {
+      const recalc_xyz = math.mat3x3_vec3_multiply(
+        math.transpose_3x3_matrix(lattice_matrix),
+        site.abc,
+      )
+      const recalc_abc = math.mat3x3_vec3_multiply(
+        math.matrix_inverse_3x3(math.transpose_3x3_matrix(lattice_matrix)),
+        recalc_xyz,
+      )
+
+      // Check xyz consistency (within numerical precision)
+      for (let i = 0; i < 3; i++) {
+        expect(Math.abs(site.xyz[i] - recalc_xyz[i])).toBeLessThan(1e-10)
+      }
+
+      // Check abc consistency after wrapping
+      for (let i = 0; i < 3; i++) {
+        let wrapped_recalc = recalc_abc[i] % 1
+        if (wrapped_recalc < 0) wrapped_recalc += 1
+        // Handle floating point precision: if very close to 1, set to 0
+        if (Math.abs(wrapped_recalc - 1) < 1e-10) wrapped_recalc = 0
+        expect(Math.abs(site.abc[i] - wrapped_recalc)).toBeLessThan(1e-10)
+      }
+    }
+  })
+
+  test(`verifies all atoms are within supercell bounds for various oblique cells`, () => {
+    const test_cases = [
+      // Triclinic
+      { a: 4.0, b: 5.0, c: 6.0, alpha: 70, beta: 80, gamma: 110 },
+      // Monoclinic
+      { a: 3.5, b: 4.5, c: 5.5, alpha: 90, beta: 95, gamma: 90 },
+      // Hexagonal-like
+      { a: 4.0, b: 4.0, c: 6.0, alpha: 90, beta: 90, gamma: 120 },
+    ]
+
+    for (const { a, b, c, alpha, beta, gamma } of test_cases) {
+      const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
+      const structure: PymatgenStructure = {
+        lattice: {
+          matrix: lattice_matrix,
+          pbc: [true, true, true],
+          volume: math.det_3x3(lattice_matrix),
+          a,
+          b,
+          c,
+          alpha,
+          beta,
+          gamma,
+        },
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1.0, oxidation_state: 0 }],
+            abc: [0.25, 0.25, 0.25],
+            xyz: math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(lattice_matrix), [
+              0.25,
+              0.25,
+              0.25,
+            ]),
+            label: `H1`,
+            properties: {},
+          },
+        ],
+        charge: 0,
+      }
+
+      const supercell = make_supercell(structure, [2, 2, 2])
+
+      // All fractional coordinates should be in [0, 1)
+      for (const site of supercell.sites) {
+        for (const coord of site.abc) {
+          expect(coord).toBeGreaterThanOrEqual(0)
+          expect(coord).toBeLessThan(1)
+        }
+
+        // Verify coordinate transformation consistency
+        const recalc_xyz = math.mat3x3_vec3_multiply(
+          math.transpose_3x3_matrix(supercell.lattice.matrix),
+          site.abc,
+        )
+
+        for (let i = 0; i < 3; i++) {
+          expect(Math.abs(site.xyz[i] - recalc_xyz[i])).toBeLessThan(1e-10)
+        }
+      }
+    }
   })
 })
 

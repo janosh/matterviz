@@ -1198,6 +1198,7 @@
   .content-area {
     display: grid;
     flex: 1;
+    overflow: hidden;
   }
   .trajectory.horizontal .content-area {
     grid-template-columns: 1fr 1fr;

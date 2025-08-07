@@ -82,7 +82,7 @@
         },
         "matterviz.auto_render": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Automatically render supported file types (structures and trajectories) when opening them. If rendering fails, falls back to regular editor."
         },
         "matterviz.color_scheme": {

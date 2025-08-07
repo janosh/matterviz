@@ -365,7 +365,7 @@ describe(`PlotLegend`, () => {
       props: { series_data: default_series_data, on_toggle: mock_toggle },
     })
 
-    const items = document.querySelectorAll(`.legend-item`) as NodeListOf<HTMLElement>
+    const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     items[0].click() // Click first item
     expect(mock_toggle).toHaveBeenCalledTimes(1)
     expect(mock_toggle).toHaveBeenCalledWith(0) // series_idx 0

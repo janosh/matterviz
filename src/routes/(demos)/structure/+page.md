@@ -6,21 +6,21 @@
 ```svelte example
 <script>
   import { Structure } from 'matterviz'
-  import { structures } from '$site/structures'
   import Select from 'svelte-multiselect'
   import { FilePicker } from '$site'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
   import { get_electro_neg_formula } from '$lib'
 
-  let structure = $state(
-    structures.find((struct) => struct.id === `Bi2Zr2O8-Fm3m`) || {},
-  )
+  let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
 </script>
 
-<Structure bind:structure>
-  <h3 style="position: absolute; left: 0; margin: 1ex 1em">
-    {@html get_electro_neg_formula(structure, false, ` `, `.3~s`)}
+<Structure
+  data_url="/structures/{current_filename}"
+  on_file_load={(data) => current_filename = data.filename}
+>
+  <h3 style="position: absolute; margin: 1ex 1em; font-family: monospace; z-index: 1">
+    {current_filename}
   </h3>
 </Structure>
 

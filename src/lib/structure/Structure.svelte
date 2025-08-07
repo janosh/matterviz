@@ -433,7 +433,6 @@
 />
 
 <div
-  class="structure"
   class:dragover
   class:active={info_panel_open || controls_open}
   role="region"
@@ -454,6 +453,7 @@
   }}
   {onkeydown}
   {...rest}
+  class="structure {rest.class ?? ``}"
 >
   {@render children?.({ structure })}
   {#if loading}

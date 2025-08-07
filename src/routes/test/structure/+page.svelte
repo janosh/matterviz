@@ -169,6 +169,7 @@
   </label>
 </section>
 <Structure
+  id="test-structure"
   {structure}
   data_url={typeof window !== `undefined`
   ? new URLSearchParams(window.location.search).get(`data_url`) || undefined

@@ -13,7 +13,7 @@
 
 <svelte:window bind:online />
 
-<div>
+<div style="font-size: 1.2em; padding: 5em 3em 1em; text-align: center">
   <h1>Error {String(page.status).replace(`0`, `😵`)}: {page.error?.message}</h1>
   {#if page.status >= 500}
     <p>
@@ -34,13 +34,3 @@
     </a>.
   </p>
 </div>
-
-<style>
-  div {
-    font-size: 1.2em;
-    max-width: 45em;
-    padding: 5em 3em 1em;
-    margin: auto;
-    text-align: center;
-  }
-</style>

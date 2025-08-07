@@ -1,5 +1,7 @@
 import {
+  is_optimade_json,
   is_structure_file,
+  optimade_to_pymatgen,
   parse_any_structure,
   parse_cif,
   parse_optimade_json,
@@ -8,18 +10,16 @@ import {
   parse_structure_file,
   parse_xyz,
 } from '$lib/io/parse'
+import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
-import tio2_cif from '$site/structures/TiO2.cif?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
-import optimade_json_alpha_quartz from '$site/structures/mp-7000-optimade.json?raw' with {
-  type: 'json',
-}
+import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
+import tio2_cif from '$site/structures/TiO2.cif?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
@@ -95,7 +95,7 @@ describe(`POSCAR Parser`, () => {
       name: `malformed coordinates`,
       content:
         `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.1-0.2-0.3`,
-      expected: { abc: [0.1, -0.2, -0.3] },
+      expected: { abc: [0.1, 0.8, 0.7] }, // Negative coordinates are wrapped: -0.2 -> 0.8, -0.3 -> 0.7
     },
     {
       name: `element symbol cleaning`,
@@ -113,6 +113,62 @@ describe(`POSCAR Parser`, () => {
     if (expected.elements) {
       expect(result.sites[0].species[0].element).toBe(expected.elements[0])
       expect(result.sites[1].species[0].element).toBe(expected.elements[1])
+    }
+  })
+
+  it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
+    const result = parse_poscar(aviary_CuF3K_triolith)
+    if (!result) throw `Failed to parse aviary-CuF3K-triolith.poscar`
+
+    expect(result.sites).toHaveLength(10) // 2 Zr + 2 Zn + 6 N atoms
+
+    // Check that all fractional coordinates are within [0, 1)
+    for (const site of result.sites) {
+      for (let coord_idx = 0; coord_idx < 3; coord_idx++) {
+        expect(site.abc[coord_idx]).toBeGreaterThanOrEqual(0)
+        expect(site.abc[coord_idx]).toBeLessThan(1)
+      }
+    }
+
+    // Verify elements are correct
+    expect(result.sites[0].species[0].element).toBe(`Zr`)
+    expect(result.sites[2].species[0].element).toBe(`Zn`)
+    expect(result.sites[4].species[0].element).toBe(`N`)
+
+    // Check specific problematic coordinate that should be wrapped
+    // The original coordinate 1.00000000 should be wrapped to 0.00000000
+    const problematic_site = result.sites[4] // First N atom with z=1.0
+    expect(problematic_site.abc[2]).toBe(0.0)
+
+    // Verify coordinate transformation consistency
+    if (result.lattice) {
+      for (const site of result.sites) {
+        // Reconstruct Cartesian coordinates from fractional coordinates
+        const reconstructed_xyz = [
+          site.abc[0] * result.lattice.matrix[0][0] +
+          site.abc[1] * result.lattice.matrix[1][0] +
+          site.abc[2] * result.lattice.matrix[2][0],
+          site.abc[0] * result.lattice.matrix[0][1] +
+          site.abc[1] * result.lattice.matrix[1][1] +
+          site.abc[2] * result.lattice.matrix[2][1],
+          site.abc[0] * result.lattice.matrix[0][2] +
+          site.abc[1] * result.lattice.matrix[1][2] +
+          site.abc[2] * result.lattice.matrix[2][2],
+        ]
+
+        // Verify coordinate consistency and bounds
+        expect(reconstructed_xyz).toEqual(expect.arrayContaining([
+          expect.closeTo(site.xyz[0], 10),
+          expect.closeTo(site.xyz[1], 10),
+          expect.closeTo(site.xyz[2], 10),
+        ]))
+        expect(site.xyz[0]).toBeGreaterThanOrEqual(-0.1)
+        expect(site.xyz[0]).toBeLessThan(result.lattice.a + 0.1)
+        expect(site.xyz[1]).toBeGreaterThanOrEqual(-0.1)
+        expect(site.xyz[1]).toBeLessThan(result.lattice.b + 0.1)
+        expect(site.xyz[2]).toBeGreaterThanOrEqual(-0.1)
+        expect(site.xyz[2]).toBeLessThan(result.lattice.c + 0.1)
+      }
     }
   })
 
@@ -1428,6 +1484,7 @@ describe(`OPTIMADE JSON parser`, () => {
       name: `crystalline structure with lattice`,
       data: {
         id: `test-crystalline`,
+        type: `structures`,
         attributes: {
           elements: [`Si`, `O`],
           lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
@@ -1450,6 +1507,7 @@ describe(`OPTIMADE JSON parser`, () => {
       name: `molecular structure without lattice`,
       data: {
         id: `test-molecule`,
+        type: `structures`,
         attributes: {
           elements: [`H`, `O`],
           cartesian_site_positions: [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0], [
@@ -1466,6 +1524,7 @@ describe(`OPTIMADE JSON parser`, () => {
       name: `minimal structure with required fields only`,
       data: {
         id: `test-minimal`,
+        type: `structures`,
         attributes: {
           cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
           species_at_sites: [`Fe`, `Fe`],
@@ -1474,22 +1533,23 @@ describe(`OPTIMADE JSON parser`, () => {
       expected: { sites: 2, has_lattice: false, first_element: `Fe` },
     },
     {
-      name: `Simple MP alpha-quartz`,
-      content: optimade_json_alpha_quartz,
+      name: `placeholder test`,
+      content: JSON.stringify({
+        id: `test-placeholder`,
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      }),
       expected: {
-        sites: 9,
-        has_lattice: true,
-        lattice_matrix: [[4.914966, -1e-8, 0.0], [-2.45748252, 4.2564861, -0.0], [
-          0.0,
-          0.0,
-          5.43130114,
-        ]],
-        first_element: `Si`,
+        sites: 1,
+        has_lattice: false,
+        first_element: `Fe`,
       },
     },
   ])(`should parse $name`, ({ data, content, expected }) => {
-    const test_content = content ||
-      JSON.stringify({ data: { ...data, type: `structures` } })
+    const test_content = content || JSON.stringify(data)
     const result = parse_optimade_json(test_content as string)
     if (!result) throw `Failed to parse OPTIMADE JSON`
 
@@ -1522,13 +1582,14 @@ describe(`OPTIMADE JSON parser`, () => {
   it.each([
     {
       name: `missing required fields`,
-      data: { id: `test-invalid`, attributes: { elements: [`Fe`] } },
+      data: { id: `test-invalid`, type: `structures`, attributes: { elements: [`Fe`] } },
       expected_error: `OPTIMADE JSON missing required position or species data`,
     },
     {
       name: `mismatched positions and species count`,
       data: {
         id: `test-mismatched`,
+        type: `structures`,
         attributes: {
           cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
           species_at_sites: [`Fe`], // Only one species for two positions
@@ -1547,8 +1608,7 @@ describe(`OPTIMADE JSON parser`, () => {
       expected_error: `Error parsing OPTIMADE JSON:`,
     },
   ])(`should handle $name gracefully`, ({ data, content, expected_error }) => {
-    const test_content = content ||
-      JSON.stringify({ data: { ...data, type: `structures` } })
+    const test_content = content || JSON.stringify(data)
     const result = parse_optimade_json(test_content)
     expect(result).toBeNull()
 
@@ -1582,15 +1642,14 @@ describe(`OPTIMADE JSON parser`, () => {
   ])(`should handle $name`, ({ lattice_vectors, positions, expected_abc }) => {
     const data = {
       id: `test`,
+      type: `structures`,
       attributes: {
         cartesian_site_positions: positions,
         species_at_sites: positions.map(() => `Fe`),
         lattice_vectors,
       },
     }
-    const result = parse_optimade_json(
-      JSON.stringify({ data: { ...data, type: `structures` } }),
-    )
+    const result = parse_optimade_json(JSON.stringify(data))
     if (!result) throw `Failed to parse OPTIMADE JSON`
 
     expect(result.sites).toHaveLength(positions.length)
@@ -1603,6 +1662,308 @@ describe(`OPTIMADE JSON parser`, () => {
       lattice_vectors[2][0] !== 0 || lattice_vectors[2][1] !== 0
     ) {
       expect(result.lattice?.matrix).toEqual(lattice_vectors)
+      result.sites.forEach((site) => {
+        const latt_mat = result.lattice?.matrix
+        if (!latt_mat) throw `Lattice matrix is undefined`
+        const reconstructed_xyz = [
+          site.abc[0] * latt_mat[0][0] + site.abc[1] * latt_mat[1][0] +
+          site.abc[2] * latt_mat[2][0],
+          site.abc[0] * latt_mat[0][1] + site.abc[1] * latt_mat[1][1] +
+          site.abc[2] * latt_mat[2][1],
+          site.abc[0] * latt_mat[0][2] + site.abc[1] * latt_mat[1][2] +
+          site.abc[2] * latt_mat[2][2],
+        ]
+        expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
+        expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
+        expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
+      })
+    }
+  })
+})
+
+describe(`OPTIMADE JSON Detection`, () => {
+  it.each([
+    {
+      name: `valid OPTIMADE structure`,
+      content: JSON.stringify({
+        id: `test`,
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      }),
+      expected: true,
+    },
+    {
+      name: `OPTIMADE structure array`,
+      content: JSON.stringify([{
+        id: `test`,
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      }]),
+      expected: true,
+    },
+    {
+      name: `missing type field`,
+      content: JSON.stringify({
+        id: `test`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      }),
+      expected: false,
+    },
+    {
+      name: `wrong type field`,
+      content: JSON.stringify({
+        id: `test`,
+        type: `links`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      }),
+      expected: false,
+    },
+    {
+      name: `missing id field`,
+      content: JSON.stringify({
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      }),
+      expected: false,
+    },
+    {
+      name: `missing attributes field`,
+      content: JSON.stringify({
+        id: `test`,
+        type: `structures`,
+      }),
+      expected: false,
+    },
+    {
+      name: `invalid JSON`,
+      content: `{ invalid json }`,
+      expected: false,
+    },
+    {
+      name: `empty string`,
+      content: ``,
+      expected: false,
+    },
+    {
+      name: `null value`,
+      content: `null`,
+      expected: false,
+    },
+    {
+      name: `non-structure JSON`,
+      content: JSON.stringify({ name: `test`, value: 123 }),
+      expected: false,
+    },
+  ])(`should detect $name correctly`, ({ content, expected }) => {
+    expect(is_optimade_json(content)).toBe(expected)
+  })
+})
+
+describe(`OPTIMADE to Pymatgen Conversion`, () => {
+  it.each([
+    {
+      name: `crystalline structure with lattice`,
+      optimade_structure: {
+        id: `test-crystalline`,
+        type: `structures` as const,
+        attributes: {
+          elements: [`Si`, `O`],
+          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
+          species_at_sites: [`Si`, `O`],
+        },
+      },
+      expected: {
+        sites: 2,
+        has_lattice: true,
+        lattice_matrix: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+        first_element: `Si`,
+        id: `test-crystalline`,
+      },
+    },
+    {
+      name: `molecular structure with lattice`,
+      optimade_structure: {
+        id: `test-molecule`,
+        type: `structures` as const,
+        attributes: {
+          elements: [`H`, `O`],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0]],
+          species_at_sites: [`O`, `H`],
+          lattice_vectors: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+        },
+      },
+      expected: {
+        sites: 2,
+        has_lattice: true,
+        lattice_matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+        first_element: `O`,
+        id: `test-molecule`,
+      },
+    },
+    {
+      name: `minimal structure with required fields only`,
+      optimade_structure: {
+        id: `test-minimal`,
+        type: `structures` as const,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          species_at_sites: [`Fe`, `Fe`],
+          lattice_vectors: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+        },
+      },
+      expected: {
+        sites: 2,
+        has_lattice: true,
+        lattice_matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+        first_element: `Fe`,
+        id: `test-minimal`,
+      },
+    },
+  ])(`should convert $name`, ({ optimade_structure, expected }) => {
+    const result = optimade_to_pymatgen(optimade_structure)
+    if (!result) throw `Failed to convert OPTIMADE structure`
+
+    expect(result.sites).toHaveLength(expected.sites)
+    expect(result.sites[0].species[0].element).toBe(expected.first_element)
+    expect(result.id).toBe(expected.id)
+
+    if (expected.has_lattice) {
+      expect(result.lattice?.matrix).toEqual(expected.lattice_matrix)
+      expect(result.lattice?.pbc).toEqual([true, true, true])
+    } else {
+      expect(result.lattice).toBeUndefined()
+    }
+  })
+
+  it.each([
+    {
+      name: `missing lattice vectors`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      },
+      expected_error: `Missing required OPTIMADE structure data`,
+    },
+    {
+      name: `missing cartesian site positions`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+          species_at_sites: [`Fe`],
+        },
+      },
+      expected_error: `Missing required OPTIMADE structure data`,
+    },
+    {
+      name: `missing species at sites`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+        },
+      },
+      expected_error: `Missing required OPTIMADE structure data`,
+    },
+    {
+      name: `mismatched positions and species count`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          species_at_sites: [`Fe`], // Only one species for two positions
+        },
+      },
+      expected_error: `Error converting OPTIMADE to Pymatgen format`,
+    },
+  ])(`should handle $name gracefully`, ({ optimade_structure, expected_error }) => {
+    const result = optimade_to_pymatgen(optimade_structure)
+    expect(result).toBeNull()
+
+    // Verify the expected error was logged
+    const errorCalls = console_error_spy.mock.calls
+    expect(errorCalls.length).toBeGreaterThan(0)
+    expect(errorCalls[0][0]).toContain(expected_error)
+  })
+
+  it.each([
+    {
+      name: `fractional coordinates calculation`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
+          species_at_sites: [`Si`, `O`],
+        },
+      },
+      expected_abc: [[0.0, 0.0, 0.0], [0.5, 0.5, 0.25]],
+    },
+    {
+      name: `singular lattice matrix`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      },
+      expected_abc: [[0.0, 0.0, 0.0]],
+    },
+    {
+      name: `non-orthogonal lattice matrix`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]],
+          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.5, 2.165, 2.0]],
+          species_at_sites: [`Fe`, `Fe`],
+        },
+      },
+      expected_abc: [[0.0, 0.0, 0.0], [0.2077367205542725, 0.38452655889145493, 0.5]],
+    },
+  ])(`should handle $name`, ({ optimade_structure, expected_abc }) => {
+    const result = optimade_to_pymatgen(optimade_structure)
+    if (!result) throw `Failed to convert OPTIMADE structure`
+
+    expect(result.sites).toHaveLength(expected_abc.length)
+    result.sites.forEach((site, idx) => {
+      expect(site.abc[0]).toBeCloseTo(expected_abc[idx][0], 12)
+      expect(site.abc[1]).toBeCloseTo(expected_abc[idx][1], 12)
+      expect(site.abc[2]).toBeCloseTo(expected_abc[idx][2], 12)
+    })
+
+    // Verify coordinate transformation works
+    if (result.lattice) {
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`

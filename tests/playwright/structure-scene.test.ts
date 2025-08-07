@@ -40,7 +40,7 @@ async function safe_canvas_hover(
 
 // Helper function to try multiple positions to find a hoverable atom (optimized)
 async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
-  const canvas = page.locator(`#structure-wrapper canvas`)
+  const canvas = page.locator(`#test-structure canvas`)
 
   // Use cached position if available
   if (cached_atom_position) return cached_atom_position
@@ -85,7 +85,7 @@ function setup_console_monitoring(page: Page): string[] {
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     await canvas.waitFor({ state: `visible`, timeout: 5000 })
     // Wait for canvas to be properly initialized by checking it has dimensions
     await expect(canvas).toHaveAttribute(`width`)
@@ -94,7 +94,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
   // Combined basic functionality and rendering test
   test(`scene renders correctly with atoms and proper lighting`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     // Verify basic setup and visual rendering
@@ -122,7 +122,7 @@ test.describe(`StructureScene Component Tests`, () => {
     test.skip(!atom_position, `No hoverable atoms found`)
     if (!atom_position) throw new Error(`No hoverable atoms found`) // type narrowing
 
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     await canvas.hover({ position: atom_position })
 
     const tooltip = page.locator(`.tooltip:has(.coordinates)`)
@@ -188,7 +188,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const first_atom = await find_hoverable_atom(page)
     test.skip(!first_atom, `No hoverable atoms found`)
 
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     // Test click to activate
@@ -240,7 +240,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
   // Combined camera control tests
   test(`camera controls (rotation, zoom, pan) work correctly`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     await clear_tooltips_and_overlays(page)
 
@@ -280,7 +280,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
   // Test disordered sites, occupancy, and partial sphere capping
   test(`handles disordered sites and partial sphere capping correctly`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     await clear_tooltips_and_overlays(page)
@@ -339,7 +339,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test disordered site tooltip formatting
   // SKIPPED: Three.js context destruction during test execution
   test.skip(`formats disordered site tooltips without trailing zeros and proper separators`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     await clear_tooltips_and_overlays(page)
@@ -390,7 +390,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
   // Combined rapid interaction and performance test
   test(`handles rapid interactions and maintains performance`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     await clear_tooltips_and_overlays(page)
@@ -418,14 +418,14 @@ test.describe(`StructureScene Component Tests`, () => {
   // Bond rendering test
   test(`renders bonds without errors`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
     expect(console_errors).toHaveLength(0)
   })
 
   // Lattice and site labels test
   test(`renders lattice and handles site labels correctly`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     // Verify lattice and labels don't cause rendering errors
@@ -437,7 +437,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
   // Structure stability test
   test(`maintains structural stability over time`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     const initial_screenshot = await canvas.screenshot()
@@ -451,7 +451,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
   // Error handling test
   test(`handles edge cases and errors gracefully`, async ({ page }) => {
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
     // Test various edge case interactions
@@ -491,7 +491,7 @@ test.describe(`StructureScene Component Tests`, () => {
       }
     })
 
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
     // Take screenshots to verify visual changes
@@ -543,7 +543,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test dual opacity controls allow flexible edge/surface combinations
   test(`dual opacity controls allow flexible edge and surface combinations`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Test edges only (surface opacity = 0)
     await page.evaluate(() => {
@@ -619,7 +619,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test that EdgesGeometry removes diagonal lines from wireframe
   test(`EdgesGeometry wireframe shows only cell edges without diagonals`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Set wireframe mode with high opacity and contrast for visibility
     await page.evaluate(() => {
@@ -661,7 +661,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test line width property (note: limited by WebGL constraints)
   test(`cell line width changes are handled correctly`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Test different line widths (note: WebGL may limit actual rendering)
     const line_widths = [1, 2, 5, 10]
@@ -691,7 +691,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test dual opacity controls for edges and surfaces
   test(`edge and surface opacity controls work independently`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Set baseline with both edges and surfaces visible
     await page.evaluate(() => {
@@ -767,7 +767,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test opacity range validation
   test(`opacity values are clamped to valid range`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Test extreme values
     const test_values = [-0.5, 0, 0.5, 1, 1.5]
@@ -795,7 +795,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test that opacity values can be set independently and produce expected results
   test(`independent opacity controls work correctly across different values`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Test low edge opacity, no surfaces
     await page.evaluate(() => {
@@ -850,7 +850,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test same_size_atoms property controls atom scaling behavior
   test(`same_size_atoms property controls atom radius scaling correctly`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     // Helper to set scene properties and take screenshot
     const set_props_and_screenshot = async (props: Record<string, unknown>) => {
@@ -916,7 +916,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test rotation target prevents structure from moving off-canvas
   test(`rotation target uses lattice center for crystalline structures and center of mass for molecular systems`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#structure-wrapper canvas`)
+    const canvas = page.locator(`#test-structure canvas`)
 
     await expect(canvas).toBeVisible()
 

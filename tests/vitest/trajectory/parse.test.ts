@@ -21,9 +21,8 @@ const read_test_file = (filename: string): string => {
 }
 
 // Helper to read binary test files
-const read_binary_test_file = (filename: string): ArrayBuffer => {
-  const file_path = join(process.cwd(), `src/site/trajectories`, filename)
-  const buffer = readFileSync(file_path)
+const read_binary_test_file = (file_path: string): ArrayBuffer => {
+  const buffer = readFileSync(join(process.cwd(), file_path))
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
@@ -374,7 +373,9 @@ describe(`XYZ Trajectory Format`, () => {
 
 describe(`HDF5 Format`, () => {
   it(`should parse valid HDF5 file`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
@@ -391,7 +392,9 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should handle various atomic number dataset names`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     // Should find atomic numbers under any of the common names
@@ -401,7 +404,9 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should extract energy data when available`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     // Check if energy data is present in metadata
@@ -419,7 +424,9 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should handle periodic boundary conditions`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     expect(trajectory.metadata?.periodic_boundary_conditions).toBeDefined()
@@ -428,7 +435,9 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should calculate volumes when lattice is present`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     trajectory.frames.forEach((frame) => {
@@ -442,12 +451,16 @@ describe(`HDF5 Format`, () => {
   it(`should provide detailed error for missing positions`, async () => {
     // This would require a custom HDF5 file without positions - skip for now
     // but keep the test structure for when we have such a file
-    const content = read_binary_test_file(`torch-sim-water-cluster-bad-file.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-water-cluster-bad-file.h5`,
+    )
     await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow()
   })
 
   it(`should provide detailed error for missing atomic numbers`, async () => {
-    const content = read_binary_test_file(`torch-sim-water-cluster-bad-file.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-water-cluster-bad-file.h5`,
+    )
 
     try {
       await parse_trajectory_data(content, `bad.h5`)
@@ -461,7 +474,9 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should produce consistent results across separate parse operations`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory1 = await parse_trajectory_data(content, `test1.h5`)
     const trajectory2 = await parse_trajectory_data(content, `test2.h5`)
 
@@ -475,7 +490,9 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`should handle different HDF5 group structures`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     // Should successfully parse regardless of which group contains the data
@@ -490,17 +507,19 @@ describe(`HDF5 Format`, () => {
 })
 
 describe(`ASE Trajectory Format`, () => {
-  it.skipIf(!existsSync(join(process.cwd(), `src/site/trajectories/large`)))(
+  it.skipIf(!existsSync(join(process.cwd(), `tmp/trajectories`)))(
     `should parse ASE binary trajectory`,
     async () => {
-      const content = read_binary_test_file(
-        `large/2025-07-03-ase-md-npt-300K-from-andrew-rosen.traj`,
-      )
-      const trajectory = await parse_trajectory_data(content, `test.traj`)
+      const filename = `2025-07-03-ase-md-npt-300K-from-andrew-rosen.traj`
+      const content = read_binary_test_file(`tmp/trajectories/${filename}`)
+      const { frames, metadata } = await parse_trajectory_data(content, `test.traj`)
 
-      expect(trajectory.metadata?.source_format).toBe(`ase_trajectory`)
-      expect(trajectory.frames.length).toBeGreaterThan(0)
-      expect(trajectory.metadata?.num_atoms).toBeGreaterThan(0)
+      expect(metadata?.source_format).toBe(`ase_trajectory`)
+      expect(frames.length).toBe(1000)
+      expect(metadata?.total_atoms).toBe(424)
+      expect(metadata?.periodic_boundary_conditions).toEqual([true, true, true])
+      expect(metadata?.filename).toBe(`test.traj`)
+      expect(metadata?.source_format).toBe(`ase_trajectory`)
     },
   )
 
@@ -515,7 +534,9 @@ describe(`ASE Trajectory Format`, () => {
   it(`should handle ASE trajectory with calculator info`, async () => {
     // This would require a test file with calculator info
     // For now, just test the structure exists
-    const content = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/ase-LiMnO2-chgnet-relax.traj`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.traj`)
 
     expect(trajectory.metadata?.source_format).toBe(`ase_trajectory`)
@@ -590,7 +611,7 @@ describe(`Format Detection`, () => {
     [`pymatgen-LiMnO2-chgnet-relax.json.gz`, `pymatgen_trajectory`],
   ])(`should route %s to %s parser`, async (filename, expected_format) => {
     const content = filename.endsWith(`.h5`)
-      ? read_binary_test_file(filename)
+      ? read_binary_test_file(`src/site/trajectories/${filename}`)
       : read_test_file(filename)
     const trajectory = await parse_trajectory_data(content, filename)
     expect(trajectory.metadata?.source_format).toBe(expected_format)
@@ -608,7 +629,9 @@ describe(`Format Detection`, () => {
   })
 
   it(`should detect HDF5 signature correctly`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
     expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
   })
@@ -687,7 +710,9 @@ describe(`Metadata Preservation`, () => {
   })
 
   it(`should preserve lattice info flags`, async () => {
-    const content = read_binary_test_file(`torch-sim-gold-cluster-55-atoms.h5`)
+    const content = read_binary_test_file(
+      `src/site/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    )
     const trajectory = await parse_trajectory_data(content, `test.h5`)
     expect(trajectory.metadata?.has_cell_info).toBeDefined()
   })
@@ -702,7 +727,9 @@ describe(`Comprehensive File Coverage`, () => {
         const file_path = join(trajectory_dir, name)
         return statSync(file_path).isFile() &&
           !name.startsWith(`.`) &&
-          !name.includes(`bad-file`) // Exclude intentionally broken test files
+          !name.includes(`bad-file`) && // Exclude intentionally broken test files
+          !name.endsWith(`.ts`) && // Exclude TypeScript files
+          !name.endsWith(`.js`)
       })
     : []
 
@@ -715,7 +742,7 @@ describe(`Comprehensive File Coverage`, () => {
     async (filename) => {
       const is_binary = filename.match(/\.(h5|hdf5|traj)$/)
       const content = is_binary
-        ? read_binary_test_file(filename)
+        ? read_binary_test_file(`src/site/trajectories/${filename}`)
         : read_test_file(filename)
 
       // Should not throw an error

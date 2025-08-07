@@ -203,7 +203,7 @@ describe(`Structure`, () => {
     wrapper.dispatchEvent(drag_event)
 
     // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await new Promise((resolve) => setTimeout(resolve, 20))
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)

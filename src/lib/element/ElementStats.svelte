@@ -4,18 +4,17 @@
 
   interface Props {
     element: ChemicalElement | null
-    style?: string
+    [key: string]: unknown
   }
-  let { element, style = `` }: Props = $props()
+  let { element, ...rest }: Props = $props()
 </script>
 
 {#if element}
-  <div {style}>
+  <div {...rest}>
     <ElementHeading
       {element}
-      style="font-size: min(3vw, 3em); grid-column: 1/-1; margin: auto 0 0"
+      style="font-size: 6cqw; grid-column: 1/-1; margin: auto 0 0"
     />
-
     <section>
       <p>
         Atomic Mass

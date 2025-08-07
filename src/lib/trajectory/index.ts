@@ -1,11 +1,12 @@
 // Utility functions for working with trajectory data
 import type { AnyStructure } from '$lib'
 import type { ComponentProps } from 'svelte'
-import Trajectory from './Trajectory.svelte'
 
+export { default as Trajectory } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryInfoPanel } from './TrajectoryInfoPanel.svelte'
-export { Trajectory }
+
+export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
 
 // Core trajectory types
 export interface ParseProgress {

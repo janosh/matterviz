@@ -386,11 +386,8 @@ const parse_file_content = async (
     }
   }
 
-  // Check if it's a trajectory file AFTER decompression (with correct filename)
-  const is_traj = is_trajectory_file(filename)
-
   // Try trajectory parsing first if it looks like a trajectory
-  if (is_traj) {
+  if (is_trajectory_file(filename)) {
     try {
       const data = await parse_trajectory_data(content, filename)
       return { type: `trajectory`, data, filename }

@@ -398,15 +398,13 @@ test.describe(`Trajectory Component`, () => {
 
   test.describe(`advanced features`, () => {
     test(`custom controls snippet works`, async ({ page }) => {
-      const custom_controls = page.locator(
-        `#custom-controls`,
-      )
+      const custom_controls = page.locator(`#custom-controls`)
       if (await custom_controls.isVisible()) {
         await expect(
           custom_controls.locator(`.trajectory-controls .nav-section`),
         ).not.toBeVisible()
         await expect(
-          custom_controls.locator(`.custom-trajectory-controls`),
+          custom_controls.locator(`.trajectory-controls button`).first(),
         ).toBeVisible()
       }
     })
