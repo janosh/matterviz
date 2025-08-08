@@ -5,6 +5,8 @@
 
 ```svelte example
 <script>
+  import { page } from '$app/state'
+  import { goto } from '$app/navigation'
   import { Structure } from 'matterviz'
   import Select from 'svelte-multiselect'
   import { FilePicker } from '$site'
@@ -12,12 +14,27 @@
   import { molecule_files } from '$site/molecules'
   import { get_electro_neg_formula } from '$lib'
 
-  let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
+  let current_filename = $state(
+    page.url.searchParams.get(`file`) ?? `Bi2Zr2O8-Fm3m.json`,
+  )
+
+  $effect(() => {
+    const file = page.url.searchParams.get(`file`)
+    if (file && file !== current_filename) current_filename = file
+  })
 </script>
 
 <Structure
   data_url="/structures/{current_filename}"
-  on_file_load={(data) => current_filename = data.filename}
+  on_file_load={(data) => {
+    current_filename = data.filename
+    page.url.searchParams.set(`file`, current_filename)
+    goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
+      replaceState: true,
+      keepfocus: true,
+      noScroll: true,
+    })
+  }}
 >
   <h3 style="position: absolute; margin: 1ex 1em; font-family: monospace; z-index: 1">
     {current_filename}
@@ -52,8 +69,7 @@ Showcasing structures with different crystal systems.
     {@const href = `https://materialsproject.org/materials/${mp_id}`}
     {@const crystal_system = structure.id.split(`-`).at(-1) || 'unknown'}
     <li>
-      <h3><a {href}>{mp_id}</a></h3>
-      <p class="crystal-system">Crystal System <strong>{crystal_system}</strong></p>
+      <h3><a {href}>{mp_id}</a> <small>{crystal_system}</small></h3>
       <Structure {structure} />
     </li>
   {/each}
@@ -70,18 +86,14 @@ Showcasing structures with different crystal systems.
     width: 95vw;
     margin: 2em calc(50cqw - 47.5vw);
   }
-  .crystal-system {
-    margin: 0.5em 0;
-    font-size: 0.9em;
-    color: var(--text-color-secondary, #888);
-  }
-  .crystal-system strong {
-    color: var(--text-color-primary, #999);
-    text-transform: capitalize;
-  }
   ul.crystal-systems h3 {
     margin: 0.5em 0;
     font-size: 1.1em;
+  }
+  ul.crystal-systems small {
+    margin: 0 0 0 0.5em;
+    font-weight: lighter;
+    color: var(--text-color-muted);
   }
 </style>
 ```
