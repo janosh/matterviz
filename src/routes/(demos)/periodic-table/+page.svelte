@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import type { Category, ChemicalElement } from '$lib'
+  import type { ChemicalElement, ElementCategory } from '$lib'
   import { element_data, PeriodicTable } from '$lib'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
@@ -56,7 +56,7 @@
   let missing_color: string = $state(`#666666`)
   let missing_use_category: boolean = $state(false)
   let missing_active_element: ChemicalElement | null = $state(null)
-  let missing_active_category: Category | null = $state(null)
+  let missing_active_category: ElementCategory | null = $state(null)
 
   // Missing color demo derived values
   let missing_get_element_value = $derived((el: ChemicalElement) => {

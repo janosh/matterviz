@@ -1,5 +1,4 @@
-import type { FileInfo } from '$site'
-import { FilePicker } from '$site'
+import { type FileInfo, FilePicker } from '$lib'
 import { mount } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import { doc_query } from './setup'
@@ -13,9 +12,7 @@ describe(`FilePicker`, () => {
   ): FileInfo => {
     // Extract the correct file type, handling double extensions like .cif.gz
     let base_name = name
-    if (base_name.toLowerCase().endsWith(`.gz`)) {
-      base_name = base_name.slice(0, -3)
-    }
+    if (base_name.toLowerCase().endsWith(`.gz`)) base_name = base_name.slice(0, -3)
 
     const type = base_name.split(`.`).pop()?.toUpperCase() ?? `FILE`
 

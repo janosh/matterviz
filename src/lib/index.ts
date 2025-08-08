@@ -1,10 +1,11 @@
-import type { categories, elem_symbols } from './labels'
+import type { elem_symbols, element_categories } from './labels'
 
 export * from './colors'
 export * from './composition'
 export { default as ContextMenu } from './ContextMenu.svelte'
 export { default as DraggablePanel } from './DraggablePanel.svelte'
 export * from './element'
+export { default as FilePicker } from './FilePicker.svelte'
 export { default as Icon } from './Icon.svelte'
 export { icon_data, type IconName } from './icons'
 export { default as InfoCard } from './InfoCard.svelte'
@@ -21,8 +22,7 @@ export * from './structure'
 export * from './theme'
 export { default as Trajectory } from './trajectory/Trajectory.svelte'
 
-export type Category = (typeof categories)[number]
-
+export type ElementCategory = (typeof element_categories)[number]
 export type ElementSymbol = (typeof elem_symbols)[number]
 
 export type ChemicalElement = {
@@ -31,7 +31,7 @@ export type ChemicalElement = {
   atomic_mass: number // in atomic units (u)
   atomic_radius: number | null // in Angstrom (A)
   boiling_point: number | null // in kelvin (K)
-  category: Category
+  category: ElementCategory
   column: number // aka group, in range 1 - 18
   covalent_radius: number | null // in Angstrom (A)
   density: number
@@ -69,20 +69,11 @@ export type ChemicalElement = {
   year: number | string
 }
 
-export type DispatchPayload = CustomEvent<{
-  element: ChemicalElement
-  active: boolean // whether the event target tile is currently active
-  dom_event: Event // the DOM event that triggered the Svelte dispatch
-}>
-
-export type PeriodicTableEvents = {
-  click: DispatchPayload
-  mouseenter: DispatchPayload
-  mouseleave: DispatchPayload
-  keyup: DispatchPayload
-  keydown: DispatchPayload
-  focus: DispatchPayload
-  blur: DispatchPayload
+export interface FileInfo {
+  name: string
+  url: string
+  type?: string
+  category?: string
 }
 
 export const crystal_systems = [

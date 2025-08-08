@@ -1,11 +1,11 @@
-import type { Category, ChemicalElement } from '$lib'
+import type { ChemicalElement, ElementCategory } from '$lib'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { default_category_colors, default_element_colors } from './colors'
 import type { Tooltip } from './plot'
 import type { ThemeMode, ThemeType } from './theme'
 
 export const selected = $state<{
-  category: Category | null
+  category: ElementCategory | null
   element: ChemicalElement | null
   last_element: ChemicalElement | null
   heatmap_key: keyof ChemicalElement | null

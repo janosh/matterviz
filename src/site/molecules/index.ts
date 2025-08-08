@@ -1,5 +1,4 @@
-import type { PymatgenMolecule } from '$lib/index'
-import type { FileInfo } from '$site'
+import type { FileInfo, PymatgenMolecule } from '$lib'
 
 // Array of molecules
 export const molecules = Object.entries(
