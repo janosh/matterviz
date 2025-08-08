@@ -1,4 +1,4 @@
-import type { Category, ChemicalElement } from '$lib'
+import type { ChemicalElement, ElementCategory } from '$lib'
 import { format } from 'd3-format'
 
 // TODO add labels and units for all elemental properties
@@ -86,7 +86,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
   return value
 }
 
-export const category_counts: Record<Category, number> = {
+export const category_counts: Record<ElementCategory, number> = {
   actinide: 15,
   'alkali metal': 6,
   'alkaline earth metal': 6,

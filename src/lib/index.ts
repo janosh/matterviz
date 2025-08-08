@@ -22,7 +22,7 @@ export * from './structure'
 export * from './theme'
 export { default as Trajectory } from './trajectory/Trajectory.svelte'
 
-export type Category = (typeof categories)[number]
+export type ElementCategory = (typeof categories)[number]
 
 export type ElementSymbol = (typeof elem_symbols)[number]
 
@@ -32,7 +32,7 @@ export type ChemicalElement = {
   atomic_mass: number // in atomic units (u)
   atomic_radius: number | null // in Angstrom (A)
   boiling_point: number | null // in kelvin (K)
-  category: Category
+  category: ElementCategory
   column: number // aka group, in range 1 - 18
   covalent_radius: number | null // in Angstrom (A)
   density: number
