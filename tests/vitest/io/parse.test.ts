@@ -244,6 +244,15 @@ describe(`XYZ Parser`, () => {
     expect(result.sites[2].xyz[2]).toBeCloseTo(0.00567890123456)
     expect(result.sites[3].xyz[0]).toBeCloseTo(-0.4440892098501)
   })
+
+  it(`should select last frame in multi-frame XYZ`, () => {
+    const multi_frame = `2\nframe-1\nH 0 0 0\nH 0 0 1\n1\nframe-2\nHe 1 2 3\n`
+    const result = parse_xyz(multi_frame)
+    if (!result) throw `Failed to parse multi-frame XYZ`
+    expect(result.sites).toHaveLength(1)
+    expect(result.sites[0].species[0].element).toBe(`He`)
+    expect(result.sites[0].xyz).toEqual([1, 2, 3])
+  })
 })
 
 describe(`Auto-detection & Error Handling`, () => {
@@ -340,6 +349,10 @@ describe(`Auto-detection & Error Handling`, () => {
         `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`,
     },
     { parser: parse_xyz, content: `1\nTest\nC invalid 0.0 0.0` },
+    {
+      parser: parse_poscar,
+      content: `Test\n1.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n0.0 0.0 1.0\nH\n1\nFoo\n0.0 0.0 0.0`,
+    },
     // Auto-detection errors
     { parser: parse_structure_file, content: `not a structure file` },
     {
@@ -1548,6 +1561,42 @@ describe(`OPTIMADE JSON parser`, () => {
         first_element: `Fe`,
       },
     },
+    {
+      name: `wrapped OPTIMADE response with data field (single)`,
+      content: JSON.stringify({
+        data: {
+          id: `wrapped-single`,
+          type: `structures`,
+          attributes: {
+            lattice_vectors: [[4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]],
+            cartesian_site_positions: [[0, 0, 0], [2, 2, 2]],
+            species_at_sites: [`Si`, `Si`],
+          },
+        },
+      }),
+      expected: {
+        sites: 2,
+        has_lattice: true,
+        first_element: `Si`,
+        lattice_matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+      },
+    },
+    {
+      name: `wrapped OPTIMADE response with data array`,
+      content: JSON.stringify({
+        data: [
+          {
+            id: `wrapped-array-0`,
+            type: `structures`,
+            attributes: {
+              cartesian_site_positions: [[0, 0, 0]],
+              species_at_sites: [`C`],
+            },
+          },
+        ],
+      }),
+      expected: { sites: 1, has_lattice: false, first_element: `C` },
+    },
   ])(`should parse $name`, ({ data, content, expected }) => {
     const test_content = content || JSON.stringify(data)
     const result = parse_optimade_json(test_content as string)
@@ -1596,6 +1645,18 @@ describe(`OPTIMADE JSON parser`, () => {
         },
       },
       expected_error: `OPTIMADE JSON position/species count mismatch`,
+    },
+    {
+      name: `no valid sites after filtering invalid positions`,
+      data: {
+        id: `test-no-valid-sites`,
+        type: `structures`,
+        attributes: {
+          cartesian_site_positions: [[0.0, 0.0]],
+          species_at_sites: [`Fe`],
+        },
+      },
+      expected_error: `No valid sites found in OPTIMADE JSON`,
     },
     {
       name: `invalid JSON`,
@@ -1757,6 +1818,11 @@ describe(`OPTIMADE JSON Detection`, () => {
     {
       name: `empty string`,
       content: ``,
+      expected: false,
+    },
+    {
+      name: `wrapped response with empty data array`,
+      content: JSON.stringify({ data: [] }),
       expected: false,
     },
     {

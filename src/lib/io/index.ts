@@ -1,4 +1,4 @@
-import type { FileInfo } from '$site'
+import type { FileInfo } from '$lib'
 
 export * from './decompress'
 export * from './export'

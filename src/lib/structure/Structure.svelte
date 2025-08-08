@@ -86,6 +86,7 @@
       // Bonds
       bond_thickness: DEFAULTS.structure.bond_thickness,
       bond_color: DEFAULTS.structure.bond_color,
+      bonding_strategy: DEFAULTS.structure.bonding_strategy,
       // Labels
       show_site_labels: DEFAULTS.structure.show_site_labels,
       site_label_size: DEFAULTS.structure.site_label_size,
@@ -107,7 +108,7 @@
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
       cell_surface_color: DEFAULTS.structure.cell_surface_color,
       cell_edge_width: DEFAULTS.structure.cell_edge_width,
-      show_cell_vectors: true,
+      show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
     }),
     controls_open = $bindable(false),
     info_panel_open = $bindable(false),

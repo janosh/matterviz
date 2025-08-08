@@ -1,8 +1,8 @@
 // deno-lint-ignore-file no-await-in-loop
 import element_data from '$lib/element/data'
 import {
-  categories,
   category_counts,
+  element_categories,
   format_num,
   heatmap_keys,
   heatmap_labels,
@@ -24,7 +24,7 @@ test.describe(`Periodic Table`, () => {
       element_data.length + n_lanthanide_actinide_placeholders,
     )
 
-    for (const category of categories) {
+    for (const category of element_categories) {
       let count = category_counts[category] as number
       const css_cls = `.${category.replaceAll(` `, `-`)}`
       // add 1 to expected count since lanthanides and actinides have placeholder

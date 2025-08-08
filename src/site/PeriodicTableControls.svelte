@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Category } from '$lib'
+  import type { ElementCategory } from '$lib'
   import { default_category_colors } from '$lib/colors'
   import { colors, selected } from '$lib/state.svelte'
 
@@ -231,8 +231,8 @@
     {#each Object.keys(colors.category) as category (category)}
       <label
         for="{category}-color"
-        onmouseenter={() => (selected.category = category as Category)}
-        onfocus={() => (selected.category = category as Category)}
+        onmouseenter={() => (selected.category = category as ElementCategory)}
+        onfocus={() => (selected.category = category as ElementCategory)}
         onmouseleave={() => (selected.category = null)}
         onblur={() => (selected.category = null)}
       >

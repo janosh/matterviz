@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Category, ChemicalElement, XyObj } from '$lib'
+  import type { ChemicalElement, ElementCategory, XyObj } from '$lib'
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { default_category_colors, is_color } from '$lib/colors'
   import element_data from '$lib/element/data'
@@ -28,7 +28,7 @@
     log?: boolean
     color_scale?: D3InterpolateName | ((num: number) => string)
     active_element?: ChemicalElement | null
-    active_category?: Category | null
+    active_category?: ElementCategory | null
     gap?: string // gap between element tiles, default is 0.3% of container width
     inner_transition_metal_offset?: number
     // show lanthanides and actinides as tiles
@@ -36,7 +36,7 @@
       name: string
       symbol: string
       number: string
-      category: Category
+      category: ElementCategory
     }[]
     lanth_act_style?: string
     color_scale_range?: [number | null, number | null]

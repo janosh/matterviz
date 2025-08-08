@@ -1,4 +1,4 @@
-import type { Category, ChemicalElement } from '$lib'
+import type { ChemicalElement } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { category_counts, heatmap_labels } from '$lib/labels'
 import { mount, tick } from 'svelte'
@@ -158,9 +158,7 @@ describe(`PeriodicTable`, () => {
     (active_category, expected_active) => {
       mount(PeriodicTable, {
         target: document.body,
-        props: {
-          active_category: active_category.replaceAll(` `, `-`) as Category,
-        },
+        props: { active_category: active_category.replaceAll(` `, `-`) },
       })
       expect(document.querySelectorAll(`.element-tile.active`).length).toBe(
         expected_active,

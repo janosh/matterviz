@@ -16,7 +16,7 @@
 
 ## 🔌 &thinsp; [MatterViz VSCode Extension]
 
-Visualize crystal structures and molecular dynamics trajectories directly in VSCode with the [MatterViz VSCode Extension]. Features include:
+Visualize crystal structures, molecules, and molecular dynamics trajectories [directly in VSCode][MatterViz VSCode Extension]. Features include:
 
 - Native support for common file formats (CIF, POSCAR, XYZ, TRAJ, HDF5, etc.)
 - Context menu (right click > "Render with MatterViz") and keyboard shortcuts (<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Windows, <kbd>cmd</kbd>+<kbd>shift</kbd>+<kbd>v</kbd> on Mac) for quick access
@@ -57,7 +57,7 @@ npm install --dev matterviz
 
 ## 📙 &thinsp; Usage
 
-Import the `PeriodicTable` component and pass it some heatmap values:
+### Periodic Table
 
 ```svelte
 <script>
@@ -69,27 +69,36 @@ Import the `PeriodicTable` component and pass it some heatmap values:
 <PeriodicTable {heatmap_values} />
 ```
 
-## 🎬 &thinsp; Events
+### Structure
 
-`PeriodicTable.svelte` forwards the following events from each `ElementTile`:
-
-1. `click`
-1. `mouseenter`
-1. `mouseleave`
-1. `keyup`
-1. `keydown`
-
-Each event is a Svelte `dispatch` event with the following `detail` payload:
-
-```ts
-detail: {
-  element: ChemicalElement
-  active: boolean // whether the event target tile is currently active
-  dom_event: Event // the DOM event that triggered the Svelte dispatch
-}
+```svelte
+<script>
+  import { Structure } from 'matterviz'
+  const data_url = '/structures/TiO2.cif'
+  // supports .cif, .poscar, .xyz/.extxyz, pymatgen JSON, OPTIMADE JSON, .gz
+</script>
+<Structure {data_url} />
 ```
 
-See `DispatchPayload` and `PeriodicTableEvents` in `src/lib/index.ts`
+### Composition
+
+```svelte
+<script>
+  import { Composition } from 'matterviz'
+  // modes can be 'pie' (default) | 'bubble' | 'bar'
+</script>
+<Composition composition="LiFePO4" mode="pie" />
+```
+
+### Trajectory
+
+```svelte
+<script>
+  import { Trajectory } from 'matterviz'
+  // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat, .gz, .zip, .bz2, .xz
+</script>
+<Trajectory data_url="/traj/ase-md.xyz" auto_play fps={10} />
+```
 
 ## 🧪 &thinsp; Coverage
 

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Structure, Trajectory } from '$lib'
+  import { FilePicker, Structure, Trajectory } from '$lib'
   import type { TrajHandlerData } from '$lib/trajectory'
-  import { CompositionDemo, FilePicker, PeriodicTableDemo } from '$site'
+  import { CompositionDemo, PeriodicTableDemo } from '$site'
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'

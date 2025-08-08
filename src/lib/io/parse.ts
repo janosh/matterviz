@@ -298,19 +298,16 @@ export function parse_poscar(content: string): ParsedStructure | null {
           }
           let xyz: Vec3
           let abc: Vec3
+          const [x, y, z] = coords
 
           if (is_direct) {
             // Store fractional coordinates, wrapping to [0, 1) range
-            abc = [
-              coords[0] - Math.floor(coords[0]),
-              coords[1] - Math.floor(coords[1]),
-              coords[2] - Math.floor(coords[2]),
-            ]
+            abc = [x - Math.floor(x), y - Math.floor(y), z - Math.floor(z)]
             // Convert fractional to Cartesian coordinates
             const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
             xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
           } else { // Already Cartesian, scale if needed
-            xyz = math.scale([coords[0], coords[1], coords[2]], scale_factor)
+            xyz = math.scale([x, y, z], scale_factor)
             // Calculate fractional coordinates using proper matrix inversion
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
@@ -392,15 +389,11 @@ export function parse_xyz(content: string): ParsedStructure | null {
         const frameLines = all_lines.slice(line_idx, line_idx + numAtoms + 2)
         frames.push(frameLines.join(`\n`))
         line_idx += numAtoms + 2
-      } else {
-        line_idx++
-      }
+      } else line_idx++
     }
 
     // If no frames found, try simple parsing
-    if (frames.length === 0) {
-      frames.push(normalized_content)
-    }
+    if (frames.length === 0) frames.push(normalized_content)
 
     // Parse the last frame (or only frame)
     const frame_content = frames[frames.length - 1]
@@ -942,10 +935,13 @@ export function parse_structure_file(
     // JSON files - try OPTIMADE first, then pymatgen structures
     if (ext === `json`) {
       try {
-        if (is_optimade_json(content)) return parse_optimade_json(content)
-
-        // Otherwise, try to parse as pymatgen/nested structure JSON
+        // Parse once, reuse for detection and parsing
         const parsed = JSON.parse(content)
+        if (is_optimade_raw(parsed)) {
+          const result = parse_optimade_from_raw(parsed)
+          if (result) return result
+        }
+        // Otherwise, try to parse as pymatgen/nested structure JSON
         const structure = find_structure_in_json(parsed)
         if (structure) {
           return structure
@@ -977,10 +973,12 @@ export function parse_structure_file(
 
   // JSON format detection: try to parse as JSON first
   try {
-    if (is_optimade_json(content)) return parse_optimade_json(content)
-
-    // Otherwise try parsing as regular JSON structure
     const parsed = JSON.parse(content)
+    if (is_optimade_raw(parsed)) {
+      const result = parse_optimade_from_raw(parsed)
+      if (result) return result
+    }
+    // Otherwise try parsing as regular JSON structure
     const structure = find_structure_in_json(parsed)
     if (structure) {
       return structure
@@ -1093,24 +1091,37 @@ export function parse_any_structure(
 // Parse OPTIMADE JSON format
 export function parse_optimade_json(content: string): ParsedStructure | null {
   try {
-    const response = JSON.parse(content) as OptimadeStructure
+    const raw = JSON.parse(content) as unknown
+    return parse_optimade_from_raw(raw)
+  } catch (error) {
+    console.error(`Error parsing OPTIMADE JSON:`, error)
+    return null
+  }
+}
 
-    // Handle both single structure and array of structures
-    const structure = Array.isArray(response) ? response[0] : response
+// Parse OPTIMADE from already-parsed JSON
+export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
+  try {
+    const structure = extract_optimade_structure_from_raw(raw)
+    if (!structure) {
+      console.error(`No valid OPTIMADE structure found in JSON`)
+      return null
+    }
     const attrs = structure.attributes
 
-    if (!attrs.cartesian_site_positions || !attrs.species_at_sites) {
+    // Inline validation for conciseness
+    const positions_raw = (attrs as Record<string, unknown>).cartesian_site_positions
+    const species_raw = (attrs as Record<string, unknown>).species_at_sites
+    if (!(Array.isArray(positions_raw) && Array.isArray(species_raw))) {
       console.error(`OPTIMADE JSON missing required position or species data`)
       return null
     }
-
-    const positions = attrs.cartesian_site_positions
-    const species = attrs.species_at_sites
-
-    if (positions.length !== species.length) {
+    if (positions_raw.length !== species_raw.length) {
       console.error(`OPTIMADE JSON position/species count mismatch`)
       return null
     }
+    const positions = positions_raw as number[][]
+    const species = species_raw as string[]
 
     // Optimade stores lattice vectors as rows, so use as is
     const lattice_matrix = attrs.lattice_vectors as Matrix3x3 | undefined
@@ -1182,16 +1193,36 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
 // Check if JSON content is OPTIMADE format by looking for structure attributes
 export function is_optimade_json(content: string): boolean {
   try {
-    const response = JSON.parse(content)
-    // Handle both single structure and array of structures
-    const structure = Array.isArray(response) ? response[0] : response
-    return Boolean(
-      structure !== null && structure.type === `structures` && structure.id &&
-        structure.attributes,
-    )
+    const raw = JSON.parse(content) as unknown
+    return is_optimade_raw(raw)
   } catch {
     return false
   }
+}
+
+// Check if already-parsed JSON is OPTIMADE-like
+export function is_optimade_raw(raw: unknown): boolean {
+  return Boolean(extract_optimade_structure_from_raw(raw))
+}
+
+// Shared helper to extract an OPTIMADE structure from raw JSON-like data
+function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | null {
+  const payload = unwrap_data(raw)
+  const candidate = Array.isArray(payload) ? payload[0] : payload
+  return is_optimade_structure_object(candidate) ? (candidate as OptimadeStructure) : null
+}
+
+const unwrap_data = (value: unknown): unknown =>
+  (value && typeof value === `object` && `data` in (value as Record<string, unknown>))
+    ? (value as { data: unknown }).data
+    : value
+
+// Type guard: verify minimal OPTIMADE structure shape
+function is_optimade_structure_object(value: unknown): value is OptimadeStructure {
+  if (!value || typeof value !== `object`) return false
+  const obj = value as { type?: unknown; id?: unknown; attributes?: unknown }
+  return obj.type === `structures` && typeof obj.id === `string` &&
+    typeof obj.attributes === `object` && obj.attributes !== null
 }
 
 // Convert OPTIMADE structure to Pymatgen format
