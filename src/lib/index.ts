@@ -23,7 +23,6 @@ export * from './theme'
 export { default as Trajectory } from './trajectory/Trajectory.svelte'
 
 export type ElementCategory = (typeof categories)[number]
-
 export type ElementSymbol = (typeof elem_symbols)[number]
 
 export type ChemicalElement = {

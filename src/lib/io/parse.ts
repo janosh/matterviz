@@ -298,19 +298,16 @@ export function parse_poscar(content: string): ParsedStructure | null {
           }
           let xyz: Vec3
           let abc: Vec3
+          const [x, y, z] = coords
 
           if (is_direct) {
             // Store fractional coordinates, wrapping to [0, 1) range
-            abc = [
-              coords[0] - Math.floor(coords[0]),
-              coords[1] - Math.floor(coords[1]),
-              coords[2] - Math.floor(coords[2]),
-            ]
+            abc = [x - Math.floor(x), y - Math.floor(y), z - Math.floor(z)]
             // Convert fractional to Cartesian coordinates
             const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
             xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
           } else { // Already Cartesian, scale if needed
-            xyz = math.scale([coords[0], coords[1], coords[2]], scale_factor)
+            xyz = math.scale([x, y, z], scale_factor)
             // Calculate fractional coordinates using proper matrix inversion
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
             // we need column vectors, so we transpose before inversion
@@ -392,15 +389,11 @@ export function parse_xyz(content: string): ParsedStructure | null {
         const frameLines = all_lines.slice(line_idx, line_idx + numAtoms + 2)
         frames.push(frameLines.join(`\n`))
         line_idx += numAtoms + 2
-      } else {
-        line_idx++
-      }
+      } else line_idx++
     }
 
     // If no frames found, try simple parsing
-    if (frames.length === 0) {
-      frames.push(normalized_content)
-    }
+    if (frames.length === 0) frames.push(normalized_content)
 
     // Parse the last frame (or only frame)
     const frame_content = frames[frames.length - 1]
