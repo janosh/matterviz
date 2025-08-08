@@ -42,10 +42,9 @@ export const symbol_names = [
   for (const key in d3_symbols) {
     if (
       Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
-      d3_symbols[key as keyof typeof d3_symbols] === sym
-    ) {
-      if (key.match(/symbol[A-Z]/)) return key.substring(6)
-    }
+      d3_symbols[key as keyof typeof d3_symbols] === sym &&
+      key.match(/symbol[A-Z]/)
+    ) return key.substring(6)
   }
 }) as D3SymbolName[]
 
