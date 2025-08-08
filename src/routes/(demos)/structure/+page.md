@@ -9,10 +9,9 @@
   import { goto } from '$app/navigation'
   import { Structure } from 'matterviz'
   import Select from 'svelte-multiselect'
-  import { FilePicker } from '$site'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
-  import { get_electro_neg_formula } from '$lib'
+  import { FilePicker, get_electro_neg_formula } from '$lib'
 
   let current_filename = $state(
     page.url.searchParams.get(`file`) ?? `Bi2Zr2O8-Fm3m.json`,

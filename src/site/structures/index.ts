@@ -1,6 +1,5 @@
-import { type PymatgenStructure } from '$lib/index'
+import type { FileInfo, PymatgenStructure } from '$lib'
 import { detect_structure_type, is_optimade_json, parse_optimade_json } from '$lib/io'
-import type { FileInfo } from '$site'
 
 export const structures = Object.entries( // JSON structure files (OPTIMADE/pymatgen format) as JS objects
   import.meta.glob(`./*.json`, {

@@ -52,13 +52,9 @@ export function find_image_atoms(
         }
       }
 
-      // Skip masks that cancel a dimension (e.g., picked both +1 and -1 for same dim)
-      if (
-        selected_shift.some((shift) =>
-          shift === 0 && edge_dims.some((e) => selected_shift[e.dim] === 0)
-        )
-      ) {
-        // We'll compute img_abc next and skip if it equals original
+      // Early skip if no net shift across any dimension
+      if (selected_shift[0] === 0 && selected_shift[1] === 0 && selected_shift[2] === 0) {
+        continue
       }
 
       // Build fractional coordinates positioned just inside the cell boundary
@@ -75,9 +71,7 @@ export function find_image_atoms(
       if (
         img_abc[0] === site.abc[0] && img_abc[1] === site.abc[1] &&
         img_abc[2] === site.abc[2]
-      ) {
-        continue
-      }
+      ) continue
 
       // Compute xyz from img_abc to ensure consistency
       const img_xyz = math.add(

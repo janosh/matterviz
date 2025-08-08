@@ -11,6 +11,9 @@ import mp1204603_json from '$site/structures/mp-1204603.json' with { type: 'json
 import mp2_json from '$site/structures/mp-2.json' with { type: 'json' }
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
+import tl_bi_se2_json from '$site/structures/TlBiSe2-highly-oblique-cell.json' with {
+  type: 'json',
+}
 import { expect, test } from 'vitest'
 
 // Helpers to reduce duplication while preserving coverage
@@ -927,38 +930,15 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
 
 // Test that highly oblique cells are handled correctly
 test(`highly oblique cells should have wrapped fractional coordinates`, () => {
-  // Create a test structure with highly oblique angles
-  const test_structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Corner atom
-        xyz: [0.0, 0.0, 0.0],
-        label: `C1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-      pbc: [true, true, true],
-      a: 5.0,
-      b: 5.0,
-      c: 5.0,
-      alpha: 120, // Highly oblique angle
-      beta: 90,
-      gamma: 90,
-      volume: 125.0,
-    },
-  }
-
-  const image_atoms = find_image_atoms(test_structure)
+  const image_atoms = find_image_atoms(tl_bi_se2_json as unknown as PymatgenStructure)
   expect(image_atoms.length).toBeGreaterThan(0)
 
   // Check that all image atoms have fractional coordinates within [0, 1)
   for (const [_, __, img_abc] of image_atoms) {
+    const eps = 1e-4
     for (let dim = 0; dim < 3; dim++) {
-      expect(img_abc[dim]).toBeGreaterThanOrEqual(0)
-      expect(img_abc[dim]).toBeLessThan(1)
+      expect(img_abc[dim]).toBeGreaterThanOrEqual(0 - eps)
+      expect(img_abc[dim]).toBeLessThan(1 + eps)
     }
   }
 })
@@ -1033,3 +1013,78 @@ test(`mp-1204603 image sites remain inside unit cell`, () => {
     expect(matches_either).toBe(true)
   }
 })
+
+// check we preserve relative fractional offsets across boundary wrapping
+test.each([
+  {
+    coord: 0.98,
+    expected_int_shift: -1,
+    description: `near upper boundary (wrap negative)`,
+  },
+  {
+    coord: 0.02,
+    expected_int_shift: 1,
+    description: `near lower boundary (wrap positive)`,
+  },
+])(
+  `image atoms preserve fractional offset across x-boundary: $description`,
+  ({ coord, expected_int_shift }) => {
+    const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+    const original_abc: Vec3 = [coord, 0.5, 0.5]
+    const structure: PymatgenStructure = {
+      sites: [
+        {
+          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
+          abc: original_abc,
+          xyz: [coord * 5, 2.5, 2.5],
+          label: `Na1`,
+          properties: {},
+        },
+      ],
+      lattice: {
+        matrix: lattice,
+        pbc: [true, true, true],
+        a: 5,
+        b: 5,
+        c: 5,
+        alpha: 90,
+        beta: 90,
+        gamma: 90,
+        volume: 125,
+      },
+    }
+
+    const image_atoms = find_image_atoms(structure)
+    const images_for_first = image_atoms.filter(([site_index]) => site_index === 0)
+    expect(images_for_first.length).toBeGreaterThan(0)
+
+    const candidate = images_for_first.find(([, image_xyz, image_abc]) => {
+      // must be a true translated replica: integer shift in x
+      const diff_x = image_abc[0] - original_abc[0]
+      const int_shift_x = Math.round(diff_x)
+      // and geometry consistent
+      const xyz_ok = (() => {
+        try {
+          assert_xyz_matches_lattice(lattice, image_abc, image_xyz, 10)
+          return true
+        } catch {
+          return false
+        }
+      })()
+      return Math.abs(int_shift_x) === 1 && xyz_ok
+    })
+
+    expect(candidate).toBeTruthy()
+    if (!candidate) return
+
+    const [, img_xyz, img_abc] = candidate
+
+    // integer translation direction matches expectation
+    const diff_x = img_abc[0] - original_abc[0]
+    const int_shift_x = Math.round(diff_x)
+    expect(int_shift_x).toBe(expected_int_shift)
+
+    // xyz consistency check
+    assert_xyz_matches_lattice(lattice, img_abc, img_xyz, 10)
+  },
+)

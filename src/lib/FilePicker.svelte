@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileInfo } from '$site'
+  import type { FileInfo } from '$lib'
 
   interface Props {
     files: FileInfo[]

@@ -47,12 +47,7 @@
   function handle_right_click(event: MouseEvent) { // open context menu
     event.preventDefault()
     context_menu_open = false // Close any existing context menu first
-    // Convert viewport coords to document coords for absolute positioning
-    const x = event.clientX +
-      (globalThis.scrollX || document.documentElement.scrollLeft)
-    const y = event.clientY +
-      (globalThis.scrollY || document.documentElement.scrollTop)
-    context_menu_position = { x, y }
+    context_menu_position = { x: event.pageX, y: event.pageY }
     // Use a small delay to ensure the prev context menu closes happens before opening new one
     setTimeout(() => context_menu_open = true, 0)
   }

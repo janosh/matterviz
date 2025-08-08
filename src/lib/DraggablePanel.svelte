@@ -374,9 +374,10 @@
     top: 0;
     right: 0;
     height: 0;
-    margin-bottom: -100%;
+    /* Cancel the 12 pt top/bottom padding without relying on width-based percentages */
     gap: 5px;
     padding: 12pt 3pt;
+    margin-bottom: calc(-2 * 12pt);
     box-sizing: border-box;
     justify-self: end;
   }

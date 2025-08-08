@@ -5,6 +5,7 @@ export * from './composition'
 export { default as ContextMenu } from './ContextMenu.svelte'
 export { default as DraggablePanel } from './DraggablePanel.svelte'
 export * from './element'
+export { default as FilePicker } from './FilePicker.svelte'
 export { default as Icon } from './Icon.svelte'
 export { icon_data, type IconName } from './icons'
 export { default as InfoCard } from './InfoCard.svelte'
@@ -69,20 +70,11 @@ export type ChemicalElement = {
   year: number | string
 }
 
-export type DispatchPayload = CustomEvent<{
-  element: ChemicalElement
-  active: boolean // whether the event target tile is currently active
-  dom_event: Event // the DOM event that triggered the Svelte dispatch
-}>
-
-export type PeriodicTableEvents = {
-  click: DispatchPayload
-  mouseenter: DispatchPayload
-  mouseleave: DispatchPayload
-  keyup: DispatchPayload
-  keydown: DispatchPayload
-  focus: DispatchPayload
-  blur: DispatchPayload
+export interface FileInfo {
+  name: string
+  url: string
+  type?: string
+  category?: string
 }
 
 export const crystal_systems = [
