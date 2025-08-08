@@ -7,17 +7,17 @@
 <script>
   import { page } from '$app/state'
   import { goto } from '$app/navigation'
+  import { browser } from '$app/environment'
   import { Structure } from 'matterviz'
   import Select from 'svelte-multiselect'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
   import { FilePicker, get_electro_neg_formula } from '$lib'
 
-  let current_filename = $state(
-    page.url.searchParams.get(`file`) ?? `Bi2Zr2O8-Fm3m.json`,
-  )
+  let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
 
   $effect(() => {
+    if (!browser) return
     const file = page.url.searchParams.get(`file`)
     if (file && file !== current_filename) current_filename = file
   })

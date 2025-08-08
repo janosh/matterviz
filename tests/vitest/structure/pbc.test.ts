@@ -39,7 +39,7 @@ function assert_xyz_matches_lattice(
 function assert_integer_translation(
   original_abc: Vec3,
   image_abc: Vec3,
-  tol: number = 1e-10,
+  tol: number = 1e-8,
   require_nonzero: boolean = true,
 ) {
   for (let dim = 0; dim < 3; dim++) {
@@ -60,7 +60,7 @@ function validate_image_tuples(
   structure: PymatgenStructure,
   image_atoms: [number, Vec3, Vec3][],
   min_dist: number = 0.01,
-  tol: number = 1e-10,
+  tol: number = 1e-8,
 ) {
   for (const [original_idx, image_xyz, image_abc] of image_atoms) {
     expect(original_idx).toBeGreaterThanOrEqual(0)
@@ -232,25 +232,9 @@ test(`triclinic lattice image xyz must match lattice * abc`, () => {
   expect(images.length).toBeGreaterThanOrEqual(7)
 
   for (const [orig_idx, img_xyz, img_abc] of images) {
-    // integer-translation relation
     const original_abc = structure.sites[orig_idx].abc
-    for (let dim = 0; dim < 3; dim++) {
-      const frac_diff = img_abc[dim] - original_abc[dim]
-      const int_diff = Math.round(frac_diff)
-      expect(Math.abs(frac_diff - int_diff)).toBeLessThan(1e-10)
-    }
-    // xyz consistency
-    const expected_rows = math.add(
-      math.scale(matrix[0], img_abc[0]),
-      math.scale(matrix[1], img_abc[1]),
-      math.scale(matrix[2], img_abc[2]),
-    )
-    const expected_mul = mat3x3_vec3_multiply(matrix, img_abc)
-    const matches_either = [0, 1, 2].every((dim) =>
-      Math.abs(img_xyz[dim] - expected_rows[dim]) < 1e-9 ||
-      Math.abs(img_xyz[dim] - expected_mul[dim]) < 1e-9
-    )
-    expect(matches_either).toBe(true)
+    assert_integer_translation(original_abc, img_abc, 1e-8)
+    assert_xyz_matches_lattice(matrix, img_abc, img_xyz, 9)
   }
 })
 
@@ -323,13 +307,18 @@ test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
     },
   }
 
-  const [img] = find_image_atoms(structure)
-  expect(img).toBeTruthy()
-  const [, img_xyz, img_abc] = img
+  const images = find_image_atoms(structure)
+  expect(images.length).toBeGreaterThan(0)
+  // pick the x-translated replica (wrapped near 0 along x)
+  const candidate = images.find(([, , image_abc]) =>
+    image_abc[0] > 0 && image_abc[0] < 1e-8
+  )
+  if (!candidate) throw new Error(`no wrapped x-boundary image found`)
+  const [, img_xyz, img_abc] = candidate
 
   // Fractional should sit very close to 0 on x and equal original on y,z
   expect(img_abc[0]).toBeGreaterThan(0)
-  expect(img_abc[0]).toBeLessThan(1e-9)
+  expect(img_abc[0]).toBeLessThan(1e-8)
   expect(img_abc[1]).toBeCloseTo(0.5, 12)
   expect(img_abc[2]).toBeCloseTo(0.5, 12)
 
@@ -464,7 +453,7 @@ test.each([
     expect(image_atoms.length).toBeLessThanOrEqual(expected_max_images)
 
     // Validate all image atoms
-    validate_image_tuples(structure, image_atoms, 0.01, 1e-10)
+    validate_image_tuples(structure, image_atoms, 0.01, 1e-8)
 
     // Test get_pbc_image_sites
     const symmetrized = get_pbc_image_sites(structure)
@@ -664,11 +653,8 @@ test(`all image atoms should be positioned at unit cell boundaries`, () => {
       const lattice_matrix = structure.lattice.matrix
 
       // Convert to fractional coordinates
-      const image_abc: Vec3 = [
-        image_xyz[0] / lattice_matrix[0][0],
-        image_xyz[1] / lattice_matrix[1][1],
-        image_xyz[2] / lattice_matrix[2][2],
-      ]
+      const inv = math.matrix_inverse_3x3(lattice_matrix)
+      const image_abc: Vec3 = mat3x3_vec3_multiply(inv, image_xyz)
 
       // Image atoms should be at positions that are related to the original
       // by integer translations. This means their fractional coordinates
@@ -723,7 +709,7 @@ test(`image atoms should have fractional coordinates at cell boundaries`, () => 
 
     // Image fractional coordinates are now directly provided
     // Each fractional coordinate should differ by an integer
-    assert_integer_translation(original_abc, image_abc, 1e-10)
+    assert_integer_translation(original_abc, image_abc, 1e-8)
     const expected_xyz: Vec3 = math.scale(image_abc, 4.0) as Vec3
     for (let dim = 0; dim < 3; dim++) {
       expect(image_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
@@ -839,11 +825,7 @@ test.each([
 
       // Verify fractional coordinates are related by integer translations
       const original_abc = test_structure.sites[original_idx].abc
-      for (let dim = 0; dim < 3; dim++) {
-        const frac_diff = image_abc[dim] - original_abc[dim]
-        const int_diff = Math.round(frac_diff)
-        expect(Math.abs(frac_diff - int_diff)).toBeLessThan(1e-10)
-      }
+      assert_integer_translation(original_abc, image_abc, 1e-8)
     }
   },
 )
@@ -913,11 +895,7 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
 
     // Verify the image abc coordinates are related to original by integer translations
     const original_abc = test_structure.sites[original_idx].abc
-    for (let dim = 0; dim < 3; dim++) {
-      const diff = image_site.abc[dim] - original_abc[dim]
-      const rounded_diff = Math.round(diff)
-      expect(Math.abs(diff - rounded_diff)).toBeLessThan(1e-10)
-    }
+    assert_integer_translation(original_abc, image_site.abc, 1e-8)
 
     // Verify at least one dimension has non-zero translation
     const has_translation = [0, 1, 2].some((dim) => {

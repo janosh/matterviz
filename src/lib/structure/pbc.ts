@@ -17,9 +17,6 @@ export function find_image_atoms(
   )
   // Skip image generation for trajectory data (>10% atoms outside cell)
   if (atoms_outside_cell.length > structure.sites.length * 0.1) {
-    console.log(
-      `Detected trajectory data with ${atoms_outside_cell.length} atoms outside unit cell. Skipping image atom generation.`,
-    )
     return []
   }
 
@@ -27,7 +24,14 @@ export function find_image_atoms(
   const image_sites: Array<[number, Vec3, Vec3]> = []
   const lattice_vecs = structure.lattice.matrix
 
-  const FRACTIONAL_EPS = 1e-12
+  const FRACTIONAL_EPS = 1e-9
+  // Scale zero-displacement threshold by lattice length scale to avoid hard-coded magic numbers
+  const lattice_norm = Math.max(
+    math.norm(lattice_vecs[0]),
+    math.norm(lattice_vecs[1]),
+    math.norm(lattice_vecs[2]),
+  )
+  const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2
 
   for (const [idx, site] of structure.sites.entries()) {
     // Find edge dimensions and translation directions
@@ -58,13 +62,12 @@ export function find_image_atoms(
       }
 
       // Build fractional coordinates positioned just inside the cell boundary
+      // (instead of exactly at 0/1). This avoids wrap inconsistencies across
+      // supercells and oblique lattices and guarantees a non-zero displacement.
       const img_abc: Vec3 = [...site.abc]
       for (let dim = 0; dim < 3; dim++) {
-        if (selected_shift[dim] > 0) {
-          img_abc[dim] = 1 - FRACTIONAL_EPS
-        } else if (selected_shift[dim] < 0) {
-          img_abc[dim] = FRACTIONAL_EPS
-        }
+        if (selected_shift[dim] > 0) img_abc[dim] = 1 - FRACTIONAL_EPS
+        else if (selected_shift[dim] < 0) img_abc[dim] = FRACTIONAL_EPS
       }
 
       // If no dimension actually shifted, continue
@@ -85,7 +88,7 @@ export function find_image_atoms(
       const displacement_len_sq = displacement[0] * displacement[0] +
         displacement[1] * displacement[1] +
         displacement[2] * displacement[2]
-      if (displacement_len_sq < 1e-24) continue
+      if (displacement_len_sq < displacement_eps_sq) continue
 
       image_sites.push([idx, img_xyz, img_abc])
     }
@@ -107,9 +110,6 @@ export function get_pbc_image_sites(
 
   // Return trajectory data unchanged
   if (atoms_outside_cell.length > structure.sites.length * 0.1) {
-    console.log(
-      `Detected trajectory data with ${atoms_outside_cell.length} atoms outside unit cell. Returning structure as-is for proper trajectory visualization.`,
-    )
     return structure
   }
 
