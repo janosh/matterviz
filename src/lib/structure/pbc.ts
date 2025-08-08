@@ -26,7 +26,8 @@ export function find_image_atoms(
   // Check if this is a supercell to correctly identify external boundaries correctly
   const image_sites: Array<[number, Vec3, Vec3]> = []
   const lattice_vecs = structure.lattice.matrix
-  const is_supercell = `supercell_scaling` in structure
+
+  const FRACTIONAL_EPS = 1e-12
 
   for (const [idx, site] of structure.sites.entries()) {
     // Find edge dimensions and translation directions
@@ -41,45 +42,56 @@ export function find_image_atoms(
 
     // Generate all translation combinations
     for (let mask = 1; mask < (1 << edge_dims.length); mask++) {
-      let img_abc: Vec3 = [...site.abc]
-
-      // Apply translations to fractional coordinates
+      // Track selected translation per dimension. If both +1 and -1 are selected for a dim,
+      // the net shift is zero and we skip because it yields no image.
+      const selected_shift: [number, number, number] = [0, 0, 0]
       for (let bit = 0; bit < edge_dims.length; bit++) {
         if (mask & (1 << bit)) {
           const { dim, direction } = edge_dims[bit]
-          img_abc[dim] += direction
+          selected_shift[dim] += direction
         }
       }
 
-      // Calculate final coordinates
-      let img_xyz: Vec3 = [0, 0, 0]
-      if (is_supercell) {
-        // For supercells: wrap coordinates and recalculate xyz
-        const wrapped_abc = img_abc.map((coord) => {
-          let wrapped = coord % 1
-          if (wrapped < 0) wrapped += 1
-          return wrapped
-        })
-
-        img_xyz = math.add(
-          math.scale(lattice_vecs[0], wrapped_abc[0]),
-          math.scale(lattice_vecs[1], wrapped_abc[1]),
-          math.scale(lattice_vecs[2], wrapped_abc[2]),
+      // Skip masks that cancel a dimension (e.g., picked both +1 and -1 for same dim)
+      if (
+        selected_shift.some((shift) =>
+          shift === 0 && edge_dims.some((e) => selected_shift[e.dim] === 0)
         )
+      ) {
+        // We'll compute img_abc next and skip if it equals original
+      }
 
-        // Update to wrapped coordinates
-        img_abc = wrapped_abc as Vec3
-      } else { // For unit cells: use lattice vector translations
-        // Generate all translation combinations (avoids duplicates)
-        img_xyz = [...site.xyz]
-        for (let bit = 0; bit < edge_dims.length; bit++) {
-          if (mask & (1 << bit)) {
-            const { dim, direction } = edge_dims[bit]
-            const translation = math.scale(lattice_vecs[dim], direction)
-            img_xyz = math.add(img_xyz, translation)
-          }
+      // Build fractional coordinates positioned just inside the cell boundary
+      const img_abc: Vec3 = [...site.abc]
+      for (let dim = 0; dim < 3; dim++) {
+        if (selected_shift[dim] > 0) {
+          img_abc[dim] = 1 - FRACTIONAL_EPS
+        } else if (selected_shift[dim] < 0) {
+          img_abc[dim] = FRACTIONAL_EPS
         }
       }
+
+      // If no dimension actually shifted, continue
+      if (
+        img_abc[0] === site.abc[0] && img_abc[1] === site.abc[1] &&
+        img_abc[2] === site.abc[2]
+      ) {
+        continue
+      }
+
+      // Compute xyz from img_abc to ensure consistency
+      const img_xyz = math.add(
+        math.scale(lattice_vecs[0], img_abc[0]),
+        math.scale(lattice_vecs[1], img_abc[1]),
+        math.scale(lattice_vecs[2], img_abc[2]),
+      ) as Vec3
+
+      // Skip zero-displacement images (should not happen with epsilon nudging)
+      const displacement = math.add(img_xyz, math.scale(site.xyz, -1)) as Vec3
+      const displacement_len_sq = displacement[0] * displacement[0] +
+        displacement[1] * displacement[1] +
+        displacement[2] * displacement[2]
+      if (displacement_len_sq < 1e-24) continue
 
       image_sites.push([idx, img_xyz, img_abc])
     }
@@ -111,7 +123,7 @@ export function get_pbc_image_sites(
   const image_sites = find_image_atoms(...args)
   const imaged_struct: PymatgenStructure = { ...structure, sites: [...structure.sites] }
 
-  // Add image atoms as new sites
+  // Add image atoms as new sites using provided (xyz, abc) from find_image_atoms
   for (const [site_idx, img_xyz, img_abc] of image_sites) {
     const original_site = structure.sites[site_idx]
     imaged_struct.sites.push({ ...original_site, abc: img_abc, xyz: img_xyz })

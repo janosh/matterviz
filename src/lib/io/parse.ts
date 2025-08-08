@@ -1093,10 +1093,13 @@ export function parse_any_structure(
 // Parse OPTIMADE JSON format
 export function parse_optimade_json(content: string): ParsedStructure | null {
   try {
-    const response = JSON.parse(content) as OptimadeStructure
+    const raw = JSON.parse(content) as unknown
 
-    // Handle both single structure and array of structures
-    const structure = Array.isArray(response) ? response[0] : response
+    const structure = extract_optimade_structure_from_raw(raw)
+    if (!structure) {
+      console.error(`No valid OPTIMADE structure found in JSON`)
+      return null
+    }
     const attrs = structure.attributes
 
     if (!attrs.cartesian_site_positions || !attrs.species_at_sites) {
@@ -1182,16 +1185,31 @@ export function parse_optimade_json(content: string): ParsedStructure | null {
 // Check if JSON content is OPTIMADE format by looking for structure attributes
 export function is_optimade_json(content: string): boolean {
   try {
-    const response = JSON.parse(content)
-    // Handle both single structure and array of structures
-    const structure = Array.isArray(response) ? response[0] : response
-    return Boolean(
-      structure !== null && structure.type === `structures` && structure.id &&
-        structure.attributes,
-    )
+    const raw = JSON.parse(content) as unknown
+    return Boolean(extract_optimade_structure_from_raw(raw))
   } catch {
     return false
   }
+}
+
+// Shared helper to extract an OPTIMADE structure from raw JSON-like data
+function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | null {
+  const payload = unwrap_data(raw)
+  const candidate = Array.isArray(payload) ? payload[0] : payload
+  return is_optimade_structure_object(candidate) ? (candidate as OptimadeStructure) : null
+}
+
+const unwrap_data = (value: unknown): unknown =>
+  (value && typeof value === `object` && `data` in (value as Record<string, unknown>))
+    ? (value as { data: unknown }).data
+    : value
+
+// Type guard: verify minimal OPTIMADE structure shape
+function is_optimade_structure_object(value: unknown): value is OptimadeStructure {
+  if (!value || typeof value !== `object`) return false
+  const obj = value as { type?: unknown; id?: unknown; attributes?: unknown }
+  return obj.type === `structures` && typeof obj.id === `string` &&
+    typeof obj.attributes === `object` && obj.attributes !== null
 }
 
 // Convert OPTIMADE structure to Pymatgen format

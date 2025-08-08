@@ -374,6 +374,7 @@
     top: 0;
     right: 0;
     height: 0;
+    margin-bottom: -100%;
     gap: 5px;
     padding: 12pt 3pt;
     box-sizing: border-box;
