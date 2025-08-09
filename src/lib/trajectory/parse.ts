@@ -1403,3 +1403,21 @@ export function create_frame_loader(filename: string): FrameLoader {
 // Backward compatibility exports
 export const XYZFrameLoader = TrajFrameReader
 export const ASEFrameLoader = TrajFrameReader
+
+export async function load_binary_traj(
+  resp: Response,
+  type: string,
+  fallback = false,
+): Promise<ArrayBuffer | string> {
+  try {
+    const buffer = await resp.arrayBuffer()
+    return buffer
+  } catch (error) {
+    if (fallback) {
+      console.warn(`Binary load failed for ${type}, using text:`, error)
+      return await resp.text()
+    }
+    console.error(`Binary load failed for ${type}:`, error)
+    throw new Error(`Failed to load ${type} as binary: ${error}`)
+  }
+}

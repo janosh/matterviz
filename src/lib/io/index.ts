@@ -1,4 +1,5 @@
 import type { FileInfo } from '$lib'
+import { load_binary_traj } from '$lib/trajectory/parse'
 
 export * from './decompress'
 export * from './export'
@@ -16,24 +17,6 @@ export async function handle_url_drop(
 
   await load_from_url(file_info.url, callback)
   return true
-}
-
-async function load_binary_traj(
-  resp: Response,
-  type: string,
-  fallback = false,
-): Promise<ArrayBuffer | string> {
-  try {
-    const buffer = await resp.arrayBuffer()
-    return buffer
-  } catch (error) {
-    if (fallback) {
-      console.warn(`Binary load failed for ${type}, using text:`, error)
-      return await resp.text()
-    }
-    console.error(`Binary load failed for ${type}:`, error)
-    throw new Error(`Failed to load ${type} as binary: ${error}`)
-  }
 }
 
 export async function load_from_url(

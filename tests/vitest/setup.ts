@@ -1,4 +1,4 @@
-import type { ElementSymbol, Vec3 } from '$lib'
+import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { PymatgenStructure, Site } from '$lib/structure'
@@ -94,3 +94,98 @@ Object.defineProperty(navigator, `clipboard`, {
   value: { writeText: vi.fn().mockResolvedValue(undefined) },
   writable: true,
 })
+
+// Test structure fixtures
+export const simple_structure: AnyStructure = {
+  id: `test_h2o`,
+  sites: [
+    {
+      species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
+      xyz: [0.757, 0.586, 0.0],
+      abc: [0.1, 0.1, 0.0],
+      label: `H`,
+      properties: {},
+    },
+    {
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
+      xyz: [0.0, 0.0, 0.0],
+      abc: [0.0, 0.0, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
+      xyz: [-0.757, 0.586, 0.0],
+      abc: [-0.1, 0.1, 0.0],
+      label: `H`,
+      properties: {},
+    },
+  ],
+  lattice: {
+    matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+    pbc: [true, true, true],
+    ...{ a: 10.0, b: 10.0, c: 10.0, alpha: 90.0, beta: 90.0, gamma: 90.0 },
+    volume: 1000.0,
+  },
+}
+
+export const complex_structure: AnyStructure = {
+  id: `test_complex`,
+  sites: [
+    {
+      species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
+      xyz: [0.0, 0.0, 0.0],
+      abc: [0.0, 0.0, 0.0],
+      label: `Li`,
+      properties: {},
+    },
+    {
+      species: [{ element: `Fe`, occu: 1, oxidation_state: 2 }],
+      xyz: [2.5, 0.0, 0.0],
+      abc: [0.5, 0.0, 0.0],
+      label: `Fe`,
+      properties: {},
+    },
+    {
+      species: [{ element: `P`, occu: 1, oxidation_state: 5 }],
+      xyz: [0.0, 2.5, 0.0],
+      abc: [0.0, 0.5, 0.0],
+      label: `P`,
+      properties: {},
+    },
+    {
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
+      xyz: [1.25, 1.25, 0.0],
+      abc: [0.25, 0.25, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
+      xyz: [3.75, 1.25, 0.0],
+      abc: [0.75, 0.25, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
+      xyz: [1.25, 3.75, 0.0],
+      abc: [0.25, 0.75, 0.0],
+      label: `O`,
+      properties: {},
+    },
+    {
+      species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
+      xyz: [3.75, 3.75, 0.0],
+      abc: [0.75, 0.75, 0.0],
+      label: `O`,
+      properties: {},
+    },
+  ],
+  lattice: {
+    matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+    pbc: [true, true, true],
+    ...{ a: 5.0, b: 5.0, c: 5.0, alpha: 90.0, beta: 90.0, gamma: 90.0 },
+    volume: 125.0,
+  },
+}
