@@ -1,4 +1,5 @@
 import {
+  detect_structure_type,
   is_optimade_json,
   is_structure_file,
   optimade_to_pymatgen,
@@ -9,13 +10,14 @@ import {
   parse_poscar,
   parse_structure_file,
   parse_xyz,
-} from '$lib/io/parse'
+} from '$lib/structure/parse'
 import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
-import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
+import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
+import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
@@ -26,7 +28,7 @@ import process from 'node:process'
 import { join } from 'path'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
-import { get_dummy_structure } from '../setup'
+import { get_dummy_structure } from '../setup.ts'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -34,6 +36,34 @@ let console_error_spy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
 })
+
+// Helpers to reduce duplication and strengthen invariants
+const TOL = 8
+function expect_abc_in_unit_cell(site: { abc: number[] }) {
+  expect(site.abc[0]).toBeGreaterThanOrEqual(0)
+  expect(site.abc[0]).toBeLessThan(1)
+  expect(site.abc[1]).toBeGreaterThanOrEqual(0)
+  expect(site.abc[1]).toBeLessThan(1)
+  expect(site.abc[2]).toBeGreaterThanOrEqual(0)
+  expect(site.abc[2]).toBeLessThan(1)
+}
+function reconstruct_xyz(abc: number[], lattice: number[][]): [number, number, number] {
+  return [
+    abc[0] * lattice[0][0] + abc[1] * lattice[1][0] + abc[2] * lattice[2][0],
+    abc[0] * lattice[0][1] + abc[1] * lattice[1][1] + abc[2] * lattice[2][1],
+    abc[0] * lattice[0][2] + abc[1] * lattice[1][2] + abc[2] * lattice[2][2],
+  ]
+}
+function expect_xyz_matches_abc(
+  site: { abc: number[]; xyz: number[] },
+  lattice: number[][],
+  tol: number = TOL,
+) {
+  const r = reconstruct_xyz(site.abc, lattice)
+  expect(r[0]).toBeCloseTo(site.xyz[0], tol)
+  expect(r[1]).toBeCloseTo(site.xyz[1], tol)
+  expect(r[2]).toBeCloseTo(site.xyz[2], tol)
+}
 
 // Load compressed phonopy files using Node.js built-in decompression
 const agi_compressed = readFileSync(
@@ -223,7 +253,7 @@ describe(`XYZ Parser`, () => {
     },
   ])(
     `should parse $name`,
-    ({ content, sites, element, has_lattice, lattice_a }) => {
+    ({ name: test_name, content, sites, element, has_lattice, lattice_a }) => {
       const result = parse_xyz(content)
       if (!result) throw `Failed to parse XYZ`
       expect(result.sites).toHaveLength(sites)
@@ -231,6 +261,34 @@ describe(`XYZ Parser`, () => {
       if (has_lattice) {
         expect(result.lattice).toBeTruthy()
         if (lattice_a) expect(result.lattice?.a).toBeCloseTo(lattice_a)
+
+        // For the extended-XYZ quartz case, ensure xyz is reconstructed from wrapped abc
+        if (test_name === `extended with lattice`) {
+          const lattice = result.lattice?.matrix
+          if (!lattice) throw `Missing lattice matrix`
+          for (const site of result.sites) {
+            // abc must be in [0,1)
+            expect(site.abc[0]).toBeGreaterThanOrEqual(0)
+            expect(site.abc[0]).toBeLessThan(1)
+            expect(site.abc[1]).toBeGreaterThanOrEqual(0)
+            expect(site.abc[1]).toBeLessThan(1)
+            expect(site.abc[2]).toBeGreaterThanOrEqual(0)
+            expect(site.abc[2]).toBeLessThan(1)
+
+            // Strict reconstruction: xyz = transpose(lattice) * abc
+            const reconstructed_xyz = [
+              site.abc[0] * lattice[0][0] + site.abc[1] * lattice[1][0] +
+              site.abc[2] * lattice[2][0],
+              site.abc[0] * lattice[0][1] + site.abc[1] * lattice[1][1] +
+              site.abc[2] * lattice[2][1],
+              site.abc[0] * lattice[0][2] + site.abc[1] * lattice[1][2] +
+              site.abc[2] * lattice[2][2],
+            ]
+            expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
+            expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
+            expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
+          }
+        }
       } else {
         expect(result.lattice).toBeUndefined()
       }
@@ -245,6 +303,51 @@ describe(`XYZ Parser`, () => {
     expect(result.sites[3].xyz[0]).toBeCloseTo(-0.4440892098501)
   })
 
+  it.each([
+    [`orthorhombic`, [
+      [5, 0, 0],
+      [0, 6, 0],
+      [0, 0, 7],
+    ]],
+    [`hexagonal`, [
+      [4.5, 0, 0],
+      [2.25, 3.897114, 0],
+      [0, 0, 5.2],
+    ]],
+    [`monoclinic`, [
+      [5, 0, 0],
+      [0.8, 4.7, 0],
+      [0, 0.7, 6.2],
+    ]],
+    [`triclinic`, [
+      [5.0, 0.0, 0.0],
+      [2.5, 4.33, 0.0],
+      [1.0, 1.0, 4.0],
+    ]],
+  ])(
+    `handles non-orthogonal lattices (%s) with wrapping and reconstruction`,
+    (_name, lattice) => {
+      // generate some fractional points including negatives and >1 to test wrapping
+      const abcs = [
+        [-0.1, 0.2, 0.3],
+        [0.4, 1.2, 0.6],
+        [0.7, 0.8, -0.9],
+      ]
+      for (const abc of abcs) {
+        const latt_T = lattice as number[][]
+        const xyz = reconstruct_xyz(abc, latt_T)
+        const content = `1\nLattice="${latt_T.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${
+          xyz[2]
+        }\n`
+        const result = parse_xyz(content)
+        if (!result) throw `Failed to parse parametric lattice`
+        if (!result.lattice) throw `Missing lattice`
+        expect_abc_in_unit_cell(result.sites[0])
+        expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
+      }
+    },
+  )
+
   it(`should select last frame in multi-frame XYZ`, () => {
     const multi_frame = `2\nframe-1\nH 0 0 0\nH 0 0 1\n1\nframe-2\nHe 1 2 3\n`
     const result = parse_xyz(multi_frame)
@@ -252,6 +355,81 @@ describe(`XYZ Parser`, () => {
     expect(result.sites).toHaveLength(1)
     expect(result.sites[0].species[0].element).toBe(`He`)
     expect(result.sites[0].xyz).toEqual([1, 2, 3])
+  })
+
+  it(`selects last frame lattice when lattices differ`, () => {
+    const content = [
+      `1`,
+      `Lattice="1 0 0 0 1 0 0 0 1"`,
+      `H 0 0 0`,
+      `1`,
+      `Lattice="2 0 0 0 2 0 0 0 2"`,
+      `H 1 1 1`,
+    ].join(`\n`)
+    const result = parse_xyz(content)
+    if (!result) throw `Failed to parse multi-frame with lattices`
+    expect(result.lattice?.a).toBeCloseTo(2, 12)
+    expect(result.lattice?.b).toBeCloseTo(2, 12)
+    expect(result.lattice?.c).toBeCloseTo(2, 12)
+    const lattice = result.lattice?.matrix
+    if (!lattice) throw `Missing lattice`
+    // abc should be 0.5 after wrapping from xyz [1,1,1] in a=2 cell
+    expect_abc_in_unit_cell(result.sites[0])
+    expect_xyz_matches_abc(result.sites[0], lattice)
+  })
+
+  it(`falls back to valid element symbol for invalid XYZ symbol`, () => {
+    const content = `1\nTest\nXx 0 0 0\n`
+    const result = parse_xyz(content)
+    if (!result) throw `Failed to parse invalid symbol XYZ`
+    expect(result.sites[0].species[0].element).toBe(`H`)
+  })
+
+  it(`parses extended XYZ with Lattice using scientific notation variants`, () => {
+    const latt_variants = [
+      `4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0`,
+      `4.0D0 0.0D0 0.0D0 0.0D0 4.0D0 0.0D0 0.0D0 0.0D0 4.0D0`,
+      `4.0*^0 0.0*^0 0.0*^0 0.0*^0 4.0*^0 0.0*^0 0.0*^0 0.0*^0 4.0*^0`,
+    ]
+    for (const latt of latt_variants) {
+      const content = `1\nLattice="${latt}"\nH 1 1 1\n`
+      const result = parse_xyz(content)
+      if (!result) throw `Failed to parse scientific notation lattice`
+      expect(result.lattice?.a).toBeCloseTo(4, 12)
+      const lattice = result.lattice?.matrix
+      if (!lattice) throw `Missing lattice`
+      expect_abc_in_unit_cell(result.sites[0])
+      expect_xyz_matches_abc(result.sites[0], lattice)
+    }
+  })
+
+  it(`handles singular lattice (fallback path) without errors and yields sane abc`, () => {
+    // Singular lattice: second vector equals first
+    const lattice = [
+      [5, 0, 0],
+      [5, 0, 0],
+      [0, 0, 7],
+    ] as number[][]
+    const abc_target = [1 / 3, 2 / 3, 0.5]
+    const xyz = reconstruct_xyz(abc_target, lattice)
+    const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${
+      xyz[2]
+    }\n`
+    const result = parse_xyz(content)
+    if (!result) throw `Failed to parse singular lattice`
+    // Should not crash and abc should be wrapped into [0,1) and finite
+    expect_abc_in_unit_cell(result.sites[0])
+    expect(Number.isFinite(result.sites[0].abc[0])).toBe(true)
+    expect(Number.isFinite(result.sites[0].abc[1])).toBe(true)
+    expect(Number.isFinite(result.sites[0].abc[2])).toBe(true)
+  })
+
+  it(`parses quickly for small XYZ`, () => {
+    const start = performance.now()
+    const result = parse_xyz(cyclohexane)
+    const duration = performance.now() - start
+    if (!result) throw `Failed to parse cyclohexane`
+    expect(duration).toBeLessThan(100)
   })
 })
 
@@ -500,6 +678,21 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites).toHaveLength(3)
   })
 
+  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984)`, () => {
+    const result = parse_cif(ru_p_complex_cif)
+    if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
+    expect(result.sites.length).toBeGreaterThan(0)
+    expect(result.lattice).toBeDefined()
+    // Basic sanity checks
+    expect(Number.isFinite(result.lattice?.a as number)).toBe(true)
+    expect(Number.isFinite(result.lattice?.b as number)).toBe(true)
+    expect(Number.isFinite(result.lattice?.c as number)).toBe(true)
+    // Ensure at least one Ru and S present (as per file header counts)
+    const elements = result.sites.map((s) => s.species[0].element)
+    expect(elements).toContain(`Ru`)
+    expect(elements).toContain(`S`)
+  })
+
   it(`should detect CIF format by content`, () => {
     const result = parse_structure_file(
       QUARTZ_CIF_FOR_DETECTION,
@@ -586,34 +779,14 @@ H1   H   2.100  0.900  0.500  1.000`
 
       // Verify coordinate bounds based on wrapping
       for (const site of result.sites) {
-        if (wrap_frac) {
-          expect(site.abc[0]).toBeGreaterThanOrEqual(0)
-          expect(site.abc[0]).toBeLessThan(1)
-          expect(site.abc[1]).toBeGreaterThanOrEqual(0)
-          expect(site.abc[1]).toBeLessThan(1)
-          expect(site.abc[2]).toBeGreaterThanOrEqual(0)
-          expect(site.abc[2]).toBeLessThan(1)
-        }
+        if (wrap_frac) expect_abc_in_unit_cell(site)
       }
 
       // Test coordinate reconstruction works in both cases
       const lattice = result.lattice?.matrix
       if (!lattice) throw `Failed to get lattice matrix`
 
-      for (const site of result.sites) {
-        const reconstructed = [
-          site.abc[0] * lattice[0][0] + site.abc[1] * lattice[1][0] +
-          site.abc[2] * lattice[2][0],
-          site.abc[0] * lattice[0][1] + site.abc[1] * lattice[1][1] +
-          site.abc[2] * lattice[2][1],
-          site.abc[0] * lattice[0][2] + site.abc[1] * lattice[1][2] +
-          site.abc[2] * lattice[2][2],
-        ]
-
-        expect(reconstructed[0]).toBeCloseTo(site.xyz[0], 12)
-        expect(reconstructed[1]).toBeCloseTo(site.xyz[1], 12)
-        expect(reconstructed[2]).toBeCloseTo(site.xyz[2], 12)
-      }
+      for (const site of result.sites) expect_xyz_matches_abc(site, lattice)
     },
   )
 
@@ -2129,7 +2302,7 @@ describe(`Structure File Detection`, () => {
     [`mp-756175.json`, false],
     [`BaTiO3-tetragonal.poscar`, true],
     [`cyclohexane.xyz`, true],
-    [`extended-xyz-quartz.xyz`, true],
+    [`quartz.extxyz`, false],
     [`AgI-fq978185p-phono3py_params.yaml.gz`, true],
     [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
     [`BeO-zw12zc18p-phono3py_params.yaml.gz`, true],
@@ -2175,5 +2348,51 @@ C1 C 0 0 0`
     expect(console_error_spy).toHaveBeenCalledWith(
       `Insufficient cell parameters in CIF file`,
     )
+  })
+})
+
+describe(`detect_structure_type`, () => {
+  test.each([
+    [`structure.json`, `{"lattice": {"a": 5.0}}`, `crystal`],
+    [`molecule.json`, `{"sites": []}`, `molecule`],
+    [`invalid.json`, `invalid`, `unknown`],
+    [`file.cif`, `any`, `crystal`],
+    [`POSCAR`, `any`, `crystal`],
+    [`file.poscar`, `any`, `crystal`],
+    [`file.yaml`, `phonopy:\n  version: 2.0`, `crystal`],
+    [`file.yml`, `phono3py:\n  version: 2.0`, `crystal`],
+    [`file.yaml`, `other: content`, `unknown`],
+    [`file.xyz`, `3\nLattice="5.0 0.0 0.0"\nH 0.0 0.0 0.0`, `crystal`],
+    [`file.xyz`, `3\nwater\nH 0.0 0.0 0.0`, `molecule`],
+    [`file.ext`, `content`, `unknown`],
+    [`STRUCTURE.CIF`, `content`, `crystal`],
+    [`data.CIF`, `content`, `crystal`],
+    [`PHONOPY.YAML`, `content`, `unknown`],
+    [`test.YML`, `content`, `unknown`],
+    // Test OPTIMADE JSON format
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"lattice_vectors": [[1,0,0],[0,1,0],[0,0,1]]}}}`,
+      `crystal`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`,
+      `molecule`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`,
+      `crystal`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"nperiodic_dimensions": 0}}}`,
+      `molecule`,
+    ],
+    [`optimade.json`, `{"data": {"attributes": {"nperiodic_dimensions": 3}}}`, `crystal`],
+    [`molecule.json`, `{"data": {"attributes": {"species": []}}}`, `molecule`],
+  ])(`%s -> %s`, (filename, content, expected) => {
+    expect(detect_structure_type(filename, content)).toBe(expected)
   })
 })

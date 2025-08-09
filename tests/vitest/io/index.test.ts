@@ -1,4 +1,4 @@
-import { detect_structure_type, handle_url_drop, load_from_url } from '$lib/io'
+import { handle_url_drop, load_from_url } from '$lib/io'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
@@ -295,68 +295,20 @@ describe(`load_from_url`, () => {
     ).rejects.toThrow(`Fetch failed: 404`)
   })
 
-  test(`gzip files with content-encoding are handled as text`, async () => {
-    const mock_response = new Response(`decompressed content`, {
-      headers: { 'content-encoding': `gzip` },
+  test(`Content-Disposition filename is respected`, async () => {
+    const mock_response = new Response(`some content`, {
+      headers: {
+        'content-type': `text/plain`,
+        'content-disposition': `attachment; filename="server-name.xyz"`,
+      },
     })
     globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
-    let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
-
-    await load_from_url(`https://example.com/file.xyz.gz`, (content, filename) => {
-      received_content = content
+    await load_from_url(`https://example.com/ignored-name.xyz`, (_, filename) => {
       received_filename = filename
     })
 
-    expect(typeof received_content).toBe(`string`)
-    expect(received_content).toBe(`decompressed content`)
-    expect(received_filename).toBe(`file.xyz.gz`)
-  })
-})
-
-describe(`detect_structure_type`, () => {
-  test.each([
-    [`structure.json`, `{"lattice": {"a": 5.0}}`, `crystal`],
-    [`molecule.json`, `{"sites": []}`, `molecule`],
-    [`invalid.json`, `invalid`, `unknown`],
-    [`file.cif`, `any`, `crystal`],
-    [`POSCAR`, `any`, `crystal`],
-    [`file.poscar`, `any`, `crystal`],
-    [`file.yaml`, `phonopy:\n  version: 2.0`, `crystal`],
-    [`file.yml`, `phono3py:\n  version: 2.0`, `crystal`],
-    [`file.yaml`, `other: content`, `unknown`],
-    [`file.xyz`, `3\nLattice="5.0 0.0 0.0"\nH 0.0 0.0 0.0`, `crystal`],
-    [`file.xyz`, `3\nwater\nH 0.0 0.0 0.0`, `molecule`],
-    [`file.ext`, `content`, `unknown`],
-    [`STRUCTURE.CIF`, `content`, `crystal`],
-    [`data.CIF`, `content`, `crystal`],
-    [`PHONOPY.YAML`, `content`, `unknown`],
-    [`test.YML`, `content`, `unknown`],
-    // Test OPTIMADE JSON format
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"lattice_vectors": [[1,0,0],[0,1,0],[0,0,1]]}}}`,
-      `crystal`,
-    ],
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`,
-      `molecule`,
-    ],
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`,
-      `crystal`,
-    ],
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"nperiodic_dimensions": 0}}}`,
-      `molecule`,
-    ],
-    [`optimade.json`, `{"data": {"attributes": {"nperiodic_dimensions": 3}}}`, `crystal`],
-    [`molecule.json`, `{"data": {"attributes": {"species": []}}}`, `molecule`],
-  ])(`%s -> %s`, (filename, content, expected) => {
-    expect(detect_structure_type(filename, content)).toBe(expected)
+    expect(received_filename).toBe(`server-name.xyz`)
   })
 })
