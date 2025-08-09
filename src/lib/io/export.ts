@@ -64,6 +64,16 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (structure.id) comment_parts.push(structure.id)
   const formula = electro_neg_formula(structure)
   if (formula && formula !== `Unknown`) comment_parts.push(formula)
+
+  // Include extended XYZ lattice information when available so round-trips preserve lattice
+  if ((`lattice` in structure) && structure.lattice?.matrix?.length === 3) {
+    const lattice_values = structure.lattice.matrix
+      .flat()
+      .map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8))
+      .join(` `)
+    comment_parts.push(`Lattice="${lattice_values}"`)
+  }
+
   const comment = comment_parts.length > 0
     ? comment_parts.join(` `)
     : `Generated from structure`
@@ -211,9 +221,9 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     // Format: label element_symbol x y z
     const label = site.label || `${element_symbol}${idx + 1}`
     lines.push(
-      `${label} ${element_symbol} ${frac_coords[0].toFixed(6)} ${
-        frac_coords[1].toFixed(6)
-      } ${frac_coords[2].toFixed(6)} ${occupancy.toFixed(6)}`,
+      `${label} ${element_symbol} ${frac_coords[0].toFixed(8)} ${
+        frac_coords[1].toFixed(8)
+      } ${frac_coords[2].toFixed(8)} ${occupancy.toFixed(8)}`,
     )
   }
 

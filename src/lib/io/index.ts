@@ -2,7 +2,6 @@ import type { FileInfo } from '$lib'
 
 export * from './decompress'
 export * from './export'
-export * from './parse'
 
 // Handle URL-based file drop data by fetching content lazily
 export async function handle_url_drop(
@@ -125,47 +124,4 @@ export async function load_from_url(
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
   return callback(await resp.text(), filename)
-}
-
-export const detect_structure_type = (
-  filename: string,
-  content: string,
-): `crystal` | `molecule` | `unknown` => {
-  const lower_filename = filename.toLowerCase()
-
-  if (filename.endsWith(`.json`)) {
-    try {
-      const parsed = JSON.parse(content)
-      // Check for OPTIMADE JSON format (has data.attributes.lattice_vectors)
-      if (parsed.data?.attributes?.lattice_vectors) return `crystal`
-      // Check for dimension_types (OPTIMADE format)
-      if (parsed.data?.attributes?.dimension_types?.some((dim: number) => dim > 0)) {
-        return `crystal`
-      }
-      // Check for pymatgen JSON format (has lattice property)
-      if (parsed.lattice) return `crystal`
-      // Check for other crystal indicators
-      if (parsed.data?.attributes?.nperiodic_dimensions > 0) return `crystal`
-
-      return `molecule`
-    } catch {
-      return `unknown`
-    }
-  }
-
-  if (lower_filename.endsWith(`.cif`)) return `crystal`
-  if (lower_filename.includes(`poscar`) || filename === `POSCAR`) return `crystal`
-
-  if (lower_filename.endsWith(`.yaml`) || lower_filename.endsWith(`.yml`)) {
-    return content.includes(`phono3py:`) || content.includes(`phonopy:`)
-      ? `crystal`
-      : `unknown`
-  }
-
-  if (lower_filename.match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
-    const lines = content.trim().split(/\r?\n/)
-    return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
-  }
-
-  return `unknown`
 }

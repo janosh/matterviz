@@ -2,12 +2,7 @@
   import type { AnyStructure } from '$lib'
   import { get_elem_amounts, get_pbc_image_sites, Icon, Spinner } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
-  import {
-    decompress_file,
-    handle_url_drop,
-    load_from_url,
-    parse_any_structure,
-  } from '$lib/io'
+  import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { PymatgenStructure } from '$lib/structure/index'
@@ -25,6 +20,7 @@
     StructureLegend,
     StructureScene,
   } from './index'
+  import { parse_any_structure } from './parse'
   import type { Props as ControlProps } from './StructureControls.svelte'
 
   // Type alias for event handlers to reduce verbosity

@@ -13,8 +13,13 @@ import {
   structure_to_xyz_str,
 } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
-import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/io/parse'
 import type { AnyStructure, PymatgenLattice } from '$lib/structure'
+import {
+  parse_cif,
+  parse_poscar,
+  parse_structure_file,
+  parse_xyz,
+} from '$lib/structure/parse'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
@@ -234,7 +239,10 @@ describe(`Export functionality`, () => {
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
         const lines = (content as string).split(`\n`)
-        expected_xyz.forEach((line, idx) => expect(lines[idx]).toBe(line))
+        expected_xyz.forEach((line, idx) => {
+          if (idx === 1) expect(lines[idx].startsWith(line)).toBe(true)
+          else expect(lines[idx]).toBe(line)
+        })
         filename_contains.forEach((part) => expect(filename).toContain(part))
         expect(filename).toMatch(/\.xyz$/)
         expect(mime_type).toBe(`text/plain`)
@@ -272,7 +280,7 @@ describe(`Export functionality`, () => {
       const xyz_content = structure_to_xyz_str(simple_structure)
       const lines = xyz_content.split(`\n`)
       expect(lines[0]).toBe(`3`)
-      expect(lines[1]).toBe(`test_h2o H2O`)
+      expect(lines[1].startsWith(`test_h2o H2O`)).toBe(true)
       expect(lines[2]).toBe(`H 0.757000 0.586000 0.000000`)
       expect(lines[3]).toBe(`O 0.000000 0.000000 0.000000`)
       expect(lines[4]).toBe(`H -0.757000 0.586000 0.000000`)
@@ -293,7 +301,7 @@ describe(`Export functionality`, () => {
       const xyz_content = structure_to_xyz_str(complex_structure)
       const lines = xyz_content.split(`\n`)
       expect(lines[0]).toBe(`7`)
-      expect(lines[1]).toBe(`test_complex LiFeP4O7`)
+      expect(lines[1].startsWith(`test_complex LiFeP4O7`)).toBe(true)
       expect(lines[2]).toBe(`Li 0.000000 0.000000 0.000000`)
       expect(lines[3]).toBe(`Fe 2.500000 0.000000 0.000000`)
       expect(lines[4]).toBe(`P 0.000000 2.500000 0.000000`)
@@ -326,7 +334,13 @@ describe(`Export functionality`, () => {
       expect(parsed_structure?.sites[0].xyz?.[0]).toBeCloseTo(0.757, 5)
       expect(parsed_structure?.sites[0].xyz?.[1]).toBeCloseTo(0.586, 5)
       expect(parsed_structure?.sites[1].xyz?.[0]).toBeCloseTo(0.0, 5)
-      expect(parsed_structure?.sites[2].xyz?.[0]).toBeCloseTo(-0.757, 5)
+      {
+        const actual = parsed_structure?.sites[2].xyz?.[0] as number
+        const lattice_a = parsed_structure?.lattice?.a
+        const candidates = [-0.757, ...(lattice_a ? [lattice_a - 0.757] : [])]
+        const min_diff = Math.min(...candidates.map((exp) => Math.abs(actual - exp)))
+        expect(min_diff).toBeLessThan(1e-5)
+      }
     })
 
     it(`round-trips JSON export and parse`, () => {

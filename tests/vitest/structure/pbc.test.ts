@@ -1,9 +1,9 @@
-import { parse_structure_file } from '$lib/io/parse'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure'
+import { parse_structure_file } from '$lib/structure/parse'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import mp1_json from '$site/structures/mp-1.json' with { type: 'json' }
 import mp1204603_json from '$site/structures/mp-1204603.json' with { type: 'json' }

@@ -1,5 +1,5 @@
-import { is_structure_file } from '$lib/io/parse'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
+import { is_structure_file } from '$lib/structure/parse'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import type { FrameLoader } from '$lib/trajectory/index'
 import {

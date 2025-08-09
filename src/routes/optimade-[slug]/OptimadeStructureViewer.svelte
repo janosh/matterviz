@@ -11,9 +11,9 @@
   } from '$lib/api/optimade'
   import { Composition } from '$lib/composition'
   import { get_electro_neg_formula } from '$lib/composition/parse'
-  import { optimade_to_pymatgen } from '$lib/io/parse'
   import type { PymatgenStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
+  import { optimade_to_pymatgen } from '$lib/structure/parse'
   import { tooltip } from 'svelte-multiselect'
 
   let structure = $state<PymatgenStructure | null>(null)

@@ -1,4 +1,5 @@
 import {
+  detect_structure_type,
   is_optimade_json,
   is_structure_file,
   optimade_to_pymatgen,
@@ -9,7 +10,7 @@ import {
   parse_poscar,
   parse_structure_file,
   parse_xyz,
-} from '$lib/io/parse'
+} from '$lib/structure/parse'
 import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
@@ -26,7 +27,7 @@ import process from 'node:process'
 import { join } from 'path'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
-import { get_dummy_structure } from '../setup'
+import { get_dummy_structure } from '../setup.ts'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -2331,5 +2332,51 @@ C1 C 0 0 0`
     expect(console_error_spy).toHaveBeenCalledWith(
       `Insufficient cell parameters in CIF file`,
     )
+  })
+})
+
+describe(`detect_structure_type`, () => {
+  test.each([
+    [`structure.json`, `{"lattice": {"a": 5.0}}`, `crystal`],
+    [`molecule.json`, `{"sites": []}`, `molecule`],
+    [`invalid.json`, `invalid`, `unknown`],
+    [`file.cif`, `any`, `crystal`],
+    [`POSCAR`, `any`, `crystal`],
+    [`file.poscar`, `any`, `crystal`],
+    [`file.yaml`, `phonopy:\n  version: 2.0`, `crystal`],
+    [`file.yml`, `phono3py:\n  version: 2.0`, `crystal`],
+    [`file.yaml`, `other: content`, `unknown`],
+    [`file.xyz`, `3\nLattice="5.0 0.0 0.0"\nH 0.0 0.0 0.0`, `crystal`],
+    [`file.xyz`, `3\nwater\nH 0.0 0.0 0.0`, `molecule`],
+    [`file.ext`, `content`, `unknown`],
+    [`STRUCTURE.CIF`, `content`, `crystal`],
+    [`data.CIF`, `content`, `crystal`],
+    [`PHONOPY.YAML`, `content`, `unknown`],
+    [`test.YML`, `content`, `unknown`],
+    // Test OPTIMADE JSON format
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"lattice_vectors": [[1,0,0],[0,1,0],[0,0,1]]}}}`,
+      `crystal`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`,
+      `molecule`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`,
+      `crystal`,
+    ],
+    [
+      `optimade.json`,
+      `{"data": {"attributes": {"nperiodic_dimensions": 0}}}`,
+      `molecule`,
+    ],
+    [`optimade.json`, `{"data": {"attributes": {"nperiodic_dimensions": 3}}}`, `crystal`],
+    [`molecule.json`, `{"data": {"attributes": {"species": []}}}`, `molecule`],
+  ])(`%s -> %s`, (filename, content, expected) => {
+    expect(detect_structure_type(filename, content)).toBe(expected)
   })
 })
