@@ -102,7 +102,7 @@ export const simple_structure: AnyStructure = {
     {
       species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
       xyz: [0.757, 0.586, 0.0],
-      abc: [0.1, 0.1, 0.0],
+      abc: [0.0757, 0.0586, 0.0],
       label: `H`,
       properties: {},
     },
@@ -116,7 +116,7 @@ export const simple_structure: AnyStructure = {
     {
       species: [{ element: `H`, occu: 1, oxidation_state: 1 }],
       xyz: [-0.757, 0.586, 0.0],
-      abc: [-0.1, 0.1, 0.0],
+      abc: [-0.0757, 0.0586, 0.0],
       label: `H`,
       properties: {},
     },

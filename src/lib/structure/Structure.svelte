@@ -321,53 +321,60 @@
     event.preventDefault()
     dragover = false
     if (!allow_file_drop) return
+    loading = true
     error_msg = undefined // Clear previous error when a new file is dropped
 
-    // Handle URL-based files (e.g. from FilePicker)
-    const handled = await handle_url_drop(
-      event,
-      on_file_drop || ((content, filename) => {
-        const text_content = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
-        const parsed_structure = parse_any_structure(text_content, filename)
-        if (parsed_structure) {
-          structure = parsed_structure
-          emit_file_load_event(parsed_structure, filename, content)
-        } else {
-          error_msg = `Failed to parse structure from ${filename}`
-          on_error?.({ error_msg, filename })
-        }
-      }),
-    ).catch(() => false)
-
-    if (handled) return
-
-    // Handle file system drops
-    const file = event.dataTransfer?.files[0]
-    if (file) {
-      try {
-        const { content, filename } = await decompress_file(file)
-        if (content) {
-          if (on_file_drop) on_file_drop(content, filename)
-          else {
-            // Parse structure internally when no handler provided
-            const parsed_structure = parse_any_structure(content, filename)
+    try {
+      // Handle URL-based files (e.g. from FilePicker)
+      const handled = await handle_url_drop(
+        event,
+        on_file_drop || ((content, filename) => {
+          try {
+            const text_content = content instanceof ArrayBuffer
+              ? new TextDecoder().decode(content)
+              : content
+            const parsed_structure = parse_any_structure(text_content, filename)
             if (parsed_structure) {
               structure = parsed_structure
               emit_file_load_event(parsed_structure, filename, content)
-            } else {
-              error_msg = `Failed to parse structure from ${filename}`
-              on_error?.({ error_msg, filename })
+            } else throw new Error(`Failed to parse structure from ${filename}`)
+          } catch (err) {
+            error_msg = `Failed to parse structure: ${err}`
+            on_error?.({ error_msg, filename })
+          }
+        }),
+      ).catch(() => false)
+
+      if (handled) return
+
+      // Handle file system drops
+      const file = event.dataTransfer?.files[0]
+      if (file) {
+        try {
+          const { content, filename } = await decompress_file(file)
+          if (content) {
+            if (on_file_drop) on_file_drop(content, filename)
+            else {
+              // Parse structure internally when no handler provided
+              try {
+                const parsed_structure = parse_any_structure(content, filename)
+                if (parsed_structure) {
+                  structure = parsed_structure
+                  emit_file_load_event(parsed_structure, filename, content)
+                } else throw new Error(`Failed to parse structure from ${filename}`)
+              } catch (err) {
+                error_msg = `Failed to parse structure: ${err}`
+                on_error?.({ error_msg, filename })
+              }
             }
           }
+        } catch (error) {
+          error_msg = `Failed to load file ${file.name}: ${error}`
+          on_error?.({ error_msg, filename: file.name })
         }
-      } catch (error) {
-        error_msg = `Failed to load file ${file.name}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-        on_error?.({ error_msg, filename: file.name })
       }
+    } finally {
+      loading = false
     }
   }
 

@@ -1410,14 +1410,17 @@ export async function load_binary_traj(
   fallback = false,
 ): Promise<ArrayBuffer | string> {
   try {
-    const buffer = await resp.arrayBuffer()
-    return buffer
-  } catch (error) {
+    // Read binary from a clone so the original can be used for text fallback
+    return await resp.clone().arrayBuffer()
+  } catch (err1) {
     if (fallback) {
-      console.warn(`Binary load failed for ${type}, using text:`, error)
-      return await resp.text()
+      console.warn(`Binary load failed for ${type}, using text:`, err1)
+      try {
+        return await resp.text()
+      } catch (err2) {
+        console.error(`Fallback to text also failed for ${type}:`, err2)
+      }
     }
-    console.error(`Binary load failed for ${type}:`, error)
-    throw new Error(`Failed to load ${type} as binary: ${error}`)
+    throw new Error(`Failed to load ${type} as binary: ${err1}`)
   }
 }

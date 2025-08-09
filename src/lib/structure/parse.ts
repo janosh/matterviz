@@ -1,10 +1,10 @@
 import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { OptimadeStructure } from '$lib/api/optimade'
+import { COMPRESSION_EXTENSIONS } from '$lib/io/decompress'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import { load as yaml_load } from 'js-yaml'
-import { COMPRESSION_EXTENSIONS } from '../io/decompress.ts'
 
 export interface ParsedStructure {
   sites: Site[]
@@ -1444,7 +1444,7 @@ export const detect_structure_type = (
 ): `crystal` | `molecule` | `unknown` => {
   const lower_filename = filename.toLowerCase()
 
-  if (filename.endsWith(`.json`)) {
+  if (lower_filename.endsWith(`.json`)) {
     try {
       const parsed = JSON.parse(content)
       // Check for OPTIMADE JSON format (has data.attributes.lattice_vectors)

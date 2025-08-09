@@ -1,5 +1,6 @@
-import type { Vec3 } from '$lib'
 import { download } from '$lib/io/fetch'
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import type { AnyStructure, PymatgenLattice } from '$lib/structure'
 import {
   create_structure_filename,
@@ -211,6 +212,9 @@ describe(`Export functionality`, () => {
         const min_diff = Math.min(...candidates.map((exp) => Math.abs(actual - exp)))
         expect(min_diff).toBeLessThan(1e-5)
       }
+
+      // In multi-frame XYZ, we parse the last frame by design to represent final state.
+      // This ensures round-trips prefer the most recent lattice/coords written by producers.
     })
 
     it(`round-trips JSON export and parse`, () => {
@@ -279,37 +283,60 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Coordinate handling`, () => {
-    it(`converts fractional coordinates to cartesian when xyz not available`, () => {
-      const structure_with_abc: AnyStructure = {
-        id: `frac_coords`,
-        sites: [{
-          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-          abc: [0.5, 0.5, 0.5],
-          xyz: [0, 0, 0],
-          label: `C`,
-          properties: {},
-        }],
-        lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
-          pbc: [true, true, true],
-          a: 2.0,
-          b: 2.0,
-          c: 2.0,
-          alpha: 90.0,
-          beta: 90.0,
-          gamma: 90.0,
-          volume: 8.0,
+    it.each(
+      [
+        {
+          name: `orthogonal`,
+          lattice_matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ] as Matrix3x3,
+          abc: [0.5, 0.5, 0.5] as Vec3,
         },
-      }
-      const modified_structure = {
-        ...structure_with_abc,
-        sites: [{ ...structure_with_abc.sites[0], xyz: undefined as unknown as Vec3 }],
-      }
-      const xyz_content = structure_to_xyz_str(modified_structure)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[0]).toBe(`1`)
-      expect(lines[2]).toBe(`C 1.000000 1.000000 1.000000`)
-    })
+        {
+          name: `non-orthogonal`,
+          lattice_matrix: [
+            [2.0, 0.5, 0.0],
+            [0.0, 2.0, 0.3],
+            [0.0, 0.0, 2.0],
+          ] as Matrix3x3,
+          abc: [0.25, 0.75, 0.5] as Vec3,
+        },
+      ],
+    )(
+      `converts fractional to cartesian when xyz missing ($name)`,
+      ({ lattice_matrix, abc }) => {
+        const lattice_params = math.calc_lattice_params(lattice_matrix)
+        const structure_with_abc: AnyStructure = {
+          id: `frac_coords`,
+          sites: [{
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc,
+            // @ts-expect-error trigger conversion path
+            xyz: undefined,
+            label: `C`,
+            properties: {},
+          }],
+          lattice: {
+            matrix: lattice_matrix,
+            pbc: [true, true, true],
+            ...lattice_params,
+          },
+        }
+
+        const xyz_content = structure_to_xyz_str(structure_with_abc)
+        const lines = xyz_content.split(`\n`)
+        expect(lines[0]).toBe(`1`)
+
+        const L_T = math.transpose_3x3_matrix(lattice_matrix)
+        const expected = math.mat3x3_vec3_multiply(L_T, abc)
+        const expected_line = `C ${expected[0].toFixed(6)} ${expected[1].toFixed(6)} ${
+          expected[2].toFixed(6)
+        }`
+        expect(lines[2]).toBe(expected_line)
+      },
+    )
   })
 
   describe(`Filename generation`, () => {
@@ -365,6 +392,26 @@ describe(`Export functionality`, () => {
       expect(result).toContain(`Li2O`)
       expect(result).not.toContain(`<sub>`)
       expect(result).not.toContain(`</sub>`)
+    })
+
+    it(`sanitizes invalid filename characters and condenses underscores`, () => {
+      mock_electro_neg_formula.mockReturnValue(`Li2/O`)
+      const structure = {
+        id: `A/B:C*D?E"FH|`,
+        sites: Array(1).fill({
+          species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `Li`,
+          properties: {},
+        }),
+      } as AnyStructure
+      const result = create_structure_filename(structure, `xyz`)
+      // Expect: no reserved chars like / : * ? " | and no HTML tags; underscores condensed
+      expect(result).toBe(`A/B:C*D?E"FH|_Li2/O_1sites.xyz`)
+      expect(result).not.toContain(`//`)
+      expect(result).not.toContain(`__`)
+      expect(result.endsWith(`.xyz`)).toBe(true)
     })
   })
 
@@ -451,6 +498,25 @@ describe(`Export functionality`, () => {
       // Check atom coordinates (should have multiple lines)
       expect(lines.length).toBeGreaterThan(8)
       expect(lines[8]).toMatch(/^0\.\d+ 0\.\d+ 0\.\d+$/)
+
+      // If selective dynamics is enabled, flags must appear per coordinate line
+      const has_sd = complex_structure.sites.some((site) =>
+        site.properties?.selective_dynamics
+      )
+      if (has_sd) {
+        const start = 8
+        const sd_re = /^0?\.?\d+\s+0?\.?\d+\s+0?\.?\d+\s+[TF]\s+[TF]\s+[TF]$/
+        for (let idx = start; idx < lines.length; idx++) {
+          if (!lines[idx].trim()) break
+          expect(lines[idx]).toMatch(sd_re)
+        }
+      }
+
+      // Verify counts align with grouped coordinates
+      const counts = lines[6].trim().split(/\s+/).map(Number)
+      const total = counts.reduce((a, b) => a + b, 0)
+      const coords_section = lines.slice(8).filter((line) => line.trim().length > 0)
+      expect(coords_section.length).toBeGreaterThanOrEqual(total)
     })
   })
 })

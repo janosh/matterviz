@@ -122,8 +122,8 @@ describe(`Structure`, () => {
       expect(copy_btn, `copy button for ${format}`).toBeTruthy()
 
       copy_btn.click()
-      // Wait for Svelte to re-render the component
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await tick()
+      await tick()
 
       expect(clipboard_spy).toHaveBeenCalledOnce()
       expect(copy_btn.textContent).toContain(`✅`)

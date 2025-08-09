@@ -12,6 +12,8 @@
     Props = $props()
 
   $effect(() => { // Sync and save to local storage when theme changes
+    const prev = theme_state.mode
+    if (prev === theme_mode) return
     theme_state.mode = theme_mode
     save_theme_preference(theme_mode)
     apply_theme_to_dom(theme_mode)

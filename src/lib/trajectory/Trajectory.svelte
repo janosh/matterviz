@@ -1181,6 +1181,7 @@
     transition: border-color 0.2s ease;
     box-sizing: border-box;
     contain: layout;
+    z-index: var(--traj-z-index, 1);
   }
   .trajectory :global(.plot) {
     background: var(--surface-bg);
@@ -1239,7 +1240,7 @@
     align-items: center;
     gap: clamp(2pt, 1cqw, 1ex);
     padding: clamp(2pt, 0.5cqw, 1ex);
-    z-index: var(--traj-controls-z-index, 3);
+    z-index: var(--traj-controls-z-index, 999999999);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
@@ -1420,6 +1421,7 @@
     gap: 1ex;
     width: 100%;
     padding: var(--trajectory-view-mode-option-padding, 5pt);
+    box-sizing: border-box;
     background: transparent;
     border-radius: 0;
     text-align: left;

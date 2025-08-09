@@ -25,7 +25,8 @@ export function export_canvas_as_png(
     }
 
     // Convert DPI to multiplier (72 DPI is baseline web resolution)
-    const resolution_multiplier = png_dpi / 72
+    // Cap to a reasonable upper bound to avoid excessive memory use
+    const resolution_multiplier = Math.min(png_dpi / 72, 10)
     const renderer = (canvas as CanvasWithRenderer).__customRenderer
 
     if (resolution_multiplier <= 1.1 || !renderer) {
@@ -121,12 +122,14 @@ export function export_svg_as_svg(
 
     // Ensure the SVG has proper dimensions and viewBox
     const viewBox = svg_element.getAttribute(`viewBox`)
-    if (viewBox) {
-      cloned_svg.setAttribute(`viewBox`, viewBox)
-    }
+    if (viewBox) cloned_svg.setAttribute(`viewBox`, viewBox)
 
     // Ensure font-family is set
     set_svg_font_family(cloned_svg)
+    // Ensure xmlns is set
+    if (!cloned_svg.hasAttribute(`xmlns`)) {
+      cloned_svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+    }
 
     // Convert SVG to string
     const svg_string = new XMLSerializer().serializeToString(cloned_svg)
@@ -135,7 +138,7 @@ export function export_svg_as_svg(
     const svg_content =
       `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
 
-    download(svg_content, filename, `image/svg+xml`)
+    download(svg_content, filename, `image/svg+xml;charset=utf-8`)
   } catch (error) {
     console.error(`Error exporting SVG:`, error)
   }
@@ -167,7 +170,7 @@ export function export_svg_as_png(
     }
 
     // Convert DPI to pixel dimensions
-    const resolution_multiplier = png_dpi / 72
+    const resolution_multiplier = Math.min(png_dpi / 72, 10)
     const pixel_width = Math.round(width * resolution_multiplier)
     const pixel_height = Math.round(height * resolution_multiplier)
 

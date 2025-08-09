@@ -69,11 +69,12 @@
   routes={[
     [`/`, `Home`],
     ...demo_routes.map((route) =>
-      [route, route.replaceAll(`/`, ``).replaceAll(`-`, ` `)] as [string, string]
+      [route, route.replaceAll(`/`, ``).replaceAll(`-`, ` `)] satisfies [string, string]
     ),
     [`/optimade-mp-1226325`, `Optimade`],
   ]}
   style="text-transform: capitalize"
+  aria-label="Main navigation"
 />
 
 <main>

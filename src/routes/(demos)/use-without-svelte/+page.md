@@ -25,6 +25,8 @@ Use in React (set properties and callbacks via ref):
 
 ```tsx
 import { useEffect, useRef } from 'react'
+// Ensure `mv-structure` custom element is defined in browser
+import 'matterviz/structure/StructureCE.svelte'
 
 export default function StructureEmbed() {
   const ref = useRef(null)
@@ -44,6 +46,9 @@ export default function StructureEmbed() {
     el.performance_mode = 'quality'
     el.on_file_load = (data) => {
       // handle callback data
+    }
+    return () => { // return a cleanup function to remove event handlers
+      if (el) el.on_file_load = undefined
     }
   }, [])
 

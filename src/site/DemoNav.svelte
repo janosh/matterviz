@@ -1,11 +1,11 @@
 <script lang="ts">
   import { page } from '$app/state'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`nav`]> {
     routes: (string | [string, string])[]
-    [key: string]: unknown
   }
-  let { routes, ...rest }: Props = $props()
+  let { routes = [], ...rest }: Props = $props()
 
   let is_current = $derived((path: string) => {
     if (path === `/`) return page.url.pathname === `/` ? `page` : undefined
@@ -15,7 +15,7 @@
 </script>
 
 <nav {...rest}>
-  {#each routes as route (route)}
+  {#each routes as route (JSON.stringify(route))}
     {@const [href, label] = Array.isArray(route) ? route : [route, route]}
     <a {href} aria-current={is_current(href)}>{label}</a>
   {/each}

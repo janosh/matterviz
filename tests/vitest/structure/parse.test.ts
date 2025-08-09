@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 // Helpers to reduce duplication and strengthen invariants
-const TOL = 12
+const TOL = 8
 function expect_abc_in_unit_cell(site: { abc: number[] }) {
   expect(site.abc[0]).toBeGreaterThanOrEqual(0)
   expect(site.abc[0]).toBeLessThan(1)

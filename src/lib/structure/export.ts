@@ -2,11 +2,6 @@ import type { AnyStructure, Vec3 } from '$lib'
 import { electro_neg_formula } from '$lib'
 import { download } from '$lib/io/fetch'
 import * as math from '$lib/math'
-import { WebGLRenderer } from 'three'
-
-export interface CanvasWithRenderer extends HTMLCanvasElement {
-  __customRenderer?: WebGLRenderer
-}
 
 // Generate a filename for structure exports based on structure metadata
 export function create_structure_filename(
@@ -94,7 +89,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
       ) element_symbol = first_species.element
     }
 
-    // Get coordinates - prefer abc (fractional) converted to cartesian, fallback to xyz
+    // Get coordinates - prefer xyz; fallback to abc (converted to cartesian if lattice available)
     let coords: number[]
     if (site.xyz && Array.isArray(site.xyz) && site.xyz.length >= 3) {
       coords = site.xyz.slice(0, 3)
@@ -112,8 +107,10 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
         lattice.matrix &&
         Array.isArray(lattice.matrix) &&
         lattice.matrix.length >= 3
-      ) coords = math.mat3x3_vec3_multiply(lattice.matrix, [a, b, c])
-      else coords = [0, 0, 0] // fallback
+      ) {
+        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
+        coords = math.mat3x3_vec3_multiply(lattice_transposed, [a, b, c])
+      } else coords = [0, 0, 0] // fallback
     } else coords = [0, 0, 0] // fallback
 
     // Format coordinates to reasonable precision
@@ -158,10 +155,10 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   ) {
     const symmetry = structure.symmetry as Record<string, unknown>
     if (`space_group_symbol` in symmetry && symmetry.space_group_symbol) {
-      lines.push(`_symmetry_space_group_name_H-M ${symmetry.space_group_symbol}`)
+      lines.push(`_space_group_name_H-M_alt ${symmetry.space_group_symbol}`)
     }
     if (`space_group_number` in symmetry && symmetry.space_group_number) {
-      lines.push(`_symmetry_Int_Tables_number ${symmetry.space_group_number}`)
+      lines.push(`_space_group_IT_number ${symmetry.space_group_number}`)
     }
   }
 
