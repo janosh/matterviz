@@ -16,6 +16,7 @@ import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
+import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
@@ -675,6 +676,21 @@ O2   O   0.410  0.140  0.880  1.000`
     )
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
+  })
+
+  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984)`, () => {
+    const result = parse_cif(ru_p_complex_cif)
+    if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
+    expect(result.sites.length).toBeGreaterThan(0)
+    expect(result.lattice).toBeDefined()
+    // Basic sanity checks
+    expect(Number.isFinite(result.lattice?.a as number)).toBe(true)
+    expect(Number.isFinite(result.lattice?.b as number)).toBe(true)
+    expect(Number.isFinite(result.lattice?.c as number)).toBe(true)
+    // Ensure at least one Ru and S present (as per file header counts)
+    const elements = result.sites.map((s) => s.species[0].element)
+    expect(elements).toContain(`Ru`)
+    expect(elements).toContain(`S`)
   })
 
   it(`should detect CIF format by content`, () => {

@@ -488,21 +488,14 @@ export function parse_xyz(content: string): ParsedStructure | null {
         xyz[2] = wrapped_xyz[2]
       }
 
-      const site: Site = {
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz,
-        label: `${element}${atom_idx + 1}`,
-        properties: {},
-      }
+      const species = [{ element, occu: 1, oxidation_state: 0 }]
+      const label = `${element}${atom_idx + 1}`
+      const site: Site = { species, abc, xyz, label, properties: {} }
 
       sites.push(site)
     }
 
-    const structure: ParsedStructure = {
-      sites,
-      ...(lattice && { lattice }),
-    }
+    const structure: ParsedStructure = { sites, ...(lattice && { lattice }) }
 
     return structure
   } catch (error) {
@@ -524,9 +517,7 @@ const extract_cif_cell_parameters = (
       const value_str = tokens[tokens.length - 1] // Last token contains the value
       const value = parseFloat(value_str.split(`(`)[0]) // Remove uncertainty notation
       if (isNaN(value)) {
-        if (strict) {
-          throw new Error(`Invalid CIF cell parameter in line: ${line}`)
-        }
+        if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
         return null // Return null for invalid values in non-strict mode
       }
       return value
@@ -534,7 +525,7 @@ const extract_cif_cell_parameters = (
     .filter((v): v is number => v !== null) // Filter out null values
 }
 
-// build header index mapping for atom site data
+// build header index mapping for atom site data (supports fract and Cartn coordinates)
 const build_cif_atom_site_header_indices = (
   headers: string[],
 ): Record<string, number> => {
@@ -542,39 +533,60 @@ const build_cif_atom_site_header_indices = (
 
   headers.forEach((header, idx) => {
     const trimmed = header.trim()
-    if (trimmed.endsWith(`_atom_site_label`)) indices.label = idx
-    else if (trimmed.endsWith(`_atom_site_type_symbol`)) indices.symbol = idx
-    else if (trimmed.endsWith(`_atom_site_fract_x`)) indices.x = idx
-    else if (trimmed.endsWith(`_atom_site_fract_y`)) indices.y = idx
-    else if (trimmed.endsWith(`_atom_site_fract_z`)) indices.z = idx
-    else if (trimmed.endsWith(`_atom_site_occupancy`)) indices.occupancy = idx
-    else if (trimmed.endsWith(`_atom_site_disorder_group`)) indices.disorder = idx
+    const lower = trimmed.toLowerCase()
+    if (lower.endsWith(`_atom_site_label`)) indices.label = idx
+    else if (lower.endsWith(`_atom_site_type_symbol`)) indices.symbol = idx
+    else if (lower.endsWith(`_atom_site_fract_x`)) indices.x = idx
+    else if (lower.endsWith(`_atom_site_fract_y`)) indices.y = idx
+    else if (lower.endsWith(`_atom_site_fract_z`)) indices.z = idx
+    else if (lower.endsWith(`_atom_site_cartn_x`)) indices.cart_x = idx
+    else if (lower.endsWith(`_atom_site_cartn_y`)) indices.cart_y = idx
+    else if (lower.endsWith(`_atom_site_cartn_z`)) indices.cart_z = idx
+    else if (lower.endsWith(`_atom_site_occupancy`)) indices.occupancy = idx
+    else if (lower.endsWith(`_atom_site_disorder_group`)) indices.disorder = idx
   })
 
   return indices
 }
 
-// Parse atom data from CIF with robust error handling
-const parse_cif_atom_data = (raw_data: string[], indices: Record<string, number>) => {
-  const { label = 0, x = -1, y = -1, z = -1, symbol = -1, occupancy = -1 } = indices
+type CifAtom = {
+  id: string
+  element: string
+  coords: [number, number, number]
+  coords_type: `fract` | `cart`
+  occupancy: number
+}
 
-  if (x === -1 || y === -1 || z === -1) throw new Error(`Missing coordinate indices`)
+// Parse atom data from CIF with robust error handling
+const parse_cif_atom_data = (
+  raw_data: string[],
+  indices: Record<string, number>,
+  coords_type: `fract` | `cart`,
+): CifAtom => {
+  const { label = 0, symbol = -1, occupancy = -1 } = indices
+  const [cx, cy, cz] = (
+    coords_type === `fract`
+      ? [indices.x, indices.y, indices.z]
+      : [indices.cart_x, indices.cart_y, indices.cart_z]
+  ).map((val) => (val === undefined ? -1 : val))
+
+  if (cx === -1 || cy === -1 || cz === -1) throw new Error(`Missing coordinate indices`)
 
   // Parse coordinates with validation
-  const fract_coords = [x, y, z].map((idx) => {
-    const coord_str = raw_data[idx]
-    if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
+  const coords_triplet = [cx, cy, cz].map((coord_idx) => {
+    const coord_str = raw_data[coord_idx]
+    if (!coord_str) throw new Error(`Missing coordinate at index ${coord_idx}`)
     const coord = parseFloat(coord_str.split(`(`)[0])
     if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
     return coord
-  })
+  }) as [number, number, number]
 
-  // Parse occupancy (default 1.0 if not present)
+  // Parse occupancy (default 1.0 if not present or non-numeric)
   const occu = occupancy >= 0 && raw_data[occupancy]
     ? (() => {
-      const parsed = parseFloat(raw_data[occupancy].split(`(`)[0])
-      if (isNaN(parsed)) throw new Error(`Invalid occupancy: ${raw_data[occupancy]}`)
-      return parsed
+      const cleaned = raw_data[occupancy].split(`(`)[0]
+      const parsed = parseFloat(cleaned)
+      return isNaN(parsed) ? 1.0 : parsed
     })()
     : 1.0
 
@@ -586,7 +598,13 @@ const parse_cif_atom_data = (raw_data: string[], indices: Record<string, number>
       throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
     })()
 
-  return { id: raw_data[label], element: element_symbol, fract_coords, occupancy: occu }
+  return {
+    id: raw_data[label],
+    element: element_symbol,
+    coords: coords_triplet,
+    coords_type,
+    occupancy: occu,
+  }
 }
 
 // Parse CIF (Crystallographic Information File) format
@@ -602,51 +620,62 @@ export function parse_cif(
       return null
     }
 
-    // Find atom site loop
+    // Find atom site loop that actually contains coordinates (fract or Cartn)
     const lines = text.split(`\n`)
     let atom_headers: string[] = []
     const atom_data_lines: string[] = []
 
     for (let ii = 0; ii < lines.length; ii++) {
-      if (lines[ii].trim() === `loop_`) {
-        let jj = ii + 1
-        const headers: string[] = []
+      if (lines[ii].trim() !== `loop_`) continue
 
-        // Collect headers
-        while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
-          headers.push(lines[jj].trim())
-          jj++
-        }
+      let jj = ii + 1
+      const headers: string[] = []
 
-        // Check if this is an atom site loop
-        if (headers.some((h) => h.includes(`_atom_site_`))) {
-          atom_headers = headers
-          // Collect data lines until the next loop_ or end of file
-          while (jj < lines.length) {
-            const line = lines[jj].trim()
-            if (line === `loop_` || line.startsWith(`data_`)) break
-            if (line && !line.startsWith(`#`)) {
-              // Handle multi-line data blocks that are quoted
-              if (line.startsWith(`;`)) {
-                let multi_line_data = ``
-                while (jj < lines.length && !lines[jj].trim().endsWith(`;`)) {
-                  multi_line_data += lines[jj] + `\n`
-                  jj++
-                }
-                multi_line_data += lines[jj] // Add the last line with the closing semicolon
-                atom_data_lines.push(multi_line_data.trim())
-              } else {
-                atom_data_lines.push(line)
-              }
-            }
-            jj++
-          }
-          // If we found atom data, break out of the main loop
-          if (atom_data_lines.length > 0) {
-            break
-          }
-        }
+      // Collect headers for this loop
+      while (jj < lines.length && lines[jj].trim().startsWith(`_`)) {
+        headers.push(lines[jj].trim())
+        jj++
       }
+
+      // Not an atom-site loop → continue search
+      if (!headers.some((h) => h.includes(`_atom_site_`))) continue
+
+      // Check if this loop contains coordinate headers
+      const indices_preview = build_cif_atom_site_header_indices(headers)
+      const has_fract_preview = indices_preview.x !== undefined &&
+        indices_preview.y !== undefined &&
+        indices_preview.z !== undefined
+      const has_cart_preview = indices_preview.cart_x !== undefined &&
+        indices_preview.cart_y !== undefined &&
+        indices_preview.cart_z !== undefined
+
+      if (!has_fract_preview && !has_cart_preview) {
+        // Skip this atom-site loop (e.g., anisotropic displacement) and continue from jj
+        ii = jj - 1
+        continue
+      }
+
+      // This is the desired atom-site loop with coordinates: collect data lines
+      atom_headers = headers
+      while (jj < lines.length) {
+        const line = lines[jj].trim()
+        if (line === `loop_` || line.startsWith(`data_`)) break
+        if (line && !line.startsWith(`#`)) {
+          if (line.startsWith(`;`)) {
+            let multi_line_data = ``
+            while (jj < lines.length && !lines[jj].trim().endsWith(`;`)) {
+              multi_line_data += lines[jj] + `\n`
+              jj++
+            }
+            multi_line_data += lines[jj]
+            atom_data_lines.push(multi_line_data.trim())
+          } else {
+            atom_data_lines.push(line)
+          }
+        }
+        jj++
+      }
+      if (atom_data_lines.length > 0) break
     }
 
     if (!atom_headers.length || !atom_data_lines.length) {
@@ -656,6 +685,47 @@ export function parse_cif(
 
     // Parse atom data with error handling
     const header_indices = build_cif_atom_site_header_indices(atom_headers)
+
+    // Determine available coordinate type
+    const has_fract = header_indices.x !== undefined &&
+      header_indices.y !== undefined &&
+      header_indices.z !== undefined
+    const has_cart = header_indices.cart_x !== undefined &&
+      header_indices.cart_y !== undefined &&
+      header_indices.cart_z !== undefined
+    const coords_type: `fract` | `cart` | null = has_fract
+      ? `fract`
+      : has_cart
+      ? `cart`
+      : null
+
+    if (!coords_type) {
+      console.error(`CIF atom site loop missing coordinates (fract or Cartn)`)
+      return null
+    }
+
+    // Collect required coordinate indices with explicit guards (avoid non-null assertions)
+    let required_indices: number[]
+    if (coords_type === `fract`) {
+      const { x, y, z } = header_indices
+      if (x === undefined || y === undefined || z === undefined) {
+        console.error(`CIF missing fractional coordinate indices`)
+        return null
+      }
+      required_indices = [x, y, z]
+    } else {
+      const { cart_x, cart_y, cart_z } = header_indices as {
+        cart_x?: number
+        cart_y?: number
+        cart_z?: number
+      }
+      if (cart_x === undefined || cart_y === undefined || cart_z === undefined) {
+        console.error(`CIF missing Cartesian coordinate indices`)
+        return null
+      }
+      required_indices = [cart_x, cart_y, cart_z]
+    }
+
     const atoms = atom_data_lines
       .map((line) => {
         // Handle quoted multi-word values by splitting only on whitespace
@@ -665,17 +735,15 @@ export function parse_cif(
       })
       .filter((tokens) => {
         const { disorder } = header_indices
-        return !(disorder !== undefined && tokens[disorder] === `2`) &&
-          tokens.length >=
-            Math.max(
-                header_indices.x ?? 0,
-                header_indices.y ?? 0,
-                header_indices.z ?? 0,
-              ) + 1
+        const max_required_idx = Math.max(...required_indices)
+        return (
+          !(disorder !== undefined && tokens[disorder] === `2`) &&
+          tokens.length > max_required_idx
+        )
       })
       .map((tokens) => {
         try {
-          return parse_cif_atom_data(tokens, header_indices)
+          return parse_cif_atom_data(tokens, header_indices, coords_type)
         } catch (error) {
           console.warn(`Skipping invalid atom data: ${error}`)
           return null
@@ -702,31 +770,53 @@ export function parse_cif(
     const [alpha, beta, gamma] = angles
     const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
     const lattice_params = math.calc_lattice_params(lattice_matrix)
+    const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
+    let lattice_invT: Matrix3x3 | null = null
+    try {
+      lattice_invT = math.matrix_inverse_3x3(lattice_T)
+    } catch {
+      lattice_invT = null
+    }
 
     // Create sites with coordinate conversion
+    const wrap_vec3 = (v: Vec3): Vec3 =>
+      wrap_frac
+        ? [v[0] - Math.floor(v[0]), v[1] - Math.floor(v[1]), v[2] - Math.floor(v[2])]
+        : v
+
     const sites: Site[] = atoms.map((atom, idx) => {
       const element = validate_element_symbol(atom.element, idx)
-      const [fract_x, fract_y, fract_z] = atom.fract_coords
 
-      // Wrap fractional coordinates if requested
-      const abc: Vec3 = wrap_frac
-        ? [
-          fract_x - Math.floor(fract_x),
-          fract_y - Math.floor(fract_y),
-          fract_z - Math.floor(fract_z),
-        ]
-        : [fract_x, fract_y, fract_z]
+      if (atom.coords_type === `fract`) {
+        const abc = wrap_vec3([atom.coords[0], atom.coords[1], atom.coords[2]])
+        const xyz = math.mat3x3_vec3_multiply(lattice_T, abc)
+        return {
+          species: [{ element, occu: atom.occupancy, oxidation_state: 0 }],
+          abc,
+          xyz,
+          label: atom.id,
+          properties: {},
+        }
+      }
 
-      // Convert to Cartesian coordinates
-      const xyz = math.mat3x3_vec3_multiply(
-        math.transpose_3x3_matrix(lattice_matrix),
-        abc,
-      )
-
+      // Cartesian provided → convert to fractional via inverse(lattice^T)
+      const xyz: Vec3 = [atom.coords[0], atom.coords[1], atom.coords[2]]
+      let abc: Vec3
+      if (lattice_invT) {
+        const raw = math.mat3x3_vec3_multiply(lattice_invT, xyz)
+        abc = wrap_vec3(raw as Vec3)
+      } else {
+        const raw: Vec3 = [xyz[0] / a, xyz[1] / b, xyz[2] / c]
+        abc = wrap_vec3(raw)
+      }
+      // Keep atoms inside primary unit cell when wrapping by recomputing xyz
+      const xyz_wrapped = wrap_frac
+        ? (math.mat3x3_vec3_multiply(lattice_T, abc) as Vec3)
+        : xyz
       return {
         species: [{ element, occu: atom.occupancy, oxidation_state: 0 }],
         abc,
-        xyz,
+        xyz: xyz_wrapped,
         label: atom.id,
         properties: {},
       }
