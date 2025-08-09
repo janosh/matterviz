@@ -13,8 +13,11 @@ import {
   structure_to_xyz_str,
 } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
-import { parse_structure_file } from '$lib/io/parse'
-import type { AnyStructure } from '$lib/structure'
+import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/io/parse'
+import type { AnyStructure, PymatgenLattice } from '$lib/structure'
+import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
+import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
+import tio2_cif from '$site/structures/TiO2.cif?raw'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Mock the download function
@@ -331,6 +334,63 @@ describe(`Export functionality`, () => {
       const parsed_structure = parse_structure_file(json_content, `test.json`)
       expect((parsed_structure as AnyStructure).id).toBe(complex_structure.id)
       expect(parsed_structure?.sites).toHaveLength(7)
+    })
+  })
+
+  describe(`Round-trip exporters (fixtures)`, () => {
+    const TOL = 10
+    const reconstruct = (abc: number[], L: number[][]) => [
+      abc[0] * L[0][0] + abc[1] * L[1][0] + abc[2] * L[2][0],
+      abc[0] * L[0][1] + abc[1] * L[1][1] + abc[2] * L[2][1],
+      abc[0] * L[0][2] + abc[1] * L[1][2] + abc[2] * L[2][2],
+    ]
+    const to_any = (
+      ps: {
+        sites: AnyStructure[`sites`]
+        lattice?: Omit<PymatgenLattice, `pbc`> & Partial<Pick<PymatgenLattice, `pbc`>>
+      },
+    ) =>
+      ({
+        sites: ps.sites,
+        charge: 0,
+        ...(ps.lattice &&
+          {
+            lattice: {
+              ...(ps.lattice as Omit<PymatgenLattice, `pbc`>),
+              pbc: [true, true, true],
+            } as PymatgenLattice,
+          }),
+      }) as AnyStructure
+
+    it.each([
+      {
+        name: `XYZ quartz`,
+        parse: () => parse_xyz(extended_xyz_quartz),
+        out: structure_to_xyz_str,
+      },
+      {
+        name: `POSCAR BaTiO3`,
+        parse: () => parse_poscar(ba_ti_o3_tetragonal),
+        out: structure_to_poscar_str,
+      },
+      { name: `CIF TiO2`, parse: () => parse_cif(tio2_cif), out: structure_to_cif_str },
+    ])(`round-trips %s`, ({ parse, out }) => {
+      const parsed = parse()
+      if (!parsed || !parsed.lattice) throw `failed to parse fixture`
+      const exported = out(to_any(parsed))
+      const reparsed = parse_structure_file(exported)
+      if (!reparsed || !reparsed.lattice) throw `failed to reparse`
+      expect(reparsed.sites.length).toBe(parsed.sites.length)
+      const L = reparsed.lattice.matrix
+      reparsed.sites.forEach((site, idx) => {
+        expect(site.abc[0]).toBeCloseTo(parsed.sites[idx].abc[0], TOL)
+        expect(site.abc[1]).toBeCloseTo(parsed.sites[idx].abc[1], TOL)
+        expect(site.abc[2]).toBeCloseTo(parsed.sites[idx].abc[2], TOL)
+        const r = reconstruct(site.abc, L)
+        expect(r[0]).toBeCloseTo(site.xyz[0], TOL)
+        expect(r[1]).toBeCloseTo(site.xyz[1], TOL)
+        expect(r[2]).toBeCloseTo(site.xyz[2], TOL)
+      })
     })
   })
 

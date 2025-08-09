@@ -471,6 +471,21 @@ export function parse_xyz(content: string): ParsedStructure | null {
           // Fallback to simplified method if matrix is singular
           abc = [xyz[0] / lattice.a, xyz[1] / lattice.b, xyz[2] / lattice.c]
         }
+
+        // Ensure fractional coordinates are wrapped into [0, 1) for consistency
+        abc = [
+          abc[0] - Math.floor(abc[0]),
+          abc[1] - Math.floor(abc[1]),
+          abc[2] - Math.floor(abc[2]),
+        ]
+
+        // Keep rendered atoms inside primary unit cell by recomputing xyz
+        // from the wrapped fractional coordinates using transpose(lattice)
+        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
+        const wrapped_xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
+        xyz[0] = wrapped_xyz[0]
+        xyz[1] = wrapped_xyz[1]
+        xyz[2] = wrapped_xyz[2]
       }
 
       const site: Site = {

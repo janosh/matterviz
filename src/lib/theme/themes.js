@@ -119,9 +119,9 @@ const themes = {
     black: `rgba(255, 255, 255, 0.1)`,
   },
   'pre-bg': {
-    light: `rgba(0, 0, 0, 0.02)`,
+    light: `rgba(0, 0, 0, 0.03)`,
     dark: `rgba(255, 255, 255, 0.05)`,
-    white: `rgba(0, 0, 0, 0.01)`,
+    white: `rgba(0, 0, 0, 0.02)`,
     black: `rgba(255, 255, 255, 0.1)`,
   },
 

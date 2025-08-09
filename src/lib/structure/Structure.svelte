@@ -325,6 +325,7 @@
     event.preventDefault()
     dragover = false
     if (!allow_file_drop) return
+    error_msg = undefined // Clear previous error when a new file is dropped
 
     // Handle URL-based files (e.g. from FilePicker)
     const handled = await handle_url_drop(

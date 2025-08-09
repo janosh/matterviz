@@ -11,21 +11,17 @@
   let { theme_mode = $bindable(theme_state.mode), onchange = () => {}, ...rest }:
     Props = $props()
 
-  // Sync and save when theme changes
-  $effect(() => {
+  $effect(() => { // Sync and save to local storage when theme changes
     theme_state.mode = theme_mode
     save_theme_preference(theme_mode)
-
-    // Apply the theme to the DOM immediately
     apply_theme_to_dom(theme_mode)
-
     onchange(theme_mode)
   })
 </script>
 
 <select bind:value={theme_mode} {...rest} class="theme-control {rest.class ?? ``}">
-  {#each THEME_OPTIONS as option (option.value)}
-    <option value={option.value}>{option.icon} {option.label}</option>
+  {#each THEME_OPTIONS as { label, icon, value } (value)}
+    <option {value}>{icon} {label}</option>
   {/each}
 </select>
 
@@ -50,7 +46,7 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   .theme-control:focus {
-    outline: 2px solid var(--accent-color);
+    outline: 0.5px solid var(--accent-color);
     outline-offset: 2px;
   }
 </style>

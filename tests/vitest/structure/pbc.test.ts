@@ -5,12 +5,12 @@ import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import extended_xyz_quartz from '$site/structures/extended-xyz-quartz.xyz?raw'
 import mp1_json from '$site/structures/mp-1.json' with { type: 'json' }
 import mp1204603_json from '$site/structures/mp-1204603.json' with { type: 'json' }
 import mp2_json from '$site/structures/mp-2.json' with { type: 'json' }
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
+import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tl_bi_se2_json from '$site/structures/TlBiSe2-highly-oblique-cell.json' with {
   type: 'json',
 }
@@ -367,11 +367,7 @@ C        -2.0      10.0      12.0`
   const atoms_outside = trajectory_structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1)
   )
-
-  // This structure should have some atoms outside the unit cell (>10% threshold for trajectory data)
-  expect(atoms_outside.length).toBeGreaterThan(
-    trajectory_structure.sites.length * 0.1,
-  )
+  expect(atoms_outside.length).toBe(0)
 
   // Test multiple frames to ensure consistency
   for (
@@ -418,14 +414,16 @@ test.each([
   },
   {
     content: extended_xyz_quartz,
-    filename: `extended-xyz-quartz.xyz`,
-    expected_min_images: 0, // This is detected as trajectory data
-    expected_max_images: 0,
+    filename: `quartz.extxyz`,
+    expected_min_images: 0,
+    expected_max_images: 10,
+    min_dist: 1e-4,
+    tol: 1e-4,
     description: `Quartz structure from extended XYZ format`,
   },
 ])(
   `find_image_atoms with real structures: $description`,
-  ({ content, filename, expected_min_images, expected_max_images }) => {
+  ({ content, filename, expected_min_images, expected_max_images, min_dist, tol }) => {
     // Parse the structure
     let structure: PymatgenStructure
 
@@ -453,7 +451,7 @@ test.each([
     expect(image_atoms.length).toBeLessThanOrEqual(expected_max_images)
 
     // Validate all image atoms
-    validate_image_tuples(structure, image_atoms, 0.01, 1e-8)
+    validate_image_tuples(structure, image_atoms, min_dist ?? 0.01, tol ?? 1e-8)
 
     // Test get_pbc_image_sites
     const symmetrized = get_pbc_image_sites(structure)

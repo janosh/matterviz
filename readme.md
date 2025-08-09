@@ -77,7 +77,8 @@ npm install --dev matterviz
   const data_url = '/structures/TiO2.cif'
   // supports .cif, .poscar, .xyz/.extxyz, pymatgen JSON, OPTIMADE JSON, .gz
 </script>
-<Structure {data_url} />
+
+<Structure {data_url} style="width: 500px; aspect-ratio: 1" />
 ```
 
 ### Composition
@@ -87,6 +88,7 @@ npm install --dev matterviz
   import { Composition } from 'matterviz'
   // modes can be 'pie' (default) | 'bubble' | 'bar'
 </script>
+
 <Composition composition="LiFePO4" mode="pie" />
 ```
 
@@ -97,7 +99,8 @@ npm install --dev matterviz
   import { Trajectory } from 'matterviz'
   // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat, .gz, .zip, .bz2, .xz
 </script>
-<Trajectory data_url="/traj/ase-md.xyz" auto_play fps={10} />
+
+<Trajectory data_url="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
 ```
 
 ## 🧪 &thinsp; Coverage

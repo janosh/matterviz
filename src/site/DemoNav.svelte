@@ -3,8 +3,9 @@
 
   interface Props {
     routes: (string | [string, string])[]
+    [key: string]: unknown
   }
-  let { routes }: Props = $props()
+  let { routes, ...rest }: Props = $props()
 
   let is_current = $derived((path: string) => {
     if (path === `/`) return page.url.pathname === `/` ? `page` : undefined
@@ -13,7 +14,7 @@
   })
 </script>
 
-<nav>
+<nav {...rest}>
   {#each routes as route (route)}
     {@const [href, label] = Array.isArray(route) ? route : [route, route]}
     <a {href} aria-current={is_current(href)}>{label}</a>
@@ -32,7 +33,6 @@
   }
   nav > a {
     padding: 0 4pt;
-    background-color: var(--nav-link-bg);
     border-radius: 3pt;
     transition: 0.2s;
   }

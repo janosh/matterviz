@@ -66,7 +66,14 @@
 
 <!-- using a random MP ID to pre-populate the structure viewer when optimade explorer loads -->
 <DemoNav
-  routes={[[`/`, `/home`], ...demo_routes, [`/optimade-mp-1226325`, `/optimade`]]}
+  routes={[
+    [`/`, `Home`],
+    ...demo_routes.map((route) =>
+      [route, route.replaceAll(`/`, ``).replaceAll(`-`, ` `)] as [string, string]
+    ),
+    [`/optimade-mp-1226325`, `Optimade`],
+  ]}
+  style="text-transform: capitalize"
 />
 
 <main>
