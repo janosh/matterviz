@@ -6,7 +6,7 @@ import {
   detect_compression_format,
   remove_compression_extension,
 } from '$lib/io/decompress'
-import { parse_structure_file } from '$lib/io/parse'
+import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
 import '$lib/theme/themes'

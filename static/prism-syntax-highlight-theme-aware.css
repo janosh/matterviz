@@ -7,7 +7,7 @@
 
 :root {
   /* Light theme colors */
-  --prism-light-bg: #f6f8fa;
+  --prism-light-bg: var(--pre-bg);
   --prism-light-text: #24292f;
   --prism-light-selection: #add6ff;
   --prism-light-comment: #6a737d;
@@ -18,7 +18,7 @@
   --prism-light-builtin: #22863a;
 
   /* Dark theme colors */
-  --prism-dark-bg: #1e1e1e;
+  --prism-dark-bg: var(--pre-bg);
   --prism-dark-text: #d4d4d4;
   --prism-dark-selection: #75a7ca;
   --prism-dark-comment: #6a9955;

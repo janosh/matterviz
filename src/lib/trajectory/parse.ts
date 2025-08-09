@@ -3,9 +3,9 @@ import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
 import { COMPRESSION_EXTENSIONS } from '$lib/io/decompress'
-import { parse_xyz } from '$lib/io/parse'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
+import { parse_xyz } from '$lib/structure/parse'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
 import type {
@@ -1403,3 +1403,24 @@ export function create_frame_loader(filename: string): FrameLoader {
 // Backward compatibility exports
 export const XYZFrameLoader = TrajFrameReader
 export const ASEFrameLoader = TrajFrameReader
+
+export async function load_binary_traj(
+  resp: Response,
+  type: string,
+  fallback = false,
+): Promise<ArrayBuffer | string> {
+  try {
+    // Read binary from a clone so the original can be used for text fallback
+    return await resp.clone().arrayBuffer()
+  } catch (err1) {
+    if (fallback) {
+      console.warn(`Binary load failed for ${type}, using text:`, err1)
+      try {
+        return await resp.text()
+      } catch (err2) {
+        console.error(`Fallback to text also failed for ${type}:`, err2)
+      }
+    }
+    throw new Error(`Failed to load ${type} as binary: ${err1}`)
+  }
+}

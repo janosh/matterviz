@@ -2,9 +2,9 @@
   import type { AnyStructure } from '$lib'
   import { DraggablePanel, SettingsSection } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
-  import * as exports from '$lib/io/export'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
+  import * as exports from '$lib/structure/export'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
@@ -189,7 +189,7 @@
         content = exports.structure_to_poscar_str(structure)
       } else throw new Error(`Invalid format: ${format}`)
 
-      await exports.copy_to_clipboard(content)
+      await navigator.clipboard.writeText(content)
 
       // Show temporary feedback in button text
       copy_status[format] = true

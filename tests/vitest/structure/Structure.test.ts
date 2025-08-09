@@ -1,8 +1,8 @@
 import type { AnyStructure, Vec3 } from '$lib'
 import { Structure } from '$lib'
-import * as exports from '$lib/io/export'
 import { euclidean_dist, type Matrix3x3, pbc_dist } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
+import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
 import { readFileSync } from 'fs'
 import { mount, tick } from 'svelte'
@@ -122,8 +122,8 @@ describe(`Structure`, () => {
       expect(copy_btn, `copy button for ${format}`).toBeTruthy()
 
       copy_btn.click()
-      // Wait for Svelte to re-render the component
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await tick()
+      await tick()
 
       expect(clipboard_spy).toHaveBeenCalledOnce()
       expect(copy_btn.textContent).toContain(`✅`)

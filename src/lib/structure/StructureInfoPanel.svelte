@@ -48,11 +48,8 @@
 
   function handle_click(item: SectionItem, section_title: string) {
     if (section_title === `Usage Tips`) return
-    if (item.key === `sites-toggle`) {
-      sites_expanded = !sites_expanded
-    } else {
-      copy_to_clipboard(item.label, item.value, item.key)
-    }
+    if (item.key === `sites-toggle`) sites_expanded = !sites_expanded
+    else copy_to_clipboard(item.label, item.value, item.key)
   }
 
   let info_panel_data = $derived.by(() => {
