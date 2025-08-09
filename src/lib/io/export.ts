@@ -190,11 +190,10 @@ export function export_svg_as_png(
     const cloned_svg = svg_element.cloneNode(true) as SVGElement
     set_svg_font_family(cloned_svg)
 
-    // Convert SVG to data URL to avoid tainted canvas issues
+    // Create an object URL from SVG Blob
     const svg_string = new XMLSerializer().serializeToString(cloned_svg)
-    const svg_data_url = `data:image/svg+xml;base64,${
-      btoa(unescape(encodeURIComponent(svg_string)))
-    }`
+    const svg_blob = new Blob([svg_string], { type: `image/svg+xml;charset=utf-8` })
+    const svg_data_url = URL.createObjectURL(svg_blob)
 
     // Create an image element to load the SVG
     const img = new Image()
@@ -212,10 +211,13 @@ export function export_svg_as_png(
         )
       } catch (error) {
         console.error(`Error during PNG generation:`, error)
+      } finally {
+        URL.revokeObjectURL(svg_data_url)
       }
     }
     img.onerror = () => {
       console.error(`Failed to load SVG for PNG export`)
+      URL.revokeObjectURL(svg_data_url)
     }
     img.src = svg_data_url
   } catch (error) {

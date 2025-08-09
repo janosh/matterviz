@@ -79,22 +79,10 @@ function parse_coordinate_line(line: string): number[] {
 
   // Handle malformed coordinates like "1.0-2.0-3.0" (missing spaces)
   if (tokens.length < 3) {
-    const new_tokens: string[] = []
-    for (const token of tokens) {
-      // Split on minus signs that aren't at the start or after 'e'/'E'
-      const parts = token
-        .split(/(?<!^|[eE])-/)
-        .filter((part) => part.length > 0)
-      if (parts.length > 1) {
-        new_tokens.push(parts[0])
-        for (let part_idx = 1; part_idx < parts.length; part_idx++) {
-          new_tokens.push(`-` + parts[part_idx])
-        }
-      } else {
-        new_tokens.push(token)
-      }
-    }
-    tokens = new_tokens
+    // Insert a space before '-' that follows a digit (but not after 'e'/'E')
+    // Example: "0.1-0.2-0.3" -> "0.1 -0.2 -0.3"; preserves exponents like "1e-3"
+    const sanitized = line.trim().replace(/([0-9])-/g, `$1 -`)
+    tokens = sanitized.split(/\s+/)
   }
 
   if (tokens.length < 3) {
@@ -1444,7 +1432,15 @@ export const detect_structure_type = (
 ): `crystal` | `molecule` | `unknown` => {
   const lower_filename = filename.toLowerCase()
 
-  if (lower_filename.endsWith(`.json`)) {
+  // Normalize compressed suffixes (gz, gzip, zip, xz, bz2) for detection parity
+  let name_to_check = lower_filename
+  const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
+  const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
+  while (compression_regex.test(name_to_check)) {
+    name_to_check = name_to_check.replace(compression_regex, ``)
+  }
+
+  if (name_to_check.endsWith(`.json`)) {
     try {
       const parsed = JSON.parse(content)
       // Check for OPTIMADE JSON format (has data.attributes.lattice_vectors)
@@ -1464,16 +1460,17 @@ export const detect_structure_type = (
     }
   }
 
-  if (lower_filename.endsWith(`.cif`)) return `crystal`
-  if (lower_filename.includes(`poscar`) || filename === `POSCAR`) return `crystal`
+  if (name_to_check.endsWith(`.cif`)) return `crystal`
+  if (name_to_check.includes(`poscar`)) return `crystal`
 
-  if (lower_filename.endsWith(`.yaml`) || lower_filename.endsWith(`.yml`)) {
-    return content.includes(`phono3py:`) || content.includes(`phonopy:`)
+  if (name_to_check.endsWith(`.yaml`) || name_to_check.endsWith(`.yml`)) {
+    const lower_content = content.toLowerCase()
+    return lower_content.includes(`phono3py:`) || lower_content.includes(`phonopy:`)
       ? `crystal`
       : `unknown`
   }
 
-  if (lower_filename.match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
+  if (name_to_check.match(/\.(xyz|extxyz)$/)) {
     const lines = content.trim().split(/\r?\n/)
     return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
   }

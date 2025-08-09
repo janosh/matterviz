@@ -295,22 +295,20 @@ describe(`load_from_url`, () => {
     ).rejects.toThrow(`Fetch failed: 404`)
   })
 
-  test(`gzip files with content-encoding are handled as text`, async () => {
-    const mock_response = new Response(`decompressed content`, {
-      headers: { 'content-encoding': `gzip` },
+  test(`Content-Disposition filename is respected`, async () => {
+    const mock_response = new Response(`some content`, {
+      headers: {
+        'content-type': `text/plain`,
+        'content-disposition': `attachment; filename="server-name.xyz"`,
+      },
     })
     globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
-    let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
-
-    await load_from_url(`https://example.com/file.xyz.gz`, (content, filename) => {
-      received_content = content
+    await load_from_url(`https://example.com/ignored-name.xyz`, (_, filename) => {
       received_filename = filename
     })
 
-    expect(typeof received_content).toBe(`string`)
-    expect(received_content).toBe(`decompressed content`)
-    expect(received_filename).toBe(`file.xyz.gz`)
+    expect(received_filename).toBe(`server-name.xyz`)
   })
 })

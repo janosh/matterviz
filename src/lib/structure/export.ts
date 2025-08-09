@@ -17,7 +17,7 @@ export function create_structure_filename(
   // Add formula
   const formula_html = electro_neg_formula(structure)
   if (formula_html && formula_html !== `Unknown`) {
-    const formula_plain = formula_html.replace(/<\/?sub>/g, ``)
+    const formula_plain = formula_html.replace(/<\/?sub>|<\/?sup>/g, ``)
     parts.push(formula_plain)
   }
 

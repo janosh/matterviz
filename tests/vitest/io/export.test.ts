@@ -115,12 +115,12 @@ describe(`Export functionality`, () => {
       expect(mock_download).toHaveBeenCalledWith(
         expect.stringContaining(`<?xml version="1.0"`),
         `f.svg`,
-        `image/svg+xml`,
+        `image/svg+xml;charset=utf-8`,
       )
       expect(mock_download).toHaveBeenCalledWith(
         expect.stringContaining(`<!DOCTYPE svg PUBLIC`),
         `f.svg`,
-        `image/svg+xml`,
+        `image/svg+xml;charset=utf-8`,
       )
       expect(mock_cloned_svg.getAttribute(`font-family`)).toBe(`sans-serif`)
       expect(mock_cloned_svg.getAttribute(`style`)).toContain(`font-family:sans-serif`)
@@ -200,7 +200,7 @@ describe(`Export functionality`, () => {
       export_svg_as_png(mock_svg, `f.png`, 150)
       expect(mock_canvas.width).toBe(208)
       expect(mock_canvas.height).toBe(208)
-      expect(mock_image.src).toMatch(/^data:image\/svg\+xml;base64,/)
+      expect(mock_image.src).toMatch(/^(data:image\/svg\+xml;base64,|blob:)/)
       mock_image.onload?.call(mock_image, new Event(`load`))
       expect(mock_context.clearRect).toHaveBeenCalledWith(0, 0, 208, 208)
       expect(mock_context.drawImage).toHaveBeenCalledWith(mock_image, 0, 0, 208, 208)

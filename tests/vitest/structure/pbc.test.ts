@@ -59,9 +59,9 @@ function assert_integer_translation(
 function validate_image_tuples(
   structure: PymatgenStructure,
   image_atoms: [number, Vec3, Vec3][],
-  min_dist: number = 0.01,
-  tol: number = 1e-8,
-) {
+  opts?: { min_dist?: number; tol?: number },
+): void {
+  const { min_dist = 0.01, tol = 1e-8 } = opts ?? {}
   for (const [original_idx, image_xyz, image_abc] of image_atoms) {
     expect(original_idx).toBeGreaterThanOrEqual(0)
     expect(original_idx).toBeLessThan(structure.sites.length)
@@ -451,7 +451,7 @@ test.each([
     expect(image_atoms.length).toBeLessThanOrEqual(expected_max_images)
 
     // Validate all image atoms
-    validate_image_tuples(structure, image_atoms, min_dist ?? 0.01, tol ?? 1e-8)
+    validate_image_tuples(structure, image_atoms, { min_dist, tol })
 
     // Test get_pbc_image_sites
     const symmetrized = get_pbc_image_sites(structure)
@@ -722,7 +722,7 @@ test(`comprehensive image atom validation`, () => {
 
   expect(image_atoms.length).toBeGreaterThan(0)
 
-  validate_image_tuples(structure, image_atoms, 0.01, 1e-6)
+  validate_image_tuples(structure, image_atoms, { min_dist: 0.01, tol: 1e-6 })
 })
 
 // Test that no duplicate image atoms are created

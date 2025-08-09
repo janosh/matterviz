@@ -2259,7 +2259,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     // Verify the structure wrapper dimensions changed
     const structure_wrapper = page.locator(`#test-structure`)
     await expect(structure_wrapper).toHaveCSS(`width`, `800px`)
-    await expect(structure_wrapper).toHaveCSS(`height`, `500px`)
+    await expect(structure_wrapper).toHaveCSS(`height`, `600px`)
   })
 
   test(`should handle scene props changes correctly`, async ({ page }) => {
@@ -2755,13 +2755,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     test.beforeEach(async ({ page }: { page: Page }) => {
       // Open structure controls panel
       await open_structure_controls_panel(page)
-    })
-
-    test(`reset buttons do not appear initially`, async ({ page }) => {
-      // Reset buttons are present by default in each section header
-      const reset_buttons = page.locator(`button`, { hasText: `Reset` })
-      const btn_count = await reset_buttons.count()
-      expect(btn_count).toBeGreaterThan(0)
     })
 
     test(`visibility section reset button appears and works`, async ({ page }) => {

@@ -23,8 +23,26 @@ export async function load_from_url(
   url: string,
   callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
 ): Promise<void> {
-  const filename = url.split(`/`).pop() || url
-  const ext = filename.split(`.`).pop()?.toLowerCase() || ``
+  const url_basename = url.split(`/`).pop() || url
+  const ext = url_basename.split(`.`).pop()?.toLowerCase() || ``
+
+  const extract_filename = (headers?: Headers): string => {
+    const fallback = url_basename
+    if (!headers) return fallback
+    const content_disposition_str = headers.get(`content-disposition`)
+    if (!content_disposition_str) return fallback
+    const star_match = /filename\*=(?:UTF-8''|)([^;]+)/i.exec(content_disposition_str)
+    if (star_match?.[1]) {
+      const raw = star_match[1].trim().replace(/^"|"$/g, ``)
+      try {
+        return decodeURIComponent(raw)
+      } catch {
+        return raw
+      }
+    }
+    const plain_match = /filename\s*=\s*"?([^";]+)"?/i.exec(content_disposition_str)
+    return plain_match?.[1]?.trim() || fallback
+  }
 
   // Check for known binary file extensions
   const known_bin_extensions = `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz`.split(` `)
@@ -32,6 +50,7 @@ export async function load_from_url(
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
     const resp = await fetch(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+    const filename = extract_filename(resp.headers)
 
     // Handle gzipped files with proper content-encoding detection
     if (ext === `gz` || ext === `gzip`) {
@@ -62,20 +81,20 @@ export async function load_from_url(
         }
       }
 
-      return callback(result, filename)
+      return callback(result, extract_filename(resp.headers))
     }
 
     // For .traj files, ensure we always get ArrayBuffer for proper ASE parsing
     if (ext === `traj`) {
       const buffer = await load_binary_traj(resp, `.traj`)
-      return callback(buffer, filename)
+      return callback(buffer, extract_filename(resp.headers))
     }
 
     if (resp.headers.get(`content-encoding`) === `gzip`) {
-      return callback(await resp.text(), filename)
+      return callback(await resp.text(), extract_filename(resp.headers))
     }
 
-    return callback(await resp.arrayBuffer(), filename)
+    return callback(await resp.arrayBuffer(), extract_filename(resp.headers))
   }
 
   // Skip Range requests for known text formats to avoid production server issues
@@ -83,7 +102,7 @@ export async function load_from_url(
     `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `)
   // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
   const is_known_text = known_text_extensions.includes(ext) ||
-    filename.toLowerCase().match(/^(poscar|xdatcar|contcar)$/i)
+    url_basename.toLowerCase().match(/^(poscar|xdatcar|contcar)$/i)
 
   if (!is_known_text) {
     try { // Check for magic bytes only for unknown formats
@@ -96,7 +115,7 @@ export async function load_from_url(
         if (is_gzip || is_hdf5) {
           const resp = await fetch(url)
           if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-          return callback(await resp.arrayBuffer(), filename)
+          return callback(await resp.arrayBuffer(), extract_filename(resp.headers))
         }
       }
     } catch {
@@ -106,5 +125,5 @@ export async function load_from_url(
 
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-  return callback(await resp.text(), filename)
+  return callback(await resp.text(), extract_filename(resp.headers))
 }

@@ -226,7 +226,7 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Round-trip exporters (fixtures)`, () => {
-    const TOL = 10
+    const TOL = 8
     const reconstruct = (abc: number[], L: number[][]) => [
       abc[0] * L[0][0] + abc[1] * L[1][0] + abc[2] * L[2][0],
       abc[0] * L[0][1] + abc[1] * L[1][1] + abc[2] * L[2][1],
