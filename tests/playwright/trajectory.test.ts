@@ -238,18 +238,18 @@ test.describe(`Trajectory Component`, () => {
     // Verify button is still functional
     await expect(play_button).toBeEnabled()
 
-    // Check speed controls exist in DOM (might be conditionally displayed)
-    const speed_section = controls.locator(`.speed-section`)
-    if (await speed_section.isVisible()) {
-      await expect(speed_section.locator(`.speed-slider`)).toHaveAttribute(
+    // Check FPS controls exist in DOM (might be conditionally displayed)
+    const fps_section = controls.locator(`.fps-section`)
+    if (await fps_section.isVisible()) {
+      await expect(fps_section.locator(`input[type="range"]`)).toHaveAttribute(
         `min`,
         `0.2`,
       )
-      await expect(speed_section.locator(`.speed-input`)).toHaveAttribute(
+      await expect(fps_section.locator(`input[type="number"]`)).toHaveAttribute(
         `max`,
         `30`,
       )
-      await expect(speed_section).toContainText(`fps`)
+      await expect(fps_section).toContainText(`FPS`)
     }
   })
 
@@ -557,26 +557,24 @@ test.describe(`Trajectory Component`, () => {
       await expect(play_button).toHaveText(`▶`)
     })
 
-    test(`playback speed controls work when playing`, async ({ page }) => {
+    test(`playback FPS controls work when playing`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const play_button = trajectory.locator(`.play-button`)
-
-      // Start playing by clicking the play button
       await play_button.click()
 
-      // Check if speed controls are visible when playing
-      const speed_section = trajectory.locator(`.speed-section`)
-      if (await speed_section.isVisible()) {
-        const speed_input = speed_section.locator(`.speed-input`)
+      // Check if FPS controls are visible when playing
+      const fps_section = trajectory.locator(`.fps-section`)
+      if (await fps_section.isVisible()) {
+        const fps_input = fps_section.locator(`input[type="number"]`)
 
-        // Test speed controls using the speed input instead of slider
-        await speed_input.fill(`2`)
-        await speed_input.press(`Enter`)
-        await expect(speed_input).toHaveValue(`2`)
+        // Test FPS controls using the FPS input instead of slider
+        await fps_input.fill(`2`)
+        await fps_input.press(`Enter`)
+        await expect(fps_input).toHaveValue(`2`)
 
-        await speed_input.fill(`1`)
-        await speed_input.press(`Enter`)
-        await expect(speed_input).toHaveValue(`1`)
+        await fps_input.fill(`1`)
+        await fps_input.press(`Enter`)
+        await expect(fps_input).toHaveValue(`1`)
       }
 
       // Stop playing
@@ -589,29 +587,29 @@ test.describe(`Trajectory Component`, () => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const play_button = trajectory.locator(`.play-button`)
 
-      await play_button.click() // Start playing to show speed controls
+      await play_button.click() // Start playing to show FPS controls
 
-      const speed_section = trajectory.locator(`.speed-section`)
-      if (await speed_section.isVisible()) {
-        const speed_input = speed_section.locator(`.speed-input`)
-        const speed_slider = speed_section.locator(`.speed-slider`)
+      const fps_section = trajectory.locator(`.fps-section`)
+      if (await fps_section.isVisible()) {
+        const fps_input = fps_section.locator(`input[type="number"]`)
+        const fps_slider = fps_section.locator(`input[type="range"]`)
 
         // Test range of FPS values via slider
         for (const fps of [`0.2`, `5`, `15`, `30`]) {
-          await speed_slider.fill(fps)
-          await expect(speed_input).toHaveValue(fps)
+          await fps_slider.fill(fps)
+          await expect(fps_input).toHaveValue(fps)
         }
 
         // Test input field changes with decimal
-        await speed_input.fill(`12.5`)
-        await speed_input.press(`Enter`)
-        await expect(speed_input).toHaveValue(`12.5`)
+        await fps_input.fill(`12.5`)
+        await fps_input.press(`Enter`)
+        await expect(fps_input).toHaveValue(`12.5`)
 
         // Verify attributes and UI elements
-        await expect(speed_slider).toHaveAttribute(`min`, `0.2`)
-        await expect(speed_slider).toHaveAttribute(`max`, `30`)
-        await expect(speed_input).toHaveAttribute(`step`, `0.1`)
-        await expect(speed_section).toContainText(`fps`)
+        await expect(fps_slider).toHaveAttribute(`min`, `0.2`)
+        await expect(fps_slider).toHaveAttribute(`max`, `30`)
+        await expect(fps_input).toHaveAttribute(`step`, `0.1`)
+        await expect(fps_section).toContainText(`fps`)
       }
 
       await play_button.click() // Stop playing
@@ -1678,26 +1676,26 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       const trajectory = page.locator(`#event-handlers`)
       const play_button = trajectory.locator(`.play-button`)
 
-      // Start playback to enable speed controls
+      // Start playback to enable FPS controls
       await play_button.click()
 
-      // Check if speed controls exist and are visible
-      const speed_input = trajectory.locator(`.speed-input`)
-      const speed_input_count = await speed_input.count()
+      // Check if FPS controls exist and are visible
+      const fps_input = trajectory.locator(`input[type="number"]`)
+      const fps_input_count = await fps_input.count()
 
-      if (speed_input_count > 0) {
-        // Wait for speed controls to appear
-        await speed_input.waitFor({ state: `visible`, timeout: 5000 })
+      if (fps_input_count > 0) {
+        // Wait for FPS controls to appear
+        await fps_input.waitFor({ state: `visible`, timeout: 5000 })
 
-        // Test speed input functionality
-        await speed_input.fill(`15`)
-        await expect(speed_input).toHaveValue(`15`)
+        // Test FPS input functionality
+        await fps_input.fill(`15`)
+        await expect(fps_input).toHaveValue(`15`)
 
         // Verify the trajectory has event handlers set up
         const trajectory_id = await trajectory.getAttribute(`id`)
         expect(trajectory_id).toBe(`event-handlers`)
       } else {
-        // Speed controls not available, just verify play button works
+        // FPS controls not available, just verify play button works
         await expect(play_button).toBeVisible()
       }
 

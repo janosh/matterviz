@@ -48,6 +48,7 @@
     active_site?: Site | null
     float_fmt?: string
     auto_rotate?: number
+    initial_zoom?: number
     bond_thickness?: number
     bond_color?: string
     bonding_strategy?: BondingStrategy
@@ -69,27 +70,27 @@
   }
   let {
     structure = undefined,
-    atom_radius = 0.5,
+    atom_radius = DEFAULTS.structure.atom_radius,
     same_size_atoms = false,
-    camera_position = [0, 0, 0],
-    camera_projection = DEFAULTS.structure.projection,
+    camera_position = DEFAULTS.structure.camera_position,
+    camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,
-    max_zoom = undefined,
-    min_zoom = undefined,
+    max_zoom = DEFAULTS.structure.max_zoom,
+    min_zoom = DEFAULTS.structure.min_zoom,
     zoom_speed = DEFAULTS.structure.zoom_speed,
-    pan_speed = 1,
-    show_atoms = true,
+    pan_speed = DEFAULTS.structure.pan_speed,
+    show_atoms = DEFAULTS.structure.show_atoms,
     show_bonds = DEFAULTS.structure.show_bonds,
-    show_site_labels = false,
+    show_site_labels = DEFAULTS.structure.show_site_labels,
     site_label_size = DEFAULTS.structure.site_label_size,
     site_label_offset = $bindable(DEFAULTS.structure.site_label_offset),
     site_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
     site_label_color = `#ffffff`,
     site_label_padding = 3,
-    show_force_vectors = false,
+    show_force_vectors = DEFAULTS.structure.show_force_vectors,
     force_vector_scale = DEFAULTS.structure.force_scale,
     force_vector_color = DEFAULTS.structure.force_color,
-    gizmo = true,
+    gizmo = DEFAULTS.structure.show_gizmo,
     hovered_idx = $bindable(null),
     active_idx = $bindable(null),
     hovered_site = $bindable(null),
@@ -101,10 +102,11 @@
     bonding_strategy = DEFAULTS.structure.bonding_strategy,
     bonding_options = {},
     active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
-    fov = 10,
-    ambient_light = 1.8,
-    directional_light = 2.5,
-    sphere_segments = 20,
+    fov = DEFAULTS.structure.fov,
+    initial_zoom = DEFAULTS.structure.initial_zoom,
+    ambient_light = DEFAULTS.structure.ambient_light,
+    directional_light = DEFAULTS.structure.directional_light,
+    sphere_segments = DEFAULTS.structure.sphere_segments,
     lattice_props = {},
     atom_label,
     camera_is_moving = $bindable(false),
@@ -140,10 +142,19 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
+  // Responsive orthographic zoom based on structure size
+  let ortho_zoom = $derived.by(() => {
+    const size = structure_size || 10
+    const unclamped = initial_zoom * (10 / size)
+    const min_allowed = min_zoom ?? 0.1
+    const max_allowed = max_zoom ?? 200
+    return Math.max(min_allowed, Math.min(max_allowed, unclamped))
+  })
+
   $effect.pre(() => {
-    // Simple camera auto-positioning if not already set: use sum of lattice dimensions for size estimate
-    if (camera_position.every((val) => val === 0) && structure) {
-      const distance = structure_size * (65 / fov)
+    // Simple initial camera auto-position: proportional to structure size and fov
+    if (camera_position.every((v) => v === 0) && structure) {
+      const distance = Math.max(1, structure_size) * (60 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
@@ -328,17 +339,11 @@
     </OrbitControls>
   </T.PerspectiveCamera>
 {:else}
-  {@const ortho_size = structure_size * 1.5}
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={50}
-    left={-ortho_size}
-    right={ortho_size}
-    top={ortho_size}
-    bottom={-ortho_size}
-    near={0.1}
-    far={1000}
+    zoom={ortho_zoom}
+    near={-100}
   >
     <OrbitControls {...orbit_controls_props}>
       {#if gizmo}<Gizmo {...gizmo_props} />{/if}

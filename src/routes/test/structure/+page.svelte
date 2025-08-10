@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { DEFAULTS, type PymatgenStructure } from '$lib'
-  import Structure from '$lib/structure/Structure.svelte'
+  import { DEFAULTS, type PymatgenStructure, Structure } from '$lib'
   import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
@@ -9,9 +8,9 @@
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<boolean | number>(true)
   let scene_props = $state({
-    gizmo: true,
-    show_atoms: true,
-    camera_projection: `perspective` as `perspective` | `orthographic`,
+    gizmo: DEFAULTS.structure.show_gizmo,
+    show_atoms: DEFAULTS.structure.show_atoms,
+    camera_projection: DEFAULTS.structure.camera_projection,
   })
   let performance_mode = $state<`quality` | `speed`>(`quality`)
 
@@ -45,17 +44,15 @@
     // Data URL for loading external structures
     if (url_params.has(`data_url`)) {
       const data_url = url_params.get(`data_url`)
-      if (data_url) {
-        // Clear the static structure to allow data_url loading
+      if (data_url) { // Clear the static structure to allow data_url loading
         structure = undefined
       }
     }
 
-    // Camera projection setting
     if (url_params.has(`camera_projection`)) {
-      const projection = url_params.get(`camera_projection`)
-      if (projection === `perspective` || projection === `orthographic`) {
-        scene_props = { ...scene_props, camera_projection: projection }
+      const cam_projection = url_params.get(`camera_projection`)
+      if (cam_projection === `perspective` || cam_projection === `orthographic`) {
+        scene_props = { ...scene_props, camera_projection: cam_projection }
       }
     }
 
@@ -202,7 +199,7 @@
 </div>
 <div data-testid="camera-projection-status">
   Camera Projection Status: {
-    scene_props.camera_projection || DEFAULTS.structure.projection
+    scene_props.camera_projection || DEFAULTS.structure.camera_projection
   }
 </div>
 

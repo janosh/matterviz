@@ -1,3 +1,5 @@
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '$lib/math'
 import {
   detect_structure_type,
   is_optimade_json,
@@ -28,7 +30,7 @@ import process from 'node:process'
 import { join } from 'path'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
-import { get_dummy_structure } from '../setup.ts'
+import { get_dummy_structure } from '../setup'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -47,19 +49,13 @@ function expect_abc_in_unit_cell(site: { abc: number[] }) {
   expect(site.abc[2]).toBeGreaterThanOrEqual(0)
   expect(site.abc[2]).toBeLessThan(1)
 }
-function reconstruct_xyz(abc: number[], lattice: number[][]): [number, number, number] {
-  return [
-    abc[0] * lattice[0][0] + abc[1] * lattice[1][0] + abc[2] * lattice[2][0],
-    abc[0] * lattice[0][1] + abc[1] * lattice[1][1] + abc[2] * lattice[2][1],
-    abc[0] * lattice[0][2] + abc[1] * lattice[1][2] + abc[2] * lattice[2][2],
-  ]
-}
 function expect_xyz_matches_abc(
   site: { abc: number[]; xyz: number[] },
   lattice: number[][],
   tol: number = TOL,
 ) {
-  const r = reconstruct_xyz(site.abc, lattice)
+  const lattice_T = transpose_3x3_matrix(lattice as Matrix3x3)
+  const r = mat3x3_vec3_multiply(lattice_T, site.abc as Vec3)
   expect(r[0]).toBeCloseTo(site.xyz[0], tol)
   expect(r[1]).toBeCloseTo(site.xyz[1], tol)
   expect(r[2]).toBeCloseTo(site.xyz[2], tol)
@@ -174,17 +170,10 @@ describe(`POSCAR Parser`, () => {
     if (result.lattice) {
       for (const site of result.sites) {
         // Reconstruct Cartesian coordinates from fractional coordinates
-        const reconstructed_xyz = [
-          site.abc[0] * result.lattice.matrix[0][0] +
-          site.abc[1] * result.lattice.matrix[1][0] +
-          site.abc[2] * result.lattice.matrix[2][0],
-          site.abc[0] * result.lattice.matrix[0][1] +
-          site.abc[1] * result.lattice.matrix[1][1] +
-          site.abc[2] * result.lattice.matrix[2][1],
-          site.abc[0] * result.lattice.matrix[0][2] +
-          site.abc[1] * result.lattice.matrix[1][2] +
-          site.abc[2] * result.lattice.matrix[2][2],
-        ]
+        const reconstructed_xyz = mat3x3_vec3_multiply(
+          transpose_3x3_matrix(result.lattice.matrix as Matrix3x3),
+          site.abc as Vec3,
+        )
 
         // Verify coordinate consistency and bounds
         expect(reconstructed_xyz).toEqual(expect.arrayContaining([
@@ -276,14 +265,10 @@ describe(`XYZ Parser`, () => {
             expect(site.abc[2]).toBeLessThan(1)
 
             // Strict reconstruction: xyz = transpose(lattice) * abc
-            const reconstructed_xyz = [
-              site.abc[0] * lattice[0][0] + site.abc[1] * lattice[1][0] +
-              site.abc[2] * lattice[2][0],
-              site.abc[0] * lattice[0][1] + site.abc[1] * lattice[1][1] +
-              site.abc[2] * lattice[2][1],
-              site.abc[0] * lattice[0][2] + site.abc[1] * lattice[1][2] +
-              site.abc[2] * lattice[2][2],
-            ]
+            const reconstructed_xyz = mat3x3_vec3_multiply(
+              transpose_3x3_matrix(lattice as Matrix3x3),
+              site.abc as Vec3,
+            )
             expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
             expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
             expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
@@ -328,14 +313,13 @@ describe(`XYZ Parser`, () => {
     `handles non-orthogonal lattices (%s) with wrapping and reconstruction`,
     (_name, lattice) => {
       // generate some fractional points including negatives and >1 to test wrapping
-      const abcs = [
-        [-0.1, 0.2, 0.3],
-        [0.4, 1.2, 0.6],
-        [0.7, 0.8, -0.9],
-      ]
+      const abcs = [[-0.1, 0.2, 0.3], [0.4, 1.2, 0.6], [0.7, 0.8, -0.9]]
       for (const abc of abcs) {
         const latt_T = lattice as number[][]
-        const xyz = reconstruct_xyz(abc, latt_T)
+        const xyz = mat3x3_vec3_multiply(
+          transpose_3x3_matrix(latt_T as Matrix3x3),
+          abc as Vec3,
+        )
         const content = `1\nLattice="${latt_T.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${
           xyz[2]
         }\n`
@@ -411,7 +395,10 @@ describe(`XYZ Parser`, () => {
       [0, 0, 7],
     ] as number[][]
     const abc_target = [1 / 3, 2 / 3, 0.5]
-    const xyz = reconstruct_xyz(abc_target, lattice)
+    const xyz = mat3x3_vec3_multiply(
+      transpose_3x3_matrix(lattice as Matrix3x3),
+      abc_target as Vec3,
+    )
     const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${
       xyz[2]
     }\n`
@@ -1784,14 +1771,10 @@ describe(`OPTIMADE JSON parser`, () => {
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
-        const reconstructed_xyz = [
-          site.abc[0] * latt_mat[0][0] + site.abc[1] * latt_mat[1][0] +
-          site.abc[2] * latt_mat[2][0],
-          site.abc[0] * latt_mat[0][1] + site.abc[1] * latt_mat[1][1] +
-          site.abc[2] * latt_mat[2][1],
-          site.abc[0] * latt_mat[0][2] + site.abc[1] * latt_mat[1][2] +
-          site.abc[2] * latt_mat[2][2],
-        ]
+        const reconstructed_xyz = mat3x3_vec3_multiply(
+          transpose_3x3_matrix(latt_mat as Matrix3x3),
+          site.abc as Vec3,
+        )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
         expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
@@ -1899,14 +1882,10 @@ describe(`OPTIMADE JSON parser`, () => {
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
-        const reconstructed_xyz = [
-          site.abc[0] * latt_mat[0][0] + site.abc[1] * latt_mat[1][0] +
-          site.abc[2] * latt_mat[2][0],
-          site.abc[0] * latt_mat[0][1] + site.abc[1] * latt_mat[1][1] +
-          site.abc[2] * latt_mat[2][1],
-          site.abc[0] * latt_mat[0][2] + site.abc[1] * latt_mat[1][2] +
-          site.abc[2] * latt_mat[2][2],
-        ]
+        const reconstructed_xyz = mat3x3_vec3_multiply(
+          transpose_3x3_matrix(latt_mat as Matrix3x3),
+          site.abc as Vec3,
+        )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
         expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
@@ -2206,14 +2185,10 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
-        const reconstructed_xyz = [
-          site.abc[0] * latt_mat[0][0] + site.abc[1] * latt_mat[1][0] +
-          site.abc[2] * latt_mat[2][0],
-          site.abc[0] * latt_mat[0][1] + site.abc[1] * latt_mat[1][1] +
-          site.abc[2] * latt_mat[2][1],
-          site.abc[0] * latt_mat[0][2] + site.abc[1] * latt_mat[1][2] +
-          site.abc[2] * latt_mat[2][2],
-        ]
+        const reconstructed_xyz = mat3x3_vec3_multiply(
+          transpose_3x3_matrix(latt_mat as Matrix3x3),
+          site.abc as Vec3,
+        )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
         expect(reconstructed_xyz[2]).toBeCloseTo(site.xyz[2], 12)
