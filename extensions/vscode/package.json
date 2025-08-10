@@ -146,7 +146,7 @@
         },
         "matterviz.structure.bond_thickness": {
           "type": "number",
-          "default": 0.1,
+          "default": 0.25,
           "description": "Thickness of bonds relative to atom radius",
           "minimum": 0.01,
           "maximum": 1
@@ -169,12 +169,12 @@
         },
         "matterviz.structure.bonding_strategy": {
           "type": "string",
-          "default": "nearest_neighbor",
+          "default": "electroneg_ratio",
           "description": "Method for determining bonds between atoms",
           "enum": [
-            "nearest_neighbor",
-            "covalent_radius",
-            "distance_cutoff"
+            "electroneg_ratio",
+            "max_dist",
+            "nearest_neighbor"
           ]
         },
         "matterviz.structure.camera_position": {
@@ -477,7 +477,7 @@
         "matterviz.trajectory.histogram_mode": {
           "type": "string",
           "default": "overlay",
-          "description": "Histogram display mode",
+          "description": "Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram",
           "enum": [
             "overlay",
             "single"

@@ -195,6 +195,8 @@
 </script>
 
 {#if show_controls}
+  {@const toggle_style =
+    `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;`}
   <DraggablePanel
     bind:show={controls_open}
     closed_icon="Settings"
@@ -202,10 +204,7 @@
     toggle_props={{
       class: `histogram-controls-toggle`,
       title: `${controls_open ? `Close` : `Open`} histogram controls`,
-      style:
-        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
-          toggle_props?.style ?? ``
-        }`,
+      style: `${toggle_style} ${toggle_props?.style ?? ``}`,
       ...toggle_props,
     }}
     panel_props={{
