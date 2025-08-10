@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { DEFAULTS, type PymatgenStructure } from '$lib'
-  import Structure from '$lib/structure/Structure.svelte'
+  import { DEFAULTS, type PymatgenStructure, Structure } from '$lib'
   import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
@@ -9,9 +8,9 @@
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<boolean | number>(true)
   let scene_props = $state({
-    gizmo: true,
-    show_atoms: true,
-    camera_projection: `perspective` as `perspective` | `orthographic`,
+    gizmo: DEFAULTS.structure.show_gizmo,
+    show_atoms: DEFAULTS.structure.show_atoms,
+    camera_projection: DEFAULTS.structure.camera_projection,
   })
   let performance_mode = $state<`quality` | `speed`>(`quality`)
 

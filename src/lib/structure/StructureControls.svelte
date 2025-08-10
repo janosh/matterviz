@@ -58,7 +58,7 @@
       cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
       cell_edge_width: DEFAULTS.structure.cell_edge_width,
     }),
-    show_image_atoms = $bindable(DEFAULTS.show_image_atoms),
+    show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     supercell_scaling = $bindable(`1x1x1`),
     background_color = $bindable(undefined),
     background_opacity = $bindable(DEFAULTS.background_opacity),
@@ -232,7 +232,7 @@
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
       show_bonds_selected = [DEFAULTS.structure.show_bonds]
-      show_image_atoms = DEFAULTS.show_image_atoms
+      show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
   >
@@ -245,7 +245,11 @@
         <input type="checkbox" bind:checked={scene_props.show_atoms} />
         Atoms
       </label>
-      <label {@attach tooltip({ content: SETTINGS_CONFIG.show_image_atoms.description })}>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.show_image_atoms.description,
+        })}
+      >
         <input type="checkbox" bind:checked={show_image_atoms} />
         Image Atoms
       </label>
@@ -366,8 +370,9 @@
         Projection
       </span>
       <select bind:value={scene_props.camera_projection}>
-        <option value="perspective">Perspective</option>
-        <option value="orthographic">Orthographic</option>
+        {#each SETTINGS_CONFIG.structure.camera_projection.enum ?? [] as option (option)}
+          <option value={option}>{option}</option>
+        {/each}
       </select>
     </label>
     <label

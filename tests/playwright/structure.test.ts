@@ -2404,22 +2404,22 @@ test.describe(`Structure Event Handler Tests`, () => {
       .toContainText(`Camera Projection Status: ${DEFAULTS.structure.camera_projection}`)
 
     // Switch to orthographic projection
-    await camera_projection_select.selectOption(`orthographic`)
+    await camera_projection_select.selectOption(`perspective`)
 
     // Verify the change was applied
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
+    await expect(camera_projection_select).toHaveValue(`perspective`)
     await expect(page.locator(`[data-testid="camera-projection-status"]`))
-      .toContainText(`Camera Projection Status: orthographic`)
+      .toContainText(`Camera Projection Status: perspective`)
 
-    // Switch back to perspective projection
-    await camera_projection_select.selectOption(`perspective`)
+    // Switch back to orthographic projection
+    await camera_projection_select.selectOption(`orthographic`)
 
     // Verify the change was applied
     await expect(camera_projection_select).toHaveValue(
       DEFAULTS.structure.camera_projection,
     )
     await expect(page.locator(`[data-testid="camera-projection-status"]`))
-      .toContainText(`Camera Projection Status: ${DEFAULTS.structure.camera_projection}`)
+      .toContainText(`Camera Projection Status: orthographic`)
 
     // Verify the canvas is still visible and functional
     const canvas = page.locator(`#test-structure canvas`)

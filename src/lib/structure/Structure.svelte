@@ -124,8 +124,7 @@
     ...rest
   }: Props = $props()
 
-  // Initialize models from incoming props
-  // Note: nested mutations come from controls; we mirror into local dicts
+  // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
       Object.assign(scene_model, scene_props_in)

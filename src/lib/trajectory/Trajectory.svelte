@@ -256,20 +256,17 @@
 
   // Dynamically hide bonds during playback to improve FPS - bond computation is expensive
   // Maybe revisit this in future if we find much more efficient bonding algo
-  let final_structure_props = $derived.by(() => {
-    const base_props = { show_image_atoms: false, ...structure_props }
+  let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
+    const struct_props = { show_image_atoms: false, ...structure_props }
 
     if (is_playing) { // Hide bonds during playback
-      const current_show_bonds = base_props.scene_props?.show_bonds
-      if (current_show_bonds !== `never`) {
-        return {
-          ...base_props,
-          scene_props: { ...base_props.scene_props, show_bonds: `never` as const },
-        }
+      const { scene_props = {} } = struct_props
+      if (scene_props.show_bonds !== `never`) {
+        const show_bonds = `never` as const
+        return { ...struct_props, scene_props: { ...scene_props, show_bonds } }
       }
     }
-
-    return base_props
+    return struct_props
   })
 
   let step_label_positions = $derived.by((): number[] => {

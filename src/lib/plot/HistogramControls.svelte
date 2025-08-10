@@ -202,10 +202,10 @@
     closed_icon="Settings"
     open_icon="Cross"
     toggle_props={{
-      class: `histogram-controls-toggle`,
       title: `${controls_open ? `Close` : `Open`} histogram controls`,
-      style: `${toggle_style} ${toggle_props?.style ?? ``}`,
       ...toggle_props,
+      class: `histogram-controls-toggle ${toggle_props?.class ?? ``}`,
+      style: `${toggle_style} ${toggle_props?.style ?? ``}`,
     }}
     panel_props={{
       class: `histogram-controls-panel`,

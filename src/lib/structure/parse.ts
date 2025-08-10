@@ -798,9 +798,7 @@ export function parse_cif(
         abc = wrap_vec3(raw)
       }
       // Keep atoms inside primary unit cell when wrapping by recomputing xyz
-      const xyz_wrapped = wrap_frac
-        ? (math.mat3x3_vec3_multiply(lattice_T, abc) as Vec3)
-        : xyz
+      const xyz_wrapped = wrap_frac ? math.mat3x3_vec3_multiply(lattice_T, abc) : xyz
       return {
         species: [{ element, occu: atom.occupancy, oxidation_state: 0 }],
         abc,
@@ -1025,7 +1023,7 @@ export function parse_structure_file(
       return parse_cif(content)
     }
 
-    // JSON files - try OPTIMADE first, then pymatgen structures
+    // JSON files - try OPTIMADE JSON structure format first, then pymatgen
     if (ext === `json`) {
       try {
         // Parse once, reuse for detection and parsing

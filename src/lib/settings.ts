@@ -22,8 +22,6 @@ export interface SettingsConfig {
   color_scheme: SettingType<string>
   background_color: SettingType<string>
   background_opacity: SettingType<number>
-  show_image_atoms: SettingType<boolean>
-  show_gizmo: SettingType<boolean>
 
   // Structure viewer settings
   structure: {
@@ -31,6 +29,7 @@ export interface SettingsConfig {
     atom_radius: SettingType<number>
     same_size_atoms: SettingType<boolean>
     show_atoms: SettingType<boolean>
+    show_image_atoms: SettingType<boolean>
     sphere_segments: SettingType<number>
     bond_thickness: SettingType<number>
     show_bonds: SettingType<ShowBonds>
@@ -38,6 +37,7 @@ export interface SettingsConfig {
     bonding_strategy: SettingType<BondingStrategy>
 
     // Camera & Controls
+    show_gizmo: SettingType<boolean>
     camera_position: SettingType<Vec3>
     camera_projection: SettingType<`perspective` | `orthographic`>
     fov: SettingType<number>
@@ -195,15 +195,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     minimum: 0,
     maximum: 1,
   },
-  show_image_atoms: {
-    value: true,
-    description:
-      `Show atoms on the edge of the cell that are not part of the primitive basis`,
-  },
-  show_gizmo: {
-    value: true,
-    description: `Show orientation gizmo in the corner`,
-  },
 
   // Structure viewer settings
   structure: {
@@ -221,6 +212,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_atoms: {
       value: true,
       description: `Display atoms in the structure`,
+    },
+    show_image_atoms: {
+      value: true,
+      description:
+        `Show atoms on the edge of the cell that are not part of the primitive basis`,
     },
     sphere_segments: {
       value: 20,
@@ -254,6 +250,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
 
     // Camera & Controls
+    show_gizmo: {
+      value: true,
+      description: `Show orientation gizmo in the corner of structure viewer`,
+    },
     camera_position: {
       value: [0, 0, 0] as Vec3,
       description: `Initial camera position [x, y, z]`,
