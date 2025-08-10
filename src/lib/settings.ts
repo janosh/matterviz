@@ -40,6 +40,7 @@ export interface SettingsConfig {
     show_gizmo: SettingType<boolean>
     camera_position: SettingType<Vec3>
     camera_projection: SettingType<`perspective` | `orthographic`>
+    initial_zoom: SettingType<number>
     fov: SettingType<number>
     rotation_damping: SettingType<number>
     zoom_speed: SettingType<number>
@@ -264,6 +265,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: `orthographic` as const,
       description: `Camera projection type`,
       enum: [`perspective`, `orthographic`],
+    },
+    initial_zoom: {
+      value: 35,
+      description:
+        `Initial zoom level for orthographic projection (ignored for perspective)`,
+      minimum: 0.1,
+      maximum: 200,
     },
     fov: {
       value: 10,

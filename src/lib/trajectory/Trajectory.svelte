@@ -949,7 +949,7 @@
               class="fps-section"
               style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
             >
-              Speed
+              FPS
               <input
                 type="range"
                 min={fps_range[0]}
@@ -966,7 +966,6 @@
                 title="Enter precise FPS value"
                 style="text-align: center; border: var(--tooltip-border)"
               />
-              FPS
             </label>
           {/if}
 

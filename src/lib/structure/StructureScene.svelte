@@ -48,6 +48,7 @@
     active_site?: Site | null
     float_fmt?: string
     auto_rotate?: number
+    initial_zoom?: number
     bond_thickness?: number
     bond_color?: string
     bonding_strategy?: BondingStrategy
@@ -102,6 +103,7 @@
     bonding_options = {},
     active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
     fov = DEFAULTS.structure.fov,
+    initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
     directional_light = DEFAULTS.structure.directional_light,
     sphere_segments = DEFAULTS.structure.sphere_segments,
@@ -143,7 +145,7 @@
   // Responsive orthographic zoom based on structure size
   let ortho_zoom = $derived.by(() => {
     const size = structure_size || 10
-    const unclamped = 50 * (10 / size)
+    const unclamped = initial_zoom * (10 / size)
     const min_allowed = min_zoom ?? 0.1
     const max_allowed = max_zoom ?? 200
     return Math.max(min_allowed, Math.min(max_allowed, unclamped))
