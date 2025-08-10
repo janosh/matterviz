@@ -200,6 +200,13 @@
             "orthographic"
           ]
         },
+        "matterviz.structure.initial_zoom": {
+          "type": "number",
+          "default": 35,
+          "description": "Initial zoom level for orthographic projection (ignored for perspective)",
+          "minimum": 0.1,
+          "maximum": 200
+        },
         "matterviz.structure.fov": {
           "type": "number",
           "default": 10,

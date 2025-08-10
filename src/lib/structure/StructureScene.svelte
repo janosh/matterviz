@@ -145,10 +145,10 @@
   // Responsive orthographic zoom based on structure size
   let ortho_zoom = $derived.by(() => {
     const size = structure_size || 10
-    const unclamped = initial_zoom * (10 / size)
-    const min_allowed = min_zoom ?? 0.1
-    const max_allowed = max_zoom ?? 200
-    return Math.max(min_allowed, Math.min(max_allowed, unclamped))
+    let zoom = initial_zoom * (10 / size)
+    if (min_zoom) zoom = Math.max(min_zoom, zoom)
+    if (max_zoom) zoom = Math.min(max_zoom, zoom)
+    return zoom
   })
 
   $effect.pre(() => {

@@ -205,16 +205,19 @@ export const get_defaults = (): DefaultSettings => {
     }
 
     // Read all settings sections
-    const general_keys = [
-      `color_scheme`,
-      `background_color`,
-      `background_opacity`,
-      `show_image_atoms`,
-      `show_gizmo`,
-    ] as const
-    for (const key of general_keys) {
-      const value = config.get(key)
-      if (value !== undefined) user_settings[key] = value
+    // Top-level simple keys
+    const color_scheme_val = config.get(`color_scheme`)
+    if (color_scheme_val !== undefined) {
+      user_settings.color_scheme = color_scheme_val as DefaultSettings[`color_scheme`]
+    }
+    const bg_color_val = config.get(`background_color`)
+    if (bg_color_val !== undefined) {
+      user_settings.background_color = bg_color_val as DefaultSettings[`background_color`]
+    }
+    const bg_opacity_val = config.get(`background_opacity`)
+    if (bg_opacity_val !== undefined) {
+      user_settings.background_opacity =
+        bg_opacity_val as DefaultSettings[`background_opacity`]
     }
 
     const structure_settings = read_section(`structure`, DEFAULTS.structure)
