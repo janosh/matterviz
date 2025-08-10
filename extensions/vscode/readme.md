@@ -77,7 +77,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
   "matterviz.color_scheme": "Jmol",
   "matterviz.background_color": "#ffffff",
   "matterviz.background_opacity": 0.8,
-  "matterviz.show_image_atoms": true,
+  "matterviz.structure.show_image_atoms": true,
   "matterviz.structure.atom_radius": 1.2,
   "matterviz.structure.bond_thickness": 0.8
 }

@@ -32,7 +32,7 @@
     position: fixed;
     bottom: 1em;
     left: 1em;
-    z-index: var(--theme-control-z-index, 1);
+    z-index: var(--theme-control-z-index, 2);
     background: var(--btn-bg);
     border: var(--panel-border);
     color: var(--text-color);

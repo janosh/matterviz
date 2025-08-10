@@ -92,21 +92,9 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   const inv_det = 1 / det
 
   return [
-    [
-      (e * i - f * h) * inv_det,
-      (c * h - b * i) * inv_det,
-      (b * f - c * e) * inv_det,
-    ],
-    [
-      (f * g - d * i) * inv_det,
-      (a * i - c * g) * inv_det,
-      (c * d - a * f) * inv_det,
-    ],
-    [
-      (d * h - e * g) * inv_det,
-      (b * g - a * h) * inv_det,
-      (a * e - b * d) * inv_det,
-    ],
+    [(e * i - f * h) * inv_det, (c * h - b * i) * inv_det, (b * f - c * e) * inv_det],
+    [(f * g - d * i) * inv_det, (a * i - c * g) * inv_det, (c * d - a * f) * inv_det],
+    [(d * h - e * g) * inv_det, (b * g - a * h) * inv_det, (a * e - b * d) * inv_det],
   ]
 }
 
@@ -114,11 +102,10 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
   const [a, b, c] = matrix
   const [x, y, z] = vector
-  return [
-    a[0] * x + a[1] * y + a[2] * z,
-    b[0] * x + b[1] * y + b[2] * z,
-    c[0] * x + c[1] * y + c[2] * z,
-  ]
+  const a_new = a[0] * x + a[1] * y + a[2] * z
+  const b_new = b[0] * x + b[1] * y + b[2] * z
+  const c_new = c[0] * x + c[1] * y + c[2] * z
+  return [a_new, b_new, c_new]
 }
 
 export function add<T extends NdVector>(...vecs: T[]): T {

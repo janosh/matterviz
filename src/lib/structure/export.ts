@@ -209,10 +209,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
       // Convert cartesian to fractional coordinates
       const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
       const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-      frac_coords = math.mat3x3_vec3_multiply(lattice_inv, site.xyz.slice(0, 3) as Vec3)
-    } else {
-      throw new Error(`No valid coordinates found for site ${idx}`)
-    }
+      frac_coords = math.mat3x3_vec3_multiply(lattice_inv, site.xyz)
+    } else throw new Error(`No valid coordinates found for site ${idx}`)
 
     // Format: label element_symbol x y z
     const label = site.label || `${element_symbol}${idx + 1}`

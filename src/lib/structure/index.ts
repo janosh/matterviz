@@ -1,4 +1,3 @@
-// Utilities for dealing with pymatgen Structures
 import type { ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { atomic_weights } from '$lib/composition/parse'
 import element_data from '$lib/element/data'

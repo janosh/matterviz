@@ -1222,7 +1222,7 @@ describe(`MatterViz Extension`, () => {
 
       // String enums
       [`structure.bonding_strategy`, `covalent_radius`],
-      [`structure.projection`, `orthographic`],
+      [`structure.camera_projection`, `orthographic`],
       [`color_scheme`, `Jmol`],
       [`composition.composition_color_scheme`, `Alloy`],
       [`trajectory.display_mode`, `scatter`],

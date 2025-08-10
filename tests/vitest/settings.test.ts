@@ -43,7 +43,7 @@ describe(`Settings`, () => {
     test(`should have enum options for categorical settings`, () => {
       const enum_settings = [
         SETTINGS_CONFIG.structure.bonding_strategy,
-        SETTINGS_CONFIG.structure.projection,
+        SETTINGS_CONFIG.structure.camera_projection,
         SETTINGS_CONFIG.trajectory.display_mode,
         SETTINGS_CONFIG.composition.composition_mode,
       ]
@@ -61,7 +61,7 @@ describe(`Settings`, () => {
       // Check top-level types
       expect(typeof DEFAULTS.color_scheme).toBe(`string`)
       expect(typeof DEFAULTS.background_opacity).toBe(`number`)
-      expect(typeof DEFAULTS.show_gizmo).toBe(`boolean`)
+      expect(typeof DEFAULTS.structure.show_gizmo).toBe(`boolean`)
 
       // Check nested structure types
       expect(typeof DEFAULTS.structure.atom_radius).toBe(`number`)

@@ -254,7 +254,7 @@
     border-radius: var(--panel-toggle-border-radius, 3pt);
     background-color: transparent;
     transition: background-color 0.2s;
-    font-size: clamp(1em, 2cqw, 1.3em);
+    font-size: var(--panel-toggle-font-size, clamp(1.1em, 2cqw, 1.4em));
   }
   button.panel-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
@@ -266,7 +266,7 @@
     border-radius: 6px;
     padding: var(--panel-padding, 1ex);
     box-sizing: border-box;
-    z-index: 10;
+    z-index: var(--panel-z-index, 10);
     display: grid;
     gap: 4pt;
     text-align: left;
