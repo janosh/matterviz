@@ -349,7 +349,7 @@
     }}
     on_reset={() => {
       Object.assign(scene_props, {
-        camera_projection: DEFAULTS.structure.projection,
+        camera_projection: DEFAULTS.structure.camera_projection,
         auto_rotate: DEFAULTS.structure.auto_rotate,
         zoom_speed: DEFAULTS.structure.zoom_speed,
         pan_speed: DEFAULTS.structure.pan_speed,
@@ -359,7 +359,9 @@
   >
     <label>
       <span
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.projection.description })}
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.camera_projection.description,
+        })}
       >
         Projection
       </span>

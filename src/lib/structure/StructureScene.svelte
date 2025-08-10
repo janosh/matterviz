@@ -71,8 +71,8 @@
     structure = undefined,
     atom_radius = 0.5,
     same_size_atoms = false,
-    camera_position = [0, 0, 0],
-    camera_projection = DEFAULTS.structure.projection,
+    camera_position = DEFAULTS.structure.camera_position,
+    camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = undefined,
     min_zoom = undefined,
@@ -101,7 +101,7 @@
     bonding_strategy = DEFAULTS.structure.bonding_strategy,
     bonding_options = {},
     active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
-    fov = 10,
+    fov = DEFAULTS.structure.fov,
     ambient_light = 1.8,
     directional_light = 2.5,
     sphere_segments = 20,
@@ -140,10 +140,19 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
+  // Responsive orthographic zoom based on structure size
+  let ortho_zoom = $derived.by(() => {
+    const size = structure_size || 10
+    const unclamped = 50 * (10 / size)
+    const min_allowed = min_zoom ?? 0.1
+    const max_allowed = max_zoom ?? 200
+    return Math.max(min_allowed, Math.min(max_allowed, unclamped))
+  })
+
   $effect.pre(() => {
-    // Simple camera auto-positioning if not already set: use sum of lattice dimensions for size estimate
-    if (camera_position.every((val) => val === 0) && structure) {
-      const distance = structure_size * (65 / fov)
+    // Simple initial camera auto-position: proportional to structure size and fov
+    if (camera_position.every((v) => v === 0) && structure) {
+      const distance = Math.max(1, structure_size) * (60 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
@@ -328,17 +337,11 @@
     </OrbitControls>
   </T.PerspectiveCamera>
 {:else}
-  {@const ortho_size = structure_size * 1.5}
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={50}
-    left={-ortho_size}
-    right={ortho_size}
-    top={ortho_size}
-    bottom={-ortho_size}
-    near={0.1}
-    far={1000}
+    zoom={ortho_zoom}
+    near={-100}
   >
     <OrbitControls {...orbit_controls_props}>
       {#if gizmo}<Gizmo {...gizmo_props} />{/if}

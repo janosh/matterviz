@@ -67,7 +67,7 @@
   // Scene model seeded from central defaults with a few normalized fields
   let scene_model = $state({
     ...DEFAULTS.structure,
-    camera_projection: DEFAULTS.structure.projection,
+    camera_projection: DEFAULTS.structure.camera_projection,
     force_vector_scale: DEFAULTS.structure.force_scale,
     force_vector_color: DEFAULTS.structure.force_color,
     camera_position: [0, 0, 0] as Vec3,

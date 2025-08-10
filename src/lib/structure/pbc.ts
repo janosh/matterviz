@@ -48,7 +48,7 @@ export function find_image_atoms(
     for (let mask = 1; mask < (1 << edge_dims.length); mask++) {
       // Track selected translation per dimension. If both +1 and -1 are selected for a dim,
       // the net shift is zero and we skip because it yields no image.
-      const selected_shift: [number, number, number] = [0, 0, 0]
+      const selected_shift = [0, 0, 0]
       for (let bit = 0; bit < edge_dims.length; bit++) {
         if (mask & (1 << bit)) {
           const { dim, direction } = edge_dims[bit]
@@ -57,9 +57,7 @@ export function find_image_atoms(
       }
 
       // Early skip if no net shift across any dimension
-      if (selected_shift[0] === 0 && selected_shift[1] === 0 && selected_shift[2] === 0) {
-        continue
-      }
+      if (selected_shift.every((val) => val === 0)) continue
 
       // Build fractional coordinates positioned just inside the cell boundary
       // (instead of exactly at 0/1). This avoids wrap inconsistencies across

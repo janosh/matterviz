@@ -4,8 +4,6 @@ import { Buffer } from 'node:buffer'
 import { DEFAULTS } from '../../src/lib/settings'
 import { open_structure_controls_panel } from './helpers'
 
-const default_cam_projection = DEFAULTS.structure.projection
-
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
@@ -2399,9 +2397,11 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(camera_projection_select).toBeVisible()
 
     // Check initial state
-    await expect(camera_projection_select).toHaveValue(default_cam_projection)
+    await expect(camera_projection_select).toHaveValue(
+      DEFAULTS.structure.camera_projection,
+    )
     await expect(page.locator(`[data-testid="camera-projection-status"]`))
-      .toContainText(`Camera Projection Status: ${default_cam_projection}`)
+      .toContainText(`Camera Projection Status: ${DEFAULTS.structure.camera_projection}`)
 
     // Switch to orthographic projection
     await camera_projection_select.selectOption(`orthographic`)
@@ -2416,10 +2416,10 @@ test.describe(`Structure Event Handler Tests`, () => {
 
     // Verify the change was applied
     await expect(camera_projection_select).toHaveValue(
-      default_cam_projection,
+      DEFAULTS.structure.camera_projection,
     )
     await expect(page.locator(`[data-testid="camera-projection-status"]`))
-      .toContainText(`Camera Projection Status: ${default_cam_projection}`)
+      .toContainText(`Camera Projection Status: ${DEFAULTS.structure.camera_projection}`)
 
     // Verify the canvas is still visible and functional
     const canvas = page.locator(`#test-structure canvas`)
@@ -2552,7 +2552,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       `label:has-text("Projection") select`,
     )
 
-    if (initial !== default_cam_projection) { // Set initial state if not default
+    if (initial !== DEFAULTS.structure.camera_projection) { // Set initial state if not default
       await camera_projection_select.selectOption(initial)
       await expect(camera_projection_select).toHaveValue(initial)
     }

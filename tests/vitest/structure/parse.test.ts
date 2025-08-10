@@ -1,3 +1,4 @@
+import { Matrix3x3, Vec3 } from '$lib/math'
 import {
   detect_structure_type,
   is_optimade_json,
@@ -28,7 +29,7 @@ import process from 'node:process'
 import { join } from 'path'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
-import { get_dummy_structure } from '../setup.ts'
+import { get_dummy_structure } from '../setup'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -47,7 +48,7 @@ function expect_abc_in_unit_cell(site: { abc: number[] }) {
   expect(site.abc[2]).toBeGreaterThanOrEqual(0)
   expect(site.abc[2]).toBeLessThan(1)
 }
-function reconstruct_xyz(abc: number[], lattice: number[][]): [number, number, number] {
+function reconstruct_xyz(abc: Vec3, lattice: Matrix3x3): Vec3 {
   return [
     abc[0] * lattice[0][0] + abc[1] * lattice[1][0] + abc[2] * lattice[2][0],
     abc[0] * lattice[0][1] + abc[1] * lattice[1][1] + abc[2] * lattice[2][1],
@@ -55,8 +56,8 @@ function reconstruct_xyz(abc: number[], lattice: number[][]): [number, number, n
   ]
 }
 function expect_xyz_matches_abc(
-  site: { abc: number[]; xyz: number[] },
-  lattice: number[][],
+  site: { abc: Vec3; xyz: Vec3 },
+  lattice: Matrix3x3,
   tol: number = TOL,
 ) {
   const r = reconstruct_xyz(site.abc, lattice)

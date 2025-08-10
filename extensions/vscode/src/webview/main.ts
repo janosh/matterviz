@@ -523,7 +523,7 @@ const structure_props = (defaults: DefaultSettings) => {
   return {
     scene_props: {
       ...structure,
-      camera_projection: structure.projection,
+      camera_projection: structure.camera_projection,
       force_vector_scale: structure.force_scale,
       force_vector_color: structure.force_color,
       gizmo: defaults.show_gizmo,

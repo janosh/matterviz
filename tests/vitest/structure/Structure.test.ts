@@ -576,7 +576,7 @@ test(`critical default values are valid to prevent runtime errors`, () => {
   // These tests catch issues that would cause actual component failures
 
   // Projection must be valid enum value
-  expect([`perspective`, `orthographic`]).toContain(DEFAULTS.structure.projection)
+  expect([`perspective`, `orthographic`]).toContain(DEFAULTS.structure.camera_projection)
 
   // Scale types must be valid
   expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_x_scale_type)

@@ -45,17 +45,15 @@
     // Data URL for loading external structures
     if (url_params.has(`data_url`)) {
       const data_url = url_params.get(`data_url`)
-      if (data_url) {
-        // Clear the static structure to allow data_url loading
+      if (data_url) { // Clear the static structure to allow data_url loading
         structure = undefined
       }
     }
 
-    // Camera projection setting
     if (url_params.has(`camera_projection`)) {
-      const projection = url_params.get(`camera_projection`)
-      if (projection === `perspective` || projection === `orthographic`) {
-        scene_props = { ...scene_props, camera_projection: projection }
+      const cam_projection = url_params.get(`camera_projection`)
+      if (cam_projection === `perspective` || cam_projection === `orthographic`) {
+        scene_props = { ...scene_props, camera_projection: cam_projection }
       }
     }
 
@@ -202,7 +200,7 @@
 </div>
 <div data-testid="camera-projection-status">
   Camera Projection Status: {
-    scene_props.camera_projection || DEFAULTS.structure.projection
+    scene_props.camera_projection || DEFAULTS.structure.camera_projection
   }
 </div>
 

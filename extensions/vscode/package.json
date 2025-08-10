@@ -191,9 +191,9 @@
             "type": "number"
           }
         },
-        "matterviz.structure.projection": {
+        "matterviz.structure.camera_projection": {
           "type": "string",
-          "default": "perspective",
+          "default": "orthographic",
           "description": "Camera projection type",
           "enum": [
             "perspective",

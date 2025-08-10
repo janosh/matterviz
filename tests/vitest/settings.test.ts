@@ -43,7 +43,7 @@ describe(`Settings`, () => {
     test(`should have enum options for categorical settings`, () => {
       const enum_settings = [
         SETTINGS_CONFIG.structure.bonding_strategy,
-        SETTINGS_CONFIG.structure.projection,
+        SETTINGS_CONFIG.structure.camera_projection,
         SETTINGS_CONFIG.trajectory.display_mode,
         SETTINGS_CONFIG.composition.composition_mode,
       ]

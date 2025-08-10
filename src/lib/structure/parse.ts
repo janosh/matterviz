@@ -540,7 +540,7 @@ const build_cif_atom_site_header_indices = (
 type CifAtom = {
   id: string
   element: string
-  coords: [number, number, number]
+  coords: Vec3
   coords_type: `fract` | `cart`
   occupancy: number
 }
@@ -567,7 +567,7 @@ const parse_cif_atom_data = (
     const coord = parseFloat(coord_str.split(`(`)[0])
     if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
     return coord
-  }) as [number, number, number]
+  }) as Vec3
 
   // Parse occupancy (default 1.0 if not present or non-numeric)
   const occu = occupancy >= 0 && raw_data[occupancy]

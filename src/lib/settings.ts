@@ -1,6 +1,7 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
+import type { Vec3 } from '$lib/math'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 export interface SettingType<T = unknown> {
@@ -37,8 +38,8 @@ export interface SettingsConfig {
     bonding_strategy: SettingType<BondingStrategy>
 
     // Camera & Controls
-    camera_position: SettingType<[number, number, number]>
-    projection: SettingType<`perspective` | `orthographic`>
+    camera_position: SettingType<Vec3>
+    camera_projection: SettingType<`perspective` | `orthographic`>
     fov: SettingType<number>
     rotation_damping: SettingType<number>
     zoom_speed: SettingType<number>
@@ -53,7 +54,7 @@ export interface SettingsConfig {
     site_label_color: SettingType<string>
     site_label_bg_color: SettingType<string>
     site_label_padding: SettingType<number>
-    site_label_offset: SettingType<[number, number, number]>
+    site_label_offset: SettingType<Vec3>
     ambient_light: SettingType<number>
     directional_light: SettingType<number>
 
@@ -254,18 +255,18 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
     // Camera & Controls
     camera_position: {
-      value: [0, 0, 0] as [number, number, number],
+      value: [0, 0, 0] as Vec3,
       description: `Initial camera position [x, y, z]`,
       minItems: 3,
       maxItems: 3,
     },
-    projection: {
-      value: `perspective` as const,
+    camera_projection: {
+      value: `orthographic` as const,
       description: `Camera projection type`,
       enum: [`perspective`, `orthographic`],
     },
     fov: {
-      value: 75,
+      value: 10,
       description: `Field of view in degrees for perspective projection`,
       minimum: 10,
       maximum: 150,
@@ -329,7 +330,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 20,
     },
     site_label_offset: {
-      value: [0, 0.5, 0] as [number, number, number],
+      value: [0, 0.5, 0] as Vec3,
       description: `3D offset for atom labels [x, y, z]`,
       minItems: 3,
       maxItems: 3,
