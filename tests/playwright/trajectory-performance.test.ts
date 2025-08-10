@@ -56,15 +56,15 @@ test.describe(`Trajectory Performance Tests`, () => {
     const play_button = controls.locator(`.play-button`)
     await expect(play_button).toHaveText(`⏸`, { timeout: 10000 })
 
-    // Wait for speed controls to appear (they show when playing)
-    const speed_section = controls.locator(`.speed-section`)
-    await expect(speed_section).toBeVisible({ timeout: 5000 })
+    // Wait for FPS controls to appear (they show when playing)
+    const fps_section = controls.locator(`.fps-section`)
+    await expect(fps_section).toBeVisible({ timeout: 5000 })
 
-    // Set speed to 30fps
-    const speed_input = speed_section.locator(`.speed-input`)
-    await speed_input.fill(`${TEST_FRAME_RATE_FPS}`)
-    await speed_input.press(`Enter`)
-    await expect(speed_input).toHaveValue(`${TEST_FRAME_RATE_FPS}`)
+    // Set FPS to 30
+    const fps_input = fps_section.locator(`input[type="number"]`)
+    await fps_input.fill(`${TEST_FRAME_RATE_FPS}`)
+    await fps_input.press(`Enter`)
+    await expect(fps_input).toHaveValue(`${TEST_FRAME_RATE_FPS}`)
 
     // Get current step and start timing
     const step_input = controls.locator(`.step-input`).first() // Use first() to be explicit
@@ -98,7 +98,7 @@ test.describe(`Trajectory Performance Tests`, () => {
     const max_allowed_duration_ms = expected_duration_ms * 3 // Allow 3x overhead for CI/to avoid flakiness
 
     console.log(`Playback performance results:`)
-    console.log(`- Speed: ${TEST_FRAME_RATE_FPS}fps`)
+    console.log(`- FPS: ${TEST_FRAME_RATE_FPS}`)
     console.log(`- Duration: ${(playback_duration / 1000).toFixed(1)}s`)
     console.log(`- Expected: ~${(expected_duration_ms / 1000).toFixed(1)}s`)
     console.log(`- Max allowed: ${(max_allowed_duration_ms / 1000).toFixed(1)}s`)
@@ -192,13 +192,13 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     const step_input = controls.locator(`.step-input`).first()
 
-    // Wait for speed controls and set speed to 30fps
-    const speed_section = controls.locator(`.speed-section`)
-    await expect(speed_section).toBeVisible({ timeout: 5000 })
+    // Wait for FPS controls and set FPS to 30
+    const fps_section = controls.locator(`.fps-section`)
+    await expect(fps_section).toBeVisible({ timeout: 5000 })
 
-    const speed_input = speed_section.locator(`.speed-input`)
-    await speed_input.fill(`${TEST_FRAME_RATE_FPS}`)
-    await speed_input.press(`Enter`)
+    const fps_input = fps_section.locator(`input[type="number"]`)
+    await fps_input.fill(`${TEST_FRAME_RATE_FPS}`)
+    await fps_input.press(`Enter`)
 
     // Pause playback first, then reset to step 0
     await play_button.click() // Pause

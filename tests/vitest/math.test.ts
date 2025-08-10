@@ -57,7 +57,7 @@ describe(`euclidean_dist`, () => {
   ])(
     `should calculate $desc correctly`,
     ({ point1, point2, expected }) => {
-      const result = math.euclidean_dist(point1 as math.Vec3, point2 as math.Vec3)
+      const result = math.euclidean_dist(point1 as Vec3, point2 as Vec3)
       expect(result).toBeCloseTo(expected, 6)
     },
   )
@@ -95,13 +95,13 @@ test.each([
   // Complex example
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], [2, 3, 1], [11, 7, 28]],
 ])(`mat3x3_vec3_multiply`, (matrix, vector, expected) => {
-  expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as math.Vec3))
+  expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as Vec3))
     .toEqual(expected)
 })
 
 test(`dot matrix operations`, () => {
   const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] as unknown as NdVector
-  const vector: NdVector = [2, 3, 4]
+  const vector = [2, 3, 4] as Vec3
   expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
 
   const matrix1 = [[1, 2, 3], [4, 5, 6]] as unknown as NdVector
@@ -219,16 +219,16 @@ describe(`pbc_dist`, () => {
     ]
 
     // Atoms at optimal separation - PBC should match direct distance
-    const center1: math.Vec3 = [0.0, 0.0, 0.0]
-    const center2: math.Vec3 = [3.1284650614394, 3.1284650614393996, 3.1284650614394]
+    const center1: Vec3 = [0.0, 0.0, 0.0]
+    const center2: Vec3 = [3.1284650614394, 3.1284650614393996, 3.1284650614394]
     const center_direct = math.euclidean_dist(center1, center2)
     const center_pbc = math.pbc_dist(center1, center2, cubic_lattice_2)
     expect(center_pbc).toBeCloseTo(center_direct, 3)
     expect(center_pbc).toBeCloseTo(5.419, 3)
 
     // Corner atoms - PBC improvement
-    const corner1: math.Vec3 = [0.1, 0.1, 0.1]
-    const corner2: math.Vec3 = [6.156930122878799, 6.156930122878799, 6.156930122878799]
+    const corner1: Vec3 = [0.1, 0.1, 0.1]
+    const corner2: Vec3 = [6.156930122878799, 6.156930122878799, 6.156930122878799]
     const corner_direct = math.euclidean_dist(corner1, corner2)
     const corner_pbc = math.pbc_dist(corner1, corner2, cubic_lattice_2)
     expect(corner_pbc).toBeCloseTo(0.346, 3)
@@ -240,8 +240,8 @@ describe(`pbc_dist`, () => {
       [0.0, 5.0, 0.0],
       [0.0, 0.0, 5.0],
     ]
-    const long1: math.Vec3 = [1.0, 2.5, 2.5]
-    const long2: math.Vec3 = [19.0, 2.5, 2.5]
+    const long1: Vec3 = [1.0, 2.5, 2.5]
+    const long2: Vec3 = [19.0, 2.5, 2.5]
     const long_pbc = math.pbc_dist(long1, long2, long_cell)
     const long_direct = math.euclidean_dist(long1, long2)
     expect(long_pbc).toBeCloseTo(2.0, 3)
@@ -298,7 +298,7 @@ describe(`pbc_dist`, () => {
       [0.0, 0.0, 10.0],
     ]
 
-    const result = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, lattice)
+    const result = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, lattice)
     const precision = expected < 0.001 ? 7 : expected < 0.1 ? 4 : 3
     expect(result).toBeCloseTo(expected, precision)
   })
@@ -311,8 +311,8 @@ describe(`pbc_dist`, () => {
         [0.0, 12.0, 0.0],
         [0.0, 0.0, 6.0],
       ] as math.Matrix3x3,
-      pos1: [0.5, 0.5, 0.5] as math.Vec3,
-      pos2: [7.7, 11.7, 5.7] as math.Vec3,
+      pos1: [0.5, 0.5, 0.5] as Vec3,
+      pos2: [7.7, 11.7, 5.7] as Vec3,
       expected_pbc: 1.386,
       expected_direct: 14.294,
     },
@@ -323,8 +323,8 @@ describe(`pbc_dist`, () => {
         [2.5, 4.33, 0.0],
         [1.0, 1.0, 4.0],
       ] as math.Matrix3x3,
-      pos1: [0.2, 0.2, 0.2] as math.Vec3,
-      pos2: [7.3, 4.9, 3.9] as math.Vec3,
+      pos1: [0.2, 0.2, 0.2] as Vec3,
+      pos2: [7.3, 4.9, 3.9] as Vec3,
       expected_pbc: 3.308,
       expected_direct: 9.284,
     },
@@ -335,8 +335,8 @@ describe(`pbc_dist`, () => {
         [0.0, 3.0, 0.0],
         [0.0, 0.0, 30.0],
       ] as math.Matrix3x3,
-      pos1: [0.1, 0.1, 1.0] as math.Vec3,
-      pos2: [2.9, 2.9, 29.0] as math.Vec3,
+      pos1: [0.1, 0.1, 1.0] as Vec3,
+      pos2: [2.9, 2.9, 29.0] as Vec3,
       expected_pbc: 2.02,
       expected_direct: 28.279,
     },
@@ -347,8 +347,8 @@ describe(`pbc_dist`, () => {
         [0.0, 15.6, 0.0],
         [0.0, 0.0, 15.6],
       ] as math.Matrix3x3,
-      pos1: [0.2, 0.2, 0.2] as math.Vec3,
-      pos2: [15.4, 15.4, 15.4] as math.Vec3,
+      pos1: [0.2, 0.2, 0.2] as Vec3,
+      pos2: [15.4, 15.4, 15.4] as Vec3,
       expected_pbc: Math.LN2,
       expected_direct: 26.327,
     },
@@ -359,8 +359,8 @@ describe(`pbc_dist`, () => {
         [0.0, 4.0, 0.0],
         [0.0, 0.0, 4.0],
       ] as math.Matrix3x3,
-      pos1: [1.0, 2.0, 2.0] as math.Vec3,
-      pos2: [49.0, 2.0, 2.0] as math.Vec3,
+      pos1: [1.0, 2.0, 2.0] as Vec3,
+      pos2: [49.0, 2.0, 2.0] as Vec3,
       expected_pbc: 2.0,
       expected_direct: 48.0,
     },
@@ -371,8 +371,8 @@ describe(`pbc_dist`, () => {
         [0.0, 2.1, 0.0],
         [0.0, 0.0, 2.1],
       ] as math.Matrix3x3,
-      pos1: [0.05, 0.05, 0.05] as math.Vec3,
-      pos2: [2.05, 2.05, 2.05] as math.Vec3,
+      pos1: [0.05, 0.05, 0.05] as Vec3,
+      pos2: [2.05, 2.05, 2.05] as Vec3,
       expected_pbc: 0.173,
       expected_direct: 3.464,
     },
@@ -400,7 +400,7 @@ describe(`pbc_dist`, () => {
     ]
 
     const equiv_distances = equiv_cases.map(({ pos1, pos2 }) =>
-      math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, sym_lattice)
+      math.pbc_dist(pos1 as Vec3, pos2 as Vec3, sym_lattice)
     )
 
     // All should be equal (0.2 Å)
@@ -428,10 +428,10 @@ describe(`pbc_dist`, () => {
       [0.0, 0.0, 1 / 6.0],
     ]
 
-    const standard = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, lattice)
+    const standard = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, lattice)
     const optimized = math.pbc_dist(
-      pos1 as math.Vec3,
-      pos2 as math.Vec3,
+      pos1 as Vec3,
+      pos2 as Vec3,
       lattice,
       lattice_inv,
     )
@@ -477,10 +477,10 @@ describe(`pbc_dist`, () => {
       [0.0, 0.0, 1.0],
     ]
 
-    const standard = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, unit_lattice)
+    const standard = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice)
     const optimized = math.pbc_dist(
-      pos1 as math.Vec3,
-      pos2 as math.Vec3,
+      pos1 as Vec3,
+      pos2 as Vec3,
       unit_lattice,
       unit_lattice_inv,
     )
@@ -499,8 +499,8 @@ describe(`pbc_dist`, () => {
       [1.0, 1.0, 4.0],
     ]
 
-    const tri_pos1: math.Vec3 = [0.2, 0.2, 0.2]
-    const tri_pos2: math.Vec3 = [4.8, 4.1, 3.8]
+    const tri_pos1: Vec3 = [0.2, 0.2, 0.2]
+    const tri_pos2: Vec3 = [4.8, 4.1, 3.8]
 
     const tri_standard = math.pbc_dist(tri_pos1, tri_pos2, triclinic_lattice)
     const tri_standard_repeat = math.pbc_dist(tri_pos1, tri_pos2, triclinic_lattice)
@@ -523,10 +523,10 @@ describe(`pbc_dist`, () => {
     const center_case = { pos1: [50.0, 100.0, 25.0], pos2: [51.0, 101.0, 26.0] }
 
     for (const { pos1, pos2 } of [wrap_around_case, center_case]) {
-      const standard = math.pbc_dist(pos1 as math.Vec3, pos2 as math.Vec3, large_lattice)
+      const standard = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, large_lattice)
       const optimized = math.pbc_dist(
-        pos1 as math.Vec3,
-        pos2 as math.Vec3,
+        pos1 as Vec3,
+        pos2 as Vec3,
         large_lattice,
         large_lattice_inv,
       )
@@ -541,7 +541,7 @@ describe(`pbc_dist`, () => {
 
       // For wrap-around case, PBC should be shorter than direct distance
       if (pos1[0] === 1.0 && pos2[0] === 99.0) {
-        const direct = math.euclidean_dist(pos1 as math.Vec3, pos2 as math.Vec3)
+        const direct = math.euclidean_dist(pos1 as Vec3, pos2 as Vec3)
         expect(standard).toBeLessThan(direct)
         expect(optimized).toBeLessThan(direct)
       }

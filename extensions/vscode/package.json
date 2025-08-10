@@ -110,16 +110,6 @@
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.show_image_atoms": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show atoms on the edge of the cell that are not part of the primitive basis"
-        },
-        "matterviz.show_gizmo": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show orientation gizmo in the corner"
-        },
         "matterviz.structure.atom_radius": {
           "type": "number",
           "default": 1,
@@ -137,6 +127,11 @@
           "default": true,
           "description": "Display atoms in the structure"
         },
+        "matterviz.structure.show_image_atoms": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show atoms on the edge of the cell that are not part of the primitive basis"
+        },
         "matterviz.structure.sphere_segments": {
           "type": "number",
           "default": 20,
@@ -146,7 +141,7 @@
         },
         "matterviz.structure.bond_thickness": {
           "type": "number",
-          "default": 0.1,
+          "default": 0.25,
           "description": "Thickness of bonds relative to atom radius",
           "minimum": 0.01,
           "maximum": 1
@@ -169,13 +164,18 @@
         },
         "matterviz.structure.bonding_strategy": {
           "type": "string",
-          "default": "nearest_neighbor",
+          "default": "electroneg_ratio",
           "description": "Method for determining bonds between atoms",
           "enum": [
-            "nearest_neighbor",
-            "covalent_radius",
-            "distance_cutoff"
+            "electroneg_ratio",
+            "max_dist",
+            "nearest_neighbor"
           ]
+        },
+        "matterviz.structure.show_gizmo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show orientation gizmo in the corner of structure viewer"
         },
         "matterviz.structure.camera_position": {
           "type": "array",
@@ -191,9 +191,9 @@
             "type": "number"
           }
         },
-        "matterviz.structure.projection": {
+        "matterviz.structure.camera_projection": {
           "type": "string",
-          "default": "perspective",
+          "default": "orthographic",
           "description": "Camera projection type",
           "enum": [
             "perspective",
@@ -202,7 +202,7 @@
         },
         "matterviz.structure.fov": {
           "type": "number",
-          "default": 75,
+          "default": 10,
           "description": "Field of view in degrees for perspective projection",
           "minimum": 10,
           "maximum": 150
@@ -477,7 +477,7 @@
         "matterviz.trajectory.histogram_mode": {
           "type": "string",
           "default": "overlay",
-          "description": "Histogram display mode",
+          "description": "Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram",
           "enum": [
             "overlay",
             "single"

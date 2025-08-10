@@ -254,6 +254,21 @@
   // Current frame structure for display
   let current_structure = $derived(current_frame?.structure)
 
+  // Dynamically hide bonds during playback to improve FPS - bond computation is expensive
+  // Maybe revisit this in future if we find much more efficient bonding algo
+  let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
+    const struct_props = { show_image_atoms: false, ...structure_props }
+
+    if (is_playing) { // Hide bonds during playback
+      const { scene_props = {} } = struct_props
+      if (scene_props.show_bonds !== `never`) {
+        const show_bonds = `never` as const
+        return { ...struct_props, scene_props: { ...scene_props, show_bonds } }
+      }
+    }
+    return struct_props
+  })
+
   let step_label_positions = $derived.by((): number[] => {
     if (!step_labels || total_frames <= 1) return []
 
@@ -898,11 +913,10 @@
               bind:value={current_step_idx}
               class="step-input"
               title="Enter step number to jump to"
+              aria-label="Step input"
               {@attach tooltip()}
             />
-            <span style="font-size: clamp(0.7rem, 2cqw, 0.875rem)">/ {
-                format_num(total_frames, `.3~s`)
-              }</span>
+            <span aria-label="total frames">/ {format_num(total_frames, `.3~s`)}</span>
             <div class="slider-container">
               <input
                 type="range"
@@ -931,32 +945,28 @@
 
           <!-- Frame rate control - only shown when playing -->
           {#if is_playing}
-            <div class="speed-section">
-              <label
-                for="step-rate-slider"
-                style="font-weight: 500; white-space: nowrap; font-size: clamp(0.7rem, 2cqw, 0.875rem)"
-              >Speed:</label>
+            <label
+              class="fps-section"
+              style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
+            >
+              FPS
               <input
-                id="step-rate-slider"
                 type="range"
                 min={fps_range[0]}
                 max={fps_range[1]}
-                step="0.1"
                 bind:value={fps}
-                class="speed-slider"
                 title="Frame rate: {format_num(fps, `.2~s`)} fps"
+                style="width: clamp(60px, 8cqw, 90px); accent-color: var(--accent-color)"
               />
               <input
                 type="number"
                 min={fps_range[0]}
                 max={fps_range[1]}
-                step="0.1"
                 bind:value={fps}
-                class="speed-input"
                 title="Enter precise FPS value"
+                style="text-align: center; border: var(--tooltip-border)"
               />
-              <span style="font-size: clamp(0.7rem, 2cqw, 0.875rem)">fps</span>
-            </div>
+            </label>
           {/if}
 
           <!-- Frame info section -->
@@ -970,7 +980,6 @@
                 {file_size}
                 {file_object}
                 bind:panel_open={info_panel_open}
-                toggle_props={{ style: `width: 1em` }}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -1062,9 +1071,9 @@
         <Structure
           structure={current_structure}
           allow_file_drop={false}
-          style="height: 100%; border-radius: 0"
+          style="height: 100%; min-height: 0; z-index: 3; border-radius: 0"
           enable_tips={false}
-          {...{ show_image_atoms: false, ...structure_props }}
+          {...final_structure_props}
           bind:controls_open={panels_open.structure_controls}
           bind:info_panel_open={panels_open.structure_info}
         />
@@ -1199,7 +1208,6 @@
   .content-area {
     display: grid;
     flex: 1;
-    overflow: hidden;
   }
   .trajectory.horizontal .content-area {
     grid-template-columns: 1fr 1fr;
@@ -1240,12 +1248,14 @@
     align-items: center;
     gap: clamp(2pt, 1cqw, 1ex);
     padding: clamp(2pt, 0.5cqw, 1ex);
-    z-index: var(--traj-controls-z-index, 999999999);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
     border-radius: var(--border-radius) var(--border-radius) 0 0;
     container-type: inline-size;
+  }
+  .trajectory-controls:focus-within {
+    z-index: var(--traj-controls-z-index, 999999999);
   }
   .trajectory-controls button {
     background: var(--btn-bg);
@@ -1301,21 +1311,6 @@
     white-space: nowrap;
     text-align: center;
     top: -1.7ex;
-  }
-  .speed-slider {
-    width: clamp(60px, 8cqw, 90px);
-    accent-color: var(--accent-color);
-  }
-  .speed-input {
-    width: clamp(35px, 4cqw, 45px);
-    text-align: center;
-    border: 1px solid rgba(99, 179, 237, 0.3);
-    box-sizing: border-box;
-  }
-  .speed-section {
-    display: flex;
-    align-items: center;
-    gap: clamp(0.125rem, 0.75cqw, 0.25rem);
   }
   button.filename {
     align-items: center;

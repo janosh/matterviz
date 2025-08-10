@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure, Vec3 } from '$lib'
   import { get_elem_amounts, get_pbc_image_sites, Icon, Spinner } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
@@ -63,49 +63,29 @@
     children?: Snippet<[{ structure?: AnyStructure }]>
     [key: string]: unknown
   }
+  // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
+  // Scene model seeded from central defaults with a few normalized fields
+  let scene_model = $state({
+    ...DEFAULTS.structure,
+    camera_projection: DEFAULTS.structure.camera_projection,
+    force_vector_scale: DEFAULTS.structure.force_scale,
+    force_vector_color: DEFAULTS.structure.force_color,
+    camera_position: [0, 0, 0] as Vec3,
+    site_label_offset: [...DEFAULTS.structure.site_label_offset] as Vec3,
+  })
+  let lattice_model = $state({
+    cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
+    cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
+    cell_edge_color: DEFAULTS.structure.cell_edge_color,
+    cell_surface_color: DEFAULTS.structure.cell_surface_color,
+    cell_edge_width: DEFAULTS.structure.cell_edge_width,
+    show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
+  })
+
   let {
     structure = $bindable(undefined),
-    // TODO figure out a way to avoid having to explicitly set default scene_props keys for them to take effect
-    scene_props = $bindable({
-      // Atoms & Display
-      show_atoms: DEFAULTS.structure.show_atoms,
-      show_bonds: DEFAULTS.structure.show_bonds,
-      same_size_atoms: DEFAULTS.structure.same_size_atoms,
-      atom_radius: DEFAULTS.structure.atom_radius,
-      sphere_segments: DEFAULTS.structure.sphere_segments,
-      // Camera & Controls
-      auto_rotate: DEFAULTS.structure.auto_rotate,
-      zoom_speed: DEFAULTS.structure.zoom_speed,
-      pan_speed: DEFAULTS.structure.pan_speed,
-      rotation_damping: DEFAULTS.structure.rotation_damping,
-      camera_projection: DEFAULTS.structure.projection,
-      // Bonds
-      bond_thickness: DEFAULTS.structure.bond_thickness,
-      bond_color: DEFAULTS.structure.bond_color,
-      bonding_strategy: DEFAULTS.structure.bonding_strategy,
-      // Labels
-      show_site_labels: DEFAULTS.structure.show_site_labels,
-      site_label_size: DEFAULTS.structure.site_label_size,
-      site_label_padding: DEFAULTS.structure.site_label_padding,
-      site_label_offset: [...DEFAULTS.structure.site_label_offset],
-      site_label_color: DEFAULTS.structure.site_label_color,
-      site_label_bg_color: DEFAULTS.structure.site_label_bg_color,
-      // Forces
-      show_force_vectors: DEFAULTS.structure.show_force_vectors,
-      force_vector_scale: DEFAULTS.structure.force_scale,
-      force_vector_color: DEFAULTS.structure.force_color,
-      // Lighting
-      directional_light: DEFAULTS.structure.directional_light,
-      ambient_light: DEFAULTS.structure.ambient_light,
-    }),
-    lattice_props = $bindable({
-      cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-      cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-      cell_edge_color: DEFAULTS.structure.cell_edge_color,
-      cell_surface_color: DEFAULTS.structure.cell_surface_color,
-      cell_edge_width: DEFAULTS.structure.cell_edge_width,
-      show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
-    }),
+    scene_props: scene_props_in = $bindable(undefined),
+    lattice_props: lattice_props_in = $bindable(undefined),
     controls_open = $bindable(false),
     info_panel_open = $bindable(false),
     background_color = $bindable(undefined),
@@ -143,6 +123,16 @@
     children,
     ...rest
   }: Props = $props()
+
+  // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
+  $effect.pre(() => {
+    if (scene_props_in && typeof scene_props_in === `object`) {
+      Object.assign(scene_model, scene_props_in)
+    }
+    if (lattice_props_in && typeof lattice_props_in === `object`) {
+      Object.assign(lattice_model, lattice_props_in)
+    }
+  })
 
   // Load structure from URL when data_url is provided
   $effect(() => {
@@ -201,14 +191,11 @@
       )
 
       // Enable force vectors if structure has force data
-      if (has_force_data && !scene_props.show_force_vectors) {
-        scene_props = {
-          ...scene_props,
-          show_force_vectors: true,
-          force_vector_scale: scene_props.force_vector_scale ||
-            DEFAULTS.structure.force_scale,
-          force_vector_color: scene_props.force_vector_color || `#ff6b6b`,
-        }
+      if (has_force_data && !scene_model.show_force_vectors) {
+        scene_model.show_force_vectors = true
+        scene_model.force_vector_scale = scene_model.force_vector_scale ||
+          DEFAULTS.structure.force_scale
+        scene_model.force_vector_color = scene_model.force_vector_color
         force_vectors_auto_enabled = true
       }
     }
@@ -218,14 +205,11 @@
   $effect(() => {
     if (structure?.sites && performance_mode === `speed`) {
       const site_count = structure.sites.length
-      const current_sphere_segments = scene_props.sphere_segments || 20
+      const current_sphere_segments = scene_model.sphere_segments || 20
 
       // Reduce sphere segments for large structures in speed mode
       if (site_count > 200 && current_sphere_segments > 12) {
-        scene_props = {
-          ...scene_props,
-          sphere_segments: Math.min(current_sphere_segments, 12),
-        }
+        scene_model.sphere_segments = Math.min(current_sphere_segments, 12)
       }
     }
   })
@@ -286,7 +270,7 @@
     untrack(() => {
       if (camera_is_moving) {
         camera_has_moved = true
-        const { camera_position } = scene_props
+        const { camera_position } = scene_model
         // Debounce camera move events to avoid excessive emissions
         if (camera_move_timeout) clearTimeout(camera_move_timeout)
         camera_move_timeout = setTimeout(() => {
@@ -298,7 +282,7 @@
 
   function reset_camera() {
     // Reset camera position to trigger automatic positioning
-    scene_props.camera_position = [0, 0, 0]
+    scene_model.camera_position = [0, 0, 0]
     camera_has_moved = false
     on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
   }
@@ -482,14 +466,12 @@
             onclick={toggle_fullscreen}
             class="fullscreen-toggle"
             {@attach tooltip({ content: `${fullscreen ? `Exit` : `Enter`} fullscreen` })}
+            style="padding: 0"
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
             {:else}
-              <Icon
-                icon="{fullscreen ? `Exit` : ``}Fullscreen"
-                style="padding: var(--panel-toggle-padding, 2pt)"
-              />
+              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
             {/if}
           </button>
         {/if}
@@ -505,8 +487,8 @@
 
         <StructureControls
           bind:controls_open
-          bind:scene_props
-          bind:lattice_props
+          bind:scene_props={scene_model}
+          bind:lattice_props={lattice_model}
           bind:show_image_atoms
           bind:supercell_scaling
           bind:background_color
@@ -540,8 +522,8 @@
       >
         <StructureScene
           structure={scene_structure}
-          {...scene_props}
-          {lattice_props}
+          {...scene_model}
+          lattice_props={lattice_model}
           bind:camera_is_moving
         />
       </Canvas>
@@ -594,10 +576,10 @@
   section.control-buttons {
     position: absolute;
     display: flex;
-    justify-content: end;
+    place-items: center;
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: clamp(2pt, 0.5cqw, 6pt);
+    gap: clamp(6pt, 1cqw, 9pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
     /* we also need crazy high z-index to make info/control panel occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
@@ -609,9 +591,11 @@
     opacity: 1;
     pointer-events: auto;
   }
-  section.control-buttons button {
+  section.control-buttons > :global(button) {
     background-color: transparent;
-    font-size: clamp(1em, 2cqw, 1.3em);
+    font-size: clamp(1.1em, 2cqw, 1.4em);
+    display: flex;
+    padding: 0;
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--panel-btn-hover-bg);

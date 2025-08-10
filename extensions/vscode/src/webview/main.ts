@@ -523,10 +523,10 @@ const structure_props = (defaults: DefaultSettings) => {
   return {
     scene_props: {
       ...structure,
-      camera_projection: structure.projection,
+      camera_projection: structure.camera_projection,
       force_vector_scale: structure.force_scale,
       force_vector_color: structure.force_color,
-      gizmo: defaults.show_gizmo,
+      gizmo: structure.show_gizmo,
     },
     lattice_props: {
       show_cell_vectors: structure.show_cell_vectors,
@@ -538,7 +538,7 @@ const structure_props = (defaults: DefaultSettings) => {
     color_scheme: defaults.color_scheme,
     background_color: defaults.background_color,
     background_opacity: defaults.background_opacity,
-    show_image_atoms: defaults.show_image_atoms,
+    show_image_atoms: defaults.structure.show_image_atoms,
   }
 }
 
