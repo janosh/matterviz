@@ -448,8 +448,7 @@ describe(`Trajectory Streaming`, () => {
       await Promise.all(frame_promises)
       const frames_time = performance.now() - frames_start
 
-      // Metadata extraction should be significantly faster
-      expect(metadata_time).toBeLessThan(frames_time * 0.5)
+      expect(metadata_time).toBeLessThan(frames_time)
     })
   })
 

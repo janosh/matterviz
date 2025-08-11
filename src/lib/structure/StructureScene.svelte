@@ -16,7 +16,7 @@
     OrbitControls,
   } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
-  import { type Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -67,6 +67,8 @@
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
+    width?: number // Viewer dimensions for responsive zoom
+    height?: number
   }
   let {
     structure = undefined,
@@ -111,6 +113,8 @@
     atom_label,
     camera_is_moving = $bindable(false),
     orbit_controls = $bindable(undefined),
+    width = 0,
+    height = 0,
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
@@ -142,13 +146,18 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
-  // Responsive orthographic zoom based on structure size
-  let ortho_zoom = $derived.by(() => {
-    const size = structure_size || 10
-    const unclamped = initial_zoom * (10 / size)
-    const min_allowed = min_zoom ?? 0.1
-    const max_allowed = max_zoom ?? 200
-    return Math.max(min_allowed, Math.min(max_allowed, unclamped))
+  // Persisted zoom; recompute only on viewport changes
+  let computed_zoom = $state<number>(initial_zoom)
+  $effect(() => {
+    if (width > 0 && height > 0) return
+    // Avoid depending on structure/structure_size so trajectories don't retrigger zoom
+    const structure_max_dim = Math.max(1, untrack(() => structure_size))
+    const viewer_min_dim = Math.min(width, height)
+    const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
+    let next = initial_zoom * scale_factor
+    if (min_zoom != null) next = Math.max(min_zoom, next)
+    if (max_zoom != null) next = Math.min(max_zoom, next)
+    computed_zoom = next
   })
 
   $effect.pre(() => {
@@ -299,8 +308,8 @@
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
     target: rotation_target,
-    maxZoom: camera_projection === `orthographic` ? (max_zoom || 200) : max_zoom,
-    minZoom: camera_projection === `orthographic` ? (min_zoom || 0.1) : min_zoom,
+    maxZoom: camera_projection === `orthographic` ? (max_zoom ?? 200) : max_zoom,
+    minZoom: camera_projection === `orthographic` ? (min_zoom ?? 0.1) : min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: Boolean(rotation_damping),
@@ -342,7 +351,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={ortho_zoom}
+    zoom={computed_zoom}
     near={-100}
   >
     <OrbitControls {...orbit_controls_props}>
