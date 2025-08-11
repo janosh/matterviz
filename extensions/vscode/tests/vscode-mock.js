@@ -7,7 +7,7 @@ export function mock_vscode() {
       module_id === `\0vscode-mock`
         ? `
 export const __noop = () => undefined
-const __proxy = new Proxy(function(){}, { get: () => __proxy, apply: () => undefined })
+const __proxy = new Proxy(function(){}, { get: () => __proxy, apply: () => undefined, construct: () => ({}) })
 export const window = __proxy
 export const commands = __proxy
 export const workspace = __proxy
