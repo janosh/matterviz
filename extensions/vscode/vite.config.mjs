@@ -17,6 +17,13 @@ export default defineConfig(({ mode }) => ({
         load: (id) => id.endsWith(`.svelte`) ? `export default {}` : null,
       }
       : svelte(),
+    mode === `test`
+      ? { // Inline virtual module to mock 'vscode' package during tests
+        name: `vscode-mock`,
+        enforce: `pre`,
+        resolveId: (id) => id === `vscode` ? id : null,
+      }
+      : null,
   ],
   build: {
     outDir: `dist`,

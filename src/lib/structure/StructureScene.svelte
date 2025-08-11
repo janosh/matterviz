@@ -145,15 +145,16 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
-  // Only recalculate zoom when structure fundamentally changes or new file loaded
-  let ortho_zoom = $derived.by(() => {
-    if (!structure || !structure_file_loaded) return undefined
-
-    const size = structure_size || 10
-    let zoom = initial_zoom * (10 / size)
-    if (min_zoom) zoom = Math.max(min_zoom, zoom)
-    if (max_zoom) zoom = Math.min(max_zoom, zoom)
-    return zoom
+  // Compute and persist zoom only when a new structure file is loaded
+  let ortho_zoom = $state<number>(initial_zoom)
+  $effect(() => {
+    if (structure && structure_file_loaded) {
+      const size = structure_size || 10
+      let next = initial_zoom * (10 / size)
+      if (min_zoom != null) next = Math.max(min_zoom, next)
+      if (max_zoom != null) next = Math.min(max_zoom, next)
+      ortho_zoom = next
+    }
   })
 
   $effect.pre(() => {
@@ -304,8 +305,8 @@
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
     target: rotation_target,
-    maxZoom: camera_projection === `orthographic` ? (max_zoom || 200) : max_zoom,
-    minZoom: camera_projection === `orthographic` ? (min_zoom || 0.1) : min_zoom,
+    maxZoom: camera_projection === `orthographic` ? (max_zoom ?? 200) : max_zoom,
+    minZoom: camera_projection === `orthographic` ? (min_zoom ?? 0.1) : min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: Boolean(rotation_damping),
@@ -347,7 +348,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={ortho_zoom ?? initial_zoom}
+    zoom={ortho_zoom}
     near={-100}
   >
     <OrbitControls {...orbit_controls_props}>

@@ -9,10 +9,10 @@ export default defineConfig(({ mode }) => ({
     mdsvexamples,
     yaml(),
     mode === `test`
-      ? { // Mock vscode module for tests
+      ? { // Inline virtual module to mock 'vscode' package during tests
         name: `vscode-mock`,
+        enforce: `pre`,
         resolveId: (id: string) => id === `vscode` ? id : null,
-        load: (id: string) => id === `vscode` ? `export default {}` : null,
       }
       : null,
   ].filter(Boolean),

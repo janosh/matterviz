@@ -1208,6 +1208,7 @@
   .content-area {
     display: grid;
     flex: 1;
+    min-height: 0; /* important for tall structure viewers not to overflow */
   }
   .trajectory.horizontal .content-area {
     grid-template-columns: 1fr 1fr;
