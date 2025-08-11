@@ -181,7 +181,7 @@ describe(`Structure`, () => {
 
   test(`drag and drop file handling`, async () => {
     let structure_loaded = false
-    let resolve_drop!: () => void
+    let resolve_drop: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
@@ -215,6 +215,8 @@ describe(`Structure`, () => {
   test(`drag and drop event handling`, async () => {
     let event_handled = false
     let file_content = null
+    let resolve_drop: () => void
+    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
       target: document.body,
@@ -224,6 +226,7 @@ describe(`Structure`, () => {
         on_file_drop: (content: string | ArrayBuffer, _filename: string) => {
           event_handled = true
           file_content = content
+          resolve_drop()
         },
       },
     })
@@ -237,8 +240,8 @@ describe(`Structure`, () => {
     // Trigger the drop event
     wrapper.dispatchEvent(drag_event)
 
-    // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Wait for the drop handler to complete instead of sleeping
+    await drop_done
 
     expect(event_handled).toBe(true)
     expect(file_content).toBe(`test content`)
@@ -246,6 +249,8 @@ describe(`Structure`, () => {
 
   test(`drag and drop with real POSCAR file`, async () => {
     let structure_loaded = false
+    let resolve_drop: () => void
+    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
       target: document.body,
@@ -254,6 +259,7 @@ describe(`Structure`, () => {
         show_controls: true,
         on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
           structure_loaded = true
+          resolve_drop()
         },
       },
     })
@@ -269,8 +275,8 @@ describe(`Structure`, () => {
     // Trigger the drop event
     wrapper.dispatchEvent(drag_event)
 
-    // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Wait for the drop handler to complete instead of sleeping
+    await drop_done
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)
@@ -291,8 +297,22 @@ describe(`Structure`, () => {
     // Trigger the drop event
     wrapper.dispatchEvent(drag_event)
 
-    // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Wait for DOM update that indicates structure text is rendered
+    await new Promise<void>((resolve) => {
+      const maybe_resolve = (observer: MutationObserver) => {
+        if (document.body.textContent?.includes(`Ba Ti O3`)) {
+          observer.disconnect()
+          resolve()
+        }
+      }
+      const observer = new MutationObserver(() => maybe_resolve(observer))
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      })
+      maybe_resolve(observer)
+    })
 
     // Check that the structure was loaded (should show structure info)
     expect(document.body.textContent).toContain(`Ba Ti O3`)
