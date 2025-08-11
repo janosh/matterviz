@@ -1990,6 +1990,7 @@
     min-height: var(--scatter-min-height, 100px);
     container-type: inline-size;
     z-index: var(--scatter-z-index);
+    container-type: size;
   }
   svg {
     width: 100%;

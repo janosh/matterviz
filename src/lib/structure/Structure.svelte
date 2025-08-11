@@ -525,6 +525,8 @@
           {...scene_model}
           lattice_props={lattice_model}
           bind:camera_is_moving
+          {width}
+          {height}
         />
       </Canvas>
     {/if}
