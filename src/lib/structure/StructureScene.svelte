@@ -67,6 +67,8 @@
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
+    // Signal when a new structure file is loaded (not just frame updates)
+    structure_file_loaded?: boolean
   }
   let {
     structure = undefined,
@@ -111,6 +113,7 @@
     atom_label,
     camera_is_moving = $bindable(false),
     orbit_controls = $bindable(undefined),
+    structure_file_loaded = false,
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
@@ -142,8 +145,10 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
-  // Responsive orthographic zoom based on structure size
+  // Only recalculate zoom when structure fundamentally changes or new file loaded
   let ortho_zoom = $derived.by(() => {
+    if (!structure || !structure_file_loaded) return undefined
+
     const size = structure_size || 10
     let zoom = initial_zoom * (10 / size)
     if (min_zoom) zoom = Math.max(min_zoom, zoom)
@@ -342,7 +347,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={ortho_zoom}
+    zoom={ortho_zoom ?? initial_zoom}
     near={-100}
   >
     <OrbitControls {...orbit_controls_props}>
