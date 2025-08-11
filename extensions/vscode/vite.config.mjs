@@ -2,6 +2,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
+import { mock_vscode } from './tests/vscode-mock'
 
 // this file is trying to load ESM-only packages but it's being loaded as CommonJS by VSCode extension.
 // Needs to be explicitly named .mjs to communicate correct import format to VSCode.
@@ -17,27 +18,7 @@ export default defineConfig(({ mode }) => ({
         load: (id) => id.endsWith(`.svelte`) ? `export default {}` : null,
       }
       : svelte(),
-    mode === `test`
-      ? { // Inline virtual module to mock 'vscode' package during tests
-        name: `vscode-mock`,
-        enforce: `pre`,
-        resolveId: (id) => (id === `vscode` ? id : null),
-        load: (id) =>
-          id === `vscode`
-            ? `
-export const __noop = () => undefined
-const __proxy = new Proxy(function(){}, {
-  get: () => __proxy,
-  apply: () => undefined,
-})
-export const window = __proxy
-export const commands = __proxy
-export const workspace = __proxy
-export default { window, commands, workspace }
-`
-            : null,
-      }
-      : null,
+    mode === `test` ? mock_vscode() : null,
   ],
   build: {
     outDir: `dist`,

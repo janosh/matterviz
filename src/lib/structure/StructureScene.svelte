@@ -149,7 +149,7 @@
   // Persisted zoom; recompute only on viewport changes
   let computed_zoom = $state<number>(initial_zoom)
   $effect(() => {
-    if (!width || !height) return
+    if (width > 0 && height > 0) return
     // Avoid depending on structure/structure_size so trajectories don't retrigger zoom
     const structure_max_dim = Math.max(1, untrack(() => structure_size))
     const viewer_min_dim = Math.min(width, height)

@@ -181,7 +181,7 @@ describe(`Structure`, () => {
 
   test(`drag and drop file handling`, async () => {
     let structure_loaded = false
-    let resolve_drop: () => void
+    let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
@@ -215,7 +215,7 @@ describe(`Structure`, () => {
   test(`drag and drop event handling`, async () => {
     let event_handled = false
     let file_content = null
-    let resolve_drop: () => void
+    let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
@@ -249,7 +249,7 @@ describe(`Structure`, () => {
 
   test(`drag and drop with real POSCAR file`, async () => {
     let structure_loaded = false
-    let resolve_drop: () => void
+    let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
