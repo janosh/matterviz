@@ -2,6 +2,7 @@
   import type { AnyStructure } from '$lib'
   import { DraggablePanel, SettingsSection } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
+  import { export_canvas_as_png } from '$lib/io/export'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
   import * as exports from '$lib/structure/export'
@@ -169,7 +170,7 @@
       xyz: exports.export_structure_as_xyz,
       cif: exports.export_structure_as_cif,
       poscar: exports.export_structure_as_poscar,
-    }
+    } as const
     export_fns[format](structure)
   }
 
@@ -317,7 +318,7 @@
         onclick={() => {
           const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
           if (canvas) {
-            exports.export_canvas_as_png(
+            export_canvas_as_png(
               canvas,
               structure,
               png_dpi,
