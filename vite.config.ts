@@ -1,7 +1,7 @@
 import yaml from '@rollup/plugin-yaml'
 import { sveltekit } from '@sveltejs/kit/vite'
 import mdsvexamples from 'mdsvexamples/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -9,14 +9,28 @@ export default defineConfig(({ mode }) => ({
     mdsvexamples,
     yaml(),
     mode === `test`
-      ? { // Inline virtual module to mock 'vscode' package during tests
+      ? {
+        // Inline virtual module to mock 'vscode' package during tests
         name: `vscode-mock`,
         enforce: `pre`,
-        resolveId: (id: string) => id === `vscode` ? id : null,
-        load: (id: string) => (id === `vscode` ? `export default {}` : null),
+        resolveId: (id: string) => (id === `vscode` ? id : null),
+        load: (id: string) =>
+          id === `vscode`
+            ? `
+export const __noop = () => undefined
+const __proxy = new Proxy(function(){}, {
+  get: () => __proxy,
+  apply: () => undefined,
+})
+export const window = __proxy
+export const commands = __proxy
+export const workspace = __proxy
+export default { window, commands, workspace }
+`
+            : null,
       }
       : null,
-  ].filter(Boolean),
+  ].filter((plugin): plugin is Plugin => Boolean(plugin)),
 
   test: {
     environment: `happy-dom`,

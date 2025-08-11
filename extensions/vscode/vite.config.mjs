@@ -21,8 +21,21 @@ export default defineConfig(({ mode }) => ({
       ? { // Inline virtual module to mock 'vscode' package during tests
         name: `vscode-mock`,
         enforce: `pre`,
-        resolveId: (id) => id === `vscode` ? id : null,
-        load: (id) => (id === `vscode` ? `export default {}` : null),
+        resolveId: (id) => (id === `vscode` ? id : null),
+        load: (id) =>
+          id === `vscode`
+            ? `
+export const __noop = () => undefined
+const __proxy = new Proxy(function(){}, {
+  get: () => __proxy,
+  apply: () => undefined,
+})
+export const window = __proxy
+export const commands = __proxy
+export const workspace = __proxy
+export default { window, commands, workspace }
+`
+            : null,
       }
       : null,
   ],

@@ -16,7 +16,7 @@
     OrbitControls,
   } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
-  import { type Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -67,8 +67,7 @@
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
-    // Viewer dimensions for responsive zoom
-    width?: number
+    width?: number // Viewer dimensions for responsive zoom
     height?: number
   }
   let {
@@ -147,18 +146,18 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
-  // Responsive zoom based on viewer size and structure dimensions
-  let responsive_zoom = $derived.by(() => {
-    if (!structure || !width || !height) return initial_zoom
-
+  // Persisted zoom; recompute only on viewport changes
+  let computed_zoom = $state<number>(initial_zoom)
+  $effect(() => {
+    if (!width || !height) return
+    // Avoid depending on structure/structure_size so trajectories don't retrigger zoom
+    const structure_max_dim = Math.max(1, untrack(() => structure_size))
     const viewer_min_dim = Math.min(width, height)
-    const structure_max_dim = Math.max(1, structure_size)
     const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
-    let zoom = initial_zoom * scale_factor
-
-    if (min_zoom != null) zoom = Math.max(min_zoom, zoom)
-    if (max_zoom != null) zoom = Math.min(max_zoom, zoom)
-    return zoom
+    let next = initial_zoom * scale_factor
+    if (min_zoom != null) next = Math.max(min_zoom, next)
+    if (max_zoom != null) next = Math.min(max_zoom, next)
+    computed_zoom = next
   })
 
   $effect.pre(() => {
@@ -352,7 +351,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={responsive_zoom}
+    zoom={computed_zoom}
     near={-100}
   >
     <OrbitControls {...orbit_controls_props}>

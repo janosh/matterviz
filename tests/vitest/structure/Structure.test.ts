@@ -181,6 +181,8 @@ describe(`Structure`, () => {
 
   test(`drag and drop file handling`, async () => {
     let structure_loaded = false
+    let resolve_drop!: () => void
+    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
     mount(Structure, {
       target: document.body,
@@ -189,6 +191,7 @@ describe(`Structure`, () => {
         show_controls: true,
         on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
           structure_loaded = true
+          resolve_drop()
         },
       },
     })
@@ -202,8 +205,8 @@ describe(`Structure`, () => {
     // Trigger the drop event
     wrapper.dispatchEvent(drag_event)
 
-    // Wait for async processing to complete
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Wait for the drop handler to complete instead of sleeping
+    await drop_done
 
     // Verify that the file drop handler was called
     expect(structure_loaded).toBe(true)
