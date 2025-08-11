@@ -43,6 +43,19 @@ export interface OptimadeProvider {
   }
 }
 
+export interface OptimadeDatabase {
+  id: string
+  type: `links`
+  attributes: {
+    name: string
+    description?: string
+    base_url: string
+    homepage?: string
+    link_type?: string
+    [key: string]: unknown
+  }
+}
+
 // Multiple CORS proxies for fallback reliability
 const CORS_PROXIES = [
   `https://corsproxy.io/?`,
@@ -165,6 +178,45 @@ export async function detect_provider_from_slug(slug: string): Promise<string> {
   const prefix = decoded_slug.split(`-`)[0].toLowerCase()
   const providers = await fetch_optimade_providers()
   return providers.find((p) => p.id === prefix)?.id ?? ``
+}
+
+export async function fetch_provider_databases(
+  provider: string,
+): Promise<OptimadeDatabase[]> {
+  const providers = await fetch_optimade_providers()
+  const provider_config = providers.find((p) => p.id === provider)
+  if (!provider_config) return []
+
+  try {
+    const base_url = await resolve_provider_url(provider_config.attributes.base_url)
+    const api_base = base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
+    const response = await fetch_with_cors_proxy(`${api_base}/links`)
+    const data = await response.json()
+
+    if (data.data && Array.isArray(data.data)) {
+      return data.data
+        .filter((db: OptimadeDatabase) =>
+          db.type === `links` &&
+          db.attributes.link_type === `child` &&
+          db.attributes.base_url
+        )
+        .map((db: OptimadeDatabase) => ({
+          id: db.id,
+          type: `links` as const,
+          attributes: {
+            name: db.attributes.name,
+            description: db.attributes.description,
+            base_url: db.attributes.base_url,
+            homepage: db.attributes.homepage,
+            link_type: db.attributes.link_type,
+          },
+        }))
+    }
+    return []
+  } catch (error) {
+    console.warn(`Failed to fetch databases for provider ${provider}:`, error)
+    return []
+  }
 }
 
 export async function fetch_optimade_structure(
