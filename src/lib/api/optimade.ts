@@ -154,8 +154,15 @@ export async function fetch_optimade_providers(): Promise<OptimadeProvider[]> {
   }
 }
 
+// URL encode/decode utilities for structure IDs with special characters
+export const encode_structure_id = (id: string) =>
+  encodeURIComponent(id).replace(/\./g, `%2E`)
+
+export const decode_structure_id = (encoded_id: string) => decodeURIComponent(encoded_id)
+
 export async function detect_provider_from_slug(slug: string): Promise<string> {
-  const prefix = slug.split(`-`)[0].toLowerCase()
+  const decoded_slug = decode_structure_id(slug)
+  const prefix = decoded_slug.split(`-`)[0].toLowerCase()
   const providers = await fetch_optimade_providers()
   return providers.find((p) => p.id === prefix)?.id ?? ``
 }
@@ -170,7 +177,8 @@ export async function fetch_optimade_structure(
 
   const base_url = await resolve_provider_url(provider_config.attributes.base_url)
   const api_base = base_url.endsWith(`/v1`) ? base_url : `${base_url}/v1`
-  const response = await fetch_with_cors_proxy(`${api_base}/structures/${structure_id}`)
+  const encoded_id = encode_structure_id(structure_id)
+  const response = await fetch_with_cors_proxy(`${api_base}/structures/${encoded_id}`)
   const data = await response.json()
 
   if (!data.data) throw new Error(`Structure ${structure_id} not found`)
