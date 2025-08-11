@@ -17,10 +17,7 @@
     "vscode": "^1.96.0"
   },
   "main": "./dist/extension.cjs",
-  "activationEvents": [
-    "workspaceContains:**/*.{cif,xyz,poscar,contcar,xdatcar,traj,h5,hdf5}",
-    "workspaceContains:**/*{trajectory,relax}*"
-  ],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
       {
@@ -199,6 +196,13 @@
             "perspective",
             "orthographic"
           ]
+        },
+        "matterviz.structure.initial_zoom": {
+          "type": "number",
+          "default": 35,
+          "description": "Initial zoom level for orthographic projection (ignored for perspective)",
+          "minimum": 0.1,
+          "maximum": 200
         },
         "matterviz.structure.fov": {
           "type": "number",

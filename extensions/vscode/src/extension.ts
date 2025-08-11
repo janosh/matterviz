@@ -89,7 +89,12 @@ export const should_auto_render = (filename: string): boolean => {
 
 // Update the shared VS Code context for supported resources
 const update_supported_resource_context = (uri?: vscode.Uri): void => {
-  const filename = uri?.fsPath ? path.basename(uri.fsPath) : ``
+  // Prefer explicit URI; otherwise fall back to the active editor filename
+  const filename = uri?.fsPath
+    ? path.basename(uri.fsPath)
+    : (vscode.window.activeTextEditor?.document?.fileName
+      ? path.basename(vscode.window.activeTextEditor.document.fileName)
+      : ``)
   const is_supported = should_auto_render(filename)
   vscode.commands.executeCommand(
     `setContext`,
@@ -205,16 +210,19 @@ export const get_defaults = (): DefaultSettings => {
     }
 
     // Read all settings sections
-    const general_keys = [
-      `color_scheme`,
-      `background_color`,
-      `background_opacity`,
-      `show_image_atoms`,
-      `show_gizmo`,
-    ] as const
-    for (const key of general_keys) {
-      const value = config.get(key)
-      if (value !== undefined) user_settings[key] = value
+    // Top-level simple keys
+    const color_scheme_val = config.get(`color_scheme`)
+    if (color_scheme_val !== undefined) {
+      user_settings.color_scheme = color_scheme_val as DefaultSettings[`color_scheme`]
+    }
+    const bg_color_val = config.get(`background_color`)
+    if (bg_color_val !== undefined) {
+      user_settings.background_color = bg_color_val as DefaultSettings[`background_color`]
+    }
+    const bg_opacity_val = config.get(`background_opacity`)
+    if (bg_opacity_val !== undefined) {
+      user_settings.background_opacity =
+        bg_opacity_val as DefaultSettings[`background_opacity`]
     }
 
     const structure_settings = read_section(`structure`, DEFAULTS.structure)
@@ -666,6 +674,8 @@ export const activate = (context: vscode.ExtensionContext): void => {
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
     vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
+      // Update context on any document open
+      update_supported_resource_context(document.uri)
       if (
         document.uri.scheme === `file` &&
         should_auto_render(path.basename(document.uri.fsPath))
@@ -688,11 +698,9 @@ export const activate = (context: vscode.ExtensionContext): void => {
           }
         }, 100) // Small delay to allow VS Code to finish opening the document
       }
-      // Update context whenever any document is opened
-      update_supported_resource_context(document.uri)
     }),
     vscode.window.onDidChangeActiveTextEditor((editor: vscode.TextEditor | undefined) => {
-      update_supported_resource_context(editor?.document.uri)
+      update_supported_resource_context(editor?.document?.uri)
     }),
   )
 }
