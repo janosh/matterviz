@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => ({
         name: `vscode-mock`,
         enforce: `pre`,
         resolveId: (id) => id === `vscode` ? id : null,
+        load: (id) => (id === `vscode` ? `export default {}` : null),
       }
       : null,
   ],

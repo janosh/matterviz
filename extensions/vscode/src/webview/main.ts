@@ -538,7 +538,7 @@ const structure_props = (defaults: DefaultSettings) => {
     color_scheme: defaults.color_scheme,
     background_color: defaults.background_color,
     background_opacity: defaults.background_opacity,
-    show_image_atoms: defaults.structure.show_image_atoms,
+    show_image_atoms: structure.show_image_atoms,
   }
 }
 

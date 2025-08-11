@@ -151,7 +151,6 @@
             const parsed_structure = parse_any_structure(text_content, filename)
             if (parsed_structure) {
               structure = parsed_structure
-              structure_file_loaded = true
               // Emit file load event
               on_file_load?.({
                 structure,
@@ -183,14 +182,6 @@
 
   // Track if force vectors have been auto-enabled to prevent repeated triggering
   let force_vectors_auto_enabled = $state(false)
-
-  // Track when a new structure file is loaded (not just frame updates)
-  let structure_file_loaded = $state(false)
-
-  // Reset flag after StructureScene processes it
-  $effect(() => {
-    if (structure_file_loaded) structure_file_loaded = false
-  })
 
   // Auto-enable force vectors when structure has force data
   $effect(() => {
@@ -329,7 +320,6 @@
             const parsed_structure = parse_any_structure(text_content, filename)
             if (parsed_structure) {
               structure = parsed_structure
-              structure_file_loaded = true
               emit_file_load_event(parsed_structure, filename, content)
             } else throw new Error(`Failed to parse structure from ${filename}`)
           } catch (err) {
@@ -354,7 +344,6 @@
                 const parsed_structure = parse_any_structure(content, filename)
                 if (parsed_structure) {
                   structure = parsed_structure
-                  structure_file_loaded = true
                   emit_file_load_event(parsed_structure, filename, content)
                 } else throw new Error(`Failed to parse structure from ${filename}`)
               } catch (err) {
@@ -536,7 +525,8 @@
           {...scene_model}
           lattice_props={lattice_model}
           bind:camera_is_moving
-          {structure_file_loaded}
+          {width}
+          {height}
         />
       </Canvas>
     {/if}

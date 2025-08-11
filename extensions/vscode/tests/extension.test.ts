@@ -1047,16 +1047,17 @@ describe(`MatterViz Extension`, () => {
 
       // Get the registered callback
       // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
-      const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
+      const on_did_open_text_document_callback = mock_vscode.workspace
+        .onDidOpenTextDocument
         .mock.calls[0]?.[0]
-      expect(onDidOpenTextDocument_callback).toBeDefined()
+      expect(on_did_open_text_document_callback).toBeDefined()
 
       // Mock document with non-file URI
       const mock_document = {
         uri: { scheme: `untitled` },
       }
 
-      expect(() => onDidOpenTextDocument_callback?.(mock_document)).not.toThrow()
+      expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
     })
 
     test(`should respect auto_render configuration setting`, () => {
@@ -1075,16 +1076,17 @@ describe(`MatterViz Extension`, () => {
       activate(mock_context)
 
       // Get the registered callback
-      const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
+      const on_did_open_text_document_callback = mock_vscode.workspace
+        .onDidOpenTextDocument
         .mock.calls[0]?.[0]
-      expect(onDidOpenTextDocument_callback).toBeDefined()
+      expect(on_did_open_text_document_callback).toBeDefined()
 
       // Mock document with supported file
       const mock_document = {
         uri: { scheme: `file`, fsPath: `/test/structure.cif` },
       }
 
-      expect(() => onDidOpenTextDocument_callback?.(mock_document)).not.toThrow()
+      expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
     })
 
     test(`should handle file reading errors gracefully during auto-render`, async () => {
@@ -1100,10 +1102,10 @@ describe(`MatterViz Extension`, () => {
       activate(mock_context)
 
       // Get the registered callback
-      // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
-      const onDidOpenTextDocument_callback = mock_vscode.workspace.onDidOpenTextDocument
+      const on_did_open_text_document_callback = mock_vscode.workspace
+        .onDidOpenTextDocument
         .mock.calls[0]?.[0]
-      expect(onDidOpenTextDocument_callback).toBeDefined()
+      expect(on_did_open_text_document_callback).toBeDefined()
 
       // Mock document with supported file
       const mock_document = {
@@ -1111,7 +1113,7 @@ describe(`MatterViz Extension`, () => {
       }
 
       // Should show error message when file reading fails
-      expect(() => onDidOpenTextDocument_callback?.(mock_document)).not.toThrow()
+      expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
 
       await vi.waitFor(() => { // Wait for error message to be called
         expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(

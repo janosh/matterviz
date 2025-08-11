@@ -67,8 +67,9 @@
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
     orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
-    // Signal when a new structure file is loaded (not just frame updates)
-    structure_file_loaded?: boolean
+    // Viewer dimensions for responsive zoom
+    width?: number
+    height?: number
   }
   let {
     structure = undefined,
@@ -113,7 +114,8 @@
     atom_label,
     camera_is_moving = $bindable(false),
     orbit_controls = $bindable(undefined),
-    structure_file_loaded = false,
+    width = 0,
+    height = 0,
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
@@ -145,16 +147,18 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
-  // Compute and persist zoom only when a new structure file is loaded
-  let ortho_zoom = $state<number>(initial_zoom)
-  $effect(() => {
-    if (structure && structure_file_loaded) {
-      const size = structure_size || 10
-      let next = initial_zoom * (10 / size)
-      if (min_zoom != null) next = Math.max(min_zoom, next)
-      if (max_zoom != null) next = Math.min(max_zoom, next)
-      ortho_zoom = next
-    }
+  // Responsive zoom based on viewer size and structure dimensions
+  let responsive_zoom = $derived.by(() => {
+    if (!structure || !width || !height) return initial_zoom
+
+    const viewer_min_dim = Math.min(width, height)
+    const structure_max_dim = Math.max(1, structure_size)
+    const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
+    let zoom = initial_zoom * scale_factor
+
+    if (min_zoom != null) zoom = Math.max(min_zoom, zoom)
+    if (max_zoom != null) zoom = Math.min(max_zoom, zoom)
+    return zoom
   })
 
   $effect.pre(() => {
@@ -348,7 +352,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={ortho_zoom}
+    zoom={responsive_zoom}
     near={-100}
   >
     <OrbitControls {...orbit_controls_props}>
