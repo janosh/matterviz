@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.1.7](https://github.com/janosh/matterviz/compare/v0.1.6...v0.1.7)
+
+> 11 August 2025
+
+### 🛠 Enhancements
+
+- Settings reset buttons by @janosh in https://github.com/janosh/matterviz/pull/116
+- Supercells by @janosh in https://github.com/janosh/matterviz/pull/117
+
+### 🐛 Bug Fixes
+
+- Fix large trajectory loading in VSCode extension by @janosh in https://github.com/janosh/matterviz/pull/115
+- Move structure IO by @janosh in https://github.com/janosh/matterviz/pull/123
+- Change default camera projection to orthographic by @janosh in https://github.com/janosh/matterviz/pull/124
+- Fix `supported_resource` context for keyboard shortcut `when` in VSCode extension by @janosh in https://github.com/janosh/matterviz/pull/125
+
+### 🧪 Tests
+
+- Improve unit tests by @janosh in https://github.com/janosh/matterviz/pull/118
+
 ## [v0.1.6](https://github.com/janosh/matterviz/compare/v0.1.5...v0.1.6)
 
 > 28 July 2025
