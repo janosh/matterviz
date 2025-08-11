@@ -17,6 +17,7 @@ import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
+import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
@@ -1021,6 +1022,22 @@ Xx1 0.5 0.5 0.5 1.0
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
       expect(result?.sites[1].species[0].element).toBe(`He`) // Fallback from validate_element_symbol
     })
+  })
+
+  test(`parses MOF CIF file correctly`, () => {
+    const result = parse_cif(mof_issue_127)
+    expect(result).toBeDefined()
+    // The MOF CIF has 7 unique atomic sites, but 192 symmetry operations generating 1344 sites total
+    expect(result?.sites.length).toBe(1344)
+    expect(result?.lattice?.a).toBeCloseTo(25.832, 8)
+    expect(result?.lattice?.b).toBeCloseTo(25.832, 8)
+    expect(result?.lattice?.c).toBeCloseTo(25.832, 8)
+    expect(result?.lattice?.alpha).toBeCloseTo(90, 8)
+    expect(result?.lattice?.beta).toBeCloseTo(90, 8)
+    expect(result?.lattice?.gamma).toBeCloseTo(90, 8)
+    expect(result?.lattice?.volume).toBeCloseTo(17237.492730368, 8)
+    expect(result?.sites[0].species[0].element).toBe(`Zn`)
+    expect(result?.sites[0].abc).toEqual([0.2934, 0.2066, 0.2066])
   })
 })
 
