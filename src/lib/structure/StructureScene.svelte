@@ -149,15 +149,15 @@
   // Persisted zoom; recompute only on viewport changes
   let computed_zoom = $state<number>(initial_zoom)
   $effect(() => {
-    if (width > 0 && height > 0) return
+    if (!(width > 0) || !(height > 0)) return
     // Avoid depending on structure/structure_size so trajectories don't retrigger zoom
     const structure_max_dim = Math.max(1, untrack(() => structure_size))
     const viewer_min_dim = Math.min(width, height)
     const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
-    let next = initial_zoom * scale_factor
-    if (min_zoom != null) next = Math.max(min_zoom, next)
-    if (max_zoom != null) next = Math.min(max_zoom, next)
-    computed_zoom = next
+    let new_zoom = initial_zoom * scale_factor
+    if (min_zoom && min_zoom > 0) new_zoom = Math.max(min_zoom, new_zoom)
+    if (max_zoom && max_zoom > 0) new_zoom = Math.min(max_zoom, new_zoom)
+    computed_zoom = new_zoom
   })
 
   $effect.pre(() => {
@@ -308,8 +308,8 @@
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
     target: rotation_target,
-    maxZoom: camera_projection === `orthographic` ? (max_zoom ?? 200) : max_zoom,
-    minZoom: camera_projection === `orthographic` ? (min_zoom ?? 0.1) : min_zoom,
+    maxZoom: camera_projection === `orthographic` ? (max_zoom || 200) : max_zoom,
+    minZoom: camera_projection === `orthographic` ? (min_zoom || 0.1) : min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: Boolean(rotation_damping),
