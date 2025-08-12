@@ -1264,8 +1264,8 @@
   .trajectory-controls button {
     background: var(--btn-bg);
   }
-  .trajectory-controls button:hover {
-    background: var(--btn-hover-bg);
+  .trajectory-controls button:hover:not(:disabled) {
+    background: var(--btn-bg-hover);
   }
   .nav-section {
     display: flex;
@@ -1350,13 +1350,13 @@
     font-size: clamp(0.8rem, 2.5cqw, 0.9rem);
   }
   .play-button:hover:not(:disabled) {
-    background: var(--traj-play-button-hover-bg, #7f8793);
+    background: var(--traj-play-btn-bg-hover, #7f8793);
   }
   .play-button.playing {
-    background: var(--traj-pause-button-bg, #6b7280);
+    background: var(--traj-pause-btn-bg, #6b7280);
   }
   .play-button.playing:hover:not(:disabled) {
-    background: var(--traj-pause-button-hover-bg, #9ca3af);
+    background: var(--traj-pause-btn-bg-hover, #9ca3af);
   }
 
   .empty-state {

@@ -126,7 +126,7 @@
     opacity: 0.7;
   }
   .reset-button:hover {
-    background: var(--btn-hover-bg, rgba(0, 0, 0, 0.2));
+    background: var(--btn-bg-hover, rgba(0, 0, 0, 0.2));
     color: var(--text-color, #374151);
     opacity: 1;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);

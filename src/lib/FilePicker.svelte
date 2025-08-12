@@ -233,7 +233,7 @@
     place-content: center;
   }
   .clear-filter:hover {
-    background-color: var(--btn-hover-bg);
+    background-color: var(--btn-bg-hover);
   }
   .format-item {
     display: flex;

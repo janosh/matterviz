@@ -2,21 +2,12 @@
   import type { CompositionType, ElementSymbol } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
-  import { hierarchy, type HierarchyCircularNode, pack } from 'd3-hierarchy'
+  import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
-  import { get_chart_font_scale } from './index'
+  import { type ChartSegmentData, get_chart_font_scale } from './index'
+  import { get_total_atoms } from './parse'
 
-  // Type for our bubble data structure
-  type BubbleDataLeaf = {
-    element: ElementSymbol
-    amount: number
-    color: string
-    radius?: number
-    x?: number
-    y?: number
-    font_scale?: number
-    text_color?: string
-  }
+  type BubbleSegmentData = ChartSegmentData & { radius: number; x: number; y: number }
 
   interface Props {
     composition: CompositionType
@@ -25,7 +16,7 @@
     show_labels?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
-    bubble_content?: Snippet<[BubbleDataLeaf]>
+    bubble_content?: Snippet<[BubbleSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
     [key: string]: unknown
@@ -77,7 +68,8 @@
 
     return root.leaves().map((node) => {
       const radius = node.r || 0
-      const data = node.data as BubbleDataLeaf
+      const data = node.data as { element: string; amount: number; color: string }
+      const total_atoms = get_total_atoms(composition)
 
       // Calculate font scale based on bubble size and smart text fitting
       const [min_font_scale, max_font_scale] = [0.6, 2] as const
@@ -91,6 +83,7 @@
       return {
         element: data.element,
         amount: data.amount,
+        percentage: total_atoms > 0 ? (data.amount / total_atoms) * 100 : 0,
         radius,
         x: (node.x || 0) + padding, // Offset by padding
         y: (node.y || 0) + padding,

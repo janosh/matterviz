@@ -37,7 +37,7 @@
     transition: 0.2s;
   }
   nav > a:hover {
-    background-color: var(--nav-link-hover-bg);
+    background-color: var(--nav-link-bg-hover);
   }
   nav > a[aria-current='page'] {
     color: var(--nav-link-active-color);

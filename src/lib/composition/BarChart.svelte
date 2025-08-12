@@ -3,18 +3,12 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
   import type { Snippet } from 'svelte'
-  import { get_chart_font_scale } from './index'
+  import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { composition_to_percentages } from './parse'
 
-  type SegmentData = {
-    element: ElementSymbol
-    amount: number
-    percentage: number
-    color: string
+  type BarSegmentData = ChartSegmentData & {
     x: number
     width: number
-    font_scale: number
-    text_color: string
     can_show_label: boolean
     needs_external_label: boolean
     external_label_position: `above` | `below` | null
@@ -36,7 +30,7 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
-    segment_content?: Snippet<[SegmentData]>
+    segment_content?: Snippet<[BarSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
     [key: string]: unknown
@@ -135,7 +129,7 @@
   let hovered_element: ElementSymbol | null = $state(null)
 </script>
 
-{#snippet label_content(segment: SegmentData)}
+{#snippet label_content(segment: BarSegmentData)}
   <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px">
     {segment.element}
   </tspan>

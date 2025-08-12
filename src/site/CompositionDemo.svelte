@@ -12,6 +12,7 @@
   let parsed_composition: CompositionType = $derived(parse_composition(formula))
 
   const compositions = [ // Example compositions
+    [`Uranium`, `U`],
     [`Water`, `H2O`],
     [`Iron Oxide`, `Fe2O3`],
     [`Table Salt`, `NaCl`],

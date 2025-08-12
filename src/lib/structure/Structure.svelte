@@ -600,7 +600,7 @@
     padding: 0;
   }
   section.control-buttons :global(button:hover) {
-    background-color: var(--panel-btn-hover-bg);
+    background-color: var(--panel-btn-bg-hover);
   }
   p.warn {
     text-align: center;

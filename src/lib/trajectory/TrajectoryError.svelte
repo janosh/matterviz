@@ -46,7 +46,7 @@
   }
   .error-message button {
     margin-top: 1rem;
-    background: var(--error-button-bg);
+    background: var(--error-btn-bg);
     color: white;
     border: none;
     border-radius: 4px;
@@ -55,7 +55,7 @@
     transition: background-color 0.2s;
   }
   .error-message button:hover {
-    background: var(--error-button-hover-bg);
+    background: var(--error-btn-bg-hover);
   }
   /* Styles for unsupported format messages */
   .error-message :global(.unsupported-format) {
