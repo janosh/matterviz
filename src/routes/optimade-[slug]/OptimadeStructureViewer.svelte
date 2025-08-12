@@ -1,12 +1,18 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { Icon } from '$lib'
-  import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
+  import type {
+    OptimadeDatabase,
+    OptimadeProvider,
+    OptimadeStructure,
+  } from '$lib/api/optimade'
   import {
+    decode_structure_id,
     detect_provider_from_slug,
+    encode_structure_id,
     fetch_optimade_providers,
     fetch_optimade_structure,
+    fetch_provider_databases,
     fetch_suggested_structures,
   } from '$lib/api/optimade'
   import { Composition } from '$lib/composition'
@@ -19,281 +25,342 @@
   let structure = $state<PymatgenStructure | null>(null)
   let loading = $state(false)
   let error = $state<string | null>(null)
-  let pretty_formula = $state<string>(``)
   let available_providers = $state<OptimadeProvider[]>([])
-  let selected_provider = $state<string>(`mp`)
+  let providers_error = $state<string | null>(null)
+  let selected_db = $state(`mp`)
+  let available_dbs = $state<OptimadeDatabase[]>([])
   let input_value = $state(``)
   let suggested_structures = $state<OptimadeStructure[]>([])
   let loading_suggestions = $state(false)
 
-  // Set input_value and provider from page params on mount
-  $effect(() => {
-    const { slug = `` } = page.params
-    input_value = slug
-    detect_provider_from_slug(slug)
-      .then((provider) => {
-        if (provider) {
-          selected_provider = provider
-          // If the slug starts with the provider prefix, use the full slug as structure ID
-          if (slug.startsWith(`${provider}-`)) input_value = slug
-          else input_value = `${provider}-${slug}`
-        }
-      })
-      .catch((err) => console.error(`Failed to detect provider:`, err))
-  })
-
-  // Load providers on mount
-  $effect(() => {
-    fetch_optimade_providers().then((providers) => {
-      available_providers = providers
-    }).catch((error) => {
-      console.error(`Failed to load providers:`, error)
-      available_providers = []
+  $effect(() => { // Initialize from URL slug
+    const decoded_slug = decode_structure_id(page.params.slug ?? ``)
+    detect_provider_from_slug(decoded_slug).then((provider) => {
+      if (provider) {
+        selected_db = provider
+        input_value = decoded_slug.startsWith(`${provider}-`)
+          ? decoded_slug
+          : `${provider}-${decoded_slug}`
+      } else input_value = decoded_slug
     })
   })
 
-  let structure_id = $derived(input_value.trim())
-  let provider_config = $derived(
-    available_providers.find((p) => p.id === selected_provider),
-  )
+  $effect(() => { // Load providers on mount
+    load_providers()
+  })
 
-  $effect(() => { // Load initial data
-    if (structure_id && selected_provider) load_structure_data()
+  // Load data when database or structure ID changes
+  $effect(() => {
+    if (selected_db) {
+      load_databases()
+      load_suggested_structures()
+    }
+    if (structure_id && selected_db) load_structure_data()
   })
-  $effect(() => { // Load suggested structures when provider changes
-    if (selected_provider) load_suggested_structures()
-  })
+
+  let structure_id = $derived(input_value.trim())
+  let db_config = $derived(available_providers.find((p) => p.id === selected_db))
+  let pretty_formula = $derived(structure ? get_electro_neg_formula(structure) : ``)
+
+  async function load_providers() {
+    providers_error = null
+    available_providers = await fetch_optimade_providers().catch((err) => {
+      console.error(`Failed to load providers:`, err)
+      providers_error = `Failed to load providers. Click Retry to try again.`
+      return []
+    })
+  }
 
   async function load_structure_data() {
     loading = true
     error = null
+    const data = await fetch_optimade_structure(structure_id, selected_db).catch(
+      (err) => {
+        error = `Failed to load structure: ${err}`
+        return null
+      },
+    )
 
-    try {
-      const structure_data = await fetch_optimade_structure(
-        structure_id,
-        selected_provider,
-      )
-
-      if (structure_data) {
-        structure = optimade_to_pymatgen(structure_data)
-        if (structure) pretty_formula = get_electro_neg_formula(structure)
-        else error = `Failed to convert structure data`
-      } else {
-        error = `Structure ${structure_id} not found`
-      }
-    } catch (err) {
-      console.error(`Error loading structure:`, err)
-      error = `Failed to load structure data from ${selected_provider}: ${err}`
-    } finally {
-      loading = false
+    if (data) {
+      structure = optimade_to_pymatgen(data)
+      if (!structure) error = `Failed to convert structure data`
+    } else if (!error) {
+      error = `Structure ${structure_id} not found`
     }
+    loading = false
+  }
+
+  async function load_databases() {
+    available_dbs = await fetch_provider_databases(selected_db)
   }
 
   async function load_suggested_structures() {
     loading_suggestions = true
-    try {
-      suggested_structures = await fetch_suggested_structures(selected_provider, 12)
-    } catch (err) {
-      console.error(`Failed to load suggested structures:`, err)
-      suggested_structures = []
-    } finally {
-      loading_suggestions = false
-    }
+    suggested_structures = await fetch_suggested_structures(selected_db, 12)
+    loading_suggestions = false
   }
 
-  async function navigate_to_structure(id: string) {
+  function navigate_to_structure(id: string) {
     input_value = id
-    goto(`/optimade-${id}`)
-    await load_structure_data()
+    history.pushState({}, ``, `/optimade-${encode_structure_id(id)}`)
   }
 </script>
 
-<h1>OPTIMADE Explorer</h1>
+<h1 style="margin-top: 0">OPTIMADE Explorer</h1>
 
-<div style="display: flex; gap: 1em; justify-content: center">
+<div class="input-section">
   <input
     class="structure-input"
-    placeholder="Enter OPTIMADE structure ID"
+    placeholder="Enter structure ID"
     bind:value={input_value}
-    onkeydown={async (event) => {
-      if (event.key === `Enter`) await navigate_to_structure(structure_id)
+    onkeydown={(event) => {
+      if (event.key === `Enter`) navigate_to_structure(structure_id)
     }}
   />
-
   <button
     class="fetch-button"
     onclick={() => navigate_to_structure(structure_id)}
-    disabled={loading}
+    disabled={loading || !structure_id}
   >
-    {loading ? `Loading...` : `Fetch structure`}
+    {loading ? `Loading...` : `Fetch`}
   </button>
 </div>
 
-<div class="providers-grid">
-  {#each available_providers as { id, attributes } (id)}
-    <div class:selected={id === selected_provider}>
-      <button
-        class="provider-select"
-        {@attach tooltip({ content: attributes.name })}
-        onclick={() => {
-          selected_provider = id
-          input_value = ``
-          load_suggested_structures()
-        }}
-      >
-        <Icon icon="Database" /> {id}
-      </button>
-      <a
-        href={attributes.base_url}
-        title="API Endpoint"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <Icon icon="Link" />
-      </a>
-      <a
-        href={attributes.homepage}
-        title="Homepage"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <Icon icon="Globe" />
-      </a>
-    </div>
-  {/each}
-</div>
+<div class="main-layout full-bleed">
+  <div class="db-column">
+    <h3>
+      Databases <span style="font-weight: lighter"
+      >({available_dbs.length || available_providers.length})</span>
+    </h3>
 
-{#if suggested_structures.length > 0}
-  <div class="suggestions-section">
-    <h3>Suggested Structures from {provider_config?.attributes.name}</h3>
-    {#if loading_suggestions}
-      <p>Loading suggestions...</p>
+    {#if providers_error}
+      <div class="error-message">
+        <p>{providers_error}</p>
+        <button class="retry-button" onclick={load_providers}>Retry</button>
+      </div>
+    {:else if available_providers.length === 0}
+      <p>Loading providers...</p>
     {:else}
-      <div class="structure-suggestions">
-        {#each suggested_structures as structure (structure.id)}
-          {@const formula = get_electro_neg_formula(
-        structure.attributes.chemical_formula_descriptive ?? ``,
-      )}
-          <button
-            onclick={() => navigate_to_structure(structure.id)}
-          >
-            <div style="font-family: monospace">{structure.id}</div>
-            {#if formula}
-              <div style="font-weight: lighter; font-size: 0.9em">
-                {@html formula}
-              </div>
+      <div class="db-grid">
+        {#each available_dbs.length > 0 ? available_dbs : available_providers as
+          { id, attributes }
+          (id)
+        }
+          <div class:selected={id === selected_db}>
+            <button
+              class="db-select"
+              {@attach tooltip({ content: attributes.name })}
+              onclick={() => {
+                selected_db = id
+                input_value = ``
+              }}
+            >
+              <Icon icon="Database" /> {id}
+            </button>
+            <a
+              href={attributes.base_url}
+              title="API"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Icon icon="Link" />
+            </a>
+            {#if attributes.homepage}
+              <a
+                href={attributes.homepage}
+                title="Home"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon icon="Globe" />
+              </a>
             {/if}
-            {#if structure.attributes.chemical_formula_descriptive}
-              <Composition
-                composition={structure.attributes.chemical_formula_descriptive}
-                mode="pie"
-                style="min-height: 80px; height: 80px"
-              />
-            {/if}
-          </button>
+          </div>
         {/each}
       </div>
     {/if}
   </div>
-{/if}
 
-{#if error}
-  <div style="text-align: center; color: #ff6b6b; margin: 1em 0">
-    <p>{error}</p>
-  </div>
-{/if}
-
-{#if loading}
-  <p>Loading structure data from {provider_config?.attributes.name}...</p>
-{/if}
-
-{#if structure}
-  <h2>
-    {@html pretty_formula}
-    {#if structure_id}
-      <span style="font-weight: lighter">({structure_id})</span>
+  <div class="suggestions-column">
+    {#if suggested_structures.length > 0}
+      <h3>
+        Suggested Structures <span style="font-weight: lighter"
+        >({suggested_structures.length})</span>
+      </h3>
+      {#if loading_suggestions}
+        <p>Loading...</p>
+      {:else}
+        <div class="structure-suggestions">
+          {#each suggested_structures as struct (struct.id)}
+            {@const formula = get_electro_neg_formula(
+          struct.attributes.chemical_formula_descriptive ?? ``,
+        )}
+            <button onclick={() => navigate_to_structure(struct.id)}>
+              <span style="font-family: monospace">{struct.id}</span>
+              {#if formula}
+                <span style="font-weight: lighter">{@html formula}</span>
+              {/if}
+              {#if struct.attributes.chemical_formula_descriptive}
+                <Composition
+                  composition={struct.attributes.chemical_formula_descriptive}
+                  mode="pie"
+                  style="min-height: 80px; height: 80px; grid-row: 1/span 2; grid-column: 2"
+                />
+              {/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
-  </h2>
+  </div>
 
-  <Structure {structure} class="bleed-1400" style="height: auto" />
-{/if}
+  <div class="structure-column" style="display: grid">
+    {#if error}
+      <div class="error-message">
+        <p>{error}</p>
+      </div>
+    {/if}
+
+    {#if loading}
+      <p>Loading structure from {db_config?.attributes.name}...</p>
+    {/if}
+
+    {#if structure}
+      <h2 style="margin: 0 2pt 10pt">
+        {@html pretty_formula}
+        {#if structure_id}
+          <span class="structure-id">({structure_id})</span>
+        {/if}
+      </h2>
+      <Structure {structure} style="width: 100%; height: auto" />
+    {/if}
+  </div>
+</div>
 
 <style>
-  .providers-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  .input-section {
+    display: flex;
     gap: 0.5em;
-    margin: 1em 0 2em;
+    margin-bottom: 1.5em;
+    justify-content: center;
   }
-  .providers-grid div {
+  .structure-input {
+    flex: 1;
+    max-width: 400px;
+    padding: 0.4em 0.6em;
+    font-size: 0.95em;
+    border-radius: 4pt;
+    border: 1px solid var(--border-color);
+    background: var(--surface-bg);
+  }
+  .fetch-button {
+    padding: 0.4em 0.8em;
+    font-size: 0.95em;
+    border-radius: 4pt;
+    border: 1px solid var(--border-color);
+    background: var(--btn-bg);
+  }
+  .fetch-button:hover {
+    background: var(--btn-bg-hover);
+  }
+  .main-layout {
+    display: grid;
+    grid-template-columns: minmax(250px, 280px) minmax(280px, 320px) 1fr;
+    gap: clamp(1em, 2vw, 1.5em);
+    max-height: 80vh;
+  }
+  .db-column, .suggestions-column, .structure-column {
+    max-height: inherit;
+  }
+  .db-column h3, .suggestions-column h3 {
+    margin: 0 0 0.75em;
+    padding: 0.5em 0 0 0;
+  }
+  .db-grid {
+    display: grid;
+    gap: 6pt;
+    overflow-y: auto;
+    height: 100%;
+  }
+  .db-grid div {
     display: flex;
     align-items: center;
-    gap: 0.5em;
-    padding: 4pt 6pt;
+    gap: 6pt;
+    padding: 0.3em 0.5em;
     border: 1px solid var(--border-color);
     border-radius: 4pt;
-    background: none;
   }
-  .providers-grid div:hover {
-    background: var(--surface-bg-hover);
+  .db-grid div:hover {
+    background: var(--btn-bg-hover);
   }
-  .providers-grid div.selected {
+  .db-grid div.selected {
     border: 1px solid var(--accent-color);
-    color: var(--accent-color);
   }
-  .provider-select {
+  .db-select {
     display: flex;
     align-items: center;
-    gap: 8pt;
-    cursor: pointer;
+    gap: 6pt;
     background: none;
     font: inherit;
     flex: 1;
   }
-  .providers-grid div a {
-    padding: 1pt;
-    color: var(--text-color-muted);
+  .db-grid a {
+    padding: 2pt;
     border-radius: 3pt;
     font-size: 0.9em;
   }
-  .providers-grid div a:hover {
-    background: var(--surface-bg-hover);
-  }
-  .structure-input, .fetch-button {
-    font-size: 1.1em;
-    border-radius: 4pt;
-    border: 1px solid var(--border-color);
-  }
-  .structure-input {
-    padding: 0.5em 0.75em;
-    background: var(--surface-bg);
-  }
-  .fetch-button {
-    padding: 0.5em 1em;
-    background: var(--btn-bg);
-    cursor: pointer;
-  }
-  .fetch-button:hover {
-    background: var(--btn-hover-bg);
+  .db-grid a:hover {
+    background: var(--btn-bg-hover);
   }
   .structure-suggestions {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 0.75em;
+    gap: 0.5em;
+    overflow-y: auto;
+    height: 100%;
   }
   .structure-suggestions button {
-    display: flex;
-    gap: 1em;
+    display: grid;
+    justify-content: space-between;
+    gap: 0.75em;
     align-items: center;
-    padding: 1ex 1em;
+    padding: 0.5em 0.75em;
     border: 1px solid var(--border-color);
-    border-radius: 6pt;
-    cursor: pointer;
+    border-radius: 4pt;
     background: none;
     font: inherit;
     text-align: left;
   }
   .structure-suggestions button:hover {
-    background: var(--surface-bg-hover);
+    background: var(--btn-bg-hover);
+  }
+  .structure-id {
+    font-weight: lighter;
+    color: var(--text-color-muted);
+  }
+  .error-message {
+    text-align: center;
+    color: #ff6b6b;
+    margin: 1em 0;
+  }
+  .retry-button {
+    padding: 0.4em 0.8em;
+    font-size: 0.9em;
+    border-radius: 4pt;
+    border: 1px solid var(--border-color);
+    background: var(--btn-bg);
+  }
+  @media (max-width: 1250px) {
+    .main-layout {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr;
+      height: auto;
+    }
+    .structure-column {
+      grid-column: 1 / -1;
+      order: -1;
+    }
+    .db-column h3, .suggestions-column h3 {
+      position: static;
+    }
   }
 </style>
