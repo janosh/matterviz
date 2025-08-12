@@ -493,27 +493,27 @@ export function parse_xyz(content: string): ParsedStructure | null {
 }
 
 // Apply symmetry operations to generate equivalent positions
-const apply_symmetry_operations = (
+const apply_symmetry_ops = (
   atom: CifAtom,
-  symmetry_operations: string[],
+  symmetry_ops: string[],
   wrap_frac: boolean,
 ): CifAtom[] => {
-  if (symmetry_operations.length === 0) return [atom]
+  if (symmetry_ops.length === 0) return [atom]
 
   const equivalent_atoms: CifAtom[] = [atom]
 
-  for (const operation of symmetry_operations) {
+  for (const operation of symmetry_ops) {
     const operation_match = operation.match(/['"]([^'"]+)['"]/)
     if (!operation_match) continue
 
     const parts = operation_match[1].split(`,`).map((part) => part.trim())
     if (parts.length !== 3) continue
 
-    const new_coords: Vec3 = [0, 0, 0]
+    let new_coords: Vec3 = [0, 0, 0]
     let has_translation = false
 
-    for (let i = 0; i < 3; i++) {
-      const part = parts[i]
+    for (let dim = 0; dim < 3; dim++) {
+      const part = parts[dim]
       let coord = 0
       let translation = 0
 
@@ -530,30 +530,25 @@ const apply_symmetry_operations = (
       if (part.includes(`+`)) {
         const [coord_part, trans_part] = part.split(`+`)
         coord = coord_map[coord_part] ?? 0
-        translation = trans_part.includes(`/`)
-          ? (() => {
-            const [num, den] = trans_part.split(`/`)
-            return parseInt(num) / parseInt(den)
-          })()
-          : parseFloat(trans_part)
+        if (trans_part.includes(`/`)) {
+          const [num, den] = trans_part.split(`/`)
+          translation = parseInt(num) / parseInt(den)
+        } else translation = parseFloat(trans_part)
         has_translation = true
       } else {
         coord = coord_map[part] ?? 0
       }
 
-      new_coords[i] = coord + translation
+      new_coords[dim] = coord + translation
     }
 
     // Skip identity operations (x,y,z) without translations
-    const is_identity = parts.every((part, idx) =>
-      (part === `x` && idx === 0) || (part === `y` && idx === 1) ||
-      (part === `z` && idx === 2)
-    )
+    const is_identity = parts[0] === `x` && parts[1] === `y` && parts[2] === `z`
     if (is_identity && !has_translation) continue
 
     // Wrap coordinates if requested
     if (wrap_frac) {
-      new_coords.forEach((_, i) => new_coords[i] -= Math.floor(new_coords[i]))
+      new_coords = new_coords.map((coord) => coord - Math.floor(coord)) as Vec3
     }
 
     equivalent_atoms.push({
@@ -583,7 +578,7 @@ const extract_cif_cell_parameters = (
       const value = parseFloat(tokens[tokens.length - 1].split(`(`)[0])
       if (isNaN(value)) {
         if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
-        return null
+        return null // Return null for invalid values in non-strict mode
       }
       return value
     })
@@ -686,7 +681,7 @@ export function parse_cif(
     const lines = text.split(`\n`)
     let atom_headers: string[] = []
     const atom_data_lines: string[] = []
-    const symmetry_operations: string[] = []
+    const symmetry_ops: string[] = []
 
     for (let ii = 0; ii < lines.length; ii++) {
       if (lines[ii].trim() !== `loop_`) continue
@@ -707,7 +702,7 @@ export function parse_cif(
           const line = lines[jj].trim()
           if (line === `loop_` || line.startsWith(`data_`)) break
           if (line && !line.startsWith(`#`) && !line.startsWith(`;`)) {
-            symmetry_operations.push(line)
+            symmetry_ops.push(line)
           }
           jj++
         }
@@ -842,9 +837,9 @@ export function parse_cif(
 
     for (const atom of atoms) {
       // Generate all equivalent positions for this atom using symmetry operations
-      const equivalent_atoms = apply_symmetry_operations(
+      const equivalent_atoms = apply_symmetry_ops(
         atom,
-        symmetry_operations,
+        symmetry_ops,
         wrap_frac,
       )
 
