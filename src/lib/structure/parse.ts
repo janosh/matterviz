@@ -696,7 +696,12 @@ export function parse_cif(
       }
 
       // Check if this is a symmetry operations loop
-      if (headers.some((h) => h.includes(`_symmetry_equiv_pos_as_xyz`))) {
+      if (
+        headers.some((h) =>
+          h.includes(`_symmetry_equiv_pos_as_xyz`) ||
+          h.includes(`_space_group_symop_operation_xyz`)
+        )
+      ) {
         // Collect symmetry operations
         while (jj < lines.length) {
           const line = lines[jj].trim()
