@@ -672,8 +672,7 @@ O2   O   0.410  0.140  0.880  1.000`
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984)`, () => {
     const result = parse_cif(ru_p_complex_cif)
     if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
-    expect(result.sites.length).toBeGreaterThan(0)
-    expect(result.lattice).toBeDefined()
+    expect(result.sites.length).toBe(1386)
     // Basic sanity checks
     expect(Number.isFinite(result.lattice?.a as number)).toBe(true)
     expect(Number.isFinite(result.lattice?.b as number)).toBe(true)
@@ -873,7 +872,6 @@ H1   H   0.500  0.500  0.500  1.000  1.000`
       const result = parse_cif(malformed_cif)
       expect(result).not.toBeNull()
       if (result) {
-        expect(result.sites.length).toBeGreaterThan(0)
         expect(result.sites.length).toBe(3)
         expect(result.sites[0].species[0].occu).toBe(1.0)
       }
@@ -1067,7 +1065,6 @@ Xx1 0.5 0.5 0.5 1.0
 
   test(`parses MOF CIF file correctly`, () => {
     const result = parse_cif(mof_issue_127)
-    expect(result).toBeDefined()
     // The MOF CIF has 7 unique atomic sites, but 192 symmetry operations generating 1344 sites total
     expect(result?.sites.length).toBe(1344)
     expect(result?.lattice?.a).toBeCloseTo(25.832, 8)
@@ -1115,7 +1112,6 @@ loop_
    I          0.5000  0.250000      0.250000      0.250000     Biso  1.000000 I`
 
     const result = parse_cif(mixed_occupancy_cif)
-    expect(result).toBeDefined()
     // Should have 4 unique sites × 4 symmetry operations = 16 total sites
     expect(result?.sites.length).toBe(16)
     expect(result?.lattice?.a).toBeCloseTo(5.5, 8)
@@ -1123,14 +1119,14 @@ loop_
     // Check that mixed occupancy site (Na/K) is handled correctly
     const na_sites = result?.sites.filter((site) => site.species[0].element === `Na`)
     const k_sites = result?.sites.filter((site) => site.species[0].element === `K`)
-    expect(na_sites?.length).toBeGreaterThan(0)
-    expect(k_sites?.length).toBeGreaterThan(0)
+    expect(na_sites?.length).toBe(4)
+    expect(k_sites?.length).toBe(4)
 
     // Check that symmetry operations with translations are applied
     const translated_sites = result?.sites.filter((site) =>
       site.abc.some((coord) => coord === 0.5)
     )
-    expect(translated_sites?.length).toBeGreaterThan(0)
+    expect(translated_sites?.length).toBe(6)
   })
 
   test(`parses ICSD-like CIF with specific symmetry format`, () => {
@@ -1180,7 +1176,6 @@ Se5 Se2- 2 a 0.1147(4) 0.5633(4) 0.3288(6) 0.1078(6) 1. 0
 Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
 
     const result = parse_cif(icsd_cif)
-    expect(result).toBeDefined()
     // Should have 10 unique sites × 2 symmetry operations = 20 total sites
     expect(result?.sites.length).toBe(20)
     expect(result?.lattice?.a).toBeCloseTo(9.378, 3)
@@ -1213,11 +1208,8 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
     const empty_cif = ``
     const atomless_cif = `data_dummy`
 
-    const empty_result = parse_cif(empty_cif)
-    const atomless_result = parse_cif(atomless_cif)
-
-    expect(empty_result).toBeNull()
-    expect(atomless_result).toBeNull()
+    expect(parse_cif(empty_cif)).toBeNull()
+    expect(parse_cif(atomless_cif)).toBeNull()
   })
 
   test(`handles CIF with question mark symbols gracefully`, () => {
@@ -1236,9 +1228,7 @@ _atom_site_fract_y
 _atom_site_fract_z
 _atom_site_occupancy
 ?   ?   0.000  0.000  0.000  1.000`
-
-    const result = parse_cif(question_mark_cif)
-    expect(result).toBeNull()
+    expect(parse_cif(question_mark_cif)).toBeNull()
   })
 })
 
@@ -1329,14 +1319,12 @@ unit_cell:
       if (expected_result === `null`) {
         expect(structure).toBeNull()
       } else {
-        expect(structure).toBeDefined()
         if (!expected_sites) throw `Expected sites to be number`
         expect(structure?.sites).toHaveLength(expected_sites)
-        expect(structure?.lattice).toBeDefined()
 
         if (expected_lattice_a) {
           expect(structure?.lattice?.a).toBeCloseTo(expected_lattice_a, 6)
-          expect(structure?.lattice?.volume).toBeGreaterThan(0)
+          expect(structure?.lattice?.volume).toBeGreaterThan(120)
         }
 
         if (site_checks) {
@@ -1356,42 +1344,38 @@ unit_cell:
       name: `AgI phonopy file`,
       content: agi_phono3py_params,
       filename: `AgI-fq978185p-phono3py_params.yaml.gz`,
-      expected_min_sites: 70,
+      expected_sites: 72,
       space_group: `P6_3mc`,
     },
     {
       name: `BeO phonopy file`,
       content: beo_phono3py_params,
       filename: `BeO-zw12zc18p-phono3py_params.yaml.gz`,
-      expected_min_sites: 60,
+      expected_sites: 64,
       space_group: `F-43m`,
     },
     {
       name: `simple phonopy YAML`,
       content: simple_phonopy_yaml,
       filename: `phono3py_params.yaml`,
-      expected_min_sites: 1,
+      expected_sites: 2,
       space_group: `P6_3mc`,
     },
   ])(
     `should parse and detect $name`,
-    ({ content, filename, expected_min_sites }) => {
+    ({ content, filename, expected_sites }) => {
       // Test direct parsing
       const direct_result = parse_phonopy_yaml(content)
-      expect(direct_result).toBeDefined()
-      expect(direct_result?.sites.length).toBeGreaterThan(expected_min_sites)
-      expect(direct_result?.lattice).toBeDefined()
-      expect(direct_result?.lattice?.volume).toBeGreaterThan(0)
+      expect(direct_result?.sites.length).toBe(expected_sites)
+      expect(direct_result?.lattice?.volume).toBeGreaterThan(120)
 
       // Test auto-detection by extension
       const by_extension = parse_structure_file(content, filename)
-      expect(by_extension).toBeDefined()
-      expect(by_extension?.sites.length).toBeGreaterThan(expected_min_sites)
+      expect(by_extension?.sites.length).toBe(expected_sites)
 
       // Test auto-detection by content
       const by_content = parse_structure_file(content)
-      expect(by_content).toBeDefined()
-      expect(by_content?.sites.length).toBeGreaterThan(expected_min_sites)
+      expect(by_content?.sites.length).toBe(expected_sites)
     },
   )
 
@@ -1431,10 +1415,8 @@ unit_cell:
       if (expected_result === `null`) {
         expect(result).toBeNull()
       } else {
-        expect(result).toBeDefined()
         if (!expected_sites) throw `Expected sites to be number`
         expect(result?.sites).toHaveLength(expected_sites)
-        expect(result?.lattice).toBeDefined()
       }
     },
   )
@@ -1451,19 +1433,17 @@ describe(`parse_structure_file`, () => {
     const result = parse_structure_file(content, hea_hcp_filename)
 
     expect(result).toBeTruthy()
-    expect(result?.sites).toBeDefined()
-    expect(result?.sites.length).toBeGreaterThan(0)
-    expect(result?.lattice).toBeDefined()
+    expect(result?.sites.length).toBe(180)
+    expect(result?.lattice?.volume).toBeGreaterThan(120)
 
     // Check first site
     const first_site = result?.sites[0]
-    expect(first_site?.species).toBeDefined()
     expect(first_site?.species[0]?.element).toBe(`Ta`)
-    expect(first_site?.abc).toBeDefined()
-    expect(first_site?.xyz).toBeDefined()
+    expect(first_site?.abc).toHaveLength(3)
+    expect(first_site?.xyz).toHaveLength(3)
 
     // Check lattice
-    expect(result?.lattice?.matrix).toBeDefined()
+    expect(result?.lattice?.matrix.every((row) => row.length === 3)).toBe(true)
     expect(result?.lattice?.volume).toBeCloseTo(3218.0139605153627, 5)
   })
 
@@ -1597,25 +1577,22 @@ describe(`parse_structure_file`, () => {
     // Verify the file contains valid JSON with expected structure
     const parsed = JSON.parse(content)
     expect(Array.isArray(parsed)).toBe(true)
-    expect(parsed.length).toBeGreaterThan(0)
+    expect(parsed.length).toBe(1)
     expect(parsed[0]).toHaveProperty(`structure`)
 
     // Validate the nested structure format
     const nested_structure = parsed[0].structure
-    expect(nested_structure).toBeDefined()
     expect(typeof nested_structure).toBe(`object`)
     expect(nested_structure).toHaveProperty(`sites`)
     expect(Array.isArray(nested_structure.sites)).toBe(true)
-    expect(nested_structure.sites.length).toBeGreaterThan(0)
+    expect(nested_structure.sites.length).toBe(180)
 
     // Test the actual parsing function can handle this format
     const result = parse_structure_file(content, hea_hcp_filename)
     expect(result).toBeTruthy()
-    expect(result?.sites).toBeDefined()
-    expect(result?.sites.length).toBeGreaterThan(0)
+    expect(result?.sites.length).toBe(180)
     expect(result?.sites[0]).toHaveProperty(`species`)
     expect(result?.sites[0].species[0]).toHaveProperty(`element`)
-    expect(result?.lattice).toBeDefined()
   })
 
   describe(`comprehensive nested structure parsing`, () => {
@@ -1729,8 +1706,7 @@ describe(`parse_structure_file`, () => {
       const result = parse_any_structure(content, `test.json`)
 
       expect(result).toBeTruthy()
-      expect(result?.sites).toBeDefined()
-      expect(result?.sites.length).toBeGreaterThan(0)
+      expect(result?.sites.length).toBe(1)
 
       // For direct structures, charge may be preserved; for nested, it's set to 0
       if (description.includes(`simple direct`)) {
@@ -1829,9 +1805,8 @@ describe(`parse_structure_file`, () => {
       // Structure-level properties may not be preserved in transformation
       // The transformation focuses on sites and lattice
       expect(result?.sites.length).toBe(1)
-      if (result && `lattice` in result && result.lattice) {
-        expect(result.lattice).toBeDefined()
-      }
+      if (!result || !(`lattice` in result)) throw `Lattice is undefined`
+      expect(result.lattice.volume).toBe(27)
     })
   })
 
@@ -2049,9 +2024,9 @@ describe(`OPTIMADE JSON parser`, () => {
 
     // Verify the expected error was logged
     if (expected_error) {
-      const errorCalls = console_error_spy.mock.calls
-      expect(errorCalls.length).toBeGreaterThan(0)
-      expect(errorCalls[0][0]).toContain(expected_error)
+      const error_calls = console_error_spy.mock.calls
+      expect(error_calls.length).toBe(1)
+      expect(error_calls[0][0]).toContain(expected_error)
     }
   })
 
@@ -2342,9 +2317,9 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     expect(result).toBeNull()
 
     // Verify the expected error was logged
-    const errorCalls = console_error_spy.mock.calls
-    expect(errorCalls.length).toBeGreaterThan(0)
-    expect(errorCalls[0][0]).toContain(expected_error)
+    const error_calls = console_error_spy.mock.calls
+    expect(error_calls.length).toBe(1)
+    expect(error_calls[0][0]).toContain(expected_error)
   })
 
   it.each([
