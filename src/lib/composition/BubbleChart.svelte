@@ -5,6 +5,7 @@
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
+  import { get_total_atoms } from './parse'
 
   type BubbleSegmentData = ChartSegmentData & { radius: number; x: number; y: number }
 
@@ -67,11 +68,8 @@
 
     return root.leaves().map((node) => {
       const radius = node.r || 0
-      const data = node.data as BubbleSegmentData
-      const total_atoms = Object.values(composition).reduce(
-        (sum, count) => sum + (count || 0),
-        0,
-      )
+      const data = node.data as { element: string; amount: number; color: string }
+      const total_atoms = get_total_atoms(composition)
 
       // Calculate font scale based on bubble size and smart text fitting
       const [min_font_scale, max_font_scale] = [0.6, 2] as const

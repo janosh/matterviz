@@ -169,7 +169,7 @@ export async function fetch_optimade_providers(): Promise<OptimadeProvider[]> {
 
 // URL encode/decode utilities for structure IDs with special characters
 export const encode_structure_id = (id: string) =>
-  encodeURIComponent(id).replace(/\./g, `%2E`)
+  encodeURIComponent(id).replace(/\./g, `%2E`).replace(/\//g, `%2F`)
 
 export const decode_structure_id = (encoded_id: string) => decodeURIComponent(encoded_id)
 
