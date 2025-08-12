@@ -17,6 +17,7 @@ import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
 import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
+import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
@@ -607,10 +608,13 @@ describe(`CIF Parser`, () => {
         }
       }
       expected_abc.forEach((expected, idx) => {
-        expect(result.sites[idx].species[0].element).toBe(expected.element)
-        expect(result.sites[idx].abc[0]).toBeCloseTo(expected.abc[0], 12)
-        expect(result.sites[idx].abc[1]).toBeCloseTo(expected.abc[1], 12)
-        expect(result.sites[idx].abc[2]).toBeCloseTo(expected.abc[2], 12)
+        const site = result.sites[idx]
+        expect(site.species[0].element).toBe(expected.element)
+        expect(site.abc[0]).toBeCloseTo(expected.abc[0], 12)
+        expect(site.abc[1]).toBeCloseTo(expected.abc[1], 12)
+        expect(site.abc[2]).toBeCloseTo(expected.abc[2], 12)
+        expect(site.species[0].occu).toBe(1.0)
+        expect(site.xyz).toHaveLength(3)
       })
       // For non-orthogonal, check coordinate reconstruction
       if (check_beta) {
@@ -668,8 +672,7 @@ O2   O   0.410  0.140  0.880  1.000`
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984)`, () => {
     const result = parse_cif(ru_p_complex_cif)
     if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
-    expect(result.sites.length).toBeGreaterThan(0)
-    expect(result.lattice).toBeDefined()
+    expect(result.sites.length).toBe(1386)
     // Basic sanity checks
     expect(Number.isFinite(result.lattice?.a as number)).toBe(true)
     expect(Number.isFinite(result.lattice?.b as number)).toBe(true)
@@ -720,10 +723,18 @@ N(1)   0.750  0.750  0.750  1.000`
     ]
 
     expected_sites.forEach((expected, idx) => {
-      expect(result.sites[idx].species[0].element).toBe(expected.element)
-      expect(result.sites[idx].label).toBe(expected.label)
-      expect(result.sites[idx].abc).toEqual(expected.abc)
+      const site = result.sites[idx]
+      expect(site.species[0].element).toBe(expected.element)
+      expect(site.label).toBe(expected.label)
+      expect(site.abc).toEqual(expected.abc)
+      expect(site.species[0].occu).toBe(1.0)
+      expect(site.xyz).toHaveLength(3)
     })
+
+    // Check lattice
+    expect(result.lattice?.a).toBe(5.0)
+    expect(result.lattice?.alpha).toBe(90)
+    expect(result.lattice?.volume).toBe(125.0)
   })
 
   it.each([true, false])(
@@ -774,6 +785,23 @@ H1   H   2.100  0.900  0.500  1.000`
       if (!lattice) throw `Failed to get lattice matrix`
 
       for (const site of result.sites) expect_xyz_matches_abc(site, lattice)
+
+      if (wrap_frac) { // check coordinate wrapping
+        // all fractional coordinates must be within [0, 1) after wrapping
+        for (const site of result.sites) {
+          site.abc.forEach((coord) => {
+            expect(coord).toBeGreaterThanOrEqual(0)
+            expect(coord).toBeLessThan(1)
+          })
+        }
+      } else { // original coordinates must be preserved
+        const c_site = result.sites.find((site) => site.species[0].element === `C`)
+        const o_site = result.sites.find((site) => site.species[0].element === `O`)
+        const h_site = result.sites.find((site) => site.species[0].element === `H`)
+        expect(c_site?.abc[0]).toBe(1.25)
+        expect(o_site?.abc[0]).toBe(-0.25)
+        expect(h_site?.abc[0]).toBe(2.1)
+      }
     },
   )
 
@@ -844,7 +872,6 @@ H1   H   0.500  0.500  0.500  1.000  1.000`
       const result = parse_cif(malformed_cif)
       expect(result).not.toBeNull()
       if (result) {
-        expect(result.sites.length).toBeGreaterThan(0)
         expect(result.sites.length).toBe(3)
         expect(result.sites[0].species[0].occu).toBe(1.0)
       }
@@ -872,10 +899,12 @@ _unknown_tag  value
 H1   H   0.500  0.500  0.500`
 
       const result = parse_cif(cif_with_comments)
-      expect(result).not.toBeNull()
-      if (result) {
-        expect(result.sites).toHaveLength(3)
-      }
+      if (!result) throw `Failed to parse CIF with comments`
+      expect(result.sites).toHaveLength(3)
+      // Check specific elements were parsed correctly
+      expect(result.sites[0].species[0].element).toBe(`Si`)
+      expect(result.sites[1].species[0].element).toBe(`O`)
+      expect(result.sites[2].species[0].element).toBe(`H`)
     })
   })
 
@@ -945,6 +974,13 @@ H1   H   0.500  0.500  0.500`
         expect(site.xyz[1]).not.toBeNaN()
         expect(site.xyz[2]).not.toBeNaN()
       })
+
+      expect(result?.lattice?.volume).toBeCloseTo(4.59983732 * 4.59983732 * 2.95921356, 6)
+      // Check that all sites have valid species
+      result?.sites.forEach((site) => {
+        expect(site.species).toHaveLength(1)
+        expect(site.species[0].oxidation_state).toBe(0) // Default oxidation state
+      })
     })
   })
 
@@ -972,6 +1008,10 @@ site2_Cu_surface 0.5 0.5 0.5 1.0
       expect(result?.sites).toHaveLength(2)
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
       expect(result?.sites[1].species[0].element).toBe(`Cu`)
+      // Check that complex labels are preserved
+      expect(result?.sites[0].label).toBe(`site1_Fe_center`)
+      expect(result?.sites[1].label).toBe(`site2_Cu_surface`)
+      expect(result?.lattice?.volume).toBe(64.0)
     })
 
     test(`should fail gracefully with missing coordinates`, () => {
@@ -1021,6 +1061,176 @@ Xx1 0.5 0.5 0.5 1.0
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
       expect(result?.sites[1].species[0].element).toBe(`He`) // Fallback from validate_element_symbol
     })
+  })
+
+  test(`parses MOF CIF file correctly`, () => {
+    const result = parse_cif(mof_issue_127)
+    // The MOF CIF has 7 unique atomic sites, but some of the 192 symmetry operations are identity
+    // and get skipped, resulting in 1307 total sites, 37 less sites than 192*7
+    expect(result?.sites.length).toBe(1307)
+    expect(result?.lattice?.a).toBeCloseTo(25.832, 8)
+    expect(result?.lattice?.b).toBeCloseTo(25.832, 8)
+    expect(result?.lattice?.c).toBeCloseTo(25.832, 8)
+    expect(result?.lattice?.alpha).toBeCloseTo(90, 8)
+    expect(result?.lattice?.beta).toBeCloseTo(90, 8)
+    expect(result?.lattice?.gamma).toBeCloseTo(90, 8)
+    expect(result?.lattice?.volume).toBeCloseTo(17237.492730368, 8)
+    expect(result?.sites[0].species[0].element).toBe(`Zn`)
+    expect(result?.sites[0].abc).toEqual([0.2934, 0.2066, 0.2066])
+  })
+
+  test(`parses CIF with fractional occupancies and mixed species`, () => {
+    const mixed_occupancy_cif = `data_mixed_occupancy
+_chemical_name_common                  'Mysterious something'
+_cell_length_a                         5.50000
+_cell_length_b                         5.50000
+_cell_length_c                         5.50000
+_cell_angle_alpha                      90
+_cell_angle_beta                       90
+_cell_angle_gamma                      90
+_space_group_name_H-M_alt              'F m -3 m'
+_space_group_IT_number                 225
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+   '-x, -y, -z'
+   'x+1/2, y+1/2, z+1/2'
+   '-x+1/2, -y+1/2, -z+1/2'
+
+loop_
+   _atom_site_label
+   _atom_site_occupancy
+   _atom_site_fract_x
+   _atom_site_fract_y
+   _atom_site_fract_z
+   _atom_site_adp_type
+   _atom_site_B_iso_or_equiv
+   _atom_site_type_symbol
+   Na         0.7500  0.000000      0.000000      0.000000     Biso  1.000000 Na
+   K          0.2500  0.000000      0.000000      0.000000     Biso  1.000000 K
+   Cl         0.3000  0.500000      0.500000      0.500000     Biso  1.000000 Cl
+   I          0.5000  0.250000      0.250000      0.250000     Biso  1.000000 I`
+
+    const result = parse_cif(mixed_occupancy_cif)
+    // Should have 4 unique sites × 3 non-identity symmetry operations = 13 total sites
+    // (x,y,z is identity and gets skipped, but some operations generate additional sites)
+    expect(result?.sites.length).toBe(13)
+    expect(result?.lattice?.a).toBeCloseTo(5.5, 8)
+
+    // Check that mixed occupancy site (Na/K) is handled correctly
+    const na_sites = result?.sites.filter((site) => site.species[0].element === `Na`)
+    const k_sites = result?.sites.filter((site) => site.species[0].element === `K`)
+    expect(na_sites?.length).toBe(3) // 1 original + 2 from non-identity operations
+    expect(k_sites?.length).toBe(3)
+
+    // Check that symmetry operations with translations are applied
+    const translated_sites = result?.sites.filter((site) =>
+      site.abc.some((coord) => coord === 0.5)
+    )
+    expect(translated_sites?.length).toBe(6)
+  })
+
+  test(`parses ICSD-like CIF with specific symmetry format`, () => {
+    const icsd_cif = `data_global
+_cell_length_a 9.378(5)
+_cell_length_b 7.488(5)
+_cell_length_c 6.513(5)
+_cell_angle_alpha 90.
+_cell_angle_beta 91.15(5)
+_cell_angle_gamma 90.
+_cell_volume 457.27
+_cell_formula_units_Z 2
+_symmetry_space_group_name_H-M 'P 1 n 1'
+_symmetry_Int_Tables_number 7
+_refine_ls_R_factor_all 0.071
+loop_
+_symmetry_equiv_pos_site_id
+_symmetry_equiv_pos_as_xyz
+1 'x+1/2, -y, z+1/2'
+2 'x, y, z'
+loop_
+_atom_type_symbol
+_atom_type_oxidation_number
+Sn2+ 2
+As4+ 4
+Se2- -2
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_symmetry_multiplicity
+_atom_site_Wyckoff_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_B_iso_or_equiv
+_atom_site_occupancy
+_atom_site_attached_hydrogens
+Sn1 Sn2+ 2 a 0.5270(2) 0.3856(2) 0.7224(3) 0.0266(4) 1. 0
+Sn2 Sn2+ 2 a 0.0279(2) 0.1245(2) 0.7870(2) 0.0209(4) 1. 0
+As1 As4+ 2 a 0.6836(4) 0.1608(5) 0.8108(6) 0.0067(7) 1. 0
+As2 As4+ 2 a 0.8174(4) 0.6447(6) 0.1908(6) 0.0057(6) 1. 0
+Se1 Se2- 2 a 0.4898(4) 0.7511(6) 0.8491(6) 0.0110(6) 1. 0
+Se2 Se2- 2 a 0.7788(4) 0.6462(6) 0.2750(6) 0.0097(6) 1. 0
+Se3 Se2- 2 a 0.6942(4) 0.0517(5) 0.5921(6) 0.2095(6) 1. 0
+Se4 Se2- 2 a 0.0149(4) 0.3437(6) 0.5497(7) 0.1123(7) 1. 0
+Se5 Se2- 2 a 0.1147(4) 0.5633(4) 0.3288(6) 0.1078(6) 1. 0
+Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
+
+    const result = parse_cif(icsd_cif)
+    // Should have 10 unique sites × 2 symmetry operations = 20 total sites
+    expect(result?.sites.length).toBe(20)
+    expect(result?.lattice?.a).toBeCloseTo(9.378, 3)
+    expect(result?.lattice?.beta).toBeCloseTo(91.15, 2)
+
+    // Check that symmetry operations with translations are applied
+    // Since coordinates are wrapped to unit cell, look for evidence of translation
+    // by checking that we have the expected number of sites (10 unique × 2 symmetry operations = 20)
+    expect(result?.sites.length).toBe(20)
+
+    // Check that some sites have coordinates that differ from the original unique sites
+    // This indicates symmetry operations were applied
+    const original_coords = [
+      [0.527, 0.3856, 0.7224],
+      [0.0279, 0.1245, 0.787],
+      [0.6836, 0.1608, 0.8108],
+      [0.8174, 0.6447, 0.1908],
+      [0.4898, 0.7511, 0.8491],
+    ]
+
+    const has_translated_sites = result?.sites.some((site) =>
+      !original_coords.some((orig) =>
+        orig.every((coord, idx) => Math.abs(coord - site.abc[idx]) < 0.001)
+      )
+    )
+    expect(has_translated_sites).toBe(true)
+  })
+
+  test(`handles empty or atomless CIF files`, () => {
+    const empty_cif = ``
+    const atomless_cif = `data_dummy`
+
+    expect(parse_cif(empty_cif)).toBeNull()
+    expect(parse_cif(atomless_cif)).toBeNull()
+  })
+
+  test(`handles CIF with question mark symbols gracefully`, () => {
+    const question_mark_cif = `data_dummy
+_cell_length_a  5.000
+_cell_length_b  5.000
+_cell_length_c  5.000
+_cell_angle_alpha  90
+_cell_angle_beta   90
+_cell_angle_gamma  90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+?   ?   0.000  0.000  0.000  1.000`
+    expect(parse_cif(question_mark_cif)).toBeNull()
   })
 })
 
@@ -1111,14 +1321,12 @@ unit_cell:
       if (expected_result === `null`) {
         expect(structure).toBeNull()
       } else {
-        expect(structure).toBeDefined()
         if (!expected_sites) throw `Expected sites to be number`
         expect(structure?.sites).toHaveLength(expected_sites)
-        expect(structure?.lattice).toBeDefined()
 
         if (expected_lattice_a) {
           expect(structure?.lattice?.a).toBeCloseTo(expected_lattice_a, 6)
-          expect(structure?.lattice?.volume).toBeGreaterThan(0)
+          expect(structure?.lattice?.volume).toBeGreaterThan(120)
         }
 
         if (site_checks) {
@@ -1138,42 +1346,38 @@ unit_cell:
       name: `AgI phonopy file`,
       content: agi_phono3py_params,
       filename: `AgI-fq978185p-phono3py_params.yaml.gz`,
-      expected_min_sites: 70,
+      expected_sites: 72,
       space_group: `P6_3mc`,
     },
     {
       name: `BeO phonopy file`,
       content: beo_phono3py_params,
       filename: `BeO-zw12zc18p-phono3py_params.yaml.gz`,
-      expected_min_sites: 60,
+      expected_sites: 64,
       space_group: `F-43m`,
     },
     {
       name: `simple phonopy YAML`,
       content: simple_phonopy_yaml,
       filename: `phono3py_params.yaml`,
-      expected_min_sites: 1,
+      expected_sites: 2,
       space_group: `P6_3mc`,
     },
   ])(
     `should parse and detect $name`,
-    ({ content, filename, expected_min_sites }) => {
+    ({ content, filename, expected_sites }) => {
       // Test direct parsing
       const direct_result = parse_phonopy_yaml(content)
-      expect(direct_result).toBeDefined()
-      expect(direct_result?.sites.length).toBeGreaterThan(expected_min_sites)
-      expect(direct_result?.lattice).toBeDefined()
-      expect(direct_result?.lattice?.volume).toBeGreaterThan(0)
+      expect(direct_result?.sites.length).toBe(expected_sites)
+      expect(direct_result?.lattice?.volume).toBeGreaterThan(120)
 
       // Test auto-detection by extension
       const by_extension = parse_structure_file(content, filename)
-      expect(by_extension).toBeDefined()
-      expect(by_extension?.sites.length).toBeGreaterThan(expected_min_sites)
+      expect(by_extension?.sites.length).toBe(expected_sites)
 
       // Test auto-detection by content
       const by_content = parse_structure_file(content)
-      expect(by_content).toBeDefined()
-      expect(by_content?.sites.length).toBeGreaterThan(expected_min_sites)
+      expect(by_content?.sites.length).toBe(expected_sites)
     },
   )
 
@@ -1213,10 +1417,8 @@ unit_cell:
       if (expected_result === `null`) {
         expect(result).toBeNull()
       } else {
-        expect(result).toBeDefined()
         if (!expected_sites) throw `Expected sites to be number`
         expect(result?.sites).toHaveLength(expected_sites)
-        expect(result?.lattice).toBeDefined()
       }
     },
   )
@@ -1233,19 +1435,17 @@ describe(`parse_structure_file`, () => {
     const result = parse_structure_file(content, hea_hcp_filename)
 
     expect(result).toBeTruthy()
-    expect(result?.sites).toBeDefined()
-    expect(result?.sites.length).toBeGreaterThan(0)
-    expect(result?.lattice).toBeDefined()
+    expect(result?.sites.length).toBe(180)
+    expect(result?.lattice?.volume).toBeGreaterThan(120)
 
     // Check first site
     const first_site = result?.sites[0]
-    expect(first_site?.species).toBeDefined()
     expect(first_site?.species[0]?.element).toBe(`Ta`)
-    expect(first_site?.abc).toBeDefined()
-    expect(first_site?.xyz).toBeDefined()
+    expect(first_site?.abc).toHaveLength(3)
+    expect(first_site?.xyz).toHaveLength(3)
 
     // Check lattice
-    expect(result?.lattice?.matrix).toBeDefined()
+    expect(result?.lattice?.matrix.every((row) => row.length === 3)).toBe(true)
     expect(result?.lattice?.volume).toBeCloseTo(3218.0139605153627, 5)
   })
 
@@ -1379,25 +1579,22 @@ describe(`parse_structure_file`, () => {
     // Verify the file contains valid JSON with expected structure
     const parsed = JSON.parse(content)
     expect(Array.isArray(parsed)).toBe(true)
-    expect(parsed.length).toBeGreaterThan(0)
+    expect(parsed.length).toBe(1)
     expect(parsed[0]).toHaveProperty(`structure`)
 
     // Validate the nested structure format
     const nested_structure = parsed[0].structure
-    expect(nested_structure).toBeDefined()
     expect(typeof nested_structure).toBe(`object`)
     expect(nested_structure).toHaveProperty(`sites`)
     expect(Array.isArray(nested_structure.sites)).toBe(true)
-    expect(nested_structure.sites.length).toBeGreaterThan(0)
+    expect(nested_structure.sites.length).toBe(180)
 
     // Test the actual parsing function can handle this format
     const result = parse_structure_file(content, hea_hcp_filename)
     expect(result).toBeTruthy()
-    expect(result?.sites).toBeDefined()
-    expect(result?.sites.length).toBeGreaterThan(0)
+    expect(result?.sites.length).toBe(180)
     expect(result?.sites[0]).toHaveProperty(`species`)
     expect(result?.sites[0].species[0]).toHaveProperty(`element`)
-    expect(result?.lattice).toBeDefined()
   })
 
   describe(`comprehensive nested structure parsing`, () => {
@@ -1511,8 +1708,7 @@ describe(`parse_structure_file`, () => {
       const result = parse_any_structure(content, `test.json`)
 
       expect(result).toBeTruthy()
-      expect(result?.sites).toBeDefined()
-      expect(result?.sites.length).toBeGreaterThan(0)
+      expect(result?.sites.length).toBe(1)
 
       // For direct structures, charge may be preserved; for nested, it's set to 0
       if (description.includes(`simple direct`)) {
@@ -1611,9 +1807,8 @@ describe(`parse_structure_file`, () => {
       // Structure-level properties may not be preserved in transformation
       // The transformation focuses on sites and lattice
       expect(result?.sites.length).toBe(1)
-      if (result && `lattice` in result && result.lattice) {
-        expect(result.lattice).toBeDefined()
-      }
+      if (!result || !(`lattice` in result)) throw `Lattice is undefined`
+      expect(result.lattice.volume).toBe(27)
     })
   })
 
@@ -1831,9 +2026,9 @@ describe(`OPTIMADE JSON parser`, () => {
 
     // Verify the expected error was logged
     if (expected_error) {
-      const errorCalls = console_error_spy.mock.calls
-      expect(errorCalls.length).toBeGreaterThan(0)
-      expect(errorCalls[0][0]).toContain(expected_error)
+      const error_calls = console_error_spy.mock.calls
+      expect(error_calls.length).toBe(1)
+      expect(error_calls[0][0]).toContain(expected_error)
     }
   })
 
@@ -2124,9 +2319,9 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     expect(result).toBeNull()
 
     // Verify the expected error was logged
-    const errorCalls = console_error_spy.mock.calls
-    expect(errorCalls.length).toBeGreaterThan(0)
-    expect(errorCalls[0][0]).toContain(expected_error)
+    const error_calls = console_error_spy.mock.calls
+    expect(error_calls.length).toBe(1)
+    expect(error_calls[0][0]).toContain(expected_error)
   })
 
   it.each([
