@@ -510,41 +510,50 @@ const apply_symmetry_ops = (
     if (parts.length !== 3) continue
 
     let new_coords: Vec3 = [0, 0, 0]
-    let has_translation = false
 
     for (let dim = 0; dim < 3; dim++) {
       const part = parts[dim]
       let coord = 0
       let translation = 0
 
-      // Parse coordinate part (x, y, z, -x, -y, -z)
-      const coord_map: Record<string, number> = {
-        x: atom.coords[0],
-        y: atom.coords[1],
-        z: atom.coords[2],
-        [`-x`]: -atom.coords[0],
-        [`-y`]: -atom.coords[1],
-        [`-z`]: -atom.coords[2],
+      // Parse expression (handles x, -x, y+1/2, -z+0.5, etc.)
+      let expr = part.replace(/\s+/g, ``)
+
+      // Extract translation part if present
+      const trans_match = expr.match(/([+-])([\d./]+)$/)
+      if (trans_match) {
+        const sign = trans_match[1] === `+` ? 1 : -1
+        const trans_str = trans_match[2]
+        if (trans_str.includes(`/`)) {
+          const [num, den] = trans_str.split(`/`)
+          const numerator = parseFloat(num)
+          const denominator = parseFloat(den)
+          if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+            translation = sign * (numerator / denominator)
+          }
+        } else {
+          const val = parseFloat(trans_str)
+          if (!isNaN(val)) translation = sign * val
+        }
+        expr = expr.substring(0, expr.length - trans_match[0].length)
       }
 
-      if (part.includes(`+`)) {
-        const [coord_part, trans_part] = part.split(`+`)
-        coord = coord_map[coord_part] ?? 0
-        if (trans_part.includes(`/`)) {
-          const [num, den] = trans_part.split(`/`)
-          translation = parseInt(num) / parseInt(den)
-        } else translation = parseFloat(trans_part)
-        has_translation = true
-      } else {
-        coord = coord_map[part] ?? 0
-      }
+      // Parse coordinate part
+      if (expr === `x`) coord = atom.coords[0]
+      else if (expr === `y`) coord = atom.coords[1]
+      else if (expr === `z`) coord = atom.coords[2]
+      else if (expr === `-x`) coord = -atom.coords[0]
+      else if (expr === `-y`) coord = -atom.coords[1]
+      else if (expr === `-z`) coord = -atom.coords[2]
 
       new_coords[dim] = coord + translation
     }
 
-    // Skip identity operations (x,y,z) without translations
-    const is_identity = parts[0] === `x` && parts[1] === `y` && parts[2] === `z`
-    if (is_identity && !has_translation) continue
+    // Skip true identity operations (no change in coordinates)
+    const is_identity = Math.abs(new_coords[0] - atom.coords[0]) < 1e-10 &&
+      Math.abs(new_coords[1] - atom.coords[1]) < 1e-10 &&
+      Math.abs(new_coords[2] - atom.coords[2]) < 1e-10
+    if (is_identity) continue
 
     // Wrap coordinates if requested
     if (wrap_frac) {
