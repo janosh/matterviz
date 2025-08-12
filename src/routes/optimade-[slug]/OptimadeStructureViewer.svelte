@@ -33,7 +33,7 @@
   let suggested_structures = $state<OptimadeStructure[]>([])
   let loading_suggestions = $state(false)
 
-  $effect(() => {
+  $effect(() => { // Initialize from URL slug
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
     detect_provider_from_slug(decoded_slug).then((provider) => {
       if (provider) {
@@ -45,73 +45,63 @@
     })
   })
 
+  $effect(() => { // Load providers on mount
+    load_providers()
+  })
+
+  // Load data when database or structure ID changes
   $effect(() => {
-    retry_providers()
+    if (selected_db) {
+      load_databases()
+      load_suggested_structures()
+    }
+    if (structure_id && selected_db) load_structure_data()
   })
 
   let structure_id = $derived(input_value.trim())
   let db_config = $derived(available_providers.find((p) => p.id === selected_db))
   let pretty_formula = $derived(structure ? get_electro_neg_formula(structure) : ``)
 
-  $effect(() => {
-    if (structure_id && selected_db) load_structure_data()
-    if (selected_db) {
-      load_suggested_structures()
-      load_databases()
-    }
-  })
+  async function load_providers() {
+    providers_error = null
+    available_providers = await fetch_optimade_providers().catch((err) => {
+      console.error(`Failed to load providers:`, err)
+      providers_error = `Failed to load providers. Click Retry to try again.`
+      return []
+    })
+  }
 
   async function load_structure_data() {
     loading = true
     error = null
-    try {
-      const data = await fetch_optimade_structure(structure_id, selected_db)
-      structure = data ? optimade_to_pymatgen(data) : null
-      if (!structure) {
-        error = data
-          ? `Failed to convert structure data`
-          : `Structure ${structure_id} not found`
-      }
-    } catch (err) {
-      error = `Failed to load structure data: ${err}`
-    } finally {
-      loading = false
+    const data = await fetch_optimade_structure(structure_id, selected_db).catch(
+      (err) => {
+        error = `Failed to load structure: ${err}`
+        return null
+      },
+    )
+
+    if (data) {
+      structure = optimade_to_pymatgen(data)
+      if (!structure) error = `Failed to convert structure data`
+    } else if (!error) {
+      error = `Structure ${structure_id} not found`
     }
+    loading = false
   }
 
   async function load_databases() {
-    try {
-      available_dbs = await fetch_provider_databases(selected_db)
-    } catch {
-      available_dbs = []
-    }
+    available_dbs = await fetch_provider_databases(selected_db)
   }
 
   async function load_suggested_structures() {
     loading_suggestions = true
-    try {
-      suggested_structures = await fetch_suggested_structures(selected_db, 12)
-    } catch {
-      suggested_structures = []
-    } finally {
-      loading_suggestions = false
-    }
+    suggested_structures = await fetch_suggested_structures(selected_db, 12)
+    loading_suggestions = false
   }
 
-  async function retry_providers() {
-    providers_error = null
-    try {
-      available_providers = await fetch_optimade_providers()
-    } catch (err) {
-      console.error(`Failed to load providers:`, err)
-      providers_error = `Failed to load providers: ${err}. Click Retry to try again.`
-    }
-  }
-
-  async function navigate_to_structure(id: string) {
+  function navigate_to_structure(id: string) {
     input_value = id
-    await load_structure_data()
-    // Update URL without navigation to preserve scroll position
     history.pushState({}, ``, `/optimade-${encode_structure_id(id)}`)
   }
 </script>
@@ -123,14 +113,14 @@
     class="structure-input"
     placeholder="Enter structure ID"
     bind:value={input_value}
-    onkeydown={async (event) => {
-      if (event.key === `Enter`) await navigate_to_structure(structure_id)
+    onkeydown={(event) => {
+      if (event.key === `Enter`) navigate_to_structure(structure_id)
     }}
   />
   <button
     class="fetch-button"
     onclick={() => navigate_to_structure(structure_id)}
-    disabled={loading}
+    disabled={loading || !structure_id}
   >
     {loading ? `Loading...` : `Fetch`}
   </button>
@@ -146,7 +136,7 @@
     {#if providers_error}
       <div class="error-message">
         <p>{providers_error}</p>
-        <button class="retry-button" onclick={retry_providers}>Retry</button>
+        <button class="retry-button" onclick={load_providers}>Retry</button>
       </div>
     {:else if available_providers.length === 0}
       <p>Loading providers...</p>
@@ -161,7 +151,7 @@
               class="db-select"
               {@attach tooltip({ content: attributes.name })}
               onclick={() => {
-                if (available_dbs.length === 0) selected_db = id
+                selected_db = id
                 input_value = ``
               }}
             >
