@@ -42,9 +42,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
       )
     }
     return scaling as Vec3
-  } else {
-    throw new Error(`Invalid supercell scaling format: ${scaling}`)
-  }
+  } else throw new Error(`Invalid supercell scaling format: ${scaling}`)
 }
 
 // Generate all lattice points for a supercell. Takes [nx, ny, nz] scaling factors
@@ -54,11 +52,9 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   const points: Vec3[] = []
 
   // Generate in x, y, z order to match expected test results
-  for (let k = 0; k < nz; k++) {
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        points.push([i, j, k] as Vec3)
-      }
+  for (let kk = 0; kk < nz; kk++) {
+    for (let jj = 0; jj < ny; jj++) {
+      for (let ii = 0; ii < nx; ii++) points.push([ii, jj, kk] as Vec3)
     }
   }
 
