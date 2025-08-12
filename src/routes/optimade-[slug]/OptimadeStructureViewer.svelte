@@ -26,6 +26,7 @@
   let loading = $state(false)
   let error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])
+  let providers_error = $state<string | null>(null)
   let selected_db = $state(`mp`)
   let available_dbs = $state<OptimadeDatabase[]>([])
   let input_value = $state(``)
@@ -34,19 +35,18 @@
 
   $effect(() => {
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
-    input_value = decoded_slug
     detect_provider_from_slug(decoded_slug).then((provider) => {
       if (provider) {
         selected_db = provider
         input_value = decoded_slug.startsWith(`${provider}-`)
           ? decoded_slug
           : `${provider}-${decoded_slug}`
-      }
+      } else input_value = decoded_slug
     })
   })
 
   $effect(() => {
-    fetch_optimade_providers().then((providers) => available_providers = providers)
+    retry_providers()
   })
 
   let structure_id = $derived(input_value.trim())
@@ -98,6 +98,16 @@
     }
   }
 
+  async function retry_providers() {
+    providers_error = null
+    try {
+      available_providers = await fetch_optimade_providers()
+    } catch (err) {
+      console.error(`Failed to load providers:`, err)
+      providers_error = `Failed to load providers: ${err}. Click Retry to try again.`
+    }
+  }
+
   async function navigate_to_structure(id: string) {
     input_value = id
     await load_structure_data()
@@ -132,43 +142,53 @@
       Databases <span style="font-weight: lighter"
       >({available_dbs.length || available_providers.length})</span>
     </h3>
-    <div class="db-grid">
-      {#each available_dbs.length > 0 ? available_dbs : available_providers as
-        { id, attributes }
-        (id)
-      }
-        <div class:selected={id === selected_db}>
-          <button
-            class="db-select"
-            {@attach tooltip({ content: attributes.name })}
-            onclick={() => {
-              if (available_dbs.length === 0) selected_db = id
-              input_value = ``
-            }}
-          >
-            <Icon icon="Database" /> {id}
-          </button>
-          <a
-            href={attributes.base_url}
-            title="API"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Icon icon="Link" />
-          </a>
-          {#if attributes.homepage}
+
+    {#if providers_error}
+      <div class="error-message">
+        <p>{providers_error}</p>
+        <button class="retry-button" onclick={retry_providers}>Retry</button>
+      </div>
+    {:else if available_providers.length === 0}
+      <p>Loading providers...</p>
+    {:else}
+      <div class="db-grid">
+        {#each available_dbs.length > 0 ? available_dbs : available_providers as
+          { id, attributes }
+          (id)
+        }
+          <div class:selected={id === selected_db}>
+            <button
+              class="db-select"
+              {@attach tooltip({ content: attributes.name })}
+              onclick={() => {
+                if (available_dbs.length === 0) selected_db = id
+                input_value = ``
+              }}
+            >
+              <Icon icon="Database" /> {id}
+            </button>
             <a
-              href={attributes.homepage}
-              title="Home"
+              href={attributes.base_url}
+              title="API"
               target="_blank"
               rel="noopener noreferrer"
             >
-              <Icon icon="Globe" />
+              <Icon icon="Link" />
             </a>
-          {/if}
-        </div>
-      {/each}
-    </div>
+            {#if attributes.homepage}
+              <a
+                href={attributes.homepage}
+                title="Home"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon icon="Globe" />
+              </a>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <div class="suggestions-column">
@@ -216,7 +236,7 @@
     {/if}
 
     {#if structure}
-      <h2>
+      <h2 style="margin: 0 2pt 10pt">
         {@html pretty_formula}
         {#if structure_id}
           <span class="structure-id">({structure_id})</span>
@@ -249,68 +269,58 @@
     border-radius: 4pt;
     border: 1px solid var(--border-color);
     background: var(--btn-bg);
-    cursor: pointer;
   }
   .fetch-button:hover {
-    background: var(--btn-hover-bg);
+    background: var(--btn-bg-hover);
   }
   .main-layout {
     display: grid;
     grid-template-columns: minmax(250px, 280px) minmax(280px, 320px) 1fr;
     gap: clamp(1em, 2vw, 1.5em);
-    height: calc(100vh - 180px);
+    max-height: 80vh;
   }
   .db-column, .suggestions-column, .structure-column {
-    overflow-y: auto;
+    max-height: inherit;
   }
   .db-column h3, .suggestions-column h3 {
     margin: 0 0 0.75em;
-    font-size: 1.1em;
-    position: sticky;
-    top: 0;
-    background: var(--bg-color);
     padding: 0.5em 0 0 0;
-    z-index: 1;
   }
   .db-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4em;
+    display: grid;
+    gap: 6pt;
     overflow-y: auto;
     height: 100%;
   }
   .db-grid div {
     display: flex;
     align-items: center;
-    gap: 0.4em;
+    gap: 6pt;
     padding: 0.3em 0.5em;
     border: 1px solid var(--border-color);
     border-radius: 4pt;
   }
   .db-grid div:hover {
-    background: var(--surface-bg-hover);
+    background: var(--btn-bg-hover);
   }
   .db-grid div.selected {
     border: 1px solid var(--accent-color);
-    color: var(--accent-color);
   }
   .db-select {
     display: flex;
     align-items: center;
-    gap: 0.4em;
-    cursor: pointer;
+    gap: 6pt;
     background: none;
     font: inherit;
     flex: 1;
   }
   .db-grid a {
     padding: 2pt;
-    color: var(--text-color-muted);
     border-radius: 3pt;
-    font-size: 0.8em;
+    font-size: 0.9em;
   }
   .db-grid a:hover {
-    background: var(--surface-bg-hover);
+    background: var(--btn-bg-hover);
   }
   .structure-suggestions {
     display: grid;
@@ -326,17 +336,12 @@
     padding: 0.5em 0.75em;
     border: 1px solid var(--border-color);
     border-radius: 4pt;
-    cursor: pointer;
     background: none;
     font: inherit;
     text-align: left;
   }
   .structure-suggestions button:hover {
-    background: var(--surface-bg-hover);
-  }
-  .structure-column h2 {
-    margin: 0 2pt 10pt;
-    font-size: 1.5em;
+    background: var(--btn-bg-hover);
   }
   .structure-id {
     font-weight: lighter;
@@ -346,6 +351,13 @@
     text-align: center;
     color: #ff6b6b;
     margin: 1em 0;
+  }
+  .retry-button {
+    padding: 0.4em 0.8em;
+    font-size: 0.9em;
+    border-radius: 4pt;
+    border: 1px solid var(--border-color);
+    background: var(--btn-bg);
   }
   @media (max-width: 1250px) {
     .main-layout {
@@ -357,8 +369,7 @@
       grid-column: 1 / -1;
       order: -1;
     }
-    .db-column h3,
-    .suggestions-column h3 {
+    .db-column h3, .suggestions-column h3 {
       position: static;
     }
   }

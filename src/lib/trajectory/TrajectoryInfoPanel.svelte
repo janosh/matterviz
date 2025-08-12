@@ -373,7 +373,7 @@
     position: relative;
   }
   section div:hover {
-    background: var(--panel-btn-hover-bg, rgba(255, 255, 255, 0.03));
+    background: var(--panel-btn-bg-hover, rgba(255, 255, 255, 0.03));
   }
   .copy-checkmark-overlay {
     position: absolute;

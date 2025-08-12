@@ -1265,7 +1265,7 @@
     background: var(--btn-bg);
   }
   .trajectory-controls button:hover {
-    background: var(--btn-hover-bg);
+    background: var(--btn-bg-hover);
   }
   .nav-section {
     display: flex;
