@@ -3,13 +3,22 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
   import type { Snippet } from 'svelte'
-  import { get_chart_font_scale } from './index'
+  import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { composition_to_percentages, get_total_atoms } from './parse'
 
   // Constants for pie chart calculations
   const VERY_THIN_SLICE_THRESHOLD = 20 // degrees
   const MEDIUM_SLICE_THRESHOLD = 90 // degrees - increased to move more slices toward outer edge
   const MAX_ANGLE_FOR_FULL_SCALE = 120 // degrees
+
+  type PieSegmentData = ChartSegmentData & {
+    start_angle: number
+    end_angle: number
+    path: string
+    label_x: number
+    label_y: number
+    is_outside_slice: boolean
+  }
 
   interface Props {
     composition: CompositionType
@@ -21,20 +30,7 @@
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
     center_content?: Snippet<[{ composition: CompositionType; total_atoms: number }]>
-    segment_content?: Snippet<
-      [
-        {
-          element: ElementSymbol
-          amount: number
-          percentage: number
-          color: string
-          start_angle: number
-          end_angle: number
-          font_scale: number
-          text_color: string
-        },
-      ]
-    >
+    segment_content?: Snippet<[PieSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
     [key: string]: unknown
@@ -70,9 +66,11 @@
 
     return Object.entries(composition)
       .filter(([_, amount]) => amount && amount > 0)
-      .map(([element, amount]) => {
-        const percentage = percentages[element as ElementSymbol] || 0
-        const angle_span = (percentage / 100) * 360
+      .map(([element_key, amount]) => {
+        const element = element_key as ElementSymbol
+        const percentage = percentages[element] || 0
+        // use 359.99° to avoid 360° for single-element compositions which cause SVG arc issues
+        const angle_span = percentage === 100 ? 359.99 : (percentage / 100) * 360
         const start_angle = current_angle
         const end_angle = current_angle + angle_span
 
