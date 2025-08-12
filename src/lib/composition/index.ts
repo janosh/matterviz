@@ -8,6 +8,16 @@ export { default as PieChart } from './PieChart.svelte'
 
 export type CompositionType = Partial<Record<ElementSymbol, number>>
 
+// Base data type for args of all (bar, bubble, pie) chart segment snippets
+export type ChartSegmentData = {
+  element: ElementSymbol
+  amount: number
+  percentage: number
+  color: string
+  font_scale: number
+  text_color: string
+}
+
 export function get_chart_font_scale(
   base_scale: number,
   label_text: string,
