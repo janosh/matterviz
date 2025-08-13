@@ -1043,9 +1043,11 @@
             <!-- Fullscreen button - rightmost position -->
             {#if fullscreen_toggle}
               <button
+                type="button"
                 onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
                 title="{fullscreen ? `Exit` : `Enter`} fullscreen"
                 aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
+                aria-pressed={fullscreen}
                 class="fullscreen-button"
               >
                 {#if typeof fullscreen_toggle === `function`}

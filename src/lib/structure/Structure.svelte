@@ -363,7 +363,6 @@
     }
   }
 
-  // Handle keyboard shortcuts
   function onkeydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
     const target = event.target as HTMLElement
@@ -373,11 +372,9 @@
     if (is_input_focused) return
 
     // Interface shortcuts
-    if (event.key === `f` && (event.ctrlKey || event.metaKey) && fullscreen_toggle) {
-      toggle_fullscreen(wrapper)
-    } else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
-      info_panel_open = !info_panel_open
-    } else if (event.key === `Escape`) {
+    if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
+    else if (event.key === `i`) info_panel_open = !info_panel_open
+    else if (event.key === `Escape`) {
       // Prioritize closing panels over exiting fullscreen
       if (info_panel_open) info_panel_open = false
       else if (controls_open) controls_open = false
@@ -459,9 +456,11 @@
         {/if}
         {#if fullscreen_toggle}
           <button
+            type="button"
             onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
+            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+            aria-pressed={fullscreen}
             class="fullscreen-toggle"
-            {@attach tooltip({ content: `${fullscreen ? `Exit` : `Enter`} fullscreen` })}
             style="padding: 0"
           >
             {#if typeof fullscreen_toggle === `function`}
