@@ -482,10 +482,15 @@ const create_display = (
   const props = {
     ...(is_trajectory
       ? {
-        trajectory: final_trajectory_data as TrajectoryData,
+        trajectory: final_trajectory_data,
         ...trajectory_props(defaults),
+        fullscreen_toggle: false, // Disable fullscreen button in VSCode extension
       }
-      : { structure: result.data as StructureData, ...structure_props(defaults) }),
+      : {
+        structure: result.data,
+        ...structure_props(defaults),
+        fullscreen_toggle: false, // Disable fullscreen button in VSCode extension
+      }),
     allow_file_drop: false,
     style: `height: 100%; border-radius: 0`,
     enable_tips: false,

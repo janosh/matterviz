@@ -497,7 +497,7 @@
       <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
     </label>
     <label
-      style="align-items: flex-start"
+      style="align-items: start"
       {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}
     >
       Color scheme

@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { AnyStructure, Vec3 } from '$lib'
-  import { get_elem_amounts, get_pbc_image_sites, Icon, Spinner } from '$lib'
+  import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
+  import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import type { PymatgenStructure } from '$lib/structure/index'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import { Canvas } from '@threlte/core'
@@ -107,7 +108,7 @@
     show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
     supercell_scaling = $bindable(`1x1x1`),
-    fullscreen_toggle = true,
+    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     bottom_left,
     data_url,
     on_file_drop,
@@ -362,13 +363,6 @@
     }
   }
 
-  export function toggle_fullscreen() {
-    if (!document.fullscreenElement && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else document.exitFullscreen()
-  }
-
-  // Handle keyboard shortcuts
   function onkeydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
     const target = event.target as HTMLElement
@@ -378,10 +372,9 @@
     if (is_input_focused) return
 
     // Interface shortcuts
-    if (event.key === `f` && (event.ctrlKey || event.metaKey)) toggle_fullscreen()
-    else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
-      info_panel_open = !info_panel_open
-    } else if (event.key === `Escape`) {
+    if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
+    else if (event.key === `i`) info_panel_open = !info_panel_open
+    else if (event.key === `Escape`) {
       // Prioritize closing panels over exiting fullscreen
       if (info_panel_open) info_panel_open = false
       else if (controls_open) controls_open = false
@@ -463,9 +456,11 @@
         {/if}
         {#if fullscreen_toggle}
           <button
-            onclick={toggle_fullscreen}
+            type="button"
+            onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
+            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+            aria-pressed={fullscreen}
             class="fullscreen-toggle"
-            {@attach tooltip({ content: `${fullscreen ? `Exit` : `Enter`} fullscreen` })}
             style="padding: 0"
           >
             {#if typeof fullscreen_toggle === `function`}

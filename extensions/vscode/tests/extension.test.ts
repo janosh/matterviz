@@ -1211,7 +1211,6 @@ describe(`MatterViz Extension`, () => {
       [`structure.show_gizmo`, false],
       [`trajectory.auto_play`, true],
       [`trajectory.show_controls`, false],
-      [`trajectory.show_fullscreen_button`, false],
 
       // Colors (strings)
       [`structure.bond_color`, `#ff0000`],

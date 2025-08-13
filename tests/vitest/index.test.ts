@@ -3,7 +3,7 @@ import { ElementScatter, PeriodicTable } from '$lib'
 import * as labels from '$lib/labels'
 import DirectImportPeriodicTable from '$lib/periodic-table/PeriodicTable.svelte'
 import DirectImportElementScatter from '$lib/plot/ElementScatter.svelte'
-import { expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 test(`PeriodicTable is named and default export`, () => {
   expect(DirectImportPeriodicTable).toBe(PeriodicTable)
@@ -61,4 +61,102 @@ test(`is_binary function detects binary content`, () => {
   const mostly_printable = `abcdefghijklmnopqrstuvwxyz` + `\x80\x81\x82` +
     `abcdefghijklmnopqrstuvwxyz`.repeat(10)
   expect(lib.is_binary(mostly_printable)).toBe(false)
+})
+
+describe(`Utility Functions`, () => {
+  test.each([
+    [
+      `<script>alert('xss')</script>`,
+      `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`,
+    ],
+    [`&<>"'`, `&amp;&lt;&gt;&quot;&#39;`],
+    [`Hello World`, `Hello World`],
+    [``, ``],
+  ])(`escape_html: %s → %s`, (input, expected) => {
+    expect(lib.escape_html(input)).toBe(expected)
+  })
+
+  test.each([
+    [`Hello\0World`, true],
+    [`Hello\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0FWorld`, true],
+    [`Hello World`, false],
+    [``, false],
+  ])(`is_binary: %s → %s`, (input, expected) => {
+    expect(lib.is_binary(input)).toBe(expected)
+  })
+
+  describe(`toggle_fullscreen`, () => {
+    let mock_wrapper: HTMLDivElement
+    let original_fullscreen_element: Element | null
+
+    beforeEach(() => {
+      mock_wrapper = document.createElement(`div`)
+      original_fullscreen_element = document.fullscreenElement
+      mock_wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
+      document.exitFullscreen = vi.fn().mockResolvedValue(undefined)
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+      Object.defineProperty(document, `fullscreenElement`, {
+        value: original_fullscreen_element,
+        writable: false,
+        configurable: true,
+      })
+    })
+
+    const set_fullscreen_element = (element: Element | null | string) => {
+      const actual_element = element === `same` ? mock_wrapper : element
+      Object.defineProperty(document, `fullscreenElement`, {
+        value: actual_element,
+        writable: false,
+        configurable: true,
+      })
+    }
+
+    test.each([
+      [`no element`, null, true, false],
+      [`same wrapper`, `same`, false, true],
+    ])(`%s: enters=%s, exits=%s`, async (_, element, should_enter, should_exit) => {
+      set_fullscreen_element(element)
+
+      await lib.toggle_fullscreen(mock_wrapper)
+
+      if (should_enter) expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
+      if (should_exit) expect(document.exitFullscreen).toHaveBeenCalledOnce()
+    })
+
+    test(`switches when different element is fullscreen`, async () => {
+      const other_wrapper = document.createElement(`div`)
+      set_fullscreen_element(other_wrapper)
+
+      await lib.toggle_fullscreen(mock_wrapper)
+
+      expect(document.exitFullscreen).toHaveBeenCalledOnce()
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
+    })
+
+    test.each([
+      [`requestFullscreen`, null, `requestFullscreen`],
+      [`exitFullscreen`, `same`, `exitFullscreen`],
+    ])(`handles %s rejection gracefully`, async (_, element, method) => {
+      set_fullscreen_element(element)
+      const error = new Error(`Test error`)
+
+      if (method === `requestFullscreen`) {
+        mock_wrapper.requestFullscreen = vi.fn().mockRejectedValue(error)
+      } else {
+        document.exitFullscreen = vi.fn().mockRejectedValue(error)
+      }
+
+      await expect(lib.toggle_fullscreen(mock_wrapper)).resolves.toBeUndefined()
+    })
+
+    test(`returns early when no wrapper provided`, async () => {
+      await lib.toggle_fullscreen(undefined)
+      expect(mock_wrapper.requestFullscreen).not.toHaveBeenCalled()
+      expect(document.exitFullscreen).not.toHaveBeenCalled()
+    })
+  })
 })

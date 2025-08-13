@@ -11,7 +11,6 @@ import {
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test } from 'vitest'
 
-// Common test data
 const sample_points = [
   { x: 1, y: 10 },
   { x: 2, y: 20 },

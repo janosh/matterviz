@@ -21,6 +21,9 @@ function sync_package_config() {
   // Helper to process settings schema
   function process_setting_schema(schema: SettingType, key_path: string) {
     if (schema && typeof schema === `object` && `value` in schema) {
+      // Skip settings that don't apply to editor context
+      if (schema.context && ![`editor`, `all`].includes(schema.context)) return
+
       // This is a SettingSchema - cast to any to access dynamic properties
       const config: Record<string, unknown> = {
         type: typeof schema.value === `boolean`
