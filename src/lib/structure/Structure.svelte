@@ -107,7 +107,7 @@
     show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
     supercell_scaling = $bindable(`1x1x1`),
-    fullscreen_toggle = true,
+    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     bottom_left,
     data_url,
     on_file_drop,

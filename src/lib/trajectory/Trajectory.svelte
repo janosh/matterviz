@@ -85,7 +85,7 @@
 
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
-    show_fullscreen_button?: boolean
+    fullscreen_toggle?: Snippet<[]> | boolean
     // automatically start playing when trajectory data is loaded
     auto_play?: boolean
     // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
@@ -140,7 +140,7 @@
     trajectory_controls,
     error_snippet,
     show_controls = true,
-    show_fullscreen_button = true,
+    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
     auto_play = false,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
@@ -1047,14 +1047,18 @@
               </div>
             {/if}
             <!-- Fullscreen button - rightmost position -->
-            {#if show_fullscreen_button}
+            {#if fullscreen_toggle}
               <button
                 onclick={toggle_fullscreen}
                 title="{fullscreen ? `Exit` : `Enter`} fullscreen"
                 aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
                 class="fullscreen-button"
               >
-                <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+                {#if typeof fullscreen_toggle === `function`}
+                  {@render fullscreen_toggle()}
+                {:else}
+                  <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+                {/if}
               </button>
             {/if}
           </div>
