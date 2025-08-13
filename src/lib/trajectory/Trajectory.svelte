@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon, Spinner, Structure } from '$lib'
+  import { Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
@@ -85,7 +85,7 @@
 
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
-    show_fullscreen_button?: boolean
+    fullscreen_toggle?: Snippet<[]> | boolean
     // automatically start playing when trajectory data is loaded
     auto_play?: boolean
     // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
@@ -140,7 +140,7 @@
     trajectory_controls,
     error_snippet,
     show_controls = true,
-    show_fullscreen_button = true,
+    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
     auto_play = false,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
@@ -705,12 +705,6 @@
     }
   }
 
-  function toggle_fullscreen() {
-    if (!document.fullscreenElement && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else document.exitFullscreen()
-  }
-
   // Get current view mode label
   let current_view_label = $derived.by(() => {
     if (display_mode === `structure`) return `Structure Only`
@@ -774,7 +768,7 @@
     } else if (event.key === `PageDown`) {
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
     } // Interface shortcuts
-    else if (event.key === `f`) toggle_fullscreen()
+    else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
@@ -1047,14 +1041,20 @@
               </div>
             {/if}
             <!-- Fullscreen button - rightmost position -->
-            {#if show_fullscreen_button}
+            {#if fullscreen_toggle}
               <button
-                onclick={toggle_fullscreen}
+                type="button"
+                onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
                 title="{fullscreen ? `Exit` : `Enter`} fullscreen"
                 aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
+                aria-pressed={fullscreen}
                 class="fullscreen-button"
               >
-                <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+                {#if typeof fullscreen_toggle === `function`}
+                  {@render fullscreen_toggle()}
+                {:else}
+                  <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+                {/if}
               </button>
             {/if}
           </div>

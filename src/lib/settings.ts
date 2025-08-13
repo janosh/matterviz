@@ -4,6 +4,8 @@
 import type { Vec3 } from '$lib/math'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
+// SettingType interface with optional context to control where settings apply
+// context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts
 export interface SettingType<T = unknown> {
   value: T
   description: string
@@ -12,6 +14,7 @@ export interface SettingType<T = unknown> {
   maximum?: number
   minItems?: number
   maxItems?: number
+  context?: `web` | `editor` | `notebook` | `all`
 }
 
 export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
@@ -73,6 +76,7 @@ export interface SettingsConfig {
     cell_edge_color: SettingType<string>
     cell_surface_color: SettingType<string>
     cell_edge_width: SettingType<number>
+    fullscreen_toggle: SettingType<boolean>
   }
 
   // Trajectory viewer settings
@@ -89,7 +93,7 @@ export interface SettingsConfig {
       | `structure+histogram`
     >
     show_controls: SettingType<boolean>
-    show_fullscreen_button: SettingType<boolean>
+    fullscreen_toggle: SettingType<boolean>
     step_labels: SettingType<number>
     layout: SettingType<`auto` | `horizontal` | `vertical`>
 
@@ -154,7 +158,6 @@ export interface SettingsConfig {
     show_parsing_progress: SettingType<boolean>
     compact_controls: SettingType<boolean>
     show_filename_in_controls: SettingType<boolean>
-    enable_fullscreen: SettingType<boolean>
 
     // Playback behavior
     smooth_playback: SettingType<boolean>
@@ -424,6 +427,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0.5,
       maximum: 5.0,
     },
+    fullscreen_toggle: {
+      value: true,
+      description:
+        `Show fullscreen toggle button (web-only, always false in other contexts)`,
+      context: `web`,
+    },
   },
 
   // Trajectory viewer settings
@@ -460,9 +469,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Show playback controls`,
     },
-    show_fullscreen_button: {
+    fullscreen_toggle: {
       value: true,
-      description: `Show fullscreen toggle button`,
+      description:
+        `Show fullscreen toggle button (web-only, always false in other contexts)`,
+      context: `web`,
     },
     step_labels: {
       value: 5,
@@ -717,10 +728,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_filename_in_controls: {
       value: true,
       description: `Display filename in control panel`,
-    },
-    enable_fullscreen: {
-      value: true,
-      description: `Allow fullscreen mode`,
     },
 
     // Playback behavior

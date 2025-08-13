@@ -417,16 +417,14 @@
   )
 
   let auto_y2_range = $derived(
-    y2_points.length > 0
-      ? get_nice_data_range(
-        y2_points,
-        (point) => point.y,
-        y2_lim,
-        y2_scale_type,
-        range_padding,
-        false,
-      )
-      : [0, 1], // Default range if no y2 data
+    get_nice_data_range(
+      y2_points,
+      (point) => point.y,
+      y2_lim,
+      y2_scale_type,
+      range_padding,
+      false,
+    ),
   )
 
   // Store initial ranges and initialize current ranges
@@ -1896,9 +1894,9 @@
         bind:x_range
         bind:y_range
         bind:y2_range
-        auto_x_range={auto_x_range as [number, number]}
-        auto_y_range={auto_y_range as [number, number]}
-        auto_y2_range={auto_y2_range as [number, number]}
+        {auto_x_range}
+        {auto_y_range}
+        {auto_y2_range}
         bind:point_size
         bind:point_color
         bind:point_opacity
