@@ -427,11 +427,6 @@
           "default": true,
           "description": "Show playback controls"
         },
-        "matterviz.trajectory.show_fullscreen_button": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show fullscreen toggle button"
-        },
         "matterviz.trajectory.step_labels": {
           "type": "number",
           "default": 5,
@@ -737,11 +732,6 @@
           "type": "boolean",
           "default": true,
           "description": "Display filename in control panel"
-        },
-        "matterviz.trajectory.enable_fullscreen": {
-          "type": "boolean",
-          "default": true,
-          "description": "Allow fullscreen mode"
         },
         "matterviz.trajectory.smooth_playback": {
           "type": "boolean",

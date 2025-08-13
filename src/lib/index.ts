@@ -107,3 +107,19 @@ export function is_binary(content: string): boolean {
     (content.match(/[\u0020-\u007E]/g) || []).length / content.length < 0.7
   )
 }
+
+export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void> {
+  if (!wrapper) return
+  try {
+    if (!document.fullscreenElement) {
+      await wrapper.requestFullscreen()
+    } else if (document.fullscreenElement === wrapper) {
+      await document.exitFullscreen()
+    } else {
+      await document.exitFullscreen()
+      await wrapper.requestFullscreen()
+    }
+  } catch (error) {
+    console.error(`Fullscreen operation failed:`, error)
+  }
+}

@@ -368,7 +368,7 @@
   }
   .draggable-panel .control-buttons {
     display: flex;
-    justify-content: flex-end;
+    justify-content: end;
     align-items: center;
     position: sticky;
     top: 0;
