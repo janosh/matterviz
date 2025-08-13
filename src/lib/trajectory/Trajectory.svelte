@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon, Spinner, Structure } from '$lib'
+  import { Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { DataSeries, Point } from '$lib/plot'
@@ -705,12 +705,6 @@
     }
   }
 
-  function toggle_fullscreen() {
-    if (!document.fullscreenElement && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else document.exitFullscreen()
-  }
-
   // Get current view mode label
   let current_view_label = $derived.by(() => {
     if (display_mode === `structure`) return `Structure Only`
@@ -774,7 +768,7 @@
     } else if (event.key === `PageDown`) {
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
     } // Interface shortcuts
-    else if (event.key === `f`) toggle_fullscreen()
+    else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
@@ -1049,7 +1043,7 @@
             <!-- Fullscreen button - rightmost position -->
             {#if fullscreen_toggle}
               <button
-                onclick={toggle_fullscreen}
+                onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
                 title="{fullscreen ? `Exit` : `Enter`} fullscreen"
                 aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
                 class="fullscreen-button"

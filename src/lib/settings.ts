@@ -429,7 +429,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     fullscreen_toggle: {
       value: true,
-      description: `Show fullscreen toggle button (web-only, in other contexts)`,
+      description:
+        `Show fullscreen toggle button (web-only, always false in other contexts)`,
       context: `web`,
     },
   },
@@ -470,7 +471,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     fullscreen_toggle: {
       value: true,
-      description: `Show fullscreen toggle button (web-only, in other contexts)`,
+      description:
+        `Show fullscreen toggle button (web-only, always false in other contexts)`,
       context: `web`,
     },
     step_labels: {

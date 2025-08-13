@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { AnyStructure, Vec3 } from '$lib'
-  import { get_elem_amounts, get_pbc_image_sites, Icon, Spinner } from '$lib'
+  import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
+  import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import type { PymatgenStructure } from '$lib/structure/index'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import { Canvas } from '@threlte/core'
@@ -362,12 +363,6 @@
     }
   }
 
-  export function toggle_fullscreen() {
-    if (!document.fullscreenElement && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else document.exitFullscreen()
-  }
-
   // Handle keyboard shortcuts
   function onkeydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
@@ -378,8 +373,9 @@
     if (is_input_focused) return
 
     // Interface shortcuts
-    if (event.key === `f` && (event.ctrlKey || event.metaKey)) toggle_fullscreen()
-    else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
+    if (event.key === `f` && (event.ctrlKey || event.metaKey) && fullscreen_toggle) {
+      toggle_fullscreen(wrapper)
+    } else if (event.key === `i` && (event.ctrlKey || event.metaKey)) {
       info_panel_open = !info_panel_open
     } else if (event.key === `Escape`) {
       // Prioritize closing panels over exiting fullscreen
@@ -463,7 +459,7 @@
         {/if}
         {#if fullscreen_toggle}
           <button
-            onclick={toggle_fullscreen}
+            onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
             class="fullscreen-toggle"
             {@attach tooltip({ content: `${fullscreen ? `Exit` : `Enter`} fullscreen` })}
             style="padding: 0"
