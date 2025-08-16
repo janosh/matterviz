@@ -86,7 +86,7 @@ describe(`OPTIMADE API utilities`, () => {
     expect(decoded).toBe(complex_id)
   })
 
-  test.skipIf(is_ci)(`should extract provider prefix from slug`, () => {
+  test(`should extract provider prefix from slug`, () => {
     const cases = [`odbx-9.1`, `mp-1226325`]
     for (const slug of cases) {
       const decoded = decode_structure_id(slug)
@@ -100,7 +100,7 @@ describe(`OPTIMADE API utilities`, () => {
     [`mp-123`, `mp`],
     [`cod-456`, `cod`],
     [`odbx-9.1/2`, `odbx`], // Test encoded slug
-  ])(`should detect provider %s from slug %s`, (slug, expected_provider) => {
+  ])(`should detect provider from slug %s (expected: %s)`, (slug, expected_provider) => {
     const provider = detect_provider_from_slug(slug, mock_providers)
     expect(provider).toBe(expected_provider)
   })

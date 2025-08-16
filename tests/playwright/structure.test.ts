@@ -695,7 +695,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(opacity_in_second_row).toBeVisible()
 
     // Check that offset X, Y, and Z are in the same row
-    const offset_row = pane_rows.nth(3) // Assuming this is the offset row
+    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
     const offset_x_in_row = offset_row.locator(`label:has-text("X")`)
     const offset_y_in_row = offset_row.locator(`label:has-text("Y")`)
     const offset_z_in_row = offset_row.locator(`label:has-text("Z")`)

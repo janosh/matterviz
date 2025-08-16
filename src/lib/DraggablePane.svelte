@@ -182,6 +182,7 @@
 
 {#if show_pane}
   <button
+    type="button"
     bind:this={toggle_pane_btn}
     onclick={handle_button_click(custom_toggle || toggle_pane)}
     aria-expanded={show}
@@ -212,6 +213,7 @@
     <div class="control-buttons">
       {#if show_control_buttons}
         <button
+          type="button"
           class="reset-button"
           onclick={handle_button_click(reset_position)}
           title="Reset pane position"
@@ -220,6 +222,7 @@
           <Icon icon="Reset" style="width: 1.25em; height: 1.25em" />
         </button>
         <button
+          type="button"
           class="close-button"
           onclick={handle_button_click(close_pane)}
           title="Close pane"

@@ -22,6 +22,8 @@
   import { optimade_to_pymatgen } from '$lib/structure/parse'
   import { tooltip } from 'svelte-multiselect'
 
+  const STRUCT_SUGGESTIONS_LIMIT = 20
+
   let structure = $state<PymatgenStructure | null>(null)
   let loading = $state(false)
   let error = $state<string | null>(null)
@@ -44,9 +46,7 @@
         input_value = decoded_slug.startsWith(`${provider}-`)
           ? decoded_slug
           : `${provider}-${decoded_slug}`
-      } else {
-        input_value = decoded_slug
-      }
+      } else input_value = decoded_slug
     } else input_value = decoded_slug // Prefill the input immediately; it will be normalized once providers load
   })
 
@@ -59,8 +59,7 @@
     if (available_providers.length > 0) last_loaded_db = null
   })
 
-  // Load data when database or structure ID changes
-  $effect(() => {
+  $effect(() => { // Load databases and suggested structures when database changes
     if (selected_db && available_providers.length > 0) {
       load_databases()
       // Only load suggested structures when switching to different database
@@ -68,15 +67,14 @@
       if (last_loaded_db !== selected_db) {
         const db = selected_db
         load_suggested_structures(db)
-          .then(() => {
-            // Only mark as loaded if we're still on the same DB
+          .then(() => { // Only mark as loaded if we're still on the same DB
             if (selected_db === db) last_loaded_db = db
-          })
-          .catch(() => {
-            // Keep last_loaded_db unchanged to allow retry on next effect run
           })
       }
     }
+  })
+
+  $effect(() => { // Load structure data when structure ID changes
     if (
       structure_id &&
       selected_db &&
@@ -137,7 +135,7 @@
       const data = await fetch_suggested_structures(
         db,
         available_providers,
-        20,
+        STRUCT_SUGGESTIONS_LIMIT,
       )
       // Only update if we're still on the same database
       if (selected_db === db) {

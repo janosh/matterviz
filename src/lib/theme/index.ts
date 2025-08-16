@@ -1,7 +1,5 @@
 // Theme System for MatterViz
 
-export { default as ThemeControl } from './ThemeControl.svelte'
-
 const is_browser = typeof window !== `undefined`
 const storage_key = `matterviz-theme`
 

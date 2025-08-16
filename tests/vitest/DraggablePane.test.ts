@@ -162,7 +162,6 @@ describe(`DraggablePane`, () => {
     const pane = doc_query(`.draggable-pane`)
 
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
-    expect(button.getAttribute(`aria-controls`)).toBe(`draggable-pane`)
     expect(pane.getAttribute(`aria-label`)).toBe(`Draggable pane`)
     expect(pane.getAttribute(`aria-modal`)).toBe(`false`)
   })

@@ -29,7 +29,7 @@ export async function open_draggable_pane(page: Page, options: OpenPaneOptions) 
   }
 
   // Wait for the pane to be visible
-  await expect(pane_div).toBeVisible({ timeout: 2000 })
+  await expect(pane_div).toBeVisible({ timeout })
 
   // Wait for pane to be properly positioned and rendered
   await page.waitForFunction(
