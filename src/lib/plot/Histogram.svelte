@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePanel } from '$lib'
+  import { DraggablePane } from '$lib'
   import type { DataSeries } from '$lib/plot'
   import { HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, max } from 'd3-array'
@@ -50,7 +50,7 @@
     controls_open?: boolean
     plot_controls?: Snippet<[]>
     on_series_toggle?: (series_idx: number) => void
-    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     [key: string]: unknown
   }
 

@@ -704,8 +704,7 @@ test.describe(`Histogram Component Tests`, () => {
     }
   })
 
-  // TODO figure out how to actually open the control panel
-  test.skip(`histogram controls panel functionality`, async ({ page }) => {
+  test(`histogram controls pane functionality`, async ({ page }) => {
     // Wait for histogram to be fully rendered
 
     // Wait for the toggle button to be visible and clickable
@@ -713,15 +712,15 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
 
-    // Test control panel toggle
+    // Test control pane toggle
     await toggle_button.click()
 
-    // Check controls panel is open
-    const controls_panel = page.locator(`#basic-single-series .histogram-controls-panel`)
-    await expect(controls_panel).toBeVisible({ timeout: 10000 })
+    // Check controls pane is open
+    const control_pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test bins control (use ID to be specific)
-    const bins_slider = controls_panel.locator(`input#bins-input`)
+    const bins_slider = control_pane.locator(`input#bins-input`)
     await expect(bins_slider).toBeVisible({ timeout: 5000 })
     await bins_slider.fill(`15`)
 
@@ -731,35 +730,33 @@ test.describe(`Histogram Component Tests`, () => {
     expect(bar_count).toBeGreaterThan(0)
 
     // Test bar opacity control
-    const opacity_slider = controls_panel.locator(`input#bar-opacity-range`)
+    const opacity_slider = control_pane.locator(`input#bar-opacity-range`)
     if (await opacity_slider.isVisible()) {
       await opacity_slider.fill(`0.3`)
     }
 
     // Test bar stroke width control
-    const stroke_slider = controls_panel.locator(`input#bar-stroke-width-range`)
+    const stroke_slider = control_pane.locator(`input#bar-stroke-width-range`)
     if (await stroke_slider.isVisible()) {
       await stroke_slider.fill(`2`)
     }
 
     // Test grid toggles
-    const x_grid_checkbox = controls_panel.locator(
-      `input[type="checkbox"]:has-text("X-axis grid")`,
-    )
+    const x_grid_checkbox = control_pane.getByLabel(`X-axis grid`)
     if (await x_grid_checkbox.isVisible()) {
       await x_grid_checkbox.uncheck()
       await x_grid_checkbox.check()
     }
 
     // Test scale type selects
-    const x_scale_select = controls_panel.locator(`select >> nth=0`)
+    const x_scale_select = control_pane.locator(`select#x-scale-select`)
     if (await x_scale_select.isVisible()) {
       await x_scale_select.selectOption(`log`)
       await x_scale_select.selectOption(`linear`)
     }
 
     // Test format inputs
-    const format_inputs = controls_panel.locator(`input.format-input`)
+    const format_inputs = control_pane.locator(`input.format-input`)
     if (await format_inputs.count() > 0) {
       const x_format_input = format_inputs.first()
       await x_format_input.fill(`.3f`)
@@ -775,12 +772,12 @@ test.describe(`Histogram Component Tests`, () => {
       await x_format_input.fill(`.2f`)
     }
 
-    // Close controls panel
+    // Close controls pane
     await toggle_button.click()
   })
 
-  // TODO figure out how to actually open the control panel
-  test.skip(`histogram controls with multiple series`, async ({ page }) => {
+  // TODO figure out how to actually open the control pane
+  test(`histogram controls with multiple series`, async ({ page }) => {
     // Wait for histogram to be fully rendered
 
     // Move legend out of the way if it exists (it might be blocking the toggle button)
@@ -792,7 +789,7 @@ test.describe(`Histogram Component Tests`, () => {
       // Legend might not exist, that's okay
     })
 
-    // Click the toggle button to open the controls panel
+    // Click the toggle button to open the controls pane
     const toggle_button = page.locator(
       `#multiple-series-overlay .histogram-controls-toggle`,
     )
@@ -800,18 +797,18 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const controls_panel = page.locator(
-      `#multiple-series-overlay .histogram-controls-panel`,
+    const control_pane = page.locator(
+      `#multiple-series-overlay .histogram-controls-pane`,
     )
-    await expect(controls_panel).toBeVisible({ timeout: 10000 })
+    await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test mode selection
-    const mode_select = controls_panel.locator(`select[id="mode-select"]`)
+    const mode_select = control_pane.locator(`select[id="mode-select"]`)
     if (await mode_select.isVisible()) {
       await mode_select.selectOption(`single`)
 
       // Test property selection in single mode
-      const property_select = controls_panel.locator(`select[id="property-select"]`)
+      const property_select = control_pane.locator(`select[id="property-select"]`)
       if (await property_select.isVisible()) {
         const options = await property_select.locator(`option`).all()
         if (options.length > 1) {
@@ -827,19 +824,17 @@ test.describe(`Histogram Component Tests`, () => {
     }
 
     // Test legend toggle
-    const legend_checkbox = controls_panel.locator(
-      `input[type="checkbox"]:has-text("Show legend")`,
-    )
+    const legend_checkbox = control_pane.getByLabel(`Show legend`)
     if (await legend_checkbox.isVisible()) {
       await legend_checkbox.uncheck()
       await legend_checkbox.check()
     }
 
     // Test opacity and stroke controls for multiple series
-    const opacity_slider = controls_panel.locator(`input[type="range"][max="1"]`)
+    const opacity_slider = control_pane.locator(`input[type="range"][max="1"]`)
     await opacity_slider.fill(`0.8`)
 
-    const stroke_slider = controls_panel.locator(`input[type="range"][max="5"]`)
+    const stroke_slider = control_pane.locator(`input[type="range"][max="5"]`)
     await stroke_slider.fill(`1.5`)
 
     // Verify histogram still renders correctly
@@ -873,18 +868,18 @@ test.describe(`Histogram Component Tests`, () => {
     })
 
     // Test controls with logarithmic scales
-    // Click the toggle button to open the controls panel
+    // Click the toggle button to open the controls pane
     const toggle_button = page.locator(`#logarithmic-scales .histogram-controls-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const controls_panel = page.locator(`#logarithmic-scales .histogram-controls-panel`)
-    await expect(controls_panel).toBeVisible({ timeout: 10000 })
+    const control_pane = page.locator(`#logarithmic-scales .histogram-controls-pane`)
+    await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test scale type changes (use specific IDs to avoid confusion with mode select)
-    const x_scale_select = controls_panel.locator(`select#x-scale-select`)
-    const y_scale_select = controls_panel.locator(`select#y-scale-select`)
+    const x_scale_select = control_pane.locator(`select#x-scale-select`)
+    const y_scale_select = control_pane.locator(`select#y-scale-select`)
 
     if (await x_scale_select.isVisible() && await y_scale_select.isVisible()) {
       // Test X-axis scale
@@ -908,8 +903,8 @@ test.describe(`Histogram Component Tests`, () => {
     }
 
     // Test tick controls (use specific IDs)
-    const x_tick_input = controls_panel.locator(`input#x-ticks-input`)
-    const y_tick_input = controls_panel.locator(`input#y-ticks-input`)
+    const x_tick_input = control_pane.locator(`input#x-ticks-input`)
+    const y_tick_input = control_pane.locator(`input#y-ticks-input`)
 
     if (await x_tick_input.isVisible() && await y_tick_input.isVisible()) {
       // Test X-axis ticks
@@ -933,17 +928,17 @@ test.describe(`Histogram Component Tests`, () => {
     })
 
     // Test format validation in controls
-    // Click the toggle button to open the controls panel
+    // Click the toggle button to open the controls pane
     const toggle_button = page.locator(`#tick-configuration .histogram-controls-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const controls_panel = page.locator(`#tick-configuration .histogram-controls-panel`)
-    await expect(controls_panel).toBeVisible({ timeout: 10000 })
+    const control_pane = page.locator(`#tick-configuration .histogram-controls-pane`)
+    await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test format inputs
-    const format_inputs = controls_panel.locator(`input.format-input`)
+    const format_inputs = control_pane.locator(`input.format-input`)
     const format_count = await format_inputs.count()
 
     if (format_count >= 2) {
@@ -1007,8 +1002,8 @@ test.describe(`Histogram Component Tests`, () => {
     await control_toggle.focus()
     await page.keyboard.press(`Enter`)
 
-    const controls_panel = page.locator(`#basic-single-series .histogram-controls-panel`)
-    await expect(controls_panel).toBeVisible({ timeout: 5000 })
+    const control_pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    await expect(control_pane).toBeVisible({ timeout: 5000 })
 
     // Test tab navigation through controls
     await page.keyboard.press(`Tab`)
@@ -1040,14 +1035,14 @@ test.describe(`Histogram Component Tests`, () => {
     })
 
     // Test controls at different viewport sizes
-    // Click the toggle button to open the controls panel
+    // Click the toggle button to open the controls pane
     const toggle_button = page.locator(`#basic-single-series .histogram-controls-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const controls_panel = page.locator(`#basic-single-series .histogram-controls-panel`)
-    await expect(controls_panel).toBeVisible({ timeout: 10000 })
+    const control_pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test at different viewport sizes
     const viewports = [
@@ -1060,10 +1055,10 @@ test.describe(`Histogram Component Tests`, () => {
       await page.setViewportSize(viewport)
 
       // Controls should remain accessible
-      await expect(controls_panel).toBeVisible()
+      await expect(control_pane).toBeVisible()
 
       // Test slider interaction at different sizes
-      const bins_slider = controls_panel.locator(`#bins-input`)
+      const bins_slider = control_pane.locator(`#bins-input`)
       if (await bins_slider.isVisible()) {
         await bins_slider.fill(`25`)
 

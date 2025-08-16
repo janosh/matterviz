@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { AnyStructure, Site } from '$lib'
-  import { DraggablePanel, element_data, format_num, Icon } from '$lib'
+  import { DraggablePane, element_data, format_num, Icon } from '$lib'
   import * as math from '$lib/math'
-  import { theme_state } from '$lib/state.svelte'
   import { electro_neg_formula, get_density } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -16,18 +15,18 @@
 
   interface Props {
     structure: AnyStructure
-    panel_open?: boolean
+    pane_open?: boolean
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
-    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
-    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     [key: string]: unknown
   }
   let {
     structure,
-    panel_open = $bindable(false),
+    pane_open = $bindable(false),
     atom_count_thresholds = [50, 500],
     toggle_props = $bindable({}),
-    panel_props = $bindable({}),
+    pane_props = $bindable({}),
     ...rest
   }: Props = $props()
 
@@ -52,7 +51,7 @@
     else copy_to_clipboard(item.label, item.value, item.key)
   }
 
-  let info_panel_data = $derived.by(() => {
+  let info_pane_data = $derived.by(() => {
     if (!structure) return []
     const sections = []
     const [min_threshold, max_threshold] = atom_count_thresholds
@@ -249,7 +248,7 @@
         },
         {
           label: `Keyboard`,
-          value: `Press 'f' for fullscreen, 'i' to toggle this panel`,
+          value: `Press 'f' for fullscreen, 'i' to toggle this pane`,
           key: `tips-keyboard`,
         },
       ] as SectionItem[],
@@ -259,27 +258,24 @@
   })
 </script>
 
-<DraggablePanel
-  bind:show={panel_open}
+<DraggablePane
+  bind:show={pane_open}
   max_width="24em"
   toggle_props={{
     class: `structure-info-toggle`,
-    title: `${panel_open ? `Close` : `Open`} structure info`,
+    title: `${pane_open ? `Close` : `Open`} structure info`,
     ...toggle_props,
   }}
   open_icon="Cross"
   closed_icon="Info"
-  panel_props={{
-    class: `structure-info-panel`,
-    style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
-      theme_state.type === `dark` ? `0.5` : `0.1`
-    }); max-height: 80vh;`,
-    ...panel_props,
+  pane_props={{
+    ...pane_props,
+    class: `structure-info-pane ${pane_props?.class ?? ``}`,
   }}
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>
-  {#each info_panel_data as section (section.title)}
+  {#each info_pane_data as section (section.title)}
     <section>
       {#if section.title && section.title !== `Structure`}
         <h4>{section.title}</h4>
@@ -321,12 +317,12 @@
           </div>
         {/if}
       {/each}
-      {#if section !== info_panel_data[info_panel_data.length - 1]}
+      {#if section !== info_pane_data[info_pane_data.length - 1]}
         <hr />
       {/if}
     </section>
   {/each}
-</DraggablePanel>
+</DraggablePane>
 
 <style>
   section div {
@@ -341,14 +337,14 @@
     position: relative; /* Add relative positioning for checkmark overlay */
   }
   section div:hover {
-    background: var(--panel-btn-bg-hover, rgba(255, 255, 255, 0.03));
+    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
   }
   .copy-checkmark-overlay {
     position: absolute;
     top: 50%;
     right: 3pt;
     transform: translateY(-50%);
-    background: var(--panel-bg);
+    background: var(--pane-bg);
     border-radius: 50%;
     padding: 3pt;
     display: flex;
