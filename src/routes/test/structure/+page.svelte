@@ -3,7 +3,7 @@
   import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
-  let info_panel_open = $state(false)
+  let info_pane_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<boolean | number>(true)
@@ -172,7 +172,7 @@
   ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
   : undefined}
   bind:controls_open
-  bind:info_panel_open
+  bind:info_pane_open
   bind:width={canvas.width}
   bind:height={canvas.height}
   {background_color}
@@ -187,8 +187,10 @@
   on_camera_reset={create_event_handler(`on_camera_reset`)}
 />
 
-<div data-testid="panel-open-status" style="margin-top: 10px">
-  Controls Open Status: {controls_open}
+<div data-testid="pane-open-status" style="margin-top: 10px">
+  Info Pane Open Status: {info_pane_open}
+  <!-- Optionally keep controls status for debugging -->
+  <!-- Controls Open Status: {controls_open} -->
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>

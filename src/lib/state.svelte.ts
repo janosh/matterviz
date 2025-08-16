@@ -24,13 +24,7 @@ export const colors = $state<{
   element: { ...default_element_colors },
 })
 
-export const tooltip = $state<Tooltip>({
-  show: false,
-  x: 0,
-  y: 0,
-  title: ``,
-  items: [],
-})
+export const tooltip = $state<Tooltip>({ show: false, x: 0, y: 0, title: ``, items: [] })
 
 export const periodic_table_state = $state({
   show_bonding_info: false,

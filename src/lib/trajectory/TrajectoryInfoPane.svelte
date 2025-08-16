@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { DraggablePanel, Icon } from '$lib'
-  import { format_num } from '$lib/labels'
+  import { DraggablePane, format_num, Icon } from '$lib'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { theme_state } from '$lib/state.svelte'
   import { type AnyStructure, electro_neg_formula } from '$lib/structure'
@@ -16,9 +15,9 @@
     current_file_path?: string | null
     file_size?: number | null
     file_object?: File | null
-    panel_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
-    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    pane_open?: boolean
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     [key: string]: unknown
   }
   let {
@@ -28,9 +27,9 @@
     current_file_path,
     file_size,
     file_object,
-    panel_open = $bindable(false),
+    pane_open = $bindable(false),
     toggle_props,
-    panel_props,
+    pane_props,
     ...rest
   }: Props = $props()
 
@@ -90,7 +89,7 @@
   }
 
   // Get trajectory info organized by sections
-  let info_panel_data = $derived.by(() => {
+  let info_pane_data = $derived.by(() => {
     if (
       (!trajectory?.frames?.length && !trajectory?.total_frames) ||
       current_step_idx < 0 ||
@@ -302,27 +301,27 @@
   })
 </script>
 
-<DraggablePanel
-  bind:show={panel_open}
+<DraggablePane
+  bind:show={pane_open}
   max_width="24em"
   toggle_props={{
     class: `trajectory-info-toggle`,
-    title: `${panel_open ? `Close` : `Open`} trajectory info`,
+    title: `${pane_open ? `Close` : `Open`} trajectory info`,
     ...toggle_props,
   }}
   open_icon="Cross"
   closed_icon="Info"
-  panel_props={{
-    class: `trajectory-info-panel`,
+  pane_props={{
+    class: `trajectory-info-pane`,
     style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
       theme_state.type === `dark` ? `0.5` : `0.1`
     }); max-height: 80vh;`,
-    ...panel_props,
+    ...pane_props,
   }}
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>
-  {#each info_panel_data as section (section.title)}
+  {#each info_pane_data as section (section.title)}
     <section>
       {#if section.title && section.title !== `File`}
         <h4>{section.title}</h4>
@@ -353,12 +352,12 @@
           {/if}
         </div>
       {/each}
-      {#if section !== info_panel_data[info_panel_data.length - 1]}
+      {#if section !== info_pane_data[info_pane_data.length - 1]}
         <hr />
       {/if}
     </section>
   {/each}
-</DraggablePanel>
+</DraggablePane>
 
 <style>
   section div {
@@ -373,14 +372,14 @@
     position: relative;
   }
   section div:hover {
-    background: var(--panel-btn-bg-hover, rgba(255, 255, 255, 0.03));
+    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
   }
   .copy-checkmark-overlay {
     position: absolute;
     top: 50%;
     right: 3pt;
     transform: translateY(-50%);
-    background: var(--panel-bg);
+    background: var(--pane-bg);
     border-radius: 50%;
     padding: 3pt;
     display: flex;

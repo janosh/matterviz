@@ -731,7 +731,7 @@
         "matterviz.trajectory.show_filename_in_controls": {
           "type": "boolean",
           "default": true,
-          "description": "Display filename in control panel"
+          "description": "Display filename in control pane"
         },
         "matterviz.trajectory.smooth_playback": {
           "type": "boolean",

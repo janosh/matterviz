@@ -1,4 +1,4 @@
-import StructureInfoPanel from '$lib/structure/StructureInfoPanel.svelte'
+import { StructureInfoPane } from '$lib'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 import { get_dummy_structure } from '../setup'
@@ -15,9 +15,9 @@ test.each([
   (atom_count, should_show_sites, _description) => {
     const structure = get_dummy_structure(`H`, atom_count, true)
     const atom_count_thresholds = [50, 500]
-    mount(StructureInfoPanel, {
+    mount(StructureInfoPane, {
       target: document.body,
-      props: { structure, panel_open: true, atom_count_thresholds },
+      props: { structure, pane_open: true, atom_count_thresholds },
     })
 
     // Check formula shows correct atom count
@@ -26,7 +26,7 @@ test.each([
 
     if (atom_count <= atom_count_thresholds[1]) {
       // Sites section should exist
-      const sites_section = document.querySelector(`.structure-info-panel h4`)
+      const sites_section = document.querySelector(`.structure-info-pane h4`)
       expect(sites_section).not.toBeNull()
 
       if (atom_count >= atom_count_thresholds[0]) {
@@ -57,14 +57,14 @@ test.each([
 
 test(`structure with > 500 atoms should not create sites section`, () => {
   const structure = get_dummy_structure(`H`, 600, true)
-  mount(StructureInfoPanel, {
+  mount(StructureInfoPane, {
     target: document.body,
-    props: { structure, panel_open: true },
+    props: { structure, pane_open: true },
   })
 
   // Check that no sites section exists
   const sites_headings = Array.from(
-    document.querySelectorAll<HTMLHeadingElement>(`.structure-info-panel h4`),
+    document.querySelectorAll<HTMLHeadingElement>(`.structure-info-pane h4`),
   )
   const sites_section = sites_headings.find((heading) =>
     heading.textContent?.includes(`Sites`)

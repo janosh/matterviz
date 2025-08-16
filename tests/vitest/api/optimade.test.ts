@@ -1,4 +1,4 @@
-// deno-lint-ignore-file no-await-in-loop
+import type { OptimadeProvider } from '$lib/api/optimade'
 import {
   decode_structure_id,
   detect_provider_from_slug,
@@ -9,6 +9,34 @@ import { describe, expect, test } from 'vitest'
 
 // Skip flaky CORS-involving Optimade tests in CI
 const is_ci = Boolean(process.env.CI)
+
+// Mock providers data for testing
+const mock_providers: OptimadeProvider[] = [
+  {
+    id: `odbx`,
+    type: `links`,
+    attributes: {
+      name: `Open Database of Xtals`,
+      base_url: `https://odbx.io`,
+    },
+  },
+  {
+    id: `mp`,
+    type: `links`,
+    attributes: {
+      name: `Materials Project`,
+      base_url: `https://materialsproject.org`,
+    },
+  },
+  {
+    id: `cod`,
+    type: `links`,
+    attributes: {
+      name: `Crystallography Open Database`,
+      base_url: `https://www.crystallography.net`,
+    },
+  },
+]
 
 describe(`OPTIMADE API utilities`, () => {
   test.each([
@@ -58,11 +86,11 @@ describe(`OPTIMADE API utilities`, () => {
     expect(decoded).toBe(complex_id)
   })
 
-  test.skipIf(is_ci)(`should extract provider prefix from slug`, async () => {
+  test(`should extract provider prefix from slug`, () => {
     const cases = [`odbx-9.1`, `mp-1226325`]
     for (const slug of cases) {
       const decoded = decode_structure_id(slug)
-      const provider = await detect_provider_from_slug(decoded)
+      const provider = detect_provider_from_slug(decoded, mock_providers)
       expect(provider).toBe(slug.split(`-`)[0].toLowerCase())
     }
   })
@@ -72,16 +100,16 @@ describe(`OPTIMADE API utilities`, () => {
     [`mp-123`, `mp`],
     [`cod-456`, `cod`],
     [`odbx-9.1/2`, `odbx`], // Test encoded slug
-  ])(`should detect provider %s from slug %s`, async (slug, expected_provider) => {
-    const provider = await detect_provider_from_slug(slug)
+  ])(`should detect provider from slug %s (expected: %s)`, (slug, expected_provider) => {
+    const provider = detect_provider_from_slug(slug, mock_providers)
     expect(provider).toBe(expected_provider)
   })
 
   test.skipIf(is_ci).each([
     [`unknown-123`, `unknown provider`],
     [`123`, `slug without provider prefix`],
-  ])(`should return empty string for %s`, async (slug) => {
-    const provider = await detect_provider_from_slug(slug)
+  ])(`should return empty string for %s`, (slug) => {
+    const provider = detect_provider_from_slug(slug, mock_providers)
     expect(provider).toBe(``)
   })
 })

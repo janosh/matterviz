@@ -14,7 +14,7 @@
 /* Targeted theme transitions for performance */
 :where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
 :where(select, label, .theme-control, .toc, svg, path, circle, rect, text),
-:where(.info-panel, .panel-header, .panel-content, .close-button),
+:where(.info-pane, .pane-header, .pane-content, .close-button),
 :where(nav > a),
 :where(.theme-control, .theme-control label, .theme-control select) {
   transition:

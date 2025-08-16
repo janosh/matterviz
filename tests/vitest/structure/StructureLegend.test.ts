@@ -1,7 +1,7 @@
 import type { CompositionType } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
-import StructureLegend from '$lib/structure/StructureLegend.svelte'
+import { StructureLegend } from '$lib/structure'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
