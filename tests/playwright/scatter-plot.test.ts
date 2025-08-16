@@ -968,9 +968,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.mouse.up()
   })
 
-  // CONTROL PANEL TESTS
+  // Control Pane Tests
 
-  test(`control panel functionality and state management`, async ({ page }) => {
+  test(`control pane functionality and state management`, async ({ page }) => {
     // Use the legend-multi-default section which has show_controls enabled
     const scatter_plot = page.locator(`#legend-multi-default .scatter`)
     await expect(scatter_plot).toBeVisible()
@@ -978,12 +978,12 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const controls_toggle = scatter_plot.locator(`.scatter-controls-toggle`)
     await expect(controls_toggle).toBeVisible()
 
-    const control_panel = scatter_plot.locator(`.scatter-controls-panel`)
-    await expect(control_panel).not.toBeVisible()
+    const control_pane = scatter_plot.locator(`.scatter-controls-pane`)
+    await expect(control_pane).not.toBeVisible()
 
     // Test toggle functionality
     await controls_toggle.click()
-    await expect(control_panel).toBeVisible()
+    await expect(control_pane).toBeVisible()
 
     // Test display controls
     const display_controls = [
@@ -992,7 +992,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     ]
 
     for (const { label, selector } of display_controls) {
-      const checkbox = control_panel.getByLabel(label)
+      const checkbox = control_pane.getByLabel(label)
       await expect(checkbox).toBeVisible()
       await expect(checkbox).toBeChecked()
 
@@ -1013,7 +1013,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     ]
 
     for (const { label, selector } of grid_controls) {
-      const checkbox = control_panel.getByLabel(label)
+      const checkbox = control_pane.getByLabel(label)
       await expect(checkbox).toBeVisible()
       await expect(checkbox).toBeChecked()
 
@@ -1028,7 +1028,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
 
     // Test style controls
-    const point_size_controls = control_panel.locator(`.panel-row`).filter({
+    const point_size_controls = control_pane.locator(`.pane-row`).filter({
       hasText: `Size`,
     })
     const point_size_range = point_size_controls.locator(`input[type="range"]`)
@@ -1041,7 +1041,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(point_size_number).toHaveValue(`10`)
 
     // Test zero lines control
-    const zero_lines_checkbox = control_panel.getByLabel(`Show zero lines`)
+    const zero_lines_checkbox = control_pane.getByLabel(`Show zero lines`)
     await expect(zero_lines_checkbox).toBeVisible()
     await expect(zero_lines_checkbox).toBeChecked()
 
@@ -1052,16 +1052,16 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(zero_lines_checkbox).toBeChecked()
 
     // Test state persistence
-    const x_grid_checkbox = control_panel.getByLabel(`X-axis grid`)
+    const x_grid_checkbox = control_pane.getByLabel(`X-axis grid`)
     await x_grid_checkbox.uncheck()
 
     await controls_toggle.click() // Close
-    await expect(control_panel).toHaveCSS(`display`, `none`)
+    await expect(control_pane).toHaveCSS(`display`, `none`)
 
     await controls_toggle.click() // Reopen
-    await expect(control_panel).toHaveCSS(`display`, `grid`)
+    await expect(control_pane).toHaveCSS(`display`, `grid`)
 
-    const reopened_x_grid_checkbox = control_panel.getByLabel(`X-axis grid`)
+    const reopened_x_grid_checkbox = control_pane.getByLabel(`X-axis grid`)
     await expect(reopened_x_grid_checkbox).not.toBeChecked()
 
     // Test click outside to close
@@ -1072,7 +1072,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
         plot_bbox.y + plot_bbox.height * 0.5,
       )
     }
-    await expect(control_panel).toHaveCSS(`display`, `none`)
+    await expect(control_pane).toHaveCSS(`display`, `none`)
   })
 
   test(`tick format controls modify axis labels and validate input`, async ({ page }) => {
@@ -1085,16 +1085,16 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
 
     await controls_toggle.click()
-    const control_panel = scatter_plot.locator(`.scatter-controls-panel`)
-    await expect(control_panel).toBeVisible()
+    const control_pane = scatter_plot.locator(`.scatter-controls-pane`)
+    await expect(control_pane).toBeVisible()
 
-    const x_format_input = control_panel.locator(`input#x-format`)
-    const y_format_input = control_panel.locator(`input#y-format`)
+    const x_format_input = control_pane.locator(`input#x-format`)
+    const y_format_input = control_pane.locator(`input#y-format`)
 
     await expect(x_format_input).toBeVisible()
     await expect(y_format_input).toBeVisible()
 
-    const y2_format_input = control_panel.locator(`input#y2-format`)
+    const y2_format_input = control_pane.locator(`input#y2-format`)
     await expect(y2_format_input).not.toBeVisible()
 
     // Get initial tick text
@@ -1356,17 +1356,17 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
     const multi_series_plot = page.locator(`#legend-multi-default .scatter`)
     await multi_series_plot.locator(`.scatter-controls-toggle`).click()
-    const control_panel = multi_series_plot.locator(`.scatter-controls-panel`)
+    const control_pane = multi_series_plot.locator(`.scatter-controls-pane`)
 
     // Test series selector functionality
-    const series_selector = control_panel.locator(`select#series-select`)
+    const series_selector = control_pane.locator(`select#series-select`)
     if (await series_selector.isVisible()) {
       // Test switching between series
       await series_selector.selectOption(`0`)
       await expect(series_selector).toHaveValue(`0`)
 
       // Test that style changes only affect selected series
-      const point_color_input = control_panel.locator(`input[type="color"]`).first()
+      const point_color_input = control_pane.locator(`input[type="color"]`).first()
       await point_color_input.fill(`#ff0000`)
 
       // Switch to different series
@@ -1513,10 +1513,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const controls_toggle = plot_locator.locator(`.scatter-controls-toggle`)
 
     await controls_toggle.click()
-    const control_panel = plot_locator.locator(`.scatter-controls-panel`)
+    const control_pane = plot_locator.locator(`.scatter-controls-pane`)
 
     // Test rapid changes to style properties
-    const point_size_range = control_panel.locator(`input[type="range"]`).first()
+    const point_size_range = control_pane.locator(`input[type="range"]`).first()
 
     if (await point_size_range.isVisible()) {
       // Rapidly change point size multiple times
@@ -1536,9 +1536,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const controls_toggle = scatter_plot.locator(`.scatter-controls-toggle`)
 
     await controls_toggle.click()
-    const control_panel = scatter_plot.locator(`.scatter-controls-panel`)
+    const control_pane = scatter_plot.locator(`.scatter-controls-pane`)
 
-    const x_format_input = control_panel.locator(`input#x-format`)
+    const x_format_input = control_pane.locator(`input#x-format`)
 
     // Test various invalid format strings
     const invalid_formats = [

@@ -52,7 +52,7 @@ function create_drop_event(files: File[]): DragEvent {
 
 // Tests for Structure component functionality
 describe(`Structure`, () => {
-  test(`open control panel when clicking toggle button`, () => {
+  test(`open control pane when clicking toggle button`, () => {
     mount(Structure, {
       target: document.body,
       props: { structure, controls_open: false, show_controls: true },
@@ -64,8 +64,8 @@ describe(`Structure`, () => {
 
     controls_toggle.click()
 
-    // Check that the control panel is now visible by looking for control elements
-    expect(document.querySelector(`.controls-panel`)).toBeTruthy()
+    // Check that the control pane is now visible by looking for control elements
+    expect(document.querySelector(`.controls-pane`)).toBeTruthy()
   })
 
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
@@ -573,10 +573,10 @@ test.each([
 
     // Test 4: Other scene properties remain functional after projection change
     const radius_input = document.querySelector(
-      `.controls-panel input[type="number"][step="0.05"]`,
+      `.controls-pane input[type="number"][step="0.05"]`,
     ) as HTMLInputElement
     const auto_rotate_input = document.querySelector(
-      `.controls-panel input[type="number"][max="2"]`,
+      `.controls-pane input[type="number"][max="2"]`,
     ) as HTMLInputElement
 
     expect(parseFloat(radius_input?.value || `0`)).toBeCloseTo(1.5, 1)

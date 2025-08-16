@@ -727,7 +727,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     show_filename_in_controls: {
       value: true,
-      description: `Display filename in control panel`,
+      description: `Display filename in control pane`,
     },
 
     // Playback behavior

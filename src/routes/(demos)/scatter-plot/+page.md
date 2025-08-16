@@ -874,7 +874,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 
 ## Combined Interactive Scatter Plot with Custom Controls
 
-This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control panel with point size, line width, colors, and styling options:
+This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control pane with point size, line width, colors, and styling options:
 
 ```svelte example
 <script>
