@@ -59,12 +59,10 @@
     }
   }
 
-  // Panel actions
   function toggle_panel() {
     show = !show
     if (!show) onclose()
   }
-
   function close_panel() {
     show = false
     onclose()
@@ -259,9 +257,9 @@
   button.panel-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
-  .draggable-panel {
+  div.draggable-panel {
     position: absolute; /* Use absolute so panel scrolls with page content */
-    background: var(--panel-bg);
+    background: var(--panel-bg, var(--page-bg, light-dark(white, black)));
     border: var(--panel-border, 1px solid rgba(255, 255, 255, 0.15));
     border-radius: 6px;
     padding: var(--panel-padding, 1ex);

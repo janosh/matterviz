@@ -462,6 +462,7 @@
             aria-pressed={fullscreen}
             class="fullscreen-toggle"
             style="padding: 0"
+            {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
@@ -553,7 +554,7 @@
     z-index: var(--struct-active-z-index, 2);
   }
   .structure:fullscreen {
-    background: var(--page-bg);
+    background: var(--struct-bg-fullscreen);
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;

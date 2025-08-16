@@ -32,17 +32,22 @@
   let input_value = $state(``)
   let suggested_structures = $state<OptimadeStructure[]>([])
   let loading_suggestions = $state(false)
+  let last_loaded_db = $state<string | null>(null)
 
   $effect(() => { // Initialize from URL slug
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
-    detect_provider_from_slug(decoded_slug).then((provider) => {
-      if (provider) {
-        selected_db = provider
-        input_value = decoded_slug.startsWith(`${provider}-`)
-          ? decoded_slug
-          : `${provider}-${decoded_slug}`
-      } else input_value = decoded_slug
-    })
+    if (available_providers.length > 0) {
+      detect_provider_from_slug(decoded_slug, available_providers).then(
+        (provider) => {
+          if (provider) {
+            selected_db = provider
+            input_value = decoded_slug.startsWith(`${provider}-`)
+              ? decoded_slug
+              : `${provider}-${decoded_slug}`
+          } else input_value = decoded_slug
+        },
+      )
+    }
   })
 
   $effect(() => { // Load providers on mount
@@ -51,11 +56,18 @@
 
   // Load data when database or structure ID changes
   $effect(() => {
-    if (selected_db) {
+    if (selected_db && available_providers.length > 0) {
       load_databases()
-      load_suggested_structures()
+      // Only load suggested structures when switching to different database
+      // prevents refetching when navigating between structures within same database
+      if (last_loaded_db !== selected_db) {
+        load_suggested_structures()
+        last_loaded_db = selected_db
+      }
     }
-    if (structure_id && selected_db) load_structure_data()
+    if (structure_id && selected_db && available_providers.length > 0) {
+      load_structure_data()
+    }
   })
 
   let structure_id = $derived(input_value.trim())
@@ -74,7 +86,11 @@
   async function load_structure_data() {
     loading = true
     error = null
-    const data = await fetch_optimade_structure(structure_id, selected_db).catch(
+    const data = await fetch_optimade_structure(
+      structure_id,
+      selected_db,
+      available_providers,
+    ).catch(
       (err) => {
         error = `Failed to load structure: ${err}`
         return null
@@ -91,12 +107,16 @@
   }
 
   async function load_databases() {
-    available_dbs = await fetch_provider_databases(selected_db)
+    available_dbs = await fetch_provider_databases(selected_db, available_providers)
   }
 
   async function load_suggested_structures() {
     loading_suggestions = true
-    suggested_structures = await fetch_suggested_structures(selected_db, 12)
+    suggested_structures = await fetch_suggested_structures(
+      selected_db,
+      available_providers,
+      12,
+    )
     loading_suggestions = false
   }
 

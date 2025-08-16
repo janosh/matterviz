@@ -124,6 +124,8 @@
     fps?: number // frame rate for playback
     // Loading options for large files
     loading_options?: LoadingOptions
+    // Disable plot skimming (mouse over plot doesn't update structure/step slider)
+    plot_skimming?: boolean
     [key: string]: unknown
   }
   let {
@@ -157,6 +159,7 @@
     fps_range = DEFAULTS.trajectory.fps_range,
     fps = $bindable(5),
     loading_options = {},
+    plot_skimming = true,
     ...rest
   }: Props = $props()
 
@@ -1094,7 +1097,7 @@
             y2_label={y_axis_labels.y2}
             y2_label_shift={{ y: 80 }}
             current_x_value={current_step_idx}
-            change={handle_plot_change}
+            change={plot_skimming ? handle_plot_change : undefined}
             markers="line"
             x_format=".3~s"
             x_ticks={step_label_positions}
@@ -1350,13 +1353,13 @@
     font-size: clamp(0.8rem, 2.5cqw, 0.9rem);
   }
   .play-button:hover:not(:disabled) {
-    background: var(--traj-play-btn-bg-hover, #7f8793);
+    background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));
   }
   .play-button.playing {
-    background: var(--traj-pause-btn-bg, #6b7280);
+    background: var(--traj-pause-btn-bg, var(--btn-bg, rgba(0, 0, 0, 0.1)));
   }
   .play-button.playing:hover:not(:disabled) {
-    background: var(--traj-pause-btn-bg-hover, #9ca3af);
+    background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
   }
 
   .empty-state {

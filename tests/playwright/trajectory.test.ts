@@ -331,6 +331,44 @@ test.describe(`Trajectory Component`, () => {
       }
     })
 
+    test(`plot skimming can be disabled via plot_skimming prop`, async ({ page }) => {
+      const trajectory = page.locator(`#no-plot-skimming`)
+      const scatter_plot = trajectory.locator(`.scatter`)
+      const step_input = trajectory.locator(`.step-input`)
+
+      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
+      await expect(scatter_plot).toBeVisible()
+
+      const initial_step = await step_input.inputValue()
+      const plot_points = scatter_plot.locator(`.point`)
+
+      if (await plot_points.count() > 0) {
+        await plot_points.first().hover()
+        await page.waitForTimeout(100)
+
+        const current_step = await step_input.inputValue()
+        expect(current_step).toBe(initial_step)
+      }
+    })
+
+    test(`plot skimming is enabled by default`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const scatter_plot = trajectory.locator(`.scatter`)
+      const step_input = trajectory.locator(`.step-input`)
+
+      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
+      await expect(scatter_plot).toBeVisible()
+
+      const plot_points = scatter_plot.locator(`.point`)
+      if (await plot_points.count() > 0) {
+        await plot_points.first().hover()
+        await page.waitForTimeout(100)
+
+        await expect(step_input).toBeVisible()
+        await expect(scatter_plot).toBeVisible()
+      }
+    })
+
     test(`plot hides when values are constant`, async ({ page }) => {
       const constant_trajectory = page.locator(
         `#constant-values`,

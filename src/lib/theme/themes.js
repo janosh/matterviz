@@ -262,14 +262,6 @@ const themes = {
   },
   'plot-legend-item-hover-background-color': btn_bg(0.1, 0.1),
 
-  // Non-color theming (filters, etc.)
-  'legend-filter': {
-    light: `grayscale(10%) brightness(0.8) saturate(0.9)`,
-    dark: `grayscale(10%) brightness(0.8) saturate(0.8)`,
-    white: `grayscale(2%) brightness(0.9) saturate(1.2)`,
-    black: `grayscale(15%) brightness(0.7) saturate(0.7)`,
-  },
-
   // Svelte MultiSelect
   'sms-options-bg': {
     light: `rgba(255, 255, 255, 0.95)`,

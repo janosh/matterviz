@@ -144,13 +144,14 @@ test.describe(`Structure Component Tests`, () => {
       `button.fullscreen-toggle`,
     )
 
-    let error_occured = false
-    page.on(`pageerror`, () => (error_occured = true))
+    let error_occurred = false
+    page.on(`pageerror`, () => (error_occurred = true))
 
     await expect(fullscreen_button).toBeVisible()
     await expect(fullscreen_button).toBeEnabled()
+    await expect(fullscreen_button).toHaveAttribute(`title`, /(Exit|Enter) fullscreen/)
     await fullscreen_button.click({ force: true })
-    expect(error_occured).toBe(false)
+    expect(error_occurred).toBe(false)
   })
 
   test(`closes controls panel with Escape key`, async ({ page }) => {
