@@ -17,7 +17,7 @@
   import type { StructureHandlerData } from './index'
   import {
     StructureControls,
-    StructureInfoPanel,
+    StructureInfoPane,
     StructureLegend,
     StructureScene,
   } from './index'
@@ -48,8 +48,8 @@
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
-    enable_info_panel?: boolean
-    info_panel_open?: boolean
+    enable_info_pane?: boolean
+    info_pane_open?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure?: AnyStructure }]>
     data_url?: string // URL to load structure from (alternative to providing structure directly)
@@ -88,7 +88,7 @@
     scene_props: scene_props_in = $bindable(undefined),
     lattice_props: lattice_props_in = $bindable(undefined),
     controls_open = $bindable(false),
-    info_panel_open = $bindable(false),
+    info_pane_open = $bindable(false),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_controls = 0,
@@ -101,7 +101,7 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    enable_info_panel = true,
+    enable_info_pane = true,
     save_json_btn_text = `⬇ JSON`,
     save_xyz_btn_text = `⬇ XYZ`,
     png_dpi = $bindable(150),
@@ -253,13 +253,13 @@
 
   // Custom toggle handlers for mutual exclusion
   function toggle_info() {
-    if (info_panel_open) info_panel_open = false
-    else [info_panel_open, controls_open] = [true, false]
+    if (info_pane_open) info_pane_open = false
+    else [info_pane_open, controls_open] = [true, false]
   }
 
   function toggle_controls() {
     if (controls_open) controls_open = false
-    else [controls_open, info_panel_open] = [true, false]
+    else [controls_open, info_pane_open] = [true, false]
   }
 
   // Reset tracking when structure changes
@@ -373,10 +373,10 @@
 
     // Interface shortcuts
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    else if (event.key === `i`) info_panel_open = !info_panel_open
+    else if (event.key === `i`) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
-      // Prioritize closing panels over exiting fullscreen
-      if (info_panel_open) info_panel_open = false
+      // Prioritize closing panes over exiting fullscreen
+      if (info_pane_open) info_pane_open = false
       else if (controls_open) controls_open = false
     }
   }
@@ -416,7 +416,7 @@
 
 <div
   class:dragover
-  class:active={info_panel_open || controls_open}
+  class:active={info_pane_open || controls_open}
   role="region"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -472,12 +472,12 @@
           </button>
         {/if}
 
-        {#if enable_info_panel && structure}
-          <StructureInfoPanel
+        {#if enable_info_pane && structure}
+          <StructureInfoPane
             {structure}
-            bind:panel_open={info_panel_open}
+            bind:pane_open={info_pane_open}
             custom_toggle={toggle_info}
-            {@attach tooltip({ content: `Structure info panel` })}
+            {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
 
@@ -578,8 +578,8 @@
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqw, 9pt);
-    /* buttons need higher z-index than StructureLegend to make info/controls panels occlude legend */
-    /* we also need crazy high z-index to make info/control panel occlude threlte/extras' <HTML> elements for site labels */
+    /* buttons need higher z-index than StructureLegend to make info/controls panes occlude legend */
+    /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
     opacity: 0;
     pointer-events: none;
@@ -596,7 +596,7 @@
     padding: 0;
   }
   section.control-buttons :global(button:hover) {
-    background-color: var(--panel-btn-bg-hover);
+    background-color: var(--pane-btn-bg-hover);
   }
   p.warn {
     text-align: center;

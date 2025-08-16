@@ -37,16 +37,15 @@
   $effect(() => { // Initialize from URL slug
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
     if (available_providers.length > 0) {
-      detect_provider_from_slug(decoded_slug, available_providers).then(
-        (provider) => {
-          if (provider) {
-            selected_db = provider
-            input_value = decoded_slug.startsWith(`${provider}-`)
-              ? decoded_slug
-              : `${provider}-${decoded_slug}`
-          } else input_value = decoded_slug
-        },
-      )
+      {
+        const provider = detect_provider_from_slug(decoded_slug, available_providers)
+        if (provider) {
+          selected_db = provider
+          input_value = decoded_slug.startsWith(`${provider}-`)
+            ? decoded_slug
+            : `${provider}-${decoded_slug}`
+        } else input_value = decoded_slug
+      }
     }
   })
 

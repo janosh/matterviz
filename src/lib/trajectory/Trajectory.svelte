@@ -17,7 +17,7 @@
     TrajectoryType,
     TrajHandlerData,
   } from './index'
-  import { TrajectoryError, TrajectoryInfoPanel } from './index'
+  import { TrajectoryError, TrajectoryInfoPane } from './index'
   import type { LoadingOptions } from './parse'
   import {
     create_frame_loader,
@@ -182,7 +182,7 @@
   let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
-  let info_panel_open = $state(false)
+  let info_pane_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
@@ -772,7 +772,7 @@
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
     } // Interface shortcuts
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
+    // 'i' key handled by the TrajectoryInfoPane's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
       fps = Math.min(fps_range[1], fps + 0.2)
@@ -784,14 +784,14 @@
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
-      // Escape key for info panel handled by DraggablePanel
+      // Escape key for info pane handled by DraggablePane
     } // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
       go_to_step(Math.floor((parseInt(event.key, 10) / 10) * (total_frames - 1)))
     }
   }
 
-  let panels_open = $state({
+  let panes_open = $state({
     structure_info: false,
     structure_controls: false,
     plot_controls: false,
@@ -808,8 +808,8 @@
 
 <div
   class:dragover
-  class:active={is_playing || panels_open.structure_info || panels_open.structure_controls ||
-  panels_open.plot_controls}
+  class:active={is_playing || panes_open.structure_info || panes_open.structure_controls ||
+  panes_open.plot_controls}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -972,14 +972,14 @@
           <!-- Frame info section -->
           <div class="info-section">
             {#if trajectory}
-              <TrajectoryInfoPanel
+              <TrajectoryInfoPane
                 {trajectory}
                 {current_step_idx}
                 {current_filename}
                 {current_file_path}
                 {file_size}
                 {file_object}
-                bind:panel_open={info_panel_open}
+                bind:pane_open={info_pane_open}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -1080,8 +1080,8 @@
           style="height: 100%; min-height: 0; z-index: 3; border-radius: 0"
           enable_tips={false}
           {...final_structure_props}
-          bind:controls_open={panels_open.structure_controls}
-          bind:info_panel_open={panels_open.structure_info}
+          bind:controls_open={panes_open.structure_controls}
+          bind:info_pane_open={panes_open.structure_info}
         />
       {/if}
 
@@ -1102,7 +1102,7 @@
             x_format=".3~s"
             x_ticks={step_label_positions}
             show_controls
-            bind:controls_open={panels_open.plot_controls}
+            bind:controls_open={panes_open.plot_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
@@ -1202,7 +1202,7 @@
     background: var(--surface-bg);
   }
   .trajectory.active {
-    z-index: 2; /* needed so info/control panels from an active viewer overlay those of the next (if there is one) */
+    z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
   }
   .trajectory:fullscreen {
     height: 100vh !important;

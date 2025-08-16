@@ -1,66 +1,66 @@
-import DraggablePanel from '$lib/DraggablePanel.svelte'
+import { DraggablePane } from '$lib'
 import { mount, tick } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
 
-describe(`DraggablePanel`, () => {
-  const default_props = { children: () => `Panel Content` }
+describe(`DraggablePane`, () => {
+  const default_props = { children: () => `Pane Content` }
 
-  test(`renders toggle button when show_panel is true`, () => {
-    mount(DraggablePanel, { target: document.body, props: default_props })
+  test(`renders toggle button when show_pane is true`, () => {
+    mount(DraggablePane, { target: document.body, props: default_props })
     expect(document.querySelector(`button`)).toBeTruthy()
   })
 
-  test(`does not render toggle button when show_panel is false`, () => {
-    mount(DraggablePanel, {
+  test(`does not render toggle button when show_pane is false`, () => {
+    mount(DraggablePane, {
       target: document.body,
-      props: { ...default_props, show_panel: false },
+      props: { ...default_props, show_pane: false },
     })
     expect(document.querySelector(`button`)).toBeFalsy()
   })
 
-  test(`renders panel when show is true`, () => {
-    mount(DraggablePanel, {
+  test(`renders pane when show is true`, () => {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, show: true },
     })
-    const panel = document.querySelector(`.draggable-panel`)
-    expect(panel).toBeTruthy()
-    expect(panel?.getAttribute(`style`)).toContain(`display: grid`)
+    const pane = document.querySelector(`.draggable-pane`)
+    expect(pane).toBeTruthy()
+    expect(pane?.getAttribute(`style`)).toContain(`display: grid`)
   })
 
-  test(`hides panel when show is false`, () => {
-    mount(DraggablePanel, { target: document.body, props: default_props })
-    const panel = document.querySelector(`.draggable-panel`)
-    expect(panel).toBeTruthy()
-    expect(panel?.getAttribute(`style`)).toContain(`display: none`)
+  test(`hides pane when show is false`, () => {
+    mount(DraggablePane, { target: document.body, props: default_props })
+    const pane = document.querySelector(`.draggable-pane`)
+    expect(pane).toBeTruthy()
+    expect(pane?.getAttribute(`style`)).toContain(`display: none`)
   })
 
-  test(`toggles panel visibility on button click`, async () => {
-    mount(DraggablePanel, { target: document.body, props: default_props })
+  test(`toggles pane visibility on button click`, async () => {
+    mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`button`)
-    const panel = document.querySelector(`.draggable-panel`)
+    const pane = document.querySelector(`.draggable-pane`)
 
     // Initially hidden
-    expect(panel?.getAttribute(`style`)).toContain(`display: none`)
+    expect(pane?.getAttribute(`style`)).toContain(`display: none`)
 
     // Click to show
     button.click()
     await tick()
-    expect(panel?.getAttribute(`style`)).toContain(`display: grid`)
+    expect(pane?.getAttribute(`style`)).toContain(`display: grid`)
 
     // Click to hide
     button.click()
     await tick()
-    expect(panel?.getAttribute(`style`)).toContain(`display: none`)
+    expect(pane?.getAttribute(`style`)).toContain(`display: none`)
   })
 
-  test(`calls onclose callback when panel is closed`, async () => {
+  test(`calls onclose callback when pane is closed`, async () => {
     const onclose = vi.fn()
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
-      props: { ...default_props, onclose, show: true, show_panel: true },
+      props: { ...default_props, onclose, show: true, show_pane: true },
     })
 
     const button = doc_query(`button`)
@@ -69,31 +69,31 @@ describe(`DraggablePanel`, () => {
     expect(onclose).toHaveBeenCalled()
   })
 
-  test(`handles click outside panel correctly`, () => {
+  test(`handles click outside pane correctly`, () => {
     const onclose = vi.fn()
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
-      props: { ...default_props, show: true, show_panel: true, onclose },
+      props: { ...default_props, show: true, show_pane: true, onclose },
     })
 
-    const panel = document.querySelector(`.draggable-panel`) as HTMLElement
+    const pane = document.querySelector(`.draggable-pane`) as HTMLElement
     const button = document.querySelector(`button`) as HTMLElement
 
-    expect(panel).toBeTruthy()
+    expect(pane).toBeTruthy()
     expect(button).toBeTruthy()
 
     expect(onclose).not.toHaveBeenCalled()
 
-    // Click outside panel (on document body)
+    // Click outside pane (on document body)
     document.body.click()
 
-    // Panel should close when clicking outside
+    // Pane should close when clicking outside
     expect(onclose).toHaveBeenCalled()
   })
 
-  test(`closes panel on Escape key`, async () => {
+  test(`closes pane on Escape key`, async () => {
     const onclose = vi.fn()
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, onclose, show: true },
     })
@@ -107,7 +107,7 @@ describe(`DraggablePanel`, () => {
 
   test(`uses custom toggle function when provided`, async () => {
     const custom_toggle = vi.fn()
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, custom_toggle },
     })
@@ -123,7 +123,7 @@ describe(`DraggablePanel`, () => {
       title: `Custom Title`,
       class: `custom-class`,
     }
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, toggle_props },
     })
@@ -133,42 +133,42 @@ describe(`DraggablePanel`, () => {
     expect(button.classList.contains(`custom-class`)).toBe(true)
   })
 
-  test(`applies panel props correctly`, () => {
-    const panel_props: HTMLAttributes<HTMLDivElement> = {
-      class: `custom-panel-class`,
-      'data-testid': `custom-panel`,
+  test(`applies pane props correctly`, () => {
+    const pane_props: HTMLAttributes<HTMLDivElement> = {
+      class: `custom-pane-class`,
+      'data-testid': `custom-pane`,
     }
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
-      props: { ...default_props, show: true, panel_props },
+      props: { ...default_props, show: true, pane_props },
     })
-    const panel = doc_query(`[data-testid="custom-panel"]`)
+    const pane = doc_query(`[data-testid="custom-pane"]`)
 
-    expect(panel.classList.contains(`custom-panel-class`)).toBe(true)
+    expect(pane.classList.contains(`custom-pane-class`)).toBe(true)
   })
 
-  test(`applies max_width style to panel`, () => {
-    mount(DraggablePanel, {
+  test(`applies max_width style to pane`, () => {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, show: true, max_width: `600px` },
     })
-    const panel = doc_query(`.draggable-panel`)
-    expect(panel.style.maxWidth).toBe(`600px`)
+    const pane = doc_query(`.draggable-pane`)
+    expect(pane.style.maxWidth).toBe(`600px`)
   })
 
   test(`sets correct ARIA attributes`, () => {
-    mount(DraggablePanel, { target: document.body, props: default_props })
+    mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`button`)
-    const panel = doc_query(`.draggable-panel`)
+    const pane = doc_query(`.draggable-pane`)
 
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
-    expect(button.getAttribute(`aria-controls`)).toBe(`draggable-panel`)
-    expect(panel.getAttribute(`aria-label`)).toBe(`Draggable panel`)
-    expect(panel.getAttribute(`aria-modal`)).toBe(`false`)
+    expect(button.getAttribute(`aria-controls`)).toBe(`draggable-pane`)
+    expect(pane.getAttribute(`aria-label`)).toBe(`Draggable pane`)
+    expect(pane.getAttribute(`aria-modal`)).toBe(`false`)
   })
 
-  test(`updates ARIA expanded state when panel is toggled`, async () => {
-    mount(DraggablePanel, { target: document.body, props: default_props })
+  test(`updates ARIA expanded state when pane is toggled`, async () => {
+    mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`button`)
 
     // Initially collapsed
@@ -186,7 +186,7 @@ describe(`DraggablePanel`, () => {
   })
 
   test(`renders control buttons`, () => {
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, show: true },
     })
@@ -197,13 +197,13 @@ describe(`DraggablePanel`, () => {
   })
 
   test(`has correct CSS classes`, () => {
-    mount(DraggablePanel, {
+    mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, show: true },
     })
-    const panel = doc_query(`.draggable-panel`)
+    const pane = doc_query(`.draggable-pane`)
 
-    expect(panel.classList.contains(`draggable-panel`)).toBe(true)
-    expect(panel.classList.contains(`panel-open`)).toBe(true)
+    expect(pane.classList.contains(`draggable-pane`)).toBe(true)
+    expect(pane.classList.contains(`pane-open`)).toBe(true)
   })
 })

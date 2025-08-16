@@ -73,7 +73,7 @@ test.describe(`Trajectory Component`, () => {
     // - Previous step
     // - Play/pause
     // - Next step
-    // - Info panel toggle
+    // - Info pane toggle
     // - Display mode selector
     // - Fullscreen toggle
     // - (Optional) Additional view controls
@@ -116,12 +116,12 @@ test.describe(`Trajectory Component`, () => {
     await expect(display_button).toBeEnabled()
   })
 
-  test(`info panel opens and closes with info button`, async () => {
+  test(`info pane opens and closes with info button`, async () => {
     const info_button = controls.locator(`.trajectory-info-toggle`)
 
     await expect(info_button).toBeVisible()
     await expect(info_button).toBeEnabled()
-    // Panel may not be visible initially since DraggablePanel only renders when show=true
+    // Pane may not be visible initially since DraggablePane only renders when show=true
 
     // Test that button can be clicked
     await info_button.click({ force: true })
@@ -130,7 +130,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(info_button).toBeEnabled()
   })
 
-  test(`info panel displays trajectory information correctly`, async () => {
+  test(`info pane displays trajectory information correctly`, async () => {
     // Wait for trajectory to be loaded first
     await expect(trajectory_viewer.locator(`.trajectory-controls`)).toBeVisible()
 
@@ -138,48 +138,48 @@ test.describe(`Trajectory Component`, () => {
     const info_button = trajectory_viewer.locator(`.trajectory-info-toggle`)
     await expect(info_button).toBeVisible()
 
-    // Verify initial state - panel should not be visible initially
+    // Verify initial state - pane should not be visible initially
     await expect(info_button).toBeVisible()
     await expect(info_button).toBeEnabled()
 
-    // Get the panel before clicking
-    const info_panel = trajectory_viewer.locator(`.trajectory-info-panel`).first()
+    // Get the pane before clicking
+    const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`).first()
 
-    // Verify panel is initially hidden
-    await expect(info_panel).toBeHidden()
+    // Verify pane is initially hidden
+    await expect(info_pane).toBeHidden()
 
     // Try keyboard shortcut first (which might be more reliable)
     await trajectory_viewer.focus()
     await trajectory_viewer.press(`i`)
 
-    // Wait a short time for the panel to show
+    // Wait a short time for the pane to show
     try {
-      await info_panel.waitFor({ state: `visible`, timeout: 3000 })
+      await info_pane.waitFor({ state: `visible`, timeout: 3000 })
     } catch {
       // If keyboard shortcut didn't work, try button click
       await info_button.click()
-      await info_panel.waitFor({ state: `visible`, timeout: 3000 })
+      await info_pane.waitFor({ state: `visible`, timeout: 3000 })
     }
 
-    // Verify panel is now visible
-    await expect(info_panel).toBeVisible()
+    // Verify pane is now visible
+    await expect(info_pane).toBeVisible()
 
-    // Check info panel has the main header
-    await expect(info_panel.locator(`h4`).filter({ hasText: `Trajectory Info` }))
+    // Check info pane has the main header
+    await expect(info_pane.locator(`h4`).filter({ hasText: `Trajectory Info` }))
       .toBeVisible()
 
-    // Check that the panel contains some trajectory information
-    const panel_content = await info_panel.textContent()
-    expect(panel_content).toMatch(
+    // Check that the pane contains some trajectory information
+    const pane_content = await info_pane.textContent()
+    expect(pane_content).toMatch(
       /Atoms|Total Frames|frames|Frame|Volume|volume|Trajectory/i,
     )
 
     // Test component-specific timestamp formatting
     if (
-      await info_panel.locator(`[title="File system last modified time"]`)
+      await info_pane.locator(`[title="File system last modified time"]`)
         .isVisible()
     ) {
-      const timestamp_text = await info_panel.locator(
+      const timestamp_text = await info_pane.locator(
         `[title="File system last modified time"]`,
       ).textContent()
       expect(timestamp_text).toMatch(
@@ -221,9 +221,9 @@ test.describe(`Trajectory Component`, () => {
     const step_input = controls.locator(`.step-input`)
     await expect(step_input).toHaveValue(`0`)
 
-    // Check info panel is initially closed
-    const info_panel = trajectory_viewer.locator(`.trajectory-info-panel`).first()
-    await expect(info_panel).not.toBeVisible()
+    // Check info pane is initially closed
+    const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`).first()
+    await expect(info_pane).not.toBeVisible()
   })
 
   test(`playback controls function properly`, async () => {
@@ -341,11 +341,10 @@ test.describe(`Trajectory Component`, () => {
 
       const initial_step = await step_input.inputValue()
       const plot_points = scatter_plot.locator(`.point`)
-
-      if (await plot_points.count() > 0) {
-        await plot_points.first().hover()
+      const points_count = await plot_points.count()
+      if (points_count > 1) {
+        await plot_points.nth(1).hover()
         await page.waitForTimeout(100)
-
         const current_step = await step_input.inputValue()
         expect(current_step).toBe(initial_step)
       }
@@ -360,12 +359,15 @@ test.describe(`Trajectory Component`, () => {
       await expect(scatter_plot).toBeVisible()
 
       const plot_points = scatter_plot.locator(`.point`)
-      if (await plot_points.count() > 0) {
-        await plot_points.first().hover()
+      const points_count = await plot_points.count()
+      if (points_count > 1) {
+        const before = await step_input.inputValue()
+        await plot_points.nth(1).hover()
         await page.waitForTimeout(100)
 
         await expect(step_input).toBeVisible()
         await expect(scatter_plot).toBeVisible()
+        await expect(step_input).not.toHaveValue(before)
       }
     })
 
@@ -563,7 +565,7 @@ test.describe(`Trajectory Component`, () => {
         await play_button.click()
       }
 
-      // Test info panel button
+      // Test info pane button
       const info_button = trajectory.locator(`.trajectory-info-toggle`)
       await expect(info_button).toBeVisible()
       await info_button.click()
@@ -861,18 +863,18 @@ test.describe(`Trajectory Component`, () => {
         mobile_class?.includes(`horizontal`)
       expect(has_mobile_layout).toBe(true)
 
-      // Info panel should exist and be properly sized
-      const info_panel = trajectory.locator(`.trajectory-info-panel`).first()
+      // Info pane should exist and be properly sized
+      const info_pane = trajectory.locator(`.trajectory-info-pane`).first()
 
-      // Panel may not be attached if not visible since DraggablePanel only renders when show=true
+      // Pane may not be attached if not visible since DraggablePane only renders when show=true
       // So we'll check if it's visible or if the info button is at least present
       const info_button = trajectory.locator(`.trajectory-info-toggle`)
       await expect(info_button).toBeVisible()
 
-      // If panel is visible, check its dimensions
-      if (await info_panel.isVisible()) {
-        const info_panel_bbox = await info_panel.boundingBox()
-        expect(info_panel_bbox).toBeTruthy() // Just verify it has some dimensions
+      // If pane is visible, check its dimensions
+      if (await info_pane.isVisible()) {
+        const info_pane_bbox = await info_pane.boundingBox()
+        expect(info_pane_bbox).toBeTruthy() // Just verify it has some dimensions
       }
     })
 
@@ -1545,8 +1547,8 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
   })
 
-  test.describe(`Regression Tests for Control Panel Fixes`, () => {
-    test(`should handle z-index and control panel interactions correctly`, async ({ page }) => {
+  test.describe(`Regression Tests for Control Pane Fixes`, () => {
+    test(`should handle z-index and control pane interactions correctly`, async ({ page }) => {
       const viewers = page.locator(`.trajectory`)
       const viewer_count = await viewers.count()
 
@@ -1581,7 +1583,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       }
     })
 
-    test(`should ensure control panels are clickable and not occluded`, async ({ page }) => {
+    test(`should ensure control panes are clickable and not occluded`, async ({ page }) => {
       const viewers = page.locator(`.trajectory`)
 
       // Test structure legend clickability
@@ -1621,7 +1623,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       expect(initial_classes).not.toContain(`active`)
       expect(initial_z).toBe(`auto`)
 
-      // Trigger active state by opening info panel
+      // Trigger active state by opening info pane
       const info_button = viewer.locator(`.info-button`)
       if (await info_button.count() > 0) {
         await info_button.click()

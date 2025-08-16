@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { DraggablePanel, SettingsSection } from '$lib'
+  import { DraggablePane, SettingsSection } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
@@ -13,7 +13,7 @@
   import type { Camera, Scene } from 'three'
 
   export interface Props {
-    // Control panel state
+    // Control pane state
     controls_open?: boolean
     // Scene properties (bindable from parent)
     scene_props?: ComponentProps<typeof StructureScene>
@@ -44,8 +44,8 @@
     png_dpi?: number
     scene?: Scene
     camera?: Camera
-    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
-    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     [key: string]: unknown
   }
   let {
@@ -69,7 +69,7 @@
     png_dpi = $bindable(150),
     scene = undefined,
     camera = undefined,
-    panel_props = $bindable({}),
+    pane_props = $bindable({}),
     toggle_props = $bindable({}),
     ...rest
   }: Props = $props()
@@ -203,9 +203,9 @@
   }
 </script>
 
-<DraggablePanel
+<DraggablePane
   bind:show={controls_open}
-  panel_props={{ class: `controls-panel`, ...panel_props }}
+  pane_props={{ class: `controls-pane`, ...pane_props }}
   toggle_props={{
     class: `structure-controls-toggle`,
     title: `${controls_open ? `Close` : `Open`} structure controls`,
@@ -550,7 +550,7 @@
         site_label_background_opacity = 0
       }}
     >
-      <div class="panel-row">
+      <div class="pane-row">
         <label>
           Color
           <input type="color" bind:value={site_label_hex_color} />
@@ -566,7 +566,7 @@
           />
         </label>
       </div>
-      <div class="panel-row">
+      <div class="pane-row">
         <label>
           Background
           <input type="color" bind:value={site_label_bg_hex_color} />
@@ -589,7 +589,7 @@
           />
         </label>
       </div>
-      <div class="panel-row">
+      <div class="pane-row">
         <label>
           Padding
           <input
@@ -608,7 +608,7 @@
           />
         </label>
       </div>
-      <div class="panel-row">
+      <div class="pane-row">
         Offset
         {#each [`X`, `Y`, `Z`] as axis, idx (axis)}
           <label>
@@ -729,7 +729,7 @@
         { label, color_prop, opacity_prop, step }
         (label)
       }
-        <div class="panel-row">
+        <div class="pane-row">
           <label>
             {label}
             <input
@@ -771,7 +771,7 @@
       background_opacity = DEFAULTS.background_opacity
     }}
   >
-    <div class="panel-row">
+    <div class="pane-row">
       <label>
         Color
         <!-- not using bind:value to not give a default value of #000000 to background_color, needs to stay undefined to not override --struct-bg theme color -->
@@ -899,7 +899,7 @@
       </label>
     </SettingsSection>
   {/if}
-</DraggablePanel>
+</DraggablePane>
 
 <style>
   .export-buttons {

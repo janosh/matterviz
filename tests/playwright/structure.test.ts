@@ -2,7 +2,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import { DEFAULTS } from '../../src/lib/settings'
-import { open_structure_controls_panel } from './helpers'
+import { open_structure_control_pane } from './helpers'
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
@@ -21,7 +21,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: 5000 })
 
     await expect(
-      page.locator(`[data-testid="panel-open-status"]`),
+      page.locator(`[data-testid="pane-open-status"]`),
     ).toContainText(`false`)
 
     await page.waitForLoadState(`networkidle`)
@@ -154,28 +154,28 @@ test.describe(`Structure Component Tests`, () => {
     expect(error_occurred).toBe(false)
   })
 
-  test(`closes controls panel with Escape key`, async ({ page }) => {
+  test(`closes controls pane with Escape key`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const controls_toggle_button = structure_div.locator(
       `button.structure-controls-toggle`,
     )
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     // Use test page checkbox for more reliable opening
     await test_page_controls_checkbox.check()
-    await expect(control_panel).toHaveClass(/panel-open/, { timeout: 3000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 3000 })
 
     await page.keyboard.press(`Escape`)
 
-    await expect(control_panel).not.toHaveClass(/panel-open/, {
+    await expect(control_pane).not.toHaveClass(/pane-open/, {
       timeout: 1000,
     })
-    await expect(control_panel).not.toBeVisible({ timeout: 1000 })
+    await expect(control_pane).not.toBeVisible({ timeout: 1000 })
     const controls_open_status = page.locator(
-      `[data-testid="panel-open-status"]`,
+      `[data-testid="pane-open-status"]`,
     )
     await expect(controls_open_status).toContainText(
       `Controls Open Status: false`,
@@ -231,28 +231,28 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div.locator(`canvas`)).toBeVisible()
   })
 
-  test(`closes controls panel on outside click`, async ({ page }) => {
+  test(`closes controls pane on outside click`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const controls_toggle_button = structure_div.locator(
       `button.structure-controls-toggle`,
     )
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const outside_area = page.locator(`body`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(control_panel).toHaveClass(/panel-open/, { timeout: 3000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 3000 })
 
     await outside_area.click({ position: { x: 0, y: 0 }, force: true })
 
-    await expect(control_panel).not.toHaveClass(/panel-open/, {
+    await expect(control_pane).not.toHaveClass(/pane-open/, {
       timeout: 1000,
     })
-    await expect(control_panel).not.toBeVisible({ timeout: 1000 })
+    await expect(control_pane).not.toBeVisible({ timeout: 1000 })
     const controls_open_status = page.locator(
-      `[data-testid="panel-open-status"]`,
+      `[data-testid="pane-open-status"]`,
     )
     await expect(controls_open_status).toContainText(
       `Controls Open Status: false`,
@@ -265,15 +265,15 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`show_site_labels defaults to false and can be toggled`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(control_panel).toBeVisible()
+    await expect(control_pane).toBeVisible()
 
-    const site_labels_label = control_panel.locator(`label:has-text("Site Labels")`)
+    const site_labels_label = control_pane.locator(`label:has-text("Site Labels")`)
     const site_labels_checkbox = site_labels_label.locator(`input[type="checkbox"]`)
 
     await expect(site_labels_label).toBeVisible()
@@ -285,17 +285,17 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`show_site_labels controls are properly labeled`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
-    const site_labels_label = panel_div.locator(
+    const site_labels_label = pane_div.locator(
       `label:has-text("site labels")`,
     )
     const site_labels_checkbox = site_labels_label.locator(
@@ -309,24 +309,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label controls appear when site labels are enabled`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels first
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Check that Labels section appears
-    const labels_section = panel_div.locator(`h4:has-text("Labels")`)
+    const labels_section = pane_div.locator(`h4:has-text("Labels")`)
     await expect(labels_section).toBeVisible()
 
     // Scope to the labels section container (following the heading)
@@ -339,7 +339,7 @@ test.describe(`Structure Component Tests`, () => {
     )
     const padding_label = labels_container.locator(`label:has-text("Padding")`)
 
-    const offset_row = labels_container.locator(`.panel-row`).filter({
+    const offset_row = labels_container.locator(`.pane-row`).filter({
       hasText: `Offset`,
     })
     const offset_x_label = offset_row.locator(`label:has-text("X")`)
@@ -355,24 +355,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label text color control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find text color input - use first color input in labels section
-    const text_color_input = panel_div.locator(
+    const text_color_input = pane_div.locator(
       `label:has-text("Color") input[type="color"]`,
     ).first()
     await expect(text_color_input).toBeVisible()
@@ -393,24 +393,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label background color control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find background color input
-    const background_color_input = panel_div.locator(
+    const background_color_input = pane_div.locator(
       `label:has-text("Background") input[type="color"]`,
     )
     await expect(background_color_input).toBeVisible()
@@ -431,24 +431,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label background opacity control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find background opacity controls - use first opacity label in labels section
-    const opacity_label = panel_div.locator(
+    const opacity_label = pane_div.locator(
       `label:has-text("Opacity")`,
     ).first()
     const opacity_number_input = opacity_label.locator(`input[type="number"]`)
@@ -479,24 +479,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label padding control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find padding controls
-    const padding_label = panel_div.locator(
+    const padding_label = pane_div.locator(
       `label:has-text("Padding")`,
     )
     const padding_number_input = padding_label.locator(`input[type="number"]`)
@@ -527,24 +527,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label offset X control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find offset X controls - look for the offset row and find X input within it
-    const offset_row = panel_div.locator(`.panel-row`).filter({ hasText: `Offset` })
+    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
     const offset_x_number_input = offset_row.locator(
       `label:has-text("X") input[type="number"]`,
     )
@@ -569,24 +569,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label offset Y control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find offset Y controls - look for the offset row and find Y input within it
-    const offset_row = panel_div.locator(`.panel-row`).filter({ hasText: `Offset` })
+    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
     const offset_y_number_input = offset_row.locator(
       `label:has-text("Y") input[type="number"]`,
     )
@@ -611,24 +611,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label offset Z control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find offset Z controls - look for the offset row and find Z input within it
-    const offset_row = panel_div.locator(`.panel-row`).filter({ hasText: `Offset` })
+    const offset_row = pane_div.locator(`.pane-row`).filter({ hasText: `Offset` })
     const offset_z_number_input = offset_row.locator(
       `label:has-text("Z") input[type="number"]`,
     )
@@ -653,24 +653,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label font size control works correctly`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Find font size control - look for the size row
-    const size_row = panel_div.locator(`.panel-row`).filter({ hasText: `Size` })
+    const size_row = pane_div.locator(`.pane-row`).filter({ hasText: `Size` })
     const size_range_input = size_row.locator(`input[type="range"]`)
 
     await expect(size_row).toBeVisible()
@@ -693,24 +693,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label controls have correct input constraints`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Check opacity constraints
-    const opacity_number_input = panel_div.locator(
+    const opacity_number_input = pane_div.locator(
       `label:has-text("Opacity") input[type="number"]`,
     ).first()
     await expect(opacity_number_input).toHaveAttribute(`min`, `0`)
@@ -718,7 +718,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(opacity_number_input).toHaveAttribute(`step`, `0.01`)
 
     // Check padding constraints
-    const padding_number_input = panel_div.locator(
+    const padding_number_input = pane_div.locator(
       `label:has-text("Padding") input[type="number"]`,
     )
     await expect(padding_number_input).toHaveAttribute(`min`, `0`)
@@ -726,7 +726,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(padding_number_input).toHaveAttribute(`step`, `1`)
 
     // Check offset X constraints
-    const offset_row_for_constraints = panel_div.locator(`.panel-row`).filter({
+    const offset_row_for_constraints = pane_div.locator(`.pane-row`).filter({
       hasText: `Offset`,
     })
     const offset_x_number_input = offset_row_for_constraints.locator(
@@ -753,7 +753,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(offset_z_number_input).toHaveAttribute(`step`, `0.1`)
 
     // Check font size constraints
-    const size_range_input = panel_div.locator(
+    const size_range_input = pane_div.locator(
       `label:has-text("Size") input[type="range"]`,
     )
     await expect(size_range_input).toHaveAttribute(`min`, `0.5`)
@@ -762,36 +762,36 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label controls are properly organized in rows`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
-    // Check that controls are organized in panel-row divs
-    const panel_rows = panel_div.locator(`.panel-row`)
-    const row_count = await panel_rows.count()
+    // Check that controls are organized in pane-row divs
+    const pane_rows = pane_div.locator(`.pane-row`)
+    const row_count = await pane_rows.count()
     expect(row_count).toBeGreaterThan(0)
 
     // Check that text color and size are in the same row
-    const first_row = panel_rows.first()
+    const first_row = pane_rows.first()
     const text_color_in_first_row = first_row.locator(`label:has-text("Color")`)
     const size_in_first_row = first_row.locator(`label:has-text("Size")`)
     await expect(text_color_in_first_row).toBeVisible()
     await expect(size_in_first_row).toBeVisible()
 
     // Check that background color and opacity are in the same row
-    const second_row = panel_rows.nth(1)
+    const second_row = pane_rows.nth(1)
     const background_in_second_row = second_row.locator(
       `label:has-text("Background")`,
     )
@@ -802,7 +802,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(opacity_in_second_row).toBeVisible()
 
     // Check that offset X, Y, and Z are in the same row
-    const offset_row = panel_rows.nth(3) // Assuming this is the offset row
+    const offset_row = pane_rows.nth(3) // Assuming this is the offset row
     const offset_x_in_row = offset_row.locator(`label:has-text("X")`)
     const offset_y_in_row = offset_row.locator(`label:has-text("Y")`)
     const offset_z_in_row = offset_row.locator(`label:has-text("Z")`)
@@ -812,24 +812,24 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label controls persist when toggling site labels`, async ({ page }) => {
-    const panel_div = page.locator(
-      `#test-structure .controls-panel`,
+    const pane_div = page.locator(
+      `#test-structure .controls-pane`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Enable site labels
-    const site_labels_checkbox = panel_div.locator(
+    const site_labels_checkbox = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
     await site_labels_checkbox.check()
 
     // Set some values
-    const labels_heading = panel_div.locator(`h4:has-text("Labels")`)
+    const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
     const labels_container_for_persist = labels_heading.locator(
       `xpath=following-sibling::*[1]`,
     )
@@ -851,10 +851,10 @@ test.describe(`Structure Component Tests`, () => {
     await site_labels_checkbox.uncheck()
 
     // Re-query the checkbox after potential DOM updates
-    const site_labels_checkbox_again = panel_div.locator(
+    const site_labels_checkbox_again = pane_div.locator(
       `label:has-text("Site Labels") input[type="checkbox"]`,
     )
-    await expect(panel_div).toBeVisible()
+    await expect(pane_div).toBeVisible()
 
     // Re-enable site labels
     await site_labels_checkbox_again.check()
@@ -967,11 +967,11 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   // SKIPPED: Controls dialog fails to open reliably in test environment
-  test.skip(`controls panel stays open when interacting with control inputs`, async ({ page }) => {
+  test.skip(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const controls_open_status = page.locator(
-      `[data-testid="panel-open-status"]`,
+      `[data-testid="pane-open-status"]`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
@@ -979,17 +979,17 @@ test.describe(`Structure Component Tests`, () => {
 
     // Verify initial state
     await expect(controls_open_status).toContainText(`false`)
-    await expect(control_panel).not.toHaveClass(/panel-open/)
+    await expect(control_pane).not.toHaveClass(/pane-open/)
 
-    // Open controls panel using the test page checkbox (we know this works)
+    // Open controls pane using the test page checkbox (we know this works)
     await test_page_controls_checkbox.check()
     // Wait for the controls to open
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
-    // Test that controls are accessible and panel stays open when interacting
+    // Test that controls are accessible and pane stays open when interacting
     // Use corrected label text (with leading spaces as shown in debug output)
-    const show_atoms_label = control_panel
+    const show_atoms_label = control_pane
       .locator(`label`)
       .filter({ hasText: /^ atoms$/ })
     const show_atoms_checkbox = show_atoms_label.locator(
@@ -997,12 +997,12 @@ test.describe(`Structure Component Tests`, () => {
     )
     await expect(show_atoms_checkbox).toBeVisible()
 
-    // Test various control interactions to ensure panel stays open
+    // Test various control interactions to ensure pane stays open
     await show_atoms_checkbox.click()
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
-    const show_bonds_label = control_panel
+    const show_bonds_label = control_pane
       .locator(`label`)
       .filter({ hasText: /^ bonds$/ })
     const show_bonds_select = show_bonds_label.locator(
@@ -1013,9 +1013,9 @@ test.describe(`Structure Component Tests`, () => {
     // Select "always" option
     await page.locator(`.multiselect-option`).filter({ hasText: `Always` }).click()
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
-    const show_cell_vectors_label = control_panel
+    const show_cell_vectors_label = control_pane
       .locator(`label`)
       .filter({ hasText: `Lattice Vectors` })
     const show_cell_vectors_checkbox = show_cell_vectors_label.locator(
@@ -1024,37 +1024,37 @@ test.describe(`Structure Component Tests`, () => {
     await expect(show_cell_vectors_checkbox).toBeVisible()
     await show_cell_vectors_checkbox.click()
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
     // Test color scheme select dropdown (this still exists)
-    const color_scheme_select = control_panel
+    const color_scheme_select = control_pane
       .locator(`label`)
       .filter({ hasText: /Color scheme/ })
       .locator(`select`)
     await expect(color_scheme_select).toBeVisible()
     await color_scheme_select.selectOption(`Jmol`)
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
     // Test number input
-    const atom_radius_label = control_panel
+    const atom_radius_label = control_pane
       .locator(`label`)
       .filter({ hasText: /Radius/ })
     const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
     await expect(atom_radius_input).toBeVisible()
     await atom_radius_input.fill(`0.8`)
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
     // Test range input
     const atom_radius_range = atom_radius_label.locator(`input[type="range"]`)
     await expect(atom_radius_range).toBeVisible()
     await atom_radius_range.fill(`0.6`)
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
     // Test color input
-    const background_color_label = control_panel
+    const background_color_label = control_pane
       .locator(`label`)
       .filter({ hasText: /Color/ })
       .first()
@@ -1062,27 +1062,27 @@ test.describe(`Structure Component Tests`, () => {
     await expect(background_color_input).toBeVisible()
     await background_color_input.fill(`#00ff00`)
     await expect(controls_open_status).toContainText(`true`)
-    await expect(control_panel).toHaveClass(/panel-open/)
+    await expect(control_pane).toHaveClass(/pane-open/)
 
-    // Note: We don't test the download buttons as they may close the panel due to download behavior
-    // The important thing is that normal control inputs (checkboxes, selects, inputs) keep the panel open
+    // Note: We don't test the download buttons as they may close the pane due to download behavior
+    // The important thing is that normal control inputs (checkboxes, selects, inputs) keep the pane open
   })
 
   test(`control inputs have intended effects on structure`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const canvas = structure_div.locator(`canvas`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Open controls panel using test page checkbox
+    // Open controls pane using test page checkbox
     await test_page_controls_checkbox.check()
     // Wait for dialog to be visible
-    await expect(control_panel).toHaveClass(/panel-open/, { timeout: 2000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 2000 })
 
     // Test atom radius change affects rendering
-    const atom_radius_label = control_panel
+    const atom_radius_label = control_pane
       .locator(`label`)
       .filter({ hasText: /Radius/ })
     const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
@@ -1094,8 +1094,8 @@ test.describe(`Structure Component Tests`, () => {
     const after_radius_change = await canvas.screenshot()
     expect(initial_screenshot.equals(after_radius_change)).toBe(false)
 
-    // Test that background can be changed via test page controls (not in-panel controls)
-    // The background color control is in the test page, not the component controls panel
+    // Test that background can be changed via test page controls (not in-pane controls)
+    // The background color control is in the test page, not the component controls pane
     const test_bg_input = page.locator(
       `section:has-text("Controls for Test Page") label:has-text("Background Color") input[type="color"]`,
     )
@@ -1113,7 +1113,7 @@ test.describe(`Structure Component Tests`, () => {
     }
 
     // Test show atoms checkbox
-    const visibility_heading = control_panel.locator(`h4:has-text("Visibility")`)
+    const visibility_heading = control_pane.locator(`h4:has-text("Visibility")`)
     const visibility_container = visibility_heading.locator(
       `xpath=following-sibling::*[1]`,
     )
@@ -1128,71 +1128,71 @@ test.describe(`Structure Component Tests`, () => {
     await show_atoms_checkbox.check()
   })
 
-  test(`controls panel closes only on escape and outside clicks`, async ({ page }) => {
+  test(`controls pane closes only on escape and outside clicks`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const controls_toggle_button = structure_div.locator(
       `button.structure-controls-toggle`,
     )
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const controls_open_status = page.locator(
-      `[data-testid="panel-open-status"]`,
+      `[data-testid="pane-open-status"]`,
     )
     const canvas = structure_div.locator(`canvas`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Open controls panel using test page checkbox
+    // Open controls pane using test page checkbox
     await test_page_controls_checkbox.check()
     await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
 
-    // Test that clicking on the canvas DOES close the panel (it's an outside click)
+    // Test that clicking on the canvas DOES close the pane (it's an outside click)
     await canvas.click({ position: { x: 100, y: 100 } })
     await expect(controls_open_status).toContainText(`false`)
-    await expect(control_panel).not.toHaveClass(/panel-open/)
+    await expect(control_pane).not.toHaveClass(/pane-open/)
 
     // Re-open for toggle button test
     await test_page_controls_checkbox.check()
     await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
 
-    // Test that clicking controls toggle button does close the panel
+    // Test that clicking controls toggle button does close the pane
     await controls_toggle_button.click()
     await expect(controls_open_status).toContainText(`false`)
-    await expect(control_panel).not.toHaveClass(/panel-open/)
+    await expect(control_pane).not.toHaveClass(/pane-open/)
 
     // Re-open for escape key test using test page checkbox
     await test_page_controls_checkbox.check()
     await expect(controls_open_status).toContainText(`true`, { timeout: 2000 })
 
-    // Test escape key closes the panel
+    // Test escape key closes the pane
     await page.keyboard.press(`Escape`)
     await expect(controls_open_status).toContainText(`false`)
-    await expect(control_panel).not.toHaveClass(/panel-open/)
+    await expect(control_pane).not.toHaveClass(/pane-open/)
 
     // Re-open for outside click test using test page checkbox
     await test_page_controls_checkbox.check()
     await expect(controls_open_status).toContainText(`true`, { timeout: 3000 })
 
-    // Test clicking outside the controls and toggle button closes the panel
+    // Test clicking outside the controls and toggle button closes the pane
     await page.locator(`body`).click({ position: { x: 10, y: 10 } })
     await expect(controls_open_status).toContainText(`false`)
-    await expect(control_panel).not.toHaveClass(/panel-open/)
+    await expect(control_pane).not.toHaveClass(/pane-open/)
   })
 
   test(`bond controls appear when bonds are enabled`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Open controls panel using test page checkbox
+    // Open controls pane using test page checkbox
     await test_page_controls_checkbox.check()
     // Wait for dialog to be visible
-    await expect(control_panel).toHaveClass(/panel-open/, { timeout: 5000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 5000 })
 
     // Enable bonds via the Visibility section select
-    const visibility_heading_for_bonds = control_panel.locator(
+    const visibility_heading_for_bonds = control_pane.locator(
       `h4:has-text("Visibility")`,
     )
     const visibility_container_for_bonds = visibility_heading_for_bonds.locator(
@@ -1215,18 +1215,18 @@ test.describe(`Structure Component Tests`, () => {
     // Wait for conditional controls to appear when bonds are enabled (not 'never')
     if (selected_after && selected_after !== `never`) {
       await expect(
-        control_panel.locator(`label:has-text("Bonding strategy")`),
+        control_pane.locator(`label:has-text("Bonding strategy")`),
       ).toBeVisible()
     }
 
     // Check that bond-specific controls appear
-    const bonding_strategy_label = control_panel
+    const bonding_strategy_label = control_pane
       .locator(`label`)
       .filter({ hasText: /Bonding strategy/ })
-    const bond_color_label = control_panel.locator(`label`).filter({
+    const bond_color_label = control_pane.locator(`label`).filter({
       hasText: /Bond color/,
     })
-    const bond_thickness_label = control_panel
+    const bond_thickness_label = control_pane
       .locator(`label`)
       .filter({ hasText: /Bond thickness/ })
 
@@ -1238,8 +1238,8 @@ test.describe(`Structure Component Tests`, () => {
     const bond_color_input = bond_color_label.locator(`input[type="color"]`)
     await bond_color_input.fill(`#00ff00`)
 
-    // Panel should still be open
-    const controls_open_status = page.locator(`[data-testid="panel-open-status"]`)
+    // Pane should still be open
+    const controls_open_status = page.locator(`[data-testid="pane-open-status"]`)
     await expect(controls_open_status).toContainText(`true`)
 
     // Test bonding strategy change
@@ -1256,14 +1256,14 @@ test.describe(`Structure Component Tests`, () => {
 
     await test_page_controls_checkbox.check()
     await expect(
-      page.locator(`#test-structure .controls-panel`),
-    ).toHaveClass(/panel-open/)
+      page.locator(`#test-structure .controls-pane`),
+    ).toHaveClass(/pane-open/)
 
     const edge_opacity = page.locator(
-      `#test-structure .controls-panel label:has-text("Edge color") + label input[type="range"]`,
+      `#test-structure .controls-pane label:has-text("Edge color") + label input[type="range"]`,
     )
     const surface_opacity = page.locator(
-      `#test-structure .controls-panel label:has-text("Surface color") + label input[type="range"]`,
+      `#test-structure .controls-pane label:has-text("Surface color") + label input[type="range"]`,
     )
 
     const initial = await canvas.screenshot()
@@ -1823,23 +1823,23 @@ test.describe(`Export Button Tests`, () => {
     }, selector)
   }
 
-  test(`export buttons are visible when controls panel is open`, async ({ page }) => {
+  test(`export buttons are visible when controls pane is open`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(control_panel).toHaveClass(/panel-open/, { timeout: 2000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const json_export_btn = control_panel.locator(
+    const json_export_btn = control_pane.locator(
       `button[title="Download JSON"]`,
     )
-    const xyz_export_btn = control_panel.locator(
+    const xyz_export_btn = control_pane.locator(
       `button[title="Download XYZ"]`,
     )
-    const png_export_btn = control_panel.locator(
+    const png_export_btn = control_pane.locator(
       `button[title*="PNG"]`,
     )
 
@@ -1852,11 +1852,11 @@ test.describe(`Export Button Tests`, () => {
     await expect(png_export_btn).toBeEnabled()
   })
 
-  test(`export buttons are not visible when controls panel is closed`, async ({ page }) => {
+  test(`export buttons are not visible when controls pane is closed`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
 
-    await expect(control_panel).not.toHaveClass(/panel-open/)
+    await expect(control_pane).not.toHaveClass(/pane-open/)
 
     const json_export_btn = structure_div.locator(
       `button[title="Download JSON"]`,
@@ -1871,15 +1871,15 @@ test.describe(`Export Button Tests`, () => {
 
   test(`JSON export button click does not cause errors`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const control_panel = structure_div.locator(`.controls-panel`)
+    const control_pane = structure_div.locator(`.controls-pane`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(control_panel).toHaveClass(/panel-open/, { timeout: 2000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const json_export_btn = control_panel.locator(
+    const json_export_btn = control_pane.locator(
       `button[title="Download JSON"]`,
     )
     await expect(json_export_btn).toBeVisible()
@@ -1889,10 +1889,10 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`XYZ export button click does not cause errors`, async ({ page }) => {
-    // Use helper function to reliably open controls panel
-    const { panel_div } = await open_structure_controls_panel(page)
+    // Use helper function to reliably open controls pane
+    const { pane_div } = await open_structure_control_pane(page)
 
-    const xyz_export_btn = panel_div.locator(
+    const xyz_export_btn = pane_div.locator(
       `button[title="Download XYZ"]`,
     )
     await expect(xyz_export_btn).toBeVisible()
@@ -1902,10 +1902,10 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`PNG export button click does not cause errors`, async ({ page }) => {
-    // Use helper function to reliably open controls panel
-    const { panel_div } = await open_structure_controls_panel(page)
+    // Use helper function to reliably open controls pane
+    const { pane_div } = await open_structure_control_pane(page)
 
-    const png_export_btn = panel_div.locator(`button[title*="PNG"]`)
+    const png_export_btn = pane_div.locator(`button[title*="PNG"]`)
     await expect(png_export_btn).toBeVisible()
     await png_export_btn.click()
 
@@ -1913,25 +1913,25 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`export buttons have correct attributes and styling`, async ({ page }) => {
-    // Use helper function to reliably open controls panel
-    const { panel_div } = await open_structure_controls_panel(page)
+    // Use helper function to reliably open controls pane
+    const { pane_div } = await open_structure_control_pane(page)
 
     // Test JSON export button attributes
-    const json_export_btn = panel_div.locator(
+    const json_export_btn = pane_div.locator(
       `button[title="Download JSON"]`,
     )
     await expect(json_export_btn).toHaveAttribute(`type`, `button`)
     await expect(json_export_btn).toHaveAttribute(`title`, `Download JSON`)
 
     // Test XYZ export button attributes
-    const xyz_export_btn = panel_div.locator(
+    const xyz_export_btn = pane_div.locator(
       `button[title="Download XYZ"]`,
     )
     await expect(xyz_export_btn).toHaveAttribute(`type`, `button`)
     await expect(xyz_export_btn).toHaveAttribute(`title`, `Download XYZ`)
 
     // Test PNG export button attributes (includes DPI info)
-    const png_export_btn = panel_div.locator(
+    const png_export_btn = pane_div.locator(
       `button[title*="PNG"]`,
     )
     await expect(png_export_btn).toHaveAttribute(`type`, `button`)
@@ -1950,11 +1950,11 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`export buttons are grouped together in proper layout`, async ({ page }) => {
-    // Use helper function to reliably open controls panel
-    const { panel_div } = await open_structure_controls_panel(page)
+    // Use helper function to reliably open controls pane
+    const { pane_div } = await open_structure_control_pane(page)
 
     // Find the container with export buttons
-    const export_container = panel_div.locator(
+    const export_container = pane_div.locator(
       `.export-buttons`,
     )
     await expect(export_container).toBeVisible()
@@ -1986,11 +1986,11 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`DPI input for PNG export works correctly`, async ({ page }) => {
-    // Use helper function to reliably open controls panel
-    const { panel_div } = await open_structure_controls_panel(page)
+    // Use helper function to reliably open controls pane
+    const { pane_div } = await open_structure_control_pane(page)
 
     // Find DPI input
-    const dpi_input = panel_div.locator(
+    const dpi_input = pane_div.locator(
       `input[title="Export resolution in dots per inch"]`,
     )
     await expect(dpi_input).toBeVisible()
@@ -2009,7 +2009,7 @@ test.describe(`Export Button Tests`, () => {
     expect(await dpi_input.inputValue()).toBe(`200`)
 
     // Verify PNG button title updates with new DPI
-    const png_export_btn = panel_div.locator(
+    const png_export_btn = pane_div.locator(
       `button[title*="PNG"]`,
     )
     const updated_title = await png_export_btn.getAttribute(`title`)
@@ -2024,10 +2024,10 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`multiple export button clicks work correctly`, async ({ page }) => {
-    const { panel_div } = await open_structure_controls_panel(page)
+    const { pane_div } = await open_structure_control_pane(page)
 
-    const json_export_btn = panel_div.locator(`button[title="Download JSON"]`)
-    const png_export_btn = panel_div.locator(`button[title*="PNG"]`)
+    const json_export_btn = pane_div.locator(`button[title="Download JSON"]`)
+    const png_export_btn = pane_div.locator(`button[title*="PNG"]`)
 
     await click_export_button(page, `JSON`)
     await expect(json_export_btn).toBeEnabled()
@@ -2043,7 +2043,7 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`export buttons work with loaded structure`, async ({ page }) => {
-    const { container, panel_div } = await open_structure_controls_panel(
+    const { container, pane_div } = await open_structure_control_pane(
       page,
     )
 
@@ -2052,8 +2052,8 @@ test.describe(`Export Button Tests`, () => {
     await expect(canvas).toHaveAttribute(`width`)
     await expect(canvas).toHaveAttribute(`height`)
 
-    const json_export_btn = panel_div.locator(`button[title="Download JSON"]`)
-    const png_export_btn = panel_div.locator(`button[title*="PNG"]`)
+    const json_export_btn = pane_div.locator(`button[title="Download JSON"]`)
+    const png_export_btn = pane_div.locator(`button[title*="PNG"]`)
 
     await click_export_button(page, `JSON`)
     await expect(json_export_btn).toBeEnabled()
@@ -2121,7 +2121,7 @@ test.describe(`Show Buttons Tests`, () => {
     await expect(page.locator(`#test-structure section.control-buttons`))
       .not.toHaveClass(/visible/)
 
-    await expect(page.locator(`button[title*="info panel"]`)).not.toBeVisible()
+    await expect(page.locator(`button[title*="info pane"]`)).not.toBeVisible()
     await expect(page.locator(`.fullscreen-toggle`)).not.toBeVisible()
   })
 
@@ -2331,8 +2331,8 @@ test.describe(`Structure Event Handler Tests`, () => {
     }
   })
 
-  test(`should handle structure controls panel correctly`, async ({ page }) => {
-    // Toggle controls panel
+  test(`should handle structure controls pane correctly`, async ({ page }) => {
+    // Toggle controls pane
     const controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -2347,7 +2347,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(controls_checkbox).toBeChecked({ checked: !initial_state })
 
     // Verify the status display updated
-    await expect(page.locator(`[data-testid="panel-open-status"]`))
+    await expect(page.locator(`[data-testid="pane-open-status"]`))
       .toContainText(`Controls Open Status: ${!initial_state}`)
   })
 
@@ -2381,18 +2381,18 @@ test.describe(`Structure Event Handler Tests`, () => {
   })
 
   test(`should handle camera projection toggle correctly`, async ({ page }) => {
-    // Open the structure controls panel to access camera controls
+    // Open the structure controls pane to access camera controls
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
     await test_page_controls_checkbox.check()
 
-    // Wait for controls panel to open
-    const panel_div = page.locator(`#test-structure .controls-panel`)
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    // Wait for controls pane to open
+    const pane_div = page.locator(`#test-structure .controls-pane`)
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
     // Find the camera projection select dropdown
-    const camera_projection_select = panel_div.locator(
+    const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
     )
     await expect(camera_projection_select).toBeVisible()
@@ -2435,8 +2435,8 @@ test.describe(`Structure Event Handler Tests`, () => {
     const structure_wrapper = page.locator(`#test-structure`)
     await expect(structure_wrapper).toBeVisible()
 
-    // Panel open status should still render
-    await expect(page.locator(`[data-testid="panel-open-status"]`)).toBeVisible()
+    // Pane open status should still render
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
   })
 
   test.describe(`Event Handlers`, () => {
@@ -2546,10 +2546,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     )
     await test_page_controls_checkbox.check()
 
-    const panel_div = page.locator(`#test-structure .controls-panel`)
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    const pane_div = page.locator(`#test-structure .controls-pane`)
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const camera_projection_select = panel_div.locator(
+    const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
     )
 
@@ -2580,10 +2580,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     )
     await test_page_controls_checkbox.check()
 
-    const panel_div = page.locator(`#test-structure .controls-panel`)
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    const pane_div = page.locator(`#test-structure .controls-pane`)
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const camera_projection_select = panel_div.locator(
+    const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
     )
     const canvas = page.locator(`#test-structure canvas`)
@@ -2621,16 +2621,16 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     )
     await test_page_controls_checkbox.check()
 
-    const panel_div = page.locator(`#test-structure .controls-panel`)
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    const pane_div = page.locator(`#test-structure .controls-pane`)
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const camera_projection_select = panel_div.locator(
+    const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
     )
-    const atom_radius_input = panel_div.locator(
+    const atom_radius_input = pane_div.locator(
       `label:has-text("Radius") input[type="number"]`,
     )
-    const auto_rotate_input = panel_div.locator(
+    const auto_rotate_input = pane_div.locator(
       `label:has-text("Auto rotate speed") input[type="number"]`,
     )
 
@@ -2643,15 +2643,15 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(auto_rotate_input).toHaveValue(`0.5`)
     await expect(camera_projection_select).toHaveValue(`orthographic`)
 
-    // Test 2: State persistence across panel close/open
+    // Test 2: State persistence across pane close/open
     await test_page_controls_checkbox.uncheck()
-    await expect(panel_div).not.toHaveClass(/panel-open/)
+    await expect(pane_div).not.toHaveClass(/pane-open/)
     await expect(page.locator(`[data-testid="camera-projection-status"]`)).toContainText(
       `orthographic`,
     )
 
     await test_page_controls_checkbox.check()
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
     await expect(camera_projection_select).toHaveValue(`orthographic`)
     await expect(atom_radius_input).toHaveValue(`1.5`)
   })
@@ -2662,11 +2662,11 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     )
     await test_page_controls_checkbox.check()
 
-    const panel_div = page.locator(`#test-structure .controls-panel`)
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    const pane_div = page.locator(`#test-structure .controls-pane`)
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
     // Test 1: UI controls accessibility and options
-    const projection_label = panel_div.locator(`label:has-text("Projection")`)
+    const projection_label = pane_div.locator(`label:has-text("Projection")`)
     const projection_select = projection_label.locator(`select`)
     await expect(projection_select).toBeVisible()
 
@@ -2705,16 +2705,16 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     )
     await test_page_controls_checkbox.check()
 
-    const panel_div = page.locator(`#test-structure .controls-panel`)
-    await expect(panel_div).toHaveClass(/panel-open/, { timeout: 2000 })
+    const pane_div = page.locator(`#test-structure .controls-pane`)
+    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const camera_projection_select = panel_div.locator(
+    const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
     )
-    const auto_rotate_input = panel_div.locator(
+    const auto_rotate_input = pane_div.locator(
       `label:has-text("Auto rotate speed") input[type="number"]`,
     )
-    const zoom_speed_input = panel_div.locator(
+    const zoom_speed_input = pane_div.locator(
       `label:has-text("Zoom speed") input[type="number"]`,
     )
     const canvas = page.locator(`#test-structure canvas`)
@@ -2754,14 +2754,14 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
   test.describe(`Structure Controls Reset Functionality`, () => {
     test.beforeEach(async ({ page }: { page: Page }) => {
-      // Open structure controls panel
-      await open_structure_controls_panel(page)
+      // Open structure controls pane
+      await open_structure_control_pane(page)
     })
 
     test(`visibility section reset button appears and works`, async ({ page }) => {
       // Change a visibility setting (Show Atoms) within the Visibility section
       const visibility_heading = page.locator(
-        `#test-structure .controls-panel h4:has-text("Visibility")`,
+        `#test-structure .controls-pane h4:has-text("Visibility")`,
       )
       const visibility_container = visibility_heading.locator(
         `xpath=following-sibling::*[1]`,
@@ -2787,7 +2787,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     test(`camera section reset button appears and works`, async ({ page }) => {
       // Change camera projection within the Camera section
       const camera_heading = page.locator(
-        `#test-structure .controls-panel h4:has-text("Camera")`,
+        `#test-structure .controls-pane h4:has-text("Camera")`,
       )
       const camera_container = camera_heading.locator(`xpath=following-sibling::*[1]`)
       const projection_select = camera_container.locator(
@@ -2809,7 +2809,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     test(`atoms section reset button appears and works`, async ({ page }) => {
       // Change atom radius within the Atoms section
       const atoms_heading = page.locator(
-        `#test-structure .controls-panel h4:has-text("Atoms")`,
+        `#test-structure .controls-pane h4:has-text("Atoms")`,
       )
       const atoms_container = atoms_heading.locator(`xpath=following-sibling::*[1]`)
       const radius_input = atoms_container.locator(
@@ -2831,7 +2831,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     test(`cell section reset button appears and works`, async ({ page }) => {
       // Change cell edge opacity within the Cell section
       const cell_heading = page.locator(
-        `#test-structure .controls-panel h4:has-text("Cell")`,
+        `#test-structure .controls-pane h4:has-text("Cell")`,
       )
       const cell_container = cell_heading.locator(`xpath=following-sibling::*[1]`)
       const opacity_input = cell_container.locator(
@@ -2853,7 +2853,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     test(`background section reset button appears and works`, async ({ page }) => {
       // Change background opacity within Background section
       const background_heading = page.locator(
-        `#test-structure .controls-panel h4:has-text("Background")`,
+        `#test-structure .controls-pane h4:has-text("Background")`,
       )
       const background_container = background_heading.locator(
         `xpath=following-sibling::*[1]`,
@@ -2877,7 +2877,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     test(`lighting section reset button appears and works`, async ({ page }) => {
       // Change directional light
       const lighting_heading = page.locator(
-        `#test-structure .controls-panel h4:has-text("Lighting")`,
+        `#test-structure .controls-pane h4:has-text("Lighting")`,
       )
       const lighting_container = lighting_heading.locator(`xpath=following-sibling::*[1]`)
       const directional_input = lighting_container.locator(
@@ -3020,10 +3020,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       )
       await expect(visibility_reset).toBeVisible()
 
-      // Click reset button - panel should stay open
+      // Click reset button - pane should stay open
       await visibility_reset.click()
 
-      // Control panel should still be visible (not closed by the click)
+      // Control pane should still be visible (not closed by the click)
       await expect(page.locator(`.structure-controls-toggle`)).toBeVisible()
       await expect(page.locator(`text=Structure Controls`)).toBeVisible()
     })
