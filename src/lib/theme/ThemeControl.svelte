@@ -34,7 +34,7 @@
     left: 1em;
     z-index: var(--theme-control-z-index, 2);
     background: var(--btn-bg);
-    border: var(--panel-border);
+    border: var(--pane-border);
     color: var(--text-color);
     border-radius: var(--theme-control-border-radius, 5pt);
     padding: var(--theme-control-padding, 4pt 6pt);
@@ -44,7 +44,7 @@
   }
   .theme-control:hover {
     background: var(--btn-bg-hover);
-    border: var(--panel-border);
+    border: var(--pane-border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   .theme-control:focus {

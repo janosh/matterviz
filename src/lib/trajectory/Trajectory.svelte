@@ -17,7 +17,7 @@
     TrajectoryType,
     TrajHandlerData,
   } from './index'
-  import { TrajectoryError, TrajectoryInfoPanel } from './index'
+  import { TrajectoryError, TrajectoryInfoPane } from './index'
   import type { LoadingOptions } from './parse'
   import {
     create_frame_loader,
@@ -124,6 +124,8 @@
     fps?: number // frame rate for playback
     // Loading options for large files
     loading_options?: LoadingOptions
+    // Disable plot skimming (mouse over plot doesn't update structure/step slider)
+    plot_skimming?: boolean
     [key: string]: unknown
   }
   let {
@@ -157,6 +159,7 @@
     fps_range = DEFAULTS.trajectory.fps_range,
     fps = $bindable(5),
     loading_options = {},
+    plot_skimming = true,
     ...rest
   }: Props = $props()
 
@@ -179,7 +182,7 @@
   let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
-  let info_panel_open = $state(false)
+  let info_pane_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
@@ -257,19 +260,16 @@
   // Dynamically hide bonds during playback to improve FPS - bond computation is expensive
   // Maybe revisit this in future if we find much more efficient bonding algo
   let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
-    const struct_props = {
-      show_image_atoms: DEFAULTS.structure.show_image_atoms,
-      ...structure_props,
-    }
-
     if (is_playing) { // Hide bonds during playback
-      const { scene_props = {} } = struct_props
+      const { scene_props = {} } = structure_props
       if (scene_props.show_bonds !== `never`) {
         const show_bonds = `never` as const
-        return { ...struct_props, scene_props: { ...scene_props, show_bonds } }
+        return { ...structure_props, scene_props: { ...scene_props, show_bonds } }
       }
     }
-    return struct_props
+    // default show_image_atoms to false since usually undesired if new image atoms
+    // pup-up/disappear when moving near cell edge during the trajectory
+    return { show_image_atoms: false, ...structure_props }
   })
 
   let step_label_positions = $derived.by((): number[] => {
@@ -769,7 +769,7 @@
       go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
     } // Interface shortcuts
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    // 'i' key handled by the TrajectoryInfoPanel's built-in toggle
+    // 'i' key handled by the TrajectoryInfoPane's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
       fps = Math.min(fps_range[1], fps + 0.2)
@@ -781,14 +781,14 @@
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
-      // Escape key for info panel handled by DraggablePanel
+      // Escape key for info pane handled by DraggablePane
     } // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
       go_to_step(Math.floor((parseInt(event.key, 10) / 10) * (total_frames - 1)))
     }
   }
 
-  let panels_open = $state({
+  let panes_open = $state({
     structure_info: false,
     structure_controls: false,
     plot_controls: false,
@@ -805,8 +805,8 @@
 
 <div
   class:dragover
-  class:active={is_playing || panels_open.structure_info || panels_open.structure_controls ||
-  panels_open.plot_controls}
+  class:active={is_playing || panes_open.structure_info || panes_open.structure_controls ||
+  panes_open.plot_controls}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -969,14 +969,14 @@
           <!-- Frame info section -->
           <div class="info-section">
             {#if trajectory}
-              <TrajectoryInfoPanel
+              <TrajectoryInfoPane
                 {trajectory}
                 {current_step_idx}
                 {current_filename}
                 {current_file_path}
                 {file_size}
                 {file_object}
-                bind:panel_open={info_panel_open}
+                bind:pane_open={info_pane_open}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -1077,8 +1077,8 @@
           style="height: 100%; min-height: 0; z-index: 3; border-radius: 0"
           enable_tips={false}
           {...final_structure_props}
-          bind:controls_open={panels_open.structure_controls}
-          bind:info_panel_open={panels_open.structure_info}
+          bind:controls_open={panes_open.structure_controls}
+          bind:info_pane_open={panes_open.structure_info}
         />
       {/if}
 
@@ -1094,12 +1094,12 @@
             y2_label={y_axis_labels.y2}
             y2_label_shift={{ y: 80 }}
             current_x_value={current_step_idx}
-            change={handle_plot_change}
+            change={plot_skimming ? handle_plot_change : undefined}
             markers="line"
             x_format=".3~s"
             x_ticks={step_label_positions}
             show_controls
-            bind:controls_open={panels_open.plot_controls}
+            bind:controls_open={panes_open.plot_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
@@ -1199,7 +1199,7 @@
     background: var(--surface-bg);
   }
   .trajectory.active {
-    z-index: 2; /* needed so info/control panels from an active viewer overlay those of the next (if there is one) */
+    z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
   }
   .trajectory:fullscreen {
     height: 100vh !important;
@@ -1350,13 +1350,13 @@
     font-size: clamp(0.8rem, 2.5cqw, 0.9rem);
   }
   .play-button:hover:not(:disabled) {
-    background: var(--traj-play-btn-bg-hover, #7f8793);
+    background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));
   }
   .play-button.playing {
-    background: var(--traj-pause-btn-bg, #6b7280);
+    background: var(--traj-pause-btn-bg, var(--btn-bg, rgba(0, 0, 0, 0.1)));
   }
   .play-button.playing:hover:not(:disabled) {
-    background: var(--traj-pause-btn-bg-hover, #9ca3af);
+    background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
   }
 
   .empty-state {

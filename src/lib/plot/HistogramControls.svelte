@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePanel, SettingsSection } from '$lib'
+  import { DraggablePane, SettingsSection } from '$lib'
   import type { DataSeries } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
@@ -8,10 +8,10 @@
   import type { TicksOption } from './scales'
 
   interface Props {
-    // Control panel visibility
+    // Control pane visibility
     show_controls?: boolean
     controls_open?: boolean
-    // Custom content for the control panel
+    // Custom content for the control pane
     plot_controls?: Snippet<[]>
     // Series data for multi-series controls
     series?: readonly DataSeries[]
@@ -41,8 +41,8 @@
     y_format?: string
     // Selected property for single mode
     selected_property?: string
-    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
-    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   }
   let {
     show_controls = $bindable(false),
@@ -78,7 +78,7 @@
     y_format = $bindable(DEFAULTS.trajectory.plot_y_format),
     selected_property = $bindable(``),
     toggle_props,
-    panel_props,
+    pane_props,
   }: Props = $props()
 
   // Local variables for format inputs to prevent invalid values from reaching props
@@ -197,7 +197,7 @@
 {#if show_controls}
   {@const toggle_style =
     `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;`}
-  <DraggablePanel
+  <DraggablePane
     bind:show={controls_open}
     closed_icon="Settings"
     open_icon="Cross"
@@ -207,9 +207,9 @@
       class: `histogram-controls-toggle ${toggle_props?.class ?? ``}`,
       style: `${toggle_style} ${toggle_props?.style ?? ``}`,
     }}
-    panel_props={{
-      class: `histogram-controls-panel`,
-      ...panel_props,
+    pane_props={{
+      ...pane_props,
+      class: `histogram-controls-pane ${pane_props?.class ?? ``}`,
     }}
   >
     {#if plot_controls}
@@ -248,7 +248,7 @@
           x_range = undefined
           y_range = undefined
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: repeat(4, max-content)"
       >
         <label for="x-range-min">X-axis:</label>
@@ -271,7 +271,7 @@
           show_legend = DEFAULTS.trajectory.histogram_show_legend
         }}
       >
-        <div class="panel-row">
+        <div class="pane-row">
           <label for="bins-input">Bins:</label>
           <input
             id="bins-input"
@@ -290,7 +290,7 @@
           />
         </div>
         {#if has_multiple_series}
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="mode-select">Mode:</label>
             <select bind:value={mode} id="mode-select">
               <option value="single">Single</option>
@@ -298,7 +298,7 @@
             </select>
           </div>
           {#if mode === `single`}
-            <div class="panel-row">
+            <div class="pane-row">
               <label for="property-select">Property:</label>
               <select bind:value={selected_property} id="property-select">
                 <option value="">All</option>
@@ -323,7 +323,7 @@
           bar_opacity = DEFAULTS.trajectory.histogram_bar_opacity
           bar_stroke_width = DEFAULTS.trajectory.histogram_bar_stroke_width
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: auto 1fr auto"
       >
         <label for="bar-opacity-range">Opacity:</label>
@@ -368,7 +368,7 @@
           x_scale_type = DEFAULTS.trajectory.plot_x_scale_type as `linear` | `log`
           y_scale_type = DEFAULTS.trajectory.plot_y_scale_type as `linear` | `log`
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: auto 1fr"
       >
         <label for="x-scale-select">X-axis:</label>
@@ -391,7 +391,7 @@
           x_ticks = DEFAULTS.trajectory.plot_x_ticks
           y_ticks = DEFAULTS.trajectory.plot_y_ticks
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: auto 1fr"
       >
         <label for="x-ticks-input">X-axis:</label>
@@ -424,7 +424,7 @@
           x_format = DEFAULTS.trajectory.plot_x_format
           y_format = DEFAULTS.trajectory.plot_y_format
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: auto 1fr"
       >
         <label for="x-format">X-axis:</label>
@@ -445,5 +445,5 @@
         />
       </SettingsSection>
     {/if}
-  </DraggablePanel>
+  </DraggablePane>
 {/if}

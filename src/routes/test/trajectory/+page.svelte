@@ -357,3 +357,11 @@
   layout="horizontal"
   fps_range={[1, 10]}
 />
+
+<Trajectory
+  id="no-plot-skimming"
+  trajectory={test_trajectory}
+  layout="horizontal"
+  plot_skimming={false}
+  show_controls
+/>

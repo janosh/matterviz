@@ -11,8 +11,9 @@ You can compile Svelte components to custom elements and consume them anywhere (
 Minimal custom element `StructureCE.svelte` for [`Structure.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte):
 
 ```svelte
+<!-- matterviz/structure/StructureCE.svelte -->
 <script>
-  import Structure from 'matterviz/structure/Structure.svelte'
+  import { Structure } from 'matterviz'
   let props = $props()
 </script>
 

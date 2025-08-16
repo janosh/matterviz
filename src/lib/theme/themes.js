@@ -191,14 +191,14 @@ const themes = {
     black: `rgba(255, 255, 255, 0.1)`,
   },
 
-  // Panel backgrounds (DraggablePanel, etc.)
-  'panel-bg': {
+  // Pane backgrounds (DraggablePane, etc.)
+  'pane-bg': {
     light: `rgb(229, 231, 235)`,
     dark: `rgb(28 29 33)`,
     white: `rgb(248, 250, 252)`,
     black: `rgb(26, 26, 26)`,
   },
-  'panel-border': {
+  'pane-border': {
     light: `1px solid rgba(0, 0, 0, 0.15)`,
     dark: `1px solid rgba(255, 255, 255, 0.15)`,
     white: `1px solid rgba(0, 0, 0, 0.075)`,
@@ -261,14 +261,6 @@ const themes = {
     black: colors.txt_black,
   },
   'plot-legend-item-hover-background-color': btn_bg(0.1, 0.1),
-
-  // Non-color theming (filters, etc.)
-  'legend-filter': {
-    light: `grayscale(10%) brightness(0.8) saturate(0.9)`,
-    dark: `grayscale(10%) brightness(0.8) saturate(0.8)`,
-    white: `grayscale(2%) brightness(0.9) saturate(1.2)`,
-    black: `grayscale(15%) brightness(0.7) saturate(0.7)`,
-  },
 
   // Svelte MultiSelect
   'sms-options-bg': {

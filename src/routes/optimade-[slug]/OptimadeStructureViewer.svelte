@@ -1,18 +1,13 @@
 <script lang="ts">
   import { page } from '$app/state'
   import { Icon } from '$lib'
-  import type {
-    OptimadeDatabase,
-    OptimadeProvider,
-    OptimadeStructure,
-  } from '$lib/api/optimade'
+  import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
   import {
     decode_structure_id,
     detect_provider_from_slug,
     encode_structure_id,
     fetch_optimade_providers,
     fetch_optimade_structure,
-    fetch_provider_databases,
     fetch_suggested_structures,
   } from '$lib/api/optimade'
   import { Composition } from '$lib/composition'
@@ -23,26 +18,30 @@
   import { tooltip } from 'svelte-multiselect'
 
   let structure = $state<PymatgenStructure | null>(null)
-  let loading = $state(false)
-  let error = $state<string | null>(null)
+  let [loading_struct, loading_suggestions] = $state([false, false])
+  let struct_error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])
   let providers_error = $state<string | null>(null)
   let selected_db = $state(`mp`)
-  let available_dbs = $state<OptimadeDatabase[]>([])
   let input_value = $state(``)
   let suggested_structures = $state<OptimadeStructure[]>([])
-  let loading_suggestions = $state(false)
+  let last_loaded_db = $state<string | null>(null)
+  let structure_id = $derived(input_value.trim())
+  let provider_config = $derived(
+    available_providers.find((p) => p.id === selected_db),
+  )
 
   $effect(() => { // Initialize from URL slug
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
-    detect_provider_from_slug(decoded_slug).then((provider) => {
+    if (available_providers.length > 0) {
+      const provider = detect_provider_from_slug(decoded_slug, available_providers)
       if (provider) {
         selected_db = provider
         input_value = decoded_slug.startsWith(`${provider}-`)
           ? decoded_slug
           : `${provider}-${decoded_slug}`
       } else input_value = decoded_slug
-    })
+    }
   })
 
   $effect(() => { // Load providers on mount
@@ -51,16 +50,16 @@
 
   // Load data when database or structure ID changes
   $effect(() => {
-    if (selected_db) {
-      load_databases()
-      load_suggested_structures()
+    if (selected_db && available_providers.length > 0) {
+      // Only load suggested structures when switching to different database
+      // prevents refetching when navigating between structures within same database
+      if (last_loaded_db !== selected_db) {
+        load_suggested_structures()
+        last_loaded_db = selected_db
+      }
     }
     if (structure_id && selected_db) load_structure_data()
   })
-
-  let structure_id = $derived(input_value.trim())
-  let db_config = $derived(available_providers.find((p) => p.id === selected_db))
-  let pretty_formula = $derived(structure ? get_electro_neg_formula(structure) : ``)
 
   async function load_providers() {
     providers_error = null
@@ -72,31 +71,35 @@
   }
 
   async function load_structure_data() {
-    loading = true
-    error = null
-    const data = await fetch_optimade_structure(structure_id, selected_db).catch(
+    loading_struct = true
+    struct_error = null
+    const data = await fetch_optimade_structure(
+      structure_id,
+      selected_db,
+      available_providers,
+    ).catch(
       (err) => {
-        error = `Failed to load structure: ${err}`
+        struct_error = `Failed to load structure: ${err}`
         return null
       },
     )
 
     if (data) {
       structure = optimade_to_pymatgen(data)
-      if (!structure) error = `Failed to convert structure data`
-    } else if (!error) {
-      error = `Structure ${structure_id} not found`
+      if (!structure) struct_error = `Failed to convert structure data`
+    } else if (!struct_error) {
+      struct_error = `Structure ${structure_id} not found`
     }
-    loading = false
-  }
-
-  async function load_databases() {
-    available_dbs = await fetch_provider_databases(selected_db)
+    loading_struct = false
   }
 
   async function load_suggested_structures() {
     loading_suggestions = true
-    suggested_structures = await fetch_suggested_structures(selected_db, 12)
+    suggested_structures = await fetch_suggested_structures(
+      selected_db,
+      available_providers,
+      12,
+    )
     loading_suggestions = false
   }
 
@@ -120,17 +123,17 @@
   <button
     class="fetch-button"
     onclick={() => navigate_to_structure(structure_id)}
-    disabled={loading || !structure_id}
+    disabled={loading_struct || !structure_id}
   >
-    {loading ? `Loading...` : `Fetch`}
+    {loading_struct ? `Loading...` : `Fetch`}
   </button>
 </div>
 
 <div class="main-layout full-bleed">
   <div class="db-column">
     <h3>
-      Databases <span style="font-weight: lighter"
-      >({available_dbs.length || available_providers.length})</span>
+      Providers
+      <span style="font-weight: lighter">({available_providers.length})</span>
     </h3>
 
     {#if providers_error}
@@ -142,10 +145,7 @@
       <p>Loading providers...</p>
     {:else}
       <div class="db-grid">
-        {#each available_dbs.length > 0 ? available_dbs : available_providers as
-          { id, attributes }
-          (id)
-        }
+        {#each available_providers as { id, attributes } (id)}
           <div class:selected={id === selected_db}>
             <button
               class="db-select"
@@ -184,8 +184,8 @@
   <div class="suggestions-column">
     {#if suggested_structures.length > 0}
       <h3>
-        Suggested Structures <span style="font-weight: lighter"
-        >({suggested_structures.length})</span>
+        Suggested Structures
+        <span style="font-weight: lighter">({suggested_structures.length})</span>
       </h3>
       {#if loading_suggestions}
         <p>Loading...</p>
@@ -214,25 +214,25 @@
     {/if}
   </div>
 
-  <div class="structure-column" style="display: grid">
-    {#if error}
+  <div class="structure-column">
+    {#if struct_error}
       <div class="error-message">
-        <p>{error}</p>
+        <p>{struct_error}</p>
       </div>
     {/if}
 
-    {#if loading}
-      <p>Loading structure from {db_config?.attributes.name}...</p>
+    {#if loading_struct}
+      <p>Loading structure from {provider_config?.attributes.name}...</p>
     {/if}
 
     {#if structure}
       <h2 style="margin: 0 2pt 10pt">
-        {@html pretty_formula}
+        {@html get_electro_neg_formula(structure)}
         {#if structure_id}
-          <span class="structure-id">({structure_id})</span>
+          <span>({structure_id})</span>
         {/if}
       </h2>
-      <Structure {structure} style="width: 100%; height: auto" />
+      <Structure {structure} style="height: 100%" />
     {/if}
   </div>
 </div>
@@ -333,7 +333,7 @@
   .structure-suggestions button:hover {
     background: var(--btn-bg-hover);
   }
-  .structure-id {
+  .structure-column h2 span {
     font-weight: lighter;
     color: var(--text-color-muted);
   }

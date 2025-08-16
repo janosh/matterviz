@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePanel, SettingsSection } from '$lib'
+  import { DraggablePane, SettingsSection } from '$lib'
   import type { DataSeries } from '$lib/plot'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { format } from 'd3-format'
@@ -8,10 +8,9 @@
   import { tooltip } from 'svelte-multiselect/attachments'
 
   interface Props {
-    // Control panel visibility
     show_controls?: boolean
     controls_open?: boolean
-    // Custom content for the control panel
+    // Custom content for the control pane
     plot_controls?: Snippet<[]>
     // Series data for multi-series controls
     series?: readonly DataSeries[]
@@ -49,8 +48,8 @@
     show_points?: boolean
     show_lines?: boolean
     selected_series_idx?: number
-    toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
-    panel_props?: ComponentProps<typeof DraggablePanel>[`panel_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   }
   let {
     show_controls = $bindable(false),
@@ -94,7 +93,7 @@
     show_lines = $bindable(DEFAULTS.trajectory.scatter_show_lines),
     selected_series_idx = $bindable(0),
     toggle_props = {},
-    panel_props = {},
+    pane_props = {},
   }: Props = $props()
 
   // Derived state
@@ -220,20 +219,23 @@
 </script>
 
 {#if show_controls}
-  <DraggablePanel
+  <DraggablePane
     bind:show={controls_open}
     closed_icon="Settings"
     open_icon="Cross"
     toggle_props={{
-      class: `scatter-controls-toggle`,
+      ...toggle_props,
+      class: `scatter-controls-toggle ${toggle_props?.class ?? ``}`,
       title: `${controls_open ? `Close` : `Open`} scatter plot controls`,
       style:
         `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
           toggle_props?.style ?? ``
         }`,
-      ...toggle_props,
     }}
-    panel_props={{ class: `scatter-controls-panel`, ...panel_props }}
+    pane_props={{
+      ...pane_props,
+      class: `scatter-controls-pane ${pane_props?.class ?? ``}`,
+    }}
   >
     {#if plot_controls}
       {@render plot_controls()}
@@ -293,7 +295,7 @@
           y_range = undefined
           y2_range = undefined
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: repeat(4, max-content)"
       >
         <label for="x-range-min">X-axis:</label>
@@ -321,7 +323,7 @@
           y_format = DEFAULTS.trajectory.plot_y_format
           y2_format = DEFAULTS.trajectory.plot_y2_format
         }}
-        class="panel-grid"
+        class="pane-grid"
         style="grid-template-columns: auto 1fr"
       >
         <label for="x-format">X-axis:</label>
@@ -354,7 +356,7 @@
 
       <!-- Series Selection (for multi-series style controls) -->
       {#if has_multiple_series}
-        <div class="panel-row">
+        <div class="pane-row">
           <label for="series-select">Series</label>
           <select bind:value={selected_series_idx} id="series-select">
             {#each series.filter(Boolean) as series_data, idx (series_data.label ?? idx)}
@@ -388,7 +390,7 @@
             point_stroke_opacity = DEFAULTS.trajectory.scatter_point_stroke_opacity
           }}
         >
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="point-size-range">Size:</label>
             <input
               id="point-size-range"
@@ -400,7 +402,7 @@
             />
             <input type="number" min="1" max="20" step="0.5" bind:value={point_size} />
           </div>
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="point-color">Color:</label>
             <input id="point-color" type="color" bind:value={point_color} />
             <input
@@ -413,7 +415,7 @@
             />
             <input type="number" min="0" max="1" step="0.05" bind:value={point_opacity} />
           </div>
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="point-stroke-width-range">Stroke Width:</label>
             <input
               id="point-stroke-width-range"
@@ -431,7 +433,7 @@
               bind:value={point_stroke_width}
             />
           </div>
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="point-stroke-color">Stroke Color:</label>
             <input id="point-stroke-color" type="color" bind:value={point_stroke_color} />
             <input
@@ -466,7 +468,7 @@
             line_dash = undefined
           }}
         >
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="line-width-range">Line Width:</label>
             <input
               id="line-width-range"
@@ -478,7 +480,7 @@
             />
             <input type="number" min="0.5" max="10" step="0.5" bind:value={line_width} />
           </div>
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="line-color">Line Color:</label>
             <input id="line-color" type="color" bind:value={line_color} />
             <input
@@ -497,7 +499,7 @@
               bind:value={line_opacity}
             />
           </div>
-          <div class="panel-row">
+          <div class="pane-row">
             <label for="line-style-select">Line Style:</label>
             <select
               id="line-style-select"
@@ -516,5 +518,5 @@
         </SettingsSection>
       {/if}
     {/if}
-  </DraggablePanel>
+  </DraggablePane>
 {/if}

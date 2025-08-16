@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cells_3x3, corner_cells, DraggablePanel, Line, symbol_names } from '$lib'
+  import { cells_3x3, corner_cells, DraggablePane, Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
@@ -117,10 +117,10 @@
       string,
       (payload: { point: InternalPoint; event: Event }) => void
     >
-    // Control panel props
-    show_controls?: boolean // Whether to show the control panel
-    controls_open?: boolean // Whether the control panel is open
-    plot_controls?: Snippet<[]> // Custom content for the control panel
+    // Control pane props
+    show_controls?: boolean // Whether to show the control pane
+    controls_open?: boolean // Whether the control pane is open
+    plot_controls?: Snippet<[]> // Custom content for the control pane
     // Style control props
     point_size?: number
     point_color?: string
@@ -136,7 +136,7 @@
     show_lines?: boolean
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
-    controls_toggle_props?: ComponentProps<typeof DraggablePanel>[`toggle_props`]
+    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     [key: string]: unknown
   }
   let {
@@ -1879,7 +1879,7 @@
       {/if}
     </svg>
 
-    <!-- Control Panel positioned in top-right corner -->
+    <!-- Control Pane positioned in top-right corner -->
     {#if show_controls}
       <ScatterPlotControls
         toggle_props={controls_toggle_props}
