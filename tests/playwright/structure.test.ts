@@ -145,7 +145,7 @@ test.describe(`Structure Component Tests`, () => {
     )
 
     let error_occurred = false
-    page.on(`pageerror`, () => (error_occurred = true))
+    page.once(`pageerror`, () => (error_occurred = true))
 
     await expect(fullscreen_button).toBeVisible()
     await expect(fullscreen_button).toBeEnabled()
@@ -168,7 +168,8 @@ test.describe(`Structure Component Tests`, () => {
 
     await page.keyboard.press(`Escape`)
 
-    await expect(control_pane).not.toBeVisible({ timeout: 1000 })
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
+    await expect(control_pane).not.toBeVisible()
     await expect(controls_toggle_button).toHaveAttribute(
       `title`,
       `Open structure controls`,
@@ -184,7 +185,7 @@ test.describe(`Structure Component Tests`, () => {
     )
 
     let page_errors = false
-    page.on(`pageerror`, () => (page_errors = true))
+    page.once(`pageerror`, () => (page_errors = true))
 
     // Test that single keys don't trigger actions or cause errors
     await page.keyboard.press(`f`)
@@ -232,7 +233,8 @@ test.describe(`Structure Component Tests`, () => {
 
     await outside_area.click({ position: { x: 0, y: 0 }, force: true })
 
-    await expect(control_pane).not.toBeVisible({ timeout: 1000 })
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
+    await expect(control_pane).not.toBeVisible()
     await expect(controls_toggle_button).toHaveAttribute(
       `title`,
       `Open structure controls`,
@@ -1026,6 +1028,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test that clicking on the canvas DOES close the pane (it's an outside click)
     await canvas.click({ position: { x: 100, y: 100 } })
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
     await expect(control_pane).not.toBeVisible()
 
     // Re-open for toggle button test
@@ -1033,6 +1036,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test that clicking controls toggle button does close the pane
     await controls_toggle_button.click()
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
     await expect(control_pane2).not.toBeVisible()
 
     // Re-open for escape key test using helper function
@@ -1040,6 +1044,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test escape key closes the pane
     await page.keyboard.press(`Escape`)
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
     await expect(control_pane3).not.toBeVisible()
 
     // Re-open for outside click test using helper function
@@ -1047,6 +1052,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test clicking outside the controls and toggle button closes the pane
     await page.locator(`body`).click({ position: { x: 10, y: 10 } })
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
     await expect(control_pane4).not.toBeVisible()
   })
 
@@ -1979,7 +1985,8 @@ test.describe(`Show Buttons Tests`, () => {
     await expect(page.locator(`#test-structure section.control-buttons`))
       .not.toHaveClass(/visible/)
 
-    await expect(page.locator(`button[title*="info pane"]`)).not.toBeVisible()
+    await expect(page.locator(`#test-structure button.structure-info-toggle`)).not
+      .toBeVisible()
     await expect(page.locator(`.fullscreen-toggle`)).not.toBeVisible()
   })
 
@@ -2000,7 +2007,8 @@ test.describe(`Show Buttons Tests`, () => {
     // Control buttons should not be visible since width (400) < show_controls (600)
     await expect(page.locator(`#test-structure section.control-buttons`))
       .not.toHaveClass(/visible/)
-    await expect(page.locator(`button[title*="structure info"]`)).not.toBeVisible()
+    await expect(page.locator(`#test-structure button.structure-info-toggle`)).not
+      .toBeVisible()
   })
 
   test(`should show buttons when structure width is wider than show_controls number`, async ({ page }) => {
@@ -2020,7 +2028,8 @@ test.describe(`Show Buttons Tests`, () => {
     // Control buttons should be visible since width (800) > show_controls (600)
     await expect(page.locator(`#test-structure section.control-buttons`))
       .toHaveClass(/visible/)
-    await expect(page.locator(`button[title*="structure info"]`)).toBeVisible()
+    await expect(page.locator(`#test-structure button.structure-info-toggle`))
+      .toBeVisible()
   })
 
   test(`should show buttons when show_controls is true regardless of width`, async ({ page }) => {
@@ -2040,7 +2049,8 @@ test.describe(`Show Buttons Tests`, () => {
     // Control buttons should still be visible when show_controls is true (regardless of width)
     await expect(page.locator(`#test-structure section.control-buttons`))
       .toHaveClass(/visible/)
-    await expect(page.locator(`button[title*="structure info"]`)).toBeVisible()
+    await expect(page.locator(`#test-structure button.structure-info-toggle`))
+      .toBeVisible()
   })
 })
 
@@ -2206,7 +2216,7 @@ test.describe(`Structure Event Handler Tests`, () => {
 
     // Verify the status display updated
     await expect(page.locator(`[data-testid="pane-open-status"]`))
-      .toContainText(`Controls Open Status: ${!initial_state}`)
+      .toContainText(String(!initial_state))
   })
 
   test(`should handle multiple prop changes in sequence`, async ({ page }) => {
@@ -2262,7 +2272,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(page.locator(`[data-testid="camera-projection-status"]`))
       .toContainText(`Camera Projection Status: ${DEFAULTS.structure.camera_projection}`)
 
-    // Switch to orthographic projection
+    // Switch to perspective projection
     await camera_projection_select.selectOption(`perspective`)
 
     // Verify the change was applied
@@ -2884,6 +2894,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       // Control pane should still be visible (not closed by the click)
       await expect(page.locator(`.structure-controls-toggle`)).toBeVisible()
       await expect(page.locator(`text=Structure Controls`)).toBeVisible()
+      await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`true`)
     })
 
     test(`reset buttons have proper accessibility attributes`, async ({ page }) => {

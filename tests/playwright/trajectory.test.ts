@@ -344,9 +344,7 @@ test.describe(`Trajectory Component`, () => {
       const points_count = await plot_points.count()
       if (points_count > 1) {
         await plot_points.nth(1).hover()
-        await page.waitForTimeout(100)
-        const current_step = await step_input.inputValue()
-        expect(current_step).toBe(initial_step)
+        await expect(step_input).toHaveValue(initial_step)
       }
     })
 

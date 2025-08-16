@@ -67,9 +67,10 @@
       if (last_loaded_db !== selected_db) {
         const db = selected_db
         load_suggested_structures(db)
-          .then(() => { // Only mark as loaded if we're still on the same DB
+          .then(() => { // Only mark as loaded if we're still on the same DB and the fetch succeeded
             if (selected_db === db) last_loaded_db = db
           })
+          .catch(() => {}) // Keep last_loaded_db unchanged to allow retry on next effect run
       }
     }
   })
@@ -109,9 +110,7 @@
       if (data) {
         structure = optimade_to_pymatgen(data)
         if (!structure) error = `Failed to convert structure data`
-      } else if (!error) {
-        error = `Structure ${structure_id} not found`
-      }
+      } else error = `Structure ${structure_id} not found`
     } catch (err) {
       if (req_id !== structure_req_id) return
       error = `Failed to load structure: ${err}`
@@ -121,11 +120,14 @@
   }
 
   async function load_databases() {
+    const db = selected_db
     try {
-      available_dbs = await fetch_provider_databases(selected_db, available_providers)
+      const dbs = await fetch_provider_databases(db, available_providers)
+      if (selected_db === db) available_dbs = dbs
     } catch (err) {
       console.error(`Failed to load databases:`, err)
-      available_dbs = []
+      // Keep or reset safely; if we switched DBs, it's safer to not overwrite newer state
+      if (selected_db === db) available_dbs = []
     }
   }
 
@@ -145,6 +147,8 @@
       console.error(`Failed to load suggested structures:`, err)
       // Optional: show a user-visible message; for now, reset the list
       suggested_structures = []
+      // Bubble up so the caller can decide whether to update last_loaded_db
+      throw err
     } finally {
       loading_suggestions = false
     }

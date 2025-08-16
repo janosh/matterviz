@@ -171,6 +171,8 @@
           left: pos.left,
           top: pos.top,
           right: `auto`,
+          bottom: `auto`,
+          width: ``,
         })
       }
     }
