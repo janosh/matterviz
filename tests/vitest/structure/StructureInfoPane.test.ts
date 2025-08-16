@@ -1,5 +1,5 @@
-import StructureInfoPane from '$lib/structure/StructureInfoPane.svelte'
-import { render } from '@testing-library/svelte'
+import { StructureInfoPane } from '$lib'
+import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 import { get_dummy_structure } from '../setup'
 
@@ -15,7 +15,8 @@ test.each([
   (atom_count, should_show_sites, _description) => {
     const structure = get_dummy_structure(`H`, atom_count, true)
     const atom_count_thresholds = [50, 500]
-    render(StructureInfoPane, {
+    mount(StructureInfoPane, {
+      target: document.body,
       props: { structure, pane_open: true, atom_count_thresholds },
     })
 
@@ -56,7 +57,8 @@ test.each([
 
 test(`structure with > 500 atoms should not create sites section`, () => {
   const structure = get_dummy_structure(`H`, 600, true)
-  render(StructureInfoPane, {
+  mount(StructureInfoPane, {
+    target: document.body,
     props: { structure, pane_open: true },
   })
 

@@ -373,7 +373,7 @@
 
     // Interface shortcuts
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    else if (event.key === `i`) info_pane_open = !info_pane_open
+    else if (event.key === `i` && enable_info_pane) toggle_info()
     else if (event.key === `Escape`) {
       // Prioritize closing panes over exiting fullscreen
       if (info_pane_open) info_pane_open = false
@@ -548,13 +548,12 @@
     border-radius: var(--struct-border-radius, 3pt);
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
-    container-type: inline-size;
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);
   }
   .structure:fullscreen {
-    background: var(--struct-bg-fullscreen);
+    background: var(--struct-bg-fullscreen, var(--struct-bg));
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;

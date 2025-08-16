@@ -4,6 +4,7 @@ interface OpenPaneOptions {
   pane_selector: string
   parent_selector?: string
   checkbox_text?: string
+  toggle_selector?: string
   timeout?: number
 }
 
@@ -22,6 +23,9 @@ export async function open_draggable_pane(page: Page, options: OpenPaneOptions) 
 
     await test_page_checkbox.uncheck() // First ensure the checkbox is unchecked to reset state
     await test_page_checkbox.check() // Now check the checkbox to open the pane
+  } else if (options.toggle_selector) { // If toggle_selector is provided, use button-based opening
+    const toggle_button = container.locator(options.toggle_selector)
+    await toggle_button.click()
   }
 
   // Wait for the pane to be visible
@@ -53,7 +57,8 @@ export const open_structure_control_pane = (page: Page) =>
 export const open_trajectory_info_pane = (page: Page) =>
   open_draggable_pane(page, {
     pane_selector: `.trajectory-info-pane`,
-    // No checkbox - trajectory panes are typically opened via toggle button
+    // Open via the info toggle button
+    toggle_selector: `.trajectory-info-toggle`,
   })
 
 export function random_sample<T>(input_list: T[], n_samples: number): T[] {

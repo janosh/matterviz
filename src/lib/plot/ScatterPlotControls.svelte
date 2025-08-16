@@ -224,15 +224,18 @@
     closed_icon="Settings"
     open_icon="Cross"
     toggle_props={{
-      class: `scatter-controls-toggle`,
+      ...toggle_props,
+      class: `scatter-controls-toggle ${toggle_props?.class ?? ``}`,
       title: `${controls_open ? `Close` : `Open`} scatter plot controls`,
       style:
         `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent; ${
           toggle_props?.style ?? ``
         }`,
-      ...toggle_props,
     }}
-    pane_props={{ class: `scatter-controls-pane`, ...pane_props }}
+    pane_props={{
+      ...pane_props,
+      class: `scatter-controls-pane ${pane_props?.class ?? ``}`,
+    }}
   >
     {#if plot_controls}
       {@render plot_controls()}

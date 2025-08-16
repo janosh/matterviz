@@ -33,24 +33,30 @@
   let suggested_structures = $state<OptimadeStructure[]>([])
   let loading_suggestions = $state(false)
   let last_loaded_db = $state<string | null>(null)
+  let structure_req_id = $state(0)
 
   $effect(() => { // Initialize from URL slug
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
     if (available_providers.length > 0) {
-      {
-        const provider = detect_provider_from_slug(decoded_slug, available_providers)
-        if (provider) {
-          selected_db = provider
-          input_value = decoded_slug.startsWith(`${provider}-`)
-            ? decoded_slug
-            : `${provider}-${decoded_slug}`
-        } else input_value = decoded_slug
+      const provider = detect_provider_from_slug(decoded_slug, available_providers)
+      if (provider) {
+        selected_db = provider
+        input_value = decoded_slug.startsWith(`${provider}-`)
+          ? decoded_slug
+          : `${provider}-${decoded_slug}`
+      } else {
+        input_value = decoded_slug
       }
-    }
+    } else input_value = decoded_slug // Prefill the input immediately; it will be normalized once providers load
   })
 
   $effect(() => { // Load providers on mount
     load_providers()
+  })
+
+  // Reset last_loaded_db when providers change to avoid stale cache
+  $effect(() => {
+    if (available_providers.length > 0) last_loaded_db = null
   })
 
   // Load data when database or structure ID changes
@@ -60,17 +66,26 @@
       // Only load suggested structures when switching to different database
       // prevents refetching when navigating between structures within same database
       if (last_loaded_db !== selected_db) {
-        load_suggested_structures()
-        last_loaded_db = selected_db
+        const db = selected_db
+        load_suggested_structures(db)
+          .then(() => {
+            // Only mark as loaded if we're still on the same DB
+            if (selected_db === db) last_loaded_db = db
+          })
+          .catch(() => {
+            // Keep last_loaded_db unchanged to allow retry on next effect run
+          })
       }
     }
-    if (structure_id && selected_db && available_providers.length > 0) {
-      load_structure_data()
-    }
+    if (
+      structure_id &&
+      selected_db &&
+      available_providers.some(({ id }) => id === selected_db)
+    ) load_structure_data()
   })
 
   let structure_id = $derived(input_value.trim())
-  let db_config = $derived(available_providers.find((p) => p.id === selected_db))
+  let db_config = $derived(available_providers.find(({ id }) => id === selected_db))
   let pretty_formula = $derived(structure ? get_electro_neg_formula(structure) : ``)
 
   async function load_providers() {
@@ -85,38 +100,56 @@
   async function load_structure_data() {
     loading = true
     error = null
-    const data = await fetch_optimade_structure(
-      structure_id,
-      selected_db,
-      available_providers,
-    ).catch(
-      (err) => {
-        error = `Failed to load structure: ${err}`
-        return null
-      },
-    )
-
-    if (data) {
-      structure = optimade_to_pymatgen(data)
-      if (!structure) error = `Failed to convert structure data`
-    } else if (!error) {
-      error = `Structure ${structure_id} not found`
+    const req_id = ++structure_req_id
+    try {
+      const data = await fetch_optimade_structure(
+        structure_id,
+        selected_db,
+        available_providers,
+      )
+      if (req_id !== structure_req_id) return // stale response, ignore
+      if (data) {
+        structure = optimade_to_pymatgen(data)
+        if (!structure) error = `Failed to convert structure data`
+      } else if (!error) {
+        error = `Structure ${structure_id} not found`
+      }
+    } catch (err) {
+      if (req_id !== structure_req_id) return
+      error = `Failed to load structure: ${err}`
+    } finally {
+      if (req_id === structure_req_id) loading = false
     }
-    loading = false
   }
 
   async function load_databases() {
-    available_dbs = await fetch_provider_databases(selected_db, available_providers)
+    try {
+      available_dbs = await fetch_provider_databases(selected_db, available_providers)
+    } catch (err) {
+      console.error(`Failed to load databases:`, err)
+      available_dbs = []
+    }
   }
 
-  async function load_suggested_structures() {
+  async function load_suggested_structures(db: string) {
     loading_suggestions = true
-    suggested_structures = await fetch_suggested_structures(
-      selected_db,
-      available_providers,
-      12,
-    )
-    loading_suggestions = false
+    try {
+      const data = await fetch_suggested_structures(
+        db,
+        available_providers,
+        20,
+      )
+      // Only update if we're still on the same database
+      if (selected_db === db) {
+        suggested_structures = data
+      }
+    } catch (err) {
+      console.error(`Failed to load suggested structures:`, err)
+      // Optional: show a user-visible message; for now, reset the list
+      suggested_structures = []
+    } finally {
+      loading_suggestions = false
+    }
   }
 
   function navigate_to_structure(id: string) {

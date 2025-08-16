@@ -704,8 +704,7 @@ test.describe(`Histogram Component Tests`, () => {
     }
   })
 
-  // TODO figure out how to actually open the control pane
-  test.skip(`histogram controls pane functionality`, async ({ page }) => {
+  test(`histogram controls pane functionality`, async ({ page }) => {
     // Wait for histogram to be fully rendered
 
     // Wait for the toggle button to be visible and clickable
@@ -743,16 +742,14 @@ test.describe(`Histogram Component Tests`, () => {
     }
 
     // Test grid toggles
-    const x_grid_checkbox = control_pane.locator(
-      `input[type="checkbox"]:has-text("X-axis grid")`,
-    )
+    const x_grid_checkbox = control_pane.getByLabel(`X-axis grid`)
     if (await x_grid_checkbox.isVisible()) {
       await x_grid_checkbox.uncheck()
       await x_grid_checkbox.check()
     }
 
     // Test scale type selects
-    const x_scale_select = control_pane.locator(`select >> nth=0`)
+    const x_scale_select = control_pane.locator(`select#x-scale-select`)
     if (await x_scale_select.isVisible()) {
       await x_scale_select.selectOption(`log`)
       await x_scale_select.selectOption(`linear`)
@@ -780,7 +777,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   // TODO figure out how to actually open the control pane
-  test.skip(`histogram controls with multiple series`, async ({ page }) => {
+  test(`histogram controls with multiple series`, async ({ page }) => {
     // Wait for histogram to be fully rendered
 
     // Move legend out of the way if it exists (it might be blocking the toggle button)
@@ -827,9 +824,7 @@ test.describe(`Histogram Component Tests`, () => {
     }
 
     // Test legend toggle
-    const legend_checkbox = control_pane.locator(
-      `input[type="checkbox"]:has-text("Show legend")`,
-    )
+    const legend_checkbox = control_pane.getByLabel(`Show legend`)
     if (await legend_checkbox.isVisible()) {
       await legend_checkbox.uncheck()
       await legend_checkbox.check()

@@ -2,7 +2,6 @@
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon } from '$lib'
   import * as math from '$lib/math'
-  import { theme_state } from '$lib/state.svelte'
   import { electro_neg_formula, get_density } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -270,11 +269,8 @@
   open_icon="Cross"
   closed_icon="Info"
   pane_props={{
-    class: `structure-info-pane`,
-    style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
-      theme_state.type === `dark` ? `0.5` : `0.1`
-    }); max-height: 80vh;`,
     ...pane_props,
+    class: `structure-info-pane ${pane_props?.class ?? ``}`,
   }}
   {...rest}
 >

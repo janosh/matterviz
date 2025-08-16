@@ -204,12 +204,14 @@
     toggle_props={{
       title: `${controls_open ? `Close` : `Open`} histogram controls`,
       ...toggle_props,
-      class: `histogram-controls-toggle ${toggle_props?.class ?? ``}`,
+      class: `histogram-controls-toggle ${toggle_props?.class ?? ``} ${
+        toggle_props?.class ?? ``
+      }`,
       style: `${toggle_style} ${toggle_props?.style ?? ``}`,
     }}
     pane_props={{
-      class: `histogram-controls-pane`,
       ...pane_props,
+      class: `histogram-controls-pane ${pane_props?.class ?? ``}`,
     }}
   >
     {#if plot_controls}

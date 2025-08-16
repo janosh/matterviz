@@ -1624,7 +1624,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       expect(initial_z).toBe(`auto`)
 
       // Trigger active state by opening info pane
-      const info_button = viewer.locator(`.info-button`)
+      const info_button = viewer.locator(`.trajectory-info-toggle`)
       if (await info_button.count() > 0) {
         await info_button.click()
 

@@ -42,8 +42,8 @@
     onclose = () => {},
     on_drag_start = () => {},
     custom_toggle = undefined,
-    toggle_pane_btn,
-    pane_div,
+    toggle_pane_btn = $bindable(undefined),
+    pane_div = $bindable(undefined),
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
   }: Props = $props()
@@ -133,10 +133,7 @@
     const is_inside_pane = pane_div &&
       (target === pane_div || pane_div.contains(target))
 
-    if (
-      !is_toggle_button && !is_inside_pane && !has_been_dragged &&
-      !currently_dragging
-    ) close_pane()
+    if (!is_toggle_button && !is_inside_pane && !currently_dragging) close_pane()
   }
 
   // Button click handler
@@ -188,7 +185,6 @@
     bind:this={toggle_pane_btn}
     onclick={handle_button_click(custom_toggle || toggle_pane)}
     aria-expanded={show}
-    aria-controls="draggable-pane"
     {...toggle_props}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
@@ -274,7 +270,7 @@
     max-width: 90cqw;
     overflow-x: hidden;
     overflow-y: auto;
-    max-height: calc(100vh - 3em);
+    max-height: min(90vh, 800px);
     pointer-events: auto;
   }
   :global(body.fullscreen) .draggable-pane {
