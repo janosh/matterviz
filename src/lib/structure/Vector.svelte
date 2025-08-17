@@ -26,7 +26,7 @@
   }: Props = $props()
 
   // Calculate vector magnitude and normalized direction
-  let vector_magnitude = $derived(math.norm(vector))
+  let vector_magnitude = $derived(Math.hypot(...vector))
   let vector_direction = $derived(
     vector_magnitude > 0 ? math.scale(vector, 1 / vector_magnitude) : [0, 1, 0],
   )

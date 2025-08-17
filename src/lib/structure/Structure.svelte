@@ -12,8 +12,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
-  import type { Camera, Scene } from 'three'
-  import { WebGLRenderer } from 'three'
   import type { StructureHandlerData } from './index'
   import {
     StructureControls,
@@ -219,6 +217,11 @@
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
   })
 
+  // Measurement mode and selection state
+  let measure_mode: `distance` | `angle` = $state(`distance`)
+  let selected_site_indices: number[] = $state([])
+  let measure_menu_open = $state(false)
+
   let visible_buttons = $derived(
     show_controls === true ||
       (typeof show_controls === `number` && width > show_controls),
@@ -247,8 +250,8 @@
   // Track if camera has ever been moved from initial position
   let camera_has_moved = $state(false)
   let camera_is_moving = $state(false)
-  let scene: Scene | undefined = $state(undefined)
-  let camera: Camera | undefined = $state(undefined)
+  let scene = $state(undefined)
+  let camera = $state(undefined)
   let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
 
   // Custom toggle handlers for mutual exclusion
@@ -472,6 +475,52 @@
           </button>
         {/if}
 
+        <!-- Measurement mode dropdown (match Trajectory display mode UI) -->
+        <div class="view-mode-dropdown-wrapper">
+          <button
+            onclick={() => (measure_menu_open = !measure_menu_open)}
+            title="Measurement mode"
+            class="view-mode-button"
+            class:active={measure_menu_open}
+            aria-expanded={measure_menu_open}
+          >
+            <Icon icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]} />
+            <Icon icon="Arrow{measure_menu_open ? `Up` : `Down`}" />
+          </button>
+          {#if (selected_site_indices?.length ?? 0) > 0}
+            <button
+              type="button"
+              aria-label="Reset selection"
+              onclick={() => (selected_site_indices = [])}
+            >
+              <Icon icon="Reset" />
+            </button>
+          {/if}
+          {#if measure_menu_open}
+            <div class="view-mode-dropdown">
+              {#each [
+            { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
+            { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
+          ] as const as
+                { mode, icon, label, scale }
+                (mode)
+              }
+                <button
+                  class="view-mode-option"
+                  class:selected={measure_mode === mode}
+                  onclick={() => {
+                    measure_mode = mode
+                    measure_menu_open = false
+                  }}
+                >
+                  <Icon {icon} style="transform: scale({scale})" />
+                  <span>{label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
         {#if enable_info_pane && structure}
           <StructureInfoPane
             {structure}
@@ -506,25 +555,21 @@
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
-      <Canvas
-        createRenderer={(canvas: HTMLCanvasElement) => {
-          return new WebGLRenderer({
-            canvas,
-            preserveDrawingBuffer: true,
-            antialias: true,
-            alpha: true,
-          })
-        }}
-      >
-        <StructureScene
-          structure={scene_structure}
-          {...scene_model}
-          lattice_props={lattice_model}
-          bind:camera_is_moving
-          {width}
-          {height}
-        />
-      </Canvas>
+      <!-- prevent HTML labels from rendering outside of the canvas -->
+      <div style="overflow: hidden">
+        <Canvas>
+          <StructureScene
+            structure={scene_structure}
+            {...scene_model}
+            lattice_props={lattice_model}
+            bind:camera_is_moving
+            bind:selected_site_indices
+            {measure_mode}
+            {width}
+            {height}
+          />
+        </Canvas>
+      </div>
     {/if}
 
     <div class="bottom-left">
@@ -563,6 +608,12 @@
     background: var(--struct-dragover-bg, var(--dragover-bg));
     border: var(--struct-dragover-border, var(--dragover-border));
   }
+  /* Avoid accidental text selection while interacting with the viewer */
+  .structure :global(canvas),
+  .structure section.control-buttons,
+  .structure .bottom-left {
+    user-select: none;
+  }
   div.bottom-left {
     position: absolute;
     bottom: 0;
@@ -596,6 +647,54 @@
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--pane-btn-bg-hover);
+  }
+  /* Match Trajectory dropdown UI */
+  .view-mode-dropdown {
+    position: absolute;
+    top: 115%;
+    right: 0;
+    background: var(--surface-bg);
+    border-radius: 4px;
+    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+  }
+  .view-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 1ex;
+    width: 100%;
+    padding: var(--trajectory-view-mode-option-padding, 5pt);
+    box-sizing: border-box;
+    background: transparent;
+    border-radius: 0;
+    text-align: left;
+    transition: background-color 0.15s ease;
+  }
+  .view-mode-option:first-child {
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+  }
+  .view-mode-option.selected {
+    color: var(--accent-color);
+  }
+  .view-mode-option span {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .view-mode-dropdown-wrapper {
+    display: flex;
+    position: relative;
+  }
+  .view-mode-dropdown-wrapper > button {
+    background: transparent;
+  }
+  .view-mode-dropdown-wrapper button[aria-label='Reset selection'] {
+    width: 22px;
+    height: 22px;
   }
   p.warn {
     text-align: center;

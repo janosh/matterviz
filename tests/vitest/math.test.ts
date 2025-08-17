@@ -2,10 +2,6 @@ import type { NdVector, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
 
-test(`norm of vector`, () => {
-  expect(math.norm([3, 4])).toEqual(5)
-})
-
 test(`scale vector`, () => {
   expect(math.scale([1, 2, 3], 3)).toEqual([3, 6, 9])
 })
@@ -69,7 +65,7 @@ test.each([
   [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
 ])(`add vectors`, (vec1, vec2, expected) => {
   expect(math.add(vec1, vec2)).toEqual(expected)
-  expect(math.norm(math.add(vec1, vec2, math.scale(expected, -1)))).toEqual(0)
+  expect(Math.hypot(...math.add(vec1, vec2, math.scale(expected, -1)))).toEqual(0)
 })
 
 test.each([

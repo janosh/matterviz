@@ -400,8 +400,7 @@
     cursor: grabbing;
   }
   /* Reset and close button styling */
-  .draggable-pane .reset-button,
-  .draggable-pane .close-button {
+  .draggable-pane :where(.reset-button, .close-button) {
     background: none;
     border: none;
     padding: 2px;

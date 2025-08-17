@@ -17,7 +17,7 @@ export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
 
 // Build covalent radii map from ground truth data
-const covalent_radii = new Map(
+const covalent_radii: Map<string, number> = new Map(
   element_data
     .filter((el) => el.covalent_radius !== null)
     .map((el) => [el.symbol, el.covalent_radius]),
@@ -53,6 +53,7 @@ export function max_dist(
 
       if (dist_sq < min_dist_sq) continue
 
+      if (!radius_a || !radius_b) continue
       const expected_dist = radius_a + radius_b
       const max_allowed_dist = expected_dist * max_distance_ratio
 
@@ -144,6 +145,7 @@ export function nearest_neighbor(
       const distance = Math.sqrt(dist_sq)
 
       if (dist_sq >= min_dist_sq) {
+        if (!radius_a || !radius_b) continue
         const expected_dist = radius_a + radius_b
         const normalized_distance = distance / expected_dist
 
@@ -275,6 +277,7 @@ export function electroneg_ratio(
 
       if (dist_sq < min_dist_sq) continue
 
+      if (!props_a.covalent_radius || !props_b.covalent_radius) continue
       const expected_dist = props_a.covalent_radius + props_b.covalent_radius
       const max_allowed_dist = expected_dist * max_distance_ratio
 

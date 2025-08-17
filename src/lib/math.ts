@@ -11,9 +11,9 @@ export function calc_lattice_params(
   const [a_vec, b_vec, c_vec] = matrix
 
   // Calculate vector lengths (lattice parameters a, b, c)
-  const a = Math.sqrt(a_vec[0] ** 2 + a_vec[1] ** 2 + a_vec[2] ** 2)
-  const b = Math.sqrt(b_vec[0] ** 2 + b_vec[1] ** 2 + b_vec[2] ** 2)
-  const c = Math.sqrt(c_vec[0] ** 2 + c_vec[1] ** 2 + c_vec[2] ** 2)
+  const a = Math.hypot(a_vec[0], a_vec[1], a_vec[2])
+  const b = Math.hypot(b_vec[0], b_vec[1], b_vec[2])
+  const c = Math.hypot(c_vec[0], c_vec[1], c_vec[2])
 
   // Calculate volume using scalar triple product
   const volume = Math.abs(
@@ -36,16 +36,12 @@ export function calc_lattice_params(
   return { a, b, c, alpha, beta, gamma, volume }
 }
 
-export function norm(vec: NdVector): number {
-  return Math.sqrt(vec.reduce((acc, val) => acc + val ** 2, 0))
-}
-
 export function scale<T extends NdVector>(vec: T, factor: number): T {
   return vec.map((component) => component * factor) as T
 }
 
 export function euclidean_dist(vec1: Vec3, vec2: Vec3): number {
-  return norm(add(vec1, scale(vec2, -1)))
+  return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
 }
 
 // Calculate the minimum distance between two points considering periodic boundary conditions.
@@ -76,7 +72,7 @@ export function pbc_dist(
   // Convert back to Cartesian coordinates
   const cart_diff = mat3x3_vec3_multiply(lattice_matrix, wrapped_frac_diff)
 
-  return norm(cart_diff)
+  return Math.hypot(...cart_diff)
 }
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
