@@ -168,7 +168,7 @@ export function nearest_neighbor(
     const nearest_normalized_dist = neighbors[0].normalized_distance
     const tolerance_threshold = nearest_normalized_dist * tolerance_factor
 
-    // Select neighbors that are either:
+    // Select neighbors that are both:
     // 1. Among the top max_neighbors closest
     // 2. Within tolerance_factor of the nearest neighbor distance
     const selected_neighbors = neighbors

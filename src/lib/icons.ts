@@ -431,7 +431,7 @@ export const icon_data = {
     path:
       `M20 19H4.09L14.18 4.43l1.64 1.14l-4.54 6.56c1.61.83 2.72 2.49 2.72 4.41c0 .16 0 .31-.03.46H20zM7.91 17h4.05c.04-.15.04-.3.04-.46c0-1.26-.76-2.32-1.86-2.76z`,
   },
-  RulerSquareCompass: {
+  RulerSquareCompass: { // mdi:ruler-square-compass https://icones.js.org/collection/all?icon=mdi:ruler-square-compass
     viewBox: `0 0 24 24`,
     path:
       `M20 19.88V22l-1.8-1.17l-4.79-9a4.9 4.9 0 0 0 1.78-1M15 7a3 3 0 0 1-3 3a3 3 0 0 1-.44 0L5.8 20.83L4 22v-2.12L9.79 9A3 3 0 0 1 12 4V2a1 1 0 0 1 1 1v1.18A3 3 0 0 1 15 7m-2 0a1 1 0 1 0-1 1a1 1 0 0 0 1-1m-8.78 3L6 11.8l-1.44 2.76L2.1 12.1m9.9 5.66l-1.5-1.51L9 19l3 3l3-3l-1.47-2.77M19.78 10L18 11.8l1.5 2.76l2.4-2.46Z`,

@@ -28,7 +28,9 @@
   // Calculate vector magnitude and normalized direction
   let vector_magnitude = $derived(Math.hypot(...vector))
   let vector_direction = $derived(
-    vector_magnitude > 0 ? math.scale(vector, 1 / vector_magnitude) : [0, 1, 0],
+    vector_magnitude > math.EPS
+      ? math.scale(vector, 1 / vector_magnitude)
+      : [0, 1, 0],
   )
 
   // Scaled vector length
@@ -51,7 +53,7 @@
 
   // Calculate rotation to align Y-axis with vector direction
   let rotation = $derived.by((): Vec3 => {
-    if (vector_magnitude < 1e-10) return [0, 0, 0] // Handle zero vector
+    if (vector_magnitude < math.EPS) return [0, 0, 0] // Handle zero vector
 
     const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0),

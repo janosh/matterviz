@@ -4,6 +4,9 @@ export type Vec3 = [number, number, number]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type NdVector = number[]
 
+export const LOG_MIN_EPS = 1e-9 // Constants
+export const EPS = 1e-10
+
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(
   matrix: Matrix3x3,
@@ -40,9 +43,8 @@ export function scale<T extends NdVector>(vec: T, factor: number): T {
   return vec.map((component) => component * factor) as T
 }
 
-export function euclidean_dist(vec1: Vec3, vec2: Vec3): number {
-  return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
-}
+export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number =>
+  Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
 
 // Calculate the minimum distance between two points considering periodic boundary conditions.
 export function pbc_dist(
@@ -168,7 +170,9 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
       throw `Number of columns in first matrix must be equal to number of rows in second matrix`
     }
     return mat1.map((row, i) =>
-      mat2[0].map((_, j) => row.reduce((sum, _, k) => sum + mat1[i][k] * mat2[k][j], 0))
+      mat2[0].map((_, j) =>
+        row.reduce((sum, _val, k) => sum + mat1[i][k] * mat2[k][j], 0)
+      )
     )
   }
 
@@ -277,8 +281,6 @@ export function det_3x3(matrix: Matrix3x3): number {
     row0[2] * (row1[0] * row2[1] - row1[1] * row2[0])
   )
 }
-
-export const LOG_MIN_EPS = 1e-9 // Constants
 
 export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0

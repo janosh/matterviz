@@ -48,6 +48,13 @@ describe(`measure: angles`, () => {
     },
   )
 
+  test(`angle_between_vectors in radians mode`, () => {
+    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(
+      Math.PI / 2,
+      10,
+    )
+  })
+
   test(`angle_at_center without pbc`, () => {
     const center: Vec3 = [0, 0, 0]
     const a: Vec3 = [1, 0, 0]

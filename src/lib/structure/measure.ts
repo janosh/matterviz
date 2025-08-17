@@ -20,10 +20,9 @@ export function displacement_pbc(from: Vec3, to: Vec3, lattice_matrix: Matrix3x3
   const frac_to = mat3x3_vec3_multiply(inv, to)
   const frac_diff: Vec3 = [0, 0, 0]
   for (let idx = 0; idx < 3; idx++) {
-    let wrapped = (frac_to[idx] - frac_from[idx]) -
-      Math.floor(frac_to[idx] - frac_from[idx])
-    if (wrapped >= 0.5) wrapped -= 1
-    frac_diff[idx] = wrapped
+    const dist = frac_to[idx] - frac_from[idx]
+    // Minimal image in fractional coordinates: wrap to [-0.5, 0.5)
+    frac_diff[idx] = dist - Math.round(dist)
   }
   return mat3x3_vec3_multiply(lattice_matrix, frac_diff)
 }

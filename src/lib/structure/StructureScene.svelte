@@ -129,6 +129,20 @@
       : [...selected_site_indices, site_index]
   }
 
+  // Keep site selection valid across structure changes (new structure might have fewer sites)
+  $effect(() => {
+    const count = structure?.sites?.length ?? 0
+    if (count <= 0) {
+      selected_site_indices = []
+      return
+    }
+    untrack(() => {
+      selected_site_indices = selected_site_indices.filter((idx) =>
+        idx >= 0 && idx < count
+      )
+    })
+  })
+
   Extras.interactivity()
   $effect.pre(() => {
     hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
@@ -333,8 +347,8 @@
 </script>
 
 {#snippet site_label_snippet(element: string, position: Vec3, site_idx: number)}
-  {@const [x, y, z] = math.add(position, site_label_offset)}
-  <Extras.HTML center {position} position.x={x} position.y={y} position.z={z}>
+  {@const pos = math.add(position, site_label_offset)}
+  <Extras.HTML center position={pos}>
     {#if atom_label}
       {@render atom_label(structure!.sites[site_idx], site_idx)}
     {:else}
@@ -505,10 +519,11 @@
 
 <!-- highlight hovered, active and selected sites -->
 {#each [
-    { site: hovered_site, opacity: 0.18, color: `white` },
-    { site: active_site, opacity: 0.25, color: `white` },
+    { site: hovered_site, opacity: 0.18, color: `white`, site_idx: hovered_idx },
+    { site: active_site, opacity: 0.25, color: `white`, site_idx: active_idx },
     ...((selected_site_indices ?? []).map((idx) => ({
       site: structure?.sites?.[idx] ?? null,
+      site_idx: idx,
       opacity: 0.35,
       color: selection_highlight_color,
     }))),
@@ -522,7 +537,6 @@
   {#if site}
     {@const xyz = site.xyz}
     {@const species = site.species}
-    {@const site_idx = structure?.sites ? structure.sites.indexOf(site) : -1}
     {@const highlight_radius = atom_radius * (same_size_atoms
     ? 1
     : species.reduce((sum, spec) =>
@@ -531,7 +545,7 @@
       position={xyz}
       scale={1.08 * highlight_radius}
       onclick={(event: MouseEvent) => {
-        if (site_idx >= 0) toggle_selection(site_idx, event)
+        if (entry?.site_idx) toggle_selection(entry.site_idx, event)
       }}
     >
       <T.SphereGeometry args={[0.5, 22, 22]} />
@@ -551,14 +565,8 @@
   {#each selected_site_indices as site_index, loop_idx (site_index)}
     {@const site = structure.sites[site_index]}
     {#if site}
-      {@const [x, y, z] = math.add(site.xyz, site_label_offset)}
-      <Extras.HTML
-        center
-        position={site.xyz}
-        position.x={x}
-        position.y={y}
-        position.z={z}
-      >
+      {@const pos = math.add(site.xyz, site_label_offset)}
+      <Extras.HTML center position={pos}>
         <span class="selection-label">{loop_idx + 1}</span>
       </Extras.HTML>
     {/if}
@@ -653,8 +661,8 @@
     site_b.xyz[1] - center.xyz[1],
     site_b.xyz[2] - center.xyz[2],
   ] as Vec3)}
-          {@const n1 = Math.sqrt(v1[0] ** 2 + v1[1] ** 2 + v1[2] ** 2)}
-          {@const n2 = Math.sqrt(v2[0] ** 2 + v2[1] ** 2 + v2[2] ** 2)}
+          {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
+          {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
           {@const cos_ang = Math.max(
     -1,
     Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2)),
