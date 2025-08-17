@@ -34,16 +34,14 @@ describe(`scales`, () => {
 
       expect(scale).toBeDefined()
       expect(scale.domain()).toEqual(
-        scale_type === `log`
-          ? [Math.max(domain[0], math.LOG_MIN_EPS), domain[1]]
-          : domain,
+        scale_type === `log` ? [Math.max(domain[0], math.LOG_EPS), domain[1]] : domain,
       )
       expect(scale.range()).toEqual(range)
     })
 
     test(`log scale with negative domain`, () => {
       const scale = create_scale(`log`, [-5, 100], [0, 500])
-      expect(scale.domain()).toEqual([math.LOG_MIN_EPS, 100])
+      expect(scale.domain()).toEqual([math.LOG_EPS, 100])
     })
   })
 
@@ -61,13 +59,13 @@ describe(`scales`, () => {
       [[1, 2, 3, 4, 5], `linear`, [1, 5]],
       [[10, 100, 1000], `log`, [10, 1000]],
       [[0.001, 0.1, 1], `log`, [0.001, 1]],
-      [[-5, 0, 5], `log`, [math.LOG_MIN_EPS, 5]],
+      [[-5, 0, 5], `log`, [math.LOG_EPS, 5]],
       [[], `linear`, [0, 1]],
       [[42], `linear`, [42, 42]],
     ])(`%s %s scale`, (values, scale_type, expected) => {
       const domain = calculate_domain(values, scale_type as ScaleType)
-      if (scale_type === `log` && expected[0] === math.LOG_MIN_EPS) {
-        expect(domain).toEqual([math.LOG_MIN_EPS, expected[1]])
+      if (scale_type === `log` && expected[0] === math.LOG_EPS) {
+        expect(domain).toEqual([math.LOG_EPS, expected[1]])
       } else {
         expect(domain).toEqual(expected)
       }
@@ -160,7 +158,7 @@ describe(`scales`, () => {
     test.each([
       { min: 0.1, max: 1000, ticks: 5, contains: [0.1, 1, 10, 100, 1000] },
       { min: 1, max: 10, ticks: 8, contains: [1, 2, 5, 10] },
-      { min: 1e-12, max: 1, ticks: 5, contains: [math.LOG_MIN_EPS, 1e-6, 1e-3, 1] },
+      { min: 1e-12, max: 1, ticks: 5, contains: [math.LOG_EPS, 1e-6, 1e-3, 1] },
       { min: 0.5, max: 5, ticks: 10, contains: [0.5, 1, 2, 5] },
       { min: 50, max: 500, ticks: 6, contains: [50, 100, 200, 500] },
     ])(`log ticks: $min to $max`, ({ min, max, ticks, contains }) => {
@@ -183,7 +181,7 @@ describe(`scales`, () => {
 
     test(`negative values clamped`, () => {
       const result = generate_log_ticks(-10, 100, 5)
-      expect(result.some((t) => t >= math.LOG_MIN_EPS)).toBe(true)
+      expect(result.some((t) => t >= math.LOG_EPS)).toBe(true)
       expect(result).toContain(100)
     })
   })

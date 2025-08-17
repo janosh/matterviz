@@ -4,7 +4,7 @@ export type Vec3 = [number, number, number]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type NdVector = number[]
 
-export const LOG_MIN_EPS = 1e-9 // Constants
+export const LOG_EPS = 1e-9 // Constants
 export const EPS = 1e-10
 
 // Calculate all lattice parameters in a single efficient pass
