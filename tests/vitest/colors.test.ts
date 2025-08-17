@@ -1,4 +1,10 @@
-import { element_color_schemes, is_color } from '$lib/colors'
+import {
+  element_color_schemes,
+  get_bg_color,
+  is_color,
+  luminance,
+  pick_color_for_contrast,
+} from '$lib/colors'
 import { elem_symbols } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
 
@@ -226,4 +232,59 @@ describe(`is_color function`, () => {
     expect(is_color(element_color_schemes.Jmol.H)).toBe(true)
     expect(is_color(element_color_schemes.Vesta.He)).toBe(true)
   })
+})
+
+test.each([
+  [`#000000`, 0, `black`],
+  [`#ffffff`, 1, `white`],
+  [`#ff0000`, 0.299, `red`],
+  [`#00ff00`, 0.587, `green`],
+  [`#0000ff`, 0.114, `blue`],
+  [`#808080`, 0.502, `gray`],
+  [`#ff8000`, 0.594, `orange`],
+  [`red`, 0.299, `named color`],
+  [`rgb(255, 0, 0)`, 0.299, `rgb format`],
+  [`hsl(0, 100%, 50%)`, 0.299, `hsl format`],
+])(`luminance(%s) = %s (%s)`, (color, expected) => {
+  expect(luminance(color)).toBeCloseTo(expected, 3)
+})
+
+test.each([
+  [null, undefined, `rgba(0, 0, 0, 0)`, `null element`],
+  [document.createElement(`div`), `#ff0000`, `#ff0000`, `explicit bg_color`],
+])(`get_bg_color: %s`, (elem, bg_color, expected, _desc) => {
+  expect(get_bg_color(elem, bg_color)).toBe(expected)
+})
+
+test(`get_bg_color returns transparent for transparent background`, () => {
+  const mock_elem = document.createElement(`div`)
+  Object.defineProperty(window, `getComputedStyle`, {
+    value: () => ({ backgroundColor: `rgba(0, 0, 0, 0)` }),
+    writable: true,
+  })
+  expect(get_bg_color(mock_elem)).toBe(`rgba(0, 0, 0, 0)`)
+})
+
+test.each([
+  [`#ffffff`, `black`, `light background`],
+  [`#000000`, `white`, `dark background`],
+])(`pick_color_for_contrast: %s → %s (%s)`, (bg_color, expected) => {
+  const mock_elem = document.createElement(`div`)
+  expect(pick_color_for_contrast(mock_elem, bg_color)).toBe(expected)
+})
+
+test(`pick_color_for_contrast uses custom threshold`, () => {
+  const mock_elem = document.createElement(`div`)
+  expect(pick_color_for_contrast(mock_elem, `#808080`, 0.5)).toBe(`black`)
+})
+
+test(`pick_color_for_contrast uses custom colors`, () => {
+  const mock_elem = document.createElement(`div`)
+  expect(pick_color_for_contrast(mock_elem, `#000000`, 0.7, [`blue`, `yellow`])).toBe(
+    `yellow`,
+  )
+})
+
+test(`pick_color_for_contrast handles null element gracefully`, () => {
+  expect(pick_color_for_contrast(null, `#ffffff`)).toBe(`black`)
 })

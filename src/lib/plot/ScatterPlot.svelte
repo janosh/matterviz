@@ -1843,16 +1843,13 @@
         // 5. Final fallback
         return `rgba(0, 0, 0, 0.7)`
       })()}
-
         {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
         {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
         {@const x_formatted = format_value(x, x_format)}
         {@const y_formatted = format_value(y, y_format)}
         {@const label = point_label?.text ?? null}
-
         {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
         {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-
         <foreignObject x={cx + 5} y={cy}>
           <div
             class="tooltip"
@@ -2038,7 +2035,7 @@
     opacity: 0.8;
   }
   .tooltip {
-    color: var(--scatter-tooltip-color, white);
+    color: var(--scatter-tooltip-color, light-dark(black, white));
     padding: var(--scatter-tooltip-padding, 1px 4px);
     border-radius: var(--scatter-tooltip-border-radius, 3px);
     font-size: var(--scatter-tooltip-font-size, 0.8em);

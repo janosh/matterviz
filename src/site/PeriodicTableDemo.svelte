@@ -21,7 +21,6 @@
   let value_font_size: number = $state(18)
   let tooltip_font_size: number = $state(14)
   let tooltip_bg_color: string = $state(`rgba(0, 0, 0, 0.8)`)
-  let tooltip_text_color: string = $state(`white`)
   let tile_border_radius: number = $state(1)
   let inner_transition_offset: number = $state(0.5)
   let tile_font_color: string = $state(`#ffffff`)
@@ -147,7 +146,6 @@
   bind:value_font_size
   bind:tooltip_font_size
   bind:tooltip_bg_color
-  bind:tooltip_text_color
   bind:tile_border_radius
   bind:inner_transition_offset
   bind:tile_font_color

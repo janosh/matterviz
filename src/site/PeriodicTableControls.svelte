@@ -12,7 +12,6 @@
     value_font_size?: number
     tooltip_font_size?: number
     tooltip_bg_color?: string
-    tooltip_text_color?: string
     tile_border_radius?: number
     inner_transition_offset?: number
     tile_font_color?: string
@@ -35,7 +34,6 @@
     value_font_size = $bindable(18),
     tooltip_font_size = $bindable(14),
     tooltip_bg_color = $bindable(`#000000`),
-    tooltip_text_color = $bindable(`#ffffff`),
     tile_border_radius = $bindable(1),
     inner_transition_offset = $bindable(0.5),
     tile_font_color = $bindable(`#ffffff`),
@@ -60,7 +58,6 @@
     value_font_size: 18,
     tooltip_font_size: 14,
     tooltip_bg_color: `#000000`,
-    tooltip_text_color: `#ffffff`,
     tile_border_radius: 1,
     inner_transition_offset: 0.5,
     tile_font_color: `#ffffff`,
@@ -85,7 +82,6 @@
         '--elem-value-font-size': `${value_font_size}cqw`,
         '--tooltip-font-size': `${tooltip_font_size}px`,
         '--tooltip-bg': tooltip_bg_color,
-        '--tooltip-color': tooltip_text_color,
         '--elem-tile-border-radius': `${tile_border_radius}pt`,
         '--ptable-spacer-ratio': `${1 / inner_transition_offset}`,
         '--elem-tile-font-color': tile_font_color,
@@ -126,7 +122,6 @@
     else if (prop === `value_font_size`) value_font_size = default_value as number
     else if (prop === `tooltip_font_size`) tooltip_font_size = default_value as number
     else if (prop === `tooltip_bg_color`) tooltip_bg_color = default_value as string
-    else if (prop === `tooltip_text_color`) tooltip_text_color = String(default_value)
     else if (prop === `tile_border_radius`) tile_border_radius = Number(default_value)
     else if (prop === `inner_transition_offset`) {
       inner_transition_offset = Number(default_value)
@@ -177,7 +172,6 @@
   let tooltip_modified = $derived(
     tooltip_font_size !== defaults.tooltip_font_size ||
       tooltip_bg_color !== defaults.tooltip_bg_color ||
-      tooltip_text_color !== defaults.tooltip_text_color ||
       tooltip_border_radius !== defaults.tooltip_border_radius ||
       tooltip_padding !== defaults.tooltip_padding ||
       tooltip_line_height !== defaults.tooltip_line_height ||
@@ -212,7 +206,6 @@
   function reset_tooltip(): void {
     tooltip_font_size = defaults.tooltip_font_size
     tooltip_bg_color = defaults.tooltip_bg_color
-    tooltip_text_color = defaults.tooltip_text_color
     tooltip_border_radius = defaults.tooltip_border_radius
     tooltip_padding = defaults.tooltip_padding
     tooltip_line_height = defaults.tooltip_line_height
@@ -423,12 +416,6 @@
       <span>Background color</span>
       <input type="color" bind:value={tooltip_bg_color} />
       <button onclick={() => reset_property(`tooltip_bg_color`)}>reset</button>
-    </label>
-
-    <label>
-      <span>Text color</span>
-      <input type="color" bind:value={tooltip_text_color} />
-      <button onclick={() => reset_property(`tooltip_text_color`)}>reset</button>
     </label>
 
     <label>

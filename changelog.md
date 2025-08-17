@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.1.8](https://github.com/janosh/matterviz/compare/v0.1.7...v0.1.8)
+
+> 17 August 2025
+
+### 🛠 Enhancements
+
+- Measure distances and angles between selected `Structure` sites by @janosh in https://github.com/janosh/matterviz/pull/137
+- Optimade page 3-column layout (providers, suggestions, structure) by @janosh in https://github.com/janosh/matterviz/pull/126
+
+### 🐛 Bug Fixes
+
+- Fix parsing `mof-issue-127.cif` by @janosh in https://github.com/janosh/matterviz/pull/128
+- Disable `Structure`/`Trajectory` fullscreen buttons in non-browser contexts by @janosh in https://github.com/janosh/matterviz/pull/133
+- Set VSCode preferred extension location by @janosh in https://github.com/janosh/matterviz/pull/136
+
 ## [v0.1.7](https://github.com/janosh/matterviz/compare/v0.1.6...v0.1.7)
 
 > 11 August 2025
