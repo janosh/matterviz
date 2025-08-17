@@ -197,11 +197,9 @@
         })
       }
     } else {
-      // Linear scale logic
-      if (snap_ticks) {
-        // Use D3's default nice ticks for linear scale
-        return scale.ticks(num_ticks_to_generate)
-      } else {
+      // Use D3's default nice ticks for linear scale
+      if (snap_ticks) return scale.ticks(num_ticks_to_generate)
+      else {
         // Generate exactly num_ticks_to_generate evenly spaced linear ticks
         return [...Array(num_ticks_to_generate).keys()].map((idx) => {
           const t = idx / (num_ticks_to_generate - 1)
@@ -262,8 +260,10 @@
       }
     }
 
-    // Use potentially adjusted min/max for domain
-    const domain_for_scale: [number, number] = [min_val, max_val]
+    // Use potentially adjusted min/max for domain (ascending)
+    const lo = Math.min(min_val, max_val)
+    const hi = Math.max(min_val, max_val)
+    const domain_for_scale: [number, number] = [lo, hi]
 
     return use_log_fallback
       ? d3.scaleSequentialLog(interpolator).domain(domain_for_scale)

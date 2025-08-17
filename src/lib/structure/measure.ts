@@ -7,10 +7,15 @@ export type AngleMode = `degrees` | `radians`
 
 export const MAX_SELECTED_SITES = 8
 
-export function displacement_pbc(from: Vec3, to: Vec3, lattice_matrix: Matrix3x3): Vec3 {
-  const inv = matrix_inverse_3x3(lattice_matrix)
-  const frac_from = mat3x3_vec3_multiply(inv, from)
-  const frac_to = mat3x3_vec3_multiply(inv, to)
+export function displacement_pbc(
+  from: Vec3,
+  to: Vec3,
+  lattice_matrix: Matrix3x3,
+  lattice_inv?: Matrix3x3,
+): Vec3 {
+  const inv_mat = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
+  const frac_from = mat3x3_vec3_multiply(inv_mat, from)
+  const frac_to = mat3x3_vec3_multiply(inv_mat, to)
   const frac_diff: Vec3 = [0, 0, 0]
   for (let idx = 0; idx < 3; idx++) {
     const dist = frac_to[idx] - frac_from[idx]
@@ -21,7 +26,8 @@ export function displacement_pbc(from: Vec3, to: Vec3, lattice_matrix: Matrix3x3
 }
 
 export function distance_pbc(a: Vec3, b: Vec3, lattice_matrix: Matrix3x3): number {
-  const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix)
+  const inv_mat = matrix_inverse_3x3(lattice_matrix)
+  const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix, inv_mat)
   return Math.hypot(dx, dy, dz)
 }
 
@@ -44,13 +50,14 @@ export function angle_at_center(
   a: Vec3,
   b: Vec3,
   lattice_matrix?: Matrix3x3,
+  lattice_inv?: Matrix3x3,
   mode: AngleMode = `degrees`,
 ): number {
   const v1 = lattice_matrix
-    ? displacement_pbc(center, a, lattice_matrix)
+    ? displacement_pbc(center, a, lattice_matrix, lattice_inv)
     : ([a[0] - center[0], a[1] - center[1], a[2] - center[2]] as Vec3)
   const v2 = lattice_matrix
-    ? displacement_pbc(center, b, lattice_matrix)
+    ? displacement_pbc(center, b, lattice_matrix, lattice_inv)
     : ([b[0] - center[0], b[1] - center[1], b[2] - center[2]] as Vec3)
   return angle_between_vectors(v1, v2, mode)
 }

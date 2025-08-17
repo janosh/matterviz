@@ -68,11 +68,67 @@ test.each([
   expect(Math.hypot(...math.add(vec1, vec2, math.scale(expected, -1)))).toEqual(0)
 })
 
+test(`add function comprehensive`, () => {
+  // Test multiple vector addition
+  expect(math.add([1, 2], [3, 4], [5, 6])).toEqual([9, 12])
+  expect(math.add([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])).toEqual([22, 26, 30])
+
+  // Test error cases
+  expect(() => math.add()).toThrow(`Cannot add zero vectors`)
+  expect(() => math.add([1, 2], [3, 4, 5])).toThrow(
+    `All vectors must have the same length`,
+  )
+  expect(() => math.add([1, 2, 3], [4, 5], [6, 7, 8])).toThrow(
+    `All vectors must have the same length`,
+  )
+})
+
 test.each([
   [[1, 2], [3, 4], 11],
   [[1, 2, 3], [4, 5, 6], 32],
 ])(`dot product`, (vec1, vec2, expected) => {
   expect(math.dot(vec1, vec2)).toEqual(expected)
+})
+
+test(`dot function comprehensive`, () => {
+  // Test matrix-vector and matrix-matrix multiplication
+  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  const vector = [2, 3, 4]
+  const matrix1 = [[1, 2, 3], [4, 5, 6]]
+  const matrix2 = [[7, 8], [9, 10], [11, 12]]
+
+  expect(math.dot(matrix as unknown as NdVector, vector)).toEqual([20, 47, 74])
+  expect(math.dot(matrix1 as unknown as NdVector, matrix2 as unknown as NdVector))
+    .toEqual([[58, 64], [139, 154]])
+
+  // Test error cases
+  expect(() => math.dot(5 as unknown as NdVector, [1, 2, 3])).toThrow(
+    `Scalar and vector multiplication is not supported`,
+  )
+  expect(() => math.dot([1, 2, 3], 5 as unknown as NdVector)).toThrow(
+    `vector and scalar multiplication is not supported`,
+  )
+  expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
+  expect(() =>
+    math.dot(matrix1 as unknown as NdVector, [[1, 2, 3]] as unknown as NdVector)
+  ).toThrow(
+    `Number of columns in first matrix must be equal to number of rows in second matrix`,
+  )
+
+  // Test edge cases
+  const jagged_matrix = [[1, 2], [3, 4, 5], [6, 7]]
+  const empty_matrix: number[][] = []
+  const undefined_cols_matrix = [[1, 2], undefined, [3, 4]]
+
+  expect(() =>
+    math.dot(matrix1 as unknown as NdVector, jagged_matrix as unknown as NdVector)
+  ).toThrow(`Second matrix must be rectangular`)
+  expect(() =>
+    math.dot(matrix1 as unknown as NdVector, empty_matrix as unknown as NdVector)
+  ).toThrow(`Number of columns in matrix must be equal to number of elements in vector`)
+  expect(() =>
+    math.dot(matrix1 as unknown as NdVector, undefined_cols_matrix as unknown as NdVector)
+  ).toThrow(`Cannot read properties of undefined`)
 })
 
 test.each([
@@ -541,6 +597,58 @@ describe(`pbc_dist`, () => {
         expect(standard).toBeLessThan(direct)
         expect(optimized).toBeLessThan(direct)
       }
+    }
+  })
+
+  test(`simplified minimal-image wrapping edge cases`, () => {
+    // Test the new Math.round-based wrapping logic
+    const unit_lattice: math.Matrix3x3 = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [
+      0.0,
+      0.0,
+      1.0,
+    ]]
+
+    // Test exactly at 0.5 fractional coordinates (edge case for Math.round)
+    const edge_cases = [
+      { pos1: [0.0, 0.0, 0.0], pos2: [0.5, 0.5, 0.5], expected: Math.sqrt(0.75) },
+      {
+        pos1: [0.0, 0.0, 0.0],
+        pos2: [0.499999, 0.499999, 0.499999],
+        expected: Math.sqrt(0.75),
+        desc: `just below 0.5`,
+      },
+      {
+        pos1: [0.0, 0.0, 0.0],
+        pos2: [0.500001, 0.500001, 0.500001],
+        expected: Math.sqrt(0.75),
+        desc: `just above 0.5`,
+      },
+    ]
+
+    for (const { pos1, pos2, expected } of edge_cases) {
+      const result = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice)
+      expect(result).toBeCloseTo(expected, 5)
+    }
+
+    // Test boundary conditions where Math.round behavior is critical
+    const boundary_cases = [
+      {
+        pos1: [0.0, 0.0, 0.0],
+        pos2: [0.999999, 0.999999, 0.999999],
+        expected: 0.000001732, // sqrt(3 * 0.000001^2) ≈ 0.000001732
+        desc: `near unit cell boundary`,
+      },
+      {
+        pos1: [0.0, 0.0, 0.0],
+        pos2: [0.000001, 0.000001, 0.000001],
+        expected: 0.000001732, // sqrt(3 * 0.000001^2) ≈ 0.000001732
+        desc: `near origin`,
+      },
+    ]
+
+    for (const { pos1, pos2, expected } of boundary_cases) {
+      const result = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice)
+      expect(result).toBeCloseTo(expected, 4)
     }
   })
 })

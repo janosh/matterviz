@@ -11,7 +11,7 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { tooltip } from 'svelte-multiselect'
+  import { click_outside, tooltip } from 'svelte-multiselect'
   import type { StructureHandlerData } from './index'
   import {
     StructureControls,
@@ -220,7 +220,7 @@
 
   // Measurement mode and selection state
   let measure_mode: `distance` | `angle` = $state(`distance`)
-  let selected_site_indices: number[] = $state([])
+  let selected_sites: number[] = $state([])
   let measure_menu_open = $state(false)
 
   let visible_buttons = $derived(
@@ -477,32 +477,39 @@
         {/if}
 
         <!-- Measurement mode dropdown (match Trajectory display mode UI) -->
-        <div class="view-mode-dropdown-wrapper">
+        <div
+          class="view-mode-dropdown-wrapper"
+          {@attach click_outside({ callback: () => measure_menu_open = false })}
+        >
           <button
             onclick={() => (measure_menu_open = !measure_menu_open)}
             title="Measurement mode"
             class="view-mode-button"
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}
+            style="transform: scale(1.3)"
           >
-            {#if (selected_site_indices?.length ?? 0) >= MAX_SELECTED_SITES}
-              <span class="selection-limit-text">{MAX_SELECTED_SITES}/{
-                  MAX_SELECTED_SITES
-                }</span>
+            {#if (selected_sites?.length ?? 0) >= MAX_SELECTED_SITES}
+              <span class="selection-limit-text">
+                {MAX_SELECTED_SITES}/{MAX_SELECTED_SITES}
+              </span>
             {:else}
               <Icon
                 icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
               />
             {/if}
-            <Icon icon="Arrow{measure_menu_open ? `Up` : `Down`}" />
+            <Icon
+              icon="Arrow{measure_menu_open ? `Up` : `Down`}"
+              style="margin-left: -2px"
+            />
           </button>
-          {#if (selected_site_indices?.length ?? 0) > 0}
+          {#if (selected_sites?.length ?? 0) > 0}
             <button
               type="button"
               aria-label="Reset selection"
-              onclick={() => (selected_site_indices = [])}
+              onclick={() => (selected_sites = [])}
             >
-              <Icon icon="Reset" />
+              <Icon icon="Reset" style="margin-left: -4px" />
             </button>
           {/if}
           {#if measure_menu_open}
@@ -572,7 +579,7 @@
             {...scene_model}
             lattice_props={lattice_model}
             bind:camera_is_moving
-            bind:selected_site_indices
+            bind:selected_sites
             {measure_mode}
             {width}
             {height}

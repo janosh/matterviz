@@ -43,8 +43,12 @@ export function scale<T extends NdVector>(vec: T, factor: number): T {
   return vec.map((component) => component * factor) as T
 }
 
-export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number =>
-  Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
+export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number => {
+  if (vec1.length !== vec2.length) {
+    throw new Error(`Vectors must be of same length`)
+  }
+  return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
+}
 
 // Calculate the minimum distance between two points considering periodic boundary conditions.
 export function pbc_dist(
@@ -64,12 +68,7 @@ export function pbc_dist(
   const frac_diff = add(frac1, scale(frac2, -1))
 
   // Apply minimum image convention: wrap to [-0.5, 0.5)
-  const wrapped_frac_diff: Vec3 = frac_diff.map((x) => {
-    // Wrap to [0, 1) first, then shift to [-0.5, 0.5)
-    let wrapped = x - Math.floor(x)
-    if (wrapped >= 0.5) wrapped -= 1
-    return wrapped
-  }) as Vec3
+  const wrapped_frac_diff: Vec3 = frac_diff.map((x) => x - Math.round(x)) as Vec3
 
   // Convert back to Cartesian coordinates
   const cart_diff = mat3x3_vec3_multiply(lattice_matrix, wrapped_frac_diff)
@@ -118,7 +117,7 @@ export function add<T extends NdVector>(...vecs: T[]): T {
   // Validate all vectors have the same length
   for (const vec of vecs) {
     if (vec.length !== length) {
-      throw `All vectors must have the same length`
+      throw new Error(`All vectors must have the same length`)
     }
   }
 
@@ -169,7 +168,11 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
     if (mat1[0].length !== mat2.length) {
       throw `Number of columns in first matrix must be equal to number of rows in second matrix`
     }
-    const cols = mat2[0]?.length ?? 0
+    const cols = mat2[0]?.length
+    if (!Number.isFinite(cols)) throw new Error(`Second matrix has no columns`)
+    if (!mat2.every((row) => row.length === cols)) {
+      throw new Error(`Second matrix must be rectangular`)
+    }
     return mat1.map((_, i) =>
       Array.from(
         { length: cols },

@@ -6,7 +6,11 @@
   import { DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
-  import { displacement_pbc, distance_pbc } from '$lib/structure/measure'
+  import {
+    displacement_pbc,
+    distance_pbc,
+    MAX_SELECTED_SITES,
+  } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -60,7 +64,7 @@
     height?: number
     // measurement props
     measure_mode?: `distance` | `angle`
-    selected_site_indices?: number[]
+    selected_sites?: number[]
     selection_highlight_color?: string
   }
   let {
@@ -106,12 +110,9 @@
     width = 0,
     height = 0,
     measure_mode = `distance`,
-    selected_site_indices = $bindable([]),
+    selected_sites = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
   }: Props = $props()
-
-  // Soft cap for selection size to prevent performance issues
-  const MAX_SELECTION_SIZE = 8
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
@@ -122,31 +123,29 @@
 
     // Check if adding this site would exceed the soft cap
     if (
-      !selected_site_indices.includes(site_index) &&
-      selected_site_indices.length >= MAX_SELECTION_SIZE
+      !selected_sites.includes(site_index) &&
+      selected_sites.length >= MAX_SELECTED_SITES
     ) {
       console.warn(
-        `Selection size limit reached (${MAX_SELECTION_SIZE}). Deselect some sites first.`,
+        `Selection size limit reached (${MAX_SELECTED_SITES}). Deselect some sites first.`,
       )
       return
     }
 
-    selected_site_indices = selected_site_indices.includes(site_index)
-      ? selected_site_indices.filter((idx) => idx !== site_index)
-      : [...selected_site_indices, site_index]
+    selected_sites = selected_sites.includes(site_index)
+      ? selected_sites.filter((idx) => idx !== site_index)
+      : [...selected_sites, site_index]
   }
 
   // Keep site selection valid across structure changes (new structure might have fewer sites)
   $effect(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
-      selected_site_indices = []
+      selected_sites = []
       return
     }
     untrack(() => {
-      selected_site_indices = selected_site_indices.filter((idx) =>
-        idx >= 0 && idx < count
-      )
+      selected_sites = selected_sites.filter((idx) => idx >= 0 && idx < count)
     })
   })
 
@@ -522,7 +521,7 @@
 <!-- highlight hovered, active and selected sites -->
 {#each [
     { site: hovered_site, opacity: 0.18, color: `white`, site_idx: hovered_idx },
-    ...((selected_site_indices ?? []).map((idx) => ({
+    ...((selected_sites ?? []).map((idx) => ({
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
       opacity: 0.35,
@@ -564,8 +563,8 @@
 {/each}
 
 <!-- selection order labels (1, 2, 3, ...) -->
-{#if structure?.sites && (selected_site_indices?.length ?? 0) > 0}
-  {#each selected_site_indices as site_index, loop_idx (site_index)}
+{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
+  {#each selected_sites as site_index, loop_idx (site_index)}
     {@const site = structure.sites[site_index]}
     {#if site}
       {@const pos = math.add(site.xyz, site_label_offset)}
@@ -611,10 +610,10 @@
 {/if}
 
 <!-- Measurement overlays -->
-{#if structure?.sites && (selected_site_indices?.length ?? 0) > 0}
+{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
   {#if measure_mode === `distance`}
-    {#each selected_site_indices as idx_i, loop_idx (idx_i)}
-      {#each selected_site_indices.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
+    {#each selected_sites as idx_i, loop_idx (idx_i)}
+      {#each selected_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
         {@const site_i = structure.sites[idx_i]}
         {@const site_j = structure.sites[idx_j]}
         {@const pos_i = site_i.xyz}
@@ -640,15 +639,15 @@
         </Extras.HTML>
       {/each}
     {/each}
-  {:else if measure_mode === `angle` && selected_site_indices.length >= 3}
-    {#each selected_site_indices as idx_center (idx_center)}
+  {:else if measure_mode === `angle` && selected_sites.length >= 3}
+    {#each selected_sites as idx_center (idx_center)}
       {@const center = structure.sites[idx_center]}
-      {#each selected_site_indices.filter((x) => x !== idx_center) as
+      {#each selected_sites.filter((x) => x !== idx_center) as
         idx_a,
         loop_idx
         (idx_center + `-` + idx_a)
       }
-        {#each selected_site_indices.filter((x) => x !== idx_center).slice(loop_idx + 1) as
+        {#each selected_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
           idx_b
           (idx_center + `-` + idx_a + `-` + idx_b)
         }
