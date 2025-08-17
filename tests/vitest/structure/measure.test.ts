@@ -4,7 +4,6 @@ import {
   angle_at_center,
   angle_between_vectors,
   displacement_pbc,
-  distance_direct,
   distance_pbc,
 } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
@@ -12,16 +11,6 @@ import { describe, expect, test } from 'vitest'
 const cubic = (a: number): Matrix3x3 => [[a, 0, 0], [0, a, 0], [0, 0, a]]
 
 describe(`measure: distances`, () => {
-  test.each([
-    { a: [0, 0, 0] as Vec3, b: [3, 4, 0] as Vec3, expected: 5 },
-    { a: [1, 2, 3] as Vec3, b: [1, 2, 3] as Vec3, expected: 0 },
-  ] as Array<{ a: Vec3; b: Vec3; expected: number }>)(
-    `direct distance %#`,
-    ({ a, b, expected }: { a: Vec3; b: Vec3; expected: number }) => {
-      expect(distance_direct(a, b)).toBeCloseTo(expected, 10)
-    },
-  )
-
   test(`pbc distance uses minimum image`, () => {
     const L = 10
     const lat = cubic(L)

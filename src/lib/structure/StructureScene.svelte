@@ -6,11 +6,7 @@
   import { DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
-  import {
-    displacement_pbc,
-    distance_direct,
-    distance_pbc,
-  } from '$lib/structure/measure'
+  import { displacement_pbc, distance_pbc } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -114,12 +110,27 @@
     selection_highlight_color = `#6cf0ff`,
   }: Props = $props()
 
+  // Soft cap for selection size to prevent performance issues
+  const MAX_SELECTION_SIZE = 8
+
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
   let hovered_bond_data: BondPair | null = $state(null)
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
+
+    // Check if adding this site would exceed the soft cap
+    if (
+      !selected_site_indices.includes(site_index) &&
+      selected_site_indices.length >= MAX_SELECTION_SIZE
+    ) {
+      console.warn(
+        `Selection size limit reached (${MAX_SELECTION_SIZE}). Deselect some sites first.`,
+      )
+      return
+    }
+
     selected_site_indices = selected_site_indices.includes(site_index)
       ? selected_site_indices.filter((idx) => idx !== site_index)
       : [...selected_site_indices, site_index]
@@ -519,7 +530,7 @@
     }))),
   ] as
   entry
-  (JSON.stringify(entry))
+  (entry.site_idx)
 }
   {@const site = entry.site}
   {@const opacity = entry.opacity}
@@ -535,7 +546,9 @@
       position={xyz}
       scale={1.08 * highlight_radius}
       onclick={(event: MouseEvent) => {
-        if (entry?.site_idx) toggle_selection(entry.site_idx, event)
+        if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
+          toggle_selection(entry.site_idx, event)
+        }
       }}
     >
       <T.SphereGeometry args={[0.5, 22, 22]} />
@@ -612,7 +625,7 @@
     (pos_i[1] + pos_j[1]) / 2,
     (pos_i[2] + pos_j[2]) / 2,
   ] as Vec3}
-        {@const direct = distance_direct(pos_i, pos_j)}
+        {@const direct = math.euclidean_dist(pos_i, pos_j)}
         {@const pbc = lattice ? distance_pbc(pos_i, pos_j, lattice.matrix) : direct}
         {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
         <Extras.HTML center position={midpoint}>
@@ -658,28 +671,30 @@
     Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2)),
   )}
           {@const angle_deg = Math.acos(cos_ang) * 180 / Math.PI}
-          <!-- draw rays from center to the two sites -->
-          <Bond from={center.xyz} to={site_a.xyz} thickness={0.05} color="#bbbbbb" />
-          <Bond from={center.xyz} to={site_b.xyz} thickness={0.05} color="#bbbbbb" />
-          {@const bisector = [
+          {#if n1 > math.EPS && n2 > math.EPS}
+            <!-- draw rays from center to the two sites -->
+            <Bond from={center.xyz} to={site_a.xyz} thickness={0.05} color="#bbbbbb" />
+            <Bond from={center.xyz} to={site_b.xyz} thickness={0.05} color="#bbbbbb" />
+            {@const bisector = [
     v1[0] / n1 + v2[0] / n2,
     v1[1] / n1 + v2[1] / n2,
     v1[2] / n1 + v2[2] / n2,
   ] as Vec3}
-          {@const bis_norm = Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) || 1}
-          {@const offset_dir = [
+            {@const bis_norm = Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) || 1}
+            {@const offset_dir = [
     bisector[0] / bis_norm,
     bisector[1] / bis_norm,
     bisector[2] / bis_norm,
   ] as Vec3}
-          {@const label_pos = [
+            {@const label_pos = [
     center.xyz[0] + offset_dir[0] * 0.6,
     center.xyz[1] + offset_dir[1] * 0.6,
     center.xyz[2] + offset_dir[2] * 0.6,
   ] as Vec3}
-          <Extras.HTML center position={label_pos}>
-            <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
-          </Extras.HTML>
+            <Extras.HTML center position={label_pos}>
+              <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
+            </Extras.HTML>
+          {/if}
         {/each}
       {/each}
     {/each}

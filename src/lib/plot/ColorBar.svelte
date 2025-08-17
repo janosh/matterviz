@@ -165,12 +165,13 @@
         }
 
         // Ensure domain endpoints are included if they are powers of 10 and missed by loop
+        const FRACTIONAL_TOL = 1e-10
         if (
-          Math.abs(Math.log10(nice_min) % 1) < math.LOG_EPS &&
+          Math.abs(Math.log10(nice_min) % 1) < FRACTIONAL_TOL &&
           !power_of_10_ticks.includes(nice_min)
         ) power_of_10_ticks.unshift(nice_min)
         if (
-          Math.abs(Math.log10(nice_max) % 1) < math.LOG_EPS &&
+          Math.abs(Math.log10(nice_max) % 1) < FRACTIONAL_TOL &&
           !power_of_10_ticks.includes(nice_max)
         ) power_of_10_ticks.push(nice_max)
 

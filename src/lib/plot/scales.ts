@@ -187,6 +187,8 @@ export function generate_log_ticks(
   // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
   min = Math.max(min, math.LOG_EPS)
+  // Ensure a strictly increasing domain for tick generation
+  max = Math.max(max, min * 1.1)
 
   const min_power = Math.floor(Math.log10(min))
   const max_power = Math.ceil(Math.log10(max))

@@ -19,6 +19,7 @@
     StructureLegend,
     StructureScene,
   } from './index'
+  import { MAX_SELECTED_SITES } from './measure'
   import { parse_any_structure } from './parse'
   import type { Props as ControlProps } from './StructureControls.svelte'
 
@@ -484,7 +485,15 @@
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}
           >
-            <Icon icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]} />
+            {#if (selected_site_indices?.length ?? 0) >= MAX_SELECTED_SITES}
+              <span class="selection-limit-text">{MAX_SELECTED_SITES}/{
+                  MAX_SELECTED_SITES
+                }</span>
+            {:else}
+              <Icon
+                icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
+              />
+            {/if}
             <Icon icon="Arrow{measure_menu_open ? `Up` : `Down`}" />
           </button>
           {#if (selected_site_indices?.length ?? 0) > 0}
@@ -695,6 +704,13 @@
   .view-mode-dropdown-wrapper button[aria-label='Reset selection'] {
     width: 22px;
     height: 22px;
+  }
+  .selection-limit-text {
+    font-weight: bold;
+    font-size: 0.9em;
+    color: var(--accent-color, #ff6b6b);
+    min-width: 2.5em;
+    text-align: center;
   }
   p.warn {
     text-align: center;

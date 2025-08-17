@@ -1,18 +1,11 @@
 import type { Vec3 } from '$lib'
-import {
-  euclidean_dist,
-  mat3x3_vec3_multiply,
-  type Matrix3x3,
-  matrix_inverse_3x3,
-} from '$lib/math'
+import { mat3x3_vec3_multiply, type Matrix3x3, matrix_inverse_3x3 } from '$lib/math'
 
 // This module centralizes measurement utilities for structures: distances and angles
 
 export type AngleMode = `degrees` | `radians`
 
-export function distance_direct(a: Vec3, b: Vec3): number {
-  return euclidean_dist(a, b)
-}
+export const MAX_SELECTED_SITES = 8
 
 export function displacement_pbc(from: Vec3, to: Vec3, lattice_matrix: Matrix3x3): Vec3 {
   const inv = matrix_inverse_3x3(lattice_matrix)

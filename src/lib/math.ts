@@ -83,8 +83,8 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 
   const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
 
-  if (Math.abs(det) < 1e-10) {
-    throw `Matrix is singular and cannot be inverted`
+  if (Math.abs(det) < EPS) {
+    throw new Error(`Matrix is singular and cannot be inverted`)
   }
 
   const inv_det = 1 / det
@@ -169,9 +169,11 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
     if (mat1[0].length !== mat2.length) {
       throw `Number of columns in first matrix must be equal to number of rows in second matrix`
     }
-    return mat1.map((row, i) =>
-      mat2[0].map((_, j) =>
-        row.reduce((sum, _val, k) => sum + mat1[i][k] * mat2[k][j], 0)
+    const cols = mat2[0]?.length ?? 0
+    return mat1.map((_, i) =>
+      Array.from(
+        { length: cols },
+        (_, j) => mat1[i].reduce((sum, _val, k) => sum + mat1[i][k] * mat2[k][j], 0),
       )
     )
   }
