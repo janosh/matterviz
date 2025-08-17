@@ -572,7 +572,7 @@
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
       <!-- prevent HTML labels from rendering outside of the canvas -->
-      <div style="overflow: hidden">
+      <div style="overflow: hidden; height: 100%">
         <Canvas>
           <StructureScene
             structure={scene_structure}

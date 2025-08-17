@@ -74,13 +74,9 @@ test(`add function comprehensive`, () => {
   expect(math.add([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])).toEqual([22, 26, 30])
 
   // Test error cases
-  expect(() => math.add()).toThrow(`Cannot add zero vectors`)
-  expect(() => math.add([1, 2], [3, 4, 5])).toThrow(
-    `All vectors must have the same length`,
-  )
-  expect(() => math.add([1, 2, 3], [4, 5], [6, 7, 8])).toThrow(
-    `All vectors must have the same length`,
-  )
+  expect(() => math.add()).toThrow(/zero\s+vectors/i)
+  expect(() => math.add([1, 2], [3, 4, 5])).toThrow(/same\s+length/i)
+  expect(() => math.add([1, 2, 3], [4, 5], [6, 7, 8])).toThrow(/same\s+length/i)
 })
 
 test.each([
@@ -1049,11 +1045,11 @@ describe(`tensor conversion utilities`, () => {
 
     it.each([
       [`large numbers`, [[1e10, 1e9, 1e8], [1e9, 1e11, 1e7], [1e8, 1e7, 1e12]]],
-      [`small numbers`, [[1e-10, 1e-11, 1e-12], [1e-11, 1e-9, 1e-13], [
-        1e-12,
-        1e-13,
-        1e-8,
-      ]]],
+      [`small numbers`, [
+        [1e-10, 1e-11, 1e-12],
+        [1e-11, 1e-9, 1e-13],
+        [1e-12, 1e-13, 1e-8],
+      ]],
       [`NaN values`, [[NaN, 1, 2], [1, NaN, 3], [2, 3, NaN]]],
       [`Infinity values`, [[Infinity, 1, 2], [1, -Infinity, 3], [2, 3, Infinity]]],
     ])(`handles %s`, (_, tensor) => {
@@ -1066,7 +1062,7 @@ describe(`tensor conversion utilities`, () => {
       } else if (tensor.some((row) => row.some((val) => !Number.isFinite(val)))) {
         expect(voigt.some((val) => !Number.isFinite(val))).toBe(true)
       } else {
-        expect(reconstructed[0][0]).toBeCloseTo(tensor[0][0], -5)
+        expect(reconstructed[0][0]).toBeCloseTo(tensor[0][0], 5)
       }
     })
   })

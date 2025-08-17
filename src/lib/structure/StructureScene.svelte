@@ -520,8 +520,15 @@
 
 <!-- highlight hovered, active and selected sites -->
 {#each [
-    { site: hovered_site, opacity: 0.18, color: `white`, site_idx: hovered_idx },
+    {
+      kind: `hover`,
+      site: hovered_site,
+      opacity: 0.18,
+      color: `white`,
+      site_idx: hovered_idx,
+    },
     ...((selected_sites ?? []).map((idx) => ({
+      kind: `selected`,
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
       opacity: 0.35,
@@ -529,7 +536,7 @@
     }))),
   ] as
   entry
-  (entry.site_idx)
+  (`${entry.kind}-${entry.site_idx}`)
 }
   {@const site = entry.site}
   {@const opacity = entry.opacity}
