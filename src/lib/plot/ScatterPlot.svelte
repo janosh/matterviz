@@ -519,7 +519,7 @@
     return size_scale.type === `log`
       ? scaleLog()
         .domain([
-          Math.max(safe_min_val, math.LOG_MIN_EPS),
+          Math.max(safe_min_val, math.LOG_EPS),
           Math.max(safe_max_val, safe_min_val * 1.1),
         ])
         .range([min_radius, max_radius])
@@ -542,7 +542,7 @@
 
     return color_scale.type === `log`
       ? scaleSequentialLog(interpolator).domain([
-        Math.max(min_val, math.LOG_MIN_EPS),
+        Math.max(min_val, math.LOG_EPS),
         Math.max(max_val, min_val * 1.1),
       ])
       : scaleSequential(interpolator).domain([min_val, max_val])

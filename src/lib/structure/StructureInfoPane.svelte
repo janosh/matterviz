@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon } from '$lib'
-  import * as math from '$lib/math'
   import { electro_neg_formula, get_density } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -178,7 +177,7 @@
                     typeof v === `number`
                   )
                 ) {
-                  const force_magnitude = math.norm(prop_value)
+                  const force_magnitude = Math.hypot(...prop_value)
                   formatted_value = `${format_num(force_magnitude, `.3~f`)} eV/Å`
                   tooltip = `Force vector: (${
                     prop_value.map((f) => format_num(f, `.3~f`)).join(`, `)
