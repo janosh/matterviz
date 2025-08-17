@@ -39,9 +39,7 @@
     force_vector_color?: string
     gizmo?: boolean | ComponentProps<typeof Extras.Gizmo>
     hovered_idx?: number | null
-    active_idx?: number | null
     hovered_site?: Site | null
-    active_site?: Site | null
     float_fmt?: string
     auto_rotate?: number
     initial_zoom?: number
@@ -93,9 +91,7 @@
     force_vector_color = DEFAULTS.structure.force_color,
     gizmo = DEFAULTS.structure.show_gizmo,
     hovered_idx = $bindable(null),
-    active_idx = $bindable(null),
     hovered_site = $bindable(null),
-    active_site = $bindable(null),
     float_fmt = `.3~f`,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
@@ -146,9 +142,6 @@
   Extras.interactivity()
   $effect.pre(() => {
     hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
-  })
-  $effect.pre(() => {
-    active_site = structure?.sites?.[active_idx ?? -1] ?? null
   })
   let lattice = $derived(
     structure && `lattice` in structure ? structure.lattice : null,
@@ -409,7 +402,6 @@
           }}
           onclick={(event: MouseEvent) => {
             const site_idx = atom.site_idx
-            active_idx = site_idx
             toggle_selection(site_idx, event)
           }}
         />
@@ -436,7 +428,6 @@
       }}
       onclick={(event: MouseEvent) => {
         const site_idx = atom.site_idx
-        active_idx = site_idx
         toggle_selection(site_idx, event)
       }}
     >
@@ -520,7 +511,6 @@
 <!-- highlight hovered, active and selected sites -->
 {#each [
     { site: hovered_site, opacity: 0.18, color: `white`, site_idx: hovered_idx },
-    { site: active_site, opacity: 0.25, color: `white`, site_idx: active_idx },
     ...((selected_site_indices ?? []).map((idx) => ({
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
