@@ -651,8 +651,8 @@ test(`all image atoms should be positioned at unit cell boundaries`, () => {
       const lattice_matrix = structure.lattice.matrix
 
       // Convert to fractional coordinates
-      const inv = math.matrix_inverse_3x3(lattice_matrix)
-      const image_abc: Vec3 = mat3x3_vec3_multiply(inv, image_xyz)
+      const inv_mat = math.matrix_inverse_3x3(lattice_matrix)
+      const image_abc: Vec3 = mat3x3_vec3_multiply(inv_mat, image_xyz)
 
       // Image atoms should be at positions that are related to the original
       // by integer translations. This means their fractional coordinates

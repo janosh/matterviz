@@ -752,7 +752,7 @@
     y_label="Y Axis"
     markers="line+points"
     y_scale_type={lin_log_y_scale_type}
-    y_lim={lin_log_y_scale_type === `log` ? [math.LOG_MIN_EPS, null] : [null, null]}
+    y_lim={lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null]}
   />
 </section>
 

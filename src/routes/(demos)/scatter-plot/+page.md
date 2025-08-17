@@ -717,7 +717,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const y_val = 10000 * Math.exp(-0.5 * x_val)
     decay_data.x.push(x_val)
     // Ensure y is not exactly 0 for log scale, clamp to a small positive value
-    const safe_y_val = Math.max(y_val, math.LOG_MIN_EPS)
+    const safe_y_val = Math.max(y_val, math.LOG_EPS)
     decay_data.y.push(safe_y_val)
     decay_data.size_values.push(safe_y_val)
     decay_data.metadata.push({ series: 'Exponential Decay' })
@@ -736,7 +736,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, -1 + (idx / (point_count * 2 - 1)) * 4) // x from 0.1 to 1000 log-spaced
     const y_val = 500 + 400 * Math.sin(Math.log10(x_val) * 5)
     log_sine_data.x.push(x_val)
-    const safe_y_val = Math.max(y_val, math.LOG_MIN_EPS) // Clamp potential near-zero y
+    const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp potential near-zero y
     log_sine_data.y.push(safe_y_val)
     log_sine_data.size_values.push(safe_y_val)
     log_sine_data.metadata.push({ series: 'Log Sine Wave' })
@@ -755,7 +755,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, idx)
     const y_val = Math.pow(x_val, 2) // y = x^2
     power_law_data.x.push(x_val)
-    const safe_y_val = Math.max(y_val, math.LOG_MIN_EPS) // Clamp y
+    const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp y
     power_law_data.y.push(safe_y_val)
     power_law_data.size_values.push(safe_y_val)
     power_law_data.metadata.push({ series: 'y = x^2' })
@@ -774,7 +774,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     const x_val = Math.pow(10, idx)
     const y_val = Math.pow(x_val, 0.5) // y = √x
     inverse_power_data.x.push(x_val)
-    const safe_y_val = Math.max(y_val, math.LOG_MIN_EPS) // Clamp y
+    const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp y
     inverse_power_data.y.push(safe_y_val)
     inverse_power_data.size_values.push(safe_y_val)
     inverse_power_data.metadata.push({ series: 'y = x^0.5' })

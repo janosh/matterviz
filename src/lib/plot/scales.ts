@@ -18,7 +18,7 @@ export function create_scale(
 ) {
   const [min_val, max_val] = domain
   return scale_type === `log`
-    ? scaleLog().domain([Math.max(min_val, math.LOG_MIN_EPS), max_val]).range(range)
+    ? scaleLog().domain([Math.max(min_val, math.LOG_EPS), max_val]).range(range)
     : scaleLinear().domain(domain).range(range)
 }
 
@@ -106,7 +106,7 @@ export function calculate_domain(
   if (min_val === undefined || max_val === undefined) return [0, 1]
 
   return scale_type === `log`
-    ? [Math.max(min_val, math.LOG_MIN_EPS), max_val]
+    ? [Math.max(min_val, math.LOG_EPS), max_val]
     : [min_val, max_val]
 }
 
@@ -134,8 +134,8 @@ export function get_nice_data_range(
         data_min = data_min - padding_ms
         data_max = data_max + padding_ms
       } else if (scale_type === `log`) {
-        const log_min = Math.log10(Math.max(data_min, math.LOG_MIN_EPS))
-        const log_max = Math.log10(Math.max(data_max, math.LOG_MIN_EPS))
+        const log_min = Math.log10(Math.max(data_min, math.LOG_EPS))
+        const log_max = Math.log10(Math.max(data_max, math.LOG_EPS))
         const log_span = log_max - log_min
         data_min = Math.pow(10, log_min - log_span * padding_factor)
         data_max = Math.pow(10, log_max + log_span * padding_factor)
@@ -152,7 +152,7 @@ export function get_nice_data_range(
         data_min = data_min - one_day
         data_max = data_max + one_day
       } else if (scale_type === `log`) {
-        data_min = Math.max(math.LOG_MIN_EPS, data_min / 1.1) // 10% multiplicative padding
+        data_min = Math.max(math.LOG_EPS, data_min / 1.1) // 10% multiplicative padding
         data_max = data_max * 1.1
       } else {
         const padding_abs = data_min === 0 ? 1 : Math.abs(data_min * 0.1) // 10% additive padding, or 1 if value is 0
@@ -169,7 +169,7 @@ export function get_nice_data_range(
   // Create the scale with the *padded* data domain
   const scale = scale_type === `log`
     ? scaleLog().domain([
-      Math.max(data_min, math.LOG_MIN_EPS),
+      Math.max(data_min, math.LOG_EPS),
       Math.max(data_max, data_min * 1.1),
     ]) // Ensure log domain > 0
     : scaleLinear().domain([data_min, data_max])
@@ -186,7 +186,9 @@ export function generate_log_ticks(
 ): number[] {
   // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
-  min = Math.max(min, math.LOG_MIN_EPS)
+  min = Math.max(min, math.LOG_EPS)
+  // Ensure a strictly increasing domain for tick generation
+  max = Math.max(max, min * 1.1)
 
   const min_power = Math.floor(Math.log10(min))
   const max_power = Math.ceil(Math.log10(max))

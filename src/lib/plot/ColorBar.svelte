@@ -109,9 +109,9 @@
         use_log_for_ticks = false
       } else if (scale_min <= 0) {
         console.warn(
-          `Log scale received non-positive min value (${scale_min}) for ticks. Using epsilon=${math.LOG_MIN_EPS} instead.`,
+          `Log scale received non-positive min value (${scale_min}) for ticks. Using epsilon=${math.LOG_EPS} instead.`,
         )
-        scale_min = math.LOG_MIN_EPS // Substitute with epsilon
+        scale_min = math.LOG_EPS // Substitute with epsilon
       }
     }
 
@@ -165,12 +165,13 @@
         }
 
         // Ensure domain endpoints are included if they are powers of 10 and missed by loop
+        const FRACTIONAL_TOL = 1e-10
         if (
-          Math.abs(Math.log10(nice_min) % 1) < math.LOG_MIN_EPS &&
+          Math.abs(Math.log10(nice_min) % 1) < FRACTIONAL_TOL &&
           !power_of_10_ticks.includes(nice_min)
         ) power_of_10_ticks.unshift(nice_min)
         if (
-          Math.abs(Math.log10(nice_max) % 1) < math.LOG_MIN_EPS &&
+          Math.abs(Math.log10(nice_max) % 1) < FRACTIONAL_TOL &&
           !power_of_10_ticks.includes(nice_max)
         ) power_of_10_ticks.push(nice_max)
 
@@ -196,11 +197,9 @@
         })
       }
     } else {
-      // Linear scale logic
-      if (snap_ticks) {
-        // Use D3's default nice ticks for linear scale
-        return scale.ticks(num_ticks_to_generate)
-      } else {
+      // Use D3's default nice ticks for linear scale
+      if (snap_ticks) return scale.ticks(num_ticks_to_generate)
+      else {
         // Generate exactly num_ticks_to_generate evenly spaced linear ticks
         return [...Array(num_ticks_to_generate).keys()].map((idx) => {
           const t = idx / (num_ticks_to_generate - 1)
@@ -255,14 +254,16 @@
         use_log_fallback = false
       } else if (min_val <= 0) {
         console.warn(
-          `Log scale received non-positive min value (${min_val}) for fallback scale. Using epsilon=${math.LOG_MIN_EPS} instead.`,
+          `Log scale received non-positive min value (${min_val}) for fallback scale. Using epsilon=${math.LOG_EPS} instead.`,
         )
-        min_val = math.LOG_MIN_EPS // Substitute with epsilon
+        min_val = math.LOG_EPS // Substitute with epsilon
       }
     }
 
-    // Use potentially adjusted min/max for domain
-    const domain_for_scale: [number, number] = [min_val, max_val]
+    // Use potentially adjusted min/max for domain (ascending)
+    const lo = Math.min(min_val, max_val)
+    const hi = Math.max(min_val, max_val)
+    const domain_for_scale: [number, number] = [lo, hi]
 
     return use_log_fallback
       ? d3.scaleSequentialLog(interpolator).domain(domain_for_scale)
@@ -292,9 +293,9 @@
         use_log_interp = false
       } else if (min_ramp_domain <= 0) {
         console.warn(
-          `Log scale specified for gradient, but min domain value (${min_ramp_domain}) is not positive. Using epsilon=${math.LOG_MIN_EPS} instead.`,
+          `Log scale specified for gradient, but min domain value (${min_ramp_domain}) is not positive. Using epsilon=${math.LOG_EPS} instead.`,
         )
-        adjusted_min_ramp = math.LOG_MIN_EPS // Substitute with epsilon
+        adjusted_min_ramp = math.LOG_EPS // Substitute with epsilon
       }
     }
 

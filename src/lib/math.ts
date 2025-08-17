@@ -4,6 +4,9 @@ export type Vec3 = [number, number, number]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type NdVector = number[]
 
+export const LOG_EPS = 1e-9 // Constants
+export const EPS = 1e-10
+
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(
   matrix: Matrix3x3,
@@ -11,9 +14,9 @@ export function calc_lattice_params(
   const [a_vec, b_vec, c_vec] = matrix
 
   // Calculate vector lengths (lattice parameters a, b, c)
-  const a = Math.sqrt(a_vec[0] ** 2 + a_vec[1] ** 2 + a_vec[2] ** 2)
-  const b = Math.sqrt(b_vec[0] ** 2 + b_vec[1] ** 2 + b_vec[2] ** 2)
-  const c = Math.sqrt(c_vec[0] ** 2 + c_vec[1] ** 2 + c_vec[2] ** 2)
+  const a = Math.hypot(a_vec[0], a_vec[1], a_vec[2])
+  const b = Math.hypot(b_vec[0], b_vec[1], b_vec[2])
+  const c = Math.hypot(c_vec[0], c_vec[1], c_vec[2])
 
   // Calculate volume using scalar triple product
   const volume = Math.abs(
@@ -36,16 +39,15 @@ export function calc_lattice_params(
   return { a, b, c, alpha, beta, gamma, volume }
 }
 
-export function norm(vec: NdVector): number {
-  return Math.sqrt(vec.reduce((acc, val) => acc + val ** 2, 0))
-}
-
 export function scale<T extends NdVector>(vec: T, factor: number): T {
   return vec.map((component) => component * factor) as T
 }
 
-export function euclidean_dist(vec1: Vec3, vec2: Vec3): number {
-  return norm(add(vec1, scale(vec2, -1)))
+export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number => {
+  if (vec1.length !== vec2.length) {
+    throw new Error(`Vectors must be of same length`)
+  }
+  return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
 }
 
 // Calculate the minimum distance between two points considering periodic boundary conditions.
@@ -66,17 +68,12 @@ export function pbc_dist(
   const frac_diff = add(frac1, scale(frac2, -1))
 
   // Apply minimum image convention: wrap to [-0.5, 0.5)
-  const wrapped_frac_diff: Vec3 = frac_diff.map((x) => {
-    // Wrap to [0, 1) first, then shift to [-0.5, 0.5)
-    let wrapped = x - Math.floor(x)
-    if (wrapped >= 0.5) wrapped -= 1
-    return wrapped
-  }) as Vec3
+  const wrapped_frac_diff: Vec3 = frac_diff.map((x) => x - Math.round(x)) as Vec3
 
   // Convert back to Cartesian coordinates
   const cart_diff = mat3x3_vec3_multiply(lattice_matrix, wrapped_frac_diff)
 
-  return norm(cart_diff)
+  return Math.hypot(...cart_diff)
 }
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
@@ -85,8 +82,8 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 
   const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
 
-  if (Math.abs(det) < 1e-10) {
-    throw `Matrix is singular and cannot be inverted`
+  if (Math.abs(det) < EPS) {
+    throw new Error(`Matrix is singular and cannot be inverted`)
   }
 
   const inv_det = 1 / det
@@ -120,7 +117,7 @@ export function add<T extends NdVector>(...vecs: T[]): T {
   // Validate all vectors have the same length
   for (const vec of vecs) {
     if (vec.length !== length) {
-      throw `All vectors must have the same length`
+      throw new Error(`All vectors must have the same length`)
     }
   }
 
@@ -171,8 +168,16 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
     if (mat1[0].length !== mat2.length) {
       throw `Number of columns in first matrix must be equal to number of rows in second matrix`
     }
-    return mat1.map((row, i) =>
-      mat2[0].map((_, j) => row.reduce((sum, _, k) => sum + mat1[i][k] * mat2[k][j], 0))
+    const cols = mat2[0]?.length
+    if (!Number.isFinite(cols)) throw new Error(`Second matrix has no columns`)
+    if (!mat2.every((row) => row.length === cols)) {
+      throw new Error(`Second matrix must be rectangular`)
+    }
+    return mat1.map((_, i) =>
+      Array.from(
+        { length: cols },
+        (_, j) => mat1[i].reduce((sum, _val, k) => sum + mat1[i][k] * mat2[k][j], 0),
+      )
     )
   }
 
@@ -281,8 +286,6 @@ export function det_3x3(matrix: Matrix3x3): number {
     row0[2] * (row1[0] * row2[1] - row1[1] * row2[0])
   )
 }
-
-export const LOG_MIN_EPS = 1e-9 // Constants
 
 export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0

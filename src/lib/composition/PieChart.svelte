@@ -247,8 +247,7 @@
   .pie-segment.interactive {
     cursor: pointer;
   }
-  .pie-segment.interactive:hover,
-  .pie-segment.hovered {
+  .pie-segment.interactive:hover, .pie-segment.hovered {
     filter: brightness(1.1);
   }
   .pie-segment.interactive:focus {

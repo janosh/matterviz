@@ -27,9 +27,9 @@ export function find_image_atoms(
   const FRACTIONAL_EPS = 1e-9
   // Scale zero-displacement threshold by lattice length scale to avoid hard-coded magic numbers
   const lattice_norm = Math.max(
-    math.norm(lattice_vecs[0]),
-    math.norm(lattice_vecs[1]),
-    math.norm(lattice_vecs[2]),
+    Math.hypot(...lattice_vecs[0]),
+    Math.hypot(...lattice_vecs[1]),
+    Math.hypot(...lattice_vecs[2]),
   )
   const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2
 
