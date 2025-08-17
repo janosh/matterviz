@@ -17,6 +17,7 @@
     "vscode": "^1.96.0"
   },
   "main": "./dist/extension.cjs",
+  "extensionKind": ["ui", "workspace"],
   "activationEvents": [
     "onStartupFinished"
   ],

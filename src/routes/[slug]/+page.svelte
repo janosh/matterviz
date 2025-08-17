@@ -9,10 +9,10 @@
     ElementPhoto,
     ElementScatter,
     ElementTile,
+    Icon,
     PeriodicTable,
     PropertySelect,
   } from '$lib'
-  import Icon from '$lib/Icon.svelte'
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
