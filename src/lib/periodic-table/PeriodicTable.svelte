@@ -364,7 +364,7 @@
     position: absolute;
     transform: translate(-50%, -10%);
     background: var(--tooltip-bg, rgba(0, 0, 0, 0.8));
-    color: var(--tooltip-color, white);
+    color: var(--tooltip-color, light-dark(black, white));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, 6px);
     font-size: var(--tooltip-font-size, 14px);
