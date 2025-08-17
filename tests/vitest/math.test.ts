@@ -1069,6 +1069,28 @@ describe(`tensor conversion utilities`, () => {
 })
 
 test.each([
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 2, 3], [1, 2, 3], `identity matrix`],
+  [[[2, 0, 0], [0, 2, 0], [0, 0, 2]], [1, 2, 3], [2, 4, 6], `scaling matrix`],
+  [
+    [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+    [1, 0, 0],
+    [1, 4, 7],
+    `general matrix with unit vector`,
+  ],
+  [
+    [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+    [1, 0, 0],
+    [0, 1, 0],
+    `rotation matrix (90° around z-axis)`,
+  ],
+  [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [0, 0, 0], [0, 0, 0], `zero vector`],
+  [[[-1, 0, 0], [0, -1, 0], [0, 0, -1]], [1, 2, 3], [-1, -2, -3], `negative values`],
+])(`mat3x3_vec3_multiply: %s`, (matrix, vector, expected) => {
+  expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as math.Vec3))
+    .toEqual(expected)
+})
+
+test.each([
   [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], 1, `identity`],
   [[[0, 0, 0], [0, 0, 0], [0, 0, 0]], 0, `zero`],
   [[[1, 2, 3], [2, 4, 6], [3, 6, 9]], 0, `singular`],

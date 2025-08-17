@@ -106,7 +106,7 @@
 
 {#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) ||
     element?.year}
-  <p class="discovery">
+  <p style="text-align: center">
     Discovered
     {#if element?.discoverer && !element.discoverer.startsWith(`unknown`)}
       by <strong>{element.discoverer}</strong>

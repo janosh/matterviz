@@ -4,8 +4,10 @@ export type Vec3 = [number, number, number]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type NdVector = number[]
 
-export const LOG_EPS = 1e-9 // Constants
+export const LOG_EPS = 1e-9
 export const EPS = 1e-10
+export const RAD_TO_DEG = 180 / Math.PI
+export const DEG_TO_RAD = Math.PI / 180
 
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(
@@ -31,10 +33,9 @@ export function calc_lattice_params(
   const dot_bc = b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]
 
   // Convert to angles in degrees
-  const rad_to_deg = 180 / Math.PI
-  const alpha = Math.acos(dot_bc / (b * c)) * rad_to_deg
-  const beta = Math.acos(dot_ac / (a * c)) * rad_to_deg
-  const gamma = Math.acos(dot_ab / (a * b)) * rad_to_deg
+  const alpha = Math.acos(dot_bc / (b * c)) * RAD_TO_DEG
+  const beta = Math.acos(dot_ac / (a * c)) * RAD_TO_DEG
+  const gamma = Math.acos(dot_ab / (a * b)) * RAD_TO_DEG
 
   return { a, b, c, alpha, beta, gamma, volume }
 }
@@ -173,10 +174,11 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
     if (!mat2.every((row) => row.length === cols)) {
       throw new Error(`Second matrix must be rectangular`)
     }
-    return mat1.map((_, i) =>
+    return mat1.map((_, ii) =>
       Array.from(
         { length: cols },
-        (_, j) => mat1[i].reduce((sum, _val, k) => sum + mat1[i][k] * mat2[k][j], 0),
+        (_, jj) =>
+          mat1[ii].reduce((sum, _val, kk) => sum + mat1[ii][kk] * mat2[kk][jj], 0),
       )
     )
   }
@@ -247,9 +249,9 @@ export function cell_to_lattice_matrix(
   gamma: number,
 ): Matrix3x3 {
   // Convert angles to radians
-  const alpha_rad = (alpha * Math.PI) / 180
-  const beta_rad = (beta * Math.PI) / 180
-  const gamma_rad = (gamma * Math.PI) / 180
+  const alpha_rad = alpha * DEG_TO_RAD
+  const beta_rad = beta * DEG_TO_RAD
+  const gamma_rad = gamma * DEG_TO_RAD
 
   const cos_alpha = Math.cos(alpha_rad)
   const cos_beta = Math.cos(beta_rad)
