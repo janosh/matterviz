@@ -6,21 +6,17 @@
   import { DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
-  import { T } from '@threlte/core'
   import {
-    Gizmo,
-    HTML,
-    Instance,
-    InstancedMesh,
-    interactivity,
-    OrbitControls,
-  } from '@threlte/extras'
+    displacement_pbc,
+    distance_pbc,
+    MAX_SELECTED_SITES,
+  } from '$lib/structure/measure'
+  import { T } from '@threlte/core'
+  import * as Extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
-
-  type ActiveHoveredDist = { color: string; width: number; opacity: number }
 
   interface Props {
     structure?: AnyStructure | undefined
@@ -41,11 +37,9 @@
     show_force_vectors?: boolean
     force_vector_scale?: number
     force_vector_color?: string
-    gizmo?: boolean | ComponentProps<typeof Gizmo>
+    gizmo?: boolean | ComponentProps<typeof Extras.Gizmo>
     hovered_idx?: number | null
-    active_idx?: number | null
     hovered_site?: Site | null
-    active_site?: Site | null
     float_fmt?: string
     auto_rotate?: number
     initial_zoom?: number
@@ -53,7 +47,6 @@
     bond_color?: string
     bonding_strategy?: BondingStrategy
     bonding_options?: Record<string, unknown>
-    active_hovered_dist?: ActiveHoveredDist | null // set to null to disable showing distance between hovered and active sites
     fov?: number
     ambient_light?: number
     directional_light?: number
@@ -66,9 +59,13 @@
     site_label_color?: string
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
-    orbit_controls?: ComponentProps<typeof OrbitControls>[`ref`]
+    orbit_controls?: ComponentProps<typeof Extras.OrbitControls>[`ref`]
     width?: number // Viewer dimensions for responsive zoom
     height?: number
+    // measurement props
+    measure_mode?: `distance` | `angle`
+    selected_sites?: number[]
+    selection_highlight_color?: string
   }
   let {
     structure = undefined,
@@ -94,16 +91,13 @@
     force_vector_color = DEFAULTS.structure.force_color,
     gizmo = DEFAULTS.structure.show_gizmo,
     hovered_idx = $bindable(null),
-    active_idx = $bindable(null),
     hovered_site = $bindable(null),
-    active_site = $bindable(null),
     float_fmt = `.3~f`,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
     bonding_strategy = DEFAULTS.structure.bonding_strategy,
     bonding_options = {},
-    active_hovered_dist = { color: `green`, width: 0.1, opacity: 0.5 },
     fov = DEFAULTS.structure.fov,
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
@@ -115,18 +109,49 @@
     orbit_controls = $bindable(undefined),
     width = 0,
     height = 0,
+    measure_mode = `distance`,
+    selected_sites = $bindable([]),
+    selection_highlight_color = `#6cf0ff`,
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
   let hovered_bond_data: BondPair | null = $state(null)
 
-  interactivity()
+  function toggle_selection(site_index: number, evt?: Event) {
+    evt?.stopPropagation?.()
+
+    // Check if adding this site would exceed the soft cap
+    if (
+      !selected_sites.includes(site_index) &&
+      selected_sites.length >= MAX_SELECTED_SITES
+    ) {
+      console.warn(
+        `Selection size limit reached (${MAX_SELECTED_SITES}). Deselect some sites first.`,
+      )
+      return
+    }
+
+    selected_sites = selected_sites.includes(site_index)
+      ? selected_sites.filter((idx) => idx !== site_index)
+      : [...selected_sites, site_index]
+  }
+
+  // Keep site selection valid across structure changes (new structure might have fewer sites)
+  $effect(() => {
+    const count = structure?.sites?.length ?? 0
+    if (count <= 0) {
+      selected_sites = []
+      return
+    }
+    untrack(() => {
+      selected_sites = selected_sites.filter((idx) => idx >= 0 && idx < count)
+    })
+  })
+
+  Extras.interactivity()
   $effect.pre(() => {
     hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
-  })
-  $effect.pre(() => {
-    active_site = structure?.sites?.[active_idx ?? -1] ?? null
   })
   let lattice = $derived(
     structure && `lattice` in structure ? structure.lattice : null,
@@ -325,8 +350,8 @@
 </script>
 
 {#snippet site_label_snippet(element: string, position: Vec3, site_idx: number)}
-  {@const [x, y, z] = math.add(position, site_label_offset)}
-  <HTML center {position} position.x={x} position.y={y} position.z={z}>
+  {@const pos = math.add(position, site_label_offset)}
+  <Extras.HTML center position={pos}>
     {#if atom_label}
       {@render atom_label(structure!.sites[site_idx], site_idx)}
     {:else}
@@ -338,14 +363,14 @@
         style:color={site_label_color}
       >{element}</span>
     {/if}
-  </HTML>
+  </Extras.HTML>
 {/snippet}
 
 {#if camera_projection === `perspective`}
   <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
-    <OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<Gizmo {...gizmo_props} />{/if}
-    </OrbitControls>
+    <Extras.OrbitControls {...orbit_controls_props}>
+      {#if gizmo}<Extras.Gizmo {...gizmo_props} />{/if}
+    </Extras.OrbitControls>
   </T.PerspectiveCamera>
 {:else}
   <T.OrthographicCamera
@@ -354,9 +379,9 @@
     zoom={computed_zoom}
     near={-100}
   >
-    <OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<Gizmo {...gizmo_props} />{/if}
-    </OrbitControls>
+    <Extras.OrbitControls {...orbit_controls_props}>
+      {#if gizmo}<Extras.Gizmo {...gizmo_props} />{/if}
+    </Extras.OrbitControls>
   </T.OrthographicCamera>
 {/if}
 
@@ -366,14 +391,14 @@
 {#if show_atoms}
   <!-- Instanced rendering for full occupancy atoms -->
   {#each instanced_atom_groups as group (group.element + group.radius)}
-    <InstancedMesh
+    <Extras.InstancedMesh
       key="{group.element}-{group.radius}-{group.atoms.length}"
       range={group.atoms.length}
     >
       <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
       <T.MeshStandardMaterial color={group.color} />
       {#each group.atoms as atom (atom.site_idx)}
-        <Instance
+        <Extras.Instance
           position={atom.position}
           scale={atom.radius}
           onpointerenter={() => {
@@ -385,10 +410,13 @@
             hovered_idx = null
             active_tooltip = null
           }}
-          onclick={() => active_idx = active_idx === atom.site_idx ? null : atom.site_idx}
+          onclick={(event: MouseEvent) => {
+            const site_idx = atom.site_idx
+            toggle_selection(site_idx, event)
+          }}
         />
       {/each}
-    </InstancedMesh>
+    </Extras.InstancedMesh>
   {/each}
 
   <!-- Regular rendering for partial occupancy atoms -->
@@ -408,7 +436,10 @@
         hovered_idx = null
         active_tooltip = null
       }}
-      onclick={() => active_idx = active_idx === atom.site_idx ? null : atom.site_idx}
+      onclick={(event: MouseEvent) => {
+        const site_idx = atom.site_idx
+        toggle_selection(site_idx, event)
+      }}
     >
       <T.Mesh>
         <T.SphereGeometry
@@ -487,28 +518,68 @@
   {/each}
 {/if}
 
-<!-- highlight active and hovered sites -->
-{#each [{ site: hovered_site, opacity: 0.2 }, { site: active_site, opacity: 0.3 }] as
-  { site, opacity }
-  (opacity)
+<!-- highlight hovered, active and selected sites -->
+{#each [
+    {
+      kind: `hover`,
+      site: hovered_site,
+      opacity: 0.18,
+      color: `white`,
+      site_idx: hovered_idx,
+    },
+    ...((selected_sites ?? []).map((idx) => ({
+      kind: `selected`,
+      site: structure?.sites?.[idx] ?? null,
+      site_idx: idx,
+      opacity: 0.35,
+      color: selection_highlight_color,
+    }))),
+  ] as
+  entry
+  (`${entry.kind}-${entry.site_idx}`)
 }
+  {@const site = entry.site}
+  {@const opacity = entry.opacity}
+  {@const color = entry.color}
   {#if site}
-    {@const { xyz, species } = site}
+    {@const xyz = site.xyz}
+    {@const species = site.species}
     {@const highlight_radius = atom_radius * (same_size_atoms
     ? 1
     : species.reduce((sum, spec) =>
       sum + spec.occu * (atomic_radii[spec.element] ?? 1), 0))}
-    <T.Mesh position={xyz} scale={1.02 * highlight_radius}>
-      <T.SphereGeometry args={[0.5, 20, 20]} />
-      <T.MeshStandardMaterial color="white" transparent {opacity} />
+    <T.Mesh
+      position={xyz}
+      scale={1.08 * highlight_radius}
+      onclick={(event: MouseEvent) => {
+        if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
+          toggle_selection(entry.site_idx, event)
+        }
+      }}
+    >
+      <T.SphereGeometry args={[0.5, 22, 22]} />
+      <T.MeshStandardMaterial
+        {color}
+        transparent
+        {opacity}
+        emissive={color}
+        emissiveIntensity={0.15}
+      />
     </T.Mesh>
   {/if}
 {/each}
 
-<!-- cylinder between active and hovered site to indicate measured distance -->
-{#if active_site && hovered_site && active_hovered_dist}
-  {@const { color, width } = active_hovered_dist}
-  <Bond from={active_site.xyz} to={hovered_site.xyz} thickness={width} {color} />
+<!-- selection order labels (1, 2, 3, ...) -->
+{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
+  {#each selected_sites as site_index, loop_idx (site_index)}
+    {@const site = structure.sites[site_index]}
+    {#if site}
+      {@const pos = math.add(site.xyz, site_label_offset)}
+      <Extras.HTML center position={pos}>
+        <span class="selection-label">{loop_idx + 1}</span>
+      </Extras.HTML>
+    {/if}
+  {/each}
 {/if}
 
 <!-- hovered site tooltip -->
@@ -538,25 +609,102 @@
     <div class="coordinates cartesian">
       xyz: ({hovered_site.xyz.map((num) => format_num(num, float_fmt)).join(`, `)}) Å
     </div>
-    <!-- distance from hovered to active site -->
-    {#if active_site && active_site != hovered_site && active_hovered_dist}
-      {@const direct_distance = math.euclidean_dist(hovered_site.xyz, active_site.xyz)}
-      {@const pbc_distance = lattice
-      ? math.pbc_dist(hovered_site.xyz, active_site.xyz, lattice.matrix)
-      : direct_distance}
-      <div class="distance">
-        <strong>dist:</strong>
-        {format_num(pbc_distance, float_fmt)} Å{lattice ? ` (PBC)` : ``}
-        {#if lattice && Math.abs(pbc_distance - direct_distance) > 0.1}
-          <small> | direct: {format_num(direct_distance, float_fmt)} Å</small>
-        {/if}
-      </div>
-    {/if}
   </CanvasTooltip>
 {/if}
 
 {#if lattice}
   <Lattice matrix={lattice.matrix} {...lattice_props} />
+{/if}
+
+<!-- Measurement overlays -->
+{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
+  {#if measure_mode === `distance`}
+    {#each selected_sites as idx_i, loop_idx (idx_i)}
+      {#each selected_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
+        {@const site_i = structure.sites[idx_i]}
+        {@const site_j = structure.sites[idx_j]}
+        {@const pos_i = site_i.xyz}
+        {@const pos_j = site_j.xyz}
+        <Bond from={pos_i} to={pos_j} thickness={0.06} color="#cccccc" />
+        {@const midpoint = [
+    (pos_i[0] + pos_j[0]) / 2,
+    (pos_i[1] + pos_j[1]) / 2,
+    (pos_i[2] + pos_j[2]) / 2,
+  ] as Vec3}
+        {@const direct = math.euclidean_dist(pos_i, pos_j)}
+        {@const pbc = lattice ? distance_pbc(pos_i, pos_j, lattice.matrix) : direct}
+        {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
+        <Extras.HTML center position={midpoint}>
+          <span class="measure-label">
+            {#if differ}
+              PBC: {format_num(pbc, float_fmt)} Å<br /><small>
+                Direct: {format_num(direct, float_fmt)} Å</small>
+            {:else}
+              {format_num(pbc, float_fmt)} Å
+            {/if}
+          </span>
+        </Extras.HTML>
+      {/each}
+    {/each}
+  {:else if measure_mode === `angle` && selected_sites.length >= 3}
+    {#each selected_sites as idx_center (idx_center)}
+      {@const center = structure.sites[idx_center]}
+      {#each selected_sites.filter((x) => x !== idx_center) as
+        idx_a,
+        loop_idx
+        (idx_center + `-` + idx_a)
+      }
+        {#each selected_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
+          idx_b
+          (idx_center + `-` + idx_a + `-` + idx_b)
+        }
+          {@const site_a = structure.sites[idx_a]}
+          {@const site_b = structure.sites[idx_b]}
+          {@const v1 = lattice ? displacement_pbc(center.xyz, site_a.xyz, lattice.matrix) : ([
+    site_a.xyz[0] - center.xyz[0],
+    site_a.xyz[1] - center.xyz[1],
+    site_a.xyz[2] - center.xyz[2],
+  ] as Vec3)}
+          {@const v2 = lattice ? displacement_pbc(center.xyz, site_b.xyz, lattice.matrix) : ([
+    site_b.xyz[0] - center.xyz[0],
+    site_b.xyz[1] - center.xyz[1],
+    site_b.xyz[2] - center.xyz[2],
+  ] as Vec3)}
+          {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
+          {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
+          {@const cos_ang = Math.max(
+    -1,
+    Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2)),
+  )}
+          {@const angle_deg = Math.acos(cos_ang) * 180 / Math.PI}
+          {#if n1 > math.EPS && n2 > math.EPS}
+            <!-- draw rays from center to the two sites -->
+            <Bond from={center.xyz} to={site_a.xyz} thickness={0.05} color="#bbbbbb" />
+            <Bond from={center.xyz} to={site_b.xyz} thickness={0.05} color="#bbbbbb" />
+            {@const bisector = [
+    v1[0] / n1 + v2[0] / n2,
+    v1[1] / n1 + v2[1] / n2,
+    v1[2] / n1 + v2[2] / n2,
+  ] as Vec3}
+            {@const bis_norm = Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) || 1}
+            {@const offset_dir = [
+    bisector[0] / bis_norm,
+    bisector[1] / bis_norm,
+    bisector[2] / bis_norm,
+  ] as Vec3}
+            {@const label_pos = [
+    center.xyz[0] + offset_dir[0] * 0.6,
+    center.xyz[1] + offset_dir[1] * 0.6,
+    center.xyz[2] + offset_dir[2] * 0.6,
+  ] as Vec3}
+            <Extras.HTML center position={label_pos}>
+              <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
+            </Extras.HTML>
+          {/if}
+        {/each}
+      {/each}
+    {/each}
+  {/if}
 {/if}
 
 <style>
@@ -583,9 +731,33 @@
     margin: var(--canvas-tooltip-elem-name-margin, 0 0 0 0.3em);
     font-weight: var(--canvas-tooltip-elem-name-font-weight, normal);
   }
-  .coordinates,
-  .distance {
+  .coordinates {
     font-size: var(--canvas-tooltip-coords-font-size);
     margin: var(--canvas-tooltip-coords-margin);
+  }
+  .measure-label {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 0 5px;
+    user-select: none;
+    white-space: pre;
+    display: grid;
+    place-items: center;
+    line-height: 1.2;
+    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 1.5cqw, 18pt));
+  }
+  .selection-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.2em;
+    height: 1.2em;
+    padding: 0 0.25em;
+    border-radius: 999px;
+    background: var(--pane-btn-bg-hover);
+    color: var(--struct-text-color);
+    font-size: 0.85em;
+    line-height: 1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 </style>

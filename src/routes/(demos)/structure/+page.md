@@ -86,8 +86,11 @@ Showcasing structures with different crystal systems.
     margin: 2em calc(50cqw - 47.5vw);
   }
   ul.crystal-systems h3 {
-    margin: 0.5em 0;
+    margin: 0.5em auto;
     font-size: 1.1em;
+    display: flex;
+    place-items: center;
+    place-content: center;
   }
   ul.crystal-systems small {
     margin: 0 0 0 0.5em;

@@ -165,8 +165,7 @@
   .bubble.interactive {
     cursor: pointer;
   }
-  .bubble.interactive:hover,
-  .bubble.hovered {
+  .bubble.interactive:hover, .bubble.hovered {
     filter: brightness(1.1);
   }
   .bubble.interactive:focus {

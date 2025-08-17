@@ -183,7 +183,7 @@ describe(`make_supercell`, () => {
   })
 
   test(`does not modify original structure`, () => {
-    const original = JSON.parse(JSON.stringify(sample_structure))
+    const original = structuredClone(sample_structure)
     const supercell = make_supercell(original, [2, 2, 2])
 
     expect(original.sites.length).toBe(2)

@@ -223,8 +223,7 @@
   .legend-item.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
-  .legend-item:hover,
-  .legend-item:focus {
+  .legend-item:hover, .legend-item:focus {
     background-color: var(--plot-legend-item-hover-background-color);
   }
   .legend-marker {

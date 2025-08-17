@@ -261,8 +261,7 @@
   .element-tile span {
     line-height: 1em;
   }
-  .element-tile.active,
-  .element-tile:hover {
+  .element-tile.active, .element-tile:hover {
     border: var(--elem-tile-hover-border-width, 1px) solid;
   }
   .last-active {
