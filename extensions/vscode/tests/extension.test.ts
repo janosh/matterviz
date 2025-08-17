@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Webview } from 'vscode'
+import pkg from '../package.json' with { type: 'json' }
 import type { MessageData } from '../src/extension'
 import {
   activate,
@@ -74,6 +75,11 @@ describe(`MatterViz Extension`, () => {
     onDidDelete: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
   }
+
+  test(`extensionKind should be configured as ["ui", "workspace"] for optimal remote performance`, () => {
+    // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
+    expect(pkg.extensionKind).toEqual([`ui`, `workspace`])
+  })
 
   beforeEach(() => {
     vi.clearAllMocks()
