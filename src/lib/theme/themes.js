@@ -235,7 +235,7 @@ const themes = {
   'nav-link-bg': btn_bg(0.15, 0.05),
   'nav-link-bg-hover': btn_bg(0.2, 0.1),
   'nav-link-active-color': {
-    light: `#dc2626`,
+    light: `darkseagreen`,
     dark: `mediumseagreen`,
     white: `coral`,
     black: `lightseagreen`,

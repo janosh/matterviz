@@ -61,6 +61,10 @@
     // Performance mode: 'quality' (default) or 'speed' for large structures
     performance_mode?: `quality` | `speed`
     children?: Snippet<[{ structure?: AnyStructure }]>
+    // allow parent components to control highlighted/selected site indices
+    selected_sites?: number[]
+    // explicit measured sites for distance/angle overlays
+    measured_sites?: number[]
     [key: string]: unknown
   }
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
@@ -115,6 +119,10 @@
     loading = $bindable(false),
     error_msg = $bindable(undefined),
     performance_mode = $bindable(`quality`),
+    // expose selected site indices for external control/highlighting
+    selected_sites = $bindable<number[]>([]),
+    // expose measured site indices for overlays/labels
+    measured_sites = $bindable<number[]>([]),
     on_file_load,
     on_error,
     on_fullscreen_change,
@@ -220,7 +228,6 @@
 
   // Measurement mode and selection state
   let measure_mode: `distance` | `angle` = $state(`distance`)
-  let selected_sites: number[] = $state([])
   let measure_menu_open = $state(false)
 
   let visible_buttons = $derived(
@@ -489,9 +496,9 @@
             aria-expanded={measure_menu_open}
             style="transform: scale(1.3)"
           >
-            {#if (selected_sites?.length ?? 0) >= MAX_SELECTED_SITES}
+            {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
               <span class="selection-limit-text">
-                {MAX_SELECTED_SITES}/{MAX_SELECTED_SITES}
+                {measured_sites.length}/{MAX_SELECTED_SITES}
               </span>
             {:else}
               <Icon
@@ -503,11 +510,11 @@
               style="margin-left: -2px"
             />
           </button>
-          {#if (selected_sites?.length ?? 0) > 0}
+          {#if (measured_sites?.length ?? 0) > 0}
             <button
               type="button"
               aria-label="Reset selection"
-              onclick={() => (selected_sites = [])}
+              onclick={() => (measured_sites = [])}
             >
               <Icon icon="Reset" style="margin-left: -4px" />
             </button>
@@ -580,6 +587,7 @@
             lattice_props={lattice_model}
             bind:camera_is_moving
             bind:selected_sites
+            bind:measured_sites
             {measure_mode}
             {width}
             {height}
@@ -643,7 +651,7 @@
     place-items: center;
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: clamp(6pt, 1cqw, 9pt);
+    gap: clamp(6pt, 1cqmin, 9pt);
     /* buttons need higher z-index than StructureLegend to make info/controls panes occlude legend */
     /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
@@ -657,7 +665,7 @@
   }
   section.control-buttons > :global(button) {
     background-color: transparent;
-    font-size: clamp(1.1em, 2cqw, 1.4em);
+    font-size: clamp(0.9em, 2cqmin, 1.4em);
     display: flex;
     padding: 0;
   }

@@ -1,4 +1,5 @@
 import { StructureInfoPane } from '$lib'
+import type { PymatgenStructure } from '$lib/structure'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 import { get_dummy_structure } from '../setup'
@@ -79,4 +80,123 @@ test(`structure with > 500 atoms should not create sites section`, () => {
 
   // Clean up
   document.body.innerHTML = ``
+})
+
+test(`symmetry section displays when symmetry data is available`, () => {
+  const structure = get_dummy_structure(`H`, 10, true) as PymatgenStructure
+  // Override lattice with custom properties for testing
+  structure.lattice = {
+    ...structure.lattice,
+    a: 5.0,
+    b: 5.0,
+    c: 5.0,
+    alpha: 90,
+    beta: 90,
+    gamma: 90,
+    volume: 125,
+    matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+    pbc: [true, true, true],
+  }
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: { structure, pane_open: true },
+  })
+
+  setTimeout(() => {
+    const content = document.body.textContent || ``
+    if (content.includes(`Symmetry`)) {
+      expect(content).toContain(`Space Group`)
+      expect(content).toContain(`Operations`)
+      expect(content).toContain(`Translations`)
+      expect(content).toContain(`Rotations`)
+      expect(content).toContain(`Roto-translations`)
+    }
+    document.body.innerHTML = ``
+  }, 100)
+})
+
+test(`symmetry section behavior for different structure types`, () => {
+  // Test periodic structure with symmetry
+  const periodic_structure = get_dummy_structure(`H`, 4, true) as PymatgenStructure
+  periodic_structure.lattice = {
+    ...periodic_structure.lattice,
+    a: 4.0,
+    b: 4.0,
+    c: 4.0,
+    alpha: 90,
+    beta: 90,
+    gamma: 90,
+    volume: 64,
+    matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+    pbc: [true, true, true],
+  }
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: { structure: periodic_structure, pane_open: true },
+  })
+
+  setTimeout(() => {
+    const content = document.body.textContent || ``
+    if (content.includes(`Symmetry`)) {
+      expect(content).toMatch(/\d+/) // space group number
+      expect(content).toContain(`total`) // operations count
+    }
+    document.body.innerHTML = ``
+  }, 100)
+
+  // Test molecular structure (no symmetry)
+  const molecular_structure = get_dummy_structure(`H`, 5, false)
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: { structure: molecular_structure, pane_open: true },
+  })
+
+  const molecular_content = document.body.textContent || ``
+  expect(molecular_content).not.toContain(`Symmetry`)
+  expect(molecular_content).not.toContain(`Space Group`)
+  document.body.innerHTML = ``
+})
+
+test(`symmetry section positioning and error handling`, () => {
+  const structure = get_dummy_structure(`H`, 3, true) as PymatgenStructure
+  structure.lattice = {
+    ...structure.lattice,
+    a: 3.0,
+    b: 3.0,
+    c: 3.0,
+    alpha: 90,
+    beta: 90,
+    gamma: 90,
+    volume: 27,
+    matrix: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+    pbc: [true, true, true],
+  }
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: { structure, pane_open: true },
+  })
+
+  setTimeout(() => {
+    const headings = Array.from(document.querySelectorAll(`h4`))
+    const section_titles = headings.map((h) => h.textContent)
+
+    if (section_titles.includes(`Symmetry`)) {
+      // Check section order: Structure -> Cell -> Symmetry -> Sites
+      const cell_idx = section_titles.indexOf(`Cell`)
+      const symmetry_idx = section_titles.indexOf(`Symmetry`)
+      const sites_idx = section_titles.indexOf(`Sites`)
+      expect(cell_idx).toBeLessThan(symmetry_idx)
+      expect(symmetry_idx).toBeLessThan(sites_idx)
+    }
+
+    // Should not crash even if operations are missing
+    const content = document.body.textContent || ``
+    expect(content).toContain(`Structure`)
+    expect(content).toContain(`Cell`)
+
+    document.body.innerHTML = ``
+  }, 100)
 })

@@ -64,13 +64,13 @@ function expect_xyz_matches_abc(
 
 // Load compressed phonopy files using Node.js built-in decompression
 const agi_compressed = readFileSync(
-  join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py_params.yaml.gz`),
+  join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py.yaml.gz`),
 )
 const agi_phono3py_params = gunzipSync(agi_compressed).toString(`utf-8`)
 const hea_hcp_filename = `nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
 
 const beo_compressed = readFileSync(
-  join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py_params.yaml.gz`),
+  join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py.yaml.gz`),
 )
 const beo_phono3py_params = gunzipSync(beo_compressed).toString(`utf-8`)
 
@@ -669,18 +669,27 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites).toHaveLength(3)
   })
 
-  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984)`, () => {
+  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
     if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
-    expect(result.sites.length).toBe(1386)
-    // Basic sanity checks
+
+    // Expect exact total sites from CIF header (_atom_type_number_in_cell)
+    // Ru: 4, S: 24, P: 24, N: 16, C: 296, H: 252 → total = 616
+    expect(result.sites.length).toBe(616)
+
+    // Per-element site counts must match header to ensure symmetry expansion isn't over-generating
+    const element_counts: Record<string, number> = {}
+    for (const site of result.sites) {
+      const element = site.species[0].element
+      element_counts[element] = (element_counts[element] ?? 0) + 1
+    }
+
+    expect(element_counts).toEqual({ C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 })
+
+    // Basic lattice sanity
     expect(Number.isFinite(result.lattice?.a as number)).toBe(true)
     expect(Number.isFinite(result.lattice?.b as number)).toBe(true)
     expect(Number.isFinite(result.lattice?.c as number)).toBe(true)
-    // Ensure at least one Ru and S present (as per file header counts)
-    const elements = result.sites.map((s) => s.species[0].element)
-    expect(elements).toContain(`Ru`)
-    expect(elements).toContain(`S`)
   })
 
   it(`should detect CIF format by content`, () => {
@@ -1066,8 +1075,8 @@ Xx1 0.5 0.5 0.5 1.0
   test(`parses MOF CIF file correctly`, () => {
     const result = parse_cif(mof_issue_127)
     // The MOF CIF has 7 unique atomic sites, but some of the 192 symmetry operations are identity
-    // and get skipped, resulting in 1307 total sites, 37 less sites than 192*7
-    expect(result?.sites.length).toBe(1307)
+    // and get skipped, resulting in 424 total sites after deduplication
+    expect(result?.sites.length).toBe(424)
     expect(result?.lattice?.a).toBeCloseTo(25.832, 8)
     expect(result?.lattice?.b).toBeCloseTo(25.832, 8)
     expect(result?.lattice?.c).toBeCloseTo(25.832, 8)
@@ -1113,22 +1122,22 @@ loop_
    I          0.5000  0.250000      0.250000      0.250000     Biso  1.000000 I`
 
     const result = parse_cif(mixed_occupancy_cif)
-    // Should have 4 unique sites × 3 non-identity symmetry operations = 13 total sites
-    // (x,y,z is identity and gets skipped, but some operations generate additional sites)
-    expect(result?.sites.length).toBe(13)
+    // Should have 4 unique sites × 2 non-identity symmetry operations = 8 total sites
+    // (x,y,z is identity and gets skipped, some operations generate additional sites)
+    expect(result?.sites.length).toBe(8)
     expect(result?.lattice?.a).toBeCloseTo(5.5, 8)
 
     // Check that mixed occupancy site (Na/K) is handled correctly
     const na_sites = result?.sites.filter((site) => site.species[0].element === `Na`)
     const k_sites = result?.sites.filter((site) => site.species[0].element === `K`)
-    expect(na_sites?.length).toBe(3) // 1 original + 2 from non-identity operations
-    expect(k_sites?.length).toBe(3)
+    expect(na_sites?.length).toBe(2) // 1 original + 1 from non-identity operations
+    expect(k_sites?.length).toBe(2)
 
     // Check that symmetry operations with translations are applied
     const translated_sites = result?.sites.filter((site) =>
       site.abc.some((coord) => coord === 0.5)
     )
-    expect(translated_sites?.length).toBe(6)
+    expect(translated_sites?.length).toBe(3) // 3 sites with 0.5 coordinates from translations
   })
 
   test(`parses ICSD-like CIF with specific symmetry format`, () => {
@@ -1345,14 +1354,14 @@ unit_cell:
     {
       name: `AgI phonopy file`,
       content: agi_phono3py_params,
-      filename: `AgI-fq978185p-phono3py_params.yaml.gz`,
+      filename: `AgI-fq978185p-phono3py.yaml.gz`,
       expected_sites: 72,
       space_group: `P6_3mc`,
     },
     {
       name: `BeO phonopy file`,
       content: beo_phono3py_params,
-      filename: `BeO-zw12zc18p-phono3py_params.yaml.gz`,
+      filename: `BeO-zw12zc18p-phono3py.yaml.gz`,
       expected_sites: 64,
       space_group: `F-43m`,
     },
@@ -2473,9 +2482,9 @@ describe(`Structure File Detection`, () => {
     [`BaTiO3-tetragonal.poscar`, true],
     [`cyclohexane.xyz`, true],
     [`quartz.extxyz`, false],
-    [`AgI-fq978185p-phono3py_params.yaml.gz`, true],
+    [`AgI-fq978185p-phono3py.yaml.gz`, true],
     [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
-    [`BeO-zw12zc18p-phono3py_params.yaml.gz`, true],
+    [`BeO-zw12zc18p-phono3py.yaml.gz`, true],
     // Trajectory files should not be detected as structure files
     [`trajectory.traj`, false],
     [`md.xyz.gz`, false], // This should be detected as a trajectory file, not structure

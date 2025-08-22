@@ -1,6 +1,7 @@
 import { element_data } from '$lib'
 import {
   default_fmt,
+  format_fractional,
   format_num,
   heatmap_keys,
   parse_si_float,
@@ -104,5 +105,41 @@ describe(`parse_si_float function`, () => {
     } else {
       expect(result).toEqual(expected)
     }
+  })
+})
+
+describe(`format_fractional function`, () => {
+  test.each([
+    [0, `0`], // exact zero
+    [1, `0`], // integer wraps to 0
+    [0.5, `½`], // exact half
+    [1.5, `½`], // wraps to 0.5
+    [0.25, `¼`], // exact quarter
+    [0.75, `¾`], // exact three-quarters
+    [0.333333333, `⅓`], // one-third
+    [0.666666667, `⅔`], // two-thirds
+    [0.2, `⅕`], // exact fifth
+    [0.4, `⅖`], // exact two-fifths
+    [0.6, `⅗`], // exact three-fifths
+    [0.8, `⁴⁄₅`], // exact four-fifths
+    [0.166666667, `⅙`], // one-sixth
+    [0.125, `⅛`], // exact eighth
+    [0.083333333, `¹⁄₁₂`], // one-twelfth
+    [0.1, `0.1`], // not a special fraction
+    [0.65, `0.65`], // not a special fraction
+    [0.85, `0.85`], // not a special fraction
+    [0.001, `0`], // very small (floating point precision issue)
+    [Infinity, `Infinity`], // non-finite preserved
+    [-Infinity, `-Infinity`], // non-finite preserved
+    [NaN, `NaN`], // non-finite preserved
+  ])(`format_fractional(%s) should return %s`, (input, expected) => {
+    const result = format_fractional(input)
+    expect(result).toBe(expected)
+  })
+
+  test(`handles edge cases around epsilon boundary`, () => {
+    const eps = 1e-3
+    expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`)
+    expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`)
   })
 })

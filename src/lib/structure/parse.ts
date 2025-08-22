@@ -500,69 +500,79 @@ const apply_symmetry_ops = (
 ): CifAtom[] => {
   if (symmetry_ops.length === 0) return [atom]
 
-  const equivalent_atoms: CifAtom[] = [atom]
+  const equivalent_atoms: CifAtom[] = []
+  const seen = new Set<string>()
+  const wrap = (
+    v: Vec3,
+  ): Vec3 => (wrap_frac ? v.map((c) => c - Math.floor(c)) as Vec3 : v)
+  const key = (v: Vec3): string =>
+    `${v[0].toFixed(12)},${v[1].toFixed(12)},${v[2].toFixed(12)}`
+
+  // Always include base atom (optionally wrapped)
+  const base_coords = wrap(atom.coords as Vec3)
+  seen.add(key(base_coords))
+  equivalent_atoms.push({ ...atom, coords: base_coords })
 
   for (const operation of symmetry_ops) {
     const operation_match = operation.match(/['"]([^'"]+)['"]/)
-    if (!operation_match) continue
-
-    const parts = operation_match[1].split(`,`).map((part) => part.trim())
+    const expr_str = operation_match ? operation_match[1] : operation.trim()
+    const parts = expr_str.split(`,`).map((part) => part.trim())
     if (parts.length !== 3) continue
 
-    let new_coords: Vec3 = [0, 0, 0]
+    const new_coords: Vec3 = [0, 0, 0]
 
     for (let dim = 0; dim < 3; dim++) {
       const part = parts[dim]
+      let expr = part.replace(/\s+/g, ``)
+
       let coord = 0
       let translation = 0
 
-      // Parse expression (handles x, -x, y+1/2, -z+0.5, etc.)
-      let expr = part.replace(/\s+/g, ``)
+      // Support both var+number and number+var forms, with optional sign on var
+      const var_match = expr.match(/([+-]?)(x|y|z)/)
+      if (var_match) {
+        const sign_char = var_match[1]
+        const var_char = var_match[2]
+        const var_index = var_char === `x` ? 0 : var_char === `y` ? 1 : 2
+        const var_sign = sign_char === `-` ? -1 : 1
+        coord = var_sign * atom.coords[var_index]
+        // Remove the variable term (including its sign) to leave pure translation
+        expr = expr.replace(var_match[0], ``)
+      }
 
-      // Extract translation part if present
-      const trans_match = expr.match(/([+-])([\d./]+)$/)
-      if (trans_match) {
-        const sign = trans_match[1] === `+` ? 1 : -1
-        const trans_str = trans_match[2]
-        if (trans_str.includes(`/`)) {
-          const [num, den] = trans_str.split(`/`)
+      if (expr.length > 0) {
+        // Remaining is numeric translation, possibly with leading sign
+        let sign = 1
+        let number_str = expr
+        if (expr[0] === `+` || expr[0] === `-`) {
+          sign = expr[0] === `-` ? -1 : 1
+          number_str = expr.slice(1)
+        }
+        if (number_str.includes(`/`)) {
+          const [num, den] = number_str.split(`/`)
           const numerator = parseFloat(num)
           const denominator = parseFloat(den)
           if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
             translation = sign * (numerator / denominator)
           }
         } else {
-          const val = parseFloat(trans_str)
+          const val = parseFloat(number_str)
           if (!isNaN(val)) translation = sign * val
         }
-        expr = expr.substring(0, expr.length - trans_match[0].length)
       }
-
-      // Parse coordinate part
-      if (expr === `x`) coord = atom.coords[0]
-      else if (expr === `y`) coord = atom.coords[1]
-      else if (expr === `z`) coord = atom.coords[2]
-      else if (expr === `-x`) coord = -atom.coords[0]
-      else if (expr === `-y`) coord = -atom.coords[1]
-      else if (expr === `-z`) coord = -atom.coords[2]
 
       new_coords[dim] = coord + translation
     }
 
-    // Skip true identity operations (no change in coordinates)
-    const is_identity = Math.abs(new_coords[0] - atom.coords[0]) < 1e-10 &&
-      Math.abs(new_coords[1] - atom.coords[1]) < 1e-10 &&
-      Math.abs(new_coords[2] - atom.coords[2]) < 1e-10
-    if (is_identity) continue
-
-    // Wrap coordinates if requested
-    if (wrap_frac) {
-      new_coords = new_coords.map((coord) => coord - Math.floor(coord)) as Vec3
-    }
+    // Wrap and deduplicate transformed coordinates
+    const wrapped = wrap(new_coords)
+    const k = key(wrapped)
+    if (seen.has(k)) continue
+    seen.add(k)
 
     equivalent_atoms.push({
       ...atom,
-      coords: new_coords,
+      coords: wrapped,
       id: `${atom.id}_${equivalent_atoms.length}`,
     })
   }
@@ -849,23 +859,107 @@ export function parse_cif(
     // Apply symmetry operations to generate all equivalent positions
     const all_sites: Site[] = []
 
-    for (const atom of atoms) {
-      // Generate all equivalent positions for this atom using symmetry operations
-      const equivalent_atoms = apply_symmetry_ops(
-        atom,
-        symmetry_ops,
-        wrap_frac,
+    // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
+    const normalized_ops = symmetry_ops
+      .map((op) => op.match(/['\"]([^'\"]+)['\"]/)?.[1] || op.trim())
+      .map((op) => op.replace(/\s+/g, ``))
+
+    // Rely on symmetry operations list for all centering/translations to avoid double-counting
+    const centering_vectors: Vec3[] = [[0, 0, 0]]
+
+    // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
+    const atom_type_counts: Record<string, number> = (() => {
+      const map: Record<string, number> = {}
+      const text_lines = text.split(`\n`)
+      for (let li = 0; li < text_lines.length; li++) {
+        if (text_lines[li].trim() !== `loop_`) {
+          continue
+        }
+        let lj = li + 1
+        const hdrs: string[] = []
+        while (lj < text_lines.length && text_lines[lj].trim().startsWith(`_`)) {
+          hdrs.push(text_lines[lj].trim().toLowerCase())
+          lj++
+        }
+        const sym_idx = hdrs.findIndex((h) => h.endsWith(`_atom_type_symbol`))
+        const num_idx = hdrs.findIndex((h) => h.endsWith(`_atom_type_number_in_cell`))
+        if (sym_idx !== -1 && num_idx !== -1) {
+          while (lj < text_lines.length) {
+            const line = text_lines[lj].trim()
+            if (!line || line === `loop_` || line.startsWith(`data_`)) break
+            if (line.startsWith(`#`)) {
+              lj++
+              continue
+            }
+            const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).map((t) =>
+              t.replace(/['"]/g, ``)
+            )
+            if (toks.length > Math.max(sym_idx, num_idx)) {
+              const sym = toks[sym_idx]
+              const num = parseInt(toks[num_idx])
+              if (sym && !Number.isNaN(num)) map[sym] = num
+            }
+            lj++
+          }
+          break
+        }
+      }
+      return map
+    })()
+
+    const observed_counts: Record<string, number> = {}
+    for (const a of atoms) {
+      observed_counts[a.element] = (observed_counts[a.element] || 0) + 1
+    }
+
+    const has_expected_counts = Object.keys(atom_type_counts).length > 0
+    const already_enumerated = has_expected_counts &&
+      Object.entries(atom_type_counts).every(([el, exp]) =>
+        (observed_counts[el] || 0) >= exp
       )
 
-      for (const equiv_atom of equivalent_atoms) {
-        const element = validate_element_symbol(equiv_atom.element, all_sites.length)
+    const ops_to_use = already_enumerated ? [] : normalized_ops
 
-        if (equiv_atom.coords_type === `fract`) {
+    // Global deduplication of final sites (per element + coordinates)
+    const seen_site_keys = new Set<string>()
+    const site_key = (element: string, abc: Vec3): string =>
+      `${element}|${abc[0].toFixed(12)},${abc[1].toFixed(12)},${abc[2].toFixed(12)}`
+
+    for (const atom of atoms) {
+      const element = validate_element_symbol(atom.element, all_sites.length)
+
+      // Convert to fractional coordinates if needed
+      let fract_atom: CifAtom
+      if (atom.coords_type === `fract`) {
+        fract_atom = {
+          ...atom,
+          coords: wrap_vec3(atom.coords as Vec3),
+          coords_type: `fract`,
+        }
+      } else {
+        const xyz_base: Vec3 = [atom.coords[0], atom.coords[1], atom.coords[2]]
+        let atom_abc: Vec3
+        if (lattice_invT) {
+          const raw = math.mat3x3_vec3_multiply(lattice_invT, xyz_base)
+          atom_abc = wrap_vec3(raw as Vec3)
+        } else atom_abc = wrap_vec3([xyz_base[0] / a, xyz_base[1] / b, xyz_base[2] / c])
+        fract_atom = { ...atom, coords: atom_abc, coords_type: `fract` }
+      }
+
+      // First apply symmetry operations in fractional space
+      const equiv_atoms = apply_symmetry_ops(fract_atom, ops_to_use, wrap_frac)
+
+      // Then apply lattice centering shifts to each equivalent position
+      for (const equiv_atom of equiv_atoms) {
+        for (const cv of centering_vectors) {
           const abc = wrap_vec3([
-            equiv_atom.coords[0],
-            equiv_atom.coords[1],
-            equiv_atom.coords[2],
-          ])
+            equiv_atom.coords[0] + cv[0],
+            equiv_atom.coords[1] + cv[1],
+            equiv_atom.coords[2] + cv[2],
+          ] as Vec3)
+          const key = site_key(element, abc)
+          if (seen_site_keys.has(key)) continue
+          seen_site_keys.add(key)
           const xyz = math.mat3x3_vec3_multiply(lattice_T, abc)
           all_sites.push({
             species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
@@ -874,36 +968,11 @@ export function parse_cif(
             label: equiv_atom.id,
             properties: {},
           })
-        } else {
-          // Cartesian provided → convert to fractional via inverse(lattice^T)
-          const xyz: Vec3 = [
-            equiv_atom.coords[0],
-            equiv_atom.coords[1],
-            equiv_atom.coords[2],
-          ]
-          let abc: Vec3
-          if (lattice_invT) {
-            const raw = math.mat3x3_vec3_multiply(lattice_invT, xyz)
-            abc = wrap_vec3(raw as Vec3)
-          } else {
-            const raw: Vec3 = [xyz[0] / a, xyz[1] / b, xyz[2] / c]
-            abc = wrap_vec3(raw)
-          }
-          // Keep atoms inside primary unit cell when wrapping by recomputing xyz
-          const xyz_wrapped = wrap_frac ? math.mat3x3_vec3_multiply(lattice_T, abc) : xyz
-          all_sites.push({
-            species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
-            abc,
-            xyz: xyz_wrapped,
-            label: equiv_atom.id,
-            properties: {},
-          })
         }
       }
     }
 
     const sites = all_sites
-
     return { sites, lattice: { matrix: lattice_matrix, ...lattice_params } }
   } catch (error) {
     console.error(`Error parsing CIF file:`, error)

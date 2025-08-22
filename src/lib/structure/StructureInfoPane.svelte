@@ -2,6 +2,8 @@
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon } from '$lib'
   import { electro_neg_formula, get_density } from '$lib/structure'
+  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
+  import type { MoyoDataset } from 'moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
 
@@ -31,6 +33,23 @@
 
   let copied_items = new SvelteSet<string>()
   let sites_expanded = $state(false)
+  let sym_data = $state<MoyoDataset | null>(null)
+
+  // Reset symmetry data when structure changes
+  $effect(() => {
+    if (structure) sym_data = null
+  })
+
+  // Load symmetry data when pane is opened
+  $effect(() => {
+    if (pane_open && `lattice` in structure && !sym_data) {
+      ensure_moyo_wasm_ready().then(() => {
+        analyze_structure_symmetry(structure, 1e-4, `Standard`).then((data) =>
+          sym_data = data
+        ).catch(console.error)
+      })
+    }
+  })
 
   async function copy_to_clipboard(label: string, value: string, key: string) {
     try {
@@ -112,6 +131,48 @@
               format_num(gamma, `.2~f`)
             }°`,
             key: `cell-angles`,
+          },
+        ] as SectionItem[],
+      })
+    }
+
+    // Symmetry Info
+    if (`lattice` in structure && sym_data) {
+      const { operations } = sym_data
+      const translations = operations.filter((op) =>
+        op.rotation.every((r) => r === 0)
+      ).length
+      const rotations = operations.filter((op) =>
+        op.translation.every((t) => t === 0)
+      ).length
+      const roto_translations = operations.filter((op) =>
+        op.rotation.some((r) => r !== 0) &&
+        op.translation.some((t) => t !== 0)
+      ).length
+
+      sections.push({
+        title: `Symmetry`,
+        items: [
+          {
+            label: `Space Group`,
+            value: sym_data.number,
+            key: `symmetry-space-group`,
+          },
+          {
+            label: `Hall Number`,
+            value: sym_data.hall_number,
+            key: `symmetry-hall-number`,
+          },
+          {
+            label: `Pearson Symbol`,
+            value: sym_data.pearson_symbol,
+            key: `symmetry-pearson-symbol`,
+          },
+          {
+            label: `Symmetry Ops`,
+            value:
+              `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
+            key: `symmetry-operations-total`,
           },
         ] as SectionItem[],
       })

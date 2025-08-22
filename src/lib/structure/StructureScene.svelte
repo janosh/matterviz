@@ -65,6 +65,7 @@
     // measurement props
     measure_mode?: `distance` | `angle`
     selected_sites?: number[]
+    measured_sites?: number[]
     selection_highlight_color?: string
   }
   let {
@@ -111,6 +112,7 @@
     height = 0,
     measure_mode = `distance`,
     selected_sites = $bindable([]),
+    measured_sites = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
   }: Props = $props()
 
@@ -123,8 +125,8 @@
 
     // Check if adding this site would exceed the soft cap
     if (
-      !selected_sites.includes(site_index) &&
-      selected_sites.length >= MAX_SELECTED_SITES
+      !measured_sites.includes(site_index) &&
+      measured_sites.length >= MAX_SELECTED_SITES
     ) {
       console.warn(
         `Selection size limit reached (${MAX_SELECTED_SITES}). Deselect some sites first.`,
@@ -132,20 +134,20 @@
       return
     }
 
-    selected_sites = selected_sites.includes(site_index)
-      ? selected_sites.filter((idx) => idx !== site_index)
-      : [...selected_sites, site_index]
+    measured_sites = measured_sites.includes(site_index)
+      ? measured_sites.filter((idx) => idx !== site_index)
+      : [...measured_sites, site_index]
   }
 
-  // Keep site selection valid across structure changes (new structure might have fewer sites)
+  // Keep measured site selection valid across structure changes (new structure might have fewer sites)
   $effect(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
-      selected_sites = []
+      measured_sites = []
       return
     }
     untrack(() => {
-      selected_sites = selected_sites.filter((idx) => idx >= 0 && idx < count)
+      measured_sites = measured_sites.filter((idx) => idx >= 0 && idx < count)
     })
   })
 
@@ -523,7 +525,7 @@
     {
       kind: `hover`,
       site: hovered_site,
-      opacity: 0.18,
+      opacity: 0.28,
       color: `white`,
       site_idx: hovered_idx,
     },
@@ -531,7 +533,7 @@
       kind: `selected`,
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
-      opacity: 0.35,
+      opacity: 0.6,
       color: selection_highlight_color,
     }))),
   ] as
@@ -550,7 +552,7 @@
       sum + spec.occu * (atomic_radii[spec.element] ?? 1), 0))}
     <T.Mesh
       position={xyz}
-      scale={1.08 * highlight_radius}
+      scale={1.2 * highlight_radius}
       onclick={(event: MouseEvent) => {
         if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
           toggle_selection(entry.site_idx, event)
@@ -563,15 +565,15 @@
         transparent
         {opacity}
         emissive={color}
-        emissiveIntensity={0.15}
+        emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
       />
     </T.Mesh>
   {/if}
 {/each}
 
-<!-- selection order labels (1, 2, 3, ...) -->
-{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
-  {#each selected_sites as site_index, loop_idx (site_index)}
+<!-- selection order labels (1, 2, 3, ...) for measured sites -->
+{#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+  {#each measured_sites as site_index, loop_idx (site_index)}
     {@const site = structure.sites[site_index]}
     {#if site}
       {@const pos = math.add(site.xyz, site_label_offset)}
@@ -616,11 +618,11 @@
   <Lattice matrix={lattice.matrix} {...lattice_props} />
 {/if}
 
-<!-- Measurement overlays -->
-{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
+<!-- Measurement overlays for measured sites -->
+{#if structure?.sites && (measured_sites?.length ?? 0) > 0}
   {#if measure_mode === `distance`}
-    {#each selected_sites as idx_i, loop_idx (idx_i)}
-      {#each selected_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
+    {#each measured_sites as idx_i, loop_idx (idx_i)}
+      {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
         {@const site_i = structure.sites[idx_i]}
         {@const site_j = structure.sites[idx_j]}
         {@const pos_i = site_i.xyz}
@@ -646,15 +648,15 @@
         </Extras.HTML>
       {/each}
     {/each}
-  {:else if measure_mode === `angle` && selected_sites.length >= 3}
-    {#each selected_sites as idx_center (idx_center)}
+  {:else if measure_mode === `angle` && measured_sites.length >= 3}
+    {#each measured_sites as idx_center (idx_center)}
       {@const center = structure.sites[idx_center]}
-      {#each selected_sites.filter((x) => x !== idx_center) as
+      {#each measured_sites.filter((x) => x !== idx_center) as
         idx_a,
         loop_idx
         (idx_center + `-` + idx_a)
       }
-        {#each selected_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
+        {#each measured_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
           idx_b
           (idx_center + `-` + idx_a + `-` + idx_b)
         }

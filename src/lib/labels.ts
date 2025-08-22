@@ -56,6 +56,38 @@ export const format_num = (num: number, fmt?: string | number) => {
   return format(fmt)(num)
 }
 
+// Replace common fractional values with unicode glyphs (e.g., 1/2 → ½)
+export function format_fractional(value: number): string {
+  if (!Number.isFinite(value)) return String(value)
+  const x = ((value % 1) + 1) % 1 // wrap into [0,1)
+  const eps = 1e-3
+  const specials: Array<[number, string]> = [
+    [0, `0`],
+    [1 / 12, `¹⁄₁₂`],
+    [1 / 8, `⅛`],
+    [1 / 6, `⅙`],
+    [1 / 5, `⅕`],
+    [1 / 4, `¼`],
+    [1 / 3, `⅓`],
+    [2 / 5, `⅖`],
+    [1 / 2, `½`],
+    [3 / 5, `⅗`],
+    [2 / 3, `⅔`],
+    [3 / 4, `¾`],
+    [4 / 5, `⁴⁄₅`],
+    [5 / 6, `⁵⁄₆`],
+    [7 / 8, `⁷⁄₈`],
+    [11 / 12, `¹¹⁄₁₂`],
+  ]
+  for (const [target, glyph] of specials) {
+    if (Math.abs(x - target) < eps) return glyph
+  }
+  for (const [target, glyph] of specials) {
+    if (target !== 0 && Math.abs((1 - x) - target) < eps) return glyph
+  }
+  return format_num(value, `.4~`)
+}
+
 export function parse_si_float<T extends string | number | null | undefined>(
   value: T,
 ): T | number | string {
