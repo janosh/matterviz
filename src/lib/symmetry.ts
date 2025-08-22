@@ -1,6 +1,6 @@
 import { symbol_to_atomic_number } from '$lib/composition/parse'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
-import type { Mat9, MoyoCell, MoyoDataset, Vec3 } from 'moyo-wasm'
+import type { MoyoCell, MoyoDataset } from 'moyo-wasm'
 import init, { analyze_cell } from 'moyo-wasm'
 import wasm_url from 'moyo-wasm/moyo_wasm_bg.wasm?url'
 
@@ -17,8 +17,18 @@ export function to_cell_json(structure: PymatgenStructure): string {
   // Internal B = transpose(row-basis RB). column-major(B) == row-major(RB).
   // So supply row-major of the pymatgen lattice.matrix (RB).
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = structure.lattice.matrix
-  const basis: Mat9 = [m00, m01, m02, m10, m11, m12, m20, m21, m22]
-  const positions = structure.sites.map((s) => s.abc as Vec3)
+  const basis: MoyoCell[`lattice`][`basis`] = [
+    m00,
+    m01,
+    m02,
+    m10,
+    m11,
+    m12,
+    m20,
+    m21,
+    m22,
+  ]
+  const positions = structure.sites.map((s) => s.abc)
   const numbers = structure.sites.map(
     (s) => symbol_to_atomic_number[s.species[0]?.element] ?? 0,
   )

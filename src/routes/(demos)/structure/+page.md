@@ -30,7 +30,7 @@
     page.url.searchParams.set(`file`, current_filename)
     goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
       replaceState: true,
-      keepfocus: true,
+      keepFocus: true,
       noScroll: true,
     })
   }}

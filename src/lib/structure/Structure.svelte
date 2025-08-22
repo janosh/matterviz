@@ -485,7 +485,7 @@
 
         <!-- Measurement mode dropdown (match Trajectory display mode UI) -->
         <div
-          class="view-mode-dropdown-wrapper"
+          class="measure-mode-dropdown"
           {@attach click_outside({ callback: () => measure_menu_open = false })}
         >
           <button
@@ -494,7 +494,7 @@
             class="view-mode-button"
             class:active={measure_menu_open}
             aria-expanded={measure_menu_open}
-            style="transform: scale(1.3)"
+            style="transform: scale(1.2)"
           >
             {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
               <span class="selection-limit-text">
@@ -503,6 +503,7 @@
             {:else}
               <Icon
                 icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
+                style="transform: scale({{ distance: 0.9, angle: 1.1 }[measure_mode]})"
               />
             {/if}
             <Icon
@@ -709,16 +710,15 @@
     text-overflow: ellipsis;
     flex: 1;
   }
-  .view-mode-dropdown-wrapper {
+  .measure-mode-dropdown {
     display: flex;
     position: relative;
+    gap: 8pt;
+    margin-inline: 3pt;
   }
-  .view-mode-dropdown-wrapper > button {
+  .measure-mode-dropdown > button {
     background: transparent;
-  }
-  .view-mode-dropdown-wrapper button[aria-label='Reset selection'] {
-    width: 22px;
-    height: 22px;
+    padding: 0;
   }
   .selection-limit-text {
     font-weight: bold;

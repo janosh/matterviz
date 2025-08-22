@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
+  import { goto } from '$app/navigation'
+  import { page } from '$app/state'
   import { FilePicker, format_fractional, type Vec3 } from '$lib'
   import { atomic_number_to_symbol } from '$lib/composition/parse'
   import type { AnyStructure } from '$lib/structure'
@@ -12,10 +15,16 @@
 
   let wasm_ready = $state(false)
   let last_error = $state<string | null>(null)
-  let current_filename = $state<string | undefined>(undefined)
   let sym_data = $state<MoyoDataset | null>(null)
   let symprec = $state(1e-4)
   let setting = $state<`Standard` | `Spglib`>(`Standard`)
+  let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
+
+  $effect(() => {
+    if (!browser) return
+    const file = page.url.searchParams.get(`file`)
+    if (file && file !== current_filename) current_filename = file
+  })
 
   onMount(async () => {
     try {
@@ -26,10 +35,9 @@
     }
   })
 
-  async function analyze_structure(struct_or_mol: AnyStructure, filename?: string) {
+  async function analyze_structure(struct_or_mol: AnyStructure) {
     last_error = null
     sym_data = null
-    current_filename = filename
     if (!(`lattice` in struct_or_mol)) {
       last_error = `Not a periodic structure (no lattice).`
       return
@@ -57,7 +65,7 @@
     const to_unit = (v: number) => v - Math.floor(v)
     const near_zero = (v: number) => Math.min(v, 1 - v)
     const near_half = (v: number) => Math.abs(v - 0.5)
-    const [ax, ay, az] = vec.map?.(to_unit) ?? []
+    const [ax, ay, az] = vec?.map(to_unit) ?? []
     return (
       near_zero(ax) + near_zero(ay) + near_zero(az) +
       0.5 * (near_half(ax) + near_half(ay) + near_half(az))
@@ -73,31 +81,52 @@
     const { positions, numbers } = info.std_cell
     const { wyckoffs } = info
 
-    // multiplicity per letter and best representative per letter|elem
-    const letter_counts: Record<string, number> = {}
+    // Count multiplicity per letter-element combination
+    const letter_elem_counts: Record<string, number> = {}
     const best_by_key = new SvelteMap<
       string,
       { letter: string; elem: string; idx: number }
     >()
 
+    // Process all sites, including those without Wyckoff letters
     wyckoffs.forEach((full, idx) => {
       const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
       const elem = atomic_number_to_symbol[numbers[idx]] ?? `?`
-      letter_counts[letter] = (letter_counts[letter] ?? 0) + 1
 
-      const key = `${letter}|${elem}`
-      const prev = best_by_key.get(key)
-      const better = !prev ||
-        simplicity_score(positions[idx] as Vec3) <
-          simplicity_score(positions[prev.idx] as Vec3)
-      if (better) best_by_key.set(key, { letter, elem, idx })
+      if (letter) {
+        // Symmetric site with Wyckoff letter
+        const key = `${letter}|${elem}`
+        letter_elem_counts[key] = (letter_elem_counts[key] ?? 0) + 1
+
+        const prev = best_by_key.get(key)
+        const better = !prev ||
+          simplicity_score(positions[idx] as Vec3) <
+            simplicity_score(positions[prev.idx] as Vec3)
+        if (better) best_by_key.set(key, { letter, elem, idx })
+      } else {
+        // Non-symmetric site (no Wyckoff letter) - add directly
+        best_by_key.set(`nosym|${elem}|${idx}`, { letter: ``, elem, idx })
+      }
     })
 
-    const rows = Array.from(best_by_key.values()).map(({ letter, elem, idx }) => ({
-      wyckoff: `${letter_counts[letter]}${letter}`,
-      elem,
-      abc: positions[idx] as Vec3,
-    }))
+    const rows = Array.from(best_by_key.values()).map(({ letter, elem, idx }) => {
+      if (letter) {
+        // For symmetric sites, show multiplicity for this specific letter-element combination
+        const key = `${letter}|${elem}`
+        return {
+          wyckoff: `${letter_elem_counts[key]}${letter}`,
+          elem,
+          abc: positions[idx] as Vec3,
+        }
+      } else {
+        // For non-symmetric sites, show multiplicity 1
+        return {
+          wyckoff: `1`,
+          elem,
+          abc: positions[idx] as Vec3,
+        }
+      }
+    })
 
     rows.sort((w1, w2) => {
       const [w1_mult, w2_mult] = [parseInt(w1.wyckoff), parseInt(w2.wyckoff)]
@@ -140,35 +169,38 @@
     {:else if sym_data}
       <div class="symmetry-stats">
         <div>Space group <strong>{sym_data.number}</strong></div>
+        <div>Hermann-Mauguin <strong>{sym_data.hm_symbol ?? `N/A`}</strong></div>
         <div>Hall number <strong>{sym_data.hall_number}</strong></div>
         <div>Pearson <strong>{sym_data.pearson_symbol}</strong></div>
+        <div>
+          Symmetry operations <strong>{sym_data.operations.length}</strong>
+          <ul>
+            {#each [
+              [`translations`, (op: MoyoOperation) =>
+                op.rotation.every((r) => r === 0)],
+              [`rotations`, (op: MoyoOperation) =>
+                op.translation.every((t) =>
+                  t === 0
+                )],
+              [`roto-translations`, (op: MoyoOperation) =>
+                op.rotation.some((r) =>
+                  r !== 0
+                ) && op.translation.some((t) =>
+                  t !== 0
+                )],
+            ] as const as
+              [op_type, filter_func]
+              (op_type)
+            }
+              <li>
+                {op_type} <strong>{
+                  sym_data.operations.filter(filter_func).length
+                }</strong>
+              </li>
+            {/each}
+          </ul>
+        </div>
         <div>Distinct orbits <strong>{wyckoff_rows.length}</strong></div>
-      </div>
-      <div>
-        Symmetry operations <strong>{sym_data.operations.length}</strong>
-        <ul>
-          {#each [
-            [`translations`, (op: MoyoOperation) =>
-              op.rotation.every((r) => r === 0)],
-            [`rotations`, (op: MoyoOperation) =>
-              op.translation.every((t) =>
-                t === 0
-              )],
-            [`roto-translations`, (op: MoyoOperation) =>
-              op.rotation.some((r) =>
-                r !== 0
-              ) && op.translation.some((t) =>
-                t !== 0
-              )],
-          ] as const as
-            [op_type, filter_func]
-            (op_type)
-          }
-            <li>
-              {op_type} <strong>{sym_data.operations.filter(filter_func).length}</strong>
-            </li>
-          {/each}
-        </ul>
       </div>
       <table class="wyckoff-table" style="margin-top: 1em">
         <thead>
@@ -192,9 +224,16 @@
   </div>
 
   <Structure
-    data_url="/structures/mp-756175.json"
-    on_file_load={({ structure, filename }) => {
-      if (structure) analyze_structure(structure, filename)
+    data_url="/structures/{current_filename}"
+    on_file_load={({ structure, filename = `` }) => {
+      current_filename = filename
+      page.url.searchParams.set(`file`, current_filename)
+      goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
+        replaceState: true,
+        keepFocus: true,
+        noScroll: true,
+      })
+      if (structure) analyze_structure(structure)
     }}
     style="height: 100%; min-height: 500px"
   >
