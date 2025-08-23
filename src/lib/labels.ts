@@ -80,7 +80,8 @@ export function format_fractional(value: number): string {
     [11 / 12, `¹¹⁄₁₂`],
   ]
   for (const [target, glyph] of specials) {
-    if (Math.abs(x - target) < eps) return glyph
+    if (target === 0) { if (Math.abs(x - target) <= eps) return glyph }
+    else if (Math.abs(x - target) < eps) return glyph
   }
   for (const [target, glyph] of specials) {
     if (target !== 0 && Math.abs((1 - x) - target) < eps) return glyph

@@ -929,47 +929,37 @@ H1   H   0.500  0.500  0.500`
     ]
     const expected_elements = [`Ti`, `Ti`, `O`, `O`, `O`, `O`]
 
-    function check_tio2_structure(result: ReturnType<typeof parse_cif>) {
-      expect(result).toBeTruthy()
-      expect(result?.sites).toHaveLength(6)
-      expect(result?.lattice?.a).toBeCloseTo(4.59983732, 8)
-      expect(result?.lattice?.b).toBeCloseTo(4.59983732, 8)
-      expect(result?.lattice?.c).toBeCloseTo(2.95921356, 8)
-      expect(result?.lattice?.alpha).toBeCloseTo(90.0, 8)
-      expect(result?.lattice?.beta).toBeCloseTo(90.0, 8)
-      expect(result?.lattice?.gamma).toBeCloseTo(90.0, 8)
-    }
+    test(`should parse TiO2 CIF structure, coordinates, and handle wrap_frac options`, () => {
+      // Test both wrap_frac=true and wrap_frac=false
+      ;[true, false].forEach((wrap_frac) => {
+        const result = parse_cif(tio2_cif, wrap_frac)
+        expect(result).toBeTruthy()
+        if (!result) {
+          throw new Error(`Failed to parse TiO2 CIF with wrap_frac=${wrap_frac}`)
+        }
 
-    test(`should parse TiO2 CIF with oxidation states correctly`, () => {
-      const result = parse_cif(tio2_cif)
-      check_tio2_structure(result)
-    })
+        // Basic structure validation
+        expect(result.sites).toHaveLength(6)
+        expect(result.lattice?.a).toBeCloseTo(4.59983732, 8)
+        expect(result.lattice?.b).toBeCloseTo(4.59983732, 8)
+        expect(result.lattice?.c).toBeCloseTo(2.95921356, 8)
+        expect(result.lattice?.alpha).toBeCloseTo(90.0, 8)
+        expect(result.lattice?.beta).toBeCloseTo(90.0, 8)
+        expect(result.lattice?.gamma).toBeCloseTo(90.0, 8)
 
-    test(`should extract correct element symbols and labels`, () => {
-      const result = parse_cif(tio2_cif)
-      expect(result?.sites.map((site) => site.label)).toEqual(expected_labels)
-      expect(result?.sites.map((site) => site.species[0].element)).toEqual(
-        expected_elements,
-      )
-    })
+        // Element symbols and labels validation
+        expect(result.sites.map((site) => site.label)).toEqual(expected_labels)
+        expect(result.sites.map((site) => site.species[0].element)).toEqual(
+          expected_elements,
+        )
 
-    test(`should parse fractional coordinates correctly`, () => {
-      const result = parse_cif(tio2_cif)
-      result?.sites.forEach((site, idx) => {
-        expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
-        expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
-        expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+        // Fractional coordinates validation
+        result.sites.forEach((site, idx) => {
+          expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
+          expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
+          expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+        })
       })
-    })
-
-    test(`should handle wrap_frac=true`, () => {
-      const result = parse_cif(tio2_cif, true)
-      check_tio2_structure(result)
-    })
-
-    test(`should handle wrap_frac=false`, () => {
-      const result = parse_cif(tio2_cif, false)
-      check_tio2_structure(result)
     })
 
     test(`should calculate correct Cartesian coordinates`, () => {
@@ -990,6 +980,52 @@ H1   H   0.500  0.500  0.500`
         expect(site.species).toHaveLength(1)
         expect(site.species[0].oxidation_state).toBe(0) // Default oxidation state
       })
+    })
+
+    test(`should normalize decorated _atom_type_symbol in _atom_type_number_in_cell loop`, () => {
+      const cif_with_decorated_symbols = `data_test_decorated_symbols
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_type_symbol
+_atom_type_oxidation_number
+_atom_type_number_in_cell
+_atom_type_scat_dispersion_real
+_atom_type_scat_dispersion_imag
+Sn2+ 2 2 0.0 0.0
+Fe3+ 3 1 0.0 0.0
+O2- -2 3 0.0 0.0
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Sn1 Sn2+ 0.0 0.0 0.0
+Sn2 Sn2+ 0.5 0.5 0.5
+Fe1 Fe3+ 0.25 0.25 0.25
+O1 O2- 0.75 0.75 0.25
+O2 O2- 0.25 0.75 0.75
+O3 O2- 0.75 0.25 0.75`
+
+      const result = parse_cif(cif_with_decorated_symbols)
+      expect(result).toBeTruthy()
+      if (!result) throw new Error(`Failed to parse CIF with decorated symbols`)
+      expect(result.sites).toHaveLength(6) // 2 Sn + 1 Fe + 3 O = 6 total sites
+
+      // Verify that decorated symbols were normalized for counting
+      const element_counts: Record<string, number> = {}
+      for (const site of result.sites) {
+        const element = site.species[0].element
+        element_counts[element] = (element_counts[element] || 0) + 1
+      }
+
+      // Should match the _atom_type_number_in_cell counts (normalized)
+      expect(element_counts).toEqual({ Sn: 2, Fe: 1, O: 3 })
     })
   })
 
@@ -1224,22 +1260,84 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
   })
 
   test(`handles CIF with question mark symbols gracefully`, () => {
-    const question_mark_cif = `data_dummy
-_cell_length_a  5.000
-_cell_length_b  5.000
-_cell_length_c  5.000
-_cell_angle_alpha  90
-_cell_angle_beta   90
-_cell_angle_gamma  90
+    const question_mark_cif = `data_question_mark
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_space_group_name_H-M_alt 'P 1'
+_space_group_IT_number 1
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+
 loop_
 _atom_site_label
 _atom_site_type_symbol
 _atom_site_fract_x
 _atom_site_fract_y
 _atom_site_fract_z
-_atom_site_occupancy
-?   ?   0.000  0.000  0.000  1.000`
-    expect(parse_cif(question_mark_cif)).toBeNull()
+? ? 0.000 0.000 0.000`
+
+    const result = parse_cif(question_mark_cif)
+    expect(result).toBeNull()
+  })
+
+  test(`handles symmetry operations with dangling operators correctly`, () => {
+    const dangling_operator_cif = `data_dangling_operator
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_space_group_name_H-M_alt 'P 1'
+_space_group_IT_number 1
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+   'x+1/2, y+1/2, z+1/2'
+   'x+1/2+, y+1/2, z+1/2'
+   'x+1/2, y+1/2+, z+1/2'
+   'x+1/2, y+1/2, z+1/2+'
+   'x+1/2-, y+1/2, z+1/2'
+   'x+1/2, y+1/2-, z+1/2'
+   'x+1/2, y+1/2, z+1/2-'
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Na Na 0.000 0.000 0.000`
+
+    const result = parse_cif(dangling_operator_cif)
+    // Should parse successfully without errors, treating dangling operators as 0
+    expect(result).toBeTruthy()
+
+    // The key test: should parse without errors and generate at least some sites
+    // Even if some operations with dangling operators are filtered out, the parsing should succeed
+    expect(result?.sites.length).toBeGreaterThan(0)
+
+    // Check that the original site is preserved
+    const original_site = result?.sites.find((site) =>
+      site.abc[0] === 0 && site.abc[1] === 0 && site.abc[2] === 0
+    )
+    expect(original_site).toBeTruthy()
+
+    // Check that at least one translated site is generated (the valid one)
+    const translated_sites = result?.sites.filter((site) =>
+      site.abc.some((coord) => coord === 0.5)
+    )
+    expect(translated_sites?.length).toBeGreaterThan(0)
+
+    // The important thing is that parsing succeeds without errors
+    // Some operations with dangling operators may be filtered out, but that's acceptable
   })
 })
 

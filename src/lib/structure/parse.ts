@@ -538,6 +538,13 @@ const apply_symmetry_ops = (
         coord = var_sign * atom.coords[var_index]
         // Remove the variable term (including its sign) to leave pure translation
         expr = expr.replace(var_match[0], ``)
+
+        // Normalize the remaining expression: trim whitespace and remove trailing operators
+        expr = expr.trim()
+        if (expr.endsWith(`+`) || expr.endsWith(`-`)) expr = expr.slice(0, -1)
+
+        // Treat empty expression as "0"
+        if (expr.length === 0) expr = `0`
       }
 
       if (expr.length > 0) {
@@ -895,7 +902,9 @@ export function parse_cif(
               t.replace(/['"]/g, ``)
             )
             if (toks.length > Math.max(sym_idx, num_idx)) {
-              const sym = toks[sym_idx]
+              // Normalize type symbol to bare element (e.g., 'Sn2+' -> 'Sn')
+              const match = toks[sym_idx]?.match(/^([A-Z][a-z]*)/)
+              const sym = match ? match[1] : toks[sym_idx]
               const num = parseInt(toks[num_idx])
               if (sym && !Number.isNaN(num)) map[sym] = num
             }

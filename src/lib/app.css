@@ -155,7 +155,7 @@ table.roomy :is(td, th) {
   padding: 5pt 9pt;
 }
 tbody tr:nth-child(odd) {
-  background: var(--surface-bg, black);
+  background: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);
 }
 
 :where(ul.selected > li button, button.remove-all) {

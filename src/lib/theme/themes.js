@@ -10,10 +10,10 @@ const colors = { // Base colors used across themes
   txt_black: `#f5f5f5`, // Off-white
 
   // Page backgrounds
-  bg_light: `#f1f3f5`, // Light gray
-  bg_dark: `#090019`, // Very dark blue
-  bg_white: `#ffffff`, // Pure white
-  bg_black: `#000000`, // Pure black
+  page_bg_light: `#f1f3f5`, // Light gray
+  page_bg_dark: `#18171c`, // Very dark blue
+  page_bg_white: `#ffffff`, // Pure white
+  page_bg_black: `#000000`, // Pure black
 
   // Borders
   border_light: `#d1d5db`, // Gray border
@@ -67,10 +67,10 @@ const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
 const themes = {
   // Core colors
   'page-bg': {
-    light: colors.bg_light,
-    dark: colors.bg_dark,
-    white: colors.bg_white,
-    black: colors.bg_black,
+    light: colors.page_bg_light,
+    dark: colors.page_bg_dark,
+    white: colors.page_bg_white,
+    black: colors.page_bg_black,
   },
   'text-color': {
     light: colors.txt_light,
@@ -295,10 +295,10 @@ const themes = {
     black: colors.txt_black,
   },
   'github-corner-color': {
-    light: colors.bg_light,
-    dark: colors.bg_dark,
-    white: colors.bg_white,
-    black: colors.bg_black,
+    light: colors.page_bg_light,
+    dark: colors.page_bg_dark,
+    white: colors.page_bg_white,
+    black: colors.page_bg_black,
   },
   'github-corner-bg': {
     light: colors.txt_light,

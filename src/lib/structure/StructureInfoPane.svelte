@@ -42,13 +42,17 @@
 
   // Load symmetry data when pane is opened
   $effect(() => {
-    if (pane_open && `lattice` in structure && !sym_data) {
-      ensure_moyo_wasm_ready().then(() => {
-        analyze_structure_symmetry(structure, 1e-4, `Standard`).then((data) =>
-          sym_data = data
-        ).catch(console.error)
+    if (!pane_open || !(`lattice` in structure) || sym_data) return
+
+    const current = structure
+    ensure_moyo_wasm_ready()
+      .then(() => analyze_structure_symmetry(current, 1e-4, `Standard`))
+      .then((data) => {
+        if (structure === current) sym_data = data
       })
-    }
+      .catch((err) => {
+        console.error(`Symmetry analysis failed`, err)
+      })
   })
 
   async function copy_to_clipboard(label: string, value: string, key: string) {

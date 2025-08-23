@@ -165,8 +165,6 @@ describe(`FilePicker`, () => {
       [`.clear-filter`, false, `clear filter button`],
       [`.legend-item`, true, `filter items`],
       [`.format-circle`, true, `format color circles`],
-      [`.drag-handle`, true, `drag handle styling`],
-      [`.drag-bar`, true, `drag bar styling`],
     ])(
       `renders %s (%s) correctly`,
       (selector: string, should_exist: boolean, _description: string) => {

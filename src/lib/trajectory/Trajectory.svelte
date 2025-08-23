@@ -1179,11 +1179,9 @@
 </div>
 
 <style>
-  :root {
+  .trajectory {
     --border-radius: 4px;
     --min-height: 500px;
-  }
-  .trajectory {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -1194,6 +1192,7 @@
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
+    container-type: size;
   }
   .trajectory :global(.plot) {
     background: var(--surface-bg);
@@ -1256,7 +1255,6 @@
     backdrop-filter: blur(4px);
     position: relative;
     border-radius: var(--border-radius) var(--border-radius) 0 0;
-    container-type: inline-size;
   }
   .trajectory-controls:focus-within {
     z-index: var(--traj-controls-z-index, 999999999);
@@ -1283,7 +1281,7 @@
     border: 1px solid rgba(99, 179, 237, 0.3);
     text-align: center;
     margin: 0 -5px 0 0;
-    padding: 2px 5px;
+    padding: 2px;
   }
   .slider-container {
     position: relative;
@@ -1310,7 +1308,7 @@
   .step-label {
     position: absolute;
     transform: translateX(-50%);
-    font-size: clamp(0.5rem, 1.2cqw, 0.65rem);
+    font-size: clamp(0.5em, 1.2cqw, 0.65em);
     color: var(--text-color-muted);
     white-space: nowrap;
     text-align: center;

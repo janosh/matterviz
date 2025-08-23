@@ -103,17 +103,14 @@ test(`symmetry section displays when symmetry data is available`, () => {
     props: { structure, pane_open: true },
   })
 
-  setTimeout(() => {
-    const content = document.body.textContent || ``
-    if (content.includes(`Symmetry`)) {
-      expect(content).toContain(`Space Group`)
-      expect(content).toContain(`Operations`)
-      expect(content).toContain(`Translations`)
-      expect(content).toContain(`Rotations`)
-      expect(content).toContain(`Roto-translations`)
-    }
-    document.body.innerHTML = ``
-  }, 100)
+  const content = document.body.textContent || ``
+  if (content.includes(`Symmetry`)) {
+    expect(content).toContain(`Space Group`)
+    expect(content).toContain(`Symmetry Ops`)
+    expect(content).toContain(`trans`)
+    expect(content).toContain(`rot`)
+    expect(content).toContain(`roto-trans`)
+  }
 })
 
 test(`symmetry section behavior for different structure types`, () => {
@@ -137,14 +134,12 @@ test(`symmetry section behavior for different structure types`, () => {
     props: { structure: periodic_structure, pane_open: true },
   })
 
-  setTimeout(() => {
-    const content = document.body.textContent || ``
-    if (content.includes(`Symmetry`)) {
-      expect(content).toMatch(/\d+/) // space group number
-      expect(content).toContain(`total`) // operations count
-    }
-    document.body.innerHTML = ``
-  }, 100)
+  const content = document.body.textContent || ``
+  if (content.includes(`Symmetry`)) {
+    expect(content).toMatch(/\d+/) // space group number
+    expect(content).toContain(`Symmetry Ops`) // operations count
+  }
+  document.body.innerHTML = ``
 
   // Test molecular structure (no symmetry)
   const molecular_structure = get_dummy_structure(`H`, 5, false)
@@ -156,7 +151,6 @@ test(`symmetry section behavior for different structure types`, () => {
   const molecular_content = document.body.textContent || ``
   expect(molecular_content).not.toContain(`Symmetry`)
   expect(molecular_content).not.toContain(`Space Group`)
-  document.body.innerHTML = ``
 })
 
 test(`symmetry section positioning and error handling`, () => {
@@ -179,24 +173,20 @@ test(`symmetry section positioning and error handling`, () => {
     props: { structure, pane_open: true },
   })
 
-  setTimeout(() => {
-    const headings = Array.from(document.querySelectorAll(`h4`))
-    const section_titles = headings.map((h) => h.textContent)
+  const headings = Array.from(document.querySelectorAll(`h4`))
+  const section_titles = headings.map((h) => h.textContent)
 
-    if (section_titles.includes(`Symmetry`)) {
-      // Check section order: Structure -> Cell -> Symmetry -> Sites
-      const cell_idx = section_titles.indexOf(`Cell`)
-      const symmetry_idx = section_titles.indexOf(`Symmetry`)
-      const sites_idx = section_titles.indexOf(`Sites`)
-      expect(cell_idx).toBeLessThan(symmetry_idx)
-      expect(symmetry_idx).toBeLessThan(sites_idx)
-    }
+  if (section_titles.includes(`Symmetry`)) {
+    // Check section order: Structure -> Cell -> Symmetry -> Sites
+    const cell_idx = section_titles.indexOf(`Cell`)
+    const symmetry_idx = section_titles.indexOf(`Symmetry`)
+    const sites_idx = section_titles.indexOf(`Sites`)
+    expect(cell_idx).toBeLessThan(symmetry_idx)
+    expect(symmetry_idx).toBeLessThan(sites_idx)
+  }
 
-    // Should not crash even if operations are missing
-    const content = document.body.textContent || ``
-    expect(content).toContain(`Structure`)
-    expect(content).toContain(`Cell`)
-
-    document.body.innerHTML = ``
-  }, 100)
+  // Should not crash even if operations are missing
+  const content = document.body.textContent || ``
+  expect(content).toContain(`Structure`)
+  expect(content).toContain(`Cell`)
 })

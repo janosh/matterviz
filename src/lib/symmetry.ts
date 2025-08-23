@@ -1,3 +1,4 @@
+import type { Vec3 } from '$lib'
 import { atomic_number_to_symbol, symbol_to_atomic_number } from '$lib/composition/parse'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import type { MoyoCell, MoyoDataset } from 'moyo-wasm'
@@ -42,7 +43,9 @@ export async function analyze_structure_symmetry(
   setting: `Standard` | `Spglib` = `Standard`,
 ): Promise<MoyoDataset> {
   await ensure_moyo_wasm_ready()
-  if (!(`lattice` in struct_or_mol)) throw new Error(`No lattice on structure`)
+  if (!(`lattice` in struct_or_mol)) {
+    throw new Error(`Symmetry analysis requires a periodic structure with a lattice`)
+  }
   const cell_json = to_cell_json(struct_or_mol)
   return analyze_cell(cell_json, symprec, setting)
 }
@@ -62,7 +65,7 @@ export function simplicity_score(vec: number[]): number {
 // Generate Wyckoff table rows from symmetry data
 export function generate_wyckoff_rows(
   sym_data: MoyoDataset | null,
-): { wyckoff: string; elem: string; abc: number[] }[] {
+): { wyckoff: string; elem: string; abc: Vec3 }[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell

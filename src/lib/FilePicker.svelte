@@ -51,11 +51,17 @@
     return base_name.split(`.`).pop() || `file`
   }
 
+  // Helper function to create normalized category identifier for filtering
+  const get_category_id = (file: FileInfo): string => {
+    if (!file.category) return ``
+    return `${file.category_icon ?? ``} ${file.category}`.trim()
+  }
+
   // Filter files based on active filters
   let filtered_files = $derived(
     files.filter((file) => {
       if (active_category_filter && file.category) {
-        return file.category === active_category_filter
+        return get_category_id(file) === active_category_filter
       }
       if (active_type_filter) {
         const normalized_type = get_base_file_type(file.name)
@@ -100,11 +106,9 @@
 
   // Get unique category types for category filters
   let uniq_categories = $derived(
-    [
-      ...new Set(
-        files.map((file) => `${file.category_icon ?? ``} ${file.category ?? ``}`),
-      ),
-    ].sort().filter((str) => str.trim()),
+    [...new Set(files.map((file) => get_category_id(file)))].filter((str) =>
+      str.trim()
+    ).sort(),
   )
 </script>
 
@@ -152,10 +156,7 @@
       <button
         {@attach tooltip({ content: `Clear all filters` })}
         class="clear-filter"
-        onclick={() => {
-          active_category_filter = null
-          active_type_filter = null
-        }}
+        onclick={() => [active_category_filter, active_type_filter] = [null, null]}
       >
         ✕
       </button>
@@ -263,18 +264,6 @@
     border-color: var(--accent-color, #007acc);
     background: rgba(0, 122, 204, 0.2);
     filter: brightness(1.1);
-  }
-  .drag-handle {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    opacity: 0.6;
-  }
-  .drag-bar {
-    width: 12px;
-    height: 2px;
-    background: currentColor;
-    border-radius: 1px;
   }
   .file-name {
     font-size: 0.7em;

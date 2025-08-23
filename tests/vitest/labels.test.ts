@@ -142,4 +142,18 @@ describe(`format_fractional function`, () => {
     expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`)
     expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`)
   })
+
+  test(`zero case uses <= for exact epsilon values while others use <`, () => {
+    const eps = 1e-3
+    // Zero case: should now work with exact epsilon (0.001)
+    expect(format_fractional(0.001)).toBe(`0`)
+    expect(format_fractional(0.001 - 1e-6)).toBe(`0`) // slightly less than eps
+    expect(format_fractional(0.001 + 1e-6)).toBe(`0.001001`) // slightly more than eps (not zero)
+
+    // Other targets: should still use < (preserving existing behavior)
+    expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`) // 0.499 works
+    expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`) // 0.501 doesn't work (preserved)
+    expect(format_fractional(0.25 + eps - 1e-6)).toBe(`¼`) // 0.249 works
+    expect(format_fractional(0.25 + eps + 1e-6)).toBe(`0.251`) // 0.251 doesn't work (preserved)
+  })
 })

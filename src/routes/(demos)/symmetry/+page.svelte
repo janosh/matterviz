@@ -11,7 +11,7 @@
     generate_wyckoff_rows,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
-  import type { MoyoDataset, MoyoOperation } from 'moyo-wasm'
+  import type { MoyoDataset } from 'moyo-wasm'
   import { onMount } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
 
@@ -65,6 +65,28 @@
   }
 
   const wyckoff_rows = $derived(generate_wyckoff_rows(sym_data))
+
+  // Helper functions for symmetry operation classification
+  const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
+
+  const operation_counts = $derived.by(() => { // Compute operation with single for loop
+    if (!sym_data?.operations) {
+      return { translations: 0, rotations: 0, roto_translations: 0 }
+    }
+
+    let [translations, rotations, roto_translations] = [0, 0, 0]
+
+    for (const op of sym_data.operations) {
+      const has_translation = !op.translation.every((x) => x === 0)
+      const is_identity = is_identity3(op.rotation)
+
+      if (is_identity && has_translation) translations++
+      else if (!has_translation) rotations++
+      else roto_translations++
+    }
+
+    return { translations, rotations, roto_translations }
+  })
 </script>
 
 <h1>Symmetry</h1>
@@ -134,29 +156,11 @@
         >
           Symmetry operations <strong>{sym_data.operations.length}</strong>
           <ul>
-            {#each [
-              [`translations`, (op: MoyoOperation) =>
-                op.rotation.every((r) => r === 0)],
-              [`rotations`, (op: MoyoOperation) =>
-                op.translation.every((t) =>
-                  t === 0
-                )],
-              [`roto-translations`, (op: MoyoOperation) =>
-                op.rotation.some((r) =>
-                  r !== 0
-                ) && op.translation.some((t) =>
-                  t !== 0
-                )],
-            ] as const as
-              [op_type, filter_func]
-              (op_type)
-            }
-              <li>
-                {op_type} <strong>{
-                  sym_data.operations.filter(filter_func).length
-                }</strong>
-              </li>
-            {/each}
+            <li>translations <strong>{operation_counts.translations}</strong></li>
+            <li>rotations <strong>{operation_counts.rotations}</strong></li>
+            <li>
+              roto-translations <strong>{operation_counts.roto_translations}</strong>
+            </li>
           </ul>
         </div>
         <div
@@ -188,7 +192,7 @@
             <tr>
               <td>{wyckoff}</td>
               <td>{elem}</td>
-              <td>({abc.map((x) => format_fractional(x)).join(` , `)})</td>
+              <td>({abc?.map((x) => format_fractional(x)).join(` , `) ?? `N/A`})</td>
             </tr>
           {/each}
         </tbody>
@@ -220,7 +224,7 @@
 </div>
 
 <p style="margin: 2em 0; text-align: center">
-  Drag any of these structures onto the viewer:
+  Drag any structure onto the viewer:
 </p>
 
 <FilePicker
