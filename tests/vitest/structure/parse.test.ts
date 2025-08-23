@@ -13,16 +13,16 @@ import {
   parse_structure_file,
   parse_xyz,
 } from '$lib/structure/parse'
+import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
+import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
+import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
 import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
-import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
 import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
-import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
@@ -236,7 +236,7 @@ describe(`XYZ Parser`, () => {
     },
     {
       name: `with extra data`,
-      content: extra_data_xyz,
+      content: c5_extra_data_xyz,
       sites: 5,
       element: `C`,
       has_lattice: false,
@@ -282,7 +282,7 @@ describe(`XYZ Parser`, () => {
   )
 
   it(`should handle scientific notation variants`, () => {
-    const result = parse_xyz(scientific_notation_xyz)
+    const result = parse_xyz(c2ho_scientific_notation_xyz)
     if (!result) throw `Failed to parse XYZ`
     expect(result.sites[0].xyz[2]).toBeCloseTo(-7.22293142224e-6)
     expect(result.sites[2].xyz[2]).toBeCloseTo(0.00567890123456)

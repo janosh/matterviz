@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { FileInfo } from '$lib'
+  import { tooltip } from 'svelte-multiselect'
 
   interface Props {
     files: FileInfo[]
     active_files?: string[]
     show_category_filters?: boolean
-    category_labels?: Record<string, string>
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_drag_end?: () => void
     type_mapper?: (filename: string) => string
@@ -16,7 +16,6 @@
     files,
     active_files = [],
     show_category_filters = false,
-    category_labels = {},
     on_drag_start,
     on_drag_end,
     type_mapper,
@@ -101,34 +100,34 @@
 
   // Get unique category types for category filters
   let uniq_categories = $derived(
-    show_category_filters
-      ? [...new Set(files.map((file) => file.category))].sort().filter(Boolean)
-      : [],
+    [
+      ...new Set(
+        files.map((file) => `${file.category_icon ?? ``} ${file.category ?? ``}`),
+      ),
+    ].sort().filter((str) => str.trim()),
   )
 </script>
 
 <div class="file-picker" {...rest}>
   <div class="legend">
-    {#if show_category_filters}
-      {#each uniq_categories as category (category)}
-        {@const is_active = active_category_filter === category}
-        <span
-          class="legend-item"
-          class:active={is_active}
-          onclick={() => category && toggle_filter(`category`, category)}
-          onkeydown={(evt) =>
-          (evt.key === `Enter` || evt.key === ` `) &&
-          category &&
-          toggle_filter(`category`, category)}
-          role="button"
-          tabindex="0"
-          title="Filter to show only {category}"
-        >
-          {(category && category_labels[category]) || category}
-        </span>
-      {/each}
-      {#if uniq_categories.length > 0 && uniq_formats.length > 0}&emsp;{/if}
-    {/if}
+    {#each show_category_filters ? uniq_categories : [] as category (category)}
+      {@const is_active = active_category_filter === category}
+      <span
+        class="legend-item"
+        class:active={is_active}
+        onclick={() => category && toggle_filter(`category`, category)}
+        onkeydown={(evt) =>
+        (evt.key === `Enter` || evt.key === ` `) &&
+        category &&
+        toggle_filter(`category`, category)}
+        role="button"
+        tabindex="0"
+        {@attach tooltip({ content: `Filter to show only ${category}` })}
+      >
+        {category}
+      </span>
+    {/each}
+    {#if uniq_categories.length > 0 && uniq_formats.length > 0}&emsp;{/if}
 
     {#each uniq_formats as format (format)}
       {@const is_active = active_type_filter === format}
@@ -140,7 +139,7 @@
         (evt.key === `Enter` || evt.key === ` `) && toggle_filter(`type`, format)}
         role="button"
         tabindex="0"
-        title="Filter to show only {format.toUpperCase()} files"
+        {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
       >
         <span
           class="format-circle"
@@ -151,7 +150,7 @@
 
     {#if active_category_filter || active_type_filter}
       <button
-        title="Clear all filters"
+        {@attach tooltip({ content: `Clear all filters` })}
         class="clear-filter"
         onclick={() => {
           active_category_filter = null
@@ -178,13 +177,8 @@
       tabindex="0"
       title="Drag this {base_type.toUpperCase()} file"
     >
-      <div class="drag-handle">
-        <div class="drag-bar"></div>
-        <div class="drag-bar"></div>
-        <div class="drag-bar"></div>
-      </div>
       <div class="file-name">
-        {file.name}{file.category ? `\u00A0${file.category}` : ``}
+        {@html file.category ? `${file.category_icon}&ensp;` : ``}{file.name}
         {#if is_compressed}<span class="compression-indicator">📦</span>{/if}
       </div>
     </div>

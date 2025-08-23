@@ -43,7 +43,6 @@
 <FilePicker
   files={[...structure_files, ...molecule_files]}
   show_category_filters
-  category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
   style="margin-block: 2em"
 />
 ```

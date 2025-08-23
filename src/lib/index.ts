@@ -74,6 +74,7 @@ export interface FileInfo {
   url: string
   type?: string
   category?: string
+  category_icon?: string
 }
 
 export const crystal_systems = [

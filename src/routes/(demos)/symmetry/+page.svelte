@@ -2,16 +2,18 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { FilePicker, format_fractional, type Vec3 } from '$lib'
-  import { atomic_number_to_symbol } from '$lib/composition/parse'
+  import { FilePicker, format_fractional } from '$lib'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
-  import { molecule_files } from '$site/molecules'
+  import {
+    analyze_structure_symmetry,
+    ensure_moyo_wasm_ready,
+    generate_wyckoff_rows,
+  } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
   import type { MoyoDataset, MoyoOperation } from 'moyo-wasm'
   import { onMount } from 'svelte'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { tooltip } from 'svelte-multiselect'
 
   let wasm_ready = $state(false)
   let last_error = $state<string | null>(null)
@@ -19,6 +21,7 @@
   let symprec = $state(1e-4)
   let setting = $state<`Standard` | `Spglib`>(`Standard`)
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
+  let current_structure = $state<AnyStructure | null>(null)
 
   $effect(() => {
     if (!browser) return
@@ -26,26 +29,30 @@
     if (file && file !== current_filename) current_filename = file
   })
 
-  onMount(async () => {
-    try {
-      await ensure_moyo_wasm_ready()
-      wasm_ready = true
-    } catch (exc) {
-      last_error = `Failed to init WASM: ${String(exc)}`
-    }
+  // Auto-analyze structure when WASM becomes ready
+  $effect(() => {
+    if (wasm_ready && current_structure) analyze_structure(current_structure)
   })
+
+  onMount(() =>
+    ensure_moyo_wasm_ready().then(() => {
+      wasm_ready = true
+      last_error = null
+    }).catch((exc) => {
+      last_error = `Failed to init WASM: ${String(exc)}`
+    })
+  )
 
   async function analyze_structure(struct_or_mol: AnyStructure) {
     last_error = null
     sym_data = null
+
     if (!(`lattice` in struct_or_mol)) {
       last_error = `Not a periodic structure (no lattice).`
       return
     }
-    if (!wasm_ready) {
-      last_error = `WASM not ready yet.`
-      return
-    }
+    if (!wasm_ready) return
+
     try {
       sym_data = await analyze_structure_symmetry(
         struct_or_mol,
@@ -53,89 +60,11 @@
         setting,
       )
     } catch (exc) {
-      last_error = `${exc}`
+      last_error = `Analysis failed: ${String(exc)}`
     }
   }
 
-  const files = [...structure_files, ...molecule_files]
-
-  // Build one row per Wyckoff site with element and fractional coords
-  // Choose the "simplest" representative coordinates for a Wyckoff letter+element group
-  function simplicity_score(vec: Vec3): number {
-    const to_unit = (v: number) => v - Math.floor(v)
-    const near_zero = (v: number) => Math.min(v, 1 - v)
-    const near_half = (v: number) => Math.abs(v - 0.5)
-    const [ax, ay, az] = vec?.map(to_unit) ?? []
-    return (
-      near_zero(ax) + near_zero(ay) + near_zero(az) +
-      0.5 * (near_half(ax) + near_half(ay) + near_half(az))
-    )
-  }
-
-  const wyckoff_rows = $derived.by<
-    { wyckoff: string; elem: string; abc: Vec3 }[]
-  >(() => {
-    const info = sym_data
-    if (!info) return []
-
-    const { positions, numbers } = info.std_cell
-    const { wyckoffs } = info
-
-    // Count multiplicity per letter-element combination
-    const letter_elem_counts: Record<string, number> = {}
-    const best_by_key = new SvelteMap<
-      string,
-      { letter: string; elem: string; idx: number }
-    >()
-
-    // Process all sites, including those without Wyckoff letters
-    wyckoffs.forEach((full, idx) => {
-      const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
-      const elem = atomic_number_to_symbol[numbers[idx]] ?? `?`
-
-      if (letter) {
-        // Symmetric site with Wyckoff letter
-        const key = `${letter}|${elem}`
-        letter_elem_counts[key] = (letter_elem_counts[key] ?? 0) + 1
-
-        const prev = best_by_key.get(key)
-        const better = !prev ||
-          simplicity_score(positions[idx] as Vec3) <
-            simplicity_score(positions[prev.idx] as Vec3)
-        if (better) best_by_key.set(key, { letter, elem, idx })
-      } else {
-        // Non-symmetric site (no Wyckoff letter) - add directly
-        best_by_key.set(`nosym|${elem}|${idx}`, { letter: ``, elem, idx })
-      }
-    })
-
-    const rows = Array.from(best_by_key.values()).map(({ letter, elem, idx }) => {
-      if (letter) {
-        // For symmetric sites, show multiplicity for this specific letter-element combination
-        const key = `${letter}|${elem}`
-        return {
-          wyckoff: `${letter_elem_counts[key]}${letter}`,
-          elem,
-          abc: positions[idx] as Vec3,
-        }
-      } else {
-        // For non-symmetric sites, show multiplicity 1
-        return {
-          wyckoff: `1`,
-          elem,
-          abc: positions[idx] as Vec3,
-        }
-      }
-    })
-
-    rows.sort((w1, w2) => {
-      const [w1_mult, w2_mult] = [parseInt(w1.wyckoff), parseInt(w2.wyckoff)]
-      if (w1_mult !== w2_mult) return w1_mult - w2_mult
-      return w1.wyckoff.localeCompare(w2.wyckoff)
-    })
-
-    return rows
-  })
+  const wyckoff_rows = $derived(generate_wyckoff_rows(sym_data))
 </script>
 
 <h1>Symmetry</h1>
@@ -150,11 +79,18 @@
     {#if wasm_ready}
       <div class="controls">
         <label>
-          Symprec
+          <span
+            {@attach tooltip()}
+            title="Symmetry precision control in spglib/moyo. Lower values (e.g. 1e-4, the default) are more strict, higher values (e.g. 1e-1) are more tolerant of numerical errors in atomic positions."
+          >Symprec</span>
           <input type="number" step="1e-5" bind:value={symprec} />
         </label>
         <label>
-          Setting
+          <span
+            {@attach tooltip()}
+            title="Symmetry detection algorithm: Standard uses moyo's newer recommended settings, spglib is useful if you need compatible results to an existing set of spglib-detected symmetries."
+          >Setting</span>
+
           <select bind:value={setting}>
             <option value="Standard">Standard</option>
             <option value="Spglib">Spglib</option>
@@ -162,17 +98,40 @@
         </label>
       </div>
     {:else}
-      <span class="status warn">Loading WASM…</span>
+      <span class="status warn">Loading WASM...</span>
     {/if}
     {#if last_error}
       <pre class="error" style="color: var(--error-color)">{last_error}</pre>
     {:else if sym_data}
       <div class="symmetry-stats">
-        <div>Space group <strong>{sym_data.number}</strong></div>
-        <div>Hermann-Mauguin <strong>{sym_data.hm_symbol ?? `N/A`}</strong></div>
-        <div>Hall number <strong>{sym_data.hall_number}</strong></div>
-        <div>Pearson <strong>{sym_data.pearson_symbol}</strong></div>
-        <div>
+        <div
+          title="International Tables space group number (1-230) - unique identifier for each space group. Higher numbers indicate more symmetries in the crystal."
+          {@attach tooltip()}
+        >
+          Space group <strong>{sym_data.number}</strong>
+        </div>
+        <div
+          title="Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes"
+          {@attach tooltip()}
+        >
+          Hermann-Mauguin <strong>{sym_data.hm_symbol ?? `N/A`}</strong>
+        </div>
+        <div
+          title="Hall number: alternative numbering system for space groups. Useful for crystallographic software compatibility."
+          {@attach tooltip()}
+        >
+          Hall number <strong>{sym_data.hall_number}</strong>
+        </div>
+        <div
+          title="Pearson symbol: describes crystal system and number of atoms per unit cell. Format: Crystal system + Number of atoms. Example: tP2 = tetragonal primitive with 2 atoms"
+          {@attach tooltip()}
+        >
+          Pearson <strong>{sym_data.pearson_symbol}</strong>
+        </div>
+        <div
+          title="Total symmetry operations that map the crystal structure onto itself. Includes rotations, translations, and combinations."
+          {@attach tooltip()}
+        >
           Symmetry operations <strong>{sym_data.operations.length}</strong>
           <ul>
             {#each [
@@ -200,13 +159,27 @@
             {/each}
           </ul>
         </div>
-        <div>Distinct orbits <strong>{wyckoff_rows.length}</strong></div>
+        <div
+          title="Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure."
+          {@attach tooltip()}
+        >
+          Distinct orbits <strong>{wyckoff_rows.length}</strong>
+        </div>
       </div>
       <table class="wyckoff-table" style="margin-top: 1em">
         <thead>
           <tr>
             {#each [`Wyckoff`, `Element`, `Fractional Coords`] as col (col)}
-              <th>{col}</th>
+              <th
+                title={col === `Wyckoff`
+                ? `Wyckoff position: Multiplicity + Letter (e.g. 4a = 4 atoms at position 'a')`
+                : col === `Element`
+                ? `Chemical element symbol`
+                : `Fractional coordinates within the unit cell (0-1 range)`}
+                {@attach tooltip()}
+              >
+                {col}
+              </th>
             {/each}
           </tr>
         </thead>
@@ -233,6 +206,7 @@
         keepFocus: true,
         noScroll: true,
       })
+      current_structure = structure || null
       if (structure) analyze_structure(structure)
     }}
     style="height: 100%; min-height: 500px"
@@ -250,7 +224,7 @@
 </p>
 
 <FilePicker
-  {files}
+  files={structure_files}
   show_category_filters
   on_drag_end={() => {/* noop to avoid TS complaining */}}
   style="margin-bottom: 3em"
@@ -271,6 +245,7 @@
     grid-template-columns: repeat(2, 1fr);
     gap: 1ex 1em;
     margin-block: 1ex;
+    align-items: start;
   }
   .symmetry-info strong {
     margin: 0 0 0 3pt;
