@@ -806,7 +806,7 @@
 <div
   class:dragover
   class:active={is_playing || panes_open.structure_info || panes_open.structure_controls ||
-  panes_open.plot_controls}
+  panes_open.plot_controls || info_pane_open}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -1179,27 +1179,28 @@
 </div>
 
 <style>
-  :root {
+  .trajectory {
     --border-radius: 4px;
     --min-height: 500px;
-  }
-  .trajectory {
     display: flex;
     flex-direction: column;
     height: 100%;
     position: relative;
     min-height: var(--traj-min-height, var(--min-height));
     border-radius: var(--border-radius);
-    transition: border-color 0.2s ease;
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
+    container-type: size;
   }
   .trajectory :global(.plot) {
     background: var(--surface-bg);
   }
   .trajectory.active {
     z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
+  }
+  .trajectory.active .trajectory-controls {
+    z-index: 5; /* needed so info/control panes from an active viewer its own plot when active, not sure why needed */
   }
   .trajectory:fullscreen {
     height: 100vh !important;
@@ -1256,7 +1257,6 @@
     backdrop-filter: blur(4px);
     position: relative;
     border-radius: var(--border-radius) var(--border-radius) 0 0;
-    container-type: inline-size;
   }
   .trajectory-controls:focus-within {
     z-index: var(--traj-controls-z-index, 999999999);
@@ -1283,7 +1283,7 @@
     border: 1px solid rgba(99, 179, 237, 0.3);
     text-align: center;
     margin: 0 -5px 0 0;
-    padding: 2px 5px;
+    padding: 2px;
   }
   .slider-container {
     position: relative;
@@ -1310,7 +1310,7 @@
   .step-label {
     position: absolute;
     transform: translateX(-50%);
-    font-size: clamp(0.5rem, 1.2cqw, 0.65rem);
+    font-size: clamp(0.5em, 1.2cqw, 0.65em);
     color: var(--text-color-muted);
     white-space: nowrap;
     text-align: center;
@@ -1325,7 +1325,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
-    font-size: clamp(0.75rem, 2cqw, 0.875rem);
+    font-size: clamp(0.8rem, 2cqw, 0.9rem);
     position: relative;
   }
   @keyframes fade-in {

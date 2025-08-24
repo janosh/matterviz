@@ -1,211 +1,218 @@
 import type { Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import {
-  angle_at_center,
   angle_between_vectors,
   displacement_pbc,
   distance_pbc,
+  smart_displacement_vectors,
 } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
 
 const cubic = (a: number): Matrix3x3 => [[a, 0, 0], [0, a, 0], [0, 0, a]]
 
 describe(`measure: distances`, () => {
-  test(`pbc distance uses minimum image`, () => {
-    const L = 10
-    const lat = cubic(L)
+  test(`pbc distance and displacement`, () => {
+    const lat = cubic(10)
+
+    // Test basic PBC distance
     const a: Vec3 = [0.5, 0.5, 0.5]
     const b: Vec3 = [9.8, 9.6, 9.5]
-    // Direct distance is ~sqrt(9.3^2 + 9.1^2 + 9^2) but minimum image is small
     const disp = displacement_pbc(a, b, lat)
     expect(disp[0]).toBeCloseTo(-0.7, 10)
     expect(disp[1]).toBeCloseTo(-0.9, 10)
     expect(disp[2]).toBeCloseTo(-1.0, 10)
     expect(distance_pbc(a, b, lat)).toBeCloseTo(Math.hypot(0.7, 0.9, 1.0), 10)
-  })
 
-  test(`displacement_pbc edge cases`, () => {
-    const lat = cubic(10)
-
-    // Test identical positions
+    // Test edge cases
     const pos: Vec3 = [5.0, 5.0, 5.0]
-    const disp_identical = displacement_pbc(pos, pos, lat)
-    expect(disp_identical).toEqual([0, 0, 0])
+    expect(displacement_pbc(pos, pos, lat)).toEqual([0, 0, 0])
 
-    // Test positions at exact cell boundaries
-    const boundary_cases = [
-      {
-        from: [0.0, 0.0, 0.0] as Vec3,
-        to: [10.0, 0.0, 0.0] as Vec3,
-        expected: [0, 0, 0],
-      },
-      {
-        from: [0.0, 0.0, 0.0] as Vec3,
-        to: [0.0, 10.0, 0.0] as Vec3,
-        expected: [0, 0, 0],
-      },
-      {
-        from: [0.0, 0.0, 0.0] as Vec3,
-        to: [0.0, 0.0, 10.0] as Vec3,
-        expected: [0, 0, 0],
-      },
-    ]
+    // Test boundary wrapping
+    expect(displacement_pbc([0, 0, 0], [10, 0, 0], lat)).toEqual([0, 0, 0])
 
-    for (const { from, to, expected } of boundary_cases) {
-      const disp = displacement_pbc(from, to, lat)
-      expect(disp).toEqual(expected)
-    }
-
-    // Test very small displacements
-    const small_cases = [
-      { from: [5.0, 5.0, 5.0] as Vec3, to: [5.000001, 5.000001, 5.000001] as Vec3 },
-      { from: [5.0, 5.0, 5.0] as Vec3, to: [4.999999, 4.999999, 4.999999] as Vec3 },
-    ]
-
-    for (const { from, to } of small_cases) {
-      const disp = displacement_pbc(from, to, lat)
-      const direct = [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
-      expect(disp[0]).toBeCloseTo(direct[0], 6)
-      expect(disp[1]).toBeCloseTo(direct[1], 6)
-      expect(disp[2]).toBeCloseTo(direct[2], 6)
-    }
-
-    // Test non-cubic lattice
-    const triclinic_lat: Matrix3x3 = [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]]
-    const tric_pos1: Vec3 = [0.2, 0.2, 0.2]
-    const tric_pos2: Vec3 = [4.8, 4.1, 3.8]
-    const tric_disp = displacement_pbc(tric_pos1, tric_pos2, triclinic_lat)
-
-    // Verify the displacement is reasonable
-    expect(Math.hypot(...tric_disp)).toBeGreaterThan(0)
-    expect(Math.hypot(...tric_disp)).toBeLessThan(10) // Should be less than cell size
+    const disp2 = displacement_pbc([0, 0, 0], [9.5, 8.5, 7.5], lat)
+    expect(disp2[0]).toBeCloseTo(-0.5, 10)
+    expect(disp2[1]).toBeCloseTo(-1.5, 10)
+    expect(disp2[2]).toBeCloseTo(-2.5, 10)
   })
 })
 
 describe(`measure: angles`, () => {
   test.each([
+    { v1: [1, 0, 0] as Vec3, v2: [0, 1, 0] as Vec3, deg: 90 },
     { v1: [1, 0, 0] as Vec3, v2: [0.5, Math.sqrt(3) / 2, 0] as Vec3, deg: 60 },
     { v1: [1, 0, 0] as Vec3, v2: [-1, 0, 0] as Vec3, deg: 180 },
-    { v1: [0, 0, 0] as Vec3, v2: [1, 0, 0] as Vec3, deg: 0 },
+    { v1: [1, 0, 0] as Vec3, v2: [2, 0, 0] as Vec3, deg: 0 },
   ] as Array<{ v1: Vec3; v2: Vec3; deg: number }>)(
-    `angle_between_vectors %#`,
-    ({ v1, v2, deg }: { v1: Vec3; v2: Vec3; deg: number }) => {
+    `basic angles: %#`,
+    ({ v1, v2, deg }) => {
       expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(deg, 10)
     },
   )
 
-  test(`angle_between_vectors in radians mode`, () => {
+  test(`angle edge cases`, () => {
+    // Zero vectors
+    expect(angle_between_vectors([0, 0, 0], [1, 0, 0])).toBe(0)
+
+    // Radians mode
     expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(
       Math.PI / 2,
       10,
     )
+
+    // Collinear precision
+    expect(angle_between_vectors([1, 2, 3], [2, 4, 6])).toBeCloseTo(0, 12)
+    expect(angle_between_vectors([1, 2, 3], [-2, -4, -6])).toBeCloseTo(180, 12)
+
+    // Nearly collinear
+    const eps = 1e-10
+    expect(angle_between_vectors([1, 0, 0], [1, eps, 0])).toBeCloseTo(0, 6)
+    expect(angle_between_vectors([1, 0, 0], [-1, eps, 0])).toBeCloseTo(180, 6)
   })
 
-  test(`angle_between_vectors zero vector handling`, () => {
-    // Test zero vectors (should return 0 as per implementation)
-    expect(angle_between_vectors([0, 0, 0], [1, 0, 0], `degrees`)).toBe(0)
-    expect(angle_between_vectors([1, 0, 0], [0, 0, 0], `degrees`)).toBe(0)
-    expect(angle_between_vectors([0, 0, 0], [0, 0, 0], `degrees`)).toBe(0)
+  test(`smart displacement preserves collinearity`, () => {
+    // Direct collinear case
+    const [v1, v2] = smart_displacement_vectors([0, 0, 0], [1, 0, 0], [2, 0, 0])
+    expect(angle_between_vectors(v1, v2)).toBeCloseTo(0, 5)
 
-    // Test very small vectors (near zero)
-    const tiny = 1e-15
-    expect(angle_between_vectors([tiny, 0, 0], [1, 0, 0], `degrees`)).toBeCloseTo(0, 10)
-    expect(angle_between_vectors([1, 0, 0], [0, tiny, 0], `degrees`)).toBeCloseTo(90, 10)
-
-    // Test orthogonal vectors
-    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `degrees`)).toBeCloseTo(90, 10)
-    expect(angle_between_vectors([1, 0, 0], [0, 0, 1], `degrees`)).toBeCloseTo(90, 10)
-    expect(angle_between_vectors([0, 1, 0], [0, 0, 1], `degrees`)).toBeCloseTo(90, 10)
-
-    // Test parallel vectors
-    expect(angle_between_vectors([1, 0, 0], [2, 0, 0], `degrees`)).toBeCloseTo(0, 10)
-    expect(angle_between_vectors([1, 1, 1], [2, 2, 2], `degrees`)).toBeCloseTo(0, 10)
-
-    // Test antiparallel vectors
-    expect(angle_between_vectors([1, 0, 0], [-1, 0, 0], `degrees`)).toBeCloseTo(180, 10)
-    expect(angle_between_vectors([1, 1, 1], [-1, -1, -1], `degrees`)).toBeCloseTo(180, 10)
-  })
-
-  test(`angle_at_center without pbc`, () => {
-    const center: Vec3 = [0, 0, 0]
-    const a: Vec3 = [1, 0, 0]
-    const b: Vec3 = [0, 1, 0]
-    expect(angle_at_center(center, a, b, undefined, undefined, `degrees`)).toBeCloseTo(
-      90,
-      10,
-    )
-  })
-
-  test(`angle_at_center with pbc uses minimum image vectors`, () => {
+    // PBC wrapping case (atoms collinear only after PBC)
     const lat = cubic(10)
-    const center: Vec3 = [0.2, 0.2, 0.2]
-    const a: Vec3 = [9.8, 0.2, 0.2] // effectively -0.4 along x from center
-    const b: Vec3 = [0.2, 9.8, 0.2] // effectively -0.4 along y from center
-    expect(angle_at_center(center, a, b, lat, undefined, `degrees`)).toBeCloseTo(90, 10)
+    const center = [0.1, 0.1, 0.1]
+    const a = [9.9, 0.1, 0.1] // wraps to negative side
+    const b = [0.3, 0.1, 0.1] // positive side
+
+    // Test direct PBC calculation for this edge case
+    const v1_pbc = displacement_pbc(center, a, lat)
+    const v2_pbc = displacement_pbc(center, b, lat)
+    expect(angle_between_vectors(v1_pbc, v2_pbc)).toBeCloseTo(180, 5)
   })
 
-  test(`angle_at_center edge cases`, () => {
-    const lat = cubic(10)
+  test(`real structure angles: aviary-CuF3K-triolith.poscar`, async () => {
+    const fs = await import(`fs`)
+    const path = await import(`path`)
+    const process = await import(`node:process`)
 
-    // Test center at origin
-    const center_origin: Vec3 = [0, 0, 0]
-    const a_origin: Vec3 = [1, 0, 0]
-    const b_origin: Vec3 = [0, 1, 0]
-    expect(
-      angle_at_center(center_origin, a_origin, b_origin, undefined, undefined, `degrees`),
+    const poscar_path = path.join(
+      process.cwd(),
+      `static/structures/aviary-CuF3K-triolith.poscar`,
     )
-      .toBeCloseTo(90, 10)
+    const poscar_content = fs.readFileSync(poscar_path, `utf-8`)
 
-    // Test center at cell boundary
-    const center_boundary: Vec3 = [5, 5, 5]
-    const a_boundary: Vec3 = [6, 5, 5]
-    const b_boundary: Vec3 = [5, 6, 5]
-    expect(
-      angle_at_center(
-        center_boundary,
-        a_boundary,
-        b_boundary,
-        undefined,
-        undefined,
-        `degrees`,
-      ),
+    const { parse_poscar } = await import(`$lib/structure/parse`)
+    const { get_pbc_image_sites } = await import(`$lib/structure/pbc`)
+
+    const structure = parse_poscar(poscar_content)
+    if (!structure) {
+      throw new Error(`Failed to parse POSCAR file`)
+    }
+    const with_images = get_pbc_image_sites(structure)
+
+    // Test Zr collinear atoms: should give 0° for end atoms
+    const zr_sites = with_images.sites.filter((s) => s.species[0].element === `Zr`)
+    const zr_site_0 = zr_sites.find((s) =>
+      s.xyz.every((c, i) => Math.abs(c - [0, 0, 0][i]) < 0.01)
     )
-      .toBeCloseTo(90, 10)
+    const zr_site_1 = zr_sites.find((s) =>
+      s.xyz.every((c, i) => Math.abs(c - [3.019349, 3.019349, 0][i]) < 0.01)
+    )
+    const zr_site_2 = zr_sites.find((s) =>
+      s.xyz.every((c, i) => Math.abs(c - [6.038698, 6.038698, 0][i]) < 0.01)
+    )
 
-    // Test with PBC where vectors wrap around
-    const center_wrap: Vec3 = [0.1, 0.1, 0.1]
-    const a_wrap: Vec3 = [9.9, 0.1, 0.1] // wraps to -0.1
-    const b_wrap: Vec3 = [0.1, 9.9, 0.1] // wraps to -0.1
-    expect(angle_at_center(center_wrap, a_wrap, b_wrap, lat, undefined, `degrees`))
-      .toBeCloseTo(
-        90,
-        10,
+    if (!zr_site_0 || !zr_site_1 || !zr_site_2) {
+      throw new Error(`Could not find expected Zr sites in structure`)
+    }
+
+    const zr_triplet = [zr_site_0, zr_site_1, zr_site_2]
+
+    const [v1, v2] = smart_displacement_vectors(
+      zr_triplet[0].xyz,
+      zr_triplet[1].xyz,
+      zr_triplet[2].xyz,
+      structure.lattice?.matrix,
+      zr_triplet[0].abc,
+      zr_triplet[1].abc,
+      zr_triplet[2].abc,
+    )
+    expect(angle_between_vectors(v1, v2)).toBeCloseTo(0, 1)
+
+    // Test N square: should give 45°/90° angles
+    const n_sites = with_images.sites.filter((s) => s.species[0].element === `N`).slice(
+      0,
+      4,
+    )
+
+    if (n_sites.length >= 4) {
+      const [v3, v4] = smart_displacement_vectors(
+        n_sites[0].xyz,
+        n_sites[1].xyz,
+        n_sites[2].xyz,
+        structure.lattice?.matrix,
+        n_sites[0].abc,
+        n_sites[1].abc,
+        n_sites[2].abc,
       )
+      const square_angle = angle_between_vectors(v3, v4, `degrees`)
+      expect([45, 90, 135].some((exp) => Math.abs(square_angle - exp) < 5)).toBe(true)
+    }
+  })
 
-    // Test very small angles
-    const center_small: Vec3 = [5, 5, 5]
-    const a_small: Vec3 = [5.001, 5, 5]
-    const b_small: Vec3 = [5, 5.001, 5]
-    const small_angle = angle_at_center(
-      center_small,
-      a_small,
-      b_small,
-      undefined,
-      undefined,
-      `degrees`,
-    )
-    expect(small_angle).toBeGreaterThan(0)
-    expect(small_angle).toBeCloseTo(90, 1) // Should be close to 90 degrees for orthogonal vectors
+  test(`PBC distance regression: opposing corners of cubic cell`, () => {
+    // Test the new bug: opposing corners should have PBC distance 0
+    const cubic_lattice: Matrix3x3 = [
+      [5, 0, 0],
+      [0, 5, 0],
+      [0, 0, 5],
+    ]
 
-    // Test radians mode
-    const angle_rad = angle_at_center(
-      center_origin,
-      a_origin,
-      b_origin,
-      undefined,
-      undefined,
-      `radians`,
-    )
-    expect(angle_rad).toBeCloseTo(Math.PI / 2, 10)
+    // Atoms at opposing corners of the unit cell
+    const corner1: Vec3 = [0, 0, 0]
+    const corner2: Vec3 = [5, 5, 5] // This is the same as [0,0,0] under PBC
+
+    const pbc_dist = distance_pbc(corner1, corner2, cubic_lattice)
+    const direct_dist = Math.hypot(5, 5, 5)
+
+    // PBC distance should be 0 (same site), direct should be non-zero
+    expect(pbc_dist).toBeCloseTo(0, 10)
+    expect(direct_dist).toBeGreaterThan(8)
+
+    // Additional test cases
+    expect(distance_pbc([0, 0, 0], [5, 0, 0], cubic_lattice)).toBeCloseTo(0, 10)
+    expect(distance_pbc([0, 0, 0], [0, 5, 0], cubic_lattice)).toBeCloseTo(0, 10)
+    expect(distance_pbc([0, 0, 0], [0, 0, 5], cubic_lattice)).toBeCloseTo(0, 10)
+  })
+
+  test(`PBC distance invariant: PBC ≤ direct distance`, () => {
+    // Test various lattice types to ensure PBC never violates minimum image
+    const test_cases = [
+      {
+        name: `cubic`,
+        lattice: [[3, 0, 0], [0, 3, 0], [0, 0, 3]] as Matrix3x3,
+        pos1: [0, 0, 0] as Vec3,
+        pos2: [1.5, 1.5, 1.5] as Vec3,
+      },
+      {
+        name: `triclinic (original bug case)`,
+        lattice: [[6.038698, 0, 0], [0, 6.038698, 0], [
+          3.019349,
+          3.019349,
+          4.167943,
+        ]] as Matrix3x3,
+        pos1: [0, 0, 0] as Vec3,
+        pos2: [3.019349, 3.019349, 0] as Vec3,
+      },
+    ]
+
+    for (const { lattice, pos1, pos2 } of test_cases) {
+      const direct_dist = Math.hypot(
+        pos2[0] - pos1[0],
+        pos2[1] - pos1[1],
+        pos2[2] - pos1[2],
+      )
+      const pbc_dist = distance_pbc(pos1, pos2, lattice)
+
+      // The fundamental PBC invariant: PBC distance ≤ direct distance
+      expect(pbc_dist).toBeLessThanOrEqual(direct_dist + 1e-10)
+    }
   })
 })

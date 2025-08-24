@@ -7,9 +7,10 @@
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
-    displacement_pbc,
+    angle_between_vectors,
     distance_pbc,
     MAX_SELECTED_SITES,
+    smart_displacement_vectors,
   } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
@@ -65,6 +66,7 @@
     // measurement props
     measure_mode?: `distance` | `angle`
     selected_sites?: number[]
+    measured_sites?: number[]
     selection_highlight_color?: string
   }
   let {
@@ -111,6 +113,7 @@
     height = 0,
     measure_mode = `distance`,
     selected_sites = $bindable([]),
+    measured_sites = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
   }: Props = $props()
 
@@ -123,8 +126,8 @@
 
     // Check if adding this site would exceed the soft cap
     if (
-      !selected_sites.includes(site_index) &&
-      selected_sites.length >= MAX_SELECTED_SITES
+      !measured_sites.includes(site_index) &&
+      measured_sites.length >= MAX_SELECTED_SITES
     ) {
       console.warn(
         `Selection size limit reached (${MAX_SELECTED_SITES}). Deselect some sites first.`,
@@ -132,20 +135,20 @@
       return
     }
 
-    selected_sites = selected_sites.includes(site_index)
-      ? selected_sites.filter((idx) => idx !== site_index)
-      : [...selected_sites, site_index]
+    measured_sites = measured_sites.includes(site_index)
+      ? measured_sites.filter((idx) => idx !== site_index)
+      : [...measured_sites, site_index]
   }
 
-  // Keep site selection valid across structure changes (new structure might have fewer sites)
+  // Keep measured site selection valid across structure changes (new structure might have fewer sites)
   $effect(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
-      selected_sites = []
+      measured_sites = []
       return
     }
     untrack(() => {
-      selected_sites = selected_sites.filter((idx) => idx >= 0 && idx < count)
+      measured_sites = measured_sites.filter((idx) => idx >= 0 && idx < count)
     })
   })
 
@@ -292,36 +295,34 @@
   })
 
   let gizmo_props = $derived.by(() => {
-    const axes = [
-      [`x`, `#d75555`, `#e66666`],
-      [`y`, `#55b855`, `#66c966`],
-      [`z`, `#5555d7`, `#6666e6`],
-      [`nx`, `#b84444`, `#cc5555`],
-      [`ny`, `#44a044`, `#55b155`],
-      [`nz`, `#4444b8`, `#5555c9`],
-    ]
-
     const axis_options = Object.fromEntries(
-      axes.map(([axis, color, hover_color]) => [
+      [
+        [`x`, `#d75555`, `#e66666`],
+        [`y`, `#55b855`, `#66c966`],
+        [`z`, `#5555d7`, `#6666e6`],
+        [`nx`, `#b84444`, `#cc5555`],
+        [`ny`, `#44a044`, `#55b155`],
+        [`nz`, `#4444b8`, `#5555c9`],
+      ].map(([axis, color, hover_color]) => [
         axis,
         {
           color,
-          labelColor: `#555555`,
-          opacity: axis.startsWith(`n`) ? 0.7 : 0.85,
+          labelColor: `#111`,
+          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
           hover: {
             color: hover_color,
             labelColor: `#222222`,
-            opacity: axis.startsWith(`n`) ? 0.85 : 0.95,
+            opacity: axis.startsWith(`n`) ? 1 : 0.9,
           },
         },
       ]),
     )
-
     return {
       background: { enabled: false },
       className: `responsive-gizmo`,
       ...axis_options,
       ...(typeof gizmo === `boolean` ? {} : gizmo),
+      offset: { left: 5, bottom: 5 },
     }
   })
 
@@ -523,7 +524,7 @@
     {
       kind: `hover`,
       site: hovered_site,
-      opacity: 0.18,
+      opacity: 0.28,
       color: `white`,
       site_idx: hovered_idx,
     },
@@ -531,7 +532,7 @@
       kind: `selected`,
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
-      opacity: 0.35,
+      opacity: 0.6,
       color: selection_highlight_color,
     }))),
   ] as
@@ -550,7 +551,7 @@
       sum + spec.occu * (atomic_radii[spec.element] ?? 1), 0))}
     <T.Mesh
       position={xyz}
-      scale={1.08 * highlight_radius}
+      scale={1.2 * highlight_radius}
       onclick={(event: MouseEvent) => {
         if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
           toggle_selection(entry.site_idx, event)
@@ -563,15 +564,15 @@
         transparent
         {opacity}
         emissive={color}
-        emissiveIntensity={0.15}
+        emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
       />
     </T.Mesh>
   {/if}
 {/each}
 
-<!-- selection order labels (1, 2, 3, ...) -->
-{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
-  {#each selected_sites as site_index, loop_idx (site_index)}
+<!-- selection order labels (1, 2, 3, ...) for measured sites -->
+{#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+  {#each measured_sites as site_index, loop_idx (site_index)}
     {@const site = structure.sites[site_index]}
     {#if site}
       {@const pos = math.add(site.xyz, site_label_offset)}
@@ -616,11 +617,11 @@
   <Lattice matrix={lattice.matrix} {...lattice_props} />
 {/if}
 
-<!-- Measurement overlays -->
-{#if structure?.sites && (selected_sites?.length ?? 0) > 0}
+<!-- Measurement overlays for measured sites -->
+{#if structure?.sites && (measured_sites?.length ?? 0) > 0}
   {#if measure_mode === `distance`}
-    {#each selected_sites as idx_i, loop_idx (idx_i)}
-      {#each selected_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
+    {#each measured_sites as idx_i, loop_idx (idx_i)}
+      {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
         {@const site_i = structure.sites[idx_i]}
         {@const site_j = structure.sites[idx_j]}
         {@const pos_i = site_i.xyz}
@@ -646,37 +647,32 @@
         </Extras.HTML>
       {/each}
     {/each}
-  {:else if measure_mode === `angle` && selected_sites.length >= 3}
-    {#each selected_sites as idx_center (idx_center)}
+  {:else if measure_mode === `angle` && measured_sites.length >= 3}
+    {#each measured_sites as idx_center (idx_center)}
       {@const center = structure.sites[idx_center]}
-      {#each selected_sites.filter((x) => x !== idx_center) as
+      {#each measured_sites.filter((x) => x !== idx_center) as
         idx_a,
         loop_idx
         (idx_center + `-` + idx_a)
       }
-        {#each selected_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
+        {#each measured_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
           idx_b
           (idx_center + `-` + idx_a + `-` + idx_b)
         }
           {@const site_a = structure.sites[idx_a]}
           {@const site_b = structure.sites[idx_b]}
-          {@const v1 = lattice ? displacement_pbc(center.xyz, site_a.xyz, lattice.matrix) : ([
-    site_a.xyz[0] - center.xyz[0],
-    site_a.xyz[1] - center.xyz[1],
-    site_a.xyz[2] - center.xyz[2],
-  ] as Vec3)}
-          {@const v2 = lattice ? displacement_pbc(center.xyz, site_b.xyz, lattice.matrix) : ([
-    site_b.xyz[0] - center.xyz[0],
-    site_b.xyz[1] - center.xyz[1],
-    site_b.xyz[2] - center.xyz[2],
-  ] as Vec3)}
+          {@const [v1, v2] = smart_displacement_vectors(
+    center.xyz,
+    site_a.xyz,
+    site_b.xyz,
+    lattice?.matrix,
+    center.abc,
+    site_a.abc,
+    site_b.abc,
+  )}
           {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
           {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
-          {@const cos_ang = Math.max(
-    -1,
-    Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2)),
-  )}
-          {@const angle_deg = Math.acos(cos_ang) * 180 / Math.PI}
+          {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
           {#if n1 > math.EPS && n2 > math.EPS}
             <!-- draw rays from center to the two sites -->
             <Bond from={center.xyz} to={site_a.xyz} thickness={0.05} color="#bbbbbb" />
@@ -709,8 +705,8 @@
 
 <style>
   :global(.responsive-gizmo) {
-    width: clamp(70px, 12cqw, 100px) !important;
-    height: clamp(70px, 12cqw, 100px) !important;
+    width: clamp(70px, 18cqmin, 100px) !important;
+    height: clamp(70px, 18cqmin, 100px) !important;
   }
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
@@ -744,7 +740,7 @@
     display: grid;
     place-items: center;
     line-height: 1.2;
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 1.5cqw, 18pt));
+    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
   }
   .selection-label {
     display: inline-flex;

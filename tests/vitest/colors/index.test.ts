@@ -4,7 +4,7 @@ import {
   get_bg_color,
   is_color,
   luminance,
-  pick_color_for_contrast,
+  pick_contrast_color,
   plot_colors,
 } from '$lib/colors'
 import { describe, expect, it, vi } from 'vitest'
@@ -127,19 +127,44 @@ describe(`colors module`, () => {
     })
   })
 
-  describe(`pick_color_for_contrast`, () => {
+  describe(`pick_contrast_color`, () => {
     it(`selects appropriate colors based on background`, () => {
-      expect(pick_color_for_contrast(null, `#ffffff`, 0.7, [`black`, `white`])).toBe(
+      expect(
+        pick_contrast_color({
+          bg_color: `#ffffff`,
+          text_color_threshold: 0.7,
+          choices: [`black`, `white`],
+        }),
+      ).toBe(
         `black`,
       )
-      expect(pick_color_for_contrast(null, `#000000`, 0.7, [`black`, `white`])).toBe(
+      expect(
+        pick_contrast_color({
+          bg_color: `#000000`,
+          text_color_threshold: 0.7,
+          choices: [`black`, `white`],
+        }),
+      ).toBe(
         `white`,
       )
-      expect(pick_color_for_contrast(null, `#404040`, 0.5, [`black`, `white`])).toBe(
+      expect(
+        pick_contrast_color({
+          bg_color: `#404040`,
+          text_color_threshold: 0.5,
+          choices: [`black`, `white`],
+        }),
+      ).toBe(
         `white`,
       )
-      expect(pick_color_for_contrast(null, `#ffffff`, 0.7, [`red`, `blue`])).toBe(`red`)
-      expect(pick_color_for_contrast(null, `#ffffff`)).toBe(`black`) // defaults
+      expect(
+        pick_contrast_color({
+          bg_color: `#ffffff`,
+          text_color_threshold: 0.7,
+          choices: [`red`, `blue`],
+        }),
+      ).toBe(`red`)
+      expect(pick_contrast_color({ bg_color: `#ffffff` })).toBe(`black`) // defaults
+      expect(pick_contrast_color()).toBe(`black`) // no options -> bg defaults to 'white' -> black text
     })
   })
 })

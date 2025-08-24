@@ -215,7 +215,7 @@ describe(`Trajectory File Detection`, () => {
     [`Md.xyz`, true],
     [`md.xyz`, true],
     // Machine learning potential trajectories (no traditional keywords)
-    [`V8_Ta12_W71_Re8-mace-omat.xyz`, true],
+    [`V8Ta12W71Re8-mace-omat.xyz`, true],
     [`CuAgAu_chgnet_relax.xyz`, true],
     [`bulk_water_dpmd.xyz`, true],
     [`alloy_simulation_m3gnet.xyz`, true],

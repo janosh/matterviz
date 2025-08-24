@@ -1,83 +1,8 @@
 import { BarChart } from '$lib/composition'
 import { composition_to_percentages, get_total_atoms } from '$lib/composition/parse'
 import { mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
-
-// Mock composition parsing utilities
-vi.mock(`$lib/composition/parse`, () => ({
-  composition_to_percentages: vi.fn((comp: Record<string, number>) => {
-    const total = Object.values(comp).reduce(
-      (sum: number, val: number) => sum + (val || 0),
-      0,
-    )
-    const percentages: Record<string, number> = {}
-    for (const [element, amount] of Object.entries(comp)) {
-      if (typeof amount === `number`) percentages[element] = (amount / total) * 100
-    }
-    return percentages
-  }),
-  get_total_atoms: vi.fn((comp: Record<string, number>) =>
-    Object.values(comp).reduce(
-      (sum: number, val: number) => sum + (val || 0),
-      0,
-    )
-  ),
-}))
-
-vi.mock(`$lib/colors`, () => ({
-  element_color_schemes: {
-    Vesta: {
-      H: `#ffffff`,
-      C: `#909090`,
-      N: `#3050f8`,
-      O: `#ff0d0d`,
-      Fe: `#e06633`,
-      Ca: `#3dff00`,
-      Mg: `#8aff00`,
-    },
-    Jmol: {
-      H: `#ffffff`,
-      C: `#909090`,
-      N: `#3050f8`,
-      O: `#ff0d0d`,
-      Fe: `#e06633`,
-      Ca: `#3dff00`,
-      Mg: `#8aff00`,
-    },
-  },
-  default_category_colors: {
-    'diatomic-nonmetal': `#ff8c00`,
-    'noble-gas': `#9932cc`,
-    'alkali-metal': `#006400`,
-    'alkaline-earth-metal': `#483d8b`,
-    metalloid: `#b8860b`,
-    'polyatomic-nonmetal': `#a52a2a`,
-    'transition-metal': `#571e6c`,
-    'post-transition-metal': `#938d4a`,
-    lanthanide: `#58748e`,
-    actinide: `#6495ed`,
-  },
-  default_element_colors: {
-    H: `#ffffff`,
-    C: `#909090`,
-    N: `#3050f8`,
-    O: `#ff0d0d`,
-    Fe: `#e06633`,
-    Ca: `#3dff00`,
-    Mg: `#8aff00`,
-  },
-  pick_color_for_contrast: vi.fn(() => `#000000`),
-}))
-
-vi.mock(`$lib`, () => ({
-  format_num: vi.fn((num: number, precision: number) => num.toFixed(precision)),
-}))
-
-function doc_query<T extends Element = Element>(selector: string): T {
-  const element = document.querySelector<T>(selector)
-  if (!element) throw new Error(`Element with selector "${selector}" not found`)
-  return element
-}
+import { describe, expect, test } from 'vitest'
+import { doc_query } from '../setup'
 
 describe(`BarChart component`, () => {
   test(`renders container with correct dimensions`, () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { CompositionType, ElementSymbol } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
-  import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
+  import { element_color_schemes, pick_contrast_color } from '$lib/colors'
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
@@ -39,7 +39,7 @@
   )
 
   // Calculate bubble data with proper circle packing
-  let bubbles = $derived.by(() => {
+  let bubbles = $derived.by<BubbleSegmentData[]>(() => {
     const element_entries = Object.entries(composition).filter(
       ([_, amount]) => amount && amount > 0,
     )
@@ -61,7 +61,7 @@
 
     const root = pack_layout(
       hierarchy(hierarchy_data).sum((d) => d && `amount` in d ? d.amount : 0),
-    ) as HierarchyCircularNode<BubbleDataLeaf | BubbleDataLeaf[]>
+    )
 
     // Get max radius for font scaling
     const max_radius = Math.max(...root.leaves().map((d) => d.r || 0))
@@ -81,7 +81,7 @@
       const font_scale = get_chart_font_scale(base_scale, label_text, available_space)
 
       return {
-        element: data.element,
+        element: data.element as ElementSymbol,
         amount: data.amount,
         percentage: total_atoms > 0 ? (data.amount / total_atoms) * 100 : 0,
         radius,
@@ -89,7 +89,7 @@
         y: (node.y || 0) + padding,
         color: data.color,
         font_scale,
-        text_color: pick_color_for_contrast(null, data.color),
+        text_color: pick_contrast_color({ bg_color: data.color }),
       }
     })
   })

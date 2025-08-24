@@ -66,5 +66,5 @@
   "compilerOptions": {
     "lib": ["dom", "esnext"]
   },
-  "nodeModulesDir": "auto"
+  "nodeModulesDir": "manual"
 }

@@ -45,10 +45,11 @@ export const structure_files: FileInfo[] = (Object.entries( // all structure fil
   ([path, content]) => {
     const filename = path.split(`/`).pop() || path
     const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
+    const url = path.replace(`/src/site`, ``)
 
-    const structure_type = detect_structure_type(filename, content)
-    const category = { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[structure_type] ||
+    const category = detect_structure_type(filename, content)
+    const category_icon = { crystal: `🔷`, molecule: `🧬`, unknown: `❓` }[category] ||
       `📄`
-    return { name: filename, url: path.replace(`/src/site`, ``), type, category }
+    return { name: filename, url, type, category, category_icon }
   },
 )

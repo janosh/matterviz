@@ -467,7 +467,7 @@
     max-width: 1200px;
   }
   section {
-    background: var(--code-bg);
+    background: var(--surface-bg);
     border-radius: 6px;
     padding: 6pt 2ex;
   }

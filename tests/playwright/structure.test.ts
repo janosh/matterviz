@@ -1137,6 +1137,35 @@ test.describe(`Structure Component Tests`, () => {
 
     expect(initial.equals(changed)).toBe(false)
   })
+
+  test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+
+    await page.locator(`[data-testid="btn-set-selected"]`).click()
+
+    const labels = page.locator(`.selection-label`)
+    await expect(labels).toHaveCount(0)
+
+    await page.locator(`[data-testid="btn-clear-selected"]`).click()
+    await expect(labels).toHaveCount(0)
+  })
+
+  test(`measured_sites shows selection order labels and measurement overlays`, async ({ page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+
+    await page.locator(`[data-testid="btn-set-measured"]`).click()
+
+    const labels = page.locator(`.selection-label`)
+    await expect(labels).toHaveCount(3)
+    await expect(labels.nth(0)).toHaveText(`1`)
+    await expect(labels.nth(1)).toHaveText(`2`)
+    await expect(labels.nth(2)).toHaveText(`3`)
+
+    await page.locator(`[data-testid="btn-clear-measured"]`).click()
+    await expect(labels).toHaveCount(0)
+  })
 })
 
 test.describe(`File Drop Functionality Tests`, () => {
