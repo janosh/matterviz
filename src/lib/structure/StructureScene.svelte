@@ -295,36 +295,34 @@
   })
 
   let gizmo_props = $derived.by(() => {
-    const axes = [
-      [`x`, `#d75555`, `#e66666`],
-      [`y`, `#55b855`, `#66c966`],
-      [`z`, `#5555d7`, `#6666e6`],
-      [`nx`, `#b84444`, `#cc5555`],
-      [`ny`, `#44a044`, `#55b155`],
-      [`nz`, `#4444b8`, `#5555c9`],
-    ]
-
     const axis_options = Object.fromEntries(
-      axes.map(([axis, color, hover_color]) => [
+      [
+        [`x`, `#d75555`, `#e66666`],
+        [`y`, `#55b855`, `#66c966`],
+        [`z`, `#5555d7`, `#6666e6`],
+        [`nx`, `#b84444`, `#cc5555`],
+        [`ny`, `#44a044`, `#55b155`],
+        [`nz`, `#4444b8`, `#5555c9`],
+      ].map(([axis, color, hover_color]) => [
         axis,
         {
           color,
-          labelColor: `#555555`,
-          opacity: axis.startsWith(`n`) ? 0.7 : 0.85,
+          labelColor: `#111`,
+          opacity: axis.startsWith(`n`) ? 0.9 : 0.8,
           hover: {
             color: hover_color,
             labelColor: `#222222`,
-            opacity: axis.startsWith(`n`) ? 0.85 : 0.95,
+            opacity: axis.startsWith(`n`) ? 1 : 0.9,
           },
         },
       ]),
     )
-
     return {
       background: { enabled: false },
       className: `responsive-gizmo`,
       ...axis_options,
       ...(typeof gizmo === `boolean` ? {} : gizmo),
+      offset: { left: 5, bottom: 5 },
     }
   })
 
@@ -707,8 +705,8 @@
 
 <style>
   :global(.responsive-gizmo) {
-    width: clamp(70px, 12cqw, 100px) !important;
-    height: clamp(70px, 12cqw, 100px) !important;
+    width: clamp(70px, 18cqmin, 100px) !important;
+    height: clamp(70px, 18cqmin, 100px) !important;
   }
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
@@ -742,7 +740,7 @@
     display: grid;
     place-items: center;
     line-height: 1.2;
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 1.5cqw, 18pt));
+    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
   }
   .selection-label {
     display: inline-flex;

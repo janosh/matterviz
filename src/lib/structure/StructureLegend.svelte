@@ -59,10 +59,10 @@
   .structure-legend {
     display: flex;
     position: absolute;
-    bottom: var(--struct-legend-bottom, clamp(4pt, 2cqw, 8pt));
-    right: var(--struct-legend-right, clamp(4pt, 2cqw, 8pt));
-    gap: var(--struct-legend-gap, clamp(2pt, 1.5cqw, 5pt));
-    font-size: var(--struct-legend-font, clamp(8pt, 3cqw, 14pt));
+    bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
+    right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
+    gap: var(--struct-legend-gap, clamp(2pt, 2cqmin, 5pt));
+    font-size: var(--struct-legend-font, clamp(8pt, 3.5cqmin, 14pt));
     filter: var(--legend-filter, grayscale(10%) brightness(0.95) saturate(0.9));
     z-index: var(--struct-legend-z-index, 1);
     pointer-events: auto;

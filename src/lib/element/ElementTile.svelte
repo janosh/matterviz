@@ -141,31 +141,17 @@
 
     if (layout === `triangular` && count === 4) {
       return {
-        segments: [
-          `triangle-top`,
-          `triangle-right`,
-          `triangle-bottom`,
-          `triangle-left`,
-        ],
-        positions: [
-          `triangle-top-pos`,
-          `triangle-right-pos`,
-          `triangle-bottom-pos`,
-          `triangle-left-pos`,
-        ],
+        segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
+        positions: [`top`, `right`, `bottom`, `left`].map((pos) =>
+          `triangle-${pos}-pos`
+        ),
       }
     }
 
     if (layout === `quadrant` && count === 4) {
-      return {
-        segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
-        positions: [
-          `value-quadrant-tl`,
-          `value-quadrant-tr`,
-          `value-quadrant-bl`,
-          `value-quadrant-br`,
-        ],
-      }
+      const segments = [`tl`, `tr`, `bl`, `br`].map((pos) => `quadrant-${pos}`)
+      const positions = [`tl`, `tr`, `bl`, `br`].map((pos) => `value-quadrant-${pos}`)
+      return { segments, positions }
     }
 
     return null
