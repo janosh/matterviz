@@ -13,16 +13,16 @@ import {
   parse_structure_file,
   parse_xyz,
 } from '$lib/structure/parse'
+import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
+import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
+import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
 import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-import cyclohexane from '$site/structures/cyclohexane.xyz?raw'
-import extra_data_xyz from '$site/structures/extra-data.xyz?raw'
 import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
-import scientific_notation_xyz from '$site/structures/scientific-notation.xyz?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
@@ -64,13 +64,13 @@ function expect_xyz_matches_abc(
 
 // Load compressed phonopy files using Node.js built-in decompression
 const agi_compressed = readFileSync(
-  join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py_params.yaml.gz`),
+  join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py.yaml.gz`),
 )
 const agi_phono3py_params = gunzipSync(agi_compressed).toString(`utf-8`)
 const hea_hcp_filename = `nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
 
 const beo_compressed = readFileSync(
-  join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py_params.yaml.gz`),
+  join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py.yaml.gz`),
 )
 const beo_phono3py_params = gunzipSync(beo_compressed).toString(`utf-8`)
 
@@ -236,7 +236,7 @@ describe(`XYZ Parser`, () => {
     },
     {
       name: `with extra data`,
-      content: extra_data_xyz,
+      content: c5_extra_data_xyz,
       sites: 5,
       element: `C`,
       has_lattice: false,
@@ -282,7 +282,7 @@ describe(`XYZ Parser`, () => {
   )
 
   it(`should handle scientific notation variants`, () => {
-    const result = parse_xyz(scientific_notation_xyz)
+    const result = parse_xyz(c2ho_scientific_notation_xyz)
     if (!result) throw `Failed to parse XYZ`
     expect(result.sites[0].xyz[2]).toBeCloseTo(-7.22293142224e-6)
     expect(result.sites[2].xyz[2]).toBeCloseTo(0.00567890123456)
@@ -669,18 +669,27 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.sites).toHaveLength(3)
   })
 
-  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984)`, () => {
+  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
     if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
-    expect(result.sites.length).toBe(1386)
-    // Basic sanity checks
+
+    // Expect exact total sites from CIF header (_atom_type_number_in_cell)
+    // Ru: 4, S: 24, P: 24, N: 16, C: 296, H: 252 → total = 616
+    expect(result.sites.length).toBe(616)
+
+    // Per-element site counts must match header to ensure symmetry expansion isn't over-generating
+    const element_counts: Record<string, number> = {}
+    for (const site of result.sites) {
+      const element = site.species[0].element
+      element_counts[element] = (element_counts[element] ?? 0) + 1
+    }
+
+    expect(element_counts).toEqual({ C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 })
+
+    // Basic lattice sanity
     expect(Number.isFinite(result.lattice?.a as number)).toBe(true)
     expect(Number.isFinite(result.lattice?.b as number)).toBe(true)
     expect(Number.isFinite(result.lattice?.c as number)).toBe(true)
-    // Ensure at least one Ru and S present (as per file header counts)
-    const elements = result.sites.map((s) => s.species[0].element)
-    expect(elements).toContain(`Ru`)
-    expect(elements).toContain(`S`)
   })
 
   it(`should detect CIF format by content`, () => {
@@ -920,47 +929,37 @@ H1   H   0.500  0.500  0.500`
     ]
     const expected_elements = [`Ti`, `Ti`, `O`, `O`, `O`, `O`]
 
-    function check_tio2_structure(result: ReturnType<typeof parse_cif>) {
-      expect(result).toBeTruthy()
-      expect(result?.sites).toHaveLength(6)
-      expect(result?.lattice?.a).toBeCloseTo(4.59983732, 8)
-      expect(result?.lattice?.b).toBeCloseTo(4.59983732, 8)
-      expect(result?.lattice?.c).toBeCloseTo(2.95921356, 8)
-      expect(result?.lattice?.alpha).toBeCloseTo(90.0, 8)
-      expect(result?.lattice?.beta).toBeCloseTo(90.0, 8)
-      expect(result?.lattice?.gamma).toBeCloseTo(90.0, 8)
-    }
+    test(`should parse TiO2 CIF structure, coordinates, and handle wrap_frac options`, () => {
+      // Test both wrap_frac=true and wrap_frac=false
+      ;[true, false].forEach((wrap_frac) => {
+        const result = parse_cif(tio2_cif, wrap_frac)
+        expect(result).toBeTruthy()
+        if (!result) {
+          throw new Error(`Failed to parse TiO2 CIF with wrap_frac=${wrap_frac}`)
+        }
 
-    test(`should parse TiO2 CIF with oxidation states correctly`, () => {
-      const result = parse_cif(tio2_cif)
-      check_tio2_structure(result)
-    })
+        // Basic structure validation
+        expect(result.sites).toHaveLength(6)
+        expect(result.lattice?.a).toBeCloseTo(4.59983732, 8)
+        expect(result.lattice?.b).toBeCloseTo(4.59983732, 8)
+        expect(result.lattice?.c).toBeCloseTo(2.95921356, 8)
+        expect(result.lattice?.alpha).toBeCloseTo(90.0, 8)
+        expect(result.lattice?.beta).toBeCloseTo(90.0, 8)
+        expect(result.lattice?.gamma).toBeCloseTo(90.0, 8)
 
-    test(`should extract correct element symbols and labels`, () => {
-      const result = parse_cif(tio2_cif)
-      expect(result?.sites.map((site) => site.label)).toEqual(expected_labels)
-      expect(result?.sites.map((site) => site.species[0].element)).toEqual(
-        expected_elements,
-      )
-    })
+        // Element symbols and labels validation
+        expect(result.sites.map((site) => site.label)).toEqual(expected_labels)
+        expect(result.sites.map((site) => site.species[0].element)).toEqual(
+          expected_elements,
+        )
 
-    test(`should parse fractional coordinates correctly`, () => {
-      const result = parse_cif(tio2_cif)
-      result?.sites.forEach((site, idx) => {
-        expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
-        expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
-        expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+        // Fractional coordinates validation
+        result.sites.forEach((site, idx) => {
+          expect(site.abc[0]).toBeCloseTo(expected_coords[idx][0], 8)
+          expect(site.abc[1]).toBeCloseTo(expected_coords[idx][1], 8)
+          expect(site.abc[2]).toBeCloseTo(expected_coords[idx][2], 8)
+        })
       })
-    })
-
-    test(`should handle wrap_frac=true`, () => {
-      const result = parse_cif(tio2_cif, true)
-      check_tio2_structure(result)
-    })
-
-    test(`should handle wrap_frac=false`, () => {
-      const result = parse_cif(tio2_cif, false)
-      check_tio2_structure(result)
     })
 
     test(`should calculate correct Cartesian coordinates`, () => {
@@ -981,6 +980,52 @@ H1   H   0.500  0.500  0.500`
         expect(site.species).toHaveLength(1)
         expect(site.species[0].oxidation_state).toBe(0) // Default oxidation state
       })
+    })
+
+    test(`should normalize decorated _atom_type_symbol in _atom_type_number_in_cell loop`, () => {
+      const cif_with_decorated_symbols = `data_test_decorated_symbols
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_type_symbol
+_atom_type_oxidation_number
+_atom_type_number_in_cell
+_atom_type_scat_dispersion_real
+_atom_type_scat_dispersion_imag
+Sn2+ 2 2 0.0 0.0
+Fe3+ 3 1 0.0 0.0
+O2- -2 3 0.0 0.0
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Sn1 Sn2+ 0.0 0.0 0.0
+Sn2 Sn2+ 0.5 0.5 0.5
+Fe1 Fe3+ 0.25 0.25 0.25
+O1 O2- 0.75 0.75 0.25
+O2 O2- 0.25 0.75 0.75
+O3 O2- 0.75 0.25 0.75`
+
+      const result = parse_cif(cif_with_decorated_symbols)
+      expect(result).toBeTruthy()
+      if (!result) throw new Error(`Failed to parse CIF with decorated symbols`)
+      expect(result.sites).toHaveLength(6) // 2 Sn + 1 Fe + 3 O = 6 total sites
+
+      // Verify that decorated symbols were normalized for counting
+      const element_counts: Record<string, number> = {}
+      for (const site of result.sites) {
+        const element = site.species[0].element
+        element_counts[element] = (element_counts[element] || 0) + 1
+      }
+
+      // Should match the _atom_type_number_in_cell counts (normalized)
+      expect(element_counts).toEqual({ Sn: 2, Fe: 1, O: 3 })
     })
   })
 
@@ -1066,8 +1111,8 @@ Xx1 0.5 0.5 0.5 1.0
   test(`parses MOF CIF file correctly`, () => {
     const result = parse_cif(mof_issue_127)
     // The MOF CIF has 7 unique atomic sites, but some of the 192 symmetry operations are identity
-    // and get skipped, resulting in 1307 total sites, 37 less sites than 192*7
-    expect(result?.sites.length).toBe(1307)
+    // and get skipped, resulting in 424 total sites after deduplication
+    expect(result?.sites.length).toBe(424)
     expect(result?.lattice?.a).toBeCloseTo(25.832, 8)
     expect(result?.lattice?.b).toBeCloseTo(25.832, 8)
     expect(result?.lattice?.c).toBeCloseTo(25.832, 8)
@@ -1113,22 +1158,22 @@ loop_
    I          0.5000  0.250000      0.250000      0.250000     Biso  1.000000 I`
 
     const result = parse_cif(mixed_occupancy_cif)
-    // Should have 4 unique sites × 3 non-identity symmetry operations = 13 total sites
-    // (x,y,z is identity and gets skipped, but some operations generate additional sites)
-    expect(result?.sites.length).toBe(13)
+    // Should have 4 unique sites × 2 non-identity symmetry operations = 8 total sites
+    // (x,y,z is identity and gets skipped, some operations generate additional sites)
+    expect(result?.sites.length).toBe(8)
     expect(result?.lattice?.a).toBeCloseTo(5.5, 8)
 
     // Check that mixed occupancy site (Na/K) is handled correctly
     const na_sites = result?.sites.filter((site) => site.species[0].element === `Na`)
     const k_sites = result?.sites.filter((site) => site.species[0].element === `K`)
-    expect(na_sites?.length).toBe(3) // 1 original + 2 from non-identity operations
-    expect(k_sites?.length).toBe(3)
+    expect(na_sites?.length).toBe(2) // 1 original + 1 from non-identity operations
+    expect(k_sites?.length).toBe(2)
 
     // Check that symmetry operations with translations are applied
     const translated_sites = result?.sites.filter((site) =>
       site.abc.some((coord) => coord === 0.5)
     )
-    expect(translated_sites?.length).toBe(6)
+    expect(translated_sites?.length).toBe(3) // 3 sites with 0.5 coordinates from translations
   })
 
   test(`parses ICSD-like CIF with specific symmetry format`, () => {
@@ -1215,22 +1260,84 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
   })
 
   test(`handles CIF with question mark symbols gracefully`, () => {
-    const question_mark_cif = `data_dummy
-_cell_length_a  5.000
-_cell_length_b  5.000
-_cell_length_c  5.000
-_cell_angle_alpha  90
-_cell_angle_beta   90
-_cell_angle_gamma  90
+    const question_mark_cif = `data_question_mark
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_space_group_name_H-M_alt 'P 1'
+_space_group_IT_number 1
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+
 loop_
 _atom_site_label
 _atom_site_type_symbol
 _atom_site_fract_x
 _atom_site_fract_y
 _atom_site_fract_z
-_atom_site_occupancy
-?   ?   0.000  0.000  0.000  1.000`
-    expect(parse_cif(question_mark_cif)).toBeNull()
+? ? 0.000 0.000 0.000`
+
+    const result = parse_cif(question_mark_cif)
+    expect(result).toBeNull()
+  })
+
+  test(`handles symmetry operations with dangling operators correctly`, () => {
+    const dangling_operator_cif = `data_dangling_operator
+_cell_length_a 5.0
+_cell_length_b 5.0
+_cell_length_c 5.0
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_space_group_name_H-M_alt 'P 1'
+_space_group_IT_number 1
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+   'x+1/2, y+1/2, z+1/2'
+   'x+1/2+, y+1/2, z+1/2'
+   'x+1/2, y+1/2+, z+1/2'
+   'x+1/2, y+1/2, z+1/2+'
+   'x+1/2-, y+1/2, z+1/2'
+   'x+1/2, y+1/2-, z+1/2'
+   'x+1/2, y+1/2, z+1/2-'
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Na Na 0.000 0.000 0.000`
+
+    const result = parse_cif(dangling_operator_cif)
+    // Should parse successfully without errors, treating dangling operators as 0
+    expect(result).toBeTruthy()
+
+    // The key test: should parse without errors and generate at least some sites
+    // Even if some operations with dangling operators are filtered out, the parsing should succeed
+    expect(result?.sites.length).toBeGreaterThan(0)
+
+    // Check that the original site is preserved
+    const original_site = result?.sites.find((site) =>
+      site.abc[0] === 0 && site.abc[1] === 0 && site.abc[2] === 0
+    )
+    expect(original_site).toBeTruthy()
+
+    // Check that at least one translated site is generated (the valid one)
+    const translated_sites = result?.sites.filter((site) =>
+      site.abc.some((coord) => coord === 0.5)
+    )
+    expect(translated_sites?.length).toBeGreaterThan(0)
+
+    // The important thing is that parsing succeeds without errors
+    // Some operations with dangling operators may be filtered out, but that's acceptable
   })
 })
 
@@ -1345,14 +1452,14 @@ unit_cell:
     {
       name: `AgI phonopy file`,
       content: agi_phono3py_params,
-      filename: `AgI-fq978185p-phono3py_params.yaml.gz`,
+      filename: `AgI-fq978185p-phono3py.yaml.gz`,
       expected_sites: 72,
       space_group: `P6_3mc`,
     },
     {
       name: `BeO phonopy file`,
       content: beo_phono3py_params,
-      filename: `BeO-zw12zc18p-phono3py_params.yaml.gz`,
+      filename: `BeO-zw12zc18p-phono3py.yaml.gz`,
       expected_sites: 64,
       space_group: `F-43m`,
     },
@@ -2473,9 +2580,9 @@ describe(`Structure File Detection`, () => {
     [`BaTiO3-tetragonal.poscar`, true],
     [`cyclohexane.xyz`, true],
     [`quartz.extxyz`, false],
-    [`AgI-fq978185p-phono3py_params.yaml.gz`, true],
+    [`AgI-fq978185p-phono3py.yaml.gz`, true],
     [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
-    [`BeO-zw12zc18p-phono3py_params.yaml.gz`, true],
+    [`BeO-zw12zc18p-phono3py.yaml.gz`, true],
     // Trajectory files should not be detected as structure files
     [`trajectory.traj`, false],
     [`md.xyz.gz`, false], // This should be detected as a trajectory file, not structure

@@ -1,7 +1,12 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { format_num, pick_color_for_contrast } from '$lib'
-  import { default_category_colors, is_color } from '$lib/colors'
+  import { format_num } from '$lib'
+  import {
+    contrast_color,
+    default_category_colors,
+    is_color,
+    pick_contrast_color,
+  } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
 
   type SplitLayout =
@@ -61,7 +66,6 @@
   let fallback_bg_color = $derived(
     bg_color ?? default_category_colors[category] ?? `var(--${category}-bg-color)`,
   )
-  let contrast_bg_color = $derived(bg_color ?? default_category_colors[category])
 
   // Determine if we should show the atomic number
   const should_show_number = $derived.by(() => {
@@ -137,48 +141,34 @@
 
     if (layout === `triangular` && count === 4) {
       return {
-        segments: [
-          `triangle-top`,
-          `triangle-right`,
-          `triangle-bottom`,
-          `triangle-left`,
-        ],
-        positions: [
-          `triangle-top-pos`,
-          `triangle-right-pos`,
-          `triangle-bottom-pos`,
-          `triangle-left-pos`,
-        ],
+        segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
+        positions: [`top`, `right`, `bottom`, `left`].map((pos) =>
+          `triangle-${pos}-pos`
+        ),
       }
     }
 
     if (layout === `quadrant` && count === 4) {
-      return {
-        segments: [`quadrant-tl`, `quadrant-tr`, `quadrant-bl`, `quadrant-br`],
-        positions: [
-          `value-quadrant-tl`,
-          `value-quadrant-tr`,
-          `value-quadrant-bl`,
-          `value-quadrant-br`,
-        ],
-      }
+      const segments = [`tl`, `tr`, `bl`, `br`].map((pos) => `quadrant-${pos}`)
+      const positions = [`tl`, `tr`, `bl`, `br`].map((pos) => `value-quadrant-${pos}`)
+      return { segments, positions }
     }
 
     return null
   })
 </script>
 
+<!-- TODO need a way for contrast_color() to override  text_color in heatmap mode -->
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
   {href}
-  data-sveltekit-noscroll
   class="element-tile {category}"
   class:active
   class:last-active={selected.last_element === element}
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
-  style:color={text_color ??
-  pick_color_for_contrast(node, contrast_bg_color, text_color_threshold)}
+  style:color={text_color}
+  {@attach text_color ? null : contrast_color()}
   role="link"
   tabindex="0"
   {...rest}
@@ -193,7 +183,7 @@
       {element.symbol}
     </span>
   {/if}
-  {#if value && should_show_values}
+  {#if should_show_values && value !== undefined && value !== null && value !== false}
     {#if Array.isArray(value) && layout_config}
       <!-- Multi-value positioning using layout config -->
       {#each value as val, idx (idx)}
@@ -201,7 +191,10 @@
           <span
             class="value multi-value {layout_config.positions[idx]}"
             style:color={bg_colors?.[idx]
-            ? pick_color_for_contrast(null, bg_colors[idx], text_color_threshold)
+            ? pick_contrast_color({
+              bg_color: bg_colors[idx] ?? fallback_bg_color,
+              text_color_threshold,
+            })
             : null}
           >
             {format_value(val)}

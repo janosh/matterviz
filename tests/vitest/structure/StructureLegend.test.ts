@@ -2,7 +2,7 @@ import type { CompositionType } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import { StructureLegend } from '$lib/structure'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -156,4 +156,22 @@ describe(`StructureLegend Component`, () => {
       }
     },
   )
+
+  test(`updates label text color when background changes`, async () => {
+    // 1. Initialize with a known color
+    colors.element.Fe = `#000000`
+    mount(StructureLegend, {
+      target: document.body,
+      props: { elements: { Fe: 1 } },
+    })
+    const label = doc_query(`label`)
+    const initial_color = getComputedStyle(label).color
+
+    // 2. Change the background color in the store
+    colors.element.Fe = `#ffffff`
+    await tick() // Wait for Svelte to process the change
+
+    // 3. Expect contrast_color to update the text color
+    expect(getComputedStyle(label).color).not.toBe(initial_color)
+  })
 })

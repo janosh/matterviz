@@ -1,6 +1,7 @@
 import { element_data } from '$lib'
 import {
   default_fmt,
+  format_fractional,
   format_num,
   heatmap_keys,
   parse_si_float,
@@ -104,5 +105,79 @@ describe(`parse_si_float function`, () => {
     } else {
       expect(result).toEqual(expected)
     }
+  })
+})
+
+describe(`format_fractional function`, () => {
+  test.each([
+    [0, `0`], // exact zero
+    [1, `0`], // integer wraps to 0
+    [0.5, `½`], // exact half
+    [1.5, `½`], // wraps to 0.5
+    [0.25, `¼`], // exact quarter
+    [0.75, `¾`], // exact three-quarters
+    [0.333333333, `⅓`], // one-third
+    [0.666666667, `⅔`], // two-thirds
+    [0.2, `⅕`], // exact fifth
+    [0.4, `⅖`], // exact two-fifths
+    [0.6, `⅗`], // exact three-fifths
+    [0.8, `⁴⁄₅`], // exact four-fifths
+    [0.166666667, `⅙`], // one-sixth
+    [0.125, `⅛`], // exact eighth
+    [0.083333333, `¹⁄₁₂`], // one-twelfth
+    [0.1, `0.1`], // not a special fraction
+    [0.65, `0.65`], // not a special fraction
+    [0.85, `0.85`], // not a special fraction
+    [0.001, `0`], // very small (floating point precision issue)
+    [Infinity, `Infinity`], // non-finite preserved
+    [-Infinity, `-Infinity`], // non-finite preserved
+    [NaN, `NaN`], // non-finite preserved
+  ])(`format_fractional(%s) should return %s`, (input, expected) => {
+    const result = format_fractional(input)
+    expect(result).toBe(expected)
+  })
+
+  test(`handles edge cases around epsilon boundary`, () => {
+    const eps = 1e-3
+    expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`)
+    expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`)
+  })
+
+  test(`zero case uses <= for exact epsilon values while others use <`, () => {
+    const eps = 1e-3
+    // Zero case: should now work with exact epsilon (0.001)
+    expect(format_fractional(0.001)).toBe(`0`)
+    expect(format_fractional(0.001 - 1e-6)).toBe(`0`) // slightly less than eps
+    expect(format_fractional(0.001 + 1e-6)).toBe(`0.001001`) // slightly more than eps (not zero)
+
+    // Other targets: should still use < (preserving existing behavior)
+    expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`) // 0.499 works
+    expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`) // 0.501 doesn't work (preserved)
+    expect(format_fractional(0.25 + eps - 1e-6)).toBe(`¼`) // 0.249 works
+    expect(format_fractional(0.25 + eps + 1e-6)).toBe(`0.251`) // 0.251 doesn't work (preserved)
+  })
+
+  test(`handles negative inputs and boundary values with proper wrapping`, () => {
+    // Special fractions wrap to positive equivalents
+    expect(format_fractional(-0.5)).toBe(`½`)
+    expect(format_fractional(-0.25)).toBe(`¾`)
+    expect(format_fractional(-0.75)).toBe(`¼`)
+    expect(format_fractional(-0.333333333)).toBe(`⅔`)
+    expect(format_fractional(-0.125)).toBe(`⁷⁄₈`)
+
+    // Non-special fractions remain negative
+    expect(format_fractional(-0.1)).toBe(`−0.1`)
+    expect(format_fractional(-0.9)).toBe(`−0.9`)
+
+    // Values near 1 boundary
+    expect(format_fractional(0.999)).toBe(`0.999`)
+    expect(format_fractional(1)).toBe(`0`)
+    expect(format_fractional(1.001)).toBe(`0`)
+    expect(format_fractional(1.001 - 1e-6)).toBe(`0`)
+
+    // Large negative values
+    expect(format_fractional(-1.5)).toBe(`½`)
+    expect(format_fractional(-2.25)).toBe(`¾`)
+    expect(format_fractional(-10.5)).toBe(`½`)
   })
 })

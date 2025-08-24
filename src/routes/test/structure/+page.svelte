@@ -13,6 +13,9 @@
     camera_projection: DEFAULTS.structure.camera_projection,
   })
   let performance_mode = $state<`quality` | `speed`>(`quality`)
+  // expose selection state for tests
+  let selected_sites = $state<number[]>([])
+  let measured_sites = $state<number[]>([])
 
   // capture event data for testing
   let event_calls = $state<Array<{ event: string; data: unknown }>>([])
@@ -164,6 +167,21 @@
       <option value="speed">Speed</option>
     </select>
   </label>
+  <div style="margin-top: 0.5em">
+    {#each [
+        [`set-selected`, () => selected_sites = [0, 1]],
+        [`clear-selected`, () => selected_sites = []],
+        [`set-measured`, () => measured_sites = [0, 1, 2]],
+        [`clear-measured`, () => measured_sites = []],
+      ] as const as
+      [btn_type, onclick]
+      (btn_type)
+    }
+      <button type="button" data-testid="btn-{btn_type}" {onclick}>
+        {btn_type}
+      </button>
+    {/each}
+  </div>
 </section>
 <Structure
   id="test-structure"
@@ -185,6 +203,8 @@
   on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
   on_camera_move={create_event_handler(`on_camera_move`)}
   on_camera_reset={create_event_handler(`on_camera_reset`)}
+  bind:selected_sites
+  bind:measured_sites
 />
 
 <div data-testid="pane-open-status" style="margin-top: 10px">

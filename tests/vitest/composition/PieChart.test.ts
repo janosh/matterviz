@@ -1,21 +1,7 @@
-import { composition_to_percentages, get_total_atoms, PieChart } from '$lib/composition'
+import { PieChart } from '$lib/composition'
+import { composition_to_percentages, get_total_atoms } from '$lib/composition/parse'
 import { mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
-
-// Mock colors module
-vi.mock(`$lib/colors`, () => ({
-  element_color_schemes: {
-    Vesta: { H: `#ffffff`, O: `#ff0d0d`, C: `#909090`, Fe: `#e06633` },
-  },
-  pick_color_for_contrast: vi.fn(() => `#000000`),
-}))
-
-// Mock state module
-vi.mock(`$lib/state.svelte`, () => ({
-  colors: {
-    element: { H: `#ffffff`, O: `#ff0d0d`, C: `#909090`, Fe: `#e06633` },
-  },
-}))
+import { describe, expect, test } from 'vitest'
 
 describe(`PieChart component`, () => {
   test(`renders SVG with correct viewBox`, () => {

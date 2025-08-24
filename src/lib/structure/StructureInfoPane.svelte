@@ -2,6 +2,8 @@
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon } from '$lib'
   import { electro_neg_formula, get_density } from '$lib/structure'
+  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
 
@@ -31,6 +33,27 @@
 
   let copied_items = new SvelteSet<string>()
   let sites_expanded = $state(false)
+  let sym_data = $state<MoyoDataset | null>(null)
+
+  // Reset symmetry data when structure changes
+  $effect(() => {
+    if (structure) sym_data = null
+  })
+
+  // Load symmetry data when pane is opened
+  $effect(() => {
+    if (!pane_open || !(`lattice` in structure) || sym_data) return
+
+    const current = structure
+    ensure_moyo_wasm_ready()
+      .then(() => analyze_structure_symmetry(current, 1e-4, `Standard`))
+      .then((data) => {
+        if (structure === current) sym_data = data
+      })
+      .catch((err) => {
+        console.error(`Symmetry analysis failed`, err)
+      })
+  })
 
   async function copy_to_clipboard(label: string, value: string, key: string) {
     try {
@@ -117,6 +140,48 @@
       })
     }
 
+    // Symmetry Info
+    if (`lattice` in structure && sym_data) {
+      const { operations } = sym_data
+      const translations = operations.filter((op) =>
+        op.rotation.every((r) => r === 0)
+      ).length
+      const rotations = operations.filter((op) =>
+        op.translation.every((t) => t === 0)
+      ).length
+      const roto_translations = operations.filter((op) =>
+        op.rotation.some((r) => r !== 0) &&
+        op.translation.some((t) => t !== 0)
+      ).length
+
+      sections.push({
+        title: `Symmetry`,
+        items: [
+          {
+            label: `Space Group`,
+            value: sym_data.number,
+            key: `symmetry-space-group`,
+          },
+          {
+            label: `Hall Number`,
+            value: sym_data.hall_number,
+            key: `symmetry-hall-number`,
+          },
+          {
+            label: `Pearson Symbol`,
+            value: sym_data.pearson_symbol,
+            key: `symmetry-pearson-symbol`,
+          },
+          {
+            label: `Symmetry Ops`,
+            value:
+              `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
+            key: `symmetry-operations-total`,
+          },
+        ] as SectionItem[],
+      })
+    }
+
     // Sites Section
     const atom_count = structure.sites.length
     if (atom_count <= max_threshold) {
@@ -139,7 +204,7 @@
 
       if (atom_count < min_threshold || sites_expanded) {
         structure.sites.forEach((site: Site, idx: number) => {
-          const element = site.species[0]?.element || `Unknown`
+          const element = site.species?.[0]?.element || `Unknown`
           const element_name = element_data.find((el) =>
             el.symbol === element
           )?.name || element
@@ -267,10 +332,7 @@
   }}
   open_icon="Cross"
   closed_icon="Info"
-  pane_props={{
-    ...pane_props,
-    class: `structure-info-pane ${pane_props?.class ?? ``}`,
-  }}
+  pane_props={{ ...pane_props, class: `structure-info-pane ${pane_props?.class ?? ``}` }}
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>

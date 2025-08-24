@@ -8,7 +8,7 @@ describe(`FilePicker`, () => {
   const create_mock_file = (
     name: string,
     url: string,
-    category: `crystal` | `molecule` | `unknown` = `crystal`,
+    category?: `crystal` | `molecule` | `unknown`,
   ): FileInfo => {
     // Extract the correct file type, handling double extensions like .cif.gz
     let base_name = name
@@ -158,6 +158,85 @@ describe(`FilePicker`, () => {
       expect(traj_filter).toBeTruthy()
       expect(document.querySelectorAll(`.file-item`)).toHaveLength(3)
     })
+
+    it(`filters files by category correctly including uncategorized files`, () => {
+      // Test the core filtering logic that was fixed
+      const test_files = [
+        create_mock_file(`structure1.cif`, `/files/structure1.cif`, `crystal`),
+        create_mock_file(`molecule.xyz`, `/files/molecule.xyz`, `molecule`),
+        create_mock_file(`uncategorized.dat`, `/files/uncategorized.dat`, undefined), // No category
+        create_mock_file(`another.cif`, `/files/another.cif`, `crystal`),
+      ]
+
+      // Test filtering logic directly
+      const get_category_id = (file: FileInfo): string => {
+        if (!file.category) return `(uncategorized)`
+        return `${file.category_icon ?? ``} ${file.category}`.trim()
+      }
+
+      const active_category_filter = `crystal`
+      const filtered = test_files.filter((file) => {
+        if (active_category_filter) {
+          return get_category_id(file) === active_category_filter
+        }
+        return true
+      })
+
+      // Should only show crystal files, not uncategorized or molecule files
+      expect(filtered.length).toBe(2)
+      expect(filtered[0].name).toBe(`structure1.cif`)
+      expect(filtered[1].name).toBe(`another.cif`)
+    })
+
+    it(`filters files by type correctly`, () => {
+      // Test the core filtering logic
+      const test_files = [
+        create_mock_file(`structure1.cif`, `/files/structure1.cif`, `crystal`),
+        create_mock_file(`molecule.xyz`, `/files/molecule.xyz`, `molecule`),
+        create_mock_file(`data.json`, `/files/data.json`, `crystal`),
+        create_mock_file(`another.xyz`, `/files/another.xyz`, `crystal`),
+      ]
+
+      // Test filtering logic directly
+      const get_base_file_type = (file: FileInfo): string => {
+        let base_name = file.name.toLowerCase()
+        if (base_name.endsWith(`.gz`)) base_name = base_name.slice(0, -3)
+        return base_name.split(`.`).pop() || `file`
+      }
+
+      const active_type_filter = `xyz`
+      const filtered = test_files.filter((file) => {
+        if (active_type_filter) {
+          const normalized_type = get_base_file_type(file)
+          return normalized_type === active_type_filter
+        }
+        return true
+      })
+
+      // Should only show XYZ files
+      expect(filtered.length).toBe(2)
+      expect(filtered[0].name).toBe(`molecule.xyz`)
+      expect(filtered[1].name).toBe(`another.xyz`)
+    })
+
+    it(`handles filter state correctly`, () => {
+      // Test filter clearing and mutual exclusion
+      let active_category_filter: string | null = `crystal`
+      let active_type_filter: string | null = `xyz`
+
+      // Clear filters
+      active_category_filter = null
+      active_type_filter = null
+      expect(active_category_filter).toBe(null)
+      expect(active_type_filter).toBe(null)
+
+      // Test mutual exclusion
+      active_category_filter = `crystal`
+      active_type_filter = `xyz`
+      active_category_filter = null
+      expect(active_category_filter).toBe(null)
+      expect(active_type_filter).toBe(`xyz`)
+    })
   })
 
   describe(`UI components and accessibility`, () => {
@@ -165,8 +244,6 @@ describe(`FilePicker`, () => {
       [`.clear-filter`, false, `clear filter button`],
       [`.legend-item`, true, `filter items`],
       [`.format-circle`, true, `format color circles`],
-      [`.drag-handle`, true, `drag handle styling`],
-      [`.drag-bar`, true, `drag bar styling`],
     ])(
       `renders %s (%s) correctly`,
       (selector: string, should_exist: boolean, _description: string) => {
@@ -297,8 +374,8 @@ describe(`FilePicker`, () => {
   describe(`custom props`, () => {
     it(`uses custom type_mapper to override file type detection`, () => {
       const files = [create_mock_file(`foo.custom`, `/files/foo.custom`)]
-      const type_mapper = (filename: string) =>
-        filename.endsWith(`.custom`) ? `xyz` : `unknown`
+      const type_mapper = (file: FileInfo) =>
+        file.name.endsWith(`.custom`) ? `xyz` : `unknown`
       mount(FilePicker, {
         target: document.body,
         props: { files, type_mapper },

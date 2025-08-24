@@ -216,16 +216,11 @@ describe(`ScatterPoint`, () => {
       { position: `left`, offset: { x: -15, y: 0 } },
     ] as const,
   )(`renders with different text annotation positions`, (pos) => {
-    const container = document.createElement(`div`)
-    container.setAttribute(`style`, container_style)
-    document.body.appendChild(container)
-
     const label = {
       text: `Point ${pos.position}`,
       offset: pos.offset,
     }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
+    mount(ScatterPoint, { target: document.body, props: { x: 100, y: 100, label } })
 
     const text = doc_query(`text`)
     expect(text.textContent).toBe(label.text)
