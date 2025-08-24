@@ -29,7 +29,7 @@
     "h5wasm": "^0.8.3",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.0",
-    "moyo-wasm": "^0.4.4",
+    "@spglib/moyo-wasm": "^0.4.4",
     "svelte": "^5.38.3",
     "svelte-multiselect": "11.2.3",
     "three": "^0.179.1"

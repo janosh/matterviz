@@ -260,12 +260,6 @@ const themes = {
     black: acc_black,
   },
 
-  'copy-btn-color': {
-    light: txt_light,
-    dark: txt_dark,
-    white: txt_white,
-    black: txt_black,
-  },
   'github-corner-color': {
     light: page_bg_light,
     dark: page_bg_dark,

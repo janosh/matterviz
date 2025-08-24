@@ -1,9 +1,9 @@
 import type { Vec3 } from '$lib'
 import { atomic_number_to_symbol, symbol_to_atomic_number } from '$lib/composition/parse'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
-import type { MoyoCell, MoyoDataset } from 'moyo-wasm'
-import init, { analyze_cell } from 'moyo-wasm'
-import wasm_url from 'moyo-wasm/moyo_wasm_bg.wasm?url'
+import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
+import init, { analyze_cell } from '@spglib/moyo-wasm'
+import wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
 
 let initialized = false
 

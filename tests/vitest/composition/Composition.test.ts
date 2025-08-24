@@ -26,7 +26,7 @@ vi.mock(`$lib/colors`, () => ({
     O: `#ff0d0d`,
     Fe: `#e06633`,
   },
-  pick_color_for_contrast: vi.fn(() => `#000000`),
+  pick_contrast_color: vi.fn(() => `#000000`),
 }))
 
 function doc_query<T extends Element = Element>(selector: string): T {

@@ -7,7 +7,7 @@ vi.mock(`$lib/colors`, () => ({
   element_color_schemes: {
     Vesta: { H: `#ffffff`, O: `#ff0d0d`, C: `#909090`, Fe: `#e06633` },
   },
-  pick_color_for_contrast: vi.fn(() => `#000000`),
+  pick_contrast_color: vi.fn(() => `#000000`),
 }))
 
 // Mock state module

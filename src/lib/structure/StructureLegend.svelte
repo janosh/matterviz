@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { CompositionType } from '$lib'
-  import { element_data, format_num, pick_color_for_contrast } from '$lib'
-  import { default_element_colors } from '$lib/colors'
+  import { element_data, format_num } from '$lib'
+  import { contrast_color, default_element_colors } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
 
@@ -36,7 +36,7 @@
         event.preventDefault()
         colors.element[elem] = default_element_colors[elem]
       }}
-      style:color={pick_color_for_contrast(labels[idx], null, 0.55)}
+      {@attach contrast_color()}
     >
       {#if get_element_label}
         {get_element_label(elem, amt)}

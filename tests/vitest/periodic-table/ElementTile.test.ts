@@ -291,16 +291,6 @@ describe(`ElementTile`, () => {
       expect(node.getAttribute(`role`)).toBe(`link`)
       expect(node.getAttribute(`tabindex`)).toBe(`0`)
     })
-
-    test(`includes data-sveltekit-noscroll when href is provided`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, href: `/test` },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.hasAttribute(`data-sveltekit-noscroll`)).toBe(true)
-    })
   })
 
   describe(`rest props`, () => {

@@ -26,11 +26,11 @@ describe(`ThemeControl`, () => {
     const options = select.querySelectorAll(`option`)
     expect(options).toHaveLength(3)
     expect(options[0].value).toBe(`light`)
-    expect(options[0].textContent).toContain(`☀️ Light`)
+    expect(options[0].textContent).toContain(`☀️ Light`)
     expect(options[1].value).toBe(`dark`)
-    expect(options[1].textContent).toContain(`🌙 Dark`)
+    expect(options[1].textContent).toContain(`🌙 Dark`)
     expect(options[2].value).toBe(`auto`)
-    expect(options[2].textContent).toContain(`🔄 Auto`)
+    expect(options[2].textContent).toContain(`🔄 Auto`)
   })
 
   test(`applies custom class when provided`, () => {

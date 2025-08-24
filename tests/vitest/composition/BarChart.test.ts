@@ -66,7 +66,7 @@ vi.mock(`$lib/colors`, () => ({
     Ca: `#3dff00`,
     Mg: `#8aff00`,
   },
-  pick_color_for_contrast: vi.fn(() => `#000000`),
+  pick_contrast_color: vi.fn(() => `#000000`),
 }))
 
 vi.mock(`$lib`, () => ({

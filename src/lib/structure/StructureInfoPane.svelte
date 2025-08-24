@@ -3,7 +3,7 @@
   import { DraggablePane, element_data, format_num, Icon } from '$lib'
   import { electro_neg_formula, get_density } from '$lib/structure'
   import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
-  import type { MoyoDataset } from 'moyo-wasm'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
 

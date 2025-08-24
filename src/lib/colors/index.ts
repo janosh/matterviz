@@ -105,14 +105,19 @@ export function get_bg_color(
   return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
 }
 
-// pick black or white text color to maximize contrast with background
-export function pick_color_for_contrast(
-  node: HTMLElement | null,
-  // you can explicitly pass bg_color to avoid DOM recursion and in case get_bg_color() fails
-  bg_color: string | null = null,
-  text_color_threshold: number = 0.7,
-  choices: [string, string] = [`black`, `white`], // one dark and one light color (in that order)
-) {
-  const light_bg = luminance(get_bg_color(node, bg_color)) > text_color_threshold
+export interface ContrastOptions {
+  bg_color?: string
+  text_color_threshold?: number
+  choices?: [string, string]
+}
+
+export function pick_contrast_color(options: ContrastOptions = {}) {
+  const { bg_color, text_color_threshold = 0.7, choices = [`black`, `white`] } = options
+  const light_bg = luminance(bg_color ?? `white`) > text_color_threshold
   return light_bg ? choices[0] : choices[1] // white text for dark backgrounds, black for light
+}
+
+// Svelte attachment that automatically picks black or white text color to maximize contrast with node's background color
+export const contrast_color = (options: ContrastOptions = {}) => (node: HTMLElement) => {
+  node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
 }

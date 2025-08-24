@@ -53,14 +53,14 @@
 
   // Helper function to create normalized category identifier for filtering
   const get_category_id = (file: FileInfo): string => {
-    if (!file.category) return ``
+    if (!file.category) return `(uncategorized)`
     return `${file.category_icon ?? ``} ${file.category}`.trim()
   }
 
   // Filter files based on active filters
   let filtered_files = $derived(
     files.filter((file) => {
-      if (active_category_filter && file.category) {
+      if (active_category_filter) {
         return get_category_id(file) === active_category_filter
       }
       if (active_type_filter) {
@@ -174,7 +174,7 @@
       title="Drag this {base_type.toUpperCase()} file"
     >
       <div class="file-name">
-        {@html file.category ? `${file.category_icon}&ensp;` : ``}{file.name}
+        {file.category ? `${file.category_icon} ` : ``}{file.name}
         {#if is_compressed}<span class="compression-indicator">📦</span>{/if}
       </div>
     </div>

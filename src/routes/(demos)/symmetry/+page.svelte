@@ -2,7 +2,7 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { FilePicker, format_fractional } from '$lib'
+  import { contrast_color, FilePicker, format_fractional } from '$lib'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
@@ -12,7 +12,7 @@
     generate_wyckoff_rows,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
-  import type { MoyoDataset } from 'moyo-wasm'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { onMount } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
 
@@ -195,7 +195,11 @@
             <tr>
               <td>{wyckoff}</td>
               <td>
-                <span style:background-color={colors.element[elem]} {style}>
+                <span
+                  style:background-color={colors.element[elem]}
+                  {style}
+                  {@attach contrast_color()}
+                >
                   {elem}
                 </span>
               </td>
