@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type CompositionType, type ElementSymbol, format_num } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
-  import { element_color_schemes, pick_color_for_contrast } from '$lib/colors'
+  import { element_color_schemes, pick_contrast_color } from '$lib/colors'
   import type { Snippet } from 'svelte'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { composition_to_percentages } from './parse'
@@ -116,7 +116,7 @@
         x,
         width,
         font_scale,
-        text_color: pick_color_for_contrast(null, color),
+        text_color: pick_contrast_color({ bg_color: color }),
         can_show_label,
         needs_external_label,
         external_label_position,

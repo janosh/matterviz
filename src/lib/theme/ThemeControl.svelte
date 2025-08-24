@@ -23,7 +23,7 @@
 
 <select bind:value={theme_mode} {...rest} class="theme-control {rest.class ?? ``}">
   {#each THEME_OPTIONS as { label, icon, value } (value)}
-    <option {value}>{icon} {label}</option>
+    <option {value}>{icon}&ensp;{label}</option>
   {/each}
 </select>
 
@@ -37,7 +37,7 @@
     border: var(--pane-border);
     color: var(--text-color);
     border-radius: var(--theme-control-border-radius, 5pt);
-    padding: var(--theme-control-padding, 4pt 6pt);
+    padding: var(--theme-control-padding, 1pt 2pt);
     backdrop-filter: blur(10px);
     transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -49,6 +49,5 @@
   }
   .theme-control:focus {
     outline: 0.5px solid var(--accent-color);
-    outline-offset: 2px;
   }
 </style>

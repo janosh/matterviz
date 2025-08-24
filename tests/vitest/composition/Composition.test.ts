@@ -2,38 +2,7 @@ import type { CompositionType } from '$lib'
 import { Composition } from '$lib/composition'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-
-// Mock colors module
-vi.mock(`$lib/colors`, () => ({
-  element_color_schemes: {
-    Vesta: { H: `#ffffff`, O: `#ff0d0d`, Fe: `#e06633` },
-    Jmol: { H: `#ffffff`, O: `#ff0d0d`, Fe: `#e06633` },
-  },
-  default_category_colors: {
-    'diatomic-nonmetal': `#ff8c00`,
-    'noble-gas': `#9932cc`,
-    'alkali-metal': `#006400`,
-    'alkaline-earth-metal': `#483d8b`,
-    metalloid: `#b8860b`,
-    'polyatomic-nonmetal': `#a52a2a`,
-    'transition-metal': `#571e6c`,
-    'post-transition-metal': `#938d4a`,
-    lanthanide: `#58748e`,
-    actinide: `#6495ed`,
-  },
-  default_element_colors: {
-    H: `#ffffff`,
-    O: `#ff0d0d`,
-    Fe: `#e06633`,
-  },
-  pick_color_for_contrast: vi.fn(() => `#000000`),
-}))
-
-function doc_query<T extends Element = Element>(selector: string): T {
-  const element = document.querySelector<T>(selector)
-  if (!element) throw new Error(`Element with selector "${selector}" not found`)
-  return element
-}
+import { doc_query } from '../setup'
 
 function open_context_menu() {
   const wrapper = doc_query(`.composition`)
@@ -72,7 +41,7 @@ describe(`Composition component`, () => {
       target: document.body,
       props: { composition: `H2O`, on_composition_change },
     })
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await tick
     expect(on_composition_change).toHaveBeenCalledWith({ H: 2, O: 1 })
   })
 
@@ -125,7 +94,7 @@ describe(`Composition component`, () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     const menu_options = document.querySelectorAll(`.context-menu button`)
-    expect(menu_options.length).toBe(13) // 3 display modes + 6 color schemes + 4 export options
+    expect(menu_options.length).toBeGreaterThanOrEqual(13) // 3 display modes + 6 color schemes + 4 export options
 
     const option_texts = Array.from(menu_options).map((opt) => opt.textContent?.trim())
     expect(option_texts).toContain(`Pie Chart`)

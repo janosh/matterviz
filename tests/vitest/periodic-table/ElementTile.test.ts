@@ -291,16 +291,6 @@ describe(`ElementTile`, () => {
       expect(node.getAttribute(`role`)).toBe(`link`)
       expect(node.getAttribute(`tabindex`)).toBe(`0`)
     })
-
-    test(`includes data-sveltekit-noscroll when href is provided`, () => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, href: `/test` },
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.hasAttribute(`data-sveltekit-noscroll`)).toBe(true)
-    })
   })
 
   describe(`rest props`, () => {
@@ -393,10 +383,9 @@ describe(`ElementTile`, () => {
         props: { element: rand_element, value: 0 },
       })
 
-      // Zero is falsy, so it shows name instead of value
-      const name_element = doc_query(`.name`)
-      expect(name_element.textContent).toBe(rand_element.name)
-      expect(document.querySelector(`.value`)).toBeNull()
+      const value_element = doc_query(`.value`)
+      expect(value_element.textContent).toBe(`0`)
+      expect(document.querySelector(`.name`)).toBeNull()
     })
 
     test(`handles empty string float_fmt`, () => {

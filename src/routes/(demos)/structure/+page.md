@@ -30,7 +30,7 @@
     page.url.searchParams.set(`file`, current_filename)
     goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
       replaceState: true,
-      keepfocus: true,
+      keepFocus: true,
       noScroll: true,
     })
   }}
@@ -43,7 +43,6 @@
 <FilePicker
   files={[...structure_files, ...molecule_files]}
   show_category_filters
-  category_labels={{ '🔷': `🔷 Crystal`, '🧬': `🧬 Molecule`, '❓': `❓ Unknown` }}
   style="margin-block: 2em"
 />
 ```

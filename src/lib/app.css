@@ -155,7 +155,7 @@ table.roomy :is(td, th) {
   padding: 5pt 9pt;
 }
 tbody tr:nth-child(odd) {
-  background: var(--surface-bg, black);
+  background: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);
 }
 
 :where(ul.selected > li button, button.remove-all) {
@@ -173,4 +173,12 @@ tbody tr:nth-child(odd) {
   width: min(1400px, calc(100vw - 2 * var(--margin))) !important;
   margin-left: calc(-50vw + 50% + max(var(--margin), (100vw - 1400px) / 2));
   max-width: none !important;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 9pt;
+  right: 9pt;
+  background: var(--btn-bg);
+  color: var(--btn-color);
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { CompositionType } from '$lib'
-  import { element_data, format_num, pick_color_for_contrast } from '$lib'
-  import { default_element_colors } from '$lib/colors'
+  import { element_data, format_num } from '$lib'
+  import { contrast_color, default_element_colors } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
 
@@ -36,7 +36,7 @@
         event.preventDefault()
         colors.element[elem] = default_element_colors[elem]
       }}
-      style:color={pick_color_for_contrast(labels[idx], null, 0.55)}
+      {@attach contrast_color()}
     >
       {#if get_element_label}
         {get_element_label(elem, amt)}
@@ -59,10 +59,10 @@
   .structure-legend {
     display: flex;
     position: absolute;
-    bottom: var(--struct-legend-bottom, clamp(4pt, 2cqw, 8pt));
-    right: var(--struct-legend-right, clamp(4pt, 2cqw, 8pt));
-    gap: var(--struct-legend-gap, clamp(2pt, 1.5cqw, 5pt));
-    font-size: var(--struct-legend-font, clamp(8pt, 3cqw, 14pt));
+    bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
+    right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
+    gap: var(--struct-legend-gap, clamp(2pt, 2cqmin, 5pt));
+    font-size: var(--struct-legend-font, clamp(8pt, 3.5cqmin, 14pt));
     filter: var(--legend-filter, grayscale(10%) brightness(0.95) saturate(0.9));
     z-index: var(--struct-legend-z-index, 1);
     pointer-events: auto;
