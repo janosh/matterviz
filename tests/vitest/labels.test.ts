@@ -156,4 +156,28 @@ describe(`format_fractional function`, () => {
     expect(format_fractional(0.25 + eps - 1e-6)).toBe(`¼`) // 0.249 works
     expect(format_fractional(0.25 + eps + 1e-6)).toBe(`0.251`) // 0.251 doesn't work (preserved)
   })
+
+  test(`handles negative inputs and boundary values with proper wrapping`, () => {
+    // Special fractions wrap to positive equivalents
+    expect(format_fractional(-0.5)).toBe(`½`)
+    expect(format_fractional(-0.25)).toBe(`¾`)
+    expect(format_fractional(-0.75)).toBe(`¼`)
+    expect(format_fractional(-0.333333333)).toBe(`⅔`)
+    expect(format_fractional(-0.125)).toBe(`⁷⁄₈`)
+
+    // Non-special fractions remain negative
+    expect(format_fractional(-0.1)).toBe(`−0.1`)
+    expect(format_fractional(-0.9)).toBe(`−0.9`)
+
+    // Values near 1 boundary
+    expect(format_fractional(0.999)).toBe(`0.999`)
+    expect(format_fractional(1)).toBe(`0`)
+    expect(format_fractional(1.001)).toBe(`0`)
+    expect(format_fractional(1.001 - 1e-6)).toBe(`0`)
+
+    // Large negative values
+    expect(format_fractional(-1.5)).toBe(`½`)
+    expect(format_fractional(-2.25)).toBe(`¾`)
+    expect(format_fractional(-10.5)).toBe(`½`)
+  })
 })

@@ -8,7 +8,7 @@
     show_category_filters?: boolean
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_drag_end?: () => void
-    type_mapper?: (filename: string) => string
+    type_mapper?: (file: FileInfo) => string
     file_type_colors?: Record<string, string>
     [key: string]: unknown
   }
@@ -40,11 +40,11 @@
   type FilterKind = `category` | `type`
 
   // Helper function to get the base file type (removing .gz extension)
-  const get_base_file_type = (filename: string): string => {
+  const get_base_file_type = (file: FileInfo): string => {
     // Use custom type mapper if provided
-    if (type_mapper) return type_mapper(filename)
+    if (type_mapper) return type_mapper(file)
 
-    let base_name = filename.toLowerCase()
+    let base_name = file.name.toLowerCase()
     // Remove .gz extension if present
     if (base_name.endsWith(`.gz`)) base_name = base_name.slice(0, -3)
 
@@ -64,7 +64,7 @@
         return get_category_id(file) === active_category_filter
       }
       if (active_type_filter) {
-        const normalized_type = get_base_file_type(file.name)
+        const normalized_type = get_base_file_type(file)
         return normalized_type === active_type_filter
       }
       return true
@@ -87,7 +87,7 @@
     const payload = JSON.stringify({
       name: file.name,
       url: file_url,
-      type: file.type || get_base_file_type(file.name),
+      type: file.type || get_base_file_type(file),
       category: file.category,
     })
     // Set file data as JSON for applications that can handle it
@@ -99,16 +99,10 @@
     on_drag_start?.(file, event)
   }
 
-  // Get unique file types for format filters
-  let uniq_formats = $derived(
-    [...new Set(files.map((file) => get_base_file_type(file.name)))].sort(),
-  )
-
-  // Get unique category types for category filters
+  // Get unique file types/categories for format/category filters
+  let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].sort())
   let uniq_categories = $derived(
-    [...new Set(files.map((file) => get_category_id(file)))].filter((str) =>
-      str.trim()
-    ).sort(),
+    [...new Set(files.map(get_category_id))].filter(Boolean).sort(),
   )
 </script>
 
@@ -126,6 +120,7 @@
         toggle_filter(`category`, category)}
         role="button"
         tabindex="0"
+        aria-pressed={is_active}
         {@attach tooltip({ content: `Filter to show only ${category}` })}
       >
         {category}
@@ -164,7 +159,7 @@
   </div>
 
   {#each filtered_files as file (file.name)}
-    {@const base_type = get_base_file_type(file.name)}
+    {@const base_type = get_base_file_type(file)}
     {@const is_compressed = file.name.toLowerCase().endsWith(`.gz`)}
     <div
       class="file-item"

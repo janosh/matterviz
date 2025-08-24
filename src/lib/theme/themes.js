@@ -2,52 +2,29 @@
 // Note: This file needs to be symlinked into static/ to be importable by app.html before initial page render to prevent flashing colors before client-side JS kicks in. It also needs to be in src/lib so it gets packaged and shipped to NPM for use by the anywidgets in pymatviz.
 // Can't use exports in this file as would then require type="module" in app.html to import which would defer until after HTML is ready (module files are always deferred).
 
-const colors = { // Base colors used across themes
-  // Text colors
-  txt_light: `#374151`, // Dark gray
-  txt_dark: `#eee`, // Light gray
-  txt_white: `#000000`, // Black
-  txt_black: `#f5f5f5`, // Off-white
+// Text colors
+const txt_light = `#374151` // Dark gray
+const txt_dark = `#eee` // Light gray
+const txt_white = `#000000` // Black
+const txt_black = `#f5f5f5` // Off-white
 
-  // Page backgrounds
-  page_bg_light: `#f1f3f5`, // Light gray
-  page_bg_dark: `#18171c`, // Very dark blue
-  page_bg_white: `#ffffff`, // Pure white
-  page_bg_black: `#000000`, // Pure black
+// Page backgrounds
+const page_bg_light = `#f1f3f5` // Light gray
+const page_bg_dark = `#18171c` // Very dark blue
+const page_bg_white = `#ffffff` // Pure white
+const page_bg_black = `#000000` // Pure black
 
-  // Borders
-  border_light: `#d1d5db`, // Gray border
-  border_dark: `#404040`, // Dark gray border
-  border_white: `#f0f0f0`, // Light border
-  border_black: `#202020`, // Dark border
+// Borders
+const border_light = `#d1d5db` // Gray border
+const border_dark = `#404040` // Dark gray border
+const border_white = `#f0f0f0` // Light border
+const border_black = `#202020` // Dark border
 
-  // Accents
-  acc_light: `#4f46e5`, // Indigo
-  acc_dark: `cornflowerblue`, // Light blue
-  acc_white: `#2563eb`, // Blue
-  acc_black: `cornflowerblue`, // Cyan
-
-  // Error colors
-  error_text_light: `#dc2626`, // Red
-  error_text_dark: `#fca5a5`, // Light red
-  error_text_white: `#b91c1c`, // Dark red
-  error_text_black: `#f87171`, // Pink-red
-
-  error_border_light: `#fca5a5`, // Light red
-  error_border_dark: `#dc2626`, // Red
-  error_border_white: `#fecaca`, // Very light red
-  error_border_black: `#991b1b`, // Dark red
-
-  error_btn_light: `#dc2626`, // Red
-  error_btn_dark: `#7f1d1d`, // Dark red
-  error_btn_white: `#b91c1c`, // Dark red
-  error_btn_black: `#991b1b`, // Dark red
-
-  error_btn_hover_light: `#b91c1c`, // Dark red
-  error_btn_hover_dark: `#991b1b`, // Darker red
-  error_btn_hover_white: `#991b1b`, // Darker red
-  error_btn_hover_black: `#7f1d1d`, // Very dark red
-}
+// Accents
+const acc_light = `#4f46e5` // Indigo
+const acc_dark = `cornflowerblue` // Light blue
+const acc_white = `#2563eb` // Blue
+const acc_black = `cornflowerblue` // Cyan
 
 // Helper functions for common patterns
 const btn_bg = (dark_op, light_op) => ({
@@ -67,17 +44,12 @@ const tooltip_bg = (light_bg, dark_bg, light_op = 0.95, dark_op = 0.95) => ({
 const themes = {
   // Core colors
   'page-bg': {
-    light: colors.page_bg_light,
-    dark: colors.page_bg_dark,
-    white: colors.page_bg_white,
-    black: colors.page_bg_black,
+    light: page_bg_light,
+    dark: page_bg_dark,
+    white: page_bg_white,
+    black: page_bg_black,
   },
-  'text-color': {
-    light: colors.txt_light,
-    dark: colors.txt_dark,
-    white: colors.txt_white,
-    black: colors.txt_black,
-  },
+  'text-color': { light: txt_light, dark: txt_dark, white: txt_white, black: txt_black },
   'surface-bg': {
     light: `rgb(237, 238, 239)`,
     dark: `rgb(33, 36, 43)`,
@@ -85,16 +57,16 @@ const themes = {
     black: `rgb(19, 19, 19)`,
   },
   'border-color': {
-    light: colors.border_light,
-    dark: colors.border_dark,
-    white: colors.border_white,
-    black: colors.border_black,
+    light: border_light,
+    dark: border_dark,
+    white: border_white,
+    black: border_black,
   },
   'accent-color': {
-    light: colors.acc_light,
-    dark: colors.acc_dark,
-    white: colors.acc_white,
-    black: colors.acc_black,
+    light: acc_light,
+    dark: acc_dark,
+    white: acc_white,
+    black: acc_black,
   },
 
   // Hover states
@@ -219,9 +191,9 @@ const themes = {
     black: `rgba(15, 15, 15, 0.7)`,
   },
   'dragover-border': {
-    light: `1px solid ${colors.acc_light}`,
+    light: `1px solid ${acc_light}`,
     dark: `1px solid #007acc`,
-    white: `1px solid ${colors.acc_white}`,
+    white: `1px solid ${acc_white}`,
     black: `1px solid #0ea5e9`,
   },
   'dragover-bg': {
@@ -255,10 +227,10 @@ const themes = {
     black: `1px solid rgba(255, 255, 255, 0.1)`,
   },
   'plot-legend-item-color': {
-    light: colors.txt_light,
-    dark: colors.txt_dark,
-    white: colors.txt_white,
-    black: colors.txt_black,
+    light: txt_light,
+    dark: txt_dark,
+    white: txt_white,
+    black: txt_black,
   },
   'plot-legend-item-hover-background-color': btn_bg(0.1, 0.1),
 
@@ -276,35 +248,35 @@ const themes = {
     black: `1px dotted teal`,
   },
   'sms-focus-border': {
-    light: `1px dotted ${colors.acc_light}`,
+    light: `1px dotted ${acc_light}`,
     dark: `1px dotted cornflowerblue`,
-    white: `1px dotted ${colors.acc_white}`,
-    black: `1px dotted ${colors.acc_black}`,
+    white: `1px dotted ${acc_white}`,
+    black: `1px dotted ${acc_black}`,
   },
   'sms-active-color': {
-    light: colors.acc_light,
+    light: acc_light,
     dark: `cornflowerblue`,
-    white: colors.acc_white,
-    black: colors.acc_black,
+    white: acc_white,
+    black: acc_black,
   },
 
   'copy-btn-color': {
-    light: colors.txt_light,
-    dark: colors.txt_dark,
-    white: colors.txt_white,
-    black: colors.txt_black,
+    light: txt_light,
+    dark: txt_dark,
+    white: txt_white,
+    black: txt_black,
   },
   'github-corner-color': {
-    light: colors.page_bg_light,
-    dark: colors.page_bg_dark,
-    white: colors.page_bg_white,
-    black: colors.page_bg_black,
+    light: page_bg_light,
+    dark: page_bg_dark,
+    white: page_bg_white,
+    black: page_bg_black,
   },
   'github-corner-bg': {
-    light: colors.txt_light,
-    dark: colors.txt_dark,
-    white: colors.txt_white,
-    black: colors.txt_black,
+    light: txt_light,
+    dark: txt_dark,
+    white: txt_white,
+    black: txt_black,
   },
 }
 

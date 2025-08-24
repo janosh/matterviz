@@ -295,8 +295,8 @@ describe(`FilePicker`, () => {
   describe(`custom props`, () => {
     it(`uses custom type_mapper to override file type detection`, () => {
       const files = [create_mock_file(`foo.custom`, `/files/foo.custom`)]
-      const type_mapper = (filename: string) =>
-        filename.endsWith(`.custom`) ? `xyz` : `unknown`
+      const type_mapper = (file: FileInfo) =>
+        file.name.endsWith(`.custom`) ? `xyz` : `unknown`
       mount(FilePicker, {
         target: document.body,
         props: { files, type_mapper },

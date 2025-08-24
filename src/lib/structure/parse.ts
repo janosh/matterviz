@@ -559,12 +559,17 @@ const apply_symmetry_ops = (
           const [num, den] = number_str.split(`/`)
           const numerator = parseFloat(num)
           const denominator = parseFloat(den)
-          if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
-            translation = sign * (numerator / denominator)
-          }
+          if (isNaN(numerator) || isNaN(denominator)) {
+            console.warn(`Malformed fraction in symmetry operation: ${num}/${den}`)
+          } else if (denominator === 0) {
+            console.warn(`Division by zero in symmetry operation: ${num}/${den}`)
+          } else translation = sign * (numerator / denominator)
         } else {
           const val = parseFloat(number_str)
-          if (!isNaN(val)) translation = sign * val
+          // Log malformed numeric value for debugging
+          if (isNaN(val)) {
+            console.warn(`Malformed numeric value in symmetry operation: ${number_str}`)
+          } else translation = sign * val
         }
       }
 
@@ -872,6 +877,8 @@ export function parse_cif(
       .map((op) => op.replace(/\s+/g, ``))
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
+    // TODO: Support conventional cells with centering by discovering centering from space group metadata
+    // when present (e.g., P, I, F, C, R centering types)
     const centering_vectors: Vec3[] = [[0, 0, 0]]
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
