@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { FilePicker, format_fractional } from '$lib'
+  import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import {
@@ -189,9 +190,15 @@
         </thead>
         <tbody>
           {#each wyckoff_rows as { wyckoff, elem, abc } (`${wyckoff}-${elem}-${abc}`)}
+            {@const style =
+            `display: inline-block; padding: 0 6pt; border-radius: 3pt; line-height: 1.4`}
             <tr>
               <td>{wyckoff}</td>
-              <td>{elem}</td>
+              <td>
+                <span style:background-color={colors.element[elem]} {style}>
+                  {elem}
+                </span>
+              </td>
               <td>({abc?.map((x) => format_fractional(x)).join(` , `) ?? `N/A`})</td>
             </tr>
           {/each}

@@ -57,10 +57,7 @@
 
 <CmdPalette {actions} placeholder="Go to..." />
 <GitHubCorner href={pkg.repository} />
-<!-- TODO update to pass class="copy-btn" in next svelte-multiselect -->
-<CopyButton
-  global="position: absolute; top: 9pt; right: 9pt; background: var(--btn-bg); color: var(--btn-color)"
-/>
+<CopyButton global class="copy-btn" />
 
 <ThemeControl />
 

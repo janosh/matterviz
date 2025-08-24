@@ -174,3 +174,11 @@ tbody tr:nth-child(odd) {
   margin-left: calc(-50vw + 50% + max(var(--margin), (100vw - 1400px) / 2));
   max-width: none !important;
 }
+
+.copy-btn {
+  position: absolute;
+  top: 9pt;
+  right: 9pt;
+  background: var(--btn-bg);
+  color: var(--btn-color);
+}

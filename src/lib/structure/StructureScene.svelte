@@ -7,9 +7,10 @@
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
-    displacement_pbc,
+    angle_between_vectors,
     distance_pbc,
     MAX_SELECTED_SITES,
+    smart_displacement_vectors,
   } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
@@ -662,23 +663,18 @@
         }
           {@const site_a = structure.sites[idx_a]}
           {@const site_b = structure.sites[idx_b]}
-          {@const v1 = lattice ? displacement_pbc(center.xyz, site_a.xyz, lattice.matrix) : ([
-    site_a.xyz[0] - center.xyz[0],
-    site_a.xyz[1] - center.xyz[1],
-    site_a.xyz[2] - center.xyz[2],
-  ] as Vec3)}
-          {@const v2 = lattice ? displacement_pbc(center.xyz, site_b.xyz, lattice.matrix) : ([
-    site_b.xyz[0] - center.xyz[0],
-    site_b.xyz[1] - center.xyz[1],
-    site_b.xyz[2] - center.xyz[2],
-  ] as Vec3)}
+          {@const [v1, v2] = smart_displacement_vectors(
+    center.xyz,
+    site_a.xyz,
+    site_b.xyz,
+    lattice?.matrix,
+    center.abc,
+    site_a.abc,
+    site_b.abc,
+  )}
           {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
           {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
-          {@const cos_ang = Math.max(
-    -1,
-    Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2)),
-  )}
-          {@const angle_deg = Math.acos(cos_ang) * 180 / Math.PI}
+          {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
           {#if n1 > math.EPS && n2 > math.EPS}
             <!-- draw rays from center to the two sites -->
             <Bond from={center.xyz} to={site_a.xyz} thickness={0.05} color="#bbbbbb" />
