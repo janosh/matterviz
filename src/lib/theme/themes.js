@@ -24,7 +24,7 @@ const border_black = `#202020` // Dark border
 const acc_light = `#4f46e5` // Indigo
 const acc_dark = `cornflowerblue` // Light blue
 const acc_white = `#2563eb` // Blue
-const acc_black = `cornflowerblue` // Cyan
+const acc_black = `cornflowerblue`
 
 // Helper functions for common patterns
 const btn_bg = (dark_op, light_op) => ({

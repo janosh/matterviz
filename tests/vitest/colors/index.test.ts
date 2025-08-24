@@ -164,6 +164,7 @@ describe(`colors module`, () => {
         }),
       ).toBe(`red`)
       expect(pick_contrast_color({ bg_color: `#ffffff` })).toBe(`black`) // defaults
+      expect(pick_contrast_color()).toBe(`black`) // no options -> bg defaults to 'white' -> black text
     })
   })
 })

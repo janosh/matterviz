@@ -191,7 +191,10 @@
           <span
             class="value multi-value {layout_config.positions[idx]}"
             style:color={bg_colors?.[idx]
-            ? pick_contrast_color({ bg_color: bg_colors[idx], text_color_threshold })
+            ? pick_contrast_color({
+              bg_color: bg_colors[idx] ?? fallback_bg_color,
+              text_color_threshold,
+            })
             : null}
           >
             {format_value(val)}
