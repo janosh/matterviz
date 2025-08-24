@@ -1,29 +1,6 @@
-import type { CompositionType } from '$lib'
 import { BubbleChart, get_total_atoms } from '$lib/composition'
 import { mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
-
-// Mock composition parsing utilities
-vi.mock(`$lib/composition/parse`, () => ({
-  get_total_atoms: vi.fn((comp: CompositionType) =>
-    Object.values(comp).reduce((sum, val) => sum + (val || 0), 0)
-  ),
-}))
-
-// Mock colors module
-vi.mock(`$lib/colors`, () => ({
-  element_color_schemes: {
-    Vesta: { H: `#ffffff`, O: `#ff0d0d`, C: `#909090`, Fe: `#e06633` },
-    Jmol: { H: `#ffffff`, O: `#ff0d0d`, C: `#909090`, Fe: `#e06633` },
-  },
-  pick_contrast_color: vi.fn(() => `#000000`),
-}))
-
-vi.mock(`$lib/state.svelte`, () => ({
-  colors: {
-    element: { H: `#ffffff`, O: `#ff0d0d`, C: `#909090`, Fe: `#e06633` },
-  },
-}))
+import { describe, expect, test } from 'vitest'
 
 describe(`BubbleChart component`, () => {
   test(`renders SVG with correct viewBox`, () => {

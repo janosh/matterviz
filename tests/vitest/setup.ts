@@ -8,29 +8,6 @@ beforeEach(() => {
   document.body.innerHTML = ``
 })
 
-// Mock the symmetry module to prevent WASM loading in tests
-vi.mock(`$lib/symmetry`, () => ({
-  ensure_moyo_wasm_ready: vi.fn().mockResolvedValue(undefined),
-  analyze_structure_symmetry: vi.fn().mockResolvedValue({
-    number: 1,
-    hm_symbol: `P1`,
-    hall_number: 1,
-    pearson_symbol: `aP1`,
-    operations: [],
-    std_cell: {
-      positions: [],
-      numbers: [],
-    },
-    wyckoffs: [],
-    primitive_cell: {
-      positions: [],
-      numbers: [],
-    },
-    primitive_wyckoffs: [],
-  }),
-  to_cell_json: vi.fn().mockReturnValue(`{}`),
-}))
-
 export function doc_query<T extends HTMLElement>(selector: string): T {
   const node = document.querySelector(selector)
   if (!node) throw `No element found for selector: ${selector}`

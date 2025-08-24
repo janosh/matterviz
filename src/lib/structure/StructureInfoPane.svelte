@@ -204,7 +204,7 @@
 
       if (atom_count < min_threshold || sites_expanded) {
         structure.sites.forEach((site: Site, idx: number) => {
-          const element = site.species[0]?.element || `Unknown`
+          const element = site.species?.[0]?.element || `Unknown`
           const element_name = element_data.find((el) =>
             el.symbol === element
           )?.name || element
@@ -332,10 +332,7 @@
   }}
   open_icon="Cross"
   closed_icon="Info"
-  pane_props={{
-    ...pane_props,
-    class: `structure-info-pane ${pane_props?.class ?? ``}`,
-  }}
+  pane_props={{ ...pane_props, class: `structure-info-pane ${pane_props?.class ?? ``}` }}
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>

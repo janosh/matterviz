@@ -383,10 +383,9 @@ describe(`ElementTile`, () => {
         props: { element: rand_element, value: 0 },
       })
 
-      // Zero is falsy, so it shows name instead of value
-      const name_element = doc_query(`.name`)
-      expect(name_element.textContent).toBe(rand_element.name)
-      expect(document.querySelector(`.value`)).toBeNull()
+      const value_element = doc_query(`.value`)
+      expect(value_element.textContent).toBe(`0`)
+      expect(document.querySelector(`.name`)).toBeNull()
     })
 
     test(`handles empty string float_fmt`, () => {

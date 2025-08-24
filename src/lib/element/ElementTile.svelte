@@ -183,7 +183,7 @@
       {element.symbol}
     </span>
   {/if}
-  {#if value && should_show_values}
+  {#if should_show_values && value !== undefined && value !== null && value !== false}
     {#if Array.isArray(value) && layout_config}
       <!-- Multi-value positioning using layout config -->
       {#each value as val, idx (idx)}
