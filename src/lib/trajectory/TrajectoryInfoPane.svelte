@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePane, format_num, Icon } from '$lib'
+  import { DraggablePane, format_num, Icon, type InfoItem } from '$lib'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { theme_state } from '$lib/state.svelte'
   import { type AnyStructure, electro_neg_formula } from '$lib/structure'
@@ -69,12 +69,10 @@
       .trim()
   }
 
-  type InfoItem = { label: string; value: string; key: string; tooltip?: string }
-
   const safe_item = (
     label: string,
     value: string | null,
-    key: string,
+    key?: string,
     tooltip?: string,
   ): InfoItem | null => value ? { label, value, key, tooltip } : null
 
@@ -327,22 +325,23 @@
         <h4>{section.title}</h4>
       {/if}
       {#each section.items as item (item.key)}
+        {@const { key, label, value, tooltip } = item}
         <div
           class="clickable"
-          title="Click to copy: {item.label}: {item.value}"
-          onclick={() => copy_item(item.label, item.value, item.key)}
+          title="Click to copy: {label}: {value}"
+          onclick={() => copy_item(label, value, key ?? label)}
           role="button"
           tabindex="0"
           onkeydown={(event) => {
             if (event.key === `Enter` || event.key === ` `) {
               event.preventDefault()
-              copy_item(item.label, item.value, item.key)
+              copy_item(label, value, key ?? label)
             }
           }}
         >
-          <span>{item.label}</span>
-          <span title={item.tooltip} {@attach create_tooltip()}>{@html item.value}</span>
-          {#if copied_items.has(item.key)}
+          <span>{label}</span>
+          <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
+          {#if copied_items.has(key ?? label)}
             <div class="copy-checkmark-overlay">
               <Icon
                 icon="Check"

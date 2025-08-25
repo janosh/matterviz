@@ -172,6 +172,29 @@
     metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
   }
 
+  // Single-frame trajectory for testing plot hiding
+  const single_frame_trajectory: TrajectoryType = {
+    frames: [
+      {
+        step: 0,
+        structure: {
+          sites: [
+            {
+              species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+              abc: [0, 0, 0],
+              xyz: [0, 0, 0],
+              label: `H1`,
+              properties: {},
+            },
+          ],
+          charge: 0,
+        } as AnyStructure,
+        metadata: { energy: -10.0, force_max: 0.1 },
+      },
+    ],
+    metadata: { source_format: `test_data`, frame_count: 1, total_atoms: 1 },
+  }
+
   let empty_trajectory = $state<TrajectoryType | undefined>(undefined)
   let loaded_trajectory = $state<TrajectoryType | undefined>(test_trajectory)
   let error_trajectory = $state<TrajectoryType | undefined>(undefined)
@@ -293,6 +316,13 @@
     pressure: (frame.metadata?.pressure as number) || 0,
   })}
   layout="horizontal"
+/>
+
+<Trajectory
+  id="single-frame"
+  trajectory={single_frame_trajectory}
+  layout="horizontal"
+  show_controls
 />
 
 <Trajectory

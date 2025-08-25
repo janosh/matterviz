@@ -114,10 +114,10 @@ export interface ContrastOptions {
 export function pick_contrast_color(options: ContrastOptions = {}) {
   const { bg_color, text_color_threshold = 0.7, choices = [`black`, `white`] } = options
   const light_bg = luminance(bg_color ?? `white`) > text_color_threshold
-  return light_bg ? choices[0] : choices[1] // white text for dark backgrounds, black for light
+  return light_bg ? choices[0] : choices[1] // dark text for light backgrounds, light for dark
 }
 
-// Svelte attachment that automatically picks black or white text color to maximize contrast with node's background color
+// Svelte attachment that automatically picks dark or light text color to maximize contrast with node's background color
 export const contrast_color = (options: ContrastOptions = {}) => (node: HTMLElement) => {
   node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
 }

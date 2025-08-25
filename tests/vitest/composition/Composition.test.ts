@@ -25,23 +25,17 @@ describe(`Composition component`, () => {
   test(`forwards props to child components`, () => {
     mount(Composition, {
       target: document.body,
-      props: {
-        composition: `H2O`,
-        size: 200,
-        color_scheme: `Jmol`,
-        interactive: false,
-      },
+      props: { composition: `H2O`, size: 200, color_scheme: `Jmol`, interactive: false },
     })
     expect(doc_query(`.pie-chart`).getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 
-  test(`handles composition change callback`, async () => {
+  test(`handles composition change callback`, () => {
     const on_composition_change = vi.fn()
     mount(Composition, {
       target: document.body,
       props: { composition: `H2O`, on_composition_change },
     })
-    await tick
     expect(on_composition_change).toHaveBeenCalledWith({ H: 2, O: 1 })
   })
 

@@ -1,18 +1,11 @@
 <script lang="ts">
   import type { AnyStructure, Site } from '$lib'
-  import { DraggablePane, element_data, format_num, Icon } from '$lib'
+  import { DraggablePane, element_data, format_num, Icon, type InfoItem } from '$lib'
   import { electro_neg_formula, get_density } from '$lib/structure'
   import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
-
-  interface SectionItem {
-    label: string
-    value: string
-    key: string
-    tooltip?: string
-  }
 
   interface Props {
     structure: AnyStructure
@@ -59,27 +52,25 @@
     try {
       await navigator.clipboard.writeText(`${label}: ${value}`)
       copied_items.add(key)
-      setTimeout(() => {
-        copied_items.delete(key)
-      }, 1000)
+      setTimeout(() => copied_items.delete(key), 1000)
     } catch (error) {
       console.error(`Failed to copy to clipboard:`, error)
     }
   }
 
-  function handle_click(item: SectionItem, section_title: string) {
+  function handle_click(item: InfoItem, section_title: string) {
     if (section_title === `Usage Tips`) return
     if (item.key === `sites-toggle`) sites_expanded = !sites_expanded
     else copy_to_clipboard(item.label, item.value, item.key)
   }
 
-  let info_pane_data = $derived.by(() => {
+  let pane_data = $derived.by(() => {
     if (!structure) return []
-    const sections = []
+    const sections: { title: string; items: InfoItem[] }[] = []
     const [min_threshold, max_threshold] = atom_count_thresholds
 
     // Structure Info
-    const structure_items: SectionItem[] = [
+    const structure_items: InfoItem[] = [
       {
         label: `Formula`,
         value: `${electro_neg_formula(structure)} (${structure.sites.length} sites)`,
@@ -92,11 +83,9 @@
       },
     ]
 
-    if (`properties` in structure && structure.properties) {
+    if (`properties` in structure) {
       for (
-        const [key, value] of Object.entries(
-          structure.properties as Record<string, unknown>,
-        )
+        const [key, value] of Object.entries(structure.properties ?? {})
       ) {
         if (value != null) {
           structure_items.push({
@@ -136,7 +125,7 @@
             }°`,
             key: `cell-angles`,
           },
-        ] as SectionItem[],
+        ],
       })
     }
 
@@ -178,14 +167,14 @@
               `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
             key: `symmetry-operations-total`,
           },
-        ] as SectionItem[],
+        ],
       })
     }
 
     // Sites Section
     const atom_count = structure.sites.length
     if (atom_count <= max_threshold) {
-      const site_items: SectionItem[] = []
+      const site_items: InfoItem[] = []
 
       // Merged toggle button with Sites title
       if (atom_count >= min_threshold) {
@@ -293,29 +282,25 @@
         {
           label: `File Drop`,
           value: `Drop POSCAR, XYZ, CIF or JSON files to load structures`,
-          key: `tips-file-drop`,
         },
         {
           label: `Atom Selection`,
-          value: `Click atoms to activate, hover for distances`,
-          key: `tips-atom-selection`,
+          value:
+            `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
         },
         {
           label: `Navigation`,
           value: `Hold Shift/Cmd/Ctrl + drag to pan the scene`,
-          key: `tips-navigation`,
         },
         {
           label: `Colors`,
           value: `Click legend labels to change colors, double-click to reset`,
-          key: `tips-colors`,
         },
         {
           label: `Keyboard`,
           value: `Press 'f' for fullscreen, 'i' to toggle this pane`,
-          key: `tips-keyboard`,
         },
-      ] as SectionItem[],
+      ],
     })
 
     return sections
@@ -336,25 +321,25 @@
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>
-  {#each info_pane_data as section (section.title)}
+  {#each pane_data as section, sec_idx (section.title)}
+    {#if sec_idx > 0}<hr />{/if}
     <section>
       {#if section.title && section.title !== `Structure`}
         <h4>{section.title}</h4>
       {/if}
-      {#each section.items as item (item.key)}
+      {#each section.items as item (item.key ?? item.label)}
+        {@const { key, label, value, tooltip } = item}
         {#if section.title === `Usage Tips`}
           <div class="tips-item">
-            <span>{item.label}</span>
-            <span>{@html item.value}</span>
+            <span>{label}</span>
+            <span>{@html value}</span>
           </div>
         {:else}
           <div
-            class:site-item={item.label.startsWith(`  `)}
-            class:toggle-item={item.key === `sites-toggle`}
+            class:site-item={label.startsWith(`  `)}
+            class:toggle-item={key === `sites-toggle`}
             class="clickable"
-            title={item.key === `sites-toggle`
-            ? item.tooltip
-            : `Click to copy: ${item.label}: ${item.value}`}
+            title={key === `sites-toggle` ? tooltip : `Click to copy: ${label}: ${value}`}
             onclick={() => handle_click(item, section.title)}
             role="button"
             tabindex="0"
@@ -365,9 +350,9 @@
               }
             }}
           >
-            <span>{item.label}</span>
-            <span title={item.tooltip}>{@html item.value}</span>
-            {#if item.key !== `sites-toggle` && copied_items.has(item.key)}
+            <span>{label}</span>
+            <span title={tooltip}>{@html value}</span>
+            {#if key !== `sites-toggle` && copied_items.has(key)}
               <div class="copy-checkmark-overlay">
                 <Icon
                   icon="Check"
@@ -378,9 +363,6 @@
           </div>
         {/if}
       {/each}
-      {#if section !== info_pane_data[info_pane_data.length - 1]}
-        <hr />
-      {/if}
     </section>
   {/each}
 </DraggablePane>
