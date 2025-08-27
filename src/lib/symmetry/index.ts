@@ -3,13 +3,17 @@ import { atomic_number_to_symbol, symbol_to_atomic_number } from '$lib/compositi
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
-import wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
+import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
+
+export { default as WyckoffTable } from './WyckoffTable.svelte'
+
+export type WyckoffPos = { wyckoff: string; elem: string; abc: Vec3 }
 
 let initialized = false
 
 export async function ensure_moyo_wasm_ready() {
   if (initialized) return
-  await init(wasm_url)
+  await init({ module_or_path: moyo_wasm_url })
   initialized = true
 }
 
@@ -31,7 +35,7 @@ export function to_cell_json(structure: PymatgenStructure): string {
   ]
   const positions = structure.sites.map((s) => s.abc)
   const numbers = structure.sites.map(
-    (s) => symbol_to_atomic_number[s.species[0]?.element] ?? 0,
+    (site) => symbol_to_atomic_number[site.species[0]?.element] ?? 0,
   )
   const cell: MoyoCell = { lattice: { basis }, positions, numbers }
   return JSON.stringify(cell)
@@ -63,9 +67,7 @@ export function simplicity_score(vec: number[]): number {
 }
 
 // Generate Wyckoff table rows from symmetry data
-export function generate_wyckoff_rows(
-  sym_data: MoyoDataset | null,
-): { wyckoff: string; elem: string; abc: Vec3 }[] {
+export function wyckoff_positions_from_moyo(sym_data: MoyoDataset | null): WyckoffPos[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell

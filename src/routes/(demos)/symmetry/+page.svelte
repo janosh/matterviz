@@ -2,14 +2,14 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { contrast_color, FilePicker, format_fractional } from '$lib'
-  import { colors } from '$lib/state.svelte'
+  import { FilePicker } from '$lib'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import {
     analyze_structure_symmetry,
     ensure_moyo_wasm_ready,
-    generate_wyckoff_rows,
+    wyckoff_positions_from_moyo,
+    WyckoffTable,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -65,7 +65,7 @@
     }
   }
 
-  const wyckoff_rows = $derived(generate_wyckoff_rows(sym_data))
+  const wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
 
   // Helper functions for symmetry operation classification
   const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
@@ -168,46 +168,10 @@
           title="Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure."
           {@attach tooltip()}
         >
-          Distinct orbits <strong>{wyckoff_rows.length}</strong>
+          Distinct orbits <strong>{wyckoff_positions.length}</strong>
         </div>
       </div>
-      <table class="wyckoff-table" style="margin-top: 1em">
-        <thead>
-          <tr>
-            {#each [`Wyckoff`, `Element`, `Fractional Coords`] as col (col)}
-              <th
-                title={col === `Wyckoff`
-                ? `Wyckoff position: Multiplicity + Letter (e.g. 4a = 4 atoms at position 'a')`
-                : col === `Element`
-                ? `Chemical element symbol`
-                : `Fractional coordinates within the unit cell (0-1 range)`}
-                {@attach tooltip()}
-              >
-                {col}
-              </th>
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#each wyckoff_rows as { wyckoff, elem, abc } (`${wyckoff}-${elem}-${abc}`)}
-            {@const style =
-            `display: inline-block; padding: 0 6pt; border-radius: 3pt; line-height: 1.4`}
-            <tr>
-              <td>{wyckoff}</td>
-              <td>
-                <span
-                  style:background-color={colors.element[elem]}
-                  {style}
-                  {@attach contrast_color()}
-                >
-                  {elem}
-                </span>
-              </td>
-              <td>({abc?.map((x) => format_fractional(x)).join(` , `) ?? `N/A`})</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+      <WyckoffTable {wyckoff_positions} />
     {/if}
   </div>
 
