@@ -936,10 +936,12 @@ export function parse_cif(
 
     const ops_to_use = already_enumerated ? [] : normalized_ops
 
-    // Global deduplication of final sites (per element + coordinates)
+    // Global deduplication of final sites (per element + coordinates + label)
     const seen_site_keys = new Set<string>()
-    const site_key = (element: string, abc: Vec3): string =>
-      `${element}|${abc[0].toFixed(12)},${abc[1].toFixed(12)},${abc[2].toFixed(12)}`
+    const site_key = (element: string, abc: Vec3, label: string): string =>
+      `${element}|${label}|${abc[0].toFixed(12)},${abc[1].toFixed(12)},${
+        abc[2].toFixed(12)
+      }`
 
     for (const atom of atoms) {
       const element = validate_element_symbol(atom.element, all_sites.length)
@@ -973,7 +975,7 @@ export function parse_cif(
             equiv_atom.coords[1] + cv[1],
             equiv_atom.coords[2] + cv[2],
           ] as Vec3)
-          const key = site_key(element, abc)
+          const key = site_key(element, abc, equiv_atom.id)
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
           const xyz = math.mat3x3_vec3_multiply(lattice_T, abc)
