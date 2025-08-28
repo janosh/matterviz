@@ -17,76 +17,70 @@
   import { tooltip } from 'svelte-multiselect'
 
   let wasm_ready = $state(false)
-  let last_error = $state<string | null>(null)
+  let error = $state<string | null>(null)
   let sym_data = $state<MoyoDataset | null>(null)
   let symprec = $state(1e-4)
   let setting = $state<`Standard` | `Spglib`>(`Standard`)
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
   let current_structure = $state<AnyStructure | null>(null)
 
+  onMount(() => { // Initialize WASM
+    ensure_moyo_wasm_ready()
+      .then(() => wasm_ready = true)
+      .catch((exc) => error = `WASM init failed: ${exc}`)
+  })
+
+  // Update filename from URL
   $effect(() => {
     if (!browser) return
     const file = page.url.searchParams.get(`file`)
     if (file && file !== current_filename) current_filename = file
   })
 
-  // Auto-analyze structure when WASM becomes ready
+  // Analyze structure when dependencies change
   $effect(() => {
-    if (wasm_ready && current_structure) analyze_structure(current_structure)
+    if (!wasm_ready || !current_structure) return
+
+    analyze_structure()
   })
 
-  onMount(() =>
-    ensure_moyo_wasm_ready().then(() => {
-      wasm_ready = true
-      last_error = null
-    }).catch((exc) => {
-      last_error = `Failed to init WASM: ${String(exc)}`
-    })
-  )
-
-  async function analyze_structure(struct_or_mol: AnyStructure) {
-    last_error = null
-    sym_data = null
-
-    if (!(`lattice` in struct_or_mol)) {
-      last_error = `Not a periodic structure (no lattice).`
+  async function analyze_structure() {
+    if (!current_structure || !(`lattice` in current_structure)) {
+      error = `Not a periodic structure`
       return
     }
-    if (!wasm_ready) return
+
+    error = null
+    sym_data = null
 
     try {
       sym_data = await analyze_structure_symmetry(
-        struct_or_mol,
+        current_structure,
         symprec,
         setting,
       )
     } catch (exc) {
-      last_error = `Analysis failed: ${String(exc)}`
+      error = `Analysis failed: ${exc}`
     }
   }
 
+  // Derived values
   const wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
-
-  // Helper functions for symmetry operation classification
-  const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
-
-  const operation_counts = $derived.by(() => { // Compute operation with single for loop
+  const operation_counts = $derived.by(() => {
     if (!sym_data?.operations) {
       return { translations: 0, rotations: 0, roto_translations: 0 }
     }
 
-    let [translations, rotations, roto_translations] = [0, 0, 0]
+    return sym_data.operations.reduce((acc, op) => {
+      const has_translation = op.translation.some((x) => x !== 0)
+      const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
 
-    for (const op of sym_data.operations) {
-      const has_translation = !op.translation.every((x) => x === 0)
-      const is_identity = is_identity3(op.rotation)
+      if (is_identity && has_translation) acc.translations++
+      else if (!has_translation) acc.rotations++
+      else acc.roto_translations++
 
-      if (is_identity && has_translation) translations++
-      else if (!has_translation) rotations++
-      else roto_translations++
-    }
-
-    return { translations, rotations, roto_translations }
+      return acc
+    }, { translations: 0, rotations: 0, roto_translations: 0 })
   })
 </script>
 
@@ -123,8 +117,8 @@
     {:else}
       <span class="status warn">Loading WASM...</span>
     {/if}
-    {#if last_error}
-      <pre class="error" style="color: var(--error-color)">{last_error}</pre>
+    {#if error}
+      <pre class="error" style="color: var(--error-color)">{error}</pre>
     {:else if sym_data}
       <div class="symmetry-stats">
         <div
@@ -186,7 +180,6 @@
         noScroll: true,
       })
       current_structure = structure || null
-      if (structure) analyze_structure(structure)
     }}
     style="height: 100%; min-height: 500px"
   >

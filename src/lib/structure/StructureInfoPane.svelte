@@ -132,28 +132,27 @@
     // Symmetry Info
     if (`lattice` in structure && sym_data) {
       const { operations } = sym_data
-      const translations = operations.filter((op) =>
-        op.rotation.every((r) => r === 0)
-      ).length
-      const rotations = operations.filter((op) =>
-        op.translation.every((t) => t === 0)
-      ).length
-      const roto_translations = operations.filter((op) =>
-        op.rotation.some((r) => r !== 0) &&
-        op.translation.some((t) => t !== 0)
-      ).length
+      const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
+      let translations = 0, rotations = 0, roto_translations = 0
+      for (const op of operations) {
+        const has_translation = op.translation.some((t) => t !== 0)
+        const is_identity = is_identity3(op.rotation)
+        if (is_identity && has_translation) translations++
+        else if (!has_translation) rotations++
+        else roto_translations++
+      }
 
       sections.push({
         title: `Symmetry`,
         items: [
           {
             label: `Space Group`,
-            value: sym_data.number,
+            value: String(sym_data.number),
             key: `symmetry-space-group`,
           },
           {
             label: `Hall Number`,
-            value: sym_data.hall_number,
+            value: String(sym_data.hall_number),
             key: `symmetry-hall-number`,
           },
           {

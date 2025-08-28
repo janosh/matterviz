@@ -26,14 +26,13 @@ describe(`wyckoff_positions_from_moyo`, () => {
       wyckoff: `4a`,
       elem: `H`,
       abc: [0, 0, 0],
-      site_indices: [],
     }])
 
     // Mixed elements
     const mixed = mock_data([[0, 0, 0], [0.5, 0.5, 0.5]], [1, 8], [`1a`, `1b`])
     expect(wyckoff_positions_from_moyo(mixed)).toEqual([
-      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [] },
-      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [] },
+      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] },
+      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5] },
     ])
 
     // Sorting by multiplicity then alphabetically
@@ -43,15 +42,15 @@ describe(`wyckoff_positions_from_moyo`, () => {
       [`b`, `a`, `b`, `b`],
     )
     expect(wyckoff_positions_from_moyo(sorted)).toEqual([
-      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [] },
-      { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0], site_indices: [] },
+      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5] },
+      { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0] },
     ])
 
     // Sites without Wyckoff letters
     const no_letters = mock_data([[0, 0, 0], [0.5, 0.5, 0.5]], [1, 8], [``, `1a`])
     expect(wyckoff_positions_from_moyo(no_letters)).toEqual([
-      { wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [] },
-      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [] },
+      { wyckoff: `1`, elem: `H`, abc: [0, 0, 0] },
+      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5] },
     ])
 
     // Null Wyckoff values
@@ -60,7 +59,6 @@ describe(`wyckoff_positions_from_moyo`, () => {
       wyckoff: `1`,
       elem: `H`,
       abc: [0, 0, 0],
-      site_indices: [],
     }])
   })
 
@@ -91,7 +89,6 @@ describe(`wyckoff_positions_from_moyo`, () => {
       wyckoff: `4a`,
       elem: `H`,
       abc: [0, 0, 0],
-      site_indices: [],
     }])
 
     // Different elements at same Wyckoff position

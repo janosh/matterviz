@@ -324,7 +324,7 @@
       {#if section.title && section.title !== `File`}
         <h4>{section.title}</h4>
       {/if}
-      {#each section.items as item (item.key)}
+      {#each section.items as item (item.key ?? item.label)}
         {@const { key, label, value, tooltip } = item}
         <div
           class="clickable"
