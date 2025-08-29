@@ -441,4 +441,82 @@ describe(`site coverage verification`, () => {
       expect(total_multiplicity).toBe(test_case.expected_total_multiplicity)
     }
   })
+
+  test(`handles edge cases in Wyckoff position parsing`, () => {
+    const edge_cases = [
+      // Empty wyckoff letter
+      {
+        mock_data: { std_cell: { positions: [[0, 0, 0]], numbers: [1] }, wyckoffs: [``] },
+        expected: [{ wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
+      },
+      // Null wyckoff letter
+      {
+        mock_data: {
+          std_cell: { positions: [[0, 0, 0]], numbers: [1] },
+          wyckoffs: [null],
+        },
+        expected: [{ wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
+      },
+      // Mixed valid and invalid wyckoff letters
+      {
+        mock_data: {
+          std_cell: { positions: [[0, 0, 0], [0.5, 0.5, 0.5]], numbers: [1, 8] },
+          wyckoffs: [`a`, null],
+        },
+        expected: [
+          { wyckoff: `1`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+          { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+        ],
+      },
+      // Very large multiplicity
+      {
+        mock_data: {
+          std_cell: {
+            positions: Array.from(
+              { length: 48 },
+              (_, i) => [i * 0.02, i * 0.02, i * 0.02],
+            ),
+            numbers: Array(48).fill(1),
+          },
+          wyckoffs: Array(48).fill(`48a`),
+        },
+        expected: [{
+          wyckoff: `48a`,
+          elem: `H`,
+          abc: [0, 0, 0],
+          site_indices: Array.from({ length: 48 }, (_, i) => i),
+        }],
+      },
+    ]
+
+    edge_cases.forEach(({ mock_data, expected }) => {
+      const result = wyckoff_positions_from_moyo(mock_data as unknown as MoyoDataset)
+      expect(result).toEqual(expected)
+    })
+  })
+
+  test(`performance with very large structures`, () => {
+    const large_structure = {
+      std_cell: {
+        positions: Array.from({ length: 1000 }, () => [
+          Math.random(),
+          Math.random(),
+          Math.random(),
+        ]),
+        numbers: Array.from({ length: 1000 }, () => Math.floor(Math.random() * 10) + 1),
+      },
+      wyckoffs: Array.from({ length: 1000 }, (_, i) => `${(i % 10) + 1}a`),
+    } as unknown as MoyoDataset
+
+    const start_time = performance.now()
+    const result = wyckoff_positions_from_moyo(large_structure)
+    const end_time = performance.now()
+
+    // Should complete in reasonable time (< 50ms for 1000 sites)
+    expect(end_time - start_time).toBeLessThan(50)
+
+    // Should produce reasonable number of grouped positions
+    expect(result.length).toBeGreaterThan(0)
+    expect(result.length).toBeLessThanOrEqual(10) // At most 10 different multiplicities
+  })
 })

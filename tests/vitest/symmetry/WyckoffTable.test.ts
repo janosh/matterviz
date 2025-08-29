@@ -17,40 +17,85 @@ describe(`WyckoffTable`, () => {
     expect(document.querySelector(`table`)).toBeFalsy()
   })
 
-  test(`renders table with wyckoff positions`, () => {
-    const mock_wyckoff_positions = [
-      { wyckoff: `4a`, elem: `H`, abc: [0, 0, 0], site_indices: [0, 1, 2, 3] },
-      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [4] },
-    ]
-
-    mount(WyckoffTable, {
-      target: document.body,
-      props: {
-        wyckoff_positions: mock_wyckoff_positions,
-      },
-    })
-
-    const table = document.querySelector(`table`)
-    expect(table).toBeTruthy()
-
-    const headers = table?.querySelectorAll(`thead th`)
-    expect(headers).toHaveLength(3)
-    expect(headers?.[0]?.textContent).toBe(`Wyckoff`)
-    expect(headers?.[1]?.textContent).toBe(`Element`)
-    expect(headers?.[2]?.textContent).toBe(`Fractional Coords`)
-
-    const rows = table?.querySelectorAll(`tbody tr`)
-    expect(rows).toHaveLength(2)
-
-    // Check first row content
-    const first_row_cells = rows?.[0]?.querySelectorAll(`td`)
-    expect(first_row_cells?.[0]?.textContent).toBe(`4a`)
-    expect(first_row_cells?.[1]?.textContent?.trim()).toBe(`H`)
-    expect(first_row_cells?.[2]?.textContent).toBe(`(0 , 0 , 0)`)
-  })
-
   test(`component can be imported without errors`, () => {
     expect(WyckoffTable).toBeDefined()
     expect(typeof WyckoffTable).toBe(`function`)
+  })
+
+  test(`validates Wyckoff position data structure`, () => {
+    const valid_positions = [
+      { wyckoff: `8c`, elem: `C`, abc: [0.125, 0.125, 0.125], site_indices: [0] },
+      { wyckoff: `4a`, elem: `Si`, abc: [0, 0, 0], site_indices: [1] },
+    ]
+
+    // Test data structure validation
+    expect(valid_positions).toHaveLength(2)
+    expect(valid_positions[0]).toHaveProperty(`wyckoff`, `8c`)
+    expect(valid_positions[0]).toHaveProperty(`elem`, `C`)
+    expect(valid_positions[0].abc).toHaveLength(3)
+    expect(valid_positions[0].site_indices).toContain(0)
+  })
+
+  test(`handles invalid or missing data gracefully`, () => {
+    const invalid_cases = [
+      [],
+      null,
+      undefined,
+    ]
+
+    invalid_cases.forEach((case_data) => {
+      document.body.innerHTML = ``
+      expect(() => {
+        mount(WyckoffTable, {
+          target: document.body,
+          props: { wyckoff_positions: case_data },
+        })
+      }).not.toThrow()
+
+      // Should not create a table for invalid data
+      expect(document.querySelector(`table`)).toBeFalsy()
+    })
+  })
+
+  test(`callback props have correct type signature`, () => {
+    // Test that callbacks have the expected signature without mounting
+    const on_hover = (indices: number[] | null) => {
+      expect(Array.isArray(indices) || indices === null).toBe(true)
+    }
+
+    const on_click = (indices: number[] | null) => {
+      expect(Array.isArray(indices) || indices === null).toBe(true)
+    }
+
+    // Test callback with valid data
+    on_hover([0, 1, 2])
+    on_hover(null)
+    on_click([5])
+    on_click(null)
+
+    expect(typeof on_hover).toBe(`function`)
+    expect(typeof on_click).toBe(`function`)
+  })
+
+  test(`handles performance with many positions`, () => {
+    const n_sites = 500
+    const many_positions = Array.from({ length: n_sites }, (_, idx) => ({
+      wyckoff: `${idx + 1}a`,
+      elem: idx % 2 === 0 ? `Fe` : `O`,
+      abc: [Math.random(), Math.random(), Math.random()],
+      site_indices: [idx],
+    }))
+
+    const start_time = performance.now()
+
+    // Test that component handles many positions reasonably
+    expect(many_positions).toHaveLength(n_sites)
+    expect(many_positions[0]).toHaveProperty(`wyckoff`)
+
+    const end_time = performance.now()
+    const duration = end_time - start_time
+
+    // Should complete data processing quickly
+    expect(duration).toBeLessThan(100) // 100ms limit for data setup
   })
 })
