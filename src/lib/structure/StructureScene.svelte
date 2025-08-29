@@ -19,6 +19,20 @@
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
+  // Add pulsating animation for selected sites
+  let pulse_time = $state(0)
+  let pulse_opacity = $derived(0.4 + 0.3 * Math.sin(pulse_time * 3))
+
+  // Update pulse time for animation
+  $effect(() => {
+    if (selected_sites?.length) {
+      const interval = setInterval(() => {
+        pulse_time += 0.1
+      }, 50)
+      return () => clearInterval(interval)
+    }
+  })
+
   interface Props {
     structure?: AnyStructure | undefined
     atom_radius?: number // scale factor for atomic radii
@@ -532,7 +546,7 @@
       kind: `selected`,
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
-      opacity: 0.6,
+      opacity: pulse_opacity,
       color: selection_highlight_color,
     }))),
   ] as
@@ -565,6 +579,7 @@
         {opacity}
         emissive={color}
         emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
+        depthTest={false}
       />
     </T.Mesh>
   {/if}

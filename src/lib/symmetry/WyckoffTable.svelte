@@ -3,22 +3,28 @@
   import { colors } from '$lib/state.svelte'
   import type { WyckoffPos } from '.'
 
-  let { wyckoff_positions }: {
+  interface Props {
     wyckoff_positions: WyckoffPos[]
-  } = $props()
+    on_hover?: (site_indices: number[] | null) => void
+    on_click?: (site_indices: number[] | null) => void
+    [key: string]: unknown
+  }
+  let { wyckoff_positions, on_hover, on_click, ...rest }: Props = $props()
+
+  let selected_wyckoff = $state<WyckoffPos | null>(null)
 </script>
 
 {#if wyckoff_positions && wyckoff_positions.length > 0}
-  <table class="wyckoff-table">
+  <table {...rest} class="wyckoff-table {rest.class ?? ``}">
     <thead>
       <tr>
         {#each [`Wyckoff`, `Element`, `Fractional Coords`] as col (col)}
           <th
             title={col === `Wyckoff`
-            ? `Wyckoff position: Multiplicity + Letter (e.g. 4a = 4 atoms at position 'a')`
+            ? `Wyckoff position: Multiplicity + Letter`
             : col === `Element`
             ? `Chemical element symbol`
-            : `Fractional coordinates within the unit cell (0-1 range)`}
+            : `Fractional coordinates within the unit cell`}
           >
             {col}
           </th>
@@ -26,15 +32,26 @@
       </tr>
     </thead>
     <tbody>
-      {#each wyckoff_positions as { wyckoff, elem, abc } (`${wyckoff}-${elem}-${abc}`)}
-        {@const style =
-        `display: inline-block; padding: 0 6pt; border-radius: 3pt; line-height: 1.4`}
-        <tr>
+      {#each wyckoff_positions as wyckoff_pos (JSON.stringify(wyckoff_pos))}
+        {@const { wyckoff, elem, abc, site_indices } = wyckoff_pos}
+        <tr
+          class="wyckoff-row"
+          class:selected={JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)}
+          onmouseenter={() => on_hover?.(site_indices ?? null)}
+          onmouseleave={() => on_hover?.(null)}
+          onclick={() => {
+            selected_wyckoff =
+              JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)
+                ? null
+                : wyckoff_pos
+            on_click?.(selected_wyckoff ? site_indices ?? null : null)
+          }}
+        >
           <td>{wyckoff}</td>
           <td>
             <span
               style:background-color={colors.element[elem]}
-              {style}
+              style="display: inline-block; padding: 0 6pt; border-radius: 3pt; line-height: 1.4"
               {@attach contrast_color()}
             >
               {elem}
@@ -50,5 +67,19 @@
 <style>
   .wyckoff-table {
     margin-top: 1em;
+  }
+  .wyckoff-row {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  .wyckoff-row:hover {
+    background-color: var(--surface-bg-hover, rgba(128, 128, 128, 0.1));
+  }
+  .wyckoff-row.selected {
+    background-color: var(--primary-color, #007acc);
+    color: white;
+  }
+  .wyckoff-row.selected:hover {
+    background-color: var(--primary-color-hover, #005a9e);
   }
 </style>

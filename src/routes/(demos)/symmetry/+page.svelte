@@ -23,6 +23,8 @@
   let setting = $state<`Standard` | `Spglib`>(`Standard`)
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
   let current_structure = $state<AnyStructure | null>(null)
+  let highlighted_sites = $state<number[]>([])
+  let selected_sites = $state<number[]>([])
 
   onMount(() => { // Initialize WASM
     ensure_moyo_wasm_ready()
@@ -82,6 +84,11 @@
       return acc
     }, { translations: 0, rotations: 0, roto_translations: 0 })
   })
+
+  // Combine hover and selected sites for display
+  const display_sites = $derived([
+    ...new Set([...highlighted_sites, ...selected_sites]),
+  ])
 </script>
 
 <h1>Symmetry</h1>
@@ -140,7 +147,7 @@
           Hall number <strong>{sym_data.hall_number}</strong>
         </div>
         <div
-          title="Pearson symbol: describes crystal system and number of atoms per unit cell. Format: Crystal system + Number of atoms. Example: tP2 = tetragonal primitive with 2 atoms"
+          title="Pearson symbol. Format: Crystal system + Number of atoms per unit cell. Example: tP2 = tetragonal primitive with 2 atoms"
           {@attach tooltip()}
         >
           Pearson <strong>{sym_data.pearson_symbol}</strong>
@@ -165,12 +172,21 @@
           Distinct orbits <strong>{wyckoff_positions.length}</strong>
         </div>
       </div>
-      <WyckoffTable {wyckoff_positions} />
+      <WyckoffTable
+        {wyckoff_positions}
+        on_hover={(site_indices) => {
+          highlighted_sites = site_indices ?? []
+        }}
+        on_click={(site_indices) => {
+          selected_sites = site_indices ?? []
+        }}
+      />
     {/if}
   </div>
 
   <Structure
     data_url="/structures/{current_filename}"
+    selected_sites={display_sites}
     on_file_load={({ structure, filename = `` }) => {
       current_filename = filename
       page.url.searchParams.set(`file`, current_filename)

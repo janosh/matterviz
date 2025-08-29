@@ -2,7 +2,12 @@
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon, type InfoItem } from '$lib'
   import { electro_neg_formula, get_density } from '$lib/structure'
-  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
+  import {
+    analyze_structure_symmetry,
+    ensure_moyo_wasm_ready,
+    wyckoff_positions_from_moyo,
+    WyckoffTable,
+  } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -13,6 +18,8 @@
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
+    selected_sites?: number[] // Sites selected from Wyckoff table click
     [key: string]: unknown
   }
   let {
@@ -21,6 +28,8 @@
     atom_count_thresholds = [50, 500],
     toggle_props = $bindable({}),
     pane_props = $bindable({}),
+    highlighted_sites = $bindable([]),
+    selected_sites = $bindable([]),
     ...rest
   }: Props = $props()
 
@@ -61,7 +70,7 @@
   function handle_click(item: InfoItem, section_title: string) {
     if (section_title === `Usage Tips`) return
     if (item.key === `sites-toggle`) sites_expanded = !sites_expanded
-    else copy_to_clipboard(item.label, item.value, item.key)
+    else copy_to_clipboard(item.label, String(item.value), item.key ?? item.label)
   }
 
   let pane_data = $derived.by(() => {
@@ -304,6 +313,9 @@
 
     return sections
   })
+
+  // Compute Wyckoff positions from symmetry data
+  let wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
 </script>
 
 <DraggablePane
@@ -351,7 +363,7 @@
           >
             <span>{label}</span>
             <span title={tooltip}>{@html value}</span>
-            {#if key !== `sites-toggle` && copied_items.has(key)}
+            {#if key !== `sites-toggle` && key && copied_items.has(key)}
               <div class="copy-checkmark-overlay">
                 <Icon
                   icon="Check"
@@ -362,6 +374,15 @@
           </div>
         {/if}
       {/each}
+
+      {#if section.title === `Symmetry` && wyckoff_positions.length > 0}
+        <WyckoffTable
+          {wyckoff_positions}
+          on_hover={(site_indices) => highlighted_sites = site_indices ?? []}
+          on_click={(site_indices) => selected_sites = site_indices ?? []}
+          style="width: 100%; margin-top: 0.5em; font-size: 0.8em"
+        />
+      {/if}
     </section>
   {/each}
 </DraggablePane>

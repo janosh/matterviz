@@ -7,7 +7,12 @@ import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
 
 export { default as WyckoffTable } from './WyckoffTable.svelte'
 
-export type WyckoffPos = { wyckoff: string; elem: string; abc: Vec3 }
+export type WyckoffPos = {
+  wyckoff: string
+  elem: string
+  abc: Vec3
+  site_indices?: number[]
+}
 
 let initialized = false
 
@@ -67,49 +72,73 @@ export function simplicity_score(vec: number[]): number {
 }
 
 // Generate Wyckoff table rows from symmetry data
-export function wyckoff_positions_from_moyo(sym_data: MoyoDataset | null): WyckoffPos[] {
+export function wyckoff_positions_from_moyo(
+  sym_data: (MoyoDataset & { original_indices?: number[] }) | null,
+): WyckoffPos[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell
-  const { wyckoffs } = sym_data
+  const { wyckoffs, original_indices } = sym_data
 
-  // Count multiplicity per letter-element combination
-  const letter_elem_counts: Record<string, number> = {}
-  const best_by_key = new Map<
-    string,
-    { letter: string; elem: string; idx: number }
-  >()
+  // Group sites by letter-element combination and track all indices
+  const groups = new Map<string, {
+    letter: string
+    elem: string
+    indices: number[]
+    positions: Vec3[]
+  }>()
 
   // Process all sites, including those without Wyckoff letters
   wyckoffs.forEach((full, idx) => {
     const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
     const atomic_num = numbers[idx]
     const elem = atomic_number_to_symbol[atomic_num] ?? `?`
+    const position = positions[idx]
 
     if (letter) {
       // Symmetric site with Wyckoff letter
       const key = `${letter}|${elem}`
-      letter_elem_counts[key] = (letter_elem_counts[key] ?? 0) + 1
-
-      const prev = best_by_key.get(key)
-      const better = !prev ||
-        simplicity_score(positions[idx]) <
-          simplicity_score(positions[prev.idx])
-      if (better) best_by_key.set(key, { letter, elem, idx })
+      if (!groups.has(key)) {
+        groups.set(key, { letter, elem, indices: [], positions: [] })
+      }
+      const group = groups.get(key)
+      if (group) {
+        group.indices.push(idx)
+        group.positions.push(position)
+      }
     } else {
-      // Non-symmetric site (no Wyckoff letter) - add directly
-      best_by_key.set(`nosym|${elem}|${idx}`, { letter: ``, elem, idx })
+      // Non-symmetric site (no Wyckoff letter) - each gets its own group
+      const key = `nosym|${elem}|${idx}`
+      groups.set(key, { letter: ``, elem, indices: [idx], positions: [position] })
     }
   })
 
-  const rows = Array.from(best_by_key.values()).map(({ letter, elem, idx }) => {
+  const rows = Array.from(groups.values()).map(({ letter, elem, indices, positions }) => {
+    // Find the position with the best simplicity score to display
+    let best_pos = positions[0]
+    let best_score = simplicity_score(best_pos)
+
+    for (const pos of positions) {
+      const score = simplicity_score(pos)
+      if (score < best_score) {
+        best_score = score
+        best_pos = pos
+      }
+    }
+
+    // Map standardized cell indices back to original structure indices
+    const orig_site_indices = original_indices
+      ? indices.map((i) => original_indices[i]).filter((i) => i !== undefined)
+      : indices
+
     if (letter) {
-      // For symmetric sites, show multiplicity for this specific letter-element combination
-      const key = `${letter}|${elem}`
-      const wyckoff = `${letter_elem_counts[key]}${letter}`
-      return { wyckoff, elem, abc: positions[idx] }
+      // For symmetric sites, show multiplicity
+      const wyckoff = `${indices.length}${letter}`
+      return { wyckoff, elem, abc: best_pos, site_indices: orig_site_indices }
+    } else {
       // For non-symmetric sites, show multiplicity 1
-    } else return { wyckoff: `1`, elem, abc: positions[idx] }
+      return { wyckoff: `1`, elem, abc: best_pos, site_indices: orig_site_indices }
+    }
   })
 
   rows.sort((w1, w2) => {

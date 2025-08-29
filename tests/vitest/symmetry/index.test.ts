@@ -26,13 +26,14 @@ describe(`wyckoff_positions_from_moyo`, () => {
       wyckoff: `4a`,
       elem: `H`,
       abc: [0, 0, 0],
+      site_indices: [0, 1, 2, 3],
     }])
 
     // Mixed elements
     const mixed = mock_data([[0, 0, 0], [0.5, 0.5, 0.5]], [1, 8], [`1a`, `1b`])
     expect(wyckoff_positions_from_moyo(mixed)).toEqual([
-      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] },
-      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5] },
+      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
     ])
 
     // Sorting by multiplicity then alphabetically
@@ -42,15 +43,15 @@ describe(`wyckoff_positions_from_moyo`, () => {
       [`b`, `a`, `b`, `b`],
     )
     expect(wyckoff_positions_from_moyo(sorted)).toEqual([
-      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5] },
-      { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0] },
+      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+      { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0], site_indices: [0, 2, 3] },
     ])
 
     // Sites without Wyckoff letters
     const no_letters = mock_data([[0, 0, 0], [0.5, 0.5, 0.5]], [1, 8], [``, `1a`])
     expect(wyckoff_positions_from_moyo(no_letters)).toEqual([
-      { wyckoff: `1`, elem: `H`, abc: [0, 0, 0] },
-      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5] },
+      { wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
     ])
 
     // Null Wyckoff values
@@ -59,6 +60,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
       wyckoff: `1`,
       elem: `H`,
       abc: [0, 0, 0],
+      site_indices: [0],
     }])
   })
 
@@ -89,6 +91,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
       wyckoff: `4a`,
       elem: `H`,
       abc: [0, 0, 0],
+      site_indices: [0, 1, 2, 3],
     }])
 
     // Different elements at same Wyckoff position
@@ -308,5 +311,134 @@ describe(`integration tests`, () => {
     expect(positions).toHaveLength(3)
     expect(new Set(positions.map((p) => p.elem))).toEqual(new Set([`H`, `O`, `Fe`]))
     positions.forEach((p) => expect([`1a`, `1b`, `1c`]).toContain(p.wyckoff))
+  })
+})
+
+describe(`stable atom ordering`, () => {
+  test(`wyckoff positions maintain stable ordering across multiple calls`, () => {
+    const mock_data = {
+      std_cell: {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
+        numbers: [1, 8, 1, 1],
+      },
+      wyckoffs: [`2a`, `1b`, `2a`, `2a`],
+      original_indices: [0, 1, 2, 3],
+    } as unknown as MoyoDataset & { original_indices?: number[] }
+
+    // Call the function multiple times to verify stable ordering
+    const results = Array.from(
+      { length: 5 },
+      () => wyckoff_positions_from_moyo(mock_data),
+    )
+
+    // All results should be identical
+    for (let idx = 1; idx < results.length; idx++) {
+      expect(results[idx]).toEqual(results[0])
+    }
+
+    // Verify the expected structure
+    expect(results[0]).toHaveLength(2)
+    expect(results[0][0].wyckoff).toBe(`1b`)
+    expect(results[0][0].elem).toBe(`O`)
+    expect(results[0][1].wyckoff).toBe(`3a`)
+    expect(results[0][1].elem).toBe(`H`)
+  })
+})
+
+describe(`site coverage verification`, () => {
+  test(`all sites are covered by wyckoff positions`, () => {
+    const test_cases = [
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]],
+        numbers: [1, 8, 26],
+        wyckoffs: [`a`, `b`, `c`],
+        expected_coverage: [0, 1, 2],
+      },
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.5, 0, 0], [0, 0.5, 0]],
+        numbers: [1, 1, 1, 1],
+        wyckoffs: [`4a`, `4a`, `4a`, `4a`],
+        expected_coverage: [0, 1, 2, 3],
+      },
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
+        numbers: [1, 8, 1, 1],
+        wyckoffs: [`2a`, `1b`, `2a`, `2a`],
+        expected_coverage: [0, 1, 2, 3],
+      },
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]],
+        numbers: [1, 8, 26],
+        wyckoffs: [null, `b`, null],
+        expected_coverage: [0, 1, 2],
+      },
+    ]
+
+    for (const test_case of test_cases) {
+      const mock_data = {
+        std_cell: { positions: test_case.positions, numbers: test_case.numbers },
+        wyckoffs: test_case.wyckoffs,
+        original_indices: test_case.expected_coverage,
+      } as unknown as MoyoDataset & { original_indices?: number[] }
+
+      const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
+      const covered_indices = new Set<number>()
+
+      for (const pos of wyckoff_positions) {
+        if (pos.site_indices) {
+          for (const idx of pos.site_indices) {
+            covered_indices.add(idx)
+          }
+        }
+      }
+
+      const missing_indices = test_case.expected_coverage.filter((idx) =>
+        !covered_indices.has(idx)
+      )
+      const extra_indices = Array.from(covered_indices).filter((idx) =>
+        !test_case.expected_coverage.includes(idx)
+      )
+
+      expect(missing_indices).toEqual([])
+      expect(extra_indices).toEqual([])
+    }
+  })
+
+  test(`wyckoff positions account for all multiplicity`, () => {
+    const test_cases = [
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.5, 0, 0], [0, 0.5, 0]],
+        numbers: [1, 1, 1, 1],
+        wyckoffs: [`4a`, `4a`, `4a`, `4a`],
+        expected_total_multiplicity: 4,
+      },
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]],
+        numbers: [1, 8, 26],
+        wyckoffs: [`a`, `b`, `c`],
+        expected_total_multiplicity: 3,
+      },
+      {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
+        numbers: [1, 8, 1, 1],
+        wyckoffs: [`2a`, `1b`, `2a`, `2a`],
+        expected_total_multiplicity: 4,
+      },
+    ]
+
+    for (const test_case of test_cases) {
+      const mock_data = {
+        std_cell: { positions: test_case.positions, numbers: test_case.numbers },
+        wyckoffs: test_case.wyckoffs,
+      } as unknown as MoyoDataset
+
+      const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
+      const total_multiplicity = wyckoff_positions.reduce((sum, pos) => {
+        const multiplicity = parseInt(pos.wyckoff) || 1
+        return sum + multiplicity
+      }, 0)
+
+      expect(total_multiplicity).toBe(test_case.expected_total_multiplicity)
+    }
   })
 })

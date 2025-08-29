@@ -125,4 +125,9 @@ export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void>
   }
 }
 
-export type InfoItem = { label: string; value: string; key?: string; tooltip?: string }
+export type InfoItem = Readonly<{
+  label: string
+  value: string | number
+  key?: string
+  tooltip?: string
+}>
