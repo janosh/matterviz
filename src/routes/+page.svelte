@@ -1,14 +1,18 @@
 <script lang="ts">
-  import { FilePicker, Structure, Trajectory } from '$lib'
+  import { FilePicker, Icon, Structure, Trajectory } from '$lib'
   import type { TrajHandlerData } from '$lib/trajectory'
   import { CompositionDemo, PeriodicTableDemo } from '$site'
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
+  import { CopyButton, tooltip } from 'svelte-multiselect'
 
   // Track the currently loaded trajectory file
   let active_trajectory_file = $state(`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`)
   let structure_filenames = $state([`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`])
+  let vscode_ext_url =
+    `https://marketplace.visualstudio.com/items?itemName=Janosh.matterviz`
+  let open_vsx_ext_url = `https://open-vsx.org/extension/janosh/matterviz`
 </script>
 
 <h1 style="font-size: clamp(20pt, 5.5vw, 42pt)">MatterViz</h1>
@@ -17,6 +21,44 @@
   <code>matterviz</code> is a toolkit for building interactive web UIs for materials
   science: periodic tables, 3d crystal structures (and molecules), Bohr atoms, nuclei,
   heatmaps, scatter plots. Check out some of the examples in the navigation bar above.
+</p>
+
+<h2 style="margin-block: 1em">Installation</h2>
+<p class="install">
+  <span>
+    {#each [[`VSCode`, vscode_ext_url], [`Cursor`, open_vsx_ext_url]] as const as
+      [ext_name, ext_url]
+      (ext_name)
+    }
+      {#if ext_name !== `VSCode`}/{/if}
+      <a
+        href={ext_url}
+        title="Install the {ext_name} extension to view structure/trajectory files directly in your IDE."
+        {@attach tooltip()}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <Icon icon={ext_name} /> {ext_name}
+      </a>
+    {/each}
+    extension
+  </span>
+
+  or
+
+  <span>
+    <code
+      {@attach tooltip()}
+      title="For use in JavaScript/TypeScript/NodeJS."
+      style="display: inline-flex; gap: 4pt"
+    >
+      <a href="https://www.npmjs.com/package/matterviz">
+        <Icon icon="NPM" style="transform: scale(2.4); padding-inline: 8pt" />
+      </a>
+      install matterviz
+      <CopyButton content="npm install matterviz" style="background: transparent" />
+    </code>
+  </span>
 </p>
 
 <h2><a href="/structure">Structure Viewer</a></h2>
@@ -104,5 +146,18 @@
 <style>
   h2 {
     margin-top: 2em;
+  }
+  p.install {
+    display: flex;
+    gap: 1em;
+    place-content: center;
+    font-size: 1.2em;
+    place-items: center;
+    flex-wrap: wrap;
+  }
+  p.install :is(span, span a) {
+    display: inline-flex;
+    gap: 6pt;
+    place-items: center;
   }
 </style>

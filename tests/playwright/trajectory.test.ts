@@ -382,21 +382,18 @@ test.describe(`Trajectory Component`, () => {
 
     test(`plot hides for single-frame trajectories`, async ({ page }) => {
       // Test that single-frame trajectories automatically hide plots since there's no time-series data
-      const viewers = page.locator(`.trajectory`)
+      const single_frame_viewer = page.locator(`#single-frame`)
 
-      for (let idx = 0; idx < await viewers.count(); idx++) {
-        const viewer = viewers.nth(idx)
-        const step_info = viewer.locator(`.trajectory-controls span`).filter({
-          hasText: `/ 1`,
-        })
+      if (await single_frame_viewer.isVisible()) {
+        const step_info = single_frame_viewer.locator(`.trajectory-controls span`).filter(
+          { hasText: `/ 1` },
+        )
+        await expect(step_info).toBeVisible()
 
-        if (await step_info.isVisible()) {
-          const content_area = viewer.locator(`.content-area`)
-          await expect(content_area).toHaveClass(/hide-plot/)
-          await expect(content_area.locator(`.structure`)).toBeVisible()
-          await expect(viewer.locator(`.step-input`)).toHaveValue(`0`)
-          return // Found and tested single-frame trajectory
-        }
+        const content_area = single_frame_viewer.locator(`.content-area`)
+        await expect(content_area).toHaveClass(/hide-plot/)
+        await expect(content_area.locator(`.structure`)).toBeVisible()
+        await expect(single_frame_viewer.locator(`.step-input`)).toHaveValue(`0`)
       }
     })
 

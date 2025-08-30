@@ -21,6 +21,7 @@ import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
+import pf_sd_1601634_cif from '$site/structures/PF-sd-1601634.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
@@ -1338,6 +1339,49 @@ Na Na 0.000 0.000 0.000`
 
     // The important thing is that parsing succeeds without errors
     // Some operations with dangling operators may be filtered out, but that's acceptable
+  })
+
+  test(`parses PF-sd-1601634 CIF with correct oxygen count`, () => {
+    const result = parse_cif(pf_sd_1601634_cif)
+    if (!result) throw new Error(`Failed to parse PF-sd-1601634 CIF`)
+
+    // Count oxygen atoms (including OH and OH2)
+    const oxygen_sites = result.sites.filter((site) =>
+      site.species[0].element === `O` ||
+      site.label === `OH` ||
+      site.label === `OH2`
+    )
+
+    // Should have 5 unique oxygen sites (without symmetry expansion since no symmetry ops are defined)
+    // O1: 1 site
+    // O2: 1 site
+    // O3: 1 site
+    // OH2: 1 site with 0.655 occupancy
+    // OH: 1 site with 0.345 occupancy
+    // Total: 5 oxygen sites
+    expect(oxygen_sites.length).toBe(5)
+
+    // Check that we have the expected number of each type
+    const o1_count = oxygen_sites.filter((site) => site.label === `O1`).length
+    const o2_count = oxygen_sites.filter((site) => site.label === `O2`).length
+    const o3_count = oxygen_sites.filter((site) => site.label === `O3`).length
+    const oh2_count = oxygen_sites.filter((site) => site.label === `OH2`).length
+    const oh_count = oxygen_sites.filter((site) => site.label === `OH`).length
+
+    expect(o1_count).toBe(1) // 1 unique site
+    expect(o2_count).toBe(1) // 1 unique site
+    expect(o3_count).toBe(1) // 1 unique site
+    expect(oh2_count).toBe(1) // 1 unique site
+    expect(oh_count).toBe(1) // 1 unique site
+
+    // Check total sites (5 O + 1 As + 3 Zn/Fe/Pb (mixed occupancy) + 1 Pb)
+    expect(result.sites.length).toBe(10)
+
+    // Verify lattice parameters
+    expect(result.lattice?.a).toBeCloseTo(9.143, 3)
+    expect(result.lattice?.b).toBeCloseTo(6.335, 3)
+    expect(result.lattice?.c).toBeCloseTo(7.598, 3)
+    expect(result.lattice?.beta).toBeCloseTo(115.07, 2)
   })
 })
 

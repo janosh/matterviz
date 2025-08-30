@@ -40,16 +40,15 @@
   // Call the composition change callback in an effect, not in the derived
   $effect(() => on_composition_change?.(parsed))
 
-  // Context menu state
-  let context_menu_open = $state(false)
-  let context_menu_position = $state({ x: 0, y: 0 })
+  let context_menu = $state({ open: false, x: 0, y: 0 })
 
   function handle_right_click(event: MouseEvent) { // open context menu
     event.preventDefault()
-    context_menu_open = false // Close any existing context menu first
-    context_menu_position = { x: event.pageX, y: event.pageY }
+    context_menu.open = false // Close any existing context menu first
+    context_menu.x = event.pageX
+    context_menu.y = event.pageY
     // Use a small delay to ensure the prev context menu closes happens before opening new one
-    setTimeout(() => context_menu_open = true, 0)
+    setTimeout(() => context_menu.open = true, 0)
   }
 
   const mode_options = [
@@ -95,7 +94,7 @@
     } else if (section_title === sec_titles.color_scheme) {
       current_color_scheme = option.value as ColorSchemeName
     } else if (section_title === sec_titles.export) handle_export(option.value)
-    context_menu_open = false
+    context_menu.open = false
   }
 
   // Handle export actions
@@ -134,7 +133,7 @@
   class="composition {rest.class ?? ``}"
 />
 
-{#if context_menu_open}
+{#if context_menu.open}
   <ContextMenu
     sections={context_menu_sections}
     selected_values={{
@@ -142,8 +141,8 @@
       [sec_titles.color_scheme]: current_color_scheme,
     }}
     on_select={handle_context_menu_select}
-    position={context_menu_position}
-    visible={context_menu_open}
-    on_close={() => context_menu_open = false}
+    position={context_menu}
+    visible={context_menu.open}
+    on_close={() => context_menu.open = false}
   />
 {/if}

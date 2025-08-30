@@ -56,7 +56,10 @@
             "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr}"
           },
           {
-            "filenamePattern": "*.{cif,xyz,extxyz,poscar,json,yaml,yml}.gz"
+            "filenamePattern": "*.{cif,xyz,extxyz,poscar}.gz"
+          },
+          {
+            "filenamePattern": "*{structure,material,crystal,lattice,geometry}.{json,yaml,yml}.gz"
           },
           {
             "filenamePattern": "*{xdatcar,contcar,outcar}"

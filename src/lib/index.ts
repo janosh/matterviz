@@ -124,3 +124,10 @@ export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void>
     console.error(`Fullscreen operation failed:`, error)
   }
 }
+
+export type InfoItem = Readonly<{
+  label: string
+  value: string | number
+  key?: string
+  tooltip?: string
+}>

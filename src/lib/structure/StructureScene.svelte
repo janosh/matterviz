@@ -19,6 +19,25 @@
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
+  // Add pulsating animation for selected sites
+  let pulse_time = $state(0)
+  let pulse_opacity = $derived(0.4 + 0.3 * Math.sin(pulse_time * 3))
+
+  // Update pulse time for animation
+  $effect(() => {
+    if (!selected_sites?.length) return
+    if (typeof globalThis === `undefined`) return
+    const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
+    if (reduce) return
+    let raf_id = 0
+    const animate = () => {
+      pulse_time += 0.01
+      raf_id = requestAnimationFrame(animate)
+    }
+    raf_id = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(raf_id)
+  })
+
   interface Props {
     structure?: AnyStructure | undefined
     atom_radius?: number // scale factor for atomic radii
@@ -138,6 +157,10 @@
     measured_sites = measured_sites.includes(site_index)
       ? measured_sites.filter((idx) => idx !== site_index)
       : [...measured_sites, site_index]
+    // keep selected_sites in sync with user clicks
+    selected_sites = selected_sites.includes(site_index)
+      ? selected_sites.filter((idx) => idx !== site_index)
+      : [...selected_sites, site_index]
   }
 
   // Keep measured site selection valid across structure changes (new structure might have fewer sites)
@@ -532,7 +555,7 @@
       kind: `selected`,
       site: structure?.sites?.[idx] ?? null,
       site_idx: idx,
-      opacity: 0.6,
+      opacity: pulse_opacity,
       color: selection_highlight_color,
     }))),
   ] as
@@ -565,6 +588,8 @@
         {opacity}
         emissive={color}
         emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
+        depthTest={false}
+        depthWrite={false}
       />
     </T.Mesh>
   {/if}

@@ -2,14 +2,14 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { contrast_color, FilePicker, format_fractional } from '$lib'
-  import { colors } from '$lib/state.svelte'
+  import { FilePicker } from '$lib'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import {
     analyze_structure_symmetry,
     ensure_moyo_wasm_ready,
-    generate_wyckoff_rows,
+    wyckoff_positions_from_moyo,
+    WyckoffTable,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -17,77 +17,79 @@
   import { tooltip } from 'svelte-multiselect'
 
   let wasm_ready = $state(false)
-  let last_error = $state<string | null>(null)
+  let error = $state<string | null>(null)
   let sym_data = $state<MoyoDataset | null>(null)
   let symprec = $state(1e-4)
   let setting = $state<`Standard` | `Spglib`>(`Standard`)
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
   let current_structure = $state<AnyStructure | null>(null)
+  let highlighted_sites = $state<number[]>([])
+  let selected_sites = $state<number[]>([])
 
+  onMount(() => { // Initialize WASM
+    ensure_moyo_wasm_ready()
+      .then(() => wasm_ready = true)
+      .catch((exc) => error = `WASM init failed: ${exc}`)
+  })
+
+  // Update filename from URL
   $effect(() => {
     if (!browser) return
     const file = page.url.searchParams.get(`file`)
     if (file && file !== current_filename) current_filename = file
   })
 
-  // Auto-analyze structure when WASM becomes ready
+  // Analyze structure when dependencies change
   $effect(() => {
-    if (wasm_ready && current_structure) analyze_structure(current_structure)
+    if (!wasm_ready || !current_structure) return
+
+    analyze_structure()
   })
 
-  onMount(() =>
-    ensure_moyo_wasm_ready().then(() => {
-      wasm_ready = true
-      last_error = null
-    }).catch((exc) => {
-      last_error = `Failed to init WASM: ${String(exc)}`
-    })
-  )
-
-  async function analyze_structure(struct_or_mol: AnyStructure) {
-    last_error = null
-    sym_data = null
-
-    if (!(`lattice` in struct_or_mol)) {
-      last_error = `Not a periodic structure (no lattice).`
+  async function analyze_structure() {
+    if (!current_structure || !(`lattice` in current_structure)) {
+      error = `Not a periodic structure`
       return
     }
-    if (!wasm_ready) return
+
+    error = null
+    sym_data = null
 
     try {
       sym_data = await analyze_structure_symmetry(
-        struct_or_mol,
+        current_structure,
         symprec,
         setting,
       )
     } catch (exc) {
-      last_error = `Analysis failed: ${String(exc)}`
+      error = `Analysis failed: ${exc}`
     }
   }
 
-  const wyckoff_rows = $derived(generate_wyckoff_rows(sym_data))
-
-  // Helper functions for symmetry operation classification
-  const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
-
-  const operation_counts = $derived.by(() => { // Compute operation with single for loop
+  // Derived values
+  const wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
+  const operation_counts = $derived.by(() => {
+    const EPS = 1e-10
     if (!sym_data?.operations) {
       return { translations: 0, rotations: 0, roto_translations: 0 }
     }
 
-    let [translations, rotations, roto_translations] = [0, 0, 0]
+    return sym_data.operations.reduce((acc, op) => {
+      const has_translation = op.translation.some((x) => Math.abs(x) > EPS)
+      const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
 
-    for (const op of sym_data.operations) {
-      const has_translation = !op.translation.every((x) => x === 0)
-      const is_identity = is_identity3(op.rotation)
+      if (is_identity && has_translation) acc.translations++
+      else if (!has_translation) acc.rotations++
+      else acc.roto_translations++
 
-      if (is_identity && has_translation) translations++
-      else if (!has_translation) rotations++
-      else roto_translations++
-    }
-
-    return { translations, rotations, roto_translations }
+      return acc
+    }, { translations: 0, rotations: 0, roto_translations: 0 })
   })
+
+  // Combine hover and selected sites for display
+  const display_sites = $derived([
+    ...new Set([...highlighted_sites, ...selected_sites]),
+  ])
 </script>
 
 <h1>Symmetry</h1>
@@ -123,8 +125,8 @@
     {:else}
       <span class="status warn">Loading WASM...</span>
     {/if}
-    {#if last_error}
-      <pre class="error" style="color: var(--error-color)">{last_error}</pre>
+    {#if error}
+      <pre class="error" style="color: var(--error-color)">{error}</pre>
     {:else if sym_data}
       <div class="symmetry-stats">
         <div
@@ -146,7 +148,7 @@
           Hall number <strong>{sym_data.hall_number}</strong>
         </div>
         <div
-          title="Pearson symbol: describes crystal system and number of atoms per unit cell. Format: Crystal system + Number of atoms. Example: tP2 = tetragonal primitive with 2 atoms"
+          title="Pearson symbol. Format: Crystal system + Number of atoms per unit cell. Example: tP2 = tetragonal primitive with 2 atoms"
           {@attach tooltip()}
         >
           Pearson <strong>{sym_data.pearson_symbol}</strong>
@@ -168,51 +170,24 @@
           title="Number of unique Wyckoff positions (symmetry-equivalent atomic sites) in the crystal structure."
           {@attach tooltip()}
         >
-          Distinct orbits <strong>{wyckoff_rows.length}</strong>
+          Distinct orbits <strong>{wyckoff_positions.length}</strong>
         </div>
       </div>
-      <table class="wyckoff-table" style="margin-top: 1em">
-        <thead>
-          <tr>
-            {#each [`Wyckoff`, `Element`, `Fractional Coords`] as col (col)}
-              <th
-                title={col === `Wyckoff`
-                ? `Wyckoff position: Multiplicity + Letter (e.g. 4a = 4 atoms at position 'a')`
-                : col === `Element`
-                ? `Chemical element symbol`
-                : `Fractional coordinates within the unit cell (0-1 range)`}
-                {@attach tooltip()}
-              >
-                {col}
-              </th>
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#each wyckoff_rows as { wyckoff, elem, abc } (`${wyckoff}-${elem}-${abc}`)}
-            {@const style =
-            `display: inline-block; padding: 0 6pt; border-radius: 3pt; line-height: 1.4`}
-            <tr>
-              <td>{wyckoff}</td>
-              <td>
-                <span
-                  style:background-color={colors.element[elem]}
-                  {style}
-                  {@attach contrast_color()}
-                >
-                  {elem}
-                </span>
-              </td>
-              <td>({abc?.map((x) => format_fractional(x)).join(` , `) ?? `N/A`})</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+      <WyckoffTable
+        {wyckoff_positions}
+        on_hover={(site_indices) => {
+          highlighted_sites = site_indices ?? []
+        }}
+        on_click={(site_indices) => {
+          selected_sites = site_indices ?? []
+        }}
+      />
     {/if}
   </div>
 
   <Structure
     data_url="/structures/{current_filename}"
+    selected_sites={display_sites}
     on_file_load={({ structure, filename = `` }) => {
       current_filename = filename
       page.url.searchParams.set(`file`, current_filename)
@@ -222,7 +197,6 @@
         noScroll: true,
       })
       current_structure = structure || null
-      if (structure) analyze_structure(structure)
     }}
     style="height: 100%; min-height: 500px"
   >

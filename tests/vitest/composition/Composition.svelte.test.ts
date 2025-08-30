@@ -25,24 +25,26 @@ describe(`Composition component`, () => {
   test(`forwards props to child components`, () => {
     mount(Composition, {
       target: document.body,
-      props: {
-        composition: `H2O`,
-        size: 200,
-        color_scheme: `Jmol`,
-        interactive: false,
-      },
+      props: { composition: `H2O`, size: 200, color_scheme: `Jmol`, interactive: false },
     })
     expect(doc_query(`.pie-chart`).getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 
   test(`handles composition change callback`, async () => {
     const on_composition_change = vi.fn()
+    let composition = $state(`H2O`)
     mount(Composition, {
       target: document.body,
-      props: { composition: `H2O`, on_composition_change },
+      props: { composition, on_composition_change },
     })
-    await tick
+    await tick()
     expect(on_composition_change).toHaveBeenCalledWith({ H: 2, O: 1 })
+    composition = `FeF`
+
+    // TODO figure out why on_composition_change not called on $state(`H2O`) change
+    // await tick()
+    // expect(on_composition_change).toHaveBeenCalledTimes(2)
+    // expect(on_composition_change).toHaveBeenCalledWith({ Fe: 1, F: 1 })
   })
 
   test(`handles invalid input gracefully`, () => {
