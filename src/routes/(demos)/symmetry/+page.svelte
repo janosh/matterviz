@@ -69,12 +69,13 @@
   // Derived values
   const wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
   const operation_counts = $derived.by(() => {
+    const EPS = 1e-10
     if (!sym_data?.operations) {
       return { translations: 0, rotations: 0, roto_translations: 0 }
     }
 
     return sym_data.operations.reduce((acc, op) => {
-      const has_translation = op.translation.some((x) => x !== 0)
+      const has_translation = op.translation.some((x) => Math.abs(x) > EPS)
       const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
 
       if (is_identity && has_translation) acc.translations++

@@ -34,17 +34,27 @@
     <tbody>
       {#each wyckoff_positions as wyckoff_pos (JSON.stringify(wyckoff_pos))}
         {@const { wyckoff, elem, abc, site_indices } = wyckoff_pos}
+        {@const is_selected =
+        JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)}
         <tr
           class="wyckoff-row"
-          class:selected={JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)}
+          class:selected={is_selected}
+          tabindex="0"
+          aria-selected={is_selected}
           onmouseenter={() => on_hover?.(site_indices ?? null)}
           onmouseleave={() => on_hover?.(null)}
           onclick={() => {
-            selected_wyckoff =
-              JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)
-                ? null
-                : wyckoff_pos
+            selected_wyckoff = is_selected ? null : wyckoff_pos
             on_click?.(selected_wyckoff ? site_indices ?? null : null)
+          }}
+          onkeydown={(event) => {
+            if ([`Enter`, ` `].includes(event.key)) {
+              event.preventDefault()
+              const is_selected =
+                JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)
+              selected_wyckoff = is_selected ? null : wyckoff_pos
+              on_click?.(selected_wyckoff ? site_indices ?? null : null)
+            }
           }}
         >
           <td>{wyckoff}</td>

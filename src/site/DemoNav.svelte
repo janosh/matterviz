@@ -9,6 +9,12 @@
   let { routes = [], ...rest }: Props = $props()
 
   let is_open = $state(false)
+  function onkeydown(event: KeyboardEvent) {
+    if (event.key === `Escape` && is_open) is_open = false
+  }
+
+  // Generate unique ID for the menu panel
+  const panel_id = `nav-menu-${crypto.randomUUID()}`
 
   let is_current = $derived((path: string) => {
     if (path === `/`) return page.url.pathname === `/` ? `page` : undefined
@@ -17,19 +23,29 @@
   })
 </script>
 
+<svelte:window {onkeydown} />
+
 <nav {...rest} {@attach click_outside({ callback: () => is_open = false })}>
   <button
     class="burger-button"
     onclick={() => is_open = !is_open}
     aria-label="Toggle navigation menu"
     aria-expanded={is_open}
+    aria-controls={panel_id}
   >
     <span class="burger-line"></span>
     <span class="burger-line"></span>
     <span class="burger-line"></span>
   </button>
 
-  <div class="menu-content" class:open={is_open}>
+  <div
+    id={panel_id}
+    class="menu-content"
+    class:open={is_open}
+    tabindex="0"
+    role="menu"
+    {onkeydown}
+  >
     {#each routes as route (JSON.stringify(route))}
       {@const [href, label] = Array.isArray(route) ? route : [route, route]}
       <a {href} aria-current={is_current(href)} onclick={() => is_open = false}>{
@@ -70,6 +86,7 @@
   }
   /* Mobile burger button */
   .burger-button {
+    display: none;
     position: fixed;
     top: 1rem;
     left: 1rem;

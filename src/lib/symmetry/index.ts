@@ -39,9 +39,14 @@ export function to_cell_json(structure: PymatgenStructure): string {
     m22,
   ]
   const positions = structure.sites.map((s) => s.abc)
-  const numbers = structure.sites.map(
-    (site) => symbol_to_atomic_number[site.species[0]?.element] ?? 0,
-  )
+  const numbers = structure.sites.map((site, idx) => {
+    const sym = site.species?.[0]?.element
+    const num = sym !== null ? symbol_to_atomic_number[sym] : undefined
+    if (typeof num !== `number`) {
+      throw new Error(`Unknown element at site ${idx}: ${String(sym)}`)
+    }
+    return num
+  })
   const cell: MoyoCell = { lattice: { basis }, positions, numbers }
   return JSON.stringify(cell)
 }

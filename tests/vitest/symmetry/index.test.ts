@@ -1,4 +1,4 @@
-import { Vec3 } from '$lib/math.ts'
+import type { Vec3 } from '$lib/math'
 import { simplicity_score, wyckoff_positions_from_moyo } from '$lib/symmetry'
 import { structures } from '$site/structures'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -115,7 +115,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
 describe(`simplicity_score`, () => {
   test(`calculates scores correctly`, () => {
-    // Integer coordinates: near_zero=0.25 each, near_half=0.5 each -> 0.75 + 0.75 = 1.5? No: 3*0.25 + 0.5*(3*0.5) = 0.75 + 0.75 = 1.5? Actually: 0.25*3 + 0.5*0.5*3 = 0.75
+    // Integer coordinates
     expect(simplicity_score([0, 0, 0])).toBe(0.75)
     expect(simplicity_score([1, 1, 1])).toBe(0.75)
 
@@ -385,11 +385,7 @@ describe(`site coverage verification`, () => {
       const covered_indices = new Set<number>()
 
       for (const pos of wyckoff_positions) {
-        if (pos.site_indices) {
-          for (const idx of pos.site_indices) {
-            covered_indices.add(idx)
-          }
-        }
+        for (const idx of pos.site_indices ?? []) covered_indices.add(idx)
       }
 
       const missing_indices = test_case.expected_coverage.filter((idx) =>

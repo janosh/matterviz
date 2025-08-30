@@ -25,12 +25,17 @@
 
   // Update pulse time for animation
   $effect(() => {
-    if (selected_sites?.length) {
-      const interval = setInterval(() => {
-        pulse_time += 0.1
-      }, 50)
-      return () => clearInterval(interval)
+    if (!selected_sites?.length) return
+    if (typeof globalThis === `undefined`) return
+    const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
+    if (reduce) return
+    let raf_id = 0
+    const animate = () => {
+      pulse_time += 0.01
+      raf_id = requestAnimationFrame(animate)
     }
+    raf_id = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(raf_id)
   })
 
   interface Props {
@@ -152,6 +157,10 @@
     measured_sites = measured_sites.includes(site_index)
       ? measured_sites.filter((idx) => idx !== site_index)
       : [...measured_sites, site_index]
+    // keep selected_sites in sync with user clicks
+    selected_sites = selected_sites.includes(site_index)
+      ? selected_sites.filter((idx) => idx !== site_index)
+      : [...selected_sites, site_index]
   }
 
   // Keep measured site selection valid across structure changes (new structure might have fewer sites)
@@ -580,6 +589,7 @@
         emissive={color}
         emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
         depthTest={false}
+        depthWrite={false}
       />
     </T.Mesh>
   {/if}

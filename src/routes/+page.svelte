@@ -35,6 +35,8 @@
         href={ext_url}
         title="Install the {ext_name} extension to view structure/trajectory files directly in your IDE."
         {@attach tooltip()}
+        target="_blank"
+        rel="noopener noreferrer"
       >
         <Icon icon={ext_name} /> {ext_name}
       </a>
