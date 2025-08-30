@@ -1208,8 +1208,10 @@ Direct
       return dt
     }, poscar_content)
 
-    await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    // Simulate drop on the structure wrapper div (not the canvas)
+    await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
+    await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    await data_transfer.dispose()
 
     const after_drop_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
@@ -1251,8 +1253,10 @@ H    1.261    0.728   -0.890`
       return dt
     }, xyz_content)
 
-    await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    // Simulate drop on the structure wrapper div (not the canvas)
+    await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
+    await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    await data_transfer.dispose()
 
     const after_drop_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
@@ -1265,12 +1269,24 @@ H    1.261    0.728   -0.890`
     // Take initial screenshot
     const initial_screenshot = await canvas.screenshot()
 
-    // Create a simple JSON structure (NaCl)
+    // Create a simple JSON structure (NaCl) in the correct format
     const json_content = JSON.stringify(
       {
         sites: [
-          { xyz: [0, 0, 0], element: `Na` },
-          { xyz: [0.5, 0.5, 0.5], element: `Cl` },
+          {
+            species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
+            xyz: [0, 0, 0],
+            abc: [0, 0, 0],
+            label: `Na`,
+            properties: {},
+          },
+          {
+            species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
+            xyz: [1.4, 1.4, 1.4],
+            abc: [0.5, 0.5, 0.5],
+            label: `Cl`,
+            properties: {},
+          },
         ],
         lattice: {
           matrix: [
@@ -1278,6 +1294,7 @@ H    1.261    0.728   -0.890`
             [0, 2.8, 0],
             [0, 0, 2.8],
           ],
+          pbc: [true, true, true],
           a: 2.8,
           b: 2.8,
           c: 2.8,
@@ -1302,9 +1319,10 @@ H    1.261    0.728   -0.890`
       return dt
     }, json_content)
 
-    // Simulate drop
-    await canvas.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
-    await canvas.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    // Simulate drop on the structure wrapper div (not the canvas)
+    await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
+    await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    await data_transfer.dispose()
 
     // Wait for file load event to be recorded by the test page
     await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(

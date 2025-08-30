@@ -51,14 +51,6 @@
   let initial_position = $state({ left: `50px`, top: `50px` })
   let show_control_buttons = $state(false)
 
-  // Keyboard shortcuts
-  function on_keydown(event: KeyboardEvent) {
-    if (event.key === `Escape`) {
-      event.preventDefault()
-      close_pane()
-    }
-  }
-
   function toggle_pane() {
     show = !show
     if (!show) onclose()
@@ -179,7 +171,14 @@
   })
 </script>
 
-<svelte:window onkeydown={on_keydown} onresize={handle_resize} />
+<svelte:window
+  onkeydown={(event: KeyboardEvent) => {
+    if (event.key !== `Escape`) return
+    event.preventDefault()
+    close_pane()
+  }}
+  onresize={handle_resize}
+/>
 <svelte:document onclick={handle_click_outside} />
 
 {#if show_pane}

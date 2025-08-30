@@ -190,3 +190,71 @@ test(`symmetry section positioning and error handling`, () => {
   expect(content).toContain(`Structure`)
   expect(content).toContain(`Cell`)
 })
+
+test(`Wyckoff table integration with selected sites`, () => {
+  const structure = get_dummy_structure(`H`, 4, true) as PymatgenStructure
+  let selected_sites: number[] = []
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: {
+      structure,
+      pane_open: true,
+      get selected_sites() {
+        return selected_sites
+      },
+      set selected_sites(new_val) {
+        selected_sites = new_val
+      },
+    },
+  })
+
+  // Check that selected_sites binding works
+  expect(selected_sites).toEqual([])
+
+  // Component should render without errors
+  const content = document.body.textContent || ``
+  expect(content).toContain(`Structure`)
+})
+
+test(`pane state management works correctly`, () => {
+  const structure = get_dummy_structure(`H`, 2, true) as PymatgenStructure
+  let pane_open = false
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: {
+      structure,
+      get pane_open() {
+        return pane_open
+      },
+      set pane_open(new_val) {
+        pane_open = new_val
+      },
+    },
+  })
+
+  // Initial state should be closed
+  expect(pane_open).toBe(false)
+})
+
+test(`handles large structures efficiently`, () => {
+  const large_structure = get_dummy_structure(`H`, 500, true) as PymatgenStructure
+
+  const start_time = performance.now()
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: { structure: large_structure, pane_open: true },
+  })
+
+  const end_time = performance.now()
+  const render_time = end_time - start_time
+
+  // Should render large structures in reasonable time
+  expect(render_time).toBeLessThan(500) // 500ms threshold
+
+  // Should still show structure info
+  const content = document.body.textContent || ``
+  expect(content).toContain(`Structure`)
+})

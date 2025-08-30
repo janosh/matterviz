@@ -549,6 +549,7 @@
           <StructureInfoPane
             {structure}
             bind:pane_open={info_pane_open}
+            bind:selected_sites
             custom_toggle={toggle_info}
             {@attach tooltip({ content: `Structure info pane` })}
           />
