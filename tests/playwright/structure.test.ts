@@ -1211,6 +1211,7 @@ Direct
     // Simulate drop on the structure wrapper div (not the canvas)
     await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    await data_transfer.dispose()
 
     const after_drop_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
@@ -1255,6 +1256,7 @@ H    1.261    0.728   -0.890`
     // Simulate drop on the structure wrapper div (not the canvas)
     await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    await data_transfer.dispose()
 
     const after_drop_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
@@ -1320,6 +1322,7 @@ H    1.261    0.728   -0.890`
     // Simulate drop on the structure wrapper div (not the canvas)
     await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+    await data_transfer.dispose()
 
     // Wait for file load event to be recorded by the test page
     await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
