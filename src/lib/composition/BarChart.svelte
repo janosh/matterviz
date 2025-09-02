@@ -3,6 +3,7 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_contrast_color } from '$lib/colors'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { composition_to_percentages } from './parse'
 
@@ -16,7 +17,7 @@
     label_y: number
   }
 
-  interface Props {
+  interface Props extends HTMLAttributes<SVGSVGElement> {
     composition: CompositionType
     size?: number
     bar_height?: number
@@ -33,7 +34,6 @@
     segment_content?: Snippet<[BarSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
-    [key: string]: unknown
   }
   let {
     composition,

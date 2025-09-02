@@ -1,5 +1,7 @@
 <script lang="ts">
-  interface Props {
+  import type { HTMLAttributes } from 'svelte/elements'
+
+  interface Props extends HTMLAttributes<SVGSVGElement> {
     // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
     symbol?: string // usually H, He, etc. but can be anything
     name?: string // usually Hydrogen, Helium, etc. but can be anything
@@ -21,7 +23,6 @@
       | `sequential`
       | ((idx: number) => string)
     electron_label_props?: Record<string, string | number>
-    [key: string]: unknown
   }
   let {
     symbol = ``,

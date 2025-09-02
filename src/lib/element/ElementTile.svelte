@@ -8,6 +8,7 @@
     pick_contrast_color,
   } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   type SplitLayout =
     | `diagonal`
@@ -16,7 +17,7 @@
     | `triangular`
     | `quadrant`
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement | HTMLAnchorElement> {
     element: ChemicalElement
     bg_color?: string | null
     show_symbol?: boolean
@@ -37,7 +38,6 @@
     show_values?: boolean // explicitly control whether to show values when colors are passed
     // control the layout of multi-value splits
     split_layout?: SplitLayout
-    [key: string]: unknown
   }
   let {
     element,

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon, type IconName } from '$lib'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   interface MenuOption {
     value: string
@@ -8,15 +9,14 @@
     disabled?: boolean
   }
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     sections: Readonly<{ title: string; options: readonly MenuOption[] }[]>
     selected_values?: Record<string, string>
     on_select?: (section_title: string, option: MenuOption) => void
     position: { x: number; y: number }
     visible: boolean
     on_close?: () => void
-    menu_element?: HTMLElement
-    [key: string]: unknown
+    menu_element?: HTMLDivElement
   }
   let {
     sections,
@@ -78,7 +78,7 @@
 {#if visible}
   {@const { x, y } = get_smart_position()}
   {@const style = `position: absolute; left: ${x}px; top: ${y}px; ${rest.style ?? ``}`}
-  <div class="context-menu" {...rest} {style} bind:this={menu_element}>
+  <div {...rest} class="context-menu {rest.class ?? ``}" {style} bind:this={menu_element}>
     {#each sections as { title, options } (title)}
       <div class="section">
         <div class="header">{title}</div>

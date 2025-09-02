@@ -278,12 +278,7 @@ export const create_html = (
 
 // Handle messages from webview
 export const handle_msg = async (
-  msg: MessageData & {
-    request_id: string
-    file_path: string
-    filename: string
-    frame_index: number
-  },
+  msg: MessageData,
   webview?: WebviewLike,
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
@@ -293,7 +288,7 @@ export const handle_msg = async (
   } else if (msg.command === `request_large_file` && msg.file_path && webview) {
     // Handle large file by parsing with indexing and setting up frame loader
     try {
-      const { request_id, file_path, filename } = msg
+      const { request_id, file_path, filename = `` } = msg
       const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
         webview.postMessage({
           command: `largefile_progress`,
@@ -318,7 +313,7 @@ export const handle_msg = async (
       })
 
       webview.postMessage({
-        command: `largefile_response`,
+        command: `large_file_response`,
         request_id,
         parsed_trajectory,
         is_parsed: true,
@@ -328,15 +323,16 @@ export const handle_msg = async (
     } catch (error) {
       const error_message = error instanceof Error ? error.message : String(error)
       console.error(`Failed to setup indexed parsing:`, error_message)
-      webview.postMessage({
-        command: `largefile_response`,
-        request_id: msg.request_id,
-        error: error_message,
-      })
+      const command = `large_file_response`
+      const { request_id } = msg
+      webview.postMessage({ command, request_id, error: error_message })
     }
   } else if (msg.command === `request_frame` && msg.file_path && webview) {
     try {
       const { request_id, file_path, frame_index } = msg
+      if (request_id === undefined || frame_index === undefined) {
+        throw new Error(`Missing request_id or frame_index`)
+      }
       const loader_data = active_frame_loaders.get(file_path)
       if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
 
@@ -344,13 +340,14 @@ export const handle_msg = async (
         loader_data.file_data,
         frame_index,
       )
-      webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
+      const command = `frame_response`
+      webview.postMessage({ command, request_id, frame, frame_index })
     } catch (error) {
       const error_message = error instanceof Error ? error.message : String(error)
       console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
       webview.postMessage({
         command: `frame_response`,
-        request_id: msg.request_id,
+        request_id: msg.request_id ?? ``,
         error: error_message,
         frame_index: msg.frame_index,
       })
@@ -389,9 +386,20 @@ export const handle_msg = async (
       const message = error instanceof Error ? error.message : String(error)
       vscode.window.showErrorMessage(`Save failed: ${message}`)
     }
-  } else if (msg.command === `startWatching` && msg.file_path && webview) {
+  } else if (
+    msg.command === `startWatching` && webview && typeof msg.file_path === `string` &&
+    msg.file_path.includes(`/`)
+  ) {
     // Handle request to start watching a file
-    start_watching_file(msg.file_path, webview)
+    start_watching_file(
+      msg.file_path,
+      webview,
+      {
+        request_id: msg.request_id,
+        filename: msg.filename,
+        frame_index: msg.frame_index,
+      },
+    )
   } else if (msg.command === `stopWatching` && msg.file_path) {
     // Handle request to stop watching a file
     stop_watching_file(msg.file_path)
@@ -399,7 +407,11 @@ export const handle_msg = async (
 }
 
 // Start watching a file using VS Code's built-in file system watcher
-function start_watching_file(file_path: string, webview: WebviewLike): void {
+function start_watching_file(
+  file_path: string,
+  webview: WebviewLike,
+  meta?: { request_id?: string; filename?: string; frame_index?: number },
+): void {
   try {
     // Stop existing watcher for this file if any
     stop_watching_file(file_path)
@@ -419,7 +431,12 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
 
     // Listen for file deletion
     watcher.onDidDelete(() => {
-      handle_file_change(`delete`, file_path, webview)
+      // Include meta (from the initiating message) in delete notification if provided
+      try {
+        webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
+      } catch (error) {
+        console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
+      }
       stop_watching_file(file_path) // Clean up watcher
     })
 

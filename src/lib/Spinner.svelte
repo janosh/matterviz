@@ -1,7 +1,8 @@
 <script lang="ts">
-  interface Props {
+  import type { HTMLAttributes } from 'svelte/elements'
+
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     text?: string
-    [key: string]: unknown
   }
   let { text = `Loading...`, ...rest }: Props = $props()
 </script>

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { element_data, format_num, type InternalPoint, ScatterPlot } from '$lib'
   import { selected } from '$lib/state.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     y: number[] // array of length 118 (one value for each element)
     x_label?: string
     y_label?: string
@@ -10,7 +11,6 @@
     tooltip_point?: InternalPoint | null
     hovered?: boolean
     y_format?: string
-    [key: string]: unknown
   }
   let {
     y,

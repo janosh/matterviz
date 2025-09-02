@@ -3,16 +3,16 @@
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     options?: D3InterpolateName[]
     value?: string | null
     selected?: string[]
     minSelect?: number
     placeholder?: string
     colorbar?: ComponentProps<typeof ColorBar>
-    [key: string]: unknown
   }
   let {
     options = Object.keys(d3_sc).filter((key) =>

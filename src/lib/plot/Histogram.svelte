@@ -4,6 +4,7 @@
   import { HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import {
     extract_series_color,
     filter_visible_series,
@@ -17,7 +18,7 @@
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     series: DataSeries[]
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -51,9 +52,7 @@
     plot_controls?: Snippet<[]>
     on_series_toggle?: (series_idx: number) => void
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    [key: string]: unknown
   }
-
   let {
     series = $bindable([]),
     x_lim = [null, null],

@@ -7,7 +7,7 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
-  interface Props {
+  interface Props extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
     trajectory: TrajectoryType
     current_step_idx: number
     current_filename?: string | null
@@ -17,7 +17,6 @@
     pane_open?: boolean
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    [key: string]: unknown
   }
   let {
     trajectory,

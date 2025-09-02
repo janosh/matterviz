@@ -1,8 +1,9 @@
 <script lang="ts">
   import { format_num } from '$lib'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     data?: {
       title: string
       value?: string | number | number[] | null
@@ -18,7 +19,6 @@
     style?: string | null
     title_snippet?: Snippet
     fallback_snippet?: Snippet
-    [key: string]: unknown
   }
   let {
     data = [],
@@ -45,8 +45,8 @@
     </h2>
   {/if}
   {#each data.filter((itm) =>
-      (!(`condition` in itm) || itm?.condition) &&
-      ![undefined, null].includes(itm.value)
+      (!(`condition` in itm) || itm?.condition) && itm.value !== undefined &&
+      itm.value !== null
     ) as
     { title, value, unit, fmt = default_fmt, tooltip }
     (title + value + unit + fmt)

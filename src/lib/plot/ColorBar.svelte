@@ -6,9 +6,10 @@
   import * as d3 from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     title?: string | null
     color_scale?: ((x: number) => string) | string | null
     title_side?: `left` | `right` | `top` | `bottom`
@@ -37,7 +38,6 @@
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
     color_scale_domain?: [number, number]
-    [key: string]: unknown
   }
   let {
     title = null,

@@ -2,16 +2,16 @@
   import type { ChemicalElement } from '$lib'
   import { heatmap_labels } from '$lib/labels'
   import Select from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   const options = Object.keys(heatmap_labels)
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     value?: keyof ChemicalElement | null
     empty?: boolean
     selected?: string[]
     minSelect?: number
     id?: string | null
     key?: string | null
-    [key: string]: unknown
   }
   let {
     value = $bindable(null),

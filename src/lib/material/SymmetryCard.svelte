@@ -1,11 +1,11 @@
 <script lang="ts">
   import { InfoCard } from '$lib'
+  import type { HTMLAttributes } from 'svelte/elements'
   // import type { SummaryDoc } from '$types'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`section`]> {
     title?: string
     material: Record<string, unknown> // previously SummaryDoc
-    [key: string]: unknown
   }
   let { title = `Symmetry`, material, ...rest }: Props = $props()
 

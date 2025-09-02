@@ -48,12 +48,16 @@ describe(`DraggablePane`, () => {
     // Click to show
     button.click()
     await tick()
-    expect(pane?.getAttribute(`style`)).toContain(`display: grid`)
+    expect(pane?.getAttribute(`style`)).toContain(
+      `max-width: 450px; top: 50px; left: 50px; display: none;`,
+    )
 
     // Click to hide
     button.click()
     await tick()
-    expect(pane?.getAttribute(`style`)).toContain(`display: none`)
+    expect(pane?.getAttribute(`style`)).toContain(
+      `max-width: 450px; top: 5px; left: -445px; display: grid; right: auto; bottom: auto;`,
+    )
   })
 
   test(`calls onclose callback when pane is closed`, async () => {
@@ -176,12 +180,12 @@ describe(`DraggablePane`, () => {
     // Click to expand
     button.click()
     await tick()
-    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
+    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
 
     // Click to collapse
     button.click()
     await tick()
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
+    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
   })
 
   test(`renders control buttons`, () => {

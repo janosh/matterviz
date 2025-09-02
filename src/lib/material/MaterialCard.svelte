@@ -2,12 +2,12 @@
   import { format_num, InfoCard, superscript_digits } from '$lib'
   // import type { SummaryDoc } from '$types'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import SymmetryCard from './SymmetryCard.svelte'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`section`]> {
     material: Record<string, unknown> // previously SummaryDoc
     after_symmetry?: Snippet
-    [key: string]: unknown
   }
   let { material, after_symmetry, ...rest }: Props = $props()
 

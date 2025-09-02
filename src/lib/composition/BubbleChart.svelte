@@ -4,12 +4,13 @@
   import { element_color_schemes, pick_contrast_color } from '$lib/colors'
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { get_total_atoms } from './parse'
 
   type BubbleSegmentData = ChartSegmentData & { radius: number; x: number; y: number }
 
-  interface Props {
+  interface Props extends HTMLAttributes<SVGSVGElement> {
     composition: CompositionType
     size?: number
     padding?: number
@@ -19,7 +20,6 @@
     bubble_content?: Snippet<[BubbleSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
-    [key: string]: unknown
   }
   let {
     composition,
