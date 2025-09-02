@@ -485,7 +485,7 @@ export function generate_streaming_plot_series(
   })
 
   const all_series: DataSeries[] = []
-  const visible_props: Array<{ property: string; unit: string }> = []
+  const visible_props: { property: string; unit: string }[] = []
   let color_idx = 0
 
   for (const property_key of all_properties) {
@@ -557,7 +557,7 @@ function has_significant_variation(values: number[], tolerance = 1e-6): boolean 
 function determine_axis_from_groups(
   property: string,
   unit: string,
-  visible_properties: Array<{ property: string; unit: string }>,
+  visible_properties: { property: string; unit: string }[],
 ): `y1` | `y2` {
   const mock_series = visible_properties.map(({ property: prop, unit: u }) => ({
     label: prop,

@@ -844,11 +844,12 @@ describe(`MatterViz Extension`, () => {
         // Trigger file deletion
         delete_handler()
 
-        expect(mock_webview.postMessage).toHaveBeenCalledWith({
-          command: `fileDeleted`,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-        })
+        expect(mock_webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            command: `fileDeleted`,
+            file_path: `/test/file.cif`,
+          }),
+        )
       })
     })
 

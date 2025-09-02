@@ -11,16 +11,13 @@ export function extract_series_color(series_data: DataSeries): string {
 }
 
 // Prepare legend data from series array
-export function prepare_legend_data(series: DataSeries[]): Array<{
+export const prepare_legend_data = (series: DataSeries[]): {
   series_idx: number
   label: string
   visible: boolean
-  display_style: {
-    symbol_type?: D3SymbolName
-    symbol_color: string
-  }
-}> {
-  return series.map((series_data, series_idx) => ({
+  display_style: { symbol_type?: D3SymbolName; symbol_color: string }
+}[] =>
+  series.map((series_data, series_idx) => ({
     series_idx,
     label: series_data.label || `Series ${series_idx + 1}`,
     visible: series_data.visible ?? true,
@@ -29,7 +26,6 @@ export function prepare_legend_data(series: DataSeries[]): Array<{
       symbol_color: extract_series_color(series_data),
     },
   }))
-}
 
 // Filter visible series from series array
 export function filter_visible_series(series: DataSeries[]): DataSeries[] {

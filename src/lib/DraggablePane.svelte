@@ -21,7 +21,6 @@
     // Callbacks
     onclose?: () => void
     on_drag_start?: () => void
-    custom_toggle?: () => void
     // Bindable state
     toggle_pane_btn?: HTMLButtonElement
     pane_div?: HTMLDivElement
@@ -41,7 +40,6 @@
     pane_props = {},
     onclose = () => {},
     on_drag_start = () => {},
-    custom_toggle = undefined,
     toggle_pane_btn = $bindable(undefined),
     pane_div = $bindable(undefined),
     has_been_dragged = $bindable(false),
@@ -176,7 +174,7 @@
   <button
     type="button"
     bind:this={toggle_pane_btn}
-    onclick={() => (custom_toggle || toggle_pane)()}
+    onclick={toggle_pane}
     aria-expanded={show}
     {...toggle_props}
     class="pane-toggle {toggle_props.class ?? ``}"

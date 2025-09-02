@@ -107,7 +107,7 @@ class VSCodeFrameLoader implements FrameLoader {
 }
 
 interface TrajectoryData {
-  frames?: Array<{ structure?: { sites?: unknown[] } }>
+  frames?: { structure?: { sites?: unknown[] } }[]
 }
 
 interface StructureData {

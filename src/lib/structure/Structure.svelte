@@ -12,6 +12,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { StructureHandlerData } from './index'
   import {
     StructureControls,
@@ -33,7 +34,11 @@
     on_camera_reset?: EventHandler
   }
 
-  interface Props extends ControlProps, EventHandlers {
+  interface Props
+    extends
+      Omit<ControlProps, `children`>,
+      EventHandlers,
+      Omit<HTMLAttributes<HTMLDivElement>, `children`> {
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
@@ -65,7 +70,6 @@
     selected_sites?: number[]
     // explicit measured sites for distance/angle overlays
     measured_sites?: number[]
-    [key: string]: unknown
   }
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Scene model seeded from central defaults with a few normalized fields
@@ -103,10 +107,7 @@
     dragover = $bindable(false),
     allow_file_drop = true,
     enable_info_pane = true,
-    save_json_btn_text = `⬇ JSON`,
-    save_xyz_btn_text = `⬇ XYZ`,
     png_dpi = $bindable(150),
-    show_site_labels = $bindable(false),
     show_image_atoms = $bindable(true),
     supercell_scaling = $bindable(`1x1x1`),
     fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
@@ -199,9 +200,8 @@
       // Enable force vectors if structure has force data
       if (has_force_data && !scene_props.show_force_vectors) {
         scene_props.show_force_vectors = true
-        scene_props.force_vector_scale = scene_props.force_vector_scale ||
-          DEFAULTS.structure.force_scale
-        scene_props.force_vector_color = scene_props.force_vector_color
+        scene_props.force_vector_scale ??= DEFAULTS.structure.force_scale
+        scene_props.force_vector_color ??= DEFAULTS.structure.force_color
         force_vectors_auto_enabled = true
       }
     }
@@ -264,11 +264,6 @@
   function toggle_info() {
     if (info_pane_open) info_pane_open = false
     else [info_pane_open, controls_open] = [true, false]
-  }
-
-  function toggle_controls() {
-    if (controls_open) controls_open = false
-    else [controls_open, info_pane_open] = [true, false]
   }
 
   // Reset tracking when structure changes
@@ -548,7 +543,6 @@
             {structure}
             bind:pane_open={info_pane_open}
             bind:selected_sites
-            custom_toggle={toggle_info}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
@@ -565,11 +559,8 @@
           bind:png_dpi
           {structure}
           {wrapper}
-          {save_json_btn_text}
-          {save_xyz_btn_text}
           {scene}
           {camera}
-          custom_toggle={toggle_controls}
         />
       {/if}
     </section>

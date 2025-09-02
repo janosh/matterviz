@@ -21,7 +21,7 @@ export function find_image_atoms(
   }
 
   // Check if this is a supercell to correctly identify external boundaries correctly
-  const image_sites: Array<[number, Vec3, Vec3]> = []
+  const image_sites: [number, Vec3, Vec3][] = []
   const lattice_vecs = structure.lattice.matrix
 
   const FRACTIONAL_EPS = 1e-9
@@ -35,7 +35,7 @@ export function find_image_atoms(
 
   for (const [idx, site] of structure.sites.entries()) {
     // Find edge dimensions and translation directions
-    const edge_dims: Array<{ dim: number; direction: number }> = []
+    const edge_dims: { dim: number; direction: number }[] = []
 
     // Find boundary dimensions
     for (let dim = 0; dim < 3; dim++) {

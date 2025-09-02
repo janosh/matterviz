@@ -35,6 +35,7 @@
   } from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
@@ -48,7 +49,7 @@
     interpolate?: (a: T, b: T) => (t: number) => T
   }
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     series?: DataSeries[]
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -137,7 +138,6 @@
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    [key: string]: unknown
   }
   let {
     series = [],

@@ -61,7 +61,7 @@ export function format_fractional(value: number): string {
   if (!Number.isFinite(value)) return String(value)
   const x = ((value % 1) + 1) % 1 // wrap into [0,1)
   const eps = 1e-3
-  const specials: Array<[number, string]> = [
+  const specials: [number, string][] = [
     [0, `0`],
     [1 / 12, `¹⁄₁₂`],
     [1 / 8, `⅛`],

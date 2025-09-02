@@ -109,19 +109,6 @@ describe(`DraggablePane`, () => {
     expect(onclose).toHaveBeenCalledTimes(1)
   })
 
-  test(`uses custom toggle function when provided`, async () => {
-    const custom_toggle = vi.fn()
-    mount(DraggablePane, {
-      target: document.body,
-      props: { ...default_props, custom_toggle },
-    })
-    const button = doc_query(`button`)
-
-    button.click()
-    await tick()
-    expect(custom_toggle).toHaveBeenCalledTimes(1)
-  })
-
   test(`applies toggle button props correctly`, () => {
     const toggle_props: HTMLAttributes<HTMLButtonElement> = {
       title: `Custom Title`,

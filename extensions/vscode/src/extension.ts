@@ -34,7 +34,7 @@ type WebviewLike = vscode.Webview | {
 
 type ExtensionContextLike = vscode.ExtensionContext | {
   extensionUri: { fsPath: string }
-  subscriptions: Array<{ dispose(): void }>
+  subscriptions: { dispose(): void }[]
   workspaceState?: {
     get<T>(key: string): T | undefined
     update(key: string, value: unknown): Promise<void>

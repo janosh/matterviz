@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure, LatticeProps } from '$lib'
   import { DraggablePane, SettingsSection } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
@@ -10,23 +10,16 @@
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three'
 
-  export interface Props {
+  export interface Props extends HTMLAttributes<HTMLDivElement> {
     // Control pane state
     controls_open?: boolean
     // Scene properties (bindable from parent)
     scene_props?: ComponentProps<typeof StructureScene>
     // Lattice properties (bindable from parent)
-    lattice_props?: {
-      cell_edge_opacity: number
-      cell_surface_opacity: number
-      cell_edge_color: string
-      cell_surface_color: string
-      cell_edge_width: number
-      show_cell_vectors: boolean
-      [key: string]: unknown
-    }
+    lattice_props?: LatticeProps
     // Display options (bindable from parent)
     show_image_atoms?: boolean
     // Supercell options (bindable from parent)
@@ -46,7 +39,6 @@
     camera?: Camera
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    [key: string]: unknown
   }
   let {
     controls_open = $bindable(false),

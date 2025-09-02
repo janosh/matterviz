@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { LegendItem } from '$lib/plot'
   import { onDestroy } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     series_data: LegendItem[] // Use the simplified LegendItem type
     layout?: `horizontal` | `vertical`
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
@@ -14,7 +15,6 @@
     on_drag?: (event: MouseEvent) => void
     on_drag_end?: (event: MouseEvent) => void
     draggable?: boolean
-    [key: string]: unknown
   }
   let {
     series_data = [],
