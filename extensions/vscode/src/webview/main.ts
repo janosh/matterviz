@@ -526,13 +526,7 @@ const create_display = (
 const structure_props = (defaults: DefaultSettings) => {
   const { structure } = defaults
   return {
-    scene_props: {
-      ...structure,
-      camera_projection: structure.camera_projection,
-      force_vector_scale: structure.force_scale,
-      force_vector_color: structure.force_color,
-      gizmo: structure.show_gizmo,
-    },
+    scene_props: { ...structure, gizmo: structure.show_gizmo },
     lattice_props: {
       show_cell_vectors: structure.show_cell_vectors,
       cell_edge_opacity: structure.cell_edge_opacity,

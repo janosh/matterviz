@@ -4,10 +4,11 @@
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { SVGAttributes } from 'svelte/elements'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
-  interface Props extends Omit<HTMLAttributes<SVGPathElement>, `style`> {
+  interface Props
+    extends Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin`> {
     x: number
     y: number
     style?: PointStyle

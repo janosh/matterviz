@@ -2,12 +2,12 @@
   import type { ColorSchemeName, CompositionType } from '$lib'
   import { ContextMenu } from '$lib'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { SVGAttributes } from 'svelte/elements'
   import { BarChart, BubbleChart, PieChart } from './index'
   import { get_electro_neg_formula, parse_composition } from './parse'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
-  interface Props extends HTMLAttributes<SVGSVGElement> {
+  interface Props extends SVGAttributes<SVGSVGElement> {
     composition: string | CompositionType
     mode?: CompositionChartMode
     on_composition_change?: (composition: CompositionType) => void

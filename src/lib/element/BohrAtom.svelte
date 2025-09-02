@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { SVGAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<SVGSVGElement> {
+  interface Props extends SVGAttributes<SVGSVGElement> {
     // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
     symbol?: string // usually H, He, etc. but can be anything
     name?: string // usually Hydrogen, Helium, etc. but can be anything

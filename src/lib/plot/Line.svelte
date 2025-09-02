@@ -3,10 +3,10 @@
   import { interpolatePath } from 'd3-interpolate-path'
   import { curveMonotoneX, line } from 'd3-shape'
   import { linear } from 'svelte/easing'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { SVGAttributes } from 'svelte/elements'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
-  interface Props extends HTMLAttributes<SVGPathElement> {
+  interface Props extends SVGAttributes<SVGPathElement> {
     points: readonly [number, number][]
     origin: [number, number]
     line_color?: string

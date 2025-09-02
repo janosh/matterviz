@@ -618,13 +618,13 @@
     <SettingsSection
       title="Force Vectors"
       current_values={{
-        force_vector_scale: scene_props.force_vector_scale,
-        force_vector_color: scene_props.force_vector_color,
+        force_scale: scene_props.force_scale,
+        force_color: scene_props.force_color,
       }}
       on_reset={() => {
         Object.assign(scene_props, {
-          force_vector_scale: DEFAULTS.structure.force_scale,
-          force_vector_color: DEFAULTS.structure.force_color,
+          force_scale: DEFAULTS.structure.force_scale,
+          force_color: DEFAULTS.structure.force_color,
         })
       }}
     >
@@ -635,19 +635,19 @@
           min={0.001}
           max={5}
           step={0.001}
-          bind:value={scene_props.force_vector_scale}
+          bind:value={scene_props.force_scale}
         />
         <input
           type="range"
           min={0.001}
           max={5}
           step={0.001}
-          bind:value={scene_props.force_vector_scale}
+          bind:value={scene_props.force_scale}
         />
       </label>
       <label>
         Color
-        <input type="color" bind:value={scene_props.force_vector_color} />
+        <input type="color" bind:value={scene_props.force_color} />
       </label>
     </SettingsSection>
   {/if}

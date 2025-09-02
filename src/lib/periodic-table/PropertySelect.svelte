@@ -10,7 +10,6 @@
     empty?: boolean
     selected?: string[]
     minSelect?: number
-    id?: string | null
     key?: string | null
   }
   let {
@@ -18,7 +17,6 @@
     empty = false,
     selected = empty ? [] : [options[1]],
     minSelect = 0,
-    id = null,
     key = $bindable(``),
     ...rest
   }: Props = $props()
@@ -29,7 +27,6 @@
 </script>
 
 <Select
-  {id}
   {options}
   {selected}
   maxSelect={1}

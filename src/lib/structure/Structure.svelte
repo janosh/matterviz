@@ -76,8 +76,8 @@
   let scene_props = $state({
     ...DEFAULTS.structure,
     camera_projection: DEFAULTS.structure.camera_projection,
-    force_vector_scale: DEFAULTS.structure.force_scale,
-    force_vector_color: DEFAULTS.structure.force_color,
+    force_scale: DEFAULTS.structure.force_scale,
+    force_color: DEFAULTS.structure.force_color,
   })
   let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
@@ -187,7 +187,7 @@
     }
   })
 
-  // Track if force vectors have been auto-enabled to prevent repeated triggering
+  // Track if force vectors were auto-enabled to prevent repeated triggering
   let force_vectors_auto_enabled = $state(false)
 
   // Auto-enable force vectors when structure has force data
@@ -200,8 +200,8 @@
       // Enable force vectors if structure has force data
       if (has_force_data && !scene_props.show_force_vectors) {
         scene_props.show_force_vectors = true
-        scene_props.force_vector_scale ??= DEFAULTS.structure.force_scale
-        scene_props.force_vector_color ??= DEFAULTS.structure.force_color
+        scene_props.force_scale ??= DEFAULTS.structure.force_scale
+        scene_props.force_color ??= DEFAULTS.structure.force_color
         force_vectors_auto_enabled = true
       }
     }
