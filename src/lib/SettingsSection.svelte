@@ -1,13 +1,13 @@
 <script lang="ts">
   import { Icon } from '$lib'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLElement> {
     title: string
     current_values: Record<string, unknown>
     children: Snippet<[]>
     on_reset?: () => void
-    [key: string]: unknown
   }
   let {
     title,

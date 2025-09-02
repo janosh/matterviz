@@ -213,8 +213,6 @@
   }}
   {...rest}
 >
-  <h4 style="margin-top: 0">Structure Controls</h4>
-
   <SettingsSection
     title="Visibility"
     current_values={{
@@ -236,57 +234,54 @@
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
+    style="display: flex; flex-wrap: wrap; gap: 1ex"
   >
-    <div
-      style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap; max-width: 90%"
+    Show <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
     >
-      Show <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
-      >
-        <input type="checkbox" bind:checked={scene_props.show_atoms} />
-        Atoms
-      </label>
+      <input type="checkbox" bind:checked={scene_props.show_atoms} />
+      Atoms
+    </label>
+    <label
+      {@attach tooltip({
+        content: SETTINGS_CONFIG.structure.show_image_atoms.description,
+      })}
+    >
+      <input type="checkbox" bind:checked={show_image_atoms} />
+      Image Atoms
+    </label>
+    <label
+      {@attach tooltip({
+        content: SETTINGS_CONFIG.structure.show_site_labels.description,
+      })}
+    >
+      <input type="checkbox" bind:checked={scene_props.show_site_labels} />
+      Site Labels
+    </label>
+    {#if has_forces}
       <label
         {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.show_image_atoms.description,
+          content: SETTINGS_CONFIG.structure.show_force_vectors.description,
         })}
       >
-        <input type="checkbox" bind:checked={show_image_atoms} />
-        Image Atoms
+        <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
+        Force Vectors
       </label>
-      <label
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.show_site_labels.description,
-        })}
-      >
-        <input type="checkbox" bind:checked={scene_props.show_site_labels} />
-        Site Labels
-      </label>
-      {#if has_forces}
-        <label
-          {@attach tooltip({
-            content: SETTINGS_CONFIG.structure.show_force_vectors.description,
-          })}
-        >
-          <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
-          Force Vectors
-        </label>
-      {/if}
-      <label>
-        <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
-        Lattice Vectors
-      </label>
-      <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
-      >
-        Bonds:
-        <select bind:value={scene_props.show_bonds}>
-          {#each SETTINGS_CONFIG.structure.show_bonds.enum! as option (option)}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </label>
-    </div>
+    {/if}
+    <label>
+      <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
+      Lattice Vectors
+    </label>
+    <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+    >
+      Bonds:
+      <select bind:value={scene_props.show_bonds}>
+        {#each SETTINGS_CONFIG.structure.show_bonds.enum! as option (option)}
+          <option value={option}>{option}</option>
+        {/each}
+      </select>
+    </label>
   </SettingsSection>
 
   <hr />

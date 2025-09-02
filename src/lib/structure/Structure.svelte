@@ -609,7 +609,7 @@
 <style>
   .structure {
     position: relative;
-    container-type: size;
+    container-type: size; /* enable cqh/cqw for internal panes */
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);
@@ -665,7 +665,6 @@
   }
   section.control-buttons > :global(button) {
     background-color: transparent;
-    font-size: clamp(0.9em, 2cqmin, 1.4em);
     display: flex;
     padding: 0;
   }

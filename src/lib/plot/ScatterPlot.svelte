@@ -1983,9 +1983,8 @@
     width: 100%;
     height: 100%;
     min-height: var(--scatter-min-height, 100px);
-    container-type: inline-size;
+    container-type: size; /* enable cqh for panes */
     z-index: var(--scatter-z-index);
-    container-type: size;
   }
   svg {
     width: 100%;
@@ -2003,11 +2002,11 @@
     text-anchor: middle;
     dominant-baseline: top;
   }
-  g.y-axis text {
+  g:is(.y-axis, .y2-axis) text {
     dominant-baseline: central;
   }
-  g.y2-axis text {
-    dominant-baseline: central;
+  g:is(.x-axis, .y-axis, .y2-axis) .tick text {
+    font-size: var(--scatter-tick-font-size, 0.8em); /* shrink tick labels */
   }
   foreignobject {
     overflow: visible;

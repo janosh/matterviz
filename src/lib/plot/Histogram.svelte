@@ -418,7 +418,7 @@
               />
             {/if}
             <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
-            <text y="18" text-anchor="middle" font-size="14" fill="var(--text-color)">
+            <text y="18" text-anchor="middle" fill="var(--text-color)">
               {format_value(tick, x_format)}
             </text>
           </g>
@@ -427,7 +427,6 @@
           x={padding.l + chart_width / 2}
           y={height - 10}
           text-anchor="middle"
-          font-size="16"
           fill="var(--text-color)"
         >
           {x_label}
@@ -462,7 +461,6 @@
               x="-10"
               text-anchor="end"
               dominant-baseline="central"
-              font-size="14"
               fill="var(--text-color)"
             >
               {format_value(tick, y_format)}
@@ -473,7 +471,6 @@
           x={15}
           y={padding.t + chart_height / 2}
           text-anchor="middle"
-          font-size="16"
           fill="var(--text-color)"
           transform="rotate(-90, 15, {padding.t + chart_height / 2})"
         >
@@ -525,14 +522,18 @@
 <style>
   .histogram {
     position: relative;
-    width: 100%;
-    height: 100%;
+    width: var(--histogram-width, 100%);
+    height: var(--histogram-height, 100%);
     min-height: var(--histogram-min-height, 300px);
-    container-type: inline-size;
+    container-type: size; /* enable cqh for panes if explicit height is set */
+    z-index: var(--histogram-z-index);
   }
   svg {
     width: 100%;
     height: 100%;
+  }
+  g:is(.x-axis, .y-axis) .tick text {
+    font-size: var(--scatter-tick-font-size, 0.8em); /* shrink tick labels */
   }
   .tooltip {
     background: var(--tooltip-bg);

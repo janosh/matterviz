@@ -1,7 +1,6 @@
 <script lang="ts">
   import { DraggablePane, format_num, Icon, type InfoItem } from '$lib'
   import { SETTINGS_CONFIG } from '$lib/settings'
-  import { theme_state } from '$lib/state.svelte'
   import { type AnyStructure, electro_neg_formula } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
@@ -35,7 +34,7 @@
 
   let copied_items = new SvelteSet<string>()
 
-  async function copy_item(label: string, value: string, key: string) {
+  async function copy_item(label: string, value: string | number, key: string) {
     try {
       await navigator.clipboard.writeText(`${label}: ${value}`)
       copied_items.add(key)
@@ -98,7 +97,7 @@
     const current_frame = trajectory.frames[current_step_idx]
     const total_frames = trajectory.total_frames || trajectory.frames.length
 
-    const sections = []
+    const sections: { title: string; items: InfoItem[] }[] = []
 
     // File info section
     const file_items = [
@@ -303,23 +302,18 @@
   bind:show={pane_open}
   max_width="24em"
   toggle_props={{
-    class: `trajectory-info-toggle`,
     title: `${pane_open ? `Close` : `Open`} trajectory info`,
     ...toggle_props,
+    class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
   }}
   open_icon="Cross"
   closed_icon="Info"
-  pane_props={{
-    class: `trajectory-info-pane`,
-    style: `box-shadow: 0 5px 10px rgba(0, 0, 0, ${
-      theme_state.type === `dark` ? `0.5` : `0.1`
-    }); max-height: 80vh;`,
-    ...pane_props,
-  }}
+  pane_props={{ ...pane_props, class: `trajectory-info-pane ${pane_props?.class ?? ``}` }}
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>
-  {#each info_pane_data as section (section.title)}
+  {#each info_pane_data as section, sec_idx (section.title)}
+    {#if sec_idx > 0}<hr />{/if}
     <section>
       {#if section.title && section.title !== `File`}
         <h4>{section.title}</h4>
@@ -351,9 +345,6 @@
           {/if}
         </div>
       {/each}
-      {#if section !== info_pane_data[info_pane_data.length - 1]}
-        <hr />
-      {/if}
     </section>
   {/each}
 </DraggablePane>

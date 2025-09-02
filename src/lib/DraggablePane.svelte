@@ -96,8 +96,7 @@
     const positioned_ancestor = toggle_pane_btn.offsetParent as HTMLElement
     const ancestor_rect = positioned_ancestor?.getBoundingClientRect()
 
-    if (!ancestor_rect) {
-      // Fallback to document positioning
+    if (!ancestor_rect) { // Fallback to document positioning
       const scroll_x = window.scrollX || document.documentElement.scrollLeft
       const scroll_y = window.scrollY || document.documentElement.scrollTop
       return {
@@ -106,13 +105,11 @@
       }
     }
 
-    // Position relative to positioned ancestor
-    return {
-      left: `${
-        toggle_rect.right - ancestor_rect.left - pane_width + (offset.x ?? 5)
-      }px`,
-      top: `${toggle_rect.bottom - ancestor_rect.top + (offset.y ?? 5)}px`,
-    }
+    const left = `${
+      toggle_rect.right - ancestor_rect.left - pane_width + (offset.x ?? 5)
+    }px`
+    const top = `${toggle_rect.bottom - ancestor_rect.top + (offset.y ?? 5)}px`
+    return { left, top } // Position relative to positioned ancestor
   }
 
   // Click outside handler
@@ -126,12 +123,6 @@
       (target === pane_div || pane_div.contains(target))
 
     if (!is_toggle_button && !is_inside_pane && !currently_dragging) close_pane()
-  }
-
-  // Button click handler
-  const handle_button_click = (action: () => void) => (event: MouseEvent) => {
-    event.stopPropagation()
-    action()
   }
 
   // Debounced resize handler for better performance
@@ -185,7 +176,7 @@
   <button
     type="button"
     bind:this={toggle_pane_btn}
-    onclick={handle_button_click(custom_toggle || toggle_pane)}
+    onclick={() => (custom_toggle || toggle_pane)()}
     aria-expanded={show}
     {...toggle_props}
     class="pane-toggle {toggle_props.class ?? ``}"
@@ -216,7 +207,7 @@
         <button
           type="button"
           class="reset-button"
-          onclick={handle_button_click(reset_position)}
+          onclick={reset_position}
           title="Reset pane position"
           aria-label="Reset pane position"
         >
@@ -225,7 +216,7 @@
         <button
           type="button"
           class="close-button"
-          onclick={handle_button_click(close_pane)}
+          onclick={close_pane}
           title="Close pane"
           aria-label="Close pane"
         >
@@ -251,8 +242,8 @@
     padding: var(--pane-toggle-padding, 2pt);
     border-radius: var(--pane-toggle-border-radius, 3pt);
     background-color: transparent;
-    transition: background-color 0.2s;
-    font-size: var(--pane-toggle-font-size, clamp(1.1em, calc(1cqw + 1cqh), 1.4em));
+    transition: var(--pane-toggle-transition, background-color 0.2s);
+    font-size: var(--pane-toggle-font-size, clamp(0.9em, 2cqmin, 1.4em));
   }
   button.pane-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
@@ -261,21 +252,21 @@
     position: absolute; /* Use absolute so pane scrolls with page content */
     background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
     border: var(--pane-border, 1px solid rgba(255, 255, 255, 0.15));
-    border-radius: 6px;
+    border-radius: var(--pane-border-radius, 6px);
     padding: var(--pane-padding, 1ex);
     box-sizing: border-box;
     z-index: var(--pane-z-index, 10);
     display: grid;
-    gap: 4pt;
+    gap: var(--pane-gap, 4pt);
     text-align: left;
     /* Exclude position from being transitioned to prevent sluggish dragging */
     transition: opacity 0.3s, background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
     width: 28em;
-    max-width: 90cqw;
-    overflow-x: hidden;
-    overflow-y: auto;
-    max-height: min(90vh, 800px);
-    pointer-events: auto;
+    max-width: var(--pane-max-width, 80cqw);
+    overflow-x: var(--pane-overflow-x, hidden);
+    overflow-y: var(--pane-overflow-y, auto);
+    min-height: var(--pane-min-height, 400px);
+    max-height: var(--pane-max-height, calc(100cqh - var(--pane-bottom-margin, 40px)));
   }
   :global(body.fullscreen) .draggable-pane {
     position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
@@ -285,23 +276,26 @@
   }
   /* Pane content styling */
   .draggable-pane :global(h4) {
-    margin: 2pt 0;
-    font-size: 0.95em;
+    margin: var(--pane-h4-margin, 2pt 0);
+    font-size: var(--pane-h4-font-size, 0.95em);
   }
   .draggable-pane :global(hr) {
     border: none;
     background: var(--pane-hr-bg, rgba(255, 255, 255, 0.1));
-    margin: 4pt 0;
+    margin: var(--pane-hr-margin, 4pt 0);
     height: 1px;
+  }
+  .draggable-pane :global(div) {
+    text-align: right;
   }
   .draggable-pane :global(label) {
     display: flex;
     align-items: center;
-    gap: 2pt;
+    gap: var(--pane-label-gap, 2pt);
   }
   .draggable-pane :global(input[type='text']) {
     flex: 1;
-    padding: 4px 6px;
+    padding: var(--pane-input-padding, 4px 6px);
     margin: var(--pane-input-margin, 0 0 0 5pt);
   }
   .draggable-pane :global(input[type='text'].invalid) {
