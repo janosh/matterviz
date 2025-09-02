@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, Vec3 } from '$lib'
+  import type { AnyStructure } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
@@ -69,15 +69,13 @@
   }
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Scene model seeded from central defaults with a few normalized fields
-  let scene_model = $state({
+  let scene_props = $state({
     ...DEFAULTS.structure,
     camera_projection: DEFAULTS.structure.camera_projection,
     force_vector_scale: DEFAULTS.structure.force_scale,
     force_vector_color: DEFAULTS.structure.force_color,
-    camera_position: [0, 0, 0] as Vec3,
-    site_label_offset: [...DEFAULTS.structure.site_label_offset] as Vec3,
   })
-  let lattice_model = $state({
+  let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
     cell_edge_color: DEFAULTS.structure.cell_edge_color,
@@ -135,10 +133,10 @@
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
-      Object.assign(scene_model, scene_props_in)
+      Object.assign(scene_props, scene_props_in)
     }
     if (lattice_props_in && typeof lattice_props_in === `object`) {
-      Object.assign(lattice_model, lattice_props_in)
+      Object.assign(lattice_props, lattice_props_in)
     }
   })
 
@@ -199,11 +197,11 @@
       )
 
       // Enable force vectors if structure has force data
-      if (has_force_data && !scene_model.show_force_vectors) {
-        scene_model.show_force_vectors = true
-        scene_model.force_vector_scale = scene_model.force_vector_scale ||
+      if (has_force_data && !scene_props.show_force_vectors) {
+        scene_props.show_force_vectors = true
+        scene_props.force_vector_scale = scene_props.force_vector_scale ||
           DEFAULTS.structure.force_scale
-        scene_model.force_vector_color = scene_model.force_vector_color
+        scene_props.force_vector_color = scene_props.force_vector_color
         force_vectors_auto_enabled = true
       }
     }
@@ -213,11 +211,11 @@
   $effect(() => {
     if (structure?.sites && performance_mode === `speed`) {
       const site_count = structure.sites.length
-      const current_sphere_segments = scene_model.sphere_segments || 20
+      const current_sphere_segments = scene_props.sphere_segments || 20
 
       // Reduce sphere segments for large structures in speed mode
       if (site_count > 200 && current_sphere_segments > 12) {
-        scene_model.sphere_segments = Math.min(current_sphere_segments, 12)
+        scene_props.sphere_segments = Math.min(current_sphere_segments, 12)
       }
     }
   })
@@ -282,7 +280,7 @@
     untrack(() => {
       if (camera_is_moving) {
         camera_has_moved = true
-        const { camera_position } = scene_model
+        const { camera_position } = scene_props
         // Debounce camera move events to avoid excessive emissions
         if (camera_move_timeout) clearTimeout(camera_move_timeout)
         camera_move_timeout = setTimeout(() => {
@@ -294,7 +292,7 @@
 
   function reset_camera() {
     // Reset camera position to trigger automatic positioning
-    scene_model.camera_position = [0, 0, 0]
+    scene_props.camera_position = [0, 0, 0]
     camera_has_moved = false
     on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
   }
@@ -557,8 +555,8 @@
 
         <StructureControls
           bind:controls_open
-          bind:scene_props={scene_model}
-          bind:lattice_props={lattice_model}
+          bind:scene_props
+          bind:lattice_props
           bind:show_image_atoms
           bind:supercell_scaling
           bind:background_color
@@ -585,8 +583,8 @@
         <Canvas>
           <StructureScene
             structure={scene_structure}
-            {...scene_model}
-            lattice_props={lattice_model}
+            {...scene_props}
+            {lattice_props}
             bind:camera_is_moving
             bind:selected_sites
             bind:measured_sites

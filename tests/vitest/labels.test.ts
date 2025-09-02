@@ -4,11 +4,68 @@ import {
   format_fractional,
   format_num,
   heatmap_keys,
+  heatmap_labels,
   parse_si_float,
   property_labels,
   superscript_digits,
+  trajectory_property_config,
 } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
+
+describe(`labels utils`, () => {
+  test(`heatmap_labels maps each label to a valid heatmap key`, () => {
+    const mapped_keys = new Set(Object.values(heatmap_labels))
+    heatmap_keys.forEach((key) => {
+      expect(mapped_keys.has(key)).toBe(true)
+    })
+  })
+
+  test.each([
+    [0, `0`],
+    [0.5, `½`],
+    [1 / 3, `⅓`],
+    [3 / 4, `¾`],
+  ])(`format_fractional maps %p to %p`, (input, expected) => {
+    expect(format_fractional(input)).toBe(expected)
+  })
+
+  test(`format_num uses defaults and respects overrides`, () => {
+    const [gt_1_fmt, lt_1_fmt] = default_fmt
+    expect(format_num(1234)).toBeDefined()
+    expect(format_num(0.123)).toBeDefined()
+    expect(format_num(1234, gt_1_fmt)).toBe(format_num(1234, gt_1_fmt))
+    expect(format_num(0.123, lt_1_fmt)).toBe(format_num(0.123, lt_1_fmt))
+  })
+
+  test.each([
+    [`1.23k`, 1230],
+    [`4.56M`, 4_560_000],
+    [`789µ`, 0.000789],
+    [`12n`, 12e-9],
+    [`1,234.5`, 1234.5],
+    [`abc`, `abc`],
+  ])(`parse_si_float(%p) -> %p`, (value, expected) => {
+    const result = parse_si_float(value)
+    if (typeof expected === `number`) expect(result).toBeCloseTo(expected, 10)
+    else expect(result).toBe(expected)
+  })
+
+  test.each([
+    [`Fe2+`, `Fe²⁺`],
+    [`O2-`, `O²⁻`],
+    [`H2O`, `H²O`],
+  ])(`superscript_digits(%p) -> %p`, (input, expected) => {
+    expect(superscript_digits(input)).toBe(expected)
+  })
+
+  test(`trajectory_property_config provides label and unit`, () => {
+    Object.keys(trajectory_property_config).forEach((key) => {
+      const info = trajectory_property_config[key]
+      expect(typeof info.label).toBe(`string`)
+      expect(typeof info.unit).toBe(`string`)
+    })
+  })
+})
 
 test(`format_num`, () => {
   expect(format_num(0)).toBe(`0`)

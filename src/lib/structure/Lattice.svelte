@@ -41,7 +41,6 @@
   }: Props = $props()
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
-
   let lattice_center = $derived(
     matrix ? (math.scale(math.add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
   )
@@ -54,16 +53,9 @@
     const segments: Array<[Vector3, Vector3]> = []
 
     for (let idx = 0; idx < positions.length; idx += 6) {
-      const start = new Vector3(
-        positions[idx],
-        positions[idx + 1],
-        positions[idx + 2],
-      )
-      const end = new Vector3(
-        positions[idx + 3],
-        positions[idx + 4],
-        positions[idx + 5],
-      )
+      const [x1, y1, z1, x2, y2, z2] = positions.slice(idx, idx + 6)
+      const start = new Vector3(x1, y1, z1)
+      const end = new Vector3(x2, y2, z2)
       segments.push([start, end])
     }
 
@@ -184,7 +176,7 @@
       <!-- Tooltip for hovered vector -->
       {#if hovered_idx !== null && matrix}
         {@const hovered_vec = matrix[hovered_idx]}
-        {@const tooltip_position = math.add(vector_origin, hovered_vec) as Vec3}
+        {@const tooltip_position = math.add(vector_origin, hovered_vec)}
         <CanvasTooltip position={tooltip_position}>
           <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
           ({hovered_vec.map((coord) => format_num(coord, float_fmt)).join(`, `)}) Å
