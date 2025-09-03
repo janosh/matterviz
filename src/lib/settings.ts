@@ -259,7 +259,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show orientation gizmo in the corner of structure viewer`,
     },
     camera_position: {
-      value: [0, 0, 0] as Vec3,
+      value: [0, 0, 0],
       description: `Initial camera position [x, y, z]`,
       minItems: 3,
       maxItems: 3,
@@ -341,7 +341,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 20,
     },
     site_label_offset: {
-      value: [0, 0.5, 0] as Vec3,
+      value: [0, 0.5, 0],
       description: `3D offset for atom labels [x, y, z]`,
       minItems: 3,
       maxItems: 3,

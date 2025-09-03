@@ -140,11 +140,17 @@ export function generate_scientific_data(count: number): number[] {
 
 // Weighted choice function for discrete distributions
 export function weighted_choice(weights: number[]): number {
-  const rand = Math.random()
+  const total_weight = weights.reduce((sum, weight) => {
+    if (!Number.isFinite(weight) || weight < 0) throw new Error(`invalid weights`)
+    return sum + weight
+  }, 0)
+  if (weights.length === 0 || total_weight <= 0) throw new Error(`invalid weights`)
+
+  const threshold = Math.random() * total_weight
   let cumulative = 0
   for (let idx = 0; idx < weights.length; idx++) {
     cumulative += weights[idx]
-    if (rand <= cumulative) return idx
+    if (threshold < cumulative) return idx
   }
   return weights.length - 1
 }

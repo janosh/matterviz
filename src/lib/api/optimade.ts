@@ -14,13 +14,13 @@ export interface OptimadeStructure {
     lattice_vectors?: number[][]
     cartesian_site_positions?: number[][]
     species_at_sites?: string[]
-    species?: Array<{
+    species?: {
       name: string
       chemical_symbols?: string[]
       concentration?: number[]
       mass?: number[]
       original_name?: string
-    }>
+    }[]
     n_sites?: number
     last_modified?: string
     immutable_id?: string

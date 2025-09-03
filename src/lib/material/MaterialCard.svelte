@@ -2,12 +2,11 @@
   import { format_num, InfoCard, superscript_digits } from '$lib'
   // import type { SummaryDoc } from '$types'
   import type { Snippet } from 'svelte'
-  import SymmetryCard from './SymmetryCard.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`section`]> {
     material: Record<string, unknown> // previously SummaryDoc
     after_symmetry?: Snippet
-    [key: string]: unknown
   }
   let { material, after_symmetry, ...rest }: Props = $props()
 
@@ -56,11 +55,13 @@
     { title: `Last updated`, value: material.last_updated?.$date.split(`T`)[0] },
     {
       title: `Origins`,
-      value: material.origins,
+      value: Array.isArray(material.origins)
+        ? material.origins.join(`, `)
+        : material.origins,
       condition: material.origins?.length,
     },
     { title: `Voigt bulk modulus`, value: material.k_voigt, unit: `GPa` },
-    { title: `Voig shear modulus`, value: material.g_voigt, unit: `GPa` },
+    { title: `Voigt shear modulus`, value: material.g_voigt, unit: `GPa` },
     { title: `Refractive index`, value: material.n },
     {
       title: `Is magnetic`,
@@ -89,8 +90,6 @@
 </script>
 
 <InfoCard {data} {...rest} title="Material" />
-
-<SymmetryCard {material} />
 
 {@render after_symmetry?.()}
 

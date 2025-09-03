@@ -2,17 +2,17 @@
   import type { Vec3 } from '$lib/math'
     import { HTML } from '@threlte/extras'
     import type { Snippet } from 'svelte'
+    import type { HTMLAttributes } from 'svelte/elements'
 
-    interface Props {
+    interface Props extends HTMLAttributes<HTMLDivElement> {
       position: Vec3
       children: Snippet
-      [key: string]: unknown
     }
     let { position, children, ...rest }: Props = $props()
 </script>
 
 <HTML {position} pointerEvents="none">
-  <div {...rest} class="tooltip {rest.class ?? ``}">
+  <div {...rest} class="tooltip {rest.class ?? ``}" role="tooltip">
     {@render children()}
   </div>
 </HTML>

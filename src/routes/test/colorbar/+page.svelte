@@ -45,7 +45,7 @@
   tick_labels={5}
   tick_side="secondary"
   title_side="right"
-  style="height: 300px"
+  bar_style="height: 300px"
 />
 
 <h2>Horizontal, Inside Ticks, Turbo Scale</h2>
@@ -70,7 +70,7 @@
   tick_labels={4}
   tick_side="inside"
   scale_type="log"
-  style="height: 300px"
+  bar_style="height: 300px"
 />
 
 <h2>Horizontal, Date Ticks</h2>
@@ -96,7 +96,7 @@
   snap_ticks={false}
   tick_format=".1%"
   tick_side="primary"
-  style="height: 300px"
+  bar_style="height: 300px"
 />
 
 <h2>Horizontal, Custom Styles</h2>
@@ -106,7 +106,7 @@
   color_scale="Warm"
   range={[0, 5]}
   tick_labels={6}
-  style="border: 2px solid red; border-radius: 0"
+  bar_style="border: 2px solid red; border-radius: 0"
   title_style="color: blue; font-style: italic;"
   wrapper_style="background-color: lightgrey; padding: 10px;"
 />
@@ -121,7 +121,7 @@
   range={[-5, 15]}
   tick_labels={5}
   scale_type="linear"
-  style="height: 300px"
+  bar_style="height: 300px"
 />
 
 <h2>Horizontal, Bind Nice Range (Snap=true)</h2>
@@ -146,5 +146,5 @@
   tick_labels={4}
   tick_side="inside"
   orientation="vertical"
-  style="height: 300px"
+  bar_style="height: 300px"
 />

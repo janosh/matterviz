@@ -1,4 +1,4 @@
-import type { AnyStructure, Site, Vec3 } from '$lib'
+import type { AnyStructure, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
@@ -178,9 +178,7 @@ test.each(structures)(`symmetrize_structure`, (structure) => {
 })
 
 describe(`get_center_of_mass`, () => {
-  const create_simple_structure = (
-    sites: Array<{ element: string; xyz: Vec3; occu: number }>,
-  ): AnyStructure => ({
+  const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
     sites: sites.map((site, idx) => ({
       species: [{ element: site.element, occu: site.occu, oxidation_state: 0 }],
       abc: site.xyz,

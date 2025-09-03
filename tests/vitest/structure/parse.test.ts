@@ -291,40 +291,24 @@ describe(`XYZ Parser`, () => {
   })
 
   it.each([
-    [`orthorhombic`, [
-      [5, 0, 0],
-      [0, 6, 0],
-      [0, 0, 7],
-    ]],
-    [`hexagonal`, [
-      [4.5, 0, 0],
-      [2.25, 3.897114, 0],
-      [0, 0, 5.2],
-    ]],
-    [`monoclinic`, [
-      [5, 0, 0],
-      [0.8, 4.7, 0],
-      [0, 0.7, 6.2],
-    ]],
-    [`triclinic`, [
-      [5.0, 0.0, 0.0],
-      [2.5, 4.33, 0.0],
-      [1.0, 1.0, 4.0],
-    ]],
+    [`orthorhombic`, [[5, 0, 0], [0, 6, 0], [0, 0, 7]]],
+    [`hexagonal`, [[4.5, 0, 0], [4.5 / 2, (4.5 * Math.sqrt(3)) / 2, 0], [0, 0, 5.2]]],
+    [`monoclinic`, [[5, 0, 0], [0.8, 4.7, 0], [0, 0.7, 6.2]]],
+    [`triclinic`, [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]]],
   ])(
     `handles non-orthogonal lattices (%s) with wrapping and reconstruction`,
-    (_name, lattice) => {
+    (_name, latt) => {
       // generate some fractional points including negatives and >1 to test wrapping
       const abcs = [[-0.1, 0.2, 0.3], [0.4, 1.2, 0.6], [0.7, 0.8, -0.9]]
+      const lattice = latt as Matrix3x3
       for (const abc of abcs) {
-        const latt_T = lattice as number[][]
         const xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_T as Matrix3x3),
+          transpose_3x3_matrix(lattice),
           abc as Vec3,
         )
-        const content = `1\nLattice="${latt_T.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${
-          xyz[2]
-        }\n`
+        const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${
+          xyz[1]
+        } ${xyz[2]}\n`
         const result = parse_xyz(content)
         if (!result) throw `Failed to parse parametric lattice`
         if (!result.lattice) throw `Missing lattice`
@@ -880,11 +864,9 @@ O1   O   0.250  0.250  0.250
 H1   H   0.500  0.500  0.500  1.000  1.000`
 
       const result = parse_cif(malformed_cif)
-      expect(result).not.toBeNull()
-      if (result) {
-        expect(result.sites.length).toBe(3)
-        expect(result.sites[0].species[0].occu).toBe(1.0)
-      }
+      if (!result) throw new Error(`Failed to parse malformed CIF`)
+      expect(result.sites.length).toBe(3)
+      expect(result.sites[0].species[0].occu).toBe(1.0)
     })
 
     it(`should handle comments and syntax errors`, () => {
@@ -934,7 +916,6 @@ H1   H   0.500  0.500  0.500`
       // Test both wrap_frac=true and wrap_frac=false
       ;[true, false].forEach((wrap_frac) => {
         const result = parse_cif(tio2_cif, wrap_frac)
-        expect(result).toBeTruthy()
         if (!result) {
           throw new Error(`Failed to parse TiO2 CIF with wrap_frac=${wrap_frac}`)
         }
@@ -1014,7 +995,6 @@ O2 O2- 0.25 0.75 0.75
 O3 O2- 0.75 0.25 0.75`
 
       const result = parse_cif(cif_with_decorated_symbols)
-      expect(result).toBeTruthy()
       if (!result) throw new Error(`Failed to parse CIF with decorated symbols`)
       expect(result.sites).toHaveLength(6) // 2 Sn + 1 Fe + 3 O = 6 total sites
 
@@ -1050,7 +1030,6 @@ site1_Fe_center 0.0 0.0 0.0 1.0
 site2_Cu_surface 0.5 0.5 0.5 1.0
 `
       const result = parse_cif(cif_with_complex_labels)
-      expect(result).toBeTruthy()
       expect(result?.sites).toHaveLength(2)
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
       expect(result?.sites[1].species[0].element).toBe(`Cu`)
@@ -1079,7 +1058,6 @@ Fe1 0.0 0.0 1.0
 Cu1 0.5 0.5
 `
       const result = parse_cif(cif_missing_coords)
-      expect(result).toBeTruthy()
       expect(result?.sites).toHaveLength(1) // Only Fe1 should be parsed
     })
 
@@ -1102,7 +1080,6 @@ Fe1 0.0 0.0 0.0 1.0
 Xx1 0.5 0.5 0.5 1.0
 `
       const result = parse_cif(cif_invalid_elements)
-      expect(result).toBeTruthy()
       expect(result?.sites).toHaveLength(2) // Both atoms parsed, Xx1 uses fallback
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
       expect(result?.sites[1].species[0].element).toBe(`He`) // Fallback from validate_element_symbol
@@ -1319,7 +1296,6 @@ Na Na 0.000 0.000 0.000`
 
     const result = parse_cif(dangling_operator_cif)
     // Should parse successfully without errors, treating dangling operators as 0
-    expect(result).toBeTruthy()
 
     // The key test: should parse without errors and generate at least some sites
     // Even if some operations with dangling operators are filtered out, the parsing should succeed
@@ -1578,14 +1554,11 @@ unit_cell:
 describe(`parse_structure_file`, () => {
   test(`parses nested JSON structure correctly`, () => {
     // Read the actual test file
-    const compressed = readFileSync(
-      `./src/site/structures/${hea_hcp_filename}`,
-    )
+    const compressed = readFileSync(`./src/site/structures/${hea_hcp_filename}`)
     const content = gunzipSync(compressed).toString(`utf8`)
 
     const result = parse_structure_file(content, hea_hcp_filename)
 
-    expect(result).toBeTruthy()
     expect(result?.sites.length).toBe(180)
     expect(result?.lattice?.volume).toBeGreaterThan(120)
 
@@ -1626,7 +1599,6 @@ describe(`parse_structure_file`, () => {
     const content = JSON.stringify(simple_structure)
     const result = parse_structure_file(content, `simple.json`)
 
-    expect(result).toBeTruthy()
     expect(result?.sites.length).toBe(1)
     expect(result?.sites[0].species[0].element).toBe(`H`)
   })
@@ -1666,7 +1638,6 @@ describe(`parse_structure_file`, () => {
     const content = JSON.stringify(deeply_nested)
     const result = parse_structure_file(content, `nested.json`)
 
-    expect(result).toBeTruthy()
     expect(result?.sites.length).toBe(1)
     expect(result?.sites[0].species[0].element).toBe(`C`)
     expect(result?.lattice?.volume).toBe(8)
@@ -1717,7 +1688,6 @@ describe(`parse_structure_file`, () => {
     const content = JSON.stringify(array_with_structure)
     const result = parse_structure_file(content, `array_structure.json`)
 
-    expect(result).toBeTruthy()
     expect(result?.sites.length).toBe(1)
     expect(result?.sites[0].species[0].element).toBe(`N`)
   })
@@ -1742,7 +1712,6 @@ describe(`parse_structure_file`, () => {
 
     // Test the actual parsing function can handle this format
     const result = parse_structure_file(content, hea_hcp_filename)
-    expect(result).toBeTruthy()
     expect(result?.sites.length).toBe(180)
     expect(result?.sites[0]).toHaveProperty(`species`)
     expect(result?.sites[0].species[0]).toHaveProperty(`element`)
@@ -1765,7 +1734,6 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(wrapper)
       const result = parse_structure_file(content, `test.json`)
 
-      expect(result).toBeTruthy()
       expect(result?.sites.length).toBe(1)
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
       expect(result?.lattice?.volume).toBe(125)
@@ -1800,7 +1768,6 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(nested_obj)
       const result = parse_structure_file(content, `deep.json`)
 
-      expect(result).toBeTruthy()
       expect(result?.sites[0].species[0].element).toBe(`Fe`)
     })
 
@@ -1817,7 +1784,6 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(data)
       const result = parse_structure_file(content, `multiple.json`)
 
-      expect(result).toBeTruthy()
       expect(result?.sites.length).toBe(1)
       // Should find one of the structures (order may vary due to recursive search)
       const found_element = result?.sites[0].species[0].element
@@ -1837,7 +1803,6 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(mixed_array)
       const result = parse_structure_file(content, `mixed.json`)
 
-      expect(result).toBeTruthy()
       expect(result?.sites[0].species[0].element).toBe(`Cu`) // Should find first valid structure
     })
   })
@@ -1858,7 +1823,6 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(input)
       const result = parse_any_structure(content, `test.json`)
 
-      expect(result).toBeTruthy()
       expect(result?.sites.length).toBe(1)
 
       // For direct structures, charge may be preserved; for nested, it's set to 0
@@ -1874,10 +1838,7 @@ describe(`parse_structure_file`, () => {
         data: {
           structure: {
             sites: [{ species: [{ element: `C` }], abc: [0, 0, 0] }],
-            lattice: {
-              matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
-              volume: 8,
-            },
+            lattice: { matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]], volume: 8 },
           },
         },
       }
@@ -1885,14 +1846,11 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(nested_structure)
       const result = parse_any_structure(content, `test.json`)
 
-      expect(result).toBeTruthy()
+      if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
 
-      // Check if it's a crystal structure with lattice
-      if (result && `lattice` in result && result.lattice) {
-        expect(result.lattice.pbc).toEqual([true, true, true])
-        expect(result.lattice.volume).toBe(8)
-        expect(result.lattice.matrix).toEqual([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-      }
+      expect(result.lattice.pbc).toEqual([true, true, true])
+      expect(result.lattice.volume).toBe(8)
+      expect(result.lattice.matrix).toEqual([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
     })
 
     test.each([
@@ -1938,8 +1896,6 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(nested_with_properties)
       const result = parse_any_structure(content, `test.json`)
 
-      expect(result).toBeTruthy()
-
       // Check site properties are preserved
       const site = result?.sites[0]
       expect(site?.species[0].occu).toBe(0.8)
@@ -1947,10 +1903,9 @@ describe(`parse_structure_file`, () => {
       expect(site?.label).toBe(`Au1_site`)
 
       // Check lattice properties are preserved but PBC is overridden (for crystal structures)
-      if (result && `lattice` in result && result.lattice) {
-        expect(result.lattice.volume).toBe(27)
-        expect(result.lattice.pbc).toEqual([true, true, true]) // Overridden
-      }
+      if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
+      expect(result.lattice.volume).toBe(27)
+      expect(result.lattice.pbc).toEqual([true, true, true]) // Overridden
 
       // Check charge is overridden
       expect(result?.charge).toBe(0) // Overridden
@@ -1958,7 +1913,7 @@ describe(`parse_structure_file`, () => {
       // Structure-level properties may not be preserved in transformation
       // The transformation focuses on sites and lattice
       expect(result?.sites.length).toBe(1)
-      if (!result || !(`lattice` in result)) throw `Lattice is undefined`
+      if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
       expect(result.lattice.volume).toBe(27)
     })
   })
@@ -1973,10 +1928,7 @@ describe(`parse_structure_file`, () => {
     // This tests the parser's ability to handle realistic worst-case scenarios
     // where JSON APIs might return heavily nested response objects
     for (let idx = 0; idx < 100; idx++) {
-      deeply_nested = {
-        level: idx,
-        nested: deeply_nested,
-      }
+      deeply_nested = { level: idx, nested: deeply_nested }
     }
 
     const json_content = JSON.stringify(deeply_nested)
@@ -1986,7 +1938,6 @@ describe(`parse_structure_file`, () => {
     const result = parse_structure_file(json_content, `test.json`)
     const end_time = performance.now()
 
-    expect(result).not.toBeNull()
     expect(result?.sites).toHaveLength(1)
     expect(result?.sites[0].species).toContain(`H`)
 

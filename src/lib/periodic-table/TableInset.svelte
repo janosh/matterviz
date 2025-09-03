@@ -1,15 +1,15 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
-    style?: string | null
-    tag?: string // styles below don't apply if tag is not aside or div
+  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`aside`]> {
+    as?: keyof HTMLElementTagNameMap
     children?: Snippet
   }
-  let { style = null, tag = `aside`, children }: Props = $props()
+  let { as = `aside`, children, ...rest }: Props = $props()
 </script>
 
-<svelte:element this={tag} {style}>
+<svelte:element this={as} {...rest}>
   {@render children?.()}
 </svelte:element>
 

@@ -264,7 +264,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     { id: `#line-only`, expected_paths: 2, has_line: true },
     { id: `#line-points`, expected_paths: 12, has_line: true },
   ]
-
   marker_test_cases.forEach(({ id, expected_paths, has_line }) => {
     test(`renders marker type ${id} correctly`, async ({ page }) => {
       const section = page.locator(`#marker-types`)

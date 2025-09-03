@@ -275,8 +275,8 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`tabindex`)).toBe(`0`)
-      expect(node.getAttribute(`role`)).toBe(`link`)
+      expect(node.getAttribute(`tabindex`)).toBe(null)
+      expect(node.getAttribute(`role`)).toBe(null)
     })
   })
 
@@ -288,8 +288,8 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`role`)).toBe(`link`)
-      expect(node.getAttribute(`tabindex`)).toBe(`0`)
+      expect(node.getAttribute(`role`)).toBe(null)
+      expect(node.getAttribute(`tabindex`)).toBe(null)
     })
   })
 

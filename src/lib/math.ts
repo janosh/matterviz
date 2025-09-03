@@ -69,7 +69,7 @@ export function pbc_dist(
   const frac_diff = add(frac1, scale(frac2, -1))
 
   // Apply minimum image convention: wrap to [-0.5, 0.5)
-  const wrapped_frac_diff: Vec3 = frac_diff.map((x) => x - Math.round(x)) as Vec3
+  const wrapped_frac_diff = frac_diff.map((x) => x - Math.round(x)) as Vec3
 
   // Convert back to Cartesian coordinates
   const cart_diff = mat3x3_vec3_multiply(lattice_matrix, wrapped_frac_diff)
@@ -79,20 +79,30 @@ export function pbc_dist(
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   /** Calculate the inverse of a 3x3 matrix */
-  const [[a, b, c], [d, e, f], [g, h, i]] = matrix
+  const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix
 
-  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+  const det = det_3x3(matrix)
 
-  if (Math.abs(det) < EPS) {
-    throw new Error(`Matrix is singular and cannot be inverted`)
-  }
+  if (Math.abs(det) < EPS) throw new Error(`Matrix is singular and cannot be inverted`)
 
   const inv_det = 1 / det
 
   return [
-    [(e * i - f * h) * inv_det, (c * h - b * i) * inv_det, (b * f - c * e) * inv_det],
-    [(f * g - d * i) * inv_det, (a * i - c * g) * inv_det, (c * d - a * f) * inv_det],
-    [(d * h - e * g) * inv_det, (b * g - a * h) * inv_det, (a * e - b * d) * inv_det],
+    [
+      (m22 * m33 - m23 * m32) * inv_det,
+      (m13 * m32 - m12 * m33) * inv_det,
+      (m12 * m23 - m13 * m22) * inv_det,
+    ],
+    [
+      (m23 * m31 - m21 * m33) * inv_det,
+      (m11 * m33 - m13 * m31) * inv_det,
+      (m13 * m21 - m11 * m23) * inv_det,
+    ],
+    [
+      (m21 * m32 - m22 * m31) * inv_det,
+      (m12 * m31 - m11 * m32) * inv_det,
+      (m11 * m22 - m12 * m21) * inv_det,
+    ],
   ]
 }
 

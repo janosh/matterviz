@@ -5,6 +5,7 @@
   import element_data from '$lib/element/data'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
   import type { ScaleContext } from './index'
 
@@ -12,7 +13,7 @@
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
     { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
   ] as const
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
@@ -64,7 +65,6 @@
       | boolean
     children?: Snippet
     onenter?: (element: ChemicalElement) => void
-    [key: string]: unknown
   }
   let {
     tile_props,
@@ -248,7 +248,7 @@
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
-<div class="periodic-table-container" {...rest}>
+<div {...rest} class="periodic-table-container {rest.class ?? ``}">
   <div class="periodic-table" style:gap>
     {@render inset?.({ active_element })}
     {#each element_data as element (element.number)}

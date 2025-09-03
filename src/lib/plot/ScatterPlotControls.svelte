@@ -240,8 +240,6 @@
     {#if plot_controls}
       {@render plot_controls()}
     {:else}
-      <h4 style="margin-top: 0">Scatter Plot Controls</h4>
-
       <SettingsSection
         title="Display"
         current_values={{ show_zero_lines, show_points, show_lines, x_grid, y_grid, y2_grid }}
@@ -253,6 +251,7 @@
           y_grid = DEFAULTS.trajectory.plot_y_grid
           y2_grid = DEFAULTS.trajectory.plot_y2_grid
         }}
+        style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
         <label>
           <input type="checkbox" bind:checked={show_zero_lines} /> Show zero lines
