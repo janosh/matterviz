@@ -37,12 +37,12 @@ You can make fat and skinny bars:
   const wrapper_style = 'margin: auto;'
 </script>
 
-<ColorBar {wrapper_style} style="width: 10em; height: 8pt" />
+<ColorBar {wrapper_style} bar_style="width: 10em; height: 8pt" />
 <br />
 <ColorBar
   title="Viridis"
   {wrapper_style}
-  style="width: 4em; height: 2em"
+  bar_style="width: 4em; height: 2em"
   tick_labels={2}
 />
 <br />
@@ -133,7 +133,7 @@ Example demonstrating `title_side` and `tick_side` interaction:
           {title_side}
           {tick_side}
           {orientation}
-          style={bar_style}
+          {bar_style}
           title="Label"
           tick_labels={num_ticks}
           range={current_range}
@@ -186,14 +186,14 @@ You can format tick labels for date/time ranges by providing a D3 format string 
     title="YYYY-MM-DD"
     range={date_range}
     tick_format="%Y-%m-%d"
-    style="width: 200px; margin-left: 3em;"
+    bar_style="width: 200px; margin-left: 3em;"
     tick_labels={2}
   />
 
   <ColorBar
     title="Month Day"
     range={date_range}
-    style="width: 500px; margin-left: 3em;"
+    bar_style="width: 500px; margin-left: 3em;"
     tick_format="%b %d"
     tick_labels={7}
   />
@@ -204,7 +204,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
     tick_format="%b %d, '%y"
     tick_labels={4}
     orientation="vertical"
-    style="height: 200px;"
+    bar_style="height: 200px;"
   />
 </div>
 ```
@@ -232,7 +232,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
     title="Large Log Range (1 to 1e9)"
     range={[1, 1e9]}
     scale_type="log"
-    style="width: 400px"
+    bar_style="width: 400px"
     tick_labels={10}
   />
 
@@ -255,7 +255,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
     range={[0.01, 100]}
     scale_type="log"
     tick_format=".3"
-    style="width: 400px"
+    bar_style="width: 400px"
     tick_labels={5}
   />
 </div>

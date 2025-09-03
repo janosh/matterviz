@@ -74,16 +74,6 @@
     }
   })
 
-  // Bond display mode selection state
-  let show_bonds_selected = $state([
-    scene_props.show_bonds || DEFAULTS.structure.show_bonds,
-  ])
-  $effect(() => {
-    if (show_bonds_selected.length > 0) {
-      scene_props.show_bonds = show_bonds_selected[0]
-    }
-  })
-
   // Atom label color management
   let site_label_hex_color = $state(
     scene_props.site_label_color || DEFAULTS.structure.site_label_color,
@@ -222,7 +212,6 @@
         show_site_labels: DEFAULTS.structure.show_site_labels,
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
-      show_bonds_selected = [DEFAULTS.structure.show_bonds]
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
@@ -269,7 +258,7 @@
     >
       Bonds:
       <select bind:value={scene_props.show_bonds}>
-        {#each SETTINGS_CONFIG.structure.show_bonds.enum! as option (option)}
+        {#each SETTINGS_CONFIG.structure.show_bonds.enum ?? [] as option (option)}
           <option value={option}>{option}</option>
         {/each}
       </select>

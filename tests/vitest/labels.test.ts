@@ -10,6 +10,7 @@ import {
   superscript_digits,
   trajectory_property_config,
 } from '$lib/labels'
+import { format as d3_format } from 'd3-format'
 import { describe, expect, test } from 'vitest'
 
 describe(`labels utils`, () => {
@@ -18,6 +19,8 @@ describe(`labels utils`, () => {
     heatmap_keys.forEach((key) => {
       expect(mapped_keys.has(key)).toBe(true)
     })
+    // Ensure 1:1 mapping (no duplicate labels collapsing entries)
+    expect(Object.values(heatmap_labels)).toHaveLength(heatmap_keys.length)
   })
 
   test.each([
@@ -31,23 +34,10 @@ describe(`labels utils`, () => {
 
   test(`format_num uses defaults and respects overrides`, () => {
     const [gt_1_fmt, lt_1_fmt] = default_fmt
-    expect(format_num(1234)).toBeDefined()
-    expect(format_num(0.123)).toBeDefined()
-    expect(format_num(1234, gt_1_fmt)).toBe(format_num(1234, gt_1_fmt))
-    expect(format_num(0.123, lt_1_fmt)).toBe(format_num(0.123, lt_1_fmt))
-  })
-
-  test.each([
-    [`1.23k`, 1230],
-    [`4.56M`, 4_560_000],
-    [`789µ`, 0.000789],
-    [`12n`, 12e-9],
-    [`1,234.5`, 1234.5],
-    [`abc`, `abc`],
-  ])(`parse_si_float(%p) -> %p`, (value, expected) => {
-    const result = parse_si_float(value)
-    if (typeof expected === `number`) expect(result).toBeCloseTo(expected, 10)
-    else expect(result).toBe(expected)
+    expect(format_num(1234)).toBe(d3_format(gt_1_fmt)(1234))
+    expect(format_num(0.123)).toBe(d3_format(lt_1_fmt)(0.123))
+    expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
+    expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
   })
 
   test.each([
@@ -63,6 +53,8 @@ describe(`labels utils`, () => {
       const info = trajectory_property_config[key]
       expect(typeof info.label).toBe(`string`)
       expect(typeof info.unit).toBe(`string`)
+      expect(info.label.length).toBeGreaterThan(0)
+      expect(info.unit.length).toBeGreaterThan(0)
     })
   })
 })

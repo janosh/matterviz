@@ -26,19 +26,12 @@
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
-  type EventHandlers = {
-    on_file_load?: EventHandler
-    on_error?: EventHandler
-    on_fullscreen_change?: EventHandler
-    on_camera_move?: EventHandler
-    on_camera_reset?: EventHandler
-  }
 
   interface Props
     extends
       Omit<ControlProps, `children`>,
-      EventHandlers,
       Omit<HTMLAttributes<HTMLDivElement>, `children`> {
+    scene_props?: ComponentProps<typeof StructureScene>
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
@@ -65,20 +58,20 @@
     error_msg?: string
     // Performance mode: 'quality' (default) or 'speed' for large structures
     performance_mode?: `quality` | `speed`
-    children?: Snippet<[{ structure?: AnyStructure }]>
     // allow parent components to control highlighted/selected site indices
     selected_sites?: number[]
     // explicit measured sites for distance/angle overlays
     measured_sites?: number[]
+    children?: Snippet<[{ structure?: AnyStructure }]>
+    on_file_load?: EventHandler
+    on_error?: EventHandler
+    on_fullscreen_change?: EventHandler
+    on_camera_move?: EventHandler
+    on_camera_reset?: EventHandler
   }
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Scene model seeded from central defaults with a few normalized fields
-  let scene_props = $state({
-    ...DEFAULTS.structure,
-    camera_projection: DEFAULTS.structure.camera_projection,
-    force_scale: DEFAULTS.structure.force_scale,
-    force_color: DEFAULTS.structure.force_color,
-  })
+  let scene_props = $state(DEFAULTS.structure)
   let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
@@ -122,12 +115,12 @@
     selected_sites = $bindable<number[]>([]),
     // expose measured site indices for overlays/labels
     measured_sites = $bindable<number[]>([]),
+    children,
     on_file_load,
     on_error,
     on_fullscreen_change,
     on_camera_move,
     on_camera_reset,
-    children,
     ...rest
   }: Props = $props()
 
@@ -214,7 +207,7 @@
       const current_sphere_segments = scene_props.sphere_segments || 20
 
       // Reduce sphere segments for large structures in speed mode
-      if (site_count > 200 && current_sphere_segments > 12) {
+      if (site_count > 200) {
         scene_props.sphere_segments = Math.min(current_sphere_segments, 12)
       }
     }
@@ -275,10 +268,10 @@
     untrack(() => {
       if (camera_is_moving) {
         camera_has_moved = true
-        const { camera_position } = scene_props
         // Debounce camera move events to avoid excessive emissions
         if (camera_move_timeout) clearTimeout(camera_move_timeout)
         camera_move_timeout = setTimeout(() => {
+          const { camera_position } = scene_props
           on_camera_move?.({ structure, camera_has_moved, camera_position })
         }, 200)
       }

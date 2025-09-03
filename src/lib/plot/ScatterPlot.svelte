@@ -1923,25 +1923,22 @@
       number,
     ]}
       <ColorBar
-        {...{
-          tick_labels: 4,
-          tick_align: `primary`,
-          color_scale_fn,
-          color_scale_domain: effective_color_domain,
-          scale_type: color_scale.type,
-          range: effective_color_domain?.every((val) => val != null)
-            ? effective_color_domain
-            : undefined,
-          wrapper_style: `
-            position: absolute;
-            left: ${tweened_colorbar_coords.current.x}px;
-            top: ${tweened_colorbar_coords.current.y}px;
-            transform: ${get_placement_styles(color_bar_cell, `colorbar`).transform};
-            ${color_bar?.wrapper_style ?? ``}`,
-          // user-overridable inner style
-          style: `width: 280px; height: 20px; ${color_bar?.style ?? ``}`,
-          ...color_bar,
-        }}
+        tick_labels={4}
+        tick_side="primary"
+        {color_scale_fn}
+        color_scale_domain={effective_color_domain}
+        scale_type={color_scale.type}
+        range={effective_color_domain?.every((val) => val != null)
+        ? effective_color_domain
+        : undefined}
+        wrapper_style={`
+        position: absolute;
+        left: ${tweened_colorbar_coords.current.x}px;
+        top: ${tweened_colorbar_coords.current.y}px;
+        transform: ${get_placement_styles(color_bar_cell, `colorbar`).transform};
+        ${color_bar?.wrapper_style ?? ``}`}
+        bar_style="width: 280px; height: 20px; {color_bar?.style ?? ``}"
+        {...color_bar}
       />
     {/if}
 
@@ -2006,7 +2003,7 @@
     dominant-baseline: central;
   }
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
-    font-size: var(--scatter-tick-font-size, 0.8em); /* shrink tick labels */
+    font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   foreignobject {
     overflow: visible;

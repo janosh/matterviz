@@ -292,21 +292,21 @@ describe(`XYZ Parser`, () => {
 
   it.each([
     [`orthorhombic`, [[5, 0, 0], [0, 6, 0], [0, 0, 7]]],
-    [`hexagonal`, [[4.5, 0, 0], [2.25, 3.897114, 0], [0, 0, 5.2]]],
+    [`hexagonal`, [[4.5, 0, 0], [4.5 / 2, (4.5 * Math.sqrt(3)) / 2, 0], [0, 0, 5.2]]],
     [`monoclinic`, [[5, 0, 0], [0.8, 4.7, 0], [0, 0.7, 6.2]]],
     [`triclinic`, [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]]],
   ])(
     `handles non-orthogonal lattices (%s) with wrapping and reconstruction`,
-    (_name, lattice) => {
+    (_name, latt) => {
       // generate some fractional points including negatives and >1 to test wrapping
       const abcs = [[-0.1, 0.2, 0.3], [0.4, 1.2, 0.6], [0.7, 0.8, -0.9]]
+      const lattice = latt as Matrix3x3
       for (const abc of abcs) {
-        const lattice_T = lattice as number[][]
         const xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(lattice_T as Matrix3x3),
+          transpose_3x3_matrix(lattice),
           abc as Vec3,
         )
-        const content = `1\nLattice="${lattice_T.flat().join(` `)}"\nH ${xyz[0]} ${
+        const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${
           xyz[1]
         } ${xyz[2]}\n`
         const result = parse_xyz(content)

@@ -16,7 +16,6 @@
     fallback?: string
     fmt?: string
     as?: string
-    style?: string | null
     title_snippet?: Snippet
     fallback_snippet?: Snippet
   }
@@ -26,7 +25,6 @@
     fallback = ``,
     fmt = `.2f`,
     as = `section`,
-    style = null,
     title_snippet,
     fallback_snippet,
     ...rest
@@ -36,7 +34,7 @@
   let default_fmt = $derived(fmt)
 </script>
 
-<svelte:element this={as} class="info-card" {style} {...rest}>
+<svelte:element this={as} {...rest} class="info-card {rest.class ?? ``}">
   {#if title || title_snippet}
     <h2>
       {#if title_snippet}{@render title_snippet()}{:else}

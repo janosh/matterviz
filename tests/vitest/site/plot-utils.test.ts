@@ -2,8 +2,6 @@ import * as utils from '$site/plot-utils'
 import { describe, expect, test } from 'vitest'
 
 // Note: stochastic functions are tested with shape/invariants, not exact values
-type number_array_thunk = () => number[]
-
 describe(`plot-utils random generators`, () => {
   test(`box_muller returns finite numbers`, () => {
     for (let idx = 0; idx < 10; idx++) {
@@ -13,31 +11,32 @@ describe(`plot-utils random generators`, () => {
   })
 
   test(`generators produce correct length and finite values`, () => {
-    const thunks: ReadonlyArray<number_array_thunk> = [
-      () => utils.generate_normal(10, 0, 1),
-      () => utils.generate_exponential(10, 1),
-      () => utils.generate_uniform(10, 0, 1),
-      () => utils.generate_log_normal(10, 0, 1),
-      () => utils.generate_power_law(10, 2.5, 1),
-      () => utils.generate_pareto(10, 1, 2),
-      () => utils.generate_gamma(10, 2, 1),
-      () => utils.generate_mixture(10),
-      () => utils.generate_large_dataset(10, `normal`),
-      () => utils.generate_large_dataset(10, `uniform`),
-      () => utils.generate_sparse_data(10),
-      () => utils.generate_scientific_data(10),
-      () => utils.generate_bimodal(10),
-      () => utils.generate_skewed(10),
-      () => utils.generate_discrete(10),
-      () => utils.generate_age_distribution(10),
-      () => utils.generate_financial_data(10),
-      () => utils.generate_mixed_data(10),
-      () => utils.generate_complex_distribution(10),
+    const size = 10
+    const thunks: ReadonlyArray<() => number[]> = [
+      () => utils.generate_normal(size, 0, 1),
+      () => utils.generate_exponential(size, 1),
+      () => utils.generate_uniform(size, 0, 1),
+      () => utils.generate_log_normal(size, 0, 1),
+      () => utils.generate_power_law(size, 2.5, 1),
+      () => utils.generate_pareto(size, 1, 2),
+      () => utils.generate_gamma(size, 2, 1),
+      () => utils.generate_mixture(size),
+      () => utils.generate_large_dataset(size, `normal`),
+      () => utils.generate_large_dataset(size, `uniform`),
+      () => utils.generate_sparse_data(size),
+      () => utils.generate_scientific_data(size),
+      () => utils.generate_bimodal(size),
+      () => utils.generate_skewed(size),
+      () => utils.generate_discrete(size),
+      () => utils.generate_age_distribution(size),
+      () => utils.generate_financial_data(size),
+      () => utils.generate_mixed_data(size),
+      () => utils.generate_complex_distribution(size),
     ]
 
     for (const make_array of thunks) {
       const arr = make_array()
-      expect(arr.length).toBe(10)
+      expect(arr.length).toBe(size)
       arr.forEach((num: number) => expect(Number.isFinite(num)).toBe(true))
     }
   })
@@ -46,11 +45,15 @@ describe(`plot-utils random generators`, () => {
     [() => utils.generate_normal(0), /Count must be positive/],
     [() => utils.generate_exponential(0, 1), /Count must be positive/],
     [() => utils.generate_exponential(1, 0), /Lambda must be positive/],
+    [() => utils.generate_exponential(1, -1), /Lambda must be positive/],
     [() => utils.generate_uniform(0, 0, 1), /Count must be positive/],
     [() => utils.generate_uniform(1, 5, 5), /min_val must be less than max_val/],
+    [() => utils.generate_uniform(1, 2, 1), /min_val must be less than max_val/],
     [() => utils.generate_gamma(0, 1, 1), /Count must be positive/],
     [() => utils.generate_gamma(1, 0, 1), /Alpha must be positive/],
     [() => utils.generate_gamma(1, 1, 0), /Beta must be positive/],
+    [() => utils.generate_gamma(1, -1, 1), /Alpha must be positive/],
+    [() => utils.generate_gamma(1, 1, -1), /Beta must be positive/],
     [() => utils.generate_large_dataset(0, `normal`), /Count must be positive/],
   ])(`throws on invalid parameters`, (thunk: () => unknown, regex: RegExp) => {
     expect(thunk).toThrow(regex)
@@ -62,5 +65,11 @@ describe(`plot-utils random generators`, () => {
       const choice = utils.weighted_choice(weights)
       expect(choice >= 0 && choice < weights.length).toBe(true)
     }
+  })
+
+  test(`weighted_choice validates weights`, () => {
+    expect(() => utils.weighted_choice([])).toThrow()
+    expect(() => utils.weighted_choice([-1, 1])).toThrow()
+    expect(() => utils.weighted_choice([0, 0, 0])).toThrow()
   })
 })

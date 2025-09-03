@@ -39,9 +39,16 @@
     const segments: [Vector3, Vector3][] = []
 
     for (let idx = 0; idx < positions.length; idx += 6) {
-      const [x1, y1, z1, x2, y2, z2] = positions.slice(idx, idx + 6)
-      const start = new Vector3(x1, y1, z1)
-      const end = new Vector3(x2, y2, z2)
+      const start = new Vector3(
+        positions[idx + 0],
+        positions[idx + 1],
+        positions[idx + 2],
+      )
+      const end = new Vector3(
+        positions[idx + 3],
+        positions[idx + 4],
+        positions[idx + 5],
+      )
       segments.push([start, end])
     }
 

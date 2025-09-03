@@ -53,21 +53,19 @@
   })
   let _shell_props = $derived({
     stroke: base_fill,
-    'stroke-width': 1,
     fill: `none`,
     ...shell_props,
   })
   let _electron_props = $derived({
     r: 3,
     stroke: base_fill,
-    'stroke-width': 1,
     fill: `blue`,
     ...electron_props,
   })
   let viewBox = $derived(`-${size / 2}, -${size / 2}, ${size}, ${size}`)
 </script>
 
-<svg fill={base_fill} {viewBox} role="presentation" {...rest}>
+<svg fill={base_fill} {viewBox} role="img" aria-label={name} {...rest}>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}

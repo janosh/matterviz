@@ -6,7 +6,7 @@
   import type { SVGAttributes } from 'svelte/elements'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
-  interface Props extends SVGAttributes<SVGPathElement> {
+  interface Props extends Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> {
     points: readonly [number, number][]
     origin: [number, number]
     line_color?: string
@@ -62,7 +62,7 @@
   fill="none"
   {...rest}
 />
-<path d={tweened_area.current} fill={area_color} stroke={area_stroke} {...rest} />
+<path d={tweened_area.current} fill={area_color} stroke={area_stroke} />
 
 <style>
   path {

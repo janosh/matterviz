@@ -191,7 +191,9 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(JSON.stringify(webview_data_with_theme))
 
     // Step 5: Verify the exact data structure that would be sent to webview
-    const parsed_data = JSON.parse(html.match(/mattervizData=(.+?)</s)?.[1] || `{}`)
+    const parsed_data = JSON.parse(
+      html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ?? `{}`,
+    )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
     expect(parsed_data.data.isCompressed).toBe(true)

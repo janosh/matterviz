@@ -263,8 +263,12 @@
     max-width: var(--pane-max-width, 80cqw);
     overflow-x: var(--pane-overflow-x, hidden);
     overflow-y: var(--pane-overflow-y, auto);
-    min-height: var(--pane-min-height, 400px);
+    min-height: min(
+      var(--pane-min-height, 400px),
+      calc(100cqh - var(--pane-bottom-margin, 40px))
+    ); /* Ensure pane never exceeds its query container, enabling internal scroll */
     max-height: var(--pane-max-height, calc(100cqh - var(--pane-bottom-margin, 40px)));
+    overscroll-behavior: contain; /* Prevent scroll chaining to parent containers (e.g. Jupyter cells) */
   }
   :global(body.fullscreen) .draggable-pane {
     position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
@@ -283,8 +287,8 @@
     margin: var(--pane-hr-margin, 4pt 0);
     height: 1px;
   }
-  .draggable-pane :global(div) {
-    text-align: right;
+  .draggable-pane :global(> section > div) {
+    text-align: right; /* right align long line-breaking trajectory file names */
   }
   .draggable-pane :global(label) {
     display: flex;

@@ -287,11 +287,13 @@ export const handle_msg = async (
     vscode.window.showErrorMessage(msg.text)
   } else if (msg.command === `request_large_file` && msg.file_path && webview) {
     // Handle large file by parsing with indexing and setting up frame loader
+    const command = `large_file_response`
     try {
-      const { request_id, file_path, filename = `` } = msg
+      const { request_id, file_path } = msg
+      const filename = path.basename(file_path)
       const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
         webview.postMessage({
-          command: `largefile_progress`,
+          command: `large_file_progress`,
           request_id,
           stage: `Reading file`,
           progress: Math.round(progress_data.progress * 100),
@@ -313,7 +315,7 @@ export const handle_msg = async (
       })
 
       webview.postMessage({
-        command: `large_file_response`,
+        command,
         request_id,
         parsed_trajectory,
         is_parsed: true,
@@ -323,7 +325,6 @@ export const handle_msg = async (
     } catch (error) {
       const error_message = error instanceof Error ? error.message : String(error)
       console.error(`Failed to setup indexed parsing:`, error_message)
-      const command = `large_file_response`
       const { request_id } = msg
       webview.postMessage({ command, request_id, error: error_message })
     }

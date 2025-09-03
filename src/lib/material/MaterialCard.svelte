@@ -3,7 +3,6 @@
   // import type { SummaryDoc } from '$types'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import SymmetryCard from './SymmetryCard.svelte'
 
   interface Props extends HTMLAttributes<HTMLElementTagNameMap[`section`]> {
     material: Record<string, unknown> // previously SummaryDoc
@@ -89,8 +88,6 @@
 </script>
 
 <InfoCard {data} {...rest} title="Material" />
-
-<SymmetryCard {material} />
 
 {@render after_symmetry?.()}
 

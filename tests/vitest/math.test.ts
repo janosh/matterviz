@@ -967,6 +967,47 @@ describe(`tensor conversion utilities`, () => {
       const large_inverse = math.matrix_inverse_3x3(large_matrix)
       expect(large_inverse[0][0]).toBeCloseTo(1e-10, 10)
     })
+
+    it(`random matrices: A * inv(A) ≈ I and det consistency`, () => {
+      // Test 50 random non-singular matrices + edge cases
+      const random_matrices = Array.from({ length: 50 }, () =>
+        [
+          [1 + Math.random(), Math.random(), Math.random()],
+          [Math.random(), 1 + Math.random(), Math.random()],
+          [Math.random(), Math.random(), 1 + Math.random()],
+        ] as math.Matrix3x3)
+
+      const edge_cases: math.Matrix3x3[] = [
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], // singular
+        [[1e-12, 0, 0], [0, 1, 0], [0, 0, 1]], // near-singular
+        [[1, 1e-12, 0], [0, 1, 0], [0, 0, 1]], // near-singular
+      ]
+
+      for (const matrix of [...random_matrices, ...edge_cases]) {
+        const det = math.det_3x3(matrix)
+
+        if (Math.abs(det) < 1e-10) {
+          expect(() => math.matrix_inverse_3x3(matrix)).toThrow(
+            `Matrix is singular and cannot be inverted`,
+          )
+        } else {
+          const inv = math.matrix_inverse_3x3(matrix)
+          const I = math.dot(
+            matrix as unknown as math.NdVector,
+            inv as unknown as math.NdVector,
+          ) as number[][]
+
+          // Verify A * A^-1 ≈ I and det(A^-1) = 1/det(A)
+          for (let row_idx = 0; row_idx < 3; row_idx++) {
+            for (let col_idx = 0; col_idx < 3; col_idx++) {
+              const expected = row_idx === col_idx ? 1 : 0
+              expect(I[row_idx][col_idx]).toBeCloseTo(expected, 10)
+            }
+          }
+          expect(math.det_3x3(inv)).toBeCloseTo(1 / det, 10)
+        }
+      }
+    })
   })
 
   describe(`Integration & Edge Cases`, () => {

@@ -532,7 +532,7 @@
     height: 100%;
   }
   g:is(.x-axis, .y-axis) .tick text {
-    font-size: var(--scatter-tick-font-size, 0.8em); /* shrink tick labels */
+    font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   .tooltip {
     background: var(--tooltip-bg);

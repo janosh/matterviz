@@ -81,8 +81,7 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   /** Calculate the inverse of a 3x3 matrix */
   const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix
 
-  const det = m11 * (m22 * m33 - m23 * m32) - m12 * (m21 * m33 - m23 * m31) +
-    m13 * (m21 * m32 - m22 * m31)
+  const det = det_3x3(matrix)
 
   if (Math.abs(det) < EPS) throw new Error(`Matrix is singular and cannot be inverted`)
 

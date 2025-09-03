@@ -158,19 +158,18 @@
   })
 </script>
 
-<!-- TODO need a way for contrast_color() to override  text_color in heatmap mode -->
+<!-- TODO need a way for contrast_color() to override text_color in heatmap mode -->
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
-  {href}
+  {...(href ? { href } : {})}
   class="element-tile {category}"
   class:active
   class:last-active={selected.last_element === element}
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
   style:color={text_color}
   {@attach text_color ? null : contrast_color()}
-  role="link"
-  tabindex="0"
+  {...(href ? { role: `link`, tabindex: 0 } : {})}
   {...rest}
 >
   {#if should_show_number}

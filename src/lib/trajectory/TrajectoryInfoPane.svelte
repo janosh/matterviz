@@ -93,8 +93,8 @@
     ) return []
 
     // For indexed trajectories, we might not have the current frame loaded
-    const current_frame = trajectory.frames[current_step_idx]
-    const total_frames = trajectory.total_frames || trajectory.frames.length
+    const current_frame = trajectory.frames?.[current_step_idx]
+    const total_frames = trajectory.total_frames ?? trajectory.frames?.length ?? 0
 
     const sections: { title: string; items: InfoItem[] }[] = []
 
@@ -321,7 +321,7 @@
         {@const { key, label, value, tooltip } = item}
         <div
           class="clickable"
-          title="Click to copy: {label}: {value}"
+          aria-label="Click to copy: {label}: {value}"
           onclick={() => copy_item(label, value, key ?? label)}
           role="button"
           tabindex="0"

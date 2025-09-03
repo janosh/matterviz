@@ -13,7 +13,7 @@
     title?: string | null
     color_scale?: ((x: number) => string) | string | null
     title_side?: `left` | `right` | `top` | `bottom`
-    style?: string | null
+    bar_style?: string | null
     title_style?: string | null
     wrapper_style?: string | null
     tick_labels?: (string | number)[] | number
@@ -42,7 +42,7 @@
   let {
     title = null,
     color_scale = $bindable(`interpolateViridis`),
-    style = null,
+    bar_style = null,
     title_style = null,
     wrapper_style = null,
     tick_labels = $bindable(4),
@@ -299,8 +299,9 @@
       }
     }
 
-    return [...Array(steps).keys()].map((_, idx) => {
-      const t = idx / (steps - 1) // Normalized position 0 to 1
+    const n_steps = Math.max(2, Math.floor(steps)) // guard against steps <= 1 to avoid NaN/degenerate gradients
+    return [...Array(n_steps).keys()].map((_, idx) => {
+      const t = idx / (n_steps - 1) // Normalized position 0 to 1
       let data_value: number
 
       if (use_log_interp) {
@@ -327,14 +328,16 @@
   )
 
   // CSS variables for bar width/height based on orientation
-  let bar_dynamic_style = $derived(
+  let final_bar_style = $derived(
     `--cbar-width: ${
       orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 14px)`
     };
     --cbar-height: ${
       orientation === `vertical` ? `100%` : `var(--cbar-thickness, 14px)`
     };
-    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)});` + (style ?? ``),
+    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)}); ${
+      bar_style ?? ``
+    }`,
   )
 
   // Calculate additional margin for main label if it overlaps with ticks
@@ -423,12 +426,12 @@
 
 <div
   style:flex-direction={wrapper_flex_dir}
-  style={div_style}
   {...rest}
+  style={div_style + (rest.style ?? ``)}
   class="colorbar {rest.class ?? ``}"
 >
   {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
-  <div style={bar_dynamic_style} class="bar">
+  <div style={final_bar_style} class="bar">
     {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as
       tick_label
       (tick_label)
@@ -491,7 +494,7 @@
   span.tick-label {
     position: absolute;
     font-weight: var(--cbar-tick-label-font-weight, lighter);
-    font-size: var(--cbar-tick-label-font-size, --cbar-font-size);
+    font-size: var(--cbar-tick-label-font-size, var(--cbar-font-size));
     /* text color is set dynamically/inline for inside ticks */
     color: var(--cbar-tick-label-color, initial);
     background: var(--cbar-tick-label-bg);
