@@ -1,12 +1,12 @@
 <script lang="ts">
   import { theme_state } from '$lib/state.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { ThemeMode } from './index'
   import { apply_theme_to_dom, save_theme_preference, THEME_OPTIONS } from './index'
 
-  interface Props {
+  interface Props extends Omit<HTMLAttributes<HTMLSelectElement>, `onchange`> {
     theme_mode?: ThemeMode // Current theme mode (now bindable to global state)
     onchange?: (mode: ThemeMode) => void // Callback when theme changes
-    [key: string]: unknown
   }
   let { theme_mode = $bindable(theme_state.mode), onchange = () => {}, ...rest }:
     Props = $props()

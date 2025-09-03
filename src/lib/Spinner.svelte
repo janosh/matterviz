@@ -1,12 +1,13 @@
 <script lang="ts">
-  interface Props {
+  import type { HTMLAttributes } from 'svelte/elements'
+
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     text?: string
-    [key: string]: unknown
   }
   let { text = `Loading...`, ...rest }: Props = $props()
 </script>
 
-<div class="spinner-overlay" role="status" aria-live="polite" {...rest}>
+<div class="spinner-overlay" role="status" aria-live="polite" aria-busy="true" {...rest}>
   <div class="spinner" aria-hidden="true"></div>
   <p>{text}</p>
 </div>

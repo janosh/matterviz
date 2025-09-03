@@ -4,15 +4,15 @@
   import { contrast_color, default_element_colors } from '$lib/colors'
   import { colors } from '$lib/state.svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     elements: CompositionType
     elem_color_picker_title?: string
     labels?: HTMLLabelElement[]
     amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
     show_amounts?: boolean // Whether to show element amounts
     get_element_label?: (element: string, amount: number) => string // Custom label function
-    [key: string]: unknown
   }
   let {
     elements,
@@ -25,7 +25,7 @@
   }: Props = $props()
 </script>
 
-<div class="structure-legend" {...rest}>
+<div {...rest} class="structure-legend {rest.class ?? ``}">
   {#each Object.entries(elements) as [elem, amt], idx (elem + amt)}
     <label
       bind:this={labels[idx]}

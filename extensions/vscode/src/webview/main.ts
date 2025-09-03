@@ -107,7 +107,7 @@ class VSCodeFrameLoader implements FrameLoader {
 }
 
 interface TrajectoryData {
-  frames?: Array<{ structure?: { sites?: unknown[] } }>
+  frames?: { structure?: { sites?: unknown[] } }[]
 }
 
 interface StructureData {
@@ -278,8 +278,14 @@ function request_large_file_content(
     const request_id = Math.random().toString(36).slice(2, 15)
 
     const handler = (event: MessageEvent) => {
-      const { command, request_id: id, error, parsed_trajectory, is_parsed } = event.data
-      if (command === `largefile_response` && id === request_id) {
+      const { command, request_id: id, error, parsed_trajectory } = event.data
+      const { is_parsed, stage, progress } = event.data
+      if (command === `large_file_progress` && id === request_id) {
+        // TODO maybe forward file load progress to UI
+        console.log(`Progress: ${stage} - ${progress}%`)
+        return
+      }
+      if (command === `large_file_response` && id === request_id) {
         globalThis.removeEventListener(`message`, handler)
         if (error) return reject(new Error(error))
         if (is_parsed && parsed_trajectory) {
@@ -526,13 +532,7 @@ const create_display = (
 const structure_props = (defaults: DefaultSettings) => {
   const { structure } = defaults
   return {
-    scene_props: {
-      ...structure,
-      camera_projection: structure.camera_projection,
-      force_vector_scale: structure.force_scale,
-      force_vector_color: structure.force_color,
-      gizmo: structure.show_gizmo,
-    },
+    scene_props: { ...structure, gizmo: structure.show_gizmo },
     lattice_props: {
       show_cell_vectors: structure.show_cell_vectors,
       cell_edge_opacity: structure.cell_edge_opacity,

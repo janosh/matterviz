@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { FileInfo } from '$lib'
   import { tooltip } from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     files: FileInfo[]
     active_files?: string[]
     show_category_filters?: boolean
@@ -10,7 +11,6 @@
     on_drag_end?: () => void
     type_mapper?: (file: FileInfo) => string
     file_type_colors?: Record<string, string>
-    [key: string]: unknown
   }
   let {
     files,

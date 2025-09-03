@@ -10,9 +10,10 @@
   } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     structure: AnyStructure
     pane_open?: boolean
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
@@ -20,7 +21,6 @@
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
     selected_sites?: number[] // Sites selected from Wyckoff table click
-    [key: string]: unknown
   }
   let {
     structure,

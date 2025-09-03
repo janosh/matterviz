@@ -1,16 +1,16 @@
 <script lang="ts">
   import { element_data, format_num, type InternalPoint, ScatterPlot } from '$lib'
   import { selected } from '$lib/state.svelte'
+  import type { ComponentProps } from 'svelte'
 
-  interface Props {
+  interface Props extends ComponentProps<typeof ScatterPlot> {
     y: number[] // array of length 118 (one value for each element)
     x_label?: string
     y_label?: string
-    y_unit?: string | null
+    y_unit?: string
     tooltip_point?: InternalPoint | null
     hovered?: boolean
     y_format?: string
-    [key: string]: unknown
   }
   let {
     y,

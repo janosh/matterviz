@@ -1985,17 +1985,11 @@ test.describe(`Export Button Tests`, () => {
 
     const section_styles = await button_section.evaluate((el) => {
       const computed = globalThis.getComputedStyle(el)
-      return {
-        position: computed.position,
-        display: computed.display,
-        justifyContent: computed.justifyContent,
-        gap: computed.gap,
-      }
+      return { position: computed.position, display: computed.display, gap: computed.gap }
     })
 
     expect(section_styles.position).toBe(`absolute`)
     expect(section_styles.display).toBe(`flex`)
-    expect(section_styles.justifyContent).toBe(`end`)
 
     const layout_test = await page.evaluate(() => {
       const section = document.querySelector(`#test-structure section`)

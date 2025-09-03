@@ -1,5 +1,7 @@
 <script lang="ts">
-  interface Props {
+  import type { SVGAttributes } from 'svelte/elements'
+
+  interface Props extends SVGAttributes<SVGSVGElement> {
     // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
     symbol?: string // usually H, He, etc. but can be anything
     name?: string // usually Hydrogen, Helium, etc. but can be anything
@@ -21,7 +23,6 @@
       | `sequential`
       | ((idx: number) => string)
     electron_label_props?: Record<string, string | number>
-    [key: string]: unknown
   }
   let {
     symbol = ``,
@@ -52,21 +53,19 @@
   })
   let _shell_props = $derived({
     stroke: base_fill,
-    'stroke-width': 1,
     fill: `none`,
     ...shell_props,
   })
   let _electron_props = $derived({
     r: 3,
     stroke: base_fill,
-    'stroke-width': 1,
     fill: `blue`,
     ...electron_props,
   })
   let viewBox = $derived(`-${size / 2}, -${size / 2}, ${size}, ${size}`)
 </script>
 
-<svg fill={base_fill} {viewBox} role="presentation" {...rest}>
+<svg fill={base_fill} {viewBox} role="img" aria-label={name} {...rest}>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}

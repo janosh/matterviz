@@ -5,21 +5,20 @@
   import Select from 'svelte-multiselect'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props {
+  interface Props extends Omit<ComponentProps<typeof Select>, `options`> {
     options?: D3InterpolateName[]
-    value?: string | null
+    value?: string
     selected?: string[]
     minSelect?: number
     placeholder?: string
     colorbar?: ComponentProps<typeof ColorBar>
-    [key: string]: unknown
   }
   let {
     options = Object.keys(d3_sc).filter((key) =>
       key.startsWith(`interpolate`)
     ) as D3InterpolateName[],
-    value = $bindable(``),
-    selected = $bindable([``]),
+    value = $bindable(`interpolateViridis`),
+    selected = $bindable([]),
     minSelect = 0,
     placeholder = `Select a color scale`,
     colorbar = {},

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { contrast_color, format_fractional } from '$lib'
   import { colors } from '$lib/state.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { WyckoffPos } from '.'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLTableElement> {
     wyckoff_positions: WyckoffPos[]
     on_hover?: (site_indices: number[] | null) => void
     on_click?: (site_indices: number[] | null) => void
-    [key: string]: unknown
   }
   let { wyckoff_positions, on_hover, on_click, ...rest }: Props = $props()
 
