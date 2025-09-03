@@ -108,7 +108,7 @@
             color_scale="interpolateViridis"
             range={atomic_radius_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px"
+            bar_style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -119,7 +119,7 @@
             color_scale="interpolateViridis"
             range={electronegativity_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px"
+            bar_style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -130,7 +130,7 @@
             color_scale="interpolateViridis"
             range={covalent_radius_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px"
+            bar_style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />
@@ -141,7 +141,7 @@
             color_scale="interpolateViridis"
             range={electron_affinity_range}
             orientation="horizontal"
-            style="width: 135px; height: 12px"
+            bar_style="width: 135px; height: 12px"
             tick_labels={3}
             title_side="top"
           />

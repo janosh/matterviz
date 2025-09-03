@@ -4,12 +4,13 @@
   import { element_color_schemes, pick_contrast_color } from '$lib/colors'
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
+  import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { get_total_atoms } from './parse'
 
   type BubbleSegmentData = ChartSegmentData & { radius: number; x: number; y: number }
 
-  interface Props {
+  interface Props extends SVGAttributes<SVGSVGElement> {
     composition: CompositionType
     size?: number
     padding?: number
@@ -19,7 +20,6 @@
     bubble_content?: Snippet<[BubbleSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
-    [key: string]: unknown
   }
   let {
     composition,
@@ -65,11 +65,11 @@
 
     // Get max radius for font scaling
     const max_radius = Math.max(...root.leaves().map((d) => d.r || 0))
+    const total_atoms = get_total_atoms(composition)
 
     return root.leaves().map((node) => {
       const radius = node.r || 0
       const data = node.data as { element: string; amount: number; color: string }
-      const total_atoms = get_total_atoms(composition)
 
       // Calculate font scale based on bubble size and smart text fitting
       const [min_font_scale, max_font_scale] = [0.6, 2] as const

@@ -1,9 +1,9 @@
 <script lang="ts">
+  import type { SVGAttributes } from 'svelte/elements'
   import { icon_data, type IconName } from './icons'
 
-  interface Props {
+  interface Props extends SVGAttributes<SVGSVGElement> {
     icon: IconName
-    [key: string]: unknown
   }
   let { icon, ...rest }: Props = $props()
 
@@ -16,7 +16,7 @@
   })
 </script>
 
-<svg fill="currentColor" {...svg_props} {...rest}>
+<svg role="img" fill="currentColor" {...svg_props} {...rest}>
   {#if path.trim().startsWith(`<`)}
     {@html path}
   {:else}

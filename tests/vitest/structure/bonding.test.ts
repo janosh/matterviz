@@ -29,15 +29,12 @@ function make_site(xyz: Vec3, element = `C`): Site {
   }
 }
 
-// Helper to create a test structure
-function make_structure(
-  sites: Array<{ xyz: Vec3; element?: string }>,
-): PymatgenStructure {
+function get_test_structure(sites: { xyz: Vec3; element?: string }[]): PymatgenStructure {
   return {
     sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
     charge: 0,
     lattice: {
-      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
       pbc: [true, true, true],
       ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
     },
@@ -52,13 +49,20 @@ function make_random_structure(n_atoms: number): PymatgenStructure {
     element: elements[idx % elements.length],
   }))
 
-  const lattice = { ...make_structure([]).lattice, a: 10, b: 10, c: 10, volume: 1000 }
-  return { ...make_structure(sites), lattice }
+  const lattice = {
+    ...get_test_structure([]).lattice,
+    matrix: [[10, 0, 0], [0, 10, 0], [0, 0, 10]] satisfies Matrix3x3,
+    a: 10,
+    b: 10,
+    c: 10,
+    volume: 1000,
+  }
+  return { ...get_test_structure(sites), lattice }
 }
 
 // Create test structures for chemical scenarios
 const make_ionic_structure = (): PymatgenStructure =>
-  make_structure([
+  get_test_structure([
     { xyz: [0, 0, 0], element: `Na` },
     { xyz: [2.3, 0, 0], element: `Cl` },
     { xyz: [4.6, 0, 0], element: `Na` },
@@ -66,7 +70,7 @@ const make_ionic_structure = (): PymatgenStructure =>
   ])
 
 const make_metal_structure = (): PymatgenStructure =>
-  make_structure([
+  get_test_structure([
     { xyz: [0, 0, 0], element: `Fe` },
     { xyz: [2.5, 0, 0], element: `Fe` },
     { xyz: [1.25, 2.2, 0], element: `Fe` },
@@ -74,7 +78,7 @@ const make_metal_structure = (): PymatgenStructure =>
   ])
 
 const make_mixed_structure = (): PymatgenStructure =>
-  make_structure([
+  get_test_structure([
     { xyz: [0, 0, 0], element: `Fe` },
     { xyz: [2.0, 0, 0], element: `O` },
     { xyz: [4.0, 0, 0], element: `C` },
@@ -84,7 +88,7 @@ const make_mixed_structure = (): PymatgenStructure =>
   ])
 
 describe(`Bonding Algorithms`, () => {
-  const algorithms: Array<[BondingAlgo, string, Array<[number, number]>]> = [
+  const algorithms: [BondingAlgo, string, [number, number][]][] = [
     [bonding.max_dist, `max_dist`, [[50, 10], [200, 50], [1000, 200]]],
     [bonding.nearest_neighbor, `nearest_neighbor`, [[50, 20], [200, 100], [1000, 400]]],
     [bonding.electroneg_ratio, `electroneg_ratio`, [[50, 30], [200, 150], [
@@ -139,11 +143,11 @@ describe(`Bonding Algorithms`, () => {
   })
 
   test.each(algorithms)(`%s handles edge cases`, (func, name) => {
-    expect(func(make_structure([])), `${name} empty structure`).toHaveLength(0)
-    expect(func(make_structure([{ xyz: [0, 0, 0] }])), `${name} single atom`)
+    expect(func(get_test_structure([])), `${name} empty structure`).toHaveLength(0)
+    expect(func(get_test_structure([{ xyz: [0, 0, 0] }])), `${name} single atom`)
       .toHaveLength(0)
     expect(() =>
-      func(make_structure([
+      func(get_test_structure([
         { xyz: [0, 0, 0], element: `Xx` },
         { xyz: [1, 0, 0], element: `Yy` },
       ]))
@@ -254,11 +258,11 @@ describe(`Electronegativity-Based Bonding`, () => {
   })
 
   test(`correctly identifies ionic vs covalent bonding tendencies`, () => {
-    const na_cl_structure = make_structure([
+    const na_cl_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [2.3, 0, 0], element: `Cl` },
     ])
-    const c_c_structure = make_structure([
+    const c_c_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `C` },
     ])
@@ -271,7 +275,7 @@ describe(`Electronegativity-Based Bonding`, () => {
   })
 
   test(`adjusts bonding based on electronegativity parameters`, () => {
-    const structure = make_structure([
+    const structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2.5, 0, 0], element: `Fe` },
       { xyz: [1.25, 2.2, 0], element: `O` },
@@ -288,7 +292,7 @@ describe(`Electronegativity-Based Bonding`, () => {
   })
 
   test(`respects distance constraints`, () => {
-    const structure = make_structure([
+    const structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [10, 0, 0], element: `Cl` },
     ])
@@ -306,7 +310,7 @@ describe(`Algorithm Comparison and Chemical Accuracy`, () => {
   })
 
   test(`algorithms agree on obvious bonding cases`, () => {
-    const simple_structure = make_structure([
+    const simple_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `O` },
     ])
@@ -317,7 +321,7 @@ describe(`Algorithm Comparison and Chemical Accuracy`, () => {
   })
 
   test(`advanced algorithms show chemical selectivity`, () => {
-    const test_structure = make_structure([
+    const test_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [2.3, 0, 0], element: `Cl` },
       { xyz: [4.6, 0, 0], element: `Fe` },
@@ -411,11 +415,11 @@ describe(`CrystalNN-Inspired Improvements`, () => {
 
   test(`relative distance ratios improve chemical accuracy`, () => {
     // Test H-H vs C-C at same absolute distance
-    const h_h_structure = make_structure([
+    const h_h_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `H` },
       { xyz: [1.5, 0, 0], element: `H` },
     ])
-    const c_c_structure = make_structure([
+    const c_c_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `C` },
     ])
@@ -430,11 +434,11 @@ describe(`CrystalNN-Inspired Improvements`, () => {
   })
 
   test(`electronegativity-based weighting improves ionic vs covalent distinction`, () => {
-    const ionic_structure = make_structure([
+    const ionic_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [2.3, 0, 0], element: `Cl` },
     ])
-    const covalent_structure = make_structure([
+    const covalent_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `C` },
     ])

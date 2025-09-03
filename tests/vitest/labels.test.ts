@@ -4,11 +4,60 @@ import {
   format_fractional,
   format_num,
   heatmap_keys,
+  heatmap_labels,
   parse_si_float,
   property_labels,
   superscript_digits,
+  trajectory_property_config,
 } from '$lib/labels'
+import { format as d3_format } from 'd3-format'
 import { describe, expect, test } from 'vitest'
+
+describe(`labels utils`, () => {
+  test(`heatmap_labels maps each label to a valid heatmap key`, () => {
+    const mapped_keys = new Set(Object.values(heatmap_labels))
+    heatmap_keys.forEach((key) => {
+      expect(mapped_keys.has(key)).toBe(true)
+    })
+    // Ensure 1:1 mapping (no duplicate labels collapsing entries)
+    expect(Object.values(heatmap_labels)).toHaveLength(heatmap_keys.length)
+  })
+
+  test.each([
+    [0, `0`],
+    [0.5, `½`],
+    [1 / 3, `⅓`],
+    [3 / 4, `¾`],
+  ])(`format_fractional maps %p to %p`, (input, expected) => {
+    expect(format_fractional(input)).toBe(expected)
+  })
+
+  test(`format_num uses defaults and respects overrides`, () => {
+    const [gt_1_fmt, lt_1_fmt] = default_fmt
+    expect(format_num(1234)).toBe(d3_format(gt_1_fmt)(1234))
+    expect(format_num(0.123)).toBe(d3_format(lt_1_fmt)(0.123))
+    expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
+    expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
+  })
+
+  test.each([
+    [`Fe2+`, `Fe²⁺`],
+    [`O2-`, `O²⁻`],
+    [`H2O`, `H²O`],
+  ])(`superscript_digits(%p) -> %p`, (input, expected) => {
+    expect(superscript_digits(input)).toBe(expected)
+  })
+
+  test(`trajectory_property_config provides label and unit`, () => {
+    Object.keys(trajectory_property_config).forEach((key) => {
+      const info = trajectory_property_config[key]
+      expect(typeof info.label).toBe(`string`)
+      expect(typeof info.unit).toBe(`string`)
+      expect(info.label.length).toBeGreaterThan(0)
+      expect(info.unit.length).toBeGreaterThan(0)
+    })
+  })
+})
 
 test(`format_num`, () => {
   expect(format_num(0)).toBe(`0`)

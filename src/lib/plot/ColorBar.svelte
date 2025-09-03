@@ -6,15 +6,16 @@
   import * as d3 from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props {
-    title?: string | null
+  interface Props extends HTMLAttributes<HTMLDivElement> {
+    title?: string
     color_scale?: ((x: number) => string) | string | null
     title_side?: `left` | `right` | `top` | `bottom`
-    style?: string | null
-    title_style?: string | null
-    wrapper_style?: string | null
+    bar_style?: string
+    title_style?: string
+    wrapper_style?: string
     tick_labels?: (string | number)[] | number
     tick_format?: string
     range?: [number, number]
@@ -37,14 +38,13 @@
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
     color_scale_domain?: [number, number]
-    [key: string]: unknown
   }
   let {
-    title = null,
+    title = undefined,
     color_scale = $bindable(`interpolateViridis`),
-    style = null,
-    title_style = null,
-    wrapper_style = null,
+    bar_style = undefined,
+    title_style = undefined,
+    wrapper_style = undefined,
     tick_labels = $bindable(4),
     tick_format = undefined,
     range = [0, 1],
@@ -77,17 +77,8 @@
     }
   })
 
-  // Calculate originally requested number of ticks
-  let requested_n_ticks = $derived(
-    Array.isArray(tick_labels)
-      ? tick_labels.length
-      : typeof tick_labels === `number`
-      ? tick_labels
-      : 5,
-  )
-
-  // Determine actual number of ticks to generate
-  let actual_n_ticks = $derived(
+  // Number of ticks to generate
+  let n_ticks = $derived(
     Array.isArray(tick_labels)
       ? tick_labels.length
       : typeof tick_labels === `number`
@@ -124,25 +115,21 @@
 
     // Apply scale.nice() only if snapping is enabled and not an explicit array.
     if (snap_ticks && !Array.isArray(tick_labels)) {
-      scale.nice(actual_n_ticks)
+      scale.nice(n_ticks)
     }
 
     return scale
   })
 
   let ticks_array: number[] = $derived.by(() => {
-    const num_ticks_to_generate = Array.isArray(tick_labels)
-      ? requested_n_ticks
-      : actual_n_ticks
-
     if (Array.isArray(tick_labels)) {
       // Use user-provided ticks directly
       return tick_labels.map(Number).filter((n) => !isNaN(n))
     }
 
     // Handle edge cases for number of ticks
-    if (num_ticks_to_generate <= 0) return []
-    if (num_ticks_to_generate === 1) return [scale_for_ticks.domain()[0]]
+    if (n_ticks <= 0) return []
+    if (n_ticks === 1) return [scale_for_ticks.domain()[0]]
 
     const scale = scale_for_ticks // Use derived scale (which handles log validation for ticks)
     const [scale_min, scale_max] = scale.domain()
@@ -187,22 +174,22 @@
 
         return power_of_10_ticks
       } else {
-        // Generate exactly num_ticks_to_generate manually for log scale if not snapping
+        // Generate exactly n_ticks manually for log scale if not snapping
         const log_min = Math.log10(scale_min)
         const log_max = Math.log10(scale_max)
-        return [...Array(num_ticks_to_generate).keys()].map((idx) => {
-          const t = idx / (num_ticks_to_generate - 1)
+        return [...Array(n_ticks).keys()].map((idx) => {
+          const t = idx / (n_ticks - 1)
           const log_val = log_min + t * (log_max - log_min)
           return Math.pow(10, log_val)
         })
       }
     } else {
       // Use D3's default nice ticks for linear scale
-      if (snap_ticks) return scale.ticks(num_ticks_to_generate)
+      if (snap_ticks) return scale.ticks(n_ticks)
       else {
-        // Generate exactly num_ticks_to_generate evenly spaced linear ticks
-        return [...Array(num_ticks_to_generate).keys()].map((idx) => {
-          const t = idx / (num_ticks_to_generate - 1)
+        // Generate exactly n_ticks evenly spaced linear ticks
+        return [...Array(n_ticks).keys()].map((idx) => {
+          const t = idx / (n_ticks - 1)
           return scale_min + t * (scale_max - scale_min)
         })
       }
@@ -299,8 +286,9 @@
       }
     }
 
-    return [...Array(steps).keys()].map((_, idx) => {
-      const t = idx / (steps - 1) // Normalized position 0 to 1
+    const n_steps = Math.max(2, Math.floor(steps)) // guard against steps <= 1 to avoid NaN/degenerate gradients
+    return [...Array(n_steps).keys()].map((_, idx) => {
+      const t = idx / (n_steps - 1) // Normalized position 0 to 1
       let data_value: number
 
       if (use_log_interp) {
@@ -327,14 +315,16 @@
   )
 
   // CSS variables for bar width/height based on orientation
-  let bar_dynamic_style = $derived(
+  let final_bar_style = $derived(
     `--cbar-width: ${
       orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 14px)`
     };
     --cbar-height: ${
       orientation === `vertical` ? `100%` : `var(--cbar-thickness, 14px)`
     };
-    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)});` + (style ?? ``),
+    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)}); ${
+      bar_style ?? ``
+    }`,
   )
 
   // Calculate additional margin for main label if it overlaps with ticks
@@ -423,12 +413,12 @@
 
 <div
   style:flex-direction={wrapper_flex_dir}
-  style={div_style}
   {...rest}
+  style={div_style + (rest.style ?? ``)}
   class="colorbar {rest.class ?? ``}"
 >
   {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
-  <div style={bar_dynamic_style} class="bar">
+  <div style={final_bar_style} class="bar">
     {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as
       tick_label
       (tick_label)
@@ -491,7 +481,7 @@
   span.tick-label {
     position: absolute;
     font-weight: var(--cbar-tick-label-font-weight, lighter);
-    font-size: var(--cbar-tick-label-font-size, --cbar-font-size);
+    font-size: var(--cbar-tick-label-font-size, var(--cbar-font-size));
     /* text color is set dynamically/inline for inside ticks */
     color: var(--cbar-tick-label-color, initial);
     background: var(--cbar-tick-label-bg);

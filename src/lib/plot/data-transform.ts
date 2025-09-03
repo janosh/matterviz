@@ -11,25 +11,21 @@ export function extract_series_color(series_data: DataSeries): string {
 }
 
 // Prepare legend data from series array
-export function prepare_legend_data(series: DataSeries[]): Array<{
+export const prepare_legend_data = (series: DataSeries[]): {
   series_idx: number
   label: string
   visible: boolean
-  display_style: {
-    symbol_type?: D3SymbolName
-    symbol_color: string
-  }
-}> {
-  return series.map((series_data, series_idx) => ({
+  display_style: { symbol_type: D3SymbolName; symbol_color: string }
+}[] =>
+  series.map((series_data, series_idx) => ({
     series_idx,
-    label: series_data.label || `Series ${series_idx + 1}`,
+    label: series_data.label ?? `Series ${series_idx + 1}`,
     visible: series_data.visible ?? true,
     display_style: {
       symbol_type: `Square` as D3SymbolName,
       symbol_color: extract_series_color(series_data),
     },
   }))
-}
 
 // Filter visible series from series array
 export function filter_visible_series(series: DataSeries[]): DataSeries[] {
@@ -45,7 +41,9 @@ export function create_data_points(
     .filter(filter_fn || ((s) => s.visible ?? true))
     .flatMap(({ x: xs, y: ys }) => {
       const length = Math.min(xs.length, ys.length)
-      console.error(`length mismatch: x.length=${xs.length} vs y.length=${ys.length}`)
+      if (xs.length !== ys.length) {
+        console.warn(`length mismatch: x.length=${xs.length} vs y.length=${ys.length}`)
+      }
       return xs.slice(0, length).map((x, idx) => ({ x, y: ys[idx] }))
     })
 }

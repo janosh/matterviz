@@ -1,10 +1,10 @@
 <!-- Export default values for use in other components -->
 <script lang="ts">
   import { format_num } from '$lib/labels'
-  import type { Matrix3x3, Vec3 } from '$lib/math'
+  import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
-  import { CanvasTooltip } from '$lib/structure'
+  import { CanvasTooltip, type LatticeProps } from '$lib/structure'
   import { T } from '@threlte/core'
   import {
     BoxGeometry,
@@ -15,18 +15,6 @@
     Vector3,
   } from 'three'
 
-  interface Props {
-    matrix?: Matrix3x3 | undefined
-    cell_edge_color?: string
-    cell_surface_color?: string
-    cell_edge_width?: number // thickness of the cell edges
-    cell_edge_opacity?: number // opacity of the cell edges
-    cell_surface_opacity?: number // opacity of the cell surfaces
-    show_cell_vectors?: boolean // whether to show the lattice vectors
-    vector_colors?: [string, string, string] // lattice vector colors
-    vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
-    float_fmt?: string
-  }
   let {
     matrix = undefined,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
@@ -38,24 +26,21 @@
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] as Vec3,
     float_fmt = `.2f`,
-  }: Props = $props()
+  }: LatticeProps = $props()
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
-
   let lattice_center = $derived(
     matrix ? (math.scale(math.add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
   )
 
   // Extract line segments from EdgesGeometry for cylinder-based thick lines
-  function get_edge_segments(
-    edges_geometry: EdgesGeometry,
-  ): Array<[Vector3, Vector3]> {
+  function get_edge_segments(edges_geometry: EdgesGeometry): [Vector3, Vector3][] {
     const positions = edges_geometry.getAttribute(`position`).array as Float32Array
-    const segments: Array<[Vector3, Vector3]> = []
+    const segments: [Vector3, Vector3][] = []
 
     for (let idx = 0; idx < positions.length; idx += 6) {
       const start = new Vector3(
-        positions[idx],
+        positions[idx + 0],
         positions[idx + 1],
         positions[idx + 2],
       )
@@ -79,6 +64,9 @@
     const length = direction.length()
     const center = start.clone().add(end).multiplyScalar(0.5)
 
+    if (length === 0) { // Zero-length: no rotation; render a degenerate cylinder
+      return { position: center.toArray(), rotation: [0, 0, 0], length }
+    }
     // Calculate rotation to align cylinder with the line
     const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0), // cylinder default orientation
@@ -87,7 +75,7 @@
     const euler = new Euler().setFromQuaternion(quaternion)
 
     return {
-      position: center.toArray() as Vec3,
+      position: center.toArray(),
       rotation: euler.toArray().slice(0, 3) as Vec3,
       length,
     }
@@ -184,7 +172,7 @@
       <!-- Tooltip for hovered vector -->
       {#if hovered_idx !== null && matrix}
         {@const hovered_vec = matrix[hovered_idx]}
-        {@const tooltip_position = math.add(vector_origin, hovered_vec) as Vec3}
+        {@const tooltip_position = math.add(vector_origin, hovered_vec)}
         <CanvasTooltip position={tooltip_position}>
           <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
           ({hovered_vec.map((coord) => format_num(coord, float_fmt)).join(`, `)}) Å

@@ -8,6 +8,7 @@
     pick_contrast_color,
   } from '$lib/colors'
   import { selected } from '$lib/state.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   type SplitLayout =
     | `diagonal`
@@ -16,44 +17,43 @@
     | `triangular`
     | `quadrant`
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLElement> {
     element: ChemicalElement
-    bg_color?: string | null
+    bg_color?: string
     show_symbol?: boolean
     show_number?: boolean
     show_name?: boolean
     value?: number | number[] | string | string[] | false | undefined
     symbol_style?: string
     active?: boolean
-    href?: string | null
+    href?: string
     // at what background color lightness text color switches from black to white
     text_color_threshold?: number
-    text_color?: string | null
+    text_color?: string
     float_fmt?: string
     node?: HTMLElement | null
-    label?: string | null
+    label?: string
     // array of background colors for multi-segment tiles
     bg_colors?: (string | null)[]
     show_values?: boolean // explicitly control whether to show values when colors are passed
     // control the layout of multi-value splits
     split_layout?: SplitLayout
-    [key: string]: unknown
   }
   let {
     element,
-    bg_color = null,
+    bg_color = undefined,
     show_symbol = true,
     show_number = undefined, // auto-determine based on multi-value splits
     show_name = true,
     value = undefined,
     symbol_style = ``,
     active = false,
-    href = null,
+    href = undefined,
     text_color_threshold = 0.7,
-    text_color = $bindable(null),
+    text_color = $bindable(),
     float_fmt = undefined,
     node = $bindable(null),
-    label = null,
+    label = undefined,
     bg_colors = [],
     show_values = undefined,
     split_layout = undefined, // auto-determine based on value count if not specified
@@ -158,19 +158,18 @@
   })
 </script>
 
-<!-- TODO need a way for contrast_color() to override  text_color in heatmap mode -->
+<!-- TODO need a way for contrast_color() to override text_color in heatmap mode -->
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
-  {href}
+  {...(href ? { href } : {})}
   class="element-tile {category}"
   class:active
   class:last-active={selected.last_element === element}
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
   style:color={text_color}
   {@attach text_color ? null : contrast_color()}
-  role="link"
-  tabindex="0"
+  {...(href ? { role: `link`, tabindex: 0 } : {})}
   {...rest}
 >
   {#if should_show_number}

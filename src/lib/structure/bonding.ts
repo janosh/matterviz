@@ -125,13 +125,13 @@ export function nearest_neighbor(
     const radius_a = covalent_radii.get(element_a)
 
     // Collect all potential neighbors with their distances
-    const neighbors: Array<{
+    const neighbors: {
       idx: number
       distance: number
       normalized_distance: number
       element: string
       radius: number
-    }> = []
+    }[] = []
 
     for (let idx_b = 0; idx_b < sites.length; idx_b++) {
       if (idx_a === idx_b) continue

@@ -4,6 +4,7 @@
   import { HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import {
     extract_series_color,
     filter_visible_series,
@@ -17,7 +18,7 @@
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     series: DataSeries[]
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -51,9 +52,7 @@
     plot_controls?: Snippet<[]>
     on_series_toggle?: (series_idx: number) => void
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    [key: string]: unknown
   }
-
   let {
     series = $bindable([]),
     x_lim = [null, null],
@@ -115,23 +114,37 @@
     get_chart_dimensions(width, height, padding),
   )
 
-  let auto_ranges = $derived({
-    x: get_nice_data_range(
-      selected_series.flatMap((s) => s.y).map((val) => ({ x: val, y: 0 })),
-      (point) => point.x,
+  let auto_ranges = $derived.by(() => {
+    const all_values = selected_series.flatMap((s) => s.y)
+    const auto_x = get_nice_data_range(
+      all_values.map((val) => ({ x: val, y: 0 })),
+      (p) => p.x,
       x_lim,
       x_scale_type,
       range_padding,
       false,
-    ),
-    y: get_nice_data_range(
-      selected_series.flatMap((s) => s.y).map((val) => ({ x: val, y: 0 })),
-      (point) => point.x,
+    )
+    if (!selected_series.length) {
+      return {
+        x: auto_x,
+        y: [y_scale_type === `log` ? 1 : 0, 1] as [number, number],
+      }
+    }
+    const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
+    const max_count = Math.max(
+      0,
+      ...selected_series.map((s) => max(hist(s.y), (d) => d.length) || 0),
+    )
+    const [y0, y1] = get_nice_data_range(
+      [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
+      (p) => p.x,
       y_lim,
       y_scale_type,
       range_padding,
       false,
-    ),
+    )
+    const y_min = y_scale_type === `log` ? Math.max(1, y0) : Math.max(0, y0)
+    return { x: auto_x, y: [y_min, y1] as [number, number] }
   })
 
   // Initialize ranges
@@ -165,13 +178,16 @@
     if (!selected_series.length || !width || !height) return []
     const hist_generator = bin().domain([auto_ranges.x[0], auto_ranges.x[1]])
       .thresholds(bins)
-    return selected_series.map((series_data, series_idx) => ({
-      series_idx,
-      label: series_data.label || `Series ${series_idx + 1}`,
-      color: extract_series_color(series_data),
-      bins: hist_generator(series_data.y),
-      max_count: max(hist_generator(series_data.y), (d) => d.length) || 0,
-    }))
+    return selected_series.map((series_data, series_idx) => {
+      const bins_arr = hist_generator(series_data.y)
+      return {
+        series_idx,
+        label: series_data.label || `Series ${series_idx + 1}`,
+        color: extract_series_color(series_data),
+        bins: bins_arr,
+        max_count: max(bins_arr, (d) => d.length) || 0,
+      }
+    })
   })
 
   let ticks = $derived({
@@ -418,7 +434,7 @@
               />
             {/if}
             <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
-            <text y="18" text-anchor="middle" font-size="14" fill="var(--text-color)">
+            <text y="18" text-anchor="middle" fill="var(--text-color)">
               {format_value(tick, x_format)}
             </text>
           </g>
@@ -427,7 +443,6 @@
           x={padding.l + chart_width / 2}
           y={height - 10}
           text-anchor="middle"
-          font-size="16"
           fill="var(--text-color)"
         >
           {x_label}
@@ -462,7 +477,6 @@
               x="-10"
               text-anchor="end"
               dominant-baseline="central"
-              font-size="14"
               fill="var(--text-color)"
             >
               {format_value(tick, y_format)}
@@ -473,7 +487,6 @@
           x={15}
           y={padding.t + chart_height / 2}
           text-anchor="middle"
-          font-size="16"
           fill="var(--text-color)"
           transform="rotate(-90, 15, {padding.t + chart_height / 2})"
         >
@@ -525,14 +538,18 @@
 <style>
   .histogram {
     position: relative;
-    width: 100%;
-    height: 100%;
+    width: var(--histogram-width, 100%);
+    height: var(--histogram-height, 100%);
     min-height: var(--histogram-min-height, 300px);
-    container-type: inline-size;
+    container-type: size; /* enable cqh for panes if explicit height is set */
+    z-index: var(--histogram-z-index);
   }
   svg {
     width: 100%;
     height: 100%;
+  }
+  g:is(.x-axis, .y-axis) .tick text {
+    font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   .tooltip {
     background: var(--tooltip-bg);

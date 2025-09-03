@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure, LatticeProps } from '$lib'
   import { DraggablePane, SettingsSection } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
@@ -12,21 +12,14 @@
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { Camera, Scene } from 'three'
 
-  export interface Props {
+  export interface Props
+    extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
     // Control pane state
     controls_open?: boolean
     // Scene properties (bindable from parent)
     scene_props?: ComponentProps<typeof StructureScene>
     // Lattice properties (bindable from parent)
-    lattice_props?: {
-      cell_edge_opacity: number
-      cell_surface_opacity: number
-      cell_edge_color: string
-      cell_surface_color: string
-      cell_edge_width: number
-      show_cell_vectors: boolean
-      [key: string]: unknown
-    }
+    lattice_props?: LatticeProps
     // Display options (bindable from parent)
     show_image_atoms?: boolean
     // Supercell options (bindable from parent)
@@ -46,7 +39,6 @@
     camera?: Camera
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    [key: string]: unknown
   }
   let {
     controls_open = $bindable(false),
@@ -79,16 +71,6 @@
   $effect(() => {
     if (color_scheme_selected.length > 0) {
       color_scheme = color_scheme_selected[0] as string
-    }
-  })
-
-  // Bond display mode selection state
-  let show_bonds_selected = $state([
-    scene_props.show_bonds || DEFAULTS.structure.show_bonds,
-  ])
-  $effect(() => {
-    if (show_bonds_selected.length > 0) {
-      scene_props.show_bonds = show_bonds_selected[0]
     }
   })
 
@@ -205,16 +187,14 @@
 
 <DraggablePane
   bind:show={controls_open}
-  pane_props={{ class: `controls-pane`, ...pane_props }}
+  pane_props={{ ...pane_props, class: `controls-pane ${pane_props?.class ?? ``}` }}
   toggle_props={{
-    class: `structure-controls-toggle`,
     title: `${controls_open ? `Close` : `Open`} structure controls`,
     ...toggle_props,
+    class: `structure-controls-toggle ${toggle_props?.class ?? ``}`,
   }}
   {...rest}
 >
-  <h4 style="margin-top: 0">Structure Controls</h4>
-
   <SettingsSection
     title="Visibility"
     current_values={{
@@ -232,61 +212,57 @@
         show_site_labels: DEFAULTS.structure.show_site_labels,
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
-      show_bonds_selected = [DEFAULTS.structure.show_bonds]
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
+    style="display: flex; flex-wrap: wrap; gap: 1ex"
   >
-    <div
-      style="display: flex; align-items: center; gap: 4pt; flex-wrap: wrap; max-width: 90%"
+    Show <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
     >
-      Show <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
-      >
-        <input type="checkbox" bind:checked={scene_props.show_atoms} />
-        Atoms
-      </label>
+      <input type="checkbox" bind:checked={scene_props.show_atoms} />
+      Atoms
+    </label>
+    <label
+      {@attach tooltip({
+        content: SETTINGS_CONFIG.structure.show_image_atoms.description,
+      })}
+    >
+      <input type="checkbox" bind:checked={show_image_atoms} />
+      Image Atoms
+    </label>
+    <label
+      {@attach tooltip({
+        content: SETTINGS_CONFIG.structure.show_site_labels.description,
+      })}
+    >
+      <input type="checkbox" bind:checked={scene_props.show_site_labels} />
+      Site Labels
+    </label>
+    {#if has_forces}
       <label
         {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.show_image_atoms.description,
+          content: SETTINGS_CONFIG.structure.show_force_vectors.description,
         })}
       >
-        <input type="checkbox" bind:checked={show_image_atoms} />
-        Image Atoms
+        <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
+        Force Vectors
       </label>
-      <label
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.show_site_labels.description,
-        })}
-      >
-        <input type="checkbox" bind:checked={scene_props.show_site_labels} />
-        Site Labels
-      </label>
-      {#if has_forces}
-        <label
-          {@attach tooltip({
-            content: SETTINGS_CONFIG.structure.show_force_vectors.description,
-          })}
-        >
-          <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
-          Force Vectors
-        </label>
-      {/if}
-      <label>
-        <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
-        Lattice Vectors
-      </label>
-      <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
-      >
-        Bonds:
-        <select bind:value={scene_props.show_bonds}>
-          {#each SETTINGS_CONFIG.structure.show_bonds.enum! as option (option)}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </label>
-    </div>
+    {/if}
+    <label>
+      <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
+      Lattice Vectors
+    </label>
+    <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+    >
+      Bonds:
+      <select bind:value={scene_props.show_bonds}>
+        {#each SETTINGS_CONFIG.structure.show_bonds.enum ?? [] as option (option)}
+          <option value={option}>{option}</option>
+        {/each}
+      </select>
+    </label>
   </SettingsSection>
 
   <hr />
@@ -315,6 +291,7 @@
       PNG
       <button
         type="button"
+        disabled={!wrapper?.querySelector(`canvas`)}
         onclick={() => {
           const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
           if (canvas) {
@@ -631,13 +608,13 @@
     <SettingsSection
       title="Force Vectors"
       current_values={{
-        force_vector_scale: scene_props.force_vector_scale,
-        force_vector_color: scene_props.force_vector_color,
+        force_scale: scene_props.force_scale,
+        force_color: scene_props.force_color,
       }}
       on_reset={() => {
         Object.assign(scene_props, {
-          force_vector_scale: DEFAULTS.structure.force_scale,
-          force_vector_color: DEFAULTS.structure.force_color,
+          force_scale: DEFAULTS.structure.force_scale,
+          force_color: DEFAULTS.structure.force_color,
         })
       }}
     >
@@ -648,19 +625,19 @@
           min={0.001}
           max={5}
           step={0.001}
-          bind:value={scene_props.force_vector_scale}
+          bind:value={scene_props.force_scale}
         />
         <input
           type="range"
           min={0.001}
           max={5}
           step={0.001}
-          bind:value={scene_props.force_vector_scale}
+          bind:value={scene_props.force_scale}
         />
       </label>
       <label>
         Color
-        <input type="color" bind:value={scene_props.force_vector_color} />
+        <input type="color" bind:value={scene_props.force_color} />
       </label>
     </SettingsSection>
   {/if}
@@ -700,6 +677,11 @@
           bind:value={supercell_scaling}
           placeholder="1x1x1"
           style:border={supercell_input_valid ? undefined : `1px dashed red`}
+          inputmode="text"
+          autocomplete="off"
+          spellcheck="false"
+          pattern="^(\d+|\d+x\d+x\d+)$"
+          aria-invalid={!supercell_input_valid}
           title={supercell_input_valid
           ? `Valid supercell scaling: ${supercell_scaling}`
           : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}

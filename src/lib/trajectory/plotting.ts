@@ -485,7 +485,7 @@ export function generate_streaming_plot_series(
   })
 
   const all_series: DataSeries[] = []
-  const visible_props: Array<{ property: string; unit: string }> = []
+  const visible_props: { property: string; unit: string }[] = []
   let color_idx = 0
 
   for (const property_key of all_properties) {
@@ -531,19 +531,17 @@ function downsample_metadata(
   metadata_list: TrajectoryMetadata[],
   target_points: number,
 ): TrajectoryMetadata[] {
-  if (metadata_list.length <= target_points) return metadata_list
-
-  const step = Math.floor(metadata_list.length / target_points)
-  const sampled = [metadata_list[0]] // Always include first
-
-  for (let i = step; i < metadata_list.length - step; i += step) {
-    sampled.push(metadata_list[i])
+  const total_count = metadata_list.length
+  if (total_count <= target_points) return metadata_list
+  const points = Math.max(2, Math.min(target_points, total_count))
+  // Evenly spaced indices in [0, total_count-1], guaranteed to include first and last.
+  const sampled: TrajectoryMetadata[] = []
+  for (let idx = 0; idx < points; idx++) {
+    const source_idx = Math.floor((idx * (total_count - 1)) / (points - 1))
+    if (
+      sampled.length === 0 || sampled[sampled.length - 1] !== metadata_list[source_idx]
+    ) sampled.push(metadata_list[source_idx])
   }
-
-  if (metadata_list.length > 1) {
-    sampled.push(metadata_list[metadata_list.length - 1]) // Always include last
-  }
-
   return sampled
 }
 
@@ -557,7 +555,7 @@ function has_significant_variation(values: number[], tolerance = 1e-6): boolean 
 function determine_axis_from_groups(
   property: string,
   unit: string,
-  visible_properties: Array<{ property: string; unit: string }>,
+  visible_properties: { property: string; unit: string }[],
 ): `y1` | `y2` {
   const mock_series = visible_properties.map(({ property: prop, unit: u }) => ({
     label: prop,

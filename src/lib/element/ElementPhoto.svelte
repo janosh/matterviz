@@ -1,17 +1,15 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
   import { Icon } from '$lib'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLImageElement | HTMLDivElement> {
     element: ChemicalElement
-    // style applies to both img and missing_msg div
-    style?: string | null
     missing_msg?: string
   }
-  let { element, style = null, missing_msg = `No image for ` }: Props = $props()
+  let { element, missing_msg = `No image for `, ...rest }: Props = $props()
 
   let { name, number } = $derived(element ?? {})
-
   let file = $derived(`elements/${number}-${name?.toLowerCase()}.avif`)
   let hidden = $state(false)
   $effect.pre(() => {
@@ -20,15 +18,10 @@
 </script>
 
 {#if name && number}
-  <img
-    src="https://github.com/janosh/matterviz/raw/main/static/{file}"
-    alt={name}
-    onerror={() => (hidden = true)}
-    {style}
-    {hidden}
-  />
+  {@const src = `https://github.com/janosh/matterviz/raw/main/static/${file}`}
+  <img {src} alt={name} onerror={() => (hidden = true)} {hidden} {...rest} />
   {#if hidden && missing_msg}
-    <div {style}>
+    <div {...rest}>
       <span>
         <Icon icon="NoImage" />&nbsp;{missing_msg} {name}
       </span>

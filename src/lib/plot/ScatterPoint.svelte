@@ -4,9 +4,12 @@
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
+  import type { SVGAttributes } from 'svelte/elements'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
-  interface Props {
+  interface Props
+    extends
+      Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> {
     x: number
     y: number
     style?: PointStyle
@@ -16,7 +19,6 @@
     point_tween?: TweenedOptions<XyObj>
     origin?: XyObj
     is_hovered?: boolean
-    [key: string]: unknown
   }
   let {
     x,

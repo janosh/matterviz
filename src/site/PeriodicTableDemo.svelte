@@ -166,47 +166,27 @@ The periodic table supports multiple values per element with different visual la
   {onenter}
 >
   {#snippet inset()}
-    <TableInset>
-      <div class="color-bars-container">
-        <div class="color-bar-item">
-          <ColorBar
-            title="Atomic Mass (u)"
-            color_scale="interpolateRdYlBu"
-            range={atomic_mass_range}
-            orientation="horizontal"
-            style="width: 180px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="Density (g/cm³)"
-            color_scale="interpolateRdYlBu"
-            range={density_range}
-            orientation="horizontal"
-            style="width: 180px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-      </div>
+    <TableInset
+      style="display: flex; gap: 0 2em; justify-content: center; align-items: center; flex-wrap: wrap; padding: 0.5em"
+    >
+      <ColorBar
+        title="Atomic Mass (u)"
+        color_scale="interpolateRdYlBu"
+        range={atomic_mass_range}
+        orientation="horizontal"
+        bar_style="width: 180px; height: 12px"
+        tick_labels={3}
+        title_side="top"
+      />
+      <ColorBar
+        title="Density (g/cm³)"
+        color_scale="interpolateRdYlBu"
+        range={density_range}
+        orientation="horizontal"
+        bar_style="width: 180px; height: 12px"
+        tick_labels={3}
+        title_side="top"
+      />
     </TableInset>
   {/snippet}
 </PeriodicTable>
-
-<style>
-  .color-bars-container {
-    display: flex;
-    gap: 0 2em;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 0.5em;
-  }
-  .color-bar-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-</style>

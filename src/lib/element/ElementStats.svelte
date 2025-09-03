@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
   import { ElementHeading, format_num, Icon } from '$lib'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     element: ChemicalElement | null
-    [key: string]: unknown
   }
   let { element, ...rest }: Props = $props()
 </script>

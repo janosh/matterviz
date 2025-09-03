@@ -157,7 +157,12 @@ describe(`generate_plot_series`, () => {
 
     const series = generate_plot_series(trajectory, test_extractor)
     const energy_series = find_series_by_label(series, `energy`)
-    expect(energy_series).toBeDefined()
+    expect(series.length).toBe(1)
+    expect(energy_series?.visible).toBe(true)
+    expect(energy_series?.unit).toBe(`eV`)
+    expect(energy_series?.y_axis).toBe(`y1`)
+    expect(energy_series?.label).toBe(`Energy`)
+    expect(energy_series?.markers).toBe(`line+points`)
   })
 
   it(`should maintain priority-based axis assignment and unit grouping`, () => {

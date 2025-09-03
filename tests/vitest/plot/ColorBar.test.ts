@@ -16,7 +16,7 @@ describe(`ColorBar Horizontal (Default)`, () => {
         range: [0, 100],
         title_side: `left`,
         tick_side: `primary`, // primary = bottom for horizontal
-        style: `width: 200px; height: 20px;`,
+        bar_style: `width: 200px; height: 20px;`,
         title_style: `font-weight: bold;`,
         wrapper_style: `margin: 10px;`,
       },
@@ -108,14 +108,14 @@ describe(`ColorBar Vertical`, () => {
         tick_labels: 4, // D3 nice().ticks(4) for [-50, 50] -> [-60, -40, -20, 0, 20, 40, 60]
         title_side: `top`,
         tick_side: `secondary`, // secondary = left for vertical
-        style: `width: 20px; height: 300px;`,
-        wrapper_style: `height: 350px;`,
+        bar_style: `width: 20px; height: 300px;`,
+        wrapper_style: `height: 300px;`,
       },
     })
 
     const wrapper_vert_exp = doc_query(`.colorbar`)
     expect(wrapper_vert_exp.style.flexDirection).toBe(`column`)
-    expect(wrapper_vert_exp.style.height).toBe(`350px`)
+    expect(wrapper_vert_exp.style.height).toBe(`300px`)
 
     const title_span_vert_exp = doc_query(
       `.colorbar > span.label`,

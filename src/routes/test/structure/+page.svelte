@@ -1,17 +1,15 @@
 <script lang="ts">
-  import { DEFAULTS, type PymatgenStructure, Structure } from '$lib'
+  import { DEFAULTS, type PymatgenStructure, Structure, StructureScene } from '$lib'
   import mp1_struct from '$site/structures/mp-1.json'
+  import type { ComponentProps } from 'svelte'
 
   let controls_open = $state(false)
   let info_pane_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<boolean | number>(true)
-  let scene_props = $state({
-    gizmo: DEFAULTS.structure.show_gizmo,
-    show_atoms: DEFAULTS.structure.show_atoms,
-    camera_projection: DEFAULTS.structure.camera_projection,
-  })
+  let scene_props: ComponentProps<typeof StructureScene> & { show_gizmo: boolean } =
+    $state(DEFAULTS.structure)
   let performance_mode = $state<`quality` | `speed`>(`quality`)
   // expose selection state for tests
   let selected_sites = $state<number[]>([])
@@ -144,7 +142,7 @@
     /></label><br />
   <label>Show Gizmo: <input
       type="checkbox"
-      bind:checked={scene_props.gizmo}
+      bind:checked={scene_props.show_gizmo}
     /></label><br />
   <label>Show Atoms: <input
       type="checkbox"
@@ -183,6 +181,7 @@
     {/each}
   </div>
 </section>
+
 <Structure
   id="test-structure"
   {structure}
@@ -214,7 +213,7 @@
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
-<div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
+<div data-testid="gizmo-status">Gizmo Status: {scene_props.show_gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
 <div data-testid="performance-mode-status">
   Performance Mode Status: {performance_mode}

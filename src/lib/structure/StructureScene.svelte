@@ -55,8 +55,8 @@
     show_bonds?: ShowBonds
     show_site_labels?: boolean
     show_force_vectors?: boolean
-    force_vector_scale?: number
-    force_vector_color?: string
+    force_scale?: number
+    force_color?: string
     gizmo?: boolean | ComponentProps<typeof Extras.Gizmo>
     hovered_idx?: number | null
     hovered_site?: Site | null
@@ -108,8 +108,8 @@
     site_label_color = `#ffffff`,
     site_label_padding = 3,
     show_force_vectors = DEFAULTS.structure.show_force_vectors,
-    force_vector_scale = DEFAULTS.structure.force_scale,
-    force_vector_color = DEFAULTS.structure.force_color,
+    force_scale = DEFAULTS.structure.force_scale,
+    force_color = DEFAULTS.structure.force_color,
     gizmo = DEFAULTS.structure.show_gizmo,
     hovered_idx = $bindable(null),
     hovered_site = $bindable(null),
@@ -307,8 +307,8 @@
           return {
             position: site.xyz,
             vector: site.properties.force as Vec3,
-            scale: force_vector_scale,
-            color: colors.element?.[majority_element] || force_vector_color,
+            scale: force_scale,
+            color: colors.element?.[majority_element] || force_color,
           }
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)

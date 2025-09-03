@@ -128,7 +128,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     }
 
     // Parse lattice vectors (lines 3-5)
-    const parse_vector = (line: string, line_num: number): Vec3 => {
+    const parse_vector = (line: string, line_num: number) => {
       const coords = line.trim().split(/\s+/).map(parse_coordinate)
       if (coords.length !== 3) {
         throw `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`
@@ -149,11 +149,11 @@ export function parse_poscar(content: string): ParsedStructure | null {
     }
 
     // Scale lattice vectors
-    const scaled_lattice: Matrix3x3 = [
-      lattice_vecs[0].map((x) => x * scale_factor) as Vec3,
-      lattice_vecs[1].map((x) => x * scale_factor) as Vec3,
-      lattice_vecs[2].map((x) => x * scale_factor) as Vec3,
-    ]
+    const scaled_lattice = [
+      lattice_vecs[0].map((x) => x * scale_factor),
+      lattice_vecs[1].map((x) => x * scale_factor),
+      lattice_vecs[2].map((x) => x * scale_factor),
+    ] as Matrix3x3
 
     // Parse element symbols and atom counts (may span multiple lines)
     let line_index = 5

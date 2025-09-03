@@ -3,6 +3,7 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { element_color_schemes, pick_contrast_color } from '$lib/colors'
   import type { Snippet } from 'svelte'
+  import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
   import { composition_to_percentages, get_total_atoms } from './parse'
 
@@ -20,7 +21,7 @@
     is_outside_slice: boolean
   }
 
-  interface Props {
+  interface Props extends SVGAttributes<SVGSVGElement> {
     composition: CompositionType
     size?: number
     stroke_width?: number
@@ -33,7 +34,6 @@
     segment_content?: Snippet<[PieSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
-    [key: string]: unknown
   }
   let {
     composition,

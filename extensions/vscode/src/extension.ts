@@ -34,7 +34,7 @@ type WebviewLike = vscode.Webview | {
 
 type ExtensionContextLike = vscode.ExtensionContext | {
   extensionUri: { fsPath: string }
-  subscriptions: Array<{ dispose(): void }>
+  subscriptions: { dispose(): void }[]
   workspaceState?: {
     get<T>(key: string): T | undefined
     update(key: string, value: unknown): Promise<void>
@@ -62,8 +62,17 @@ interface WebviewData {
   defaults?: DefaultSettings
 }
 
+export type IncomingCommand =
+  | `info`
+  | `error`
+  | `request_large_file`
+  | `request_frame`
+  | `saveAs`
+  | `startWatching`
+  | `stopWatching`
+
 export interface MessageData {
-  command: string
+  command: IncomingCommand
   text?: string
   filename?: string
   file_size?: number
@@ -74,6 +83,8 @@ export interface MessageData {
   request_id?: string
   frame_index?: number
 }
+
+type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
@@ -278,12 +289,7 @@ export const create_html = (
 
 // Handle messages from webview
 export const handle_msg = async (
-  msg: MessageData & {
-    request_id: string
-    file_path: string
-    filename: string
-    frame_index: number
-  },
+  msg: MessageData,
   webview?: WebviewLike,
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
@@ -292,11 +298,13 @@ export const handle_msg = async (
     vscode.window.showErrorMessage(msg.text)
   } else if (msg.command === `request_large_file` && msg.file_path && webview) {
     // Handle large file by parsing with indexing and setting up frame loader
+    const command = `large_file_response`
     try {
-      const { request_id, file_path, filename } = msg
+      const { request_id, file_path } = msg
+      const filename = path.basename(file_path)
       const array_buffer = await stream_file_to_buffer(file_path, (progress_data) => {
         webview.postMessage({
-          command: `largefile_progress`,
+          command: `large_file_progress`,
           request_id,
           stage: `Reading file`,
           progress: Math.round(progress_data.progress * 100),
@@ -318,7 +326,7 @@ export const handle_msg = async (
       })
 
       webview.postMessage({
-        command: `largefile_response`,
+        command,
         request_id,
         parsed_trajectory,
         is_parsed: true,
@@ -328,15 +336,20 @@ export const handle_msg = async (
     } catch (error) {
       const error_message = error instanceof Error ? error.message : String(error)
       console.error(`Failed to setup indexed parsing:`, error_message)
-      webview.postMessage({
-        command: `largefile_response`,
-        request_id: msg.request_id,
-        error: error_message,
-      })
+      const { request_id } = msg
+      webview.postMessage({ command, request_id, error: error_message })
     }
   } else if (msg.command === `request_frame` && msg.file_path && webview) {
     try {
       const { request_id, file_path, frame_index } = msg
+      if (
+        typeof request_id !== `string` ||
+        frame_index === undefined ||
+        !Number.isInteger(frame_index) ||
+        frame_index < 0
+      ) {
+        throw new Error(`Invalid request_id or frame_index`)
+      }
       const loader_data = active_frame_loaders.get(file_path)
       if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
 
@@ -344,13 +357,14 @@ export const handle_msg = async (
         loader_data.file_data,
         frame_index,
       )
-      webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
+      const command = `frame_response`
+      webview.postMessage({ command, request_id, frame, frame_index })
     } catch (error) {
       const error_message = error instanceof Error ? error.message : String(error)
       console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
       webview.postMessage({
         command: `frame_response`,
-        request_id: msg.request_id,
+        request_id: msg.request_id ?? ``,
         error: error_message,
         frame_index: msg.frame_index,
       })
@@ -389,9 +403,22 @@ export const handle_msg = async (
       const message = error instanceof Error ? error.message : String(error)
       vscode.window.showErrorMessage(`Save failed: ${message}`)
     }
-  } else if (msg.command === `startWatching` && msg.file_path && webview) {
+  } else if (
+    msg.command === `startWatching` &&
+    webview &&
+    typeof msg.file_path === `string` &&
+    path.isAbsolute(msg.file_path)
+  ) {
     // Handle request to start watching a file
-    start_watching_file(msg.file_path, webview)
+    start_watching_file(
+      msg.file_path,
+      webview,
+      {
+        request_id: msg.request_id,
+        filename: msg.filename,
+        frame_index: msg.frame_index,
+      },
+    )
   } else if (msg.command === `stopWatching` && msg.file_path) {
     // Handle request to stop watching a file
     stop_watching_file(msg.file_path)
@@ -399,7 +426,11 @@ export const handle_msg = async (
 }
 
 // Start watching a file using VS Code's built-in file system watcher
-function start_watching_file(file_path: string, webview: WebviewLike): void {
+function start_watching_file(
+  file_path: string,
+  webview: WebviewLike,
+  meta?: WatcherMeta,
+): void {
   try {
     // Stop existing watcher for this file if any
     stop_watching_file(file_path)
@@ -414,12 +445,12 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
 
     // Listen for file changes
     watcher.onDidChange(() => {
-      handle_file_change(`change`, file_path, webview)
+      handle_file_change(`change`, file_path, webview, meta)
     })
 
     // Listen for file deletion
     watcher.onDidDelete(() => {
-      handle_file_change(`delete`, file_path, webview)
+      handle_file_change(`delete`, file_path, webview, meta)
       stop_watching_file(file_path) // Clean up watcher
     })
 
@@ -438,10 +469,11 @@ function handle_file_change(
   event_type: `change` | `delete`,
   file_path: string,
   webview: WebviewLike,
+  meta?: WatcherMeta,
 ): void {
   if (event_type === `delete`) {
     try { // File was deleted - send notification
-      webview.postMessage({ command: `fileDeleted`, file_path })
+      webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
     } catch (error) {
       console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
     }

@@ -64,8 +64,7 @@ if (![`report`, `download`, `re-download`].includes(action)) {
 if (action.endsWith(`download`)) console.log(`Downloading images...`)
 if (action === `report`) console.log(`Missing images`)
 
-const download_promises: Array<Promise<{ num_name: string; url: string | undefined }>> =
-  []
+const download_promises: Promise<{ num_name: string; url: string | undefined }>[] = []
 
 for (const { name, number } of elements) {
   const num_name = `${number}-${name.toLowerCase()}`

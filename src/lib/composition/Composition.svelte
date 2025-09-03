@@ -2,16 +2,16 @@
   import type { ColorSchemeName, CompositionType } from '$lib'
   import { ContextMenu } from '$lib'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+  import type { SVGAttributes } from 'svelte/elements'
   import { BarChart, BubbleChart, PieChart } from './index'
   import { get_electro_neg_formula, parse_composition } from './parse'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
-  interface Props {
+  interface Props extends SVGAttributes<SVGSVGElement> {
     composition: string | CompositionType
     mode?: CompositionChartMode
     on_composition_change?: (composition: CompositionType) => void
     color_scheme?: ColorSchemeName
-    [key: string]: unknown
   }
   let {
     composition,
@@ -127,8 +127,20 @@
   bind:svg_node
   oncontextmenu={handle_right_click}
   role="button"
-  tabindex="0"
-  aria-label="Right-click to open context menu"
+  tabindex={0}
+  onkeydown={(event: KeyboardEvent) => {
+    if (event.key === `Enter` || event.key === ` `) {
+      event.preventDefault()
+      const target = event.currentTarget as Element
+      const rect = target.getBoundingClientRect()
+      context_menu.x = window.scrollX + rect.left + rect.width / 2
+      context_menu.y = window.scrollY + rect.top + rect.height / 2
+      context_menu.open = true
+    }
+  }}
+  aria-label="Open context menu (Right-click or Enter/Space)"
+  aria-haspopup="menu"
+  aria-expanded={context_menu.open}
   {...rest}
   class="composition {rest.class ?? ``}"
 />

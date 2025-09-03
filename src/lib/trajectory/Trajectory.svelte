@@ -9,6 +9,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { full_data_extractor } from './extract'
   import type {
     ParseProgress,
@@ -47,7 +48,7 @@
     on_error?: (data: TrajHandlerData) => void
   }
 
-  interface Props extends EventHandlers {
+  interface Props extends EventHandlers, HTMLAttributes<HTMLDivElement> {
     // trajectory data - can be provided directly or loaded from file
     trajectory?: TrajectoryType | undefined
     // URL to load trajectory from (alternative to providing trajectory directly)
@@ -126,7 +127,6 @@
     loading_options?: LoadingOptions
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
-    [key: string]: unknown
   }
   let {
     trajectory = $bindable(undefined),
@@ -977,6 +977,7 @@
                 {file_size}
                 {file_object}
                 bind:pane_open={info_pane_open}
+                pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
               />
             {/if}
             <!-- Display mode dropdown -->
@@ -1184,14 +1185,14 @@
     --min-height: 500px;
     display: flex;
     flex-direction: column;
-    height: 100%;
+    height: var(--traj-height, 100%);
     position: relative;
     min-height: var(--traj-min-height, var(--min-height));
     border-radius: var(--border-radius);
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
-    container-type: size;
+    container-type: size; /* enable cqh for panes if explicit height is set */
   }
   .trajectory :global(.plot) {
     background: var(--surface-bg);

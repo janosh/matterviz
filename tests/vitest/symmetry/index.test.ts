@@ -1,3 +1,4 @@
+import type { Species } from '$lib'
 import type { Vec3 } from '$lib/math'
 import { simplicity_score, wyckoff_positions_from_moyo } from '$lib/symmetry'
 import { structures } from '$site/structures'
@@ -16,12 +17,11 @@ describe(`wyckoff_positions_from_moyo`, () => {
     expect(wyckoff_positions_from_moyo(null)).toEqual([])
 
     // Symmetric sites - all H atoms with same Wyckoff letter
-    const symmetric = mock_data([[0, 0, 0], [0.5, 0.5, 0.5], [0.5, 0, 0], [0, 0.5, 0]], [
-      1,
-      1,
-      1,
-      1,
-    ], [`1a`, `1a`, `1a`, `1a`])
+    const symmetric = mock_data(
+      [[0, 0, 0], [0.5, 0.5, 0.5], [0.5, 0, 0], [0, 0.5, 0]],
+      [1, 1, 1, 1],
+      [`1a`, `1a`, `1a`, `1a`],
+    )
     expect(wyckoff_positions_from_moyo(symmetric)).toEqual([{
       wyckoff: `4a`,
       elem: `H`,
@@ -160,12 +160,7 @@ describe(`simplicity_score`, () => {
 describe(`structure validation`, () => {
   test(`all structures have valid data`, () => {
     const validateSite = (
-      site: {
-        species?: Array<{ element?: unknown; occu?: unknown; oxidation_state?: unknown }>
-        abc?: Vec3
-        xyz?: Vec3
-        label?: unknown
-      },
+      site: { species?: Partial<Species>[]; abc?: Vec3; xyz?: Vec3; label?: unknown },
       site_idx: number,
     ) => {
       const issues: string[] = []

@@ -5,7 +5,6 @@ import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Webview } from 'vscode'
 import pkg from '../package.json' with { type: 'json' }
-import type { MessageData } from '../src/extension'
 import {
   activate,
   create_html,
@@ -20,10 +19,21 @@ import {
 
 // Mock modules
 vi.mock(`fs`)
-vi.mock(`path`, () => ({
-  basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
-  dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
-}))
+vi.mock(`path`, async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
+    dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
+  }
+})
+
+const msg_args = { // generic placeholder arguments for all messages
+  filename: `filename`,
+  request_id: `request_id`,
+  file_path: `file_path`,
+  frame_index: 0,
+} as const
 
 const mock_vscode = vi.hoisted(() => ({
   window: {
@@ -186,7 +196,7 @@ describe(`MatterViz Extension`, () => {
 
     // Step 5: Verify the exact data structure that would be sent to webview
     const parsed_data = JSON.parse(
-      html.match(/mattervizData=(.+?)</s)?.[1] || `{}`,
+      html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ?? `{}`,
     )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
@@ -321,7 +331,13 @@ describe(`MatterViz Extension`, () => {
     ],
   ])(`saveAs binary data: %s`, async (_description, data_url, filename, is_binary) => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/${filename}` })
-    await handle_msg({ command: `saveAs`, content: data_url, filename, is_binary })
+    await handle_msg({
+      command: `saveAs`,
+      content: data_url,
+      ...msg_args,
+      filename,
+      is_binary,
+    })
     const base64_data = data_url.replace(/^data:[^;]+;base64,/, ``)
     const expected_buffer = Buffer.from(base64_data, `base64`)
     expect(mock_fs.writeFileSync).toHaveBeenCalledWith(
@@ -344,6 +360,7 @@ describe(`MatterViz Extension`, () => {
     await handle_msg({
       command: `saveAs`,
       content: `content`,
+      ...msg_args,
       filename: `test.cif`,
     })
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
@@ -357,6 +374,7 @@ describe(`MatterViz Extension`, () => {
     await handle_msg({
       command: `saveAs`,
       content: `content`,
+      ...msg_args,
       filename: `test.cif`,
     })
     expect(mock_fs.writeFileSync).not.toHaveBeenCalled()
@@ -368,6 +386,7 @@ describe(`MatterViz Extension`, () => {
     await handle_msg({
       command: `saveAs`,
       content: `data:image/png;base64,`,
+      ...msg_args,
       filename: `test.png`,
       is_binary: true,
     })
@@ -382,8 +401,8 @@ describe(`MatterViz Extension`, () => {
     [{ command: `info` }],
     [{ command: `saveAs` }],
     [{ command: `unknown` }],
-  ])(`malformed message handling: %s`, async (message) => {
-    await expect(handle_msg(message as MessageData)).resolves.not.toThrow()
+  ])(`malformed message handling: %s`, async (msg) => {
+    await expect(handle_msg({ ...msg, ...msg_args })).resolves.not.toThrow()
   })
 
   test(`render creates webview panel`, () => {
@@ -426,10 +445,7 @@ describe(`MatterViz Extension`, () => {
 
   test(`performance benchmarks`, () => {
     // Trajectory detection performance
-    const filenames = Array.from(
-      { length: 10000 },
-      (_, idx) => `test_${idx}.xyz`,
-    )
+    const filenames = Array.from({ length: 10000 }, (_, idx) => `test_${idx}.xyz`)
     const start = performance.now()
     filenames.forEach(is_trajectory_file)
     expect(performance.now() - start).toBeLessThan(100)
@@ -493,7 +509,7 @@ describe(`MatterViz Extension`, () => {
   test(`concurrent operations`, async () => {
     const promises = Array.from(
       { length: 50 },
-      (_, idx) => handle_msg({ command: `info`, text: `Message ${idx}` }),
+      (_, idx) => handle_msg({ command: `info`, text: `Message ${idx}`, ...msg_args }),
     )
     await Promise.all(promises)
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledTimes(50)
@@ -658,9 +674,8 @@ describe(`MatterViz Extension`, () => {
       // Store initial HTML after render (render always sets HTML initially)
       const initial_html = mock_panel.webview.html
 
-      // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
       const theme_callback = mock_vscode.window.onDidChangeActiveColorTheme.mock.calls[0]
-        ?.[0]
+        ?.[0] as unknown as () => void
 
       // Should not update when invisible
       if (theme_callback) {
@@ -707,7 +722,11 @@ describe(`MatterViz Extension`, () => {
   describe(`File Watching`, () => {
     describe(`message handling`, () => {
       test(`should handle startWatching message`, async () => {
-        const message = { command: `startWatching`, file_path: `/test/file.cif` }
+        const message = {
+          command: `startWatching`,
+          ...msg_args,
+          file_path: `/test/file.cif`,
+        }
         await handle_msg(message, mock_webview)
 
         expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith(
@@ -728,6 +747,7 @@ describe(`MatterViz Extension`, () => {
         // First start watching
         const start_message = {
           command: `startWatching`,
+          ...msg_args,
           file_path: `/test/file.cif`,
         }
         await handle_msg(start_message, mock_webview)
@@ -735,6 +755,7 @@ describe(`MatterViz Extension`, () => {
         // Then test stopping
         const stop_message = {
           command: `stopWatching`,
+          ...msg_args,
           file_path: `/test/file.cif`,
         }
         await handle_msg(stop_message, mock_webview)
@@ -745,6 +766,7 @@ describe(`MatterViz Extension`, () => {
       test(`should handle startWatching without webview gracefully`, async () => {
         const message = {
           command: `startWatching`,
+          ...msg_args,
           file_path: `/test/file.cif`,
         }
 
@@ -755,6 +777,7 @@ describe(`MatterViz Extension`, () => {
       test(`should handle startWatching without file_path gracefully`, async () => {
         const message = {
           command: `startWatching`,
+          ...msg_args,
         }
 
         await expect(handle_msg(message, mock_webview)).resolves.not.toThrow()
@@ -768,6 +791,7 @@ describe(`MatterViz Extension`, () => {
 
         const message = {
           command: `startWatching`,
+          ...msg_args,
           file_path: `/test/large-file.cif`,
         }
 
@@ -786,6 +810,7 @@ describe(`MatterViz Extension`, () => {
 
         const message = {
           command: `startWatching`,
+          ...msg_args,
           file_path: `/test/file.cif`,
         }
 
@@ -813,6 +838,7 @@ describe(`MatterViz Extension`, () => {
       test(`should handle file deletion notifications`, async () => {
         const message = {
           command: `startWatching`,
+          ...msg_args,
           file_path: `/test/file.cif`,
         }
 
@@ -824,10 +850,12 @@ describe(`MatterViz Extension`, () => {
         // Trigger file deletion
         delete_handler()
 
-        expect(mock_webview.postMessage).toHaveBeenCalledWith({
-          command: `fileDeleted`,
-          file_path: `/test/file.cif`,
-        })
+        expect(mock_webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            command: `fileDeleted`,
+            file_path: `/test/file.cif`,
+          }),
+        )
       })
     })
 
@@ -1052,9 +1080,9 @@ describe(`MatterViz Extension`, () => {
       activate(mock_context)
 
       // Get the registered callback
-      // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
       const on_did_open_text_document_callback = mock_vscode.workspace
         .onDidOpenTextDocument
+        // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
         .mock.calls[0]?.[0]
       expect(on_did_open_text_document_callback).toBeDefined()
 

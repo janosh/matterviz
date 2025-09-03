@@ -35,6 +35,7 @@
   } from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
@@ -48,7 +49,7 @@
     interpolate?: (a: T, b: T) => (t: number) => T
   }
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     series?: DataSeries[]
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -137,7 +138,6 @@
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    [key: string]: unknown
   }
   let {
     series = [],
@@ -1923,25 +1923,22 @@
       number,
     ]}
       <ColorBar
-        {...{
-          tick_labels: 4,
-          tick_align: `primary`,
-          color_scale_fn,
-          color_scale_domain: effective_color_domain,
-          scale_type: color_scale.type,
-          range: effective_color_domain?.every((val) => val != null)
-            ? effective_color_domain
-            : undefined,
-          wrapper_style: `
-            position: absolute;
-            left: ${tweened_colorbar_coords.current.x}px;
-            top: ${tweened_colorbar_coords.current.y}px;
-            transform: ${get_placement_styles(color_bar_cell, `colorbar`).transform};
-            ${color_bar?.wrapper_style ?? ``}`,
-          // user-overridable inner style
-          style: `width: 280px; height: 20px; ${color_bar?.style ?? ``}`,
-          ...color_bar,
-        }}
+        tick_labels={4}
+        tick_side="primary"
+        {color_scale_fn}
+        color_scale_domain={effective_color_domain}
+        scale_type={color_scale.type}
+        range={effective_color_domain?.every((val) => val != null)
+        ? effective_color_domain
+        : undefined}
+        wrapper_style={`
+        position: absolute;
+        left: ${tweened_colorbar_coords.current.x}px;
+        top: ${tweened_colorbar_coords.current.y}px;
+        transform: ${get_placement_styles(color_bar_cell, `colorbar`).transform};
+        ${color_bar?.wrapper_style ?? ``}`}
+        bar_style="width: 280px; height: 20px; {color_bar?.style ?? ``}"
+        {...color_bar}
       />
     {/if}
 
@@ -1983,9 +1980,9 @@
     width: 100%;
     height: 100%;
     min-height: var(--scatter-min-height, 100px);
-    container-type: inline-size;
+    container-type: size; /* enable cqh for panes */
+    container-name: scatter-plot;
     z-index: var(--scatter-z-index);
-    container-type: size;
   }
   svg {
     width: 100%;
@@ -2003,11 +2000,11 @@
     text-anchor: middle;
     dominant-baseline: top;
   }
-  g.y-axis text {
+  g:is(.y-axis, .y2-axis) text {
     dominant-baseline: central;
   }
-  g.y2-axis text {
-    dominant-baseline: central;
+  g:is(.x-axis, .y-axis, .y2-axis) .tick text {
+    font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   foreignobject {
     overflow: visible;
