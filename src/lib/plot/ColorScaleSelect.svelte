@@ -17,7 +17,7 @@
     options = Object.keys(d3_sc).filter((key) =>
       key.startsWith(`interpolate`)
     ) as D3InterpolateName[],
-    value = $bindable(),
+    value = $bindable(`interpolateViridis`),
     selected = $bindable([]),
     minSelect = 0,
     placeholder = `Select a color scale`,

@@ -19,10 +19,14 @@ import {
 
 // Mock modules
 vi.mock(`fs`)
-vi.mock(`path`, () => ({
-  basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
-  dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
-}))
+vi.mock(`path`, async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
+    dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
+  }
+})
 
 const msg_args = { // generic placeholder arguments for all messages
   filename: `filename`,

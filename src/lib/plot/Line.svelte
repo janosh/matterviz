@@ -62,7 +62,7 @@
   fill="none"
   {...rest}
 />
-<path d={tweened_area.current} fill={area_color} stroke={area_stroke} />
+<path d={tweened_area.current} fill={area_color} stroke={area_stroke} {...rest} />
 
 <style>
   path {
