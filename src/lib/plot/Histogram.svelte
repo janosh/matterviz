@@ -114,23 +114,31 @@
     get_chart_dimensions(width, height, padding),
   )
 
-  let auto_ranges = $derived({
-    x: get_nice_data_range(
-      selected_series.flatMap((s) => s.y).map((val) => ({ x: val, y: 0 })),
-      (point) => point.x,
+  let auto_ranges = $derived.by(() => {
+    const all_values = selected_series.flatMap((s) => s.y)
+    const auto_x = get_nice_data_range(
+      all_values.map((val) => ({ x: val, y: 0 })),
+      (p) => p.x,
       x_lim,
       x_scale_type,
       range_padding,
       false,
-    ),
-    y: get_nice_data_range(
-      selected_series.flatMap((s) => s.y).map((val) => ({ x: val, y: 0 })),
-      (point) => point.x,
+    )
+    if (!selected_series.length) return { x: auto_x, y: [0, 1] as [number, number] }
+    const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
+    const max_count = Math.max(
+      0,
+      ...selected_series.map((s) => max(hist(s.y), (d) => d.length) || 0),
+    )
+    const [y0, y1] = get_nice_data_range(
+      [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
+      (p) => p.x,
       y_lim,
       y_scale_type,
       range_padding,
       false,
-    ),
+    )
+    return { x: auto_x, y: [Math.max(0, y0), y1] as [number, number] }
   })
 
   // Initialize ranges
@@ -164,13 +172,16 @@
     if (!selected_series.length || !width || !height) return []
     const hist_generator = bin().domain([auto_ranges.x[0], auto_ranges.x[1]])
       .thresholds(bins)
-    return selected_series.map((series_data, series_idx) => ({
-      series_idx,
-      label: series_data.label || `Series ${series_idx + 1}`,
-      color: extract_series_color(series_data),
-      bins: hist_generator(series_data.y),
-      max_count: max(hist_generator(series_data.y), (d) => d.length) || 0,
-    }))
+    return selected_series.map((series_data, series_idx) => {
+      const bins_arr = hist_generator(series_data.y)
+      return {
+        series_idx,
+        label: series_data.label || `Series ${series_idx + 1}`,
+        color: extract_series_color(series_data),
+        bins: bins_arr,
+        max_count: max(bins_arr, (d) => d.length) || 0,
+      }
+    })
   })
 
   let ticks = $derived({

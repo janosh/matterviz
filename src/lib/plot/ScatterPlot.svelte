@@ -1981,6 +1981,7 @@
     height: 100%;
     min-height: var(--scatter-min-height, 100px);
     container-type: size; /* enable cqh for panes */
+    container-name: scatter-plot;
     z-index: var(--scatter-z-index);
   }
   svg {

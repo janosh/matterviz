@@ -127,7 +127,17 @@
   bind:svg_node
   oncontextmenu={handle_right_click}
   role="button"
-  tabindex="0"
+  tabindex={0}
+  onkeydown={(event: KeyboardEvent) => {
+    if (event.key === `Enter` || event.key === ` `) {
+      event.preventDefault()
+      const target = event.currentTarget as Element
+      const rect = target.getBoundingClientRect()
+      context_menu.x = window.scrollX + rect.left + rect.width / 2
+      context_menu.y = window.scrollY + rect.top + rect.height / 2
+      context_menu.open = true
+    }
+  }}
   aria-label="Right-click to open context menu"
   {...rest}
   class="composition {rest.class ?? ``}"

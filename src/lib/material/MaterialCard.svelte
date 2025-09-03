@@ -55,11 +55,13 @@
     { title: `Last updated`, value: material.last_updated?.$date.split(`T`)[0] },
     {
       title: `Origins`,
-      value: material.origins,
+      value: Array.isArray(material.origins)
+        ? material.origins.join(`, `)
+        : material.origins,
       condition: material.origins?.length,
     },
     { title: `Voigt bulk modulus`, value: material.k_voigt, unit: `GPa` },
-    { title: `Voig shear modulus`, value: material.g_voigt, unit: `GPa` },
+    { title: `Voigt shear modulus`, value: material.g_voigt, unit: `GPa` },
     { title: `Refractive index`, value: material.n },
     {
       title: `Is magnetic`,

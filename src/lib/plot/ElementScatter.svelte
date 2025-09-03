@@ -1,14 +1,14 @@
 <script lang="ts">
   import { element_data, format_num, type InternalPoint, ScatterPlot } from '$lib'
   import { selected } from '$lib/state.svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { ComponentProps } from 'svelte'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  interface Props extends ComponentProps<typeof ScatterPlot> {
     y: number[] // array of length 118 (one value for each element)
     x_label?: string
     y_label?: string
-    y_unit?: string | null
-    tooltip_point?: InternalPoint | null
+    y_unit?: string
+    tooltip_point?: InternalPoint
     hovered?: boolean
     y_format?: string
   }
@@ -17,7 +17,7 @@
     x_label = `Atomic Number`,
     y_label = ``,
     y_unit = ``,
-    tooltip_point = $bindable(null),
+    tooltip_point = $bindable(),
     hovered = $bindable(false),
     y_format = `~s`,
     ...rest

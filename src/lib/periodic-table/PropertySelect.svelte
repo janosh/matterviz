@@ -32,7 +32,7 @@
   maxSelect={1}
   {minSelect}
   bind:value
-  placeholder="Select a heat map"
+  placeholder="Select a heatmap"
   inputStyle="padding: 3pt 6pt;"
   {...rest}
 />

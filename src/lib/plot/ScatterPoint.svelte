@@ -8,7 +8,8 @@
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
   interface Props
-    extends Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin`> {
+    extends
+      Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> {
     x: number
     y: number
     style?: PointStyle

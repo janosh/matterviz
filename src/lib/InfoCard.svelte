@@ -3,7 +3,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`section`]> {
     data?: {
       title: string
       value?: string | number | number[] | null
@@ -15,7 +15,7 @@
     title?: string
     fallback?: string
     fmt?: string
-    as?: string
+    as?: keyof HTMLElementTagNameMap
     title_snippet?: Snippet
     fallback_snippet?: Snippet
   }

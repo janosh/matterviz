@@ -160,7 +160,7 @@ describe(`simplicity_score`, () => {
 describe(`structure validation`, () => {
   test(`all structures have valid data`, () => {
     const validateSite = (
-      site: { species?: Species[]; abc?: Vec3; xyz?: Vec3; label?: unknown },
+      site: { species?: Partial<Species>[]; abc?: Vec3; xyz?: Vec3; label?: unknown },
       site_idx: number,
     ) => {
       const issues: string[] = []

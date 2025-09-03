@@ -62,8 +62,17 @@ interface WebviewData {
   defaults?: DefaultSettings
 }
 
+export type IncomingCommand =
+  | `info`
+  | `error`
+  | `request_large_file`
+  | `request_frame`
+  | `saveAs`
+  | `startWatching`
+  | `stopWatching`
+
 export interface MessageData {
-  command: string
+  command: IncomingCommand
   text?: string
   filename?: string
   file_size?: number
@@ -74,6 +83,8 @@ export interface MessageData {
   request_id?: string
   frame_index?: number
 }
+
+type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
@@ -331,8 +342,13 @@ export const handle_msg = async (
   } else if (msg.command === `request_frame` && msg.file_path && webview) {
     try {
       const { request_id, file_path, frame_index } = msg
-      if (request_id === undefined || frame_index === undefined) {
-        throw new Error(`Missing request_id or frame_index`)
+      if (
+        typeof request_id !== `string` ||
+        frame_index === undefined ||
+        !Number.isInteger(frame_index) ||
+        frame_index < 0
+      ) {
+        throw new Error(`Invalid request_id or frame_index`)
       }
       const loader_data = active_frame_loaders.get(file_path)
       if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
@@ -388,8 +404,10 @@ export const handle_msg = async (
       vscode.window.showErrorMessage(`Save failed: ${message}`)
     }
   } else if (
-    msg.command === `startWatching` && webview && typeof msg.file_path === `string` &&
-    msg.file_path.includes(`/`)
+    msg.command === `startWatching` &&
+    webview &&
+    typeof msg.file_path === `string` &&
+    path.isAbsolute(msg.file_path)
   ) {
     // Handle request to start watching a file
     start_watching_file(
@@ -411,7 +429,7 @@ export const handle_msg = async (
 function start_watching_file(
   file_path: string,
   webview: WebviewLike,
-  meta?: { request_id?: string; filename?: string; frame_index?: number },
+  meta?: WatcherMeta,
 ): void {
   try {
     // Stop existing watcher for this file if any
@@ -427,17 +445,12 @@ function start_watching_file(
 
     // Listen for file changes
     watcher.onDidChange(() => {
-      handle_file_change(`change`, file_path, webview)
+      handle_file_change(`change`, file_path, webview, meta)
     })
 
     // Listen for file deletion
     watcher.onDidDelete(() => {
-      // Include meta (from the initiating message) in delete notification if provided
-      try {
-        webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
-      } catch (error) {
-        console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
-      }
+      handle_file_change(`delete`, file_path, webview, meta)
       stop_watching_file(file_path) // Clean up watcher
     })
 
@@ -456,10 +469,11 @@ function handle_file_change(
   event_type: `change` | `delete`,
   file_path: string,
   webview: WebviewLike,
+  meta?: WatcherMeta,
 ): void {
   if (event_type === `delete`) {
     try { // File was deleted - send notification
-      webview.postMessage({ command: `fileDeleted`, file_path })
+      webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
     } catch (error) {
       console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
     }

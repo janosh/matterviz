@@ -3,12 +3,11 @@
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
-  import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  interface Props extends Omit<ComponentProps<typeof Select>, `options`> {
     options?: D3InterpolateName[]
-    value?: string | null
+    value?: string
     selected?: string[]
     minSelect?: number
     placeholder?: string
@@ -18,8 +17,8 @@
     options = Object.keys(d3_sc).filter((key) =>
       key.startsWith(`interpolate`)
     ) as D3InterpolateName[],
-    value = $bindable(``),
-    selected = $bindable([``]),
+    value = $bindable(),
+    selected = $bindable([]),
     minSelect = 0,
     placeholder = `Select a color scale`,
     colorbar = {},

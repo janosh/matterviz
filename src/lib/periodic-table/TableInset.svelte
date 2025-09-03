@@ -3,14 +3,13 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props extends HTMLAttributes<HTMLElementTagNameMap[`aside`]> {
-    style?: string | null
-    as?: string // styles below don't apply if tag is not aside or div
+    as?: keyof HTMLElementTagNameMap
     children?: Snippet
   }
-  let { style = null, as = `aside`, children }: Props = $props()
+  let { as = `aside`, children, ...rest }: Props = $props()
 </script>
 
-<svelte:element this={as} {style}>
+<svelte:element this={as} {...rest}>
   {@render children?.()}
 </svelte:element>
 

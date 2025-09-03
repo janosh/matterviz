@@ -34,7 +34,7 @@ function get_test_structure(sites: { xyz: Vec3; element?: string }[]): PymatgenS
     sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
     charge: 0,
     lattice: {
-      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
       pbc: [true, true, true],
       ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
     },

@@ -174,9 +174,9 @@
   <button
     type="button"
     bind:this={toggle_pane_btn}
-    onclick={toggle_pane}
     aria-expanded={show}
     {...toggle_props}
+    onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
   >

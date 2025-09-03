@@ -93,15 +93,15 @@
       horizontal: `grid-template-columns: repeat(${layout_tracks}, auto);`,
       vertical:
         `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`,
-    }[layout] + wrapper_style,
+    }[layout] + wrapper_style + (rest.style ?? ``),
   )
 </script>
 
 <div
-  class="legend {draggable ? `draggable` : ``} {is_dragging ? `is-dragging` : ``}"
-  style={div_style}
   onmousedown={handle_legend_mouse_down}
   {...rest}
+  style={div_style}
+  class="legend {draggable ? `draggable` : ``} {is_dragging ? `is-dragging` : ``} {rest.class ?? ``}"
 >
   {#each series_data as series (series.series_idx)}
     <div

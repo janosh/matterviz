@@ -10,10 +10,10 @@
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
-  import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three'
 
-  export interface Props extends HTMLAttributes<HTMLDivElement> {
+  export interface Props
+    extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
     // Control pane state
     controls_open?: boolean
     // Scene properties (bindable from parent)
@@ -187,11 +187,11 @@
 
 <DraggablePane
   bind:show={controls_open}
-  pane_props={{ class: `controls-pane`, ...pane_props }}
+  pane_props={{ ...pane_props, class: `controls-pane ${pane_props?.class ?? ``}` }}
   toggle_props={{
-    class: `structure-controls-toggle`,
     title: `${controls_open ? `Close` : `Open`} structure controls`,
     ...toggle_props,
+    class: `structure-controls-toggle ${toggle_props?.class ?? ``}`,
   }}
   {...rest}
 >
@@ -291,6 +291,7 @@
       PNG
       <button
         type="button"
+        disabled={!wrapper?.querySelector(`canvas`)}
         onclick={() => {
           const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
           if (canvas) {
@@ -676,6 +677,11 @@
           bind:value={supercell_scaling}
           placeholder="1x1x1"
           style:border={supercell_input_valid ? undefined : `1px dashed red`}
+          inputmode="text"
+          autocomplete="off"
+          spellcheck="false"
+          pattern="^(\d+|\d+x\d+x\d+)$"
+          aria-invalid={!supercell_input_valid}
           title={supercell_input_valid
           ? `Valid supercell scaling: ${supercell_scaling}`
           : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}

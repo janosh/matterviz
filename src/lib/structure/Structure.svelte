@@ -415,6 +415,7 @@
   class:dragover
   class:active={info_pane_open || controls_open}
   role="region"
+  aria-label="Structure viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}

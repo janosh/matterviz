@@ -12,7 +12,7 @@
 </script>
 
 <HTML {position} pointerEvents="none">
-  <div {...rest} class="tooltip {rest.class ?? ``}">
+  <div {...rest} class="tooltip {rest.class ?? ``}" role="tooltip">
     {@render children()}
   </div>
 </HTML>

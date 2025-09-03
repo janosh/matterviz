@@ -10,12 +10,12 @@
   import type { D3InterpolateName } from '../colors'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
-    title?: string | null
+    title?: string
     color_scale?: ((x: number) => string) | string | null
     title_side?: `left` | `right` | `top` | `bottom`
-    bar_style?: string | null
-    title_style?: string | null
-    wrapper_style?: string | null
+    bar_style?: string
+    title_style?: string
+    wrapper_style?: string
     tick_labels?: (string | number)[] | number
     tick_format?: string
     range?: [number, number]
@@ -40,11 +40,11 @@
     color_scale_domain?: [number, number]
   }
   let {
-    title = null,
+    title = undefined,
     color_scale = $bindable(`interpolateViridis`),
-    bar_style = null,
-    title_style = null,
-    wrapper_style = null,
+    bar_style = undefined,
+    title_style = undefined,
+    wrapper_style = undefined,
     tick_labels = $bindable(4),
     tick_format = undefined,
     range = [0, 1],
@@ -77,17 +77,8 @@
     }
   })
 
-  // Calculate originally requested number of ticks
-  let requested_n_ticks = $derived(
-    Array.isArray(tick_labels)
-      ? tick_labels.length
-      : typeof tick_labels === `number`
-      ? tick_labels
-      : 5,
-  )
-
-  // Determine actual number of ticks to generate
-  let actual_n_ticks = $derived(
+  // Number of ticks to generate
+  let n_ticks = $derived(
     Array.isArray(tick_labels)
       ? tick_labels.length
       : typeof tick_labels === `number`
@@ -124,25 +115,21 @@
 
     // Apply scale.nice() only if snapping is enabled and not an explicit array.
     if (snap_ticks && !Array.isArray(tick_labels)) {
-      scale.nice(actual_n_ticks)
+      scale.nice(n_ticks)
     }
 
     return scale
   })
 
   let ticks_array: number[] = $derived.by(() => {
-    const num_ticks_to_generate = Array.isArray(tick_labels)
-      ? requested_n_ticks
-      : actual_n_ticks
-
     if (Array.isArray(tick_labels)) {
       // Use user-provided ticks directly
       return tick_labels.map(Number).filter((n) => !isNaN(n))
     }
 
     // Handle edge cases for number of ticks
-    if (num_ticks_to_generate <= 0) return []
-    if (num_ticks_to_generate === 1) return [scale_for_ticks.domain()[0]]
+    if (n_ticks <= 0) return []
+    if (n_ticks === 1) return [scale_for_ticks.domain()[0]]
 
     const scale = scale_for_ticks // Use derived scale (which handles log validation for ticks)
     const [scale_min, scale_max] = scale.domain()
@@ -187,22 +174,22 @@
 
         return power_of_10_ticks
       } else {
-        // Generate exactly num_ticks_to_generate manually for log scale if not snapping
+        // Generate exactly n_ticks manually for log scale if not snapping
         const log_min = Math.log10(scale_min)
         const log_max = Math.log10(scale_max)
-        return [...Array(num_ticks_to_generate).keys()].map((idx) => {
-          const t = idx / (num_ticks_to_generate - 1)
+        return [...Array(n_ticks).keys()].map((idx) => {
+          const t = idx / (n_ticks - 1)
           const log_val = log_min + t * (log_max - log_min)
           return Math.pow(10, log_val)
         })
       }
     } else {
       // Use D3's default nice ticks for linear scale
-      if (snap_ticks) return scale.ticks(num_ticks_to_generate)
+      if (snap_ticks) return scale.ticks(n_ticks)
       else {
-        // Generate exactly num_ticks_to_generate evenly spaced linear ticks
-        return [...Array(num_ticks_to_generate).keys()].map((idx) => {
-          const t = idx / (num_ticks_to_generate - 1)
+        // Generate exactly n_ticks evenly spaced linear ticks
+        return [...Array(n_ticks).keys()].map((idx) => {
+          const t = idx / (n_ticks - 1)
           return scale_min + t * (scale_max - scale_min)
         })
       }
