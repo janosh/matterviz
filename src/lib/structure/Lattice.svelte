@@ -64,6 +64,9 @@
     const length = direction.length()
     const center = start.clone().add(end).multiplyScalar(0.5)
 
+    if (length === 0) { // Zero-length: no rotation; render a degenerate cylinder
+      return { position: center.toArray(), rotation: [0, 0, 0], length }
+    }
     // Calculate rotation to align cylinder with the line
     const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0), // cylinder default orientation
@@ -72,7 +75,7 @@
     const euler = new Euler().setFromQuaternion(quaternion)
 
     return {
-      position: center.toArray() as Vec3,
+      position: center.toArray(),
       rotation: euler.toArray().slice(0, 3) as Vec3,
       length,
     }

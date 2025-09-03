@@ -138,7 +138,9 @@
       context_menu.open = true
     }
   }}
-  aria-label="Right-click to open context menu"
+  aria-label="Open context menu (Right-click or Enter/Space)"
+  aria-haspopup="menu"
+  aria-expanded={context_menu.open}
   {...rest}
   class="composition {rest.class ?? ``}"
 />

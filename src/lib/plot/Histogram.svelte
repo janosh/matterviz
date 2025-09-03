@@ -124,7 +124,12 @@
       range_padding,
       false,
     )
-    if (!selected_series.length) return { x: auto_x, y: [0, 1] as [number, number] }
+    if (!selected_series.length) {
+      return {
+        x: auto_x,
+        y: [y_scale_type === `log` ? 1 : 0, 1] as [number, number],
+      }
+    }
     const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
     const max_count = Math.max(
       0,
@@ -138,7 +143,8 @@
       range_padding,
       false,
     )
-    return { x: auto_x, y: [Math.max(0, y0), y1] as [number, number] }
+    const y_min = y_scale_type === `log` ? Math.max(1, y0) : Math.max(0, y0)
+    return { x: auto_x, y: [y_min, y1] as [number, number] }
   })
 
   // Initialize ranges

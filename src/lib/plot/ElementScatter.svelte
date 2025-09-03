@@ -8,7 +8,7 @@
     x_label?: string
     y_label?: string
     y_unit?: string
-    tooltip_point?: InternalPoint
+    tooltip_point?: InternalPoint | null
     hovered?: boolean
     y_format?: string
   }
@@ -17,7 +17,7 @@
     x_label = `Atomic Number`,
     y_label = ``,
     y_unit = ``,
-    tooltip_point = $bindable(),
+    tooltip_point = $bindable(null),
     hovered = $bindable(false),
     y_format = `~s`,
     ...rest

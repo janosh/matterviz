@@ -49,7 +49,14 @@ function make_random_structure(n_atoms: number): PymatgenStructure {
     element: elements[idx % elements.length],
   }))
 
-  const lattice = { ...get_test_structure([]).lattice, a: 10, b: 10, c: 10, volume: 1000 }
+  const lattice = {
+    ...get_test_structure([]).lattice,
+    matrix: [[10, 0, 0], [0, 10, 0], [0, 0, 10]] satisfies Matrix3x3,
+    a: 10,
+    b: 10,
+    c: 10,
+    volume: 1000,
+  }
   return { ...get_test_structure(sites), lattice }
 }
 
