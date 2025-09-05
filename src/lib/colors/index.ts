@@ -30,6 +30,18 @@ export const default_category_colors: Record<string, string> = {
   actinide: `#6495ed`, // cornflowerblue
 }
 
+export const axis_colors = [
+  // [axis name, color, hover color]
+  [`x`, `#d75555`, `#e66666`],
+  [`y`, `#55b855`, `#66c966`],
+  [`z`, `#5555d7`, `#6666e6`],
+] as const
+export const neg_axis_colors = [
+  [`ny`, `#44a044`, `#55b155`],
+  [`nx`, `#b84444`, `#cc5555`],
+  [`nz`, `#4444b8`, `#5555c9`],
+] as const
+
 export type RGBColor = [number, number, number]
 export type ElementColorScheme = Record<(typeof elem_symbols)[number], RGBColor>
 

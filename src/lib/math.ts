@@ -9,6 +9,9 @@ export const EPS = 1e-10
 export const RAD_TO_DEG = 180 / Math.PI
 export const DEG_TO_RAD = Math.PI / 180
 
+export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
+export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
+
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(
   matrix: Matrix3x3,

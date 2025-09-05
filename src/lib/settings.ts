@@ -51,6 +51,8 @@ export interface SettingsConfig {
     max_zoom: SettingType<number | undefined>
     min_zoom: SettingType<number | undefined>
     auto_rotate: SettingType<number>
+    // Manual rotation controls [x, y, z] in radians
+    rotation: SettingType<Vec3>
 
     // Labels & Lighting
     show_site_labels: SettingType<boolean>
@@ -313,6 +315,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Automatic rotation speed (0 = disabled, positive = clockwise)`,
       minimum: 0,
       maximum: 10,
+    },
+    // Manual rotation controls [x, y, z] in radians
+    rotation: {
+      value: [0, 0, 0],
+      description: `Manual rotation around X, Y, Z axes in radians [x, y, z]`,
+      minItems: 3,
+      maxItems: 3,
     },
 
     // Labels & Lighting
