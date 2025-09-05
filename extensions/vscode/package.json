@@ -2,7 +2,7 @@
   "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -255,6 +255,20 @@
           "description": "Automatic rotation speed (0 = disabled, positive = clockwise)",
           "minimum": 0,
           "maximum": 10
+        },
+        "matterviz.structure.rotation": {
+          "type": "array",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "description": "Manual rotation around X, Y, Z axes, displayed in degrees [0, 360] but normalized as radians to [-π, π] for each of [x, y, z]. Combines additively with auto-rotation when both are active.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
         },
         "matterviz.structure.show_site_labels": {
           "type": "boolean",
@@ -830,12 +844,12 @@
     "test": "vitest"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^6.1.0",
-    "@types/node": "^24.0.14",
-    "@types/vscode": "^1.96.0",
-    "svelte": "^5.36.6",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.5",
+    "@sveltejs/vite-plugin-svelte": "^6.1.4",
+    "@types/node": "^24.3.1",
+    "@types/vscode": "^1.103.0",
+    "svelte": "^5.38.7",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.4",
     "vitest": "^3.2.4"
   }
 }

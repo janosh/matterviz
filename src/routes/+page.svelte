@@ -151,7 +151,8 @@
     display: flex;
     gap: 1em;
     place-content: center;
-    font-size: 1.2em;
+    margin: 1em;
+    font-size: clamp(1em, 2vw, 1.2em);
     place-items: center;
     flex-wrap: wrap;
   }
