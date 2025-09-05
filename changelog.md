@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.1.9](https://github.com/janosh/matterviz/compare/v0.1.8...v0.1.9)
+
+> 5 September 2025
+
+### 🛠 Enhancements
+
+- Interactive symmetry analysis powered by `moyo` WASM bindings by @janosh in https://github.com/janosh/matterviz/pull/140
+- Wyckoff table by @janosh in https://github.com/janosh/matterviz/pull/141
+- `Structure` rotation controls by @janosh in https://github.com/janosh/matterviz/pull/144
+
+### 🐛 Bug Fixes
+
+- Fix missing Structure/Trajectory pane scroll in `overflow: hidden` containers by @janosh in https://github.com/janosh/matterviz/pull/142
+
 ## [v0.1.8](https://github.com/janosh/matterviz/compare/v0.1.7...v0.1.8)
 
 > 17 August 2025
