@@ -316,7 +316,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0,
       maximum: 10,
     },
-    // Manual rotation controls [x, y, z] in radians
     rotation: {
       value: [0, 0, 0],
       description:
