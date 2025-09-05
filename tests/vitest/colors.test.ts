@@ -79,13 +79,11 @@ describe(`Element Color Schemes`, () => {
       ).toHaveLength(0)
 
       // Check for extra elements
-      const extra_elements = [...scheme_elements].filter(
-        (el) => !first_elements.has(el),
-      ).join(`, `)
-      expect(
-        extra_elements,
-        `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements}`,
-      ).toHaveLength(0)
+      const extra_elements = [...scheme_elements].filter((el) => !first_elements.has(el))
+        .join(`, `)
+      const fail_msg =
+        `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements}`
+      expect(extra_elements, fail_msg).toHaveLength(0)
     }
   })
 

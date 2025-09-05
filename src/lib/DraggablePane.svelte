@@ -374,6 +374,7 @@
     margin-bottom: calc(-2 * 12pt);
     box-sizing: border-box;
     justify-self: end;
+    z-index: var(--pane-control-buttons-z-index, 1);
   }
   .draggable-pane :global(.drag-handle) {
     width: 1.3em;

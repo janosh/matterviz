@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { AnyStructure, LatticeProps } from '$lib'
   import { DraggablePane, SettingsSection } from '$lib'
-  import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
+  import type { ColorSchemeName } from '$lib/colors'
+  import { axis_colors, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
+  import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
   import * as exports from '$lib/structure/export'
@@ -92,9 +94,7 @@
   })
 
   // Ensure site_label_offset is always available
-  if (!scene_props.site_label_offset) {
-    scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
-  }
+  scene_props.site_label_offset ??= [...DEFAULTS.structure.site_label_offset]
 
   // Copy button feedback state
   let copy_status = $state<
@@ -130,6 +130,29 @@
 
   // Validate supercell input
   let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))
+
+  // Ensure rotation is always an array
+  $effect(() => {
+    scene_props.rotation ??= [...DEFAULTS.structure.rotation]
+  })
+
+  let rotation_degrees = $derived(
+    scene_props.rotation?.map((rad) => {
+      const deg = to_degrees(rad)
+      // Convert to [0, 360] range for UI display
+      return ((deg % 360) + 360) % 360
+    }) ?? [0, 0, 0],
+  )
+
+  function update_rotation(axis: `x` | `y` | `z`, degrees: number) {
+    scene_props.rotation ??= [0, 0, 0]
+    const axis_index = { x: 0, y: 1, z: 2 }[axis]
+    const clamped = Math.max(0, Math.min(360, degrees))
+    const norm = ((clamped % 360) + 360) % 360
+    scene_props.rotation[axis_index] = to_radians(norm)
+    // Trigger reactivity by creating new array
+    scene_props.rotation = [...scene_props.rotation]
+  }
 
   // Helper function to get example set of colors from an element color scheme
   function get_representative_colors(scheme_name: string): string[] {
@@ -328,6 +351,7 @@
       zoom_speed: scene_props.zoom_speed,
       pan_speed: scene_props.pan_speed,
       rotation_damping: scene_props.rotation_damping,
+      rotation: scene_props.rotation,
     }}
     on_reset={() => {
       Object.assign(scene_props, {
@@ -336,6 +360,7 @@
         zoom_speed: DEFAULTS.structure.zoom_speed,
         pan_speed: DEFAULTS.structure.pan_speed,
         rotation_damping: DEFAULTS.structure.rotation_damping,
+        rotation: [...DEFAULTS.structure.rotation],
       })
     }}
   >
@@ -356,7 +381,7 @@
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.auto_rotate.description })}
     >
-      Auto rotate speed
+      Auto-rotate speed
       <input
         type="number"
         min={0}
@@ -429,6 +454,43 @@
         bind:value={scene_props.rotation_damping}
       />
     </label>
+
+    Axis Rotation
+    <div class="rotation-axes">
+      {#each axis_colors as [axis, color], idx (axis)}
+        <div>
+          <div
+            {@attach tooltip()}
+            title="{axis}-axis rotation in degrees"
+            style:color
+          >
+            <span>{axis.toUpperCase()} = </span>
+            <input
+              type="number"
+              min={0}
+              max={360}
+              step={1}
+              value={rotation_degrees[idx].toFixed(0)}
+              oninput={(event) =>
+              update_rotation(axis, Number(event.currentTarget.value))}
+              style:color
+              style="margin: 0"
+            />
+            °
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={360}
+            step={1}
+            value={rotation_degrees[idx].toFixed(0)}
+            oninput={(event) => update_rotation(axis, Number(event.currentTarget.value))}
+            style:--thumb-color={color}
+            style="width: 100%"
+          />
+        </div>
+      {/each}
+    </div>
   </SettingsSection>
 
   <hr />
@@ -896,5 +958,15 @@
     display: grid;
     place-items: center;
     padding: 0;
+  }
+  .rotation-axes {
+    display: flex;
+    gap: 9pt;
+    font-size: 0.8em;
+  }
+  .rotation-axes > div {
+    display: grid;
+    gap: 0.3em;
+    place-items: center;
   }
 </style>

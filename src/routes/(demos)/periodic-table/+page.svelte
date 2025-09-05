@@ -100,53 +100,45 @@
   {onenter}
 >
   {#snippet inset()}
-    <TableInset>
-      <div class="color-bars-container">
-        <div class="color-bar-item">
-          <ColorBar
-            title="Atomic Radius (pm)"
-            color_scale="interpolateViridis"
-            range={atomic_radius_range}
-            orientation="horizontal"
-            bar_style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="Electronegativity × 100"
-            color_scale="interpolateViridis"
-            range={electronegativity_range}
-            orientation="horizontal"
-            bar_style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="Covalent Radius (pm)"
-            color_scale="interpolateViridis"
-            range={covalent_radius_range}
-            orientation="horizontal"
-            bar_style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-        <div class="color-bar-item">
-          <ColorBar
-            title="|Electron Affinity| (kJ/mol)"
-            color_scale="interpolateViridis"
-            range={electron_affinity_range}
-            orientation="horizontal"
-            bar_style="width: 135px; height: 12px"
-            tick_labels={3}
-            title_side="top"
-          />
-        </div>
-      </div>
+    <TableInset
+      style="display: grid; grid-template-columns: max-content max-content; gap: 2em; place-content: center"
+    >
+      <ColorBar
+        title="Atomic Radius (pm)"
+        color_scale="interpolateViridis"
+        range={atomic_radius_range}
+        orientation="horizontal"
+        bar_style="width: 135px; height: 12px"
+        tick_labels={3}
+        title_side="top"
+      />
+      <ColorBar
+        title="Electronegativity × 100"
+        color_scale="interpolateViridis"
+        range={electronegativity_range}
+        orientation="horizontal"
+        bar_style="width: 135px; height: 12px"
+        tick_labels={3}
+        title_side="top"
+      />
+      <ColorBar
+        title="Covalent Radius (pm)"
+        color_scale="interpolateViridis"
+        range={covalent_radius_range}
+        orientation="horizontal"
+        bar_style="width: 135px; height: 12px"
+        tick_labels={3}
+        title_side="top"
+      />
+      <ColorBar
+        title="|Electron Affinity| (kJ/mol)"
+        color_scale="interpolateViridis"
+        range={electron_affinity_range}
+        orientation="horizontal"
+        bar_style="width: 135px; height: 12px"
+        tick_labels={3}
+        title_side="top"
+      />
     </TableInset>
   {/snippet}
 </PeriodicTable>
@@ -169,40 +161,25 @@
   {onenter}
 >
   {#snippet inset()}
-    <TableInset>
-      <div class="missing-color-controls-inline">
-        <label>
-          <input
-            type="checkbox"
-            bind:checked={missing_use_category}
-            disabled={!missing_heatmap_values?.length}
-          />
-          Use element category colors
-        </label>
+    {@const style = `display: flex; align-items: center; gap: 3pt;`}
+    <TableInset style="display: flex; gap: 1em; justify-content: center; flex-wrap: wrap">
+      <label {style}>
+        <input
+          type="checkbox"
+          bind:checked={missing_use_category}
+          disabled={!missing_heatmap_values?.length}
+        />
+        Use element category colors
+      </label>
 
-        <label>
-          Missing color:
-          <input
-            type="color"
-            bind:value={missing_color}
-            disabled={missing_use_category || !missing_heatmap_values?.length}
-          />
-        </label>
-      </div>
+      <label {style}>
+        Missing color:
+        <input
+          type="color"
+          bind:value={missing_color}
+          disabled={missing_use_category || !missing_heatmap_values?.length}
+        />
+      </label>
     </TableInset>
   {/snippet}
 </PeriodicTable>
-
-<style>
-  .missing-color-controls-inline {
-    display: flex;
-    gap: 1em;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-  .missing-color-controls-inline label {
-    display: flex;
-    align-items: center;
-    gap: 3pt;
-  }
-</style>

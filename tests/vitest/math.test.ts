@@ -4,6 +4,34 @@ import { describe, expect, it, test } from 'vitest'
 
 test(`scale vector`, () => {
   expect(math.scale([1, 2, 3], 3)).toEqual([3, 6, 9])
+  expect(math.scale([1, 2, 3], -1)).toEqual([-1, -2, -3])
+  expect(math.scale([1, 2, 3], 0)).toEqual([0, 0, 0])
+})
+
+describe(`angle conversions`, () => {
+  test.each([
+    [0, 0, `zero angle`],
+    [Math.PI / 6, 30, `30 degrees`],
+    [Math.PI / 4, 45, `45 degrees`],
+    [Math.PI / 3, 60, `60 degrees`],
+    [Math.PI / 2, 90, `90 degrees`],
+    [Math.PI, 180, `180 degrees`],
+    [3 * Math.PI / 2, 270, `270 degrees`],
+    [2 * Math.PI, 360, `360 degrees`],
+    [-Math.PI / 2, -90, `negative 90 degrees`],
+    [-Math.PI, -180, `negative 180 degrees`],
+    [2.5, 143.2394, `arbitrary positive`],
+    [-1.5, -85.9437, `arbitrary negative`],
+  ])(
+    `converts $desc: $radians rad ↔ $degrees deg`,
+    (radians, degrees) => {
+      expect(math.to_degrees(radians)).toBeCloseTo(degrees, 3)
+      expect(math.to_radians(degrees)).toBeCloseTo(radians, 5)
+      // test round trip
+      expect(math.to_degrees(math.to_radians(radians))).toBeCloseTo(radians, 5)
+      expect(math.to_radians(math.to_degrees(degrees))).toBeCloseTo(degrees, 3)
+    },
+  )
 })
 
 describe(`euclidean_dist`, () => {
