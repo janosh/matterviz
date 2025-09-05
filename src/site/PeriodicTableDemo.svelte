@@ -155,8 +155,9 @@ The periodic table supports multiple values per element with different visual la
 
 <h3>2-fold Split (Diagonal)</h3>
 <p>
-  Each element shows two values as diagonal triangles: <strong>top-left = atomic
-    mass</strong>, <strong>bottom-right = density</strong>.
+  Each element shows two values as diagonal triangles:
+  <strong>top-left = atomic mass</strong>,
+  <strong>bottom-right = density</strong>.
 </p>
 <PeriodicTable
   tile_props={{ show_name: false, show_number: false }}

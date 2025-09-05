@@ -174,10 +174,10 @@
   $effect(() =>
     [[x_range, `x`], [y_range, `y`], [y2_range, `y2`]].forEach(([range, axis]) => {
       if (!range) {
-        ;[`min`, `max`].forEach((b) => {
-          const el = document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
-          if (el) el.value = ``
-        })
+        for (const bound of [`min`, `max`]) {
+          const el = document.getElementById(`${axis}-range-${bound}`)
+          if (el) (el as HTMLInputElement).value = ``
+        }
       }
     })
   )

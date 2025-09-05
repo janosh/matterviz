@@ -61,7 +61,6 @@
     margin: -0.75em auto 1.25em;
     max-width: 55em;
   }
-  /* Desktop navigation (default) */
   .menu-content {
     display: flex;
     gap: 1ex 1em;
@@ -71,7 +70,7 @@
   }
   .menu-content > a {
     line-height: 1.3;
-    padding: 0 2pt;
+    padding: 1pt 5pt;
     border-radius: 2pt;
     text-decoration: none;
     color: inherit;

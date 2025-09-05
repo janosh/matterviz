@@ -2961,3 +2961,271 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     })
   })
 })
+
+test.describe(`Structure Rotation Controls Tests`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+  })
+
+  test(`rotation controls are visible in Camera section`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    // Scope to Camera section for more stable selectors
+    const camera_section = pane_div.locator(`h4:has-text("Camera")`)
+    await expect(camera_section).toBeVisible()
+
+    // Check for rotation axes container - it's in the Camera section but not directly under the h4
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    await expect(rotation_axes).toBeVisible()
+
+    // Verify X, Y, Z controls are present by checking the axis controls count
+    const axis_controls = rotation_axes.locator(`> div`)
+    await expect(axis_controls).toHaveCount(3)
+
+    // Check that each control contains the expected axis labels
+    await expect(rotation_axes).toContainText(`X =`)
+    await expect(rotation_axes).toContainText(`Y =`)
+    await expect(rotation_axes).toContainText(`Z =`)
+  })
+
+  test(`rotation controls default to zero degrees`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const number_inputs = rotation_axes.locator(`input[type="number"]`)
+    const range_inputs = rotation_axes.locator(`input[type="range"]`)
+
+    // All controls should default to 0
+    for (let idx = 0; idx < 3; idx++) {
+      await expect(number_inputs.nth(idx)).toHaveValue(`0`)
+      await expect(range_inputs.nth(idx)).toHaveValue(`0`)
+    }
+  })
+
+  test(`number input updates range slider and vice versa`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const x_number_input = rotation_axes.locator(`input[type="number"]`).first()
+    const x_range_input = rotation_axes.locator(`input[type="range"]`).first()
+
+    // Test number input → range slider
+    await x_number_input.fill(`90`)
+    await expect(x_range_input).toHaveValue(`90`)
+
+    // Test range slider → number input
+    await x_range_input.fill(`180`)
+    await expect(x_number_input).toHaveValue(`180`)
+
+    // Test another value
+    await x_number_input.fill(`270`)
+    await expect(x_range_input).toHaveValue(`270`)
+  })
+
+  test(`rotation controls clamp out-of-range values on input`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const x_number_input = rotation_axes.locator(`input[type="number"]`).first()
+    const x_range_input = rotation_axes.locator(`input[type="range"]`).first()
+
+    // Test entering 999 - verify range slider gets the clamped then normalized value
+    await x_number_input.click()
+    await x_number_input.fill(`999`)
+
+    // The key insight: the range slider should reflect the clamped then normalized value
+    // even if the number input temporarily shows the raw input
+    await expect(x_range_input).toHaveValue(`0`) // 999 → clamped to 360 → 360 % 360 = 0
+
+    // Test negative values get clamped to 0
+    await x_number_input.fill(`-90`)
+    await expect(x_range_input).toHaveValue(`0`) // -90 → clamped to 0
+
+    // Test 360 normalizes to 0
+    await x_number_input.fill(`360`)
+    await expect(x_range_input).toHaveValue(`0`) // 360 % 360 = 0
+
+    // Test valid range values work correctly
+    await x_number_input.fill(`180`)
+    await expect(x_number_input).toHaveValue(`180`)
+    await expect(x_range_input).toHaveValue(`180`)
+
+    // Test that changing the range slider updates the number input
+    await x_range_input.fill(`270`)
+    await expect(x_number_input).toHaveValue(`270`)
+    await expect(x_range_input).toHaveValue(`270`)
+  })
+
+  test(`rotation controls handle edge cases correctly`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const y_number_input = rotation_axes.locator(`input[type="number"]`).nth(1)
+    const y_range_input = rotation_axes.locator(`input[type="range"]`).nth(1)
+
+    // Test specific edge cases - focus on range slider since it reflects the actual clamped then normalized value
+    const test_cases = [
+      { input: `359`, expected: `359` }, // 359 → stays 359
+      { input: `361`, expected: `0` }, // 361 → clamped to 360 → 360 % 360 = 0
+      { input: `450`, expected: `0` }, // 450 → clamped to 360 → 360 % 360 = 0
+      { input: `720`, expected: `0` }, // 720 → clamped to 360 → 360 % 360 = 0
+    ]
+
+    for (const { input, expected } of test_cases) {
+      await y_number_input.fill(input)
+      // Test the range slider which always reflects the clamped then normalized value
+      await expect(y_range_input).toHaveValue(expected)
+
+      // For valid values, number input should match
+      if (parseInt(input) <= 360) {
+        await expect(y_number_input).toHaveValue(expected)
+      }
+    }
+  })
+
+  test(`all three axis controls work independently`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const number_inputs = rotation_axes.locator(`input[type="number"]`)
+    const range_inputs = rotation_axes.locator(`input[type="range"]`)
+
+    // Set different values for each axis
+    await number_inputs.nth(0).fill(`30`) // X
+    await number_inputs.nth(1).fill(`60`) // Y
+    await number_inputs.nth(2).fill(`90`) // Z
+
+    // Verify all values are set correctly and independently
+    await expect(number_inputs.nth(0)).toHaveValue(`30`)
+    await expect(number_inputs.nth(1)).toHaveValue(`60`)
+    await expect(number_inputs.nth(2)).toHaveValue(`90`)
+
+    await expect(range_inputs.nth(0)).toHaveValue(`30`)
+    await expect(range_inputs.nth(1)).toHaveValue(`60`)
+    await expect(range_inputs.nth(2)).toHaveValue(`90`)
+
+    // Modify one axis and verify others remain unchanged
+    await number_inputs.nth(1).fill(`120`) // Change Y
+
+    await expect(number_inputs.nth(0)).toHaveValue(`30`) // X unchanged
+    await expect(number_inputs.nth(1)).toHaveValue(`120`) // Y changed
+    await expect(number_inputs.nth(2)).toHaveValue(`90`) // Z unchanged
+  })
+
+  test(`rotation controls have proper labels and structure`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const axis_controls = rotation_axes.locator(`> div`)
+
+    const expected_axes = [`X`, `Y`, `Z`]
+
+    // Check that all expected axis labels are present
+    for (const axis_name of expected_axes) {
+      await expect(rotation_axes).toContainText(`${axis_name} =`)
+      await expect(rotation_axes).toContainText(`°`)
+    }
+
+    // Verify axis controls structure
+    await expect(axis_controls).toHaveCount(3)
+
+    // Each control should have both number and range inputs
+    for (let idx = 0; idx < 3; idx++) {
+      const control = axis_controls.nth(idx)
+      await expect(control.locator(`input[type="number"]`)).toBeVisible()
+      await expect(control.locator(`input[type="range"]`)).toBeVisible()
+    }
+  })
+
+  test(`rotation controls reset with Camera section reset button`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const number_inputs = rotation_axes.locator(`input[type="number"]`)
+
+    // Set some non-zero values
+    await number_inputs.nth(0).fill(`45`)
+    await number_inputs.nth(1).fill(`90`)
+    await number_inputs.nth(2).fill(`135`)
+
+    // Wait for values to be processed
+    await page.waitForTimeout(100)
+
+    // Verify values are set
+    await expect(number_inputs.nth(0)).toHaveValue(`45`)
+    await expect(number_inputs.nth(1)).toHaveValue(`90`)
+    await expect(number_inputs.nth(2)).toHaveValue(`135`)
+
+    // Find and click the reset button in the Camera section
+    const reset_button = pane_div
+      .locator(`h4:has-text("Camera")`)
+      .locator(`button.reset-button`)
+    await reset_button.click()
+
+    // Wait for reset to process
+    await page.waitForTimeout(100)
+
+    // Verify all rotation values reset to 0
+    await expect(number_inputs.nth(0)).toHaveValue(`0`)
+    await expect(number_inputs.nth(1)).toHaveValue(`0`)
+    await expect(number_inputs.nth(2)).toHaveValue(`0`)
+  })
+
+  test(`rotation controls persist across pane close/open`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+    const number_inputs = rotation_axes.locator(`input[type="number"]`)
+
+    // Set rotation values
+    await number_inputs.nth(0).fill(`120`)
+    await number_inputs.nth(1).fill(`240`)
+    await number_inputs.nth(2).fill(`300`)
+
+    // Close the pane
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await test_page_controls_checkbox.uncheck()
+    await expect(pane_div).not.toHaveClass(/pane-open/)
+
+    // Reopen the pane
+    await test_page_controls_checkbox.check()
+    await expect(pane_div).toHaveClass(/pane-open/)
+
+    // Verify values persisted
+    const new_number_inputs = pane_div.locator(`.rotation-axes input[type="number"]`)
+    await expect(new_number_inputs.nth(0)).toHaveValue(`120`)
+    await expect(new_number_inputs.nth(1)).toHaveValue(`240`)
+    await expect(new_number_inputs.nth(2)).toHaveValue(`300`)
+  })
+
+  test(`rotation controls layout is compact and organized`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const rotation_axes = pane_div.locator(`.rotation-axes`)
+
+    // Check CSS class exists (may have additional Svelte-generated classes)
+    await expect(rotation_axes).toHaveClass(/rotation-axes/)
+
+    // Verify layout properties
+    const styles = await rotation_axes.evaluate((el) => {
+      const computed = globalThis.getComputedStyle(el)
+      return {
+        display: computed.display,
+        gap: computed.gap,
+      }
+    })
+
+    expect(styles.display).toBe(`flex`)
+    // allow small variance in computed gap
+    const gapNum = parseFloat(styles.gap)
+    expect(gapNum).toBeGreaterThan(8)
+    expect(gapNum).toBeLessThan(20)
+
+    // Check that all three controls are in a single row
+    const axis_controls = rotation_axes.locator(`> div`)
+    await expect(axis_controls).toHaveCount(3)
+  })
+})
