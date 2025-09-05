@@ -94,9 +94,7 @@
   })
 
   // Ensure site_label_offset is always available
-  if (!scene_props.site_label_offset) {
-    scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
-  }
+  scene_props.site_label_offset ??= [...DEFAULTS.structure.site_label_offset]
 
   // Copy button feedback state
   let copy_status = $state<
@@ -135,20 +133,23 @@
 
   // Ensure rotation is always an array
   $effect(() => {
-    if (!scene_props.rotation) {
-      scene_props.rotation = [...DEFAULTS.structure.rotation]
-    }
+    scene_props.rotation ??= [...DEFAULTS.structure.rotation]
   })
 
   let rotation_degrees = $derived(
-    scene_props.rotation?.map((rad) => to_degrees(rad)) ?? [0, 0, 0],
+    scene_props.rotation?.map((rad) => {
+      const deg = to_degrees(rad)
+      // Convert to [0, 360] range for UI display
+      return ((deg % 360) + 360) % 360
+    }) ?? [0, 0, 0],
   )
 
   function update_rotation(axis: `x` | `y` | `z`, degrees: number) {
     scene_props.rotation ??= [0, 0, 0]
-
     const axis_index = { x: 0, y: 1, z: 2 }[axis]
-    scene_props.rotation[axis_index] = to_radians(degrees)
+    const clamped = Math.max(0, Math.min(360, degrees))
+    const norm = ((clamped % 360) + 360) % 360
+    scene_props.rotation[axis_index] = to_radians(norm)
     // Trigger reactivity by creating new array
     scene_props.rotation = [...scene_props.rotation]
   }
@@ -460,7 +461,7 @@
         <div>
           <div
             {@attach tooltip()}
-            title="Manual rotation around {axis}-axis in degrees"
+            title="{axis}-axis rotation in degrees"
             style:color
           >
             <span>{axis.toUpperCase()} = </span>

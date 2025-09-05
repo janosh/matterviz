@@ -319,7 +319,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     // Manual rotation controls [x, y, z] in radians
     rotation: {
       value: [0, 0, 0],
-      description: `Manual rotation around X, Y, Z axes in radians [x, y, z]`,
+      description:
+        `Manual rotation around X, Y, Z axes, displayed in degrees [0, 360] but normalized as radians to [-π, π] for each of [x, y, z]. Combines additively with auto-rotation when both are active.`,
       minItems: 3,
       maxItems: 3,
     },

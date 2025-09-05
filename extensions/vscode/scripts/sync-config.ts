@@ -87,11 +87,8 @@ function sync_package_config() {
   }
 
   // Update package.json with generated + preserved settings
-  if (!package_content.contributes) package_content.contributes = {}
-  if (!package_content.contributes.configuration) {
-    package_content.contributes.configuration = { title: `MatterViz`, properties: {} }
-  }
-
+  package_content.contributes ??= {}
+  package_content.contributes.configuration ??= { title: `MatterViz`, properties: {} }
   package_content.contributes.configuration.properties = {
     ...preserved_props,
     ...vscode_config,

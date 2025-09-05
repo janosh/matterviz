@@ -37,8 +37,8 @@ export const axis_colors = [
   [`z`, `#5555d7`, `#6666e6`],
 ] as const
 export const neg_axis_colors = [
-  [`ny`, `#44a044`, `#55b155`],
   [`nx`, `#b84444`, `#cc5555`],
+  [`ny`, `#44a044`, `#55b155`],
   [`nz`, `#4444b8`, `#5555c9`],
 ] as const
 
