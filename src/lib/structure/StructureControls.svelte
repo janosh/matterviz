@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { AnyStructure, LatticeProps } from '$lib'
-  import { DraggablePane, SettingsSection } from '$lib'
+  import type { AnyStructure } from '$lib'
+  import { DraggablePane, Lattice, SettingsSection } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { axis_colors, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
@@ -21,7 +21,7 @@
     // Scene properties (bindable from parent)
     scene_props?: ComponentProps<typeof StructureScene>
     // Lattice properties (bindable from parent)
-    lattice_props?: LatticeProps
+    lattice_props?: ComponentProps<typeof Lattice>
     // Display options (bindable from parent)
     show_image_atoms?: boolean
     // Supercell options (bindable from parent)

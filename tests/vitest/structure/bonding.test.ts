@@ -256,8 +256,8 @@ describe(`Electronegativity-Based Bonding`, () => {
       metal_nonmetal_bonus: 1.5,
     })
     const metal_bonds = bonding.electroneg_ratio(make_metal_structure(), {
-      max_distance_ratio: 2.5,
-      metal_metal_penalty: 0.5,
+      max_distance_ratio: 2,
+      metal_metal_penalty: 0.7,
       metal_nonmetal_bonus: 1.5,
     })
     const ionic_density = ionic_bonds.length / 4
