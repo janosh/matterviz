@@ -42,14 +42,16 @@ async function safe_canvas_hover(
 async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
   const canvas = page.locator(`#test-structure canvas`)
 
-  // Use cached position if available
-  if (cached_atom_position) {
-    await safe_canvas_hover(page, canvas, cached_atom_position)
-    const structure_tooltip = page.locator(`.tooltip:has(.coordinates)`)
-    await structure_tooltip.waitFor({ state: `visible`, timeout: 300 })
-    return cached_atom_position
+  if (cached_atom_position) { // Use cached position if available
+    try {
+      await safe_canvas_hover(page, canvas, cached_atom_position)
+      const structure_tooltip = page.locator(`.tooltip:has(.coordinates)`)
+      await structure_tooltip.waitFor({ state: `visible`, timeout: 300 })
+      return cached_atom_position
+    } catch {
+      cached_atom_position = null // fall through to probing positions below
+    }
   }
-
   const positions = [
     { x: 300, y: 200 },
     { x: 250, y: 150 },
@@ -506,7 +508,7 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(texts.some((t) => /[A-Z][a-z]?\s*-\s*\d+/.test(t))).toBe(true)
   })
 
-  test(`disordered sites show combined element-occupancy format without overlapping labels`, async ({ page }) => {
+  test(`disordered sites show combined element-occupancy format`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 

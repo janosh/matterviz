@@ -189,6 +189,8 @@ describe(`Molecular Bonding Analysis`, () => {
   test(`benzene has aromatic C-C bonds`, () => {
     const bonds = bonding.electroneg_ratio(test_molecules.benzene, {
       max_distance_ratio: 2.0,
+      metal_metal_penalty: 0.5,
+      metal_nonmetal_bonus: 1.5,
     })
     expect(bonds.length).toBeGreaterThanOrEqual(6)
     const cc_bonds = bonds.filter((bond) =>
@@ -200,6 +202,8 @@ describe(`Molecular Bonding Analysis`, () => {
   test(`ethanol has multiple bond types`, () => {
     const bonds = bonding.electroneg_ratio(test_molecules.ethanol, {
       max_distance_ratio: 2.0,
+      metal_metal_penalty: 0.5,
+      metal_nonmetal_bonus: 1.5,
     })
     expect(bonds.length).toBeGreaterThanOrEqual(8)
     const bond_distances = bonds.map((bond) => bond.bond_length)
@@ -246,8 +250,16 @@ describe(`Crystal Structure Bonding`, () => {
 
 describe(`Electronegativity-Based Bonding`, () => {
   test(`favors metal-nonmetal bonds over metal-metal bonds`, () => {
-    const ionic_bonds = bonding.electroneg_ratio(make_ionic_structure())
-    const metal_bonds = bonding.electroneg_ratio(make_metal_structure())
+    const ionic_bonds = bonding.electroneg_ratio(make_ionic_structure(), {
+      max_distance_ratio: 2.5,
+      metal_metal_penalty: 0.5,
+      metal_nonmetal_bonus: 1.5,
+    })
+    const metal_bonds = bonding.electroneg_ratio(make_metal_structure(), {
+      max_distance_ratio: 2.5,
+      metal_metal_penalty: 0.5,
+      metal_nonmetal_bonus: 1.5,
+    })
     const ionic_density = ionic_bonds.length / 4
     // The algorithm should generally prefer ionic bonds, but the exact ratio may vary
     // Check that both structures produce reasonable bond counts
@@ -266,8 +278,16 @@ describe(`Electronegativity-Based Bonding`, () => {
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `C` },
     ])
-    const ionic_bonds = bonding.electroneg_ratio(na_cl_structure)
-    const covalent_bonds = bonding.electroneg_ratio(c_c_structure)
+    const ionic_bonds = bonding.electroneg_ratio(na_cl_structure, {
+      max_distance_ratio: 2.5,
+      metal_metal_penalty: 0.5,
+      metal_nonmetal_bonus: 1.5,
+    })
+    const covalent_bonds = bonding.electroneg_ratio(c_c_structure, {
+      max_distance_ratio: 2.5,
+      metal_metal_penalty: 0.5,
+      metal_nonmetal_bonus: 1.5,
+    })
     expect(ionic_bonds).toHaveLength(1)
     expect(covalent_bonds).toHaveLength(1)
     expect(ionic_bonds[0].bond_length).toBeCloseTo(2.3, 1)
@@ -429,7 +449,9 @@ describe(`CrystalNN-Inspired Improvements`, () => {
 
     // H-H should be stronger at 1.5Å than C-C at 1.5Å due to relative distance ratios
     if (h_bonds.length > 0 && c_bonds.length > 0) {
-      expect(h_bonds[0].strength).toBeGreaterThan(c_bonds[0].strength)
+      const h_max = Math.max(...h_bonds.map((b) => b.strength))
+      const c_max = Math.max(...c_bonds.map((b) => b.strength))
+      expect(h_max).toBeGreaterThan(c_max)
     }
   })
 

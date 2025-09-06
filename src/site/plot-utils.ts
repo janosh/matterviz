@@ -141,7 +141,7 @@ export function generate_scientific_data(count: number): number[] {
 // Weighted choice function for discrete distributions
 export function weighted_choice(weights: number[]): number {
   const total_weight = weights.reduce((sum, weight) => {
-    if (!Number.isFinite(weight) || weight < 0) throw new Error(`invalid weights`)
+    if (!Number.isFinite(weight) || weight < 0) throw new RangeError(`invalid weights`)
     return sum + weight
   }, 0)
   if (weights.length === 0 || total_weight <= 0) throw new Error(`invalid weights`)

@@ -11,6 +11,8 @@ const ENERGY_PROPERTIES = [`energy`, `total_energy`, `potential_energy`]
 const FORCE_PROPERTIES = [`force`, `fmax`, `f`]
 const DEFAULT_VISIBLE = new Set([`energy`, `force_max`, `stress_frobenius`])
 
+type VisibleProp = Readonly<{ property: string; unit: string }>
+
 export interface PlotSeriesOptions {
   property_config?: Record<string, { label: string; unit: string }>
   colors?: readonly string[]
@@ -485,7 +487,7 @@ export function generate_streaming_plot_series(
   })
 
   const all_series: DataSeries[] = []
-  const visible_props: { property: string; unit: string }[] = []
+  const visible_props: VisibleProp[] = []
   let color_idx = 0
 
   for (const property_key of all_properties) {
@@ -555,7 +557,7 @@ function has_significant_variation(values: number[], tolerance = 1e-6): boolean 
 function determine_axis_from_groups(
   property: string,
   unit: string,
-  visible_properties: { property: string; unit: string }[],
+  visible_properties: VisibleProp[],
 ): `y1` | `y2` {
   const mock_series = visible_properties.map(({ property: prop, unit: u }) => ({
     label: prop,

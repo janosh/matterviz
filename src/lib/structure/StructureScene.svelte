@@ -602,11 +602,9 @@
         {@const color = entry.color}
         {#if site}
           {@const xyz = site.xyz}
-          {@const species = site.species}
-          {@const highlight_radius = atom_radius * (same_size_atoms
-          ? 1
-          : species.reduce((sum, spec) =>
-            sum + spec.occu * (atomic_radii[spec.element] ?? 1), 0))}
+          {@const highlight_radius = atom_data.find((atom) =>
+          atom.site_idx === entry.site_idx
+        )?.radius ?? atom_radius}
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}
@@ -657,8 +655,10 @@
               idx
               ([element, occu, oxi_state])
             }
-              {@const oxi_str = oxi_state != null && oxi_state !== 0
-              ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
+              {@const oxi_str = (oxi_state != null && oxi_state !== 0)
+              ? `<sup>${Math.abs(oxi_state)}${
+                oxi_state > 0 ? `+` : `−`
+              }</sup>`
               : ``}
               {@const element_name = element_data.find((elem) =>
               elem.symbol === element

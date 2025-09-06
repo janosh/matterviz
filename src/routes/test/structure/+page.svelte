@@ -53,7 +53,7 @@
     if (url_params.has(`camera_projection`)) {
       const cam_projection = url_params.get(`camera_projection`)
       if (cam_projection === `perspective` || cam_projection === `orthographic`) {
-        scene_props = { ...scene_props, camera_projection: cam_projection }
+        scene_props.camera_projection = cam_projection
       }
     }
 
