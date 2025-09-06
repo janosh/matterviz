@@ -43,7 +43,12 @@ async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
   const canvas = page.locator(`#test-structure canvas`)
 
   // Use cached position if available
-  if (cached_atom_position) return cached_atom_position
+  if (cached_atom_position) {
+    await safe_canvas_hover(page, canvas, cached_atom_position)
+    const structure_tooltip = page.locator(`.tooltip:has(.coordinates)`)
+    await structure_tooltip.waitFor({ state: `visible`, timeout: 300 })
+    return cached_atom_position
+  }
 
   const positions = [
     { x: 300, y: 200 },
@@ -448,6 +453,10 @@ test.describe(`StructureScene Component Tests`, () => {
     const labeled_screenshot = await canvas.screenshot()
     expect(labeled_screenshot.length).toBeGreaterThan(1000)
 
+    // Also assert at least one label is present
+    const labels = page.locator(`.atom-label`)
+    expect(await labels.count()).toBeGreaterThan(0)
+
     // No console errors during label rendering
     expect(console_errors).toHaveLength(0)
   })
@@ -468,6 +477,11 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // No console errors during index rendering
     expect(console_errors).toHaveLength(0)
+
+    // Verify indices start at 1 (and not 0)
+    const texts = await page.locator(`.atom-label`).allTextContents()
+    expect(texts.some((t) => /^\s*1\s*$/.test(t))).toBe(true)
+    expect(texts.some((t) => /^\s*0\s*$/.test(t))).toBe(false)
   })
 
   test(`combined site labels and indices display correctly`, async ({ page }) => {
@@ -486,6 +500,10 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // No console errors during combined label rendering
     expect(console_errors).toHaveLength(0)
+
+    // Spot-check that at least one label matches "X-<n>"
+    const texts = await page.locator(`.atom-label`).allTextContents()
+    expect(texts.some((t) => /[A-Z][a-z]?\s*-\s*\d+/.test(t))).toBe(true)
   })
 
   test(`disordered sites show combined element-occupancy format without overlapping labels`, async ({ page }) => {

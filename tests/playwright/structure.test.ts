@@ -335,13 +335,25 @@ test.describe(`Structure Component Tests`, () => {
     expect(await site_labels_checkbox.isChecked()).toBe(true)
     expect(await site_indices_checkbox.isChecked()).toBe(true)
 
+    // Verify Labels section is visible when site labels are enabled
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
+
     // Disable one at a time to test independence
     await site_labels_checkbox.uncheck()
     expect(await site_labels_checkbox.isChecked()).toBe(false)
     expect(await site_indices_checkbox.isChecked()).toBe(true)
 
+    // Labels section should remain visible when Site Indices is still enabled (either labels OR indices show label controls)
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
+
+    // Disable both - Labels section should hide when neither is enabled
     await site_indices_checkbox.uncheck()
     expect(await site_indices_checkbox.isChecked()).toBe(false)
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).not.toBeVisible()
+
+    // Re-enable site indices only - Label controls section should appear again
+    await site_indices_checkbox.check()
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
   })
 
   test(`label controls appear when site labels are enabled`, async ({ page }) => {
@@ -2945,6 +2957,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Reset button should disappear
       await expect(labels_reset).not.toBeVisible()
+
+      // check that Labels control section hides after disabling labels
+      await show_labels_checkbox.uncheck()
+      await expect(page.locator(`h4:has-text("Labels")`)).not.toBeVisible()
     })
 
     test(`multiple sections can have reset buttons simultaneously`, async ({ page }) => {

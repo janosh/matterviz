@@ -92,6 +92,16 @@
       const mode = url_params.get(`performance_mode`)
       if (mode === `speed` || mode === `quality`) performance_mode = mode
     }
+
+    // Site labeling parameters
+    if (url_params.has(`show_site_labels`)) {
+      const param = url_params.get(`show_site_labels`)
+      scene_props.show_site_labels = param === `true`
+    }
+    if (url_params.has(`show_site_indices`)) {
+      const param = url_params.get(`show_site_indices`)
+      scene_props.show_site_indices = param === `true`
+    }
   })
 
   $effect(() => { // Listen for custom events from tests

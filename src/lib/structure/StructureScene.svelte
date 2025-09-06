@@ -21,7 +21,7 @@
 
   // Add pulsating animation for selected sites
   let pulse_time = $state(0)
-  let pulse_opacity = $derived(0.1 + 0.2 * Math.sin(pulse_time * 3))
+  let pulse_opacity = $derived(0.2 + 0.2 * Math.sin(pulse_time * 3))
 
   // Update pulse time for animation
   $effect(() => {
@@ -238,12 +238,10 @@
   // Update orbit controls when switching between camera projections to ensure proper centering
   $effect(() => {
     if (orbit_controls && camera_projection) {
-      // Small delay to ensure camera switch is complete
-      setTimeout(() => {
-        // Structure is positioned with rotation_target as the center
-        orbit_controls.target.set(...rotation_target)
+      queueMicrotask(() => {
+        orbit_controls.target.set(...rotation_target) // Structure is positioned with rotation_target as the center
         orbit_controls.update()
-      }, 10)
+      })
     }
   })
 
@@ -272,7 +270,7 @@
   })
 
   let force_data = $derived( // Compute force vectors
-    show_force_vectors
+    show_force_vectors && structure?.sites
       ? structure?.sites
         .map((site) => {
           if (
@@ -292,28 +290,41 @@
       : [],
   )
 
-  let instanced_atom_groups = $derived(Object.values( // Group full-occupancy atoms for instanced rendering
-    atom_data.filter((atom) => !atom.has_partial_occupancy)
-      .reduce(
-        (groups, atom) => {
-          const { element, radius, color } = atom
-          const key = `${atom.element}-${atom.radius.toFixed(3)}`
-          if (!groups[key]) groups[key] = { element, radius, color, atoms: [] }
-          groups[key].atoms.push(atom)
-          return groups
-        },
-        {} as Record<
-          string,
-          { element: string; radius: number; color: string; atoms: typeof atom_data }
-        >,
-      ),
-  ))
+  let instanced_atom_groups = $derived(
+    Object.values(
+      atom_data
+        .filter((atom) => !atom.has_partial_occupancy)
+        .reduce(
+          (groups, atom) => {
+            const { element, radius, color } = atom
+            const key = `${element}-${radius.toFixed(3)}`
+            const bucket = groups[key] ||
+              (groups[key] = { element, radius, color, atoms: [] })
+            bucket.atoms.push(atom)
+            return groups
+          },
+          {} as Record<
+            string,
+            {
+              element: string
+              radius: number
+              color: string
+              atoms: (typeof atom_data)[number][]
+            }
+          >,
+        ),
+    ),
+  )
 
   // Pre-calculate unique site atoms for labeling
   let unique_instanced_atoms = $derived(
     Object.values(
-      instanced_atom_groups.flatMap((group) => group.atoms)
-        .reduce((acc, atom) => ({ ...acc, [atom.site_idx]: atom }), {}),
+      instanced_atom_groups
+        .flatMap((group) => group.atoms)
+        .reduce((acc, atom) => {
+          acc[atom.site_idx] = atom
+          return acc
+        }, {} as Record<number, (typeof atom_data)[number]>),
     ),
   )
 
@@ -386,7 +397,7 @@
           {:else}
             {@html site.species.map((spec) =>
         `${spec.element}<sub>${
-          format_num(spec.occu, `3~`).replace(`0.`, `.`)
+          format_num(spec.occu, `.3~`).replace(`0.`, `.`)
         }</sub>`
       ).join(``)}-{
               site_idx + 1
@@ -398,7 +409,7 @@
           {:else}
             {@html site.species.map((spec) =>
         `${spec.element}<sub>${
-          format_num(spec.occu, `3~`).replace(`0.`, `.`)
+          format_num(spec.occu, `.3~`).replace(`0.`, `.`)
         }</sub>`
       ).join(``)}
           {/if}

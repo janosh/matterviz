@@ -576,7 +576,7 @@
     </label>
   </SettingsSection>
 
-  {#if scene_props.show_site_labels}
+  {#if scene_props.show_site_labels || scene_props.show_site_indices}
     <hr />
     <SettingsSection
       title="Labels"

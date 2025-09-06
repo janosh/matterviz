@@ -36,7 +36,7 @@
         "command": "matterviz.render_structure",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "matterviz.supported_resource"
+        "when": "matterviz.supported_resource && editorLangId != 'markdown'"
       }
     ],
     "menus": {
@@ -274,6 +274,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show element labels on atoms"
+        },
+        "matterviz.structure.show_site_indices": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show site index numbers on atoms"
         },
         "matterviz.structure.site_label_size": {
           "type": "number",
