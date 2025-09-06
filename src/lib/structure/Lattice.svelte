@@ -138,7 +138,6 @@
     {/if}
 
     <!-- NOTE below is an untested fix for the lattice vectors being much too small when deployed even though they look correct in local dev -->
-
     {#if show_cell_vectors}
       <T.Group position={vector_origin}>
         {#each matrix as vec, idx (vec)}
