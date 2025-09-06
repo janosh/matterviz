@@ -21,7 +21,7 @@
 
   // Add pulsating animation for selected sites
   let pulse_time = $state(0)
-  let pulse_opacity = $derived(0.4 + 0.3 * Math.sin(pulse_time * 3))
+  let pulse_opacity = $derived(0.2 + 0.2 * Math.sin(pulse_time * 3))
 
   // Update pulse time for animation
   $effect(() => {
@@ -54,6 +54,7 @@
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
+    show_site_indices?: boolean
     show_force_vectors?: boolean
     force_scale?: number
     force_color?: string
@@ -103,6 +104,7 @@
     show_atoms = DEFAULTS.structure.show_atoms,
     show_bonds = DEFAULTS.structure.show_bonds,
     show_site_labels = DEFAULTS.structure.show_site_labels,
+    show_site_indices = DEFAULTS.structure.show_site_indices,
     site_label_size = DEFAULTS.structure.site_label_size,
     site_label_offset = $bindable(DEFAULTS.structure.site_label_offset),
     site_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
@@ -236,23 +238,17 @@
   // Update orbit controls when switching between camera projections to ensure proper centering
   $effect(() => {
     if (orbit_controls && camera_projection) {
-      // Small delay to ensure camera switch is complete
-      setTimeout(() => {
-        // Explicitly set the target to the rotation center
-        orbit_controls.target.set(...rotation_target)
+      queueMicrotask(() => {
+        orbit_controls.target.set(...rotation_target) // Structure is positioned with rotation_target as the center
         orbit_controls.update()
-      }, 10)
+      })
     }
   })
 
-  // Pre-compute atom data for performance
-  let { atom_data, force_data, instanced_atom_groups } = $derived.by(() => {
-    if (!show_atoms || !structure?.sites) {
-      return { atom_data: [], force_data: [], instanced_atom_groups: [] }
-    }
-
+  let atom_data = $derived.by(() => { // Pre-compute atom data for performance
+    if (!show_atoms || !structure?.sites) return []
     // Build atom data with partial occupancy handling
-    const atoms = structure.sites.flatMap((site, site_idx) => {
+    return structure.sites.flatMap((site, site_idx) => {
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
         (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
         0,
@@ -271,34 +267,11 @@
         end_phi: 2 * Math.PI * (start_angle += occu),
       }))
     })
+  })
 
-    // Group full-occupancy atoms for instanced rendering
-    const instanced_atom_groups = Object.values(
-      atoms.filter((atom) => !atom.has_partial_occupancy)
-        .reduce(
-          (groups, atom) => {
-            const key = `${atom.element}-${atom.radius.toFixed(3)}`
-            if (!groups[key]) {
-              groups[key] = {
-                element: atom.element,
-                radius: atom.radius,
-                color: atom.color,
-                atoms: [],
-              }
-            }
-            groups[key].atoms.push(atom)
-            return groups
-          },
-          {} as Record<
-            string,
-            { element: string; radius: number; color: string; atoms: typeof atoms }
-          >,
-        ),
-    )
-
-    // Compute force vectors
-    const force_data = show_force_vectors
-      ? structure.sites
+  let force_data = $derived( // Compute force vectors
+    show_force_vectors && structure?.sites
+      ? structure?.sites
         .map((site) => {
           if (
             !site.properties?.force || !Array.isArray(site.properties.force)
@@ -314,10 +287,46 @@
           }
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
-      : []
+      : [],
+  )
 
-    return { atom_data: atoms, force_data, instanced_atom_groups }
-  })
+  let instanced_atom_groups = $derived(
+    Object.values(
+      atom_data
+        .filter((atom) => !atom.has_partial_occupancy)
+        .reduce(
+          (groups, atom) => {
+            const { element, radius, color } = atom
+            const key = `${element}-${radius.toFixed(3)}`
+            const bucket = groups[key] ||
+              (groups[key] = { element, radius, color, atoms: [] })
+            bucket.atoms.push(atom)
+            return groups
+          },
+          {} as Record<
+            string,
+            {
+              element: string
+              radius: number
+              color: string
+              atoms: (typeof atom_data)[number][]
+            }
+          >,
+        ),
+    ),
+  )
+
+  // Pre-calculate unique site atoms for labeling
+  let unique_instanced_atoms = $derived(
+    Object.values(
+      instanced_atom_groups
+        .flatMap((group) => group.atoms)
+        .reduce((acc, atom) => {
+          acc[atom.site_idx] = atom
+          return acc
+        }, {} as Record<number, (typeof atom_data)[number]>),
+    ),
+  )
 
   let gizmo_props = $derived.by(() => {
     const axis_options = Object.fromEntries(
@@ -368,19 +377,46 @@
   })
 </script>
 
-{#snippet site_label_snippet(element: string, position: Vec3, site_idx: number)}
+{#snippet site_label_snippet(position: Vec3, site_idx: number)}
+  {@const site = structure!.sites[site_idx]}
   {@const pos = math.add(position, site_label_offset)}
   <Extras.HTML center position={pos}>
     {#if atom_label}
-      {@render atom_label(structure!.sites[site_idx], site_idx)}
+      {@render atom_label(site, site_idx)}
     {:else}
       <span
         class="atom-label"
-        style:font-size="{site_label_size}em"
+        style:font-size="{site_label_size * 0.85}em"
         style:background={site_label_bg_color}
         style:padding="{site_label_padding}px"
         style:color={site_label_color}
-      >{element}</span>
+      >
+        {#if show_site_labels && show_site_indices}
+          {#if site.species.length === 1}
+            {site.species[0].element}-{site_idx + 1}
+          {:else}
+            {@html site.species.map((spec) =>
+        `${spec.element}<sub>${
+          format_num(spec.occu, `.3~`).replace(`0.`, `.`)
+        }</sub>`
+      ).join(``)}-{
+              site_idx + 1
+            }
+          {/if}
+        {:else if show_site_labels}
+          {#if site.species.length === 1}
+            {site.species[0].element}
+          {:else}
+            {@html site.species.map((spec) =>
+        `${spec.element}<sub>${
+          format_num(spec.occu, `.3~`).replace(`0.`, `.`)
+        }</sub>`
+      ).join(``)}
+          {/if}
+        {:else if show_site_indices}
+          {site_idx + 1}
+        {/if}
+      </span>
     {/if}
   </Extras.HTML>
 {/snippet}
@@ -407,19 +443,47 @@
 <T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
 <T.AmbientLight intensity={ambient_light} />
 
-<!-- Apply manual rotation to the entire structure -->
-<T.Group {rotation}>
-  {#if show_atoms}
-    <!-- Instanced rendering for full occupancy atoms -->
-    {#each instanced_atom_groups as group (group.element + group.radius)}
-      <Extras.InstancedMesh
-        key="{group.element}-{group.radius}-{group.atoms.length}"
-        range={group.atoms.length}
-      >
-        <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-        <T.MeshStandardMaterial color={group.color} />
-        {#each group.atoms as atom (atom.site_idx)}
-          <Extras.Instance
+<!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
+<T.Group position={rotation_target}>
+  <T.Group {rotation}>
+    <T.Group position={math.scale(rotation_target, -1)}>
+      {#if show_atoms}
+        <!-- Instanced rendering for full occupancy atoms -->
+        {#each instanced_atom_groups as group (group.element + group.radius)}
+          <Extras.InstancedMesh
+            key="{group.element}-{group.radius}-{group.atoms.length}"
+            range={group.atoms.length}
+          >
+            <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
+            <T.MeshStandardMaterial color={group.color} />
+            {#each group.atoms as atom (atom.site_idx)}
+              <Extras.Instance
+                position={atom.position}
+                scale={atom.radius}
+                onpointerenter={() => {
+                  hovered_idx = atom.site_idx
+                  active_tooltip = `atom`
+                  hovered_bond_data = null
+                }}
+                onpointerleave={() => {
+                  hovered_idx = null
+                  active_tooltip = null
+                }}
+                onclick={(event: MouseEvent) => {
+                  const site_idx = atom.site_idx
+                  toggle_selection(site_idx, event)
+                }}
+              />
+            {/each}
+          </Extras.InstancedMesh>
+        {/each}
+
+        <!-- Regular rendering for partial occupancy atoms -->
+        {#each atom_data.filter((atom) => atom.has_partial_occupancy) as
+          atom
+          (atom.site_idx + atom.element + atom.occupancy)
+        }
+          <T.Group
             position={atom.position}
             scale={atom.radius}
             onpointerenter={() => {
@@ -435,302 +499,291 @@
               const site_idx = atom.site_idx
               toggle_selection(site_idx, event)
             }}
+          >
+            <T.Mesh>
+              <T.SphereGeometry
+                args={[
+                  0.5,
+                  sphere_segments,
+                  sphere_segments,
+                  atom.start_phi,
+                  2 * Math.PI * atom.occupancy,
+                ]}
+              />
+              <T.MeshStandardMaterial color={atom.color} />
+            </T.Mesh>
+
+            {#if atom.has_partial_occupancy}
+              <T.Mesh rotation={[0, atom.start_phi, 0]}>
+                <T.CircleGeometry args={[0.5, sphere_segments]} />
+                <T.MeshStandardMaterial color={atom.color} side={2} />
+              </T.Mesh>
+              <T.Mesh rotation={[0, atom.end_phi, 0]}>
+                <T.CircleGeometry args={[0.5, sphere_segments]} />
+                <T.MeshStandardMaterial color={atom.color} side={2} />
+              </T.Mesh>
+            {/if}
+          </T.Group>
+
+          <!-- Render label only for the first species of this site to avoid duplicates -->
+          {#if (show_site_labels || show_site_indices) &&
+          atom.element === structure!.sites[atom.site_idx].species[0].element}
+            {@render site_label_snippet(atom.position, atom.site_idx)}
+          {/if}
+        {/each}
+
+        <!-- Site labels/indices for instanced atoms -->
+        {#if show_site_labels || show_site_indices}
+          {#each unique_instanced_atoms as atom (atom.site_idx)}
+            {@render site_label_snippet(atom.position, atom.site_idx)}
+          {/each}
+        {/if}
+      {/if}
+
+      {#if force_data.length > 0}
+        {#each force_data as force (force.position.join(`,`) + force.vector.join(`,`))}
+          <Vector {...force} />
+        {/each}
+      {/if}
+
+      {#if bond_pairs.length > 0}
+        {#each bond_pairs as bond_data (JSON.stringify(bond_data))}
+          {@const site_a = structure?.sites[bond_data.site_idx_1]}
+          {@const site_b = structure?.sites[bond_data.site_idx_2]}
+          {@const get_majority_color = (site: typeof site_a) => {
+          if (!site?.species || site.species.length === 0) return bond_color
+          // Find species with highest occupancy
+          const majority_species = site.species.reduce((max, spec) =>
+            spec.occu > max.occu ? spec : max
+          )
+          return colors.element?.[majority_species.element] || bond_color
+        }}
+          {@const from_color = get_majority_color(site_a)}
+          {@const to_color = get_majority_color(site_b)}
+          <Bond
+            from={bond_data.pos_1}
+            to={bond_data.pos_2}
+            thickness={bond_thickness}
+            {from_color}
+            {to_color}
+            color={bond_color}
+            {bond_data}
+            {bonding_strategy}
+            {active_tooltip}
+            {hovered_bond_data}
+            onbondhover={(data) => hovered_bond_data = data}
+            ontooltipchange={(type) => active_tooltip = type}
           />
         {/each}
-      </Extras.InstancedMesh>
-    {/each}
+      {/if}
 
-    <!-- Regular rendering for partial occupancy atoms -->
-    {#each atom_data.filter((atom) => atom.has_partial_occupancy) as
-      atom
-      (atom.site_idx + atom.element + atom.occupancy)
-    }
-      <T.Group
-        position={atom.position}
-        scale={atom.radius}
-        onpointerenter={() => {
-          hovered_idx = atom.site_idx
-          active_tooltip = `atom`
-          hovered_bond_data = null
-        }}
-        onpointerleave={() => {
-          hovered_idx = null
-          active_tooltip = null
-        }}
-        onclick={(event: MouseEvent) => {
-          const site_idx = atom.site_idx
-          toggle_selection(site_idx, event)
-        }}
-      >
-        <T.Mesh>
-          <T.SphereGeometry
-            args={[
-              0.5,
-              sphere_segments,
-              sphere_segments,
-              atom.start_phi,
-              2 * Math.PI * atom.occupancy,
-            ]}
-          />
-          <T.MeshStandardMaterial color={atom.color} />
-        </T.Mesh>
-
-        {#if atom.has_partial_occupancy}
-          <T.Mesh rotation={[0, atom.start_phi, 0]}>
-            <T.CircleGeometry args={[0.5, sphere_segments]} />
-            <T.MeshStandardMaterial color={atom.color} side={2} />
-          </T.Mesh>
-          <T.Mesh rotation={[0, atom.end_phi, 0]}>
-            <T.CircleGeometry args={[0.5, sphere_segments]} />
-            <T.MeshStandardMaterial color={atom.color} side={2} />
+      <!-- highlight hovered, active and selected sites -->
+      {#each [
+          {
+            kind: `hover`,
+            site: hovered_site,
+            opacity: 0.28,
+            color: `white`,
+            site_idx: hovered_idx,
+          },
+          ...((selected_sites ?? []).map((idx) => ({
+            kind: `selected`,
+            site: structure?.sites?.[idx] ?? null,
+            site_idx: idx,
+            opacity: pulse_opacity,
+            color: selection_highlight_color,
+          }))),
+        ] as
+        entry
+        (`${entry.kind}-${entry.site_idx}`)
+      }
+        {@const site = entry.site}
+        {@const opacity = entry.opacity}
+        {@const color = entry.color}
+        {#if site}
+          {@const xyz = site.xyz}
+          {@const highlight_radius = atom_data.find((atom) =>
+          atom.site_idx === entry.site_idx
+        )?.radius ?? atom_radius}
+          <T.Mesh
+            position={xyz}
+            scale={1.2 * highlight_radius}
+            onclick={(event: MouseEvent) => {
+              if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
+                toggle_selection(entry.site_idx, event)
+              }
+            }}
+          >
+            <T.SphereGeometry args={[0.5, 22, 22]} />
+            <T.MeshStandardMaterial
+              {color}
+              transparent
+              {opacity}
+              emissive={color}
+              emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
+              depthTest={false}
+              depthWrite={false}
+            />
           </T.Mesh>
         {/if}
-      </T.Group>
-
-      {#if show_site_labels}
-        {@render site_label_snippet(atom.element, atom.position, atom.site_idx)}
-      {/if}
-    {/each}
-
-    <!-- Site labels for instanced atoms -->
-    {#if show_site_labels}
-      {#each instanced_atom_groups as group (group.element + group.radius)}
-        {#each group.atoms as atom (atom.site_idx)}
-          {@render site_label_snippet(atom.element, atom.position, atom.site_idx)}
-        {/each}
       {/each}
-    {/if}
-  {/if}
 
-  {#if force_data.length > 0}
-    {#each force_data as force (force.position.join(`,`) + force.vector.join(`,`))}
-      <Vector {...force} />
-    {/each}
-  {/if}
-
-  {#if bond_pairs.length > 0}
-    {#each bond_pairs as bond_data (JSON.stringify(bond_data))}
-      {@const site_a = structure?.sites[bond_data.site_idx_1]}
-      {@const site_b = structure?.sites[bond_data.site_idx_2]}
-      {@const get_majority_color = (site: typeof site_a) => {
-      if (!site?.species || site.species.length === 0) return bond_color
-      // Find species with highest occupancy
-      const majority_species = site.species.reduce((max, spec) =>
-        spec.occu > max.occu ? spec : max
-      )
-      return colors.element?.[majority_species.element] || bond_color
-    }}
-      {@const from_color = get_majority_color(site_a)}
-      {@const to_color = get_majority_color(site_b)}
-      <Bond
-        from={bond_data.pos_1}
-        to={bond_data.pos_2}
-        thickness={bond_thickness}
-        {from_color}
-        {to_color}
-        color={bond_color}
-        {bond_data}
-        {bonding_strategy}
-        {active_tooltip}
-        {hovered_bond_data}
-        onbondhover={(data) => hovered_bond_data = data}
-        ontooltipchange={(type) => active_tooltip = type}
-      />
-    {/each}
-  {/if}
-
-  <!-- highlight hovered, active and selected sites -->
-  {#each [
-      {
-        kind: `hover`,
-        site: hovered_site,
-        opacity: 0.28,
-        color: `white`,
-        site_idx: hovered_idx,
-      },
-      ...((selected_sites ?? []).map((idx) => ({
-        kind: `selected`,
-        site: structure?.sites?.[idx] ?? null,
-        site_idx: idx,
-        opacity: pulse_opacity,
-        color: selection_highlight_color,
-      }))),
-    ] as
-    entry
-    (`${entry.kind}-${entry.site_idx}`)
-  }
-    {@const site = entry.site}
-    {@const opacity = entry.opacity}
-    {@const color = entry.color}
-    {#if site}
-      {@const xyz = site.xyz}
-      {@const species = site.species}
-      {@const highlight_radius = atom_radius * (same_size_atoms
-      ? 1
-      : species.reduce((sum, spec) =>
-        sum + spec.occu * (atomic_radii[spec.element] ?? 1), 0))}
-      <T.Mesh
-        position={xyz}
-        scale={1.2 * highlight_radius}
-        onclick={(event: MouseEvent) => {
-          if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
-            toggle_selection(entry.site_idx, event)
-          }
-        }}
-      >
-        <T.SphereGeometry args={[0.5, 22, 22]} />
-        <T.MeshStandardMaterial
-          {color}
-          transparent
-          {opacity}
-          emissive={color}
-          emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
-          depthTest={false}
-          depthWrite={false}
-        />
-      </T.Mesh>
-    {/if}
-  {/each}
-
-  <!-- selection order labels (1, 2, 3, ...) for measured sites -->
-  {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
-    {#each measured_sites as site_index, loop_idx (site_index)}
-      {@const site = structure.sites[site_index]}
-      {#if site}
-        {@const pos = math.add(site.xyz, site_label_offset)}
-        <Extras.HTML center position={pos}>
-          <span class="selection-label">{loop_idx + 1}</span>
-        </Extras.HTML>
+      <!-- selection order labels (1, 2, 3, ...) for measured sites -->
+      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+        {#each measured_sites as site_index, loop_idx (site_index)}
+          {@const site = structure.sites[site_index]}
+          {#if site}
+            <!-- shift selected site labels down to avoid overlapping regular site labels-->
+            {@const selection_offset = math.add(site_label_offset, [0, -0.5, 0])}
+            {@const pos = math.add(site.xyz, selection_offset) as Vec3}
+            <Extras.HTML center position={pos}>
+              <span class="selection-label">{loop_idx + 1}</span>
+            </Extras.HTML>
+          {/if}
+        {/each}
       {/if}
-    {/each}
-  {/if}
 
-  <!-- hovered site tooltip -->
-  {#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
-    <CanvasTooltip position={hovered_site.xyz}>
-      <!-- Element symbols with occupancies for disordered sites -->
-      <div class="elements">
-        {#each hovered_site.species ?? [] as
-          { element, occu, oxidation_state: oxi_state },
-          idx
-          ([element, occu, oxi_state])
-        }
-          {@const oxi_str = oxi_state != null && oxi_state !== 0
-          ? `<sup>${oxi_state}${oxi_state > 0 ? `+` : `-`}</sup>`
-          : ``}
-          {@const element_name = element_data.find((elem) =>
-          elem.symbol === element
-        )?.name ??
-          ``}
-          {#if idx > 0}&thinsp;{/if}
-          {#if occu !== 1}<span class="occupancy">{format_num(occu, `.3~f`)}</span>{/if}
-          <strong>{element}{@html oxi_str}</strong>
-          {#if element_name}<span class="elem-name">{element_name}</span>{/if}
-        {/each}
-      </div>
-      <div class="coordinates fractional">
-        abc: ({hovered_site.abc.map((num) => format_num(num, float_fmt)).join(`, `)})
-      </div>
-      <div class="coordinates cartesian">
-        xyz: ({hovered_site.xyz.map((num) => format_num(num, float_fmt)).join(`, `)}) Å
-      </div>
-    </CanvasTooltip>
-  {/if}
+      <!-- hovered site tooltip -->
+      {#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
+        {@const abc = hovered_site.abc.map((x) => format_num(x, float_fmt)).join(`, `)}
+        {@const xyz = hovered_site.xyz.map((x) => format_num(x, float_fmt)).join(`, `)}
+        <CanvasTooltip position={hovered_site.xyz}>
+          <!-- Element symbols with occupancies for disordered sites -->
+          <div class="elements">
+            {#each hovered_site.species ?? [] as
+              { element, occu, oxidation_state: oxi_state },
+              idx
+              ([element, occu, oxi_state])
+            }
+              {@const oxi_str = (oxi_state != null && oxi_state !== 0)
+              ? `<sup>${Math.abs(oxi_state)}${
+                oxi_state > 0 ? `+` : `−`
+              }</sup>`
+              : ``}
+              {@const element_name = element_data.find((elem) =>
+              elem.symbol === element
+            )?.name ??
+              ``}
+              {#if idx > 0}&thinsp;{/if}
+              {#if occu !== 1}<span class="occupancy">{
+                  format_num(occu, `.3~f`)
+                }</span>{/if}
+              <strong>{element}{@html oxi_str}</strong>
+              {#if element_name}<span class="elem-name">{element_name}</span>{/if}
+            {/each}
+          </div>
+          <div class="coordinates fractional">abc: ({abc})</div>
+          <div class="coordinates cartesian">xyz: ({xyz}) Å</div>
+        </CanvasTooltip>
+      {/if}
 
-  {#if lattice}
-    <Lattice matrix={lattice.matrix} {...lattice_props} />
-  {/if}
+      {#if lattice}
+        <Lattice matrix={lattice.matrix} {...lattice_props} />
+      {/if}
 
-  <!-- Measurement overlays for measured sites -->
-  {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
-    {#if measure_mode === `distance`}
-      {#each measured_sites as idx_i, loop_idx (idx_i)}
-        {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
-          {@const site_i = structure.sites[idx_i]}
-          {@const site_j = structure.sites[idx_j]}
-          {@const pos_i = site_i.xyz}
-          {@const pos_j = site_j.xyz}
-          <Bond from={pos_i} to={pos_j} thickness={0.06} color="#cccccc" />
-          {@const midpoint = [
-      (pos_i[0] + pos_j[0]) / 2,
-      (pos_i[1] + pos_j[1]) / 2,
-      (pos_i[2] + pos_j[2]) / 2,
-    ] as Vec3}
-          {@const direct = math.euclidean_dist(pos_i, pos_j)}
-          {@const pbc = lattice ? distance_pbc(pos_i, pos_j, lattice.matrix) : direct}
-          {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-          <Extras.HTML center position={midpoint}>
-            <span class="measure-label">
-              {#if differ}
-                PBC: {format_num(pbc, float_fmt)} Å<br /><small>
-                  Direct: {format_num(direct, float_fmt)} Å</small>
-              {:else}
-                {format_num(pbc, float_fmt)} Å
-              {/if}
-            </span>
-          </Extras.HTML>
-        {/each}
-      {/each}
-    {:else if measure_mode === `angle` && measured_sites.length >= 3}
-      {#each measured_sites as idx_center (idx_center)}
-        {@const center = structure.sites[idx_center]}
-        {#each measured_sites.filter((x) => x !== idx_center) as
-          idx_a,
-          loop_idx
-          (idx_center + `-` + idx_a)
-        }
-          {#each measured_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
-            idx_b
-            (idx_center + `-` + idx_a + `-` + idx_b)
-          }
-            {@const site_a = structure.sites[idx_a]}
-            {@const site_b = structure.sites[idx_b]}
-            {@const [v1, v2] = smart_displacement_vectors(
-      center.xyz,
-      site_a.xyz,
-      site_b.xyz,
-      lattice?.matrix,
-      center.abc,
-      site_a.abc,
-      site_b.abc,
-    )}
-            {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
-            {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
-            {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
-            {#if n1 > math.EPS && n2 > math.EPS}
-              <!-- draw rays from center to the two sites -->
-              <Bond from={center.xyz} to={site_a.xyz} thickness={0.05} color="#bbbbbb" />
-              <Bond from={center.xyz} to={site_b.xyz} thickness={0.05} color="#bbbbbb" />
-              {@const bisector = [
-      v1[0] / n1 + v2[0] / n2,
-      v1[1] / n1 + v2[1] / n2,
-      v1[2] / n1 + v2[2] / n2,
-    ] as Vec3}
-              {@const bis_norm = Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) ||
-      1}
-              {@const offset_dir = [
-      bisector[0] / bis_norm,
-      bisector[1] / bis_norm,
-      bisector[2] / bis_norm,
-    ] as Vec3}
-              {@const label_pos = [
-      center.xyz[0] + offset_dir[0] * 0.6,
-      center.xyz[1] + offset_dir[1] * 0.6,
-      center.xyz[2] + offset_dir[2] * 0.6,
-    ] as Vec3}
-              <Extras.HTML center position={label_pos}>
-                <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
+      <!-- Measurement overlays for measured sites -->
+      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+        {#if measure_mode === `distance`}
+          {#each measured_sites as idx_i, loop_idx (idx_i)}
+            {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
+              {@const site_i = structure.sites[idx_i]}
+              {@const site_j = structure.sites[idx_j]}
+              {@const pos_i = site_i.xyz}
+              {@const pos_j = site_j.xyz}
+              <Bond from={pos_i} to={pos_j} thickness={0.06} color="#cccccc" />
+              {@const midpoint = [
+          (pos_i[0] + pos_j[0]) / 2,
+          (pos_i[1] + pos_j[1]) / 2,
+          (pos_i[2] + pos_j[2]) / 2,
+        ] as Vec3}
+              {@const direct = math.euclidean_dist(pos_i, pos_j)}
+              {@const pbc = lattice ? distance_pbc(pos_i, pos_j, lattice.matrix) : direct}
+              {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
+              <Extras.HTML center position={midpoint}>
+                <span class="measure-label">
+                  {#if differ}
+                    PBC: {format_num(pbc, float_fmt)} Å<br /><small>
+                      Direct: {format_num(direct, float_fmt)} Å</small>
+                  {:else}
+                    {format_num(pbc, float_fmt)} Å
+                  {/if}
+                </span>
               </Extras.HTML>
-            {/if}
+            {/each}
           {/each}
-        {/each}
-      {/each}
-    {/if}
-  {/if}
+        {:else if measure_mode === `angle` && measured_sites.length >= 3}
+          {#each measured_sites as idx_center (idx_center)}
+            {@const center = structure.sites[idx_center]}
+            {#each measured_sites.filter((x) => x !== idx_center) as
+              idx_a,
+              loop_idx
+              (idx_center + `-` + idx_a)
+            }
+              {#each measured_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
+                idx_b
+                (idx_center + `-` + idx_a + `-` + idx_b)
+              }
+                {@const site_a = structure.sites[idx_a]}
+                {@const site_b = structure.sites[idx_b]}
+                {@const [v1, v2] = smart_displacement_vectors(
+          center.xyz,
+          site_a.xyz,
+          site_b.xyz,
+          lattice?.matrix,
+          center.abc,
+          site_a.abc,
+          site_b.abc,
+        )}
+                {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
+                {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
+                {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
+                {#if n1 > math.EPS && n2 > math.EPS}
+                  <!-- draw rays from center to the two sites -->
+                  <Bond
+                    from={center.xyz}
+                    to={site_a.xyz}
+                    thickness={0.05}
+                    color="#bbbbbb"
+                  />
+                  <Bond
+                    from={center.xyz}
+                    to={site_b.xyz}
+                    thickness={0.05}
+                    color="#bbbbbb"
+                  />
+                  {@const bisector = [
+          v1[0] / n1 + v2[0] / n2,
+          v1[1] / n1 + v2[1] / n2,
+          v1[2] / n1 + v2[2] / n2,
+        ] as Vec3}
+                  {@const bis_norm =
+          Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) ||
+          1}
+                  {@const offset_dir = [
+          bisector[0] / bis_norm,
+          bisector[1] / bis_norm,
+          bisector[2] / bis_norm,
+        ] as Vec3}
+                  {@const label_pos = [
+          center.xyz[0] + offset_dir[0] * 0.6,
+          center.xyz[1] + offset_dir[1] * 0.6,
+          center.xyz[2] + offset_dir[2] * 0.6,
+        ] as Vec3}
+                  <Extras.HTML center position={label_pos}>
+                    <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
+                  </Extras.HTML>
+                {/if}
+              {/each}
+            {/each}
+          {/each}
+        {/if}
+      {/if}
+    </T.Group>
+  </T.Group>
 </T.Group>
 
 <style>
-  :global(.responsive-gizmo) {
+  :global(.structure .responsive-gizmo) {
     width: clamp(70px, 18cqmin, 100px) !important;
     height: clamp(70px, 18cqmin, 100px) !important;
   }
@@ -738,6 +791,7 @@
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border-radius: var(--struct-atom-label-border-radius, 3pt);
     padding: var(--struct-atom-label-padding, 0 3px);
+    white-space: nowrap;
   }
   .elements {
     margin-bottom: var(--canvas-tooltip-elements-margin);

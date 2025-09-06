@@ -53,7 +53,7 @@
     if (url_params.has(`camera_projection`)) {
       const cam_projection = url_params.get(`camera_projection`)
       if (cam_projection === `perspective` || cam_projection === `orthographic`) {
-        scene_props = { ...scene_props, camera_projection: cam_projection }
+        scene_props.camera_projection = cam_projection
       }
     }
 
@@ -91,6 +91,16 @@
     if (url_params.has(`performance_mode`)) {
       const mode = url_params.get(`performance_mode`)
       if (mode === `speed` || mode === `quality`) performance_mode = mode
+    }
+
+    // Site labeling parameters
+    if (url_params.has(`show_site_labels`)) {
+      const param = url_params.get(`show_site_labels`)
+      scene_props.show_site_labels = param === `true`
+    }
+    if (url_params.has(`show_site_indices`)) {
+      const param = url_params.get(`show_site_indices`)
+      scene_props.show_site_indices = param === `true`
     }
   })
 

@@ -4,9 +4,6 @@
   --page-bg: #090019;
   --max-text-width: 50em;
 
-  --github-corner-color: var(--page-bg);
-  --github-corner-bg: var(--text-color);
-
   --sms-max-width: 20em;
   --sms-text-color: var(--text-color);
 }
@@ -45,8 +42,7 @@ a {
   text-decoration: none;
 }
 
-button,
-a.btn {
+button, a.btn {
   color: var(--text-color);
   cursor: pointer;
   border: none;
@@ -56,8 +52,7 @@ a.btn {
 a:hover {
   color: var(--accent-hover-color, orange);
 }
-code,
-kbd {
+code, kbd {
   overflow-wrap: break-word;
   padding: 1pt 3pt;
   border-radius: 3pt;

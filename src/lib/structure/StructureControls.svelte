@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { AnyStructure, LatticeProps } from '$lib'
-  import { DraggablePane, SettingsSection } from '$lib'
+  import type { AnyStructure } from '$lib'
+  import { DraggablePane, Lattice, SettingsSection } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { axis_colors, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
@@ -21,7 +21,7 @@
     // Scene properties (bindable from parent)
     scene_props?: ComponentProps<typeof StructureScene>
     // Lattice properties (bindable from parent)
-    lattice_props?: LatticeProps
+    lattice_props?: ComponentProps<typeof Lattice>
     // Display options (bindable from parent)
     show_image_atoms?: boolean
     // Supercell options (bindable from parent)
@@ -225,6 +225,7 @@
       show_bonds: scene_props.show_bonds,
       show_image_atoms,
       show_site_labels: scene_props.show_site_labels,
+      show_site_indices: scene_props.show_site_indices,
       show_force_vectors: scene_props.show_force_vectors,
       show_cell_vectors: lattice_props.show_cell_vectors,
     }}
@@ -233,6 +234,7 @@
         show_atoms: DEFAULTS.structure.show_atoms,
         show_bonds: DEFAULTS.structure.show_bonds,
         show_site_labels: DEFAULTS.structure.show_site_labels,
+        show_site_indices: DEFAULTS.structure.show_site_indices,
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
       show_image_atoms = DEFAULTS.structure.show_image_atoms
@@ -261,6 +263,14 @@
     >
       <input type="checkbox" bind:checked={scene_props.show_site_labels} />
       Site Labels
+    </label>
+    <label
+      {@attach tooltip({
+        content: SETTINGS_CONFIG.structure.show_site_indices.description,
+      })}
+    >
+      <input type="checkbox" bind:checked={scene_props.show_site_indices} />
+      Site Indices
     </label>
     {#if has_forces}
       <label
@@ -566,7 +576,7 @@
     </label>
   </SettingsSection>
 
-  {#if scene_props.show_site_labels}
+  {#if scene_props.show_site_labels || scene_props.show_site_indices}
     <hr />
     <SettingsSection
       title="Labels"

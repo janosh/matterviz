@@ -273,6 +273,89 @@ test.describe(`Structure Component Tests`, () => {
     expect(await site_labels_checkbox.count()).toBe(1)
   })
 
+  test(`show_site_indices can be toggled`, async ({ page }) => {
+    // Use helper function to reliably open controls pane
+    const { pane_div: control_pane } = await open_structure_control_pane(page)
+
+    const site_indices_label = control_pane.locator(`label:has-text("Site Indices")`)
+    const site_indices_checkbox = site_indices_label.locator(`input[type="checkbox"]`)
+
+    await expect(site_indices_label).toBeVisible()
+
+    // Get initial state (could be true or false depending on settings)
+    const initial_state = await site_indices_checkbox.isChecked()
+
+    // Toggle to opposite state
+    if (initial_state) {
+      await site_indices_checkbox.uncheck()
+      expect(await site_indices_checkbox.isChecked()).toBe(false)
+      await site_indices_checkbox.check()
+      expect(await site_indices_checkbox.isChecked()).toBe(true)
+    } else {
+      await site_indices_checkbox.check()
+      expect(await site_indices_checkbox.isChecked()).toBe(true)
+      await site_indices_checkbox.uncheck()
+      expect(await site_indices_checkbox.isChecked()).toBe(false)
+    }
+  })
+
+  test(`show_site_indices controls are properly labeled`, async ({ page }) => {
+    // Use helper function to reliably open controls pane
+    const { pane_div } = await open_structure_control_pane(page)
+
+    const site_indices_label = pane_div.locator(
+      `label:has-text("Site Indices")`,
+    )
+    const site_indices_checkbox = site_indices_label.locator(
+      `input[type="checkbox"]`,
+    )
+
+    await expect(site_indices_label).toBeVisible()
+    await expect(site_indices_checkbox).toBeVisible()
+    expect(await site_indices_label.count()).toBe(1)
+    expect(await site_indices_checkbox.count()).toBe(1)
+  })
+
+  test(`both site labels and site indices can be enabled simultaneously`, async ({ page }) => {
+    // Use helper function to reliably open controls pane
+    const { pane_div: control_pane } = await open_structure_control_pane(page)
+
+    const site_labels_checkbox = control_pane.locator(
+      `label:has-text("Site Labels") input[type="checkbox"]`,
+    )
+    const site_indices_checkbox = control_pane.locator(
+      `label:has-text("Site Indices") input[type="checkbox"]`,
+    )
+
+    // Enable both
+    await site_labels_checkbox.check()
+    await site_indices_checkbox.check()
+
+    // Verify both are enabled
+    expect(await site_labels_checkbox.isChecked()).toBe(true)
+    expect(await site_indices_checkbox.isChecked()).toBe(true)
+
+    // Verify Labels section is visible when site labels are enabled
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
+
+    // Disable one at a time to test independence
+    await site_labels_checkbox.uncheck()
+    expect(await site_labels_checkbox.isChecked()).toBe(false)
+    expect(await site_indices_checkbox.isChecked()).toBe(true)
+
+    // Labels section should remain visible when Site Indices is still enabled (either labels OR indices show label controls)
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
+
+    // Disable both - Labels section should hide when neither is enabled
+    await site_indices_checkbox.uncheck()
+    expect(await site_indices_checkbox.isChecked()).toBe(false)
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).not.toBeVisible()
+
+    // Re-enable site indices only - Label controls section should appear again
+    await site_indices_checkbox.check()
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
+  })
+
   test(`label controls appear when site labels are enabled`, async ({ page }) => {
     // Use helper function to reliably open controls pane
     const { pane_div } = await open_structure_control_pane(page)
@@ -2844,24 +2927,26 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
     test(`labels section reset button appears when labels are shown`, async ({ page }) => {
       // Enable site labels first
-      const show_labels_checkbox = page.locator(`text=Site Labels`).locator(`..`).locator(
-        `input[type="checkbox"]`,
+      const show_labels_checkbox = page.locator(
+        `label:has-text("Site Labels") input[type="checkbox"]`,
       )
       await show_labels_checkbox.check()
 
       // Wait for labels section to appear
-      await expect(page.locator(`text=Labels`)).toBeVisible()
+      await expect(page.locator(`h4:has-text("Labels")`)).toBeVisible()
 
       // Change label size
-      const size_range = page.locator(`text=Size`).locator(`..`).locator(
-        `input[type="range"]`,
+      const size_range = page.locator(`h4:has-text("Labels")`).locator(
+        `xpath=following-sibling::*[1]`,
+      ).locator(
+        `label:has-text("Size") input[type="range"]`,
       )
       await size_range.fill(`1.5`)
 
       // Reset button should appear in Labels section
-      const labels_reset = page.locator(`text=Labels`).locator(`..`).locator(`button`, {
-        hasText: `Reset`,
-      })
+      const labels_reset = page.locator(`h4:has-text("Labels")`).locator(
+        `button.reset-button`,
+      )
       await expect(labels_reset).toBeVisible()
 
       // Click reset button
@@ -2872,6 +2957,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Reset button should disappear
       await expect(labels_reset).not.toBeVisible()
+
+      // check that Labels control section hides after disabling labels
+      await show_labels_checkbox.uncheck()
+      await expect(page.locator(`h4:has-text("Labels")`)).not.toBeVisible()
     })
 
     test(`multiple sections can have reset buttons simultaneously`, async ({ page }) => {

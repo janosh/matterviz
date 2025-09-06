@@ -1,5 +1,5 @@
 {
-  "name": "matterviz",
+  "name": "matterviz-vscode",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
   "version": "0.1.9",
@@ -36,7 +36,7 @@
         "command": "matterviz.render_structure",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "matterviz.supported_resource"
+        "when": "matterviz.supported_resource && editorLangId != 'markdown'"
       }
     ],
     "menus": {
@@ -274,6 +274,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show element labels on atoms"
+        },
+        "matterviz.structure.show_site_indices": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show site index numbers on atoms"
         },
         "matterviz.structure.site_label_size": {
           "type": "number",
@@ -846,7 +851,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.1.4",
     "@types/node": "^24.3.1",
-    "@types/vscode": "^1.103.0",
+    "@types/vscode": "^1.96.0",
     "svelte": "^5.38.7",
     "typescript": "^5.9.2",
     "vite": "^7.1.4",

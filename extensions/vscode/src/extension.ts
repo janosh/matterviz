@@ -492,6 +492,7 @@ function handle_file_change(
         data: updated_file,
         type: is_trajectory_file(filename) ? `trajectory` : `structure`,
         theme: get_theme(),
+        ...(meta || {}),
       })
     } catch (error) {
       console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)

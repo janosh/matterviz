@@ -46,6 +46,26 @@ export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> = Ob
 // set default number format globally
 export const default_fmt: [string, string] = [`,.3~s`, `.3~g`]
 
+// Unicode glyphs for common fractions used by format_fractional()
+export const FRACTION_GLYPHS: ReadonlyArray<readonly [number, string]> = [
+  [0, `0`],
+  [1 / 12, `¹⁄₁₂`],
+  [1 / 8, `⅛`],
+  [1 / 6, `⅙`],
+  [1 / 5, `⅕`],
+  [1 / 4, `¼`],
+  [1 / 3, `⅓`],
+  [2 / 5, `⅖`],
+  [1 / 2, `½`],
+  [3 / 5, `⅗`],
+  [2 / 3, `⅔`],
+  [3 / 4, `¾`],
+  [4 / 5, `⁴⁄₅`],
+  [5 / 6, `⁵⁄₆`],
+  [7 / 8, `⁷⁄₈`],
+  [11 / 12, `¹¹⁄₁₂`],
+]
+
 // fmt as number only allowed to support [].map(format_num) without type error
 export const format_num = (num: number, fmt?: string | number) => {
   if (num === null) return ``
@@ -61,29 +81,11 @@ export function format_fractional(value: number): string {
   if (!Number.isFinite(value)) return String(value)
   const x = ((value % 1) + 1) % 1 // wrap into [0,1)
   const eps = 1e-3
-  const specials: [number, string][] = [
-    [0, `0`],
-    [1 / 12, `¹⁄₁₂`],
-    [1 / 8, `⅛`],
-    [1 / 6, `⅙`],
-    [1 / 5, `⅕`],
-    [1 / 4, `¼`],
-    [1 / 3, `⅓`],
-    [2 / 5, `⅖`],
-    [1 / 2, `½`],
-    [3 / 5, `⅗`],
-    [2 / 3, `⅔`],
-    [3 / 4, `¾`],
-    [4 / 5, `⁴⁄₅`],
-    [5 / 6, `⁵⁄₆`],
-    [7 / 8, `⁷⁄₈`],
-    [11 / 12, `¹¹⁄₁₂`],
-  ]
-  for (const [target, glyph] of specials) {
+  for (const [target, glyph] of FRACTION_GLYPHS) {
     if (target === 0) { if (Math.abs(x - target) <= eps) return glyph }
     else if (Math.abs(x - target) < eps) return glyph
   }
-  for (const [target, glyph] of specials) {
+  for (const [target, glyph] of FRACTION_GLYPHS) {
     if (target !== 0 && Math.abs((1 - x) - target) < eps) return glyph
   }
   return format_num(value, `.4~`)

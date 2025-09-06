@@ -50,10 +50,10 @@
     <code
       {@attach tooltip()}
       title="For use in JavaScript/TypeScript/NodeJS."
-      style="display: inline-flex; gap: 4pt"
+      style="display: inline-flex; gap: 4pt; line-height: 1.3"
     >
       <a href="https://www.npmjs.com/package/matterviz">
-        <Icon icon="NPM" style="transform: scale(2.4); padding-inline: 8pt" />
+        <Icon icon="NPM" style="transform: scale(2.4); padding-inline: 12pt" />
       </a>
       install matterviz
       <CopyButton content="npm install matterviz" style="background: transparent" />

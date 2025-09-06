@@ -176,7 +176,8 @@
 
   let histogram_data = $derived.by(() => {
     if (!selected_series.length || !width || !height) return []
-    const hist_generator = bin().domain([auto_ranges.x[0], auto_ranges.x[1]])
+    const hist_generator = bin()
+      .domain([ranges.current.x[0], ranges.current.x[1]])
       .thresholds(bins)
     return selected_series.map((series_data, series_idx) => {
       const bins_arr = hist_generator(series_data.y)
@@ -542,7 +543,7 @@
     height: var(--histogram-height, 100%);
     min-height: var(--histogram-min-height, 300px);
     container-type: size; /* enable cqh for panes if explicit height is set */
-    z-index: var(--histogram-z-index);
+    z-index: var(--histogram-z-index, auto);
   }
   svg {
     width: 100%;

@@ -7,8 +7,8 @@
 
   interface Props extends Omit<ComponentProps<typeof Select>, `options`> {
     options?: D3InterpolateName[]
-    value?: string
-    selected?: string[]
+    value?: D3InterpolateName
+    selected?: D3InterpolateName[]
     minSelect?: number
     placeholder?: string
     colorbar?: ComponentProps<typeof ColorBar>
@@ -17,7 +17,7 @@
     options = Object.keys(d3_sc).filter((key) =>
       key.startsWith(`interpolate`)
     ) as D3InterpolateName[],
-    value = $bindable(`interpolateViridis`),
+    value = $bindable(options[0] as D3InterpolateName),
     selected = $bindable([]),
     minSelect = 0,
     placeholder = `Select a color scale`,

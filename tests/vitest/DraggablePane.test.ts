@@ -14,7 +14,7 @@ describe(`DraggablePane`, () => {
 
   test(`renders toggle when show_pane`, () => {
     mount(DraggablePane, { target: document.body, props: default_props })
-    expect(document.querySelector(`button`)).toBeTruthy()
+    expect(document.querySelector(`.pane-toggle`)).toBeTruthy()
   })
 
   test(`no toggle when !show_pane`, () => {
@@ -22,7 +22,7 @@ describe(`DraggablePane`, () => {
       target: document.body,
       props: { ...default_props, show_pane: false },
     })
-    expect(document.querySelector(`button`)).toBeFalsy()
+    expect(document.querySelector(`.pane-toggle`)).toBeFalsy()
   })
 
   test(`pane renders when show`, () => {

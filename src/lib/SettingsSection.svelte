@@ -82,7 +82,7 @@
   }
 </script>
 
-<h4>
+<h4 id="settings-section-title">
   {title}
 
   {#if has_changes}
@@ -97,7 +97,7 @@
     </button>
   {/if}
 </h4>
-<section {...rest}>
+<section {...rest} aria-labelledby="settings-section-title">
   {@render children()}
 </section>
 

@@ -975,7 +975,7 @@ describe(`tensor conversion utilities`, () => {
     it(`throws error for singular matrix`, () => {
       const singular_matrix: math.Matrix3x3 = [[1, 2, 3], [2, 4, 6], [3, 6, 9]] // determinant = 0
       expect(() => math.matrix_inverse_3x3(singular_matrix)).toThrow(
-        `Matrix is singular and cannot be inverted`,
+        `Matrix is singular or ill-conditioned; cannot invert`,
       )
     })
 
@@ -987,7 +987,7 @@ describe(`tensor conversion utilities`, () => {
         [0, 0, 1e-10],
       ]
       expect(() => math.matrix_inverse_3x3(small_det_matrix)).toThrow(
-        `Matrix is singular and cannot be inverted`,
+        `Matrix is singular or ill-conditioned; cannot invert`,
       )
 
       // Large numbers
@@ -1016,7 +1016,7 @@ describe(`tensor conversion utilities`, () => {
 
         if (Math.abs(det) < 1e-10) {
           expect(() => math.matrix_inverse_3x3(matrix)).toThrow(
-            `Matrix is singular and cannot be inverted`,
+            `Matrix is singular or ill-conditioned; cannot invert`,
           )
         } else {
           const inv = math.matrix_inverse_3x3(matrix)
