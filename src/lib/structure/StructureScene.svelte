@@ -14,6 +14,7 @@
   } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
+  import { TransformControls } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
@@ -84,11 +85,25 @@
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
-    measure_mode?: `distance` | `angle`
+    measure_mode?: `distance` | `angle` | `edit`
     selected_sites?: number[]
     measured_sites?: number[]
     selection_highlight_color?: string
     rotation?: Vec3 // rotation control prop
+    original_atom_count?: number // number of atoms in original structure (before image atoms)
+    on_atom_move?: (
+      event: {
+        detail: {
+          site_idx: number
+          new_position: Vec3
+          new_abc?: Vec3
+          element?: string
+          delete_site_idx?: number
+        }
+      },
+    ) => void
+    on_operation_start?: () => void
+    on_operation_end?: () => void
   }
   let {
     structure = undefined,
@@ -138,15 +153,177 @@
     measured_sites = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
     rotation = DEFAULTS.structure.rotation,
+    original_atom_count,
+    on_atom_move,
+    on_operation_start,
+    on_operation_end,
   }: Props = $props()
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
   let hovered_bond_data: BondPair | null = $state(null)
 
+  // Transform controls state
+  let transform_controls = $state<any>(undefined)
+  let is_transforming = $state(false)
+  let transform_object = $state<any>(undefined)
+  let drag_coordinates = $state<{ xyz: Vec3; abc?: Vec3 } | null>(null)
+  let has_saved_history_for_drag = $state(false)
+
+  // Context menu state
+  let context_menu = $state<{ x: number; y: number; world_pos: Vec3 } | null>(null)
+  let selected_element = $state(`C`) // Default to Carbon
+
+  // Helper functions
+  const get_material_props = (item: { color: string; is_image_atom?: boolean }) => ({
+    color: item.color,
+    opacity: item.is_image_atom && measure_mode === `edit` ? 0.4 : 1.0,
+    transparent: item.is_image_atom && measure_mode === `edit`,
+  })
+
+  const get_atom_handlers = (atom: typeof atom_data[0]) => ({
+    onpointerenter: () => {
+      hovered_idx = atom.site_idx
+      active_tooltip = `atom`
+      hovered_bond_data = null
+    },
+    onpointerleave: () => {
+      hovered_idx = null
+      active_tooltip = null
+    },
+    onclick: (event: MouseEvent) => {
+      if (measure_mode === `edit` && atom.is_image_atom) return
+      toggle_selection(atom.site_idx, event)
+    },
+    style: atom.is_image_atom && measure_mode === `edit`
+      ? `cursor: not-allowed`
+      : `cursor: pointer`,
+  })
+
+  // Function to update atom position after transformation
+  function update_atom_position(
+    site_idx: number,
+    new_position: Vec3,
+  ) {
+    if (!structure?.sites?.[site_idx] || !on_atom_move) return
+
+    let new_abc: Vec3 | undefined
+    if (lattice) {
+      try {
+        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
+        const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+        const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, new_position)
+        new_abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
+      } catch {
+        console.warn(
+          `Failed to calculate fractional coordinates for site ${site_idx}`,
+        )
+      }
+    }
+
+    on_atom_move({
+      detail: {
+        site_idx,
+        new_position: [...new_position] as Vec3,
+        new_abc,
+      },
+    })
+  }
+
+  // Function to update multiple atoms at once (for batch operations)
+  function update_multiple_atoms(
+    updates: Array<{ site_idx: number; new_position: Vec3 }>,
+  ) {
+    if (!on_atom_move || updates.length === 0) return
+
+    // For batch updates, just update all atoms without individual history saves
+    for (const { site_idx, new_position } of updates) {
+      update_atom_position(site_idx, new_position)
+    }
+  }
+
+  // Add atom at position
+  function add_atom(position: Vec3, element: string) {
+    if (!on_atom_move) return
+
+    let abc: Vec3 | undefined
+    if (lattice) {
+      try {
+        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
+        const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+        const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, position)
+        abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
+      } catch {
+        console.warn(`Failed to calculate fractional coordinates for new atom`)
+      }
+    }
+
+    // Emit add atom event with special site_idx of -1 to indicate new atom
+    on_atom_move({
+      detail: {
+        site_idx: -1,
+        new_position: [...position] as Vec3,
+        new_abc: abc,
+        element,
+      },
+    })
+  }
+
+  // Delete selected atoms
+  function delete_selected_atoms() {
+    if (!on_atom_move || selected_sites.length === 0) return
+
+    // Emit delete events for selected atoms (site_idx: -2 indicates deletion)
+    for (const site_idx of selected_sites) {
+      on_atom_move({
+        detail: {
+          site_idx: -2,
+          new_position: [0, 0, 0] as Vec3,
+          delete_site_idx: site_idx,
+        },
+      })
+    }
+
+    // Clear selection
+    selected_sites = []
+    measured_sites = []
+  }
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
 
+    // In edit mode, allow multi-selection with Shift+Click
+    if (measure_mode === `edit`) {
+      const is_currently_selected = selected_sites.includes(site_index)
+      const is_shift_click = evt instanceof MouseEvent && evt.shiftKey
+
+      if (is_shift_click) {
+        // Multi-selection mode
+        if (is_currently_selected) {
+          // Remove from selection
+          selected_sites = selected_sites.filter((idx) => idx !== site_index)
+          measured_sites = measured_sites.filter((idx) => idx !== site_index)
+        } else {
+          // Add to selection
+          selected_sites = [...selected_sites, site_index]
+          measured_sites = [...measured_sites, site_index]
+        }
+      } else {
+        // Single selection mode - clear previous selections and select only this atom
+        if (is_currently_selected) {
+          // Deselect this atom
+          selected_sites = []
+          measured_sites = []
+        } else {
+          // Select only this atom (clear others)
+          selected_sites = [site_index]
+          measured_sites = [site_index]
+        }
+      }
+      return
+    }
+
+    // Normal measurement mode behavior
     // Check if adding this site would exceed the soft cap
     if (
       !measured_sites.includes(site_index) &&
@@ -172,11 +349,22 @@
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
       measured_sites = []
+      selected_sites = []
       return
     }
     untrack(() => {
       measured_sites = measured_sites.filter((idx) => idx >= 0 && idx < count)
+      selected_sites = selected_sites.filter((idx) => idx >= 0 && idx < count)
     })
+  })
+
+  // Clear selection when switching away from edit mode or when switching between modes
+  $effect(() => {
+    // When switching to edit mode, limit selection to one atom
+    if (measure_mode === `edit` && selected_sites.length > 1) {
+      selected_sites = selected_sites.slice(0, 1)
+      measured_sites = measured_sites.slice(0, 1)
+    }
   })
 
   Extras.interactivity()
@@ -247,12 +435,19 @@
 
   let atom_data = $derived.by(() => { // Pre-compute atom data for performance
     if (!show_atoms || !structure?.sites) return []
+
+    // Determine which atoms are image atoms
+    const base_atom_count = original_atom_count || structure.sites.length
+
     // Build atom data with partial occupancy handling
     return structure.sites.flatMap((site, site_idx) => {
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
         (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
         0,
       ) * atom_radius
+
+      // Check if this is an image atom
+      const is_image_atom = site_idx >= base_atom_count
 
       let start_angle = 0
       return site.species.map(({ element, occu }) => ({
@@ -265,6 +460,7 @@
         has_partial_occupancy: occu < 1,
         start_phi: 2 * Math.PI * start_angle,
         end_phi: 2 * Math.PI * (start_angle += occu),
+        is_image_atom, // Add flag to identify image atoms
       }))
     })
   })
@@ -296,10 +492,10 @@
         .filter((atom) => !atom.has_partial_occupancy)
         .reduce(
           (groups, atom) => {
-            const { element, radius, color } = atom
-            const key = `${element}-${radius.toFixed(3)}`
-            const bucket = groups[key] ||
-              (groups[key] = { element, radius, color, atoms: [] })
+            const key = `${atom.element}-${
+              atom.radius.toFixed(3)
+            }-${atom.is_image_atom}`
+            const bucket = groups[key] ||= { ...atom, atoms: [] }
             bucket.atoms.push(atom)
             return groups
           },
@@ -309,7 +505,8 @@
               element: string
               radius: number
               color: string
-              atoms: (typeof atom_data)[number][]
+              is_image_atom: boolean
+              atoms: typeof atom_data
             }
           >,
         ),
@@ -449,30 +646,21 @@
     <T.Group position={math.scale(rotation_target, -1)}>
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
-        {#each instanced_atom_groups as group (group.element + group.radius)}
+        {#each instanced_atom_groups as
+          group
+          (group.element + group.radius + group.is_image_atom)
+        }
           <Extras.InstancedMesh
-            key="{group.element}-{group.radius}-{group.atoms.length}"
+            key="{group.element}-{group.radius}-{group.atoms.length}-{group.is_image_atom}"
             range={group.atoms.length}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-            <T.MeshStandardMaterial color={group.color} />
+            <T.MeshStandardMaterial {...get_material_props(group)} />
             {#each group.atoms as atom (atom.site_idx)}
               <Extras.Instance
                 position={atom.position}
                 scale={atom.radius}
-                onpointerenter={() => {
-                  hovered_idx = atom.site_idx
-                  active_tooltip = `atom`
-                  hovered_bond_data = null
-                }}
-                onpointerleave={() => {
-                  hovered_idx = null
-                  active_tooltip = null
-                }}
-                onclick={(event: MouseEvent) => {
-                  const site_idx = atom.site_idx
-                  toggle_selection(site_idx, event)
-                }}
+                {...get_atom_handlers(atom)}
               />
             {/each}
           </Extras.InstancedMesh>
@@ -486,19 +674,7 @@
           <T.Group
             position={atom.position}
             scale={atom.radius}
-            onpointerenter={() => {
-              hovered_idx = atom.site_idx
-              active_tooltip = `atom`
-              hovered_bond_data = null
-            }}
-            onpointerleave={() => {
-              hovered_idx = null
-              active_tooltip = null
-            }}
-            onclick={(event: MouseEvent) => {
-              const site_idx = atom.site_idx
-              toggle_selection(site_idx, event)
-            }}
+            {...get_atom_handlers(atom)}
           >
             <T.Mesh>
               <T.SphereGeometry
@@ -510,17 +686,17 @@
                   2 * Math.PI * atom.occupancy,
                 ]}
               />
-              <T.MeshStandardMaterial color={atom.color} />
+              <T.MeshStandardMaterial {...get_material_props(atom)} />
             </T.Mesh>
 
             {#if atom.has_partial_occupancy}
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial {...get_material_props(atom)} side={2} />
               </T.Mesh>
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial {...get_material_props(atom)} side={2} />
               </T.Mesh>
             {/if}
           </T.Group>
@@ -629,7 +805,8 @@
       {/each}
 
       <!-- selection order labels (1, 2, 3, ...) for measured sites -->
-      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+      {#if structure?.sites && (measured_sites?.length ?? 0) > 0 &&
+          measure_mode !== `edit`}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
@@ -677,8 +854,175 @@
         </CanvasTooltip>
       {/if}
 
+      <!-- Live coordinate display during drag -->
+      {#if drag_coordinates && is_transforming}
+        {@const xyz_str = drag_coordinates.xyz.map((x) => format_num(x, float_fmt)).join(
+          `, `,
+        )}
+        {@const abc_str = drag_coordinates.abc?.map((x) =>
+          format_num(x, float_fmt)
+        ).join(`, `) || `N/A`}
+        {@const pos = math.add(drag_coordinates.xyz, [0, 1, 0]) as Vec3}
+        <Extras.HTML center position={pos}>
+          <div class="drag-coordinates">
+            <div class="coord-line">XYZ: {xyz_str}</div>
+            {#if drag_coordinates.abc}
+              <div class="coord-line">ABC: {abc_str}</div>
+            {/if}
+            <div class="coord-hint">
+              {
+                selected_sites.length > 1
+                ? `Moving ${selected_sites.length} atoms`
+                : `Moving atom`
+              }
+            </div>
+          </div>
+        </Extras.HTML>
+      {/if}
+
       {#if lattice}
         <Lattice matrix={lattice.matrix} {...lattice_props} />
+      {/if}
+
+      <!-- Transform controls for editing atoms in edit mode -->
+      {#if measure_mode === `edit` && selected_sites.length > 0}
+        {@const selected_atoms = selected_sites.map((idx) => structure?.sites?.[idx])
+          .filter(Boolean)}
+        {#if selected_atoms.length > 0}
+          {@const centroid = selected_atoms.length === 1 ? selected_atoms[0]!.xyz : [
+          selected_atoms.reduce((sum, atom) => sum + (atom?.xyz[0] || 0), 0) /
+          selected_atoms.length,
+          selected_atoms.reduce((sum, atom) => sum + (atom?.xyz[1] || 0), 0) /
+          selected_atoms.length,
+          selected_atoms.reduce((sum, atom) => sum + (atom?.xyz[2] || 0), 0) /
+          selected_atoms.length,
+        ] as Vec3}
+
+          <!-- Invisible target object for transform controls -->
+          <T.Mesh
+            position={centroid}
+            bind:ref={transform_object}
+            onpointerenter={() => {}}
+          >
+            <T.SphereGeometry args={[0.01, 4, 4]} />
+            <T.MeshBasicMaterial transparent opacity={0} />
+          </T.Mesh>
+
+          <!-- Transform controls that manipulate the target object -->
+          <TransformControls
+            object={transform_object}
+            translationSnap={0.1}
+            rotationSnap={Math.PI / 8}
+            scaleSnap={0.1}
+            showX={true}
+            showY={true}
+            showZ={true}
+            enabled={true}
+            size={1.2}
+            space="world"
+            onchange={() => {
+              if (transform_object?.position && selected_atoms.length > 0) {
+                const { x, y, z } = transform_object.position
+                const new_centroid = [x, y, z] as Vec3
+                const offset = [
+                  new_centroid[0] - centroid[0],
+                  new_centroid[1] - centroid[1],
+                  new_centroid[2] - centroid[2],
+                ] as Vec3
+
+                // Prepare batch updates for all selected atoms
+                const updates = selected_sites
+                  .map((site_idx) => {
+                    const original_pos = structure?.sites?.[site_idx]?.xyz
+                    if (!original_pos) return null
+                    return {
+                      site_idx,
+                      new_position: [
+                        original_pos[0] + offset[0],
+                        original_pos[1] + offset[1],
+                        original_pos[2] + offset[2],
+                      ] as Vec3,
+                    }
+                  })
+                  .filter(Boolean) as Array<{ site_idx: number; new_position: Vec3 }>
+
+                // Update drag coordinates for display
+                if (lattice) {
+                  try {
+                    const lattice_transposed = math.transpose_3x3_matrix(
+                      lattice.matrix,
+                    )
+                    const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+                    const raw_abc = math.mat3x3_vec3_multiply(
+                      lattice_inv,
+                      new_centroid,
+                    )
+                    const abc = raw_abc.map((coord) =>
+                      coord - Math.floor(coord)
+                    ) as Vec3
+                    drag_coordinates = { xyz: new_centroid, abc }
+                  } catch {
+                    drag_coordinates = { xyz: new_centroid }
+                  }
+                } else {
+                  drag_coordinates = { xyz: new_centroid }
+                }
+
+                // Save history only on first change of this drag operation
+                const should_save_history = !has_saved_history_for_drag
+                if (should_save_history) {
+                  has_saved_history_for_drag = true
+                }
+
+                // Apply batch update
+                if (updates.length === 1) {
+                  update_atom_position(
+                    updates[0].site_idx,
+                    updates[0].new_position,
+                  )
+                } else if (updates.length > 1) {
+                  update_multiple_atoms(updates)
+                }
+              }
+            }}
+            ondragstart={() => {
+              is_transforming = true
+              has_saved_history_for_drag = false
+              if (orbit_controls) orbit_controls.enabled = false
+
+              // Notify parent that a continuous operation is starting
+              on_operation_start?.()
+
+              // Initialize drag coordinates
+              if (transform_object?.position) {
+                const { x, y, z } = transform_object.position
+                const xyz = [x, y, z] as Vec3
+                let abc: Vec3 | undefined
+                if (lattice) {
+                  try {
+                    const lattice_transposed = math.transpose_3x3_matrix(
+                      lattice.matrix,
+                    )
+                    const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+                    const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
+                    abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
+                  } catch {
+                    // Ignore coordinate conversion errors during drag
+                  }
+                }
+                drag_coordinates = { xyz, abc }
+              }
+            }}
+            ondragend={() => {
+              is_transforming = false
+              drag_coordinates = null
+              if (orbit_controls) orbit_controls.enabled = true
+
+              // Notify parent that the continuous operation has ended
+              on_operation_end?.()
+            }}
+          />
+        {/if}
       {/if}
 
       <!-- Measurement overlays for measured sites -->
@@ -835,5 +1179,25 @@
     font-size: 0.85em;
     line-height: 1;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+  .drag-coordinates {
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: white;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+    line-height: 1.3;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  .coord-line {
+    margin: 2px 0;
+  }
+  .coord-hint {
+    margin-top: 4px;
+    font-size: 0.75em;
+    opacity: 0.8;
+    font-style: italic;
   }
 </style>
