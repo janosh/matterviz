@@ -33,6 +33,10 @@ export function find_image_atoms(
   )
   const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2
 
+  // Note: tolerance (default 0.05) determines boundary detection for image generation,
+  // while FRACTIONAL_EPS (1e-9) nudges image placement slightly inside cell boundaries
+  // to avoid wrap inconsistencies. These serve different purposes, not to be conflated.
+
   for (const [idx, site] of structure.sites.entries()) {
     // Find edge dimensions and translation directions
     const edge_dims: { dim: number; direction: number }[] = []

@@ -9,12 +9,12 @@
   let { as = `aside`, children, ...rest }: Props = $props()
 </script>
 
-<svelte:element this={as} {...rest}>
+<svelte:element this={as} {...rest} class="table-inset {rest.class ?? ``}">
   {@render children?.()}
 </svelte:element>
 
 <style>
-  aside, div {
+  .table-inset {
     display: grid;
     box-sizing: border-box;
     grid-row: var(--ptable-inset-row, 1 / span 3);

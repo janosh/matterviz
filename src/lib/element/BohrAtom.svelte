@@ -65,7 +65,14 @@
   let viewBox = $derived(`-${size / 2}, -${size / 2}, ${size}, ${size}`)
 </script>
 
-<svg fill={base_fill} {viewBox} role="img" aria-label={name} {...rest}>
+<svg
+  fill={base_fill}
+  {viewBox}
+  role={name || symbol ? `img` : undefined}
+  aria-label={(name || symbol) || undefined}
+  aria-hidden={name || symbol ? undefined : `true`}
+  {...rest}
+>
   <!-- nucleus -->
   <circle class="nucleus" {..._nucleus_props}>
     {#if name}
