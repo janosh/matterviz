@@ -65,14 +65,13 @@ export function pbc_dist(
   const inv_matrix = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
 
   // Convert Cartesian coordinates to fractional coordinates
-  const frac1 = mat3x3_vec3_multiply(inv_matrix, pos1)
-  const frac2 = mat3x3_vec3_multiply(inv_matrix, pos2)
-
-  // Calculate fractional distance vector
-  const frac_diff = add(frac1, scale(frac2, -1))
+  const [fx1, fy1, fz1] = mat3x3_vec3_multiply(inv_matrix, pos1)
+  const [fx2, fy2, fz2] = mat3x3_vec3_multiply(inv_matrix, pos2)
 
   // Apply minimum image convention: wrap to [-0.5, 0.5)
-  const wrapped_frac_diff = frac_diff.map((x) => x - Math.round(x)) as Vec3
+  const wrapped_frac_diff = [fx1 - fx2, fy1 - fy2, fz1 - fz2].map((x) =>
+    x - Math.round(x)
+  ) as Vec3
 
   // Convert back to Cartesian coordinates
   const cart_diff = mat3x3_vec3_multiply(lattice_matrix, wrapped_frac_diff)
@@ -86,7 +85,9 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 
   const det = det_3x3(matrix)
 
-  if (Math.abs(det) < EPS) throw new Error(`Matrix is singular and cannot be inverted`)
+  if (!Number.isFinite(det) || Math.abs(det) < EPS) {
+    throw new Error(`Matrix is singular or ill-conditioned; cannot invert`)
+  }
 
   const inv_det = 1 / det
 

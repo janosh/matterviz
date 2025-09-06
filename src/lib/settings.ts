@@ -56,6 +56,7 @@ export interface SettingsConfig {
 
     // Labels & Lighting
     show_site_labels: SettingType<boolean>
+    show_site_indices: SettingType<boolean>
     site_label_size: SettingType<number>
     site_label_color: SettingType<string>
     site_label_bg_color: SettingType<string>
@@ -261,7 +262,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show orientation gizmo in the corner of structure viewer`,
     },
     camera_position: {
-      value: [0, 0, 0],
+      value: [0, 0, 0] as const,
       description: `Initial camera position [x, y, z]`,
       minItems: 3,
       maxItems: 3,
@@ -317,7 +318,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 10,
     },
     rotation: {
-      value: [0, 0, 0],
+      value: [0, 0, 0] as const,
       description:
         `Manual rotation around X, Y, Z axes, displayed in degrees [0, 360] but normalized as radians to [-π, π] for each of [x, y, z]. Combines additively with auto-rotation when both are active.`,
       minItems: 3,
@@ -328,6 +329,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_site_labels: {
       value: false,
       description: `Show element labels on atoms`,
+    },
+    show_site_indices: {
+      value: false,
+      description: `Show site index numbers on atoms`,
     },
     site_label_size: {
       value: 1,
@@ -350,7 +355,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 20,
     },
     site_label_offset: {
-      value: [0, 0.5, 0],
+      value: [0, 0.5, 0] as const,
       description: `3D offset for atom labels [x, y, z]`,
       minItems: 3,
       maxItems: 3,
@@ -458,7 +463,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 60,
     },
     fps_range: {
-      value: [0.2, 30],
+      value: [0.2, 30] as const,
       description: `Allowed range for playback speed [min, max]`,
       minItems: 2,
       maxItems: 2,
