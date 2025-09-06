@@ -56,6 +56,7 @@ export interface SettingsConfig {
 
     // Labels & Lighting
     show_site_labels: SettingType<boolean>
+    show_site_indices: SettingType<boolean>
     site_label_size: SettingType<number>
     site_label_color: SettingType<string>
     site_label_bg_color: SettingType<string>
@@ -328,6 +329,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_site_labels: {
       value: false,
       description: `Show element labels on atoms`,
+    },
+    show_site_indices: {
+      value: false,
+      description: `Show site index numbers on atoms`,
     },
     site_label_size: {
       value: 1,

@@ -21,7 +21,7 @@
 
   // Add pulsating animation for selected sites
   let pulse_time = $state(0)
-  let pulse_opacity = $derived(0.4 + 0.3 * Math.sin(pulse_time * 3))
+  let pulse_opacity = $derived(0.1 + 0.2 * Math.sin(pulse_time * 3))
 
   // Update pulse time for animation
   $effect(() => {
@@ -54,6 +54,7 @@
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
+    show_site_indices?: boolean
     show_force_vectors?: boolean
     force_scale?: number
     force_color?: string
@@ -103,6 +104,7 @@
     show_atoms = DEFAULTS.structure.show_atoms,
     show_bonds = DEFAULTS.structure.show_bonds,
     show_site_labels = DEFAULTS.structure.show_site_labels,
+    show_site_indices = DEFAULTS.structure.show_site_indices,
     site_label_size = DEFAULTS.structure.site_label_size,
     site_label_offset = $bindable(DEFAULTS.structure.site_label_offset),
     site_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
@@ -245,14 +247,10 @@
     }
   })
 
-  // Pre-compute atom data for performance
-  let { atom_data, force_data, instanced_atom_groups } = $derived.by(() => {
-    if (!show_atoms || !structure?.sites) {
-      return { atom_data: [], force_data: [], instanced_atom_groups: [] }
-    }
-
+  let atom_data = $derived.by(() => { // Pre-compute atom data for performance
+    if (!show_atoms || !structure?.sites) return []
     // Build atom data with partial occupancy handling
-    const atoms = structure.sites.flatMap((site, site_idx) => {
+    return structure.sites.flatMap((site, site_idx) => {
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
         (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
         0,
@@ -271,34 +269,11 @@
         end_phi: 2 * Math.PI * (start_angle += occu),
       }))
     })
+  })
 
-    // Group full-occupancy atoms for instanced rendering
-    const instanced_atom_groups = Object.values(
-      atoms.filter((atom) => !atom.has_partial_occupancy)
-        .reduce(
-          (groups, atom) => {
-            const key = `${atom.element}-${atom.radius.toFixed(3)}`
-            if (!groups[key]) {
-              groups[key] = {
-                element: atom.element,
-                radius: atom.radius,
-                color: atom.color,
-                atoms: [],
-              }
-            }
-            groups[key].atoms.push(atom)
-            return groups
-          },
-          {} as Record<
-            string,
-            { element: string; radius: number; color: string; atoms: typeof atoms }
-          >,
-        ),
-    )
-
-    // Compute force vectors
-    const force_data = show_force_vectors
-      ? structure.sites
+  let force_data = $derived( // Compute force vectors
+    show_force_vectors
+      ? structure?.sites
         .map((site) => {
           if (
             !site.properties?.force || !Array.isArray(site.properties.force)
@@ -314,10 +289,33 @@
           }
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
-      : []
+      : [],
+  )
 
-    return { atom_data: atoms, force_data, instanced_atom_groups }
-  })
+  let instanced_atom_groups = $derived(Object.values( // Group full-occupancy atoms for instanced rendering
+    atom_data.filter((atom) => !atom.has_partial_occupancy)
+      .reduce(
+        (groups, atom) => {
+          const { element, radius, color } = atom
+          const key = `${atom.element}-${atom.radius.toFixed(3)}`
+          if (!groups[key]) groups[key] = { element, radius, color, atoms: [] }
+          groups[key].atoms.push(atom)
+          return groups
+        },
+        {} as Record<
+          string,
+          { element: string; radius: number; color: string; atoms: typeof atom_data }
+        >,
+      ),
+  ))
+
+  // Pre-calculate unique site atoms for labeling
+  let unique_instanced_atoms = $derived(
+    Object.values(
+      instanced_atom_groups.flatMap((group) => group.atoms)
+        .reduce((acc, atom) => ({ ...acc, [atom.site_idx]: atom }), {}),
+    ),
+  )
 
   let gizmo_props = $derived.by(() => {
     const axis_options = Object.fromEntries(
@@ -368,19 +366,46 @@
   })
 </script>
 
-{#snippet site_label_snippet(element: string, position: Vec3, site_idx: number)}
+{#snippet site_label_snippet(position: Vec3, site_idx: number)}
+  {@const site = structure!.sites[site_idx]}
   {@const pos = math.add(position, site_label_offset)}
   <Extras.HTML center position={pos}>
     {#if atom_label}
-      {@render atom_label(structure!.sites[site_idx], site_idx)}
+      {@render atom_label(site, site_idx)}
     {:else}
       <span
         class="atom-label"
-        style:font-size="{site_label_size}em"
+        style:font-size="{site_label_size * 0.85}em"
         style:background={site_label_bg_color}
         style:padding="{site_label_padding}px"
         style:color={site_label_color}
-      >{element}</span>
+      >
+        {#if show_site_labels && show_site_indices}
+          {#if site.species.length === 1}
+            {site.species[0].element}-{site_idx + 1}
+          {:else}
+            {@html site.species.map((spec) =>
+        `${spec.element}<sub>${
+          format_num(spec.occu, `3~`).replace(`0.`, `.`)
+        }</sub>`
+      ).join(``)}-{
+              site_idx + 1
+            }
+          {/if}
+        {:else if show_site_labels}
+          {#if site.species.length === 1}
+            {site.species[0].element}
+          {:else}
+            {@html site.species.map((spec) =>
+        `${spec.element}<sub>${
+          format_num(spec.occu, `3~`).replace(`0.`, `.`)
+        }</sub>`
+      ).join(``)}
+          {/if}
+        {:else if show_site_indices}
+          {site_idx + 1}
+        {/if}
+      </span>
     {/if}
   </Extras.HTML>
 {/snippet}
@@ -489,17 +514,17 @@
             {/if}
           </T.Group>
 
-          {#if show_site_labels}
-            {@render site_label_snippet(atom.element, atom.position, atom.site_idx)}
+          <!-- Render label only for the first species of this site to avoid duplicates -->
+          {#if (show_site_labels || show_site_indices) &&
+          atom.element === structure!.sites[atom.site_idx].species[0].element}
+            {@render site_label_snippet(atom.position, atom.site_idx)}
           {/if}
         {/each}
 
-        <!-- Site labels for instanced atoms -->
-        {#if show_site_labels}
-          {#each instanced_atom_groups as group (group.element + group.radius)}
-            {#each group.atoms as atom (atom.site_idx)}
-              {@render site_label_snippet(atom.element, atom.position, atom.site_idx)}
-            {/each}
+        <!-- Site labels/indices for instanced atoms -->
+        {#if show_site_labels || show_site_indices}
+          {#each unique_instanced_atoms as atom (atom.site_idx)}
+            {@render site_label_snippet(atom.position, atom.site_idx)}
           {/each}
         {/if}
       {/if}
@@ -599,7 +624,9 @@
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
-            {@const pos = math.add(site.xyz, site_label_offset)}
+            <!-- shift selected site labels down to avoid overlapping regular site labels-->
+            {@const selection_offset = math.add(site_label_offset, [0, -0.5, 0])}
+            {@const pos = math.add(site.xyz, selection_offset) as Vec3}
             <Extras.HTML center position={pos}>
               <span class="selection-label">{loop_idx + 1}</span>
             </Extras.HTML>
@@ -753,6 +780,7 @@
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border-radius: var(--struct-atom-label-border-radius, 3pt);
     padding: var(--struct-atom-label-padding, 0 3px);
+    white-space: nowrap;
   }
   .elements {
     margin-bottom: var(--canvas-tooltip-elements-margin);

@@ -225,6 +225,7 @@
       show_bonds: scene_props.show_bonds,
       show_image_atoms,
       show_site_labels: scene_props.show_site_labels,
+      show_site_indices: scene_props.show_site_indices,
       show_force_vectors: scene_props.show_force_vectors,
       show_cell_vectors: lattice_props.show_cell_vectors,
     }}
@@ -233,6 +234,7 @@
         show_atoms: DEFAULTS.structure.show_atoms,
         show_bonds: DEFAULTS.structure.show_bonds,
         show_site_labels: DEFAULTS.structure.show_site_labels,
+        show_site_indices: DEFAULTS.structure.show_site_indices,
         show_force_vectors: DEFAULTS.structure.show_force_vectors,
       })
       show_image_atoms = DEFAULTS.structure.show_image_atoms
@@ -261,6 +263,14 @@
     >
       <input type="checkbox" bind:checked={scene_props.show_site_labels} />
       Site Labels
+    </label>
+    <label
+      {@attach tooltip({
+        content: SETTINGS_CONFIG.structure.show_site_indices.description,
+      })}
+    >
+      <input type="checkbox" bind:checked={scene_props.show_site_indices} />
+      Site Indices
     </label>
     {#if has_forces}
       <label
