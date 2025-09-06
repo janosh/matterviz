@@ -25,13 +25,6 @@ function get_y_tick_numbers(): number[] {
   )
 }
 
-async function set_size_and_tick(): Promise<number[]> {
-  // Allow Svelte to flush reactive updates
-  await Promise.resolve()
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  return get_y_tick_numbers()
-}
-
 describe(`Histogram`, () => {
   // Ensure non-zero client size for happy-dom before each mount
   const ensure_client_size = () => {
@@ -67,7 +60,7 @@ describe(`Histogram`, () => {
     ensure_client_size()
     mount_histogram({ series, bins })
     await Promise.resolve()
-    const ticks = await set_size_and_tick()
+    const ticks = get_y_tick_numbers()
     expect(ticks.length).toBeGreaterThan(0)
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(expected_min_max[0])
@@ -85,7 +78,7 @@ describe(`Histogram`, () => {
       bins: 5,
     })
     await Promise.resolve()
-    const ticks = await set_size_and_tick()
+    const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(5)
   })
@@ -96,14 +89,14 @@ describe(`Histogram`, () => {
     ensure_client_size()
     mount_histogram({ series, bins: 9 })
     await Promise.resolve()
-    const ticks_many = await set_size_and_tick()
+    const ticks_many = get_y_tick_numbers()
     const max_many = Math.max(...ticks_many)
 
     document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({ series, bins: 3 })
     await Promise.resolve()
-    const ticks_few = await set_size_and_tick()
+    const ticks_few = get_y_tick_numbers()
     const max_few = Math.max(...ticks_few)
 
     expect(max_few).toBeGreaterThanOrEqual(max_many)
@@ -114,7 +107,7 @@ describe(`Histogram`, () => {
     ensure_client_size()
     mount_histogram({ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_lim: [0, 3] })
     await Promise.resolve()
-    const ticks = await set_size_and_tick()
+    const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeLessThanOrEqual(3)
   })
@@ -125,7 +118,7 @@ describe(`Histogram`, () => {
     ensure_client_size()
     mount_histogram({ series, bins: 5 })
     await Promise.resolve()
-    const ticks_full = await set_size_and_tick()
+    const ticks_full = get_y_tick_numbers()
     const full_max = Math.max(...ticks_full)
     const full_hist = bin().thresholds(5)(series[0].y)
     const full_expected = d3max(full_hist, (b) => b.length) || 0
@@ -135,7 +128,7 @@ describe(`Histogram`, () => {
     ensure_client_size()
     mount_histogram({ series, bins: 5, x_lim: [0, 3] })
     await Promise.resolve()
-    const ticks_zoom = await set_size_and_tick()
+    const ticks_zoom = get_y_tick_numbers()
     const zoom_max = Math.max(...ticks_zoom)
     const zoom_hist = bin().domain([0, 3]).thresholds(5)(series[0].y)
     const zoom_expected = d3max(zoom_hist, (b) => b.length) || 0
@@ -153,7 +146,7 @@ describe(`Histogram`, () => {
       y_lim: [1, null],
     })
     await Promise.resolve()
-    const ticks = await set_size_and_tick()
+    const ticks = get_y_tick_numbers()
     // log scale should not include non-positive ticks
     expect(Math.min(...ticks)).toBeGreaterThan(0)
   })

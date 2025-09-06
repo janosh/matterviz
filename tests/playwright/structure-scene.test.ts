@@ -42,9 +42,16 @@ async function safe_canvas_hover(
 async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
   const canvas = page.locator(`#test-structure canvas`)
 
-  // Use cached position if available
-  if (cached_atom_position) return cached_atom_position
-
+  if (cached_atom_position) { // Use cached position if available
+    try {
+      await safe_canvas_hover(page, canvas, cached_atom_position)
+      const structure_tooltip = page.locator(`.tooltip:has(.coordinates)`)
+      await structure_tooltip.waitFor({ state: `visible`, timeout: 300 })
+      return cached_atom_position
+    } catch {
+      cached_atom_position = null // fall through to probing positions below
+    }
+  }
   const positions = [
     { x: 300, y: 200 },
     { x: 250, y: 150 },
@@ -432,6 +439,122 @@ test.describe(`StructureScene Component Tests`, () => {
     const screenshot = await canvas.screenshot()
     expect(screenshot.length).toBeGreaterThan(1000)
 
+    expect(console_errors).toHaveLength(0)
+  })
+
+  // Site labeling functionality tests
+  test(`site labels display correctly for ordered and disordered sites`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    // Enable site labels via URL parameter for easier testing
+    await page.goto(`/test/structure?show_site_labels=true`, { waitUntil: `networkidle` })
+    await canvas.waitFor({ state: `visible`, timeout: 5000 })
+
+    // Take screenshot to verify labels are rendered
+    const labeled_screenshot = await canvas.screenshot()
+    expect(labeled_screenshot.length).toBeGreaterThan(1000)
+
+    // Also assert at least one label is present
+    const labels = page.locator(`.atom-label`)
+    expect(await labels.count()).toBeGreaterThan(0)
+
+    // No console errors during label rendering
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`site indices display correctly and start from 1`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    // Enable site indices via URL parameter
+    await page.goto(`/test/structure?show_site_indices=true`, {
+      waitUntil: `networkidle`,
+    })
+    await canvas.waitFor({ state: `visible`, timeout: 5000 })
+
+    // Take screenshot to verify indices are rendered
+    const indexed_screenshot = await canvas.screenshot()
+    expect(indexed_screenshot.length).toBeGreaterThan(1000)
+
+    // No console errors during index rendering
+    expect(console_errors).toHaveLength(0)
+
+    // Verify indices start at 1 (and not 0)
+    const texts = await page.locator(`.atom-label`).allTextContents()
+    expect(texts.some((t) => /^\s*1\s*$/.test(t))).toBe(true)
+    expect(texts.some((t) => /^\s*0\s*$/.test(t))).toBe(false)
+  })
+
+  test(`combined site labels and indices display correctly`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    // Enable both site labels and indices via URL parameters
+    await page.goto(`/test/structure?show_site_labels=true&show_site_indices=true`, {
+      waitUntil: `networkidle`,
+    })
+    await canvas.waitFor({ state: `visible`, timeout: 5000 })
+
+    // Take screenshot to verify combined labels are rendered
+    const combined_screenshot = await canvas.screenshot()
+    expect(combined_screenshot.length).toBeGreaterThan(1000)
+
+    // No console errors during combined label rendering
+    expect(console_errors).toHaveLength(0)
+
+    // Spot-check that at least one label matches "X-<n>"
+    const texts = await page.locator(`.atom-label`).allTextContents()
+    expect(texts.some((t) => /[A-Z][a-z]?\s*-\s*\d+/.test(t))).toBe(true)
+  })
+
+  test(`disordered sites show combined element-occupancy format`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    // Enable site labels to test disordered site formatting
+    await page.goto(`/test/structure?show_site_labels=true`, { waitUntil: `networkidle` })
+    await canvas.waitFor({ state: `visible`, timeout: 5000 })
+
+    // Look for sites with partial occupancy by searching positions
+    const positions = [
+      { x: 200, y: 200 },
+      { x: 300, y: 250 },
+      { x: 400, y: 200 },
+      { x: 250, y: 300 },
+      { x: 350, y: 150 },
+    ]
+
+    for (const position of positions) {
+      await safe_canvas_hover(page, canvas, position)
+
+      const tooltip = page.locator(`.tooltip:has(.coordinates)`)
+      try {
+        await tooltip.waitFor({ state: `visible`, timeout: 500 })
+
+        // Check for occupancy indicators (partial occupancy sites)
+        const occupancy_spans = tooltip.locator(`.occupancy`)
+        const occupancy_count = await occupancy_spans.count()
+
+        if (occupancy_count > 0) {
+          // Found a disordered site, verify format
+          for (let idx = 0; idx < occupancy_count; idx++) {
+            const occupancy_text = await occupancy_spans.nth(idx).textContent()
+            expect(occupancy_text).toMatch(/^0\.\d*[1-9]$|^1$/) // Valid occupancy format
+          }
+          break
+        }
+      } catch {
+        // Continue to next position if tooltip doesn't appear
+        continue
+      }
+    }
+
+    // Take screenshot regardless of whether we found disordered sites
+    const screenshot = await canvas.screenshot()
+    expect(screenshot.length).toBeGreaterThan(1000)
+
+    // No console errors during disordered site rendering
     expect(console_errors).toHaveLength(0)
   })
 

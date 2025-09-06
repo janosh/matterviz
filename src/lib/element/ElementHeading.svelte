@@ -4,7 +4,6 @@
 
   interface Props extends HTMLAttributes<HTMLHeadingElement> {
     element: ChemicalElement
-    style?: string
   }
   let { element, ...rest }: Props = $props()
 </script>

@@ -809,7 +809,7 @@ describe(`MatterViz Extension`, () => {
         vi.mocked(fs.readFileSync).mockReturnValue(`updated content`)
 
         const message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
           file_path: `/test/file.cif`,
         }
@@ -824,20 +824,21 @@ describe(`MatterViz Extension`, () => {
 
         expect(mock_webview.postMessage).toHaveBeenCalledWith({
           command: `fileUpdated`,
-          file_path: `/test/file.cif`,
           data: expect.objectContaining({
             filename: `file.cif`,
             content: `updated content`,
             isCompressed: false,
           }),
           type: `structure`,
-          theme: expect.any(String),
+          ...msg_args,
+          file_path: `/test/file.cif`,
+          theme: `white`,
         })
       })
 
       test(`should handle file deletion notifications`, async () => {
         const message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
           file_path: `/test/file.cif`,
         }
