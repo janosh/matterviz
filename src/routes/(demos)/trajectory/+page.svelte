@@ -6,7 +6,7 @@
   let active_file = $state(``) // last drag-and-dropped trajectory file
 
   const trajectory_files_paths = [
-    `/trajectories/torch-sim-gold-cluster-55-atoms.h5`,
+    `/trajectories/flame-gold-cluster-55-atoms.h5`,
     `/trajectories/vasp-XDATCAR-traj.gz`,
     `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`,
     `/trajectories/ase-images-Ag-0-to-97.xyz.gz`,

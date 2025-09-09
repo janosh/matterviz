@@ -381,11 +381,11 @@ describe(`Default Plotting Behavior`, () => {
 describe(`HDF5 Trajectory Data Extraction`, () => {
   it(`should extract data from HDF5 trajectory`, async () => {
     const hdf5_content = read_binary_test_file(
-      `torch-sim-gold-cluster-55-atoms.h5`,
+      `flame-gold-cluster-55-atoms.h5`,
     )
     const trajectory = await parse_trajectory_data(
       hdf5_content,
-      `torch-sim-gold-cluster-55-atoms.h5`,
+      `flame-gold-cluster-55-atoms.h5`,
     )
     const first_frame = trajectory.frames[0]
 
@@ -408,11 +408,11 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
 
   it(`should handle all frames and lattice consistency`, async () => {
     const hdf5_content = read_binary_test_file(
-      `torch-sim-gold-cluster-55-atoms.h5`,
+      `flame-gold-cluster-55-atoms.h5`,
     )
     const trajectory = await parse_trajectory_data(
       hdf5_content,
-      `torch-sim-gold-cluster-55-atoms.h5`,
+      `flame-gold-cluster-55-atoms.h5`,
     )
 
     const all_frame_data = trajectory.frames.map((frame: TrajectoryFrame) =>
