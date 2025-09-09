@@ -9,6 +9,7 @@
 [![VSCode Extension](https://img.shields.io/badge/Install%20VSCode-Extension-blue?logo=typescript&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz)
 [![Docs](https://img.shields.io/badge/Read-the%20docs-blue?logo=googledocs&logoColor=white)](https://matterviz.janosh.dev)
 [![Open in StackBlitz](https://img.shields.io/badge/Open%20in-StackBlitz-darkblue?logo=stackblitz&logoColor=white)](https://stackblitz.com/github/janosh/matterviz)
+[![Zenodo DOI](https://zenodo.org/badge/498793280.svg)](https://doi.org/10.5281/zenodo.17094509)
 
 </h4>
 
@@ -123,3 +124,21 @@ This project would not have been possible as a one-person side project without m
 | :-----------------------------: | :--------------------------------------: | :------------------------------------------: | :---------------------------------: | :----------------------------------: |
 | [three.js](https://threejs.org) |          [d3](https://d3js.org)          |         [mdsvex](https://mdsvex.com)         |     [vite](https://vitejs.dev)      | [playwright](https://playwright.dev) |
 | [threlte](https://threlte.xyz)  | [sharp](https://sharp.pixelplumbing.com) | [rehype](https://github.com/rehypejs/rehype) | [sveltekit](https://kit.svelte.dev) |     [vitest](https://vitest.dev)     |
+
+## How to cite `matterviz`
+
+Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://zenodo.org/badge/latestdoi/498793280) using the following BibTeX entry:
+
+```bib
+@software{riebesell_matterviz_2022,
+  title = {matterviz: visualization toolkit for materials informatics},
+  author = {Riebesell, Janosh and Evans, Matthew},
+  date = {2025-09-10},
+  year = {2025},
+  doi = {10.5281/zenodo.17094509},
+  url = {https://github.com/janosh/matterviz},
+  note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
+  urldate = {2025-09-10}, % optional, replace with your date of access
+  version = {0.1.9}, % replace with the version you use
+}
+```

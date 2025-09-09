@@ -53,7 +53,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 - **TRAJ** - ASE trajectory files
 - **ExtXYZ** - Extended XYZ trajectories
-- **HDF5/H5** - `torch-sim` HDF5 trajectory formats
+- **HDF5/H5** - `flame` HDF5 trajectory formats
 - **JSON** - `pymatgen` JSON trajectory formats
 - **Compressed files** - `.gz` compressed versions of above
 
