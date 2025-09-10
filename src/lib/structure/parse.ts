@@ -1197,7 +1197,7 @@ export function parse_structure_file(
     const ext = base_filename.split(`.`).pop()
 
     // Try to detect format by file extension
-    if (ext === `xyz`) {
+    if (ext === `xyz` || ext === `extxyz`) {
       return parse_xyz(content)
     }
 

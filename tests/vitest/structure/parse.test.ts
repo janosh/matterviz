@@ -15,6 +15,7 @@ import {
 } from '$lib/structure/parse'
 import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
 import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
+import c5_extra_data_extxyz from '$site/molecules/C5-extra-data.extxyz?raw'
 import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
 import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
@@ -238,6 +239,13 @@ describe(`XYZ Parser`, () => {
     {
       name: `with extra data`,
       content: c5_extra_data_xyz,
+      sites: 5,
+      element: `C`,
+      has_lattice: false,
+    },
+    {
+      name: `with extra data and extxyz extension`,
+      content: c5_extra_data_extxyz,
       sites: 5,
       element: `C`,
       has_lattice: false,
