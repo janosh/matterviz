@@ -1197,14 +1197,10 @@ export function parse_structure_file(
     const ext = base_filename.split(`.`).pop()
 
     // Try to detect format by file extension
-    if (ext === `xyz`) {
-      return parse_xyz(content)
-    }
+    if (ext === `xyz`) return parse_xyz(content)
 
     // CIF files
-    if (ext === `cif`) {
-      return parse_cif(content)
-    }
+    if (ext === `cif`) return parse_cif(content)
 
     // JSON files - try OPTIMADE JSON structure format first, then pymatgen
     if (ext === `json`) {
@@ -1217,9 +1213,7 @@ export function parse_structure_file(
         }
         // Otherwise, try to parse as pymatgen/nested structure JSON
         const structure = find_structure_in_json(parsed)
-        if (structure) {
-          return structure
-        }
+        if (structure) return structure
         console.error(`JSON file does not contain a valid structure format`)
         return null
       } catch (error) {
@@ -1578,12 +1572,6 @@ export function is_structure_file(filename: string): boolean {
   if (/\.(cif|poscar|vasp|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/i.test(name)) return true
   if (/(poscar|contcar|potcar|incar|kpoints|outcar)/i.test(name)) return true
 
-  // .xyz files: structure unless they have trajectory keywords, .extxyz files: trajectory by default
-  if (/\.extxyz$/i.test(name)) return false
-  if (/\.xyz$/i.test(name)) {
-    return !/(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i.test(name)
-  }
-
   // Keyword-based detection for YAML/JSON/XML
   const structure_keywords =
     /(structure|phono|vasp|crystal|material|lattice|geometry|unit_?cell|atoms|sites|data|phono3?py)/i
@@ -1591,6 +1579,9 @@ export function is_structure_file(filename: string): boolean {
     /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
   const config_dirs =
     /(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)\//i
+
+  // .xyz/.extxyz files: structure unless they have trajectory keywords
+  if (/\.(xyz|extxyz)$/i.test(name)) return !trajectory_keywords.test(name)
 
   if (/\.(yaml|yml)$/i.test(name) && structure_keywords.test(name)) return true
   if (/\.xml$/i.test(name) && structure_keywords.test(name)) return true

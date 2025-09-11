@@ -75,8 +75,8 @@ const FORMAT_PATTERNS = {
   },
 } as const
 
-// Check if filename indicates trajectory file
-export function is_trajectory_file(filename: string): boolean {
+// Check if file is a trajectory (supports both filename-only and content-based detection)
+export function is_trajectory_file(filename: string, content?: string): boolean {
   let base_name = filename.toLowerCase()
   const compression_regex = new RegExp(
     `\\.(${COMPRESSION_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
@@ -86,8 +86,13 @@ export function is_trajectory_file(filename: string): boolean {
     base_name = base_name.replace(compression_regex, ``)
   }
 
+  // For xyz/extxyz files, use content-based detection if available
+  if (/\.(xyz|extxyz)$/i.test(base_name)) {
+    return content ? count_xyz_frames(content) >= 2 : false
+  }
+
   // Always detect these specific trajectory formats
-  if (/\.(traj|xtc|xyz|extxyz)$/i.test(base_name) || /xdatcar/i.test(base_name)) {
+  if (/\.(traj|xtc)$/i.test(base_name) || /xdatcar/i.test(base_name)) {
     return true
   }
 
@@ -219,6 +224,7 @@ const read_ndarray_from_view = (
 
 // Unified frame counting for XYZ
 function count_xyz_frames(data: string): number {
+  if (!data || typeof data !== `string`) return 0
   const lines = data.trim().split(/\r?\n/)
   let frame_count = 0
   let line_idx = 0

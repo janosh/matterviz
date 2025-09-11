@@ -646,12 +646,10 @@ O1   O   0.410  0.270  0.120  1.000
 O2   O   0.410  0.140  0.880  1.000`
 
   it(`should detect CIF format by extension`, () => {
-    const result = parse_structure_file(
-      QUARTZ_CIF_FOR_DETECTION,
-      `quartz.cif`,
-    )
+    const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION, `quartz.cif`)
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
+    expect(result.lattice?.a).toBe(4.916)
   })
 
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
@@ -2502,7 +2500,7 @@ describe(`Structure File Detection`, () => {
     [`test.poscar`, true],
     [`test.vasp`, true],
     [`test.xyz`, true],
-    [`test.extxyz`, false], // .extxyz files are now classified as potential trajectories
+    [`test.extxyz`, true],
     [`test.json`, false], // Generic JSON files should not trigger MatterViz
     [`test.yaml`, false], // Generic YAML files should not trigger MatterViz
     [`test.yml`, false], // Generic YAML files should not trigger MatterViz
@@ -2574,13 +2572,14 @@ describe(`Structure File Detection`, () => {
     [`mp-756175.json`, false],
     [`BaTiO3-tetragonal.poscar`, true],
     [`cyclohexane.xyz`, true],
-    [`quartz.extxyz`, false],
+    [`cyclohexane.extxyz`, true],
+    [`quartz.extxyz`, true],
     [`AgI-fq978185p-phono3py.yaml.gz`, true],
     [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
     [`BeO-zw12zc18p-phono3py.yaml.gz`, true],
-    // Trajectory files should not be detected as structure files
+    // filenames containing trajectory keywords should not be detected as structure files
     [`trajectory.traj`, false],
-    [`md.xyz.gz`, false], // This should be detected as a trajectory file, not structure
+    [`md.xyz.gz`, false],
     [`simulation.h5`, false],
     [`XDATCAR`, false],
     [`relax.extxyz`, false],

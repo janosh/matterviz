@@ -1,6 +1,3 @@
-<script>
-</script>
-
 # Structure
 
 ```svelte example

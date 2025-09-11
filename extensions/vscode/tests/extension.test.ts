@@ -149,8 +149,9 @@ describe(`MatterViz Extension`, () => {
     [`water_cluster_md.traj`, true, true], // ASE binary trajectory
     [`optimization_relax.traj`, true, true], // ASE binary trajectory
     [`regular_text.traj`, true, true], // .traj files are always binary
-    [`test.xyz`, true, false], // .xyz files are now always considered potential trajectories
-    [`test.extxyz`, true, false], // .extxyz files are always considered potential trajectories
+    // filename-only based .xyz/.extxyz detection always assumes structure, requires file content to look for frames and recognize as trajectory
+    [`test.xyz`, false, false],
+    [`test.extxyz`, false, false],
     [`test.cif`, false, false], // Not a trajectory file
   ])(
     `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,

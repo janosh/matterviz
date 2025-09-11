@@ -95,6 +95,10 @@ const active_frame_loaders = new Map<string, FrameLoaderData>()
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
   if (!filename || typeof filename !== `string`) return false
+
+  // xyz/extxyz files should always be auto-rendered (detection happens with content)
+  if (/\.(xyz|extxyz)(?:\.(gz|gzip|zip|bz2|xz))?$/i.test(filename)) return true
+
   return is_structure_file(filename) || is_trajectory_file(filename)
 }
 

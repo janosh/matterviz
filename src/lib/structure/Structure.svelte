@@ -29,7 +29,7 @@
 
   interface Props
     extends
-      Omit<ControlProps, `children`>,
+      Omit<ControlProps, `children` | `onclose`>,
       Omit<HTMLAttributes<HTMLDivElement>, `children`> {
     scene_props?: ComponentProps<typeof StructureScene>
     // only show the buttons when hovering over the canvas on desktop screens
