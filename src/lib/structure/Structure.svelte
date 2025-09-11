@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure, Lattice, Site } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
@@ -22,16 +22,22 @@
   } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { parse_any_structure } from './parse'
-  import type { Props as ControlProps } from './StructureControls.svelte'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
 
-  interface Props
-    extends
-      Omit<ControlProps, `children`>,
-      Omit<HTMLAttributes<HTMLDivElement>, `children`> {
+  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `children`> {
+    structure?: AnyStructure
     scene_props?: ComponentProps<typeof StructureScene>
+    lattice_props?: ComponentProps<typeof Lattice>
+    controls_open?: boolean
+    background_color?: string
+    background_opacity?: number
+    wrapper?: HTMLDivElement
+    color_scheme?: ColorSchemeName
+    png_dpi?: number
+    show_image_atoms?: boolean
+    supercell_scaling?: string
     // only show the buttons when hovering over the canvas on desktop screens
     // mobile screens don't have hover, so by default the buttons are always
     // shown on a canvas of width below 500px
@@ -186,7 +192,7 @@
   // Auto-enable force vectors when structure has force data
   $effect(() => {
     if (structure?.sites && !force_vectors_auto_enabled) {
-      const has_force_data = structure.sites.some((site) =>
+      const has_force_data = structure.sites.some((site: Site) =>
         site.properties?.force && Array.isArray(site.properties.force)
       )
 
@@ -218,8 +224,107 @@
   })
 
   // Measurement mode and selection state
-  let measure_mode: `distance` | `angle` = $state(`distance`)
+  let measure_mode: `distance` | `angle` | `edit` = $state(`distance`)
   let measure_menu_open = $state(false)
+
+  // Undo/redo system
+  let structure_history = $state<typeof structure[]>([])
+  let history_index = $state(-1)
+  let is_during_continuous_operation = $state(false)
+
+  const MAX_HISTORY = 20
+
+  // Save current structure to history before making changes
+  function save_to_history() {
+    if (!structure) return
+
+    // Remove any future history if we're not at the end
+    if (history_index < structure_history.length - 1) {
+      structure_history = structure_history.slice(0, history_index + 1)
+    }
+
+    // Add current structure to history
+    structure_history.push(JSON.parse(JSON.stringify(structure)))
+    history_index++
+
+    // Limit history size
+    if (structure_history.length > MAX_HISTORY) {
+      structure_history = structure_history.slice(-MAX_HISTORY)
+      history_index = structure_history.length - 1
+    }
+  }
+
+  // Undo last change
+  function undo() {
+    if (history_index > 0) {
+      history_index--
+      const previous_structure = structure_history[history_index]
+      if (previous_structure) {
+        // Clear selections before restoring to avoid conflicts
+        selected_sites = []
+        measured_sites = []
+        structure = JSON.parse(JSON.stringify(previous_structure))
+      }
+    }
+  }
+
+  // Redo last undone change
+  function redo() {
+    if (history_index < structure_history.length - 1) {
+      history_index++
+      const next_structure = structure_history[history_index]
+      if (next_structure) {
+        // Clear selections before restoring to avoid conflicts
+        selected_sites = []
+        measured_sites = []
+        structure = JSON.parse(JSON.stringify(next_structure))
+      }
+    }
+  }
+
+  // Initialize history when structure first loads
+  $effect(() => {
+    if (structure && structure_history.length === 0) {
+      structure_history = [JSON.parse(JSON.stringify(structure))]
+      history_index = 0
+    }
+  })
+
+  // Keyboard shortcuts
+  function handle_keydown(event: KeyboardEvent) {
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key === `z` && !event.shiftKey) {
+        event.preventDefault()
+        undo()
+      } else if ((event.key === `y`) || (event.key === `z` && event.shiftKey)) {
+        event.preventDefault()
+        redo()
+      }
+    } else if (event.key === `Delete` || event.key === `Backspace`) {
+      // Delete selected atoms in edit mode
+      if (measure_mode === `edit` && selected_sites.length > 0) {
+        event.preventDefault()
+
+        // Save to history once before making any changes
+        save_to_history()
+
+        // Store atoms to delete before clearing selection
+        const atoms_to_delete = new Set(selected_sites)
+
+        // Clear selection BEFORE updating structure to prevent TransformControls interference
+        selected_sites = []
+        measured_sites = []
+
+        // Delete all selected atoms in one operation
+        if (structure?.sites) {
+          structure = {
+            ...structure,
+            sites: structure.sites.filter((_, idx) => !atoms_to_delete.has(idx)),
+          }
+        }
+      }
+    }
+  }
 
   let visible_buttons = $derived(
     show_controls === true ||
@@ -414,11 +519,14 @@
 <div
   class:dragover
   class:active={info_pane_open || controls_open}
-  role="region"
-  aria-label="Structure viewer"
+  role="application"
+  aria-label="Structure viewer with keyboard shortcuts"
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
+  tabindex="-1"
+  onkeydown={handle_keydown}
+  onclick={() => wrapper?.focus()}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
@@ -431,7 +539,6 @@
     event.preventDefault()
     dragover = false
   }}
-  {onkeydown}
   {...rest}
   class="structure {rest.class ?? ``}"
 >
@@ -489,8 +596,10 @@
               </span>
             {:else}
               <Icon
-                icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
-                style="transform: scale({{ distance: 0.9, angle: 1.1 }[measure_mode]})"
+                icon={({ distance: `Ruler`, angle: `Angle`, edit: `Edit` } as const)[
+                  measure_mode
+                ]}
+                style="transform: scale({{ distance: 0.9, angle: 1.1, edit: 1.0 }[measure_mode]})"
               />
             {/if}
             <Icon
@@ -507,11 +616,46 @@
               <Icon icon="Reset" style="margin-left: -4px" />
             </button>
           {/if}
+
+          <!-- Undo/Redo buttons (only show in edit mode) -->
+          {#if measure_mode === `edit`}
+            {@const undo_count = history_index}
+            {@const redo_count = structure_history.length - 1 - history_index}
+            <div class="undo-redo-container">
+              <button
+                type="button"
+                aria-label="Undo (Ctrl+Z)"
+                disabled={history_index <= 0}
+                onclick={undo}
+                title="Undo (Ctrl+Z)"
+                class="undo-redo-button"
+              >
+                <Icon icon="Undo" />
+                {#if undo_count > 0}
+                  <span class="history-count">{undo_count}</span>
+                {/if}
+              </button>
+              <button
+                type="button"
+                aria-label="Redo (Ctrl+Y)"
+                disabled={history_index >= structure_history.length - 1}
+                onclick={redo}
+                title="Redo (Ctrl+Y)"
+                class="undo-redo-button"
+              >
+                <Icon icon="Redo" />
+                {#if redo_count > 0}
+                  <span class="history-count">{redo_count}</span>
+                {/if}
+              </button>
+            </div>
+          {/if}
           {#if measure_menu_open}
             <div class="view-mode-dropdown">
               {#each [
             { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
             { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
+            { mode: `edit`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
           ] as const as
                 { mode, icon, label, scale }
                 (mode)
@@ -576,6 +720,73 @@
             {measure_mode}
             {width}
             {height}
+            original_atom_count={supercell_structure?.sites?.length || structure?.sites?.length}
+            on_operation_start={() => {
+              // Save history BEFORE starting the continuous operation
+              save_to_history()
+              is_during_continuous_operation = true
+            }}
+            on_operation_end={() => {
+              is_during_continuous_operation = false
+              // Don't save history here - it was saved at the start
+            }}
+            on_atom_move={(event) => {
+              if (!event.detail || !structure?.sites) return
+
+              const {
+                site_idx,
+                new_position,
+                new_abc,
+                element,
+                delete_site_idx,
+              } = event.detail
+
+              // For discrete operations (not during continuous ops), save history before changes
+              if (!is_during_continuous_operation) {
+                save_to_history()
+              }
+
+              if (site_idx === -1 && element) {
+                // Add new atom
+                const new_site = {
+                  species: [{
+                    element: element as any,
+                    occu: 1,
+                    oxidation_state: null,
+                  }],
+                  xyz: new_position,
+                  abc: new_abc || [0, 0, 0],
+                  properties: {},
+                  label: element,
+                } as any
+                structure = {
+                  ...structure,
+                  sites: [...structure.sites, new_site],
+                }
+              } else if (site_idx === -2 && delete_site_idx !== undefined) {
+                // Delete atom
+                structure = {
+                  ...structure,
+                  sites: structure.sites.filter((_, idx) => idx !== delete_site_idx),
+                }
+              } else if (site_idx >= 0) {
+                // Move existing atom
+                const target_idx = site_idx >= structure.sites.length
+                  ? site_idx % structure.sites.length // Image atom -> original atom
+                  : site_idx
+
+                if (structure.sites[target_idx]) {
+                  structure = {
+                    ...structure,
+                    sites: structure.sites.map((site, idx) =>
+                      idx === target_idx
+                        ? { ...site, xyz: new_position, abc: new_abc || site.abc }
+                        : site
+                    ),
+                  }
+                }
+              }
+            }}
           />
         </Canvas>
       </div>
@@ -738,5 +949,33 @@
   }
   .error-state button:hover {
     background: var(--error-color-hover, #ff5252);
+  }
+  .undo-redo-container {
+    display: flex;
+    gap: 0;
+  }
+  .undo-redo-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .history-count {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    background: var(--accent-color, #007acc);
+    color: white;
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    font-size: 8px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 1;
   }
 </style>
