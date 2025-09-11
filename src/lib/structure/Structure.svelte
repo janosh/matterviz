@@ -62,6 +62,8 @@
     selected_sites?: number[]
     // explicit measured sites for distance/angle overlays
     measured_sites?: number[]
+    // structure content as string (alternative to providing structure directly or via data_url)
+    structure_string?: string
     children?: Snippet<[{ structure?: AnyStructure }]>
     on_file_load?: EventHandler
     on_error?: EventHandler
@@ -106,6 +108,7 @@
     fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     bottom_left,
     data_url,
+    structure_string,
     on_file_drop,
     spinner_props = {},
     loading = $bindable(false),
@@ -177,6 +180,35 @@
           loading = false
           on_error?.({ error_msg, filename: data_url })
         })
+    }
+  })
+
+  $effect(() => { // Parse structure from string when structure_string is provided
+    if (!structure_string || data_url) return
+    loading = true
+    error_msg = undefined
+    try {
+      const parsed = parse_any_structure(structure_string, `string`)
+      if (parsed) {
+        structure = parsed
+        untrack(() =>
+          on_file_load?.({
+            structure: parsed,
+            filename: `string`,
+            file_size: new Blob([structure_string]).size,
+            total_atoms: parsed.sites?.length || 0,
+          })
+        )
+      } else {
+        throw new Error(`Failed to parse structure from string`)
+      }
+    } catch (err) {
+      error_msg = `Failed to parse structure from string: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+      untrack(() => on_error?.({ error_msg, filename: `string` }))
+    } finally {
+      loading = false
     }
   })
 
