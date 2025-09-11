@@ -4,6 +4,7 @@ import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
+  CONFIG_DIRS_REGEX,
   MD_SIM_EXCLUDE_REGEX,
   TRAJ_EXTENSIONS_REGEX,
   TRAJ_FALLBACK_EXTENSIONS_REGEX,
@@ -84,6 +85,7 @@ const FORMAT_PATTERNS = {
 
 // Check if file is a trajectory (supports both filename-only and content-based detection)
 export function is_trajectory_file(filename: string, content?: string): boolean {
+  if (CONFIG_DIRS_REGEX.test(filename)) return false
   let base_name = filename.toLowerCase()
   while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
     base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
@@ -93,7 +95,7 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   if (/\.(xyz|extxyz)$/i.test(base_name)) {
     if (content) return count_xyz_frames(content) >= 2
     // Use filename-based detection for auto-render (compressed or not)
-    return TRAJ_KEYWORDS_SIMPLE_REGEX.test(filename.toLowerCase())
+    return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
   }
 
   // Always detect these specific trajectory formats

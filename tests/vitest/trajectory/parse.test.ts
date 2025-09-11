@@ -254,6 +254,7 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
         `5\nenergy=-10.5\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\nH 0.0 0.0 1.0\nH -1.0 0.0 0.0`,
         false,
       ],
+      [`single-frame-lattice.extxyz`, `1\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\n`, false],
       // Multi-frame XYZ files should return true
       [
         `trajectory.xyz`,

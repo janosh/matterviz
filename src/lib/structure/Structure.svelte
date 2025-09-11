@@ -191,14 +191,7 @@
       const parsed = parse_any_structure(structure_string, `string`)
       if (parsed) {
         structure = parsed
-        untrack(() =>
-          on_file_load?.({
-            structure: parsed,
-            filename: `string`,
-            file_size: new Blob([structure_string]).size,
-            total_atoms: parsed.sites?.length || 0,
-          })
-        )
+        untrack(() => emit_file_load_event(parsed, `string`, structure_string))
       } else {
         throw new Error(`Failed to parse structure from string`)
       }

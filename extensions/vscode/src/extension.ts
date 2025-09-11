@@ -1,3 +1,4 @@
+import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { is_structure_file } from '$lib/structure/parse'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
@@ -125,7 +126,8 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
 export const read_file = (file_path: string): FileData => {
   const filename = path.basename(file_path)
   // Binary files that should be read as base64
-  const is_binary = /\.(gz|gzip|zip|bz2|xz|traj|h5|hdf5)$/i.test(filename)
+  const is_binary = COMPRESSION_EXTENSIONS_REGEX.test(filename) ||
+    /\.(traj|h5|hdf5)$/i.test(filename)
 
   // Check file size to avoid loading huge files into memory
   let file_size: number

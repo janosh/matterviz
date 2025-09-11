@@ -649,7 +649,7 @@ O2   O   0.410  0.140  0.880  1.000`
     const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION, `quartz.cif`)
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
-    expect(result.lattice?.a).toBe(4.916)
+    expect(result.lattice?.a).toBeCloseTo(4.916, 6)
   })
 
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
@@ -1937,7 +1937,7 @@ describe(`parse_structure_file`, () => {
     const end_time = performance.now()
 
     expect(result?.sites).toHaveLength(1)
-    expect(result?.sites[0].species).toContain(`H`)
+    expect(result?.sites[0].species[0]).toBe(`H`)
 
     // Should complete reasonably quickly (less than 100ms for 100 levels)
     // This ensures the recursive parser is efficient and doesn't degrade
@@ -2574,6 +2574,7 @@ describe(`Structure File Detection`, () => {
     [`cyclohexane.xyz`, true],
     [`cyclohexane.extxyz`, true],
     [`quartz.extxyz`, true],
+    [`structure.extxyz.gz`, true],
     [`AgI-fq978185p-phono3py.yaml.gz`, true],
     [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
     [`BeO-zw12zc18p-phono3py.yaml.gz`, true],

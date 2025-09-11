@@ -1,11 +1,7 @@
 // deno-lint-ignore-file require-await
 // Import MatterViz parsing functions and components
 import '$lib/app.css'
-import {
-  decompress_data,
-  detect_compression_format,
-  remove_compression_extension,
-} from '$lib/io/decompress'
+import { decompress_data, detect_compression_format } from '$lib/io/decompress'
 import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
@@ -13,6 +9,7 @@ import '$lib/theme/themes'
 import type { LoadingOptions } from '$lib/trajectory/parse'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 // Add frame loader import
+import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { type DefaultSettings, merge } from '$lib/settings'
 import type {
   FrameIndex,
@@ -23,6 +20,7 @@ import type {
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 
+type ViewType = `trajectory` | `structure`
 export interface FileData {
   filename: string
   content: string
@@ -30,14 +28,14 @@ export interface FileData {
 }
 
 export interface MatterVizData {
-  type: `trajectory` | `structure`
+  type: ViewType
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
 }
 
 export interface ParseResult {
-  type: `trajectory` | `structure`
+  type: ViewType
   data: unknown
   filename: string
   // For trajectories that support VS Code streaming
@@ -53,7 +51,7 @@ export interface FileChangeMessage {
   command: `fileUpdated` | `fileDeleted`
   file_path?: string
   data?: FileData
-  type?: `trajectory` | `structure`
+  type?: ViewType
   theme?: ThemeName
 }
 
@@ -74,6 +72,7 @@ class VSCodeFrameLoader implements FrameLoader {
         const { command, request_id: id, error, frame } = event.data
         if (command === `frame_response` && id === request_id) {
           globalThis.removeEventListener(`message`, handler)
+          clearTimeout(timer)
           if (error) reject(new Error(error))
           else resolve(frame)
         }
@@ -87,7 +86,7 @@ class VSCodeFrameLoader implements FrameLoader {
         frame_index,
       })
 
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         globalThis.removeEventListener(`message`, handler)
         reject(new Error(`Frame ${frame_index} timeout`))
       }, 30000)
@@ -123,6 +122,7 @@ declare global {
   interface Window {
     mattervizData?: MatterVizData
     initializeMatterViz?: () => void
+    download?: (data: string | Blob, filename: string) => void
   }
   var mattervizData: MatterVizData | undefined
 
@@ -150,12 +150,12 @@ function get_vscode_api(): VSCodeAPI | null {
 
 // Set up VSCode-specific download override for file exports
 export const setup_vscode_download = (): void => {
-  const vscode = get_vscode_api()
-  if (!vscode) {
+  const vscode_api = get_vscode_api()
+  if (!vscode_api) {
     console.debug(`VSCode API not available, skipping download override setup`)
     return
   }
-  ;(globalThis as Record<string, unknown>).download = (
+  ;(globalThis as unknown as Window).download = (
     data: string | Blob,
     filename: string,
   ): void => {
@@ -166,7 +166,7 @@ export const setup_vscode_download = (): void => {
 
     try {
       if (typeof data === `string`) {
-        vscode.postMessage({
+        vscode_api.postMessage({
           command: `saveAs`,
           content: data,
           filename,
@@ -176,7 +176,7 @@ export const setup_vscode_download = (): void => {
         // Handle binary data (like PNG images)
         const reader = new FileReader()
         reader.onload = () => {
-          vscode.postMessage({
+          vscode_api.postMessage({
             command: `saveAs`,
             content: reader.result as string,
             filename,
@@ -186,13 +186,13 @@ export const setup_vscode_download = (): void => {
         reader.onerror = () => {
           const msg = `Failed to read binary data for download`
           console.error(msg)
-          vscode.postMessage({ command: `error`, text: msg })
+          vscode_api.postMessage({ command: `error`, text: msg })
         }
         reader.readAsDataURL(data)
       }
     } catch (error) {
       console.error(`VSCode download failed:`, error)
-      vscode.postMessage({
+      vscode_api.postMessage({
         command: `error`,
         text: `Download failed: ${error}`,
       })
@@ -232,17 +232,17 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
         current_app = create_display(container, result, result.filename)
       }
 
-      const vscode = get_vscode_api()
-      if (vscode) {
+      const vscode_api = get_vscode_api()
+      if (vscode_api) {
         const text = `File reloaded successfully`
-        vscode.postMessage({ command: `info`, text })
+        vscode_api.postMessage({ command: `info`, text })
       }
     } catch (error) {
       console.error(`Failed to reload file:`, error)
-      const vscode = get_vscode_api()
-      if (vscode) {
+      const vscode_api = get_vscode_api()
+      if (vscode_api) {
         const text = `Failed to reload file: ${error}`
-        vscode.postMessage({ command: `error`, text })
+        vscode_api.postMessage({ command: `error`, text })
       }
     }
   }
@@ -271,8 +271,8 @@ function request_large_file_content(
     file_path: string
   }
 > {
-  const vscode = get_vscode_api()
-  if (!vscode) throw new Error(`VS Code API not available`)
+  const vscode_api = get_vscode_api()
+  if (!vscode_api) throw new Error(`VS Code API not available`)
 
   return new Promise((resolve, reject) => {
     const request_id = Math.random().toString(36).slice(2, 15)
@@ -300,7 +300,7 @@ function request_large_file_content(
     }
 
     globalThis.addEventListener(`message`, handler)
-    vscode.postMessage({
+    vscode_api.postMessage({
       command: `request_large_file`,
       request_id,
       file_path,
@@ -385,7 +385,7 @@ const parse_file_content = async (
     if (format && format !== `zip`) { // Skip ZIP as it's not supported in browser
       try {
         content = await decompress_data(buffer, format)
-        filename = remove_compression_extension(filename)
+        filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
       } catch (error) {
         console.warn(`Failed to decompress file ${filename}:`, error)
       }
@@ -468,10 +468,10 @@ const create_display = (
   let final_trajectory_data = result.data
 
   if (is_trajectory && result.streaming_info?.supports_streaming) {
-    const vscode = get_vscode_api()
+    const vscode_api = get_vscode_api()
     const trajectory_data = result.data as TrajectoryData
 
-    if (vscode && result.streaming_info.file_path) {
+    if (vscode_api && result.streaming_info.file_path) {
       // Create trajectory with frame loader for streaming
       final_trajectory_data = {
         ...trajectory_data,
@@ -479,7 +479,7 @@ const create_display = (
         // Keep existing frames for initial display
         frames: trajectory_data.frames || [],
         // Attach frame loader directly to trajectory
-        frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode),
+        frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
       }
     }
   }
@@ -506,7 +506,7 @@ const create_display = (
 
   // VSCode message logging
   try {
-    const vs_code_api = get_vscode_api()
+    const vscode_api = get_vscode_api()
     const trajectory_data = final_trajectory_data as TrajectoryData & {
       total_frames?: number
     }
@@ -517,7 +517,7 @@ const create_display = (
       } initial frames, ${trajectory_data?.total_frames || NaN} total)`
       : `Structure rendered: ${filename} (${structure_data.sites?.length || 0} sites)`
 
-    vs_code_api?.postMessage({ command: `log`, text: message })
+    vscode_api?.postMessage({ command: `log`, text: message })
   } catch (error) {
     console.warn(`VSCode API messaging failed:`, error)
   }
@@ -619,8 +619,8 @@ async function initialize() {
     current_app = app
 
     // Set up file change monitoring
-    const vscode = get_vscode_api()
-    if (vscode) {
+    const vscode_api = get_vscode_api()
+    if (vscode_api) {
       // Listen for file change messages from extension
       globalThis.addEventListener(`message`, (event) => {
         if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
@@ -643,15 +643,17 @@ async function initialize() {
       )
     }
     // Get VSCode API if available
-    const vscode = get_vscode_api()
-    if (vscode) {
+    const vscode_api = get_vscode_api()
+    if (vscode_api) {
       const filename = get_matterviz_data()?.data?.filename || `Unknown file`
       const text = `Error rendering ${filename}: ${err.message}`
-      vscode.postMessage({ command: `error`, text })
+      vscode_api.postMessage({ command: `error`, text })
     }
     throw error
   }
-} // Cleanup function to properly dispose of components
+}
+
+// Cleanup function to properly dispose of components
 async function cleanup_matterviz(): Promise<void> {
   if (current_app) {
     try {
