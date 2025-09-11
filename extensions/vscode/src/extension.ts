@@ -92,13 +92,16 @@ const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 // Track active frame loaders by file path
 const active_frame_loaders = new Map<string, FrameLoaderData>()
 
+// Helper: determine view type using content when available
+const infer_view_type = (file: FileData): `trajectory` | `structure` => {
+  // Only pass content for text files; for binary (compressed) fall back to filename
+  const content = file.isCompressed ? undefined : file.content
+  return is_trajectory_file(file.filename, content) ? `trajectory` : `structure`
+}
+
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
   if (!filename || typeof filename !== `string`) return false
-
-  // xyz/extxyz files should always be auto-rendered (detection happens with content)
-  if (/\.(xyz|extxyz)(?:\.(gz|gzip|zip|bz2|xz))?$/i.test(filename)) return true
-
   return is_structure_file(filename) || is_trajectory_file(filename)
 }
 
@@ -122,7 +125,7 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
 export const read_file = (file_path: string): FileData => {
   const filename = path.basename(file_path)
   // Binary files that should be read as base64
-  const is_binary = /\.(gz|traj|h5|hdf5)$/.test(filename)
+  const is_binary = /\.(gz|gzip|zip|bz2|xz|traj|h5|hdf5)$/i.test(filename)
 
   // Check file size to avoid loading huge files into memory
   let file_size: number
@@ -488,13 +491,12 @@ function handle_file_change(
     // File was changed - send updated content
     try {
       const updated_file = read_file(file_path)
-      const filename = path.basename(file_path)
 
       webview.postMessage({
         command: `fileUpdated`,
         file_path,
         data: updated_file,
-        type: is_trajectory_file(filename) ? `trajectory` : `structure`,
+        type: infer_view_type(updated_file),
         theme: get_theme(),
         ...(meta || {}),
       })
@@ -550,7 +552,7 @@ function create_webview_panel(
   if (file_path) start_watching_file(file_path, panel.webview)
 
   panel.webview.html = create_html(panel.webview, context, {
-    type: is_trajectory_file(file_data.filename) ? `trajectory` : `structure`,
+    type: infer_view_type(file_data),
     data: file_data,
     theme: get_theme(),
     defaults: get_defaults(),
@@ -567,7 +569,7 @@ function create_webview_panel(
     if (panel.visible) {
       const current_file = file_path ? read_file(file_path) : file_data
       panel.webview.html = create_html(panel.webview, context, {
-        type: is_trajectory_file(file_data.filename) ? `trajectory` : `structure`,
+        type: infer_view_type(current_file),
         data: current_file,
         theme: get_theme(),
         defaults: get_defaults(),
@@ -626,7 +628,6 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
     _token: vscode.CancellationToken,
   ) {
     try {
-      const filename = path.basename(document.uri.fsPath)
       const file_path = document.uri.fsPath
 
       webview_panel.webview.options = {
@@ -640,7 +641,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         webview_panel.webview,
         this.context,
         {
-          type: is_trajectory_file(filename) ? `trajectory` : `structure`,
+          type: infer_view_type(read_file(document.uri.fsPath)),
           data: read_file(document.uri.fsPath),
           theme: get_theme(),
           defaults: get_defaults(),
@@ -662,7 +663,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
             webview_panel.webview,
             this.context,
             {
-              type: is_trajectory_file(filename) ? `trajectory` : `structure`,
+              type: infer_view_type(read_file(document.uri.fsPath)),
               data: read_file(document.uri.fsPath),
               theme: get_theme(),
               defaults: get_defaults(),

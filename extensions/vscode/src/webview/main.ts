@@ -23,20 +23,20 @@ import type {
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 
-interface FileData {
+export interface FileData {
   filename: string
   content: string
   isCompressed: boolean
 }
 
-interface MatterVizData {
+export interface MatterVizData {
   type: `trajectory` | `structure`
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
 }
 
-interface ParseResult {
+export interface ParseResult {
   type: `trajectory` | `structure`
   data: unknown
   filename: string
@@ -44,12 +44,12 @@ interface ParseResult {
   streaming_info?: { supports_streaming: boolean; file_path: string }
 }
 
-interface MatterVizApp {
+export interface MatterVizApp {
   $on?(type: string, callback: (event: Event) => void): () => void
   $set?(props: Partial<Record<string, unknown>>): void
 }
 
-interface FileChangeMessage {
+export interface FileChangeMessage {
   command: `fileUpdated` | `fileDeleted`
   file_path?: string
   data?: FileData
@@ -106,15 +106,15 @@ class VSCodeFrameLoader implements FrameLoader {
   }
 }
 
-interface TrajectoryData {
+export interface TrajectoryData {
   frames?: { structure?: { sites?: unknown[] } }[]
 }
 
-interface StructureData {
+export interface StructureData {
   sites?: unknown[]
 }
 
-interface VSCodeAPI {
+export interface VSCodeAPI {
   postMessage(message: unknown): void
 }
 
@@ -393,7 +393,7 @@ const parse_file_content = async (
   }
 
   // Try trajectory parsing first if it looks like a trajectory
-  if (is_trajectory_file(filename)) {
+  if (is_trajectory_file(filename, content)) {
     try {
       const data = await parse_trajectory_data(content, filename)
       return { type: `trajectory`, data, filename }

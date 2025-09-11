@@ -16,6 +16,7 @@ import {
   render,
   should_auto_render,
 } from '../src/extension'
+import type { FileData } from '../src/webview/main'
 
 // Mock modules
 vi.mock(`fs`)
@@ -1156,6 +1157,141 @@ describe(`MatterViz Extension`, () => {
           expect.stringContaining(`MatterViz auto-render failed:`),
         )
       })
+    })
+  })
+
+  describe(`Multi-frame xyz/extxyz handling`, () => {
+    test(`should correctly identify multi-frame XYZ as trajectory using content`, () => {
+      // Multi-frame XYZ content (2 frames)
+      const multi_frame_xyz_content = `3
+frame 1
+H 0.0 0.0 0.0
+O 0.0 0.0 1.0
+H 0.0 1.0 0.0
+3
+frame 2
+H 0.1 0.0 0.0
+O 0.0 0.1 1.0
+H 0.0 1.0 0.1`
+
+      // Single-frame XYZ content
+      const single_frame_xyz_content = `3
+water molecule
+H 0.0 0.0 0.0
+O 0.0 0.0 1.0
+H 0.0 1.0 0.0`
+
+      // Test 1: Verify is_trajectory_file directly detects multi-frame content
+      expect(is_trajectory_file(`multi-frame.xyz`, multi_frame_xyz_content)).toBe(true)
+      expect(is_trajectory_file(`single-frame.xyz`, single_frame_xyz_content)).toBe(false)
+
+      // Test 2: Verify filename-only detection doesn't identify .xyz as trajectory
+      expect(is_trajectory_file(`multi-frame.xyz`)).toBe(false) // filename-only should be false
+      expect(is_trajectory_file(`single-frame.xyz`)).toBe(false) // filename-only should be false
+
+      // Test 3: Test with FileData objects (simulating what infer_view_type receives)
+      const multi_frame_file: FileData = {
+        filename: `multi-frame.xyz`,
+        content: multi_frame_xyz_content,
+        isCompressed: false,
+      }
+
+      const single_frame_file: FileData = {
+        filename: `single-frame.xyz`,
+        content: single_frame_xyz_content,
+        isCompressed: false,
+      }
+
+      const compressed_file: FileData = {
+        filename: `trajectory.xyz.gz`,
+        content: `base64encodedcontent`,
+        isCompressed: true,
+      }
+
+      // Test what infer_view_type logic would do:
+      // For non-compressed files, pass content
+      expect(is_trajectory_file(multi_frame_file.filename, multi_frame_file.content))
+        .toBe(true)
+      expect(is_trajectory_file(single_frame_file.filename, single_frame_file.content))
+        .toBe(false)
+
+      // For compressed files, don't pass content (falls back to filename-only)
+      expect(is_trajectory_file(compressed_file.filename)).toBe(true) // .xyz.gz with trajectory keyword is detected as trajectory by filename
+
+      // Test 4: Test webview creation scenario directly with content-based detection
+      const multi_frame_html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(multi_frame_file.filename, multi_frame_file.content)
+          ? `trajectory`
+          : `structure`,
+        data: multi_frame_file,
+        theme: `light`,
+      })
+
+      const multi_frame_parsed_data = JSON.parse(
+        multi_frame_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+          `{}`,
+      )
+
+      expect(multi_frame_parsed_data.type).toBe(`trajectory`)
+      expect(multi_frame_parsed_data.data.filename).toBe(`multi-frame.xyz`)
+      expect(multi_frame_parsed_data.data.content).toBe(multi_frame_xyz_content)
+
+      // Test 5: Test single-frame for comparison
+      const single_frame_html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(single_frame_file.filename, single_frame_file.content)
+          ? `trajectory`
+          : `structure`,
+        data: single_frame_file,
+        theme: `light`,
+      })
+
+      const single_frame_parsed_data = JSON.parse(
+        single_frame_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+          `{}`,
+      )
+
+      expect(single_frame_parsed_data.type).toBe(`structure`)
+
+      // Test 6: Test compressed file falls back correctly
+      const compressed_html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(compressed_file.filename) ? `trajectory` : `structure`,
+        data: compressed_file,
+        theme: `light`,
+      })
+
+      const compressed_parsed_data = JSON.parse(
+        compressed_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+          `{}`,
+      )
+
+      expect(compressed_parsed_data.type).toBe(`trajectory`) // Should be trajectory since filename contains trajectory keyword
+    })
+
+    test(`should handle compressed XYZ files by falling back to filename-only detection`, () => {
+      // Test compressed file (should fall back to filename-only detection)
+      const compressed_file = {
+        filename: `trajectory.xyz.gz`,
+        content: `base64encodedcontent`, // This is binary/compressed
+        isCompressed: true,
+      }
+
+      // For compressed files, infer_view_type should fall back to filename-only detection
+      // Since .xyz.gz with trajectory keyword is detected as trajectory by filename, it should be 'trajectory'
+      expect(is_trajectory_file(compressed_file.filename)).toBe(true) // filename-only detection
+
+      // Test the HTML generation scenario
+      const html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(compressed_file.filename) ? `trajectory` : `structure`,
+        data: compressed_file,
+        theme: `light`,
+      })
+
+      const parsed_data = JSON.parse(
+        html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ?? `{}`,
+      )
+
+      // Should be 'trajectory' since filename contains trajectory keyword
+      expect(parsed_data.type).toBe(`trajectory`)
     })
   })
 

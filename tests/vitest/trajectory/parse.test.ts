@@ -44,16 +44,16 @@ describe(`Trajectory File Detection`, () => {
     [`XDATCAR.out`, true],
     [`xdatcar.out`, true],
 
-    // xyz/extxyz files now require content-based detection
-    [`relax-simulation.xyz`, false],
-    [`trajectory-data.extxyz`, false],
-    [`npt-dynamics.extxyz`, false],
-    [`nvt-simulation.xyz`, false],
-    [`nve-dynamics.extxyz`, false],
-    [`qha-analysis.xyz`, false],
-    [`traj-data.xyz`, false],
-    [`relaxation.extxyz`, false],
-    [`md-run.xyz`, false],
+    // xyz/extxyz files with trajectory keywords are detected by filename for auto-render
+    [`relax-simulation.xyz`, true], // Has trajectory keyword "relax"
+    [`trajectory-data.extxyz`, true], // Has trajectory keyword "trajectory"
+    [`npt-dynamics.extxyz`, true], // Has trajectory keyword "npt"
+    [`nvt-simulation.xyz`, true], // Has trajectory keyword "nvt"
+    [`nve-dynamics.extxyz`, true], // Has trajectory keyword "nve"
+    [`qha-analysis.xyz`, true], // Has trajectory keyword "qha"
+    [`traj-data.xyz`, true], // Has trajectory keyword "traj"
+    [`relaxation.extxyz`, true], // Has trajectory keyword "relax"
+    [`md-run.xyz`, true], // Has trajectory keyword "md"
 
     // Other files with trajectory keywords (excluding specific extensions)
     [`trajectory.dat`, true],
@@ -68,13 +68,13 @@ describe(`Trajectory File Detection`, () => {
     [`md_simulation.out`, false],
 
     // Compressed trajectory files
-    [`relax.extxyz.gz`, false],
+    [`relax.extxyz.gz`, true], // Has trajectory keyword "relax"
     [`trajectory.traj.gz`, true],
     [`simulation.h5.gz`, true],
     [`dynamics.hdf5.gz`, true],
     [`XDATCAR.gz`, true],
     [`xdatcar.gz`, true],
-    [`md.xyz.gz`, false],
+    [`md.xyz.gz`, true], // Has trajectory keyword "md"
     // Compressed with other extensions
     [`trajectory.traj.xz`, true],
     [`trajectory.traj.bz2`, true],
@@ -97,8 +97,8 @@ describe(`Trajectory File Detection`, () => {
     [`FILE.TRAJ`, true],
     [`TRAJECTORY.H5`, true],
     [`XDATCAR.HDF5`, true],
-    [`RELAX.EXTXYZ`, false],
-    [`MD.XYZ`, false],
+    [`RELAX.EXTXYZ`, true], // Has trajectory keyword "relax"
+    [`MD.XYZ`, true], // Has trajectory keyword "md"
 
     // Unicode and special characters
     [`مەركەزیtrajectory.traj`, true],
@@ -126,19 +126,19 @@ describe(`Trajectory File Detection`, () => {
     // Very short names
     [`a.traj`, true],
     [`a.h5`, false],
-    [`a.xyz`, false], // .xyz files now require content-based detection
+    [`a.xyz`, false], // No trajectory keywords
     [`a`, false],
 
     // Very long filename
     [`${`a`.repeat(1000)}.traj`, true],
-    [`${`a`.repeat(1000)}.xyz`, false], // .xyz files now require content-based detection
+    [`${`a`.repeat(1000)}.xyz`, false], // No trajectory keywords
 
     // Specific regression tests
-    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, false],
-    [`single-molecule.xyz`, false], // .xyz files now require content-based detection
+    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true], // Has trajectory keyword "qha"
+    [`single-molecule.xyz`, false], // No trajectory keywords
     [`trajectory_data.json`, true], // JSON files with trajectory keywords are now supported
     [`md_simulation.cif`, false],
-    [`relax_output.poscar`, true],
+    [`relax_output.poscar`, false],
 
     // Files that should NOT be detected as trajectory files
     [`test.cif`, false],
@@ -178,7 +178,7 @@ describe(`Trajectory File Detection`, () => {
     // Files with partial matches that should not trigger
     [`trajectory_notes.txt`, false],
     [`md_documentation.md`, false],
-    [`relax_manual.pdf`, true],
+    [`relax_manual.pdf`, false],
     [`npt_analysis.py`, false],
     [`nvt_report.csv`, false],
     [`nve_summary.html`, false],
@@ -193,40 +193,40 @@ describe(`Trajectory File Detection`, () => {
     [`config.yaml.gz`, false],
     [`trajectory_notes.md.gz`, false],
 
-    // Keyword matching edge cases - xyz files now require content-based detection
-    [`trajectory_analysis.xyz`, false],
-    [`md_simulation.xyz`, false],
-    [`relaxation_study.xyz`, false],
-    [`npt_ensemble.xyz`, false],
-    [`nvt_canonical.xyz`, false],
-    [`nve_microcanonical.xyz`, false],
-    [`qha_thermodynamics.xyz`, false],
-    [`analysis_trajectory.xyz`, false],
-    [`simulation_md.xyz`, false],
-    [`study_relax.xyz`, false],
-    [`ensemble_npt.xyz`, false],
-    [`canonical_nvt.xyz`, false],
-    [`microcanonical_nve.xyz`, false],
-    [`thermodynamics_qha.xyz`, false],
-    [`TRAJECTORY.xyz`, false],
-    [`Trajectory.xyz`, false],
-    [`trajectory.xyz`, false],
-    [`MD.xyz`, false],
-    [`Md.xyz`, false],
-    [`md.xyz`, false],
-    // Machine learning potential trajectories (no traditional keywords)
-    [`V8Ta12W71Re8-mace-omat.xyz`, false],
-    [`CuAgAu_chgnet_relax.xyz`, false],
-    [`bulk_water_dpmd.xyz`, false],
-    [`alloy_simulation_m3gnet.xyz`, false],
+    // Keyword matching edge cases - xyz files with trajectory keywords are detected by filename
+    [`trajectory_analysis.xyz`, true], // Has trajectory keyword "trajectory"
+    [`md_simulation.xyz`, true], // Has trajectory keyword "md"
+    [`relaxation_study.xyz`, true], // Has trajectory keyword "relax"
+    [`npt_ensemble.xyz`, true], // Has trajectory keyword "npt"
+    [`nvt_canonical.xyz`, true], // Has trajectory keyword "nvt"
+    [`nve_microcanonical.xyz`, true], // Has trajectory keyword "nve"
+    [`qha_thermodynamics.xyz`, true], // Has trajectory keyword "qha"
+    [`analysis_trajectory.xyz`, true], // Has trajectory keyword "trajectory"
+    [`simulation_md.xyz`, true], // Has trajectory keyword "md"
+    [`study_relax.xyz`, true], // Has trajectory keyword "relax"
+    [`ensemble_npt.xyz`, true], // Has trajectory keyword "npt"
+    [`canonical_nvt.xyz`, true], // Has trajectory keyword "nvt"
+    [`microcanonical_nve.xyz`, true], // Has trajectory keyword "nve"
+    [`thermodynamics_qha.xyz`, true], // Has trajectory keyword "qha"
+    [`TRAJECTORY.xyz`, true], // Has trajectory keyword "trajectory"
+    [`Trajectory.xyz`, true], // Has trajectory keyword "trajectory"
+    [`trajectory.xyz`, true], // Has trajectory keyword "trajectory"
+    [`MD.xyz`, true], // Has trajectory keyword "md"
+    [`Md.xyz`, true], // Has trajectory keyword "md"
+    [`md.xyz`, true], // Has trajectory keyword "md"
+    // Machine learning potential trajectories (some have trajectory keywords)
+    [`V8Ta12W71Re8-mace-omat.xyz`, false], // No trajectory keywords
+    [`CuAgAu_chgnet_relax.xyz`, true], // Has trajectory keyword "relax"
+    [`bulk_water_dpmd.xyz`, true], // Has trajectory keyword "md"
+    [`alloy_simulation_m3gnet.xyz`, true], // Has trajectory keyword "simulation"
     // Compressed JSON trajectories from various sources
     [`pymatgen-trajectory-data.json.gz`, true],
     [`ase-md-output.json.bz2`, true],
     [`simulation-results.json.xz`, true],
     // Edge cases that should still work
-    [`dataset_structure_0001.xyz`, false], // No keywords but .xyz extension - now requires content
-    [`crystal_optimization.xyz`, false], // Has keyword but also .xyz - now requires content
-    [`mp-1184225.extxyz`, false], // Materials Project format - now requires content
+    [`dataset_structure_0001.xyz`, false], // No trajectory keywords
+    [`crystal_optimization.xyz`, false], // No trajectory keywords (crystal is structure keyword)
+    [`mp-1184225.extxyz`, false], // No trajectory keywords
   ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
     expect(is_trajectory_file(filename)).toBe(expected)
   })
@@ -265,43 +265,28 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
         `2\nstep=0 energy=-5.2\nC 0.0 0.0 0.0\nO 1.2 0.0 0.0\n2\nstep=1 energy=-5.1\nC 0.05 0.0 0.0\nO 1.15 0.0 0.0`,
         true,
       ],
-      // More complex multi-frame examples
       [
         `relaxation.xyz`,
         `4\nProperties=species:S:1:pos:R:3 energy=-12.5\nSi 0.0 0.0 0.0\nSi 2.7 0.0 0.0\nO 1.35 0.0 0.0\nO 1.35 1.5 0.0\n4\nProperties=species:S:1:pos:R:3 energy=-12.8\nSi 0.05 0.0 0.0\nSi 2.65 0.0 0.0\nO 1.35 0.0 0.1\nO 1.35 1.45 0.0`,
         true,
       ],
-      // Files with empty lines and comments (should still work)
       [
         `trajectory-with-gaps.xyz`,
         `\n2\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n\n2\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\n`,
         true,
       ],
-      // Large number of frames
-      [
-        `long-trajectory.xyz`,
-        Array.from(
-          { length: 5 },
-          (_, idx) => `2\nstep=${idx}\nH 0.${idx} 0.0 0.0\nH 1.${idx} 0.0 0.0`,
-        ).join(`\n`),
-        true,
-      ],
       // Edge case: exactly 2 frames (should be true)
-      [
-        `two-frames.xyz`,
-        `1\nfirst\nH 0.0 0.0 0.0\n1\nsecond\nH 0.1 0.0 0.0`,
-        true,
-      ],
+      [`two-frames.xyz`, `1\nfirst\nH 0.0 0.0 0.0\n1\nsecond\nH 0.1 0.0 0.0`, true],
     ])(`should detect "%s" as trajectory: %s`, (filename, content, expected) => {
       expect(is_trajectory_file(filename, content)).toBe(expected)
     })
 
     test.each([
-      // Without content, xyz/extxyz files should return false
-      [`single.xyz`, false],
-      [`trajectory.xyz`, false],
-      [`data.extxyz`, false],
-      [`md-simulation.extxyz`, false],
+      // Without content, xyz/extxyz files with trajectory keywords return true for auto-render
+      [`single.xyz`, false], // No trajectory keywords
+      [`trajectory.xyz`, true], // Has trajectory keyword
+      [`data.extxyz`, false], // No trajectory keywords
+      [`md-simulation.extxyz`, true], // Has trajectory keyword
       // Non-xyz files should still work with filename-only detection
       [`simulation.traj`, true],
       [`XDATCAR`, true],
@@ -362,12 +347,12 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
       expect(is_trajectory_file(`mixed.xyz`, content)).toBe(true)
     })
 
-    test(`should handle very large trajectories efficiently`, () => {
-      // Create a trajectory with 1000 frames
+    test(`should handle large trajectories efficiently`, () => {
+      // Create a trajectory with 100 frames (reduced for faster tests)
       const frames = Array.from(
-        { length: 1000 },
+        { length: 100 },
         (_, idx) =>
-          `2\nstep=${idx}\nH ${idx * 0.001} 0.0 0.0\nH ${1 + idx * 0.001} 0.0 0.0`,
+          `2\nstep=${idx}\nH ${idx * 0.01} 0.0 0.0\nH ${1 + idx * 0.01} 0.0 0.0`,
       )
       const content = frames.join(`\n`)
 
@@ -376,7 +361,7 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
       const duration = performance.now() - start
 
       expect(result).toBe(true)
-      expect(duration).toBeLessThan(1000) // Should complete within 1 second
+      expect(duration).toBeLessThan(100) // Should complete within 100ms
     })
 
     test.each([

@@ -1,6 +1,14 @@
 import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { OptimadeStructure } from '$lib/api/optimade'
-import { COMPRESSION_EXTENSIONS } from '$lib/io/decompress'
+import {
+  COMPRESSION_EXTENSIONS_REGEX,
+  CONFIG_DIRS_REGEX,
+  STRUCT_KEYWORDS_REGEX,
+  STRUCTURE_EXTENSIONS_REGEX,
+  TRAJ_KEYWORDS_REGEX,
+  VASP_FILES_REGEX,
+  XYZ_EXTXYZ_REGEX,
+} from '$lib/constants'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
@@ -1188,10 +1196,8 @@ export function parse_structure_file(
   if (filename) {
     // Handle compressed files by removing compression extensions
     let base_filename = filename.toLowerCase()
-    const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
-    const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
-    while (compression_regex.test(base_filename)) {
-      base_filename = base_filename.replace(compression_regex, ``)
+    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
+      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     }
 
     const ext = base_filename.split(`.`).pop()
@@ -1569,30 +1575,22 @@ export function is_structure_file(filename: string): boolean {
   if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
 
   // Always structure formats
-  if (/\.(cif|poscar|vasp|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/i.test(name)) return true
-  if (/(poscar|contcar|potcar|incar|kpoints|outcar)/i.test(name)) return true
-
-  // Keyword-based detection for YAML/JSON/XML
-  const structure_keywords =
-    /(structure|phono|vasp|crystal|material|lattice|geometry|unit_?cell|atoms|sites|data|phono3?py)/i
-  const trajectory_keywords =
-    /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
-  const config_dirs =
-    /(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)\//i
+  if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
+  if (VASP_FILES_REGEX.test(name)) return true
 
   // .xyz/.extxyz files: structure unless they have trajectory keywords
-  if (/\.(xyz|extxyz)$/i.test(name)) return !trajectory_keywords.test(name)
+  if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
-  if (/\.(yaml|yml)$/i.test(name) && structure_keywords.test(name)) return true
-  if (/\.xml$/i.test(name) && structure_keywords.test(name)) return true
+  // Keyword-based detection for YAML/JSON/XML
+  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
   if (
-    /\.json$/i.test(name) && structure_keywords.test(name) &&
-    !trajectory_keywords.test(name) && !config_dirs.test(name)
+    /\.json$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name) &&
+    !TRAJ_KEYWORDS_REGEX.test(name) && !CONFIG_DIRS_REGEX.test(name)
   ) return true
 
   // Compressed files - check base filename recursively
-  if (/\.(gz|zip|xz)$/i.test(name)) {
-    return is_structure_file(name.replace(/\.(gz|zip|xz)$/i, ``))
+  if (COMPRESSION_EXTENSIONS_REGEX.test(name)) {
+    return is_structure_file(name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
   }
 
   return false
@@ -1606,10 +1604,8 @@ export const detect_structure_type = (
 
   // Normalize compressed suffixes (gz, gzip, zip, xz, bz2) for detection parity
   let name_to_check = lower_filename
-  const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
-  const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
-  while (compression_regex.test(name_to_check)) {
-    name_to_check = name_to_check.replace(compression_regex, ``)
+  while (COMPRESSION_EXTENSIONS_REGEX.test(name_to_check)) {
+    name_to_check = name_to_check.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   }
 
   if (name_to_check.endsWith(`.json`)) {
@@ -1642,7 +1638,7 @@ export const detect_structure_type = (
       : `unknown`
   }
 
-  if (name_to_check.match(/\.(xyz|extxyz)$/)) {
+  if (XYZ_EXTXYZ_REGEX.test(name_to_check)) {
     const lines = content.trim().split(/\r?\n/)
     return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
   }

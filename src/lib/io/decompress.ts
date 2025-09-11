@@ -1,20 +1,6 @@
-// compression formats and their file extensions
-const COMPRESSION_FORMATS = {
-  gzip: [`.gz`, `.gzip`],
-  deflate: [`.deflate`],
-  'deflate-raw': [`.z`],
-  zip: [`.zip`], // Browser DecompressionStream doesn't support ZIP
-  xz: [`.xz`], // Browser DecompressionStream doesn't support XZ
-  bz2: [`.bz2`], // Browser DecompressionStream doesn't support BZ2
-} as const
+import { COMPRESSION_EXTENSIONS, COMPRESSION_FORMATS } from '$lib/constants'
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
-
-// All detectable compression extensions
-export const COMPRESSION_EXTENSIONS = [
-  ...Object.values(COMPRESSION_FORMATS).flat(),
-] as const
-
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 
 export function remove_compression_extension(filename: string): string {
