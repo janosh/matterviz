@@ -134,23 +134,18 @@ declare global {
 let vscode_api: VSCodeAPI | null = null
 let current_app: MatterVizApp | null = null
 
+// Initialize VSCode API at module level
+try {
+  vscode_api = globalThis.acquireVsCodeApi?.()
+} catch (error) {
+  console.warn(`VSCode API already acquired or not available:`, error)
+}
+
 const get_matterviz_data = (): MatterVizData | undefined =>
   (globalThis as unknown as { mattervizData?: MatterVizData }).mattervizData
 
-function get_vscode_api(): VSCodeAPI | null {
-  if (!vscode_api) {
-    try {
-      vscode_api = globalThis.acquireVsCodeApi?.()
-    } catch (error) {
-      console.warn(`VSCode API already acquired or not available:`, error)
-    }
-  }
-  return vscode_api
-}
-
 // Set up VSCode-specific download override for file exports
 export const setup_vscode_download = (): void => {
-  const vscode_api = get_vscode_api()
   if (!vscode_api) {
     console.debug(`VSCode API not available, skipping download override setup`)
     return
@@ -232,14 +227,12 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
         current_app = create_display(container, result, result.filename)
       }
 
-      const vscode_api = get_vscode_api()
       if (vscode_api) {
         const text = `File reloaded successfully`
         vscode_api.postMessage({ command: `info`, text })
       }
     } catch (error) {
       console.error(`Failed to reload file:`, error)
-      const vscode_api = get_vscode_api()
       if (vscode_api) {
         const text = `Failed to reload file: ${error}`
         vscode_api.postMessage({ command: `error`, text })
@@ -271,7 +264,6 @@ function request_large_file_content(
     file_path: string
   }
 > {
-  const vscode_api = get_vscode_api()
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
   return new Promise((resolve, reject) => {
@@ -468,7 +460,6 @@ const create_display = (
   let final_trajectory_data = result.data
 
   if (is_trajectory && result.streaming_info?.supports_streaming) {
-    const vscode_api = get_vscode_api()
     const trajectory_data = result.data as TrajectoryData
 
     if (vscode_api && result.streaming_info.file_path) {
@@ -506,7 +497,6 @@ const create_display = (
 
   // VSCode message logging
   try {
-    const vscode_api = get_vscode_api()
     const trajectory_data = final_trajectory_data as TrajectoryData & {
       total_frames?: number
     }
@@ -619,7 +609,6 @@ async function initialize() {
     current_app = app
 
     // Set up file change monitoring
-    const vscode_api = get_vscode_api()
     if (vscode_api) {
       // Listen for file change messages from extension
       globalThis.addEventListener(`message`, (event) => {
@@ -643,7 +632,6 @@ async function initialize() {
       )
     }
     // Get VSCode API if available
-    const vscode_api = get_vscode_api()
     if (vscode_api) {
       const filename = get_matterviz_data()?.data?.filename || `Unknown file`
       const text = `Error rendering ${filename}: ${err.message}`
