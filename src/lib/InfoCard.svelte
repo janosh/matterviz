@@ -31,8 +31,7 @@
     ...rest
   }: Props = $props()
 
-  // rename fmt as default_fmt internally
-  let default_fmt = $derived(fmt)
+  let default_fmt = $derived(fmt) // rename fmt to default_fmt for internal use
 </script>
 
 <svelte:element this={as} {...rest} class="info-card {rest.class ?? ``}">

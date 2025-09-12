@@ -1,6 +1,14 @@
 import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { OptimadeStructure } from '$lib/api/optimade'
-import { COMPRESSION_EXTENSIONS } from '$lib/io/decompress'
+import {
+  COMPRESSION_EXTENSIONS_REGEX,
+  CONFIG_DIRS_REGEX,
+  STRUCT_KEYWORDS_REGEX,
+  STRUCTURE_EXTENSIONS_REGEX,
+  TRAJ_KEYWORDS_REGEX,
+  VASP_FILES_REGEX,
+  XYZ_EXTXYZ_REGEX,
+} from '$lib/constants'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
@@ -67,9 +75,7 @@ function normalize_scientific_notation(str: string): string {
 function parse_coordinate(str: string): number {
   const normalized = normalize_scientific_notation(str.trim())
   const value = parseFloat(normalized)
-  if (isNaN(value)) {
-    throw `Invalid coordinate value: ${str}`
-  }
+  if (isNaN(value)) throw new Error(`Invalid coordinate value: ${str}`)
   return value
 }
 
@@ -79,15 +85,17 @@ function parse_coordinate_line(line: string): number[] {
 
   // Handle malformed coordinates like "1.0-2.0-3.0" (missing spaces)
   if (tokens.length < 3) {
-    // Insert a space before '-' that follows a digit (but not after 'e'/'E')
-    // Example: "0.1-0.2-0.3" -> "0.1 -0.2 -0.3"; preserves exponents like "1e-3"
-    const sanitized = line.trim().replace(/([0-9])-/g, `$1 -`)
+    // Insert a space only for subtraction between numbers, not exponent signs (e/E)
+    const sanitized = line
+      .trim()
+      // Add space when '-' follows a digit and precedes a digit or dot
+      .replace(/(\d)-(?=[\d.])/g, `$1 -`)
+      // Revert accidental spaces after exponent markers
+      .replace(/([eE])\s-\s/g, `$1-`)
     tokens = sanitized.split(/\s+/)
   }
 
-  if (tokens.length < 3) {
-    throw `Insufficient coordinates in line: ${line}`
-  }
+  if (tokens.length < 3) throw new Error(`Insufficient coordinates in line: ${line}`)
 
   return tokens.slice(0, 3).map(parse_coordinate)
 }
@@ -131,7 +139,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
     const parse_vector = (line: string, line_num: number): Vec3 => {
       const coords = line.trim().split(/\s+/).map(parse_coordinate)
       if (coords.length !== 3) {
-        throw `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`
+        throw new Error(
+          `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`,
+        )
       }
       return coords as Vec3
     }
@@ -1188,23 +1198,17 @@ export function parse_structure_file(
   if (filename) {
     // Handle compressed files by removing compression extensions
     let base_filename = filename.toLowerCase()
-    const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
-    const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
-    while (compression_regex.test(base_filename)) {
-      base_filename = base_filename.replace(compression_regex, ``)
+    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
+      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     }
 
     const ext = base_filename.split(`.`).pop()
 
     // Try to detect format by file extension
-    if (ext === `xyz`) {
-      return parse_xyz(content)
-    }
+    if (ext === `xyz` || ext === `extxyz`) return parse_xyz(content)
 
     // CIF files
-    if (ext === `cif`) {
-      return parse_cif(content)
-    }
+    if (ext === `cif`) return parse_cif(content)
 
     // JSON files - try OPTIMADE JSON structure format first, then pymatgen
     if (ext === `json`) {
@@ -1217,9 +1221,7 @@ export function parse_structure_file(
         }
         // Otherwise, try to parse as pymatgen/nested structure JSON
         const structure = find_structure_in_json(parsed)
-        if (structure) {
-          return structure
-        }
+        if (structure) return structure
         console.error(`JSON file does not contain a valid structure format`)
         return null
       } catch (error) {
@@ -1575,33 +1577,22 @@ export function is_structure_file(filename: string): boolean {
   if (/\.(traj|xtc|h5|hdf5)$/i.test(name) || /xdatcar/i.test(name)) return false
 
   // Always structure formats
-  if (/\.(cif|poscar|vasp|lmp|data|dump|pdb|mol|mol2|sdf|mmcif)$/i.test(name)) return true
-  if (/(poscar|contcar|potcar|incar|kpoints|outcar)/i.test(name)) return true
+  if (STRUCTURE_EXTENSIONS_REGEX.test(name)) return true
+  if (VASP_FILES_REGEX.test(name)) return true
 
-  // .xyz files: structure unless they have trajectory keywords, .extxyz files: trajectory by default
-  if (/\.extxyz$/i.test(name)) return false
-  if (/\.xyz$/i.test(name)) {
-    return !/(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i.test(name)
-  }
+  // .xyz/.extxyz files: structure unless they have trajectory keywords
+  if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
   // Keyword-based detection for YAML/JSON/XML
-  const structure_keywords =
-    /(structure|phono|vasp|crystal|material|lattice|geometry|unit_?cell|atoms|sites|data|phono3?py)/i
-  const trajectory_keywords =
-    /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
-  const config_dirs =
-    /(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)\//i
-
-  if (/\.(yaml|yml)$/i.test(name) && structure_keywords.test(name)) return true
-  if (/\.xml$/i.test(name) && structure_keywords.test(name)) return true
+  if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
   if (
-    /\.json$/i.test(name) && structure_keywords.test(name) &&
-    !trajectory_keywords.test(name) && !config_dirs.test(name)
+    /\.json$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name) &&
+    !TRAJ_KEYWORDS_REGEX.test(name) && !CONFIG_DIRS_REGEX.test(name)
   ) return true
 
   // Compressed files - check base filename recursively
-  if (/\.(gz|zip|xz)$/i.test(name)) {
-    return is_structure_file(name.replace(/\.(gz|zip|xz)$/i, ``))
+  if (COMPRESSION_EXTENSIONS_REGEX.test(name)) {
+    return is_structure_file(name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
   }
 
   return false
@@ -1615,26 +1606,23 @@ export const detect_structure_type = (
 
   // Normalize compressed suffixes (gz, gzip, zip, xz, bz2) for detection parity
   let name_to_check = lower_filename
-  const extensions = COMPRESSION_EXTENSIONS.map((ext: string) => ext.slice(1))
-  const compression_regex = new RegExp(`\\.(${extensions.join(`|`)})$`, `i`)
-  while (compression_regex.test(name_to_check)) {
-    name_to_check = name_to_check.replace(compression_regex, ``)
+  while (COMPRESSION_EXTENSIONS_REGEX.test(name_to_check)) {
+    name_to_check = name_to_check.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   }
 
   if (name_to_check.endsWith(`.json`)) {
     try {
       const parsed = JSON.parse(content)
-      // Check for OPTIMADE JSON format (has data.attributes.lattice_vectors)
-      if (parsed.data?.attributes?.lattice_vectors) return `crystal`
-      // Check for dimension_types (OPTIMADE format)
-      if (parsed.data?.attributes?.dimension_types?.some((dim: number) => dim > 0)) {
+      // Check for crystal indicators: lattice, lattice_vectors, or periodic dimensions
+      const dims = parsed.data?.attributes?.dimension_types
+      if (
+        parsed.lattice ||
+        parsed.data?.attributes?.lattice_vectors ||
+        (Array.isArray(dims) && dims.some((dim: number) => dim > 0)) ||
+        parsed.data?.attributes?.nperiodic_dimensions > 0
+      ) {
         return `crystal`
       }
-      // Check for pymatgen JSON format (has lattice property)
-      if (parsed.lattice) return `crystal`
-      // Check for other crystal indicators
-      if (parsed.data?.attributes?.nperiodic_dimensions > 0) return `crystal`
-
       return `molecule`
     } catch {
       return `unknown`
@@ -1651,7 +1639,7 @@ export const detect_structure_type = (
       : `unknown`
   }
 
-  if (name_to_check.match(/\.(xyz|extxyz)$/)) {
+  if (XYZ_EXTXYZ_REGEX.test(name_to_check)) {
     const lines = content.trim().split(/\r?\n/)
     return lines.length >= 2 && lines[1].includes(`Lattice=`) ? `crystal` : `molecule`
   }
