@@ -1,7 +1,7 @@
 import { download } from '$lib/io/fetch'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, PymatgenLattice } from '$lib/structure'
+import type { AnyStructure, PymatgenLattice, Site } from '$lib/structure'
 import {
   create_structure_filename,
   export_structure_as_json,
@@ -282,7 +282,7 @@ describe(`Export functionality`, () => {
     })
   })
 
-  describe(`Coordinate handling`, () => {
+  describe(`Coordinate handling and conversion`, () => {
     it.each(
       [
         {
@@ -302,6 +302,15 @@ describe(`Export functionality`, () => {
             [0.0, 0.0, 2.0],
           ] as Matrix3x3,
           abc: [0.25, 0.75, 0.5] as Vec3,
+        },
+        {
+          name: `triclinic`,
+          lattice_matrix: [
+            [3.0, 0.5, 0.2],
+            [0.0, 2.5, 0.4],
+            [0.0, 0.0, 1.8],
+          ] as Matrix3x3,
+          abc: [0.1, 0.3, 0.7] as Vec3,
         },
       ],
     )(
@@ -337,6 +346,110 @@ describe(`Export functionality`, () => {
         expect(lines[2]).toBe(expected_line)
       },
     )
+
+    it(`prefers xyz coordinates over abc when both available`, () => {
+      const lattice_matrix = [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [
+        0.0,
+        0.0,
+        2.0,
+      ]] as Matrix3x3
+      const lattice_params = math.calc_lattice_params(lattice_matrix)
+      const structure_both_coords: AnyStructure = {
+        id: `both_coords`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0.5, 0.5, 0.5], // This should be ignored
+          xyz: [1.0, 2.0, 3.0], // This should be used
+          label: `H`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: lattice_matrix,
+          pbc: [true, true, true],
+          ...lattice_params,
+        },
+      }
+
+      const xyz_content = structure_to_xyz_str(structure_both_coords)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[2]).toBe(`H 1.000000 2.000000 3.000000`)
+    })
+
+    it(`handles short coordinate arrays gracefully`, () => {
+      const structure_short_coords: AnyStructure = {
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          xyz: [1.0, 2.0, 0.0], // Only 2 coordinates + padding
+          abc: [0.1, 0.2, 0.0], // Only 2 coordinates + padding
+          label: `H`,
+          properties: {},
+        }],
+      }
+
+      const xyz_content = structure_to_xyz_str(structure_short_coords)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[2]).toBe(`H 1.000000 2.000000 0.000000`) // Should use provided coordinates
+    })
+
+    it(`converts cartesian to fractional for CIF export`, () => {
+      const lattice_matrix = [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [
+        0.0,
+        0.0,
+        2.0,
+      ]] as Matrix3x3
+      const lattice_params = math.calc_lattice_params(lattice_matrix)
+      const structure_xyz_only: AnyStructure = {
+        id: `xyz_only`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          xyz: [1.0, 1.0, 1.0], // Should convert to [0.5, 0.5, 0.5]
+          // @ts-expect-error - test missing abc
+          abc: undefined,
+          label: `H`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: lattice_matrix,
+          pbc: [true, true, true],
+          ...lattice_params,
+        },
+      }
+
+      const cif_content = structure_to_cif_str(structure_xyz_only)
+      const lines = cif_content.split(`\n`)
+      const coord_line = lines.find((line) => line.includes(`H`))
+      expect(coord_line).toContain(`0.50000000 0.50000000 0.50000000`)
+    })
+
+    it(`converts cartesian to fractional for POSCAR export`, () => {
+      const lattice_matrix = [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [
+        0.0,
+        0.0,
+        2.0,
+      ]] as Matrix3x3
+      const lattice_params = math.calc_lattice_params(lattice_matrix)
+      const structure_xyz_only: AnyStructure = {
+        id: `xyz_only`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          xyz: [1.0, 1.0, 1.0], // Should convert to [0.5, 0.5, 0.5]
+          // @ts-expect-error - test missing abc
+          abc: undefined,
+          label: `H`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: lattice_matrix,
+          pbc: [true, true, true],
+          ...lattice_params,
+        },
+      }
+
+      const poscar_content = structure_to_poscar_str(structure_xyz_only)
+      const lines = poscar_content.split(`\n`)
+      const coord_line = lines.find((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
+      expect(coord_line).toContain(`0.50000000 0.50000000 0.50000000`)
+    })
   })
 
   describe(`Filename generation`, () => {
@@ -415,7 +528,7 @@ describe(`Export functionality`, () => {
     })
   })
 
-  describe(`Error handling`, () => {
+  describe(`Error handling and edge cases`, () => {
     it.each([
       { func: structure_to_xyz_str, error_msg: `No structure or sites to export` },
       { func: structure_to_json_str, error_msg: `No structure to export` },
@@ -425,22 +538,100 @@ describe(`Export functionality`, () => {
       expect(() => func(undefined)).toThrow(error_msg)
     })
 
-    it(`handles species without element (fallback to X)`, () => {
-      const structure_no_element: AnyStructure = {
+    it.each([
+      { func: structure_to_cif_str, error_msg: `No lattice information for CIF export` },
+      {
+        func: structure_to_poscar_str,
+        error_msg: `No lattice information for POSCAR export`,
+      },
+    ])(`throws error for structure without lattice`, ({ func, error_msg }) => {
+      const structure_no_lattice: AnyStructure = {
         sites: [{
-          species: [
-            // @ts-expect-error - test invalid undefined element
-            { element: undefined, occu: 1, oxidation_state: 0 },
-          ],
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
           xyz: [0.0, 0.0, 0.0],
           abc: [0.0, 0.0, 0.0],
-          label: `X`,
+          label: `H`,
           properties: {},
         }],
       }
-      const xyz_content = structure_to_xyz_str(structure_no_element)
+      expect(() => func(structure_no_lattice)).toThrow(error_msg)
+    })
+
+    it.each([
+      {
+        name: `species without element`,
+        species: [{ element: undefined, occu: 1, oxidation_state: 0 }],
+        expected: `X 0.000000 0.000000 0.000000`,
+      },
+      {
+        name: `empty species array`,
+        species: [],
+        expected: `X 0.000000 0.000000 0.000000`,
+      },
+      {
+        name: `missing coordinates`,
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        xyz: undefined,
+        abc: undefined,
+        expected: `H 0.000000 0.000000 0.000000`,
+      },
+    ])(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
+      const structure: AnyStructure = {
+        sites: [{
+          species: species as unknown as Array<
+            { element: string; occu: number; oxidation_state: number }
+          >,
+          xyz: xyz || [0.0, 0.0, 0.0],
+          abc: abc || [0.0, 0.0, 0.0],
+          label: `H`,
+          properties: {},
+        }],
+      }
+      const xyz_content = structure_to_xyz_str(structure)
       const lines = xyz_content.split(`\n`)
-      expect(lines[2]).toBe(`X 0.000000 0.000000 0.000000`)
+      expect(lines[2]).toBe(expected)
+    })
+
+    it(`handles invalid lattice matrix in POSCAR`, () => {
+      const structure_invalid_lattice: AnyStructure = {
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.0, 0.0, 0.0],
+          abc: [0.0, 0.0, 0.0],
+          label: `H`,
+          properties: {},
+        }],
+        lattice: {
+          // @ts-expect-error - test invalid matrix
+          matrix: [[1, 2], [3, 4]], // 2x2 instead of 3x3
+          ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
+        },
+      }
+      expect(() => structure_to_poscar_str(structure_invalid_lattice)).toThrow(
+        `No valid lattice matrix for POSCAR export`,
+      )
+    })
+
+    it(`handles non-finite lattice values`, () => {
+      const structure_nan_lattice: AnyStructure = {
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.0, 0.0, 0.0],
+          abc: [0.0, 0.0, 0.0],
+          label: `H`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: [[NaN, 0, 0], [0, Infinity, 0], [0, 0, 1]],
+          pbc: [true, true, true],
+          ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
+        },
+      }
+      const xyz_content = structure_to_xyz_str(structure_nan_lattice)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[1]).toContain(
+        `Lattice="0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 0.00000000 1.00000000"`,
+      )
     })
 
     it(`exports CIF format correctly`, () => {
@@ -517,6 +708,389 @@ describe(`Export functionality`, () => {
       const total = counts.reduce((a, b) => a + b, 0)
       const coords_section = lines.slice(8).filter((line) => line.trim().length > 0)
       expect(coords_section.length).toBeGreaterThanOrEqual(total)
+    })
+
+    it.each([
+      {
+        name: `with selective dynamics`,
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: { selective_dynamics: [true, false, true] },
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0.5, 0.5, 0.5],
+            xyz: [1.0, 1.0, 1.0],
+            label: `O1`,
+            properties: { selective_dynamics: [false, false, false] },
+          },
+        ],
+        has_sd: true,
+        expected_coords: [`T F T`, `F F F`],
+      },
+      {
+        name: `without selective dynamics`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0.0, 0.0, 0.0],
+          xyz: [0.0, 0.0, 0.0],
+          label: `H1`,
+          properties: {},
+        }],
+        has_sd: false,
+        expected_coords: [`0.00000000 0.00000000 0.00000000`],
+      },
+    ])(`exports POSCAR $name correctly`, ({ sites, has_sd, expected_coords }) => {
+      const structure: AnyStructure = {
+        id: `test_${has_sd ? `sd` : `no_sd`}`,
+        sites: sites as unknown as AnyStructure[`sites`],
+        lattice: {
+          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          pbc: [true, true, true],
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+      }
+
+      const poscar_content = structure_to_poscar_str(structure)
+      const lines = poscar_content.split(`\n`)
+
+      if (has_sd) {
+        expect(lines).toContain(`Selective dynamics`)
+        const coord_lines = lines.filter((line) =>
+          line.match(/^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/)
+        )
+        expect(coord_lines).toHaveLength(2)
+        expected_coords.forEach((expected, idx) => {
+          expect(coord_lines[idx]).toContain(expected)
+        })
+      } else {
+        expect(lines).not.toContain(`Selective dynamics`)
+        const coord_lines = lines.filter((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
+        expect(coord_lines).toHaveLength(1)
+        expect(coord_lines[0]).toBe(expected_coords[0])
+      }
+    })
+
+    it(`exports CIF with space group information`, () => {
+      const structure_with_symmetry: AnyStructure = {
+        id: `test_symmetry`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0.0, 0.0, 0.0],
+          xyz: [0.0, 0.0, 0.0],
+          label: `H1`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          pbc: [true, true, true],
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+        // @ts-expect-error - test symmetry property
+        symmetry: {
+          space_group_symbol: `P1`,
+          space_group_number: 1,
+        },
+      }
+
+      const cif_content = structure_to_cif_str(structure_with_symmetry)
+      const lines = cif_content.split(`\n`)
+
+      expect(lines).toContain(`_space_group_name_H-M_alt P1`)
+      expect(lines).toContain(`_space_group_IT_number 1`)
+    })
+
+    it.each([
+      {
+        name: `precision in all formats`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0.123456789, 0.987654321, 0.555555555],
+          xyz: [1.23456789, 9.87654321, 5.55555555],
+          label: `H1`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: [[2.123456789, 0.0, 0.0], [0.0, 2.987654321, 0.0], [
+            0.0,
+            0.0,
+            2.555555555,
+          ]],
+          pbc: [true, true, true],
+          a: 2.123456789,
+          b: 2.987654321,
+          c: 2.555555555,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+        tests: [
+          { format: `xyz`, expected: `H 1.234568 9.876543 5.555556` },
+          { format: `cif`, expected: `0.12345679 0.98765432 0.55555555` },
+          { format: `poscar`, expected: `0.12345679 0.98765432 0.55555555` },
+        ],
+      },
+      {
+        name: `occupancy 0.75`,
+        sites: [{
+          species: [{ element: `H`, occu: 0.75, oxidation_state: 0 }],
+          abc: [0.0, 0.0, 0.0],
+          xyz: [0.0, 0.0, 0.0],
+          label: `H1`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          pbc: [true, true, true],
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+        tests: [{ format: `cif`, expected: `0.75000000` }],
+      },
+      {
+        name: `missing occupancy (defaults to 1.0)`,
+        sites: [{
+          species: [{ element: `H`, occu: undefined, oxidation_state: 0 }],
+          abc: [0.0, 0.0, 0.0],
+          xyz: [0.0, 0.0, 0.0],
+          label: `H1`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          pbc: [true, true, true],
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+        tests: [{ format: `cif`, expected: `1.00000000` }],
+      },
+    ])(`handles $name correctly`, ({ sites, lattice, tests }) => {
+      const structure: AnyStructure = {
+        id: `test`,
+        sites: sites as Site[],
+        lattice: lattice as PymatgenLattice,
+      }
+
+      tests.forEach(({ format, expected }) => {
+        let content: string
+        if (format === `xyz`) content = structure_to_xyz_str(structure)
+        else if (format === `cif`) content = structure_to_cif_str(structure)
+        else content = structure_to_poscar_str(structure)
+
+        const lines = content.split(`\n`)
+        if (format === `xyz`) {
+          expect(lines[2]).toBe(expected)
+        } else if (format === `cif`) {
+          const coord_line = lines.find((line) => line.includes(`H1`))
+          expect(coord_line).toBeDefined()
+          expect(coord_line).toContain(expected)
+        } else { // poscar
+          const coord_line = lines.find((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
+          expect(coord_line).toBeDefined()
+          expect(coord_line).toContain(expected)
+        }
+      })
+    })
+
+    it.each([
+      {
+        name: `with lattice information`,
+        structure: {
+          id: `lattice_test`,
+          sites: [{
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          }],
+          lattice: {
+            matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+            pbc: [true, true, true],
+            a: 2,
+            b: 2,
+            c: 2,
+            alpha: 90,
+            beta: 90,
+            gamma: 90,
+            volume: 8,
+          },
+        },
+        expected_comment:
+          `lattice_test H2O Lattice="2.00000000 0.00000000 0.00000000 0.00000000 2.00000000 0.00000000 0.00000000 0.00000000 2.00000000"`,
+      },
+      {
+        name: `without lattice information`,
+        structure: {
+          id: `no_lattice_test`,
+          sites: [{
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          }],
+        },
+        expected_comment: `no_lattice_test H2O`,
+      },
+    ])(`handles XYZ $name correctly`, ({ structure, expected_comment }) => {
+      const xyz_content = structure_to_xyz_str(structure as AnyStructure)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[1]).toBe(expected_comment)
+    })
+
+    it.each([
+      {
+        name: `missing symmetry information`,
+        symmetry: undefined,
+        expected: { has_symbol: false, has_number: false },
+      },
+      {
+        name: `malformed symmetry data`,
+        symmetry: {
+          space_group_symbol: null,
+          space_group_number: `invalid`,
+        },
+        expected: { has_symbol: false, has_number: true },
+      },
+    ])(`handles $name gracefully`, ({ symmetry, expected }) => {
+      const structure: AnyStructure = {
+        id: `test`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0.0, 0.0, 0.0],
+          xyz: [0.0, 0.0, 0.0],
+          label: `H1`,
+          properties: {},
+        }],
+        lattice: {
+          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          pbc: [true, true, true],
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+        ...(symmetry && { symmetry }),
+      }
+
+      const cif_content = structure_to_cif_str(structure)
+      const lines = cif_content.split(`\n`)
+
+      expect(lines.some((line) => line.includes(`_space_group_name_H-M_alt`))).toBe(
+        expected.has_symbol,
+      )
+      expect(lines.some((line) => line.includes(`_space_group_IT_number`))).toBe(
+        expected.has_number,
+      )
+    })
+
+    it(`handles very large structures efficiently`, () => {
+      const large_structure: AnyStructure = {
+        id: `large_test`,
+        sites: Array(1000).fill(null).map((_, idx) => ({
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [idx / 1000, 0.0, 0.0],
+          xyz: [idx / 100, 0.0, 0.0],
+          label: `H${idx + 1}`,
+          properties: {},
+        })),
+        lattice: {
+          matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+          pbc: [true, true, true],
+          a: 10,
+          b: 10,
+          c: 10,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 1000,
+        },
+      }
+
+      // Should not throw errors for large structures
+      expect(() => structure_to_xyz_str(large_structure)).not.toThrow()
+      expect(() => structure_to_cif_str(large_structure)).not.toThrow()
+      expect(() => structure_to_poscar_str(large_structure)).not.toThrow()
+      expect(() => structure_to_json_str(large_structure)).not.toThrow()
+
+      // Check that all sites are exported
+      const xyz_content = structure_to_xyz_str(large_structure)
+      const lines = xyz_content.split(`\n`)
+      expect(lines[0]).toBe(`1000`)
+      expect(lines.length).toBe(1002) // 1 count + 1 comment + 1000 atoms
+    })
+
+    it(`handles structures with mixed coordinate types`, () => {
+      const mixed_coords_structure: AnyStructure = {
+        id: `mixed_coords`,
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [1.0, 1.0, 1.0], // Has both
+            label: `H1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0.5, 0.5, 0.5],
+            // @ts-expect-error - test missing xyz
+            xyz: undefined,
+            label: `O1`,
+            properties: {},
+          },
+        ],
+        lattice: {
+          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          pbc: [true, true, true],
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 8,
+        },
+      }
+
+      const xyz_content = structure_to_xyz_str(mixed_coords_structure)
+      const lines = xyz_content.split(`\n`)
+
+      // First atom should use xyz coordinates
+      expect(lines[2]).toBe(`H 1.000000 1.000000 1.000000`)
+      // Second atom should convert abc to xyz
+      expect(lines[3]).toBe(`O 1.000000 1.000000 1.000000`)
     })
   })
 })

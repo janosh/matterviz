@@ -1,6 +1,3 @@
-<script>
-</script>
-
 # Structure
 
 ```svelte example
@@ -97,4 +94,67 @@ Showcasing structures with different crystal systems.
     color: var(--text-color-muted);
   }
 </style>
+```
+
+## Load Structure from String
+
+You can load structures directly from text content using the `structure_string` prop, supporting various formats (CIF, POSCAR, XYZ, JSON, etc.).
+
+```svelte example
+<script>
+  import { Structure } from 'matterviz'
+  import { format_num } from '$lib'
+  import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
+  import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
+  import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
+  import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
+  import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
+  import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
+  import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
+  import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
+  import pf_sd_1601634_cif from '$site/structures/PF-sd-1601634.cif?raw'
+  import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
+  import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
+  import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
+  import tio2_cif from '$site/structures/TiO2.cif?raw'
+  import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
+
+  const structure_files = [
+    { name: `MOF (CIF)`, content: mof_issue_127 },
+    { name: `Ru Complex (CIF)`, content: ru_p_complex_cif },
+    { name: `PF Structure (CIF)`, content: pf_sd_1601634_cif },
+    { name: `Cyclohexane (XYZ)`, content: cyclohexane },
+    { name: `C2HO (XYZ)`, content: c2ho_scientific_notation_xyz },
+    { name: `C5 (XYZ)`, content: c5_extra_data_xyz },
+    { name: `CuF3K (POSCAR)`, content: aviary_CuF3K_triolith },
+    { name: `BaTiO3 (POSCAR)`, content: ba_ti_o3_tetragonal },
+    { name: `NaCl (POSCAR)`, content: na_cl_cubic },
+    { name: `Quartz (ExtXYZ)`, content: extended_xyz_quartz },
+    { name: `Scientific Notation (POSCAR)`, content: scientific_notation_poscar },
+    { name: `Selective Dynamics (POSCAR)`, content: selective_dynamics },
+    { name: `TiO2 (CIF)`, content: tio2_cif },
+    { name: `VASP4 Format (POSCAR)`, content: vasp4_format },
+  ]
+
+  let selected_idx = $state(0)
+  let parsed_structure = $state(undefined)
+  let selected_file = $derived(structure_files[selected_idx])
+</script>
+
+<label style="display: block; margin-block: 1em">
+  Structure:
+  <select bind:value={selected_idx}>
+    {#each structure_files as file, idx (file.name)}
+      <option value={idx}>{file.name}</option>
+    {/each}
+  </select>
+  &ensp;(parsed <strong>{parsed_structure?.sites?.length || 0}</strong> atoms from {
+    format_num(selected_file.content.length)
+  }B)
+</label>
+
+<Structure
+  structure_string={selected_file.content}
+  bind:structure={parsed_structure}
+/>
 ```

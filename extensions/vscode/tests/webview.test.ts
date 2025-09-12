@@ -111,13 +111,15 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
 })
 
 describe(`VSCode Download Integration`, () => {
-  test(`sets up global download override when VSCode API is available`, () => {
+  test(`sets up global download override when VSCode API is available`, async () => {
+    vi.resetModules() // Reset modules to clear cached vscode_api variable in webview/main.ts
     const mock_post_message = vi.fn()
     globalThis.acquireVsCodeApi = vi.fn(() => ({
       postMessage: mock_post_message,
       setState: vi.fn(),
       getState: vi.fn(),
     }))
+    const { setup_vscode_download } = await import(`../src/webview/main`)
     setup_vscode_download()
     expect(typeof globalThis.download).toBe(`function`)
     globalThis.download(`test content`, `test.json`, `application/json`)

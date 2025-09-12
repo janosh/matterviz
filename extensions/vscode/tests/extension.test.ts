@@ -16,6 +16,7 @@ import {
   render,
   should_auto_render,
 } from '../src/extension'
+import type { FileData } from '../src/webview/main'
 
 // Mock modules
 vi.mock(`fs`)
@@ -134,12 +135,10 @@ describe(`MatterViz Extension`, () => {
   ])(`file reading: "%s" → compressed:%s`, (filename, expected_compressed) => {
     const result = read_file(`/test/${filename}`)
     expect(result.filename).toBe(filename)
-    expect(result.isCompressed).toBe(expected_compressed)
+    expect(result.is_base64).toBe(expected_compressed)
     if (expected_compressed) {
       expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`)
-    } else {
-      expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`, `utf8`)
-    }
+    } else expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`, `utf8`)
   })
 
   test.each([
@@ -149,17 +148,16 @@ describe(`MatterViz Extension`, () => {
     [`water_cluster_md.traj`, true, true], // ASE binary trajectory
     [`optimization_relax.traj`, true, true], // ASE binary trajectory
     [`regular_text.traj`, true, true], // .traj files are always binary
-    [`test.xyz`, true, false], // .xyz files are now always considered potential trajectories
-    [`test.extxyz`, true, false], // .extxyz files are always considered potential trajectories
+    // filename-only based .xyz/.extxyz detection always assumes structure, requires file content to look for frames and recognize as trajectory
+    [`test.xyz`, false, false],
+    [`test.extxyz`, false, false],
     [`test.cif`, false, false], // Not a trajectory file
   ])(
     `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,
     (filename, is_trajectory, is_binary) => {
       expect(is_trajectory_file(filename)).toBe(is_trajectory)
       if (is_trajectory) {
-        expect(read_file(`/test/${filename}`).isCompressed).toBe(
-          is_binary,
-        )
+        expect(read_file(`/test/${filename}`).is_base64).toBe(is_binary)
       }
     },
   )
@@ -174,7 +172,7 @@ describe(`MatterViz Extension`, () => {
     // Step 2: Extension should read this as binary (compressed)
     const file_result = read_file(`/test/${ase_filename}`)
     expect(file_result.filename).toBe(ase_filename)
-    expect(file_result.isCompressed).toBe(true)
+    expect(file_result.is_base64).toBe(true)
     expect(file_result.content).toBe(`mock content`) // base64 encoded binary data
 
     // Step 3: Verify webview data structure matches expected format
@@ -200,7 +198,7 @@ describe(`MatterViz Extension`, () => {
     )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
-    expect(parsed_data.data.isCompressed).toBe(true)
+    expect(parsed_data.data.is_base64).toBe(true)
     expect(parsed_data.data.content).toBe(`mock content`)
     expect(parsed_data.theme).toBe(`light`)
   })
@@ -219,7 +217,7 @@ describe(`MatterViz Extension`, () => {
     const result = get_file()
     expect(result.filename).toBe(`active.cif`)
     expect(result.content).toBe(`active content`)
-    expect(result.isCompressed).toBe(false)
+    expect(result.is_base64).toBe(false)
   })
 
   test(`get_file with active tab`, () => {
@@ -238,23 +236,23 @@ describe(`MatterViz Extension`, () => {
 
   test.each(
     [
-      [`structure`, { filename: `test.cif`, content: `content`, isCompressed: false }],
-      [`trajectory`, { filename: `test.traj`, content: `YmluYXJ5`, isCompressed: true }],
+      [`structure`, { filename: `test.cif`, content: `content`, is_base64: false }],
+      [`trajectory`, { filename: `test.traj`, content: `YmluYXJ5`, is_base64: true }],
       [`structure`, {
         filename: `test"quotes.cif`,
         content: `content`,
-        isCompressed: false,
+        is_base64: false,
       }],
-      [`structure`, { filename: `test.cif`, content: ``, isCompressed: false }],
+      [`structure`, { filename: `test.cif`, content: ``, is_base64: false }],
       [`structure`, {
         filename: `test.cif`,
         content: `<script>alert("xss")</script>`,
-        isCompressed: false,
+        is_base64: false,
       }],
       [`structure`, {
         filename: `large.cif`,
         content: `x`.repeat(100_000),
-        isCompressed: false,
+        is_base64: false,
       }],
     ] as const,
   )(`HTML generation: %s files`, (type, data) => {
@@ -269,12 +267,17 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(`matterviz-app`)
   })
 
-  test.each([
-    [{ command: `info`, text: `Test message` }, `showInformationMessage`],
-    [{ command: `error`, text: `Error message` }, `showErrorMessage`],
-    [{ command: `info`, text: `"><script>alert(1)</script>` }, `showInformationMessage`],
-    [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
-  ])(`message handling: %s`, async (message, expected_method) => {
+  test.each(
+    [
+      [{ command: `info`, text: `Test message` }, `showInformationMessage`],
+      [{ command: `error`, text: `Error message` }, `showErrorMessage`],
+      [
+        { command: `info`, text: `"><script>alert(1)</script>` },
+        `showInformationMessage`,
+      ],
+      [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
+    ] as const,
+  )(`message handling: %s`, async (message, expected_method) => {
     await handle_msg(message)
     expect(mock_vscode.window[expected_method as keyof typeof mock_vscode.window])
       .toHaveBeenCalledWith(message.text)
@@ -453,7 +456,7 @@ describe(`MatterViz Extension`, () => {
     // HTML generation performance
     const large_data = {
       type: `structure`,
-      data: { filename: `large.cif`, content: `x`.repeat(100_000), isCompressed: false },
+      data: { filename: `large.cif`, content: `x`.repeat(100_000), is_base64: false },
       theme: `light`,
     } as const
     const html_start = performance.now()
@@ -464,7 +467,7 @@ describe(`MatterViz Extension`, () => {
   test(`nonce uniqueness`, () => {
     const data = {
       type: `structure`,
-      data: { filename: `test.cif`, content: `content`, isCompressed: false },
+      data: { filename: `test.cif`, content: `content`, is_base64: false },
       theme: `light`,
     } as const
     const nonces = new Set<string>()
@@ -490,7 +493,7 @@ describe(`MatterViz Extension`, () => {
     dangerous_payloads.forEach((payload) => {
       const data = {
         type: `structure`,
-        data: { filename: `test.cif`, content: payload, isCompressed: false },
+        data: { filename: `test.cif`, content: payload, is_base64: false },
         theme: `light`,
       } as const
       const html = create_html(mock_webview, mock_context, data)
@@ -561,7 +564,7 @@ describe(`MatterViz Extension`, () => {
 
       const data = {
         type: `structure` as const,
-        data: { filename: `test.cif`, content: `content`, isCompressed: false },
+        data: { filename: `test.cif`, content: `content`, is_base64: false },
         theme: get_theme(),
       }
 
@@ -827,7 +830,7 @@ describe(`MatterViz Extension`, () => {
           data: expect.objectContaining({
             filename: `file.cif`,
             content: `updated content`,
-            isCompressed: false,
+            is_base64: false,
           }),
           type: `structure`,
           ...msg_args,
@@ -1155,6 +1158,141 @@ describe(`MatterViz Extension`, () => {
           expect.stringContaining(`MatterViz auto-render failed:`),
         )
       })
+    })
+  })
+
+  describe(`Multi-frame xyz/extxyz handling`, () => {
+    test(`should correctly identify multi-frame XYZ as trajectory using content`, () => {
+      // Multi-frame XYZ content (2 frames)
+      const multi_frame_xyz_content = `3
+frame 1
+H 0.0 0.0 0.0
+O 0.0 0.0 1.0
+H 0.0 1.0 0.0
+3
+frame 2
+H 0.1 0.0 0.0
+O 0.0 0.1 1.0
+H 0.0 1.0 0.1`
+
+      // Single-frame XYZ content
+      const single_frame_xyz_content = `3
+water molecule
+H 0.0 0.0 0.0
+O 0.0 0.0 1.0
+H 0.0 1.0 0.0`
+
+      // Test 1: Verify is_trajectory_file directly detects multi-frame content
+      expect(is_trajectory_file(`multi-frame.xyz`, multi_frame_xyz_content)).toBe(true)
+      expect(is_trajectory_file(`single-frame.xyz`, single_frame_xyz_content)).toBe(false)
+
+      // Test 2: Verify filename-only detection doesn't identify .xyz as trajectory
+      expect(is_trajectory_file(`multi-frame.xyz`)).toBe(false) // filename-only should be false
+      expect(is_trajectory_file(`single-frame.xyz`)).toBe(false) // filename-only should be false
+
+      // Test 3: Test with FileData objects (simulating what infer_view_type receives)
+      const multi_frame_file: FileData = {
+        filename: `multi-frame.xyz`,
+        content: multi_frame_xyz_content,
+        is_base64: false,
+      }
+
+      const single_frame_file: FileData = {
+        filename: `single-frame.xyz`,
+        content: single_frame_xyz_content,
+        is_base64: false,
+      }
+
+      const compressed_file: FileData = {
+        filename: `trajectory.xyz.gz`,
+        content: `base64encodedcontent`,
+        is_base64: true,
+      }
+
+      // Test what infer_view_type logic would do:
+      // For non-compressed files, pass content
+      expect(is_trajectory_file(multi_frame_file.filename, multi_frame_file.content))
+        .toBe(true)
+      expect(is_trajectory_file(single_frame_file.filename, single_frame_file.content))
+        .toBe(false)
+
+      // For compressed files, don't pass content (falls back to filename-only)
+      expect(is_trajectory_file(compressed_file.filename)).toBe(true) // .xyz.gz with trajectory keyword is detected as trajectory by filename
+
+      // Test 4: Test webview creation scenario directly with content-based detection
+      const multi_frame_html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(multi_frame_file.filename, multi_frame_file.content)
+          ? `trajectory`
+          : `structure`,
+        data: multi_frame_file,
+        theme: `light`,
+      })
+
+      const multi_frame_parsed_data = JSON.parse(
+        multi_frame_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+          `{}`,
+      )
+
+      expect(multi_frame_parsed_data.type).toBe(`trajectory`)
+      expect(multi_frame_parsed_data.data.filename).toBe(`multi-frame.xyz`)
+      expect(multi_frame_parsed_data.data.content).toBe(multi_frame_xyz_content)
+
+      // Test 5: Test single-frame for comparison
+      const single_frame_html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(single_frame_file.filename, single_frame_file.content)
+          ? `trajectory`
+          : `structure`,
+        data: single_frame_file,
+        theme: `light`,
+      })
+
+      const single_frame_parsed_data = JSON.parse(
+        single_frame_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+          `{}`,
+      )
+
+      expect(single_frame_parsed_data.type).toBe(`structure`)
+
+      // Test 6: Test compressed file falls back correctly
+      const compressed_html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(compressed_file.filename) ? `trajectory` : `structure`,
+        data: compressed_file,
+        theme: `light`,
+      })
+
+      const compressed_parsed_data = JSON.parse(
+        compressed_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+          `{}`,
+      )
+
+      expect(compressed_parsed_data.type).toBe(`trajectory`) // Should be trajectory since filename contains trajectory keyword
+    })
+
+    test(`should handle compressed XYZ files by falling back to filename-only detection`, () => {
+      // Test compressed file (should fall back to filename-only detection)
+      const compressed_file = {
+        filename: `trajectory.xyz.gz`,
+        content: `base64encodedcontent`, // This is binary/compressed
+        is_base64: true,
+      }
+
+      // For compressed files, infer_view_type should fall back to filename-only detection
+      // Since .xyz.gz with trajectory keyword is detected as trajectory by filename, it should be 'trajectory'
+      expect(is_trajectory_file(compressed_file.filename)).toBe(true) // filename-only detection
+
+      // Test the HTML generation scenario
+      const html = create_html(mock_webview, mock_context, {
+        type: is_trajectory_file(compressed_file.filename) ? `trajectory` : `structure`,
+        data: compressed_file,
+        theme: `light`,
+      })
+
+      const parsed_data = JSON.parse(
+        html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ?? `{}`,
+      )
+
+      // Should be 'trajectory' since filename contains trajectory keyword
+      expect(parsed_data.type).toBe(`trajectory`)
     })
   })
 

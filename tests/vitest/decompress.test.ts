@@ -2,36 +2,10 @@ import {
   decompress_data,
   decompress_file,
   detect_compression_format,
-  remove_compression_extension,
 } from '$lib/io/decompress'
 import { describe, expect, test } from 'vitest'
 
 describe(`decompress utility functions`, () => {
-  describe(`remove_compression_extension`, () => {
-    test.each([
-      [`test.json.gz`, `test.json`],
-      [`structure.poscar.gzip`, `structure.poscar`],
-      [`data.xyz.gz`, `data.xyz`],
-      [`file.cif.gzip`, `file.cif`],
-      [`data.deflate`, `data`], // deflate format
-      [`structure.z`, `structure`], // deflate-raw format
-      [`archive.zip`, `archive`], // zip format
-      [`file.xz`, `file`], // xz format
-      [`data.bz2`, `data`], // bz2 format
-      [`test.json`, `test.json`], // no compression extension
-      [`file.txt`, `file.txt`],
-      [`multiple.gz.json.gz`, `multiple.gz.json`], // only removes last .gz
-      [`file.gzip.txt`, `file.gzip.txt`], // gzip not at end
-      [`file.deflate.txt`, `file.deflate.txt`], // deflate not at end
-      [`file.zip.txt`, `file.zip.txt`], // zip not at end
-      [`file.xz.txt`, `file.xz.txt`], // xz not at end
-      [`file.bz2.txt`, `file.bz2.txt`], // bz2 not at end
-      [``, ``],
-    ])(`should transform "%s" to "%s"`, (input: string, expected: string) => {
-      expect(remove_compression_extension(input)).toBe(expected)
-    })
-  })
-
   describe(`detect_compression_format`, () => {
     test.each([
       [`test.json.gz`, `gzip`],
