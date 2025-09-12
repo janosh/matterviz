@@ -135,12 +135,10 @@ describe(`MatterViz Extension`, () => {
   ])(`file reading: "%s" → compressed:%s`, (filename, expected_compressed) => {
     const result = read_file(`/test/${filename}`)
     expect(result.filename).toBe(filename)
-    expect(result.isCompressed).toBe(expected_compressed)
+    expect(result.is_base64).toBe(expected_compressed)
     if (expected_compressed) {
       expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`)
-    } else {
-      expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`, `utf8`)
-    }
+    } else expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`, `utf8`)
   })
 
   test.each([
@@ -159,9 +157,7 @@ describe(`MatterViz Extension`, () => {
     (filename, is_trajectory, is_binary) => {
       expect(is_trajectory_file(filename)).toBe(is_trajectory)
       if (is_trajectory) {
-        expect(read_file(`/test/${filename}`).isCompressed).toBe(
-          is_binary,
-        )
+        expect(read_file(`/test/${filename}`).is_base64).toBe(is_binary)
       }
     },
   )
@@ -176,7 +172,7 @@ describe(`MatterViz Extension`, () => {
     // Step 2: Extension should read this as binary (compressed)
     const file_result = read_file(`/test/${ase_filename}`)
     expect(file_result.filename).toBe(ase_filename)
-    expect(file_result.isCompressed).toBe(true)
+    expect(file_result.is_base64).toBe(true)
     expect(file_result.content).toBe(`mock content`) // base64 encoded binary data
 
     // Step 3: Verify webview data structure matches expected format
@@ -202,7 +198,7 @@ describe(`MatterViz Extension`, () => {
     )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
-    expect(parsed_data.data.isCompressed).toBe(true)
+    expect(parsed_data.data.is_base64).toBe(true)
     expect(parsed_data.data.content).toBe(`mock content`)
     expect(parsed_data.theme).toBe(`light`)
   })
@@ -221,7 +217,7 @@ describe(`MatterViz Extension`, () => {
     const result = get_file()
     expect(result.filename).toBe(`active.cif`)
     expect(result.content).toBe(`active content`)
-    expect(result.isCompressed).toBe(false)
+    expect(result.is_base64).toBe(false)
   })
 
   test(`get_file with active tab`, () => {
@@ -240,23 +236,23 @@ describe(`MatterViz Extension`, () => {
 
   test.each(
     [
-      [`structure`, { filename: `test.cif`, content: `content`, isCompressed: false }],
-      [`trajectory`, { filename: `test.traj`, content: `YmluYXJ5`, isCompressed: true }],
+      [`structure`, { filename: `test.cif`, content: `content`, is_base64: false }],
+      [`trajectory`, { filename: `test.traj`, content: `YmluYXJ5`, is_base64: true }],
       [`structure`, {
         filename: `test"quotes.cif`,
         content: `content`,
-        isCompressed: false,
+        is_base64: false,
       }],
-      [`structure`, { filename: `test.cif`, content: ``, isCompressed: false }],
+      [`structure`, { filename: `test.cif`, content: ``, is_base64: false }],
       [`structure`, {
         filename: `test.cif`,
         content: `<script>alert("xss")</script>`,
-        isCompressed: false,
+        is_base64: false,
       }],
       [`structure`, {
         filename: `large.cif`,
         content: `x`.repeat(100_000),
-        isCompressed: false,
+        is_base64: false,
       }],
     ] as const,
   )(`HTML generation: %s files`, (type, data) => {
@@ -271,12 +267,17 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(`matterviz-app`)
   })
 
-  test.each([
-    [{ command: `info`, text: `Test message` }, `showInformationMessage`],
-    [{ command: `error`, text: `Error message` }, `showErrorMessage`],
-    [{ command: `info`, text: `"><script>alert(1)</script>` }, `showInformationMessage`],
-    [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
-  ])(`message handling: %s`, async (message, expected_method) => {
+  test.each(
+    [
+      [{ command: `info`, text: `Test message` }, `showInformationMessage`],
+      [{ command: `error`, text: `Error message` }, `showErrorMessage`],
+      [
+        { command: `info`, text: `"><script>alert(1)</script>` },
+        `showInformationMessage`,
+      ],
+      [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
+    ] as const,
+  )(`message handling: %s`, async (message, expected_method) => {
     await handle_msg(message)
     expect(mock_vscode.window[expected_method as keyof typeof mock_vscode.window])
       .toHaveBeenCalledWith(message.text)
@@ -455,7 +456,7 @@ describe(`MatterViz Extension`, () => {
     // HTML generation performance
     const large_data = {
       type: `structure`,
-      data: { filename: `large.cif`, content: `x`.repeat(100_000), isCompressed: false },
+      data: { filename: `large.cif`, content: `x`.repeat(100_000), is_base64: false },
       theme: `light`,
     } as const
     const html_start = performance.now()
@@ -466,7 +467,7 @@ describe(`MatterViz Extension`, () => {
   test(`nonce uniqueness`, () => {
     const data = {
       type: `structure`,
-      data: { filename: `test.cif`, content: `content`, isCompressed: false },
+      data: { filename: `test.cif`, content: `content`, is_base64: false },
       theme: `light`,
     } as const
     const nonces = new Set<string>()
@@ -492,7 +493,7 @@ describe(`MatterViz Extension`, () => {
     dangerous_payloads.forEach((payload) => {
       const data = {
         type: `structure`,
-        data: { filename: `test.cif`, content: payload, isCompressed: false },
+        data: { filename: `test.cif`, content: payload, is_base64: false },
         theme: `light`,
       } as const
       const html = create_html(mock_webview, mock_context, data)
@@ -563,7 +564,7 @@ describe(`MatterViz Extension`, () => {
 
       const data = {
         type: `structure` as const,
-        data: { filename: `test.cif`, content: `content`, isCompressed: false },
+        data: { filename: `test.cif`, content: `content`, is_base64: false },
         theme: get_theme(),
       }
 
@@ -829,7 +830,7 @@ describe(`MatterViz Extension`, () => {
           data: expect.objectContaining({
             filename: `file.cif`,
             content: `updated content`,
-            isCompressed: false,
+            is_base64: false,
           }),
           type: `structure`,
           ...msg_args,
@@ -1193,19 +1194,19 @@ H 0.0 1.0 0.0`
       const multi_frame_file: FileData = {
         filename: `multi-frame.xyz`,
         content: multi_frame_xyz_content,
-        isCompressed: false,
+        is_base64: false,
       }
 
       const single_frame_file: FileData = {
         filename: `single-frame.xyz`,
         content: single_frame_xyz_content,
-        isCompressed: false,
+        is_base64: false,
       }
 
       const compressed_file: FileData = {
         filename: `trajectory.xyz.gz`,
         content: `base64encodedcontent`,
-        isCompressed: true,
+        is_base64: true,
       }
 
       // Test what infer_view_type logic would do:
@@ -1272,7 +1273,7 @@ H 0.0 1.0 0.0`
       const compressed_file = {
         filename: `trajectory.xyz.gz`,
         content: `base64encodedcontent`, // This is binary/compressed
-        isCompressed: true,
+        is_base64: true,
       }
 
       // For compressed files, infer_view_type should fall back to filename-only detection

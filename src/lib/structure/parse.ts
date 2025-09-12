@@ -75,9 +75,7 @@ function normalize_scientific_notation(str: string): string {
 function parse_coordinate(str: string): number {
   const normalized = normalize_scientific_notation(str.trim())
   const value = parseFloat(normalized)
-  if (isNaN(value)) {
-    throw `Invalid coordinate value: ${str}`
-  }
+  if (isNaN(value)) throw new Error(`Invalid coordinate value: ${str}`)
   return value
 }
 
@@ -87,15 +85,17 @@ function parse_coordinate_line(line: string): number[] {
 
   // Handle malformed coordinates like "1.0-2.0-3.0" (missing spaces)
   if (tokens.length < 3) {
-    // Insert a space before '-' that follows a digit (but not after 'e'/'E')
-    // Example: "0.1-0.2-0.3" -> "0.1 -0.2 -0.3"; preserves exponents like "1e-3"
-    const sanitized = line.trim().replace(/([0-9])-/g, `$1 -`)
+    // Insert a space only for subtraction between numbers, not exponent signs (e/E)
+    const sanitized = line
+      .trim()
+      // Add space when '-' follows a digit and precedes a digit or dot
+      .replace(/(\d)-(?=[\d.])/g, `$1 -`)
+      // Revert accidental spaces after exponent markers
+      .replace(/([eE])\s-\s/g, `$1-`)
     tokens = sanitized.split(/\s+/)
   }
 
-  if (tokens.length < 3) {
-    throw `Insufficient coordinates in line: ${line}`
-  }
+  if (tokens.length < 3) throw new Error(`Insufficient coordinates in line: ${line}`)
 
   return tokens.slice(0, 3).map(parse_coordinate)
 }
@@ -139,7 +139,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
     const parse_vector = (line: string, line_num: number): Vec3 => {
       const coords = line.trim().split(/\s+/).map(parse_coordinate)
       if (coords.length !== 3) {
-        throw `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`
+        throw new Error(
+          `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`,
+        )
       }
       return coords as Vec3
     }
@@ -1612,10 +1614,11 @@ export const detect_structure_type = (
     try {
       const parsed = JSON.parse(content)
       // Check for crystal indicators: lattice, lattice_vectors, or periodic dimensions
+      const dims = parsed.data?.attributes?.dimension_types
       if (
         parsed.lattice ||
         parsed.data?.attributes?.lattice_vectors ||
-        parsed.data?.attributes?.dimension_types?.some((dim: number) => dim > 0) ||
+        (Array.isArray(dims) && dims.some((dim: number) => dim > 0)) ||
         parsed.data?.attributes?.nperiodic_dimensions > 0
       ) {
         return `crystal`

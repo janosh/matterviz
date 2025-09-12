@@ -131,6 +131,12 @@ describe(`POSCAR Parser`, () => {
         `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH_pv O/12345abc\n1 1\nDirect\n0.0 0.0 0.0\n0.5 0.5 0.5`,
       expected: { elements: [`H`, `O`] },
     },
+    {
+      name: `scientific notation in malformed coordinates`,
+      content:
+        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n1e-3-2e-3-3e-3`,
+      expected: { abc: [0.001, 0.998, 0.997] }, // Scientific notation preserved: 1e-3 -2e-3 -3e-3, negative coordinates wrapped
+    },
   ])(`should handle $name`, ({ content, expected }) => {
     const result = parse_poscar(content)
     if (!result) throw `Failed to parse POSCAR`
@@ -212,7 +218,7 @@ describe(`POSCAR Parser`, () => {
       expect(result).toBeNull()
       expect(console_error_spy).toHaveBeenCalledWith(
         `Error parsing POSCAR file:`,
-        expected_error,
+        expect.objectContaining({ message: expected_error }),
       )
     },
   )

@@ -76,9 +76,9 @@ const FORMAT_PATTERNS = {
   },
 
   xyz_multi: (data: string, filename?: string) => {
-    if (!filename?.toLowerCase().match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
-      return false
-    }
+    const lower = filename?.toLowerCase() ?? ``
+    const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    if (!/\.(xyz|extxyz)$/.test(base)) return false
     return count_xyz_frames(data) >= 2
   },
 } as const
@@ -1379,11 +1379,8 @@ async function parse_with_unified_loader(
     }
   }
 
-  on_progress?.({
-    current: 100,
-    total: 100,
-    stage: `Ready: ${total_frames} frames indexed`,
-  })
+  const stage = `Ready: ${total_frames} frames indexed`
+  on_progress?.({ current: 100, total: 100, stage })
 
   return {
     frames,
@@ -1391,7 +1388,7 @@ async function parse_with_unified_loader(
       source_format: filename.toLowerCase().endsWith(`.traj`)
         ? `ase_trajectory`
         : `xyz_trajectory`,
-      frame_count: frames.length,
+      frame_count: total_frames,
     },
     total_frames,
     indexed_frames: frame_index,

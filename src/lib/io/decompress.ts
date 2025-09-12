@@ -10,10 +10,9 @@ export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
 export function detect_compression_format(
   filename: string,
 ): CompressionFormat | null {
+  const lower = filename.toLowerCase()
   for (const [format, extensions] of Object.entries(COMPRESSION_FORMATS)) {
-    if (extensions.some((ext) => filename.endsWith(ext))) {
-      return format as CompressionFormat
-    }
+    if (extensions.some((ext) => lower.endsWith(ext))) return format as CompressionFormat
   }
   return null
 }

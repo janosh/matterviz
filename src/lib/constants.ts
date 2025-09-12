@@ -1,14 +1,14 @@
 // Shared keyword constants for file type detection across the codebase
 
 // compression formats and their file extensions
-export const COMPRESSION_FORMATS = Object.freeze({
-  gzip: [`.gz`, `.gzip`],
-  deflate: [`.deflate`],
-  'deflate-raw': [`.z`],
-  zip: [`.zip`], // Browser DecompressionStream doesn't support ZIP
-  xz: [`.xz`], // Browser DecompressionStream doesn't support XZ
-  bz2: [`.bz2`], // Browser DecompressionStream doesn't support BZ2
-}) as Record<string, readonly string[]>
+export const COMPRESSION_FORMATS = {
+  gzip: [`.gz`, `.gzip`] as const,
+  deflate: [`.deflate`] as const,
+  'deflate-raw': [`.z`] as const,
+  zip: [`.zip`] as const, // Browser DecompressionStream doesn't support ZIP
+  xz: [`.xz`] as const, // Browser DecompressionStream doesn't support XZ
+  bz2: [`.bz2`] as const, // Browser DecompressionStream doesn't support BZ2
+} as const satisfies Record<string, readonly string[]>
 
 // All detectable compression extensions
 export const COMPRESSION_EXTENSIONS = Object.freeze([
@@ -65,6 +65,7 @@ export const TRAJ_EXTENSIONS_REGEX = new RegExp(
 )
 export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.cif`,
+  `.mcif`,
   `.poscar`,
   `.vasp`,
   `.lmp`,
@@ -93,7 +94,8 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = new RegExp(
 )
 
 // Special regex patterns
-export const VASP_FILES_REGEX = /(poscar|contcar|potcar|incar|kpoints|outcar)/i
+export const VASP_FILES_REGEX =
+  /(?:^|[\\/_.-])(poscar|contcar|potcar|incar|kpoints|outcar)(?:[\\/_.-]|$)/i
 export const XDATCAR_REGEX = /xdatcar/i
 export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i

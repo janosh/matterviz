@@ -53,7 +53,7 @@ type ExtensionContextLike = vscode.ExtensionContext | {
 interface FileData {
   filename: string
   content: string
-  isCompressed: boolean
+  is_base64: boolean // content is base64-encoded (binary or compressed)
 }
 
 interface WebviewData {
@@ -96,7 +96,7 @@ const active_frame_loaders = new Map<string, FrameLoaderData>()
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): `trajectory` | `structure` => {
   // Only pass content for text files; for binary (compressed) fall back to filename
-  const content = file.isCompressed ? undefined : file.content
+  const content = file.is_base64 ? undefined : file.content
   return is_trajectory_file(file.filename, content) ? `trajectory` : `structure`
 }
 
@@ -125,8 +125,8 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
 // Read file from filesystem
 export const read_file = (file_path: string): FileData => {
   const filename = path.basename(file_path)
-  // Binary files that should be read as base64
-  const is_binary = COMPRESSION_EXTENSIONS_REGEX.test(filename) ||
+  // Files we serialize as base64 for the webview (compressed OR binary)
+  const is_base64_payload = COMPRESSION_EXTENSIONS_REGEX.test(filename) ||
     /\.(traj|h5|hdf5)$/i.test(filename)
 
   // Check file size to avoid loading huge files into memory
@@ -139,21 +139,21 @@ export const read_file = (file_path: string): FileData => {
     file_size = 0
   }
 
-  const threshold = is_binary ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
+  const threshold = is_base64_payload ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
 
   if (file_size > threshold) {
     return {
       filename,
       content: `LARGE_FILE:${file_path}:${file_size}`,
-      isCompressed: is_binary,
+      is_base64: is_base64_payload, // NOTE: base64 payload (compressed or binary)
     }
   }
 
   // For normal-sized files, read normally
-  const content = is_binary
+  const content = is_base64_payload
     ? fs.readFileSync(file_path).toString(`base64`)
     : fs.readFileSync(file_path, `utf8`)
-  return { filename, content, isCompressed: is_binary }
+  return { filename, content, is_base64: is_base64_payload }
 }
 
 // Get file data from URI or active editor
@@ -163,7 +163,7 @@ export const get_file = (uri?: vscode.Uri): FileData => {
   if (vscode.window.activeTextEditor) {
     const filename = path.basename(vscode.window.activeTextEditor.document.fileName)
     const content = vscode.window.activeTextEditor.document.getText()
-    return { filename, content, isCompressed: false }
+    return { filename, content, is_base64: false }
   }
 
   const active_tab = vscode.window.tabGroups.activeTabGroup.activeTab
@@ -639,12 +639,13 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
           vscode.Uri.joinPath(this.context.extensionUri, `../../static`),
         ],
       }
+      const current = read_file(document.uri.fsPath)
       webview_panel.webview.html = create_html(
         webview_panel.webview,
         this.context,
         {
-          type: infer_view_type(read_file(document.uri.fsPath)),
-          data: read_file(document.uri.fsPath),
+          type: infer_view_type(current),
+          data: current,
           theme: get_theme(),
           defaults: get_defaults(),
         },
@@ -661,12 +662,13 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       // Listen for theme changes and update webview
       const update_theme = () => {
         if (webview_panel.visible) {
+          const current = read_file(document.uri.fsPath)
           webview_panel.webview.html = create_html(
             webview_panel.webview,
             this.context,
             {
-              type: infer_view_type(read_file(document.uri.fsPath)),
-              data: read_file(document.uri.fsPath),
+              type: infer_view_type(current),
+              data: current,
               theme: get_theme(),
               defaults: get_defaults(),
             },
