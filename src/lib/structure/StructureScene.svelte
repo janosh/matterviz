@@ -21,21 +21,21 @@
 
   // Add pulsating animation for selected sites
   let pulse_time = $state(0)
-  let pulse_opacity = $derived(0.2 + 0.2 * Math.sin(pulse_time * 3))
+  let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
 
   // Update pulse time for animation
   $effect(() => {
-    if (!selected_sites?.length) return
+    if (!selected_sites?.length && !active_sites?.length) return
     if (typeof globalThis === `undefined`) return
     const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
     if (reduce) return
-    let raf_id = 0
+    let frame_id = 0
     const animate = () => {
-      pulse_time += 0.01
-      raf_id = requestAnimationFrame(animate)
+      pulse_time += 0.015
+      frame_id = requestAnimationFrame(animate)
     }
-    raf_id = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(raf_id)
+    frame_id = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frame_id)
   })
 
   interface Props {
@@ -88,6 +88,9 @@
     selected_sites?: number[]
     measured_sites?: number[]
     selection_highlight_color?: string
+    // Support for active highlight group with different color
+    active_sites?: number[]
+    active_highlight_color?: string
     rotation?: Vec3 // rotation control prop
   }
   let {
@@ -137,6 +140,9 @@
     selected_sites = $bindable([]),
     measured_sites = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
+    // Active highlight group with different color
+    active_sites = $bindable([]),
+    active_highlight_color = `#2563eb`, // stronger blue
     rotation = DEFAULTS.structure.rotation,
   }: Props = $props()
 
@@ -269,8 +275,8 @@
     })
   })
 
-  let force_data = $derived( // Compute force vectors
-    show_force_vectors && structure?.sites
+  let force_data = $derived.by(() => { // Compute force vectors
+    return show_force_vectors && structure?.sites
       ? structure?.sites
         .map((site) => {
           if (
@@ -287,8 +293,8 @@
           }
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
-      : [],
-  )
+      : []
+  })
 
   let instanced_atom_groups = $derived(
     Object.values(
@@ -571,8 +577,8 @@
             {bonding_strategy}
             {active_tooltip}
             {hovered_bond_data}
-            onbondhover={(data) => hovered_bond_data = data}
-            ontooltipchange={(type) => active_tooltip = type}
+            onbondhover={(data: BondPair | null) => hovered_bond_data = data}
+            ontooltipchange={(type: `atom` | `bond` | null) => active_tooltip = type}
           />
         {/each}
       {/if}
@@ -593,24 +599,29 @@
             opacity: pulse_opacity,
             color: selection_highlight_color,
           }))),
+          ...((active_sites ?? []).map((idx) => ({
+            kind: `active`,
+            site: structure?.sites?.[idx] ?? null,
+            site_idx: idx,
+            opacity: pulse_opacity, // Let it pulse freely
+            color: active_highlight_color,
+          }))),
         ] as
         entry
         (`${entry.kind}-${entry.site_idx}`)
       }
-        {@const site = entry.site}
-        {@const opacity = entry.opacity}
-        {@const color = entry.color}
+        {@const { site, opacity, color, kind, site_idx } = entry}
         {#if site}
           {@const xyz = site.xyz}
           {@const highlight_radius = atom_data.find((atom) =>
-          atom.site_idx === entry.site_idx
+          atom.site_idx === site_idx
         )?.radius ?? atom_radius}
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}
             onclick={(event: MouseEvent) => {
-              if (entry?.site_idx !== null && Number.isInteger(entry.site_idx)) {
-                toggle_selection(entry.site_idx, event)
+              if (site_idx !== null && Number.isInteger(site_idx)) {
+                toggle_selection(site_idx, event)
               }
             }}
           >
@@ -620,7 +631,7 @@
               transparent
               {opacity}
               emissive={color}
-              emissiveIntensity={entry.kind === `selected` ? 0.5 : 0.2}
+              emissiveIntensity={kind === `selected` || kind === `active` ? 0.7 : 0.2}
               depthTest={false}
               depthWrite={false}
             />

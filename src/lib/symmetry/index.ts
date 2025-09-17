@@ -94,7 +94,7 @@ export function wyckoff_positions_from_moyo(
   }>()
 
   // Process all sites, including those without Wyckoff letters
-  wyckoffs.forEach((full, idx) => {
+  wyckoffs.forEach((full: string | null, idx: number) => {
     const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
     const atomic_num = numbers[idx]
     const elem = atomic_number_to_symbol[atomic_num] ?? `?`
@@ -153,4 +153,81 @@ export function wyckoff_positions_from_moyo(
   })
 
   return rows
+}
+
+// Apply symmetry operations to find all equivalent positions for a given fractional coordinate
+export function apply_symmetry_operations(
+  position: Vec3,
+  operations: MoyoDataset[`operations`],
+  _tolerance = 1e-6,
+): Vec3[] {
+  const seen = new Set<string>()
+  const wrap = (coord: number) => coord - Math.floor(coord)
+  const key = (pos: Vec3) => pos.map((c) => wrap(c).toFixed(8)).join(`,`)
+
+  return operations
+    .map(({ rotation, translation }) => {
+      // Apply 3x3 rotation matrix and translation: new_pos = R * position + t
+      const new_pos: Vec3 = [0, 1, 2].map((i) =>
+        rotation[i * 3] * position[0] +
+        rotation[i * 3 + 1] * position[1] +
+        rotation[i * 3 + 2] * position[2] +
+        translation[i]
+      ) as Vec3
+      return new_pos.map(wrap) as Vec3
+    })
+    .filter((pos) => {
+      const pos_key = key(pos)
+      if (seen.has(pos_key)) return false
+      seen.add(pos_key)
+      return true
+    })
+}
+
+// Map Wyckoff positions to all equivalent atoms in the displayed structure (including image atoms)
+export function map_wyckoff_to_all_atoms(
+  wyckoff_positions: WyckoffPos[],
+  displayed_structure: PymatgenStructure,
+  original_structure: PymatgenStructure,
+  sym_data: MoyoDataset | null,
+  tolerance = 1e-6,
+): WyckoffPos[] {
+  if (!sym_data?.operations || !displayed_structure.sites || !original_structure.sites) {
+    return wyckoff_positions
+  }
+
+  const periodic_distance = (pos1: Vec3, pos2: Vec3) =>
+    Math.sqrt(
+      pos1.reduce((sum, coord, i) => {
+        const diff = Math.abs(coord - pos2[i])
+        const periodic_diff = Math.min(diff, 1 - diff)
+        return sum + periodic_diff * periodic_diff
+      }, 0),
+    )
+
+  return wyckoff_positions.map((wyckoff_pos) => {
+    const indices = (wyckoff_pos.site_indices || [])
+      .filter((idx) => idx < original_structure.sites.length)
+      .flatMap((orig_idx) => {
+        const { abc: original_abc, species } = original_structure.sites[orig_idx]
+        const element = species[0]?.element
+        const equivalent_positions = apply_symmetry_operations(
+          original_abc,
+          sym_data.operations,
+          tolerance,
+        )
+
+        return displayed_structure.sites
+          .map((site, display_idx) => ({ site, display_idx }))
+          .filter(({ site }) => site.species[0]?.element === element)
+          .filter(({ site }) =>
+            equivalent_positions.some((equiv_pos) =>
+              periodic_distance(equiv_pos, site.abc) < tolerance
+            )
+          )
+          .map(({ display_idx }) => display_idx)
+      })
+
+    return { ...wyckoff_pos, site_indices: [...new Set(indices)].sort((a, b) => a - b) }
+  })
 }
