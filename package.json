@@ -123,6 +123,10 @@
       "types": "./dist/periodic-table.d.ts",
       "default": "./dist/periodic-table.js"
     },
+    "./phase-diagram": {
+      "types": "./dist/phase-diagram.d.ts",
+      "default": "./dist/phase-diagram.js"
+    },
     "./plot": {
       "types": "./dist/plot/index.d.ts",
       "default": "./dist/plot/index.js"

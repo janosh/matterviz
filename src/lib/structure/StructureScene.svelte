@@ -16,6 +16,7 @@
   import * as Extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
+  import { SvelteMap } from 'svelte/reactivity'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -251,7 +252,7 @@
     }
   })
 
-  let atom_data = $derived.by(() => { // Pre-compute atom data for performance
+  let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
     if (!show_atoms || !structure?.sites) return []
     // Build atom data with partial occupancy handling
     return structure.sites.flatMap((site, site_idx) => {
@@ -273,6 +274,14 @@
         end_phi: 2 * Math.PI * (start_angle += occu),
       }))
     })
+  })
+
+  let radius_by_site_idx = $derived.by(() => { // Precompute radius lookup to avoid per-frame search
+    const map = new SvelteMap<number, number>()
+    for (const atom of atom_data) {
+      if (!map.has(atom.site_idx)) map.set(atom.site_idx, atom.radius)
+    }
+    return map
   })
 
   let force_data = $derived.by(() => { // Compute force vectors
@@ -613,9 +622,9 @@
         {@const { site, opacity, color, kind, site_idx } = entry}
         {#if site}
           {@const xyz = site.xyz}
-          {@const highlight_radius = atom_data.find((atom) =>
-          atom.site_idx === site_idx
-        )?.radius ?? atom_radius}
+          {@const highlight_radius = site_idx !== null
+          ? radius_by_site_idx.get(site_idx) ?? atom_radius
+          : atom_radius}
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}

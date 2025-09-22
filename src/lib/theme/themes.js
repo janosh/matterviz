@@ -241,18 +241,6 @@ const themes = {
     white: `rgba(255, 255, 255, 0.98)`,
     black: `rgba(15, 15, 15, 0.95)`,
   },
-  'sms-border': {
-    light: `1px dotted #6b7280`,
-    dark: `1px dotted teal`,
-    white: `1px dotted #9ca3af`,
-    black: `1px dotted teal`,
-  },
-  'sms-focus-border': {
-    light: `1px dotted ${acc_light}`,
-    dark: `1px dotted cornflowerblue`,
-    white: `1px dotted ${acc_white}`,
-    black: `1px dotted ${acc_black}`,
-  },
   'sms-active-color': {
     light: acc_light,
     dark: `cornflowerblue`,

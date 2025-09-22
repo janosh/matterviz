@@ -62,7 +62,7 @@
     // explicit measured sites for distance/angle overlays
     measured_sites?: number[]
     // expose the displayed structure (with image atoms and/or supercell) for external use
-    displayed_structure?: AnyStructure
+    displayed_structure?: AnyStructure | undefined
     // structure content as string (alternative to providing structure directly or via data_url)
     structure_string?: string
     children?: Snippet<[{ structure?: AnyStructure }]>

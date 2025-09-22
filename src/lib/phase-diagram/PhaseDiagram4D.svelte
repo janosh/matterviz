@@ -1,0 +1,1245 @@
+<script lang="ts">
+  import type { AnyStructure, ElementSymbol } from '$lib'
+  import { Icon, toggle_fullscreen } from '$lib'
+  import type { D3InterpolateName } from '$lib/colors'
+  import { contrast_color } from '$lib/colors'
+  import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
+  import { format_fractional, format_num } from '$lib/labels'
+  import { Structure } from '$lib/structure'
+  import { scaleSequential } from 'd3-scale'
+  import * as d3_sc from 'd3-scale-chromatic'
+  import PhaseDiagramControls from './PhaseDiagramControls.svelte'
+  import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
+  import { compute_4d_coordinates, TETRAHEDRON_VERTICES } from './quaternary'
+  import type {
+    HoverData3D,
+    PDLegendConfig,
+    PhaseDiagramConfig,
+    PhaseEntry,
+    PlotEntry3D,
+  } from './types'
+  import { process_pd_data } from './utils'
+
+  interface Props {
+    entries: PhaseEntry[]
+    legend?: Partial<PDLegendConfig>
+    config?: Partial<PhaseDiagramConfig>
+    on_point_click?: (entry: PlotEntry3D) => void
+    on_point_hover?: (data: HoverData3D | null) => void
+    fullscreen?: boolean
+    enable_fullscreen?: boolean
+    enable_info_pane?: boolean
+    wrapper?: HTMLDivElement
+    // Smart label defaults - hide labels if more than this many entries
+    label_threshold?: number
+    // Bindable visibility and interaction state
+    show_stable?: boolean
+    show_unstable?: boolean
+    color_mode?: `stability` | `energy`
+    color_scale?: D3InterpolateName
+    info_pane_open?: boolean
+    // Legend pane visibility
+    legend_pane_open?: boolean
+    // Energy threshold for showing unstable entries (eV/atom above hull)
+    energy_threshold?: number
+    // Show all elemental polymorphs or just reference corners
+    show_elemental_polymorphs?: boolean
+    // Callback for when JSON files are dropped
+    on_file_drop?: (entries: PhaseEntry[]) => void
+    // Enable structure preview overlay when hovering over entries with structure data
+    enable_structure_preview?: boolean
+  }
+  let {
+    entries,
+    legend = {},
+    config = {},
+    on_point_click,
+    on_point_hover,
+    fullscreen = $bindable(false),
+    enable_fullscreen = true,
+    enable_info_pane = true,
+    wrapper = $bindable(undefined),
+    label_threshold = 50,
+    show_stable = $bindable(true),
+    show_unstable = $bindable(true),
+    color_mode = $bindable(`energy`),
+    color_scale = $bindable(`interpolateViridis`),
+    info_pane_open = $bindable(false),
+    legend_pane_open = $bindable(false),
+    energy_threshold = $bindable(0.1), // eV/atom above hull for showing entries
+    show_elemental_polymorphs = $bindable(false),
+    on_file_drop,
+    enable_structure_preview = true,
+  }: Props = $props()
+
+  const default_legend: PDLegendConfig = {
+    title: ``,
+    show: true,
+    position: `top-right`,
+    width: 280,
+    show_counts: true,
+    show_color_toggle: true,
+    show_label_controls: true,
+  }
+  const merged_legend: PDLegendConfig = $derived({ ...default_legend, ...legend })
+
+  // Default configuration
+  const default_config: PhaseDiagramConfig = {
+    width: 600,
+    height: 600,
+    margin: { top: 60, right: 60, bottom: 60, left: 60 },
+    show_unstable: 0.2,
+    show_labels: true,
+    show_hull: true,
+    enable_zoom: true,
+    enable_pan: true,
+    enable_hover: true,
+    point_size: 8,
+    line_width: 2,
+    font_size: 12,
+    colors: {
+      stable: `#0072B2`,
+      unstable: `#E69F00`,
+      hull_line: `var(--accent-color, #1976D2)`,
+      background: `transparent`,
+      text: `var(--text-color, #212121)`,
+      edge: `var(--text-color, #212121)`,
+      tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
+      tooltip_text: `var(--tooltip-text, white)`,
+      annotation: `var(--text-color, #212121)`,
+    },
+  }
+
+  const merged_config = $derived({
+    ...default_config,
+    ...config,
+    margin: { ...default_config.margin, ...(config.margin || {}) },
+  })
+
+  // Process phase diagram data with unified PhaseEntry interface
+  const processed_entries = $derived(entries)
+
+  const pd_data = $derived(process_pd_data(processed_entries))
+
+  const elements = $derived.by(() => {
+    const all_elements = pd_data.elements
+
+    if (all_elements.length > 4) {
+      console.error(
+        `PhaseDiagram4D: Dataset contains ${all_elements.length} elements, but quaternary diagrams require exactly 4. Found: [${
+          all_elements.join(`, `)
+        }]`,
+      )
+      return []
+    }
+
+    return all_elements
+  })
+
+  const plot_entries = $derived.by(() => {
+    if (elements.length !== 4) {
+      return []
+    }
+
+    try {
+      const coords = compute_4d_coordinates(pd_data.entries, elements)
+      // Filter by energy threshold and update visibility based on toggles
+      const energy_filtered = coords.filter((entry: PlotEntry3D) => {
+        // Handle elemental entries specially
+        if (entry.is_element) {
+          // Always include reference elemental entries (corner points of tetrahedron)
+          if (entry.e_above_hull === 0 || entry.is_stable) return true
+          // Include other elemental polymorphs only if toggle is enabled
+          return show_elemental_polymorphs &&
+            (entry.e_above_hull || 0) <= energy_threshold
+        }
+        // Include stable entries (e_above_hull = 0)
+        if (
+          entry.is_stable ||
+          (entry.e_above_hull !== undefined && entry.e_above_hull <= 1e-6)
+        ) return true
+        // Include unstable entries within threshold
+        return (entry.e_above_hull || 0) <= energy_threshold
+      })
+      return energy_filtered
+        .map((entry: PlotEntry3D) => {
+          const is_stable = entry.is_stable || entry.e_above_hull === 0
+          // Update visibility based on current toggle states
+          entry.visible = (is_stable && show_stable) || (!is_stable && show_unstable)
+          return entry
+        })
+    } catch (error) {
+      console.error(`Error computing quaternary coordinates:`, error)
+      return []
+    }
+  })
+
+  const stable_entries = $derived(
+    plot_entries.filter((entry: PlotEntry3D) =>
+      entry.is_stable || entry.e_above_hull === 0
+    ),
+  )
+
+  const unstable_entries = $derived(
+    plot_entries.filter((entry: PlotEntry3D) =>
+      (entry.e_above_hull || 0) > 0 && !entry.is_stable
+    ),
+  )
+
+  // Total counts before energy threshold filtering
+  const total_unstable_count = $derived(
+    processed_entries.filter((entry) =>
+      (entry.e_above_hull || 0) > 0 && !entry.is_stable
+    ).length,
+  )
+
+  // Canvas rendering
+  let canvas: HTMLCanvasElement
+  let ctx: CanvasRenderingContext2D | null = null
+
+  // Performance optimization
+  let last_render_time = 0
+  let frame_id = 0
+  const target_fps = 60
+  const frame_time = 1000 / target_fps
+
+  // Camera state - following Materials Project's 3D camera setup
+  let camera = $state({
+    rotation_x: -0.6, // Tilt to show 3D depth better
+    rotation_y: 0.8, // Rotate to show perspective
+    zoom: 1.4,
+    center_x: 0,
+    center_y: 20, // Shift down to avoid legend overlap
+  })
+
+  // Interaction state
+  let is_dragging = $state(false)
+  let last_mouse = $state({ x: 0, y: 0 })
+  let hover_data = $state<HoverData3D | null>(null)
+  let copy_feedback_visible = $state(false)
+  let copy_feedback_position = $state({ x: 0, y: 0 })
+
+  // Drag and drop state
+  let drag_over = $state(false)
+
+  // Structure preview state
+  let selected_structure = $state<AnyStructure | null>(null)
+  let selected_entry = $state<PlotEntry3D | null>(null)
+  let modal_open = $state(false)
+  let modal_position = $state({ left: `50%`, top: `50%` })
+
+  // Pulsating animation for selected point (similar to Structure.svelte)
+  let pulse_time = $state(0)
+  let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
+
+  // Update pulse time for animation when a structure is selected
+  $effect(() => {
+    if (!selected_entry) return
+    if (typeof globalThis === `undefined`) return
+    const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
+    if (reduce) return
+    let frame_id = 0
+    const animate = () => {
+      pulse_time += 0.02
+      // Trigger re-render for pulsating effect
+      render_frame()
+      frame_id = requestAnimationFrame(animate)
+    }
+    frame_id = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frame_id)
+  })
+
+  // Visibility toggles are now bindable props
+
+  // Label controls with smart defaults based on entry count
+  let show_stable_labels = $state(true)
+  let show_unstable_labels = $state(false)
+  let label_energy_threshold = $state(0.1) // eV/atom above hull for showing labels
+
+  // Smart label defaults - hide labels if too many entries
+  $effect(() => {
+    const total_entries = processed_entries.length
+    if (total_entries > label_threshold) {
+      show_stable_labels = false
+      show_unstable_labels = false
+    } else {
+      // For smaller datasets, show stable labels by default
+      show_stable_labels = true
+      show_unstable_labels = false
+    }
+  })
+
+  // Function to extract structure data from a phase diagram entry
+  function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
+    const original_entry = entries.find((orig_entry) =>
+      orig_entry.entry_id === entry.entry_id
+    )
+    return original_entry?.structure as AnyStructure || null
+  }
+
+  const get_tooltip_text = (entry: PlotEntry3D) => {
+    const is_element = Object.keys(entry.composition).length === 1
+    const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
+
+    let text = is_element
+      ? `${elem_symbol} (${elem_symbol_to_name[elem_symbol as ElementSymbol]})\n`
+      : `${entry.name || entry.reduced_formula}\n`
+
+    // Add fractional composition for compounds
+    if (!is_element) {
+      const total = Object.values(entry.composition).reduce(
+        (sum, amt) => sum + amt,
+        0,
+      )
+      const fractions = Object.entries(entry.composition)
+        .filter(([, amt]) => amt > 0)
+        .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
+      if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
+    }
+
+    text += `E above hull: ${(entry.e_above_hull || 0).toFixed(3)} eV/atom\n`
+    text += `Formation Energy: ${
+      (entry.formation_energy_per_atom || 0).toFixed(3)
+    } eV/atom`
+    if (entry.entry_id) text += `\nID: ${entry.entry_id}`
+    return text
+  }
+
+  const reset_camera = () =>
+    Object.assign(camera, {
+      rotation_x: -0.6,
+      rotation_y: 0.8,
+      zoom: 1.4,
+      center_x: 0,
+      center_y: 20,
+    })
+
+  const handle_keydown = (event: KeyboardEvent) => {
+    if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
+
+    // Close modal on Escape key
+    if (event.key === `Escape` && modal_open) {
+      close_structure_preview()
+      return
+    }
+
+    const actions: Record<string, () => void> = {
+      r: reset_camera,
+      b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
+      s: () => show_stable = !show_stable,
+      u: () => show_unstable = !show_unstable,
+      l: () => show_stable_labels = !show_stable_labels,
+    }
+    actions[event.key.toLowerCase()]?.()
+  }
+
+  async function handle_file_drop(event: DragEvent): Promise<void> {
+    event.preventDefault()
+    drag_over = false
+
+    try {
+      const file = event.dataTransfer?.files?.[0]
+      if (!file?.name.endsWith(`.json`)) return
+
+      const data = JSON.parse(await file.text()) as PhaseEntry[]
+      if (!Array.isArray(data) || data.length === 0) return
+      if (!data[0].composition || !data[0].energy) return
+
+      on_file_drop?.(data)
+    } catch (error) {
+      console.error(`Error parsing dropped file:`, error)
+    }
+  }
+
+  async function copy_to_clipboard(text: string, position: { x: number; y: number }) {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const textarea = document.createElement(`textarea`)
+      textarea.value = text
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand(`copy`)
+      document.body.removeChild(textarea)
+    }
+    copy_feedback_position = position
+    copy_feedback_visible = true
+    setTimeout(() => copy_feedback_visible = false, 1500)
+  }
+
+  function get_point_color(entry: PlotEntry3D): string {
+    const is_stable = entry.is_stable || entry.e_above_hull === 0
+
+    if (color_mode === `stability`) {
+      return is_stable
+        ? (merged_config.colors?.stable || `#0072B2`)
+        : (merged_config.colors?.unstable || `#E69F00`)
+    }
+
+    // Energy mode - use selected D3 color scale
+    if (plot_entries.length === 0) return `#666`
+    const hull_distances = plot_entries.map((e) => e.e_above_hull ?? 0)
+    const min_dist = Math.min(...hull_distances)
+    const max_dist = Math.max(...hull_distances, 0.1)
+
+    // Get the interpolator function from d3-scale-chromatic
+    const interpolator = d3_sc[color_scale] || d3_sc.interpolateViridis
+
+    // Create D3 color scale with the selected interpolator
+    const lo = min_dist
+    const hi = Math.max(max_dist, lo + 1e-6)
+    const point_color_scale = scaleSequential(interpolator).domain([lo, hi])
+
+    return point_color_scale(entry.e_above_hull || 0)
+  }
+
+  const max_energy_threshold = $derived(() =>
+    processed_entries.length === 0 ? 0.5 : Math.max(
+      0.1,
+      Math.max(...processed_entries.map((e) => e.e_above_hull || 0)) + 0.001,
+    )
+  )
+
+  // Phase diagram statistics
+  const phase_stats = $derived.by(() => {
+    if (!processed_entries || processed_entries.length === 0) return null
+
+    // Count entries by composition complexity
+    const composition_counts = [1, 2, 3, 4].map((target_count) =>
+      processed_entries.filter((e) =>
+        Object.keys(e.composition).filter((el) => e.composition[el] > 0).length ===
+          target_count
+      ).length
+    )
+    const [unary, binary, ternary, quaternary] = composition_counts
+
+    // Stability counts
+    const stable_count = processed_entries.filter((e) =>
+      e.is_stable || (e.e_above_hull ?? 0) < 1e-6
+    ).length
+    const unstable_count = processed_entries.length - stable_count
+
+    // Energy statistics
+    const energies = processed_entries
+      .map((e) => e.formation_energy_per_atom || e.energy_per_atom)
+      .filter((e): e is number => e != null)
+
+    const energy_range = energies.length > 0
+      ? {
+        min: Math.min(...energies),
+        max: Math.max(...energies),
+        avg: energies.reduce((a, b) => a + b, 0) / energies.length,
+      }
+      : { min: 0, max: 0, avg: 0 }
+
+    // Hull distance statistics
+    const hull_distances = processed_entries
+      .map((e) => e.e_above_hull || 0)
+      .filter((e) => e >= 0)
+
+    const hull_distance = hull_distances.length > 0
+      ? {
+        max: Math.max(...hull_distances),
+        avg: hull_distances.reduce((a, b) => a + b, 0) / hull_distances.length,
+      }
+      : { max: 0, avg: 0 }
+
+    return {
+      total: processed_entries.length,
+      unary,
+      binary,
+      ternary,
+      quaternary,
+      stable: stable_count,
+      unstable: unstable_count,
+      energy_range,
+      hull_distance,
+      elements: elements.length,
+      chemical_system: elements.join(`-`),
+    }
+  })
+
+  // 3D to 2D projection following Materials Project approach
+  function project_3d_point(
+    x: number,
+    y: number,
+    z: number,
+  ): { x: number; y: number; depth: number } {
+    if (!canvas) return { x: 0, y: 0, depth: 0 }
+
+    // Center coordinates around tetrahedron/triangle centroid
+    let centered_x = x
+    let centered_y = y
+    let centered_z = z
+
+    // Tetrahedron centroid: average of vertices (1,0,0), (0.5,√3/2,0), (0.5,√3/6,√6/3), (0,0,0)
+    const centroid_x = (1 + 0.5 + 0.5 + 0) / 4 // = 0.5
+    const centroid_y = (0 + Math.sqrt(3) / 2 + Math.sqrt(3) / 6 + 0) / 4 // = √3/6
+    const centroid_z = (0 + 0 + Math.sqrt(6) / 3 + 0) / 4 // = √6/12
+    centered_x = x - centroid_x
+    centered_y = y - centroid_y
+    centered_z = z - centroid_z
+
+    // Apply 3D transformations around the centered coordinates
+    const cos_x = Math.cos(camera.rotation_x)
+    const sin_x = Math.sin(camera.rotation_x)
+    const cos_y = Math.cos(camera.rotation_y)
+    const sin_y = Math.sin(camera.rotation_y)
+
+    // Rotate around Y axis first
+    const x1 = centered_x * cos_y - centered_z * sin_y
+    const z1 = centered_x * sin_y + centered_z * cos_y
+
+    // Then rotate around X axis
+    const y2 = centered_y * cos_x - z1 * sin_x
+    const z2 = centered_y * sin_x + z1 * cos_x
+
+    // Apply perspective projection using actual canvas dimensions
+    const display_width = canvas.clientWidth || 400
+    const display_height = canvas.clientHeight || 400
+    const scale = Math.min(display_width, display_height) * 0.6 * camera.zoom
+    const center_x = display_width / 2 + camera.center_x
+    const center_y = display_height / 2 + camera.center_y
+
+    return {
+      x: center_x + x1 * scale,
+      y: center_y - y2 * scale, // Flip Y for canvas coordinates
+      depth: z2, // For depth sorting
+    }
+  }
+
+  function draw_structure_outline(): void {
+    if (!ctx) return
+
+    ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue(`--pd-edge-color`) ||
+      `#212121`
+    ctx.lineWidth = 2
+    ctx.setLineDash([])
+
+    // Draw tetrahedron edges
+    draw_tetrahedron()
+  }
+
+  function draw_tetrahedron(): void {
+    if (!ctx) return
+
+    // Convert vertices to Point3D objects
+    const vertices = TETRAHEDRON_VERTICES.map(([x, y, z]) => ({ x, y, z }))
+
+    // Tetrahedron edges (connecting vertices)
+    const edges = [
+      [0, 1],
+      [0, 2],
+      [0, 3], // From vertex 0
+      [1, 2],
+      [1, 3], // From vertex 1
+      [2, 3], // From vertex 2
+    ]
+
+    // Draw edges
+    ctx.beginPath()
+    for (const [i, j] of edges) {
+      const v1 = vertices[i]
+      const v2 = vertices[j]
+
+      const proj1 = project_3d_point(v1.x, v1.y, v1.z)
+      const proj2 = project_3d_point(v2.x, v2.y, v2.z)
+
+      ctx.moveTo(proj1.x, proj1.y)
+      ctx.lineTo(proj2.x, proj2.y)
+    }
+    ctx.stroke()
+
+    // Corner annotations removed - use actual point labels instead
+  }
+
+  function draw_data_points(): void {
+    if (!ctx || plot_entries.length === 0) {
+      return
+    }
+
+    // Collect all points with depth for sorting
+    const points_with_depth: Array<{
+      entry: PlotEntry3D
+      projected: { x: number; y: number; depth: number }
+    }> = []
+
+    for (const entry of plot_entries) {
+      // Skip invisible points
+      if (!entry.visible) continue
+
+      const projected = project_3d_point(entry.x, entry.y, entry.z)
+      points_with_depth.push({ entry, projected })
+    }
+
+    // Sort by depth (back to front for proper rendering)
+    points_with_depth.sort((a, b) => a.projected.depth - b.projected.depth)
+
+    // Draw points with enhanced 3D visualization
+    for (const { entry, projected } of points_with_depth) {
+      const is_stable = entry.is_stable || entry.e_above_hull === 0
+
+      // Use shared color function for consistency
+      const color = get_point_color(entry)
+
+      // Make point size relative to container size for responsive scaling
+      const display_width = canvas.clientWidth || 600
+      const display_height = canvas.clientHeight || 600
+      const container_scale = Math.min(display_width, display_height) / 600 // Scale factor based on 600px baseline
+
+      const base_size = entry.size || (is_stable ? 6 : 4)
+      const size = base_size * container_scale // Scale points with container size
+
+      // Draw shadow/depth indicator first (also scale with container)
+      const shadow_offset = Math.abs(entry.z) * 2 * container_scale
+      ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
+      ctx.beginPath()
+      ctx.arc(
+        projected.x + shadow_offset,
+        projected.y + shadow_offset,
+        size * 0.8,
+        0,
+        2 * Math.PI,
+      )
+      ctx.fill()
+
+      // Draw pulsating highlight for selected entry (before main point)
+      if (selected_entry && entry.entry_id === selected_entry.entry_id) {
+        const highlight_size = size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
+        ctx.fillStyle = `rgba(102, 240, 255, ${pulse_opacity * 0.6})` // Light cyan with pulsing opacity
+        ctx.strokeStyle = `rgba(102, 240, 255, ${pulse_opacity})`
+        ctx.lineWidth = 2 * container_scale
+
+        ctx.beginPath()
+        ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.stroke()
+      }
+
+      // Draw main point with outline
+      ctx.fillStyle = color
+      ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
+      ctx.lineWidth = 0.5 * container_scale // Scale line width with container
+
+      ctx.beginPath()
+      ctx.arc(projected.x, projected.y, size, 0, 2 * Math.PI)
+      ctx.fill()
+      ctx.stroke()
+
+      // Draw labels based on controls - always show corner points (pure elements)
+      const should_show_label = merged_config.show_labels && (
+        entry.is_element || // Always show corner points (pure elements)
+        (is_stable && show_stable_labels) ||
+        (!is_stable && show_unstable_labels &&
+          (entry.e_above_hull || 0) <= label_energy_threshold)
+      )
+
+      if (should_show_label) {
+        ctx.fillStyle =
+          getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) ||
+          `#212121`
+
+        // Special styling for corner points (elemental entries)
+        if (entry.is_element) {
+          // For elemental entries, show just the element symbol
+          const element_symbol = Object.keys(entry.composition)[0]
+          const label = element_symbol
+          const font_size = Math.round(16 * container_scale)
+          ctx.font = `bold ${font_size}px Arial` // Scaled font for corner labels
+          ctx.textAlign = `center`
+          ctx.textBaseline = `middle`
+          // Scaled standoff for corner points
+          ctx.fillText(label, projected.x, projected.y + size + 20 * container_scale)
+        } else {
+          // For compound entries, use name, formula, or entry_id as fallback
+          const label = entry.name || entry.reduced_formula || entry.entry_id ||
+            `Unknown`
+          const font_size = Math.round(12 * container_scale)
+          ctx.font = `${font_size}px Arial` // Scaled font for other labels
+          ctx.textAlign = `center`
+          ctx.textBaseline = `middle`
+          ctx.fillText(label, projected.x, projected.y + size + 6 * container_scale)
+        }
+      }
+    }
+  }
+
+  function render_frame(): void {
+    if (!ctx || !canvas) return
+
+    // Use CSS dimensions for rendering (already scaled by DPR in context)
+    const display_width = canvas.clientWidth || 600
+    const display_height = canvas.clientHeight || 600
+
+    // Clear canvas
+    ctx.clearRect(0, 0, display_width, display_height)
+
+    // Set background - use transparent to inherit from container
+    ctx.fillStyle = `transparent`
+    ctx.fillRect(0, 0, display_width, display_height)
+
+    if (elements.length !== 4) {
+      // Show error message
+      ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--text-color`) ||
+        `#666`
+      ctx.font = `16px Arial`
+      ctx.textAlign = `center`
+      ctx.textBaseline = `middle`
+
+      ctx.fillText(
+        `Quaternary phase diagram requires exactly 4 elements (got ${pd_data.elements.length})`,
+        display_width / 2,
+        display_height / 2,
+      )
+      return
+    }
+
+    // Draw tetrahedron outline
+    draw_structure_outline()
+
+    // Draw data points
+    draw_data_points()
+  }
+
+  function handle_mouse_down(event: MouseEvent) {
+    is_dragging = true
+    last_mouse = { x: event.clientX, y: event.clientY }
+  }
+
+  const handle_mouse_move = (event: MouseEvent) => {
+    if (is_dragging) {
+      const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
+      camera.rotation_y -= dx * 0.005
+      camera.rotation_x = Math.max(
+        -Math.PI / 3,
+        Math.min(Math.PI / 3, camera.rotation_x + dy * 0.005),
+      )
+      last_mouse = { x: event.clientX, y: event.clientY }
+    }
+  }
+
+  const handle_mouse_up = () => is_dragging = false
+
+  const handle_wheel = (event: WheelEvent) => {
+    event.preventDefault()
+    camera.zoom = Math.max(
+      1.0,
+      Math.min(15, camera.zoom * (event.deltaY > 0 ? 0.98 : 1.02)),
+    )
+  }
+
+  const handle_hover = (event: MouseEvent) => {
+    const entry = find_entry_at_mouse(event)
+    hover_data = entry
+      ? { entry, position: { x: event.clientX, y: event.clientY } }
+      : null
+    on_point_hover?.(hover_data)
+  }
+
+  const find_entry_at_mouse = (event: MouseEvent) => {
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    const mouse_x = event.clientX - rect.left
+    const mouse_y = event.clientY - rect.top
+
+    const container_scale =
+      Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
+    return plot_entries.find((entry) => {
+      if (!entry.visible) return false
+      const projected = project_3d_point(entry.x, entry.y, entry.z)
+      const distance = Math.sqrt(
+        (mouse_x - projected.x) ** 2 + (mouse_y - projected.y) ** 2,
+      )
+      const base = entry.size ??
+        ((entry.is_stable || entry.e_above_hull === 0) ? 6 : 4)
+      return distance < base * container_scale + 5
+    }) || null
+  }
+
+  const handle_click = (event: MouseEvent) => {
+    const entry = find_entry_at_mouse(event)
+    if (entry) {
+      on_point_click?.(entry)
+
+      // Show structure preview if available
+      if (enable_structure_preview) {
+        const structure = extract_structure_from_entry(entry)
+        if (structure) {
+          selected_structure = structure
+          selected_entry = entry
+          calculate_modal_position()
+          modal_open = true
+        }
+      }
+    }
+  }
+
+  // Simple modal positioning next to phase diagram
+  function calculate_modal_position() {
+    if (!wrapper) return
+
+    const rect = wrapper.getBoundingClientRect()
+    const viewport_width = globalThis.innerWidth
+    const space_on_right = viewport_width - rect.right
+
+    if (space_on_right >= 520) {
+      // Position to the right
+      modal_position = {
+        left: `${rect.right + 20}px`,
+        top: `${rect.top}px`,
+      }
+    } else {
+      // Position to the left
+      modal_position = {
+        left: `${rect.left - 520}px`,
+        top: `${rect.top}px`,
+      }
+    }
+  }
+
+  // Function to close structure preview
+  function close_structure_preview() {
+    modal_open = false
+    selected_structure = null
+    selected_entry = null
+  }
+
+  const handle_double_click = (event: MouseEvent) => {
+    const entry = find_entry_at_mouse(event)
+    if (entry) {
+      copy_to_clipboard(get_tooltip_text(entry), {
+        x: event.clientX,
+        y: event.clientY,
+      })
+    }
+  }
+
+  const animate = (timestamp = 0) => {
+    if (timestamp - last_render_time >= frame_time) {
+      render_frame()
+      last_render_time = timestamp
+    }
+    frame_id = requestAnimationFrame(animate)
+  }
+
+  $effect(() => {
+    // Include fullscreen in dependencies to trigger re-setup when entering/exiting fullscreen
+    fullscreen = fullscreen
+
+    if (!canvas) return
+
+    const dpr = globalThis.devicePixelRatio || 1
+    const container = canvas.parentElement
+
+    // Update canvas size based on current container (handles fullscreen changes)
+    if (container) {
+      const rect = container.getBoundingClientRect()
+      canvas.width = rect.width * dpr
+      canvas.height = rect.height * dpr
+      // Set CSS size to match container
+      canvas.style.width = `${rect.width}px`
+      canvas.style.height = `${rect.height}px`
+    } else {
+      canvas.width = 400 * dpr
+      canvas.height = 400 * dpr
+      canvas.style.width = `400px`
+      canvas.style.height = `400px`
+    }
+
+    ctx = canvas.getContext(`2d`)
+    if (ctx) {
+      ctx.scale(dpr, dpr)
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = `high`
+    }
+
+    // Reset camera position to center when canvas size changes significantly (like fullscreen)
+    camera.center_x = 0
+    camera.center_y = 20 // Slight offset to avoid legend overlap
+
+    // Start animation loop
+    animate()
+
+    return () => { // Cleanup on unmount
+      if (frame_id) cancelAnimationFrame(frame_id)
+    }
+  })
+
+  // Fullscreen handling
+  $effect(() => {
+    if (typeof window !== `undefined`) {
+      if (fullscreen && !document.fullscreenElement && wrapper) {
+        wrapper.requestFullscreen().catch(console.error)
+      } else if (!fullscreen && document.fullscreenElement) {
+        document.exitFullscreen()
+      }
+    }
+  })
+
+  let style = $derived(
+    `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
+    --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
+    --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
+     --pd-annotation-color:${
+      merged_config.colors?.annotation || `var(--text-color, #212121)`
+    }`,
+  )
+</script>
+
+<svelte:document
+  onfullscreenchange={() => {
+    fullscreen = Boolean(document.fullscreenElement)
+  }}
+  onmousemove={handle_mouse_move}
+  onmouseup={handle_mouse_up}
+/>
+
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="phase-diagram-4d"
+  class:dragover={drag_over}
+  {style}
+  bind:this={wrapper}
+  role="application"
+  tabindex="-1"
+  onkeydown={handle_keydown}
+  ondrop={handle_file_drop}
+  ondragover={(event) => {
+    event.preventDefault()
+    drag_over = true
+  }}
+  ondragleave={(event) => {
+    event.preventDefault()
+    drag_over = false
+  }}
+  aria-label="Phase diagram visualization"
+>
+  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; z-index: 10">
+    {phase_stats?.chemical_system}
+  </h3>
+  <canvas
+    bind:this={canvas}
+    onmousedown={handle_mouse_down}
+    onmousemove={handle_hover}
+    onclick={handle_click}
+    ondblclick={handle_double_click}
+    onwheel={handle_wheel}
+  ></canvas>
+
+  <!-- Control buttons (top-right corner like Structure.svelte) -->
+  {#if merged_legend.show}
+    <section class="control-buttons">
+      <button
+        type="button"
+        onclick={reset_camera}
+        title="Reset camera view (R key)"
+        class="reset-camera-btn"
+      >
+        <Icon icon="Reset" />
+      </button>
+
+      {#if enable_info_pane && phase_stats}
+        <PhaseDiagramInfoPane
+          bind:pane_open={info_pane_open}
+          {phase_stats}
+          {stable_entries}
+          {unstable_entries}
+          {energy_threshold}
+          {label_energy_threshold}
+          {label_threshold}
+          toggle_props={{
+            class: `info-btn`,
+          }}
+        />
+      {/if}
+
+      {#if enable_fullscreen}
+        <button
+          type="button"
+          onclick={() => toggle_fullscreen(wrapper)}
+          title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+          class="fullscreen-btn"
+        >
+          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+        </button>
+      {/if}
+
+      <!-- Legend controls pane -->
+      <PhaseDiagramControls
+        bind:controls_open={legend_pane_open}
+        bind:color_mode
+        bind:color_scale
+        bind:show_stable
+        bind:show_unstable
+        bind:show_stable_labels
+        bind:show_unstable_labels
+        bind:show_elemental_polymorphs
+        bind:energy_threshold
+        bind:label_energy_threshold
+        max_energy_threshold={max_energy_threshold()}
+        {plot_entries}
+        {stable_entries}
+        {unstable_entries}
+        {total_unstable_count}
+        {camera}
+        {merged_legend}
+        toggle_props={{
+          class: `legend-controls-btn`,
+        }}
+      />
+    </section>
+  {/if}
+
+  <!-- Hover tooltip -->
+  {#if hover_data}
+    {@const { entry, position } = hover_data}
+    {@const is_element = Object.keys(entry.composition).length === 1}
+    {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
+    <div
+      class="tooltip"
+      style:left="{position.x + 10}px;"
+      style:top="{position.y - 10}px;"
+      style:background={get_point_color(entry)}
+      {@attach contrast_color()}
+    >
+      <div class="tooltip-title">
+        {@html get_electro_neg_formula(entry.composition)}
+      </div>
+      {#if is_element}
+        <div class="element-name">
+          {elem_symbol_to_name[elem_symbol as ElementSymbol]}
+        </div>
+      {/if}
+
+      <div>
+        E<sub>above hull</sub>: {format_num(entry.e_above_hull || 0, `.3~`)} eV/atom
+      </div>
+      <div>
+        Formation Energy: {format_num(entry.formation_energy_per_atom || 0, `.3~`)}
+        eV/atom
+      </div>
+      {#if entry.entry_id}
+        <div>ID: {entry.entry_id}</div>
+      {/if}
+
+      <!-- Show fractional composition for multi-element compounds -->
+      {#if !is_element}
+        {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
+        {@const fractions = Object.entries(entry.composition)
+        .filter(([, amt]) => amt > 0)
+        .map(([el, amt]) => `${el}=${format_fractional(amt / total)}`)}
+        {#if fractions.length > 1}
+          {fractions.join(` | `)}
+        {/if}
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Copy feedback notification -->
+  {#if copy_feedback_visible}
+    <div
+      class="copy-feedback"
+      style:left="{copy_feedback_position.x}px"
+      style:top="{copy_feedback_position.y}px"
+    >
+      <Icon icon="Check" />
+    </div>
+  {/if}
+
+  <!-- Drag over overlay -->
+  {#if drag_over}
+    <div class="drag-overlay">
+      <div class="drag-message">
+        <Icon icon="Info" />
+        <span>Drop JSON file to load phase diagram data</span>
+      </div>
+    </div>
+  {/if}
+</div>
+
+<!-- Structure Preview Modal -->
+{#if modal_open && selected_structure}
+  <div
+    class="structure-modal"
+    style:left={modal_position.left}
+    style:top={modal_position.top}
+    role="dialog"
+    tabindex="-1"
+    onkeydown={(e) => e.key === `Escape` && close_structure_preview()}
+  >
+    <button class="close-btn" onclick={close_structure_preview}>×</button>
+
+    <!-- Stats in top right corner -->
+    {#if selected_entry}
+      <div class="structure-stats">
+        E<sub style="font-size: 0.8em; baseline: 0.5em">above hull</sub> =
+        {format_num(selected_entry.e_above_hull || 0, `.3~`)}
+        eV/atom<br>E<sub style="font-size: 0.8em">form</sub> =
+        {format_num(selected_entry.formation_energy_per_atom || 0, `.3~`)} eV/atom
+      </div>
+    {/if}
+
+    <Structure
+      structure={selected_structure}
+      show_controls={false}
+      enable_info_pane={false}
+      allow_file_drop={false}
+      fullscreen_toggle={false}
+      width={500}
+      height={400}
+    />
+  </div>
+{/if}
+
+<style>
+  .phase-diagram-4d {
+    position: relative;
+    width: 100%;
+    height: var(--pd-height, 500px);
+    overflow: hidden;
+    background: var(--surface-bg, #f8f9fa);
+    border-radius: 4px;
+  }
+  .phase-diagram-4d:fullscreen {
+    border-radius: 0;
+  }
+  .phase-diagram-4d.dragover {
+    border: 2px dashed var(--accent-color, #1976d2);
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+  canvas:active {
+    cursor: grabbing;
+  }
+  .control-buttons {
+    position: absolute;
+    top: 1ex;
+    right: 1ex;
+    display: flex;
+    gap: 8px;
+    z-index: 1000;
+  }
+  .control-buttons :global(.draggable-pane) {
+    z-index: 1001 !important;
+  }
+  .control-buttons button {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    border-radius: 3px;
+    color: var(--text-color, currentColor);
+    transition: background-color 0.2s;
+  }
+  .control-buttons button:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .tooltip {
+    position: fixed;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .copy-feedback {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    background: var(--success-color, #4caf50);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+    z-index: 10000;
+    animation: copy-success 1.5s ease-out forwards;
+  }
+  @keyframes copy-success {
+    0% {
+      transform: translate(-50%, -50%) scale(0);
+      opacity: 0;
+    }
+    20% {
+      transform: translate(-50%, -50%) scale(1.2);
+      opacity: 1;
+    }
+    40% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 0;
+    }
+  }
+
+  .drag-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(25, 118, 210, 0.1);
+    border: 2px dashed var(--accent-color, #1976d2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    pointer-events: none;
+  }
+  .drag-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent-color, #1976d2);
+    font-weight: 600;
+    font-size: 1.1em;
+  }
+
+  .structure-modal {
+    position: absolute;
+    width: 500px;
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    overflow: hidden;
+  }
+  .close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 2;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .close-btn:hover {
+    background: rgba(0, 0, 0, 0.7);
+  }
+  .structure-stats {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: var(--surface-bg);
+    color: var(--text-color);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    z-index: 2;
+  }
+</style>
