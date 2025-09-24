@@ -13,8 +13,8 @@
     { eager: false, query: `?url` },
   ) as Record<string, () => Promise<{ default: string }>>
 
-  let entries_map = new SvelteMap()
-  let loaded_data = new SvelteMap()
+  let entries_map = $state(new SvelteMap())
+  let loaded_data = $state(new SvelteMap())
 
   onMount(async () => {
     const results = await Promise.allSettled(

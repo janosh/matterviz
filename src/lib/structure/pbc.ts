@@ -9,7 +9,7 @@ export function find_image_atoms(
 ): [number, Vec3, Vec3][] {
   // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc] tuples.
   // Skips image generation for trajectory data with scattered atoms.
-  if (!structure.lattice) return []
+  if (!structure.lattice || !structure.sites || structure.sites.length === 0) return []
 
   // Skip trajectory data (>10% atoms outside cell)
   const atoms_outside_cell = structure.sites.filter(({ abc }) =>
@@ -104,6 +104,10 @@ export function get_pbc_image_sites(
   ...args: Parameters<typeof find_image_atoms>
 ): PymatgenStructure {
   const structure = args[0]
+
+  if (!structure || !structure.sites || structure.sites.length === 0) {
+    return structure
+  }
 
   // Check for trajectory data
   const atoms_outside_cell = structure.sites.filter((site) =>
