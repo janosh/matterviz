@@ -16,7 +16,7 @@ chemical_systems = (
     "Li-Fe-P-O",
     "Li-Co-Ni-O",
     "Na-Fe-P-O",
-    "Li-Mn-P-O",
+    # "Li-Mn-P-O", # well explored, gives large number of entries
     "Si-O-K-Al",
 )
 all_entries = dict.fromkeys(chemical_systems, None)
@@ -37,6 +37,7 @@ for chem_sys in chemical_systems:
         | {
             "e_above_hull": pd.get_e_above_hull(entry),
             "is_stable": entry in pd.stable_entries,
+            "e_form_per_atom": pd.get_form_energy_per_atom(entry),
         }
         for entry in entries
     ]

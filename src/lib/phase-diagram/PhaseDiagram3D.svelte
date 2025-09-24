@@ -5,18 +5,28 @@
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
+  import { ColorBar } from '$lib/plot'
   import { scaleSequential } from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
+  import { SvelteMap } from 'svelte/reactivity'
+  import { compute_lower_hull_triangles } from './convex-hull'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
-  import { compute_4d_coordinates, TETRAHEDRON_VERTICES } from './quaternary'
   import StructurePopup from './StructurePopup.svelte'
+  import {
+    compute_ternary_3d_coordinates,
+    get_triangle_centroid,
+    get_triangle_edges,
+    get_triangle_vertical_edges,
+    TRIANGLE_VERTICES,
+  } from './ternary'
   import type {
     HoverData3D,
     PDLegendConfig,
     PhaseDiagramConfig,
     PhaseEntry,
-    PlotEntry3D,
+    Point3D,
+    TernaryPlotEntry,
   } from './types'
   import { process_pd_data } from './utils'
 
@@ -24,8 +34,8 @@
     entries: PhaseEntry[]
     legend?: Partial<PDLegendConfig>
     config?: Partial<PhaseDiagramConfig>
-    on_point_click?: (entry: PlotEntry3D) => void
-    on_point_hover?: (data: HoverData3D | null) => void
+    on_point_click?: (entry: TernaryPlotEntry) => void
+    on_point_hover?: (data: HoverData3D<TernaryPlotEntry> | null) => void
     fullscreen?: boolean
     enable_fullscreen?: boolean
     enable_info_pane?: boolean
@@ -35,6 +45,7 @@
     // Bindable visibility and interaction state
     show_stable?: boolean
     show_unstable?: boolean
+    show_hull_faces?: boolean
     color_mode?: `stability` | `energy`
     color_scale?: D3InterpolateName
     info_pane_open?: boolean
@@ -62,12 +73,13 @@
     label_threshold = 50,
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
+    show_hull_faces = $bindable(true),
     color_mode = $bindable(`energy`),
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
-    energy_threshold = $bindable(0.1), // eV/atom above hull for showing entries
-    show_elemental_polymorphs = $bindable(false),
+    energy_threshold = $bindable(0.5), // eV/atom above hull for showing entries
+    show_elemental_polymorphs = $bindable(true),
     on_file_drop,
     enable_structure_preview = true,
   }: Props = $props()
@@ -83,9 +95,12 @@
   }
   const merged_legend: PDLegendConfig = $derived({ ...default_legend, ...legend })
 
-  const merged_config = $derived({
+  // Default configuration
+  const default_config: PhaseDiagramConfig = {
     width: 600,
     height: 600,
+    margin: { top: 60, right: 60, bottom: 60, left: 60 },
+    unstable_threshold: 0.2,
     show_labels: true,
     show_hull: true,
     enable_zoom: true,
@@ -105,21 +120,24 @@
       tooltip_text: `var(--tooltip-text, white)`,
       annotation: `var(--text-color, #212121)`,
     },
+  }
+
+  const merged_config = $derived({
+    ...default_config,
     ...config,
-    margin: { top: 60, right: 60, bottom: 60, left: 60, ...(config.margin || {}) },
+    margin: { ...default_config.margin, ...(config.margin || {}) },
   })
 
   // Process phase diagram data with unified PhaseEntry interface
   const processed_entries = $derived(entries)
-
   const pd_data = $derived(process_pd_data(processed_entries))
 
   const elements = $derived.by(() => {
     const all_elements = pd_data.elements
 
-    if (all_elements.length > 4) {
+    if (all_elements.length > 3) {
       console.error(
-        `PhaseDiagram4D: Dataset contains ${all_elements.length} elements, but quaternary diagrams require exactly 4. Found: [${
+        `PhaseDiagram3D: Dataset contains ${all_elements.length} elements, but ternary diagrams require exactly 3. Found: [${
           all_elements.join(`, `)
         }]`,
       )
@@ -130,54 +148,63 @@
   })
 
   const plot_entries = $derived.by(() => {
-    if (elements.length !== 4) {
+    if (elements.length !== 3) {
       return []
     }
 
     try {
-      const coords = compute_4d_coordinates(pd_data.entries, elements)
+      const coords = compute_ternary_3d_coordinates(pd_data.entries, elements)
+      console.log(
+        `PhaseDiagram3D: ${coords.length} ternary coords for ${elements.join(`-`)}`,
+      )
+
       // Filter by energy threshold and update visibility based on toggles
-      const energy_filtered = coords.filter((entry: PlotEntry3D) => {
-        // Handle elemental entries specially
-        if (entry.is_element) {
-          // Always include reference elemental entries (corner points of tetrahedron)
-          if (entry.e_above_hull === 0 || entry.is_stable) return true
-          // Include other elemental polymorphs only if toggle is enabled
-          return show_elemental_polymorphs &&
-            (entry.e_above_hull || 0) <= energy_threshold
-        }
-        // Include stable entries (e_above_hull = 0)
-        if (
-          entry.is_stable ||
-          (entry.e_above_hull !== undefined && entry.e_above_hull <= 1e-6)
-        ) return true
-        // Include unstable entries within threshold
+      const energy_filtered = coords.filter((entry: TernaryPlotEntry) => {
+        // Include all entries within energy threshold
+        // For elemental entries, show all polymorphs (not just references)
         return (entry.e_above_hull || 0) <= energy_threshold
       })
       return energy_filtered
-        .map((entry: PlotEntry3D) => {
+        .map((entry: TernaryPlotEntry) => {
           const is_stable = entry.is_stable || entry.e_above_hull === 0
           // Update visibility based on current toggle states
           entry.visible = (is_stable && show_stable) || (!is_stable && show_unstable)
           return entry
         })
     } catch (error) {
-      console.error(`Error computing quaternary coordinates:`, error)
+      console.error(`Error computing ternary coordinates:`, error)
       return []
     }
   })
 
   const stable_entries = $derived(
-    plot_entries.filter((entry: PlotEntry3D) =>
+    plot_entries.filter((entry: TernaryPlotEntry) =>
       entry.is_stable || entry.e_above_hull === 0
     ),
   )
 
   const unstable_entries = $derived(
-    plot_entries.filter((entry: PlotEntry3D) =>
+    plot_entries.filter((entry: TernaryPlotEntry) =>
       (entry.e_above_hull || 0) > 0 && !entry.is_stable
     ),
   )
+
+  // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
+  type HullTriangle = {
+    vertices: [Point3D, Point3D, Point3D]
+    normal: Point3D
+    centroid: Point3D
+  }
+  const hull_faces = $derived.by((): HullTriangle[] => {
+    if (plot_entries.length === 0) return []
+    const points = plot_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    try {
+      return compute_lower_hull_triangles(points)
+    } catch (error) {
+      console.error(`Error computing convex hull:`, error)
+      return []
+    }
+  })
 
   // Total counts before energy threshold filtering
   const total_unstable_count = $derived(
@@ -192,21 +219,22 @@
 
   // Performance optimization
   let frame_id = 0
+  let pulse_frame_id = 0
 
-  // Camera state - following Materials Project's 3D camera setup
-  let camera = $state({
-    rotation_x: -0.6, // Tilt to show 3D depth better
-    rotation_y: 0.8, // Rotate to show perspective
-    zoom: 1.4,
+  const camera_default = {
+    elevation: 45, // Elevation angle in degrees (0 = side view, 90 = top view)
+    azimuth: 60, // Azimuth angle in degrees (rotation around z-axis)
+    zoom: 1.5, // Good zoom to see the funnel shape
     center_x: 0,
-    center_y: 20, // Shift down to avoid legend overlap
-  })
+    center_y: -50, // Shift up to better center the funnel
+  }
+  let camera = $state({ ...camera_default })
 
   // Interaction state
   let is_dragging = $state(false)
   let drag_started = $state(false)
   let last_mouse = $state({ x: 0, y: 0 })
-  let hover_data = $state<HoverData3D | null>(null)
+  let hover_data = $state<HoverData3D<TernaryPlotEntry> | null>(null)
   let copy_feedback_visible = $state(false)
   let copy_feedback_position = $state({ x: 0, y: 0 })
 
@@ -216,13 +244,12 @@
   // Structure popup state
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
-  let selected_entry = $state<PlotEntry3D | null>(null)
+  let selected_entry = $state<TernaryPlotEntry | null>(null)
   let modal_place_right = $state(true)
 
   // Pulsating highlight for selected point
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
-  let pulse_frame_id = 0
   $effect(() => {
     if (!selected_entry) return
     const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
@@ -242,12 +269,10 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, color_mode, color_scale, energy_threshold, show_elemental_polymorphs, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_elemental_polymorphs, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries]
 
     render_once()
   })
-
-  // Visibility toggles are now bindable props
 
   // Label controls with smart defaults based on entry count
   let show_stable_labels = $state(true)
@@ -268,14 +293,16 @@
   })
 
   // Function to extract structure data from a phase diagram entry
-  function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
+  function extract_structure_from_entry(
+    entry: TernaryPlotEntry,
+  ): AnyStructure | null {
     const original_entry = entries.find((orig_entry) =>
       orig_entry.entry_id === entry.entry_id
     )
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: PlotEntry3D) => {
+  const get_tooltip_text = (entry: TernaryPlotEntry) => {
     const is_element = Object.keys(entry.composition).length === 1
     const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
@@ -307,14 +334,7 @@
     return text
   }
 
-  const reset_camera = () =>
-    Object.assign(camera, {
-      rotation_x: -0.6,
-      rotation_y: 0.8,
-      zoom: 1.4,
-      center_x: 0,
-      center_y: 20,
-    })
+  const reset_camera = () => Object.assign(camera, camera_default)
 
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
@@ -324,6 +344,7 @@
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
       s: () => show_stable = !show_stable,
       u: () => show_unstable = !show_unstable,
+      h: () => show_hull_faces = !show_hull_faces,
       l: () => show_stable_labels = !show_stable_labels,
     }
     actions[event.key.toLowerCase()]?.()
@@ -354,7 +375,7 @@
     setTimeout(() => copy_feedback_visible = false, 1500)
   }
 
-  function get_point_color(entry: PlotEntry3D): string {
+  function get_point_color(entry: TernaryPlotEntry): string {
     const is_stable = entry.is_stable || entry.e_above_hull === 0
 
     if (color_mode === `stability`) {
@@ -391,13 +412,13 @@
     if (!processed_entries || processed_entries.length === 0) return null
 
     // Count entries by composition complexity
-    const composition_counts = [1, 2, 3, 4].map((target_count) =>
+    const composition_counts = [1, 2, 3].map((target_count) =>
       processed_entries.filter((e) =>
         Object.keys(e.composition).filter((el) => e.composition[el] > 0).length ===
           target_count
       ).length
     )
-    const [unary, binary, ternary, quaternary] = composition_counts
+    const [unary, binary, ternary] = composition_counts
 
     // Stability counts
     const stable_count = processed_entries.filter((e) =>
@@ -435,7 +456,7 @@
       unary,
       binary,
       ternary,
-      quaternary,
+      quaternary: 0, // Not applicable for ternary
       stable: stable_count,
       unstable: unstable_count,
       energy_range,
@@ -445,7 +466,7 @@
     }
   })
 
-  // 3D to 2D projection following Materials Project approach
+  // 3D to 2D projection for ternary diagrams
   function project_3d_point(
     x: number,
     y: number,
@@ -453,32 +474,44 @@
   ): { x: number; y: number; depth: number } {
     if (!canvas) return { x: 0, y: 0, depth: 0 }
 
-    // Center coordinates around tetrahedron/triangle centroid
-    let centered_x = x
-    let centered_y = y
-    let centered_z = z
+    // Center coordinates around the volumetric center of the phase diagram
+    const triangle_centroid = get_triangle_centroid()
 
-    // Tetrahedron centroid: average of vertices (1,0,0), (0.5,√3/2,0), (0.5,√3/6,√6/3), (0,0,0)
-    const centroid_x = (1 + 0.5 + 0.5 + 0) / 4 // = 0.5
-    const centroid_y = (0 + Math.sqrt(3) / 2 + Math.sqrt(3) / 6 + 0) / 4 // = √3/6
-    const centroid_z = (0 + 0 + Math.sqrt(6) / 3 + 0) / 4 // = √6/12
-    centered_x = x - centroid_x
-    centered_y = y - centroid_y
-    centered_z = z - centroid_z
+    // Calculate the energy center (middle of formation energy range)
+    const formation_energies = plot_entries.map((e) => e.formation_energy)
+    const min_formation_energy = Math.min(0, ...formation_energies)
+    const max_formation_energy = Math.max(0, ...formation_energies)
+    const energy_center = (min_formation_energy + max_formation_energy) / 2
 
-    // Apply 3D transformations around the centered coordinates
-    const cos_x = Math.cos(camera.rotation_x)
-    const sin_x = Math.sin(camera.rotation_x)
-    const cos_y = Math.cos(camera.rotation_y)
-    const sin_y = Math.sin(camera.rotation_y)
+    let centered_x = x - triangle_centroid.x
+    let centered_y = y - triangle_centroid.y
 
-    // Rotate around Y axis first
-    const x1 = centered_x * cos_y - centered_z * sin_y
-    const z1 = centered_x * sin_y + centered_z * cos_y
+    // Scale the z-coordinate to be proportional to the triangle size
+    // Formation energies are typically -5 to 0 eV/atom, so scale to triangle height
+    const triangle_height = Math.sqrt(3) / 2 // Height of equilateral triangle with side 1
+    let centered_z = (z - energy_center) * triangle_height / 3 // Center around energy midpoint
 
-    // Then rotate around X axis
-    const y2 = centered_y * cos_x - z1 * sin_x
-    const z2 = centered_y * sin_x + z1 * cos_x
+    // Apply 3D transformations with fixed z-axis pointing up
+    // Convert camera angles from degrees to radians
+    const elevation_rad = (camera.elevation * Math.PI) / 180
+    const azimuth_rad = (camera.azimuth * Math.PI) / 180
+
+    // Apply azimuth rotation around z-axis (keeps z-axis vertical)
+    const cos_azimuth = Math.cos(azimuth_rad)
+    const sin_azimuth = Math.sin(azimuth_rad)
+
+    const x1 = centered_x * cos_azimuth - centered_y * sin_azimuth
+    const y1 = centered_x * sin_azimuth + centered_y * cos_azimuth
+    const z1 = centered_z // z unchanged by azimuth rotation
+
+    // Apply elevation rotation around the horizontal axis (tilting up/down)
+    // Flip the elevation to fix upside-down diagram
+    const cos_elevation = Math.cos(-elevation_rad) // Negative to flip
+    const sin_elevation = Math.sin(-elevation_rad)
+
+    const x2 = x1 // x unchanged by elevation
+    const y2 = y1 * cos_elevation - z1 * sin_elevation
+    const z2 = y1 * sin_elevation + z1 * cos_elevation
 
     // Apply perspective projection using actual canvas dimensions
     const display_width = canvas.clientWidth || 400
@@ -488,7 +521,7 @@
     const center_y = display_height / 2 + camera.center_y
 
     return {
-      x: center_x + x1 * scale,
+      x: center_x + x2 * scale,
       y: center_y - y2 * scale, // Flip Y for canvas coordinates
       depth: z2, // For depth sorting
     }
@@ -497,37 +530,42 @@
   function draw_structure_outline(): void {
     if (!ctx) return
 
-    ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue(`--pd-edge-color`) ||
-      `#212121`
+    // Set consistent style for all triangle structure lines
+    ctx.strokeStyle = `rgba(128, 128, 128, 0.6)` // Gray color for all structure lines
     ctx.lineWidth = 2
-    ctx.setLineDash([])
+    ctx.setLineDash([3, 3]) // Dashed lines for all structure lines
 
-    // Draw tetrahedron edges
-    draw_tetrahedron()
+    // Draw triangle base and vertical edges
+    draw_triangle_structure()
   }
 
-  function draw_tetrahedron(): void {
+  function draw_triangle_structure(): void {
     if (!ctx) return
 
-    // Convert vertices to Point3D objects
-    const vertices = TETRAHEDRON_VERTICES.map(([x, y, z]) => ({ x, y, z }))
+    // Get formation energy range for vertical edges
+    const formation_energies = plot_entries.map((e) => e.formation_energy)
+    const min_formation_energy = Math.min(0, ...formation_energies) // Include 0 for elemental references
+    const max_formation_energy = Math.max(0, ...formation_energies) // Include 0 for elemental references
 
-    // Tetrahedron edges (connecting vertices)
-    const edges = [
-      [0, 1],
-      [0, 2],
-      [0, 3], // From vertex 0
-      [1, 2],
-      [1, 3], // From vertex 1
-      [2, 3], // From vertex 2
-    ]
-
-    // Draw edges
+    // Draw base triangle edges (top triangle at formation energy = 0)
+    const triangle_edges = get_triangle_edges()
     ctx.beginPath()
-    for (const [i, j] of edges) {
-      const v1 = vertices[i]
-      const v2 = vertices[j]
+    for (const [v1, v2] of triangle_edges) {
+      const proj1 = project_3d_point(v1.x, v1.y, 0) // Base triangle at formation energy = 0
+      const proj2 = project_3d_point(v2.x, v2.y, 0)
 
+      ctx.moveTo(proj1.x, proj1.y)
+      ctx.lineTo(proj2.x, proj2.y)
+    }
+    ctx.stroke()
+
+    // Draw vertical edges from corners (from most negative to 0 formation energy)
+    const vertical_edges = get_triangle_vertical_edges(
+      min_formation_energy,
+      max_formation_energy,
+    )
+    ctx.beginPath()
+    for (const [v1, v2] of vertical_edges) {
       const proj1 = project_3d_point(v1.x, v1.y, v1.z)
       const proj2 = project_3d_point(v2.x, v2.y, v2.z)
 
@@ -536,40 +574,99 @@
     }
     ctx.stroke()
 
-    // Corner element labels: place just outside along line towards tetrahedron centroid
-    if (elements.length === 4) {
-      // Tetrahedron centroid in barycentric space maps to average of vertices
-      const centroid = {
-        x: (vertices[0].x + vertices[1].x + vertices[2].x + vertices[3].x) / 4,
-        y: (vertices[0].y + vertices[1].y + vertices[2].y + vertices[3].y) / 4,
-        z: (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4,
+    // Draw bottom triangle (connecting the bottom tips of vertical lines)
+    const bottom_triangle_edges = get_triangle_edges()
+    ctx.beginPath()
+    for (const [v1, v2] of bottom_triangle_edges) {
+      const proj1 = project_3d_point(v1.x, v1.y, min_formation_energy) // Bottom triangle at most negative energy
+      const proj2 = project_3d_point(v2.x, v2.y, min_formation_energy)
+
+      ctx.moveTo(proj1.x, proj1.y)
+      ctx.lineTo(proj2.x, proj2.y)
+    }
+    ctx.stroke()
+
+    // Reset stroke style to default for other elements (like element labels)
+    ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue(`--pd-edge-color`) ||
+      `#212121`
+    ctx.setLineDash([]) // Reset line dash for other drawing operations
+
+    // Draw element labels outside triangle corners
+    const centroid = get_triangle_centroid()
+    ctx.fillStyle =
+      getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) || `#212121`
+    ctx.font = `bold 16px Arial`
+    ctx.textAlign = `center`
+    ctx.textBaseline = `middle`
+
+    for (
+      let idx = 0;
+      idx < TRIANGLE_VERTICES.length && idx < elements.length;
+      idx++
+    ) {
+      const [x, y] = TRIANGLE_VERTICES[idx]
+      const dx = x - centroid.x
+      const dy = y - centroid.y
+      const length = Math.sqrt(dx * dx + dy * dy)
+      const distance = 0.05
+
+      const label_pos = {
+        x: x + (dx / length) * distance,
+        y: y + (dy / length) * distance,
+        z: 0,
       }
 
-      ctx.fillStyle =
-        getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) ||
-        `#212121`
-      ctx.font = `bold 18px Arial`
-      ctx.textAlign = `center`
-      ctx.textBaseline = `middle`
+      const proj = project_3d_point(label_pos.x, label_pos.y, label_pos.z)
+      ctx.fillText(elements[idx], proj.x, proj.y)
+    }
+  }
 
-      const distance = 0.06
-      for (let idx = 0; idx < 4; idx++) {
-        const vx = vertices[idx]
-        // Direction from centroid to vertex
-        const dir = {
-          x: vx.x - centroid.x,
-          y: vx.y - centroid.y,
-          z: vx.z - centroid.z,
-        }
-        const len = Math.hypot(dir.x, dir.y, dir.z) || 1
-        const label_pos = {
-          x: vx.x + (dir.x / len) * distance,
-          y: vx.y + (dir.y / len) * distance,
-          z: vx.z + (dir.z / len) * distance,
-        }
-        const proj = project_3d_point(label_pos.x, label_pos.y, label_pos.z)
-        ctx.fillText(elements[idx], proj.x, proj.y)
-      }
+  function draw_convex_hull_faces(): void {
+    if (!ctx || !show_hull_faces || hull_faces.length === 0) return
+
+    // Sort faces by depth for proper rendering
+    const faces_with_depth = hull_faces.map((tri) => {
+      const centroid_proj = project_3d_point(
+        tri.centroid.x,
+        tri.centroid.y,
+        tri.centroid.z,
+      )
+      return { tri, depth: centroid_proj.depth }
+    })
+
+    faces_with_depth.sort((a, b) => a.depth - b.depth) // Back to front
+
+    // Draw each face (lower hull only)
+    for (const { tri } of faces_with_depth) {
+      const [p1, p2, p3] = tri.vertices
+
+      const proj1 = project_3d_point(p1.x, p1.y, p1.z)
+      const proj2 = project_3d_point(p2.x, p2.y, p2.z)
+      const proj3 = project_3d_point(p3.x, p3.y, p3.z)
+
+      // Lighting based on face normal
+      const light_dir = { x: 0.5, y: -0.5, z: 1 }
+      const dot_product = tri.normal.x * light_dir.x +
+        tri.normal.y * light_dir.y +
+        tri.normal.z * light_dir.z
+
+      const lighting_factor = Math.max(0.3, Math.abs(dot_product))
+
+      // Lower hull is considered stable; use stable color
+      const alpha = 0.3 * lighting_factor
+
+      ctx.fillStyle = `rgba(0, 114, 178, ${alpha})`
+
+      ctx.beginPath()
+      ctx.moveTo(proj1.x, proj1.y)
+      ctx.lineTo(proj2.x, proj2.y)
+      ctx.lineTo(proj3.x, proj3.y)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.strokeStyle = `rgba(0, 114, 178, 0.6)`
+      ctx.lineWidth = 1
+      ctx.stroke()
     }
   }
 
@@ -580,7 +677,7 @@
 
     // Collect all points with depth for sorting
     const points_with_depth: Array<{
-      entry: PlotEntry3D
+      entry: TernaryPlotEntry
       projected: { x: number; y: number; depth: number }
     }> = []
 
@@ -605,13 +702,13 @@
       // Make point size relative to container size for responsive scaling
       const display_width = canvas.clientWidth || 600
       const display_height = canvas.clientHeight || 600
-      const container_scale = Math.min(display_width, display_height) / 600 // Scale factor based on 600px baseline
+      const container_scale = Math.min(display_width, display_height) / 600
 
       const base_size = entry.size || (is_stable ? 6 : 4)
-      const size = base_size * container_scale // Scale points with container size
+      const size = base_size * container_scale
 
-      // Draw shadow/depth indicator first (also scale with container)
-      const shadow_offset = Math.abs(entry.z) * 2 * container_scale
+      // Draw shadow/depth indicator first
+      const shadow_offset = Math.abs(entry.z) * 0.1 * container_scale
       ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
       ctx.beginPath()
       ctx.arc(
@@ -623,13 +720,12 @@
       )
       ctx.fill()
 
-      // Draw pulsating highlight for selected entry (before main point)
+      // Draw pulsating highlight for selected entry
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
         const highlight_size = size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
-        ctx.fillStyle = `rgba(102, 240, 255, ${pulse_opacity * 0.6})` // Light cyan with pulsing opacity
+        ctx.fillStyle = `rgba(102, 240, 255, ${pulse_opacity * 0.6})`
         ctx.strokeStyle = `rgba(102, 240, 255, ${pulse_opacity})`
         ctx.lineWidth = 2 * container_scale
-
         ctx.beginPath()
         ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
         ctx.fill()
@@ -639,15 +735,16 @@
       // Draw main point with outline
       ctx.fillStyle = color
       ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
-      ctx.lineWidth = 0.5 * container_scale // Scale line width with container
+      ctx.lineWidth = 0.5 * container_scale
 
       ctx.beginPath()
       ctx.arc(projected.x, projected.y, size, 0, 2 * Math.PI)
       ctx.fill()
       ctx.stroke()
 
-      // Draw labels based on controls (do not label elemental corners here; they are labeled near vertices)
-      const should_show_label = merged_config.show_labels && (
+      // Draw labels based on controls - but not for elemental entries
+      // Corner element labels are drawn separately in draw_triangle_structure()
+      const should_show_label = merged_config.show_labels && !entry.is_element && (
         (is_stable && show_stable_labels) ||
         (!is_stable && show_unstable_labels &&
           (entry.e_above_hull || 0) <= label_energy_threshold)
@@ -658,7 +755,6 @@
           getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) ||
           `#212121`
 
-        // For compound entries, use name, formula, or entry_id as fallback
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
           `Unknown`
         const font_size = Math.round(12 * container_scale)
@@ -670,10 +766,98 @@
     }
   }
 
+  function draw_hull_labels(): void {
+    if (!ctx || !merged_config.show_labels) return
+
+    // Find the lowest energy (most stable) entry at each unique composition
+    const composition_map = new SvelteMap<string, TernaryPlotEntry>()
+
+    for (const entry of plot_entries) {
+      if (!entry.visible || entry.is_element) continue // Skip unary phases as requested
+
+      // Create a composition key for grouping
+      const comp_key = Object.entries(entry.composition)
+        .filter(([, amt]) => amt > 0)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([el, amt]) => `${el}${amt.toFixed(3)}`)
+        .join(``)
+
+      // Keep only the entry with lowest formation energy for this composition
+      const existing = composition_map.get(comp_key)
+      if (
+        !existing || (entry.e_form_per_atom ?? 0) < (existing.e_form_per_atom ?? 0)
+      ) {
+        composition_map.set(comp_key, entry)
+      }
+    }
+
+    // Draw labels for hull points (lowest energy at each composition)
+    ctx.fillStyle =
+      getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) || `#212121`
+    ctx.font = `10px Arial`
+    ctx.textAlign = `center`
+    ctx.textBaseline = `top`
+
+    const display_width = canvas.clientWidth || 600
+    const display_height = canvas.clientHeight || 600
+    const container_scale = Math.min(display_width, display_height) / 600
+
+    for (const entry of composition_map.values()) {
+      const is_stable_point = entry.is_stable || (entry.e_above_hull || 0) <= 1e-6
+      const can_label_stable = is_stable_point && show_stable_labels
+      const can_label_unstable = !is_stable_point && show_unstable_labels &&
+        (entry.e_above_hull || 0) <= label_energy_threshold
+      if (!(can_label_stable || can_label_unstable)) continue
+
+      const projected = project_3d_point(entry.x, entry.y, entry.z)
+
+      // Generate simplified formula from composition
+      let formula = entry.reduced_formula || entry.name || ``
+
+      if (!formula) {
+        // Generate reduced formula from composition
+        const composition_elements = Object.entries(entry.composition)
+          .filter(([, amt]) => amt > 0)
+          .sort(([el1], [el2]) =>
+            elements.indexOf(el1 as ElementSymbol) -
+            elements.indexOf(el2 as ElementSymbol)
+          )
+
+        // Find GCD to reduce the formula
+        const amounts = composition_elements.map(([, amt]) =>
+          Math.round(amt * 1000) / 1000
+        )
+        const gcd_val = amounts.reduce((a, b) => {
+          // Simple GCD for fractional numbers (scaled by 1000)
+          const scale = 1000
+          let a_int = Math.round(a * scale)
+          let b_int = Math.round(b * scale)
+          while (b_int !== 0) {
+            const temp = b_int
+            b_int = a_int % b_int
+            a_int = temp
+          }
+          return a_int / scale
+        })
+
+        formula = composition_elements
+          .map(([element, amount]) => {
+            const reduced_amount = Math.round((amount / gcd_val) * 100) / 100
+            return reduced_amount === 1 ? element : `${element}${reduced_amount}`
+          })
+          .join(``)
+      }
+
+      // Position label below the point
+      const label_offset = 12 * container_scale
+      ctx.fillText(formula, projected.x, projected.y + label_offset)
+    }
+  }
+
   function render_frame(): void {
     if (!ctx || !canvas) return
 
-    // Use CSS dimensions for rendering (already scaled by DPR in context)
+    // Use CSS dimensions for rendering
     const display_width = canvas.clientWidth || 600
     const display_height = canvas.clientHeight || 600
 
@@ -684,7 +868,7 @@
     ctx.fillStyle = `transparent`
     ctx.fillRect(0, 0, display_width, display_height)
 
-    if (elements.length !== 4) {
+    if (elements.length !== 3) {
       // Show error message
       ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--text-color`) ||
         `#666`
@@ -693,18 +877,24 @@
       ctx.textBaseline = `middle`
 
       ctx.fillText(
-        `Quaternary phase diagram requires exactly 4 elements (got ${pd_data.elements.length})`,
+        `Ternary phase diagram requires exactly 3 elements (got ${pd_data.elements.length})`,
         display_width / 2,
         display_height / 2,
       )
       return
     }
 
-    // Draw tetrahedron outline
+    // Draw triangle structure first
     draw_structure_outline()
 
-    // Draw data points
+    // Draw convex hull faces (before points so they appear behind)
+    draw_convex_hull_faces()
+
+    // Draw data points last (on top)
     draw_data_points()
+
+    // Draw hull labels after points
+    draw_hull_labels()
   }
 
   function handle_mouse_down(event: MouseEvent) {
@@ -714,24 +904,26 @@
   }
 
   const handle_mouse_move = (event: MouseEvent) => {
-    if (!is_dragging) return
-    const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
+    if (is_dragging) {
+      const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
 
-    // Detect if significant movement occurred (indicates actual drag)
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag_started = true
+      // Detect if significant movement occurred (indicates actual drag)
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag_started = true
 
-    // With Cmd/Ctrl held: pan the view instead of rotating
-    if (event.metaKey || event.ctrlKey) {
-      camera.center_x += dx
-      camera.center_y += dy
-    } else {
-      camera.rotation_y -= dx * 0.005
-      camera.rotation_x = Math.max(
-        -Math.PI / 3,
-        Math.min(Math.PI / 3, camera.rotation_x + dy * 0.005),
-      )
+      // With Cmd/Ctrl held: pan the view instead of rotating
+      if (event.metaKey || event.ctrlKey) {
+        camera.center_x += dx
+        camera.center_y += dy
+      } else {
+        // Horizontal drag -> azimuth rotation around z-axis
+        camera.azimuth -= dx * 0.3 // Convert pixels to degrees
+
+        // Vertical drag -> elevation angle (full range)
+        camera.elevation = camera.elevation + dy * 0.3 // No constraints - allow full rotation
+      }
+
+      last_mouse = { x: event.clientX, y: event.clientY }
     }
-    last_mouse = { x: event.clientX, y: event.clientY }
   }
 
   const handle_mouse_up = () => is_dragging = false
@@ -739,8 +931,8 @@
   const handle_wheel = (event: WheelEvent) => {
     event.preventDefault()
     camera.zoom = Math.max(
-      1.0,
-      Math.min(15, camera.zoom * (event.deltaY > 0 ? 0.98 : 1.02)),
+      0.5,
+      Math.min(10, camera.zoom * (event.deltaY > 0 ? 0.98 : 1.02)),
     )
   }
 
@@ -774,8 +966,7 @@
 
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
-    // Don't trigger click if this was a drag operation
-    if (drag_started) {
+    if (drag_started) { // Don't trigger click if this was a drag operation
       drag_started = false
       return
     }
@@ -783,6 +974,7 @@
     const entry = find_entry_at_mouse(event)
     if (entry) {
       on_point_click?.(entry)
+
       if (enable_structure_preview) {
         const structure = extract_structure_from_entry(entry)
         if (structure) {
@@ -792,12 +984,10 @@
           modal_open = true
         }
       }
-    } else if (modal_open) {
-      close_structure_popup()
-    }
+    } else if (modal_open) close_structure_popup()
   }
 
-  // Decide side based on available viewport room
+  // Decide side based on available viewport room; modal is absolutely positioned
   function calculate_modal_side() {
     if (!wrapper) return
     const rect = wrapper.getBoundingClientRect()
@@ -860,13 +1050,14 @@
 
     // Reset camera position to center when canvas size changes significantly (like fullscreen)
     camera.center_x = 0
-    camera.center_y = 20 // Slight offset to avoid legend overlap
+    camera.center_y = -50 // Shift up to better show the formation energy funnel
 
     // Initial render
     render_once()
 
     return () => { // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
+      if (pulse_frame_id) cancelAnimationFrame(pulse_frame_id)
     }
   })
 
@@ -901,7 +1092,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  class="phase-diagram-4d"
+  class="phase-diagram-3d"
   class:dragover={drag_over}
   {style}
   bind:this={wrapper}
@@ -917,7 +1108,7 @@
     event.preventDefault()
     drag_over = false
   }}
-  aria-label="Phase diagram visualization"
+  aria-label="Ternary phase diagram visualization"
 >
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; z-index: 10">
     {phase_stats?.chemical_system}
@@ -931,7 +1122,26 @@
     onwheel={handle_wheel}
   ></canvas>
 
-  <!-- Control buttons (top-right corner like Structure.svelte) -->
+  <!-- Formation Energy Color Bar (bottom-left corner) -->
+  {#if color_mode === `energy` && plot_entries.length > 0}
+    {@const formation_energies = plot_entries.map((e) => e.e_above_hull ?? 0)}
+    {@const min_energy = Math.min(...formation_energies)}
+    {@const max_energy = Math.max(...formation_energies, 0.1)}
+    <div class="color-bar-container">
+      <ColorBar
+        title="Energy above hull (eV/atom)"
+        range={[min_energy, max_energy]}
+        {color_scale}
+        orientation="horizontal"
+        tick_labels={4}
+        wrapper_style="width: 200px;"
+        bar_style="height: 12px;"
+        title_style="font-size: 0.8em; margin-bottom: 4px;"
+      />
+    </div>
+  {/if}
+
+  <!-- Control buttons (top-right corner) -->
   {#if merged_legend.show}
     <section class="control-buttons">
       <button
@@ -978,7 +1188,7 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:show_elemental_polymorphs
+        show_elemental_polymorphs="hide-control"
         bind:energy_threshold
         bind:label_energy_threshold
         max_energy_threshold={max_energy_threshold()}
@@ -991,6 +1201,8 @@
         toggle_props={{
           class: `legend-controls-btn`,
         }}
+        {show_hull_faces}
+        on_hull_faces_change={(value) => show_hull_faces = value}
       />
     </section>
   {/if}
@@ -1075,17 +1287,17 @@
 </div>
 
 <style>
-  .phase-diagram-4d {
+  .phase-diagram-3d {
     position: relative;
     width: 100%;
     height: var(--pd-height, 500px);
     background: var(--surface-bg, #f8f9fa);
     border-radius: 4px;
   }
-  .phase-diagram-4d:fullscreen {
+  .phase-diagram-3d:fullscreen {
     border-radius: 0;
   }
-  .phase-diagram-4d.dragover {
+  .phase-diagram-3d.dragover {
     border: 2px dashed var(--accent-color, #1976d2);
   }
   canvas {
@@ -1118,6 +1330,12 @@
   }
   .control-buttons button:hover {
     background: rgba(255, 255, 255, 0.2);
+  }
+  .color-bar-container {
+    position: absolute;
+    bottom: 1em;
+    left: 1em;
+    z-index: 1000;
   }
   .tooltip {
     position: fixed;

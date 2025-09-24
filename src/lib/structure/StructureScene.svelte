@@ -143,7 +143,7 @@
     selection_highlight_color = `#6cf0ff`,
     // Active highlight group with different color
     active_sites = $bindable([]),
-    active_highlight_color = `#2563eb`, // stronger blue
+    active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
     rotation = DEFAULTS.structure.rotation,
   }: Props = $props()
 
@@ -312,7 +312,7 @@
         .reduce(
           (groups, atom) => {
             const { element, radius, color } = atom
-            const key = `${element}-${radius.toFixed(3)}`
+            const key = `${element}-${format_num(radius, `.3~`)}`
             const bucket = groups[key] ||
               (groups[key] = { element, radius, color, atoms: [] })
             bucket.atoms.push(atom)

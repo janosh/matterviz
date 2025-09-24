@@ -8,8 +8,10 @@
   import type { PDLegendConfig, PlotEntry3D } from './types'
 
   interface CameraState {
-    rotation_x: number
-    rotation_y: number
+    elevation?: number // Elevation angle in degrees (for ternary)
+    azimuth?: number // Azimuth angle in degrees (for ternary)
+    rotation_x?: number // X rotation in radians (for quaternary)
+    rotation_y?: number // Y rotation in radians (for quaternary)
     zoom: number
     center_x: number
     center_y: number
@@ -23,7 +25,10 @@
     show_unstable?: boolean
     show_stable_labels?: boolean
     show_unstable_labels?: boolean
-    show_elemental_polymorphs?: boolean
+    show_elemental_polymorphs?: boolean | `hide-control`
+    // 3D specific controls
+    show_hull_faces?: boolean
+    on_hull_faces_change?: (value: boolean) => void
     // Thresholds
     energy_threshold?: number
     label_energy_threshold?: number
@@ -50,6 +55,8 @@
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
     show_elemental_polymorphs = $bindable(false),
+    show_hull_faces = undefined,
+    on_hull_faces_change,
     energy_threshold = $bindable(0),
     label_energy_threshold = $bindable(0.1),
     max_energy_threshold = 0.5,
@@ -230,57 +237,117 @@
     {/if}
   {/if}
 
-  <!-- Elemental polymorphs toggle -->
-  <div class="control-row">
-    <span class="control-label">Elements</span>
-    <label class="label-toggle">
-      <input
-        type="checkbox"
-        bind:checked={show_elemental_polymorphs}
-        title="Show all elemental polymorphs (not just corner references)"
-      />
-      <span>Show polymorphs</span>
-    </label>
-  </div>
+  {#if show_elemental_polymorphs !== `hide-control`}
+    <!-- Elemental polymorphs toggle -->
+    <div class="control-row">
+      <span class="control-label">Elements</span>
+      <label class="label-toggle">
+        <input
+          type="checkbox"
+          bind:checked={show_elemental_polymorphs}
+          title="Show all elemental polymorphs (not just corner references)"
+        />
+        <span>Show polymorphs</span>
+      </label>
+    </div>
+  {/if}
+
+  <!-- Hull faces toggle (for 3D ternary diagrams) -->
+  {#if show_hull_faces !== undefined}
+    <div class="control-row">
+      <span class="control-label">3D Hull</span>
+      <label class="label-toggle">
+        <input
+          type="checkbox"
+          checked={show_hull_faces}
+          onchange={(e) => on_hull_faces_change?.((e.target as HTMLInputElement).checked)}
+          title="Show convex hull faces between stable points"
+        />
+        <span>Show faces</span>
+      </label>
+    </div>
+  {/if}
 
   <!-- Camera controls -->
   <div class="control-row">
     <span class="control-label">Camera</span>
     <div class="camera-controls">
-      <label
-        class="angle-input"
-        {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
-      >
-        <span>φ</span>
-        <input
-          type="number"
-          value={camera.rotation_x.toFixed(2)}
-          step="0.1"
-          min={-Math.PI / 3}
-          max={Math.PI / 3}
-          oninput={(e) =>
-          camera.rotation_x = parseFloat(
-            (e.target as HTMLInputElement).value,
-          )}
-          style="width: 3em"
-        />
-      </label>
-      <label
-        class="angle-input"
-        {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
-      >
-        <span>θ</span>
-        <input
-          type="number"
-          value={camera.rotation_y.toFixed(2)}
-          step="0.1"
-          oninput={(e) =>
-          camera.rotation_y = parseFloat(
-            (e.target as HTMLInputElement).value,
-          )}
-          style="width: 3em"
-        />
-      </label>
+      {#if camera.elevation !== undefined && camera.azimuth !== undefined}
+        <!-- Ternary camera controls (elevation/azimuth) -->
+        <label
+          class="angle-input"
+          {@attach tooltip({
+            content:
+              `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
+          })}
+        >
+          <span>Elev</span>
+          <input
+            type="number"
+            value={camera.elevation.toFixed(0)}
+            step="5"
+            oninput={(e) =>
+            camera.elevation = parseFloat(
+              (e.target as HTMLInputElement).value,
+            )}
+            style="width: 3em"
+          />
+          <span>°</span>
+        </label>
+        <label
+          class="angle-input"
+          {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
+        >
+          <span>Azim</span>
+          <input
+            type="number"
+            value={camera.azimuth.toFixed(0)}
+            step="15"
+            oninput={(e) =>
+            camera.azimuth = parseFloat(
+              (e.target as HTMLInputElement).value,
+            )}
+            style="width: 3em"
+          />
+          <span>°</span>
+        </label>
+      {:else}
+        <!-- Quaternary camera controls (rotation_x/rotation_y) -->
+        <label
+          class="angle-input"
+          {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
+        >
+          <span>φ</span>
+          <input
+            type="number"
+            value={(camera.rotation_x ?? 0).toFixed(2)}
+            step="0.1"
+            min={-Math.PI / 3}
+            max={Math.PI / 3}
+            oninput={(e) =>
+            camera.rotation_x = parseFloat(
+              (e.target as HTMLInputElement).value,
+            )}
+            style="width: 3em"
+          />
+        </label>
+        <label
+          class="angle-input"
+          {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
+        >
+          <span>θ</span>
+          <input
+            type="number"
+            value={(camera.rotation_y ?? 0).toFixed(2)}
+            step="0.1"
+            oninput={(e) =>
+            camera.rotation_y = parseFloat(
+              (e.target as HTMLInputElement).value,
+            )}
+            style="width: 3em"
+          />
+        </label>
+      {/if}
     </div>
   </div>
 </DraggablePane>
@@ -367,6 +434,16 @@
     display: flex;
     gap: 12px;
     flex: 1;
+  }
+  .angle-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85em;
+  }
+  .angle-input span {
+    font-weight: 500;
+    min-width: 20px;
   }
   .threshold-slider {
     flex: 1;

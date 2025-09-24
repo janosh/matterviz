@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib'
-import type { PhaseDiagramData, PhaseEntry, PlotEntry3D } from './types'
+import type { PhaseDiagramData, PhaseEntry } from './types'
 
 // Process phase diagram data to extract elements and categorize entries
 export function process_pd_data(entries: PhaseEntry[]): PhaseDiagramData {
@@ -33,16 +33,4 @@ export function process_pd_data(entries: PhaseEntry[]): PhaseDiagramData {
 // Check if entry represents a pure element
 export function is_elemental_entry(entry: PhaseEntry): boolean {
   return Object.values(entry.composition).filter((v) => v > 0).length === 1
-}
-
-// Get energy range for color scaling
-export function get_energy_range(entries: PlotEntry3D[]): [number, number] {
-  if (entries.length === 0) return [0, 0.1]
-
-  const energies = entries
-    .map((e) => e.formation_energy_per_atom || e.energy_per_atom)
-    .filter((energy): energy is number => energy !== undefined)
-
-  if (energies.length === 0) return [0, 0.1]
-  return [Math.min(...energies), Math.max(...energies)]
 }

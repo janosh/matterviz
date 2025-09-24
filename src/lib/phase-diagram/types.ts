@@ -11,7 +11,7 @@ export interface PhaseEntry {
   e_above_hull?: number
   is_stable?: boolean
   energy_per_atom?: number
-  formation_energy_per_atom?: number
+  e_form_per_atom?: number // Formation energy per atom from fetch-mp-pd-data.py
   reduced_formula?: string
   name?: string
 
@@ -60,7 +60,7 @@ export interface PhaseDiagramConfig {
   width?: number
   height?: number
   margin?: { top: number; right: number; bottom: number; left: number }
-  show_unstable?: number // eV/atom threshold for showing unstable entries
+  unstable_threshold?: number // eV/atom threshold for showing unstable entries
   show_labels?: boolean
   show_hull?: boolean
   enable_zoom?: boolean
@@ -93,8 +93,45 @@ export interface PDLegendConfig {
   show_label_controls?: boolean
 }
 
+// Plane equation: normal·p + offset = 0
+export interface Plane {
+  normal: Point3D
+  offset: number
+}
+
+// Internal face structure for Quickhull algorithm
+export interface ConvexHullFace {
+  vertices: [number, number, number]
+  plane: Plane
+  centroid: Point3D
+  outside_points: Set<number>
+}
+
+// Convex hull triangle with actual coordinate vertices (return type from compute_quickhull_triangles)
+export interface ConvexHullTriangle {
+  vertices: [Point3D, Point3D, Point3D]
+  normal: Point3D
+  centroid: Point3D
+}
+
+// Convex hull face for ternary 3D rendering (legacy interface - kept for backward compatibility)
+export interface ConvexHullFace {
+  vertices: number[] // indices into plot_entries array
+  normal: Point3D // face normal vector for lighting
+  centroid: Point3D // face center point
+  is_stable: boolean // whether this face is on the stable hull
+}
+
+// Ternary plot entry with additional face information
+export interface TernaryPlotEntry extends PlotEntry3D {
+  // Barycentric coordinates for ternary system
+  barycentric: [number, number, number]
+  // Formation energy for z-axis positioning
+  formation_energy: number
+}
+
 // Hover data for tooltips
-export interface HoverData3D {
-  entry: PlotEntry3D
+export interface HoverData3D<T = PlotEntry3D> {
+  entry: T
   position: { x: number; y: number }
 }
