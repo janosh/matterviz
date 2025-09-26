@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib'
+import { is_elemental_entry } from './arity'
 import type { PhaseEntry, Point3D, TernaryPlotEntry } from './types'
-import { is_elemental_entry } from './utils'
 
 // Vertices of equilateral triangle in 2D (base of ternary diagram)
 export const TRIANGLE_VERTICES = [

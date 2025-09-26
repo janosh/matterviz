@@ -176,6 +176,12 @@ const themes = {
     white: `1px solid rgba(0, 0, 0, 0.075)`,
     black: `1px solid rgba(255, 255, 255, 0.075)`,
   },
+  'pane-bg-hover': {
+    light: `rgba(0, 0, 0, 0.06)`,
+    dark: `rgba(255, 255, 255, 0.1)`,
+    white: `rgba(0, 0, 0, 0.03)`,
+    black: `rgba(255, 255, 255, 0.1)`,
+  },
 
   // Dropzone states
   'dropzone-border': {

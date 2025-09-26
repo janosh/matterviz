@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib'
+import { is_elemental_entry } from './arity'
 import type { PhaseEntry, PlotEntry3D, Point3D } from './types'
-import { is_elemental_entry } from './utils'
 
 // Corners of tetrahedral coordinate system
 export const TETRAHEDRON_VERTICES = [

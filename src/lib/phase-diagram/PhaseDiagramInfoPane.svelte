@@ -206,7 +206,7 @@
 
     // Interaction Tips
     sections.push({
-      title: `Interaction`,
+      title: `Usage Tips`,
       items: [
         { label: `Single click`, value: `Select point` },
         { label: `Double click`, value: `Copy info` },
@@ -296,9 +296,11 @@
   section div.clickable {
     cursor: pointer;
     position: relative;
+    padding: 0 3pt;
   }
   section div:hover {
-    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
+    background: var(--pane-bg-hover);
+    border-radius: 3pt;
   }
   .copy-checkmark-overlay {
     position: absolute;
@@ -307,10 +309,6 @@
     transform: translateY(-50%);
     background: var(--pane-bg);
     border-radius: 50%;
-    padding: 3pt;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     animation: fade-in 0.1s ease-out;
   }
   @keyframes fade-in {
@@ -321,20 +319,7 @@
   .stat-item span:first-child {
     color: var(--text-color-muted, #666);
   }
-  .stat-item span:last-child {
-    font-weight: 500;
-    text-align: right;
-  }
-  .tips-item {
-    flex-direction: column;
-    gap: 2pt;
-  }
-  .tips-item span:last-child {
-    opacity: 0.8;
-  }
   section h5 {
     margin: 0 0 6px 0;
-    font-weight: 600;
-    color: var(--accent-color, #1976d2);
   }
 </style>

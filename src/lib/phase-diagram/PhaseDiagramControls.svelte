@@ -1,7 +1,7 @@
 <script lang="ts">
   import { DraggablePane } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { ColorBar, ColorScaleSelect } from '$lib/plot'
+  import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -29,12 +29,18 @@
     // 3D specific controls
     show_hull_faces?: boolean
     on_hull_faces_change?: (value: boolean) => void
+    hull_face_color?: string
+    on_hull_face_color_change?: (value: string) => void
+    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
+    has_precomputed_hull?: boolean
+    can_compute_hull?: boolean
+    has_precomputed_e_form?: boolean
+    can_compute_e_form?: boolean
     // Thresholds
     energy_threshold?: number
     label_energy_threshold?: number
     max_energy_threshold?: number
     // Data for visualization
-    plot_entries: PlotEntry3D[]
     stable_entries: PlotEntry3D[]
     unstable_entries: PlotEntry3D[]
     total_unstable_count: number
@@ -57,10 +63,16 @@
     show_elemental_polymorphs = $bindable(false),
     show_hull_faces = undefined,
     on_hull_faces_change,
+    hull_face_color = `#0072B2`,
+    on_hull_face_color_change,
     energy_threshold = $bindable(0),
     label_energy_threshold = $bindable(0.1),
     max_energy_threshold = 0.5,
-    plot_entries,
+    energy_source_mode = $bindable(`precomputed`),
+    has_precomputed_hull = false,
+    can_compute_hull = false,
+    has_precomputed_e_form = false,
+    can_compute_e_form = false,
     stable_entries,
     unstable_entries,
     total_unstable_count,
@@ -90,27 +102,56 @@
 >
   <h4 style="margin: 0">{merged_legend.title || `Phase Diagram Controls`}</h4>
 
+  <!-- Energy source selection (only if both options are available) -->
+  {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form &&
+      can_compute_hull}
+    <div class="control-row">
+      <span class="control-label">Energy source</span>
+      <button
+        class="toggle-btn {energy_source_mode === `precomputed` ? `active` : ``}"
+        onclick={() => energy_source_mode = `precomputed`}
+        {@attach tooltip({
+          content: `Use precomputed formation energies (E<sub>form</sub>)`,
+        })}
+      >
+        Precomputed
+      </button>
+      <button
+        class="toggle-btn {energy_source_mode === `on-the-fly` ? `active` : ``}"
+        onclick={() => energy_source_mode = `on-the-fly`}
+        {@attach tooltip({
+          content: `Compute formation energies and hull distances on the fly`,
+        })}
+      >
+        On the fly
+      </button>
+    </div>
+  {/if}
+
   <!-- Color mode toggle -->
   <div class="control-row">
     <span class="control-label">Color mode</span>
-    <div class="color-mode-toggle">
-      <button
-        class="toggle-btn {color_mode === `stability` ? `active` : ``}"
-        onclick={() => color_mode = `stability`}
-      >
-        Stability
-      </button>
-      <button
-        class="toggle-btn {color_mode === `energy` ? `active` : ``}"
-        onclick={() => color_mode = `energy`}
-      >
-        Energy
-      </button>
-    </div>
+    <button
+      class="toggle-btn {color_mode === `stability` ? `active` : ``}"
+      onclick={() => color_mode = `stability`}
+      {@attach tooltip({ content: `Color points by stable/unstable` })}
+    >
+      Stability
+    </button>
+    <button
+      class="toggle-btn {color_mode === `energy` ? `active` : ``}"
+      onclick={() => color_mode = `energy`}
+      {@attach tooltip({ content: `Color points by energy above hull` })}
+    >
+      Energy
+    </button>
   </div>
 
-  <!-- Energy threshold slider - shown in both modes -->
-  <div class="control-row">
+  <!-- Energy threshold slider - shown in both color modes -->
+  <div
+    class="control-row"
+    {@attach tooltip({ content: `Max eV/atom above hull to display unstable points` })}
+  >
     <span class="control-label">Points threshold</span>
     <label style="display: flex; align-items: center; gap: 4px; flex: 1">
       <input
@@ -120,7 +161,6 @@
         step="0.01"
         bind:value={energy_threshold}
         class="threshold-input"
-        title="Maximum energy above hull for displayed entries"
       />
       <span style="white-space: nowrap; font-size: 0.85em">eV/atom</span>
       <input
@@ -130,7 +170,6 @@
         step="0.01"
         bind:value={energy_threshold}
         class="threshold-slider"
-        title="Maximum energy above hull for displayed entries"
       />
     </label>
   </div>
@@ -146,6 +185,7 @@
           [`Enter`, ` `].includes(evt.key) && (show_stable = !show_stable)}
           role="button"
           tabindex="0"
+          {@attach tooltip({ content: `Toggle visibility of stable points` })}
         >
           <div class="marker stable"></div>
           <span>Stable{
@@ -159,6 +199,7 @@
           [`Enter`, ` `].includes(evt.key) && (show_unstable = !show_unstable)}
           role="button"
           tabindex="0"
+          {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
         >
           <div class="marker unstable"></div>
           <span>Above hull{
@@ -172,26 +213,13 @@
       </div>
     </div>
   {:else}
-    {@const hull_distances = plot_entries.map((entry) => entry.e_above_hull ?? 0)}
-    {@const cbar_min = hull_distances.length ? Math.min(...hull_distances) : 0}
-    {@const cbar_max = hull_distances.length ? Math.max(...hull_distances) : 0.1}
-    <div class="colorbar-container">
-      <ColorBar
-        title="Energy Above Hull (eV/atom)"
-        range={[cbar_min, Math.max(cbar_max, cbar_min + 0.1)]}
-        {color_scale}
-        orientation="horizontal"
-        tick_labels={5}
-        wrapper_style="margin: 8px 0;"
-      />
-    </div>
-
     <!-- Color scale selector -->
-    <div class="control-row" style="margin: 1em 0 0">
-      Color scale
+    <div class="control-row">
+      <span {@attach tooltip({ content: `Choose energy colormap` })}>Color scale</span>
       <ColorScaleSelect
         bind:value={color_scale}
         placeholder="Select color scale"
+        {@attach tooltip({ content: `Set interpolator for energy colors` })}
       />
     </div>
   {/if}
@@ -199,18 +227,25 @@
   {#if merged_legend.show_label_controls}
     <div class="control-row">
       <span class="control-label">Labels</span>
-      <div class="label-toggles">
-        <label class="label-toggle">
+      <div style="display: flex; gap: 12px; flex: 1">
+        <label {@attach tooltip({ content: `Show labels for stable points` })}>
           <input
             type="checkbox"
-            bind:checked={show_stable_labels}
+            checked={show_stable_labels}
+            oninput={(
+              evt,
+            ) => (show_stable_labels = (evt.target as HTMLInputElement).checked)}
           />
           <span>Stable</span>
         </label>
-        <label class="label-toggle">
+        <label {@attach tooltip({ content: `Show labels for unstable points` })}>
           <input
             type="checkbox"
-            bind:checked={show_unstable_labels}
+            checked={show_unstable_labels}
+            oninput={(
+              evt,
+            ) => (show_unstable_labels =
+              (evt.target as HTMLInputElement).checked)}
           />
           <span>Unstable</span>
         </label>
@@ -218,7 +253,10 @@
     </div>
 
     {#if show_unstable_labels}
-      <div class="control-row">
+      <div
+        class="control-row"
+        {@attach tooltip({ content: `Max eV/atom for labeling unstable points` })}
+      >
         <span class="control-label">Label threshold</span>
         <label style="display: flex; align-items: center; gap: 4px; flex: 1">
           <span style="white-space: nowrap; font-size: 0.85em">{
@@ -241,11 +279,10 @@
     <!-- Elemental polymorphs toggle -->
     <div class="control-row">
       <span class="control-label">Elements</span>
-      <label class="label-toggle">
+      <label {@attach tooltip({ content: `Show all elemental polymorphs` })}>
         <input
           type="checkbox"
           bind:checked={show_elemental_polymorphs}
-          title="Show all elemental polymorphs (not just corner references)"
         />
         <span>Show polymorphs</span>
       </label>
@@ -256,15 +293,21 @@
   {#if show_hull_faces !== undefined}
     <div class="control-row">
       <span class="control-label">3D Hull</span>
-      <label class="label-toggle">
+      <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
         <input
           type="checkbox"
           checked={show_hull_faces}
-          onchange={(e) => on_hull_faces_change?.((e.target as HTMLInputElement).checked)}
-          title="Show convex hull faces between stable points"
+          oninput={(e) => on_hull_faces_change?.((e.target as HTMLInputElement).checked)}
         />
         <span>Show faces</span>
       </label>
+      <span class="control-label" style="min-width: auto">Hull color</span>
+      <input
+        type="color"
+        value={hull_face_color}
+        oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
+        {@attach tooltip({ content: `Set hull face color` })}
+      />
     </div>
   {/if}
 
@@ -370,37 +413,23 @@
   }
   .toggle-btn {
     flex: 1;
-    padding: 6px 12px;
-    background: var(--btn-bg, rgba(0, 0, 0, 0.1));
-    color: var(--text-color-muted, #666);
-    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
-    border-radius: 4px;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.2s;
   }
-  .toggle-btn.active {
+  .toggle-btn.active, .toggle-btn:hover.active {
     background: var(--accent-color, #1976d2);
     color: white;
     border-color: var(--accent-color, #1976d2);
   }
-  .toggle-btn:hover:not(.active) {
-    background: var(--btn-bg-hover, rgba(0, 0, 0, 0.15));
-  }
   .legend-items-container {
     display: flex;
-    flex-direction: row;
     gap: 12px;
     flex: 1;
   }
   .legend-item {
     display: flex;
     align-items: center;
-    padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s;
-    flex: 1;
+    white-space: nowrap;
   }
   .legend-item:hover {
     background: var(--btn-bg-hover, rgba(0, 0, 0, 0.05));
@@ -409,52 +438,24 @@
     opacity: 0.5;
   }
   .marker {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     margin-right: 8px;
+    aspect-ratio: 1;
   }
   .marker.stable {
-    background: #0072b2;
+    background: var(--stable-color, #0072b2);
   }
   .marker.unstable {
-    background: #e69f00;
-  }
-  .label-toggles {
-    display: flex;
-    gap: 12px;
-    flex: 1;
-  }
-  .label-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    background: var(--unstable-color, #e69f00);
   }
   .camera-controls {
     display: flex;
     gap: 12px;
     flex: 1;
   }
-  .angle-input {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.85em;
-  }
-  .angle-input span {
-    font-weight: 500;
-    min-width: 20px;
-  }
-  .threshold-slider {
-    flex: 1;
-    accent-color: var(--accent-color, #1976d2);
-  }
   .threshold-input {
-    width: 4em;
-    text-align: center;
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
-    border-radius: 3px;
-    padding: 4px;
-    font-size: 0.85em;
   }
 </style>

@@ -9,6 +9,7 @@ import os
 
 from mp_api.client import MPRester
 from pymatgen.analysis.phase_diagram import PhaseDiagram
+from pymatgen.entries.computed_entries import ComputedStructureEntry
 
 out_dir = f"{os.path.dirname(__file__)}/quaternaries"
 os.makedirs(out_dir, exist_ok=True)
@@ -26,7 +27,7 @@ mpr = MPRester()
 # %%
 for chem_sys in chemical_systems:
     if all_entries[chem_sys] is None:
-        entries = mpr.get_entries_in_chemsys(chem_sys)
+        entries: list[ComputedStructureEntry] = mpr.get_entries_in_chemsys(chem_sys)
         all_entries[chem_sys] = entries
 
     pd = PhaseDiagram(entries)

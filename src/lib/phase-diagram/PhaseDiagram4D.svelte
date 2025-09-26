@@ -5,8 +5,22 @@
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
-  import { scaleSequential } from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
+  import {
+    compute_formation_energy_per_atom,
+    find_lowest_energy_unary_refs,
+    process_pd_entries,
+  } from './energies'
+  import {
+    build_tooltip_text,
+    compute_energy_color_scale,
+    compute_max_energy_threshold,
+    compute_phase_stats,
+    default_legend,
+    find_entry_at_mouse as find_entry_at_mouse_helper,
+    get_point_color_for_entry,
+    parse_phase_diagram_drop,
+    PD_STYLE,
+  } from './helpers'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import { compute_4d_coordinates, TETRAHEDRON_VERTICES } from './quaternary'
@@ -18,7 +32,6 @@
     PhaseEntry,
     PlotEntry3D,
   } from './types'
-  import { process_pd_data } from './utils'
 
   interface Props {
     entries: PhaseEntry[]
@@ -48,6 +61,7 @@
     on_file_drop?: (entries: PhaseEntry[]) => void
     // Enable structure preview overlay when hovering over entries with structure data
     enable_structure_preview?: boolean
+    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
   }
   let {
     entries,
@@ -70,17 +84,9 @@
     show_elemental_polymorphs = $bindable(false),
     on_file_drop,
     enable_structure_preview = true,
+    energy_source_mode = $bindable(`precomputed`),
   }: Props = $props()
 
-  const default_legend: PDLegendConfig = {
-    title: ``,
-    show: true,
-    position: `top-right`,
-    width: 280,
-    show_counts: true,
-    show_color_toggle: true,
-    show_label_controls: true,
-  }
   const merged_legend: PDLegendConfig = $derived({ ...default_legend, ...legend })
 
   const merged_config = $derived({
@@ -109,10 +115,50 @@
     margin: { top: 60, right: 60, bottom: 60, left: 60, ...(config.margin || {}) },
   })
 
-  // Process phase diagram data with unified PhaseEntry interface
-  const processed_entries = $derived(entries)
+  // Decide which energy source to use per entry (keep e_form and e_above_hull consistent)
+  const has_precomputed_e_form = $derived(
+    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`),
+  )
+  const has_precomputed_hull = $derived(
+    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`),
+  )
 
-  const pd_data = $derived(process_pd_data(processed_entries))
+  // For quaternary, we currently do not compute e_above_hull on the fly (needs a 4D hull)
+  // Only compute formation energies when explicitly requested via on-the-fly
+  const unary_refs = $derived.by(() =>
+    energy_source_mode === `on-the-fly`
+      ? find_lowest_energy_unary_refs(entries)
+      : ({} as Record<string, PhaseEntry>)
+  )
+
+  const can_compute_e_form = $derived.by(() => {
+    if (energy_source_mode !== `on-the-fly`) return false
+    const elements_in_entries = Array.from(
+      new Set(entries.flatMap((e) => Object.keys(e.composition))),
+    )
+    return elements_in_entries.every((el) => Boolean(unary_refs[el]))
+  })
+  // Quaternary on-the-fly hull distances are not implemented yet
+  const can_compute_hull = $derived(false)
+
+  const use_on_the_fly = $derived(
+    energy_source_mode === `on-the-fly` && can_compute_e_form && can_compute_hull,
+  )
+
+  const effective_entries = $derived.by(() => {
+    if (!use_on_the_fly) return entries
+    // on-the-fly: compute formation energy per atom where possible
+    return entries.map((entry) => {
+      const e_form = compute_formation_energy_per_atom(entry, unary_refs)
+      if (e_form == null) return entry
+      return { ...entry, e_form_per_atom: e_form }
+    })
+  })
+
+  // Process phase diagram data with unified PhaseEntry interface using effective entries
+  const processed_entries = $derived(effective_entries)
+
+  const pd_data = $derived(process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
     const all_elements = pd_data.elements
@@ -275,37 +321,7 @@
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: PlotEntry3D) => {
-    const is_element = Object.keys(entry.composition).length === 1
-    const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
-
-    let text = is_element
-      ? `${elem_symbol} (${elem_symbol_to_name[elem_symbol as ElementSymbol]})\n`
-      : `${entry.name || entry.reduced_formula}\n`
-
-    // Add fractional composition for compounds
-    if (!is_element) {
-      const total = Object.values(entry.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      )
-      const fractions = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
-      if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
-    }
-
-    if (entry.e_above_hull !== undefined) {
-      const e_hull_str = format_num(entry.e_above_hull, `.3~`)
-      text += `E above hull: ${e_hull_str} eV/atom\n`
-    }
-    if (entry.e_form_per_atom !== undefined) {
-      const e_form_str = format_num(entry.e_form_per_atom, `.3~`)
-      text += `Formation Energy: ${e_form_str} eV/atom`
-    }
-    if (entry.entry_id) text += `\nID: ${entry.entry_id}`
-    return text
-  }
+  const get_tooltip_text = (entry: PlotEntry3D) => build_tooltip_text(entry)
 
   const reset_camera = () =>
     Object.assign(camera, {
@@ -330,21 +346,9 @@
   }
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
-    event.preventDefault()
     drag_over = false
-
-    try {
-      const file = event.dataTransfer?.files?.[0]
-      if (!file?.name.endsWith(`.json`)) return
-
-      const data = JSON.parse(await file.text()) as PhaseEntry[]
-      if (!Array.isArray(data) || data.length === 0) return
-      if (!data[0].composition || !data[0].energy) return
-
-      on_file_drop?.(data)
-    } catch (error) {
-      console.error(`Error parsing dropped file:`, error)
-    }
+    const data = await parse_phase_diagram_drop(event)
+    if (data) on_file_drop?.(data)
   }
 
   async function copy_to_clipboard(text: string, position: { x: number; y: number }) {
@@ -355,95 +359,27 @@
   }
 
   function get_point_color(entry: PlotEntry3D): string {
-    const is_stable = entry.is_stable || entry.e_above_hull === 0
-
-    if (color_mode === `stability`) {
-      return is_stable
-        ? (merged_config.colors?.stable || `#0072B2`)
-        : (merged_config.colors?.unstable || `#E69F00`)
-    }
-
-    return energy_color_scale ? energy_color_scale(entry.e_above_hull || 0) : `#666`
+    return get_point_color_for_entry(
+      entry,
+      color_mode,
+      merged_config.colors,
+      energy_color_scale,
+    )
   }
 
   // Cache energy color scale per frame/setting
-  const energy_color_scale = $derived.by(() => {
-    if (color_mode !== `energy` || plot_entries.length === 0) return null
-    const distances = plot_entries.map((e) => e.e_above_hull ?? 0)
-    const lo = Math.min(...distances)
-    const hi_raw = Math.max(...distances, 0.1)
-    const hi = Math.max(hi_raw, lo + 1e-6)
-    const interpolator =
-      (d3_sc as unknown as Record<string, (t: number) => string>)[color_scale] ||
-      d3_sc.interpolateViridis
-    return scaleSequential(interpolator).domain([lo, hi])
-  })
+  const energy_color_scale = $derived.by(() =>
+    compute_energy_color_scale(color_mode, color_scale, plot_entries)
+  )
 
   const max_energy_threshold = $derived(() =>
-    processed_entries.length === 0 ? 0.5 : Math.max(
-      0.1,
-      Math.max(...processed_entries.map((e) => e.e_above_hull || 0)) + 0.001,
-    )
+    compute_max_energy_threshold(processed_entries)
   )
 
   // Phase diagram statistics
-  const phase_stats = $derived.by(() => {
-    if (!processed_entries || processed_entries.length === 0) return null
-
-    // Count entries by composition complexity
-    const composition_counts = [1, 2, 3, 4].map((target_count) =>
-      processed_entries.filter((e) =>
-        Object.keys(e.composition).filter((el) => e.composition[el] > 0).length ===
-          target_count
-      ).length
-    )
-    const [unary, binary, ternary, quaternary] = composition_counts
-
-    // Stability counts
-    const stable_count = processed_entries.filter((e) =>
-      e.is_stable || (e.e_above_hull ?? 0) < 1e-6
-    ).length
-    const unstable_count = processed_entries.length - stable_count
-
-    // Energy statistics
-    const energies = processed_entries
-      .map((e) => e.e_form_per_atom || e.energy_per_atom)
-      .filter((e): e is number => e != null)
-
-    const energy_range = energies.length > 0
-      ? {
-        min: Math.min(...energies),
-        max: Math.max(...energies),
-        avg: energies.reduce((a, b) => a + b, 0) / energies.length,
-      }
-      : { min: 0, max: 0, avg: 0 }
-
-    // Hull distance statistics
-    const hull_distances = processed_entries
-      .map((e) => e.e_above_hull || 0)
-      .filter((e) => e >= 0)
-
-    const hull_distance = hull_distances.length > 0
-      ? {
-        max: Math.max(...hull_distances),
-        avg: hull_distances.reduce((a, b) => a + b, 0) / hull_distances.length,
-      }
-      : { max: 0, avg: 0 }
-
-    return {
-      total: processed_entries.length,
-      unary,
-      binary,
-      ternary,
-      quaternary,
-      stable: stable_count,
-      unstable: unstable_count,
-      energy_range,
-      hull_distance,
-      elements: elements.length,
-      chemical_system: elements.join(`-`),
-    }
-  })
+  const phase_stats = $derived.by(() =>
+    compute_phase_stats(processed_entries, elements, 4)
+  )
 
   // 3D to 2D projection following Materials Project approach
   function project_3d_point(
@@ -497,17 +433,24 @@
   function draw_structure_outline(): void {
     if (!ctx) return
 
-    ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue(`--pd-edge-color`) ||
-      `#212121`
-    ctx.lineWidth = 2
-    ctx.setLineDash([])
+    const styles = getComputedStyle(canvas)
+    // Match gray dashed structure lines used in 3D
+    ctx.strokeStyle = PD_STYLE.structure_line.color
+    ctx.lineWidth = PD_STYLE.structure_line.line_width
+    ctx.setLineDash(PD_STYLE.structure_line.dash)
 
     // Draw tetrahedron edges
     draw_tetrahedron()
+
+    // Reset dash and stroke for subsequent drawings
+    ctx.setLineDash([])
+    ctx.strokeStyle = styles.getPropertyValue(`--pd-edge-color`) || `#212121`
   }
 
   function draw_tetrahedron(): void {
     if (!ctx) return
+
+    const styles = getComputedStyle(canvas)
 
     // Convert vertices to Point3D objects
     const vertices = TETRAHEDRON_VERTICES.map(([x, y, z]) => ({ x, y, z }))
@@ -545,9 +488,7 @@
         z: (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4,
       }
 
-      ctx.fillStyle =
-        getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) ||
-        `#212121`
+      ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
       ctx.font = `bold 18px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -574,9 +515,8 @@
   }
 
   function draw_data_points(): void {
-    if (!ctx || plot_entries.length === 0) {
-      return
-    }
+    if (!ctx || plot_entries.length === 0) return
+    const styles = getComputedStyle(canvas)
 
     // Collect all points with depth for sorting
     const points_with_depth: Array<{
@@ -654,9 +594,7 @@
       )
 
       if (should_show_label) {
-        ctx.fillStyle =
-          getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) ||
-          `#212121`
+        ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
 
         // For compound entries, use name, formula, or entry_id as fallback
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
@@ -673,6 +611,8 @@
   function render_frame(): void {
     if (!ctx || !canvas) return
 
+    const styles = getComputedStyle(canvas)
+
     // Use CSS dimensions for rendering (already scaled by DPR in context)
     const display_width = canvas.clientWidth || 600
     const display_height = canvas.clientHeight || 600
@@ -686,8 +626,7 @@
 
     if (elements.length !== 4) {
       // Show error message
-      ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--text-color`) ||
-        `#666`
+      ctx.fillStyle = styles.getPropertyValue(`--text-color`) || `#666`
       ctx.font = `16px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -752,25 +691,16 @@
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent) => {
-    if (!canvas) return null
-    const rect = canvas.getBoundingClientRect()
-    const mouse_x = event.clientX - rect.left
-    const mouse_y = event.clientY - rect.top
-
-    const container_scale =
-      Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
-    return plot_entries.find((entry) => {
-      if (!entry.visible) return false
-      const projected = project_3d_point(entry.x, entry.y, entry.z)
-      const distance = Math.sqrt(
-        (mouse_x - projected.x) ** 2 + (mouse_y - projected.y) ** 2,
-      )
-      const base = entry.size ??
-        ((entry.is_stable || entry.e_above_hull === 0) ? 6 : 4)
-      return distance < base * container_scale + 5
-    }) || null
-  }
+  const find_entry_at_mouse = (event: MouseEvent): PlotEntry3D | null =>
+    find_entry_at_mouse_helper<PlotEntry3D>(
+      canvas,
+      event,
+      plot_entries,
+      (x, y, z) => {
+        const p = project_3d_point(x, y, z)
+        return { x: p.x, y: p.y }
+      },
+    )
 
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
@@ -982,7 +912,6 @@
         bind:energy_threshold
         bind:label_energy_threshold
         max_energy_threshold={max_energy_threshold()}
-        {plot_entries}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
@@ -991,6 +920,11 @@
         toggle_props={{
           class: `legend-controls-btn`,
         }}
+        bind:energy_source_mode
+        {has_precomputed_e_form}
+        {can_compute_e_form}
+        {has_precomputed_hull}
+        {can_compute_hull}
       />
     </section>
   {/if}
@@ -1004,8 +938,9 @@
       class="tooltip"
       style:left="{position.x + 10}px;"
       style:top="{position.y - 10}px;"
+      style:z-index={PD_STYLE.z_index.tooltip}
       style:background={get_point_color(entry)}
-      {@attach contrast_color()}
+      {@attach contrast_color({ luminance_threshold: 0.49 })}
     >
       <div class="tooltip-title">
         {@html get_electro_neg_formula(entry.composition)}
@@ -1102,7 +1037,6 @@
     right: 1ex;
     display: flex;
     gap: 8px;
-    z-index: 1000;
   }
   .control-buttons :global(.draggable-pane) {
     z-index: 1001 !important;
@@ -1125,7 +1059,6 @@
     border-radius: 4px;
     font-size: 12px;
     pointer-events: none;
-    z-index: 1000;
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
@@ -1170,7 +1103,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
     pointer-events: none;
   }
   .drag-message {

@@ -6,10 +6,26 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
-  import { scaleSequential } from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
   import { SvelteMap } from 'svelte/reactivity'
   import { compute_lower_hull_triangles } from './convex-hull'
+  import {
+    build_lower_hull_model,
+    compute_e_above_hull_for_points,
+    compute_formation_energy_per_atom,
+    find_lowest_energy_unary_refs,
+    process_pd_entries,
+  } from './energies'
+  import {
+    build_tooltip_text,
+    compute_energy_color_scale,
+    compute_max_energy_threshold,
+    compute_phase_stats,
+    default_legend as shared_default_legend,
+    find_entry_at_mouse as find_entry_at_mouse_helper,
+    get_point_color_for_entry,
+    parse_phase_diagram_drop,
+    PD_STYLE,
+  } from './helpers'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
@@ -28,7 +44,6 @@
     Point3D,
     TernaryPlotEntry,
   } from './types'
-  import { process_pd_data } from './utils'
 
   interface Props {
     entries: PhaseEntry[]
@@ -59,6 +74,7 @@
     on_file_drop?: (entries: PhaseEntry[]) => void
     // Enable structure preview overlay when hovering over entries with structure data
     enable_structure_preview?: boolean
+    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
   }
   let {
     entries,
@@ -82,18 +98,13 @@
     show_elemental_polymorphs = $bindable(true),
     on_file_drop,
     enable_structure_preview = true,
+    energy_source_mode = $bindable(`precomputed`),
   }: Props = $props()
 
-  const default_legend: PDLegendConfig = {
-    title: ``,
-    show: true,
-    position: `top-right`,
-    width: 280,
-    show_counts: true,
-    show_color_toggle: true,
-    show_label_controls: true,
-  }
-  const merged_legend: PDLegendConfig = $derived({ ...default_legend, ...legend })
+  const merged_legend: PDLegendConfig = $derived({
+    ...shared_default_legend,
+    ...legend,
+  })
 
   // Default configuration
   const default_config: PhaseDiagramConfig = {
@@ -128,9 +139,47 @@
     margin: { ...default_config.margin, ...(config.margin || {}) },
   })
 
-  // Process phase diagram data with unified PhaseEntry interface
-  const processed_entries = $derived(entries)
-  const pd_data = $derived(process_pd_data(processed_entries))
+  // Decide which energy source to use per entry
+  const has_precomputed_e_form = $derived(
+    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`),
+  )
+  const has_precomputed_hull = $derived(
+    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`),
+  )
+
+  // Build unary references once from entries; inexpensive and used for capability checks
+  const unary_refs = $derived.by(() => find_lowest_energy_unary_refs(entries))
+
+  const can_compute_e_form = $derived.by(() => {
+    const elements_in_entries = Array.from(
+      new Set(entries.flatMap((e) => Object.keys(e.composition))),
+    )
+    return elements_in_entries.every((el) => Boolean(unary_refs[el]))
+  })
+  const can_compute_hull = $derived(can_compute_e_form)
+
+  // Resolve mode to avoid inconsistent states:
+  // - If full precomputed available, honor user toggle
+  // - Else if we can compute both, use on-the-fly automatically
+  // - Else fall back to precomputed (best-effort)
+  const energy_mode = $derived(
+    (has_precomputed_e_form && has_precomputed_hull)
+      ? energy_source_mode
+      : ((can_compute_e_form && can_compute_hull) ? `on-the-fly` : `precomputed`),
+  )
+
+  const effective_entries = $derived.by(() => {
+    if (energy_mode === `precomputed`) return entries
+    return entries.map((entry) => {
+      const e_form = compute_formation_energy_per_atom(entry, unary_refs)
+      if (e_form == null) return entry
+      return { ...entry, e_form_per_atom: e_form }
+    })
+  })
+
+  // Process phase diagram data with unified PhaseEntry interface using effective entries
+  const processed_entries = $derived(effective_entries)
+  const pd_data = $derived(process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
     const all_elements = pd_data.elements
@@ -147,34 +196,46 @@
     return all_elements
   })
 
-  const plot_entries = $derived.by(() => {
-    if (elements.length !== 3) {
-      return []
-    }
-
+  // 1) Raw 3D coordinates (formation-energy z), independent of hull state
+  const coords_entries = $derived.by(() => {
+    if (elements.length !== 3) return []
     try {
       const coords = compute_ternary_3d_coordinates(pd_data.entries, elements)
       console.log(
         `PhaseDiagram3D: ${coords.length} ternary coords for ${elements.join(`-`)}`,
       )
-
-      // Filter by energy threshold and update visibility based on toggles
-      const energy_filtered = coords.filter((entry: TernaryPlotEntry) => {
-        // Include all entries within energy threshold
-        // For elemental entries, show all polymorphs (not just references)
-        return (entry.e_above_hull || 0) <= energy_threshold
-      })
-      return energy_filtered
-        .map((entry: TernaryPlotEntry) => {
-          const is_stable = entry.is_stable || entry.e_above_hull === 0
-          // Update visibility based on current toggle states
-          entry.visible = (is_stable && show_stable) || (!is_stable && show_unstable)
-          return entry
-        })
+      return coords
     } catch (error) {
       console.error(`Error computing ternary coordinates:`, error)
       return []
     }
+  })
+
+  // 2) Final plot entries: enrich coords with e_above_hull from cached hull model, then filter/map
+  const plot_entries = $derived.by(() => {
+    if (coords_entries.length === 0) return []
+
+    // Compute or use precomputed hull distances
+    const enriched = (() => {
+      if (energy_mode === `on-the-fly`) {
+        const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+        const e_hulls = compute_e_above_hull_for_points(pts, hull_model)
+        return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
+      }
+      return coords_entries
+    })()
+
+    const energy_filtered = enriched.filter((entry: TernaryPlotEntry) =>
+      (entry.e_above_hull || 0) <= energy_threshold
+    )
+
+    return energy_filtered.map((entry: TernaryPlotEntry) => {
+      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      return {
+        ...entry,
+        visible: (is_stable && show_stable) || (!is_stable && show_unstable),
+      }
+    })
   })
 
   const stable_entries = $derived(
@@ -196,8 +257,10 @@
     centroid: Point3D
   }
   const hull_faces = $derived.by((): HullTriangle[] => {
-    if (plot_entries.length === 0) return []
-    const points = plot_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    if (coords_entries.length === 0) {
+      return []
+    }
+    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
     try {
       return compute_lower_hull_triangles(points)
     } catch (error) {
@@ -205,6 +268,9 @@
       return []
     }
   })
+
+  // Cached hull model for e_above_hull queries; recompute only when faces change
+  let hull_model = $derived.by(() => build_lower_hull_model(hull_faces))
 
   // Total counts before energy threshold filtering
   const total_unstable_count = $derived(
@@ -247,6 +313,20 @@
   let selected_entry = $state<TernaryPlotEntry | null>(null)
   let modal_place_right = $state(true)
 
+  // Hull face color (customizable via controls)
+  let hull_face_color = $state(`#4caf50`)
+
+  // Utility: convert hex color to rgba string with alpha
+  function hex_to_rgba(hex: string, alpha: number): string {
+    const normalized = hex.trim()
+    const m = normalized.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
+    if (!m) return `rgba(0,0,0,${alpha})`
+    const r = parseInt(m[1], 16)
+    const g = parseInt(m[2], 16)
+    const b = parseInt(m[3], 16)
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`
+  }
+
   // Pulsating highlight for selected point
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
@@ -269,7 +349,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_elemental_polymorphs, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_elemental_polymorphs, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color]
 
     render_once()
   })
@@ -302,37 +382,7 @@
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: TernaryPlotEntry) => {
-    const is_element = Object.keys(entry.composition).length === 1
-    const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
-
-    let text = is_element
-      ? `${elem_symbol} (${elem_symbol_to_name[elem_symbol as ElementSymbol]})\n`
-      : `${entry.name || entry.reduced_formula}\n`
-
-    // Add fractional composition for compounds
-    if (!is_element) {
-      const total = Object.values(entry.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      )
-      const fractions = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
-      if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
-    }
-
-    if (entry.e_above_hull !== undefined) {
-      const e_hull_str = format_num(entry.e_above_hull, `.3~`)
-      text += `E above hull: ${e_hull_str} eV/atom\n`
-    }
-    if (entry.e_form_per_atom !== undefined) {
-      const e_form_str = format_num(entry.e_form_per_atom, `.3~`)
-      text += `Formation Energy: ${e_form_str} eV/atom`
-    }
-    if (entry.entry_id) text += `\nID: ${entry.entry_id}`
-    return text
-  }
+  const get_tooltip_text = (entry: TernaryPlotEntry) => build_tooltip_text(entry)
 
   const reset_camera = () => Object.assign(camera, camera_default)
 
@@ -351,21 +401,9 @@
   }
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
-    event.preventDefault()
     drag_over = false
-
-    try {
-      const file = event.dataTransfer?.files?.[0]
-      if (!file?.name.endsWith(`.json`)) return
-
-      const data = JSON.parse(await file.text()) as PhaseEntry[]
-      if (!Array.isArray(data) || data.length === 0) return
-      if (!data[0].composition || !data[0].energy) return
-
-      on_file_drop?.(data)
-    } catch (error) {
-      console.error(`Error parsing dropped file:`, error)
-    }
+    const data = await parse_phase_diagram_drop(event)
+    if (data) on_file_drop?.(data)
   }
 
   async function copy_to_clipboard(text: string, position: { x: number; y: number }) {
@@ -376,95 +414,27 @@
   }
 
   function get_point_color(entry: TernaryPlotEntry): string {
-    const is_stable = entry.is_stable || entry.e_above_hull === 0
-
-    if (color_mode === `stability`) {
-      return is_stable
-        ? (merged_config.colors?.stable || `#0072B2`)
-        : (merged_config.colors?.unstable || `#E69F00`)
-    }
-
-    return energy_color_scale ? energy_color_scale(entry.e_above_hull || 0) : `#666`
+    return get_point_color_for_entry(
+      entry,
+      color_mode,
+      merged_config.colors,
+      energy_color_scale,
+    )
   }
 
   // Cache energy color scale per frame/setting
-  const energy_color_scale = $derived.by(() => {
-    if (color_mode !== `energy` || plot_entries.length === 0) return null
-    const distances = plot_entries.map((e) => e.e_above_hull ?? 0)
-    const lo = Math.min(...distances)
-    const hi_raw = Math.max(...distances, 0.1)
-    const hi = Math.max(hi_raw, lo + 1e-6)
-    const interpolator =
-      (d3_sc as unknown as Record<string, (t: number) => string>)[color_scale] ||
-      d3_sc.interpolateViridis
-    return scaleSequential(interpolator).domain([lo, hi])
-  })
+  const energy_color_scale = $derived.by(() =>
+    compute_energy_color_scale(color_mode, color_scale, plot_entries)
+  )
 
   const max_energy_threshold = $derived(() =>
-    processed_entries.length === 0 ? 0.5 : Math.max(
-      0.1,
-      Math.max(...processed_entries.map((e) => e.e_above_hull || 0)) + 0.001,
-    )
+    compute_max_energy_threshold(processed_entries)
   )
 
   // Phase diagram statistics
-  const phase_stats = $derived.by(() => {
-    if (!processed_entries || processed_entries.length === 0) return null
-
-    // Count entries by composition complexity
-    const composition_counts = [1, 2, 3].map((target_count) =>
-      processed_entries.filter((e) =>
-        Object.keys(e.composition).filter((el) => e.composition[el] > 0).length ===
-          target_count
-      ).length
-    )
-    const [unary, binary, ternary] = composition_counts
-
-    // Stability counts
-    const stable_count = processed_entries.filter((e) =>
-      e.is_stable || (e.e_above_hull ?? 0) < 1e-6
-    ).length
-    const unstable_count = processed_entries.length - stable_count
-
-    // Energy statistics
-    const energies = processed_entries
-      .map((e) => e.e_form_per_atom || e.energy_per_atom)
-      .filter((e): e is number => e != null)
-
-    const energy_range = energies.length > 0
-      ? {
-        min: Math.min(...energies),
-        max: Math.max(...energies),
-        avg: energies.reduce((a, b) => a + b, 0) / energies.length,
-      }
-      : { min: 0, max: 0, avg: 0 }
-
-    // Hull distance statistics
-    const hull_distances = processed_entries
-      .map((e) => e.e_above_hull || 0)
-      .filter((e) => e >= 0)
-
-    const hull_distance = hull_distances.length > 0
-      ? {
-        max: Math.max(...hull_distances),
-        avg: hull_distances.reduce((a, b) => a + b, 0) / hull_distances.length,
-      }
-      : { max: 0, avg: 0 }
-
-    return {
-      total: processed_entries.length,
-      unary,
-      binary,
-      ternary,
-      quaternary: 0, // Not applicable for ternary
-      stable: stable_count,
-      unstable: unstable_count,
-      energy_range,
-      hull_distance,
-      elements: elements.length,
-      chemical_system: elements.join(`-`),
-    }
-  })
+  const phase_stats = $derived.by(() =>
+    compute_phase_stats(processed_entries, elements, 3)
+  )
 
   // 3D to 2D projection for ternary diagrams
   function project_3d_point(
@@ -531,9 +501,9 @@
     if (!ctx) return
 
     // Set consistent style for all triangle structure lines
-    ctx.strokeStyle = `rgba(128, 128, 128, 0.6)` // Gray color for all structure lines
-    ctx.lineWidth = 2
-    ctx.setLineDash([3, 3]) // Dashed lines for all structure lines
+    ctx.strokeStyle = PD_STYLE.structure_line.color
+    ctx.lineWidth = PD_STYLE.structure_line.line_width
+    ctx.setLineDash(PD_STYLE.structure_line.dash) // Dashed lines for all structure lines
 
     // Draw triangle base and vertical edges
     draw_triangle_structure()
@@ -587,14 +557,13 @@
     ctx.stroke()
 
     // Reset stroke style to default for other elements (like element labels)
-    ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue(`--pd-edge-color`) ||
-      `#212121`
+    const styles = getComputedStyle(canvas)
+    ctx.strokeStyle = styles.getPropertyValue(`--pd-edge-color`) || `#212121`
     ctx.setLineDash([]) // Reset line dash for other drawing operations
 
     // Draw element labels outside triangle corners
     const centroid = get_triangle_centroid()
-    ctx.fillStyle =
-      getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) || `#212121`
+    ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
     ctx.font = `bold 16px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
@@ -624,6 +593,14 @@
   function draw_convex_hull_faces(): void {
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
+    // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> 0.9 alpha
+    const formation_energies = plot_entries.map((e) => e.formation_energy)
+    const min_fe = Math.min(0, ...formation_energies)
+    const norm_alpha = (z: number) => {
+      const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
+      return t * 0.9
+    }
+
     // Sort faces by depth for proper rendering
     const faces_with_depth = hull_faces.map((tri) => {
       const centroid_proj = project_3d_point(
@@ -644,36 +621,94 @@
       const proj2 = project_3d_point(p2.x, p2.y, p2.z)
       const proj3 = project_3d_point(p3.x, p3.y, p3.z)
 
-      // Lighting based on face normal
-      const light_dir = { x: 0.5, y: -0.5, z: 1 }
-      const dot_product = tri.normal.x * light_dir.x +
-        tri.normal.y * light_dir.y +
-        tri.normal.z * light_dir.z
+      // Build per-face linear gradient in screen space matching linear variation of formation energy
+      const a1 = norm_alpha(p1.z)
+      const a2 = norm_alpha(p2.z)
+      const a3 = norm_alpha(p3.z)
 
-      const lighting_factor = Math.max(0.3, Math.abs(dot_product))
+      // Solve a*x + b*y + c = alpha at the three projected vertices
+      const x1 = proj1.x, y1 = proj1.y
+      const x2 = proj2.x, y2 = proj2.y
+      const x3 = proj3.x, y3 = proj3.y
+      const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
+      let a = 0, b = 0, c = (a1 + a2 + a3) / 3
+      if (Math.abs(det) > 1e-9) {
+        a = (a1 * (y2 - y3) + a2 * (y3 - y1) + a3 * (y1 - y2)) / det
+        b = (a1 * (x3 - x2) + a2 * (x1 - x3) + a3 * (x2 - x1)) / det
+        c = (a1 * (x2 * y3 - x3 * y2) + a2 * (x3 * y1 - x1 * y3) +
+          a3 * (x1 * y2 - x2 * y1)) /
+          det
+      }
 
-      // Lower hull is considered stable; use stable color
-      const alpha = 0.3 * lighting_factor
+      // Gradient direction is the screen-space gradient of alpha
+      const mag = Math.hypot(a, b)
+      // Fallback: uniform if nearly flat
+      if (mag < 1e-9) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.moveTo(proj1.x, proj1.y)
+        ctx.lineTo(proj2.x, proj2.y)
+        ctx.lineTo(proj3.x, proj3.y)
+        ctx.closePath()
+        ctx.fillStyle = hex_to_rgba(hull_face_color, (a1 + a2 + a3) / 3)
+        ctx.fill()
+        ctx.restore()
+      } else {
+        const vx = a / mag
+        const vy = b / mag
+        const cx = (x1 + x2 + x3) / 3
+        const cy = (y1 + y2 + y3) / 3
+        const alpha_c = a * cx + b * cy + c
+        const alpha_min = Math.min(a1, a2, a3)
+        const alpha_max = Math.max(a1, a2, a3)
+        const s_min = (alpha_min - alpha_c) / mag
+        const s_max = (alpha_max - alpha_c) / mag
+        const gx0 = cx + vx * s_min
+        const gy0 = cy + vy * s_min
+        const gx1 = cx + vx * s_max
+        const gy1 = cy + vy * s_max
 
-      ctx.fillStyle = `rgba(0, 114, 178, ${alpha})`
+        const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1)
+        grad.addColorStop(0, hex_to_rgba(hull_face_color, alpha_min))
+        grad.addColorStop(1, hex_to_rgba(hull_face_color, alpha_max))
 
-      ctx.beginPath()
-      ctx.moveTo(proj1.x, proj1.y)
-      ctx.lineTo(proj2.x, proj2.y)
-      ctx.lineTo(proj3.x, proj3.y)
-      ctx.closePath()
-      ctx.fill()
+        ctx.save()
+        ctx.beginPath()
+        ctx.moveTo(proj1.x, proj1.y)
+        ctx.lineTo(proj2.x, proj2.y)
+        ctx.lineTo(proj3.x, proj3.y)
+        ctx.closePath()
+        ctx.fillStyle = grad
+        ctx.fill()
+        ctx.restore()
+      }
 
-      ctx.strokeStyle = `rgba(0, 114, 178, 0.6)`
+      ctx.strokeStyle = hull_face_color
       ctx.lineWidth = 1
       ctx.stroke()
     }
   }
 
-  function draw_data_points(): void {
-    if (!ctx || plot_entries.length === 0) {
-      return
+  // Formation energy color bar helpers (min → 0 eV/atom)
+  const e_form_range = $derived.by((): [number, number] => {
+    const energies = plot_entries.map((e) => e.formation_energy)
+    const min_fe = energies.length ? Math.min(0, ...energies) : -1
+    return [min_fe, 0]
+  })
+
+  const e_form_color_scale_fn = $derived.by(() => {
+    const [min_fe, max_fe] = e_form_range
+    const denom = Math.max(1e-6, max_fe - min_fe)
+    return (value: number) => {
+      // alpha 0 at 0 eV, goes to 0.9 at most negative energy
+      const t = Math.max(0, Math.min(1, (value - min_fe) / denom))
+      const alpha = (1 - t) * 0.9
+      return hex_to_rgba(hull_face_color, alpha)
     }
+  })
+
+  function draw_data_points(): void {
+    if (!ctx || plot_entries.length === 0) return
 
     // Collect all points with depth for sorting
     const points_with_depth: Array<{
@@ -944,25 +979,11 @@
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent) => {
-    if (!canvas) return null
-    const rect = canvas.getBoundingClientRect()
-    const mouse_x = event.clientX - rect.left
-    const mouse_y = event.clientY - rect.top
-
-    const container_scale =
-      Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
-    return plot_entries.find((entry) => {
-      if (!entry.visible) return false
-      const projected = project_3d_point(entry.x, entry.y, entry.z)
-      const distance = Math.sqrt(
-        (mouse_x - projected.x) ** 2 + (mouse_y - projected.y) ** 2,
-      )
-      const base = entry.size ??
-        ((entry.is_stable || entry.e_above_hull === 0) ? 6 : 4)
-      return distance < base * container_scale + 5
-    }) || null
-  }
+  const find_entry_at_mouse = (event: MouseEvent) =>
+    find_entry_at_mouse_helper(canvas, event, plot_entries, (x, y, z) => {
+      const p = project_3d_point(x, y, z)
+      return { x: p.x, y: p.y }
+    })
 
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
@@ -1127,18 +1148,27 @@
     {@const formation_energies = plot_entries.map((e) => e.e_above_hull ?? 0)}
     {@const min_energy = Math.min(...formation_energies)}
     {@const max_energy = Math.max(...formation_energies, 0.1)}
-    <div class="color-bar-container">
-      <ColorBar
-        title="Energy above hull (eV/atom)"
-        range={[min_energy, max_energy]}
-        {color_scale}
-        orientation="horizontal"
-        tick_labels={4}
-        wrapper_style="width: 200px;"
-        bar_style="height: 12px;"
-        title_style="font-size: 0.8em; margin-bottom: 4px;"
-      />
-    </div>
+    <ColorBar
+      title="Energy above hull (eV/atom)"
+      range={[min_energy, max_energy]}
+      {color_scale}
+      wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
+    />
+  {/if}
+
+  <!-- Formation Energy Faces Color Bar (bottom-right corner) -->
+  {#if plot_entries.length > 0}
+    <ColorBar
+      title="Formation energy (eV/atom)"
+      color_scale_fn={e_form_color_scale_fn}
+      color_scale_domain={e_form_range}
+      range={e_form_range}
+      wrapper_style="position: absolute; width: 200px; left: auto; right: 1em; bottom: 2em"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
+    />
   {/if}
 
   <!-- Control buttons (top-right corner) -->
@@ -1192,7 +1222,6 @@
         bind:energy_threshold
         bind:label_energy_threshold
         max_energy_threshold={max_energy_threshold()}
-        {plot_entries}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
@@ -1203,6 +1232,13 @@
         }}
         {show_hull_faces}
         on_hull_faces_change={(value) => show_hull_faces = value}
+        {hull_face_color}
+        on_hull_face_color_change={(value) => hull_face_color = value}
+        bind:energy_source_mode
+        {has_precomputed_e_form}
+        {can_compute_e_form}
+        {has_precomputed_hull}
+        {can_compute_hull}
       />
     </section>
   {/if}
@@ -1216,8 +1252,9 @@
       class="tooltip"
       style:left="{position.x + 10}px;"
       style:top="{position.y - 10}px;"
+      style:z-index={PD_STYLE.z_index.tooltip}
       style:background={get_point_color(entry)}
-      {@attach contrast_color()}
+      {@attach contrast_color({ luminance_threshold: 0.49 })}
     >
       <div class="tooltip-title">
         {@html get_electro_neg_formula(entry.composition)}
@@ -1314,7 +1351,6 @@
     right: 1ex;
     display: flex;
     gap: 8px;
-    z-index: 1000;
   }
   .control-buttons :global(.draggable-pane) {
     z-index: 1001 !important;
@@ -1331,19 +1367,12 @@
   .control-buttons button:hover {
     background: rgba(255, 255, 255, 0.2);
   }
-  .color-bar-container {
-    position: absolute;
-    bottom: 1em;
-    left: 1em;
-    z-index: 1000;
-  }
   .tooltip {
     position: fixed;
     padding: 5px 8px;
     border-radius: 4px;
     font-size: 12px;
     pointer-events: none;
-    z-index: 1000;
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
@@ -1388,7 +1417,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
     pointer-events: none;
   }
   .drag-message {

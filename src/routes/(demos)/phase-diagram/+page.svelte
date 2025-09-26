@@ -1,17 +1,19 @@
 <script lang="ts">
   import { decompress_data } from '$lib/io/decompress'
-  import {
-    PhaseDiagram3D,
-    PhaseDiagram4D,
-    type PymatgenEntry,
-  } from '$lib/phase-diagram'
+  import { PhaseDiagram2D, PhaseDiagram3D, PhaseDiagram4D } from '$lib/phase-diagram'
+  import type { PymatgenEntry } from '$lib/phase-diagram/types'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
-  const quaternary_files = import.meta.glob(
+  const quaternary_files = (import.meta as unknown as {
+    glob: (
+      pattern: string,
+      options: { eager: false; query: string },
+    ) => Record<string, () => Promise<{ default: string }>>
+  }).glob(
     `../../../../static/phase-diagrams/quaternaries/*.json.gz`,
     { eager: false, query: `?url` },
-  ) as Record<string, () => Promise<{ default: string }>>
+  )
 
   let entries_map = $state(new SvelteMap())
   let loaded_data = $state(new SvelteMap())
@@ -53,6 +55,20 @@
     })
   }
 
+  // Function to create binary subset from quaternary data
+  function create_binary_subset(
+    entries: PymatgenEntry[],
+    binary_elements: [string, string],
+  ): PymatgenEntry[] {
+    const element_set = new Set(binary_elements)
+    return entries.filter((entry) => {
+      const elements = Object.keys(entry.composition)
+      const present_elements = elements.filter((el) => entry.composition[el] > 0)
+      // Include entries that contain only our target elements (unaries allowed)
+      return present_elements.every((el) => element_set.has(el))
+    })
+  }
+
   // Create some ternary examples from quaternary data
   const [li_fe_p_o_data, li_co_ni_o_data] = $derived.by(() => {
     // Li-Fe-O from Li-Fe-P-O
@@ -76,6 +92,39 @@
     console.log(`Li-Co-O: ${li_co_o_entries.length} entries`)
 
     return [li_fe_o_entries, li_co_o_entries]
+  })
+
+  // Create four binary examples from the two quaternary datasets
+  const binary_examples = $derived.by(() => {
+    const examples: Array<{ title: string; entries: PymatgenEntry[] }> = []
+    const li_fe_p_o = loaded_data.get(
+      `../../../../static/phase-diagrams/quaternaries/Li-Fe-P-O.json.gz`,
+    ) as PymatgenEntry[] | undefined
+    const li_co_ni_o = loaded_data.get(
+      `../../../../static/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
+    ) as PymatgenEntry[] | undefined
+
+    if (li_fe_p_o) {
+      examples.push({
+        title: `Li-O`,
+        entries: create_binary_subset(li_fe_p_o, [`Li`, `O`]),
+      })
+      examples.push({
+        title: `Fe-O`,
+        entries: create_binary_subset(li_fe_p_o, [`Fe`, `O`]),
+      })
+    }
+    if (li_co_ni_o) {
+      examples.push({
+        title: `Co-O`,
+        entries: create_binary_subset(li_co_ni_o, [`Co`, `O`]),
+      })
+      examples.push({
+        title: `Ni-O`,
+        entries: create_binary_subset(li_co_ni_o, [`Ni`, `O`]),
+      })
+    }
+    return examples.slice(0, 4)
   })
 </script>
 
@@ -105,9 +154,7 @@
         { title, entries }
         (title)
       }
-        {#if entries.length > 0}
-          <PhaseDiagram3D {entries} legend={{ title }} />
-        {/if}
+        <PhaseDiagram3D {entries} legend={{ title }} />
       {/each}
     </div>
 
@@ -130,6 +177,17 @@
         />
       {/each}
     </div>
+
+    <h2>Binary Chemical Systems</h2>
+    <p class="section-description">
+      2D binary phase diagrams show formation energy versus composition. Stable phases lie
+      on the convex hull.
+    </p>
+    <div class="binary-grid">
+      {#each binary_examples as { title, entries } (title)}
+        <PhaseDiagram2D {entries} legend={{ title }} />
+      {/each}
+    </div>
   {:else}
     <div class="loading-state">
       <p>Loading phase diagrams...</p>
@@ -143,6 +201,7 @@
     margin-bottom: 1.5rem;
     font-size: 0.95em;
     line-height: 1.5;
+    text-align: center;
   }
   .ternary-grid {
     display: grid;
@@ -158,6 +217,13 @@
     width: 100%;
     margin: 0 auto;
   }
+  .binary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+    margin: 2rem auto 0 auto;
+  }
   .loading-state {
     display: flex;
     justify-content: center;
@@ -167,7 +233,8 @@
   }
   @media (max-width: 1000px) {
     .ternary-grid,
-    .quaternary-grid {
+    .quaternary-grid,
+    .binary-grid {
       grid-template-columns: 1fr;
     }
   }
