@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ElementSymbol } from '$lib'
   import { decompress_data } from '$lib/io/decompress'
   import { PhaseDiagram2D, PhaseDiagram3D, PhaseDiagram4D } from '$lib/phase-diagram'
   import type { PymatgenEntry } from '$lib/phase-diagram/types'
@@ -11,7 +12,7 @@
       options: { eager: false; query: string },
     ) => Record<string, () => Promise<{ default: string }>>
   }).glob(
-    `../../../../static/phase-diagrams/quaternaries/*.json.gz`,
+    `$site/phase-diagrams/quaternaries/*.json.gz`,
     { eager: false, query: `?url` },
   )
 
@@ -47,7 +48,7 @@
     const element_set = new Set(ternary_elements)
 
     return entries.filter((entry) => {
-      const elements = Object.keys(entry.composition)
+      const elements = Object.keys(entry.composition) as ElementSymbol[]
       const present_elements = elements.filter((el) => entry.composition[el] > 0)
 
       // Include entries that contain only our target elements
@@ -62,7 +63,7 @@
   ): PymatgenEntry[] {
     const element_set = new Set(binary_elements)
     return entries.filter((entry) => {
-      const elements = Object.keys(entry.composition)
+      const elements = Object.keys(entry.composition) as ElementSymbol[]
       const present_elements = elements.filter((el) => entry.composition[el] > 0)
       // Include entries that contain only our target elements (unaries allowed)
       return present_elements.every((el) => element_set.has(el))
@@ -70,17 +71,17 @@
   }
 
   // Create some ternary examples from quaternary data
-  const [li_fe_p_o_data, li_co_ni_o_data] = $derived.by(() => {
-    // Li-Fe-O from Li-Fe-P-O
-    const li_fe_p_o_data = loaded_data.get(
-      `../../../../static/phase-diagrams/quaternaries/Li-Fe-P-O.json.gz`,
+  const [na_fe_p_o_data, li_co_ni_o_data] = $derived.by(() => {
+    // Li-Fe-O from Na-Fe-P-O
+    const na_fe_p_o_data = loaded_data.get(
+      `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
     ) as PymatgenEntry[] | undefined
-    if (!li_fe_p_o_data) return [[], []]
-    const li_fe_o_entries = create_ternary_subset(li_fe_p_o_data, [`Li`, `Fe`, `O`])
+    if (!na_fe_p_o_data) return [[], []]
+    const li_fe_o_entries = create_ternary_subset(na_fe_p_o_data, [`Na`, `Fe`, `O`])
 
     // Li-Co-O from Li-Co-Ni-O
     const li_co_ni_o_data = loaded_data.get(
-      `../../../../static/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
+      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
     ) as PymatgenEntry[] | undefined
     if (!li_co_ni_o_data) return [li_fe_o_entries, []]
     const li_co_o_entries = create_ternary_subset(li_co_ni_o_data, [
@@ -94,12 +95,13 @@
 
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
-    const examples: Array<{ title: string; entries: PymatgenEntry[] }> = []
+    const examples: { title: string; entries: PymatgenEntry[] }[] = []
+
     const li_fe_p_o = loaded_data.get(
-      `../../../../static/phase-diagrams/quaternaries/Li-Fe-P-O.json.gz`,
+      `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
     ) as PymatgenEntry[] | undefined
     const li_co_ni_o = loaded_data.get(
-      `../../../../static/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
+      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
     ) as PymatgenEntry[] | undefined
 
     if (li_fe_p_o) {
@@ -145,14 +147,14 @@
       points.
     </p>
     <div class="ternary-grid">
-      {#each [{ title: `Li-Fe-O`, entries: li_fe_p_o_data }, {
+      {#each [{ title: `Li-Fe-O`, entries: na_fe_p_o_data }, {
         title: `Li-Co-O`,
         entries: li_co_ni_o_data,
       }] as
         { title, entries }
         (title)
       }
-        <PhaseDiagram3D {entries} legend={{ title }} />
+        <PhaseDiagram3D {entries} controls={{ title }} />
       {/each}
     </div>
 
@@ -170,7 +172,7 @@
         <PhaseDiagram4D
           entries={(entries_map.get(path as string) as PymatgenEntry[] | undefined) ||
           (data as PymatgenEntry[])}
-          legend={{ title }}
+          controls={{ title }}
           on_file_drop={handle_file_drop(path as string)}
         />
       {/each}
@@ -183,7 +185,7 @@
     </p>
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
-        <PhaseDiagram2D {entries} legend={{ title }} />
+        <PhaseDiagram2D {entries} controls={{ title }} />
       {/each}
     </div>
   {:else}

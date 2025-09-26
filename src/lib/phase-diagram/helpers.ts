@@ -35,12 +35,15 @@ export const PD_STYLE = Object.freeze({
 export function get_energy_color_scale(
   color_mode: `stability` | `energy`,
   color_scale: D3InterpolateName,
-  plot_entries: Array<{ e_above_hull?: number }>,
+  plot_entries: { e_above_hull?: number }[],
 ): ((value: number) => string) | null {
   if (color_mode !== `energy` || plot_entries.length === 0) return null
-  const distances = plot_entries.map((entry) => entry.e_above_hull ?? 0)
-  const lo = Math.min(...distances)
-  const hi_raw = Math.max(...distances, 0.1)
+  const hull_distances = plot_entries
+    .map((entry) => entry.e_above_hull)
+    .filter((v): v is number => typeof v === `number`)
+  if (hull_distances.length === 0) return null
+  const lo = Math.min(...hull_distances)
+  const hi_raw = Math.max(...hull_distances, 0.1)
   const hi = Math.max(hi_raw, lo + 1e-6)
   const interpolator =
     (d3_sc as unknown as Record<string, (t: number) => string>)[color_scale] ||
@@ -59,7 +62,9 @@ export function get_point_color_for_entry(
   if (color_mode === `stability`) {
     return is_stable ? (colors?.stable || `#0072B2`) : (colors?.unstable || `#E69F00`)
   }
-  return energy_scale ? energy_scale(entry.e_above_hull ?? 0) : `#666`
+  return energy_scale && typeof entry.e_above_hull === `number`
+    ? energy_scale(entry.e_above_hull)
+    : `#666`
 }
 
 // Robust drag-and-drop JSON parsing for phase diagram entries
@@ -83,10 +88,10 @@ export async function parse_pd_entries_from_drop(
 // Compute a consistent max energy threshold for controls (shared)
 export function compute_max_energy_threshold(processed_entries: PhaseEntry[]): number {
   if (processed_entries.length === 0) return 0.5
-  const distances = processed_entries
+  const hull_distances = processed_entries
     .map((e) => e.e_above_hull)
     .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
-  const max_val = (distances.length ? Math.max(...distances) : 0) + 0.001
+  const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) + 0.001
   return Math.max(0.1, max_val)
 }
 

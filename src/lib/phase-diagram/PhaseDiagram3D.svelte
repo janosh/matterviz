@@ -239,7 +239,8 @@
 
   const unstable_entries = $derived(
     plot_entries.filter((entry: TernaryPlotEntry) =>
-      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
+      typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
+      !entry.is_stable
     ),
   )
 
@@ -267,7 +268,10 @@
 
   // Total counts based on hull-enriched entries
   const total_unstable_count = $derived(
-    plot_entries.filter((e) => (e.e_above_hull ?? 0) > 0 && !e.is_stable).length,
+    plot_entries.filter((entry) =>
+      typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
+      !entry.is_stable
+    ).length,
   )
 
   // Canvas rendering
@@ -719,10 +723,10 @@
     if (!ctx || plot_entries.length === 0) return
 
     // Collect all points with depth for sorting
-    const points_with_depth: Array<{
+    const points_with_depth: {
       entry: TernaryPlotEntry
       projected: { x: number; y: number; depth: number }
-    }> = []
+    }[] = []
 
     for (const entry of plot_entries) {
       // Skip invisible points
@@ -790,7 +794,8 @@
       const should_show_label = merged_config.show_labels && !entry.is_element && (
         (is_stable && show_stable_labels) ||
         (!is_stable && show_unstable_labels &&
-          (entry.e_above_hull ?? 0) <= label_energy_threshold)
+          (typeof entry.e_above_hull === `number` &&
+            entry.e_above_hull <= label_energy_threshold))
       )
 
       if (should_show_label) {
@@ -849,7 +854,8 @@
       const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
       const can_label_stable = is_stable_point && show_stable_labels
       const can_label_unstable = !is_stable_point && show_unstable_labels &&
-        (entry.e_above_hull ?? 0) <= label_energy_threshold
+        (typeof entry.e_above_hull === `number` &&
+          entry.e_above_hull <= label_energy_threshold)
       if (!(can_label_stable || can_label_unstable)) continue
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
@@ -1158,9 +1164,13 @@
 
   <!-- Formation Energy Color Bar (bottom-left corner) -->
   {#if color_mode === `energy` && plot_entries.length > 0}
-    {@const formation_energies = plot_entries.map((e) => e.e_above_hull ?? 0)}
-    {@const min_energy = Math.min(...formation_energies)}
-    {@const max_energy = Math.max(...formation_energies, 0.1)}
+    {@const formation_energies = plot_entries
+      .map((e) => e.e_above_hull)
+      .filter((v): v is number => typeof v === `number`)}
+    {@const min_energy = formation_energies.length > 0 ? Math.min(...formation_energies) : 0}
+    {@const max_energy = formation_energies.length > 0
+      ? Math.max(...formation_energies, 0.1)
+      : 0.1}
     <ColorBar
       title="Energy above hull (eV/atom)"
       range={[min_energy, max_energy]}

@@ -1,6 +1,4 @@
 import type { SimulationNodeDatum } from 'd3-force'
-import type { SymbolType } from 'd3-shape'
-import * as d3_symbols from 'd3-shape'
 import type { ComponentProps } from 'svelte'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
@@ -16,41 +14,22 @@ export interface TweenedOptions<T> {
 
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
+export * from './data-transform'
 export { default as ElementScatter } from './ElementScatter.svelte'
+export * from './formatting'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
+export * from './interactions'
+export * from './layout'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
+export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
 
 export type XyObj = { x: number; y: number }
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
-
-export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
-export type D3SymbolName = Exclude<
-  D3Symbol extends `symbol${infer Name}` ? Name : never,
-  ``
->
-
-export const symbol_names = [
-  ...d3_symbols.symbolsFill,
-  ...d3_symbols.symbolsStroke,
-].map((sym) => {
-  // Attempt to find the key associated with this symbol function object
-  for (const key in d3_symbols) {
-    if (
-      Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
-      d3_symbols[key as keyof typeof d3_symbols] === sym &&
-      key.match(/symbol[A-Z]/)
-    ) return key.substring(6)
-  }
-}) as D3SymbolName[]
-
-export const symbol_map = Object.fromEntries(
-  symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
-) as Record<D3SymbolName, SymbolType>
 
 export const line_types = [`solid`, `dashed`, `dotted`] as const
 export type LineType = (typeof line_types)[number]

@@ -3,8 +3,8 @@
 
 import type { Vec3 } from '$lib/math'
 import type { D3SymbolName, Markers } from '$lib/plot'
+import { symbol_names } from '$lib/plot/formatting'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { symbol_names } from './index'
 
 // SettingType interface with optional context to control where settings apply
 // context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts

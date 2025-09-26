@@ -180,7 +180,7 @@
     elems: ElementSymbol[],
   ): PlotEntry3D[] {
     if (elems.length !== 2) return []
-    const [a, b] = elems
+    const [el1, el2] = elems
     const coords: PlotEntry3D[] = []
     for (const entry of raw_entries) {
       // Require formation energy per atom to place along y
@@ -188,7 +188,7 @@
       if (typeof e_form !== `number`) continue
       const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
       if (total <= 0) continue
-      const frac_b = (entry.composition[b] || 0) / total
+      const frac_b = (entry.composition[el2] || 0) / total
       const is_element = Object.keys(entry.composition).filter((el) =>
         entry.composition[el] > 0
       ).length === 1
@@ -210,7 +210,7 @@
     )
     if (!el_a) {
       coords.push({
-        composition: { [a]: 1 },
+        composition: { [el1]: 1 },
         energy: 0,
         x: 0,
         y: 0,
@@ -221,7 +221,7 @@
     }
     if (!el_b) {
       coords.push({
-        composition: { [b]: 1 },
+        composition: { [el2]: 1 },
         energy: 0,
         x: 1,
         y: 0,
@@ -436,6 +436,7 @@
   })
 
   function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
+    if (!entry.entry_id) return null
     const original_entry = entries.find((orig_entry) =>
       orig_entry.entry_id === entry.entry_id
     )

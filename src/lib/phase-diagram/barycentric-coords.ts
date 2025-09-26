@@ -114,19 +114,15 @@ export function get_ternary_3d_coordinates(
   return result
 }
 
-export function get_triangle_edges(): Array<[Point3D, Point3D]> {
-  const vertices = TRIANGLE_VERTICES.map(([x, y]) => ({ x, y, z: 0 }))
-  return [
-    [vertices[0], vertices[1]],
-    [vertices[1], vertices[2]],
-    [vertices[2], vertices[0]],
-  ]
+export function get_triangle_edges(): [Point3D, Point3D][] {
+  const [v0, v1, v2] = TRIANGLE_VERTICES.map(([x, y]) => ({ x, y, z: 0 }))
+  return [[v0, v1], [v1, v2], [v2, v0]]
 }
 
 export function get_triangle_vertical_edges(
   min_z: number,
   max_z: number,
-): Array<[Point3D, Point3D]> {
+): [Point3D, Point3D][] {
   const vertices = TRIANGLE_VERTICES.map(([x, y]) => ({ x, y, z: 0 }))
   return vertices.map((vertex) => [{ ...vertex, z: min_z }, { ...vertex, z: max_z }])
 }

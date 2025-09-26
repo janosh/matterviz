@@ -22,8 +22,10 @@ export const prepare_legend_data = (series: DataSeries[]): {
     series_idx,
     label: series_data.label ?? `Series ${series_idx + 1}`,
     visible: series_data.visible ?? true,
-    display_style: {
-      symbol_type: DEFAULTS.scatter.symbol_type as D3SymbolName,
+    display_style: { // Prefer the series’ symbol when present, falling back to settings
+      symbol_type: !Array.isArray(series_data.point_style)
+        ? (series_data.point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type)
+        : DEFAULTS.scatter.symbol_type,
       symbol_color: extract_series_color(series_data),
     },
   }))

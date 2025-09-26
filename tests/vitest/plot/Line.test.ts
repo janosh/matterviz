@@ -127,12 +127,11 @@ describe(`Line`, () => {
     ]
     const origin: [number, number] = [0, 100]
 
-    const component = mount(Line, {
+    mount(Line, {
       target: document.body,
       props: { points, origin, tween_duration: 100 },
     })
 
-    expect(component).toBeTruthy() // Verify component mounts
     const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2) // Check paths exist
   })
@@ -180,12 +179,11 @@ describe(`Line`, () => {
       interpolate: interpolatePath, // Custom interpolator for paths
     }
 
-    const component = mount(Line, {
+    mount(Line, {
       target: document.body,
       props: { points, origin, line_tween: custom_tween },
     })
 
-    expect(component).toBeTruthy() // Primary check: Component mounts without error
     const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
     // Further checks on internal tween state are difficult in unit tests,

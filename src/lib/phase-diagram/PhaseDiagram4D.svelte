@@ -533,10 +533,10 @@
     const styles = getComputedStyle(canvas)
 
     // Collect all points with depth for sorting
-    const points_with_depth: Array<{
+    const points_with_depth: {
       entry: PlotEntry3D
       projected: { x: number; y: number; depth: number }
-    }> = []
+    }[] = []
 
     for (const entry of plot_entries) {
       // Skip invisible points

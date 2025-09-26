@@ -154,9 +154,9 @@ export function get_phase_diagram_stats(
     }
     : { min: 0, max: 0, avg: 0 }
 
-  const hull_distances = processed_entries.map((e) => e.e_above_hull ?? 0).filter((v) =>
-    v >= 0
-  )
+  const hull_distances = processed_entries
+    .map((e) => e.e_above_hull)
+    .filter((v): v is number => typeof v === `number` && v >= 0)
   const hull_distance = hull_distances.length > 0
     ? {
       max: Math.max(...hull_distances),
@@ -319,19 +319,19 @@ function farthest_point_for_face(
 function build_horizon(
   faces: ConvexHullFace[],
   visible_face_indices: Set<number>,
-): Array<[number, number]> {
+): [number, number][] {
   const edge_count = new Map<string, [number, number]>()
   for (const face_idx of visible_face_indices) {
     const face = faces[face_idx]
     const [a, b, c] = face.vertices
-    const edges: Array<[number, number]> = [[a, b], [b, c], [c, a]]
+    const edges: [number, number][] = [[a, b], [b, c], [c, a]]
     for (const [u, v] of edges) {
       const key = u < v ? `${u}|${v}` : `${v}|${u}`
       if (!edge_count.has(key)) edge_count.set(key, [u, v])
       else edge_count.set(key, [Number.NaN, Number.NaN])
     }
   }
-  const horizon: Array<[number, number]> = []
+  const horizon: [number, number][] = []
   for (const uv of edge_count.values()) {
     if (Number.isNaN(uv[0])) continue
     horizon.push(uv)
@@ -340,7 +340,7 @@ function build_horizon(
 }
 
 export function compute_quickhull_triangles(points: Point3D[]): ConvexHullTriangle[] {
-  if (points.length < 3) return []
+  if (points.length < 4) return [] // hull needs at least 4 non-coplanar points, bail if not provided
   const initial = choose_initial_tetrahedron(points)
   if (!initial) return []
   const [i0, i1, i2, i3] = initial

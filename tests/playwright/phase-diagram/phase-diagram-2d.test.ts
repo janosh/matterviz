@@ -51,7 +51,6 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     await expect(controls.getByText(`Color mode`)).toBeVisible()
 
     // Energy mode should show Color scale selector
-    await expect(controls.getByText(`Color mode`)).toBeVisible()
     await dom_click(controls.getByText(`Energy`, { exact: true }))
     await expect(controls.getByText(`Color scale`)).toBeVisible()
 
@@ -78,14 +77,17 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     const before = await get_visible_unstable()
 
     // Open controls and set threshold to 0
-    const { controls } = await open_info_and_controls(pd2d)
+    const controls_btn = pd2d.locator(`.legend-controls-btn`)
+    await dom_click(controls_btn)
+    const controls = pd2d.locator(`.draggable-pane.phase-diagram-controls-pane`)
     const number_input = controls.locator(`input.threshold-input`).first()
     const scatter = pd2d.locator(`.scatter`)
     const markers = scatter.locator(`path.marker`)
     const count_before = await markers.count()
     await number_input.fill(`0`)
 
-    await expect // Wait for info pane to update
+    // Wait for info pane to update
+    await expect
       .poll(async () => (await get_visible_unstable()).x)
       .toBeLessThanOrEqual(before.x)
     const after = await get_visible_unstable()
@@ -127,9 +129,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     const before = await get_visible_unstable()
     // Toggle 'Above hull' off
     await dom_click(controls.getByText(`Above hull`, { exact: false }))
-    await page.waitForTimeout(200)
-    const after = await get_visible_unstable()
-    expect(after).toBe(0)
+    await expect.poll(get_visible_unstable).toBe(0)
     expect(before).toBeGreaterThanOrEqual(0)
   })
 })

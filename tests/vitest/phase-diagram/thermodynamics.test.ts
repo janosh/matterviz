@@ -12,8 +12,8 @@ import {
 import type { ConvexHullTriangle, PhaseEntry } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
-function make_paraboloid_points(): Array<{ x: number; y: number; z: number }> {
-  const pts: Array<{ x: number; y: number; z: number }> = []
+function make_paraboloid_points(): { x: number; y: number; z: number }[] {
+  const pts: { x: number; y: number; z: number }[] = []
   // grid over [-1,1] x [-1,1]
   for (let ix = -1; ix <= 1; ix++) {
     for (let iy = -1; iy <= 1; iy++) {

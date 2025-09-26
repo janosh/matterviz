@@ -1154,10 +1154,10 @@ export async function parse_trajectory_data(
 
   // Pymatgen format
   if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
-    const species = obj.species as Array<{ element: ElementSymbol }>
+    const species = obj.species as { element: ElementSymbol }[]
     const coords = obj.coords as number[][][]
     const matrix = obj.lattice as Matrix3x3
-    const frame_properties = obj.frame_properties as Array<Record<string, unknown>> || []
+    const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
 
     const frames = coords.map((frame_coords, idx) => {
       const positions = frame_coords.map((abc) =>

@@ -19,7 +19,7 @@ describe(`helpers: energy color scale + point color`, () => {
   })
 
   test(`get_energy_color_scale maps distances to colors and get_point_color_for_entry uses it`, () => {
-    const entries: Array<{ e_above_hull?: number }> = [{ e_above_hull: 0 }, {
+    const entries: { e_above_hull?: number }[] = [{ e_above_hull: 0 }, {
       e_above_hull: 0.5,
     }]
     const color_scale: D3InterpolateName = `interpolateViridis`
@@ -207,7 +207,7 @@ describe(`helpers: mouse hit testing`, () => {
       clientWidth: 600,
       clientHeight: 600,
     } as unknown as HTMLCanvasElement
-    const plot_entries: Array<{ x: number; y: number; z: number; visible: boolean }> = [{
+    const plot_entries: { x: number; y: number; z: number; visible: boolean }[] = [{
       x: 100,
       y: 100,
       z: 0,

@@ -656,7 +656,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
 
   // Helper factories
   const mock_structure = (
-    sites: Array<{ abc: Vec3; element: string }>,
+    sites: { abc: Vec3; element: string }[],
   ): PymatgenStructure => ({
     lattice: {
       matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3],

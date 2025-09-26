@@ -6,7 +6,7 @@ export interface PhaseEntry {
   // Core required fields
   composition: Record<ElementSymbol, number>
   energy: number
-  entry_id?: string
+  entry_id: string
 
   // Common computed fields
   e_above_hull?: number

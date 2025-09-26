@@ -45,7 +45,7 @@ describe(`measure: angles`, () => {
     { v1: [1, 0, 0] as Vec3, v2: [0.5, Math.sqrt(3) / 2, 0] as Vec3, deg: 60 },
     { v1: [1, 0, 0] as Vec3, v2: [-1, 0, 0] as Vec3, deg: 180 },
     { v1: [1, 0, 0] as Vec3, v2: [2, 0, 0] as Vec3, deg: 0 },
-  ] as Array<{ v1: Vec3; v2: Vec3; deg: number }>)(
+  ] as { v1: Vec3; v2: Vec3; deg: number }[])(
     `basic angles: %#`,
     ({ v1, v2, deg }) => {
       expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(deg, 10)
