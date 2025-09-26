@@ -59,7 +59,7 @@
   d={tweened_line.current}
   stroke={line_color}
   stroke-width={line_width}
-  stroke-dasharray={line_dash}
+  stroke-dasharray={line_dash && line_dash !== `solid` ? line_dash : null}
   fill="none"
   {...rest}
 />

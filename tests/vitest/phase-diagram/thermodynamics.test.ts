@@ -1,7 +1,7 @@
 import {
   build_lower_hull_model,
   compute_e_above_hull_for_points,
-  compute_formation_energy_per_atom,
+  compute_e_form_per_atom,
   compute_lower_hull_triangles,
   compute_quickhull_triangles,
   e_hull_at_xy,
@@ -182,7 +182,7 @@ describe(`find_lowest_energy_unary_refs()`, () => {
   })
 })
 
-describe(`compute_formation_energy_per_atom()`, () => {
+describe(`compute_e_form_per_atom()`, () => {
   test.each([
     // [compound, refs, expected e_form]
     [
@@ -204,7 +204,7 @@ describe(`compute_formation_energy_per_atom()`, () => {
       0.1,
     ],
   ])(`matches expected formation energy %#`, (comp, refs, expected) => {
-    const e_form = compute_formation_energy_per_atom(comp, refs)
+    const e_form = compute_e_form_per_atom(comp, refs)
     expect(e_form).not.toBeNull()
     expect(e_form).toBeCloseTo(expected, 6)
   })
@@ -212,15 +212,15 @@ describe(`compute_formation_energy_per_atom()`, () => {
   test(`returns null when a needed elemental reference is missing`, () => {
     const comp = entry({ Li: 1, O: 1 }, -6.0)
     const refs = { Li: entry({ Li: 1 }, -1.0) } as Record<string, PhaseEntry>
-    expect(compute_formation_energy_per_atom(comp, refs)).toBeNull()
+    expect(compute_e_form_per_atom(comp, refs)).toBeNull()
   })
 
   test(`invariant to composition scaling (per-atom)`, () => {
     const comp1 = entry({ Li: 1, O: 1 }, -6.0)
     const comp2 = entry({ Li: 2, O: 2 }, -12.0) // scaled by 2
     const refs = { Li: entry({ Li: 1 }, -1.0), O: entry({ O: 2 }, -10.0) }
-    const e1 = compute_formation_energy_per_atom(comp1, refs)
-    const e2 = compute_formation_energy_per_atom(comp2, refs)
+    const e1 = compute_e_form_per_atom(comp1, refs)
+    const e2 = compute_e_form_per_atom(comp2, refs)
     expect(e1 ?? 0).toBeCloseTo(e2 ?? 0, 9)
   })
 })

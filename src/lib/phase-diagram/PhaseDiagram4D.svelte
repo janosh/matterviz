@@ -20,7 +20,7 @@
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import {
-    compute_formation_energy_per_atom,
+    compute_e_form_per_atom,
     find_lowest_energy_unary_refs,
     get_phase_diagram_stats,
     process_pd_entries,
@@ -149,7 +149,7 @@
     if (!use_on_the_fly) return entries
     // on-the-fly: compute formation energy per atom where possible
     return entries.map((entry) => {
-      const e_form = compute_formation_energy_per_atom(entry, unary_refs)
+      const e_form = compute_e_form_per_atom(entry, unary_refs)
       if (e_form == null) return entry
       return { ...entry, e_form_per_atom: e_form }
     })
@@ -386,8 +386,8 @@
     get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_energy_threshold = $derived(() =>
-    compute_max_energy_threshold(processed_entries)
+  const max_energy_threshold = $derived(
+    compute_max_energy_threshold(processed_entries),
   )
 
   // Phase diagram statistics
@@ -924,7 +924,7 @@
         bind:show_unstable_labels
         bind:energy_threshold
         bind:label_energy_threshold
-        max_energy_threshold={max_energy_threshold()}
+        {max_energy_threshold}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}

@@ -80,6 +80,9 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     // Open controls and set threshold to 0
     const { controls } = await open_info_and_controls(pd2d)
     const number_input = controls.locator(`input.threshold-input`).first()
+    const scatter = pd2d.locator(`.scatter`)
+    const markers = scatter.locator(`path.marker`)
+    const count_before = await markers.count()
     await number_input.fill(`0`)
 
     await expect // Wait for info pane to update
@@ -93,9 +96,6 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     expect(after.x).toBeLessThanOrEqual(before.x)
 
     // Scatter markers should not increase when threshold is decreased to 0
-    const scatter = pd2d.locator(`.scatter`)
-    const markers = scatter.locator(`path.marker`)
-    const count_before = await markers.count()
     const count_after = await markers.count()
     expect(count_after).toBeGreaterThan(0)
     expect(count_after).toBeLessThanOrEqual(count_before)

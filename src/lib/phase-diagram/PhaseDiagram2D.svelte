@@ -22,7 +22,7 @@
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import {
-    compute_formation_energy_per_atom,
+    compute_e_form_per_atom,
     find_lowest_energy_unary_refs,
     get_phase_diagram_stats,
     process_pd_entries,
@@ -151,7 +151,7 @@
   const effective_entries = $derived.by(() => {
     if (energy_mode === `precomputed`) return entries
     return entries.map((entry) => {
-      const e_form = compute_formation_energy_per_atom(entry, unary_refs)
+      const e_form = compute_e_form_per_atom(entry, unary_refs)
       if (e_form == null) return entry
       return { ...entry, e_form_per_atom: e_form }
     })
@@ -390,11 +390,11 @@
 
   const hull_segments_series = $derived.by(() => {
     if (!merged_config.show_hull || hull_polyline.length < 2) return []
-    const segs = []
+    const segments = []
     for (let idx = 0; idx < hull_polyline.length - 1; idx++) {
       const p1 = hull_polyline[idx]
       const p2 = hull_polyline[idx + 1]
-      segs.push({
+      segments.push({
         x: [p1.x, p2.x] as const,
         y: [p1.y, p2.y] as const,
         markers: `line` as const,
@@ -407,16 +407,13 @@
         },
       })
     }
-    return segs
+    return segments
   })
 
-  const scatter_series = $derived([
-    scatter_points_series,
-    ...hull_segments_series,
-  ])
+  const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
-  const max_energy_threshold = $derived(() =>
-    compute_max_energy_threshold(processed_entries)
+  const max_energy_threshold = $derived(
+    compute_max_energy_threshold(processed_entries),
   )
 
   const phase_stats = $derived.by(() =>
@@ -711,7 +708,7 @@
         bind:show_unstable_labels
         bind:energy_threshold
         bind:label_energy_threshold
-        max_energy_threshold={max_energy_threshold()}
+        {max_energy_threshold}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}

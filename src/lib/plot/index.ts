@@ -7,7 +7,7 @@ import PlotLegend from './PlotLegend.svelte'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
 // pending https://github.com/sveltejs/svelte/issues/16151
-interface TweenedOptions<T> {
+export interface TweenedOptions<T> {
   delay?: number
   duration?: number | ((from: T, to: T) => number)
   easing?: (t: number) => number
@@ -204,7 +204,7 @@ export interface AnchorNode extends SimulationNodeDatum {
 export type LegendConfig =
   & Omit<
     ComponentProps<typeof PlotLegend>,
-    `series_data` | `on_toggle` | `on_drag_start` | `on_drag` | `on_drag_end`
+    `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
   >
   & {
     margin?: number | Sides

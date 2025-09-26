@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { HoverStyle, LabelStyle, Point, PointStyle, XyObj } from '$lib/plot'
-  import { symbol_map } from '$lib/plot'
+  import { type D3SymbolName, symbol_map } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
@@ -35,8 +36,8 @@
 
   // get the SVG path data as 'd' attribute
   function get_symbol_path(): string {
-    const symbol_type = symbol_map[style.symbol_type ?? `Circle`] ??
-      d3_symbols.symbolCircle
+    const symbol_key: D3SymbolName = (style.symbol_type ?? DEFAULTS) as D3SymbolName
+    const symbol_type = symbol_map[symbol_key] ?? d3_symbols.symbolCircle
     const size = style.symbol_size ?? Math.PI * Math.pow(style.radius ?? 2, 2)
     return symbol().type(symbol_type).size(size)() || ``
   }

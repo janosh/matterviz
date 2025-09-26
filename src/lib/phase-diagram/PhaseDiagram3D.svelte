@@ -30,7 +30,7 @@
   import {
     build_lower_hull_model,
     compute_e_above_hull_for_points,
-    compute_formation_energy_per_atom,
+    compute_e_form_per_atom,
     compute_lower_hull_triangles,
     find_lowest_energy_unary_refs,
     get_phase_diagram_stats,
@@ -167,7 +167,7 @@
   const effective_entries = $derived.by(() => {
     if (energy_mode === `precomputed`) return entries
     return entries.map((entry) => {
-      const e_form = compute_formation_energy_per_atom(entry, unary_refs)
+      const e_form = compute_e_form_per_atom(entry, unary_refs)
       if (e_form == null) return entry
       return { ...entry, e_form_per_atom: e_form }
     })
@@ -435,8 +435,8 @@
     get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_energy_threshold = $derived(() =>
-    compute_max_energy_threshold(processed_entries)
+  const max_energy_threshold = $derived(
+    compute_max_energy_threshold(processed_entries),
   )
 
   // Phase diagram statistics
@@ -457,9 +457,9 @@
 
     // Calculate the energy center (middle of formation energy range)
     const formation_energies = plot_entries.map((e) => e.formation_energy)
-    const min_formation_energy = Math.min(0, ...formation_energies)
-    const max_formation_energy = Math.max(0, ...formation_energies)
-    const energy_center = (min_formation_energy + max_formation_energy) / 2
+    const e_form_min = Math.min(0, ...formation_energies)
+    const e_form_max = Math.max(0, ...formation_energies)
+    const energy_center = (e_form_min + e_form_max) / 2
 
     let centered_x = x - triangle_centroid.x
     let centered_y = y - triangle_centroid.y
@@ -522,8 +522,8 @@
 
     // Get formation energy range for vertical edges
     const formation_energies = plot_entries.map((e) => e.formation_energy)
-    const min_formation_energy = Math.min(0, ...formation_energies) // Include 0 for elemental references
-    const max_formation_energy = Math.max(0, ...formation_energies) // Include 0 for elemental references
+    const e_form_min = Math.min(0, ...formation_energies) // Include 0 for elemental references
+    const e_form_max = Math.max(0, ...formation_energies) // Include 0 for elemental references
 
     // Draw base triangle edges (top triangle at formation energy = 0)
     const triangle_edges = get_triangle_edges()
@@ -539,8 +539,8 @@
 
     // Draw vertical edges from corners (from most negative to 0 formation energy)
     const vertical_edges = get_triangle_vertical_edges(
-      min_formation_energy,
-      max_formation_energy,
+      e_form_min,
+      e_form_max,
     )
     ctx.beginPath()
     for (const [v1, v2] of vertical_edges) {
@@ -556,8 +556,8 @@
     const bottom_triangle_edges = get_triangle_edges()
     ctx.beginPath()
     for (const [v1, v2] of bottom_triangle_edges) {
-      const proj1 = project_3d_point(v1.x, v1.y, min_formation_energy) // Bottom triangle at most negative energy
-      const proj2 = project_3d_point(v2.x, v2.y, min_formation_energy)
+      const proj1 = project_3d_point(v1.x, v1.y, e_form_min) // Bottom triangle at most negative energy
+      const proj2 = project_3d_point(v2.x, v2.y, e_form_min)
 
       ctx.moveTo(proj1.x, proj1.y)
       ctx.lineTo(proj2.x, proj2.y)
@@ -1233,7 +1233,7 @@
         bind:show_unstable_labels
         bind:energy_threshold
         bind:label_energy_threshold
-        max_energy_threshold={max_energy_threshold()}
+        {max_energy_threshold}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}

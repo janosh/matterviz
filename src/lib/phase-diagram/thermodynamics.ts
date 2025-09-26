@@ -48,7 +48,7 @@ function get_corrected_energy_per_atom(entry: PhaseEntry): number | null {
   return (base_total_energy + (entry.correction ?? 0)) / atoms
 }
 
-export function compute_formation_energy_per_atom(
+export function compute_e_form_per_atom(
   entry: PhaseEntry,
   el_refs: Record<string, PhaseEntry>,
 ): number | null {

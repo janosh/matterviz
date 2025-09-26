@@ -2,8 +2,9 @@
 // Used by both main package and VSCode extension
 
 import type { Vec3 } from '$lib/math'
-import type { Markers } from '$lib/plot'
+import type { D3SymbolName, Markers } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
+import { symbol_names } from './index'
 
 // SettingType interface with optional context to control where settings apply
 // context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts
@@ -176,6 +177,7 @@ export interface SettingsConfig {
     line_dash: SettingType<string>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
+    symbol_type: SettingType<D3SymbolName>
   }
 
   composition: { // Composition specific settings
@@ -715,6 +717,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   // Scatter plot specific
   scatter: {
+    symbol_type: {
+      value: `Circle`,
+      description: `Default symbol type for scatter plots`,
+      enum: symbol_names,
+    },
     line_width: {
       value: 2,
       description: `Line width for scatter plot connections`,

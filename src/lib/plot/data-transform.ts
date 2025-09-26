@@ -1,4 +1,5 @@
 import type { D3SymbolName, DataSeries, Point } from '$lib/plot'
+import { DEFAULTS } from '$lib/settings'
 
 // Extract the primary color from a series data object.
 // Checks line stroke, then point fill (handling arrays), with fallback to default blue.
@@ -22,7 +23,7 @@ export const prepare_legend_data = (series: DataSeries[]): {
     label: series_data.label ?? `Series ${series_idx + 1}`,
     visible: series_data.visible ?? true,
     display_style: {
-      symbol_type: `Square` as D3SymbolName,
+      symbol_type: DEFAULTS.scatter.symbol_type as D3SymbolName,
       symbol_color: extract_series_color(series_data),
     },
   }))

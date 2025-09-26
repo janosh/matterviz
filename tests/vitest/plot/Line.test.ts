@@ -53,19 +53,11 @@ describe(`Line`, () => {
       },
     },
   ])(`renders with $name`, ({ props, expected_line, expected_area }) => {
-    const points: [number, number][] = [
-      [10, 10],
-      [50, 50],
-      [100, 20],
-    ]
+    const points: [number, number][] = [[10, 10], [50, 50], [100, 20]]
     const origin: [number, number] = [0, 200]
 
-    const component = mount(Line, {
-      target: document.body,
-      props: { points, origin, ...props }, // Spread additional props
-    })
+    mount(Line, { target: document.body, props: { points, origin, ...props } })
 
-    expect(component).toBeTruthy()
     const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
 
@@ -75,11 +67,9 @@ describe(`Line`, () => {
     // Assert line styles
     expect(line_path.getAttribute(`fill`)).toBe(expected_line.fill)
     expect(line_path.getAttribute(`stroke`)).toBe(expected_line.stroke)
-    expect(line_path.getAttribute(`stroke-width`)).toBe(
-      expected_line.strokeWidth,
-    )
+    expect(line_path.getAttribute(`stroke-width`)).toBe(expected_line.strokeWidth)
     expect(line_path.getAttribute(`stroke-dasharray`)).toBe(
-      expected_line.strokeDasharray ?? `solid`,
+      expected_line.strokeDasharray ?? null,
     )
 
     // Assert area styles using getAttribute

@@ -4,7 +4,7 @@ import type { Vec3 } from '$lib/math'
 // Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseEntry {
   // Core required fields
-  composition: Record<string, number>
+  composition: Record<ElementSymbol, number>
   energy: number
   entry_id?: string
 

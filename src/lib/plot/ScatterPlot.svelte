@@ -28,6 +28,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
+  import type { ScaleContinuousNumeric } from 'd3-scale'
   import {
     scaleLinear,
     scaleLog,
@@ -478,7 +479,7 @@
       : scaleLinear()
         .domain([x_min, x_max])
         .range([pad.l, width - pad.r]),
-  )
+  ) as ScaleContinuousNumeric<number, number>
 
   let y_scale_fn = $derived(
     y_scale_type === `log`
@@ -754,7 +755,7 @@
         line_dash?: string
       }
       const display_style: LegendDisplayStyle = {
-        symbol_type: `Circle` as D3SymbolName, // Default marker shape
+        symbol_type: DEFAULTS.scatter.symbol_type,
         symbol_color: `black`, // Default marker color
         line_color: `black`, // Default line color
       }
@@ -768,8 +769,8 @@
 
       if (series_markers?.includes(`points`)) {
         if (first_point_style) {
-          // Assign shape only if it's one of the allowed types, else default to circle
-          let final_shape: D3SymbolName = `Circle` // Default shape
+          // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
+          let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
           if (symbol_names.includes(first_point_style.shape as D3SymbolName)) {
             final_shape = first_point_style.shape as D3SymbolName
           }

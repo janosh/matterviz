@@ -87,13 +87,18 @@ export function get_ternary_3d_coordinates(
       `Ternary phase diagram requires exactly 3 elements, got ${elements.length}`,
     )
   }
+  if (!(`e_form_per_atom` in entries[0])) {
+    throw new Error(`Ternary phase diagram requires e_form_per_atom field`)
+  }
   const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => (elements as string[]).includes(el))
+    Object.keys(entry.composition).every((el) => elements.includes(el as ElementSymbol))
   )
   const result = within_system.map((entry) => {
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
-    const formation_energy_per_atom = entry.e_form_per_atom ?? 0
-    const { x, y, z } = barycentric_to_ternary_xyz(barycentric, formation_energy_per_atom)
+    const { x, y, z } = barycentric_to_ternary_xyz(
+      barycentric,
+      entry.e_form_per_atom ?? NaN,
+    )
     const is_element = is_unary_entry(entry)
     return {
       ...entry,
@@ -101,7 +106,7 @@ export function get_ternary_3d_coordinates(
       y,
       z,
       barycentric,
-      formation_energy: formation_energy_per_atom,
+      formation_energy: entry.e_form_per_atom ?? NaN,
       is_element,
       visible: true,
     }
