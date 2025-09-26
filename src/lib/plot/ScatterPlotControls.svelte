@@ -462,7 +462,7 @@
             line_width = DEFAULTS.scatter.line_width
             line_color = DEFAULTS.scatter.line_color
             line_opacity = DEFAULTS.scatter.line_opacity
-            line_dash = undefined
+            line_dash = DEFAULTS.scatter.line_dash
           }}
         >
           <div class="pane-row">
@@ -503,7 +503,9 @@
               value={line_dash ?? `solid`}
               onchange={(event) => {
                 const target = event.currentTarget as HTMLSelectElement
-                line_dash = target.value === `solid` ? undefined : target.value
+                line_dash = target.value === `solid`
+                  ? DEFAULTS.scatter.line_dash
+                  : target.value
               }}
             >
               <option value="solid">Solid</option>

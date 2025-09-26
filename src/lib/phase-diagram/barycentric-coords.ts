@@ -144,7 +144,11 @@ export function composition_to_barycentric_4d(
   }
   const amounts = elements.map((el) => composition[el] || 0)
   const total = amounts.reduce((sum, amount) => sum + amount, 0)
-  if (total === 0) return Array(4).fill(0.25)
+  if (total === 0) {
+    throw new Error(
+      `Composition has no elements from the quaternary system: ${elements.join(`-`)}`,
+    )
+  }
   return amounts.map((amount) => amount / total)
 }
 

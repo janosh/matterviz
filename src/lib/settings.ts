@@ -1147,9 +1147,23 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   structure: { ...DEFAULTS.structure, ...(user?.structure || {}) },
   trajectory: { ...DEFAULTS.trajectory, ...(user?.trajectory || {}) },
   composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
+  plot: { ...DEFAULTS.plot, ...(user?.plot || {}) },
+  scatter: { ...DEFAULTS.scatter, ...(user?.scatter || {}) },
   phase_diagram: {
     ...DEFAULTS.phase_diagram,
     ...(user?.phase_diagram || {}),
+    binary: {
+      ...DEFAULTS.phase_diagram.binary,
+      ...(user?.phase_diagram?.binary || {}),
+    },
+    ternary: {
+      ...DEFAULTS.phase_diagram.ternary,
+      ...(user?.phase_diagram?.ternary || {}),
+    },
+    quaternary: {
+      ...DEFAULTS.phase_diagram.quaternary,
+      ...(user?.phase_diagram?.quaternary || {}),
+    },
   },
 } as DefaultSettings)
 

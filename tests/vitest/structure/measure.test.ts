@@ -79,13 +79,13 @@ describe(`measure: angles`, () => {
 
     // PBC wrapping case (atoms collinear only after PBC)
     const lat = cubic(10)
-    const center = [0.1, 0.1, 0.1]
-    const a = [9.9, 0.1, 0.1] // wraps to negative side
-    const b = [0.3, 0.1, 0.1] // positive side
+    const center: Vec3 = [0.1, 0.1, 0.1]
+    const a: Vec3 = [9.9, 0.1, 0.1] // wraps to negative side
+    const b: Vec3 = [0.3, 0.1, 0.1] // positive side
 
     // Test direct PBC calculation for this edge case
-    const v1_pbc = displacement_pbc(center as Vec3, a, lat)
-    const v2_pbc = displacement_pbc(center as Vec3, b, lat)
+    const v1_pbc = displacement_pbc(center, a, lat)
+    const v2_pbc = displacement_pbc(center, b, lat)
     expect(angle_between_vectors(v1_pbc, v2_pbc)).toBeCloseTo(180, 5)
   })
 

@@ -120,9 +120,9 @@ describe(`energies: hull model and e_above_hull evaluation`, () => {
     const models = build_lower_hull_model([face])
     expect(models.length).toBe(1)
     const z0 = e_hull_at_xy(models, 0.2, 0.2)
-    expect(Number((z0 ?? NaN).toFixed(9))).toBe(0)
+    expect(z0 ?? NaN).toBeCloseTo(0, 9)
     const e = compute_e_above_hull_for_points([{ x: 0.2, y: 0.2, z: 0.1 }], models)
-    expect(Number(e[0].toFixed(9))).toBe(0.1)
+    expect(e[0]).toBeCloseTo(0.1, 9)
   })
 })
 
@@ -177,7 +177,7 @@ describe(`find_lowest_energy_unary_refs()`, () => {
     expect(refs[`Li`].energy_per_atom).toBe(-1.05)
     // Either O ref with -5.1 eV/at is acceptable
     const o_e_pa = refs[`O`].energy_per_atom ?? ((refs[`O`].energy ?? 0) / 2)
-    expect(Number(o_e_pa.toFixed(3))).toBe(-5.1)
+    expect(o_e_pa).toBeCloseTo(-5.1, 3)
   })
 })
 
@@ -205,7 +205,7 @@ describe(`compute_formation_energy_per_atom()`, () => {
   ])(`matches expected formation energy %#`, (comp, refs, expected) => {
     const e_form = compute_formation_energy_per_atom(comp, refs)
     expect(e_form).not.toBeNull()
-    expect(Number(e_form?.toFixed(6))).toBe(Number(expected.toFixed(6)))
+    expect(e_form).toBeCloseTo(expected, 6)
   })
 
   test(`returns null when a needed elemental reference is missing`, () => {
@@ -220,6 +220,6 @@ describe(`compute_formation_energy_per_atom()`, () => {
     const refs = { Li: entry({ Li: 1 }, -1.0), O: entry({ O: 2 }, -10.0) }
     const e1 = compute_formation_energy_per_atom(comp1, refs)
     const e2 = compute_formation_energy_per_atom(comp2, refs)
-    expect(Number((e1 ?? 0).toFixed(9))).toBe(Number((e2 ?? 0).toFixed(9)))
+    expect(e1 ?? 0).toBeCloseTo(e2 ?? 0, 9)
   })
 })

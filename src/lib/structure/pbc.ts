@@ -2,9 +2,10 @@
 import type { Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { PymatgenStructure } from './index'
+import type { ParsedStructure } from './parse'
 
 export function find_image_atoms(
-  structure: PymatgenStructure,
+  structure: ParsedStructure,
   { tolerance = 0.05 }: { tolerance?: number } = {},
 ): [number, Vec3, Vec3][] {
   // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc] tuples.

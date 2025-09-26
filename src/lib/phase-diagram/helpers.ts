@@ -4,10 +4,10 @@ import { elem_symbol_to_name } from '$lib/composition'
 import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { PDLegendConfig, PhaseDiagramConfig, PhaseEntry } from './types'
+import type { PDControlsType, PhaseDiagramConfig, PhaseEntry } from './types'
 
 // Default legend configuration shared by 3D and 4D diagrams
-export const default_legend: PDLegendConfig = {
+export const default_controls: PDControlsType = {
   title: ``,
   show: true,
   position: `top-right`,

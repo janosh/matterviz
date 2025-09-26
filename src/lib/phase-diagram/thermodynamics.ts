@@ -461,8 +461,8 @@ export function build_lower_hull_model(
         det
       return { a, b, c }
     })()
-    const [min_x, _mx, max_x] = [p1.x, p2.x, p3.x].sort()
-    const [min_y, _my, max_y] = [p1.y, p2.y, p3.y].sort()
+    const [min_x, _mx, max_x] = [p1.x, p2.x, p3.x].sort((a, b) => a - b)
+    const [min_y, _my, max_y] = [p1.y, p2.y, p3.y].sort((a, b) => a - b)
     const { x: x1, y: y1 } = p1
     const { x: x2, y: y2 } = p2
     const { x: x3, y: y3 } = p3

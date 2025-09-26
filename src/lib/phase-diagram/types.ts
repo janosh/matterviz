@@ -83,7 +83,7 @@ export interface PhaseDiagramConfig {
 }
 
 // Legend configuration
-export interface PDLegendConfig {
+export interface PDControlsType {
   title?: string
   show?: boolean
   position?: `top-left` | `top-right` | `bottom-left` | `bottom-right`

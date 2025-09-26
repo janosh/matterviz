@@ -17,7 +17,7 @@
   import {
     build_entry_tooltip_text,
     compute_max_energy_threshold,
-    default_legend,
+    default_controls,
     find_pd_entry_at_mouse,
     get_energy_color_scale,
     get_point_color_for_entry,
@@ -38,7 +38,7 @@
   } from './thermodynamics'
   import type {
     HoverData3D,
-    PDLegendConfig,
+    PDControlsType,
     PhaseDiagramConfig,
     PhaseEntry,
     Point3D,
@@ -47,7 +47,7 @@
 
   interface Props {
     entries: PhaseEntry[]
-    legend?: Partial<PDLegendConfig>
+    controls?: Partial<PDControlsType>
     config?: Partial<PhaseDiagramConfig>
     on_point_click?: (entry: TernaryPlotEntry) => void
     on_point_hover?: (data: HoverData3D<TernaryPlotEntry> | null) => void
@@ -78,7 +78,7 @@
   }
   let {
     entries,
-    legend = {},
+    controls = {},
     config = {},
     on_point_click,
     on_point_hover,
@@ -101,16 +101,15 @@
     energy_source_mode = $bindable(`precomputed`),
   }: Props = $props()
 
-  const merged_legend: PDLegendConfig = $derived({
-    ...default_legend,
-    ...legend,
+  const merged_controls: PDControlsType = $derived({
+    ...default_controls,
+    ...controls,
   })
 
-  // Default configuration
   const default_config: PhaseDiagramConfig = {
+    margin: { top: 40, right: 40, bottom: 60, left: 60 },
     width: 600,
     height: 600,
-    margin: { top: 60, right: 60, bottom: 60, left: 60 },
     unstable_threshold: 0.2,
     show_labels: true,
     show_hull: true,
@@ -1194,7 +1193,7 @@
   {/if}
 
   <!-- Control buttons (top-right corner) -->
-  {#if merged_legend.show}
+  {#if merged_controls.show}
     <section class="control-buttons">
       <button
         type="button"
@@ -1248,7 +1247,7 @@
         {unstable_entries}
         {total_unstable_count}
         {camera}
-        {merged_legend}
+        {merged_controls}
         toggle_props={{
           class: `legend-controls-btn`,
         }}

@@ -536,6 +536,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
       cache_parsed_data: trajectory.cache_parsed_data,
     },
     scatter_props: {
+      markers: scatter.markers,
       line_width: scatter.line_width,
       point_size: scatter.point_size,
       show_legend: scatter.show_legend,

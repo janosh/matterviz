@@ -5,7 +5,7 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { PDLegendConfig, PlotEntry3D } from './types'
+  import type { PDControlsType, PlotEntry3D } from './types'
 
   interface CameraState {
     elevation?: number // Elevation angle in degrees (for ternary)
@@ -47,7 +47,7 @@
     // Camera state
     camera: CameraState
     // Legend configuration
-    merged_legend: PDLegendConfig
+    merged_controls: PDControlsType
     // Pane state
     controls_open?: boolean
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
@@ -77,7 +77,7 @@
     unstable_entries,
     total_unstable_count,
     camera,
-    merged_legend,
+    merged_controls,
     controls_open = $bindable(false),
     toggle_props = $bindable({}),
     pane_props = $bindable({}),
@@ -100,7 +100,7 @@
   open_icon="Cross"
   {...rest}
 >
-  <h4 style="margin: 0">{merged_legend.title || `Phase Diagram Controls`}</h4>
+  <h4 style="margin: 0">{merged_controls.title || `Phase Diagram Controls`}</h4>
 
   <!-- Energy source selection (only if both options are available) -->
   {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form &&
@@ -189,7 +189,7 @@
         >
           <div class="marker stable"></div>
           <span>Stable{
-              merged_legend.show_counts ? ` (${stable_entries.length})` : ``
+              merged_controls.show_counts ? ` (${stable_entries.length})` : ``
             }</span>
         </div>
         <div
@@ -203,7 +203,7 @@
         >
           <div class="marker unstable"></div>
           <span>Above hull{
-              merged_legend.show_counts
+              merged_controls.show_counts
               ? ` (${
                 unstable_entries.filter((e) => e.visible).length
               }/${total_unstable_count})`
@@ -224,7 +224,7 @@
     </div>
   {/if}
 
-  {#if merged_legend.show_label_controls}
+  {#if merged_controls.show_label_controls}
     <div class="control-row">
       <span class="control-label">Labels</span>
       <div style="display: flex; gap: 12px; flex: 1">

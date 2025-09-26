@@ -170,7 +170,7 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    markers = `line+points`,
+    markers = DEFAULTS.scatter.markers,
     x_format = $bindable(``),
     y_format = $bindable(``),
     tooltip,
@@ -754,7 +754,7 @@
         line_dash?: string
       }
       const display_style: LegendDisplayStyle = {
-        symbol_type: `Circle` as D3SymbolName, // Default marker shape (Capitalized)
+        symbol_type: `Circle` as D3SymbolName, // Default marker shape
         symbol_color: `black`, // Default marker color
         line_color: `black`, // Default line color
       }

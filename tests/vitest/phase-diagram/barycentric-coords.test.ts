@@ -34,15 +34,15 @@ describe(`ternary: constants and projections`, () => {
       TRIANGLE_VERTICES[2][0] - TRIANGLE_VERTICES[0][0],
       TRIANGLE_VERTICES[2][1] - TRIANGLE_VERTICES[0][1],
     )
-    expect(Number(d01.toFixed(6))).toBe(Number(d12.toFixed(6)))
-    expect(Number(d12.toFixed(6))).toBe(Number(d20.toFixed(6)))
+    expect(d01).toBeCloseTo(d12, 6)
+    expect(d12).toBeCloseTo(d20, 6)
   })
 
   test(`barycentric to triangular maps vertices correctly`, () => {
     expect(barycentric_to_ternary_xy([1, 0, 0])).toEqual([1, 0])
     const v1 = barycentric_to_ternary_xy([0, 1, 0])
-    expect(Number(v1[0].toFixed(6))).toBe(Number((0.5).toFixed(6)))
-    expect(Number(v1[1].toFixed(6))).toBe(Number((Math.sqrt(3) / 2).toFixed(6)))
+    expect(v1[0]).toBeCloseTo(0.5, 6)
+    expect(v1[1]).toBeCloseTo(Math.sqrt(3) / 2, 6)
     expect(barycentric_to_ternary_xy([0, 0, 1])).toEqual([0, 0])
   })
 
@@ -57,8 +57,8 @@ describe(`ternary: constants and projections`, () => {
       (TRIANGLE_VERTICES[0][0] + TRIANGLE_VERTICES[1][0] + TRIANGLE_VERTICES[2][0]) / 3
     const avg_y =
       (TRIANGLE_VERTICES[0][1] + TRIANGLE_VERTICES[1][1] + TRIANGLE_VERTICES[2][1]) / 3
-    expect(Number(c.x.toFixed(6))).toBe(Number(avg_x.toFixed(6)))
-    expect(Number(c.y.toFixed(6))).toBe(Number(avg_y.toFixed(6)))
+    expect(c.x).toBeCloseTo(avg_x, 6)
+    expect(c.y).toBeCloseTo(avg_y, 6)
     expect(c.z).toBe(0)
   })
 })
@@ -67,9 +67,9 @@ describe(`ternary: composition and plotting`, () => {
   test(`composition to barycentric validates element count and normalization`, () => {
     const elements = [`A`, `B`, `C`] as unknown as ElementSymbol[]
     const bc = composition_to_barycentric_3d({ A: 2, B: 2, C: 4 }, elements)
-    expect(Number(bc[0].toFixed(6))).toBe(0.25)
-    expect(Number(bc[1].toFixed(6))).toBe(0.25)
-    expect(Number(bc[2].toFixed(6))).toBe(0.5)
+    expect(bc[0]).toBeCloseTo(0.25, 6)
+    expect(bc[1]).toBeCloseTo(0.25, 6)
+    expect(bc[2]).toBeCloseTo(0.5, 6)
   })
 
   test(`composition to barycentric throws on invalid inputs`, () => {
@@ -116,7 +116,7 @@ describe(`ternary: geometry helpers`, () => {
       y: 1,
       z: 0,
     })
-    expect(Number(n.z.toFixed(6))).toBe(1)
+    expect(n.z).toBeCloseTo(1, 6)
   })
 
   test(`face centroid is arithmetic mean`, () => {
@@ -146,21 +146,21 @@ describe(`quaternary: barycentric and projection`, () => {
   test(`composition_to_barycentric_4d normalizes or defaults to uniform`, () => {
     const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
     const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
-    expect(Number(bc.reduce((a, b) => a + b, 0).toFixed(9))).toBe(1)
+    expect(bc.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9)
     const zero = composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)
     expect(zero).toEqual([0.25, 0.25, 0.25, 0.25])
   })
 
   test(`barycentric_to_tetrahedral maps basis to vertices`, () => {
     const p0 = barycentric_to_tetrahedral([1, 0, 0, 0])
-    expect(Number(p0.x.toFixed(6))).toBe(1)
+    expect(p0.x).toBeCloseTo(1, 6)
     const p1 = barycentric_to_tetrahedral([0, 1, 0, 0])
-    expect(Number(p1.x.toFixed(6))).toBe(Number((0.5).toFixed(6)))
+    expect(p1.x).toBeCloseTo(0.5, 6)
     const p3 = barycentric_to_tetrahedral([0, 0, 0, 1])
     expect(p3).toEqual({ x: 0, y: 0, z: 0 })
     const p2 = barycentric_to_tetrahedral([0, 0, 1, 0])
-    expect(Number(p2.y.toFixed(6))).toBe(Number((Math.sqrt(3) / 6).toFixed(6)))
-    expect(Number(p2.z.toFixed(6))).toBe(Number((Math.sqrt(6) / 3).toFixed(6)))
+    expect(p2.y).toBeCloseTo(Math.sqrt(3) / 6, 6)
+    expect(p2.z).toBeCloseTo(Math.sqrt(6) / 3, 6)
   })
 })
 
