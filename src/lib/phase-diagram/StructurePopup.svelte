@@ -52,26 +52,16 @@
         ID = {stats.id}<br>
       {/if}
       {#if stats.e_above_hull != null}
-        E<sub style="font-size: 0.8em; baseline: 0.5em">above hull</sub> = {
-          format_num(stats.e_above_hull ?? 0, `.3~`)
-        } eV/atom<br>
+        E<sub>above hull</sub> = {format_num(stats.e_above_hull ?? 0, `.3~`)} eV/atom<br>
       {/if}
       {#if stats.e_form != null}
-        E<sub style="font-size: 0.8em">form</sub> = {format_num(stats.e_form || 0, `.3~`)}
+        E<sub>form</sub> = {format_num(stats.e_form || 0, `.3~`)}
         eV/atom
       {/if}
     </div>
   {/if}
 
-  <Structure
-    {structure}
-    show_controls={false}
-    enable_info_pane={false}
-    allow_file_drop={false}
-    fullscreen_toggle={false}
-    {width}
-    {height}
-  />
+  <Structure {structure} {width} {height} />
 </div>
 
 <style>

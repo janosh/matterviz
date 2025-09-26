@@ -524,7 +524,7 @@
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: PlotPoint & TooltipProps)}
-  {@const entry = (point.metadata as unknown) as PlotEntry3D}
+  {@const entry = point.metadata as unknown as PlotEntry3D}
   {@const is_element = is_unary_entry(entry)}
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
   <div class="tooltip-title">
@@ -540,7 +540,7 @@
     E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
   </div>
   <div>
-    Formation Energy: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
+    E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
   </div>
   {#if entry.entry_id}
     <div>ID: {entry.entry_id}</div>

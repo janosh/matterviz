@@ -88,7 +88,9 @@ export function get_ternary_3d_coordinates(
     )
   }
   if (!(`e_form_per_atom` in entries[0])) {
-    throw new Error(`Ternary phase diagram requires e_form_per_atom field`)
+    throw new Error(
+      `Ternary phase diagram requires e_form_per_atom field for z-axis positioning`,
+    )
   }
   const within_system = entries.filter((entry) =>
     Object.keys(entry.composition).every((el) => elements.includes(el as ElementSymbol))
@@ -156,7 +158,9 @@ export function composition_to_barycentric_4d(
 // map barycentric coordinates to tetrahedral 3D coordinates
 export function barycentric_to_tetrahedral(barycentric: number[]): Point3D {
   if (barycentric.length !== 4) {
-    throw new Error(`Tetrahedral coordinates need ${4}D barycentric input`)
+    throw new Error(
+      `Tetrahedral coordinates require exactly 4D barycentric input, got ${barycentric.length}`,
+    )
   }
   let [x, y, z] = [0, 0, 0]
   for (let idx = 0; idx < 4; idx++) {

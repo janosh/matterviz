@@ -28,7 +28,6 @@
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
-  import type { ScaleContinuousNumeric } from 'd3-scale'
   import {
     scaleLinear,
     scaleLog,
@@ -479,7 +478,7 @@
       : scaleLinear()
         .domain([x_min, x_max])
         .range([pad.l, width - pad.r]),
-  ) as ScaleContinuousNumeric<number, number>
+  )
 
   let y_scale_fn = $derived(
     y_scale_type === `log`

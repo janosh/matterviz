@@ -975,7 +975,10 @@
     }
   }
 
-  const handle_mouse_up = () => is_dragging = false
+  const handle_mouse_up = () => {
+    is_dragging = false
+    drag_started = false
+  }
 
   const handle_wheel = (event: WheelEvent) => {
     event.preventDefault()
@@ -1291,7 +1294,7 @@
         E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
       </div>
       <div>
-        Formation Energy: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
+        E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
       </div>
       {#if entry.entry_id}
         <div>ID: {entry.entry_id}</div>
