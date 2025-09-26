@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol } from '$lib'
-  import { Icon, toggle_fullscreen } from '$lib'
+  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
@@ -241,11 +241,11 @@
 
   // Camera state - following Materials Project's 3D camera setup
   let camera = $state({
-    rotation_x: -0.6, // Tilt to show 3D depth better
-    rotation_y: 0.8, // Rotate to show perspective
-    zoom: 1.4,
-    center_x: 0,
-    center_y: 20, // Shift down to avoid legend overlap
+    rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
+    rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
+    zoom: PD_DEFAULTS.quaternary.camera_zoom,
+    center_x: PD_DEFAULTS.quaternary.camera_center_x,
+    center_y: PD_DEFAULTS.quaternary.camera_center_y,
   })
 
   // Interaction state
@@ -325,12 +325,28 @@
 
   const reset_camera = () =>
     Object.assign(camera, {
-      rotation_x: -0.6,
-      rotation_y: 0.8,
-      zoom: 1.4,
-      center_x: 0,
-      center_y: 20,
+      rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
+      rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
+      zoom: PD_DEFAULTS.quaternary.camera_zoom,
+      center_x: PD_DEFAULTS.quaternary.camera_center_x,
+      center_y: PD_DEFAULTS.quaternary.camera_center_y,
     })
+
+  function reset_all() {
+    reset_camera()
+    fullscreen = PD_DEFAULTS.quaternary.fullscreen
+    info_pane_open = PD_DEFAULTS.quaternary.info_pane_open
+    legend_pane_open = PD_DEFAULTS.quaternary.legend_pane_open
+    color_mode = PD_DEFAULTS.quaternary.color_mode
+    color_scale = PD_DEFAULTS.quaternary.color_scale as D3InterpolateName
+    show_stable = PD_DEFAULTS.quaternary.show_stable
+    show_unstable = PD_DEFAULTS.quaternary.show_unstable
+    show_stable_labels = PD_DEFAULTS.quaternary.show_stable_labels
+    show_unstable_labels = PD_DEFAULTS.quaternary.show_unstable_labels
+    energy_threshold = PD_DEFAULTS.quaternary.energy_threshold
+    label_energy_threshold = PD_DEFAULTS.quaternary.label_energy_threshold
+    show_elemental_polymorphs = PD_DEFAULTS.quaternary.show_elemental_polymorphs
+  }
 
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
@@ -866,7 +882,7 @@
     <section class="control-buttons">
       <button
         type="button"
-        onclick={reset_camera}
+        onclick={reset_all}
         title="Reset camera view (R key)"
         class="reset-camera-btn"
       >

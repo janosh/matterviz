@@ -1,6 +1,12 @@
 <script lang="ts">
-  import type { AnyStructure, ElementSymbol, PlotPoint, TooltipProps } from '$lib'
-  import { Icon, toggle_fullscreen } from '$lib'
+  import type {
+    AnyStructure,
+    ElementSymbol,
+    PlotPoint,
+    TooltipProps,
+    UserContentProps,
+  } from '$lib'
+  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
@@ -30,8 +36,6 @@
   } from './types'
 
   // Binary phase diagram rendered as energy vs composition (x in [0, 1])
-  // API mirrors PhaseDiagram3D/4D to allow drop-in usage.
-
   interface Props {
     entries: PhaseEntry[]
     legend?: Partial<PDLegendConfig>
@@ -323,9 +327,13 @@
     ).length,
   )
 
-  // Canvas rendering removed in favor of ScatterPlot
-  const camera_default = { zoom: 1.0, center_x: 0, center_y: 0 }
+  const camera_default = {
+    zoom: PD_DEFAULTS.binary.camera_zoom,
+    center_x: PD_DEFAULTS.binary.camera_center_x,
+    center_y: PD_DEFAULTS.binary.camera_center_y,
+  }
   let camera = $state({ ...camera_default })
+  let reset_counter = $state(0)
 
   // Drag and drop state (to match 3D/4D components)
   let drag_over = $state(false)
@@ -339,10 +347,13 @@
   // Axis mapping helpers ------------------------------------------------------
   const x_domain = $derived<[number, number]>([0, 1])
   const y_domain = $derived.by((): [number, number] => {
-    const ys = plot_entries.map((e) => e.y)
-    const min_y = ys.length ? Math.min(0, ...ys) : -1
-    const max_y = ys.length ? Math.max(0, ...ys) : 0 // include positive values as well
-    return [min_y, max_y]
+    const ys = plot_entries.map((entry) => entry.y)
+    if (ys.length === 0) return [-1, 0]
+    const min_y_data = Math.min(...ys)
+    const max_y_data = Math.max(...ys)
+    const span = Math.max(1e-9, max_y_data - min_y_data)
+    const pad = 0.05 * span
+    return [min_y_data - pad, max_y_data + pad]
   })
 
   // Build ScatterPlot series --------------------------------------------------
@@ -436,6 +447,21 @@
   }
 
   const reset_camera = () => Object.assign(camera, camera_default)
+  function reset_all() {
+    reset_camera()
+    fullscreen = PD_DEFAULTS.binary.fullscreen
+    info_pane_open = PD_DEFAULTS.binary.info_pane_open
+    legend_pane_open = PD_DEFAULTS.binary.legend_pane_open
+    color_mode = PD_DEFAULTS.binary.color_mode
+    color_scale = PD_DEFAULTS.binary.color_scale as D3InterpolateName
+    show_stable = PD_DEFAULTS.binary.show_stable
+    show_unstable = PD_DEFAULTS.binary.show_unstable
+    show_stable_labels = PD_DEFAULTS.binary.show_stable_labels
+    show_unstable_labels = PD_DEFAULTS.binary.show_unstable_labels
+    energy_threshold = PD_DEFAULTS.binary.energy_threshold
+    label_energy_threshold = PD_DEFAULTS.binary.label_energy_threshold
+    reset_counter += 1
+  }
   // Custom hover tooltip state used with ScatterPlot events
   let hover_data = $state<HoverData3D<PlotEntry3D> | null>(null)
 
@@ -471,10 +497,6 @@
     selected_structure = null
     selected_entry = null
   }
-
-  // Double click copy handled via ScatterPlot click + modifier if needed (not implemented here)
-
-  // Canvas effects removed
 
   // Fullscreen handling
   $effect(() => {
@@ -538,6 +560,19 @@
   {/if}
 {/snippet}
 
+{#snippet user_content(
+  { x_scale_fn, pad, height, y_scale_fn, y_min, width }: UserContentProps,
+)}
+  {@const [x1, y0] = [x_scale_fn(1), y_scale_fn(y_min)]}
+  {@const stroke = {
+    stroke: `var(--scatter-grid-stroke, gray)`,
+    'stroke-width': `var(--scatter-grid-width, 0.4)`,
+    'stroke-dasharray': `var(--scatter-grid-dash, 4)`,
+  }}
+  <line y1={pad.t} y2={height - pad.b} {x1} x2={x1} {...stroke} />
+  <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="phase-diagram-2d"
@@ -561,79 +596,81 @@
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; z-index: 10">
     {phase_stats?.chemical_system}
   </h3>
-  <ScatterPlot
-    style="--scatter-z-index: {PD_STYLE.z_index.tooltip}"
-    series={scatter_series}
-    x_range={x_domain}
-    y_range={y_domain}
-    x_ticks={4}
-    y_ticks={4}
-    x_grid={false}
-    y_grid={false}
-    x_label={elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`}
-    y_label="ΔE<sub>form</sub> (eV/atom)"
-    legend={null}
-    color_bar={{
-      title: `E<sub>above hull</sub> (eV/atom)`,
-      wrapper_style:
-        `position: absolute; top: 2em; left: 50%; transform: translateX(-50%); width: 260px;`,
-      bar_style: `height: 16px;`,
-    }}
-    {tooltip}
-    point_events={{
-      click: ({ point }) => {
-        const entry = (point?.metadata as unknown) as PlotEntry3D
-        on_point_click?.(entry)
-        if (enable_structure_preview && entry) {
-          const structure = extract_structure_from_entry(entry)
-          if (structure) {
-            selected_structure = structure
-            selected_entry = entry
-            calculate_modal_side()
-            modal_open = true
+  {#key reset_counter}
+    <ScatterPlot
+      series={scatter_series}
+      x_range={x_domain}
+      y_range={y_domain}
+      x_ticks={4}
+      y_ticks={4}
+      x_grid={false}
+      y_grid={false}
+      x_label={elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`}
+      y_label="ΔE<sub>form</sub> (eV/atom)"
+      legend={null}
+      color_bar={{
+        title: `E<sub>above hull</sub> (eV/atom)`,
+        wrapper_style:
+          `position: absolute; top: 2em; left: 50%; transform: translateX(-50%); width: 260px;`,
+        bar_style: `height: 16px;`,
+      }}
+      {tooltip}
+      {user_content}
+      point_events={{
+        click: ({ point }) => {
+          const entry = (point?.metadata as unknown) as PlotEntry3D
+          on_point_click?.(entry)
+          if (enable_structure_preview && entry) {
+            const structure = extract_structure_from_entry(entry)
+            if (structure) {
+              selected_structure = structure
+              selected_entry = entry
+              calculate_modal_side()
+              modal_open = true
+            }
           }
-        }
-      },
-      mouseenter: ({ point, event }) => {
-        const entry = (point?.metadata as unknown) as PlotEntry3D
-        hover_data = entry
-          ? {
-            entry,
-            position: {
-              x: (event as MouseEvent).clientX,
-              y: (event as MouseEvent).clientY,
-            },
-          }
-          : null
-        on_point_hover?.(hover_data)
-      },
-      mousemove: ({ point, event }) => {
-        const entry = (point?.metadata as unknown) as PlotEntry3D
-        hover_data = entry
-          ? {
-            entry,
-            position: {
-              x: (event as MouseEvent).clientX,
-              y: (event as MouseEvent).clientY,
-            },
-          }
-          : null
-        on_point_hover?.(hover_data)
-      },
-      mouseleave: () => {
-        hover_data = null
-        on_point_hover?.(hover_data)
-      },
-    }}
-    padding={{ t: 30, b: 60, l: 60, r: 30 }}
-  />
+        },
+        mouseenter: ({ point, event }) => {
+          const entry = (point?.metadata as unknown) as PlotEntry3D
+          hover_data = entry
+            ? {
+              entry,
+              position: {
+                x: (event as MouseEvent).clientX,
+                y: (event as MouseEvent).clientY,
+              },
+            }
+            : null
+          on_point_hover?.(hover_data)
+        },
+        mousemove: ({ point, event }) => {
+          const entry = (point?.metadata as unknown) as PlotEntry3D
+          hover_data = entry
+            ? {
+              entry,
+              position: {
+                x: (event as MouseEvent).clientX,
+                y: (event as MouseEvent).clientY,
+              },
+            }
+            : null
+          on_point_hover?.(hover_data)
+        },
+        mouseleave: () => {
+          hover_data = null
+          on_point_hover?.(hover_data)
+        },
+      }}
+      padding={{ t: 30, b: 60, l: 60, r: 30 }}
+    />
+  {/key}
 
   {#if merged_legend.show}
     <section class="control-buttons">
       <button
         type="button"
-        onclick={reset_camera}
-        title="Reset view (R key)"
+        onclick={reset_all}
+        title="Reset view and settings"
         class="reset-camera-btn"
       >
         <Icon icon="Reset" />
@@ -694,10 +731,6 @@
     </section>
   {/if}
 
-  <!-- Tooltip handled by ScatterPlot or external consumers -->
-
-  <!-- Copy feedback removed with canvas interactions -->
-
   <!-- Drag over overlay -->
   {#if drag_over}
     <div class="drag-overlay">
@@ -736,16 +769,13 @@
   .phase-diagram-2d.dragover {
     border: 2px dashed var(--accent-color, #1976d2);
   }
-  /* Canvas styles removed (using ScatterPlot) */
+
   .control-buttons {
     position: absolute;
     top: 1ex;
     right: 1ex;
     display: flex;
     gap: 8px;
-  }
-  .control-buttons :global(.draggable-pane) {
-    z-index: 1001 !important;
   }
   .control-buttons button {
     background: transparent;
@@ -759,8 +789,7 @@
   .control-buttons button:hover {
     background: rgba(255, 255, 255, 0.2);
   }
-  /* Tooltip handled by ScatterPlot */
-  /* Copy feedback removed */
+
   .drag-overlay {
     position: absolute;
     inset: 0;

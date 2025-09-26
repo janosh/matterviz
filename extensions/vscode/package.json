@@ -536,194 +536,6 @@
           "minimum": 0,
           "maximum": 5
         },
-        "matterviz.trajectory.scatter_line_width": {
-          "type": "number",
-          "default": 2,
-          "description": "Line width for scatter plot connections",
-          "minimum": 0.5,
-          "maximum": 10
-        },
-        "matterviz.trajectory.scatter_point_size": {
-          "type": "number",
-          "default": 4,
-          "description": "Point size for scatter plots",
-          "minimum": 1,
-          "maximum": 20
-        },
-        "matterviz.trajectory.scatter_show_legend": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show legend in scatter plots"
-        },
-        "matterviz.trajectory.plot_animation_duration": {
-          "type": "number",
-          "default": 200,
-          "description": "Duration of plot animations in milliseconds",
-          "minimum": 0,
-          "maximum": 2000
-        },
-        "matterviz.trajectory.enable_plot_zoom": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable zooming in plots"
-        },
-        "matterviz.trajectory.plot_zoom_factor": {
-          "type": "number",
-          "default": 1.5,
-          "description": "Zoom factor for plot interactions",
-          "minimum": 1.1,
-          "maximum": 5
-        },
-        "matterviz.trajectory.auto_fit_plot_range": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically fit plot range to data"
-        },
-        "matterviz.trajectory.plot_grid_lines": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show grid lines in plots"
-        },
-        "matterviz.trajectory.plot_axis_labels": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show axis labels in plots"
-        },
-        "matterviz.trajectory.plot_show_zero_lines": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show zero reference lines in plots"
-        },
-        "matterviz.trajectory.plot_x_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis grid lines"
-        },
-        "matterviz.trajectory.plot_y_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis grid lines"
-        },
-        "matterviz.trajectory.plot_y2_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show secondary Y-axis grid lines"
-        },
-        "matterviz.trajectory.plot_x_format": {
-          "type": "string",
-          "default": ".2~s",
-          "description": "Number format for X-axis ticks (D3 format specifier)"
-        },
-        "matterviz.trajectory.plot_y_format": {
-          "type": "string",
-          "default": "d",
-          "description": "Number format for Y-axis ticks (D3 format specifier)"
-        },
-        "matterviz.trajectory.plot_y2_format": {
-          "type": "string",
-          "default": "",
-          "description": "Number format for secondary Y-axis ticks (D3 format specifier)"
-        },
-        "matterviz.trajectory.plot_x_scale_type": {
-          "type": "string",
-          "default": "linear",
-          "description": "Scale type for X-axis",
-          "enum": [
-            "linear",
-            "log"
-          ]
-        },
-        "matterviz.trajectory.plot_y_scale_type": {
-          "type": "string",
-          "default": "linear",
-          "description": "Scale type for Y-axis",
-          "enum": [
-            "linear",
-            "log"
-          ]
-        },
-        "matterviz.trajectory.plot_x_ticks": {
-          "type": "number",
-          "default": 8,
-          "description": "Number of ticks on X-axis",
-          "minimum": 2,
-          "maximum": 20
-        },
-        "matterviz.trajectory.plot_y_ticks": {
-          "type": "number",
-          "default": 6,
-          "description": "Number of ticks on Y-axis",
-          "minimum": 2,
-          "maximum": 20
-        },
-        "matterviz.trajectory.scatter_markers": {
-          "type": "string",
-          "default": "line+points",
-          "description": "Scatter plot marker type",
-          "enum": [
-            "line",
-            "points",
-            "line+points"
-          ]
-        },
-        "matterviz.trajectory.scatter_point_color": {
-          "type": "string",
-          "default": "#4682b4",
-          "description": "Default color for scatter plot points"
-        },
-        "matterviz.trajectory.scatter_point_opacity": {
-          "type": "number",
-          "default": 1,
-          "description": "Opacity of scatter plot points",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.trajectory.scatter_point_stroke_width": {
-          "type": "number",
-          "default": 1,
-          "description": "Stroke width for scatter plot points",
-          "minimum": 0,
-          "maximum": 5
-        },
-        "matterviz.trajectory.scatter_point_stroke_color": {
-          "type": "string",
-          "default": "#000000",
-          "description": "Stroke color for scatter plot points"
-        },
-        "matterviz.trajectory.scatter_point_stroke_opacity": {
-          "type": "number",
-          "default": 1,
-          "description": "Stroke opacity for scatter plot points",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.trajectory.scatter_line_color": {
-          "type": "string",
-          "default": "#4682b4",
-          "description": "Default color for scatter plot lines"
-        },
-        "matterviz.trajectory.scatter_line_opacity": {
-          "type": "number",
-          "default": 1,
-          "description": "Opacity of scatter plot lines",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.trajectory.scatter_line_dash": {
-          "type": "string",
-          "default": "solid",
-          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
-        },
-        "matterviz.trajectory.scatter_show_points": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show points in scatter plots"
-        },
-        "matterviz.trajectory.scatter_show_lines": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show connecting lines in scatter plots"
-        },
         "matterviz.trajectory.step_label_format": {
           "type": "string",
           "default": ".3~s",
@@ -815,7 +627,7 @@
           "default": true,
           "description": "Cache parsed trajectory data"
         },
-        "matterviz.composition.composition_mode": {
+        "matterviz.composition.display_mode": {
           "type": "string",
           "default": "pie",
           "description": "Display mode for composition data",
@@ -825,7 +637,7 @@
             "bar"
           ]
         },
-        "matterviz.composition.composition_color_scheme": {
+        "matterviz.composition.color_scheme": {
           "type": "string",
           "default": "Vesta",
           "description": "Color scheme for composition visualization",
@@ -837,6 +649,477 @@
             "Muted",
             "Dark Mode"
           ]
+        },
+        "matterviz.scatter.line_width": {
+          "type": "number",
+          "default": 2,
+          "description": "Line width for scatter plot connections",
+          "minimum": 0.5,
+          "maximum": 10
+        },
+        "matterviz.scatter.point_size": {
+          "type": "number",
+          "default": 4,
+          "description": "Point size for scatter plots",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "matterviz.scatter.show_legend": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show legend in scatter plots"
+        },
+        "matterviz.scatter.markers": {
+          "type": "string",
+          "default": "line+points",
+          "description": "Scatter plot marker type",
+          "enum": [
+            "line",
+            "points",
+            "line+points"
+          ]
+        },
+        "matterviz.scatter.point_color": {
+          "type": "string",
+          "default": "#4682b4",
+          "description": "Default color for scatter plot points"
+        },
+        "matterviz.scatter.point_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Opacity of scatter plot points",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.scatter.point_stroke_width": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke width for scatter plot points",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "matterviz.scatter.point_stroke_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Stroke color for scatter plot points"
+        },
+        "matterviz.scatter.point_stroke_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke opacity for scatter plot points",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.scatter.line_color": {
+          "type": "string",
+          "default": "#4682b4",
+          "description": "Default color for scatter plot lines"
+        },
+        "matterviz.scatter.line_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Opacity of scatter plot lines",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.scatter.line_dash": {
+          "type": "string",
+          "default": "solid",
+          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
+        },
+        "matterviz.scatter.show_points": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show points in scatter plots"
+        },
+        "matterviz.scatter.show_lines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show connecting lines in scatter plots"
+        },
+        "matterviz.plot.animation_duration": {
+          "type": "number",
+          "default": 200,
+          "description": "Duration of plot animations in milliseconds",
+          "minimum": 0,
+          "maximum": 2000
+        },
+        "matterviz.plot.enable_zoom": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable zooming in plots"
+        },
+        "matterviz.plot.zoom_factor": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Zoom factor for plot interactions",
+          "minimum": 1.1,
+          "maximum": 5
+        },
+        "matterviz.plot.auto_fit_range": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically fit plot range to data"
+        },
+        "matterviz.plot.grid_lines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show grid lines in plots"
+        },
+        "matterviz.plot.axis_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show axis labels in plots"
+        },
+        "matterviz.plot.show_zero_lines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show zero reference lines in plots"
+        },
+        "matterviz.plot.x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.plot.y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.plot.y2_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show secondary Y-axis grid lines"
+        },
+        "matterviz.plot.x_format": {
+          "type": "string",
+          "default": ".2~s",
+          "description": "Number format for X-axis ticks (D3 format specifier)"
+        },
+        "matterviz.plot.y_format": {
+          "type": "string",
+          "default": "d",
+          "description": "Number format for Y-axis ticks (D3 format specifier)"
+        },
+        "matterviz.plot.y2_format": {
+          "type": "string",
+          "default": "",
+          "description": "Number format for secondary Y-axis ticks (D3 format specifier)"
+        },
+        "matterviz.plot.x_scale_type": {
+          "type": "string",
+          "default": "linear",
+          "description": "Scale type for X-axis",
+          "enum": [
+            "linear",
+            "log"
+          ]
+        },
+        "matterviz.plot.y_scale_type": {
+          "type": "string",
+          "default": "linear",
+          "description": "Scale type for Y-axis",
+          "enum": [
+            "linear",
+            "log"
+          ]
+        },
+        "matterviz.plot.x_ticks": {
+          "type": "number",
+          "default": 8,
+          "description": "Number of ticks on X-axis",
+          "minimum": 2,
+          "maximum": 20
+        },
+        "matterviz.plot.y_ticks": {
+          "type": "number",
+          "default": 6,
+          "description": "Number of ticks on Y-axis",
+          "minimum": 2,
+          "maximum": 20
+        },
+        "matterviz.phase_diagram.binary.camera_zoom": {
+          "type": "number",
+          "default": 1,
+          "description": "Initial zoom for binary (2D) phase diagram",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        "matterviz.phase_diagram.binary.camera_center_x": {
+          "type": "number",
+          "default": 0,
+          "description": "Initial X center for binary (2D) phase diagram"
+        },
+        "matterviz.phase_diagram.binary.camera_center_y": {
+          "type": "number",
+          "default": 0,
+          "description": "Initial Y center for binary (2D) phase diagram"
+        },
+        "matterviz.phase_diagram.binary.color_mode": {
+          "type": "string",
+          "default": "energy",
+          "description": "Color mode for 2D PD points",
+          "enum": [
+            "stability",
+            "energy"
+          ]
+        },
+        "matterviz.phase_diagram.binary.color_scale": {
+          "type": "string",
+          "default": "interpolateViridis",
+          "description": "D3 interpolate color scale for 2D PD energy mode"
+        },
+        "matterviz.phase_diagram.binary.show_stable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show stable phases in 2D PD"
+        },
+        "matterviz.phase_diagram.binary.show_unstable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show unstable phases in 2D PD"
+        },
+        "matterviz.phase_diagram.binary.show_stable_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show labels for stable phases in 2D PD"
+        },
+        "matterviz.phase_diagram.binary.show_unstable_labels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show labels for unstable phases in 2D PD"
+        },
+        "matterviz.phase_diagram.binary.energy_threshold": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Max eV/atom above hull for showing unstable entries in 2D PD",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "matterviz.phase_diagram.binary.label_energy_threshold": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Max eV/atom above hull for labeling unstable entries in 2D PD",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "matterviz.phase_diagram.binary.fullscreen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Start in fullscreen for 2D PD"
+        },
+        "matterviz.phase_diagram.binary.info_pane_open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Info pane open by default for 2D PD"
+        },
+        "matterviz.phase_diagram.binary.legend_pane_open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Legend pane open by default for 2D PD"
+        },
+        "matterviz.phase_diagram.ternary.camera_elevation": {
+          "type": "number",
+          "default": 45,
+          "description": "Initial camera elevation (deg) for ternary (3D) PD",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "matterviz.phase_diagram.ternary.camera_azimuth": {
+          "type": "number",
+          "default": 60,
+          "description": "Initial camera azimuth (deg) for ternary (3D) PD",
+          "minimum": -360,
+          "maximum": 360
+        },
+        "matterviz.phase_diagram.ternary.camera_zoom": {
+          "type": "number",
+          "default": 1.5,
+          "description": "Initial camera zoom for ternary (3D) PD",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        "matterviz.phase_diagram.ternary.camera_center_x": {
+          "type": "number",
+          "default": 0,
+          "description": "Initial X center for ternary (3D) PD"
+        },
+        "matterviz.phase_diagram.ternary.camera_center_y": {
+          "type": "number",
+          "default": -50,
+          "description": "Initial Y center for ternary (3D) PD"
+        },
+        "matterviz.phase_diagram.ternary.color_mode": {
+          "type": "string",
+          "default": "energy",
+          "description": "Color mode for 3D PD points",
+          "enum": [
+            "stability",
+            "energy"
+          ]
+        },
+        "matterviz.phase_diagram.ternary.color_scale": {
+          "type": "string",
+          "default": "interpolateViridis",
+          "description": "D3 interpolate color scale for 3D PD energy mode"
+        },
+        "matterviz.phase_diagram.ternary.show_stable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show stable phases in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.show_unstable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show unstable phases in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.show_stable_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show labels for stable phases in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.show_unstable_labels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show labels for unstable phases in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.energy_threshold": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Max eV/atom above hull for showing unstable entries in 3D PD",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "matterviz.phase_diagram.ternary.label_energy_threshold": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Max eV/atom above hull for labeling unstable entries in 3D PD",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "matterviz.phase_diagram.ternary.show_hull_faces": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render lower hull faces in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.hull_face_color": {
+          "type": "string",
+          "default": "#4caf50",
+          "description": "Color for lower hull faces in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.fullscreen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Start in fullscreen for 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.info_pane_open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Info pane open by default for 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.legend_pane_open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Legend pane open by default for 3D PD"
+        },
+        "matterviz.phase_diagram.quaternary.camera_rotation_x": {
+          "type": "number",
+          "default": -0.6,
+          "description": "Initial camera X rotation (rad) for quaternary (4D) PD",
+          "minimum": -6.283,
+          "maximum": 6.283
+        },
+        "matterviz.phase_diagram.quaternary.camera_rotation_y": {
+          "type": "number",
+          "default": 0.8,
+          "description": "Initial camera Y rotation (rad) for quaternary (4D) PD",
+          "minimum": -6.283,
+          "maximum": 6.283
+        },
+        "matterviz.phase_diagram.quaternary.camera_zoom": {
+          "type": "number",
+          "default": 1.4,
+          "description": "Initial camera zoom for quaternary (4D) PD",
+          "minimum": 0.1,
+          "maximum": 20
+        },
+        "matterviz.phase_diagram.quaternary.camera_center_x": {
+          "type": "number",
+          "default": 0,
+          "description": "Initial X center for quaternary (4D) PD"
+        },
+        "matterviz.phase_diagram.quaternary.camera_center_y": {
+          "type": "number",
+          "default": 20,
+          "description": "Initial Y center for quaternary (4D) PD"
+        },
+        "matterviz.phase_diagram.quaternary.color_mode": {
+          "type": "string",
+          "default": "energy",
+          "description": "Color mode for 4D PD points",
+          "enum": [
+            "stability",
+            "energy"
+          ]
+        },
+        "matterviz.phase_diagram.quaternary.color_scale": {
+          "type": "string",
+          "default": "interpolateViridis",
+          "description": "D3 interpolate color scale for 4D PD energy mode"
+        },
+        "matterviz.phase_diagram.quaternary.show_stable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show stable phases in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.show_unstable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show unstable phases in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.show_stable_labels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show labels for stable phases in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.show_unstable_labels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show labels for unstable phases in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.energy_threshold": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Max eV/atom above hull for showing unstable entries in 4D PD",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "matterviz.phase_diagram.quaternary.label_energy_threshold": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Max eV/atom above hull for labeling unstable entries in 4D PD",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "matterviz.phase_diagram.quaternary.show_elemental_polymorphs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show polymorph elemental entries in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.fullscreen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Start in fullscreen for 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.info_pane_open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Info pane open by default for 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.legend_pane_open": {
+          "type": "boolean",
+          "default": false,
+          "description": "Legend pane open by default for 4D PD"
         }
       }
     }

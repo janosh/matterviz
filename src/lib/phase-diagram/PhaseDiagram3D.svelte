@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol } from '$lib'
-  import { Icon, toggle_fullscreen } from '$lib'
+  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
@@ -288,11 +288,11 @@
   let pulse_frame_id = 0
 
   const camera_default = {
-    elevation: 45, // Elevation angle in degrees (0 = side view, 90 = top view)
-    azimuth: 60, // Azimuth angle in degrees (rotation around z-axis)
-    zoom: 1.5, // Good zoom to see the funnel shape
-    center_x: 0,
-    center_y: -50, // Shift up to better center the funnel
+    elevation: PD_DEFAULTS.ternary.camera_elevation,
+    azimuth: PD_DEFAULTS.ternary.camera_azimuth,
+    zoom: PD_DEFAULTS.ternary.camera_zoom,
+    center_x: PD_DEFAULTS.ternary.camera_center_x,
+    center_y: PD_DEFAULTS.ternary.camera_center_y,
   }
   let camera = $state({ ...camera_default })
 
@@ -385,6 +385,22 @@
   const get_tooltip_text = (entry: TernaryPlotEntry) => build_tooltip_text(entry)
 
   const reset_camera = () => Object.assign(camera, camera_default)
+  function reset_all() {
+    reset_camera()
+    fullscreen = PD_DEFAULTS.ternary.fullscreen
+    info_pane_open = PD_DEFAULTS.ternary.info_pane_open
+    legend_pane_open = PD_DEFAULTS.ternary.legend_pane_open
+    color_mode = PD_DEFAULTS.ternary.color_mode
+    color_scale = PD_DEFAULTS.ternary.color_scale as D3InterpolateName
+    show_stable = PD_DEFAULTS.ternary.show_stable
+    show_unstable = PD_DEFAULTS.ternary.show_unstable
+    show_stable_labels = PD_DEFAULTS.ternary.show_stable_labels
+    show_unstable_labels = PD_DEFAULTS.ternary.show_unstable_labels
+    label_energy_threshold = PD_DEFAULTS.ternary.label_energy_threshold
+    energy_threshold = PD_DEFAULTS.ternary.energy_threshold
+    show_hull_faces = PD_DEFAULTS.ternary.show_hull_faces
+    hull_face_color = PD_DEFAULTS.ternary.hull_face_color
+  }
 
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
@@ -689,7 +705,7 @@
     }
   }
 
-  // Formation energy color bar helpers (min → 0 eV/atom)
+  // Formation energy color bar helpers
   const e_form_range = $derived.by((): [number, number] => {
     const energies = plot_entries.map((e) => e.formation_energy)
     const min_fe = energies.length ? Math.min(0, ...energies) : -1
@@ -1176,8 +1192,8 @@
     <section class="control-buttons">
       <button
         type="button"
-        onclick={reset_camera}
-        title="Reset camera view (R key)"
+        onclick={reset_all}
+        title="Reset view and settings"
         class="reset-camera-btn"
       >
         <Icon icon="Reset" />
@@ -1351,9 +1367,6 @@
     right: 1ex;
     display: flex;
     gap: 8px;
-  }
-  .control-buttons :global(.draggable-pane) {
-    z-index: 1001 !important;
   }
   .control-buttons button {
     background: transparent;

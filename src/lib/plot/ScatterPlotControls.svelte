@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DraggablePane, SettingsSection } from '$lib'
-  import type { DataSeries } from '$lib/plot'
+  import type { DataSeries, Markers } from '$lib/plot'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
@@ -15,7 +15,7 @@
     // Series data for multi-series controls
     series?: readonly DataSeries[]
     // Display options
-    markers?: `line` | `points` | `line+points`
+    markers?: Markers
     show_zero_lines?: boolean
     x_grid?: boolean | Record<string, unknown>
     y_grid?: boolean | Record<string, unknown>
@@ -56,13 +56,11 @@
     controls_open = $bindable(false),
     plot_controls,
     series = [],
-    markers = $bindable(
-      DEFAULTS.trajectory.scatter_markers as `line` | `points` | `line+points`,
-    ),
-    show_zero_lines = $bindable(DEFAULTS.trajectory.plot_show_zero_lines),
-    x_grid = $bindable(DEFAULTS.trajectory.plot_x_grid),
-    y_grid = $bindable(DEFAULTS.trajectory.plot_y_grid),
-    y2_grid = $bindable(DEFAULTS.trajectory.plot_y2_grid),
+    markers = $bindable(DEFAULTS.scatter.markers),
+    show_zero_lines = $bindable(DEFAULTS.plot.show_zero_lines),
+    x_grid = $bindable(DEFAULTS.plot.x_grid),
+    y_grid = $bindable(DEFAULTS.plot.y_grid),
+    y2_grid = $bindable(DEFAULTS.plot.y2_grid),
     has_y2_points = false,
     // Range controls
     x_range = $bindable(undefined),
@@ -73,24 +71,24 @@
     auto_y_range = [0, 1],
     auto_y2_range = [0, 1],
     // Format controls
-    x_format = $bindable(DEFAULTS.trajectory.plot_x_format),
-    y_format = $bindable(DEFAULTS.trajectory.plot_y_format),
-    y2_format = $bindable(DEFAULTS.trajectory.plot_y2_format),
+    x_format = $bindable(DEFAULTS.plot.x_format),
+    y_format = $bindable(DEFAULTS.plot.y_format),
+    y2_format = $bindable(DEFAULTS.plot.y2_format),
     // Style controls
-    point_size = $bindable(DEFAULTS.trajectory.scatter_point_size),
-    point_color = $bindable(DEFAULTS.trajectory.scatter_point_color),
-    point_opacity = $bindable(DEFAULTS.trajectory.scatter_point_opacity),
-    point_stroke_width = $bindable(DEFAULTS.trajectory.scatter_point_stroke_width),
-    point_stroke_color = $bindable(DEFAULTS.trajectory.scatter_point_stroke_color),
+    point_size = $bindable(DEFAULTS.scatter.point_size),
+    point_color = $bindable(DEFAULTS.scatter.point_color),
+    point_opacity = $bindable(DEFAULTS.scatter.point_opacity),
+    point_stroke_width = $bindable(DEFAULTS.scatter.point_stroke_width),
+    point_stroke_color = $bindable(DEFAULTS.scatter.point_stroke_color),
     point_stroke_opacity = $bindable(
-      DEFAULTS.trajectory.scatter_point_stroke_opacity,
+      DEFAULTS.scatter.point_stroke_opacity,
     ),
-    line_width = $bindable(DEFAULTS.trajectory.scatter_line_width),
-    line_color = $bindable(DEFAULTS.trajectory.scatter_line_color),
-    line_opacity = $bindable(DEFAULTS.trajectory.scatter_line_opacity),
-    line_dash = $bindable(DEFAULTS.trajectory.scatter_line_dash),
-    show_points = $bindable(DEFAULTS.trajectory.scatter_show_points),
-    show_lines = $bindable(DEFAULTS.trajectory.scatter_show_lines),
+    line_width = $bindable(DEFAULTS.scatter.line_width),
+    line_color = $bindable(DEFAULTS.scatter.line_color),
+    line_opacity = $bindable(DEFAULTS.scatter.line_opacity),
+    line_dash = $bindable(DEFAULTS.scatter.line_dash),
+    show_points = $bindable(DEFAULTS.scatter.show_points),
+    show_lines = $bindable(DEFAULTS.scatter.show_lines),
     selected_series_idx = $bindable(0),
     toggle_props = {},
     pane_props = {},
@@ -244,12 +242,12 @@
         title="Display"
         current_values={{ show_zero_lines, show_points, show_lines, x_grid, y_grid, y2_grid }}
         on_reset={() => {
-          show_zero_lines = DEFAULTS.trajectory.plot_show_zero_lines
-          show_points = DEFAULTS.trajectory.scatter_show_points
-          show_lines = DEFAULTS.trajectory.scatter_show_lines
-          x_grid = DEFAULTS.trajectory.plot_x_grid
-          y_grid = DEFAULTS.trajectory.plot_y_grid
-          y2_grid = DEFAULTS.trajectory.plot_y2_grid
+          show_zero_lines = DEFAULTS.plot.show_zero_lines
+          show_points = DEFAULTS.scatter.show_points
+          show_lines = DEFAULTS.scatter.show_lines
+          x_grid = DEFAULTS.plot.x_grid
+          y_grid = DEFAULTS.plot.y_grid
+          y2_grid = DEFAULTS.plot.y2_grid
         }}
         style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
@@ -269,12 +267,12 @@
           <input type="checkbox" bind:checked={show_lines} /> Show lines
         </label>
         <label
-          {@attach tooltip({ content: SETTINGS_CONFIG.trajectory.plot_grid_lines.description })}
+          {@attach tooltip({ content: SETTINGS_CONFIG.plot.grid_lines.description })}
         >
           <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
         </label>
         <label
-          {@attach tooltip({ content: SETTINGS_CONFIG.trajectory.plot_grid_lines.description })}
+          {@attach tooltip({ content: SETTINGS_CONFIG.plot.grid_lines.description })}
         >
           <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
         </label>
@@ -318,9 +316,9 @@
         title="Tick Format"
         current_values={{ x_format, y_format, y2_format }}
         on_reset={() => {
-          x_format = DEFAULTS.trajectory.plot_x_format
-          y_format = DEFAULTS.trajectory.plot_y_format
-          y2_format = DEFAULTS.trajectory.plot_y2_format
+          x_format = DEFAULTS.plot.x_format
+          y_format = DEFAULTS.plot.y_format
+          y2_format = DEFAULTS.plot.y2_format
         }}
         class="pane-grid"
         style="grid-template-columns: auto 1fr"
@@ -381,12 +379,12 @@
             point_stroke_opacity,
           }}
           on_reset={() => {
-            point_size = DEFAULTS.trajectory.scatter_point_size
-            point_color = DEFAULTS.trajectory.scatter_point_color
-            point_opacity = DEFAULTS.trajectory.scatter_point_opacity
-            point_stroke_width = DEFAULTS.trajectory.scatter_point_stroke_width
-            point_stroke_color = DEFAULTS.trajectory.scatter_point_stroke_color
-            point_stroke_opacity = DEFAULTS.trajectory.scatter_point_stroke_opacity
+            point_size = DEFAULTS.scatter.point_size
+            point_color = DEFAULTS.scatter.point_color
+            point_opacity = DEFAULTS.scatter.point_opacity
+            point_stroke_width = DEFAULTS.scatter.point_stroke_width
+            point_stroke_color = DEFAULTS.scatter.point_stroke_color
+            point_stroke_opacity = DEFAULTS.scatter.point_stroke_opacity
           }}
         >
           <div class="pane-row">
@@ -461,9 +459,9 @@
           title="Line Style"
           current_values={{ line_width, line_color, line_opacity, line_dash }}
           on_reset={() => {
-            line_width = DEFAULTS.trajectory.scatter_line_width
-            line_color = DEFAULTS.trajectory.scatter_line_color
-            line_opacity = DEFAULTS.trajectory.scatter_line_opacity
+            line_width = DEFAULTS.scatter.line_width
+            line_color = DEFAULTS.scatter.line_color
+            line_opacity = DEFAULTS.scatter.line_opacity
             line_dash = undefined
           }}
         >

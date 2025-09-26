@@ -101,12 +101,14 @@ export interface PlotPoint extends Point {
   point_tween?: TweenedOptions<XyObj>
 }
 
+export type Markers = `line` | `points` | `line+points`
+
 // Define the structure for a data series in the plot
 export interface DataSeries {
   x: readonly number[]
   y: readonly number[]
   // Optional marker display type override for this specific series
-  markers?: `line` | `points` | `line+points`
+  markers?: Markers
   // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
   y_axis?: `y1` | `y2`
   color_values?: (number | null)[] | null
@@ -245,4 +247,16 @@ export interface LegendItem {
     line_color?: string
     line_dash?: string
   }
+}
+
+export type UserContentProps = {
+  height: number
+  width: number
+  x_scale_fn: (x: number) => number
+  y_scale_fn: (y: number) => number
+  pad: Required<Sides>
+  x_min: number
+  y_min: number
+  x_max: number
+  y_max: number
 }
