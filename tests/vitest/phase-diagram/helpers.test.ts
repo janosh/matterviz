@@ -1,28 +1,28 @@
 import type { D3InterpolateName } from '$lib/colors'
 import {
-  build_tooltip_text,
-  compute_energy_color_scale,
+  build_entry_tooltip_text,
   compute_max_energy_threshold,
-  compute_phase_stats,
-  find_entry_at_mouse,
+  find_pd_entry_at_mouse,
+  get_energy_color_scale,
   get_point_color_for_entry,
 } from '$lib/phase-diagram/helpers'
+import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
 import type { PhaseEntry } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`helpers: energy color scale + point color`, () => {
-  test(`compute_energy_color_scale returns null when not energy mode or empty`, () => {
+  test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
     const color_scale: D3InterpolateName = `interpolateViridis`
-    const scale_null = compute_energy_color_scale(`stability`, color_scale, [])
+    const scale_null = get_energy_color_scale(`stability`, color_scale, [])
     expect(scale_null).toBeNull()
   })
 
-  test(`compute_energy_color_scale maps distances to colors and get_point_color_for_entry uses it`, () => {
+  test(`get_energy_color_scale maps distances to colors and get_point_color_for_entry uses it`, () => {
     const entries: Array<{ e_above_hull?: number }> = [{ e_above_hull: 0 }, {
       e_above_hull: 0.5,
     }]
     const color_scale: D3InterpolateName = `interpolateViridis`
-    const scale = compute_energy_color_scale(`energy`, color_scale, entries)
+    const scale = get_energy_color_scale(`energy`, color_scale, entries)
     expect(scale).not.toBeNull()
     const c0 = get_point_color_for_entry({ e_above_hull: 0 }, `energy`, undefined, scale)
     const c1 = get_point_color_for_entry(
@@ -64,12 +64,12 @@ describe(`helpers: thresholds and tooltips`, () => {
     expect(v).toBeGreaterThan(0.2)
   })
 
-  test(`build_tooltip_text contains key fields`, () => {
-    const t1 = build_tooltip_text(
+  test(`build_entry_tooltip_text contains key fields`, () => {
+    const t1 = build_entry_tooltip_text(
       { composition: { Li: 1 }, energy: -1 } as unknown as PhaseEntry,
     )
     expect(t1).toMatch(/Li/)
-    const t2 = build_tooltip_text(
+    const t2 = build_entry_tooltip_text(
       {
         composition: { Li: 1, O: 1 },
         energy: -6,
@@ -143,8 +143,8 @@ describe(`helpers: thresholds and tooltips`, () => {
         system: `A-B-C-D`,
       },
     },
-  ])(`compute_phase_stats: $name`, ({ elements, max_arity, entries, expected }) => {
-    const stats = compute_phase_stats(entries, elements, max_arity)
+  ])(`get_phase_diagram_stats: $name`, ({ elements, max_arity, entries, expected }) => {
+    const stats = get_phase_diagram_stats(entries, elements, max_arity)
     expect(stats).not.toBeNull()
     if (!stats) return
     expect(stats.total).toBe(expected.total)
@@ -160,8 +160,8 @@ describe(`helpers: thresholds and tooltips`, () => {
 })
 
 describe(`helpers: mouse hit testing`, () => {
-  test(`find_entry_at_mouse returns null when no canvas`, () => {
-    const hit = find_entry_at_mouse(
+  test(`find_pd_entry_at_mouse returns null when no canvas`, () => {
+    const hit = find_pd_entry_at_mouse(
       undefined as unknown as HTMLCanvasElement,
       { clientX: 0, clientY: 0 } as unknown as MouseEvent,
       [],
@@ -170,7 +170,7 @@ describe(`helpers: mouse hit testing`, () => {
     expect(hit).toBeNull()
   })
 
-  test(`find_entry_at_mouse detects nearby entry`, () => {
+  test(`find_pd_entry_at_mouse detects nearby entry`, () => {
     // Fake canvas with size and client rect
     const canvas = {
       getBoundingClientRect: () => ({ left: 0, top: 0 }),
@@ -184,7 +184,7 @@ describe(`helpers: mouse hit testing`, () => {
       visible: true,
     }]
     const project = (x: number, y: number) => ({ x, y })
-    const hit = find_entry_at_mouse(
+    const hit = find_pd_entry_at_mouse(
       canvas,
       { clientX: 102, clientY: 102 } as unknown as MouseEvent,
       plot_entries,

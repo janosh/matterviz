@@ -31,7 +31,7 @@ export const PD_STYLE = Object.freeze({
 })
 
 // Energy color scale factory (shared)
-export function compute_energy_color_scale(
+export function get_energy_color_scale(
   color_mode: `stability` | `energy`,
   color_scale: D3InterpolateName,
   plot_entries: Array<{ e_above_hull?: number }>,
@@ -62,7 +62,7 @@ export function get_point_color_for_entry(
 }
 
 // Robust drag-and-drop JSON parsing for phase diagram entries
-export async function parse_phase_diagram_drop(
+export async function parse_pd_entries_from_drop(
   event: DragEvent,
 ): Promise<PhaseEntry[] | null> {
   event.preventDefault()
@@ -87,7 +87,7 @@ export function compute_max_energy_threshold(processed_entries: PhaseEntry[]): n
 }
 
 // Build a tooltip text for any phase entry (shared)
-export function build_tooltip_text(entry: PhaseEntry): string {
+export function build_entry_tooltip_text(entry: PhaseEntry): string {
   const is_element = Object.keys(entry.composition).length === 1
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
@@ -116,7 +116,7 @@ export function build_tooltip_text(entry: PhaseEntry): string {
 }
 
 // Generic mouse hit-testing for projected 3D points (shared)
-export function find_entry_at_mouse<
+export function find_pd_entry_at_mouse<
   T extends {
     x: number
     y: number
@@ -149,7 +149,9 @@ export function find_entry_at_mouse<
 }
 
 // Phase statistics (supports ternary and quaternary via max_arity)
-export function compute_phase_stats(
+// moved to hull_energy.get_phase_diagram_stats
+/*
+export function get_phase_diagram_stats(
   processed_entries: PhaseEntry[],
   elements: ElementSymbol[],
   max_arity: 3 | 4,
@@ -222,3 +224,4 @@ export function compute_phase_stats(
     chemical_system: elements.join(`-`),
   }
 }
+*/

@@ -7,35 +7,34 @@
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
-  import { compute_lower_hull_triangles } from './convex-hull'
   import {
-    build_lower_hull_model,
-    compute_e_above_hull_for_points,
-    compute_formation_energy_per_atom,
-    find_lowest_energy_unary_refs,
-    process_pd_entries,
-  } from './energies'
+    get_ternary_3d_coordinates,
+    get_triangle_centroid,
+    get_triangle_edges,
+    get_triangle_vertical_edges,
+    TRIANGLE_VERTICES,
+  } from './barycentric-coords'
   import {
-    build_tooltip_text,
-    compute_energy_color_scale,
+    build_entry_tooltip_text,
     compute_max_energy_threshold,
-    compute_phase_stats,
-    default_legend as shared_default_legend,
-    find_entry_at_mouse as find_entry_at_mouse_helper,
+    default_legend,
+    get_energy_color_scale,
     get_point_color_for_entry,
-    parse_phase_diagram_drop,
+    parse_pd_entries_from_drop,
     PD_STYLE,
   } from './helpers'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import {
-    compute_ternary_3d_coordinates,
-    get_triangle_centroid,
-    get_triangle_edges,
-    get_triangle_vertical_edges,
-    TRIANGLE_VERTICES,
-  } from './ternary'
+    build_lower_hull_model,
+    compute_e_above_hull_for_points,
+    compute_formation_energy_per_atom,
+    compute_lower_hull_triangles,
+    find_lowest_energy_unary_refs,
+    get_phase_diagram_stats,
+    process_pd_entries,
+  } from './thermodynamics'
   import type {
     HoverData3D,
     PDLegendConfig,
@@ -102,7 +101,7 @@
   }: Props = $props()
 
   const merged_legend: PDLegendConfig = $derived({
-    ...shared_default_legend,
+    ...default_legend,
     ...legend,
   })
 
@@ -200,7 +199,7 @@
   const coords_entries = $derived.by(() => {
     if (elements.length !== 3) return []
     try {
-      const coords = compute_ternary_3d_coordinates(pd_data.entries, elements)
+      const coords = get_ternary_3d_coordinates(pd_data.entries, elements)
       console.log(
         `PhaseDiagram3D: ${coords.length} ternary coords for ${elements.join(`-`)}`,
       )
@@ -382,7 +381,8 @@
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: TernaryPlotEntry) => build_tooltip_text(entry)
+  const get_tooltip_text = (entry: TernaryPlotEntry) =>
+    build_entry_tooltip_text(entry)
 
   const reset_camera = () => Object.assign(camera, camera_default)
   function reset_all() {
@@ -418,7 +418,7 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await parse_phase_diagram_drop(event)
+    const data = await parse_pd_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 
@@ -440,7 +440,7 @@
 
   // Cache energy color scale per frame/setting
   const energy_color_scale = $derived.by(() =>
-    compute_energy_color_scale(color_mode, color_scale, plot_entries)
+    get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
   const max_energy_threshold = $derived(() =>
@@ -449,7 +449,7 @@
 
   // Phase diagram statistics
   const phase_stats = $derived.by(() =>
-    compute_phase_stats(processed_entries, elements, 3)
+    get_phase_diagram_stats(processed_entries, elements, 3)
   )
 
   // 3D to 2D projection for ternary diagrams
@@ -988,15 +988,15 @@
   }
 
   const handle_hover = (event: MouseEvent) => {
-    const entry = find_entry_at_mouse(event)
+    const entry = find_pd_entry_at_mouse(event)
     hover_data = entry
       ? { entry, position: { x: event.clientX, y: event.clientY } }
       : null
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent) =>
-    find_entry_at_mouse_helper(canvas, event, plot_entries, (x, y, z) => {
+  const find_pd_entry_at_mouse = (event: MouseEvent) =>
+    find_pd_entry_at_mouse(canvas, event, plot_entries, (x, y, z) => {
       const p = project_3d_point(x, y, z)
       return { x: p.x, y: p.y }
     })
@@ -1008,7 +1008,7 @@
       return
     }
 
-    const entry = find_entry_at_mouse(event)
+    const entry = find_pd_entry_at_mouse(event)
     if (entry) {
       on_point_click?.(entry)
 
@@ -1041,7 +1041,7 @@
   }
 
   const handle_double_click = (event: MouseEvent) => {
-    const entry = find_entry_at_mouse(event)
+    const entry = find_pd_entry_at_mouse(event)
     if (entry) {
       copy_to_clipboard(get_tooltip_text(entry), {
         x: event.clientX,

@@ -10,8 +10,8 @@ import {
   is_senary_entry,
   is_septenary_entry,
   is_ternary_entry,
-} from '$lib/phase-diagram/arity'
-import { PhaseEntry } from '$lib/phase-diagram/types'
+  PhaseEntry,
+} from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {

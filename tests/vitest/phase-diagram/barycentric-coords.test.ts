@@ -1,16 +1,20 @@
 import type { ElementSymbol } from '$lib'
 import {
-  barycentric_to_ternary_3d,
-  barycentric_to_triangular,
+  barycentric_to_ternary_xy,
+  barycentric_to_ternary_xyz,
+  barycentric_to_tetrahedral,
   calculate_face_centroid,
   calculate_face_normal,
   composition_to_barycentric_3d,
-  compute_ternary_3d_coordinates,
+  composition_to_barycentric_4d,
+  compute_4d_coords,
+  get_ternary_3d_coordinates,
   get_triangle_centroid,
   get_triangle_edges,
   get_triangle_vertical_edges,
+  TETRAHEDRON_VERTICES,
   TRIANGLE_VERTICES,
-} from '$lib/phase-diagram/ternary'
+} from '$lib/phase-diagram/barycentric-coords'
 import type { PhaseEntry } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
@@ -35,15 +39,15 @@ describe(`ternary: constants and projections`, () => {
   })
 
   test(`barycentric to triangular maps vertices correctly`, () => {
-    expect(barycentric_to_triangular([1, 0, 0])).toEqual([1, 0])
-    const v1 = barycentric_to_triangular([0, 1, 0])
+    expect(barycentric_to_ternary_xy([1, 0, 0])).toEqual([1, 0])
+    const v1 = barycentric_to_ternary_xy([0, 1, 0])
     expect(Number(v1[0].toFixed(6))).toBe(Number((0.5).toFixed(6)))
     expect(Number(v1[1].toFixed(6))).toBe(Number((Math.sqrt(3) / 2).toFixed(6)))
-    expect(barycentric_to_triangular([0, 0, 1])).toEqual([0, 0])
+    expect(barycentric_to_ternary_xy([0, 0, 1])).toEqual([0, 0])
   })
 
   test(`barycentric to ternary 3d uses energy as z`, () => {
-    const p = barycentric_to_ternary_3d([1, 0, 0], -0.5)
+    const p = barycentric_to_ternary_xyz([1, 0, 0], -0.5)
     expect(p).toEqual({ x: 1, y: 0, z: -0.5 })
   })
 
@@ -76,14 +80,14 @@ describe(`ternary: composition and plotting`, () => {
       .toThrow()
   })
 
-  test(`compute_ternary_3d_coordinates filters entries and projects coords`, () => {
+  test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {
     const elements = [`A`, `B`, `C`] as unknown as ElementSymbol[]
     const entries: PhaseEntry[] = [
       { composition: { A: 1 }, energy: 0, e_form_per_atom: 0 },
       { composition: { A: 1, B: 1 }, energy: 0, e_form_per_atom: -1 },
       { composition: { A: 1, D: 1 }, energy: 0, e_form_per_atom: -1 }, // out-of-system
     ]
-    const out = compute_ternary_3d_coordinates(entries, elements)
+    const out = get_ternary_3d_coordinates(entries, elements)
     expect(out.length).toBe(2)
     expect(out[0]).toHaveProperty(`x`)
     expect(out[0]).toHaveProperty(`y`)
@@ -122,5 +126,57 @@ describe(`ternary: geometry helpers`, () => {
       z: 4,
     })
     expect(c).toEqual({ x: 2 / 3, y: 2 / 3, z: 2 })
+  })
+})
+
+describe(`quaternary: barycentric and projection`, () => {
+  test(`tetrahedron vertex count and non-degenerate`, () => {
+    expect(TETRAHEDRON_VERTICES.length).toBe(4)
+    // distances from vertex 3 (origin) are non-zero
+    for (let idx = 0; idx < 3; idx++) {
+      const d = Math.hypot(
+        TETRAHEDRON_VERTICES[idx][0] - TETRAHEDRON_VERTICES[3][0],
+        TETRAHEDRON_VERTICES[idx][1] - TETRAHEDRON_VERTICES[3][1],
+        TETRAHEDRON_VERTICES[idx][2] - TETRAHEDRON_VERTICES[3][2],
+      )
+      expect(d).toBeGreaterThan(0)
+    }
+  })
+
+  test(`composition_to_barycentric_4d normalizes or defaults to uniform`, () => {
+    const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
+    const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
+    expect(Number(bc.reduce((a, b) => a + b, 0).toFixed(9))).toBe(1)
+    const zero = composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)
+    expect(zero).toEqual([0.25, 0.25, 0.25, 0.25])
+  })
+
+  test(`barycentric_to_tetrahedral maps basis to vertices`, () => {
+    const p0 = barycentric_to_tetrahedral([1, 0, 0, 0])
+    expect(Number(p0.x.toFixed(6))).toBe(1)
+    const p1 = barycentric_to_tetrahedral([0, 1, 0, 0])
+    expect(Number(p1.x.toFixed(6))).toBe(Number((0.5).toFixed(6)))
+    const p3 = barycentric_to_tetrahedral([0, 0, 0, 1])
+    expect(p3).toEqual({ x: 0, y: 0, z: 0 })
+    const p2 = barycentric_to_tetrahedral([0, 0, 1, 0])
+    expect(Number(p2.y.toFixed(6))).toBe(Number((Math.sqrt(3) / 6).toFixed(6)))
+    expect(Number(p2.z.toFixed(6))).toBe(Number((Math.sqrt(6) / 3).toFixed(6)))
+  })
+})
+
+describe(`quaternary: compute_4d_coords`, () => {
+  test(`filters entries outside chemical system and projects coords`, () => {
+    const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
+    const entries: PhaseEntry[] = [
+      { composition: { A: 1 }, energy: 0 },
+      { composition: { A: 1, B: 1 }, energy: 0 },
+      { composition: { A: 1, E: 1 }, energy: 0 },
+    ]
+    const out = compute_4d_coords(entries, elems)
+    expect(out.length).toBe(2)
+    expect(out[0]).toHaveProperty(`x`)
+    expect(out[0]).toHaveProperty(`y`)
+    expect(out[0]).toHaveProperty(`z`)
+    expect(out[0]).toHaveProperty(`is_element`)
   })
 })

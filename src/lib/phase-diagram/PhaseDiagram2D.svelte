@@ -13,20 +13,20 @@
   import { ScatterPlot } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
   import {
-    compute_formation_energy_per_atom,
-    find_lowest_energy_unary_refs,
-    process_pd_entries,
-  } from './energies'
-  import {
     compute_max_energy_threshold,
-    compute_phase_stats,
-    default_legend as shared_default_legend,
-    parse_phase_diagram_drop,
+    default_legend,
+    parse_pd_entries_from_drop,
     PD_STYLE,
   } from './helpers'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
+  import {
+    compute_formation_energy_per_atom,
+    find_lowest_energy_unary_refs,
+    get_phase_diagram_stats,
+    process_pd_entries,
+  } from './thermodynamics'
   import type {
     HoverData3D,
     PDLegendConfig,
@@ -91,7 +91,7 @@
   }: Props = $props()
 
   const merged_legend: PDLegendConfig = $derived({
-    ...shared_default_legend,
+    ...default_legend,
     ...legend,
   })
 
@@ -421,7 +421,7 @@
   )
 
   const phase_stats = $derived.by(() =>
-    compute_phase_stats(processed_entries, elements, 3)
+    get_phase_diagram_stats(processed_entries, elements, 3)
   )
 
   // Labels with smart defaults
@@ -479,7 +479,7 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await parse_phase_diagram_drop(event)
+    const data = await parse_pd_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 

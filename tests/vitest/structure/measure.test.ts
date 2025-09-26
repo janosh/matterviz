@@ -6,6 +6,8 @@ import {
   distance_pbc,
   smart_displacement_vectors,
 } from '$lib/structure/measure'
+import { parse_poscar } from '$lib/structure/parse'
+import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { describe, expect, test } from 'vitest'
 
 const cubic = (a: number): Matrix3x3 => [[a, 0, 0], [0, a, 0], [0, 0, a]]
@@ -82,8 +84,8 @@ describe(`measure: angles`, () => {
     const b = [0.3, 0.1, 0.1] // positive side
 
     // Test direct PBC calculation for this edge case
-    const v1_pbc = displacement_pbc(center, a, lat)
-    const v2_pbc = displacement_pbc(center, b, lat)
+    const v1_pbc = displacement_pbc(center as Vec3, a, lat)
+    const v2_pbc = displacement_pbc(center as Vec3, b, lat)
     expect(angle_between_vectors(v1_pbc, v2_pbc)).toBeCloseTo(180, 5)
   })
 
@@ -97,9 +99,6 @@ describe(`measure: angles`, () => {
       `static/structures/aviary-CuF3K-triolith.poscar`,
     )
     const poscar_content = fs.readFileSync(poscar_path, `utf-8`)
-
-    const { parse_poscar } = await import(`$lib/structure/parse`)
-    const { get_pbc_image_sites } = await import(`$lib/structure/pbc`)
 
     const structure = parse_poscar(poscar_content)
     if (!structure) {

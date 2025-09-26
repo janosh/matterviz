@@ -5,26 +5,25 @@
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
+  import { compute_4d_coords, TETRAHEDRON_VERTICES } from './barycentric-coords'
   import {
-    compute_formation_energy_per_atom,
-    find_lowest_energy_unary_refs,
-    process_pd_entries,
-  } from './energies'
-  import {
-    build_tooltip_text,
-    compute_energy_color_scale,
+    build_entry_tooltip_text,
     compute_max_energy_threshold,
-    compute_phase_stats,
     default_legend,
-    find_entry_at_mouse as find_entry_at_mouse_helper,
+    get_energy_color_scale,
     get_point_color_for_entry,
-    parse_phase_diagram_drop,
+    parse_pd_entries_from_drop,
     PD_STYLE,
   } from './helpers'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
-  import { compute_4d_coordinates, TETRAHEDRON_VERTICES } from './quaternary'
   import StructurePopup from './StructurePopup.svelte'
+  import {
+    compute_formation_energy_per_atom,
+    find_lowest_energy_unary_refs,
+    get_phase_diagram_stats,
+    process_pd_entries,
+  } from './thermodynamics'
   import type {
     HoverData3D,
     PDLegendConfig,
@@ -181,7 +180,7 @@
     }
 
     try {
-      const coords = compute_4d_coordinates(pd_data.entries, elements)
+      const coords = compute_4d_coords(pd_data.entries, elements)
       // Filter by energy threshold and update visibility based on toggles
       const energy_filtered = coords.filter((entry: PlotEntry3D) => {
         // Handle elemental entries specially
@@ -321,7 +320,7 @@
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: PlotEntry3D) => build_tooltip_text(entry)
+  const get_tooltip_text = (entry: PlotEntry3D) => build_entry_tooltip_text(entry)
 
   const reset_camera = () =>
     Object.assign(camera, {
@@ -363,7 +362,7 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await parse_phase_diagram_drop(event)
+    const data = await parse_pd_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 
@@ -385,7 +384,7 @@
 
   // Cache energy color scale per frame/setting
   const energy_color_scale = $derived.by(() =>
-    compute_energy_color_scale(color_mode, color_scale, plot_entries)
+    get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
   const max_energy_threshold = $derived(() =>
@@ -394,7 +393,7 @@
 
   // Phase diagram statistics
   const phase_stats = $derived.by(() =>
-    compute_phase_stats(processed_entries, elements, 4)
+    get_phase_diagram_stats(processed_entries, elements, 4)
   )
 
   // 3D to 2D projection following Materials Project approach
@@ -700,15 +699,15 @@
   }
 
   const handle_hover = (event: MouseEvent) => {
-    const entry = find_entry_at_mouse(event)
+    const entry = find_pd_entry_at_mouse(event)
     hover_data = entry
       ? { entry, position: { x: event.clientX, y: event.clientY } }
       : null
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent): PlotEntry3D | null =>
-    find_entry_at_mouse_helper<PlotEntry3D>(
+  const find_pd_entry_at_mouse = (event: MouseEvent): PlotEntry3D | null =>
+    find_pd_entry_at_mouse<PlotEntry3D>(
       canvas,
       event,
       plot_entries,
@@ -726,7 +725,7 @@
       return
     }
 
-    const entry = find_entry_at_mouse(event)
+    const entry = find_pd_entry_at_mouse(event)
     if (entry) {
       on_point_click?.(entry)
       if (enable_structure_preview) {
@@ -760,7 +759,7 @@
   }
 
   const handle_double_click = (event: MouseEvent) => {
-    const entry = find_entry_at_mouse(event)
+    const entry = find_pd_entry_at_mouse(event)
     if (entry) {
       copy_to_clipboard(get_tooltip_text(entry), {
         x: event.clientX,
