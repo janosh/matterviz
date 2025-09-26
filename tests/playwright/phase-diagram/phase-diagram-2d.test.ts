@@ -51,7 +51,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     await expect(controls.getByText(`Color mode`)).toBeVisible()
 
     // Energy mode should show Color scale selector
-    await controls.getByText(`Color mode`).isVisible()
+    await expect(controls.getByText(`Color mode`)).toBeVisible()
     await dom_click(controls.getByText(`Energy`, { exact: true }))
     await expect(controls.getByText(`Color scale`)).toBeVisible()
 
@@ -82,8 +82,9 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     const number_input = controls.locator(`input.threshold-input`).first()
     await number_input.fill(`0`)
 
-    // Wait for info pane to update
-    await page.waitForTimeout(200)
+    await expect // Wait for info pane to update
+      .poll(async () => (await get_visible_unstable()).x)
+      .toBeLessThanOrEqual(before.x)
     const after = await get_visible_unstable()
 
     // Total unstable count should remain non-negative and not increase
@@ -94,8 +95,10 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     // Scatter markers should not increase when threshold is decreased to 0
     const scatter = pd2d.locator(`.scatter`)
     const markers = scatter.locator(`path.marker`)
+    const count_before = await markers.count()
     const count_after = await markers.count()
     expect(count_after).toBeGreaterThan(0)
+    expect(count_after).toBeLessThanOrEqual(count_before)
   })
 
   test(`stability mode 'Above hull' toggle hides unstable points (info pane)`, async ({ page }) => {

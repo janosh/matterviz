@@ -6,6 +6,7 @@ import {
   compute_quickhull_triangles,
   e_hull_at_xy,
   find_lowest_energy_unary_refs,
+  get_phase_diagram_stats,
   process_pd_entries,
 } from '$lib/phase-diagram/thermodynamics'
 import type { ConvexHullTriangle, PhaseEntry } from '$lib/phase-diagram/types'
@@ -221,5 +222,71 @@ describe(`compute_formation_energy_per_atom()`, () => {
     const e1 = compute_formation_energy_per_atom(comp1, refs)
     const e2 = compute_formation_energy_per_atom(comp2, refs)
     expect(e1 ?? 0).toBeCloseTo(e2 ?? 0, 9)
+  })
+})
+
+describe(`get_phase_diagram_stats: stability handling`, () => {
+  test.each([
+    {
+      name: `counts stable when is_stable === true and e_above_hull undefined`,
+      opts: {
+        is_stable: true as boolean | undefined,
+        e_above_hull: undefined as number | undefined,
+      },
+      expected_stable: 1,
+    },
+    {
+      name: `counts unstable when is_stable === false and e_above_hull undefined`,
+      opts: {
+        is_stable: false as boolean | undefined,
+        e_above_hull: undefined as number | undefined,
+      },
+      expected_stable: 0,
+    },
+    {
+      name: `does not treat missing e_above_hull as stable`,
+      opts: {
+        is_stable: undefined as boolean | undefined,
+        e_above_hull: undefined as number | undefined,
+      },
+      expected_stable: 0,
+    },
+    {
+      name: `counts stable when e_above_hull === 0`,
+      opts: {
+        is_stable: undefined as boolean | undefined,
+        e_above_hull: 0 as number | undefined,
+      },
+      expected_stable: 1,
+    },
+    {
+      name: `counts stable when e_above_hull < 1e-6`,
+      opts: {
+        is_stable: undefined as boolean | undefined,
+        e_above_hull: 1e-7 as number | undefined,
+      },
+      expected_stable: 1,
+    },
+    {
+      name: `counts unstable when e_above_hull === 1e-6 (strict <)`,
+      opts: {
+        is_stable: undefined as boolean | undefined,
+        e_above_hull: 1e-6 as number | undefined,
+      },
+      expected_stable: 0,
+    },
+  ])(`$name`, ({ opts, expected_stable }) => {
+    const entries: PhaseEntry[] = [
+      {
+        composition: { Li: 1 },
+        energy: 0,
+        is_stable: opts.is_stable,
+        e_above_hull: opts.e_above_hull,
+      },
+    ]
+    const stats = get_phase_diagram_stats(entries, [`Li`], 3)
+    expect(stats).not.toBeNull()
+    expect(stats?.stable ?? -1).toBe(expected_stable)
+    expect(stats?.unstable ?? -1).toBe(entries.length - expected_stable)
   })
 })

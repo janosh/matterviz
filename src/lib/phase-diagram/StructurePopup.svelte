@@ -53,7 +53,7 @@
       {/if}
       {#if stats.e_above_hull != null}
         E<sub style="font-size: 0.8em; baseline: 0.5em">above hull</sub> = {
-          format_num(stats.e_above_hull || 0, `.3~`)
+          format_num(stats.e_above_hull ?? 0, `.3~`)
         } eV/atom<br>
       {/if}
       {#if stats.e_form != null}

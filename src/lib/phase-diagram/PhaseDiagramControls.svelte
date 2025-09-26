@@ -25,7 +25,6 @@
     show_unstable?: boolean
     show_stable_labels?: boolean
     show_unstable_labels?: boolean
-    show_elemental_polymorphs?: boolean | `hide-control`
     // 3D specific controls
     show_hull_faces?: boolean
     on_hull_faces_change?: (value: boolean) => void
@@ -60,7 +59,6 @@
     show_unstable = $bindable(true),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
-    show_elemental_polymorphs = $bindable(false),
     show_hull_faces = undefined,
     on_hull_faces_change,
     hull_face_color = `#0072B2`,
@@ -273,20 +271,6 @@
         </label>
       </div>
     {/if}
-  {/if}
-
-  {#if show_elemental_polymorphs !== `hide-control`}
-    <!-- Elemental polymorphs toggle -->
-    <div class="control-row">
-      <span class="control-label">Elements</span>
-      <label {@attach tooltip({ content: `Show all elemental polymorphs` })}>
-        <input
-          type="checkbox"
-          bind:checked={show_elemental_polymorphs}
-        />
-        <span>Show polymorphs</span>
-      </label>
-    </div>
   {/if}
 
   <!-- Hull faces toggle (for 3D ternary diagrams) -->

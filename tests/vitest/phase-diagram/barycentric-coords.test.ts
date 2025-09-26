@@ -147,8 +147,8 @@ describe(`quaternary: barycentric and projection`, () => {
     const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
     const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
     expect(bc.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9)
-    const zero = composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)
-    expect(zero).toEqual([0.25, 0.25, 0.25, 0.25])
+    expect(() => composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems))
+      .toThrow(`Composition has no elements from the quaternary system: A-B-C-D`)
   })
 
   test(`barycentric_to_tetrahedral maps basis to vertices`, () => {

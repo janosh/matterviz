@@ -77,7 +77,6 @@
     ) as PymatgenEntry[] | undefined
     if (!li_fe_p_o_data) return [[], []]
     const li_fe_o_entries = create_ternary_subset(li_fe_p_o_data, [`Li`, `Fe`, `O`])
-    console.log(`Li-Fe-O: ${li_fe_o_entries.length} entries`)
 
     // Li-Co-O from Li-Co-Ni-O
     const li_co_ni_o_data = loaded_data.get(
@@ -89,7 +88,6 @@
       `Co`,
       `O`,
     ])
-    console.log(`Li-Co-O: ${li_co_o_entries.length} entries`)
 
     return [li_fe_o_entries, li_co_o_entries]
   })

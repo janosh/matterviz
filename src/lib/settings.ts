@@ -234,7 +234,6 @@ export interface SettingsConfig {
       show_unstable_labels: SettingType<boolean>
       energy_threshold: SettingType<number>
       label_energy_threshold: SettingType<number>
-      show_elemental_polymorphs: SettingType<boolean>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -1085,10 +1084,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         description: `Max eV/atom above hull for labeling unstable entries in 4D PD`,
         minimum: 0,
         maximum: 2,
-      },
-      show_elemental_polymorphs: {
-        value: false,
-        description: `Show polymorph elemental entries in 4D PD`,
       },
       fullscreen: {
         value: false,

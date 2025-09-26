@@ -1536,7 +1536,10 @@
           {@const series_markers = series_data.markers ?? markers}
           <g data-series-id={series_data._id}>
             {#if series_markers?.includes(`points`)}
-              {#each series_data.filtered_data as point ([point.x, point.y])}
+              {#each series_data.filtered_data as
+                point
+                (`${point.series_idx}-${point.point_idx}`)
+              }
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
                 {@const label_style = point.point_label ?? {}}

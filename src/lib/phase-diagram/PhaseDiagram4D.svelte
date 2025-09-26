@@ -55,8 +55,6 @@
     legend_pane_open?: boolean
     // Energy threshold for showing unstable entries (eV/atom above hull)
     energy_threshold?: number
-    // Show all elemental polymorphs or just reference corners
-    show_elemental_polymorphs?: boolean
     // Callback for when JSON files are dropped
     on_file_drop?: (entries: PhaseEntry[]) => void
     // Enable structure preview overlay when hovering over entries with structure data
@@ -81,7 +79,6 @@
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
     energy_threshold = $bindable(0.1), // eV/atom above hull for showing entries
-    show_elemental_polymorphs = $bindable(false),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -191,17 +188,18 @@
         if (entry.is_element) {
           // Always include reference elemental entries (corner points of tetrahedron)
           if (entry.e_above_hull === 0 || entry.is_stable) return true
-          // Include other elemental polymorphs only if toggle is enabled
-          return show_elemental_polymorphs &&
-            (entry.e_above_hull || 0) <= energy_threshold
+          // Include other elemental polymorphs only if toggle is enabled AND e_above_hull is defined
+          return typeof entry.e_above_hull === `number` &&
+            entry.e_above_hull <= energy_threshold
         }
-        // Include stable entries (e_above_hull = 0)
+        // Include stable entries (treat near-zero as stable)
         if (
           entry.is_stable ||
           (entry.e_above_hull !== undefined && entry.e_above_hull <= 1e-6)
         ) return true
         // Include unstable entries within threshold
-        return (entry.e_above_hull || 0) <= energy_threshold
+        return typeof entry.e_above_hull === `number` &&
+          entry.e_above_hull <= energy_threshold
       })
       return energy_filtered
         .map((entry: PlotEntry3D) => {
@@ -224,15 +222,13 @@
 
   const unstable_entries = $derived(
     plot_entries.filter((entry: PlotEntry3D) =>
-      (entry.e_above_hull || 0) > 0 && !entry.is_stable
+      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     ),
   )
 
-  // Total counts before energy threshold filtering
+  // Total counts based on hull-enriched entries
   const total_unstable_count = $derived(
-    processed_entries.filter((entry) =>
-      (entry.e_above_hull || 0) > 0 && !entry.is_stable
-    ).length,
+    plot_entries.filter((e) => (e.e_above_hull ?? 0) > 0 && !e.is_stable).length,
   )
 
   // Canvas rendering
@@ -291,7 +287,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, color_mode, color_scale, energy_threshold, show_elemental_polymorphs, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries]
+    [show_stable, show_unstable, color_mode, color_scale, energy_threshold, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries]
 
     render_once()
   })
@@ -348,7 +344,6 @@
     show_unstable_labels = PD_DEFAULTS.quaternary.show_unstable_labels
     energy_threshold = PD_DEFAULTS.quaternary.energy_threshold
     label_energy_threshold = PD_DEFAULTS.quaternary.label_energy_threshold
-    show_elemental_polymorphs = PD_DEFAULTS.quaternary.show_elemental_polymorphs
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -609,7 +604,7 @@
       const should_show_label = merged_config.show_labels && (
         (is_stable && show_stable_labels) ||
         (!is_stable && show_unstable_labels &&
-          (entry.e_above_hull || 0) <= label_energy_threshold)
+          (entry.e_above_hull ?? 0) <= label_energy_threshold)
       )
 
       if (should_show_label) {
@@ -927,7 +922,6 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:show_elemental_polymorphs
         bind:energy_threshold
         bind:label_energy_threshold
         max_energy_threshold={max_energy_threshold()}
@@ -971,10 +965,10 @@
       {/if}
 
       <div>
-        E<sub>above hull</sub>: {format_num(entry.e_above_hull || 0, `.3~`)} eV/atom
+        E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
       </div>
       <div>
-        Formation Energy: {format_num(entry.e_form_per_atom || 0, `.3~`)} eV/atom
+        Formation Energy: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
       </div>
       {#if entry.entry_id}
         <div>ID: {entry.entry_id}</div>

@@ -68,4 +68,48 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await expect(info.getByText(`Chemical System`, { exact: false }))
       .toBeVisible({ timeout: 15000 })
   })
+
+  test(`excludes entries without e_above_hull unless stable or elemental`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    await expect(diagram).toBeVisible({ timeout: 15000 })
+
+    // Craft a minimal quaternary dataset
+    const data = [
+      // Elemental reference corners (always include)
+      { composition: { A: 1 }, energy: 0, e_above_hull: 0 },
+      { composition: { B: 1 }, energy: 0, e_above_hull: 0 },
+      { composition: { C: 1 }, energy: 0, e_above_hull: 0 },
+      { composition: { D: 1 }, energy: 0, e_above_hull: 0 },
+      // Elemental polymorph without e_above_hull (should be excluded)
+      { composition: { A: 1 }, energy: -0.1 },
+      // Non-elemental stable without e_above_hull (should be included due to is_stable)
+      { composition: { A: 1, B: 1, C: 1, D: 1 }, energy: -4, is_stable: true },
+      // Non-elemental without e_above_hull and not stable (should be excluded)
+      { composition: { A: 1, B: 1, C: 1, D: 1 }, energy: -3 },
+    ]
+
+    // Build DataTransfer with a JSON file and dispatch drop on the diagram
+    const data_transfer = await page.evaluateHandle((json) => {
+      const dt = new DataTransfer()
+      const file = new File([JSON.stringify(json)], `pd.json`, {
+        type: `application/json`,
+      })
+      dt.items.add(file)
+      return dt
+    }, data)
+
+    await diagram.dispatchEvent(`drop`, { dataTransfer: data_transfer })
+
+    // Open info pane to read visible counts
+    const info_btn = diagram.locator(`.info-btn`)
+    await info_btn.click()
+    const info = diagram.locator(`.draggable-pane.phase-diagram-info-pane`)
+    await expect(info).toBeVisible({ timeout: 15000 })
+
+    // Expect unstable entries are 0/0 (excluded when e_above_hull is undefined)
+    await expect(info.getByText(/Visible unstable/i)).toContainText(`0 / 0`)
+
+    // Expect stable entries include 4 elemental refs + 1 stable quaternary
+    await expect(info.getByText(/Visible stable/i)).toContainText(`5 / 5`)
+  })
 })

@@ -136,8 +136,10 @@ export function get_phase_diagram_stats(
   ]
   const quaternary = max_arity === 4 ? (quaternaryMaybe ?? 0) : 0
 
-  const stable_count =
-    processed_entries.filter((e) => e.is_stable || (e.e_above_hull ?? 0) < 1e-6).length
+  const stable_count = processed_entries.filter((e) =>
+    e.is_stable === true ||
+    (typeof e.e_above_hull === `number` && e.e_above_hull < 1e-6)
+  ).length
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
@@ -152,7 +154,7 @@ export function get_phase_diagram_stats(
     }
     : { min: 0, max: 0, avg: 0 }
 
-  const hull_distances = processed_entries.map((e) => e.e_above_hull || 0).filter((v) =>
+  const hull_distances = processed_entries.map((e) => e.e_above_hull ?? 0).filter((v) =>
     v >= 0
   )
   const hull_distance = hull_distances.length > 0

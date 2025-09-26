@@ -59,7 +59,7 @@ export function get_point_color_for_entry(
   if (color_mode === `stability`) {
     return is_stable ? (colors?.stable || `#0072B2`) : (colors?.unstable || `#E69F00`)
   }
-  return energy_scale ? energy_scale(entry.e_above_hull || 0) : `#666`
+  return energy_scale ? energy_scale(entry.e_above_hull ?? 0) : `#666`
 }
 
 // Robust drag-and-drop JSON parsing for phase diagram entries
@@ -83,7 +83,10 @@ export async function parse_pd_entries_from_drop(
 // Compute a consistent max energy threshold for controls (shared)
 export function compute_max_energy_threshold(processed_entries: PhaseEntry[]): number {
   if (processed_entries.length === 0) return 0.5
-  const max_val = Math.max(...processed_entries.map((e) => e.e_above_hull || 0)) + 0.001
+  const distances = processed_entries
+    .map((e) => e.e_above_hull)
+    .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
+  const max_val = (distances.length ? Math.max(...distances) : 0) + 0.001
   return Math.max(0.1, max_val)
 }
 

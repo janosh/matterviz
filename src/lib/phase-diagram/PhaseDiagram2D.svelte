@@ -58,8 +58,6 @@
     legend_pane_open?: boolean
     // Energy threshold for showing unstable entries (eV/atom above hull)
     energy_threshold?: number
-    // For completeness (no polymorph corner concept in 2D, keep to align API)
-    show_elemental_polymorphs?: boolean | `hide-control`
     // Callback for when JSON files are dropped
     on_file_drop?: (entries: PhaseEntry[]) => void
     // Enable structure preview overlay when hovering over entries with structure data
@@ -84,7 +82,6 @@
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
     energy_threshold = $bindable(0.1),
-    show_elemental_polymorphs = $bindable(`hide-control`),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -310,7 +307,7 @@
 
     return enriched.filter((
       e,
-    ) => (e.is_stable || (e.e_above_hull || 0) <= energy_threshold))
+    ) => (e.is_stable || (e.e_above_hull ?? 0) <= energy_threshold))
   })
 
   const stable_entries = $derived(
@@ -320,15 +317,13 @@
   )
   const unstable_entries = $derived(
     plot_entries.filter((entry: PlotEntry3D) =>
-      (entry.e_above_hull || 0) > 0 && !entry.is_stable
+      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     ),
   )
 
-  // Total counts before energy threshold filtering
+  // Total counts based on hull-enriched entries
   const total_unstable_count = $derived(
-    processed_entries.filter((entry) =>
-      (entry.e_above_hull || 0) > 0 && !entry.is_stable
-    ).length,
+    plot_entries.filter((e) => (e.e_above_hull ?? 0) > 0 && !e.is_stable).length,
   )
 
   const camera_default = {
@@ -388,7 +383,7 @@
       metadata: visible_entries, // keep PD entry alongside each point
       markers: `points` as const,
       ...(is_energy_mode
-        ? { color_values: visible_entries.map((e) => e.e_above_hull || 0) }
+        ? { color_values: visible_entries.map((e) => e.e_above_hull ?? 0) }
         : { point_style }),
     }
   })
@@ -544,10 +539,10 @@
   {/if}
 
   <div>
-    E<sub>above hull</sub>: {format_num(entry.e_above_hull || 0, `.3~`)} eV/atom
+    E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
   </div>
   <div>
-    Formation Energy: {format_num(entry.e_form_per_atom || 0, `.3~`)} eV/atom
+    Formation Energy: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
   </div>
   {#if entry.entry_id}
     <div>ID: {entry.entry_id}</div>
@@ -714,7 +709,6 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        {show_elemental_polymorphs}
         bind:energy_threshold
         bind:label_energy_threshold
         max_energy_threshold={max_energy_threshold()}

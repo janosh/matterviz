@@ -1101,11 +1101,6 @@
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.quaternary.show_elemental_polymorphs": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show polymorph elemental entries in 4D PD"
-        },
         "matterviz.phase_diagram.quaternary.fullscreen": {
           "type": "boolean",
           "default": false,

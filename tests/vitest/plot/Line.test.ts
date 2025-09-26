@@ -79,7 +79,7 @@ describe(`Line`, () => {
       expected_line.strokeWidth,
     )
     expect(line_path.getAttribute(`stroke-dasharray`)).toBe(
-      expected_line.strokeDasharray ?? null,
+      expected_line.strokeDasharray ?? `solid`,
     )
 
     // Assert area styles using getAttribute

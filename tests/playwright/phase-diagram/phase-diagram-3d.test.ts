@@ -21,12 +21,12 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
 
     // Open legend controls pane to toggle hull faces
     const legend_btn = diagram.locator(`.legend-controls-btn`)
-    await legend_btn.click()
+    await dom_click(legend_btn)
 
     // Toggle hull faces via control pane switch if present
-    const pane = page.locator(`.draggable-pane`).last()
+    const pane = page.locator(`.draggable-pane.phase-diagram-controls-pane`).last()
     const hull_toggle = pane.getByText(`Hull Faces`, { exact: false })
-    if (await hull_toggle.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await hull_toggle.isVisible({ timeout: 2000 })) {
       await hull_toggle.click()
     }
 

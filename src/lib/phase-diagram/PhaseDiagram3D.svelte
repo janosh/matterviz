@@ -68,8 +68,6 @@
     legend_pane_open?: boolean
     // Energy threshold for showing unstable entries (eV/atom above hull)
     energy_threshold?: number
-    // Show all elemental polymorphs or just reference corners
-    show_elemental_polymorphs?: boolean
     // Callback for when JSON files are dropped
     on_file_drop?: (entries: PhaseEntry[]) => void
     // Enable structure preview overlay when hovering over entries with structure data
@@ -95,7 +93,6 @@
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
     energy_threshold = $bindable(0.5), // eV/atom above hull for showing entries
-    show_elemental_polymorphs = $bindable(true),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -200,9 +197,6 @@
     if (elements.length !== 3) return []
     try {
       const coords = get_ternary_3d_coordinates(pd_data.entries, elements)
-      console.log(
-        `PhaseDiagram3D: ${coords.length} ternary coords for ${elements.join(`-`)}`,
-      )
       return coords
     } catch (error) {
       console.error(`Error computing ternary coordinates:`, error)
@@ -225,7 +219,7 @@
     })()
 
     const energy_filtered = enriched.filter((entry: TernaryPlotEntry) =>
-      (entry.e_above_hull || 0) <= energy_threshold
+      (entry.e_above_hull ?? 0) <= energy_threshold
     )
 
     return energy_filtered.map((entry: TernaryPlotEntry) => {
@@ -245,7 +239,7 @@
 
   const unstable_entries = $derived(
     plot_entries.filter((entry: TernaryPlotEntry) =>
-      (entry.e_above_hull || 0) > 0 && !entry.is_stable
+      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     ),
   )
 
@@ -271,11 +265,9 @@
   // Cached hull model for e_above_hull queries; recompute only when faces change
   let hull_model = $derived.by(() => build_lower_hull_model(hull_faces))
 
-  // Total counts before energy threshold filtering
+  // Total counts based on hull-enriched entries
   const total_unstable_count = $derived(
-    processed_entries.filter((entry) =>
-      (entry.e_above_hull || 0) > 0 && !entry.is_stable
-    ).length,
+    plot_entries.filter((e) => (e.e_above_hull ?? 0) > 0 && !e.is_stable).length,
   )
 
   // Canvas rendering
@@ -348,7 +340,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_elemental_polymorphs, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color]
 
     render_once()
   })
@@ -798,7 +790,7 @@
       const should_show_label = merged_config.show_labels && !entry.is_element && (
         (is_stable && show_stable_labels) ||
         (!is_stable && show_unstable_labels &&
-          (entry.e_above_hull || 0) <= label_energy_threshold)
+          (entry.e_above_hull ?? 0) <= label_energy_threshold)
       )
 
       if (should_show_label) {
@@ -854,10 +846,10 @@
     const container_scale = Math.min(display_width, display_height) / 600
 
     for (const entry of composition_map.values()) {
-      const is_stable_point = entry.is_stable || (entry.e_above_hull || 0) <= 1e-6
+      const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
       const can_label_stable = is_stable_point && show_stable_labels
       const can_label_unstable = !is_stable_point && show_unstable_labels &&
-        (entry.e_above_hull || 0) <= label_energy_threshold
+        (entry.e_above_hull ?? 0) <= label_energy_threshold
       if (!(can_label_stable || can_label_unstable)) continue
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
@@ -1239,7 +1231,6 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        show_elemental_polymorphs="hide-control"
         bind:energy_threshold
         bind:label_energy_threshold
         max_energy_threshold={max_energy_threshold()}
@@ -1287,10 +1278,10 @@
       {/if}
 
       <div>
-        E<sub>above hull</sub>: {format_num(entry.e_above_hull || 0, `.3~`)} eV/atom
+        E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
       </div>
       <div>
-        Formation Energy: {format_num(entry.e_form_per_atom || 0, `.3~`)} eV/atom
+        Formation Energy: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
       </div>
       {#if entry.entry_id}
         <div>ID: {entry.entry_id}</div>

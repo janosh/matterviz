@@ -1,7 +1,6 @@
 // Periodic boundary conditions utilities
 import type { Vec3 } from '$lib'
 import * as math from '$lib/math'
-import type { PymatgenStructure } from './index'
 import type { ParsedStructure } from './parse'
 
 export function find_image_atoms(
@@ -103,7 +102,7 @@ export function find_image_atoms(
 // Return structure with image atoms added
 export function get_pbc_image_sites(
   ...args: Parameters<typeof find_image_atoms>
-): PymatgenStructure {
+): ParsedStructure {
   const structure = args[0]
 
   if (!structure || !structure.sites || structure.sites.length === 0) {
@@ -122,7 +121,7 @@ export function get_pbc_image_sites(
 
   // Add image atoms to regular crystal structures
   const image_sites = find_image_atoms(...args)
-  const imaged_struct: PymatgenStructure = { ...structure, sites: [...structure.sites] }
+  const imaged_struct = { ...structure, sites: [...structure.sites] }
 
   // Add image atoms as new sites using provided (xyz, abc) from find_image_atoms
   for (const [site_idx, img_xyz, img_abc] of image_sites) {
