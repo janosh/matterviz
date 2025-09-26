@@ -1,4 +1,5 @@
 import type { ElementSymbol } from '$lib'
+import { sort_by_electronegativity } from '$lib/composition/parse'
 import type {
   ConvexHullTriangle,
   PhaseDiagramData,
@@ -171,7 +172,7 @@ export function get_phase_diagram_stats(
     energy_range,
     hull_distance,
     elements: elements.length,
-    chemical_system: elements.join(`-`),
+    chemical_system: sort_by_electronegativity([...elements]).join(`-`),
   }
 }
 

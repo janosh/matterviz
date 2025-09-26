@@ -593,7 +593,7 @@
   }}
   aria-label="Binary phase diagram visualization"
 >
-  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; z-index: 10">
+  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {phase_stats?.chemical_system}
   </h3>
   {#key reset_counter}
@@ -606,7 +606,7 @@
       x_grid={false}
       y_grid={false}
       x_label={elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`}
-      y_label="ΔE<sub>form</sub> (eV/atom)"
+      y_label="E<sub>form</sub> (eV/atom)"
       legend={null}
       color_bar={{
         title: `E<sub>above hull</sub> (eV/atom)`,

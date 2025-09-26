@@ -117,7 +117,7 @@ describe(`helpers: thresholds and tooltips`, () => {
         ternary: 1,
         quaternary: 0,
         elements: 3,
-        system: `Li-O-Na`,
+        system: `Na-Li-O`,
       },
     },
     {
@@ -140,7 +140,7 @@ describe(`helpers: thresholds and tooltips`, () => {
         ternary: 0,
         quaternary: 1,
         elements: 4,
-        system: `A-B-C-D`,
+        system: `A-D-B-C`,
       },
     },
   ])(`get_phase_diagram_stats: $name`, ({ elements, max_arity, entries, expected }) => {

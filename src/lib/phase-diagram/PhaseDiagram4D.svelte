@@ -10,6 +10,7 @@
     build_entry_tooltip_text,
     compute_max_energy_threshold,
     default_legend,
+    find_pd_entry_at_mouse,
     get_energy_color_scale,
     get_point_color_for_entry,
     parse_pd_entries_from_drop,
@@ -699,19 +700,19 @@
   }
 
   const handle_hover = (event: MouseEvent) => {
-    const entry = find_pd_entry_at_mouse(event)
+    const entry = find_entry_at_mouse(event)
     hover_data = entry
       ? { entry, position: { x: event.clientX, y: event.clientY } }
       : null
     on_point_hover?.(hover_data)
   }
 
-  const find_pd_entry_at_mouse = (event: MouseEvent): PlotEntry3D | null =>
-    find_pd_entry_at_mouse<PlotEntry3D>(
+  const find_entry_at_mouse = (event: MouseEvent): PlotEntry3D | null =>
+    find_pd_entry_at_mouse(
       canvas,
       event,
       plot_entries,
-      (x, y, z) => {
+      (x: number, y: number, z: number) => {
         const p = project_3d_point(x, y, z)
         return { x: p.x, y: p.y }
       },
@@ -725,7 +726,7 @@
       return
     }
 
-    const entry = find_pd_entry_at_mouse(event)
+    const entry = find_entry_at_mouse(event)
     if (entry) {
       on_point_click?.(entry)
       if (enable_structure_preview) {
@@ -759,7 +760,7 @@
   }
 
   const handle_double_click = (event: MouseEvent) => {
-    const entry = find_pd_entry_at_mouse(event)
+    const entry = find_entry_at_mouse(event)
     if (entry) {
       copy_to_clipboard(get_tooltip_text(entry), {
         x: event.clientX,
@@ -864,7 +865,7 @@
   }}
   aria-label="Phase diagram visualization"
 >
-  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; z-index: 10">
+  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {phase_stats?.chemical_system}
   </h3>
   <canvas

@@ -262,6 +262,13 @@ export const get_alphabetical_formula = (
     amount_format,
   )
 
+export const sort_by_electronegativity = (symbols: ElementSymbol[]) =>
+  symbols.sort((el1, el2) => {
+    const elec_neg1 = element_electronegativity_map.get(el1) ?? 0
+    const elec_neg2 = element_electronegativity_map.get(el2) ?? 0
+    return elec_neg1 !== elec_neg2 ? elec_neg1 - elec_neg2 : el1.localeCompare(el2)
+  })
+
 // Create electronegativity-sorted formula
 export const get_electro_neg_formula = (
   input: string | CompositionType | AnyStructure,
@@ -269,13 +276,6 @@ export const get_electro_neg_formula = (
   delim = ` `,
   amount_format = `.3~s`,
 ): string => {
-  const sort_by_electronegativity = (symbols: ElementSymbol[]) =>
-    symbols.sort((el1, el2) => {
-      const elec_neg1 = element_electronegativity_map.get(el1) ?? 0
-      const elec_neg2 = element_electronegativity_map.get(el2) ?? 0
-      return elec_neg1 !== elec_neg2 ? elec_neg1 - elec_neg2 : el1.localeCompare(el2)
-    })
-
   return format_formula_generic(
     input,
     sort_by_electronegativity,
