@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib'
 import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types.ts'
-import { is_elemental_entry } from './types.ts'
+import { is_unary_entry } from './types.ts'
 
 // ================= Ternary coordinates =================
 
@@ -94,7 +94,7 @@ export function get_ternary_3d_coordinates(
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
     const formation_energy_per_atom = entry.e_form_per_atom ?? 0
     const { x, y, z } = barycentric_to_ternary_xyz(barycentric, formation_energy_per_atom)
-    const is_element = is_elemental_entry(entry)
+    const is_element = is_unary_entry(entry)
     return {
       ...entry,
       x,
@@ -182,7 +182,7 @@ export function compute_4d_coords(
       elements,
     )
     const tetrahedral = barycentric_to_tetrahedral(barycentric_4d)
-    const is_element = is_elemental_entry(entry)
+    const is_element = is_unary_entry(entry)
     return { ...entry, ...tetrahedral, is_element, visible: true }
   })
 }

@@ -55,11 +55,6 @@
     }
   }
 
-  function handle_click(item: InfoItem, section_title: string) {
-    if (section_title === `Interaction`) return // Don't copy interaction tips
-    copy_to_clipboard(item.label, String(item.value), item.key ?? item.label)
-  }
-
   let pane_data = $derived.by(() => {
     if (!phase_stats) return []
     const sections: { title: string; items: InfoItem[] }[] = []
@@ -258,13 +253,13 @@
           <div
             class="clickable stat-item"
             title="Click to copy: {label}: {value}"
-            onclick={() => handle_click(item, section.title)}
+            onclick={() => copy_to_clipboard(item.label, String(item.value), key ?? item.label)}
             role="button"
             tabindex="0"
             onkeydown={(event) => {
               if (event.key === `Enter` || event.key === ` `) {
                 event.preventDefault()
-                handle_click(item, section.title)
+                copy_to_clipboard(item.label, String(item.value), key ?? item.label)
               }
             }}
           >

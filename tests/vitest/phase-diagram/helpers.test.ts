@@ -1,3 +1,4 @@
+import type { ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import {
   build_entry_tooltip_text,
@@ -86,7 +87,7 @@ describe(`helpers: thresholds and tooltips`, () => {
   test.each([
     {
       name: `ternary stats with mixed stability`,
-      elements: [`Li`, `O`, `Na`] as unknown as string[],
+      elements: [`Li`, `O`, `Na`] as unknown as ElementSymbol[],
       max_arity: 3 as const,
       entries: [
         { composition: { Li: 1 }, energy: 0, e_above_hull: 0, energy_per_atom: 0 },
@@ -122,7 +123,7 @@ describe(`helpers: thresholds and tooltips`, () => {
     },
     {
       name: `quaternary stats counts quaternary entries`,
-      elements: [`A`, `B`, `C`, `D`] as unknown as string[],
+      elements: [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[],
       max_arity: 4 as const,
       entries: [
         { composition: { A: 1 }, energy: 0, e_above_hull: 0, energy_per_atom: 0 },
@@ -156,6 +157,35 @@ describe(`helpers: thresholds and tooltips`, () => {
     expect(stats.chemical_system).toBe(expected.system)
     expect(stats.energy_range.max).toBeGreaterThanOrEqual(stats.energy_range.min)
     expect(stats.hull_distance.max).toBeGreaterThanOrEqual(stats.hull_distance.avg)
+  })
+})
+
+describe(`helpers: energy range preserves zero formation energy`, () => {
+  test(`zero e_form_per_atom is not dropped in energy range`, () => {
+    const entries: PhaseEntry[] = [
+      {
+        composition: { A: 1 },
+        energy: 0,
+        energy_per_atom: -1, // differs from e_form_per_atom to ensure we pick 0 over -1
+        e_form_per_atom: 0, // critical zero value
+        e_above_hull: 0,
+      },
+      {
+        composition: { B: 1 },
+        energy: -2,
+        energy_per_atom: -2,
+        e_form_per_atom: -2,
+        e_above_hull: 0,
+      },
+    ]
+    const stats = get_phase_diagram_stats(
+      entries,
+      [`A`, `B`] as unknown as ElementSymbol[],
+      3,
+    )
+    // min should be -2, max should be 0, proving 0 was retained (not replaced by -1)
+    expect(stats?.energy_range.min).toBeCloseTo(-2)
+    expect(stats?.energy_range.max).toBeCloseTo(0)
   })
 })
 

@@ -1,13 +1,14 @@
 import type { ElementSymbol } from '$lib'
 import { sort_by_electronegativity } from '$lib/composition/parse'
 import type {
+  ConvexHullFace,
   ConvexHullTriangle,
   PhaseDiagramData,
   PhaseEntry,
   Plane,
   Point3D,
 } from './types.ts'
-import { is_elemental_entry } from './types.ts'
+import { is_unary_entry } from './types.ts'
 
 // ================= Thermodynamics & metadata =================
 
@@ -30,7 +31,7 @@ export function process_pd_entries(entries: PhaseEntry[]): PhaseDiagramData {
 
   const el_refs = Object.fromEntries(
     stable_entries
-      .filter(is_elemental_entry)
+      .filter(is_unary_entry)
       .map((entry) => [Object.keys(entry.composition)[0], entry]),
   )
 
@@ -76,7 +77,7 @@ export function find_lowest_energy_unary_refs(
 ): Record<string, PhaseEntry> {
   const refs: Record<string, PhaseEntry> = {}
   for (const entry of entries) {
-    if (!is_elemental_entry(entry)) continue
+    if (!is_unary_entry(entry)) continue
     const el = Object.keys(entry.composition).find((k) => entry.composition[k] > 0)
     if (!el) continue
     const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
@@ -140,8 +141,8 @@ export function get_phase_diagram_stats(
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
-    .map((e) => e.e_form_per_atom || e.energy_per_atom)
-    .filter((v): v is number => v !== null && v !== undefined)
+    .map((e) => e.e_form_per_atom ?? e.energy_per_atom)
+    .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
 
   const energy_range = energies.length > 0
     ? {

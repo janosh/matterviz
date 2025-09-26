@@ -6,7 +6,7 @@
     TooltipProps,
     UserContentProps,
   } from '$lib'
-  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
+  import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
@@ -284,15 +284,18 @@
     if (coords_entries.length === 0) return []
 
     // Build lower hull in (x, y=e_form)
-    // Deduplicate by x to keep the minimum y at each composition, avoiding
-    // vertical stacks of elemental polymorphs corrupting the lower hull
-    const min_by_x = new SvelteMap<number, number>()
+    // Group by composition fraction (x) and track all entries at each x to
+    // robustly handle polymorphs. For the hull input, use the lowest energy per x.
+    const entries_by_x = new SvelteMap<number, PlotEntry3D[]>()
     for (const entry of coords_entries) {
-      const y = entry.y
-      const prev = min_by_x.get(entry.x)
-      if (prev === undefined || y < prev) min_by_x.set(entry.x, y)
+      const existing = entries_by_x.get(entry.x) || []
+      existing.push(entry)
+      entries_by_x.set(entry.x, existing)
     }
-    const hull_input = Array.from(min_by_x, ([x, y]) => ({ x, y }))
+    const hull_input = Array.from(entries_by_x, ([x, entries]) => {
+      const min_y = Math.min(...entries.map((entry) => entry.y))
+      return { x, y: min_y }
+    })
     const hull_points = compute_lower_hull(hull_input)
 
     // Annotate entries with e_above_hull and visibility
@@ -529,7 +532,7 @@
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: PlotPoint & TooltipProps)}
   {@const entry = (point.metadata as unknown) as PlotEntry3D}
-  {@const is_element = Object.keys(entry.composition).length === 1}
+  {@const is_element = is_unary_entry(entry)}
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
   <div class="tooltip-title">
     {@html get_electro_neg_formula(entry.composition)}

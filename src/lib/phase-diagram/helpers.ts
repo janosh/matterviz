@@ -5,6 +5,7 @@ import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { PDControlsType, PhaseDiagramConfig, PhaseEntry } from './types'
+import { is_unary_entry } from './types'
 
 // Default legend configuration shared by 3D and 4D diagrams
 export const default_controls: PDControlsType = {
@@ -88,27 +89,37 @@ export function compute_max_energy_threshold(processed_entries: PhaseEntry[]): n
 
 // Build a tooltip text for any phase entry (shared)
 export function build_entry_tooltip_text(entry: PhaseEntry): string {
-  const is_element = Object.keys(entry.composition).length === 1
+  const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
+  const elem_name = is_element
+    ? elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``
+    : ``
+
   let text = is_element
-    ? `${elem_symbol} (${elem_symbol_to_name[elem_symbol as ElementSymbol]})\n`
+    ? `${elem_symbol}${elem_name ? ` (${elem_name})` : ``}\n`
     : `${entry.name || entry.reduced_formula || ``}\n`
 
   if (!is_element) {
     const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
-    const fractions = Object.entries(entry.composition)
-      .filter(([, amt]) => amt > 0)
-      .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
-    if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
+    if (total > 0) {
+      const fractions = Object.entries(entry.composition)
+        .filter(([, amt]) => amt > 0)
+        .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
+      if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
+    }
   }
 
   if (entry.e_above_hull !== undefined) {
     const e_hull_str = format_num(entry.e_above_hull, `.3~`)
     text += `E above hull: ${e_hull_str} eV/atom\n`
   }
-  if (entry.e_form_per_atom !== undefined) {
-    const e_form_str = format_num(entry.e_form_per_atom, `.3~`)
+  // Fallback to energy_per_atom if e_form_per_atom is absent
+  const e_form_display = entry.e_form_per_atom !== undefined
+    ? entry.e_form_per_atom
+    : entry.energy_per_atom
+  if (e_form_display !== undefined) {
+    const e_form_str = format_num(e_form_display, `.3~`)
     text += `Formation Energy: ${e_form_str} eV/atom`
   }
   if (entry.entry_id) text += `\nID: ${entry.entry_id}`
@@ -147,81 +158,3 @@ export function find_pd_entry_at_mouse<
   }
   return null
 }
-
-// Phase statistics (supports ternary and quaternary via max_arity)
-// moved to hull_energy.get_phase_diagram_stats
-/*
-export function get_phase_diagram_stats(
-  processed_entries: PhaseEntry[],
-  elements: ElementSymbol[],
-  max_arity: 3 | 4,
-): {
-  total: number
-  unary: number
-  binary: number
-  ternary: number
-  quaternary: number
-  stable: number
-  unstable: number
-  energy_range: { min: number; max: number; avg: number }
-  hull_distance: { max: number; avg: number }
-  elements: number
-  chemical_system: string
-} | null {
-  if (!processed_entries || processed_entries.length === 0) return null
-
-  const composition_counts = (max_arity === 4 ? [1, 2, 3, 4] : [1, 2, 3]).map((target) =>
-    processed_entries.filter((entry) =>
-      Object.keys(entry.composition).filter((el) => entry.composition[el] > 0).length ===
-        target
-    ).length
-  )
-  const [unary, binary, ternary, quaternaryMaybe] = composition_counts as [
-    number,
-    number,
-    number,
-    number?,
-  ]
-  const quaternary = max_arity === 4 ? (quaternaryMaybe ?? 0) : 0
-
-  const stable_count =
-    processed_entries.filter((e) => e.is_stable || (e.e_above_hull ?? 0) < 1e-6).length
-  const unstable_count = processed_entries.length - stable_count
-
-  const energies = processed_entries
-    .map((e) => e.e_form_per_atom || e.energy_per_atom)
-    .filter((v): v is number => v !== null)
-
-  const energy_range = energies.length > 0
-    ? {
-      min: Math.min(...energies),
-      max: Math.max(...energies),
-      avg: energies.reduce((a, b) => a + b, 0) / energies.length,
-    }
-    : { min: 0, max: 0, avg: 0 }
-
-  const hull_distances = processed_entries.map((e) => e.e_above_hull || 0).filter((v) =>
-    v >= 0
-  )
-  const hull_distance = hull_distances.length > 0
-    ? {
-      max: Math.max(...hull_distances),
-      avg: hull_distances.reduce((a, b) => a + b, 0) / hull_distances.length,
-    }
-    : { max: 0, avg: 0 }
-
-  return {
-    total: processed_entries.length,
-    unary,
-    binary,
-    ternary,
-    quaternary,
-    stable: stable_count,
-    unstable: unstable_count,
-    energy_range,
-    hull_distance,
-    elements: elements.length,
-    chemical_system: elements.join(`-`),
-  }
-}
-*/

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol } from '$lib'
-  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
+  import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
@@ -951,7 +951,7 @@
   <!-- Hover tooltip -->
   {#if hover_data}
     {@const { entry, position } = hover_data}
-    {@const is_element = Object.keys(entry.composition).length === 1}
+    {@const is_element = is_unary_entry(entry)}
     {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
     <div
       class="tooltip"

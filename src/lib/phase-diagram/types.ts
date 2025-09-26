@@ -1,4 +1,5 @@
 import type { ElementSymbol } from '$lib'
+import type { Vec3 } from '$lib/math'
 
 // Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseEntry {
@@ -101,7 +102,7 @@ export interface Plane {
 
 // Internal face structure for Quickhull algorithm
 export interface ConvexHullFace {
-  vertices: [number, number, number]
+  vertices: Vec3
   plane: Plane
   centroid: Point3D
   outside_points: Set<number>
@@ -112,14 +113,6 @@ export interface ConvexHullTriangle {
   vertices: [Point3D, Point3D, Point3D]
   normal: Point3D
   centroid: Point3D
-}
-
-// Convex hull face for ternary 3D rendering (legacy interface - kept for backward compatibility)
-export interface ConvexHullFace {
-  vertices: number[] // indices into plot_entries array
-  normal: Point3D // face normal vector for lighting
-  centroid: Point3D // face center point
-  is_stable: boolean // whether this face is on the stable hull
 }
 
 // Ternary plot entry with additional face information
@@ -141,7 +134,7 @@ export function get_arity(entry: PhaseEntry) {
   return Object.values(entry.composition).filter((v) => v > 0).length
 }
 
-export const is_elemental_entry = (entry: PhaseEntry) => get_arity(entry) === 1
+export const is_unary_entry = (entry: PhaseEntry) => get_arity(entry) === 1
 export const is_binary_entry = (entry: PhaseEntry) => get_arity(entry) === 2
 export const is_ternary_entry = (entry: PhaseEntry) => get_arity(entry) === 3
 export const is_quaternary_entry = (entry: PhaseEntry) => get_arity(entry) === 4

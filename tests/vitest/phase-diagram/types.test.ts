@@ -2,7 +2,6 @@ import {
   get_arity,
   is_binary_entry,
   is_denary_entry,
-  is_elemental_entry,
   is_nonary_entry,
   is_octonary_entry,
   is_quaternary_entry,
@@ -10,6 +9,7 @@ import {
   is_senary_entry,
   is_septenary_entry,
   is_ternary_entry,
+  is_unary_entry,
   PhaseEntry,
 } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
@@ -22,7 +22,7 @@ describe(`arity helpers`, () => {
   })
 
   test(`predicates for different arities`, () => {
-    expect(is_elemental_entry(make({ A: 1 }))).toBe(true)
+    expect(is_unary_entry(make({ A: 1 }))).toBe(true)
     expect(is_binary_entry(make({ A: 1, B: 1 }))).toBe(true)
     expect(is_ternary_entry(make({ A: 1, B: 1, C: 1 }))).toBe(true)
     expect(is_quaternary_entry(make({ A: 1, B: 1, C: 1, D: 1 }))).toBe(true)

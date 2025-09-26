@@ -1,6 +1,6 @@
 # ElementTile
 
-`ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If its background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color. This an, of course, go wrong e.g. if the tile is absolutely positioned outside its parent element. In that case, pass an explicit `text_color` prop and `luminance_threshold={null}` to `ElementTile` to override the automatic color selection.
+`ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If its background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color. This can, of course, go wrong e.g. if the tile is absolutely positioned outside its parent element. In that case, pass an explicit `text_color` prop and `luminance_threshold={null}` to `ElementTile` to override the automatic color selection.
 
 ```svelte example code_above
 <script>
