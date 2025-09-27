@@ -1,5 +1,5 @@
 <script>
-  import { DemoNav } from '$site'
+  import { DemoNav } from '$lib'
   import { routes as all_routes } from '$site/state.svelte'
 
   const routes = all_routes
