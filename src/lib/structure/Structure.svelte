@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, Lattice, Site } from '$lib'
+  import type { AnyStructure, ElementSymbol, PymatgenLattice, Site } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
@@ -25,12 +25,10 @@
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
 
-  interface Props
-    extends
-      Omit<ControlProps, `children` | `onclose`>,
-      Omit<HTMLAttributes<HTMLDivElement>, `children`> {
+  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `children`> {
+    structure?: AnyStructure | undefined
     scene_props?: ComponentProps<typeof StructureScene>
-    lattice_props?: ComponentProps<typeof Lattice>
+    lattice_props?: ComponentProps<typeof import('$lib/structure').Lattice>
     controls_open?: boolean
     background_color?: string
     background_opacity?: number
@@ -300,14 +298,15 @@
 
   // Redo last undone change
   function redo() {
-    if (history_index < structure_history.length - 1) {
-      history_index++
-      const next_structure = structure_history[history_index]
+    const next_index = history_index + 1
+    if (next_index < structure_history.length) {
+      const next_structure = structure_history[next_index]
       if (next_structure) {
         // Clear selections before restoring to avoid conflicts
         selected_sites = []
         measured_sites = []
         structure = JSON.parse(JSON.stringify(next_structure))
+        history_index = next_index
       }
     }
   }
@@ -349,7 +348,9 @@
         if (structure?.sites) {
           structure = {
             ...structure,
-            sites: structure.sites.filter((_, idx) => !atoms_to_delete.has(idx)),
+            sites: structure.sites.filter((site_unused: Site, site_idx_del: number) =>
+              !atoms_to_delete.has(site_idx_del)
+            ),
           }
         }
       }
@@ -512,6 +513,42 @@
       // Prioritize closing panes over exiting fullscreen
       if (info_pane_open) info_pane_open = false
       else if (controls_open) controls_open = false
+    } else if (measure_mode === `edit` && event.key.toLowerCase() === `a`) {
+      // Add a default atom at structure center (Carbon) in edit mode
+      event.preventDefault()
+      if (!structure?.sites) return
+      const center: [number, number, number] = [0, 0, 0]
+      if (
+        `lattice` in (structure as AnyStructure) &&
+        (structure as AnyStructure & { lattice: PymatgenLattice }).lattice
+      ) {
+        // center of cell
+        const mat =
+          (structure as AnyStructure & { lattice: PymatgenLattice }).lattice.matrix
+        const cell_center: [number, number, number] = [
+          (mat[0][0] + mat[1][0] + mat[2][0]) / 2,
+          (mat[0][1] + mat[1][1] + mat[2][1]) / 2,
+          (mat[0][2] + mat[1][2] + mat[2][2]) / 2,
+        ]
+        center[0] = cell_center[0]
+        center[1] = cell_center[1]
+        center[2] = cell_center[2]
+      }
+      // Save history before adding
+      save_to_history()
+      structure = {
+        ...structure,
+        sites: [
+          ...structure.sites,
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            xyz: center,
+            abc: [0.5, 0.5, 0.5],
+            properties: {},
+            label: `C`,
+          } as Site,
+        ],
+      }
     }
   }
 
@@ -754,13 +791,14 @@
             {height}
             original_atom_count={supercell_structure?.sites?.length || structure?.sites?.length}
             on_operation_start={() => {
-              // Save history BEFORE starting the continuous operation
-              save_to_history()
+              // Enter continuous operation mode; capture pre-drag snapshot
               is_during_continuous_operation = true
+              save_to_history()
             }}
             on_operation_end={() => {
+              // Exit continuous operation and capture the final post-drag state
               is_during_continuous_operation = false
-              // Don't save history here - it was saved at the start
+              save_to_history()
             }}
             on_atom_move={(event) => {
               if (!event.detail || !structure?.sites) return
@@ -780,17 +818,17 @@
 
               if (site_idx === -1 && element) {
                 // Add new atom
-                const new_site = {
+                const new_site: Site = {
                   species: [{
-                    element: element as any,
+                    element: element as ElementSymbol,
                     occu: 1,
-                    oxidation_state: null,
+                    oxidation_state: 0,
                   }],
                   xyz: new_position,
-                  abc: new_abc || [0, 0, 0],
+                  abc: (new_abc || [0, 0, 0]) as [number, number, number],
                   properties: {},
                   label: element,
-                } as any
+                }
                 structure = {
                   ...structure,
                   sites: [...structure.sites, new_site],
@@ -799,7 +837,10 @@
                 // Delete atom
                 structure = {
                   ...structure,
-                  sites: structure.sites.filter((_, idx) => idx !== delete_site_idx),
+                  sites: structure.sites.filter((
+                    site_unused: Site,
+                    site_idx_del: number,
+                  ) => site_idx_del !== delete_site_idx),
                 }
               } else if (site_idx >= 0) {
                 // Move existing atom
@@ -810,10 +851,17 @@
                 if (structure.sites[target_idx]) {
                   structure = {
                     ...structure,
-                    sites: structure.sites.map((site, idx) =>
-                      idx === target_idx
-                        ? { ...site, xyz: new_position, abc: new_abc || site.abc }
-                        : site
+                    sites: structure.sites.map((
+                      site_item: Site,
+                      site_idx_map: number,
+                    ) =>
+                      site_idx_map === target_idx
+                        ? {
+                          ...site_item,
+                          xyz: new_position,
+                          abc: new_abc || site_item.abc,
+                        }
+                        : site_item
                     ),
                   }
                 }

@@ -2854,6 +2854,46 @@ test.describe(`Edit Mode Tests`, () => {
     await expect(redo_button).toBeEnabled()
     await expect(structure_div.locator(`.history-count`).first()).toHaveText(`1`) // redo count
   })
+
+  test(`add atom via keyboard shortcut 'A' in edit mode`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    const canvas = structure_div.locator(`canvas`)
+
+    // Switch to edit mode
+    await structure_div.locator(`button.view-mode-button`).click()
+    await structure_div.locator(`button:has-text("Edit Atoms")`).click()
+
+    // Focus wrapper to receive keyboard events
+    await structure_div.click()
+
+    // Take baseline screenshot
+    const before_add = await canvas.screenshot()
+
+    // Press 'A' to add a default Carbon at center
+    await page.keyboard.press(`KeyA`)
+    await page.waitForTimeout(150)
+
+    const after_add = await canvas.screenshot()
+    expect(before_add.equals(after_add)).toBe(false)
+
+    // Undo should now be enabled
+    const undo_button = structure_div.locator(`button[aria-label*="Undo"]`)
+    const redo_button = structure_div.locator(`button[aria-label*="Redo"]`)
+    await expect(undo_button).toBeEnabled()
+
+    // Undo the addition
+    await undo_button.click()
+    await page.waitForTimeout(150)
+    const after_undo = await canvas.screenshot()
+    expect(after_add.equals(after_undo)).toBe(false)
+
+    // Redo should be enabled now
+    await expect(redo_button).toBeEnabled()
+    await redo_button.click()
+    await page.waitForTimeout(150)
+    const after_redo = await canvas.screenshot()
+    expect(after_undo.equals(after_redo)).toBe(false)
+  })
 })
 
 test.describe(`Structure Event Handler Tests`, () => {

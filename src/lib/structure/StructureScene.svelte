@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
+  import type { AnyStructure, BondPair, ElementSymbol, Site, Vec3 } from '$lib'
   import { atomic_radii, axis_colors, element_data, neg_axis_colors } from '$lib'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
@@ -18,6 +18,7 @@
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+  import type { Mesh } from 'three'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -101,7 +102,7 @@
           site_idx: number
           new_position: Vec3
           new_abc?: Vec3
-          element?: string
+          element?: ElementSymbol
           delete_site_idx?: number
         }
       },
@@ -171,15 +172,12 @@
   let hovered_bond_data: BondPair | null = $state(null)
 
   // Transform controls state
-  let transform_controls = $state<any>(undefined)
   let is_transforming = $state(false)
-  let transform_object = $state<any>(undefined)
+  let transform_object = $state<Mesh | undefined>(undefined)
   let drag_coordinates = $state<{ xyz: Vec3; abc?: Vec3 } | null>(null)
   let has_saved_history_for_drag = $state(false)
 
-  // Context menu state
-  let context_menu = $state<{ x: number; y: number; world_pos: Vec3 } | null>(null)
-  let selected_element = $state(`C`) // Default to Carbon
+  // Context menu and add-atom UI can be implemented here if needed in future
 
   // Helper functions
   const get_material_props = (item: { color: string; is_image_atom?: boolean }) => ({
@@ -250,7 +248,7 @@
   }
 
   // Add atom at position
-  function add_atom(position: Vec3, element: string) {
+  function add_atom(position: Vec3, element: ElementSymbol) {
     if (!on_atom_move) return
 
     let abc: Vec3 | undefined
@@ -301,6 +299,8 @@
 
     // In edit mode, allow multi-selection with Shift+Click
     if (measure_mode === `edit`) {
+      // Disallow selecting image atoms when editing
+      if (site_index >= (base_atom_count || 0)) return
       const is_currently_selected = selected_sites.includes(site_index)
       const is_shift_click = evt instanceof MouseEvent && evt.shiftKey
 
@@ -382,6 +382,11 @@
     structure && `lattice` in structure ? structure.lattice : null,
   )
 
+  // Track number of non-image atoms to distinguish image atoms reliably
+  let base_atom_count = $derived(
+    original_atom_count || (structure?.sites ? structure.sites.length : 0),
+  )
+
   // Get rotation target: cell center for crystalline structures, center of mass for molecular systems
   let rotation_target = $derived(
     lattice
@@ -444,7 +449,7 @@
     if (!show_atoms || !structure?.sites) return []
 
     // Determine which atoms are image atoms
-    const base_atom_count = original_atom_count || structure.sites.length
+    const local_base_count = base_atom_count
 
     // Build atom data with partial occupancy handling
     return structure.sites.flatMap((site, site_idx) => {
@@ -454,7 +459,7 @@
       ) * atom_radius
 
       // Check if this is an image atom
-      const is_image_atom = site_idx >= base_atom_count
+      const is_image_atom = site_idx >= local_base_count
 
       let start_angle = 0
       return site.species.map(({ element, occu }) => ({
@@ -508,9 +513,17 @@
         .reduce(
           (groups, atom) => {
             const { element, radius, color } = atom
-            const key = `${element}-${format_num(radius, `.3~`)}`
+            const key = `${element}-${format_num(radius, `.3~`)}-${
+              atom.is_image_atom ? `image` : `base`
+            }`
             const bucket = groups[key] ||
-              (groups[key] = { element, radius, color, atoms: [] })
+              (groups[key] = {
+                element,
+                radius,
+                color,
+                is_image_atom: atom.is_image_atom,
+                atoms: [],
+              })
             bucket.atoms.push(atom)
             return groups
           },
@@ -772,7 +785,10 @@
       {#each [
           {
             kind: `hover`,
-            site: hovered_site,
+            site: measure_mode === `edit` && hovered_idx != null &&
+                hovered_idx >= (base_atom_count || 0)
+              ? null
+              : hovered_site,
             opacity: 0.28,
             color: `white`,
             site_idx: hovered_idx,
@@ -805,7 +821,11 @@
             position={xyz}
             scale={1.2 * highlight_radius}
             onclick={(event: MouseEvent) => {
-              if (site_idx !== null && Number.isInteger(site_idx)) {
+              if (
+                site_idx !== null &&
+                Number.isInteger(site_idx) &&
+                !(measure_mode === `edit` && site_idx >= (base_atom_count || 0))
+              ) {
                 toggle_selection(site_idx, event)
               }
             }}
@@ -874,31 +894,7 @@
         </CanvasTooltip>
       {/if}
 
-      <!-- Live coordinate display during drag -->
-      {#if drag_coordinates && is_transforming}
-        {@const xyz_str = drag_coordinates.xyz.map((x) => format_num(x, float_fmt)).join(
-          `, `,
-        )}
-        {@const abc_str = drag_coordinates.abc?.map((x) =>
-          format_num(x, float_fmt)
-        ).join(`, `) || `N/A`}
-        {@const pos = math.add(drag_coordinates.xyz, [0, 1, 0]) as Vec3}
-        <Extras.HTML center position={pos}>
-          <div class="drag-coordinates">
-            <div class="coord-line">XYZ: {xyz_str}</div>
-            {#if drag_coordinates.abc}
-              <div class="coord-line">ABC: {abc_str}</div>
-            {/if}
-            <div class="coord-hint">
-              {
-                selected_sites.length > 1
-                ? `Moving ${selected_sites.length} atoms`
-                : `Moving atom`
-              }
-            </div>
-          </div>
-        </Extras.HTML>
-      {/if}
+      <!-- Drag coordinate overlay removed to avoid obstructing the atom during edits -->
 
       {#if lattice}
         <Lattice matrix={lattice.matrix} {...lattice_props} />
@@ -941,6 +937,33 @@
             size={1.2}
             space="world"
             onchange={() => {
+              // Ensure we enter continuous-operation mode BEFORE emitting any position updates
+              if (!is_transforming) {
+                is_transforming = true
+                has_saved_history_for_drag = false
+                if (orbit_controls) orbit_controls.enabled = false
+                on_operation_start?.()
+
+                // Initialize drag coordinates snapshot
+                if (transform_object?.position) {
+                  const { x, y, z } = transform_object.position
+                  const xyz = [x, y, z] as Vec3
+                  let abc: Vec3 | undefined
+                  if (lattice) {
+                    try {
+                      const lattice_transposed = math.transpose_3x3_matrix(
+                        lattice.matrix,
+                      )
+                      const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+                      const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
+                      abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
+                    } catch {
+                      // ignore conversion errors
+                    }
+                  }
+                  drag_coordinates = { xyz, abc }
+                }
+              }
               if (transform_object?.position && selected_atoms.length > 0) {
                 const { x, y, z } = transform_object.position
                 const new_centroid = [x, y, z] as Vec3
@@ -1006,31 +1029,33 @@
               }
             }}
             ondragstart={() => {
-              is_transforming = true
-              has_saved_history_for_drag = false
-              if (orbit_controls) orbit_controls.enabled = false
+              if (!is_transforming) {
+                is_transforming = true
+                has_saved_history_for_drag = false
+                if (orbit_controls) orbit_controls.enabled = false
 
-              // Notify parent that a continuous operation is starting
-              on_operation_start?.()
+                // Notify parent that a continuous operation is starting
+                on_operation_start?.()
 
-              // Initialize drag coordinates
-              if (transform_object?.position) {
-                const { x, y, z } = transform_object.position
-                const xyz = [x, y, z] as Vec3
-                let abc: Vec3 | undefined
-                if (lattice) {
-                  try {
-                    const lattice_transposed = math.transpose_3x3_matrix(
-                      lattice.matrix,
-                    )
-                    const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-                    const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-                    abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
-                  } catch {
-                    // Ignore coordinate conversion errors during drag
+                // Initialize drag coordinates
+                if (transform_object?.position) {
+                  const { x, y, z } = transform_object.position
+                  const xyz = [x, y, z] as Vec3
+                  let abc: Vec3 | undefined
+                  if (lattice) {
+                    try {
+                      const lattice_transposed = math.transpose_3x3_matrix(
+                        lattice.matrix,
+                      )
+                      const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+                      const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
+                      abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
+                    } catch {
+                      // Ignore coordinate conversion errors during drag
+                    }
                   }
+                  drag_coordinates = { xyz, abc }
                 }
-                drag_coordinates = { xyz, abc }
               }
             }}
             ondragend={() => {
@@ -1199,25 +1224,5 @@
     font-size: 0.85em;
     line-height: 1;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  }
-  .drag-coordinates {
-    background: rgba(0, 0, 0, 0.8);
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: white;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.85em;
-    line-height: 1.3;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-  .coord-line {
-    margin: 2px 0;
-  }
-  .coord-hint {
-    margin-top: 4px;
-    font-size: 0.75em;
-    opacity: 0.8;
-    font-style: italic;
   }
 </style>
