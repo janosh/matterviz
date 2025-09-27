@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
     DataSeries,
@@ -802,10 +803,10 @@
 >
   {#snippet tooltip({ x, y, metadata })}
     <strong>Spiral Point</strong><br />
-    Position: ({x.toFixed(2)}, {y.toFixed(2)})<br />
+    Position: ({format_num(x, `.2~`)}, {format_num(y, `.2~`)})<br />
     {#if metadata}
-      Angle: {(metadata.angle as number).toFixed(2)} rad<br />
-      Value (Radius): {(metadata.radius as number).toFixed(2)}
+      Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
+      Value (Radius): {format_num(metadata.radius as number, `.2~`)}
     {/if}
   {/snippet}
 </ScatterPlot>

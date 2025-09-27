@@ -2,6 +2,7 @@ import type { AnyStructure, Vec3 } from '$lib'
 import { Structure } from '$lib'
 import { euclidean_dist, type Matrix3x3, pbc_dist } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
+import type { StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
 import { readFileSync } from 'fs'
@@ -599,11 +600,11 @@ test(`critical default values are valid to prevent runtime errors`, () => {
   expect(DEFAULTS.structure.camera_projection).toBe(`orthographic`)
 
   // Scale types must be valid
-  expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_x_scale_type)
-  expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_y_scale_type)
+  expect([`linear`, `log`]).toContain(DEFAULTS.plot.x_scale_type)
+  expect([`linear`, `log`]).toContain(DEFAULTS.plot.y_scale_type)
 
   // Marker types must be valid
-  expect([`line`, `points`, `line+points`]).toContain(DEFAULTS.trajectory.scatter_markers)
+  expect([`line`, `points`, `line+points`]).toContain(DEFAULTS.scatter.markers)
 
   // Critical numeric values must be in valid ranges to prevent rendering issues
   expect(DEFAULTS.structure.atom_radius).toBeGreaterThan(0)
@@ -804,5 +805,157 @@ describe(`atom label controls`, () => {
 
     expect(parseFloat(instance1_z.value)).toBeCloseTo(0.9, 1)
     expect(parseFloat(instance2_z.value)).toBeCloseTo(0.7, 1)
+  })
+})
+
+describe(`Structure string parsing`, () => {
+  const test_data = [
+    [`POSCAR`, SAMPLE_POSCAR_CONTENT, 5, [`Ba`, `Ti`, `O`], true],
+    [`XYZ`, `3\nH2O\nO 0.0 0.0 0.119\nH 0.0 0.763 -0.477\nH 0.0 -0.763 -0.477`, 3, [
+      `O`,
+      `H`,
+    ], false],
+    [
+      `CIF`,
+      `data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nNa1 Na 0.0 0.0 0.0 1.0\nCl1 Cl 0.5 0.5 0.5 1.0`,
+      2,
+      [`Na`, `Cl`],
+      true,
+    ],
+    [
+      `JSON`,
+      JSON.stringify({
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `H1`,
+          properties: {},
+        }],
+      }),
+      1,
+      [`H`],
+      false,
+    ],
+  ] as const
+
+  test.each(test_data)(
+    `parses %s format correctly`,
+    async (_format, content, atoms, elements, has_lattice) => {
+      let parsed = $state<AnyStructure | undefined>(undefined)
+      let loaded = false
+
+      mount(Structure, {
+        target: document.body,
+        props: {
+          structure_string: content,
+          get structure() {
+            return parsed
+          },
+          set structure(val) {
+            parsed = val
+          },
+          on_file_load: (data) => {
+            loaded = true
+            expect(data.total_atoms).toBe(atoms)
+            expect(data.filename).toBe(`string`)
+          },
+        },
+      })
+
+      await tick()
+      expect(parsed).toBeDefined()
+      if (parsed) {
+        expect(parsed.sites).toHaveLength(atoms)
+        elements.forEach((el) =>
+          expect(parsed?.sites.map((s) => s.species[0].element)).toContain(el)
+        )
+        expect(!!(`lattice` in parsed && parsed.lattice)).toBe(has_lattice)
+      }
+      expect(loaded).toBe(true)
+    },
+  )
+
+  test.each([
+    [`invalid content`, `not parseable`],
+    [`malformed JSON`, `{bad`],
+  ])(`handles %s gracefully`, async (_, content) => {
+    let errored = false
+    mount(Structure, {
+      target: document.body,
+      props: { structure_string: content, on_error: () => errored = true },
+    })
+    await tick()
+    expect(errored).toBe(true)
+  })
+
+  test(`structure binding works correctly`, async () => {
+    let parsed = $state<AnyStructure | undefined>(undefined)
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure_string: SAMPLE_POSCAR_CONTENT,
+        get structure() {
+          return parsed
+        },
+        set structure(val) {
+          parsed = val
+        },
+      },
+    })
+    await tick()
+    expect(parsed?.sites).toHaveLength(5)
+  })
+
+  test(`loading state works correctly`, async () => {
+    let loading = $state(false)
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure_string: SAMPLE_POSCAR_CONTENT,
+        get loading() {
+          return loading
+        },
+        set loading(val) {
+          loading = val
+        },
+      },
+    })
+    await tick()
+    expect(loading).toBe(false)
+  })
+
+  test(`file size emission works correctly`, async () => {
+    let size = 0
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure_string: SAMPLE_POSCAR_CONTENT,
+        on_file_load: (data: StructureHandlerData) => {
+          size = data.file_size || 0
+        },
+      },
+    })
+    await tick()
+    expect(size).toBe(new Blob([SAMPLE_POSCAR_CONTENT]).size)
+  })
+
+  test(`prioritizes data_url over structure_string`, async () => {
+    let filename = ``
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(SAMPLE_POSCAR_CONTENT),
+    })
+    mount(Structure, {
+      target: document.body,
+      props: {
+        data_url: `/test.poscar`,
+        structure_string: `ignored`,
+        on_file_load: (data) => filename = data.filename || ``,
+      },
+    })
+    await tick()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(filename).toBe(`test.poscar`)
   })
 })

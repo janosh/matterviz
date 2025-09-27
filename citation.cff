@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: matterviz
+message: If you use this software, please cite it as below.
+authors:
+  - family-names: Riebesell
+    given-names: Janosh
+    affiliation: Periodic Labs
+    email: janosh.riebesell@gmail.com
+    orcid: https://orcid.org/0000-0001-5233-3462
+    github: janosh
+  - family-names: Evans
+    given-names: Matthew
+    affiliation: University of Cambridge
+    email: matthew.evans@uclouvain.be
+    orcid: https://orcid.org/0000-0002-1182-9098
+    github: ml-evs
+license: MIT
+license-url: https://github.com/janosh/matterviz/blob/main/license"
+repository-code: https://github.com/janosh/matterviz
+type: software
+url: https://github.com/janosh/matterviz
+doi: 10.5281/zenodo.17094509
+version: 0.1.9 # replace with whatever version you use
+date-released: 2025-09-05

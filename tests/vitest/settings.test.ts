@@ -6,6 +6,8 @@ describe(`Settings`, () => {
     test(`should have valid structure with required sections`, () => {
       expect(SETTINGS_CONFIG).toHaveProperty(`structure`)
       expect(SETTINGS_CONFIG).toHaveProperty(`trajectory`)
+      expect(SETTINGS_CONFIG).toHaveProperty(`plot`)
+      expect(SETTINGS_CONFIG).toHaveProperty(`scatter`)
       expect(SETTINGS_CONFIG).toHaveProperty(`composition`)
       expect(SETTINGS_CONFIG).toHaveProperty(`color_scheme`)
       expect(SETTINGS_CONFIG).toHaveProperty(`background_color`)
@@ -22,7 +24,9 @@ describe(`Settings`, () => {
       check_setting(SETTINGS_CONFIG.color_scheme)
       check_setting(SETTINGS_CONFIG.structure.atom_radius)
       check_setting(SETTINGS_CONFIG.trajectory.auto_play)
-      check_setting(SETTINGS_CONFIG.composition.composition_mode)
+      check_setting(SETTINGS_CONFIG.plot.grid_lines)
+      check_setting(SETTINGS_CONFIG.scatter.point_size)
+      check_setting(SETTINGS_CONFIG.composition.display_mode)
     })
 
     test(`should have numeric constraints where appropriate`, () => {
@@ -30,6 +34,8 @@ describe(`Settings`, () => {
         SETTINGS_CONFIG.structure.atom_radius,
         SETTINGS_CONFIG.structure.sphere_segments,
         SETTINGS_CONFIG.trajectory.fps,
+        SETTINGS_CONFIG.plot.zoom_factor,
+        SETTINGS_CONFIG.scatter.point_size,
       ]
 
       numeric_settings.forEach((setting) => {
@@ -45,7 +51,10 @@ describe(`Settings`, () => {
         SETTINGS_CONFIG.structure.bonding_strategy,
         SETTINGS_CONFIG.structure.camera_projection,
         SETTINGS_CONFIG.trajectory.display_mode,
-        SETTINGS_CONFIG.composition.composition_mode,
+        SETTINGS_CONFIG.plot.x_scale_type,
+        SETTINGS_CONFIG.plot.y_scale_type,
+        SETTINGS_CONFIG.scatter.markers,
+        SETTINGS_CONFIG.composition.display_mode,
       ]
 
       enum_settings.forEach((setting) => {
@@ -78,10 +87,12 @@ describe(`Settings`, () => {
     test(`should maintain proper nested structure`, () => {
       expect(DEFAULTS).toHaveProperty(`structure`)
       expect(DEFAULTS).toHaveProperty(`trajectory`)
+      expect(DEFAULTS).toHaveProperty(`plot`)
+      expect(DEFAULTS).toHaveProperty(`scatter`)
       expect(DEFAULTS).toHaveProperty(`composition`)
       expect(DEFAULTS.structure).toHaveProperty(`atom_radius`)
       expect(DEFAULTS.trajectory).toHaveProperty(`auto_play`)
-      expect(DEFAULTS.composition).toHaveProperty(`composition_mode`)
+      expect(DEFAULTS.composition).toHaveProperty(`display_mode`)
     })
 
     test(`should extract array values with correct length`, () => {

@@ -52,8 +52,8 @@ describe(`StructureLegend Component`, () => {
 
     if (check_styling) {
       // Check styling and inputs
-      const fe_label = labels[0] as HTMLLabelElement
-      expect(fe_label.style.backgroundColor).toBe(colors.element.Fe)
+      const iron_label = labels[0] as HTMLLabelElement
+      expect(iron_label.style.backgroundColor).toBe(colors.element.Fe)
 
       const color_inputs = document.querySelectorAll(`input[type="color"]`)
       expect(color_inputs).toHaveLength(expected_count)

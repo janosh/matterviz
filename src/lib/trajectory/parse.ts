@@ -2,7 +2,15 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
-import { COMPRESSION_EXTENSIONS } from '$lib/io/decompress'
+import {
+  COMPRESSION_EXTENSIONS_REGEX,
+  CONFIG_DIRS_REGEX,
+  MD_SIM_EXCLUDE_REGEX,
+  TRAJ_EXTENSIONS_REGEX,
+  TRAJ_FALLBACK_EXTENSIONS_REGEX,
+  TRAJ_KEYWORDS_SIMPLE_REGEX,
+  XDATCAR_REGEX,
+} from '$lib/constants'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import { parse_xyz } from '$lib/structure/parse'
@@ -68,43 +76,42 @@ const FORMAT_PATTERNS = {
   },
 
   xyz_multi: (data: string, filename?: string) => {
-    if (!filename?.toLowerCase().match(/\.(xyz|extxyz)(?:\.(?:gz|gzip|zip|bz2|xz))?$/)) {
-      return false
-    }
+    const lower = filename?.toLowerCase() ?? ``
+    const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    if (!/\.(xyz|extxyz)$/.test(base)) return false
     return count_xyz_frames(data) >= 2
   },
 } as const
 
-// Check if filename indicates trajectory file
-export function is_trajectory_file(filename: string): boolean {
+// Check if file is a trajectory (supports both filename-only and content-based detection)
+export function is_trajectory_file(filename: string, content?: string): boolean {
+  if (CONFIG_DIRS_REGEX.test(filename)) return false
   let base_name = filename.toLowerCase()
-  const compression_regex = new RegExp(
-    `\\.(${COMPRESSION_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
-    `i`,
-  )
-  while (compression_regex.test(base_name)) {
-    base_name = base_name.replace(compression_regex, ``)
+  while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
+    base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  }
+
+  // For xyz/extxyz files, use content-based detection if available
+  if (/\.(xyz|extxyz)$/i.test(base_name)) {
+    if (content) return count_xyz_frames(content) >= 2
+    // Use filename-based detection for auto-render (compressed or not)
+    return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
   }
 
   // Always detect these specific trajectory formats
-  if (/\.(traj|xtc|xyz|extxyz)$/i.test(base_name) || /xdatcar/i.test(base_name)) {
-    return true
-  }
-
-  // Exclude common non-trajectory files that might contain "md_simulation"
-  const keywords = /(trajectory|traj|relax|npt|nvt|nve|qha|md|dynamics|simulation)/i
+  if (TRAJ_EXTENSIONS_REGEX.test(base_name) || XDATCAR_REGEX.test(base_name)) return true
 
   // Special exclusion for generic md_simulation pattern with certain extensions
-  if (/md_simulation\.(out|txt|yml|py|csv|html|css|md|js|ts)$/i.test(base_name)) {
-    return false
-  }
+  if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
 
   // For .h5/.hdf5 files, require trajectory keywords
-  if (/\.(h5|hdf5)$/i.test(base_name)) return keywords.test(base_name)
+  if (/\.(h5|hdf5)$/i.test(base_name)) {
+    return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name)
+  }
 
   // For other extensions, require both keywords and specific extensions
-  return keywords.test(base_name) &&
-    /\.(xyz|extxyz|dat|data|poscar|pdf|log|out|json)$/i.test(base_name)
+  return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name) &&
+    TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
 }
 
 // Cache for optimization
@@ -219,6 +226,7 @@ const read_ndarray_from_view = (
 
 // Unified frame counting for XYZ
 function count_xyz_frames(data: string): number {
+  if (!data || typeof data !== `string`) return 0
   const lines = data.trim().split(/\r?\n/)
   let frame_count = 0
   let line_idx = 0
@@ -1146,10 +1154,10 @@ export async function parse_trajectory_data(
 
   // Pymatgen format
   if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
-    const species = obj.species as Array<{ element: ElementSymbol }>
+    const species = obj.species as { element: ElementSymbol }[]
     const coords = obj.coords as number[][][]
     const matrix = obj.lattice as Matrix3x3
-    const frame_properties = obj.frame_properties as Array<Record<string, unknown>> || []
+    const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
 
     const frames = coords.map((frame_coords, idx) => {
       const positions = frame_coords.map((abc) =>
@@ -1371,11 +1379,8 @@ async function parse_with_unified_loader(
     }
   }
 
-  on_progress?.({
-    current: 100,
-    total: 100,
-    stage: `Ready: ${total_frames} frames indexed`,
-  })
+  const stage = `Ready: ${total_frames} frames indexed`
+  on_progress?.({ current: 100, total: 100, stage })
 
   return {
     frames,
@@ -1383,7 +1388,7 @@ async function parse_with_unified_loader(
       source_format: filename.toLowerCase().endsWith(`.traj`)
         ? `ase_trajectory`
         : `xyz_trajectory`,
-      frame_count: frames.length,
+      frame_count: total_frames,
     },
     total_frames,
     indexed_frames: frame_index,
