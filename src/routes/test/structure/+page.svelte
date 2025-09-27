@@ -16,7 +16,7 @@
   let measured_sites = $state<number[]>([])
 
   // capture event data for testing
-  let event_calls = $state<Array<{ event: string; data: unknown }>>([])
+  let event_calls = $state<{ event: string; data: unknown }[]>([])
 
   // Structure state - can be overridden by data_url
   let structure = $state<PymatgenStructure | undefined>(

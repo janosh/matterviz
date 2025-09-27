@@ -2,6 +2,8 @@
 // Used by both main package and VSCode extension
 
 import type { Vec3 } from '$lib/math'
+import type { D3SymbolName, Markers } from '$lib/plot'
+import { symbol_names } from '$lib/plot/formatting'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 // SettingType interface with optional context to control where settings apply
@@ -26,8 +28,7 @@ export interface SettingsConfig {
   background_color: SettingType<string>
   background_opacity: SettingType<number>
 
-  // Structure viewer settings
-  structure: {
+  structure: { // Structure viewer settings
     // Atoms & Bonds
     atom_radius: SettingType<number>
     same_size_atoms: SettingType<boolean>
@@ -82,8 +83,7 @@ export interface SettingsConfig {
     fullscreen_toggle: SettingType<boolean>
   }
 
-  // Trajectory viewer settings
-  trajectory: {
+  trajectory: { // Trajectory viewer settings
     // Core trajectory settings
     auto_play: SettingType<boolean>
     fps: SettingType<number>
@@ -111,41 +111,6 @@ export interface SettingsConfig {
     histogram_mode: SettingType<`overlay` | `single`>
     histogram_show_legend: SettingType<boolean>
     histogram_bin_count: SettingType<number>
-
-    // Plot general
-    plot_animation_duration: SettingType<number>
-    enable_plot_zoom: SettingType<boolean>
-    plot_zoom_factor: SettingType<number>
-    auto_fit_plot_range: SettingType<boolean>
-    plot_grid_lines: SettingType<boolean>
-    plot_axis_labels: SettingType<boolean>
-    plot_show_zero_lines: SettingType<boolean>
-    plot_x_grid: SettingType<boolean>
-    plot_y_grid: SettingType<boolean>
-    plot_y2_grid: SettingType<boolean>
-    plot_x_format: SettingType<string>
-    plot_y_format: SettingType<string>
-    plot_y2_format: SettingType<string>
-    plot_x_scale_type: SettingType<string>
-    plot_y_scale_type: SettingType<string>
-    plot_x_ticks: SettingType<number>
-    plot_y_ticks: SettingType<number>
-
-    // Scatter plot specific
-    scatter_point_size: SettingType<number>
-    scatter_show_legend: SettingType<boolean>
-    scatter_markers: SettingType<string>
-    scatter_point_color: SettingType<string>
-    scatter_point_opacity: SettingType<number>
-    scatter_point_stroke_width: SettingType<number>
-    scatter_point_stroke_color: SettingType<string>
-    scatter_point_stroke_opacity: SettingType<number>
-    scatter_line_width: SettingType<number>
-    scatter_line_color: SettingType<string>
-    scatter_line_opacity: SettingType<number>
-    scatter_line_dash: SettingType<string>
-    scatter_show_points: SettingType<boolean>
-    scatter_show_lines: SettingType<boolean>
 
     // Histogram specific (additional to existing)
     histogram_bar_opacity: SettingType<number>
@@ -177,10 +142,104 @@ export interface SettingsConfig {
     cache_parsed_data: SettingType<boolean>
   }
 
-  // Composition specific
-  composition: {
-    composition_mode: SettingType<`pie` | `bubble` | `bar`>
-    composition_color_scheme: SettingType<string>
+  plot: { // General plot settings
+    animation_duration: SettingType<number>
+    enable_zoom: SettingType<boolean>
+    zoom_factor: SettingType<number>
+    auto_fit_range: SettingType<boolean>
+    grid_lines: SettingType<boolean>
+    axis_labels: SettingType<boolean>
+    show_zero_lines: SettingType<boolean>
+    x_grid: SettingType<boolean>
+    y_grid: SettingType<boolean>
+    y2_grid: SettingType<boolean>
+    x_format: SettingType<string>
+    y_format: SettingType<string>
+    y2_format: SettingType<string>
+    x_scale_type: SettingType<string>
+    y_scale_type: SettingType<string>
+    x_ticks: SettingType<number>
+    y_ticks: SettingType<number>
+  }
+
+  scatter: { // Scatter plot settings
+    point_size: SettingType<number>
+    show_legend: SettingType<boolean>
+    markers: SettingType<Markers>
+    point_color: SettingType<string>
+    point_opacity: SettingType<number>
+    point_stroke_width: SettingType<number>
+    point_stroke_color: SettingType<string>
+    point_stroke_opacity: SettingType<number>
+    line_width: SettingType<number>
+    line_color: SettingType<string>
+    line_opacity: SettingType<number>
+    line_dash: SettingType<string>
+    show_points: SettingType<boolean>
+    show_lines: SettingType<boolean>
+    symbol_type: SettingType<D3SymbolName>
+  }
+
+  composition: { // Composition specific settings
+    display_mode: SettingType<`pie` | `bubble` | `bar`>
+    color_scheme: SettingType<string>
+  }
+
+  phase_diagram: { // Phase diagram defaults (binary/ternary/quaternary)
+    binary: {
+      camera_zoom: SettingType<number>
+      camera_center_x: SettingType<number>
+      camera_center_y: SettingType<number>
+      color_mode: SettingType<`stability` | `energy`>
+      color_scale: SettingType<string>
+      show_stable: SettingType<boolean>
+      show_unstable: SettingType<boolean>
+      show_stable_labels: SettingType<boolean>
+      show_unstable_labels: SettingType<boolean>
+      energy_threshold: SettingType<number>
+      label_energy_threshold: SettingType<number>
+      fullscreen: SettingType<boolean>
+      info_pane_open: SettingType<boolean>
+      legend_pane_open: SettingType<boolean>
+    }
+    ternary: {
+      camera_elevation: SettingType<number>
+      camera_azimuth: SettingType<number>
+      camera_zoom: SettingType<number>
+      camera_center_x: SettingType<number>
+      camera_center_y: SettingType<number>
+      color_mode: SettingType<`stability` | `energy`>
+      color_scale: SettingType<string>
+      show_stable: SettingType<boolean>
+      show_unstable: SettingType<boolean>
+      show_stable_labels: SettingType<boolean>
+      show_unstable_labels: SettingType<boolean>
+      energy_threshold: SettingType<number>
+      label_energy_threshold: SettingType<number>
+      show_hull_faces: SettingType<boolean>
+      hull_face_color: SettingType<string>
+      fullscreen: SettingType<boolean>
+      info_pane_open: SettingType<boolean>
+      legend_pane_open: SettingType<boolean>
+    }
+    quaternary: {
+      camera_rotation_x: SettingType<number>
+      camera_rotation_y: SettingType<number>
+      camera_zoom: SettingType<number>
+      camera_center_x: SettingType<number>
+      camera_center_y: SettingType<number>
+      color_mode: SettingType<`stability` | `energy`>
+      color_scale: SettingType<string>
+      show_stable: SettingType<boolean>
+      show_unstable: SettingType<boolean>
+      show_stable_labels: SettingType<boolean>
+      show_unstable_labels: SettingType<boolean>
+      energy_threshold: SettingType<number>
+      label_energy_threshold: SettingType<number>
+      fullscreen: SettingType<boolean>
+      info_pane_open: SettingType<boolean>
+      legend_pane_open: SettingType<boolean>
+    }
   }
 }
 
@@ -559,159 +618,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 5,
     },
 
-    // Scatter plot specific
-    scatter_line_width: {
-      value: 2,
-      description: `Line width for scatter plot connections`,
-      minimum: 0.5,
-      maximum: 10,
-    },
-    scatter_point_size: {
-      value: 4,
-      description: `Point size for scatter plots`,
-      minimum: 1,
-      maximum: 20,
-    },
-    scatter_show_legend: {
-      value: true,
-      description: `Show legend in scatter plots`,
-    },
-
-    // Plot general
-    plot_animation_duration: {
-      value: 200,
-      description: `Duration of plot animations in milliseconds`,
-      minimum: 0,
-      maximum: 2000,
-    },
-    enable_plot_zoom: {
-      value: true,
-      description: `Enable zooming in plots`,
-    },
-    plot_zoom_factor: {
-      value: 1.5,
-      description: `Zoom factor for plot interactions`,
-      minimum: 1.1,
-      maximum: 5.0,
-    },
-    auto_fit_plot_range: {
-      value: true,
-      description: `Automatically fit plot range to data`,
-    },
-    plot_grid_lines: {
-      value: true,
-      description: `Show grid lines in plots`,
-    },
-    plot_axis_labels: {
-      value: true,
-      description: `Show axis labels in plots`,
-    },
-    plot_show_zero_lines: {
-      value: true,
-      description: `Show zero reference lines in plots`,
-    },
-    plot_x_grid: {
-      value: true,
-      description: `Show X-axis grid lines`,
-    },
-    plot_y_grid: {
-      value: true,
-      description: `Show Y-axis grid lines`,
-    },
-    plot_y2_grid: {
-      value: true,
-      description: `Show secondary Y-axis grid lines`,
-    },
-    plot_x_format: {
-      value: `.2~s`,
-      description: `Number format for X-axis ticks (D3 format specifier)`,
-    },
-    plot_y_format: {
-      value: `d`,
-      description: `Number format for Y-axis ticks (D3 format specifier)`,
-    },
-    plot_y2_format: {
-      value: ``,
-      description: `Number format for secondary Y-axis ticks (D3 format specifier)`,
-    },
-    plot_x_scale_type: {
-      value: `linear`,
-      description: `Scale type for X-axis`,
-      enum: [`linear`, `log`],
-    },
-    plot_y_scale_type: {
-      value: `linear`,
-      description: `Scale type for Y-axis`,
-      enum: [`linear`, `log`],
-    },
-    plot_x_ticks: {
-      value: 8,
-      description: `Number of ticks on X-axis`,
-      minimum: 2,
-      maximum: 20,
-    },
-    plot_y_ticks: {
-      value: 6,
-      description: `Number of ticks on Y-axis`,
-      minimum: 2,
-      maximum: 20,
-    },
-
-    // Scatter plot specific
-    scatter_markers: {
-      value: `line+points`,
-      description: `Scatter plot marker type`,
-      enum: [`line`, `points`, `line+points`],
-    },
-    scatter_point_color: {
-      value: `#4682b4`,
-      description: `Default color for scatter plot points`,
-    },
-    scatter_point_opacity: {
-      value: 1,
-      description: `Opacity of scatter plot points`,
-      minimum: 0,
-      maximum: 1,
-    },
-    scatter_point_stroke_width: {
-      value: 1,
-      description: `Stroke width for scatter plot points`,
-      minimum: 0,
-      maximum: 5,
-    },
-    scatter_point_stroke_color: {
-      value: `#000000`,
-      description: `Stroke color for scatter plot points`,
-    },
-    scatter_point_stroke_opacity: {
-      value: 1,
-      description: `Stroke opacity for scatter plot points`,
-      minimum: 0,
-      maximum: 1,
-    },
-    scatter_line_color: {
-      value: `#4682b4`,
-      description: `Default color for scatter plot lines`,
-    },
-    scatter_line_opacity: {
-      value: 1,
-      description: `Opacity of scatter plot lines`,
-      minimum: 0,
-      maximum: 1,
-    },
-    scatter_line_dash: {
-      value: `solid`,
-      description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
-    },
-    scatter_show_points: {
-      value: true,
-      description: `Show points in scatter plots`,
-    },
-    scatter_show_lines: {
-      value: true,
-      description: `Show connecting lines in scatter plots`,
-    },
-
     // Formatting
     step_label_format: {
       value: `.3~s`,
@@ -797,25 +703,422 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   // Composition specific
   composition: {
-    composition_mode: {
+    display_mode: {
       value: `pie` as const,
       description: `Display mode for composition data`,
       enum: [`pie`, `bubble`, `bar`],
     },
-    composition_color_scheme: {
+    color_scheme: {
       value: `Vesta`,
       description: `Color scheme for composition visualization`,
       enum: [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`],
     },
   },
+
+  // Scatter plot specific
+  scatter: {
+    symbol_type: {
+      value: `Circle`,
+      description: `Default symbol type for scatter plots`,
+      enum: symbol_names,
+    },
+    line_width: {
+      value: 2,
+      description: `Line width for scatter plot connections`,
+      minimum: 0.5,
+      maximum: 10,
+    },
+    point_size: {
+      value: 4,
+      description: `Point size for scatter plots`,
+      minimum: 1,
+      maximum: 20,
+    },
+    show_legend: {
+      value: true,
+      description: `Show legend in scatter plots`,
+    },
+
+    // Scatter plot specific
+    markers: {
+      value: `line+points`,
+      description: `Scatter plot marker type`,
+      enum: [`line`, `points`, `line+points`],
+    },
+    point_color: {
+      value: `#4682b4`,
+      description: `Default color for scatter plot points`,
+    },
+    point_opacity: {
+      value: 1,
+      description: `Opacity of scatter plot points`,
+      minimum: 0,
+      maximum: 1,
+    },
+    point_stroke_width: {
+      value: 1,
+      description: `Stroke width for scatter plot points`,
+      minimum: 0,
+      maximum: 5,
+    },
+    point_stroke_color: {
+      value: `#000000`,
+      description: `Stroke color for scatter plot points`,
+    },
+    point_stroke_opacity: {
+      value: 1,
+      description: `Stroke opacity for scatter plot points`,
+      minimum: 0,
+      maximum: 1,
+    },
+    line_color: {
+      value: `#4682b4`,
+      description: `Default color for scatter plot lines`,
+    },
+    line_opacity: {
+      value: 1,
+      description: `Opacity of scatter plot lines`,
+      minimum: 0,
+      maximum: 1,
+    },
+    line_dash: {
+      value: `solid`,
+      description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
+    },
+    show_points: {
+      value: true,
+      description: `Show points in scatter plots`,
+    },
+    show_lines: {
+      value: true,
+      description: `Show connecting lines in scatter plots`,
+    },
+  },
+
+  // Plot general
+  plot: {
+    animation_duration: {
+      value: 200,
+      description: `Duration of plot animations in milliseconds`,
+      minimum: 0,
+      maximum: 2000,
+    },
+    enable_zoom: {
+      value: true,
+      description: `Enable zooming in plots`,
+    },
+    zoom_factor: {
+      value: 1.5,
+      description: `Zoom factor for plot interactions`,
+      minimum: 1.1,
+      maximum: 5.0,
+    },
+    auto_fit_range: {
+      value: true,
+      description: `Automatically fit plot range to data`,
+    },
+    grid_lines: {
+      value: true,
+      description: `Show grid lines in plots`,
+    },
+    axis_labels: {
+      value: true,
+      description: `Show axis labels in plots`,
+    },
+    show_zero_lines: {
+      value: true,
+      description: `Show zero reference lines in plots`,
+    },
+    x_grid: {
+      value: true,
+      description: `Show X-axis grid lines`,
+    },
+    y_grid: {
+      value: true,
+      description: `Show Y-axis grid lines`,
+    },
+    y2_grid: {
+      value: true,
+      description: `Show secondary Y-axis grid lines`,
+    },
+    x_format: {
+      value: `.2~s`,
+      description: `Number format for X-axis ticks (D3 format specifier)`,
+    },
+    y_format: {
+      value: `d`,
+      description: `Number format for Y-axis ticks (D3 format specifier)`,
+    },
+    y2_format: {
+      value: ``,
+      description: `Number format for secondary Y-axis ticks (D3 format specifier)`,
+    },
+    x_scale_type: {
+      value: `linear`,
+      description: `Scale type for X-axis`,
+      enum: [`linear`, `log`],
+    },
+    y_scale_type: {
+      value: `linear`,
+      description: `Scale type for Y-axis`,
+      enum: [`linear`, `log`],
+    },
+    x_ticks: {
+      value: 8,
+      description: `Number of ticks on X-axis`,
+      minimum: 2,
+      maximum: 20,
+    },
+    y_ticks: {
+      value: 6,
+      description: `Number of ticks on Y-axis`,
+      minimum: 2,
+      maximum: 20,
+    },
+  },
+
+  phase_diagram: { // Phase diagram defaults (binary/ternary/quaternary)
+    binary: {
+      camera_zoom: {
+        value: 1.0,
+        description: `Initial zoom for binary (2D) phase diagram`,
+        minimum: 0.1,
+        maximum: 10,
+      },
+      camera_center_x: {
+        value: 0,
+        description: `Initial X center for binary (2D) phase diagram`,
+      },
+      camera_center_y: {
+        value: 0,
+        description: `Initial Y center for binary (2D) phase diagram`,
+      },
+      color_mode: {
+        value: `energy`,
+        description: `Color mode for 2D PD points`,
+        enum: [`stability`, `energy`],
+      },
+      color_scale: {
+        value: `interpolateViridis`,
+        description: `D3 interpolate color scale for 2D PD energy mode`,
+      },
+      show_stable: {
+        value: true,
+        description: `Show stable phases in 2D PD`,
+      },
+      show_unstable: {
+        value: true,
+        description: `Show unstable phases in 2D PD`,
+      },
+      show_stable_labels: {
+        value: true,
+        description: `Show labels for stable phases in 2D PD`,
+      },
+      show_unstable_labels: {
+        value: false,
+        description: `Show labels for unstable phases in 2D PD`,
+      },
+      energy_threshold: {
+        value: 0.1,
+        description: `Max eV/atom above hull for showing unstable entries in 2D PD`,
+        minimum: 0,
+        maximum: 2,
+      },
+      label_energy_threshold: {
+        value: 0.1,
+        description: `Max eV/atom above hull for labeling unstable entries in 2D PD`,
+        minimum: 0,
+        maximum: 2,
+      },
+      fullscreen: {
+        value: false,
+        description: `Start in fullscreen for 2D PD`,
+      },
+      info_pane_open: {
+        value: false,
+        description: `Info pane open by default for 2D PD`,
+      },
+      legend_pane_open: {
+        value: false,
+        description: `Legend pane open by default for 2D PD`,
+      },
+    },
+    ternary: {
+      camera_elevation: {
+        value: 45,
+        description: `Initial camera elevation (deg) for ternary (3D) PD`,
+        minimum: -180,
+        maximum: 180,
+      },
+      camera_azimuth: {
+        value: 60,
+        description: `Initial camera azimuth (deg) for ternary (3D) PD`,
+        minimum: -360,
+        maximum: 360,
+      },
+      camera_zoom: {
+        value: 1.5,
+        description: `Initial camera zoom for ternary (3D) PD`,
+        minimum: 0.1,
+        maximum: 10,
+      },
+      camera_center_x: {
+        value: 0,
+        description: `Initial X center for ternary (3D) PD`,
+      },
+      camera_center_y: {
+        value: -50,
+        description: `Initial Y center for ternary (3D) PD`,
+      },
+      color_mode: {
+        value: `energy`,
+        description: `Color mode for 3D PD points`,
+        enum: [`stability`, `energy`],
+      },
+      color_scale: {
+        value: `interpolateViridis`,
+        description: `D3 interpolate color scale for 3D PD energy mode`,
+      },
+      show_stable: {
+        value: true,
+        description: `Show stable phases in 3D PD`,
+      },
+      show_unstable: {
+        value: true,
+        description: `Show unstable phases in 3D PD`,
+      },
+      show_stable_labels: {
+        value: true,
+        description: `Show labels for stable phases in 3D PD`,
+      },
+      show_unstable_labels: {
+        value: false,
+        description: `Show labels for unstable phases in 3D PD`,
+      },
+      energy_threshold: {
+        value: 0.5,
+        description: `Max eV/atom above hull for showing unstable entries in 3D PD`,
+        minimum: 0,
+        maximum: 2,
+      },
+      label_energy_threshold: {
+        value: 0.1,
+        description: `Max eV/atom above hull for labeling unstable entries in 3D PD`,
+        minimum: 0,
+        maximum: 2,
+      },
+      show_hull_faces: {
+        value: true,
+        description: `Render lower hull faces in 3D PD`,
+      },
+      hull_face_color: {
+        value: `#4caf50`,
+        description: `Color for lower hull faces in 3D PD`,
+      },
+      fullscreen: {
+        value: false,
+        description: `Start in fullscreen for 3D PD`,
+      },
+      info_pane_open: {
+        value: false,
+        description: `Info pane open by default for 3D PD`,
+      },
+      legend_pane_open: {
+        value: false,
+        description: `Legend pane open by default for 3D PD`,
+      },
+    },
+    quaternary: {
+      camera_rotation_x: {
+        value: -0.6,
+        description: `Initial camera X rotation (rad) for quaternary (4D) PD`,
+        minimum: -6.283,
+        maximum: 6.283,
+      },
+      camera_rotation_y: {
+        value: 0.8,
+        description: `Initial camera Y rotation (rad) for quaternary (4D) PD`,
+        minimum: -6.283,
+        maximum: 6.283,
+      },
+      camera_zoom: {
+        value: 1.4,
+        description: `Initial camera zoom for quaternary (4D) PD`,
+        minimum: 0.1,
+        maximum: 20,
+      },
+      camera_center_x: {
+        value: 0,
+        description: `Initial X center for quaternary (4D) PD`,
+      },
+      camera_center_y: {
+        value: 20,
+        description: `Initial Y center for quaternary (4D) PD`,
+      },
+      color_mode: {
+        value: `energy`,
+        description: `Color mode for 4D PD points`,
+        enum: [`stability`, `energy`],
+      },
+      color_scale: {
+        value: `interpolateViridis`,
+        description: `D3 interpolate color scale for 4D PD energy mode`,
+      },
+      show_stable: {
+        value: true,
+        description: `Show stable phases in 4D PD`,
+      },
+      show_unstable: {
+        value: true,
+        description: `Show unstable phases in 4D PD`,
+      },
+      show_stable_labels: {
+        value: true,
+        description: `Show labels for stable phases in 4D PD`,
+      },
+      show_unstable_labels: {
+        value: false,
+        description: `Show labels for unstable phases in 4D PD`,
+      },
+      energy_threshold: {
+        value: 0.1,
+        description: `Max eV/atom above hull for showing unstable entries in 4D PD`,
+        minimum: 0,
+        maximum: 2,
+      },
+      label_energy_threshold: {
+        value: 0.1,
+        description: `Max eV/atom above hull for labeling unstable entries in 4D PD`,
+        minimum: 0,
+        maximum: 2,
+      },
+      fullscreen: {
+        value: false,
+        description: `Start in fullscreen for 4D PD`,
+      },
+      info_pane_open: {
+        value: false,
+        description: `Info pane open by default for 4D PD`,
+      },
+      legend_pane_open: {
+        value: false,
+        description: `Legend pane open by default for 4D PD`,
+      },
+    },
+  },
 }
 
-// Extract the value types for runtime use
+// Extract the value types for runtime use (up to 3 nested levels)
 export type DefaultSettings = {
   [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingType<infer T> ? T
     : SettingsConfig[K] extends Record<string, unknown> ? {
         [NK in keyof SettingsConfig[K]]: SettingsConfig[K][NK] extends
           SettingType<infer T> ? T
+          : SettingsConfig[K][NK] extends Record<string, unknown> ? {
+              [NNK in keyof SettingsConfig[K][NK]]: SettingsConfig[K][NK][NNK] extends
+                SettingType<infer T> ? T
+                : never
+            }
           : never
       }
     : never
@@ -842,8 +1145,31 @@ export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 // Helper to merge with defaults - handles nested structure
 export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   ...DEFAULTS,
-  ...user,
+  ...(user || {}),
   structure: { ...DEFAULTS.structure, ...(user?.structure || {}) },
   trajectory: { ...DEFAULTS.trajectory, ...(user?.trajectory || {}) },
   composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
-})
+  plot: { ...DEFAULTS.plot, ...(user?.plot || {}) },
+  scatter: { ...DEFAULTS.scatter, ...(user?.scatter || {}) },
+  phase_diagram: {
+    ...DEFAULTS.phase_diagram,
+    ...(user?.phase_diagram || {}),
+    binary: {
+      ...DEFAULTS.phase_diagram.binary,
+      ...(user?.phase_diagram?.binary || {}),
+    },
+    ternary: {
+      ...DEFAULTS.phase_diagram.ternary,
+      ...(user?.phase_diagram?.ternary || {}),
+    },
+    quaternary: {
+      ...DEFAULTS.phase_diagram.quaternary,
+      ...(user?.phase_diagram?.quaternary || {}),
+    },
+  },
+} as DefaultSettings)
+
+// Narrowed accessor for phase diagram defaults to ensure strong typing at call sites
+export type PhaseDiagramDefaults = DefaultSettings[`phase_diagram`]
+export const PD_DEFAULTS: PhaseDiagramDefaults = DEFAULTS
+  .phase_diagram as PhaseDiagramDefaults

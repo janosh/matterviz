@@ -98,10 +98,10 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 
 ```json
 {
-  "matterviz.trajectory.scatter_point_size": 5,
-  "matterviz.trajectory.scatter_line_width": 3,
-  "matterviz.trajectory.plot_grid_lines": true,
-  "matterviz.trajectory.scatter_show_legend": true
+  "matterviz.scatter.point_size": 5,
+  "matterviz.scatter.line_width": 3,
+  "matterviz.plot.grid_lines": true,
+  "matterviz.scatter.show_legend": true
 }
 ```
 

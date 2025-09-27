@@ -55,15 +55,15 @@
     bar_stroke_width = $bindable(DEFAULTS.trajectory.histogram_bar_stroke_width),
     show_legend = $bindable(DEFAULTS.trajectory.histogram_show_legend),
     // Display controls
-    show_zero_lines = $bindable(DEFAULTS.trajectory.plot_show_zero_lines),
-    x_grid = $bindable(DEFAULTS.trajectory.plot_x_grid),
-    y_grid = $bindable(DEFAULTS.trajectory.plot_y_grid),
+    show_zero_lines = $bindable(DEFAULTS.plot.show_zero_lines),
+    x_grid = $bindable(DEFAULTS.plot.x_grid),
+    y_grid = $bindable(DEFAULTS.plot.y_grid),
     // Scale type controls
     x_scale_type = $bindable(
-      DEFAULTS.trajectory.plot_x_scale_type as `linear` | `log`,
+      DEFAULTS.plot.x_scale_type as `linear` | `log`,
     ),
     y_scale_type = $bindable(
-      DEFAULTS.trajectory.plot_y_scale_type as `linear` | `log`,
+      DEFAULTS.plot.y_scale_type as `linear` | `log`,
     ),
     // Range controls
     x_range = $bindable(undefined),
@@ -71,11 +71,11 @@
     auto_x_range = [0, 1],
     auto_y_range = [0, 1],
     // Tick controls
-    x_ticks = $bindable(DEFAULTS.trajectory.plot_x_ticks),
-    y_ticks = $bindable(DEFAULTS.trajectory.plot_y_ticks),
+    x_ticks = $bindable(DEFAULTS.plot.x_ticks),
+    y_ticks = $bindable(DEFAULTS.plot.y_ticks),
     // Format controls
-    x_format = $bindable(DEFAULTS.trajectory.plot_x_format),
-    y_format = $bindable(DEFAULTS.trajectory.plot_y_format),
+    x_format = $bindable(DEFAULTS.plot.x_format),
+    y_format = $bindable(DEFAULTS.plot.y_format),
     selected_property = $bindable(``),
     toggle_props,
     pane_props,
@@ -219,9 +219,9 @@
         title="Display"
         current_values={{ show_zero_lines, x_grid, y_grid }}
         on_reset={() => {
-          show_zero_lines = DEFAULTS.trajectory.plot_show_zero_lines
-          x_grid = DEFAULTS.trajectory.plot_x_grid
-          y_grid = DEFAULTS.trajectory.plot_y_grid
+          show_zero_lines = DEFAULTS.plot.show_zero_lines
+          x_grid = DEFAULTS.plot.x_grid
+          y_grid = DEFAULTS.plot.y_grid
         }}
         style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
@@ -364,8 +364,8 @@
         title="Scale Type"
         current_values={{ x_scale_type, y_scale_type }}
         on_reset={() => {
-          x_scale_type = DEFAULTS.trajectory.plot_x_scale_type as `linear` | `log`
-          y_scale_type = DEFAULTS.trajectory.plot_y_scale_type as `linear` | `log`
+          x_scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
+          y_scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
         }}
         class="pane-grid"
         style="grid-template-columns: auto 1fr"
@@ -387,8 +387,8 @@
         title="Ticks"
         current_values={{ x_ticks, y_ticks }}
         on_reset={() => {
-          x_ticks = DEFAULTS.trajectory.plot_x_ticks
-          y_ticks = DEFAULTS.trajectory.plot_y_ticks
+          x_ticks = DEFAULTS.plot.x_ticks
+          y_ticks = DEFAULTS.plot.y_ticks
         }}
         class="pane-grid"
         style="grid-template-columns: auto 1fr"
@@ -420,8 +420,8 @@
         title="Tick Format"
         current_values={{ x_format, y_format }}
         on_reset={() => {
-          x_format = DEFAULTS.trajectory.plot_x_format
-          y_format = DEFAULTS.trajectory.plot_y_format
+          x_format = DEFAULTS.plot.x_format
+          y_format = DEFAULTS.plot.y_format
         }}
         class="pane-grid"
         style="grid-template-columns: auto 1fr"

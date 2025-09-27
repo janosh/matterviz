@@ -5,6 +5,7 @@ import {
   filter_visible_series,
   prepare_legend_data,
 } from '$lib/plot/data-transform'
+import { DEFAULTS } from '$lib/settings'
 import { describe, expect, test } from 'vitest'
 
 describe(`data-transform utility functions`, () => {
@@ -87,13 +88,19 @@ describe(`data-transform utility functions`, () => {
             series_idx: 0,
             label: `Series 1`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `red` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `red`,
+            },
           },
           {
             series_idx: 1,
             label: `Series 2`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `blue` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `blue`,
+            },
           },
         ],
       },
@@ -120,13 +127,19 @@ describe(`data-transform utility functions`, () => {
             series_idx: 0,
             label: `Custom Label`,
             visible: false,
-            display_style: { symbol_type: `Square`, symbol_color: `green` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `green`,
+            },
           },
           {
             series_idx: 1,
             label: `Another Label`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `purple` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `purple`,
+            },
           },
         ],
       },
@@ -147,19 +160,28 @@ describe(`data-transform utility functions`, () => {
             series_idx: 0,
             label: `Series 1`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `red` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `red`,
+            },
           },
           {
             series_idx: 1,
             label: `Series 2`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `blue` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `blue`,
+            },
           },
           {
             series_idx: 2,
             label: `Series 3`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `#4682b4` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `#4682b4`,
+            },
           },
         ],
       },
@@ -176,7 +198,10 @@ describe(`data-transform utility functions`, () => {
             series_idx: 0,
             label: `Single`,
             visible: true,
-            display_style: { symbol_type: `Square`, symbol_color: `orange` },
+            display_style: {
+              symbol_type: DEFAULTS.scatter.symbol_type,
+              symbol_color: `orange`,
+            },
           },
         ],
       },

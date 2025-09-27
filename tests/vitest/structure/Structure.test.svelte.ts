@@ -600,11 +600,11 @@ test(`critical default values are valid to prevent runtime errors`, () => {
   expect(DEFAULTS.structure.camera_projection).toBe(`orthographic`)
 
   // Scale types must be valid
-  expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_x_scale_type)
-  expect([`linear`, `log`]).toContain(DEFAULTS.trajectory.plot_y_scale_type)
+  expect([`linear`, `log`]).toContain(DEFAULTS.plot.x_scale_type)
+  expect([`linear`, `log`]).toContain(DEFAULTS.plot.y_scale_type)
 
   // Marker types must be valid
-  expect([`line`, `points`, `line+points`]).toContain(DEFAULTS.trajectory.scatter_markers)
+  expect([`line`, `points`, `line+points`]).toContain(DEFAULTS.scatter.markers)
 
   // Critical numeric values must be in valid ranges to prevent rendering issues
   expect(DEFAULTS.structure.atom_radius).toBeGreaterThan(0)

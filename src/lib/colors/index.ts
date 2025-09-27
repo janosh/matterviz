@@ -119,13 +119,13 @@ export function get_bg_color(
 
 export interface ContrastOptions {
   bg_color?: string
-  text_color_threshold?: number
+  luminance_threshold?: number
   choices?: [string, string]
 }
 
 export function pick_contrast_color(options: ContrastOptions = {}) {
-  const { bg_color, text_color_threshold = 0.7, choices = [`black`, `white`] } = options
-  const light_bg = luminance(bg_color ?? `white`) > text_color_threshold
+  const { bg_color, luminance_threshold = 0.7, choices = [`black`, `white`] } = options
+  const light_bg = luminance(bg_color ?? `white`) > luminance_threshold
   return light_bg ? choices[0] : choices[1] // dark text for light backgrounds, light for dark
 }
 

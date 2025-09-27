@@ -28,7 +28,7 @@
     active?: boolean
     href?: string
     // at what background color lightness text color switches from black to white
-    text_color_threshold?: number
+    luminance_threshold?: number
     text_color?: string
     float_fmt?: string
     node?: HTMLElement | null
@@ -49,7 +49,7 @@
     symbol_style = ``,
     active = false,
     href = undefined,
-    text_color_threshold = 0.7,
+    luminance_threshold = 0.7,
     text_color = $bindable(),
     float_fmt = undefined,
     node = $bindable(null),
@@ -192,7 +192,7 @@
             style:color={bg_colors?.[idx]
             ? pick_contrast_color({
               bg_color: bg_colors[idx] ?? fallback_bg_color,
-              text_color_threshold,
+              luminance_threshold,
             })
             : null}
           >

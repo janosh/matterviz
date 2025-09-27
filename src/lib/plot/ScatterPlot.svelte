@@ -14,12 +14,14 @@
     LabelNode,
     LabelPlacementConfig,
     LegendConfig,
+    Markers,
     PlotPoint,
     Point,
     PointStyle,
     ScaleType,
     Sides,
     TooltipProps,
+    UserContentProps,
     XyObj,
   } from '$lib/plot'
   import { ColorBar, PlotLegend, ScatterPlotControls, ScatterPoint } from '$lib/plot'
@@ -77,10 +79,11 @@
     y_unit?: string
     tooltip_point?: InternalPoint | null // Point being hovered over, to display in tooltip (bindable)
     hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
-    markers?: `line` | `points` | `line+points`
+    markers?: Markers
     x_format?: string
     y_format?: string
     tooltip?: Snippet<[PlotPoint & TooltipProps]>
+    user_content?: Snippet<[UserContentProps]>
     change?: (data: (Point & { series: DataSeries }) | null) => void
     x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
     y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
@@ -167,10 +170,11 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    markers = `line+points`,
+    markers = DEFAULTS.scatter.markers,
     x_format = $bindable(``),
     y_format = $bindable(``),
     tooltip,
+    user_content,
     change = () => {},
     x_ticks,
     y_ticks = 5,
@@ -205,7 +209,7 @@
     line_width = $bindable(2),
     line_color = $bindable(`#4682b4`),
     line_opacity = $bindable(1),
-    line_dash = $bindable(DEFAULTS.trajectory.scatter_line_dash),
+    line_dash = $bindable(DEFAULTS.scatter.line_dash),
     show_points = $bindable(true),
     show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
@@ -750,7 +754,7 @@
         line_dash?: string
       }
       const display_style: LegendDisplayStyle = {
-        symbol_type: `Circle` as D3SymbolName, // Default marker shape (Capitalized)
+        symbol_type: DEFAULTS.scatter.symbol_type,
         symbol_color: `black`, // Default marker color
         line_color: `black`, // Default line color
       }
@@ -764,8 +768,8 @@
 
       if (series_markers?.includes(`points`)) {
         if (first_point_style) {
-          // Assign shape only if it's one of the allowed types, else default to circle
-          let final_shape: D3SymbolName = `Circle` // Default shape
+          // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
+          let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
           if (symbol_names.includes(first_point_style.shape as D3SymbolName)) {
             final_shape = first_point_style.shape as D3SymbolName
           }
@@ -1425,6 +1429,19 @@
       style:cursor="crosshair"
       role="img"
     >
+      {@render user_content?.({
+        height,
+        width,
+        x_scale_fn,
+        y_scale_fn,
+        x_min,
+        x_max,
+        y_min,
+        y_max,
+        pad,
+      })}
+
+      <!-- Guide lines -->
       <!-- Zero lines -->
       {#if show_zero_lines}
         {#if x_min <= 0 && x_max >= 0}
@@ -1519,7 +1536,10 @@
           {@const series_markers = series_data.markers ?? markers}
           <g data-series-id={series_data._id}>
             {#if series_markers?.includes(`points`)}
-              {#each series_data.filtered_data as point ([point.x, point.y])}
+              {#each series_data.filtered_data as
+                point
+                (`${point.series_idx}-${point.point_idx}`)
+              }
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
                 {@const label_style = point.point_label ?? {}}
@@ -1779,92 +1799,7 @@
         </g>
       {/if}
 
-      <!-- Tooltip -->
-      {#if tooltip_point && hovered}
-        {@const { x, y, metadata, color_value, point_label, point_style, series_idx } =
-        tooltip_point}
-        {@const hovered_series = series_with_ids[series_idx]}
-        {@const series_markers = hovered_series?.markers ?? markers}
-        {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
-        !color ||
-        color === `none` ||
-        color === `transparent` ||
-        (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}
-
-        {@const tooltip_bg_color = (() => {
-        // 1. Check color from scale
-        const scale_color = color_value != null
-          ? color_scale_fn(color_value)
-          : undefined
-        if (!is_transparent_or_none(scale_color)) return scale_color
-
-        // 2. Check color from point fill
-        const fill_color = point_style?.fill
-        if (!is_transparent_or_none(fill_color)) return fill_color
-
-        // 3. Check color from point stroke (only if points are visible)
-        if (series_markers?.includes(`points`)) {
-          const stroke_color = point_style?.stroke
-          if (!is_transparent_or_none(stroke_color)) return stroke_color
-        }
-
-        // 4. Check color from line style (only if line is visible)
-        if (series_markers?.includes(`line`)) {
-          // Replicate the precedence logic used for the actual line rendering
-          const line_style = hovered_series?.line_style ?? {}
-          const first_point_style = Array.isArray(hovered_series?.point_style)
-            ? hovered_series?.point_style[0]
-            : hovered_series?.point_style
-          const first_color_value = hovered_series?.color_values?.[0]
-
-          let line_color_candidate = line_style.stroke // Line style stroke first
-          if (is_transparent_or_none(line_color_candidate)) {
-            line_color_candidate = first_point_style?.fill // Fallback to first point fill
-          }
-          if (
-            is_transparent_or_none(line_color_candidate) &&
-            first_color_value != null
-          ) {
-            line_color_candidate = color_scale_fn(first_color_value) // Fallback to first point color scale
-          }
-          // Final fallback within line logic: if points are *also* shown, use the point stroke
-          if (
-            is_transparent_or_none(line_color_candidate) &&
-            series_markers.includes(`points`)
-          ) {
-            line_color_candidate = first_point_style?.stroke
-          }
-
-          if (
-            !is_transparent_or_none(line_color_candidate)
-          ) return line_color_candidate
-        }
-
-        // 5. Final fallback
-        return `rgba(0, 0, 0, 0.7)`
-      })()}
-        {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
-        {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
-        {@const x_formatted = format_value(x, x_format)}
-        {@const y_formatted = format_value(y, y_format)}
-        {@const label = point_label?.text ?? null}
-        {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
-        {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-        <foreignObject x={cx + 5} y={cy}>
-          <div
-            class="tooltip"
-            style:background-color={tooltip_bg_color}
-            style:color="var(--scatter-tooltip-color, {tooltip_text_color})"
-          >
-            {#if tooltip}
-              {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
-              {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
-            {:else}
-              {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
-            {/if}
-          </div>
-        </foreignObject>
-      {/if}
+      <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
 
       <!-- Zoom Selection Rectangle -->
       {#if drag_start_coords && drag_current_coords}
@@ -1875,6 +1810,68 @@
         <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
       {/if}
     </svg>
+
+    <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
+    {#if tooltip_point && hovered}
+      {@const { x, y, metadata, color_value, point_label, point_style, series_idx } =
+      tooltip_point}
+      {@const hovered_series = series_with_ids[series_idx]}
+      {@const series_markers = hovered_series?.markers ?? markers}
+      {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
+      !color || color === `none` || color === `transparent` ||
+      (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}
+      {@const tooltip_bg_color = (() => {
+      const scale_color = color_value != null
+        ? color_scale_fn(color_value)
+        : undefined
+      if (!is_transparent_or_none(scale_color)) return scale_color
+      const fill_color = point_style?.fill
+      if (!is_transparent_or_none(fill_color)) return fill_color
+      if (series_markers?.includes(`points`)) {
+        const stroke_color = point_style?.stroke
+        if (!is_transparent_or_none(stroke_color)) return stroke_color
+      }
+      if (series_markers?.includes(`line`)) {
+        const line_style = hovered_series?.line_style ?? {}
+        const first_point_style = Array.isArray(hovered_series?.point_style)
+          ? hovered_series?.point_style[0]
+          : hovered_series?.point_style
+        const first_color_value = hovered_series?.color_values?.[0]
+        let line_color_candidate = line_style.stroke
+        if (is_transparent_or_none(line_color_candidate)) {line_color_candidate =
+            first_point_style?.fill}
+        if (
+          is_transparent_or_none(line_color_candidate) && first_color_value != null
+        ) line_color_candidate = color_scale_fn(first_color_value)
+        if (
+          is_transparent_or_none(line_color_candidate) &&
+          series_markers.includes(`points`)
+        ) line_color_candidate = first_point_style?.stroke
+        if (!is_transparent_or_none(line_color_candidate)) return line_color_candidate
+      }
+      return `rgba(0, 0, 0, 0.7)`
+    })()}
+      {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
+      {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
+      {@const x_formatted = format_value(x, x_format)}
+      {@const y_formatted = format_value(y, y_format)}
+      {@const label = point_label?.text ?? null}
+      {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
+      {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
+      <div
+        class="tooltip overlay"
+        style={`position: absolute; left: ${
+          cx + 5
+        }px; top: ${cy}px; background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color}); z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
+      >
+        {#if tooltip}
+          {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
+          {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
+        {:else}
+          {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
+        {/if}
+      </div>
+    {/if}
 
     <!-- Control Pane positioned in top-right corner -->
     {#if show_controls}

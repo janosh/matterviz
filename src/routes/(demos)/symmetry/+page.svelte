@@ -8,6 +8,7 @@
   import {
     analyze_structure_symmetry,
     ensure_moyo_wasm_ready,
+    map_wyckoff_to_all_atoms,
     wyckoff_positions_from_moyo,
     WyckoffTable,
   } from '$lib/symmetry'
@@ -23,8 +24,9 @@
   let setting = $state<`Standard` | `Spglib`>(`Standard`)
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
   let current_structure = $state<AnyStructure | null>(null)
-  let highlighted_sites = $state<number[]>([])
-  let selected_sites = $state<number[]>([])
+  let displayed_structure = $state<AnyStructure | undefined>(undefined)
+  let hovered_wyckoff_sites = $state<number[]>([])
+  let active_wyckoff_sites = $state<number[]>([])
 
   onMount(() => { // Initialize WASM
     ensure_moyo_wasm_ready()
@@ -42,7 +44,6 @@
   // Analyze structure when dependencies change
   $effect(() => {
     if (!wasm_ready || !current_structure) return
-
     analyze_structure()
   })
 
@@ -67,7 +68,25 @@
   }
 
   // Derived values
-  const wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
+  const base_wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
+  const wyckoff_positions = $derived.by(() => {
+    if (
+      !base_wyckoff_positions || !displayed_structure || !current_structure ||
+      !sym_data
+    ) return base_wyckoff_positions
+
+    // Only apply mapping for periodic structures with lattice
+    if (!(`lattice` in current_structure) || !(`lattice` in displayed_structure)) {
+      return base_wyckoff_positions
+    }
+
+    return map_wyckoff_to_all_atoms(
+      base_wyckoff_positions,
+      displayed_structure,
+      current_structure,
+      sym_data,
+    )
+  })
   const operation_counts = $derived.by(() => {
     const EPS = 1e-10
     if (!sym_data?.operations) {
@@ -85,11 +104,6 @@
       return acc
     }, { translations: 0, rotations: 0, roto_translations: 0 })
   })
-
-  // Combine hover and selected sites for display
-  const display_sites = $derived([
-    ...new Set([...highlighted_sites, ...selected_sites]),
-  ])
 </script>
 
 <h1>Symmetry</h1>
@@ -175,19 +189,19 @@
       </div>
       <WyckoffTable
         {wyckoff_positions}
-        on_hover={(site_indices) => {
-          highlighted_sites = site_indices ?? []
-        }}
-        on_click={(site_indices) => {
-          selected_sites = site_indices ?? []
-        }}
+        on_hover={(site_indices) => hovered_wyckoff_sites = site_indices ?? []}
+        on_click={(site_indices) => active_wyckoff_sites = site_indices ?? []}
       />
     {/if}
   </div>
 
   <Structure
     data_url="/structures/{current_filename}"
-    selected_sites={display_sites}
+    bind:displayed_structure
+    scene_props={{
+      active_sites: active_wyckoff_sites,
+      selected_sites: hovered_wyckoff_sites,
+    }}
     on_file_load={({ structure, filename = `` }) => {
       current_filename = filename
       page.url.searchParams.set(`file`, current_filename)

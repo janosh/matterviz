@@ -176,6 +176,12 @@ const themes = {
     white: `1px solid rgba(0, 0, 0, 0.075)`,
     black: `1px solid rgba(255, 255, 255, 0.075)`,
   },
+  'pane-bg-hover': {
+    light: `rgba(0, 0, 0, 0.06)`,
+    dark: `rgba(255, 255, 255, 0.1)`,
+    white: `rgba(0, 0, 0, 0.03)`,
+    black: `rgba(255, 255, 255, 0.1)`,
+  },
 
   // Dropzone states
   'dropzone-border': {
@@ -240,18 +246,6 @@ const themes = {
     dark: `rgb(20, 18, 36)`,
     white: `rgba(255, 255, 255, 0.98)`,
     black: `rgba(15, 15, 15, 0.95)`,
-  },
-  'sms-border': {
-    light: `1px dotted #6b7280`,
-    dark: `1px dotted teal`,
-    white: `1px dotted #9ca3af`,
-    black: `1px dotted teal`,
-  },
-  'sms-focus-border': {
-    light: `1px dotted ${acc_light}`,
-    dark: `1px dotted cornflowerblue`,
-    white: `1px dotted ${acc_white}`,
-    black: `1px dotted ${acc_black}`,
   },
   'sms-active-color': {
     light: acc_light,

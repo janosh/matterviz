@@ -266,7 +266,7 @@ test.each([
   [`#ffffff`, `black`, `null element`],
 ])(`pick_contrast_color: %s → %s (%s)`, (bg_color, expected, description) => {
   if (description === `custom threshold`) {
-    expect(pick_contrast_color({ bg_color, text_color_threshold: 0.5 })).toBe(expected)
+    expect(pick_contrast_color({ bg_color, luminance_threshold: 0.5 })).toBe(expected)
   } else if (description === `null element`) {
     expect(pick_contrast_color({ bg_color })).toBe(expected)
   } else {
@@ -278,7 +278,7 @@ test(`pick_contrast_color uses custom colors`, () => {
   expect(
     pick_contrast_color({
       bg_color: `#000000`,
-      text_color_threshold: 0.7,
+      luminance_threshold: 0.7,
       choices: [`blue`, `yellow`],
     }),
   ).toBe(`yellow`)

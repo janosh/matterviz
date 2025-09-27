@@ -340,13 +340,6 @@
     padding: 2px 4px;
     font-size: 0.8em;
   }
-  .draggable-pane :global(input[type='color']) {
-    width: 40px;
-    height: 16px;
-    margin: 0 0 0 5pt;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    box-sizing: border-box;
-  }
   .draggable-pane :global(.pane-row) {
     display: flex;
     gap: 8pt;

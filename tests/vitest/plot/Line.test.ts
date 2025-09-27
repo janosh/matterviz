@@ -53,19 +53,11 @@ describe(`Line`, () => {
       },
     },
   ])(`renders with $name`, ({ props, expected_line, expected_area }) => {
-    const points: [number, number][] = [
-      [10, 10],
-      [50, 50],
-      [100, 20],
-    ]
+    const points: [number, number][] = [[10, 10], [50, 50], [100, 20]]
     const origin: [number, number] = [0, 200]
 
-    const component = mount(Line, {
-      target: document.body,
-      props: { points, origin, ...props }, // Spread additional props
-    })
+    mount(Line, { target: document.body, props: { points, origin, ...props } })
 
-    expect(component).toBeTruthy()
     const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
 
@@ -75,9 +67,7 @@ describe(`Line`, () => {
     // Assert line styles
     expect(line_path.getAttribute(`fill`)).toBe(expected_line.fill)
     expect(line_path.getAttribute(`stroke`)).toBe(expected_line.stroke)
-    expect(line_path.getAttribute(`stroke-width`)).toBe(
-      expected_line.strokeWidth,
-    )
+    expect(line_path.getAttribute(`stroke-width`)).toBe(expected_line.strokeWidth)
     expect(line_path.getAttribute(`stroke-dasharray`)).toBe(
       expected_line.strokeDasharray ?? null,
     )
@@ -137,12 +127,11 @@ describe(`Line`, () => {
     ]
     const origin: [number, number] = [0, 100]
 
-    const component = mount(Line, {
+    mount(Line, {
       target: document.body,
       props: { points, origin, tween_duration: 100 },
     })
 
-    expect(component).toBeTruthy() // Verify component mounts
     const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2) // Check paths exist
   })
@@ -190,12 +179,11 @@ describe(`Line`, () => {
       interpolate: interpolatePath, // Custom interpolator for paths
     }
 
-    const component = mount(Line, {
+    mount(Line, {
       target: document.body,
       props: { points, origin, line_tween: custom_tween },
     })
 
-    expect(component).toBeTruthy() // Primary check: Component mounts without error
     const paths = document.querySelectorAll(`path`)
     expect(paths.length).toBe(2)
     // Further checks on internal tween state are difficult in unit tests,

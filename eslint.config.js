@@ -16,6 +16,7 @@ export default [
       '@stylistic/quotes': [`error`, `backtick`, { avoidEscape: true }],
       'svelte/no-at-html-tags': `off`,
       'svelte/no-navigation-without-resolve': `off`,
+      'svelte/no-unnecessary-state-wrap': [`error`, { 'allowReassign': true }],
     },
   },
   {

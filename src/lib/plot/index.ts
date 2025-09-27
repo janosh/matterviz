@@ -1,13 +1,11 @@
 import type { SimulationNodeDatum } from 'd3-force'
-import type { SymbolType } from 'd3-shape'
-import * as d3_symbols from 'd3-shape'
 import type { ComponentProps } from 'svelte'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
 // pending https://github.com/sveltejs/svelte/issues/16151
-interface TweenedOptions<T> {
+export interface TweenedOptions<T> {
   delay?: number
   duration?: number | ((from: T, to: T) => number)
   easing?: (t: number) => number
@@ -16,41 +14,22 @@ interface TweenedOptions<T> {
 
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
+export * from './data-transform'
 export { default as ElementScatter } from './ElementScatter.svelte'
+export * from './formatting'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
+export * from './interactions'
+export * from './layout'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
+export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
 
 export type XyObj = { x: number; y: number }
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
-
-export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
-export type D3SymbolName = Exclude<
-  D3Symbol extends `symbol${infer Name}` ? Name : never,
-  ``
->
-
-export const symbol_names = [
-  ...d3_symbols.symbolsFill,
-  ...d3_symbols.symbolsStroke,
-].map((sym) => {
-  // Attempt to find the key associated with this symbol function object
-  for (const key in d3_symbols) {
-    if (
-      Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
-      d3_symbols[key as keyof typeof d3_symbols] === sym &&
-      key.match(/symbol[A-Z]/)
-    ) return key.substring(6)
-  }
-}) as D3SymbolName[]
-
-export const symbol_map = Object.fromEntries(
-  symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
-) as Record<D3SymbolName, SymbolType>
 
 export const line_types = [`solid`, `dashed`, `dotted`] as const
 export type LineType = (typeof line_types)[number]
@@ -101,12 +80,14 @@ export interface PlotPoint extends Point {
   point_tween?: TweenedOptions<XyObj>
 }
 
+export type Markers = `line` | `points` | `line+points`
+
 // Define the structure for a data series in the plot
 export interface DataSeries {
   x: readonly number[]
   y: readonly number[]
   // Optional marker display type override for this specific series
-  markers?: `line` | `points` | `line+points`
+  markers?: Markers
   // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
   y_axis?: `y1` | `y2`
   color_values?: (number | null)[] | null
@@ -202,7 +183,7 @@ export interface AnchorNode extends SimulationNodeDatum {
 export type LegendConfig =
   & Omit<
     ComponentProps<typeof PlotLegend>,
-    `series_data` | `on_toggle` | `on_drag_start` | `on_drag` | `on_drag_end`
+    `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
   >
   & {
     margin?: number | Sides
@@ -245,4 +226,16 @@ export interface LegendItem {
     line_color?: string
     line_dash?: string
   }
+}
+
+export type UserContentProps = {
+  height: number
+  width: number
+  x_scale_fn: (x: number) => number
+  y_scale_fn: (y: number) => number
+  pad: Required<Sides>
+  x_min: number
+  y_min: number
+  x_max: number
+  y_max: number
 }
