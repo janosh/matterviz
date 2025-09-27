@@ -7,8 +7,8 @@ import type {
   PhaseEntry,
   Plane,
   Point3D,
-} from './types.ts'
-import { is_unary_entry } from './types.ts'
+} from './types'
+import { is_unary_entry } from './types'
 
 // ================= Thermodynamics & metadata =================
 

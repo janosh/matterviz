@@ -190,7 +190,7 @@ export function map_wyckoff_to_all_atoms(
   displayed_structure: PymatgenStructure,
   original_structure: PymatgenStructure,
   sym_data: MoyoDataset | null,
-  tolerance = 1e-6,
+  tolerance = 1e-5,
 ): WyckoffPos[] {
   if (!sym_data?.operations || !displayed_structure.sites || !original_structure.sites) {
     return wyckoff_positions
@@ -199,9 +199,11 @@ export function map_wyckoff_to_all_atoms(
   const periodic_distance = (pos1: Vec3, pos2: Vec3) =>
     Math.sqrt(
       pos1.reduce((sum, coord, i) => {
-        const diff = Math.abs(coord - pos2[i])
-        const periodic_diff = Math.min(diff, 1 - diff)
-        return sum + periodic_diff * periodic_diff
+        // Wrap delta into [-0.5, 0.5) using safe modulo
+        const delta = coord - pos2[i]
+        const wrapped = (((delta + 0.5) % 1) + 1) % 1 - 0.5
+        const d = Math.abs(wrapped)
+        return sum + d * d
       }, 0),
     )
 

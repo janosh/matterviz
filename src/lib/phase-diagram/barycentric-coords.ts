@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib'
-import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types.ts'
-import { is_unary_entry } from './types.ts'
+import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types'
+import { is_unary_entry } from './types'
 
 // ================= Ternary coordinates =================
 

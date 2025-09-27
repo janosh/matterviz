@@ -827,6 +827,55 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1, 2]))
   })
 
+  test(`wraps distances for coordinates far outside [0,1)`, () => {
+    const original = mock_structure([{ abc: [0.1, 0.2, 0.3], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0.1, 0.2, 0.3], element: `H` }, // Exact
+      { abc: [2.1, 2.2, 3.3], element: `H` }, // Offset by whole cells (should match exactly)
+      { abc: [-0.9, -0.8, -0.7], element: `H` }, // Negative offset by whole cells (should match)
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0.1, 0.2, 0.3] as Vec3,
+      site_indices: [0],
+    }]
+
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1, 2]))
+    expect(result[0].site_indices).toHaveLength(3)
+  })
+
+  test(`uses relaxed default tolerance for near-coincident sites`, () => {
+    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0, 0, 0], element: `H` },
+      { abc: [0.000005, 0, 0], element: `H` }, // Within 1e-5 but > 1e-6
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0, 0, 0] as Vec3,
+      site_indices: [0],
+    }]
+
+    // Call without explicit tolerance to use the function's default
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result[0].site_indices).toEqual([0, 1])
+  })
+
   test(`respects tolerance parameter`, () => {
     const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
     const displayed = mock_structure([

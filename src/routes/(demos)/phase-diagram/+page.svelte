@@ -71,60 +71,36 @@
   }
 
   // Create some ternary examples from quaternary data
-  const [na_fe_p_o_data, li_co_ni_o_data] = $derived.by(() => {
-    // Li-Fe-O from Na-Fe-P-O
-    const na_fe_p_o_data = loaded_data.get(
+  const na_fe_o_entries = $derived(create_ternary_subset(
+    loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
-    ) as PymatgenEntry[] | undefined
-    if (!na_fe_p_o_data) return [[], []]
-    const li_fe_o_entries = create_ternary_subset(na_fe_p_o_data, [`Na`, `Fe`, `O`])
+    ) as PymatgenEntry[] | undefined ?? [],
+    [`Na`, `Fe`, `O`],
+  ))
 
-    // Li-Co-O from Li-Co-Ni-O
-    const li_co_ni_o_data = loaded_data.get(
+  const li_co_ni_o_data = $derived(create_ternary_subset(
+    loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
-    ) as PymatgenEntry[] | undefined
-    if (!li_co_ni_o_data) return [li_fe_o_entries, []]
-    const li_co_o_entries = create_ternary_subset(li_co_ni_o_data, [
-      `Li`,
-      `Co`,
-      `O`,
-    ])
-
-    return [li_fe_o_entries, li_co_o_entries]
-  })
+    ) as PymatgenEntry[] | undefined ?? [],
+    [`Li`, `Co`, `O`],
+  ))
 
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
-    const examples: { title: string; entries: PymatgenEntry[] }[] = []
-
     const li_fe_p_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
     ) as PymatgenEntry[] | undefined
     const li_co_ni_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
     ) as PymatgenEntry[] | undefined
+    if (!li_fe_p_o || !li_co_ni_o) return []
 
-    if (li_fe_p_o) {
-      examples.push({
-        title: `Li-O`,
-        entries: create_binary_subset(li_fe_p_o, [`Li`, `O`]),
-      })
-      examples.push({
-        title: `Fe-O`,
-        entries: create_binary_subset(li_fe_p_o, [`Fe`, `O`]),
-      })
-    }
-    if (li_co_ni_o) {
-      examples.push({
-        title: `Co-O`,
-        entries: create_binary_subset(li_co_ni_o, [`Co`, `O`]),
-      })
-      examples.push({
-        title: `Ni-O`,
-        entries: create_binary_subset(li_co_ni_o, [`Ni`, `O`]),
-      })
-    }
-    return examples.slice(0, 4)
+    return [
+      { title: `Na-O`, entries: create_binary_subset(li_fe_p_o, [`Na`, `O`]) },
+      { title: `Fe-O`, entries: create_binary_subset(li_fe_p_o, [`Fe`, `O`]) },
+      { title: `Co-O`, entries: create_binary_subset(li_co_ni_o, [`Co`, `O`]) },
+      { title: `Ni-O`, entries: create_binary_subset(li_co_ni_o, [`Ni`, `O`]) },
+    ]
   })
 </script>
 
@@ -147,10 +123,10 @@
       points.
     </p>
     <div class="ternary-grid">
-      {#each [{ title: `Li-Fe-O`, entries: na_fe_p_o_data }, {
-        title: `Li-Co-O`,
-        entries: li_co_ni_o_data,
-      }] as
+      {#each [
+        { title: `Na-Fe-O`, entries: na_fe_o_entries },
+        { title: `Li-Co-O`, entries: li_co_ni_o_data },
+      ] as
         { title, entries }
         (title)
       }

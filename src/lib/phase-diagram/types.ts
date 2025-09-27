@@ -64,9 +64,6 @@ export interface PhaseDiagramConfig {
   unstable_threshold?: number // eV/atom threshold for showing unstable entries
   show_labels?: boolean
   show_hull?: boolean
-  enable_zoom?: boolean
-  enable_pan?: boolean
-  enable_hover?: boolean
   point_size?: number
   line_width?: number
   font_size?: number
