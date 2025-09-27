@@ -1398,10 +1398,10 @@ H 0.0 1.0 0.0`
       [`structure.bonding_strategy`, `covalent_radius`],
       [`structure.camera_projection`, `orthographic`],
       [`color_scheme`, `Jmol`],
-      [`composition.composition_color_scheme`, `Alloy`],
+      [`composition.color_scheme`, `Alloy`],
       [`trajectory.display_mode`, `scatter`],
       [`trajectory.layout`, `vertical`],
-      [`composition.composition_mode`, `bar`],
+      [`composition.display_mode`, `bar`],
 
       // Arrays
       [`structure.camera_position`, [1, 2, 3]],

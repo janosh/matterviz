@@ -1,6 +1,13 @@
-import type { Species } from '$lib'
+import type { ElementSymbol, Species } from '$lib'
 import type { Vec3 } from '$lib/math'
-import { simplicity_score, wyckoff_positions_from_moyo } from '$lib/symmetry'
+import type { PymatgenStructure } from '$lib/structure'
+import {
+  apply_symmetry_operations,
+  map_wyckoff_to_all_atoms,
+  simplicity_score,
+  wyckoff_positions_from_moyo,
+  type WyckoffPos,
+} from '$lib/symmetry'
 import { structures } from '$site/structures'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
@@ -296,7 +303,6 @@ describe(`integration tests`, () => {
       site_symmetry_symbols: [],
       std_linear: [],
       std_origin_shift: [0, 0, 0],
-      std_volume: 1,
       transformation_matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
       origin_shift: [0, 0, 0],
       volume: 1,
@@ -509,5 +515,456 @@ describe(`site coverage verification`, () => {
     // Should produce reasonable number of grouped positions
     expect(result.length).toBeGreaterThan(0)
     expect(result.length).toBeLessThanOrEqual(10) // At most 10 different multiplicities
+  })
+})
+
+describe(`apply_symmetry_operations`, () => {
+  // Helper to create mock symmetry operations with proper types
+  type MoyoOperation = {
+    rotation: [number, number, number, number, number, number, number, number, number]
+    translation: [number, number, number]
+  }
+
+  const operations = {
+    identity: {
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0, 0, 0],
+    } as MoyoOperation,
+    inversion: {
+      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
+      translation: [0, 0, 0],
+    } as MoyoOperation,
+    translation: {
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0.5, 0.5, 0.5],
+    } as MoyoOperation,
+    rotation_90z: {
+      rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1],
+      translation: [0, 0, 0],
+    } as MoyoOperation,
+  }
+
+  test.each([
+    [
+      `identity operation`,
+      [0.25, 0.25, 0.25] as Vec3,
+      [operations.identity],
+      [[0.25, 0.25, 0.25]],
+      1,
+    ],
+    [
+      `inversion operation`,
+      [0.25, 0.25, 0.25] as Vec3,
+      [operations.identity, operations.inversion],
+      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
+      2,
+    ],
+    [
+      `translation operation`,
+      [0.25, 0.25, 0.25] as Vec3,
+      [operations.identity, operations.translation],
+      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
+      2,
+    ],
+    [
+      `negative coordinates wrapping`,
+      [0.25, 0.25, 0.25] as Vec3,
+      [operations.inversion],
+      [[0.75, 0.75, 0.75]],
+      1,
+    ],
+    [
+      `deduplication of equivalent positions`,
+      [0, 0, 0] as Vec3,
+      [operations.identity, operations.identity],
+      [[0, 0, 0]],
+      1,
+    ],
+    [
+      `complex rotation matrix`,
+      [1, 0, 0] as Vec3,
+      [operations.rotation_90z],
+      [[0, 0, 0]], // [1,0,0] * rotation = [0,-1,0] -> [0,0,0] after wrapping
+      1,
+    ],
+    [
+      `multiple operations with deduplication`,
+      [0.5, 0.5, 0.5] as Vec3,
+      [operations.identity, operations.inversion, operations.translation],
+      [[0.5, 0.5, 0.5], [0, 0, 0]],
+      2,
+    ],
+  ])(`handles %s`, (_, position, ops, expected_positions, expected_length) => {
+    const result = apply_symmetry_operations(position, ops)
+    expect(result).toHaveLength(expected_length)
+    expect(result).toEqual(expect.arrayContaining(expected_positions))
+  })
+
+  test(`wraps coordinates to unit cell with floating point precision`, () => {
+    const position: Vec3 = [0.8, 0.8, 0.8]
+    const result = apply_symmetry_operations(position, [operations.translation])
+
+    expect(result).toHaveLength(1)
+    // 0.8 + 0.5 = 1.3, wrapped to 0.3 (with floating point precision)
+    expect(result[0][0]).toBeCloseTo(0.3, 10)
+    expect(result[0][1]).toBeCloseTo(0.3, 10)
+    expect(result[0][2]).toBeCloseTo(0.3, 10)
+  })
+
+  test.each([
+    [[0, 0, 0] as Vec3, [0, 0, 0]],
+    [[1, 1, 1] as Vec3, [0, 0, 0]], // Wraps to origin
+    [[0.999999, 0.999999, 0.999999] as Vec3, [0.999999, 0.999999, 0.999999]],
+  ])(`handles edge case coordinates %j -> %j`, (position, expected) => {
+    const result = apply_symmetry_operations(position, [operations.identity])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual(expected)
+  })
+
+  test(`performance with many operations`, () => {
+    const position: Vec3 = [0.1, 0.2, 0.3]
+    const many_operations = Array.from({ length: 48 }, (_, i) => ({
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ],
+      translation: [i * 0.02, i * 0.02, i * 0.02] as [number, number, number],
+    }))
+
+    const start_time = performance.now()
+    const result = apply_symmetry_operations(position, many_operations)
+    const end_time = performance.now()
+
+    expect(end_time - start_time).toBeLessThan(10)
+    expect(result.length).toBeGreaterThan(0)
+    expect(result.length).toBeLessThanOrEqual(48)
+  })
+})
+
+describe(`map_wyckoff_to_all_atoms`, () => {
+  type MoyoOperation = {
+    rotation: [number, number, number, number, number, number, number, number, number]
+    translation: [number, number, number]
+  }
+
+  // Helper factories
+  const mock_structure = (
+    sites: { abc: Vec3; element: string }[],
+  ): PymatgenStructure => ({
+    lattice: {
+      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3],
+      pbc: [true, true, true],
+      volume: 1,
+      a: 1,
+      b: 1,
+      c: 1,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+    },
+    sites: sites.map((site, idx) => ({
+      abc: site.abc,
+      xyz: site.abc,
+      species: [{
+        element: site.element as ElementSymbol,
+        occu: 1.0,
+        oxidation_state: 0,
+      }],
+      label: `${site.element}${idx}`,
+      properties: {},
+    })),
+  })
+
+  const mock_sym_data = (): MoyoDataset => ({
+    operations: [
+      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] } as MoyoOperation, // Identity
+      {
+        rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
+        translation: [0, 0, 0],
+      } as MoyoOperation, // Inversion
+    ],
+    std_cell: {
+      lattice: {
+        basis: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+      positions: [],
+      numbers: [],
+    },
+    wyckoffs: [],
+    number: 1,
+    hm_symbol: `P-1`,
+    hall_number: 2,
+    pearson_symbol: `aP1`,
+    orbits: [],
+    site_symmetry_symbols: [],
+    std_origin_shift: [0, 0, 0],
+  } as unknown as MoyoDataset)
+
+  test.each([
+    [
+      `null symmetry data`,
+      [{ wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [0] }],
+      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
+      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
+      null,
+      undefined,
+      (result: WyckoffPos[], input: [WyckoffPos[], ...unknown[]]) =>
+        expect(result).toEqual(input[0]),
+    ],
+    [
+      `empty displayed sites`,
+      [{ wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [0] }],
+      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
+      { ...mock_structure([{ abc: [0, 0, 0], element: `H` }]), sites: [] },
+      mock_sym_data(),
+      undefined,
+      (result: WyckoffPos[]) => expect(result[0].site_indices).toEqual([]),
+    ],
+    [
+      `empty wyckoff positions`,
+      [],
+      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
+      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
+      mock_sym_data(),
+      undefined,
+      (result: WyckoffPos[]) => expect(result).toEqual([]),
+    ],
+  ])(
+    `handles %s gracefully`,
+    (_, wyckoff_pos, original, displayed, sym_data, tolerance, assertion) => {
+      const result = map_wyckoff_to_all_atoms(
+        wyckoff_pos,
+        displayed,
+        original,
+        sym_data,
+        tolerance,
+      )
+      assertion(result, [wyckoff_pos, original, displayed, sym_data])
+    },
+  )
+
+  test(`maps single atom with symmetry operations`, () => {
+    const original = mock_structure([{ abc: [0.25, 0.25, 0.25], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0.25, 0.25, 0.25], element: `H` }, // Original
+      { abc: [0.75, 0.75, 0.75], element: `H` }, // Inversion equivalent
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `2a`,
+      elem: `H`,
+      abc: [0.25, 0.25, 0.25] as Vec3,
+      site_indices: [0],
+    }]
+
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1]))
+    expect(result[0].site_indices).toHaveLength(2)
+  })
+
+  test(`handles different elements correctly`, () => {
+    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }, {
+      abc: [0.5, 0.5, 0.5],
+      element: `O`,
+    }])
+    const displayed = mock_structure([
+      { abc: [0, 0, 0], element: `H` },
+      { abc: [0, 0, 0], element: `O` },
+      { abc: [0.5, 0.5, 0.5], element: `O` },
+      { abc: [0.5, 0.5, 0.5], element: `H` },
+    ])
+    const wyckoff_pos = [
+      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [0] },
+      { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5] as Vec3, site_indices: [1] },
+    ]
+
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result.find((r) => r.elem === `H`)?.site_indices).toEqual([0])
+    expect(result.find((r) => r.elem === `O`)?.site_indices).toEqual([2])
+  })
+
+  test(`handles periodic boundary conditions`, () => {
+    const original = mock_structure([{ abc: [0.1, 0.1, 0.1], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0.1, 0.1, 0.1], element: `H` }, // Original
+      { abc: [0.9, 0.9, 0.9], element: `H` }, // Inversion: -0.1 -> 0.9
+      { abc: [1.1, 1.1, 1.1], element: `H` }, // Wrapped: 1.1 -> 0.1
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `2a`,
+      elem: `H`,
+      abc: [0.1, 0.1, 0.1] as Vec3,
+      site_indices: [0],
+    }]
+
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result[0].site_indices).toHaveLength(3)
+    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1, 2]))
+  })
+
+  test(`wraps distances for coordinates far outside [0,1)`, () => {
+    const original = mock_structure([{ abc: [0.1, 0.2, 0.3], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0.1, 0.2, 0.3], element: `H` }, // Exact
+      { abc: [2.1, 2.2, 3.3], element: `H` }, // Offset by whole cells (should match exactly)
+      { abc: [-0.9, -0.8, -0.7], element: `H` }, // Negative offset by whole cells (should match)
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0.1, 0.2, 0.3] as Vec3,
+      site_indices: [0],
+    }]
+
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result[0].site_indices).toEqual(expect.arrayContaining([0, 1, 2]))
+    expect(result[0].site_indices).toHaveLength(3)
+  })
+
+  test(`uses relaxed default tolerance for near-coincident sites`, () => {
+    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0, 0, 0], element: `H` },
+      { abc: [0.000005, 0, 0], element: `H` }, // Within 1e-5 but > 1e-6
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0, 0, 0] as Vec3,
+      site_indices: [0],
+    }]
+
+    // Call without explicit tolerance to use the function's default
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result[0].site_indices).toEqual([0, 1])
+  })
+
+  test(`respects tolerance parameter`, () => {
+    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
+    const displayed = mock_structure([
+      { abc: [0, 0, 0], element: `H` }, // Exact
+      { abc: [0.001, 0.001, 0.001], element: `H` }, // Outside strict tolerance
+      { abc: [0.0001, 0.0001, 0.0001], element: `H` }, // Close
+    ])
+    const wyckoff_pos = [{
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0, 0, 0] as Vec3,
+      site_indices: [0],
+    }]
+
+    const strict_result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+      1e-8,
+    )
+    const loose_result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+      1e-2,
+    )
+
+    expect(strict_result[0].site_indices).toEqual([0])
+    expect(loose_result[0].site_indices).toEqual([0, 1, 2])
+  })
+
+  test.each([
+    [`invalid original indices`, [5, 10], []],
+    [`missing site_indices`, undefined, []],
+  ])(`handles %s`, (_, site_indices, expected) => {
+    const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
+    const displayed = mock_structure([{ abc: [0, 0, 0], element: `H` }])
+    const wyckoff_pos = [{
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0, 0, 0] as Vec3,
+      ...(site_indices && { site_indices }),
+    }]
+
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+
+    expect(result[0].site_indices).toEqual(expected)
+  })
+
+  test(`performance with large structures`, () => {
+    const original = mock_structure(
+      Array.from(
+        { length: 100 },
+        (_, i) => ({ abc: [i * 0.01, i * 0.01, i * 0.01] as Vec3, element: `H` }),
+      ),
+    )
+    const displayed = mock_structure(
+      Array.from(
+        { length: 200 },
+        (_, i) => ({ abc: [i * 0.005, i * 0.005, i * 0.005] as Vec3, element: `H` }),
+      ),
+    )
+    const wyckoff_pos = Array.from(
+      { length: 10 },
+      (_, i) => ({
+        wyckoff: `1a`,
+        elem: `H`,
+        abc: [i * 0.1, i * 0.1, i * 0.1] as Vec3,
+        site_indices: [i],
+      }),
+    )
+
+    const start_time = performance.now()
+    const result = map_wyckoff_to_all_atoms(
+      wyckoff_pos,
+      displayed,
+      original,
+      mock_sym_data(),
+    )
+    const end_time = performance.now()
+
+    expect(end_time - start_time).toBeLessThan(100)
+    expect(result).toHaveLength(wyckoff_pos.length)
   })
 })

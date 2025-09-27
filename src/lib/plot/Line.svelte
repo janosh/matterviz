@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { curveMonotoneX, line } from 'd3-shape'
@@ -24,7 +25,7 @@
     area_color = `rgba(255, 255, 255, 0.1)`,
     area_stroke = null,
     line_tween = {},
-    line_dash = undefined,
+    line_dash = DEFAULTS.scatter.line_dash,
     ...rest
   }: Props = $props()
 
@@ -58,7 +59,7 @@
   d={tweened_line.current}
   stroke={line_color}
   stroke-width={line_width}
-  stroke-dasharray={line_dash}
+  stroke-dasharray={line_dash && line_dash !== `solid` ? line_dash : null}
   fill="none"
   {...rest}
 />
