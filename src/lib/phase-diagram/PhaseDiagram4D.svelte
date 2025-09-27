@@ -956,13 +956,12 @@
       {@attach contrast_color({ luminance_threshold: 0.49 })}
     >
       <div class="tooltip-title">
-        {@html get_electro_neg_formula(entry.composition)}
+        {@html get_electro_neg_formula(entry.composition)}{
+          is_element
+          ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol]})`
+          : ``
+        }
       </div>
-      {#if is_element}
-        <div class="element-name">
-          {elem_symbol_to_name[elem_symbol as ElementSymbol]}
-        </div>
-      {/if}
 
       <div>
         E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom

@@ -2,6 +2,7 @@ import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps } from 'svelte'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
+import type { D3SymbolName } from './formatting'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
 // pending https://github.com/sveltejs/svelte/issues/16151
@@ -14,19 +15,19 @@ export interface TweenedOptions<T> {
 
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
-export * from './data-transform'
 export { default as ElementScatter } from './ElementScatter.svelte'
-export * from './formatting'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
-export * from './interactions'
-export * from './layout'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
-export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
+export * from './data-transform'
+export * from './formatting'
+export * from './interactions'
+export * from './layout'
+export * from './scales'
 
 export type XyObj = { x: number; y: number }
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
