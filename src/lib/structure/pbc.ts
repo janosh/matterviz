@@ -1,15 +1,15 @@
 // Periodic boundary conditions utilities
 import type { Vec3 } from '$lib'
 import * as math from '$lib/math'
-import type { PymatgenStructure } from './index'
+import type { ParsedStructure } from './parse'
 
 export function find_image_atoms(
-  structure: PymatgenStructure,
+  structure: ParsedStructure,
   { tolerance = 0.05 }: { tolerance?: number } = {},
 ): [number, Vec3, Vec3][] {
   // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc] tuples.
   // Skips image generation for trajectory data with scattered atoms.
-  if (!structure.lattice) return []
+  if (!structure.lattice || !structure.sites || structure.sites.length === 0) return []
 
   // Skip trajectory data (>10% atoms outside cell)
   const atoms_outside_cell = structure.sites.filter(({ abc }) =>
@@ -102,8 +102,12 @@ export function find_image_atoms(
 // Return structure with image atoms added
 export function get_pbc_image_sites(
   ...args: Parameters<typeof find_image_atoms>
-): PymatgenStructure {
+): ParsedStructure {
   const structure = args[0]
+
+  if (!structure || !structure.sites || structure.sites.length === 0) {
+    return structure
+  }
 
   // Check for trajectory data
   const atoms_outside_cell = structure.sites.filter((site) =>
@@ -117,7 +121,7 @@ export function get_pbc_image_sites(
 
   // Add image atoms to regular crystal structures
   const image_sites = find_image_atoms(...args)
-  const imaged_struct: PymatgenStructure = { ...structure, sites: [...structure.sites] }
+  const imaged_struct = { ...structure, sites: [...structure.sites] }
 
   // Add image atoms as new sites using provided (xyz, abc) from find_image_atoms
   for (const [site_idx, img_xyz, img_abc] of image_sites) {

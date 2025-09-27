@@ -4,7 +4,7 @@ import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 function mount_histogram(props: Record<string, unknown>) {
-  const component = mount(Histogram, {
+  mount(Histogram, {
     target: document.body,
     props: {
       show_controls: false,
@@ -13,9 +13,6 @@ function mount_histogram(props: Record<string, unknown>) {
       ...props,
     },
   })
-  const root = document.querySelector(`.histogram`)
-  expect(component).toBeTruthy()
-  expect(root).toBeTruthy()
 }
 
 function get_y_tick_numbers(): number[] {

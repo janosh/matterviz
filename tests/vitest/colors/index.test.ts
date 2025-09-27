@@ -132,7 +132,7 @@ describe(`colors module`, () => {
       expect(
         pick_contrast_color({
           bg_color: `#ffffff`,
-          text_color_threshold: 0.7,
+          luminance_threshold: 0.7,
           choices: [`black`, `white`],
         }),
       ).toBe(
@@ -141,7 +141,7 @@ describe(`colors module`, () => {
       expect(
         pick_contrast_color({
           bg_color: `#000000`,
-          text_color_threshold: 0.7,
+          luminance_threshold: 0.7,
           choices: [`black`, `white`],
         }),
       ).toBe(
@@ -150,7 +150,7 @@ describe(`colors module`, () => {
       expect(
         pick_contrast_color({
           bg_color: `#404040`,
-          text_color_threshold: 0.5,
+          luminance_threshold: 0.5,
           choices: [`black`, `white`],
         }),
       ).toBe(
@@ -159,7 +159,7 @@ describe(`colors module`, () => {
       expect(
         pick_contrast_color({
           bg_color: `#ffffff`,
-          text_color_threshold: 0.7,
+          luminance_threshold: 0.7,
           choices: [`red`, `blue`],
         }),
       ).toBe(`red`)

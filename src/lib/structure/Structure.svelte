@@ -6,7 +6,6 @@
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
-  import type { PymatgenStructure } from '$lib/structure/index'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -62,6 +61,8 @@
     selected_sites?: number[]
     // explicit measured sites for distance/angle overlays
     measured_sites?: number[]
+    // expose the displayed structure (with image atoms and/or supercell) for external use
+    displayed_structure?: AnyStructure | undefined
     // structure content as string (alternative to providing structure directly or via data_url)
     structure_string?: string
     children?: Snippet<[{ structure?: AnyStructure }]>
@@ -118,6 +119,8 @@
     selected_sites = $bindable<number[]>([]),
     // expose measured site indices for overlays/labels
     measured_sites = $bindable<number[]>([]),
+    // expose the displayed structure (with image atoms and supercell) for external use
+    displayed_structure = $bindable<AnyStructure | undefined>(undefined),
     children,
     on_file_load,
     on_error,
@@ -264,12 +267,14 @@
   })
 
   // Apply image atoms to the supercell structure
-  let scene_structure = $derived(
-    show_image_atoms && supercell_structure && `lattice` in supercell_structure &&
+  $effect(() => {
+    if (
+      show_image_atoms && supercell_structure && `lattice` in supercell_structure &&
       supercell_structure.lattice
-      ? get_pbc_image_sites(supercell_structure as PymatgenStructure)
-      : supercell_structure,
-  )
+    ) {
+      displayed_structure = get_pbc_image_sites(supercell_structure)
+    } else displayed_structure = supercell_structure
+  })
 
   // Track if camera has ever been moved from initial position
   let camera_has_moved = $state(false)
@@ -592,7 +597,7 @@
       <div style="overflow: hidden; height: 100%">
         <Canvas>
           <StructureScene
-            structure={scene_structure}
+            structure={displayed_structure}
             {...scene_props}
             {lattice_props}
             bind:camera_is_moving
@@ -607,7 +612,7 @@
     {/if}
 
     <div class="bottom-left">
-      {@render bottom_left?.({ structure: scene_structure })}
+      {@render bottom_left?.({ structure: displayed_structure })}
     </div>
   {:else if structure}
     <p class="warn">No sites found in structure</p>

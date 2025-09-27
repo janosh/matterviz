@@ -521,7 +521,7 @@ const structure_props = (defaults: DefaultSettings) => {
 
 // Map defaults to trajectory component props
 const trajectory_props = (defaults: DefaultSettings) => {
-  const { trajectory } = defaults
+  const { trajectory, plot, scatter } = defaults
   return {
     ...trajectory,
     structure_props: structure_props(defaults),
@@ -536,27 +536,28 @@ const trajectory_props = (defaults: DefaultSettings) => {
       cache_parsed_data: trajectory.cache_parsed_data,
     },
     scatter_props: {
-      line_width: trajectory.scatter_line_width,
-      point_size: trajectory.scatter_point_size,
-      show_legend: trajectory.scatter_show_legend,
-      enable_zoom: trajectory.enable_plot_zoom,
-      zoom_factor: trajectory.plot_zoom_factor,
-      auto_fit_range: trajectory.auto_fit_plot_range,
-      show_grid: trajectory.plot_grid_lines,
-      show_axis_labels: trajectory.plot_axis_labels,
-      animation_duration: trajectory.plot_animation_duration,
-      legend: { show: trajectory.scatter_show_legend },
+      markers: scatter.markers,
+      line_width: scatter.line_width,
+      point_size: scatter.point_size,
+      show_legend: scatter.show_legend,
+      enable_zoom: plot.enable_zoom,
+      zoom_factor: plot.zoom_factor,
+      auto_fit_range: plot.auto_fit_range,
+      show_grid: plot.grid_lines,
+      show_axis_labels: plot.axis_labels,
+      animation_duration: plot.animation_duration,
+      legend: { show: scatter.show_legend },
     },
     histogram_props: {
       mode: trajectory.histogram_mode,
       show_legend: trajectory.histogram_show_legend,
       bin_count: trajectory.histogram_bin_count,
-      enable_zoom: trajectory.enable_plot_zoom,
-      zoom_factor: trajectory.plot_zoom_factor,
-      auto_fit_range: trajectory.auto_fit_plot_range,
-      show_grid: trajectory.plot_grid_lines,
-      show_axis_labels: trajectory.plot_axis_labels,
-      animation_duration: trajectory.plot_animation_duration,
+      enable_zoom: plot.enable_zoom,
+      zoom_factor: plot.zoom_factor,
+      auto_fit_range: plot.auto_fit_range,
+      show_grid: plot.grid_lines,
+      show_axis_labels: plot.axis_labels,
+      animation_duration: plot.animation_duration,
       legend: { show: trajectory.histogram_show_legend },
     },
     spinner_props: { show_progress: trajectory.show_parsing_progress },
