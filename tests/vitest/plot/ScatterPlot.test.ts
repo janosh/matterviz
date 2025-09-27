@@ -147,7 +147,6 @@ describe(`ScatterPlot`, () => {
         pad_bottom: 50,
         pad_left: 80,
         pad_right: 30,
-        x_label_yshift: 10,
         tooltip_point: { x: 3, y: 30, series_idx: 0, point_idx: 2 },
         hovered: true,
       },

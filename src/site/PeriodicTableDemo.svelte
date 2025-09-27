@@ -4,10 +4,10 @@
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { property_labels } from '$lib/labels'
-  import { type ScaleContext, TableInset } from '$lib/periodic-table'
+  import type { ScaleContext } from '$lib/periodic-table'
+  import { PeriodicTableControls, TableInset } from '$lib/periodic-table'
   import { ColorBar, ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
-  import { PeriodicTableControls } from '$site'
 
   let window_width: number = $state(0)
   let color_scale: D3InterpolateName = $state(`interpolateViridis`)
@@ -35,10 +35,8 @@
       : [],
   )
 
-  let [y_label, y_unit] = $derived(
-    heatmap_key
-      ? (property_labels[heatmap_key as keyof typeof property_labels] ?? [])
-      : [],
+  let [y_label = ``, y_unit = ``] = $derived(
+    heatmap_key ? property_labels[heatmap_key] : [],
   )
 
   // Multi-value property ranges for color bars
@@ -124,10 +122,7 @@
           y={heatmap_values}
           {y_label}
           {y_unit}
-          onchange={(
-            event: CustomEvent,
-          ) => (selected.element = element_data[event.detail.x - 1])}
-          x_label_yshift={42}
+          onchange={(event) => (selected.element = element_data[event.detail.x - 1])}
           color_scale={{ scheme: color_scale }}
           style="max-height: calc(100cqw / 10 * 3)"
         />

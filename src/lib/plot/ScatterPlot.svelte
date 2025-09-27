@@ -798,7 +798,7 @@
       // Check line_style
       if (series_markers?.includes(`line`)) {
         display_style.line_color = data_series?.line_style?.stroke ??
-          (display_style.symbol_color && series_markers.includes(`points`)
+          (display_style.symbol_color && series_markers?.includes(`points`)
             ? display_style.symbol_color
             : `black`) // Default line color
         display_style.line_dash = data_series?.line_style?.line_dash
@@ -1845,7 +1845,7 @@
         ) line_color_candidate = color_scale_fn(first_color_value)
         if (
           is_transparent_or_none(line_color_candidate) &&
-          series_markers.includes(`points`)
+          series_markers?.includes(`points`)
         ) line_color_candidate = first_point_style?.stroke
         if (!is_transparent_or_none(line_color_candidate)) return line_color_candidate
       }
