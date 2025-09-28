@@ -86,25 +86,24 @@ function enumerate_reciprocal_points(
   const recip_b1 = recip_rows[0]
   const recip_b2 = recip_rows[1]
   const recip_b3 = recip_rows[2]
-  const norms = [
-    Math.hypot(...recip_b1),
-    Math.hypot(...recip_b2),
-    Math.hypot(...recip_b3),
-  ]
-  const min_norm = Math.max(Math.min(...norms), 1e-12)
-  const max_index = Math.ceil((max_radius / min_norm) + 2)
+  const n1 = Math.max(Math.hypot(...recip_b1), 1e-12)
+  const n2 = Math.max(Math.hypot(...recip_b2), 1e-12)
+  const n3 = Math.max(Math.hypot(...recip_b3), 1e-12)
+  const h_max = Math.ceil((max_radius / n1) + 2)
+  const k_max = Math.ceil((max_radius / n2) + 2)
+  const l_max = Math.ceil((max_radius / n3) + 2)
   // Safety cap to avoid pathological enumeration volume
   const CAP = 512
-  if (max_index > CAP) {
+  if (Math.max(h_max, k_max, l_max) > CAP) {
     throw new Error(
-      `enumerate_reciprocal_points: max_index=${max_index} exceeds cap ${CAP}`,
+      `enumerate_reciprocal_points: max(h,k,l) exceeds cap ${CAP}`,
     )
   }
 
   const points: RecipPoint[] = []
-  for (let h_idx = -max_index; h_idx <= max_index; h_idx++) {
-    for (let k_idx = -max_index; k_idx <= max_index; k_idx++) {
-      for (let l_idx = -max_index; l_idx <= max_index; l_idx++) {
+  for (let h_idx = -h_max; h_idx <= h_max; h_idx++) {
+    for (let k_idx = -k_max; k_idx <= k_max; k_idx++) {
+      for (let l_idx = -l_max; l_idx <= l_max; l_idx++) {
         if (h_idx === 0 && k_idx === 0 && l_idx === 0) continue
         const h_mul_b1 = math.scale(recip_b1, h_idx)
         const k_mul_b2 = math.scale(recip_b2, k_idx)
@@ -262,8 +261,12 @@ export function compute_xrd_pattern(
       f_imag += weight * Math.sin(phase)
     }
 
-    const lorentz = (1 + Math.cos(2 * theta) ** 2) /
-      (Math.sin(theta) ** 2 * Math.cos(theta))
+    const sin_theta = Math.sin(theta)
+    const cos_theta = Math.cos(theta)
+    const denom_raw = (sin_theta * sin_theta) * Math.abs(cos_theta)
+    // Clamp denominator away from zero to avoid Inf/NaN when 2θ → 180° (cosθ → 0)
+    const denom = Math.max(denom_raw, 1e-12)
+    const lorentz = (1 + Math.cos(2 * theta) ** 2) / denom
     const intensity_hkl = (f_real * f_real + f_imag * f_imag) * lorentz
     const two_theta = math.to_degrees(2 * theta)
 

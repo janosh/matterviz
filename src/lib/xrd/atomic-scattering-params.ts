@@ -1,4 +1,8 @@
-export type ScatteringParams = Readonly<Record<string, readonly [number, number][]>>
+import type { ElementSymbol } from '$lib'
+
+export type ScatteringParams = Readonly<
+  Partial<Record<ElementSymbol | `D`, readonly [number, number][]>>
+>
 
 export const ATOMIC_SCATTERING_PARAMS = {
   Ru: [[4.358, 27.881], [3.298, 5.179], [1.323, 0.594], [0, 0]],

@@ -85,7 +85,7 @@
     <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : value ?? `N/A`}</em>
     <br />
     <small class="position">Position: {element.column},{element.row}</small>
-    {#if heatmap_key && value !== null}
+    {#if heatmap_key && value != null}
       <br />
       <small class="scale-info">
         Range: {scale_context.min.toFixed(1)} - {scale_context.max.toFixed(1)}
