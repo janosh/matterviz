@@ -4,7 +4,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
-    series_data: LegendItem[] // Use the simplified LegendItem type
+    series_data: LegendItem[]
     layout?: `horizontal` | `vertical`
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
     wrapper_style?: string

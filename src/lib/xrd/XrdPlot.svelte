@@ -1,18 +1,10 @@
 <script lang="ts">
   import { plot_colors } from '$lib/colors'
-  import type { BarSeries } from '$lib/plot'
+  import type { BarSeries, BarTooltipProps } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import type { ComponentProps } from 'svelte'
-  import type { Hkl, XrdPattern } from './index'
-
-  type HklFormat = `compact` | `full` | null
-
-  interface PatternEntry {
-    label: string
-    pattern: XrdPattern
-    color?: string
-  }
+  import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
     if (format === `compact`) return `${hkl[0]}${hkl[1]}${hkl[2]}`
@@ -48,7 +40,7 @@
   const pattern_entries = $derived.by<PatternEntry[]>(() => {
     if (!patterns) return []
     if (Array.isArray(patterns)) return patterns as PatternEntry[]
-    if (`x` in (patterns as XrdPattern)) {
+    if (`x` in patterns) {
       return [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
     }
     const obj = patterns as Record<
@@ -56,8 +48,8 @@
       XrdPattern | { pattern: XrdPattern; color?: string }
     >
     return Object.entries(obj).map(([label, value]) =>
-      `pattern` in (value as { pattern: XrdPattern })
-        ? { label, ...(value as { pattern: XrdPattern; color?: string }) }
+      `pattern` in value
+        ? { label, ...value }
         : { label, pattern: value as XrdPattern }
     )
   })
@@ -75,7 +67,7 @@
   })
 
   // Compute overall x-domain
-  const x_domain = $derived.by<[number, number]>(() => {
+  const x_range = $derived.by<[number, number]>(() => {
     let max_x = 0
     for (const entry of pattern_entries) {
       const entry_max = Math.max(...entry.pattern.x)
@@ -148,17 +140,7 @@
   })
 </script>
 
-{#snippet tooltip(info: {
-  x: number
-  y: number
-  value_primary: number
-  value_secondary: number
-  series_idx: number
-  bar_idx: number
-  label?: string | null
-  color?: string | null
-  metadata?: Record<string, unknown> | null
-})}
+{#snippet tooltip(info: BarTooltipProps)}
   {@const angle_text = `${format_value(info.x, `.2f`)}°`}
   {@const intensity_text = `${format_value(info.y, `.1f`)}`}
   {@const hkls = info.metadata?.hkls as Hkl[] | undefined}
@@ -178,11 +160,11 @@
 <BarPlot
   series={bar_series}
   {x_label}
-  x_label_shift={{ y: 4 }}
+  x_label_shift={{ y: 20 }}
+  y_label_shift={{ x: 2 }}
   {y_label}
   {tooltip}
-  x_range={x_domain}
-  y_range={[0, 100]}
+  {x_range}
+  y_range={[0, null]}
   {...rest}
-  style={rest.style ?? `width: 600px; height: 260px`}
 />

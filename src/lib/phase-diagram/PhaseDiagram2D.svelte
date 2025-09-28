@@ -3,7 +3,7 @@
     AnyStructure,
     ElementSymbol,
     PlotPoint,
-    TooltipProps,
+    ScatterTooltipProps,
     UserContentProps,
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
@@ -511,7 +511,7 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: PlotPoint & TooltipProps)}
+{#snippet tooltip(point: PlotPoint & ScatterTooltipProps)}
   {@const entry = point.metadata as unknown as PlotEntry3D}
   {@const is_element = is_unary_entry(entry)}
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}

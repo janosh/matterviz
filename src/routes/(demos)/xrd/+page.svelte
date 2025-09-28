@@ -125,9 +125,7 @@
       : []}
       annotate_peaks={3}
       hkl_format="compact"
-      padding={{ t: 10, b: 40, l: 50, r: 10 }}
       style="height: 600px"
-      legend={{}}
     />
     {#if compute_error}
       <p>Compute error: {compute_error}</p>
@@ -162,9 +160,7 @@
       patterns={selected_patterns}
       annotate_peaks={3}
       hkl_format="compact"
-      padding={{ t: 10, b: 40, l: 50, r: 10 }}
       style="height: 400px"
-      legend={{}}
     />
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}

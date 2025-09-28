@@ -19,8 +19,8 @@
     Point,
     PointStyle,
     ScaleType,
+    ScatterTooltipProps,
     Sides,
-    TooltipProps,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -82,7 +82,7 @@
     markers?: Markers
     x_format?: string
     y_format?: string
-    tooltip?: Snippet<[PlotPoint & TooltipProps]>
+    tooltip?: Snippet<[PlotPoint & ScatterTooltipProps]>
     user_content?: Snippet<[UserContentProps]>
     change?: (data: (Point & { series: DataSeries }) | null) => void
     x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
@@ -218,8 +218,7 @@
     ...rest
   }: Props = $props()
 
-  let width = $state(0)
-  let height = $state(0)
+  let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
@@ -1865,7 +1864,7 @@
         }px; top: ${cy}px; background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color}); z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
       >
         {#if tooltip}
-          {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
+          {@const tooltip_props = { x_formatted, y_formatted, color_value, label, series_idx }}
           {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
         {:else}
           {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}

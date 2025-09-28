@@ -126,16 +126,24 @@ export interface Tooltip {
   items?: { label: string; value: string; color?: string }[]
 }
 
-export type TooltipProps = {
+export interface TooltipProps {
   x: number
   y: number
+  metadata?: Record<string, unknown> | null
+  color?: string | null
+  label?: string | null
+}
+
+export interface ScatterTooltipProps extends TooltipProps {
   cx: number
   cy: number
   x_formatted: string
   y_formatted: string
-  metadata?: Record<string, unknown>
-  color_value?: number | null
-  label?: string | null
+}
+
+export interface BarTooltipProps extends TooltipProps {
+  series_idx: number
+  bar_idx: number
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -242,6 +250,9 @@ export type UserContentProps = {
   x_max: number
   y_max: number
 }
+
+export type BarOrientation = `vertical` | `horizontal`
+export type BarMode = `overlay` | `stacked`
 
 export interface BarSeries {
   x: readonly number[]

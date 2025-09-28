@@ -1,6 +1,14 @@
 <script lang="ts">
   import { DraggablePane } from '$lib'
-  import type { BarSeries, LegendConfig, Sides } from '$lib/plot'
+  import type {
+    BarMode,
+    BarOrientation,
+    BarSeries,
+    BarTooltipProps,
+    LegendConfig,
+    LegendItem,
+    Sides,
+  } from '$lib/plot'
   import { PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
@@ -14,21 +22,19 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import BarPlotControls from './BarPlotControls.svelte'
 
-  export type BarOrientation = `vertical` | `horizontal`
-  export type BarMode = `overlay` | `stacked`
-
   interface Props extends HTMLAttributes<HTMLDivElement> {
     series?: BarSeries[]
     orientation?: BarOrientation
     mode?: BarMode
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
-    x_range?: [number, number]
-    y_range?: [number, number]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
     range_padding?: number
     x_label?: string
     x_label_shift?: { x?: number; y?: number }
     y_label?: string
+    y_label_shift?: { x?: number; y?: number }
     x_format?: string
     y_format?: string
     x_ticks?: TicksOption
@@ -38,29 +44,9 @@
     show_zero_lines?: boolean
     legend?: LegendConfig | null
     padding?: Sides
-    tooltip?: Snippet<[
-      {
-        x: number
-        y: number
-        value_primary: number
-        value_secondary: number
-        series_idx: number
-        bar_idx: number
-        label?: string | null
-        color?: string | null
-        metadata?: Record<string, unknown> | null
-      },
-    ]>
+    tooltip?: Snippet<[BarTooltipProps]>
     hovered?: boolean
-    change?: (
-      data: {
-        x: number
-        y: number
-        series_idx: number
-        bar_idx: number
-        metadata?: Record<string, unknown>
-      } | null,
-    ) => void
+    change?: (data: BarTooltipProps | null) => void
     show_controls?: boolean
     controls_open?: boolean
     plot_controls?: Snippet<[]>
@@ -79,6 +65,7 @@
     x_label = $bindable(``),
     x_label_shift = $bindable({ x: 0, y: 0 }),
     y_label = $bindable(``),
+    y_label_shift = $bindable({ x: 0, y: 0 }),
     x_format = $bindable(``),
     y_format = $bindable(``),
     x_ticks = $bindable(8),
@@ -87,7 +74,7 @@
     y_grid = $bindable(true),
     show_zero_lines = $bindable(true),
     legend = {},
-    padding = { t: 40, b: 60, l: 60, r: 40 },
+    padding = { t: 0, b: 60, l: 60, r: 0 },
     tooltip,
     hovered = $bindable(false),
     change = () => {},
@@ -98,8 +85,7 @@
     ...rest
   }: Props = $props()
 
-  let width = $state(0)
-  let height = $state(0)
+  let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
 
   // Compute auto ranges from visible series
@@ -141,8 +127,14 @@
   })
 
   $effect(() => {
-    const new_x = x_range ?? auto_ranges.x
-    const new_y = y_range ?? auto_ranges.y
+    const new_x = [
+      x_range?.[0] ?? auto_ranges.x[0],
+      x_range?.[1] ?? auto_ranges.x[1],
+    ] as [number, number]
+    const new_y = [
+      y_range?.[0] ?? auto_ranges.y[0],
+      y_range?.[1] ?? auto_ranges.y[1],
+    ] as [number, number]
     const x_changed = new_x[0] !== ranges.initial.x[0] ||
       new_x[1] !== ranges.initial.x[1]
     const y_changed = new_y[0] !== ranges.initial.y[0] ||
@@ -229,8 +221,7 @@
   }
 
   // Legend data and handlers
-  type LegendItem = ComponentProps<typeof PlotLegend>[`series_data`][number]
-  let legend_data = $derived<LegendItem[]>(() => {
+  let legend_data = $derived.by<LegendItem[]>(() => {
     return series.map((srs, idx) => ({
       series_idx: idx,
       label: srs.label ?? `Series ${idx + 1}`,
@@ -248,53 +239,20 @@
   }
 
   // Tooltip state
-  let hover_info = $state<
-    {
-      x: number
-      y: number
-      value_primary: number
-      value_secondary: number
-      series_idx: number
-      bar_idx: number
-      label?: string | null
-      color?: string | null
-      metadata?: Record<string, unknown> | null
-    } | null
-  >(null)
+  let hover_info = $state<BarTooltipProps | null>(null)
 
-  function handle_bar_hover(params: {
-    series_idx: number
-    bar_idx: number
-    x: number
-    y: number
-    color: string | null
-  }) {
+  function handle_bar_hover(params: BarTooltipProps) {
+    const { color, series_idx, bar_idx } = params
     hovered = true
-    const srs = series[params.series_idx]
-    const value_x = srs.x[params.bar_idx]
-    const value_y = srs.y[params.bar_idx]
-    const label_text = srs.labels?.[params.bar_idx] ?? null
-    const meta_val = Array.isArray(srs.metadata)
-      ? (srs.metadata[params.bar_idx] as Record<string, unknown> | undefined)
+    const srs = series[series_idx]
+    const x = srs.x[params.bar_idx]
+    const y = srs.y[params.bar_idx]
+    const label = srs.labels?.[bar_idx] ?? null
+    const metadata = Array.isArray(srs.metadata)
+      ? (srs.metadata[bar_idx] as Record<string, unknown> | undefined)
       : (srs.metadata as Record<string, unknown> | undefined)
-    hover_info = {
-      x: value_x,
-      y: value_y,
-      value_primary: orientation === `vertical` ? value_x : value_y,
-      value_secondary: orientation === `vertical` ? value_y : value_x,
-      series_idx: params.series_idx,
-      bar_idx: params.bar_idx,
-      label: label_text ?? null,
-      color: params.color,
-      metadata: meta_val ?? null,
-    }
-    change({
-      x: value_x,
-      y: value_y,
-      series_idx: params.series_idx,
-      bar_idx: params.bar_idx,
-      metadata: meta_val ?? undefined,
-    })
+    hover_info = { x, y, series_idx, bar_idx, metadata, label, color }
+    change(hover_info)
   }
 
   // Layout helpers
@@ -405,13 +363,8 @@
                       onmousemove={(evt) => {
                         const coords = get_relative_coords(evt)
                         if (!coords) return
-                        handle_bar_hover({
-                          series_idx,
-                          bar_idx,
-                          x: coords.x,
-                          y: coords.y,
-                          color,
-                        })
+                        const { x, y } = coords
+                        handle_bar_hover({ series_idx, bar_idx, x, y, color })
                       }}
                       onmouseleave={() => {
                         hover_info = null
@@ -567,11 +520,11 @@
           {/if}
         {/each}
         <text
-          x={15}
-          y={pad.t + chart_height / 2}
+          x={15 + (y_label_shift.x ?? 0)}
+          y={pad.t + chart_height / 2 + (y_label_shift.y ?? 0)}
           text-anchor="middle"
           fill="var(--text-color)"
-          transform="rotate(-90, 15, {pad.t + chart_height / 2})"
+          transform="rotate(-90, {15 + (y_label_shift.x ?? 0)}, {pad.t + chart_height / 2 + (y_label_shift.y ?? 0)})"
         >
           {y_label}
         </text>
@@ -579,7 +532,7 @@
     </svg>
 
     <!-- Legend -->
-    {#if (series?.length ?? 0) > 1 || legend != null}
+    {#if (series?.length ?? 0) > 1}
       <PlotLegend
         {...legend}
         series_data={legend_data}
@@ -588,7 +541,6 @@
       />
     {/if}
 
-    <!-- Tooltip -->
     {#if hover_info && hovered}
       {@const cx = scales.x(hover_info.x)}
       {@const cy = scales.y(hover_info.y)}

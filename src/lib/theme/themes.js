@@ -157,9 +157,9 @@ const themes = {
 
   // Structure-specific
   'struct-bg': {
-    light: `rgba(0, 0, 0, 0.04)`,
+    light: `rgba(0, 0, 0, 0.02)`,
     dark: `rgba(255, 255, 255, 0.07)`,
-    white: `rgba(0, 0, 0, 0.02)`,
+    white: `rgba(0, 0, 0, 0.01)`,
     black: `rgba(255, 255, 255, 0.1)`,
   },
 

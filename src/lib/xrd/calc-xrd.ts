@@ -1,12 +1,12 @@
 import type { ElementSymbol } from '$lib'
 import element_data from '$lib/element/data'
-import { matrix_inverse_3x3, to_degrees, transpose_3x3_matrix } from '$lib/math'
+import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure/index'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
 import ATOMIC_SCATTERING_PARAMS from './atomic-scattering-params.json' with {
   type: 'json',
 }
-import type { Hkl, HklObj, XrdOptions, XrdPattern } from './index'
+import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -46,21 +46,6 @@ const ELEMENT_Z: Record<ElementSymbol, number> = Object.fromEntries(
   element_data.map((entry) => [entry.symbol as ElementSymbol, entry.number]),
 ) as Record<ElementSymbol, number>
 
-function approx_equal(a: number, b: number, tol: number = 1e-6): boolean {
-  return Math.abs(a - b) <= tol
-}
-
-function _is_hexagonal_lattice(structure: PymatgenStructure): boolean {
-  const { a, b, c, alpha, beta, gamma } = structure.lattice
-  return (
-    approx_equal(alpha, 90, 1e-2) &&
-    approx_equal(beta, 90, 1e-2) &&
-    approx_equal(gamma, 120, 1e-2) &&
-    approx_equal(a, b, 1e-2) &&
-    !approx_equal(b, c, 1e-2)
-  )
-}
-
 function get_unique_families(hkls: Hkl[]): Map<string, number> {
   // Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations
   const key_map = new Map<string, Hkl[]>()
@@ -90,28 +75,10 @@ function get_unique_families(hkls: Hkl[]): Map<string, number> {
 function compute_reciprocal_lattice_rows(structure: PymatgenStructure): number[][] {
   // For row-wise lattice matrix A (rows are a, b, c), reciprocal rows are inv(A)^T
   const direct = structure.lattice.matrix
-  const inv = matrix_inverse_3x3(direct)
-  const recip = transpose_3x3_matrix(inv)
+  const inv = math.matrix_inverse_3x3(direct)
+  const recip = math.transpose_3x3_matrix(inv)
   return recip
 }
-
-function vector_add(a: number[], b: number[], c: number[]): number[] {
-  return [a[0] + b[0] + c[0], a[1] + b[1] + c[1], a[2] + b[2] + c[2]]
-}
-
-function vector_scale(vec: number[], scalar: number): number[] {
-  return [vec[0] * scalar, vec[1] * scalar, vec[2] * scalar]
-}
-
-function vector_norm(vec: number[]): number {
-  return Math.hypot(vec[0], vec[1], vec[2])
-}
-
-function dot3(vec_a: number[], vec_b: number[]): number {
-  return vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1] + vec_a[2] * vec_b[2]
-}
-
-type RecipPoint = { hkl: Hkl; g_norm: number }
 
 function enumerate_reciprocal_points(
   recip_rows: number[][],
@@ -121,7 +88,11 @@ function enumerate_reciprocal_points(
   const recip_b1 = recip_rows[0]
   const recip_b2 = recip_rows[1]
   const recip_b3 = recip_rows[2]
-  const norms = [vector_norm(recip_b1), vector_norm(recip_b2), vector_norm(recip_b3)]
+  const norms = [
+    Math.hypot(...recip_b1),
+    Math.hypot(...recip_b2),
+    Math.hypot(...recip_b3),
+  ]
   const min_norm = Math.max(Math.min(...norms), 1e-12)
   const max_index = Math.ceil((max_radius / min_norm) + 2)
 
@@ -130,25 +101,25 @@ function enumerate_reciprocal_points(
     for (let k_idx = -max_index; k_idx <= max_index; k_idx++) {
       for (let l_idx = -max_index; l_idx <= max_index; l_idx++) {
         if (h_idx === 0 && k_idx === 0 && l_idx === 0) continue
-        const h_mul_b1 = vector_scale(recip_b1, h_idx)
-        const k_mul_b2 = vector_scale(recip_b2, k_idx)
-        const l_mul_b3 = vector_scale(recip_b3, l_idx)
-        const g_vec = vector_add(h_mul_b1, k_mul_b2, l_mul_b3)
-        const g_norm = vector_norm(g_vec)
+        const h_mul_b1 = math.scale(recip_b1, h_idx)
+        const k_mul_b2 = math.scale(recip_b2, k_idx)
+        const l_mul_b3 = math.scale(recip_b3, l_idx)
+        const g_vec = math.add(h_mul_b1, k_mul_b2, l_mul_b3)
+        const g_norm = Math.hypot(...g_vec)
         if (g_norm < min_radius || g_norm > max_radius) continue
         points.push({ hkl: [h_idx, k_idx, l_idx], g_norm })
       }
     }
   }
   // Sort by (g_norm asc, -h, -k, -l) to mimic pymatgen ordering
-  points.sort((a, b) =>
-    a.g_norm !== b.g_norm
-      ? a.g_norm - b.g_norm
-      : b.hkl[0] !== a.hkl[0]
-      ? b.hkl[0] - a.hkl[0]
-      : b.hkl[1] !== a.hkl[1]
-      ? b.hkl[1] - a.hkl[1]
-      : b.hkl[2] - a.hkl[2]
+  points.sort((p1, p2) =>
+    p1.g_norm !== p2.g_norm
+      ? p1.g_norm - p2.g_norm
+      : p2.hkl[0] !== p1.hkl[0]
+      ? p2.hkl[0] - p1.hkl[0]
+      : p2.hkl[1] !== p1.hkl[1]
+      ? p2.hkl[1] - p1.hkl[1]
+      : p2.hkl[2] - p1.hkl[2]
   )
   return points
 }
@@ -253,7 +224,7 @@ export function compute_xrd_pattern(
     const s_sq = s_val * s_val
 
     // g.r for all fractional coords
-    const g_dot_r_all = frac_coords.map((frac_coord) => dot3(frac_coord, hkl))
+    const g_dot_r_all = frac_coords.map((frac_coord) => math.dot(frac_coord, hkl))
 
     // Atomic scattering factors (vectorized style)
     const f_scattering: number[] = coeffs.map((coeff_entry) => {
@@ -285,7 +256,7 @@ export function compute_xrd_pattern(
     const lorentz = (1 + Math.cos(2 * theta) ** 2) /
       (Math.sin(theta) ** 2 * Math.cos(theta))
     const intensity_hkl = (f_real * f_real + f_imag * f_imag) * lorentz
-    const two_theta = to_degrees(2 * theta)
+    const two_theta = math.to_degrees(2 * theta)
 
     // Use (h, k, l) always. For hexagonal systems, pymatgen presents Miller–Bravais (h, k, i, l),
     // but downstream components expect 3-index HKL. Keep 3-index form to match types/consumers.
@@ -352,6 +323,4 @@ export function compute_xrd_pattern(
   return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }
 }
 
-export const AVAILABLE_RADIATION: RadiationKey[] = Object.keys(
-  WAVELENGTHS,
-) as RadiationKey[]
+export const AVAILABLE_RADIATION = Object.keys(WAVELENGTHS) as RadiationKey[]
