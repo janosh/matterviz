@@ -726,7 +726,7 @@
           "type": "string",
           "default": "solid",
           "description": "Line dash pattern for scatter plots: 'solid' or dash arrays like '4 2' / '4,2,2'",
-          "pattern": "^(solid|(?:\\d+(?:[\\s,]\\d+)*))$"
+          "pattern": "^(solid|(?:\\d+(?:\\.\\d+)?(?:[\\s,]+\\d+(?:\\.\\d+)?)*))$"
         },
         "matterviz.scatter.show_points": {
           "type": "boolean",

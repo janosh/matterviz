@@ -798,10 +798,14 @@
 
       // Check line_style
       if (series_markers?.includes(`line`)) {
-        display_style.line_color = data_series?.line_style?.stroke ??
-          (display_style.symbol_color && series_markers?.includes(`points`)
-            ? display_style.symbol_color
-            : `black`) // Default line color
+        // Prefer explicit line stroke
+        let legend_line_color = data_series?.line_style?.stroke
+        if (!legend_line_color) { // If no explicit stroke, inherit a reasonable point color even when points aren't shown
+          // Order of preference: point fill -> point stroke -> symbol_color -> black
+          legend_line_color = first_point_style?.fill || first_point_style?.stroke ||
+            display_style.symbol_color || `black`
+        }
+        display_style.line_color = legend_line_color
         display_style.line_dash = data_series?.line_style?.line_dash
       } else {
         // If no line marker, explicitly remove line style for legend

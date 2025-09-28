@@ -87,10 +87,9 @@
       return
     }
 
-    const auto = axis === `x` ? auto_x_range : auto_y_range
-    const final_range = (min_val === null && max_val === null)
+    const final_range = min_val === null && max_val === null
       ? undefined
-      : [min_val ?? auto[0], max_val ?? auto[1]] as [number, number]
+      : [min_val, max_val] as [number | null, number | null]
 
     if (axis === `x`) x_range = final_range
     else y_range = final_range

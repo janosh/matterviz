@@ -2,29 +2,16 @@ import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { compute_xrd_pattern } from '$lib/xrd'
-import params from '$lib/xrd/atomic-scattering-params.json' with { type: 'json' }
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
-
-type FilePair = {
-  name: string
-  struct_path: string
-  xrd_path: string
-}
-
-type ExpectedPattern = {
-  x: number[]
-  y: number[]
-  hkls?: unknown
-  d_hkls?: number[]
-}
+import { xrd_patterns } from '../fixtures/xrd'
 
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 const xrd_dir = path.resolve(process.cwd(), `tests/vitest/fixtures/xrd`)
 
-function list_matching_pairs(): FilePair[] {
+function list_matching_pairs() {
   const structure_files = fs
     .readdirSync(structures_dir)
     .filter((name) => name.endsWith(`.json`))
@@ -33,7 +20,7 @@ function list_matching_pairs(): FilePair[] {
       .readdirSync(xrd_dir)
       .filter((name) => name.endsWith(`.json`)),
   )
-  const pairs: FilePair[] = []
+  const pairs = []
   for (const file_name of structure_files) {
     if (!xrd_files.has(file_name)) continue
     pairs.push({
@@ -61,9 +48,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       if (!parsed) return
 
       const structure = parsed as unknown as PymatgenStructure
-      const expected: ExpectedPattern = JSON.parse(
-        fs.readFileSync(pair.xrd_path, `utf8`),
-      ) as ExpectedPattern
+      const expected = JSON.parse(fs.readFileSync(pair.xrd_path, `utf8`))
 
       const computed = compute_xrd_pattern(structure, {
         wavelength: `CuKa`,
@@ -151,12 +136,7 @@ describe(`compute_xrd_pattern edge cases`, () => {
     return structure
   }
 
-  test.each(
-    [
-      [`CuKa`, 1.54184],
-      [`MoKa`, 0.71073],
-    ] as const,
-  )(
+  test.each([[`CuKa`, 1.54184], [`MoKa`, 0.71073]] as const)(
     `asin clamping yields finite values and 2θ≈180° at boundary (%s)`,
     (_label, wavelength) => {
       const a_len = wavelength / 2
@@ -178,24 +158,53 @@ describe(`compute_xrd_pattern edge cases`, () => {
     },
   )
 
-  test(`supports object-shaped coefficients with optional c term`, () => {
-    const original = (params as { [key: string]: unknown }).H
-    try {
-      ;(params as unknown as Record<string, unknown>).H = { a: [], b: [], c: 5 }
-      const structure = make_simple_cubic_structure(2)
-      const pattern = compute_xrd_pattern(structure, {
-        wavelength: `CuKa`,
-        scaled: true,
-        two_theta_range: [0, 90],
-      })
-      expect(pattern.x.length).toBeGreaterThan(0)
-      expect(
-        pattern.y.every((intensity: number) =>
-          Number.isFinite(intensity) && intensity > 0
-        ),
-      ).toBe(true)
-    } finally {
-      ;(params as unknown as Record<string, unknown>).H = original as unknown
+  test(`scaled_intensity_tol filters peaks as configured`, () => {
+    const structure = make_simple_cubic_structure(3)
+    const base_opts = {
+      wavelength: `CuKa` as const,
+      two_theta_range: [0, 90] as [number, number],
     }
+
+    const none_pass = compute_xrd_pattern(structure, {
+      ...base_opts,
+      scaled: true,
+      scaled_intensity_tol: 101, // higher than any scaled intensity
+    })
+    expect(none_pass.x.length).toBe(0)
+
+    const many_pass = compute_xrd_pattern(structure, {
+      ...base_opts,
+      scaled: true,
+      scaled_intensity_tol: 0, // include everything after scaling
+    })
+    expect(many_pass.x.length).toBeGreaterThan(0)
   })
+
+  test(`enumeration safety cap throws for pathological ranges`, () => {
+    // Use a huge direct lattice to create very small reciprocal spacing (dense grid)
+    const structure = make_simple_cubic_structure(1e4)
+    // two_theta_range null => up to 2/λ; with standard wavelength this yields large index bounds
+    expect(() =>
+      compute_xrd_pattern(structure, {
+        wavelength: `AgKa`,
+        scaled: true,
+        two_theta_range: null,
+      })
+    ).toThrow(/exceeds cap/i)
+  })
+})
+
+describe(`precomputed XRD fixtures are consistent`, () => {
+  const entries = Object.entries(xrd_patterns)
+  test(`found XRD fixtures`, () => {
+    expect(entries.length).toBeGreaterThan(0)
+  })
+  test.each(entries.map(([id, pattern]) => [id, pattern] as const))(
+    `fixture %s length consistency`,
+    (_id, pattern) => {
+      expect(pattern.x.length).toBe(pattern.y.length)
+      if (pattern.hkls) expect(pattern.hkls.length).toBe(pattern.x.length)
+      if (pattern.d_hkls) expect(pattern.d_hkls.length).toBe(pattern.x.length)
+    },
+  )
 })

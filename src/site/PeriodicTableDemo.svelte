@@ -11,7 +11,7 @@
 
   let window_width: number = $state(0)
   let color_scale: D3InterpolateName = $state(`interpolateViridis`)
-  let heatmap_key: string | null = $state(null)
+  let heatmap_key: keyof ChemicalElement | null = $state(null)
 
   // Appearance control state
   let tile_gap: string = $state(`0.3cqw`)
@@ -29,7 +29,7 @@
     heatmap_key
       ? element_data.map((el) => {
         if (!heatmap_key || !(heatmap_key in el)) return 0
-        const value = el[heatmap_key as keyof ChemicalElement]
+        const value = el[heatmap_key]
         return typeof value === `number` ? value : 0
       })
       : [],
@@ -82,10 +82,10 @@
     <br />
     <small>{element.symbol} • {element.number}</small>
     <br />
-    <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : value || `N/A`}</em>
+    <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : value ?? `N/A`}</em>
     <br />
     <small class="position">Position: {element.column},{element.row}</small>
-    {#if heatmap_key && value}
+    {#if heatmap_key && value !== null}
       <br />
       <small class="scale-info">
         Range: {scale_context.min.toFixed(1)} - {scale_context.max.toFixed(1)}
@@ -122,7 +122,10 @@
           y={heatmap_values}
           {y_label}
           {y_unit}
-          onchange={(event) => (selected.element = element_data[event.detail.x - 1])}
+          onchange={(evt) => {
+            const el = element_data.find((el) => el.number === evt.detail.x)
+            if (el) selected.element = el
+          }}
           color_scale={{ scheme: color_scale }}
           style="max-height: calc(100cqw / 10 * 3)"
         />

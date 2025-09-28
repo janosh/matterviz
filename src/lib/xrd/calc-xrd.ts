@@ -3,9 +3,7 @@ import element_data from '$lib/element/data'
 import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure/index'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
-import ATOMIC_SCATTERING_PARAMS from './atomic-scattering-params.json' with {
-  type: 'json',
-}
+import { ATOMIC_SCATTERING_PARAMS } from './atomic-scattering-params'
 import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
 // XRD wavelengths in Angstrom (Å)
@@ -95,6 +93,13 @@ function enumerate_reciprocal_points(
   ]
   const min_norm = Math.max(Math.min(...norms), 1e-12)
   const max_index = Math.ceil((max_radius / min_norm) + 2)
+  // Safety cap to avoid pathological enumeration volume
+  const CAP = 512
+  if (max_index > CAP) {
+    throw new Error(
+      `enumerate_reciprocal_points: max_index=${max_index} exceeds cap ${CAP}`,
+    )
+  }
 
   const points: RecipPoint[] = []
   for (let h_idx = -max_index; h_idx <= max_index; h_idx++) {
@@ -210,6 +215,8 @@ export function compute_xrd_pattern(
   // Accumulate peaks by merging two_thetas within tolerance
   const peaks = new Map<number, { intensity: number; hkls: Hkl[]; d_hkl: number }>()
   const two_thetas: number[] = []
+  const merge_tol = options.peak_merge_tol ?? TWO_THETA_TOL
+  const scaled_tol = options.scaled_intensity_tol ?? SCALED_INTENSITY_TOL
 
   for (const entry of recip_points) {
     const hkl = entry.hkl
@@ -264,10 +271,10 @@ export function compute_xrd_pattern(
     // but downstream components expect 3-index HKL. Keep 3-index form to match types/consumers.
     const hkl_to_store: Hkl = [hkl[0], hkl[1], hkl[2]]
 
-    // Merge peaks within TWO_THETA_TOL
+    // Merge peaks within tolerance
     let found_index: number | null = null
     for (let idx = 0; idx < two_thetas.length; idx++) {
-      if (Math.abs(two_thetas[idx] - two_theta) < TWO_THETA_TOL) {
+      if (Math.abs(two_thetas[idx] - two_theta) < merge_tol) {
         found_index = idx
         break
       }
@@ -302,7 +309,7 @@ export function compute_xrd_pattern(
     const item = peaks.get(angle)
     if (!item) continue
     const scaled_val = (item.intensity / max_intensity) * 100
-    if (scaled_val > SCALED_INTENSITY_TOL) {
+    if (scaled_val > scaled_tol) {
       xs.push(angle)
       ys.push(item.intensity)
       const fam = get_unique_families(item.hkls)

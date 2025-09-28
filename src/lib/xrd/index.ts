@@ -20,7 +20,12 @@ export type XrdOptions = {
   symprec?: number
   debye_waller_factors?: Partial<Record<ElementSymbol, number>>
   scaled?: boolean
+  // When null, treat as unbounded up to 2/λ (Bragg maximum); when omitted, default [0, 180]
   two_theta_range?: [number, number] | null
+  // Merge tolerance for peaks in degrees (default = TWO_THETA_TOL)
+  peak_merge_tol?: number
+  // Scaled intensity threshold (% of max) to include a peak (default = SCALED_INTENSITY_TOL)
+  scaled_intensity_tol?: number
 }
 
 export interface PatternEntry {
