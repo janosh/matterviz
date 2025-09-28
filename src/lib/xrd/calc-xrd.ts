@@ -146,7 +146,7 @@ export function compute_xrd_pattern(
   // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda
   const two_theta_range = options.two_theta_range === null
     ? null
-    : options.two_theta_range ?? [0, 90]
+    : options.two_theta_range ?? [0, 180]
   const [min_radius, max_radius] = two_theta_range === null
     ? [0, 2 / wavelength]
     : (([t_min, t_max]: [number, number]) => {
@@ -224,7 +224,9 @@ export function compute_xrd_pattern(
     const s_sq = s_val * s_val
 
     // g.r for all fractional coords
-    const g_dot_r_all = frac_coords.map((frac_coord) => math.dot(frac_coord, hkl))
+    const g_dot_r_all = frac_coords.map((frac_coord) =>
+      math.dot(frac_coord, hkl) as number
+    )
 
     // Atomic scattering factors (vectorized style)
     const f_scattering: number[] = coeffs.map((coeff_entry) => {

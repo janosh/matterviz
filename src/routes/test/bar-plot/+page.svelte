@@ -69,6 +69,48 @@
       visible: true,
     },
   ]
+
+  // Mixed positive/negative values for stacked-mode testing
+  const stacked_mixed_series: BarSeries[] = [
+    {
+      x: [1, 2, 3],
+      y: [2, -3, 4],
+      label: `Sposneg`,
+      color: `#8cd17d`,
+      bar_width: 0.8,
+      visible: true,
+    },
+    {
+      x: [1, 2, 3],
+      y: [3, -2, -1],
+      label: `Snegpos`,
+      color: `#76b7b2`,
+      bar_width: 0.8,
+      visible: true,
+    },
+  ]
+
+  const zero_value_series: BarSeries[] = [
+    {
+      x: [1, 2, 3, 4],
+      y: [0, 5, 0, 10],
+      label: `Zeros`,
+      color: `#9c755f`,
+      bar_width: 0.6,
+      visible: true,
+    },
+  ]
+
+  const width_array_series: BarSeries[] = [
+    {
+      x: [1, 2, 3, 4],
+      y: [4, 6, 5, 3],
+      label: `VarWidth`,
+      color: `#ff9da7`,
+      bar_width: [0.3, 0.6, 1.0, 0.4],
+      visible: true,
+    },
+  ]
 </script>
 
 <svelte:head>
@@ -122,6 +164,49 @@
       x_label="X"
       y_label="Y"
       mode="stacked"
+      show_controls
+      controls_toggle_props={{ class: `bar-controls-toggle` }}
+      style="height: 300px"
+    />
+  </div>
+  <div id="stacked-mixed">
+    <BarPlot
+      series={stacked_mixed_series}
+      x_label="X"
+      y_label="Y"
+      mode="stacked"
+      show_controls
+      controls_toggle_props={{ class: `bar-controls-toggle` }}
+      style="height: 300px"
+    />
+  </div>
+  <div id="zero-values">
+    <BarPlot
+      series={zero_value_series}
+      x_label="X"
+      y_label="Y"
+      show_controls
+      controls_toggle_props={{ class: `bar-controls-toggle` }}
+      style="height: 300px"
+    />
+  </div>
+  <div id="width-array">
+    <BarPlot
+      series={width_array_series}
+      x_label="X"
+      y_label="Y"
+      show_controls
+      controls_toggle_props={{ class: `bar-controls-toggle` }}
+      style="height: 300px"
+    />
+  </div>
+  <div id="stacked-mixed-horizontal">
+    <BarPlot
+      series={stacked_mixed_series}
+      x_label="Y"
+      y_label="X"
+      mode="stacked"
+      orientation="horizontal"
       show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"

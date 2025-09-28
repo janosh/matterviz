@@ -25,7 +25,6 @@ repos:
         name: Deno format
         entry: deno fmt
         types_or: [file]
-        exclude: xrd/.+.json$
         language: system
         args: [--config, deno.jsonc, --permit-no-files]
       - id: deno-lint

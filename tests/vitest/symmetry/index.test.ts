@@ -618,7 +618,7 @@ describe(`apply_symmetry_operations`, () => {
   test(`performance with many operations`, () => {
     const position: Vec3 = [0.1, 0.2, 0.3]
     const many_operations = Array.from({ length: 48 }, (_, idx) => ({
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] satisfies Vec9,
       translation: [idx * 0.02, idx * 0.02, idx * 0.02] as Vec3,
     }))
 
@@ -633,11 +633,6 @@ describe(`apply_symmetry_operations`, () => {
 })
 
 describe(`map_wyckoff_to_all_atoms`, () => {
-  type MoyoOperation = {
-    rotation: Vec9
-    translation: Vec3
-  }
-
   // Helper factories
   const mock_structure = (
     sites: { abc: Vec3; element: string }[],
@@ -668,11 +663,8 @@ describe(`map_wyckoff_to_all_atoms`, () => {
 
   const mock_sym_data = (): MoyoDataset => ({
     operations: [
-      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] } as MoyoOperation, // Identity
-      {
-        rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
-        translation: [0, 0, 0],
-      } as MoyoOperation, // Inversion
+      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] }, // Identity
+      { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1], translation: [0, 0, 0] }, // Inversion
     ],
     std_cell: {
       lattice: {

@@ -144,6 +144,8 @@ export interface ScatterTooltipProps extends TooltipProps {
 
 export interface BarTooltipProps extends TooltipProps {
   bar_idx: number
+  orient_x: number
+  orient_y: number
 }
 
 export type TimeInterval = `day` | `month` | `year`

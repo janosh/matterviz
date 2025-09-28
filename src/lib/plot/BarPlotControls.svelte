@@ -59,18 +59,19 @@
     }
   }
 
+  // Element refs for per-instance range inputs
+  const range_inputs = {
+    x: { min: null as HTMLInputElement | null, max: null as HTMLInputElement | null },
+    y: { min: null as HTMLInputElement | null, max: null as HTMLInputElement | null },
+  }
+
   // Applies the min/max inputs for the given axis after blur/Enter.
   // - Validates the pair (min < max)
   // - When both inputs are empty, clears the bound range to fall back to auto
   // - If one side is empty, substitutes the corresponding auto bound
-  // DOM lookup by id keeps this lightweight without duplicating reactive state per input.
   const range_complete = (axis: `x` | `y`) => {
-    const min_el = document.getElementById(`${axis}-range-min`) as
-      | HTMLInputElement
-      | null
-    const max_el = document.getElementById(`${axis}-range-max`) as
-      | HTMLInputElement
-      | null
+    const min_el = range_inputs[axis].min
+    const max_el = range_inputs[axis].max
     if (!min_el || !max_el) return
     ;[min_el, max_el].forEach((el) => el.classList.remove(`invalid`))
 
@@ -100,7 +101,6 @@
     bound: `min` | `max`,
     range?: [number | null, number | null],
   ) => ({
-    id: `${axis}-range-${bound}`,
     type: `number`,
     value: range?.[bound === `min` ? 0 : 1] ?? ``,
     placeholder: `auto`,
@@ -176,14 +176,26 @@
         }}
       >
         <label>X-axis:
-          <input {...input_props(`x`, `min`, x_range)} />
+          <input
+            {...input_props(`x`, `min`, x_range)}
+            bind:this={range_inputs.x.min}
+          />
           &nbsp;to
-          <input {...input_props(`x`, `max`, x_range)} />
+          <input
+            {...input_props(`x`, `max`, x_range)}
+            bind:this={range_inputs.x.max}
+          />
         </label>
         <label>Y-axis:
-          <input {...input_props(`y`, `min`, y_range)} />
+          <input
+            {...input_props(`y`, `min`, y_range)}
+            bind:this={range_inputs.y.min}
+          />
           &nbsp;to
-          <input {...input_props(`y`, `max`, y_range)} />
+          <input
+            {...input_props(`y`, `max`, y_range)}
+            bind:this={range_inputs.y.max}
+          />
         </label>
         <button onclick={set_auto_ranges} style="margin-left: 8px">auto</button>
       </SettingsSection>

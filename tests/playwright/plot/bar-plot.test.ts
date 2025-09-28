@@ -151,7 +151,10 @@ test.describe(`BarPlot Component Tests`, () => {
     const before_dims =
       (await Promise.all(before_boxes.map(async (h) => await h.boundingBox())))
         .filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
-    const vertical_count = before_dims.filter((bb) => bb.height > bb.width).length
+    const vertical_count_before = before_dims.filter((bb) => bb.height > bb.width).length
+    const horizontal_count_before =
+      before_dims.filter((bb) => bb.width > bb.height).length
+    expect(vertical_count_before).toBeGreaterThan(horizontal_count_before)
 
     // Open controls and switch orientation to Horizontal
     const toggle = section.locator(`.pane-toggle`)
@@ -168,7 +171,88 @@ test.describe(`BarPlot Component Tests`, () => {
     const after_dims =
       (await Promise.all(after_boxes.map(async (h) => await h.boundingBox())))
         .filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
-    const horizontal_count = after_dims.filter((bb) => bb.width > bb.height).length
-    expect(horizontal_count).toBeGreaterThan(vertical_count)
+    const horizontal_count_after = after_dims.filter((bb) => bb.width > bb.height).length
+    const vertical_count_after = after_dims.filter((bb) => bb.height > bb.width).length
+    expect(horizontal_count_after).toBeGreaterThan(vertical_count_after)
+  })
+
+  test(`stacked mode handles positive and negative stacking separately and respects visibility`, async ({ page }) => {
+    const section = page.locator(`#modes-bar #stacked-mixed`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+
+    // Collect bars for first x index (approx top-left group); two series -> two rects per x
+    const rects = plot.locator(`svg rect`).filter({ hasNotText: `` })
+    await expect(rects.first()).toBeVisible()
+
+    // Measure y positions to verify one bar is above baseline and one below when values have different signs
+    const rect_boxes = (await rects.elementHandles()).slice(0, 4)
+    const boxes = (
+      await Promise.all(rect_boxes.map(async (h) => await h.boundingBox()))
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    // There should be at least two bars with different vertical placement for mixed signs
+    const ys = boxes.map((bb) => bb.y)
+    const min_y = Math.min(...ys)
+    const max_y = Math.max(...ys)
+    expect(max_y - min_y).toBeGreaterThan(0)
+
+    // Toggle visibility of first series; remaining series should shift to its own baseline (no stacking contribution from hidden)
+    const legend = plot.locator(`.legend`)
+    const items = legend.locator(`.legend-item`)
+    await expect(items).toHaveCount(2)
+    const initial_first_rect_box = await rects.first().boundingBox()
+    await items.first().click()
+    await expect
+      .poll(async () => (await rects.first().boundingBox())?.y ?? -1)
+      .not.toBe(initial_first_rect_box?.y ?? -1)
+  })
+
+  test(`zero-value bars render with minimal height/width and tooltips still appear`, async ({ page }) => {
+    const section = page.locator(`#modes-bar #zero-values`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+    const rects = plot.locator(`svg rect`).filter({ hasNotText: `` })
+    await expect(rects.first()).toBeVisible()
+    // zero bars should not have negative size
+    const boxes = (
+      await Promise.all(
+        (await rects.all()).slice(0, 4).map(async (h) => await h.boundingBox()),
+      )
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    expect(Math.min(...boxes.map((bb) => bb.width))).toBeGreaterThan(0)
+    expect(Math.min(...boxes.map((bb) => bb.height))).toBeGreaterThan(0)
+    await rects.first().hover({ force: true })
+    await expect(plot.locator(`.tooltip`)).toBeVisible()
+  })
+
+  test(`per-bar width arrays change bar widths`, async ({ page }) => {
+    const section = page.locator(`#modes-bar #width-array`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+    const rects = await plot.locator(`svg rect`).all()
+    const boxes = (
+      await Promise.all(rects.slice(0, 4).map(async (h) => await h.boundingBox()))
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const widths = boxes.map((bb) => bb.width)
+    // Expect at least two distinct widths
+    const distinct = new Set(widths.map((w) => Math.round(w)))
+    expect(distinct.size).toBeGreaterThan(1)
+  })
+
+  test(`horizontal stacked mixed also separates positive/negative properly`, async ({ page }) => {
+    const section = page.locator(`#modes-bar #stacked-mixed-horizontal`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+    const rects = plot.locator(`svg rect`).filter({ hasNotText: `` })
+    await expect(rects.first()).toBeVisible()
+    const boxes = (
+      await Promise.all(
+        (await rects.all()).slice(0, 4).map(async (h) => await h.boundingBox()),
+      )
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const xs = boxes.map((bb) => bb.x)
+    const min_x = Math.min(...xs)
+    const max_x = Math.max(...xs)
+    expect(max_x - min_x).toBeGreaterThan(0)
   })
 })

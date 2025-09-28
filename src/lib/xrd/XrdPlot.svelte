@@ -1,8 +1,11 @@
 <script lang="ts">
   import { plot_colors } from '$lib/colors'
+  import { decompress_file, handle_url_drop } from '$lib/io'
   import type { BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
+  import { parse_any_structure } from '$lib/structure/parse'
+  import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps } from 'svelte'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
 
@@ -24,6 +27,10 @@
     wavelength?: number | null
     x_label?: string
     y_label?: string
+    allow_file_drop?: boolean
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    loading?: boolean
+    error_msg?: string
   }
   let {
     patterns,
@@ -32,27 +39,40 @@
     hkl_format = `compact`,
     show_angles = null,
     orientation = `vertical` as Orientation,
+    wavelength = null,
     x_label = `2θ (degrees)`,
     y_label = `Intensity (a.u.)`,
+    allow_file_drop = true,
+    on_file_drop,
+    loading = $bindable(false),
+    error_msg = $bindable(undefined),
     ...rest
   }: Props = $props()
+
+  let dragover = $state(false)
+
+  // Patterns created from dropped structures
+  let dropped_entries = $state<PatternEntry[]>([])
 
   // Normalize various input shapes to a consistent array of { label, pattern, color }
   const pattern_entries = $derived.by<PatternEntry[]>(() => {
     if (!patterns) return []
-    if (Array.isArray(patterns)) return patterns as PatternEntry[]
-    if (`x` in patterns) {
-      return [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
-    }
-    const obj = patterns as Record<
-      string,
-      XrdPattern | { pattern: XrdPattern; color?: string }
-    >
-    return Object.entries(obj).map(([label, value]) =>
-      `pattern` in value
-        ? { label, ...value }
-        : { label, pattern: value as XrdPattern }
-    )
+    const base_entries = Array.isArray(patterns)
+      ? (patterns as PatternEntry[])
+      : (`x` in patterns
+        ? [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
+        : Object.entries(
+          patterns as Record<
+            string,
+            XrdPattern | { pattern: XrdPattern; color?: string }
+          >,
+        ).map(([label, value]) =>
+          `pattern` in value
+            ? { label, ...value }
+            : { label, pattern: value as XrdPattern }
+        ))
+    // Merge user-provided patterns with any dropped-on-the-fly entries
+    return [...base_entries, ...dropped_entries]
   })
 
   // Decide default show_angles
@@ -142,6 +162,61 @@
       }
     })
   })
+
+  async function handle_file_drop(event: DragEvent) {
+    event.preventDefault()
+    dragover = false
+    if (!allow_file_drop) return
+    loading = true
+    error_msg = undefined
+
+    const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
+      try {
+        const text_content = content instanceof ArrayBuffer
+          ? new TextDecoder().decode(content)
+          : content
+        const parsed_structure = parse_any_structure(text_content, filename)
+        if (parsed_structure && `lattice` in parsed_structure) {
+          const pattern = compute_xrd_pattern(parsed_structure, {
+            wavelength: typeof wavelength === `number` ? wavelength : undefined,
+          })
+          const label = filename || `Dropped structure`
+          // Prepend latest dropped pattern for visibility
+          dropped_entries = [{ label, pattern }, ...dropped_entries]
+        } else if (parsed_structure && !(`lattice` in parsed_structure)) {
+          error_msg = `Structure has no lattice; cannot compute XRD pattern`
+        } else {
+          error_msg = `Failed to parse structure from ${filename}`
+        }
+      } catch (exc) {
+        error_msg = `Failed to compute XRD pattern: ${
+          exc instanceof Error ? exc.message : String(exc)
+        }`
+      }
+    }
+
+    try {
+      // Handle URL-based drops
+      const handled = await handle_url_drop(event, on_file_drop || compute_and_add)
+        .catch(() => false)
+      if (handled) return
+
+      // Handle file system drops
+      const file = event.dataTransfer?.files?.[0]
+      if (file) {
+        try {
+          const { content, filename } = await decompress_file(file)
+          if (content) (on_file_drop || compute_and_add)(content, filename)
+        } catch (exc) {
+          error_msg = `Failed to load file ${file.name}: ${
+            exc instanceof Error ? exc.message : String(exc)
+          }`
+        }
+      }
+    } finally {
+      loading = false
+    }
+  }
 </script>
 
 {#snippet tooltip(info: BarTooltipProps)}
@@ -172,4 +247,15 @@
   {tooltip}
   x_range={orientation === `horizontal` ? intensity_range : angle_range}
   y_range={orientation === `horizontal` ? angle_range : intensity_range}
+  ondrop={handle_file_drop}
+  ondragover={(event) => {
+    event.preventDefault()
+    if (!allow_file_drop) return
+    dragover = true
+  }}
+  ondragleave={(event) => {
+    event.preventDefault()
+    dragover = false
+  }}
+  class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
 />

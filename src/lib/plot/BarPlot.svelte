@@ -52,7 +52,6 @@
     plot_controls?: Snippet<[]>
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   }
-
   let {
     series = $bindable([]),
     orientation = $bindable(`vertical` as Orientation),
@@ -251,7 +250,18 @@
     const metadata = Array.isArray(srs.metadata)
       ? (srs.metadata[bar_idx] as Record<string, unknown> | undefined)
       : (srs.metadata as Record<string, unknown> | undefined)
-    hover_info = { x, y, series_idx, bar_idx, metadata, label, color }
+    const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
+    hover_info = {
+      x,
+      y,
+      orient_x,
+      orient_y,
+      series_idx,
+      bar_idx,
+      metadata,
+      label,
+      color,
+    }
     change(hover_info)
   }
 
@@ -265,22 +275,40 @@
   // Stack offsets (only for vertical stacked mode)
   let stacked_offsets = $derived.by(() => {
     if (mode !== `stacked`) return [] as number[][]
-    // For each series, for each bar idx, compute base offset (sum of previous series y at that idx)
+    // Compute base offsets per series/bar index.
+    // Only visible series contribute; negatives and positives stack separately.
     const max_len = Math.max(0, ...series.map((s) => s.y.length))
     const offsets: number[][] = series.map(() =>
       Array.from({ length: max_len }, () => 0)
     )
-    for (let i = 0; i < series.length; i++) {
-      for (let j = 0; j < max_len; j++) {
-        const prev_sum = i === 0 ? 0 : (offsets[i - 1][j] + (series[i - 1].y[j] ?? 0))
-        offsets[i][j] = prev_sum
+    const pos_acc = Array.from({ length: max_len }, () => 0)
+    const neg_acc = Array.from({ length: max_len }, () => 0)
+
+    for (let series_idx = 0; series_idx < series.length; series_idx++) {
+      const srs = series[series_idx]
+      const is_visible = srs?.visible ?? true
+      if (!is_visible) continue
+      for (let bar_idx = 0; bar_idx < max_len; bar_idx++) {
+        const y_val = srs.y[bar_idx] ?? 0
+        if (y_val >= 0) {
+          offsets[series_idx][bar_idx] = pos_acc[bar_idx]
+          pos_acc[bar_idx] += y_val
+        } else {
+          offsets[series_idx][bar_idx] = neg_acc[bar_idx]
+          neg_acc[bar_idx] += y_val
+        }
       }
     }
     return offsets
   })
 </script>
 
-<div class="bar-plot" bind:clientWidth={width} bind:clientHeight={height} {...rest}>
+<div
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  {...rest}
+  class="bar-plot {rest.class ?? ``}"
+>
   {#if width && height}
     <svg
       bind:this={svg_element}
@@ -542,8 +570,8 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const cx = scales.x(hover_info.x)}
-      {@const cy = scales.y(hover_info.y)}
+      {@const cx = scales.x(hover_info.orient_x)}
+      {@const cy = scales.y(hover_info.orient_y)}
       <div
         class="tooltip overlay"
         style={`position: absolute; left: ${cx + 6}px; top: ${cy}px; pointer-events: none;`}
@@ -551,8 +579,8 @@
         {#if tooltip}
           {@render tooltip(hover_info)}
         {:else}
-          <div>{x_label || `x`}: {format_value(hover_info.x, x_format)}</div>
-          <div>{y_label || `y`}: {format_value(hover_info.y, y_format)}</div>
+          <div>{x_label || `x`}: {format_value(hover_info.orient_x, x_format)}</div>
+          <div>{y_label || `y`}: {format_value(hover_info.orient_y, y_format)}</div>
         {/if}
       </div>
     {/if}
@@ -588,6 +616,11 @@
     min-height: var(--barplot-min-height, 200px);
     container-type: size;
     z-index: var(--barplot-z-index, auto);
+    border-radius: var(--border-radius, 4px);
+  }
+  .bar-plot.dragover {
+    border: var(--barplot-dragover-border, var(--dragover-border));
+    background-color: var(--barplot-dragover-bg, var(--dragover-bg));
   }
   svg {
     width: 100%;

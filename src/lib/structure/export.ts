@@ -339,14 +339,14 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
 
         let selective_dynamics_str = ``
         if (has_selective_dynamics) {
-          const sd = (site.properties?.selective_dynamics ?? [
+          const sel_dyn = (site.properties?.selective_dynamics ?? [
             true,
             true,
             true,
           ]) as boolean[]
-          selective_dynamics_str = ` ${sd[0] ? `T` : `F`} ${sd[1] ? `T` : `F`} ${
-            sd[2] ? `T` : `F`
-          }`
+          selective_dynamics_str = ` ${sel_dyn[0] ? `T` : `F`} ${
+            sel_dyn[1] ? `T` : `F`
+          } ${sel_dyn[2] ? `T` : `F`}`
         }
 
         lines.push(
