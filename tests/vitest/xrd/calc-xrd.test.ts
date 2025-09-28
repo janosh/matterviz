@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { compute_xrd_pattern } from '$lib/xrd'
@@ -21,10 +21,7 @@ type ExpectedPattern = {
   d_hkls?: number[]
 }
 
-const structures_dir = path.resolve(
-  process.cwd(),
-  `src/site/structures`,
-)
+const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 const xrd_dir = path.resolve(process.cwd(), `tests/vitest/fixtures/xrd`)
 
 function list_matching_pairs(): FilePair[] {
@@ -46,16 +43,6 @@ function list_matching_pairs(): FilePair[] {
     })
   }
   return pairs
-}
-
-function _get_structure_elements(structure: PymatgenStructure): ElementSymbol[] {
-  const elems = new Set<ElementSymbol>()
-  for (const site of structure.sites) {
-    for (const species of site.species) {
-      elems.add(species.element as ElementSymbol)
-    }
-  }
-  return Array.from(elems).sort()
 }
 
 describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
@@ -136,22 +123,17 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
 // Concise edge-case tests for recent fixes
 describe(`compute_xrd_pattern edge cases`, () => {
   function make_simple_cubic_structure(a_len: number): PymatgenStructure {
-    const a = a_len
     const lattice = {
-      matrix: [
-        [a, 0, 0],
-        [0, a, 0],
-        [0, 0, a],
-      ] as [[number, number, number], [number, number, number], [number, number, number]],
-      a,
-      b: a,
-      c: a,
+      matrix: [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]] as Matrix3x3,
+      a: a_len,
+      b: a_len,
+      c: a_len,
       alpha: 90,
       beta: 90,
       gamma: 90,
-      volume: a * a * a,
-      pbc: [true, true, true] as [boolean, boolean, boolean],
-    }
+      volume: a_len * a_len * a_len,
+      pbc: [true, true, true],
+    } as const
 
     const structure: PymatgenStructure = {
       lattice,

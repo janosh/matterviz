@@ -1,4 +1,5 @@
 import type { ElementSymbol } from '$lib'
+import type { Vec3 } from '$lib/math'
 import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types'
 import { is_unary_entry } from './types'
 
@@ -13,7 +14,7 @@ export const TRIANGLE_VERTICES = [
 export function composition_to_barycentric_3d(
   composition: Record<string, number>,
   elements: ElementSymbol[],
-): [number, number, number] {
+): Vec3 {
   if (elements.length !== 3) {
     throw new Error(`Ternary system requires exactly 3 elements, got ${elements.length}`)
   }
@@ -29,9 +30,7 @@ export function composition_to_barycentric_3d(
 }
 
 // map barycentric coordinates to triangular 2D coordinates
-export function barycentric_to_ternary_xy(
-  barycentric: [number, number, number],
-): [number, number] {
+export function barycentric_to_ternary_xy(barycentric: Vec3): [number, number] {
   const [a, b, c] = barycentric
   const x = TRIANGLE_VERTICES[0][0] * a + TRIANGLE_VERTICES[1][0] * b +
     TRIANGLE_VERTICES[2][0] * c
@@ -42,7 +41,7 @@ export function barycentric_to_ternary_xy(
 
 // map barycentric coordinates to ternary 3D coordinates
 export function barycentric_to_ternary_xyz(
-  barycentric: [number, number, number],
+  barycentric: Vec3,
   formation_energy: number,
 ): Point3D {
   const [x, y] = barycentric_to_ternary_xy(barycentric)

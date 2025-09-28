@@ -1,5 +1,5 @@
 import type { ElementSymbol, Species } from '$lib'
-import type { Vec3 } from '$lib/math'
+import type { Vec3, Vec9 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import {
   apply_symmetry_operations,
@@ -519,30 +519,24 @@ describe(`site coverage verification`, () => {
 })
 
 describe(`apply_symmetry_operations`, () => {
-  // Helper to create mock symmetry operations with proper types
-  type MoyoOperation = {
-    rotation: [number, number, number, number, number, number, number, number, number]
-    translation: [number, number, number]
-  }
-
   const operations = {
     identity: {
       rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       translation: [0, 0, 0],
-    } as MoyoOperation,
+    },
     inversion: {
       rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
       translation: [0, 0, 0],
-    } as MoyoOperation,
+    },
     translation: {
       rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       translation: [0.5, 0.5, 0.5],
-    } as MoyoOperation,
+    },
     rotation_90z: {
       rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1],
       translation: [0, 0, 0],
-    } as MoyoOperation,
-  }
+    },
+  } as const
 
   test.each([
     [
@@ -624,18 +618,8 @@ describe(`apply_symmetry_operations`, () => {
   test(`performance with many operations`, () => {
     const position: Vec3 = [0.1, 0.2, 0.3]
     const many_operations = Array.from({ length: 48 }, (_, i) => ({
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as [
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-      ],
-      translation: [i * 0.02, i * 0.02, i * 0.02] as [number, number, number],
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
+      translation: [i * 0.02, i * 0.02, i * 0.02] as Vec3,
     }))
 
     const start_time = performance.now()
@@ -650,8 +634,8 @@ describe(`apply_symmetry_operations`, () => {
 
 describe(`map_wyckoff_to_all_atoms`, () => {
   type MoyoOperation = {
-    rotation: [number, number, number, number, number, number, number, number, number]
-    translation: [number, number, number]
+    rotation: Vec9
+    translation: Vec3
   }
 
   // Helper factories
@@ -659,7 +643,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     sites: { abc: Vec3; element: string }[],
   ): PymatgenStructure => ({
     lattice: {
-      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3],
+      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
       pbc: [true, true, true],
       volume: 1,
       a: 1,

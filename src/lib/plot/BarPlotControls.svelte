@@ -51,37 +51,46 @@
 <DraggablePane bind:show={controls_open} {toggle_props}>
   <div class="controls">
     <div class="row">
-      <label>Orientation</label>
-      <select bind:value={orientation}>
-        <option value="vertical">vertical</option>
-        <option value="horizontal">horizontal</option>
-      </select>
+      <label>Orientation
+        <select bind:value={orientation}>
+          <option value="vertical">vertical</option>
+          <option value="horizontal">horizontal</option>
+        </select>
+      </label>
     </div>
     <div class="row">
-      <label>Mode</label>
-      <select bind:value={mode}>
-        <option value="overlay">overlay</option>
-        <option value="stacked">stacked</option>
-      </select>
+      <label>Mode
+        <select bind:value={mode}>
+          <option value="overlay">overlay</option>
+          <option value="stacked">stacked</option>
+        </select>
+      </label>
     </div>
     <div class="row">
       <label><input type="checkbox" bind:checked={x_grid as boolean} /> x grid</label>
       <label><input type="checkbox" bind:checked={y_grid as boolean} /> y grid</label>
     </div>
     <div class="row">
-      <label>x ticks</label>
-      <input type="number" bind:value={x_ticks as number} min="0" step="1" />
-      <label>y ticks</label>
+      <label>x ticks
+        <input type="number" bind:value={x_ticks as number} min="0" step="1" />
+      </label>
+      <label>y ticks
+        <input type="number" bind:value={y_ticks as number} min="0" step="1" />
+      </label>
       <input type="number" bind:value={y_ticks as number} min="0" step="1" />
     </div>
     <div class="row">
-      <label>x format</label>
-      <input type="text" bind:value={x_format} />
-      <label>y format</label>
-      <input type="text" bind:value={y_format} />
+      <label>x format
+        <input type="text" bind:value={x_format} />
+      </label>
+      <label>y format
+        <input type="text" bind:value={y_format} />
+      </label>
     </div>
     <div class="row">
-      <label>x range</label>
+      <label>x range
+        <input type="number" bind:value={x_range} min="0" step="1" />
+      </label>
       <input
         type="number"
         value={(x_range && x_range[0]) ?? ``}
@@ -106,30 +115,31 @@
       />
     </div>
     <div class="row">
-      <label>y range</label>
-      <input
-        type="number"
-        value={(y_range && y_range[0]) ?? ``}
-        oninput={(event) => {
-          const raw = (event.target as HTMLInputElement).value
-          const val = raw === `` ? null : Number(raw)
-          y_range = y_range
-            ? [val, y_range[1] ?? auto_y_range[1]]
-            : [val, auto_y_range[1]]
-        }}
-      />
-      <input
-        type="number"
-        value={(y_range && y_range[1]) ?? ``}
-        oninput={(event) => {
-          const raw = (event.target as HTMLInputElement).value
-          const val = raw === `` ? null : Number(raw)
-          y_range = y_range
-            ? [y_range[0] ?? auto_y_range[0], val]
-            : [auto_y_range[0], val]
-        }}
-      />
-      <button onclick={set_auto_ranges}>auto</button>
+      <label>y range
+        <input
+          type="number"
+          value={(y_range && y_range[0]) ?? ``}
+          oninput={(event) => {
+            const raw = (event.target as HTMLInputElement).value
+            const val = raw === `` ? null : Number(raw)
+            y_range = y_range
+              ? [val, y_range[1] ?? auto_y_range[1]]
+              : [val, auto_y_range[1]]
+          }}
+        />
+        <input
+          type="number"
+          value={(y_range && y_range[1]) ?? ``}
+          oninput={(event) => {
+            const raw = (event.target as HTMLInputElement).value
+            const val = raw === `` ? null : Number(raw)
+            y_range = y_range
+              ? [y_range[0] ?? auto_y_range[0], val]
+              : [auto_y_range[0], val]
+          }}
+        />
+        <button onclick={set_auto_ranges}>auto</button>
+      </label>
     </div>
     {@render plot_controls?.()}
   </div>

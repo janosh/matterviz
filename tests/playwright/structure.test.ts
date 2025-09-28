@@ -33,6 +33,19 @@ test.describe(`Structure Component Tests`, () => {
     ).toContainText(`500`)
   })
 
+  test(`measure mode controls visible by default and hide when disabled`, async ({ page }) => {
+    // Default page (no param) should show measure mode dropdown container
+    const measure_dropdown = page.locator(`#test-structure .measure-mode-dropdown`)
+    await expect(measure_dropdown).toBeVisible()
+
+    // Navigate with enable_measure_mode=false to hide it
+    await page.goto(`/test/structure?enable_measure_mode=false`, {
+      waitUntil: `networkidle`,
+    })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await expect(page.locator(`#test-structure .measure-mode-dropdown`)).toHaveCount(0)
+  })
+
   test(`reacts to background_color prop change from test page`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const background_color_input = page.locator(

@@ -1,5 +1,5 @@
 // Parsing functions for trajectory data from various formats
-import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
+import type { AnyStructure, ElementSymbol, Pbc, Vec3 } from '$lib'
 import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
 import {
@@ -132,7 +132,7 @@ const create_structure = (
   positions: number[][],
   elements: ElementSymbol[],
   lattice_matrix?: Matrix3x3,
-  pbc?: [boolean, boolean, boolean],
+  pbc?: Pbc,
   force_data?: number[][],
 ): AnyStructure => {
   const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
@@ -167,7 +167,7 @@ const create_trajectory_frame = (
   positions: number[][],
   elements: ElementSymbol[],
   lattice_matrix: Matrix3x3 | undefined,
-  pbc: [boolean, boolean, boolean] | undefined,
+  pbc: Pbc | undefined,
   step: number,
   metadata: Record<string, unknown> = {},
 ): TrajectoryFrame => ({

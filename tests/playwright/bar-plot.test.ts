@@ -1,0 +1,141 @@
+import { expect, test } from '@playwright/test'
+
+test.describe(`BarPlot Component Tests`, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`/test/bar-plot`, { waitUntil: `networkidle` })
+  })
+
+  test(`renders basic bar plot with axes and bars`, async ({ page }) => {
+    const section = page.locator(`#basic-bar`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+
+    // Bars render
+    const rects = plot.locator(`svg rect`).filter({ hasNotText: `` })
+    await expect(rects.first()).toBeVisible()
+
+    // Axes render with some ticks
+    await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
+    await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
+  })
+
+  test(`legend renders for multiple series and toggles visibility`, async ({ page }) => {
+    const section = page.locator(`#legend-bar`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+
+    const legend = plot.locator(`.legend`)
+    await expect(legend).toBeVisible()
+    const items = legend.locator(`.legend-item`)
+    await expect(items).toHaveCount(2)
+
+    // Initial: both visible -> bars exist
+    const initial_bars = await plot.locator(`svg rect`).count()
+    expect(initial_bars).toBeGreaterThan(0)
+
+    // Toggle first series
+    await items.first().click()
+    const after_toggle_bars = await plot.locator(`svg rect`).count()
+    expect(after_toggle_bars).toBeGreaterThanOrEqual(0)
+
+    // Toggle back
+    await items.first().click()
+    const restored_bars = await plot.locator(`svg rect`).count()
+    expect(restored_bars).toBeGreaterThan(0)
+  })
+
+  test(`zoom drag and double-click reset works`, async ({ page }) => {
+    const plot = page.locator(`#basic-bar .bar-plot`)
+    const svg = plot.locator(`svg[role="button"]`)
+
+    // Wait for initial ticks
+    await expect(plot.locator(`g.x-axis .tick text`).first()).toBeVisible()
+
+    const get_range = async (axis: `x` | `y`) => {
+      const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
+      return tick_texts.join(`,`)
+    }
+
+    const initial_x = await get_range(`x`)
+    const initial_y = await get_range(`y`)
+
+    const box = await svg.boundingBox()
+    if (!box) throw `SVG bbox not found`
+
+    const start_x = box.x + box.width * 0.3
+    const start_y = box.y + box.height * 0.7
+    const end_x = box.x + box.width * 0.7
+    const end_y = box.y + box.height * 0.3
+
+    await page.mouse.move(start_x, start_y)
+    await page.mouse.down()
+    await page.mouse.move(end_x, end_y)
+    await page.mouse.up()
+
+    // After zoom ticks differ
+    const zoomed_x = await get_range(`x`)
+    const zoomed_y = await get_range(`y`)
+    expect(zoomed_x).not.toBe(initial_x)
+    expect(zoomed_y).not.toBe(initial_y)
+
+    // Reset
+    await svg.dblclick()
+    const reset_x = await get_range(`x`)
+    const reset_y = await get_range(`y`)
+    expect(reset_x).toBe(initial_x)
+    expect(reset_y).toBe(initial_y)
+  })
+
+  test(`tooltip appears on bar hover with formatted values`, async ({ page }) => {
+    const plot = page.locator(`#basic-bar .bar-plot`)
+    const bar = plot.locator(`svg rect`).first()
+    await expect(bar).toBeVisible()
+    await bar.hover({ force: true })
+
+    const tooltip = plot.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible()
+  })
+
+  test(`controls pane toggles grid and updates tick formats`, async ({ page }) => {
+    const section = page.locator(`#basic-bar`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+
+    // Open controls via toggle button rendered by DraggablePane
+    const toggle = section.locator(`.pane-toggle`)
+    await expect(toggle).toBeVisible()
+    await toggle.click()
+
+    const pane = section.locator(`.draggable-pane`)
+    await expect(pane).toBeVisible()
+
+    // Toggle x grid
+    const x_grid_checkbox = pane.getByLabel(`x grid`)
+    await expect(x_grid_checkbox).toBeVisible()
+    await x_grid_checkbox.scrollIntoViewIfNeeded()
+    const initial_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`)
+      .count()
+    await x_grid_checkbox.evaluate((el) => {
+      const input = el as HTMLInputElement
+      input.checked = false
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    })
+    const no_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`).count()
+    expect(no_grid_lines).toBe(0)
+    await x_grid_checkbox.evaluate((el) => {
+      const input = el as HTMLInputElement
+      input.checked = true
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    })
+    const restored_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`)
+      .count()
+    expect(restored_grid_lines).toBeGreaterThanOrEqual(initial_grid_lines)
+
+    // Change x tick format
+    const x_format = pane.locator(`input[type="text"]`).first()
+    await x_format.fill(`.1f`)
+    await expect(plot.locator(`g.x-axis .tick text`).first()).toHaveText(/\d+\.\d/)
+  })
+})

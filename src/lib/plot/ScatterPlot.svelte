@@ -460,9 +460,11 @@
   let auto_color_range = $derived(
     // Ensure we only calculate extent on actual numbers, filtering out nulls/undefined
     all_color_values.length > 0
-      ? extent(all_color_values.filter((val): val is number => val != null))
+      ? extent(
+        all_color_values.filter((val): val is number => typeof val === `number`),
+      )
       : [0, 1],
-  )
+  ) as [number, number]
 
   // Create scale functions
   let x_scale_fn = $derived(
@@ -1914,19 +1916,17 @@
 
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0 && color_bar_cell}
-      {@const effective_color_domain = (color_scale.value_range ?? auto_color_range) as [
-      number,
-      number,
-    ]}
+      {@const color_domain = [
+      color_scale.value_range?.[0] ?? auto_color_range[0],
+      color_scale.value_range?.[1] ?? auto_color_range[1],
+    ] as [number, number]}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {color_scale_fn}
-        color_scale_domain={effective_color_domain}
+        color_scale_domain={color_domain}
         scale_type={color_scale.type}
-        range={effective_color_domain?.every((val) => val != null)
-        ? effective_color_domain
-        : undefined}
+        range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style={`
         position: absolute;
         left: ${tweened_colorbar_coords.current.x}px;

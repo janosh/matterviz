@@ -201,7 +201,7 @@ export function compute_xrd_pattern(
         coeff_entry = { a: raw_coeff.a.slice(), b: raw_coeff.b.slice(), c: raw_coeff.c }
       }
       coeffs.push(coeff_entry)
-      frac_coords.push(site.abc as [number, number, number])
+      frac_coords.push(site.abc)
       occus.push(species.occu)
       dw_factors.push(debye_waller_factors[element_symbol] ?? 0)
     }

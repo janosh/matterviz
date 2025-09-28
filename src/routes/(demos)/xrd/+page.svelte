@@ -172,7 +172,13 @@
             style:background-color={hex_with_alpha(series_color, 0.15)}
           >
             <h3>{struct_id}</h3>
-            <Structure structure={struct_obj} style="height: 180px; width: 100%" />
+            <Structure
+              structure={struct_obj}
+              style="height: 180px; width: 100%"
+              enable_info_pane={false}
+              enable_measure_mode={false}
+              scene_props={{ gizmo: false }}
+            />
           </div>
         {/if}
       {/each}

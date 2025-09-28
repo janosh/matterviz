@@ -132,6 +132,7 @@ export interface TooltipProps {
   metadata?: Record<string, unknown> | null
   color?: string | null
   label?: string | null
+  series_idx: number
 }
 
 export interface ScatterTooltipProps extends TooltipProps {
@@ -142,7 +143,6 @@ export interface ScatterTooltipProps extends TooltipProps {
 }
 
 export interface BarTooltipProps extends TooltipProps {
-  series_idx: number
   bar_idx: number
 }
 

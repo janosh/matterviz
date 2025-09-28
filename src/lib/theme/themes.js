@@ -162,6 +162,12 @@ const themes = {
     white: `rgba(0, 0, 0, 0.01)`,
     black: `rgba(255, 255, 255, 0.1)`,
   },
+  'struct-bg-fullscreen': {
+    light: page_bg_light,
+    dark: page_bg_dark,
+    white: page_bg_white,
+    black: page_bg_black,
+  },
 
   // Pane backgrounds (DraggablePane, etc.)
   'pane-bg': {

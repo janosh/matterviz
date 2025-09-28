@@ -498,7 +498,7 @@ describe(`performance tests`, () => {
           alpha: 90,
           beta: 90,
           gamma: 90,
-          pbc: [true, true, true] as [boolean, boolean, boolean],
+          pbc: [true, true, true],
           volume: 1,
         },
         sites: Array.from({ length: atom_count }, (_, i) => ({
@@ -508,7 +508,7 @@ describe(`performance tests`, () => {
           label: `H${i}`,
           properties: {},
         })),
-      }
+      } as const
 
       const start_time = performance.now()
       const supercell = make_supercell(test_structure, scaling)
