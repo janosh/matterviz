@@ -392,7 +392,7 @@ export function export_structure_as_poscar(structure?: AnyStructure): void {
 // Export structure as XYZ format. Format specification:
 // - Line 1: Number of atoms
 // - Line 2: Comment line (structure ID, formula, etc.)
-// - Remaining lines: Element symbol followed by x, y, z coordinates (in Angstroms)
+// - Remaining lines: Element symbol followed by x, y, z coordinates (in Angstrom)
 export function export_structure_as_xyz(structure?: AnyStructure): void {
   try {
     const xyz_content = structure_to_xyz_str(structure)

@@ -6,8 +6,9 @@ import type { PymatgenStructure } from '$lib/structure/index'
 import ATOMIC_SCATTERING_PARAMS from './atomic-scattering-params.json' with {
   type: 'json',
 }
+import type { Hkl, HklObj, XrdOptions, XrdPattern } from './index'
 
-// XRD wavelengths in angstroms (Å)
+// XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
   CuKa: 1.54184,
   CuKa2: 1.54439,
@@ -44,24 +45,6 @@ const SCALED_INTENSITY_TOL = 1e-3
 const ELEMENT_Z: Record<ElementSymbol, number> = Object.fromEntries(
   element_data.map((entry) => [entry.symbol as ElementSymbol, entry.number]),
 ) as Record<ElementSymbol, number>
-
-export type Hkl = [number, number, number]
-export type HklObj = { hkl: Hkl; multiplicity?: number }
-
-export type XrdPattern = {
-  x: number[]
-  y: number[]
-  hkls?: HklObj[][]
-  d_hkls?: number[]
-}
-
-export type XrdOptions = {
-  wavelength?: number | RadiationKey
-  symprec?: number
-  debye_waller_factors?: Partial<Record<ElementSymbol, number>>
-  scaled?: boolean
-  two_theta_range?: [number, number] | null
-}
 
 function approx_equal(a: number, b: number, tol: number = 1e-6): boolean {
   return Math.abs(a - b) <= tol
@@ -203,9 +186,9 @@ export function compute_xrd_pattern(
 
   const recip_points = enumerate_reciprocal_points(recip_rows, max_radius, min_radius)
 
-  // Flatten species with occupancies; gather Z, coeffs, frac coords, occu, DW factors.
-  const zs: number[] = []
-  const coeffs: [number, number][][] = []
+  // Flatten species with occupancies; gather coeffs, frac coords, occu, DW factors.
+  type ScatteringCoeffs = { a: number[]; b: number[]; c?: number }
+  const coeffs: ScatteringCoeffs[] = []
   const frac_coords: [number, number, number][] = []
   const occus: number[] = []
   const dw_factors: number[] = []
@@ -215,21 +198,38 @@ export function compute_xrd_pattern(
   for (const site of structure.sites) {
     for (const species of site.species) {
       const element_symbol = species.element as ElementSymbol
-      const atomic_num = ELEMENT_Z[element_symbol]
-      if (atomic_num === undefined) {
+      if (ELEMENT_Z[element_symbol] === undefined) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }
-      const coeff =
-        (ATOMIC_SCATTERING_PARAMS as Record<ElementSymbol, [number, number][]>)[
-          element_symbol
-        ]
-      if (!coeff) {
+      const raw_coeff = (
+        ATOMIC_SCATTERING_PARAMS as unknown as Partial<
+          Record<
+            ElementSymbol,
+            [number, number][] | { a: number[]; b: number[]; c?: number }
+          >
+        >
+      )[element_symbol]
+      if (!raw_coeff) {
         throw new Error(
           `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,
         )
       }
-      zs.push(atomic_num)
-      coeffs.push(coeff)
+      let coeff_entry: ScatteringCoeffs
+      if (Array.isArray(raw_coeff)) {
+        const a_arr: number[] = []
+        const b_arr: number[] = []
+        for (let pair_idx = 0; pair_idx < raw_coeff.length; pair_idx++) {
+          const term_pair = raw_coeff[pair_idx]
+          const a_val = term_pair[0]
+          const b_val = term_pair[1]
+          a_arr.push(a_val)
+          b_arr.push(b_val)
+        }
+        coeff_entry = { a: a_arr, b: b_arr }
+      } else {
+        coeff_entry = { a: raw_coeff.a.slice(), b: raw_coeff.b.slice(), c: raw_coeff.c }
+      }
+      coeffs.push(coeff_entry)
       frac_coords.push(site.abc as [number, number, number])
       occus.push(species.occu)
       dw_factors.push(debye_waller_factors[element_symbol] ?? 0)
@@ -245,7 +245,10 @@ export function compute_xrd_pattern(
     const g_norm = entry.g_norm
     if (g_norm === 0) continue
 
-    const theta = Math.asin((wavelength * g_norm) / 2)
+    const asin_arg = (wavelength * g_norm) / 2
+    // asin domain can exceed 1 by FP error — clamp to avoid NaN
+    const clamped_asin_arg = Math.min(1, Math.max(-1, asin_arg))
+    const theta = Math.asin(clamped_asin_arg)
     const s_val = g_norm / 2
     const s_sq = s_val * s_val
 
@@ -253,15 +256,18 @@ export function compute_xrd_pattern(
     const g_dot_r_all = frac_coords.map((frac_coord) => dot3(frac_coord, hkl))
 
     // Atomic scattering factors (vectorized style)
-    const f_scattering: number[] = zs.map((z_val, idx) => {
-      const terms = coeffs[idx]
-      // sum a_i * exp(-b_i * s2)
+    const f_scattering: number[] = coeffs.map((coeff_entry) => {
+      const a_arr = coeff_entry.a
+      const b_arr = coeff_entry.b
+      const num_terms = Math.min(a_arr.length, b_arr.length)
       let sum_terms = 0
-      for (let term_idx = 0; term_idx < terms.length; term_idx++) {
-        const [a_i, b_i] = terms[term_idx]
+      for (let term_idx = 0; term_idx < num_terms; term_idx++) {
+        const a_i = a_arr[term_idx]
+        const b_i = b_arr[term_idx]
         sum_terms += a_i * Math.exp(-b_i * s_sq)
       }
-      return z_val - 41.78214 * s_sq * sum_terms
+      if (coeff_entry.c !== undefined) sum_terms += coeff_entry.c
+      return sum_terms
     })
 
     const dw_corr: number[] = dw_factors.map((dw_b) => Math.exp(-dw_b * s_sq))

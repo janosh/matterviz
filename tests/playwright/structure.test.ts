@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-await-in-loop
+import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import { DEFAULTS } from '../../src/lib/settings'
 import { open_structure_control_pane } from './helpers'
 
 test.describe(`Structure Component Tests`, () => {

@@ -13,6 +13,8 @@ export interface TweenedOptions<T> {
   interpolate?: (a: T, b: T) => (t: number) => T
 }
 
+export { default as BarPlot } from './BarPlot.svelte'
+export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
 export { default as ElementScatter } from './ElementScatter.svelte'
@@ -239,4 +241,15 @@ export type UserContentProps = {
   y_min: number
   x_max: number
   y_max: number
+}
+
+export interface BarSeries {
+  x: readonly number[]
+  y: readonly number[]
+  label?: string
+  color?: string
+  bar_width?: number | readonly number[]
+  visible?: boolean
+  metadata?: Record<string, unknown>[] | Record<string, unknown>
+  labels?: readonly (string | null | undefined)[]
 }

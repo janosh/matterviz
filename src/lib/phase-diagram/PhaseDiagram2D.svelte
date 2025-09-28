@@ -517,7 +517,9 @@
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
   <div class="tooltip-title">
     {@html get_electro_neg_formula(entry.composition)}{
-      is_element ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol]})` : ``
+      is_element
+      ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
+      : ``
     }
   </div>
 

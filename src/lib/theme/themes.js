@@ -220,10 +220,10 @@ const themes = {
   },
 
   // Plot legend
-  'plot-legend-background-color': {
-    light: `rgba(255, 255, 255, 0.95)`,
+  'plot-legend-bg-color': {
+    light: `rgba(255, 255, 255, 0.6)`,
     dark: `rgba(0, 0, 0, 0.2)`,
-    white: `rgba(255, 255, 255, 0.98)`,
+    white: `rgba(255, 255, 255, 0.9)`,
     black: `rgba(0, 0, 0, 0.3)`,
   },
   'plot-legend-border': {
@@ -238,7 +238,7 @@ const themes = {
     white: txt_white,
     black: txt_black,
   },
-  'plot-legend-item-hover-background-color': btn_bg(0.1, 0.1),
+  'plot-legend-item-hover-bg-color': btn_bg(0.1, 0.1),
 
   // Svelte MultiSelect
   'sms-options-bg': {

@@ -958,7 +958,7 @@
       <div class="tooltip-title">
         {@html get_electro_neg_formula(entry.composition)}{
           is_element
-          ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol]})`
+          ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
           : ``
         }
       </div>

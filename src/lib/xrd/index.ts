@@ -1,3 +1,22 @@
-export { AVAILABLE_RADIATION, compute_xrd_pattern, WAVELENGTHS } from './calc'
-export type { Hkl, HklObj, XrdOptions, XrdPattern } from './calc'
+import type { ElementSymbol } from '$lib'
+import type { RadiationKey } from './calc-xrd'
+export * from './calc-xrd'
 export { default as XrdPlot } from './XrdPlot.svelte'
+
+export type Hkl = [number, number, number]
+export type HklObj = { hkl: Hkl; multiplicity?: number }
+
+export type XrdPattern = {
+  x: number[]
+  y: number[]
+  hkls?: HklObj[][]
+  d_hkls?: number[]
+}
+
+export type XrdOptions = {
+  wavelength?: number | RadiationKey
+  symprec?: number
+  debye_waller_factors?: Partial<Record<ElementSymbol, number>>
+  scaled?: boolean
+  two_theta_range?: [number, number] | null
+}

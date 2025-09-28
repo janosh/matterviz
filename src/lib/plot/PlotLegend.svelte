@@ -192,7 +192,7 @@
   .legend {
     display: grid;
     gap: 1px 6px; /* row-gap column-gap */
-    background-color: var(--plot-legend-background-color);
+    background-color: var(--plot-legend-bg-color);
     border: var(--plot-legend-border);
     border-radius: var(--plot-legend-border-radius, 3px);
     font-size: var(--plot-legend-font-size, 0.8em);
@@ -224,7 +224,7 @@
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
   .legend-item:hover, .legend-item:focus {
-    background-color: var(--plot-legend-item-hover-background-color);
+    background-color: var(--plot-legend-item-hover-bg-color);
   }
   .legend-marker {
     display: inline-flex; /* Use flex to align items */
