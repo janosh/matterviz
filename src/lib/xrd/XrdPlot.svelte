@@ -1,6 +1,6 @@
 <script lang="ts">
   import { plot_colors } from '$lib/colors'
-  import type { BarSeries, BarTooltipProps } from '$lib/plot'
+  import type { BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import type { ComponentProps } from 'svelte'
@@ -31,6 +31,7 @@
     annotate_peaks = 5,
     hkl_format = `compact`,
     show_angles = null,
+    orientation = `vertical` as Orientation,
     x_label = `2θ (degrees)`,
     y_label = `Intensity (a.u.)`,
     ...rest
@@ -66,22 +67,25 @@
     return max_val || 1
   })
 
-  // Compute overall x-domain
-  const x_range = $derived.by<[number, number]>(() => {
+  // Compute overall 2θ domain (degrees)
+  const angle_range = $derived.by(() => {
     let max_x = 0
     for (const entry of pattern_entries) {
       const entry_max = Math.max(...entry.pattern.x)
       if (entry_max > max_x) max_x = entry_max
     }
-    return [0, Math.ceil(max_x)]
+    return [0, Math.ceil(max_x)] as [number, number]
   })
+
+  // Scaled intensities are normalized to 0..100 downstream
+  const intensity_range: [number, number] = [0, 100]
 
   // Build BarPlot series from entries
   const bar_series = $derived.by<BarSeries[]>(() => {
     const include_name = pattern_entries.length > 1
     const scale = (y: number) => (y / global_max_intensity) * 100
     return pattern_entries.map((entry, entry_idx) => {
-      const xs = entry.pattern.x.slice()
+      const xs = entry.pattern.x
       const ys = entry.pattern.y.map((val) => scale(val || 0))
       const metadata: Record<string, unknown>[] = []
       const labels: (string | null)[] = []
@@ -158,13 +162,14 @@
 {/snippet}
 
 <BarPlot
+  {...rest}
   series={bar_series}
-  {x_label}
+  bind:orientation
+  x_label={orientation === `horizontal` ? y_label : x_label}
+  y_label={orientation === `horizontal` ? x_label : y_label}
   x_label_shift={{ y: 20 }}
   y_label_shift={{ x: 2 }}
-  {y_label}
   {tooltip}
-  {x_range}
-  y_range={[0, null]}
-  {...rest}
+  x_range={orientation === `horizontal` ? intensity_range : angle_range}
+  y_range={orientation === `horizontal` ? angle_range : intensity_range}
 />

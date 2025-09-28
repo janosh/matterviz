@@ -33,15 +33,17 @@ test.describe(`BarPlot Component Tests`, () => {
     const initial_bars = await plot.locator(`svg rect`).count()
     expect(initial_bars).toBeGreaterThan(0)
 
-    // Toggle first series
+    // Toggle first series -> bar count should decrease
     await items.first().click()
-    const after_toggle_bars = await plot.locator(`svg rect`).count()
-    expect(after_toggle_bars).toBeGreaterThanOrEqual(0)
+    await expect
+      .poll(async () => await plot.locator(`svg rect`).count())
+      .toBeLessThan(initial_bars)
 
-    // Toggle back
+    // Toggle back -> bar count should be restored to initial
     await items.first().click()
-    const restored_bars = await plot.locator(`svg rect`).count()
-    expect(restored_bars).toBeGreaterThan(0)
+    await expect
+      .poll(async () => await plot.locator(`svg rect`).count())
+      .toBe(initial_bars)
   })
 
   test(`zoom drag and double-click reset works`, async ({ page }) => {
@@ -110,7 +112,7 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(pane).toBeVisible()
 
     // Toggle x grid
-    const x_grid_checkbox = pane.getByLabel(`x grid`)
+    const x_grid_checkbox = pane.getByLabel(/x-axis\s*grid/i)
     await expect(x_grid_checkbox).toBeVisible()
     await x_grid_checkbox.scrollIntoViewIfNeeded()
     const initial_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`)
@@ -137,5 +139,36 @@ test.describe(`BarPlot Component Tests`, () => {
     const x_format = pane.locator(`input[type="text"]`).first()
     await x_format.fill(`.1f`)
     await expect(plot.locator(`g.x-axis .tick text`).first()).toHaveText(/\d+\.\d/)
+  })
+
+  test(`orientation switch flips bar orientation`, async ({ page }) => {
+    const section = page.locator(`#basic-bar`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+    const bars = plot.locator(`svg rect`)
+    await expect(bars.first()).toBeVisible()
+    const before_boxes = (await bars.all()).slice(0, 12)
+    const before_dims =
+      (await Promise.all(before_boxes.map(async (h) => await h.boundingBox())))
+        .filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const vertical_count = before_dims.filter((bb) => bb.height > bb.width).length
+
+    // Open controls and switch orientation to Horizontal
+    const toggle = section.locator(`.pane-toggle`)
+    await expect(toggle).toBeVisible()
+    await toggle.click()
+    const pane = section.locator(`.draggable-pane`)
+    await expect(pane).toBeVisible()
+
+    const select = pane.locator(`#orientation-select`)
+    await expect(select).toBeVisible()
+    await select.selectOption(`horizontal`)
+    // After change, majority of bars should be horizontal
+    const after_boxes = (await bars.all()).slice(0, 12)
+    const after_dims =
+      (await Promise.all(after_boxes.map(async (h) => await h.boundingBox())))
+        .filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const horizontal_count = after_dims.filter((bb) => bb.width > bb.height).length
+    expect(horizontal_count).toBeGreaterThan(vertical_count)
   })
 })

@@ -295,87 +295,84 @@
     </div>
   {/if}
 
-  <!-- Camera controls -->
-  <div class="control-row">
+  <div class="camera-controls">
     <span class="control-label">Camera</span>
-    <div class="camera-controls">
-      {#if camera.elevation !== undefined && camera.azimuth !== undefined}
-        <!-- Ternary camera controls (elevation/azimuth) -->
-        <label
-          class="angle-input"
-          {@attach tooltip({
-            content:
-              `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
-          })}
-        >
-          <span>Elev</span>
-          <input
-            type="number"
-            value={camera.elevation.toFixed(0)}
-            step="5"
-            oninput={(e) =>
-            camera.elevation = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-          <span>°</span>
-        </label>
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
-        >
-          <span>Azim</span>
-          <input
-            type="number"
-            value={camera.azimuth.toFixed(0)}
-            step="15"
-            oninput={(e) =>
-            camera.azimuth = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-          <span>°</span>
-        </label>
-      {:else}
-        <!-- Quaternary camera controls (rotation_x/rotation_y) -->
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
-        >
-          <span>φ</span>
-          <input
-            type="number"
-            value={(camera.rotation_x ?? 0).toFixed(2)}
-            step="0.1"
-            min={-Math.PI / 3}
-            max={Math.PI / 3}
-            oninput={(e) =>
-            camera.rotation_x = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-        </label>
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
-        >
-          <span>θ</span>
-          <input
-            type="number"
-            value={(camera.rotation_y ?? 0).toFixed(2)}
-            step="0.1"
-            oninput={(e) =>
-            camera.rotation_y = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-        </label>
-      {/if}
-    </div>
+    {#if camera.elevation !== undefined && camera.azimuth !== undefined}
+      <!-- Ternary camera controls (elevation/azimuth) -->
+      <label
+        class="angle-input"
+        {@attach tooltip({
+          content:
+            `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
+        })}
+      >
+        <span>Elev</span>
+        <input
+          type="number"
+          value={camera.elevation.toFixed(0)}
+          step="5"
+          oninput={(e) =>
+          camera.elevation = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+        <span>°</span>
+      </label>
+      <label
+        class="angle-input"
+        {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
+      >
+        <span>Azim</span>
+        <input
+          type="number"
+          value={camera.azimuth.toFixed(0)}
+          step="15"
+          oninput={(e) =>
+          camera.azimuth = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+        <span>°</span>
+      </label>
+    {:else}
+      <!-- Quaternary camera controls (rotation_x/rotation_y) -->
+      <label
+        class="angle-input"
+        {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
+      >
+        <span>φ</span>
+        <input
+          type="number"
+          value={(camera.rotation_x ?? 0).toFixed(2)}
+          step="0.1"
+          min={-Math.PI / 3}
+          max={Math.PI / 3}
+          oninput={(e) =>
+          camera.rotation_x = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+      </label>
+      <label
+        class="angle-input"
+        {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
+      >
+        <span>θ</span>
+        <input
+          type="number"
+          value={(camera.rotation_y ?? 0).toFixed(2)}
+          step="0.1"
+          oninput={(e) =>
+          camera.rotation_y = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+      </label>
+    {/if}
   </div>
 </DraggablePane>
 
@@ -395,8 +392,9 @@
     gap: 4px;
     flex: 1;
   }
-  .toggle-btn {
+  button {
     flex: 1;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
   }
   .toggle-btn.active, .toggle-btn:hover.active {
     background: var(--accent-color, #1976d2);

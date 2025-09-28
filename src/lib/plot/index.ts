@@ -251,7 +251,7 @@ export type UserContentProps = {
   y_max: number
 }
 
-export type BarOrientation = `vertical` | `horizontal`
+export type Orientation = `vertical` | `horizontal`
 export type BarMode = `overlay` | `stacked`
 
 export interface BarSeries {

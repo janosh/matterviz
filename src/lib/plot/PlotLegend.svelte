@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { LegendItem } from '$lib/plot'
+  import type { LegendItem, Orientation } from '$lib/plot'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
     series_data: LegendItem[]
-    layout?: `horizontal` | `vertical`
+    layout?: Orientation
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
     wrapper_style?: string
     item_style?: string

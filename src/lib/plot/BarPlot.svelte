@@ -2,11 +2,11 @@
   import { DraggablePane } from '$lib'
   import type {
     BarMode,
-    BarOrientation,
     BarSeries,
     BarTooltipProps,
     LegendConfig,
     LegendItem,
+    Orientation,
     Sides,
   } from '$lib/plot'
   import { PlotLegend } from '$lib/plot'
@@ -24,7 +24,7 @@
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
     series?: BarSeries[]
-    orientation?: BarOrientation
+    orientation?: Orientation
     mode?: BarMode
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
@@ -55,7 +55,7 @@
 
   let {
     series = $bindable([]),
-    orientation = $bindable(`vertical` as BarOrientation),
+    orientation = $bindable(`vertical` as Orientation),
     mode = $bindable(`overlay` as BarMode),
     x_lim = [null, null],
     y_lim = [null, null],
@@ -74,11 +74,11 @@
     y_grid = $bindable(true),
     show_zero_lines = $bindable(true),
     legend = {},
-    padding = { t: 0, b: 60, l: 60, r: 0 },
+    padding = { t: 0, b: 60, l: 60, r: 30 },
     tooltip,
     hovered = $bindable(false),
     change = () => {},
-    show_controls = $bindable(false),
+    show_controls = $bindable(true),
     controls_open = $bindable(false),
     plot_controls,
     controls_toggle_props,
@@ -98,7 +98,8 @@
     if (!all_points.length) {
       return { x: [0, 1] as [number, number], y: [0, 1] as [number, number] }
     }
-    const auto_x = get_nice_data_range(
+    // Compute data-driven ranges first (categories from x, magnitudes from y)
+    const x_range = get_nice_data_range(
       all_points,
       (p) => p.x,
       x_lim,
@@ -106,7 +107,7 @@
       range_padding,
       x_format?.startsWith(`%`) || false,
     )
-    const auto_y = get_nice_data_range(
+    const y_range = get_nice_data_range(
       all_points,
       (p) => p.y,
       y_lim,
@@ -114,10 +115,11 @@
       range_padding,
       false,
     )
-    // Ensure positive domain min when necessary
-    const y_min = Math.min(auto_y[0], 0)
-    const y_max = auto_y[1]
-    return { x: auto_x, y: [y_min, y_max] as [number, number] }
+
+    // Map data ranges to axis ranges depending on orientation
+    return orientation === `horizontal`
+      ? ({ x: y_range, y: x_range })
+      : ({ x: x_range, y: y_range })
   })
 
   // Initialize and current ranges
@@ -126,7 +128,7 @@
     current: { x: [0, 1] as [number, number], y: [0, 1] as [number, number] },
   })
 
-  $effect(() => {
+  $effect(() => { // handle x|y_range changes
     const new_x = [
       x_range?.[0] ?? auto_ranges.x[0],
       x_range?.[1] ?? auto_ranges.x[1],
@@ -135,12 +137,10 @@
       y_range?.[0] ?? auto_ranges.y[0],
       y_range?.[1] ?? auto_ranges.y[1],
     ] as [number, number]
-    const x_changed = new_x[0] !== ranges.initial.x[0] ||
-      new_x[1] !== ranges.initial.x[1]
-    const y_changed = new_y[0] !== ranges.initial.y[0] ||
-      new_y[1] !== ranges.initial.y[1]
-    if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
-    if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
+    ranges = {
+      initial: { x: new_x, y: new_y },
+      current: { x: new_x, y: new_y },
+    }
   })
 
   // Scales (linear only for now)

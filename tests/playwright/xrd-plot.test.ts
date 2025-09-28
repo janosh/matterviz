@@ -43,11 +43,15 @@ test.describe(`XrdPlot Component Tests`, () => {
     const items = legend.locator(`.legend-item`)
     await expect(items).toHaveCount(2)
 
+    const pre_toggle = await plot.locator(`svg rect`).count()
+    expect(pre_toggle).toBeGreaterThan(0)
+
     await items.first().click()
     const after_toggle = await plot.locator(`svg rect`).count()
-    expect(after_toggle).toBeGreaterThanOrEqual(0)
+    expect(after_toggle).toBeLessThan(pre_toggle)
+
     await items.first().click()
     const restored = await plot.locator(`svg rect`).count()
-    expect(restored).toBeGreaterThan(0)
+    expect(restored).toBeGreaterThanOrEqual(pre_toggle)
   })
 })

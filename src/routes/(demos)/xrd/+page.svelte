@@ -65,12 +65,16 @@
   // Fill cache for all selected structures (side-effect done outside of $derived)
   $effect(() => {
     for (const id of selected_ids) {
-      const s = structures_by_id[id]
-      if (!s) continue
-      const sid = get_struct_id(s)
-      if (!xrd_cache.has(sid)) {
-        const pat = compute_xrd_pattern(s)
-        xrd_cache.set(sid, pat)
+      const struct = structures_by_id[id]
+      if (!struct) continue
+      const struct_id = get_struct_id(struct)
+      if (!xrd_cache.has(struct_id)) {
+        try {
+          const pat = compute_xrd_pattern(struct)
+          xrd_cache.set(struct_id, pat)
+        } catch (exc) {
+          console.error(`Failed to compute XRD for ${struct_id}`, exc)
+        }
       }
     }
   })
@@ -79,9 +83,11 @@
       .map((id) => structures_by_id[id])
       .filter((s): s is PymatgenStructure => !!s)
       .map((s) => {
-        const sid = get_struct_id(s)
-        const pat = xrd_cache.get(sid)
-        return pat ? { label: `${sid} ${formula_for(sid)}`, pattern: pat } : null
+        const struct_id = get_struct_id(s)
+        const pat = xrd_cache.get(struct_id)
+        return pat
+          ? { label: `${struct_id} ${formula_for(struct_id)}`, pattern: pat }
+          : null
       })
       .filter(Boolean) as { label: string; pattern: XrdPattern }[],
   )
