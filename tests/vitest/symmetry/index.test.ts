@@ -471,7 +471,7 @@ describe(`site coverage verification`, () => {
           std_cell: {
             positions: Array.from(
               { length: 48 },
-              (_, i) => [i * 0.02, i * 0.02, i * 0.02],
+              (_, idx) => [idx * 0.02, idx * 0.02, idx * 0.02],
             ),
             numbers: Array(48).fill(1),
           },
@@ -481,7 +481,7 @@ describe(`site coverage verification`, () => {
           wyckoff: `48a`,
           elem: `H`,
           abc: [0, 0, 0],
-          site_indices: Array.from({ length: 48 }, (_, i) => i),
+          site_indices: Array.from({ length: 48 }, (_, idx) => idx),
         }],
       },
     ]
@@ -502,7 +502,7 @@ describe(`site coverage verification`, () => {
         ]),
         numbers: Array.from({ length: 1000 }, () => Math.floor(Math.random() * 10) + 1),
       },
-      wyckoffs: Array.from({ length: 1000 }, (_, i) => `${(i % 10) + 1}a`),
+      wyckoffs: Array.from({ length: 1000 }, (_, idx) => `${(idx % 10) + 1}a`),
     } as unknown as MoyoDataset
 
     const start_time = performance.now()
@@ -617,9 +617,9 @@ describe(`apply_symmetry_operations`, () => {
 
   test(`performance with many operations`, () => {
     const position: Vec3 = [0.1, 0.2, 0.3]
-    const many_operations = Array.from({ length: 48 }, (_, i) => ({
+    const many_operations = Array.from({ length: 48 }, (_, idx) => ({
       rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
-      translation: [i * 0.02, i * 0.02, i * 0.02] as Vec3,
+      translation: [idx * 0.02, idx * 0.02, idx * 0.02] as Vec3,
     }))
 
     const start_time = performance.now()
@@ -920,22 +920,25 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     const original = mock_structure(
       Array.from(
         { length: 100 },
-        (_, i) => ({ abc: [i * 0.01, i * 0.01, i * 0.01] as Vec3, element: `H` }),
+        (_, idx) => ({ abc: [idx * 0.01, idx * 0.01, idx * 0.01] as Vec3, element: `H` }),
       ),
     )
     const displayed = mock_structure(
       Array.from(
         { length: 200 },
-        (_, i) => ({ abc: [i * 0.005, i * 0.005, i * 0.005] as Vec3, element: `H` }),
+        (_, idx) => ({
+          abc: [idx * 0.005, idx * 0.005, idx * 0.005] as Vec3,
+          element: `H`,
+        }),
       ),
     )
     const wyckoff_pos = Array.from(
       { length: 10 },
-      (_, i) => ({
+      (_, idx) => ({
         wyckoff: `1a`,
         elem: `H`,
-        abc: [i * 0.1, i * 0.1, i * 0.1] as Vec3,
-        site_indices: [i],
+        abc: [idx * 0.1, idx * 0.1, idx * 0.1] as Vec3,
+        site_indices: [idx],
       }),
     )
 

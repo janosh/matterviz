@@ -87,7 +87,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       // Focus on strongest expected peaks by intensity to avoid discrepancies from
       // low-intensity filtering differences between implementations
       const top_n = Math.min(200, expected.x.length)
-      const top_indices = Array.from({ length: expected.y.length }, (_, i) => i)
+      const top_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
         .sort((i, j) => expected.y[j] - expected.y[i])
         .slice(0, top_n)
         .sort((a, b) => a - b)
@@ -102,7 +102,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
 
       // Compare d-spacings if present, over overlapping range only
       if (expected.d_hkls && computed.d_hkls) {
-        const top_d_indices = Array.from({ length: expected.y.length }, (_, i) => i)
+        const top_d_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
           .sort((i, j) => expected.y[j] - expected.y[i])
           .slice(0, Math.min(200, expected.d_hkls.length))
           .sort((a, b) => a - b)

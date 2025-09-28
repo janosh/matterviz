@@ -2,7 +2,7 @@
 import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import { open_structure_control_pane } from './helpers'
+import { open_structure_control_pane } from '../helpers'
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

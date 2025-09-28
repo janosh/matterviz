@@ -60,8 +60,8 @@ const FORMAT_PATTERNS = {
     const has_ext = filename?.toLowerCase().match(/\.(h5|hdf5)$/)
     if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
-    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) =>
-      signature[i] === b
+    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, idx) =>
+      signature[idx] === b
     )
   },
 
@@ -217,8 +217,8 @@ const read_ndarray_from_view = (
   return shape.length === 1
     ? [data]
     : shape.length === 2
-    ? Array.from({ length: shape[0] }, (_, i) =>
-      data.slice(i * shape[1], (i + 1) * shape[1]))
+    ? Array.from({ length: shape[0] }, (_, idx) =>
+      data.slice(idx * shape[1], (idx + 1) * shape[1]))
     : (() => {
       throw new Error(`Unsupported shape`)
     })()

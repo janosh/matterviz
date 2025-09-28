@@ -104,7 +104,7 @@ describe(`ScatterPlot`, () => {
       data: {
         x: Array.from(
           { length: 12 },
-          (_, i) => new Date().setMonth(new Date().getMonth() - (12 - i)),
+          (_, idx) => new Date().setMonth(new Date().getMonth() - (12 - idx)),
         ),
         y: Array.from({ length: 12 }, () => Math.random() * 100),
       },

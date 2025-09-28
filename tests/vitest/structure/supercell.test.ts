@@ -501,11 +501,11 @@ describe(`performance tests`, () => {
           pbc: [true, true, true],
           volume: 1,
         },
-        sites: Array.from({ length: atom_count }, (_, i) => ({
+        sites: Array.from({ length: atom_count }, (_, idx) => ({
           species: [{ element: `H` as const, occu: 1.0, oxidation_state: 0 }],
-          abc: [i % 10 / 10, (i % 100) / 100, i / 1000] as Vec3,
-          xyz: [i % 10 / 10, (i % 100) / 100, i / 1000] as Vec3,
-          label: `H${i}`,
+          abc: [idx % 10 / 10, (idx % 100) / 100, idx / 1000] as Vec3,
+          xyz: [idx % 10 / 10, (idx % 100) / 100, idx / 1000] as Vec3,
+          label: `H${idx}`,
           properties: {},
         })),
       } as const

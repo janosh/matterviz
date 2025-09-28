@@ -93,30 +93,30 @@
         if (annotate_peaks > 0 && annotate_peaks < 1) {
           const thresh = annotate_peaks * 100
           selected_indices = intens
-            .map((y_val, i) => [y_val, i] as const)
+            .map((y_val, idx) => [y_val, idx] as const)
             .filter(([y_val]) => y_val > thresh)
-            .map(([, i]) => i)
+            .map(([, idx]) => idx)
         } else {
           const k = Math.min(intens.length, Math.floor(annotate_peaks))
           selected_indices = intens
-            .map((y_val, i) => [y_val, i] as const)
+            .map((y_val, idx) => [y_val, idx] as const)
             .sort((a, b) => a[0] - b[0])
             .slice(-k)
-            .map(([, i]) => i)
+            .map(([, idx]) => idx)
         }
       }
 
-      for (let i = 0; i < xs.length; i++) {
-        const hkls_objs = entry.pattern.hkls?.[i] ?? []
+      for (let idx = 0; idx < xs.length; idx++) {
+        const hkls_objs = entry.pattern.hkls?.[idx] ?? []
         const hkls: Hkl[] = hkls_objs
           .map((h) => (Array.isArray(h?.hkl) ? h.hkl : null))
           .filter((h): h is Hkl => Array.isArray(h) && h.length === 3)
-        const d = entry.pattern.d_hkls?.[i]
-        metadata.push({ hkls, d, label: entry.label })
+        const d_hkl = entry.pattern.d_hkls?.[idx]
+        metadata.push({ hkls, d: d_hkl, label: entry.label })
 
-        if (selected_indices.includes(i)) {
+        if (selected_indices.includes(idx)) {
           const angle_text = actual_show_angles
-            ? `${format_value(xs[i], `.2f`)}°`
+            ? `${format_value(xs[idx], `.2f`)}°`
             : ``
           const hkl_text = hkls && hkl_format
             ? hkls.map((h) => format_hkl(h, hkl_format)).join(`, `)

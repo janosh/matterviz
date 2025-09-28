@@ -194,10 +194,12 @@
   nav {
     display: flex;
     flex-wrap: wrap;
+    place-content: center;
     gap: 6px;
     margin: 1em;
   }
   nav button {
+    font-size: 0.8em;
     flex: 0 0 auto;
     padding: 6px 8px 3px;
     border: 1px dotted var(--text-color-muted);
