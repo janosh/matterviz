@@ -19,8 +19,8 @@
     Point,
     PointStyle,
     ScaleType,
+    ScatterTooltipProps,
     Sides,
-    TooltipProps,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -82,7 +82,7 @@
     markers?: Markers
     x_format?: string
     y_format?: string
-    tooltip?: Snippet<[PlotPoint & TooltipProps]>
+    tooltip?: Snippet<[PlotPoint & ScatterTooltipProps]>
     user_content?: Snippet<[UserContentProps]>
     change?: (data: (Point & { series: DataSeries }) | null) => void
     x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
@@ -218,8 +218,7 @@
     ...rest
   }: Props = $props()
 
-  let width = $state(0)
-  let height = $state(0)
+  let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
@@ -461,9 +460,11 @@
   let auto_color_range = $derived(
     // Ensure we only calculate extent on actual numbers, filtering out nulls/undefined
     all_color_values.length > 0
-      ? extent(all_color_values.filter((val): val is number => val != null))
+      ? extent(
+        all_color_values.filter((val): val is number => typeof val === `number`),
+      )
       : [0, 1],
-  )
+  ) as [number, number]
 
   // Create scale functions
   let x_scale_fn = $derived(
@@ -797,10 +798,14 @@
 
       // Check line_style
       if (series_markers?.includes(`line`)) {
-        display_style.line_color = data_series?.line_style?.stroke ??
-          (display_style.symbol_color && series_markers.includes(`points`)
-            ? display_style.symbol_color
-            : `black`) // Default line color
+        // Prefer explicit line stroke
+        let legend_line_color = data_series?.line_style?.stroke
+        if (!legend_line_color) { // If no explicit stroke, inherit a reasonable point color even when points aren't shown
+          // Order of preference: point fill -> point stroke -> symbol_color -> black
+          legend_line_color = first_point_style?.fill || first_point_style?.stroke ||
+            display_style.symbol_color || `black`
+        }
+        display_style.line_color = legend_line_color
         display_style.line_dash = data_series?.line_style?.line_dash
       } else {
         // If no line marker, explicitly remove line style for legend
@@ -1845,7 +1850,7 @@
         ) line_color_candidate = color_scale_fn(first_color_value)
         if (
           is_transparent_or_none(line_color_candidate) &&
-          series_markers.includes(`points`)
+          series_markers?.includes(`points`)
         ) line_color_candidate = first_point_style?.stroke
         if (!is_transparent_or_none(line_color_candidate)) return line_color_candidate
       }
@@ -1865,7 +1870,7 @@
         }px; top: ${cy}px; background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color}); z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
       >
         {#if tooltip}
-          {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
+          {@const tooltip_props = { x_formatted, y_formatted, color_value, label, series_idx }}
           {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
         {:else}
           {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
@@ -1915,19 +1920,17 @@
 
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0 && color_bar_cell}
-      {@const effective_color_domain = (color_scale.value_range ?? auto_color_range) as [
-      number,
-      number,
-    ]}
+      {@const color_domain = [
+      color_scale.value_range?.[0] ?? auto_color_range[0],
+      color_scale.value_range?.[1] ?? auto_color_range[1],
+    ] as [number, number]}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {color_scale_fn}
-        color_scale_domain={effective_color_domain}
+        color_scale_domain={color_domain}
         scale_type={color_scale.type}
-        range={effective_color_domain?.every((val) => val != null)
-        ? effective_color_domain
-        : undefined}
+        range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style={`
         position: absolute;
         left: ${tweened_colorbar_coords.current.x}px;

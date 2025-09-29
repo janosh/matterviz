@@ -4,6 +4,7 @@ import element_data from '$lib/element/data'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { ComponentProps } from 'svelte'
+import type { Pbc } from './pbc'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
@@ -45,7 +46,7 @@ export type LatticeParams = { [key in (typeof lattice_param_keys)[number]]: numb
 
 export type PymatgenLattice = {
   matrix: Matrix3x3
-  pbc: [boolean, boolean, boolean]
+  pbc: Pbc
   volume: number
 } & LatticeParams
 

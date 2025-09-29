@@ -2,6 +2,7 @@ import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps } from 'svelte'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
+import type { D3SymbolName } from './formatting'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
 // pending https://github.com/sveltejs/svelte/issues/16151
@@ -12,21 +13,23 @@ export interface TweenedOptions<T> {
   interpolate?: (a: T, b: T) => (t: number) => T
 }
 
+export { default as BarPlot } from './BarPlot.svelte'
+export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
-export * from './data-transform'
 export { default as ElementScatter } from './ElementScatter.svelte'
-export * from './formatting'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
-export * from './interactions'
-export * from './layout'
 export { default as Line } from './Line.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
-export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
+export * from './data-transform'
+export * from './formatting'
+export * from './interactions'
+export * from './layout'
+export * from './scales'
 
 export type XyObj = { x: number; y: number }
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
@@ -123,16 +126,26 @@ export interface Tooltip {
   items?: { label: string; value: string; color?: string }[]
 }
 
-export type TooltipProps = {
+export interface TooltipProps {
   x: number
   y: number
+  metadata?: Record<string, unknown> | null
+  color?: string | null
+  label?: string | null
+  series_idx: number
+}
+
+export interface ScatterTooltipProps extends TooltipProps {
   cx: number
   cy: number
   x_formatted: string
   y_formatted: string
-  metadata?: Record<string, unknown>
-  color_value?: number | null
-  label?: string | null
+}
+
+export interface BarTooltipProps extends TooltipProps {
+  bar_idx: number
+  orient_x: number
+  orient_y: number
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -238,4 +251,18 @@ export type UserContentProps = {
   y_min: number
   x_max: number
   y_max: number
+}
+
+export type Orientation = `vertical` | `horizontal`
+export type BarMode = `overlay` | `stacked`
+
+export interface BarSeries {
+  x: readonly number[]
+  y: readonly number[]
+  label?: string
+  color?: string
+  bar_width?: number | readonly number[]
+  visible?: boolean
+  metadata?: Record<string, unknown>[] | Record<string, unknown>
+  labels?: readonly (string | null | undefined)[]
 }
