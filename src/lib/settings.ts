@@ -2,7 +2,7 @@
 // Used by both main package and VSCode extension
 
 import type { Vec3 } from '$lib/math'
-import type { D3SymbolName, Markers } from '$lib/plot'
+import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
 import { symbol_names } from '$lib/plot/formatting'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
@@ -98,7 +98,7 @@ export interface SettingsConfig {
     show_controls: SettingType<boolean>
     fullscreen_toggle: SettingType<boolean>
     step_labels: SettingType<number>
-    layout: SettingType<`auto` | `horizontal` | `vertical`>
+    layout: SettingType<`auto` | Orientation>
 
     // File handling and loading
     allow_file_drop: SettingType<boolean>

@@ -725,7 +725,8 @@
         "matterviz.scatter.line_dash": {
           "type": "string",
           "default": "solid",
-          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
+          "description": "Line dash pattern for scatter plots: 'solid' or dash arrays like '4 2' / '4,2,2'",
+          "pattern": "^(solid|(?:\\d+(?:\\.\\d+)?(?:[\\s,]+\\d+(?:\\.\\d+)?)*))$"
         },
         "matterviz.scatter.show_points": {
           "type": "boolean",
@@ -1006,6 +1007,13 @@
           "type": "string",
           "default": "#4caf50",
           "description": "Color for lower hull faces in 3D PD"
+        },
+        "matterviz.phase_diagram.ternary.hull_face_opacity": {
+          "type": "number",
+          "default": 0.35,
+          "description": "Opacity for lower hull faces in 3D PD",
+          "minimum": 0,
+          "maximum": 1
         },
         "matterviz.phase_diagram.ternary.fullscreen": {
           "type": "boolean",

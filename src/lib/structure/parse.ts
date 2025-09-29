@@ -1516,7 +1516,7 @@ export function optimade_to_pymatgen(
 
   try {
     // Convert lattice vectors to matrix format
-    const lattice_matrix: [Vec3, Vec3, Vec3] = [
+    const lattice_matrix: Matrix3x3 = [
       attrs.lattice_vectors[0] as Vec3,
       attrs.lattice_vectors[1] as Vec3,
       attrs.lattice_vectors[2] as Vec3,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '$lib'
+  import { format_num, type Orientation } from '$lib'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
@@ -24,7 +24,7 @@
     // 'secondary' = top (horizontal) / left (vertical), outside bar
     // 'inside'    = centered within bar, hiding first/last
     tick_side?: `primary` | `secondary` | `inside`
-    orientation?: `horizontal` | `vertical`
+    orientation?: Orientation
     // snap ticks to pretty, more readable values
     snap_ticks?: boolean
     // number of equidistant points to sample color scale

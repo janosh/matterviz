@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { LegendItem } from '$lib/plot'
+  import type { LegendItem, Orientation } from '$lib/plot'
   import { PlotLegend } from '$lib/plot'
 
   let series_data: LegendItem[] = $state([
@@ -45,7 +45,7 @@
     },
   ])
 
-  let legend_layout: `horizontal` | `vertical` = $state(`vertical`)
+  let legend_layout: Orientation = $state(`vertical`)
   let legend_n_items = $state(1)
   let legend_wrapper_style = $state(``)
   let legend_item_style = $state(``)

@@ -264,7 +264,7 @@
     overflow-x: var(--pane-overflow-x, hidden);
     overflow-y: var(--pane-overflow-y, auto);
     min-height: min(
-      var(--pane-min-height, 400px),
+      var(--pane-min-height),
       calc(100cqh - var(--pane-bottom-margin, 40px))
     ); /* Ensure pane never exceeds its query container, enabling internal scroll */
     max-height: var(--pane-max-height, calc(100cqh - var(--pane-bottom-margin, 40px)));

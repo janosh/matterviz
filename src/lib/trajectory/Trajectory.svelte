@@ -2,7 +2,7 @@
   import { Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
-  import type { DataSeries, Point } from '$lib/plot'
+  import type { DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { scaleLinear } from 'd3-scale'
@@ -61,7 +61,7 @@
     // file drop handlers
     allow_file_drop?: boolean
     // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
-    layout?: `auto` | `horizontal` | `vertical`
+    layout?: `auto` | Orientation
     // structure viewer props (passed to Structure component)
     structure_props?: ComponentProps<typeof Structure>
     // plot props (passed to ScatterPlot component)
@@ -189,12 +189,11 @@
   let original_data = $state<string | ArrayBuffer | null>(null)
 
   // Reactive layout based on viewport aspect ratio
-  let actual_layout = $derived.by((): `horizontal` | `vertical` => {
+  let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
     if (viewport.width > 0 && viewport.height > 0) {
       return viewport.width > viewport.height ? `horizontal` : `vertical`
     }
-
     return `horizontal` // Fallback to horizontal if dimensions not available yet
   })
 

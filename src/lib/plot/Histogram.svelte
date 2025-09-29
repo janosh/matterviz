@@ -91,8 +91,7 @@
   }: Props = $props()
 
   // Core state
-  let width = $state(0)
-  let height = $state(0)
+  let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
   let hover_info = $state<{ value: number; count: number; property: string } | null>(
     null,

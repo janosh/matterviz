@@ -109,13 +109,13 @@ describe(`measure: angles`, () => {
     // Test Zr collinear atoms: should give 0° for end atoms
     const zr_sites = with_images.sites.filter((s) => s.species[0].element === `Zr`)
     const zr_site_0 = zr_sites.find((s) =>
-      s.xyz.every((c, i) => Math.abs(c - [0, 0, 0][i]) < 0.01)
+      s.xyz.every((coord, idx) => Math.abs(coord - [0, 0, 0][idx]) < 0.01)
     )
     const zr_site_1 = zr_sites.find((s) =>
-      s.xyz.every((c, i) => Math.abs(c - [3.019349, 3.019349, 0][i]) < 0.01)
+      s.xyz.every((coord, idx) => Math.abs(coord - [3.019349, 3.019349, 0][idx]) < 0.01)
     )
     const zr_site_2 = zr_sites.find((s) =>
-      s.xyz.every((c, i) => Math.abs(c - [6.038698, 6.038698, 0][i]) < 0.01)
+      s.xyz.every((coord, idx) => Math.abs(coord - [6.038698, 6.038698, 0][idx]) < 0.01)
     )
 
     if (!zr_site_0 || !zr_site_1 || !zr_site_2) {

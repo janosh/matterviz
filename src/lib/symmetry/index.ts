@@ -198,9 +198,9 @@ export function map_wyckoff_to_all_atoms(
 
   const periodic_distance = (pos1: Vec3, pos2: Vec3) =>
     Math.sqrt(
-      pos1.reduce((sum, coord, i) => {
+      pos1.reduce((sum, coord, idx) => {
         // Wrap delta into [-0.5, 0.5) using safe modulo
-        const delta = coord - pos2[i]
+        const delta = coord - pos2[idx]
         const wrapped = (((delta + 0.5) % 1) + 1) % 1 - 0.5
         const d = Math.abs(wrapped)
         return sum + d * d

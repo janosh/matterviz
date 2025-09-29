@@ -1,5 +1,5 @@
 import type { ElementSymbol, Species } from '$lib'
-import type { Vec3 } from '$lib/math'
+import type { Vec3, Vec9 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import {
   apply_symmetry_operations,
@@ -471,7 +471,7 @@ describe(`site coverage verification`, () => {
           std_cell: {
             positions: Array.from(
               { length: 48 },
-              (_, i) => [i * 0.02, i * 0.02, i * 0.02],
+              (_, idx) => [idx * 0.02, idx * 0.02, idx * 0.02],
             ),
             numbers: Array(48).fill(1),
           },
@@ -481,7 +481,7 @@ describe(`site coverage verification`, () => {
           wyckoff: `48a`,
           elem: `H`,
           abc: [0, 0, 0],
-          site_indices: Array.from({ length: 48 }, (_, i) => i),
+          site_indices: Array.from({ length: 48 }, (_, idx) => idx),
         }],
       },
     ]
@@ -502,7 +502,7 @@ describe(`site coverage verification`, () => {
         ]),
         numbers: Array.from({ length: 1000 }, () => Math.floor(Math.random() * 10) + 1),
       },
-      wyckoffs: Array.from({ length: 1000 }, (_, i) => `${(i % 10) + 1}a`),
+      wyckoffs: Array.from({ length: 1000 }, (_, idx) => `${(idx % 10) + 1}a`),
     } as unknown as MoyoDataset
 
     const start_time = performance.now()
@@ -519,30 +519,24 @@ describe(`site coverage verification`, () => {
 })
 
 describe(`apply_symmetry_operations`, () => {
-  // Helper to create mock symmetry operations with proper types
-  type MoyoOperation = {
-    rotation: [number, number, number, number, number, number, number, number, number]
-    translation: [number, number, number]
-  }
-
   const operations = {
     identity: {
       rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       translation: [0, 0, 0],
-    } as MoyoOperation,
+    },
     inversion: {
       rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
       translation: [0, 0, 0],
-    } as MoyoOperation,
+    },
     translation: {
       rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       translation: [0.5, 0.5, 0.5],
-    } as MoyoOperation,
+    },
     rotation_90z: {
       rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1],
       translation: [0, 0, 0],
-    } as MoyoOperation,
-  }
+    },
+  } as const
 
   test.each([
     [
@@ -623,19 +617,9 @@ describe(`apply_symmetry_operations`, () => {
 
   test(`performance with many operations`, () => {
     const position: Vec3 = [0.1, 0.2, 0.3]
-    const many_operations = Array.from({ length: 48 }, (_, i) => ({
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as [
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-      ],
-      translation: [i * 0.02, i * 0.02, i * 0.02] as [number, number, number],
+    const many_operations = Array.from({ length: 48 }, (_, idx) => ({
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] satisfies Vec9,
+      translation: [idx * 0.02, idx * 0.02, idx * 0.02] as Vec3,
     }))
 
     const start_time = performance.now()
@@ -649,17 +633,12 @@ describe(`apply_symmetry_operations`, () => {
 })
 
 describe(`map_wyckoff_to_all_atoms`, () => {
-  type MoyoOperation = {
-    rotation: [number, number, number, number, number, number, number, number, number]
-    translation: [number, number, number]
-  }
-
   // Helper factories
   const mock_structure = (
     sites: { abc: Vec3; element: string }[],
   ): PymatgenStructure => ({
     lattice: {
-      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3],
+      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
       pbc: [true, true, true],
       volume: 1,
       a: 1,
@@ -684,11 +663,8 @@ describe(`map_wyckoff_to_all_atoms`, () => {
 
   const mock_sym_data = (): MoyoDataset => ({
     operations: [
-      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] } as MoyoOperation, // Identity
-      {
-        rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
-        translation: [0, 0, 0],
-      } as MoyoOperation, // Inversion
+      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] }, // Identity
+      { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1], translation: [0, 0, 0] }, // Inversion
     ],
     std_cell: {
       lattice: {
@@ -936,22 +912,25 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     const original = mock_structure(
       Array.from(
         { length: 100 },
-        (_, i) => ({ abc: [i * 0.01, i * 0.01, i * 0.01] as Vec3, element: `H` }),
+        (_, idx) => ({ abc: [idx * 0.01, idx * 0.01, idx * 0.01] as Vec3, element: `H` }),
       ),
     )
     const displayed = mock_structure(
       Array.from(
         { length: 200 },
-        (_, i) => ({ abc: [i * 0.005, i * 0.005, i * 0.005] as Vec3, element: `H` }),
+        (_, idx) => ({
+          abc: [idx * 0.005, idx * 0.005, idx * 0.005] as Vec3,
+          element: `H`,
+        }),
       ),
     )
     const wyckoff_pos = Array.from(
       { length: 10 },
-      (_, i) => ({
+      (_, idx) => ({
         wyckoff: `1a`,
         elem: `H`,
-        abc: [i * 0.1, i * 0.1, i * 0.1] as Vec3,
-        site_indices: [i],
+        abc: [idx * 0.1, idx * 0.1, idx * 0.1] as Vec3,
+        site_indices: [idx],
       }),
     )
 

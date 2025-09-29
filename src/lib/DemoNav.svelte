@@ -25,7 +25,11 @@
 
 <svelte:window {onkeydown} />
 
-<nav {...rest} {@attach click_outside({ callback: () => is_open = false })}>
+<nav
+  {...rest}
+  {@attach click_outside({ callback: () => is_open = false })}
+  class="bleed-1400 {rest.class ?? ``}"
+>
   <button
     class="burger-button"
     onclick={() => is_open = !is_open}
@@ -59,7 +63,6 @@
   nav {
     position: relative;
     margin: -0.75em auto 1.25em;
-    max-width: 55em;
   }
   .menu-content {
     display: flex;
