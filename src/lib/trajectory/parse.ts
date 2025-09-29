@@ -1,5 +1,5 @@
 // Parsing functions for trajectory data from various formats
-import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
+import type { AnyStructure, ElementSymbol, Pbc, Vec3 } from '$lib'
 import { is_binary } from '$lib'
 import { atomic_number_to_symbol } from '$lib/composition/parse'
 import {
@@ -60,8 +60,8 @@ const FORMAT_PATTERNS = {
     const has_ext = filename?.toLowerCase().match(/\.(h5|hdf5)$/)
     if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
-    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) =>
-      signature[i] === b
+    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, idx) =>
+      signature[idx] === b
     )
   },
 
@@ -132,7 +132,7 @@ const create_structure = (
   positions: number[][],
   elements: ElementSymbol[],
   lattice_matrix?: Matrix3x3,
-  pbc?: [boolean, boolean, boolean],
+  pbc?: Pbc,
   force_data?: number[][],
 ): AnyStructure => {
   const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
@@ -157,7 +157,7 @@ const create_structure = (
       lattice: {
         matrix: lattice_matrix,
         ...math.calc_lattice_params(lattice_matrix),
-        pbc: pbc || [true, true, true],
+        pbc: pbc || [true, true, true] satisfies Pbc,
       },
     }
     : { sites }
@@ -167,7 +167,7 @@ const create_trajectory_frame = (
   positions: number[][],
   elements: ElementSymbol[],
   lattice_matrix: Matrix3x3 | undefined,
-  pbc: [boolean, boolean, boolean] | undefined,
+  pbc: Pbc | undefined,
   step: number,
   metadata: Record<string, unknown> = {},
 ): TrajectoryFrame => ({
@@ -217,8 +217,8 @@ const read_ndarray_from_view = (
   return shape.length === 1
     ? [data]
     : shape.length === 2
-    ? Array.from({ length: shape[0] }, (_, i) =>
-      data.slice(i * shape[1], (i + 1) * shape[1]))
+    ? Array.from({ length: shape[0] }, (_, idx) =>
+      data.slice(idx * shape[1], (idx + 1) * shape[1]))
     : (() => {
       throw new Error(`Unsupported shape`)
     })()

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { LegendItem } from '$lib/plot'
+  import type { LegendItem, Orientation } from '$lib/plot'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
-    series_data: LegendItem[] // Use the simplified LegendItem type
-    layout?: `horizontal` | `vertical`
+    series_data: LegendItem[]
+    layout?: Orientation
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
     wrapper_style?: string
     item_style?: string
@@ -192,7 +192,7 @@
   .legend {
     display: grid;
     gap: 1px 6px; /* row-gap column-gap */
-    background-color: var(--plot-legend-background-color);
+    background-color: var(--plot-legend-bg-color);
     border: var(--plot-legend-border);
     border-radius: var(--plot-legend-border-radius, 3px);
     font-size: var(--plot-legend-font-size, 0.8em);
@@ -224,7 +224,7 @@
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
   .legend-item:hover, .legend-item:focus {
-    background-color: var(--plot-legend-item-hover-background-color);
+    background-color: var(--plot-legend-item-hover-bg-color);
   }
   .legend-marker {
     display: inline-flex; /* Use flex to align items */

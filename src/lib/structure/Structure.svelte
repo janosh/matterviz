@@ -45,6 +45,7 @@
     dragover?: boolean
     allow_file_drop?: boolean
     enable_info_pane?: boolean
+    enable_measure_mode?: boolean
     info_pane_open?: boolean
     fullscreen_toggle?: Snippet<[]> | boolean
     bottom_left?: Snippet<[{ structure?: AnyStructure }]>
@@ -90,6 +91,7 @@
     lattice_props: lattice_props_in = $bindable(undefined),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
+    enable_measure_mode = $bindable(true),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_controls = 0,
@@ -501,66 +503,68 @@
         {/if}
 
         <!-- Measurement mode dropdown (match Trajectory display mode UI) -->
-        <div
-          class="measure-mode-dropdown"
-          {@attach click_outside({ callback: () => measure_menu_open = false })}
-        >
-          <button
-            onclick={() => (measure_menu_open = !measure_menu_open)}
-            title="Measurement mode"
-            class="view-mode-button"
-            class:active={measure_menu_open}
-            aria-expanded={measure_menu_open}
-            style="transform: scale(1.2)"
+        {#if enable_measure_mode}
+          <div
+            class="measure-mode-dropdown"
+            {@attach click_outside({ callback: () => measure_menu_open = false })}
           >
-            {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
-              <span class="selection-limit-text">
-                {measured_sites.length}/{MAX_SELECTED_SITES}
-              </span>
-            {:else}
-              <Icon
-                icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
-                style="transform: scale({{ distance: 0.9, angle: 1.1 }[measure_mode]})"
-              />
-            {/if}
-            <Icon
-              icon="Arrow{measure_menu_open ? `Up` : `Down`}"
-              style="margin-left: -2px"
-            />
-          </button>
-          {#if (measured_sites?.length ?? 0) > 0}
             <button
-              type="button"
-              aria-label="Reset selection"
-              onclick={() => (measured_sites = [])}
+              onclick={() => (measure_menu_open = !measure_menu_open)}
+              title="Measurement mode"
+              class="view-mode-button"
+              class:active={measure_menu_open}
+              aria-expanded={measure_menu_open}
+              style="transform: scale(1.2)"
             >
-              <Icon icon="Reset" style="margin-left: -4px" />
+              {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
+                <span class="selection-limit-text">
+                  {measured_sites.length}/{MAX_SELECTED_SITES}
+                </span>
+              {:else}
+                <Icon
+                  icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
+                  style="transform: scale({{ distance: 0.9, angle: 1.1 }[measure_mode]})"
+                />
+              {/if}
+              <Icon
+                icon="Arrow{measure_menu_open ? `Up` : `Down`}"
+                style="margin-left: -2px"
+              />
             </button>
-          {/if}
-          {#if measure_menu_open}
-            <div class="view-mode-dropdown">
-              {#each [
+            {#if (measured_sites?.length ?? 0) > 0}
+              <button
+                type="button"
+                aria-label="Reset selection"
+                onclick={() => (measured_sites = [])}
+              >
+                <Icon icon="Reset" style="margin-left: -4px" />
+              </button>
+            {/if}
+            {#if measure_menu_open}
+              <div class="view-mode-dropdown">
+                {#each [
             { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
             { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
           ] as const as
-                { mode, icon, label, scale }
-                (mode)
-              }
-                <button
-                  class="view-mode-option"
-                  class:selected={measure_mode === mode}
-                  onclick={() => {
-                    measure_mode = mode
-                    measure_menu_open = false
-                  }}
-                >
-                  <Icon {icon} style="transform: scale({scale})" />
-                  <span>{label}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+                  { mode, icon, label, scale }
+                  (mode)
+                }
+                  <button
+                    class="view-mode-option"
+                    class:selected={measure_mode === mode}
+                    onclick={() => {
+                      measure_mode = mode
+                      measure_menu_open = false
+                    }}
+                  >
+                    <Icon {icon} style="transform: scale({scale})" />
+                    <span>{label}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
 
         {#if enable_info_pane && structure}
           <StructureInfoPane

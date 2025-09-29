@@ -3,6 +3,8 @@ import type { Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { ParsedStructure } from './parse'
 
+export type Pbc = readonly [boolean, boolean, boolean]
+
 export function find_image_atoms(
   structure: ParsedStructure,
   { tolerance = 0.05 }: { tolerance?: number } = {},

@@ -1,6 +1,17 @@
 import type { LatticeParams } from '$lib/structure/index'
 
 export type Vec3 = [number, number, number]
+export type Vec9 = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type NdVector = number[]
 

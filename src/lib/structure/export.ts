@@ -339,14 +339,14 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
 
         let selective_dynamics_str = ``
         if (has_selective_dynamics) {
-          const sd = (site.properties?.selective_dynamics ?? [
+          const sel_dyn = (site.properties?.selective_dynamics ?? [
             true,
             true,
             true,
           ]) as boolean[]
-          selective_dynamics_str = ` ${sd[0] ? `T` : `F`} ${sd[1] ? `T` : `F`} ${
-            sd[2] ? `T` : `F`
-          }`
+          selective_dynamics_str = ` ${sel_dyn[0] ? `T` : `F`} ${
+            sel_dyn[1] ? `T` : `F`
+          } ${sel_dyn[2] ? `T` : `F`}`
         }
 
         lines.push(
@@ -392,7 +392,7 @@ export function export_structure_as_poscar(structure?: AnyStructure): void {
 // Export structure as XYZ format. Format specification:
 // - Line 1: Number of atoms
 // - Line 2: Comment line (structure ID, formula, etc.)
-// - Remaining lines: Element symbol followed by x, y, z coordinates (in Angstroms)
+// - Remaining lines: Element symbol followed by x, y, z coordinates (in Angstrom)
 export function export_structure_as_xyz(structure?: AnyStructure): void {
   try {
     const xyz_content = structure_to_xyz_str(structure)

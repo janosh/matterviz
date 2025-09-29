@@ -14,6 +14,7 @@
   // expose selection state for tests
   let selected_sites = $state<number[]>([])
   let measured_sites = $state<number[]>([])
+  let enable_measure_mode = $state(true)
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
@@ -91,6 +92,12 @@
     if (url_params.has(`performance_mode`)) {
       const mode = url_params.get(`performance_mode`)
       if (mode === `speed` || mode === `quality`) performance_mode = mode
+    }
+
+    if (url_params.has(`enable_measure_mode`)) {
+      const param = url_params.get(`enable_measure_mode`)
+      if (param === `true`) enable_measure_mode = true
+      else if (param === `false`) enable_measure_mode = false
     }
 
     // Site labeling parameters
@@ -214,6 +221,7 @@
   on_camera_reset={create_event_handler(`on_camera_reset`)}
   bind:selected_sites
   bind:measured_sites
+  {enable_measure_mode}
 />
 
 <div data-testid="pane-open-status" style="margin-top: 10px">

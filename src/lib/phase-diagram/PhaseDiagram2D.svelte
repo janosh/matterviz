@@ -3,7 +3,7 @@
     AnyStructure,
     ElementSymbol,
     PlotPoint,
-    TooltipProps,
+    ScatterTooltipProps,
     UserContentProps,
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
@@ -186,17 +186,8 @@
       const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
       if (total <= 0) continue
       const frac_b = (entry.composition[el2] || 0) / total
-      const is_element = Object.keys(entry.composition).filter((el) =>
-        entry.composition[el] > 0
-      ).length === 1
-      coords.push({
-        ...entry,
-        x: frac_b,
-        y: e_form,
-        z: 0,
-        is_element,
-        visible: true,
-      })
+      const is_element = is_unary_entry(entry)
+      coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element, visible: true })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
     const el_a: PlotEntry3D | undefined = coords.find((e) =>
@@ -520,18 +511,17 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: PlotPoint & TooltipProps)}
+{#snippet tooltip(point: PlotPoint & ScatterTooltipProps)}
   {@const entry = point.metadata as unknown as PlotEntry3D}
   {@const is_element = is_unary_entry(entry)}
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
   <div class="tooltip-title">
-    {@html get_electro_neg_formula(entry.composition)}
+    {@html get_electro_neg_formula(entry.composition)}{
+      is_element
+      ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
+      : ``
+    }
   </div>
-  {#if is_element}
-    <div class="element-name">
-      {elem_symbol_to_name[elem_symbol as ElementSymbol]}
-    </div>
-  {/if}
 
   <div>
     E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom

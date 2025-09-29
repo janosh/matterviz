@@ -246,7 +246,7 @@ test.each([
     volume: 12,
   }],
 ])(`calc_lattice_params`, (matrix, expected) => {
-  const result = math.calc_lattice_params(matrix as [Vec3, Vec3, Vec3])
+  const result = math.calc_lattice_params(matrix as math.Matrix3x3)
   expect(result.a).toBeCloseTo(expected.a, 2)
   expect(result.b).toBeCloseTo(expected.b, 2)
   expect(result.c).toBeCloseTo(expected.c, 2)
@@ -258,7 +258,7 @@ test.each([
 
 describe(`pbc_dist`, () => {
   test(`basic functionality with comprehensive scenarios`, () => {
-    const cubic_lattice: [Vec3, Vec3, Vec3] = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+    const cubic_lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
 
     // Opposite corners via PBC
     expect(math.pbc_dist([1, 1, 1], [9, 9, 9], cubic_lattice)).toBeCloseTo(
@@ -283,7 +283,7 @@ describe(`pbc_dist`, () => {
     expect(math.pbc_dist([0.5, 5, 5], [9.7, 5, 5], cubic_lattice)).toBeCloseTo(0.8, 5)
 
     // Hexagonal lattice
-    const hex_lattice: [Vec3, Vec3, Vec3] = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
+    const hex_lattice: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
     expect(math.euclidean_dist([0.2, 0.2, 1], [3.8, 3.264, 7])).toBeCloseTo(7.639, 3)
     expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.3, 3)
 
@@ -807,17 +807,11 @@ describe(`tensor conversion utilities`, () => {
       [`sequential tensor`, tensor_3x3, flat_array],
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 0, 0, 0, 1, 0, 0, 0, 1]],
       [`symmetric`, [[1, 2, 3], [2, 4, 5], [3, 5, 6]], [1, 2, 3, 2, 4, 5, 3, 5, 6]],
-      [`negative`, [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]], [
-        -1,
-        -2,
-        -3,
-        -4,
-        -5,
-        -6,
-        -7,
-        -8,
-        -9,
-      ]],
+      [`negative`, [
+        [-1, -2, -3],
+        [-4, -5, -6],
+        [-7, -8, -9],
+      ], [-1, -2, -3, -4, -5, -6, -7, -8, -9]],
     ])(`converts %s to flat array`, (_, tensor, expected) => {
       expect(math.tensor_to_flat_array(tensor)).toEqual(expected)
     })
@@ -850,13 +844,11 @@ describe(`tensor conversion utilities`, () => {
         -9,
       ]]],
     ])(`%s matrix`, (_, input, expected) => {
-      expect(math.transpose_3x3_matrix(input as [Vec3, Vec3, Vec3])).toEqual(
-        expected,
-      )
+      expect(math.transpose_3x3_matrix(input as math.Matrix3x3)).toEqual(expected)
     })
 
     it(`is involution (A^T^T = A)`, () => {
-      const matrix: [Vec3, Vec3, Vec3] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+      const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
       expect(math.transpose_3x3_matrix(math.transpose_3x3_matrix(matrix))).toEqual(matrix)
     })
   })

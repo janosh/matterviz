@@ -36,13 +36,15 @@
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
     show_cell_vectors = true,
     vector_colors = [`red`, `green`, `blue`],
-    vector_origin = [-1, -1, -1] as Vec3,
+    vector_origin = [-1, -1, -1] satisfies Vec3,
     float_fmt = `.2f`,
   }: Props = $props()
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
   let lattice_center = $derived(
-    matrix ? (math.scale(math.add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
+    matrix
+      ? (math.scale(math.add(...matrix), 0.5) satisfies Vec3)
+      : ([0, 0, 0] satisfies Vec3),
   )
 
   // Extract line segments from EdgesGeometry for cylinder-based thick lines
