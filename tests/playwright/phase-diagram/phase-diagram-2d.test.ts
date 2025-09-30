@@ -67,10 +67,9 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     const { info } = await open_info_and_controls(pd2d)
 
     const get_visible_unstable = async () => {
-      const row = info.getByText(`Visible unstable`).locator(`..`)
-      const text = await row.textContent()
+      const text = await info.getByTestId(`pd-visible-unstable`).textContent()
       // Format: Visible unstable: X / Y
-      const match = text?.match(/Visible unstable:\s*(\d+)\s*\/\s*(\d+)/)
+      const match = text?.match(/(\d+)\s*\/\s*(\d+)/)
       return match ? { x: parseInt(match[1]), y: parseInt(match[2]) } : { x: 0, y: 0 }
     }
 
@@ -121,9 +120,8 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     await expect(controls.getByText(`Points`, { exact: true })).toBeVisible()
 
     const get_visible_unstable = async () => {
-      const row = info.getByText(`Visible unstable`).locator(`..`)
-      const text = await row.textContent()
-      const match = text?.match(/Visible unstable:\s*(\d+)\s*\/\s*(\d+)/)
+      const text = await info.getByTestId(`pd-visible-unstable`).textContent()
+      const match = text?.match(/(\d+)\s*\/\s*(\d+)/)
       return match ? parseInt(match[1]) : 0
     }
     const before = await get_visible_unstable()
