@@ -1095,11 +1095,11 @@
     // Initial setup
     update_canvas_size()
 
-    // Reset camera position to center when canvas size changes significantly (like fullscreen)
+    // Reset camera position on first initialization only
     camera.center_x = 0
     camera.center_y = -50 // Shift up to better show the formation energy funnel
 
-    // Watch for resize events
+    // Watch for resize events - only update canvas, don't reset camera
     const resize_observer = new ResizeObserver(update_canvas_size)
 
     const container = canvas.parentElement
@@ -1114,14 +1114,22 @@
     }
   })
 
-  // Fullscreen handling
+  // Fullscreen handling with camera reset on transitions
+  let was_fullscreen = $state(fullscreen)
   $effect(() => {
-    if (typeof window !== `undefined`) {
-      if (fullscreen && !document.fullscreenElement && wrapper) {
-        wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
+    if (typeof window === `undefined`) return
+
+    if (fullscreen && !document.fullscreenElement && wrapper) {
+      wrapper.requestFullscreen().catch(console.error)
+    } else if (!fullscreen && document.fullscreenElement) {
+      document.exitFullscreen()
+    }
+
+    // Reset camera only on fullscreen transitions
+    if (fullscreen !== was_fullscreen) {
+      camera.center_x = 0
+      camera.center_y = -50
+      was_fullscreen = fullscreen
     }
   })
 

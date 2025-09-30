@@ -321,7 +321,6 @@
   }
   let camera = $state({ ...camera_default })
   let reset_counter = $state(0)
-  let resize_counter = $state(0)
 
   // Drag and drop state (to match 3D/4D components)
   let drag_over = $state(false)
@@ -484,8 +483,7 @@
     selected_entry = null
   }
 
-  // Fullscreen handling
-  $effect(() => {
+  $effect(() => { // Fullscreen handling
     if (typeof window !== `undefined`) {
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
@@ -493,17 +491,6 @@
         document.exitFullscreen()
       }
     }
-  })
-
-  // Resize handling to keep plot responsive
-  $effect(() => {
-    if (!wrapper) return
-
-    const resize_observer = new ResizeObserver(() => resize_counter += 1)
-
-    resize_observer.observe(wrapper)
-
-    return resize_observer.disconnect
   })
 
   let style = $derived(
@@ -592,7 +579,7 @@
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {phase_stats?.chemical_system}
   </h3>
-  {#key `${reset_counter}-${resize_counter}`}
+  {#key reset_counter}
     <ScatterPlot
       series={scatter_series}
       x_range={x_domain}
