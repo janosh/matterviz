@@ -1,12 +1,14 @@
 <script lang="ts">
   import { page } from '$app/state'
+  import type { Snippet } from 'svelte'
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface Props extends HTMLAttributes<HTMLElementTagNameMap[`nav`]> {
     routes: (string | [string, string])[]
+    link?: Snippet<[{ href: string; label: string }]>
   }
-  let { routes = [], ...rest }: Props = $props()
+  let { routes = [], children, link, ...rest }: Props = $props()
 
   let is_open = $state(false)
   function onkeydown(event: KeyboardEvent) {
@@ -52,10 +54,15 @@
   >
     {#each routes as route (JSON.stringify(route))}
       {@const [href, label] = Array.isArray(route) ? route : [route, route]}
-      <a {href} aria-current={is_current(href)} onclick={() => is_open = false}>{
-        label
-      }</a>
+      {#if link}
+        {@render link({ href, label })}
+      {:else}
+        <a {href} aria-current={is_current(href)} onclick={() => is_open = false}>
+          {@html label}</a>
+      {/if}
     {/each}
+
+    {@render children?.()}
   </div>
 </nav>
 

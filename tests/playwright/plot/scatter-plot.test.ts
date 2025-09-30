@@ -1143,6 +1143,133 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
+  test(`one-sided axis range pins via controls`, async ({ page }) => {
+    const plot = page.locator(`#basic-example .scatter`)
+    await expect(plot).toBeVisible()
+
+    const toggle = plot.locator(`.scatter-controls-toggle`)
+    await toggle.click()
+    const pane = plot.locator(`.scatter-controls-pane`)
+    await expect(pane).toBeVisible()
+
+    const x_axis = plot.locator(`g.x-axis`)
+    const y_axis = plot.locator(`g.y-axis`)
+
+    // Establish baseline auto ranges
+    const baseline_x = await get_tick_range(x_axis)
+    const baseline_y = await get_tick_range(y_axis)
+    const baseline_x_min = Math.min(...baseline_x.ticks)
+    const baseline_x_max = Math.max(...baseline_x.ticks)
+    const baseline_y_min = Math.min(...baseline_y.ticks)
+    const baseline_y_max = Math.max(...baseline_y.ticks)
+
+    // Helper to set range inputs; leave the other side blank for one-sided pins
+    const set_range = async (
+      axis: `x` | `y`,
+      bound: `min` | `max`,
+      value: number | null,
+    ) => {
+      const min_input = pane.locator(`input#${axis}-range-min`)
+      const max_input = pane.locator(`input#${axis}-range-max`)
+      if (bound === `min`) {
+        await min_input.fill(value === null ? `` : String(value))
+        await max_input.fill(``)
+      } else {
+        await min_input.fill(``)
+        await max_input.fill(value === null ? `` : String(value))
+      }
+      // Blur to commit
+      await pane.click()
+      // Wait a moment for plot to update
+      await plot.waitFor({ state: `visible` })
+    }
+
+    // Helper to reset axis back to auto (both sides empty)
+    const reset_axis = async (axis: `x` | `y`) => {
+      await set_range(axis, `min`, null)
+      await set_range(axis, `max`, null)
+    }
+
+    // Scenarios: axis/bound/value and assertion function
+    const scenarios: Array<{
+      axis: `x` | `y`
+      bound: `min` | `max`
+      value: number
+    }> = [
+      {
+        axis: `x`,
+        bound: `min`,
+        value: baseline_x_min + (baseline_x_max - baseline_x_min) * 0.2,
+      },
+      {
+        axis: `x`,
+        bound: `max`,
+        value: baseline_x_max - (baseline_x_max - baseline_x_min) * 0.2,
+      },
+      {
+        axis: `y`,
+        bound: `min`,
+        value: baseline_y_min + (baseline_y_max - baseline_y_min) * 0.2,
+      },
+      {
+        axis: `y`,
+        bound: `max`,
+        value: baseline_y_max - (baseline_y_max - baseline_y_min) * 0.2,
+      },
+    ]
+
+    for (const { axis, bound, value } of scenarios) {
+      await set_range(axis, bound, value)
+
+      const { ticks, range } = await get_tick_range(axis === `x` ? x_axis : y_axis)
+      const observed_min = Math.min(...ticks)
+      const observed_max = Math.max(...ticks)
+
+      // Relative tolerance based on baseline span
+      const base_span = axis === `x`
+        ? baseline_x_max - baseline_x_min
+        : baseline_y_max - baseline_y_min
+      const tol = Math.max(1e-6, base_span * 0.15) // 15% of span
+
+      if (bound === `min`) {
+        expect(observed_min).toBeGreaterThanOrEqual(value - tol)
+        // Unpinned side should stay approximately at baseline
+        const baseline_max = axis === `x` ? baseline_x_max : baseline_y_max
+        expect(Math.abs(observed_max - baseline_max)).toBeLessThanOrEqual(tol)
+      } else {
+        expect(observed_max).toBeLessThanOrEqual(value + tol)
+        const baseline_min = axis === `x` ? baseline_x_min : baseline_y_min
+        expect(Math.abs(observed_min - baseline_min)).toBeLessThanOrEqual(tol)
+      }
+
+      expect(range).toBeGreaterThan(0)
+
+      // Reset this axis before next scenario
+      await reset_axis(axis)
+    }
+
+    // Combined: pin x min and y max simultaneously
+    const x_pin = baseline_x_min + (baseline_x_max - baseline_x_min) * 0.25
+    const y_pin = baseline_y_max - (baseline_y_max - baseline_y_min) * 0.25
+    await set_range(`x`, `min`, x_pin)
+    await set_range(`y`, `max`, y_pin)
+
+    const x_after = await get_tick_range(x_axis)
+    const y_after = await get_tick_range(y_axis)
+    const tol_x = Math.max(1e-6, (baseline_x_max - baseline_x_min) * 0.2)
+    const tol_y = Math.max(1e-6, (baseline_y_max - baseline_y_min) * 0.2)
+
+    expect(Math.min(...x_after.ticks)).toBeGreaterThanOrEqual(x_pin - tol_x)
+    expect(Math.max(...y_after.ticks)).toBeLessThanOrEqual(y_pin + tol_y)
+
+    // Cleanup: reset both
+    await reset_axis(`x`)
+    await reset_axis(`y`)
+
+    await toggle.click()
+    await expect(pane).not.toBeVisible()
+  })
+
   // AXIS COLOR TESTS
 
   const axis_color_test_cases = [
