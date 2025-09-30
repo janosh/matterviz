@@ -30,6 +30,8 @@
     on_hull_faces_change?: (value: boolean) => void
     hull_face_color?: string
     on_hull_face_color_change?: (value: string) => void
+    hull_face_opacity?: number
+    on_hull_face_opacity_change?: (value: number) => void
     energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
     has_precomputed_hull?: boolean
     can_compute_hull?: boolean
@@ -63,6 +65,8 @@
     on_hull_faces_change,
     hull_face_color = `#0072B2`,
     on_hull_face_color_change,
+    hull_face_opacity = $bindable(0.06),
+    on_hull_face_opacity_change,
     energy_threshold = $bindable(0),
     label_energy_threshold = $bindable(0.1),
     max_energy_threshold = 0.5,
@@ -273,25 +277,42 @@
     {/if}
   {/if}
 
-  <!-- Hull faces toggle (for 3D ternary diagrams) -->
+  <!-- Hull faces toggle (for 3D ternary and 4D quaternary diagrams) -->
   {#if show_hull_faces !== undefined}
     <div class="control-row">
-      <span class="control-label">3D Hull</span>
+      <span class="control-label">Hull Faces</span>
       <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
         <input
           type="checkbox"
           checked={show_hull_faces}
           oninput={(e) => on_hull_faces_change?.((e.target as HTMLInputElement).checked)}
         />
-        <span>Show faces</span>
+        <span>Show</span>
       </label>
-      <span class="control-label" style="min-width: auto">Hull color</span>
-      <input
-        type="color"
-        value={hull_face_color}
-        oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
-        {@attach tooltip({ content: `Set hull face color` })}
-      />
+      <div style="display: flex; gap: 6px; align-items: center; flex: 1">
+        <input
+          type="color"
+          value={hull_face_color}
+          oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
+          {@attach tooltip({ content: `Set hull face color` })}
+          style="width: 40px; height: 28px"
+        />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          aria-label="Hull face opacity"
+          bind:value={hull_face_opacity}
+          oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
+          {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
+          class="threshold-slider"
+          style="flex: 1; min-width: 80px"
+        />
+        <span style="font-size: 0.75em; min-width: 2em; text-align: right">{
+            (hull_face_opacity * 100).toFixed(0)
+          }%</span>
+      </div>
     </div>
   {/if}
 

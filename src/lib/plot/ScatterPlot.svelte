@@ -223,7 +223,7 @@
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
   // Unique component ID to avoid clipPath conflicts between multiple instances
-  let component_id = $state(`scatter-${Math.random().toString(36).substring(2, 9)}`)
+  let component_id = $state(`scatter-${crypto.randomUUID()}`)
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
   // Process series to ensure single visible series are always on y1 (left) axis.

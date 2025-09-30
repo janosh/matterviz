@@ -218,6 +218,7 @@ export interface SettingsConfig {
       label_energy_threshold: SettingType<number>
       show_hull_faces: SettingType<boolean>
       hull_face_color: SettingType<string>
+      hull_face_opacity: SettingType<number>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -234,6 +235,9 @@ export interface SettingsConfig {
       show_unstable: SettingType<boolean>
       show_stable_labels: SettingType<boolean>
       show_unstable_labels: SettingType<boolean>
+      show_hull_faces: SettingType<boolean>
+      hull_face_color: SettingType<string>
+      hull_face_opacity: SettingType<number>
       energy_threshold: SettingType<number>
       label_energy_threshold: SettingType<number>
       fullscreen: SettingType<boolean>
@@ -1015,6 +1019,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: `#4caf50`,
         description: `Color for lower hull faces in 3D PD`,
       },
+      hull_face_opacity: {
+        value: 0.3,
+        description: `Opacity for hull faces in 3D PD (0-1)`,
+        minimum: 0,
+        maximum: 1,
+      },
       fullscreen: {
         value: false,
         description: `Start in fullscreen for 3D PD`,
@@ -1079,6 +1089,20 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       show_unstable_labels: {
         value: false,
         description: `Show labels for unstable phases in 4D PD`,
+      },
+      show_hull_faces: {
+        value: true,
+        description: `Show convex hull faces in 4D PD`,
+      },
+      hull_face_color: {
+        value: `#4caf50`,
+        description: `Color for hull faces in 4D PD`,
+      },
+      hull_face_opacity: {
+        value: 0.06,
+        description: `Opacity for hull faces in 4D PD (0-1)`,
+        minimum: 0,
+        maximum: 1,
       },
       energy_threshold: {
         value: 0.1,

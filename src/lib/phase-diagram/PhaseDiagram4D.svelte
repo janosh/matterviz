@@ -6,7 +6,11 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
-  import { compute_4d_coords, TETRAHEDRON_VERTICES } from './barycentric-coords'
+  import {
+    barycentric_to_tetrahedral,
+    compute_4d_coords,
+    TETRAHEDRON_VERTICES,
+  } from './barycentric-coords'
   import {
     build_entry_tooltip_text,
     compute_max_energy_threshold,
@@ -20,8 +24,11 @@
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
+  import type { Point4D } from './thermodynamics'
   import {
+    compute_e_above_hull_4d,
     compute_e_form_per_atom,
+    compute_lower_hull_4d,
     find_lowest_energy_unary_refs,
     get_phase_diagram_stats,
     process_pd_entries,
@@ -49,6 +56,8 @@
     // Bindable visibility and interaction state
     show_stable?: boolean
     show_unstable?: boolean
+    show_hull_faces?: boolean
+    hull_face_opacity?: number
     color_mode?: `stability` | `energy`
     color_scale?: D3InterpolateName
     info_pane_open?: boolean
@@ -75,6 +84,8 @@
     label_threshold = 50,
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
+    show_hull_faces = $bindable(true),
+    hull_face_opacity = $bindable(0.06),
     color_mode = $bindable(`energy`),
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
@@ -121,34 +132,30 @@
     entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`),
   )
 
-  // For quaternary, we currently do not compute e_above_hull on the fly (needs a 4D hull)
-  // Only compute formation energies when explicitly requested via on-the-fly
-  const unary_refs = $derived.by(() =>
-    energy_source_mode === `on-the-fly`
-      ? find_lowest_energy_unary_refs(entries)
-      : ({} as Record<string, PhaseEntry>)
-  )
+  // Build unary references once from entries (needed for capability checking)
+  const unary_refs = $derived.by(() => find_lowest_energy_unary_refs(entries))
 
   const can_compute_e_form = $derived.by(() => {
-    if (energy_source_mode !== `on-the-fly`) return false
     const elements_in_entries = Array.from(
       new Set(entries.flatMap((e) => Object.keys(e.composition))),
     )
     return elements_in_entries.every((el) => Boolean(unary_refs[el]))
   })
-  // Quaternary on-the-fly hull distances are not implemented yet
-  const can_compute_hull = $derived(false)
+  // Quaternary on-the-fly hull distances ARE now implemented using 4D Quick Hull
+  const can_compute_hull = $derived(can_compute_e_form)
 
-  const use_on_the_fly = $derived(
-    energy_source_mode === `on-the-fly` && can_compute_e_form && can_compute_hull,
+  const energy_mode = $derived(
+    (has_precomputed_e_form && has_precomputed_hull)
+      ? energy_source_mode
+      : ((can_compute_e_form && can_compute_hull) ? `on-the-fly` : `precomputed`),
   )
 
   const effective_entries = $derived.by(() => {
-    if (!use_on_the_fly) return entries
+    if (energy_mode === `precomputed`) return entries
     // on-the-fly: compute formation energy per atom where possible
     return entries.map((entry) => {
       const e_form = compute_e_form_per_atom(entry, unary_refs)
-      if (e_form == null) return entry
+      if (e_form === null) return entry
       return { ...entry, e_form_per_atom: e_form }
     })
   })
@@ -173,6 +180,40 @@
     return all_elements
   })
 
+  // Compute 4D hull for visualization (always compute when we have formation energies)
+  const hull_4d = $derived.by(() => {
+    if (elements.length !== 4) return []
+
+    try {
+      // Get coords with formation energies
+      const coords = compute_4d_coords(pd_data.entries, elements)
+
+      // Convert to 4D points for hull computation
+      const points_4d: Point4D[] = coords.map((entry) => {
+        const amounts = elements.map((el) => entry.composition[el] || 0)
+        const total = amounts.reduce((sum, amt) => sum + amt, 0)
+        const normalized = amounts.map((amt) => amt / total)
+
+        return {
+          x: normalized[0],
+          y: normalized[1],
+          z: normalized[2],
+          w: entry.e_form_per_atom ?? 0,
+        }
+      })
+
+      // Filter out points with no formation energy
+      const valid_points = points_4d.filter((p) => typeof p.w === `number`)
+
+      if (valid_points.length < 5) return [] // Need at least 5 points for 4D hull
+
+      return compute_lower_hull_4d(valid_points)
+    } catch (error) {
+      console.error(`Error computing 4D hull:`, error)
+      return []
+    }
+  })
+
   const plot_entries = $derived.by(() => {
     if (elements.length !== 4) {
       return []
@@ -180,8 +221,35 @@
 
     try {
       const coords = compute_4d_coords(pd_data.entries, elements)
+
+      // Compute or use precomputed hull distances
+      const enriched = (() => {
+        if (energy_mode === `on-the-fly` && hull_4d.length > 0) {
+          // Build 4D points for distance calculation
+          const points_4d: Point4D[] = coords.map((entry) => {
+            const amounts = elements.map((el) => entry.composition[el] || 0)
+            const total = amounts.reduce((sum, amt) => sum + amt, 0)
+            const normalized = amounts.map((amt) => amt / total)
+
+            return {
+              x: normalized[0],
+              y: normalized[1],
+              z: normalized[2],
+              w: entry.e_form_per_atom ?? 0,
+            }
+          })
+
+          const e_hulls = compute_e_above_hull_4d(points_4d, hull_4d)
+          return coords.map((entry, idx) => ({
+            ...entry,
+            e_above_hull: e_hulls[idx],
+          }))
+        }
+        return coords
+      })()
+
       // Filter by energy threshold and update visibility based on toggles
-      const energy_filtered = coords.filter((entry: PlotEntry3D) => {
+      const energy_filtered = enriched.filter((entry: PlotEntry3D) => {
         // Handle elemental entries specially
         if (entry.is_element) {
           // Always include reference elemental entries (corner points of tetrahedron)
@@ -262,6 +330,9 @@
   let selected_entry = $state<PlotEntry3D | null>(null)
   let modal_place_right = $state(true)
 
+  // Hull face color (customizable via controls)
+  let hull_face_color = $state(`#4caf50`)
+
   // Pulsating highlight for selected point
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
@@ -285,7 +356,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, color_mode, color_scale, energy_threshold, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
 
     render_once()
   })
@@ -342,6 +413,9 @@
     show_unstable_labels = PD_DEFAULTS.quaternary.show_unstable_labels
     energy_threshold = PD_DEFAULTS.quaternary.energy_threshold
     label_energy_threshold = PD_DEFAULTS.quaternary.label_energy_threshold
+    show_hull_faces = PD_DEFAULTS.quaternary.show_hull_faces
+    hull_face_color = PD_DEFAULTS.quaternary.hull_face_color
+    hull_face_opacity = PD_DEFAULTS.quaternary.hull_face_opacity
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -352,6 +426,7 @@
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
       s: () => show_stable = !show_stable,
       u: () => show_unstable = !show_unstable,
+      h: () => show_hull_faces = !show_hull_faces,
       l: () => show_stable_labels = !show_stable_labels,
     }
     actions[event.key.toLowerCase()]?.()
@@ -392,6 +467,17 @@
   const phase_stats = $derived.by(() =>
     get_phase_diagram_stats(processed_entries, elements, 4)
   )
+
+  // Utility: convert hex color to rgba string with alpha
+  function hex_to_rgba(hex: string, alpha: number): string {
+    const normalized = hex.trim()
+    const match = normalized.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
+    if (!match) return `rgba(0,0,0,${alpha})`
+    const r = parseInt(match[1], 16)
+    const g = parseInt(match[2], 16)
+    const b = parseInt(match[3], 16)
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`
+  }
 
   // 3D to 2D projection following Materials Project approach
   function project_3d_point(
@@ -526,6 +612,127 @@
     }
   }
 
+  // Draw convex hull faces connecting stable points
+  function draw_convex_hull_faces(): void {
+    if (!ctx || !show_hull_faces || hull_4d.length === 0) return
+
+    // Get stable points to determine which hull facets to draw
+    const stable_points = plot_entries.filter((e) =>
+      e.is_stable || e.e_above_hull === 0
+    )
+    if (stable_points.length === 0) return
+
+    // Each tetrahedral facet has 4 triangular faces - we need to draw these
+    // Collect all triangular faces with depth for sorting
+    type TriangleFace = {
+      vertices: [
+        { x: number; y: number; depth: number },
+        { x: number; y: number; depth: number },
+        {
+          x: number
+          y: number
+          depth: number
+        },
+      ]
+      avg_depth: number
+      avg_w: number // Average formation energy for coloring
+    }
+
+    const triangles: TriangleFace[] = []
+
+    for (let tet_idx = 0; tet_idx < hull_4d.length; tet_idx++) {
+      const tet = hull_4d[tet_idx]
+      const [p0, p1, p2, p3] = tet.vertices
+
+      // Convert barycentric coordinates to tetrahedral 3D coordinates
+      const tet0 = barycentric_to_tetrahedral([
+        p0.x,
+        p0.y,
+        p0.z,
+        1 - p0.x - p0.y - p0.z,
+      ])
+      const tet1 = barycentric_to_tetrahedral([
+        p1.x,
+        p1.y,
+        p1.z,
+        1 - p1.x - p1.y - p1.z,
+      ])
+      const tet2 = barycentric_to_tetrahedral([
+        p2.x,
+        p2.y,
+        p2.z,
+        1 - p2.x - p2.y - p2.z,
+      ])
+      const tet3 = barycentric_to_tetrahedral([
+        p3.x,
+        p3.y,
+        p3.z,
+        1 - p3.x - p3.y - p3.z,
+      ])
+
+      // Project to 2D screen space
+      const proj0 = project_3d_point(tet0.x, tet0.y, tet0.z)
+      const proj1 = project_3d_point(tet1.x, tet1.y, tet1.z)
+      const proj2 = project_3d_point(tet2.x, tet2.y, tet2.z)
+      const proj3 = project_3d_point(tet3.x, tet3.y, tet3.z)
+
+      // Each tetrahedron has 4 triangular faces
+      const faces: [typeof proj0, typeof proj1, typeof proj2, number][] = [
+        [proj0, proj1, proj2, (p0.w + p1.w + p2.w) / 3],
+        [proj0, proj1, proj3, (p0.w + p1.w + p3.w) / 3],
+        [proj0, proj2, proj3, (p0.w + p2.w + p3.w) / 3],
+        [proj1, proj2, proj3, (p1.w + p2.w + p3.w) / 3],
+      ]
+
+      for (const [v0, v1, v2, avg_w] of faces) {
+        triangles.push({
+          vertices: [v0, v1, v2],
+          avg_depth: (v0.depth + v1.depth + v2.depth) / 3,
+          avg_w,
+        })
+      }
+    }
+
+    // Sort by depth (back to front)
+    triangles.sort((a, b) => a.avg_depth - b.avg_depth)
+
+    // Determine alpha based on formation energy (more negative = more opaque)
+    // Scale by user-controlled opacity
+    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
+    const min_fe = Math.min(0, ...formation_energies)
+
+    const norm_alpha = (w: number) => {
+      const t = Math.max(0, Math.min(1, (0 - w) / Math.max(1e-6, 0 - min_fe)))
+      // Use user-controlled opacity as the maximum
+      return t * hull_face_opacity
+    }
+
+    // Draw each triangle
+    for (const tri of triangles) {
+      const [v0, v1, v2] = tri.vertices
+      const alpha = norm_alpha(tri.avg_w)
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(v0.x, v0.y)
+      ctx.lineTo(v1.x, v1.y)
+      ctx.lineTo(v2.x, v2.y)
+      ctx.closePath()
+
+      ctx.fillStyle = hex_to_rgba(hull_face_color, alpha)
+      ctx.fill()
+
+      // Edge lines more pronounced with higher opacity and thicker width
+      ctx.strokeStyle = hex_to_rgba(
+        hull_face_color,
+        Math.min(0.4, hull_face_opacity * 4),
+      )
+      ctx.lineWidth = 1
+      ctx.stroke()
+      ctx.restore()
+    }
+  }
+
   function draw_data_points(): void {
     if (!ctx || plot_entries.length === 0) return
     const styles = getComputedStyle(canvas)
@@ -654,7 +861,10 @@
     // Draw tetrahedron outline
     draw_structure_outline()
 
-    // Draw data points
+    // Draw convex hull faces (before points so they appear behind)
+    draw_convex_hull_faces()
+
+    // Draw data points (on top)
     draw_data_points()
   }
 
@@ -972,6 +1182,12 @@
         toggle_props={{
           class: `legend-controls-btn`,
         }}
+        {show_hull_faces}
+        on_hull_faces_change={(value) => show_hull_faces = value}
+        {hull_face_color}
+        on_hull_face_color_change={(value) => hull_face_color = value}
+        {hull_face_opacity}
+        on_hull_face_opacity_change={(value) => hull_face_opacity = value}
         bind:energy_source_mode
         {has_precomputed_e_form}
         {can_compute_e_form}

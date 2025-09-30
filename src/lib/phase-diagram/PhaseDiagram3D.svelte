@@ -61,6 +61,7 @@
     show_stable?: boolean
     show_unstable?: boolean
     show_hull_faces?: boolean
+    hull_face_opacity?: number
     color_mode?: `stability` | `energy`
     color_scale?: D3InterpolateName
     info_pane_open?: boolean
@@ -88,6 +89,7 @@
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
     show_hull_faces = $bindable(true),
+    hull_face_opacity = $bindable(0.3),
     color_mode = $bindable(`energy`),
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
@@ -341,7 +343,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
 
     render_once()
   })
@@ -393,6 +395,7 @@
     energy_threshold = PD_DEFAULTS.ternary.energy_threshold
     show_hull_faces = PD_DEFAULTS.ternary.show_hull_faces
     hull_face_color = PD_DEFAULTS.ternary.hull_face_color
+    hull_face_opacity = PD_DEFAULTS.ternary.hull_face_opacity
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -602,12 +605,12 @@
   function draw_convex_hull_faces(): void {
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
-    // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> 0.9 alpha
+    // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> hull_face_opacity
     const formation_energies = plot_entries.map((e) => e.formation_energy)
     const min_fe = Math.min(0, ...formation_energies)
     const norm_alpha = (z: number) => {
       const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
-      return t * 0.9
+      return t * hull_face_opacity
     }
 
     // Sort faces by depth for proper rendering
@@ -709,9 +712,9 @@
     const [min_fe, max_fe] = e_form_range
     const denom = Math.max(1e-6, max_fe - min_fe)
     return (value: number) => {
-      // alpha 0 at 0 eV, goes to 0.9 at most negative energy
+      // alpha 0 at 0 eV, goes to hull_face_opacity at most negative energy
       const t = Math.max(0, Math.min(1, (value - min_fe) / denom))
-      const alpha = (1 - t) * 0.9
+      const alpha = (1 - t) * hull_face_opacity
       return hex_to_rgba(hull_face_color, alpha)
     }
   })
@@ -1277,6 +1280,8 @@
         on_hull_faces_change={(value) => show_hull_faces = value}
         {hull_face_color}
         on_hull_face_color_change={(value) => hull_face_color = value}
+        {hull_face_opacity}
+        on_hull_face_opacity_change={(value) => hull_face_opacity = value}
         bind:energy_source_mode
         {has_precomputed_e_form}
         {can_compute_e_form}

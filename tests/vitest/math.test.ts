@@ -1200,3 +1200,94 @@ describe(`get_coefficient_of_variation`, () => {
     },
   )
 })
+
+describe(`det_4x4`, () => {
+  test.each([
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], 1, `identity`],
+    [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5], 120, `diagonal`],
+    [[1, 2, 3, 4], [0, 5, 6, 7], [0, 0, 8, 9], [0, 0, 0, 10], 400, `upper triangular`],
+    [[1, 0, 0, 0], [2, 3, 0, 0], [4, 5, 6, 0], [7, 8, 9, 10], 180, `lower triangular`],
+    [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+      [9, 10, 11, 12],
+      [13, 14, 15, 16],
+      0,
+      `singular`,
+    ],
+    [[3, 1, 0, 2], [1, 4, 2, 1], [0, 2, 5, 3], [2, 1, 3, 6], 112, `symmetric PD`],
+    [[1, 2, 3, 4], [2, 3, 4, 1], [3, 4, 1, 2], [4, 1, 2, 3], 160, `general`],
+    [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1], 1, `negative identity`],
+    [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
+    [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
+  ])(`%s`, (r0, r1, r2, r3, expected) => {
+    expect(math.det_4x4([r0, r1, r2, r3] as number[][])).toBeCloseTo(expected, -30)
+  })
+
+  test(`barycentric coordinates (tetrahedron unit test)`, () => {
+    const tet_matrix = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
+    expect(math.det_4x4(tet_matrix)).toBeCloseTo(-1, 10)
+
+    const bary_matrix = [[0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1]]
+    expect(math.det_4x4(bary_matrix) / math.det_4x4(tet_matrix)).toBeCloseTo(0.25, 10)
+  })
+})
+
+describe(`cross_3d`, () => {
+  test.each([
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1], `x × y = z`],
+    [[0, 1, 0], [0, 0, 1], [1, 0, 0], `y × z = x`],
+    [[0, 0, 1], [1, 0, 0], [0, 1, 0], `z × x = y`],
+    [[1, 0, 0], [0, 0, 1], [0, -1, 0], `x × z = -y`],
+    [[1, 0, 0], [1, 0, 0], [0, 0, 0], `parallel`],
+    [[1, 0, 0], [-1, 0, 0], [0, 0, 0], `anti-parallel`],
+    [[2, 3, 4], [5, 6, 7], [-3, 6, -3], `general`],
+    [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
+    [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
+  ])(`%s`, (a, b, expected) => {
+    const result = math.cross_3d(a as Vec3, b as Vec3)
+    expect(result).toEqual(
+      expected.map((val) => expect.closeTo(val, val < 1e10 ? 10 : -10)),
+    )
+  })
+
+  test(`mathematical properties`, () => {
+    const a: Vec3 = [2, 3, 4]
+    const b: Vec3 = [5, 6, 7]
+    const c: Vec3 = [1, 2, 3]
+    const cross_ab = math.cross_3d(a, b)
+    const cross_ba = math.cross_3d(b, a)
+
+    // Anti-commutative: a × b = -(b × a)
+    expect(cross_ab).toEqual(cross_ba.map((v) => expect.closeTo(-v, 10)))
+
+    // Orthogonality: (a × b) ⊥ a and (a × b) ⊥ b
+    expect(cross_ab[0] * a[0] + cross_ab[1] * a[1] + cross_ab[2] * a[2]).toBeCloseTo(
+      0,
+      10,
+    )
+    expect(cross_ab[0] * b[0] + cross_ab[1] * b[1] + cross_ab[2] * b[2]).toBeCloseTo(
+      0,
+      10,
+    )
+
+    // Magnitude for orthogonal vectors: |a × b| = |a| * |b|
+    const orth_cross = math.cross_3d([3, 0, 0], [0, 4, 0])
+    expect(Math.hypot(...orth_cross)).toBeCloseTo(12, 10)
+
+    // Distributive: a × (b + c) = a × b + a × c
+    const b_plus_c: Vec3 = [b[0] + c[0], b[1] + c[1], b[2] + c[2]]
+    const left = math.cross_3d(a, b_plus_c)
+    const cross_ac = math.cross_3d(a, c)
+    const right: Vec3 = [
+      cross_ab[0] + cross_ac[0],
+      cross_ab[1] + cross_ac[1],
+      cross_ab[2] + cross_ac[2],
+    ]
+    expect(left).toEqual(right.map((v) => expect.closeTo(v, 10)))
+
+    // Triangle normal (convex hull use case)
+    const normal = math.cross_3d([1, 0, 0], [0, 1, 0])
+    expect(normal).toEqual([0, 0, 1])
+  })
+})
