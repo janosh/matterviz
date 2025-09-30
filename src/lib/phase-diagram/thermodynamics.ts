@@ -512,17 +512,16 @@ export function e_hull_at_xy(models: HullFaceModel[], x: number, y: number) {
   return z
 }
 
-export function compute_e_above_hull_for_points(
+export const compute_e_above_hull_for_points = (
   points: Point3D[],
   models: HullFaceModel[],
-): number[] {
-  return points.map((p) => {
+) =>
+  points.map((p) => {
     const z_hull = e_hull_at_xy(models, p.x, p.y)
     if (z_hull === null) return 0
     const e_above_hull = p.z - z_hull
     return e_above_hull > 1e-9 ? e_above_hull : 0
   })
-}
 
 // ================= 4D Convex Hull (Quaternary Phase Diagrams) =================
 
@@ -570,32 +569,44 @@ function normalize_4d(v: Point4D): Point4D {
 }
 
 // Compute normal to a 3D hyperplane in 4D space defined by 4 points
-function compute_plane_4d(
-  p1: Point4D,
-  p2: Point4D,
-  p3: Point4D,
-  p4: Point4D,
-): Plane4D {
+//
+// Mathematical Background:
+// A 3D hyperplane (tetrahedral facet) in 4D is defined by 4 points. The normal vector
+// must be orthogonal to all three edge vectors spanning the hyperplane. This is the
+// 4D analog of computing a cross product of two vectors in 3D.
+//
+// Approach:
+// 1. Form three edge vectors v1, v2, v3 from point p1
+// 2. Find vector n such that: n · v1 = 0, n · v2 = 0, n · v3 = 0
+// 3. This is equivalent to finding the null space of the 3×4 matrix [v1; v2; v3]
+//
+// Implementation:
+// The normal components (nx, ny, nz, nw) are computed using Laplace expansion
+// (cofactor method) along each column of the matrix. Each component is the determinant
+// of the 3×3 submatrix obtained by removing that column, with alternating signs.
+//
+// References:
+// - Barber et al. (1996) "The Quickhull Algorithm for Convex Hulls"
+// - https://en.wikipedia.org/wiki/Cross_product#Multilinear_algebra
+// - https://mathworld.wolfram.com/Nullspace.html
+function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): Plane4D {
   // Three edge vectors from p1
   const v1 = subtract_4d(p2, p1)
   const v2 = subtract_4d(p3, p1)
   const v3 = subtract_4d(p4, p1)
 
-  // Normal is perpendicular to all three edge vectors
-  // Solve: n · v1 = 0, n · v2 = 0, n · v3 = 0
-  // This is equivalent to finding the null space of the 3x4 matrix [v1; v2; v3]
-
-  // Using Gram-Schmidt-like approach to find orthogonal complement
-  // We need a vector orthogonal to v1, v2, v3 in 4D space
-
-  // Build matrix and solve using cofactor expansion
+  // Build matrix [v1; v2; v3] and compute normal via cofactor expansion
   const det_matrix = [
     [v1.x, v1.y, v1.z, v1.w],
     [v2.x, v2.y, v2.z, v2.w],
     [v3.x, v3.y, v3.z, v3.w],
   ]
 
-  // Normal components from 3x3 determinants (Laplace expansion)
+  // Normal components from 3×3 determinants (Laplace expansion along each column)
+  // nx = +det(M with column 0 removed)
+  // ny = -det(M with column 1 removed)
+  // nz = +det(M with column 2 removed)
+  // nw = -det(M with column 3 removed)
   const nx = det_matrix[0][1] *
       (det_matrix[1][2] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][2]) -
     det_matrix[0][2] *
@@ -1012,17 +1023,16 @@ export function compute_lower_hull_4d(points: Point4D[]): ConvexHullTetrahedron[
   return all_faces.filter((face) => face.normal.w < 0 - EPS)
 }
 
-// Check if point is inside tetrahedron using barycentric coordinates
-function point_in_tetrahedron_4d(
-  tet: [Point4D, Point4D, Point4D, Point4D],
-  point: Point4D,
+// Check if 3D point (x,y,z) is inside 3D tetrahedron using barycentric coordinates
+function point_in_tetrahedron_3d(
+  p0: Point3D,
+  p1: Point3D,
+  p2: Point3D,
+  p3: Point3D,
+  point: Point3D,
 ): { inside: boolean; bary: [number, number, number, number] } {
-  const [p0, p1, p2, p3] = tet
-
   // Solve for barycentric coordinates: point = l0*p0 + l1*p1 + l2*p2 + l3*p3
   // with l0 + l1 + l2 + l3 = 1
-  // This gives us 4 equations in 4 unknowns
-
   // Build the linear system
   const matrix = [
     [p0.x, p1.x, p2.x, p3.x],
@@ -1082,24 +1092,31 @@ function point_in_tetrahedron_4d(
 }
 
 // Compute distance from point to lower hull in 4D
-export function compute_e_above_hull_4d(
+export const compute_e_above_hull_4d = (
   points: Point4D[],
   hull_tetrahedra: ConvexHullTetrahedron[],
-): number[] {
-  return points.map((point) => {
+) =>
+  points.map((point) => {
     let hull_w: number | null = null
 
     for (const tet of hull_tetrahedra) {
       const [p0, p1, p2, p3] = tet.vertices
 
-      // Check if point's (x,y,z) projects inside the tetrahedron
-      // We need to find the point on the hyperplane with matching (x,y,z)
-      const { inside, bary } = point_in_tetrahedron_4d([p0, p1, p2, p3], {
-        x: point.x,
-        y: point.y,
-        z: point.z,
-        w: 0, // We'll compute the correct w from the facet
-      })
+      // Project 4D tetrahedron vertices to 3D (x,y,z) space
+      const p0_3d: Point3D = { x: p0.x, y: p0.y, z: p0.z }
+      const p1_3d: Point3D = { x: p1.x, y: p1.y, z: p1.z }
+      const p2_3d: Point3D = { x: p2.x, y: p2.y, z: p2.z }
+      const p3_3d: Point3D = { x: p3.x, y: p3.y, z: p3.z }
+
+      // Check if point's (x,y,z) is inside the 3D projection of the tetrahedron
+      const point_3d: Point3D = { x: point.x, y: point.y, z: point.z }
+      const { inside, bary } = point_in_tetrahedron_3d(
+        p0_3d,
+        p1_3d,
+        p2_3d,
+        p3_3d,
+        point_3d,
+      )
 
       if (inside) {
         // Compute w on the hull at this (x,y,z) using barycentric interpolation
@@ -1113,4 +1130,3 @@ export function compute_e_above_hull_4d(
     const distance = point.w - hull_w
     return distance > 1e-9 ? distance : 0
   })
-}

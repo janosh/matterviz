@@ -41,7 +41,8 @@ function entry(
   return {
     composition,
     energy,
-    entry_id: opts.entry_id,
+    entry_id: opts.entry_id ??
+      `test-${Object.keys(composition).join(`-`)}-${crypto.randomUUID()}`,
     correction: opts.correction,
     energy_per_atom: opts.energy_per_atom,
     e_form_per_atom: opts.e_form_per_atom,
@@ -348,7 +349,7 @@ describe(`4D convex hull for quaternary phase diagrams`, () => {
       { x: 1, y: 0, z: 0, w: 0 },
       { x: 0, y: 1, z: 0, w: 0 },
       { x: 0, y: 0, z: 1, w: 0 },
-      { x: 0.25, y: 0.25, z: 0.25, w: -0.1 }, // On hull
+      { x: 0.25, y: 0.25, z: 0.25, w: -0.1 }, // On or below hull (evaluates to zero distance)
       { x: 0.25, y: 0.25, z: 0.25, w: 0.1 }, // Above hull
     ]
 
@@ -357,7 +358,7 @@ describe(`4D convex hull for quaternary phase diagrams`, () => {
 
     expect(distances.length).toBe(points.length)
 
-    // Points on hull should have ~0 distance
+    // Points on or below the hull should have ~0 distance
     expect(distances[4]).toBeCloseTo(0, 6)
 
     // Point above hull should have positive distance
@@ -614,15 +615,6 @@ describe(`4D hull validation against quaternary phase diagram data`, () => {
 
     const avg_error = total_error / testable_entries.length
     const match_rate = (matches_within_tolerance / testable_entries.length) * 100
-
-    console.log(
-      `\n${filename}:
-      Entries: ${testable_entries.length}
-      Hull facets: ${hull.length}
-      Avg error: ${avg_error.toExponential(3)} eV/atom
-      Max error: ${max_error.toExponential(3)} eV/atom
-      Match rate (±${tolerance} eV/atom): ${match_rate.toFixed(1)}%`,
-    )
 
     // We expect very high agreement
     expect(match_rate).toBeGreaterThan(95)

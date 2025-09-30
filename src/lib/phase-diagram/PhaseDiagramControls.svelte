@@ -302,11 +302,9 @@
           min="0"
           max="1"
           step="0.01"
-          value={hull_face_opacity}
-          oninput={(e) =>
-          on_hull_face_opacity_change?.(
-            parseFloat((e.target as HTMLInputElement).value),
-          )}
+          aria-label="Hull face opacity"
+          bind:value={hull_face_opacity}
+          oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
           {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
           class="threshold-slider"
           style="flex: 1; min-width: 80px"

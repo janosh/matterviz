@@ -98,6 +98,8 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
       return dt
     }, data)
 
+    // Dispatch dragover first for broader browser engine parity (esp. WebKit)
+    await diagram.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await diagram.dispatchEvent(`drop`, { dataTransfer: data_transfer })
 
     // Open info pane to read visible counts
@@ -112,11 +114,25 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     const unstable_text = await info.getByText(/Visible unstable/i).locator(`..`)
       .textContent()
     expect(unstable_text).toBeTruthy()
+    const unstable_match = unstable_text?.match(
+      /Visible unstable[^0-9]*([0-9]+)\s*\/\s*([0-9]+)/i,
+    )
+    expect(unstable_match).toBeTruthy()
+    const u_visible = Number(unstable_match?.[1])
+    const u_total = Number(unstable_match?.[2])
+    expect(Number.isFinite(u_visible) && Number.isFinite(u_total)).toBe(true)
 
     // Expect stable entries to include at minimum the 4 elemental refs + 1 marked stable
     const stable_text = await info.getByText(/Visible stable/i).locator(`..`)
       .textContent()
-    expect(stable_text).toMatch(/[5-7] \/ [5-7]/) // Allow for computed stable entries
+    const stable_match = stable_text?.match(
+      /Visible stable[^0-9]*([0-9]+)\s*\/\s*([0-9]+)/i,
+    )
+    expect(stable_match).toBeTruthy()
+    const s_visible = Number(stable_match?.[1])
+    const s_total = Number(stable_match?.[2])
+    expect(s_visible).toBeGreaterThanOrEqual(5)
+    expect(s_total).toBeGreaterThanOrEqual(5)
   })
 
   test(`displays energy above hull color bar in energy mode`, async ({ page }) => {
