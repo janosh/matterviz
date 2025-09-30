@@ -252,6 +252,7 @@
         {:else}
           <div
             class="clickable stat-item"
+            data-testid={key ? `pd-${key}` : undefined}
             title="Click to copy: {label}: {value}"
             onclick={() => copy_to_clipboard(item.label, String(item.value), key ?? item.label)}
             role="button"

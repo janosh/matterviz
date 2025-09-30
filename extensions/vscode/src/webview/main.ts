@@ -65,9 +65,7 @@ class VSCodeFrameLoader implements FrameLoader {
     frame_index: number,
   ): Promise<TrajectoryFrame | null> {
     return new Promise((resolve, reject) => {
-      const request_id = globalThis.crypto?.randomUUID?.() ??
-        Math.random().toString(36).slice(2, 15)
-
+      const request_id = crypto.randomUUID()
       let timer: ReturnType<typeof setTimeout> | null = null
       const handler = (event: MessageEvent) => {
         const { command, request_id: id, error, frame } = event.data
@@ -262,7 +260,7 @@ function request_large_file_content(
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
   return new Promise((resolve, reject) => {
-    const request_id = Math.random().toString(36).slice(2, 15)
+    const request_id = crypto.randomUUID()
 
     let timer: ReturnType<typeof setTimeout> | null = null
     const handler = (event: MessageEvent) => {
