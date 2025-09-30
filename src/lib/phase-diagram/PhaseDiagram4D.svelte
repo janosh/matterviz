@@ -5,6 +5,7 @@
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
+  import { ColorBar } from '$lib/plot'
   import { compute_4d_coords, TETRAHEDRON_VERTICES } from './barycentric-coords'
   import {
     build_entry_tooltip_text,
@@ -776,16 +777,14 @@
     }
   }
 
-  $effect(() => {
-    // Include fullscreen in dependencies to trigger re-setup when entering/exiting fullscreen
-    fullscreen = fullscreen
-
+  // Update canvas dimensions helper
+  function update_canvas_size() {
     if (!canvas) return
 
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
 
-    // Update canvas size based on current container (handles fullscreen changes)
+    // Update canvas size based on current container
     if (container) {
       const rect = container.getBoundingClientRect()
       canvas.width = rect.width * dpr
@@ -802,15 +801,28 @@
       ctx.imageSmoothingQuality = `high`
     }
 
+    render_once()
+  }
+
+  $effect(() => {
+    if (!canvas) return
+
+    // Initial setup
+    update_canvas_size()
+
     // Reset camera position to center when canvas size changes significantly (like fullscreen)
     camera.center_x = 0
     camera.center_y = 20 // Slight offset to avoid legend overlap
 
-    // Initial render
-    render_once()
+    // Watch for resize events
+    const resize_observer = new ResizeObserver(update_canvas_size)
+
+    const container = canvas.parentElement
+    if (container) resize_observer.observe(container)
 
     return () => { // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
+      resize_observer.disconnect()
     }
   })
 
@@ -874,6 +886,25 @@
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>
+
+  <!-- Energy above hull Color Bar -->
+  {#if color_mode === `energy` && plot_entries.length > 0}
+    {@const formation_energies = plot_entries
+      .map((e) => e.e_above_hull)
+      .filter((v): v is number => typeof v === `number`)}
+    {@const min_energy = formation_energies.length > 0 ? Math.min(...formation_energies) : 0}
+    {@const max_energy = formation_energies.length > 0
+      ? Math.max(...formation_energies, 0.1)
+      : 0.1}
+    <ColorBar
+      title="Energy above hull (eV/atom)"
+      range={[min_energy, max_energy]}
+      {color_scale}
+      wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
+    />
+  {/if}
 
   <!-- Control buttons (top-right corner like Structure.svelte) -->
   {#if merged_controls.show}

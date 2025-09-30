@@ -1062,16 +1062,14 @@
     }
   }
 
-  $effect(() => {
-    // Include fullscreen in dependencies to trigger re-setup when entering/exiting fullscreen
-    fullscreen = fullscreen
-
+  // Update canvas dimensions helper
+  function update_canvas_size() {
     if (!canvas) return
 
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
 
-    // Update canvas size based on current container (handles fullscreen changes)
+    // Update canvas size based on current container
     if (container) {
       const rect = container.getBoundingClientRect()
       canvas.width = rect.width * dpr
@@ -1088,16 +1086,31 @@
       ctx.imageSmoothingQuality = `high`
     }
 
+    render_once()
+  }
+
+  $effect(() => {
+    if (!canvas) return
+
+    // Initial setup
+    update_canvas_size()
+
     // Reset camera position to center when canvas size changes significantly (like fullscreen)
     camera.center_x = 0
     camera.center_y = -50 // Shift up to better show the formation energy funnel
 
-    // Initial render
-    render_once()
+    // Watch for resize events
+    const resize_observer = new ResizeObserver(update_canvas_size)
+
+    const container = canvas.parentElement
+    if (container) {
+      resize_observer.observe(container)
+    }
 
     return () => { // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
       if (pulse_frame_id) cancelAnimationFrame(pulse_frame_id)
+      resize_observer.disconnect()
     }
   })
 
