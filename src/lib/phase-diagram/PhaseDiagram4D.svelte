@@ -241,8 +241,8 @@
     rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
     rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
     zoom: PD_DEFAULTS.quaternary.camera_zoom,
-    center_x: PD_DEFAULTS.quaternary.camera_center_x,
-    center_y: PD_DEFAULTS.quaternary.camera_center_y,
+    center_x: 0,
+    center_y: 20, // Slight offset to avoid legend overlap
   })
 
   // Interaction state
@@ -325,8 +325,8 @@
       rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
       rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
       zoom: PD_DEFAULTS.quaternary.camera_zoom,
-      center_x: PD_DEFAULTS.quaternary.camera_center_x,
-      center_y: PD_DEFAULTS.quaternary.camera_center_y,
+      center_x: 0,
+      center_y: 20, // Slight offset to avoid legend overlap
     })
 
   function reset_all() {
@@ -787,8 +787,12 @@
     // Update canvas size based on current container
     if (container) {
       const rect = container.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      const w = Math.max(0, Math.round(rect.width * dpr))
+      const h = Math.max(0, Math.round(rect.height * dpr))
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w
+        canvas.height = h
+      }
     } else {
       canvas.width = 400 * dpr
       canvas.height = 400 * dpr
@@ -796,7 +800,7 @@
 
     ctx = canvas.getContext(`2d`)
     if (ctx) {
-      ctx.scale(dpr, dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = `high`
     }
@@ -809,10 +813,6 @@
 
     // Initial setup
     update_canvas_size()
-
-    // Reset camera position on first initialization only
-    camera.center_x = 0
-    camera.center_y = 20 // Slight offset to avoid legend overlap
 
     // Watch for resize events - only update canvas, don't reset camera
     const resize_observer = new ResizeObserver(update_canvas_size)
@@ -831,7 +831,7 @@
   $effect(() => {
     if (typeof window === `undefined`) return
 
-    if (fullscreen && !document.fullscreenElement && wrapper) {
+    if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
       wrapper.requestFullscreen().catch(console.error)
     } else if (!fullscreen && document.fullscreenElement) {
       document.exitFullscreen()
