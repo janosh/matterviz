@@ -29,8 +29,8 @@
     x_scale_type?: `linear` | `log`
     y_scale_type?: `linear` | `log`
     // Range controls
-    x_range?: [number, number]
-    y_range?: [number, number]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
     auto_x_range?: [number, number]
     auto_y_range?: [number, number]
     // Tick controls
@@ -163,7 +163,7 @@
   const input_props = (
     axis: `x` | `y`,
     bound: `min` | `max`,
-    range?: [number, number],
+    range?: [number | null, number | null],
   ) => ({
     id: `${axis}-range-${bound}`,
     type: `number`,

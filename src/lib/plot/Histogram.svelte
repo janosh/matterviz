@@ -22,8 +22,8 @@
     series: DataSeries[]
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
-    x_range?: [number, number]
-    y_range?: [number, number]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
     range_padding?: number
     bins?: number
     x_label?: string
@@ -153,8 +153,19 @@
   })
 
   $effect(() => {
-    const new_x = x_range ?? auto_ranges.x
-    const new_y = y_range ?? auto_ranges.y
+    // Support one-sided range pinning: merge user range with auto range for null values
+    const new_x: [number, number] = x_range
+      ? [
+        x_range[0] ?? auto_ranges.x[0],
+        x_range[1] ?? auto_ranges.x[1],
+      ]
+      : auto_ranges.x
+    const new_y: [number, number] = y_range
+      ? [
+        y_range[0] ?? auto_ranges.y[0],
+        y_range[1] ?? auto_ranges.y[1],
+      ]
+      : auto_ranges.y
 
     const x_changed =
       (x_range !== undefined) !== (ranges.initial.x === auto_ranges.x) ||

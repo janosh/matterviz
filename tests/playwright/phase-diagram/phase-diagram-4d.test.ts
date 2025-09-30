@@ -107,9 +107,31 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await expect(info).toBeVisible({ timeout: 15000 })
 
     // Expect unstable entries are 0/0 (excluded when e_above_hull is undefined)
-    await expect(info.getByText(/Visible unstable/i)).toContainText(`0 / 0`)
+    // Need to get parent div that contains both label and value spans
+    await expect(info.getByText(/Visible unstable/i).locator(`..`)).toContainText(`0 / 0`)
 
     // Expect stable entries include 4 elemental refs + 1 stable quaternary
-    await expect(info.getByText(/Visible stable/i)).toContainText(`5 / 5`)
+    await expect(info.getByText(/Visible stable/i).locator(`..`)).toContainText(`5 / 5`)
+  })
+
+  test(`displays energy above hull color bar in energy mode`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    await expect(diagram).toBeVisible({ timeout: 15000 })
+
+    // Open legend controls and switch to energy mode
+    await diagram.locator(`.legend-controls-btn`).click()
+    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    await expect(controls).toBeVisible({ timeout: 15000 })
+
+    // Switch to energy color mode
+    await controls.getByText(`Energy`, { exact: true }).click()
+
+    // Verify color bar is visible
+    const color_bar = diagram.locator(`.colorbar`).first()
+    await expect(color_bar).toBeVisible({ timeout: 15000 })
+
+    // Verify color bar title
+    const color_bar_title = color_bar.getByText(/Energy above hull/i)
+    await expect(color_bar_title).toBeVisible({ timeout: 15000 })
   })
 })
