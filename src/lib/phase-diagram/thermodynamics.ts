@@ -523,3 +523,594 @@ export function compute_e_above_hull_for_points(
     return e_above_hull > 1e-9 ? e_above_hull : 0
   })
 }
+
+// ================= 4D Convex Hull (Quaternary Phase Diagrams) =================
+
+export interface Point4D {
+  x: number
+  y: number
+  z: number
+  w: number // formation energy dimension
+}
+
+export interface ConvexHullTetrahedron {
+  vertices: [Point4D, Point4D, Point4D, Point4D]
+  normal: Point4D // 4D normal vector
+  centroid: Point4D
+}
+
+interface ConvexHullFace4D {
+  vertices: [number, number, number, number] // indices
+  plane: Plane4D
+  centroid: Point4D
+  outside_points: Set<number>
+}
+
+interface Plane4D {
+  normal: Point4D
+  offset: number
+}
+
+function subtract_4d(a: Point4D, b: Point4D): Point4D {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z, w: a.w - b.w }
+}
+
+function dot_4d(a: Point4D, b: Point4D): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
+}
+
+function norm_4d(v: Point4D): number {
+  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w)
+}
+
+function normalize_4d(v: Point4D): Point4D {
+  const length = norm_4d(v)
+  if (length < EPS) return { x: 0, y: 0, z: 0, w: 0 }
+  return { x: v.x / length, y: v.y / length, z: v.z / length, w: v.w / length }
+}
+
+// Compute normal to a 3D hyperplane in 4D space defined by 4 points
+function compute_plane_4d(
+  p1: Point4D,
+  p2: Point4D,
+  p3: Point4D,
+  p4: Point4D,
+): Plane4D {
+  // Three edge vectors from p1
+  const v1 = subtract_4d(p2, p1)
+  const v2 = subtract_4d(p3, p1)
+  const v3 = subtract_4d(p4, p1)
+
+  // Normal is perpendicular to all three edge vectors
+  // Solve: n · v1 = 0, n · v2 = 0, n · v3 = 0
+  // This is equivalent to finding the null space of the 3x4 matrix [v1; v2; v3]
+
+  // Using Gram-Schmidt-like approach to find orthogonal complement
+  // We need a vector orthogonal to v1, v2, v3 in 4D space
+
+  // Build matrix and solve using cofactor expansion
+  const det_matrix = [
+    [v1.x, v1.y, v1.z, v1.w],
+    [v2.x, v2.y, v2.z, v2.w],
+    [v3.x, v3.y, v3.z, v3.w],
+  ]
+
+  // Normal components from 3x3 determinants (Laplace expansion)
+  const nx = det_matrix[0][1] *
+      (det_matrix[1][2] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][2]) -
+    det_matrix[0][2] *
+      (det_matrix[1][1] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][1]) +
+    det_matrix[0][3] *
+      (det_matrix[1][1] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][1])
+
+  const ny = -(det_matrix[0][0] *
+      (det_matrix[1][2] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][2]) -
+    det_matrix[0][2] *
+      (det_matrix[1][0] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][0]) +
+    det_matrix[0][3] *
+      (det_matrix[1][0] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][0]))
+
+  const nz = det_matrix[0][0] *
+      (det_matrix[1][1] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][1]) -
+    det_matrix[0][1] *
+      (det_matrix[1][0] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][0]) +
+    det_matrix[0][3] *
+      (det_matrix[1][0] * det_matrix[2][1] - det_matrix[1][1] * det_matrix[2][0])
+
+  const nw = -(det_matrix[0][0] *
+      (det_matrix[1][1] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][1]) -
+    det_matrix[0][1] *
+      (det_matrix[1][0] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][0]) +
+    det_matrix[0][2] *
+      (det_matrix[1][0] * det_matrix[2][1] - det_matrix[1][1] * det_matrix[2][0]))
+
+  const normal = normalize_4d({ x: nx, y: ny, z: nz, w: nw })
+  const offset = -dot_4d(normal, p1)
+
+  return { normal, offset }
+}
+
+function point_plane_signed_distance_4d(plane: Plane4D, p: Point4D): number {
+  return dot_4d(plane.normal, p) + plane.offset
+}
+
+function compute_centroid_4d(
+  p1: Point4D,
+  p2: Point4D,
+  p3: Point4D,
+  p4: Point4D,
+): Point4D {
+  return {
+    x: (p1.x + p2.x + p3.x + p4.x) / 4,
+    y: (p1.y + p2.y + p3.y + p4.y) / 4,
+    z: (p1.z + p2.z + p3.z + p4.z) / 4,
+    w: (p1.w + p2.w + p3.w + p4.w) / 4,
+  }
+}
+
+function distance_point_to_hyperplane_4d(
+  p1: Point4D,
+  p2: Point4D,
+  p3: Point4D,
+  point: Point4D,
+): number {
+  // Distance from point to the 2D hyperplane spanned by p1, p2, p3
+  const v1 = subtract_4d(p2, p1)
+  const v2 = subtract_4d(p3, p1)
+  const vp = subtract_4d(point, p1)
+
+  // Project vp onto the plane spanned by v1 and v2
+  // Use Gram-Schmidt to find orthogonal component
+  const v1_norm_sq = dot_4d(v1, v1)
+  const v2_norm_sq = dot_4d(v2, v2)
+  const v1_dot_v2 = dot_4d(v1, v2)
+
+  if (v1_norm_sq < EPS || v2_norm_sq < EPS) return 0
+
+  const vp_dot_v1 = dot_4d(vp, v1)
+  const vp_dot_v2 = dot_4d(vp, v2)
+
+  // Solve linear system for projection coefficients
+  const det = v1_norm_sq * v2_norm_sq - v1_dot_v2 * v1_dot_v2
+  if (Math.abs(det) < EPS) return 0
+
+  const alpha = (v2_norm_sq * vp_dot_v1 - v1_dot_v2 * vp_dot_v2) / det
+  const beta = (v1_norm_sq * vp_dot_v2 - v1_dot_v2 * vp_dot_v1) / det
+
+  // Compute projection
+  const proj_x = p1.x + alpha * v1.x + beta * v2.x
+  const proj_y = p1.y + alpha * v1.y + beta * v2.y
+  const proj_z = p1.z + alpha * v1.z + beta * v2.z
+  const proj_w = p1.w + alpha * v1.w + beta * v2.w
+
+  // Distance is the length of (point - projection)
+  const dx = point.x - proj_x
+  const dy = point.y - proj_y
+  const dz = point.z - proj_z
+  const dw = point.w - proj_w
+
+  return Math.sqrt(dx * dx + dy * dy + dz * dz + dw * dw)
+}
+
+// Distance from point to line in 4D
+function distance_point_to_line_4d(a: Point4D, b: Point4D, p: Point4D): number {
+  const ab = subtract_4d(b, a)
+  const ap = subtract_4d(p, a)
+
+  const ab_len_sq = dot_4d(ab, ab)
+  if (ab_len_sq < EPS) return norm_4d(ap)
+
+  // Project ap onto ab
+  const t = dot_4d(ap, ab) / ab_len_sq
+  const projection = {
+    x: a.x + t * ab.x,
+    y: a.y + t * ab.y,
+    z: a.z + t * ab.z,
+    w: a.w + t * ab.w,
+  }
+
+  return norm_4d(subtract_4d(p, projection))
+}
+
+function choose_initial_4_simplex(
+  points: Point4D[],
+): [number, number, number, number, number] | null {
+  if (points.length < 5) return null
+
+  // Find two points farthest apart in x
+  let idx_min_x = 0
+  let idx_max_x = 0
+  for (let idx = 1; idx < points.length; idx++) {
+    if (points[idx].x < points[idx_min_x].x) idx_min_x = idx
+    if (points[idx].x > points[idx_max_x].x) idx_max_x = idx
+  }
+  if (idx_min_x === idx_max_x) return null
+
+  // Find point farthest from line through idx_min_x and idx_max_x
+  let idx_far_line = -1
+  let best_dist_line = -1
+  for (let idx = 0; idx < points.length; idx++) {
+    if (idx === idx_min_x || idx === idx_max_x) continue
+    const dist = distance_point_to_line_4d(
+      points[idx_min_x],
+      points[idx_max_x],
+      points[idx],
+    )
+    if (dist > best_dist_line) {
+      best_dist_line = dist
+      idx_far_line = idx
+    }
+  }
+  if (idx_far_line === -1 || best_dist_line < EPS) return null
+
+  // Find point farthest from 2D plane through first three points
+  let idx_far_plane = -1
+  let best_dist_plane = -1
+  for (let idx = 0; idx < points.length; idx++) {
+    if (idx === idx_min_x || idx === idx_max_x || idx === idx_far_line) continue
+    const dist = distance_point_to_hyperplane_4d(
+      points[idx_min_x],
+      points[idx_max_x],
+      points[idx_far_line],
+      points[idx],
+    )
+    if (dist > best_dist_plane) {
+      best_dist_plane = dist
+      idx_far_plane = idx
+    }
+  }
+  if (idx_far_plane === -1 || best_dist_plane < EPS) return null
+
+  // Find point farthest from 3D hyperplane through first four points
+  const plane0 = compute_plane_4d(
+    points[idx_min_x],
+    points[idx_max_x],
+    points[idx_far_line],
+    points[idx_far_plane],
+  )
+  let idx_far_hyperplane = -1
+  let best_dist_hyperplane = -1
+  for (let idx = 0; idx < points.length; idx++) {
+    if (
+      idx === idx_min_x || idx === idx_max_x || idx === idx_far_line ||
+      idx === idx_far_plane
+    ) continue
+    const dist = Math.abs(point_plane_signed_distance_4d(plane0, points[idx]))
+    if (dist > best_dist_hyperplane) {
+      best_dist_hyperplane = dist
+      idx_far_hyperplane = idx
+    }
+  }
+  if (idx_far_hyperplane === -1 || best_dist_hyperplane < EPS) return null
+
+  return [idx_min_x, idx_max_x, idx_far_line, idx_far_plane, idx_far_hyperplane]
+}
+
+function make_face_4d(
+  points: Point4D[],
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+  interior_point: Point4D,
+): ConvexHullFace4D {
+  let plane = compute_plane_4d(points[a], points[b], points[c], points[d])
+  let centroid = compute_centroid_4d(points[a], points[b], points[c], points[d])
+
+  const dist_interior = point_plane_signed_distance_4d(plane, interior_point)
+
+  // Ensure normal points outward (away from interior)
+  if (dist_interior > 0) {
+    // Swap two vertices to flip normal
+    plane = compute_plane_4d(points[a], points[c], points[b], points[d])
+    centroid = compute_centroid_4d(points[a], points[c], points[b], points[d])
+    return { vertices: [a, c, b, d], plane, centroid, outside_points: new Set<number>() }
+  }
+
+  return { vertices: [a, b, c, d], plane, centroid, outside_points: new Set<number>() }
+}
+
+function assign_outside_points_4d(
+  face: ConvexHullFace4D,
+  points: Point4D[],
+  candidate_indices: number[],
+): void {
+  face.outside_points.clear()
+  for (const idx of candidate_indices) {
+    const distance = point_plane_signed_distance_4d(face.plane, points[idx])
+    if (distance > EPS) face.outside_points.add(idx)
+  }
+}
+
+function collect_candidate_points_4d(faces: ConvexHullFace4D[]): number[] {
+  const set = new Set<number>()
+  for (const face of faces) {
+    for (const idx of face.outside_points) set.add(idx)
+  }
+  return Array.from(set)
+}
+
+function farthest_point_for_face_4d(
+  points: Point4D[],
+  face: ConvexHullFace4D,
+): { idx: number; distance: number } | null {
+  let best_idx = -1
+  let best_distance = -1
+  for (const idx of face.outside_points) {
+    const distance = point_plane_signed_distance_4d(face.plane, points[idx])
+    if (distance > best_distance) {
+      best_distance = distance
+      best_idx = idx
+    }
+  }
+  if (best_idx === -1) return null
+  return { idx: best_idx, distance: best_distance }
+}
+
+function build_horizon_4d(
+  faces: ConvexHullFace4D[],
+  visible_face_indices: Set<number>,
+): [number, number, number][] {
+  // In 4D, horizon "ridges" are triangles (3 vertices)
+  const ridge_count = new Map<string, [number, number, number]>()
+
+  for (const face_idx of visible_face_indices) {
+    const face = faces[face_idx]
+    const [a, b, c, d] = face.vertices
+
+    // Each tetrahedron face has 4 triangular ridges
+    const ridges: [number, number, number][] = [
+      [a, b, c],
+      [a, b, d],
+      [a, c, d],
+      [b, c, d],
+    ]
+
+    for (const ridge of ridges) {
+      const sorted = ridge.slice().sort((x, y) => x - y)
+      const key = sorted.join(`|`)
+
+      if (!ridge_count.has(key)) {
+        ridge_count.set(key, ridge)
+      } else {
+        // Mark as seen twice (internal ridge)
+        ridge_count.set(key, [Number.NaN, Number.NaN, Number.NaN])
+      }
+    }
+  }
+
+  const horizon: [number, number, number][] = []
+  for (const ridge of ridge_count.values()) {
+    if (!Number.isNaN(ridge[0])) {
+      horizon.push(ridge)
+    }
+  }
+
+  return horizon
+}
+
+export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[] {
+  if (points.length < 5) return [] // Need at least 5 non-coplanar points for 4D hull
+
+  const initial = choose_initial_4_simplex(points)
+  if (!initial) return []
+
+  const [i0, i1, i2, i3, i4] = initial
+
+  // Interior point for orientation
+  const interior_point = {
+    x: (points[i0].x + points[i1].x + points[i2].x + points[i3].x + points[i4].x) / 5,
+    y: (points[i0].y + points[i1].y + points[i2].y + points[i3].y + points[i4].y) / 5,
+    z: (points[i0].z + points[i1].z + points[i2].z + points[i3].z + points[i4].z) / 5,
+    w: (points[i0].w + points[i1].w + points[i2].w + points[i3].w + points[i4].w) / 5,
+  }
+
+  // Initial 4-simplex has 5 tetrahedral faces
+  const faces: ConvexHullFace4D[] = [
+    make_face_4d(points, i0, i1, i2, i3, interior_point),
+    make_face_4d(points, i0, i1, i2, i4, interior_point),
+    make_face_4d(points, i0, i1, i3, i4, interior_point),
+    make_face_4d(points, i0, i2, i3, i4, interior_point),
+    make_face_4d(points, i1, i2, i3, i4, interior_point),
+  ]
+
+  const all_indices: number[] = []
+  for (let idx = 0; idx < points.length; idx++) {
+    if (idx === i0 || idx === i1 || idx === i2 || idx === i3 || idx === i4) continue
+    all_indices.push(idx)
+  }
+
+  for (const face of faces) {
+    assign_outside_points_4d(face, points, all_indices)
+  }
+
+  // Main Quick Hull iteration
+  while (true) {
+    let chosen_face_idx = -1
+    let chosen_point_idx = -1
+    let max_distance = -1
+
+    for (let face_idx = 0; face_idx < faces.length; face_idx++) {
+      const face = faces[face_idx]
+      if (face.outside_points.size === 0) continue
+
+      const far = farthest_point_for_face_4d(points, face)
+      if (far && far.distance > max_distance) {
+        max_distance = far.distance
+        chosen_face_idx = face_idx
+        chosen_point_idx = far.idx
+      }
+    }
+
+    if (chosen_face_idx === -1) break
+
+    const eye_idx = chosen_point_idx
+    const visible_face_indices = new Set<number>()
+
+    for (let face_idx = 0; face_idx < faces.length; face_idx++) {
+      const face = faces[face_idx]
+      const dist = point_plane_signed_distance_4d(face.plane, points[eye_idx])
+      if (dist > EPS) visible_face_indices.add(face_idx)
+    }
+
+    const horizon_ridges = build_horizon_4d(faces, visible_face_indices)
+    const visible_faces = Array.from(visible_face_indices).sort((a, b) => b - a)
+    const candidate_points = collect_candidate_points_4d(
+      visible_faces.map((idx) => faces[idx]),
+    )
+
+    for (const idx of visible_faces) {
+      faces.splice(idx, 1)
+    }
+
+    const new_faces: ConvexHullFace4D[] = []
+    for (const [u, v, w] of horizon_ridges) {
+      const new_face = make_face_4d(points, u, v, w, eye_idx, interior_point)
+      new_faces.push(new_face)
+    }
+
+    for (const face of new_faces) face.outside_points.clear()
+
+    for (const idx of candidate_points) {
+      if (idx === eye_idx) continue
+
+      let best_face: ConvexHullFace4D | null = null
+      let best_distance = EPS
+
+      for (const face of new_faces) {
+        const dist = point_plane_signed_distance_4d(face.plane, points[idx])
+        if (dist > best_distance) {
+          best_distance = dist
+          best_face = face
+        }
+      }
+
+      if (best_face) best_face.outside_points.add(idx)
+    }
+
+    faces.push(...new_faces)
+  }
+
+  return faces.map((face) => {
+    const [a, b, c, d] = face.vertices
+    return {
+      vertices: [points[a], points[b], points[c], points[d]] as [
+        Point4D,
+        Point4D,
+        Point4D,
+        Point4D,
+      ],
+      normal: face.plane.normal,
+      centroid: face.centroid,
+    }
+  })
+}
+
+export function compute_lower_hull_4d(points: Point4D[]): ConvexHullTetrahedron[] {
+  const all_faces = compute_quickhull_4d(points)
+  // Filter for "lower" faces: those with normal pointing down in w direction
+  return all_faces.filter((face) => face.normal.w < 0 - EPS)
+}
+
+// Check if point is inside tetrahedron using barycentric coordinates
+function point_in_tetrahedron_4d(
+  tet: [Point4D, Point4D, Point4D, Point4D],
+  point: Point4D,
+): { inside: boolean; bary: [number, number, number, number] } {
+  const [p0, p1, p2, p3] = tet
+
+  // Solve for barycentric coordinates: point = l0*p0 + l1*p1 + l2*p2 + l3*p3
+  // with l0 + l1 + l2 + l3 = 1
+  // This gives us 4 equations in 4 unknowns
+
+  // Build the linear system
+  const matrix = [
+    [p0.x, p1.x, p2.x, p3.x],
+    [p0.y, p1.y, p2.y, p3.y],
+    [p0.z, p1.z, p2.z, p3.z],
+    [1, 1, 1, 1],
+  ]
+  const rhs = [point.x, point.y, point.z, 1]
+
+  // Solve using Cramer's rule (4x4 determinant)
+  const det = (m: number[][]): number => {
+    // 4x4 determinant using cofactor expansion
+    const a = m[0], b = m[1], c = m[2], d = m[3]
+    return a[0] * (
+          b[1] * (c[2] * d[3] - c[3] * d[2]) -
+          b[2] * (c[1] * d[3] - c[3] * d[1]) +
+          b[3] * (c[1] * d[2] - c[2] * d[1])
+        ) -
+      a[1] * (
+          b[0] * (c[2] * d[3] - c[3] * d[2]) -
+          b[2] * (c[0] * d[3] - c[3] * d[0]) +
+          b[3] * (c[0] * d[2] - c[2] * d[0])
+        ) +
+      a[2] * (
+          b[0] * (c[1] * d[3] - c[3] * d[1]) -
+          b[1] * (c[0] * d[3] - c[3] * d[0]) +
+          b[3] * (c[0] * d[1] - c[1] * d[0])
+        ) -
+      a[3] * (
+          b[0] * (c[1] * d[2] - c[2] * d[1]) -
+          b[1] * (c[0] * d[2] - c[2] * d[0]) +
+          b[2] * (c[0] * d[1] - c[1] * d[0])
+        )
+  }
+
+  const det_main = det(matrix)
+  if (Math.abs(det_main) < EPS) {
+    return { inside: false, bary: [0, 0, 0, 0] }
+  }
+
+  // Compute barycentric coordinates using Cramer's rule
+  const bary: [number, number, number, number] = [0, 0, 0, 0]
+  for (let idx = 0; idx < 4; idx++) {
+    const m_i = matrix.map((row) => [...row])
+    for (let row = 0; row < 4; row++) {
+      m_i[row][idx] = rhs[row]
+    }
+    bary[idx] = det(m_i) / det_main
+  }
+
+  // Check if inside: all barycentric coords must be >= 0 and sum to 1
+  const eps_bary = -1e-9
+  const inside = bary.every((l) => l >= eps_bary) &&
+    Math.abs(bary.reduce((s, l) => s + l, 0) - 1) < 1e-6
+
+  return { inside, bary }
+}
+
+// Compute distance from point to lower hull in 4D
+export function compute_e_above_hull_4d(
+  points: Point4D[],
+  hull_tetrahedra: ConvexHullTetrahedron[],
+): number[] {
+  return points.map((point) => {
+    let hull_w: number | null = null
+
+    for (const tet of hull_tetrahedra) {
+      const [p0, p1, p2, p3] = tet.vertices
+
+      // Check if point's (x,y,z) projects inside the tetrahedron
+      // We need to find the point on the hyperplane with matching (x,y,z)
+      const { inside, bary } = point_in_tetrahedron_4d([p0, p1, p2, p3], {
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        w: 0, // We'll compute the correct w from the facet
+      })
+
+      if (inside) {
+        // Compute w on the hull at this (x,y,z) using barycentric interpolation
+        const w_on_hull = bary[0] * p0.w + bary[1] * p1.w + bary[2] * p2.w +
+          bary[3] * p3.w
+        hull_w = hull_w === null ? w_on_hull : Math.min(hull_w, w_on_hull)
+      }
+    }
+
+    if (hull_w === null) return 0
+    const distance = point.w - hull_w
+    return distance > 1e-9 ? distance : 0
+  })
+}

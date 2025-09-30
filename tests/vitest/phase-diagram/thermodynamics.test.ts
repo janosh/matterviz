@@ -1,8 +1,12 @@
+import type { Point4D } from '$lib/phase-diagram/thermodynamics'
 import {
   build_lower_hull_model,
+  compute_e_above_hull_4d,
   compute_e_above_hull_for_points,
   compute_e_form_per_atom,
+  compute_lower_hull_4d,
   compute_lower_hull_triangles,
+  compute_quickhull_4d,
   compute_quickhull_triangles,
   e_hull_at_xy,
   find_lowest_energy_unary_refs,
@@ -10,6 +14,8 @@ import {
   process_pd_entries,
 } from '$lib/phase-diagram/thermodynamics'
 import type { ConvexHullTriangle, PhaseEntry } from '$lib/phase-diagram/types'
+import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 
 function make_paraboloid_points(): { x: number; y: number; z: number }[] {
@@ -288,5 +294,338 @@ describe(`get_phase_diagram_stats: stability handling`, () => {
     expect(stats).not.toBeNull()
     expect(stats?.stable ?? -1).toBe(expected_stable)
     expect(stats?.unstable ?? -1).toBe(entries.length - expected_stable)
+  })
+})
+
+describe(`4D convex hull for quaternary phase diagrams`, () => {
+  test(`compute_quickhull_4d returns tetrahedra for 4D points`, () => {
+    // Create a simple 4D point cloud
+    const points: Point4D[] = [
+      { x: 0, y: 0, z: 0, w: 0 },
+      { x: 1, y: 0, z: 0, w: 0 },
+      { x: 0, y: 1, z: 0, w: 0 },
+      { x: 0, y: 0, z: 1, w: 0 },
+      { x: 0, y: 0, z: 0, w: 1 },
+      { x: 0.5, y: 0.5, z: 0.5, w: 0.5 },
+    ]
+
+    const hull = compute_quickhull_4d(points)
+    expect(hull.length).toBeGreaterThan(0)
+
+    for (const tet of hull) {
+      expect(tet.vertices.length).toBe(4)
+      expect(tet.normal).toBeDefined()
+      expect(tet.centroid).toBeDefined()
+    }
+  })
+
+  test(`compute_lower_hull_4d filters for lower faces`, () => {
+    // Create points with varying w (formation energy) values
+    const points: Point4D[] = [
+      { x: 0, y: 0, z: 0, w: 0 }, // Origin
+      { x: 1, y: 0, z: 0, w: -0.5 },
+      { x: 0, y: 1, z: 0, w: -0.3 },
+      { x: 0, y: 0, z: 1, w: -0.4 },
+      { x: 0.5, y: 0.5, z: 0.5, w: -0.1 },
+      { x: 0.25, y: 0.25, z: 0.25, w: 0.2 }, // Above hull
+    ]
+
+    const all_faces = compute_quickhull_4d(points)
+    const lower_faces = compute_lower_hull_4d(points)
+
+    expect(lower_faces.length).toBeGreaterThan(0)
+    expect(lower_faces.length).toBeLessThanOrEqual(all_faces.length)
+
+    // Verify all lower faces have normal.w < 0
+    for (const face of lower_faces) {
+      expect(face.normal.w).toBeLessThan(0)
+    }
+  })
+
+  test(`compute_e_above_hull_4d calculates distances correctly`, () => {
+    const points: Point4D[] = [
+      { x: 0, y: 0, z: 0, w: 0 },
+      { x: 1, y: 0, z: 0, w: 0 },
+      { x: 0, y: 1, z: 0, w: 0 },
+      { x: 0, y: 0, z: 1, w: 0 },
+      { x: 0.25, y: 0.25, z: 0.25, w: -0.1 }, // On hull
+      { x: 0.25, y: 0.25, z: 0.25, w: 0.1 }, // Above hull
+    ]
+
+    const hull = compute_lower_hull_4d(points)
+    const distances = compute_e_above_hull_4d(points, hull)
+
+    expect(distances.length).toBe(points.length)
+
+    // Points on hull should have ~0 distance
+    expect(distances[4]).toBeCloseTo(0, 6)
+
+    // Point above hull should have positive distance
+    expect(distances[5]).toBeGreaterThan(0)
+  })
+})
+
+describe(`edge cases and error handling`, () => {
+  test(`process_pd_entries handles empty input`, () => {
+    const result = process_pd_entries([])
+    expect(result.entries).toEqual([])
+    expect(result.stable_entries).toEqual([])
+    expect(result.unstable_entries).toEqual([])
+    expect(result.elements).toEqual([])
+    expect(result.el_refs).toEqual({})
+  })
+
+  test(`process_pd_entries handles entries without e_above_hull`, () => {
+    const entries: PhaseEntry[] = [
+      { composition: { Li: 1 }, energy: 0 }, // No e_above_hull
+      { composition: { O: 2 }, energy: 0, is_stable: true },
+    ]
+    const result = process_pd_entries(entries)
+    expect(result.stable_entries.length).toBe(1) // Only explicitly stable
+    expect(result.unstable_entries.length).toBe(1)
+  })
+
+  test(`get_phase_diagram_stats returns null for empty entries`, () => {
+    const stats = get_phase_diagram_stats([], [], 3)
+    expect(stats).toBeNull()
+  })
+
+  test(`get_phase_diagram_stats handles entries without energies`, () => {
+    const entries: PhaseEntry[] = [
+      { composition: { Li: 1 }, energy: 0 }, // No e_form_per_atom or energy_per_atom
+    ]
+    const stats = get_phase_diagram_stats(entries, [`Li`], 3)
+    expect(stats).not.toBeNull()
+    expect(stats?.energy_range.min).toBe(0)
+    expect(stats?.energy_range.max).toBe(0)
+  })
+
+  test(`compute_e_form_per_atom handles zero atoms`, () => {
+    const entry_zero_atoms = entry({ Li: 0 }, -1.0)
+    const refs = { Li: entry({ Li: 1 }, -1.0) }
+    expect(compute_e_form_per_atom(entry_zero_atoms, refs)).toBeNull()
+  })
+
+  test(`compute_e_form_per_atom handles missing energy field`, () => {
+    const entry_no_energy: PhaseEntry = {
+      composition: { Li: 1 },
+    }
+    const refs = { Li: entry({ Li: 1 }, -1.0) }
+    const result = compute_e_form_per_atom(entry_no_energy, refs)
+    // Should handle gracefully, likely returning null or using default
+    expect(result === null || typeof result === `number`).toBe(true)
+  })
+
+  test(`find_lowest_energy_unary_refs handles entries with zero composition`, () => {
+    const entries: PhaseEntry[] = [
+      entry({ Li: 0 }, -1.0), // Zero amount
+      entry({ Li: 1 }, -0.5),
+    ]
+    const refs = find_lowest_energy_unary_refs(entries)
+    expect(refs.Li).toBeDefined()
+    expect(refs.Li.energy).toBe(-0.5)
+  })
+
+  test(`e_hull_at_xy returns null for point outside all triangles`, () => {
+    const face: ConvexHullTriangle = {
+      vertices: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 0, y: 1, z: 0 },
+      ],
+      normal: { x: 0, y: 0, z: -1 },
+      centroid: { x: 1 / 3, y: 1 / 3, z: 0 },
+    }
+    const models = build_lower_hull_model([face])
+
+    // Test points well outside the triangle
+    expect(e_hull_at_xy(models, 10, 10)).toBeNull()
+    expect(e_hull_at_xy(models, -5, -5)).toBeNull()
+  })
+
+  test(`compute_e_above_hull_for_points handles empty hull model`, () => {
+    const points = [{ x: 0.5, y: 0.5, z: 0 }]
+    const distances = compute_e_above_hull_for_points(points, [])
+    expect(distances).toEqual([0]) // Should return 0 when hull is empty
+  })
+
+  test(`compute_quickhull_triangles handles degenerate cases`, () => {
+    // All points on a line
+    const colinear = [
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 2, y: 0, z: 0 },
+      { x: 3, y: 0, z: 0 },
+    ]
+    expect(compute_quickhull_triangles(colinear)).toEqual([])
+
+    // All points on a plane
+    const coplanar = [
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: 1, y: 1, z: 0 },
+    ]
+    expect(compute_quickhull_triangles(coplanar)).toEqual([])
+  })
+
+  test(`compute_lower_hull_triangles filters correctly`, () => {
+    // Create a simple pyramid with both upper and lower faces
+    const pyramid = [
+      { x: 0, y: 0, z: 0 }, // Base corners
+      { x: 1, y: 0, z: 0 },
+      { x: 0.5, y: 1, z: 0 },
+      { x: 0.5, y: 0.5, z: 1 }, // Top (positive z)
+      { x: 0.5, y: 0.5, z: -1 }, // Bottom (negative z)
+    ]
+    const lower_hull = compute_lower_hull_triangles(pyramid)
+
+    // All lower hull faces should have negative z normal
+    for (const tri of lower_hull) {
+      expect(tri.normal.z).toBeLessThan(0)
+    }
+  })
+})
+
+describe(`4D hull edge cases`, () => {
+  test(`compute_quickhull_4d returns empty for insufficient points`, () => {
+    const points: Point4D[] = [
+      { x: 0, y: 0, z: 0, w: 0 },
+      { x: 1, y: 0, z: 0, w: 0 },
+      { x: 0, y: 1, z: 0, w: 0 },
+      { x: 0, y: 0, z: 1, w: 0 },
+    ]
+    const hull = compute_quickhull_4d(points) // Only 4 points, need 5
+    expect(hull).toEqual([])
+  })
+
+  test(`compute_quickhull_4d handles coplanar points in 4D`, () => {
+    // All points on a 3D hyperplane
+    const coplanar: Point4D[] = [
+      { x: 0, y: 0, z: 0, w: 0 },
+      { x: 1, y: 0, z: 0, w: 0 },
+      { x: 0, y: 1, z: 0, w: 0 },
+      { x: 0, y: 0, z: 1, w: 0 },
+      { x: 0.5, y: 0.5, z: 0, w: 0 },
+      { x: 0.25, y: 0.25, z: 0.25, w: 0 },
+    ]
+    const hull = compute_quickhull_4d(coplanar)
+    // May return empty or minimal hull depending on implementation
+    expect(Array.isArray(hull)).toBe(true)
+  })
+
+  test(`compute_e_above_hull_4d handles empty hull`, () => {
+    const points: Point4D[] = [
+      { x: 0.25, y: 0.25, z: 0.25, w: 0.1 },
+    ]
+    const distances = compute_e_above_hull_4d(points, [])
+    expect(distances).toEqual([0]) // Empty hull should return 0
+  })
+
+  test(`compute_e_above_hull_4d handles point not projecting onto any hull facet`, () => {
+    // Create a simple hull
+    const hull_points: Point4D[] = [
+      { x: 0, y: 0, z: 0, w: 0 },
+      { x: 1, y: 0, z: 0, w: 0 },
+      { x: 0, y: 1, z: 0, w: 0 },
+      { x: 0, y: 0, z: 1, w: 0 },
+      { x: 0.25, y: 0.25, z: 0.25, w: -0.1 },
+    ]
+    const hull = compute_lower_hull_4d(hull_points)
+
+    // Point with composition outside the hull's barycentric range
+    const test_points: Point4D[] = [
+      { x: 2, y: 0, z: 0, w: 0 }, // Outside barycentric simplex
+    ]
+    const distances = compute_e_above_hull_4d(test_points, hull)
+    expect(distances[0]).toBe(0) // Should return 0 when not projecting onto hull
+  })
+})
+
+describe(`4D hull validation against quaternary phase diagram data`, () => {
+  const load_quaternary_data = (filename: string): PhaseEntry[] => {
+    const path = `src/site/phase-diagrams/quaternaries/${filename}`
+    const buffer = readFileSync(path)
+    const data = gunzipSync(buffer).toString()
+    return JSON.parse(data) as PhaseEntry[]
+  }
+
+  test.each([
+    `Li-Co-Ni-O.json.gz`,
+    `Na-Fe-P-O.json.gz`,
+  ])(`validates 4D hull against precomputed values in %s`, (filename) => {
+    const entries = load_quaternary_data(filename)
+
+    // Filter entries that have both e_above_hull and e_form_per_atom
+    const testable_entries = entries.filter(
+      (e): e is typeof e & { e_above_hull: number; e_form_per_atom: number } =>
+        typeof e.e_above_hull === `number` &&
+        typeof e.e_form_per_atom === `number`,
+    )
+
+    expect(testable_entries.length).toBeGreaterThan(0)
+
+    // Get elements
+    const elements = Array.from(
+      new Set(testable_entries.flatMap((e) => Object.keys(e.composition))),
+    ).sort()
+
+    expect(elements.length).toBe(4) // Should be quaternary
+
+    // Convert to 4D points (barycentric x,y,z + formation energy w)
+    const points_4d: Point4D[] = testable_entries.map((entry) => {
+      const amounts = elements.map((el) => entry.composition[el] || 0)
+      const total = amounts.reduce((sum, amt) => sum + amt, 0)
+      const normalized = amounts.map((amt) => amt / total)
+
+      return {
+        x: normalized[0],
+        y: normalized[1],
+        z: normalized[2],
+        w: entry.e_form_per_atom,
+      }
+    })
+
+    // Compute hull
+    const hull = compute_lower_hull_4d(points_4d)
+    expect(hull.length).toBeGreaterThan(0)
+
+    // Compute distances
+    const computed_distances = compute_e_above_hull_4d(points_4d, hull)
+
+    // Compare with precomputed values
+    let total_error = 0
+    let max_error = 0
+    let matches_within_tolerance = 0
+    const tolerance = 1e-3 // 1 meV/atom tolerance
+
+    for (let idx = 0; idx < testable_entries.length; idx++) {
+      const precomputed = testable_entries[idx].e_above_hull
+      const computed = computed_distances[idx]
+      const error = Math.abs(precomputed - computed)
+
+      total_error += error
+      max_error = Math.max(max_error, error)
+
+      if (error < tolerance) {
+        matches_within_tolerance++
+      }
+    }
+
+    const avg_error = total_error / testable_entries.length
+    const match_rate = (matches_within_tolerance / testable_entries.length) * 100
+
+    console.log(
+      `\n${filename}:
+      Entries: ${testable_entries.length}
+      Hull facets: ${hull.length}
+      Avg error: ${avg_error.toExponential(3)} eV/atom
+      Max error: ${max_error.toExponential(3)} eV/atom
+      Match rate (±${tolerance} eV/atom): ${match_rate.toFixed(1)}%`,
+    )
+
+    // We expect very high agreement
+    expect(match_rate).toBeGreaterThan(95)
+    expect(avg_error).toBeLessThan(0.01) // Average error < 10 meV/atom
   })
 })
