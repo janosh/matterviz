@@ -483,8 +483,7 @@
     selected_entry = null
   }
 
-  // Fullscreen handling
-  $effect(() => {
+  $effect(() => { // Fullscreen handling
     if (typeof window !== `undefined`) {
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)

@@ -55,12 +55,12 @@
     series?: DataSeries[]
     x_lim?: [number | null, number | null]
     y_lim?: [number | null, number | null]
-    x_range?: [number, number] // Explicit ranges for x and y axes. If provided, this overrides the auto-computed range.
-    y_range?: [number, number] // Use this to set fixed ranges regardless of the data.
+    x_range?: [number | null, number | null] // Explicit ranges for x and y axes. Null pins a side to auto.
+    y_range?: [number | null, number | null] // Use null on one side to auto that bound.
     current_x_value?: number | null // Current x value to highlight on the x-axis (e.g., current frame)
     // Right y-axis configuration
     y2_lim?: [number | null, number | null]
-    y2_range?: [number, number]
+    y2_range?: [number | null, number | null]
     y2_label?: string
     y2_label_shift?: { x?: number; y?: number }
     y2_tick_label_shift?: { x?: number; y?: number }
@@ -432,11 +432,20 @@
 
   // Store initial ranges and initialize current ranges
   $effect(() => {
-    const new_init_x = x_range ?? auto_x_range
-    const new_init_y = y_range ?? auto_y_range
-    const new_init_y2 = y2_range ?? auto_y2_range
+    const new_init_x = [
+      x_range?.[0] ?? auto_x_range[0],
+      x_range?.[1] ?? auto_x_range[1],
+    ] as [number, number]
+    const new_init_y = [
+      y_range?.[0] ?? auto_y_range[0],
+      y_range?.[1] ?? auto_y_range[1],
+    ] as [number, number]
+    const new_init_y2 = [
+      y2_range?.[0] ?? auto_y2_range[0],
+      y2_range?.[1] ?? auto_y2_range[1],
+    ] as [number, number]
 
-    // Only update if the initial range fundamentally changes, force type
+    // Only update if the initial range fundamentally changes
     if (
       new_init_x[0] !== initial_x_range[0] || new_init_x[1] !== initial_x_range[1]
     ) [initial_x_range, current_x_range] = [new_init_x, new_init_x]
@@ -444,8 +453,7 @@
       new_init_y[0] !== initial_y_range[0] || new_init_y[1] !== initial_y_range[1]
     ) [initial_y_range, current_y_range] = [new_init_y, new_init_y]
     if (
-      new_init_y2[0] !== initial_y2_range[0] ||
-      new_init_y2[1] !== initial_y2_range[1]
+      new_init_y2[0] !== initial_y2_range[0] || new_init_y2[1] !== initial_y2_range[1]
     ) {
       initial_y2_range = new_init_y2 as [number, number]
       current_y2_range = new_init_y2 as [number, number]
@@ -760,7 +768,7 @@
         line_color: `black`, // Default line color
       }
 
-      const series_markers = data_series?.markers ?? markers
+      const series_markers = (data_series?.markers ?? markers) ?? ``
 
       // Check point_style (could be object or array)
       const first_point_style = Array.isArray(data_series?.point_style)
@@ -771,7 +779,11 @@
         if (first_point_style) {
           // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
           let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
-          if (symbol_names.includes(first_point_style.shape as D3SymbolName)) {
+          if (
+            Array.isArray(symbol_names) &&
+            typeof first_point_style.shape === `string` &&
+            symbol_names.includes(first_point_style.shape as D3SymbolName)
+          ) {
             final_shape = first_point_style.shape as D3SymbolName
           }
           display_style.symbol_type = final_shape
@@ -939,13 +951,15 @@
   let x_tick_values = $derived.by(() => {
     if (!width || !height) return []
 
-    return generate_ticks(
-      [x_min, x_max],
-      x_scale_type,
-      x_ticks,
-      x_scale_fn,
-      { format: x_format },
-    )
+    // Use a numeric scale for tick generation to satisfy typings;
+    // time formatting is handled via the format option inside generate_ticks
+    const x_scale_for_ticks = x_scale_type === `log`
+      ? scaleLog().domain([x_min, x_max])
+      : scaleLinear().domain([x_min, x_max])
+
+    return generate_ticks([x_min, x_max], x_scale_type, x_ticks, x_scale_for_ticks, {
+      format: x_format,
+    })
   })
 
   let y_tick_values = $derived.by(() => {

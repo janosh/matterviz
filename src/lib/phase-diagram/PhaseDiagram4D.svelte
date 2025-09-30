@@ -5,6 +5,7 @@
   import { contrast_color } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
+  import { ColorBar } from '$lib/plot'
   import { compute_4d_coords, TETRAHEDRON_VERTICES } from './barycentric-coords'
   import {
     build_entry_tooltip_text,
@@ -240,8 +241,8 @@
     rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
     rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
     zoom: PD_DEFAULTS.quaternary.camera_zoom,
-    center_x: PD_DEFAULTS.quaternary.camera_center_x,
-    center_y: PD_DEFAULTS.quaternary.camera_center_y,
+    center_x: 0,
+    center_y: 20, // Slight offset to avoid legend overlap
   })
 
   // Interaction state
@@ -324,8 +325,8 @@
       rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
       rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
       zoom: PD_DEFAULTS.quaternary.camera_zoom,
-      center_x: PD_DEFAULTS.quaternary.camera_center_x,
-      center_y: PD_DEFAULTS.quaternary.camera_center_y,
+      center_x: 0,
+      center_y: 20, // Slight offset to avoid legend overlap
     })
 
   function reset_all() {
@@ -776,20 +777,22 @@
     }
   }
 
-  $effect(() => {
-    // Include fullscreen in dependencies to trigger re-setup when entering/exiting fullscreen
-    fullscreen = fullscreen
-
+  // Update canvas dimensions helper
+  function update_canvas_size() {
     if (!canvas) return
 
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
 
-    // Update canvas size based on current container (handles fullscreen changes)
+    // Update canvas size based on current container
     if (container) {
       const rect = container.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      const w = Math.max(0, Math.round(rect.width * dpr))
+      const h = Math.max(0, Math.round(rect.height * dpr))
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w
+        canvas.height = h
+      }
     } else {
       canvas.width = 400 * dpr
       canvas.height = 400 * dpr
@@ -797,31 +800,48 @@
 
     ctx = canvas.getContext(`2d`)
     if (ctx) {
-      ctx.scale(dpr, dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = `high`
     }
 
-    // Reset camera position to center when canvas size changes significantly (like fullscreen)
-    camera.center_x = 0
-    camera.center_y = 20 // Slight offset to avoid legend overlap
-
-    // Initial render
     render_once()
+  }
+
+  $effect(() => {
+    if (!canvas) return
+
+    // Initial setup
+    update_canvas_size()
+
+    // Watch for resize events - only update canvas, don't reset camera
+    const resize_observer = new ResizeObserver(update_canvas_size)
+
+    const container = canvas.parentElement
+    if (container) resize_observer.observe(container)
 
     return () => { // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
+      resize_observer.disconnect()
     }
   })
 
-  // Fullscreen handling
+  // Fullscreen handling with camera reset on transitions
+  let was_fullscreen = $state(fullscreen)
   $effect(() => {
-    if (typeof window !== `undefined`) {
-      if (fullscreen && !document.fullscreenElement && wrapper) {
-        wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
+    if (typeof window === `undefined`) return
+
+    if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
+      wrapper.requestFullscreen().catch(console.error)
+    } else if (!fullscreen && document.fullscreenElement) {
+      document.exitFullscreen()
+    }
+
+    // Reset camera only on fullscreen transitions
+    if (fullscreen !== was_fullscreen) {
+      camera.center_x = 0
+      camera.center_y = 20
+      was_fullscreen = fullscreen
     }
   })
 
@@ -874,6 +894,25 @@
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>
+
+  <!-- Energy above hull Color Bar -->
+  {#if color_mode === `energy` && plot_entries.length > 0}
+    {@const formation_energies = plot_entries
+      .map((e) => e.e_above_hull)
+      .filter((v): v is number => typeof v === `number`)}
+    {@const min_energy = formation_energies.length > 0 ? Math.min(...formation_energies) : 0}
+    {@const max_energy = formation_energies.length > 0
+      ? Math.max(...formation_energies, 0.1)
+      : 0.1}
+    <ColorBar
+      title="Energy above hull (eV/atom)"
+      range={[min_energy, max_energy]}
+      {color_scale}
+      wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
+      bar_style="height: 12px;"
+      title_style="margin-bottom: 4px;"
+    />
+  {/if}
 
   <!-- Control buttons (top-right corner like Structure.svelte) -->
   {#if merged_controls.show}

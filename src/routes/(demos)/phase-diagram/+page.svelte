@@ -181,21 +181,21 @@
   }
   .ternary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: 1rem;
     width: 100%;
     margin: 0 auto 3rem auto;
   }
   .quaternary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: 1rem;
     width: 100%;
     margin: 0 auto;
   }
   .binary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: 1rem;
     width: 100%;
     margin: 2rem auto 0 auto;
@@ -207,7 +207,7 @@
     min-height: 200px;
     color: var(--text-color-muted);
   }
-  @media (max-width: 1000px) {
+  @media (max-width: 1100px) {
     .ternary-grid,
     .quaternary-grid,
     .binary-grid {

@@ -283,8 +283,8 @@
     elevation: PD_DEFAULTS.ternary.camera_elevation,
     azimuth: PD_DEFAULTS.ternary.camera_azimuth,
     zoom: PD_DEFAULTS.ternary.camera_zoom,
-    center_x: PD_DEFAULTS.ternary.camera_center_x,
-    center_y: PD_DEFAULTS.ternary.camera_center_y,
+    center_x: 0,
+    center_y: -50, // Shift up to better show the formation energy funnel
   }
   let camera = $state({ ...camera_default })
 
@@ -1062,20 +1062,22 @@
     }
   }
 
-  $effect(() => {
-    // Include fullscreen in dependencies to trigger re-setup when entering/exiting fullscreen
-    fullscreen = fullscreen
-
+  // Update canvas dimensions helper
+  function update_canvas_size() {
     if (!canvas) return
 
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
 
-    // Update canvas size based on current container (handles fullscreen changes)
+    // Update canvas size based on current container
     if (container) {
       const rect = container.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      const w = Math.max(0, Math.round(rect.width * dpr))
+      const h = Math.max(0, Math.round(rect.height * dpr))
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w
+        canvas.height = h
+      }
     } else {
       canvas.width = 400 * dpr
       canvas.height = 400 * dpr
@@ -1083,32 +1085,51 @@
 
     ctx = canvas.getContext(`2d`)
     if (ctx) {
-      ctx.scale(dpr, dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = `high`
     }
 
-    // Reset camera position to center when canvas size changes significantly (like fullscreen)
-    camera.center_x = 0
-    camera.center_y = -50 // Shift up to better show the formation energy funnel
-
-    // Initial render
     render_once()
+  }
+
+  $effect(() => {
+    if (!canvas) return
+
+    // Initial setup
+    update_canvas_size()
+
+    // Watch for resize events - only update canvas, don't reset camera
+    const resize_observer = new ResizeObserver(update_canvas_size)
+
+    const container = canvas.parentElement
+    if (container) {
+      resize_observer.observe(container)
+    }
 
     return () => { // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
       if (pulse_frame_id) cancelAnimationFrame(pulse_frame_id)
+      resize_observer.disconnect()
     }
   })
 
-  // Fullscreen handling
+  // Fullscreen handling with camera reset on transitions
+  let was_fullscreen = $state(fullscreen)
   $effect(() => {
-    if (typeof window !== `undefined`) {
-      if (fullscreen && !document.fullscreenElement && wrapper) {
-        wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
+    if (typeof window === `undefined`) return
+
+    if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
+      wrapper.requestFullscreen().catch(console.error)
+    } else if (!fullscreen && document.fullscreenElement) {
+      document.exitFullscreen()
+    }
+
+    // Reset camera only on fullscreen transitions
+    if (fullscreen !== was_fullscreen) {
+      camera.center_x = 0
+      camera.center_y = -50
+      was_fullscreen = fullscreen
     }
   })
 

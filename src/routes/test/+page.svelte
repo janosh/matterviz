@@ -1,5 +1,5 @@
 <script>
-  import { DemoNav } from '$lib'
+  import { Nav } from '$lib'
   import { routes as all_routes } from '$site/state.svelte'
 
   const routes = all_routes
@@ -11,4 +11,4 @@
 
 The files in this directory are used for end-to-end testing with Playwright.
 
-<DemoNav {routes} />
+<Nav {routes} />

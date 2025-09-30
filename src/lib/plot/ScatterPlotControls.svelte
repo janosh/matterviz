@@ -23,9 +23,9 @@
     // Whether there are y2 points to show y2 grid control
     has_y2_points?: boolean
     // Range controls
-    x_range?: [number, number]
-    y_range?: [number, number]
-    y2_range?: [number, number]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
+    y2_range?: [number | null, number | null]
     // Auto-detected ranges for fallback when only one value is set
     auto_x_range?: [number, number]
     auto_y_range?: [number, number]
@@ -156,7 +156,7 @@
   const input_props = (
     axis: `x` | `y` | `y2`,
     bound: `min` | `max`,
-    range?: [number, number],
+    range?: [number | null, number | null],
   ) => ({
     id: `${axis}-range-${bound}`,
     type: `number`,
@@ -197,7 +197,7 @@
       if (s.line_style) {
         line_width = s.line_style.stroke_width ?? 2
         line_color = s.line_style.stroke ?? `#4682b4`
-        line_dash = s.line_style.line_dash
+        line_dash = s.line_style.line_dash ?? DEFAULTS.scatter.line_dash
       }
     }
   })
