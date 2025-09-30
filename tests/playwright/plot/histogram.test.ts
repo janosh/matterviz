@@ -1380,4 +1380,90 @@ test.describe(`Histogram Component Tests`, () => {
     await histogram.dblclick()
     await expect(zoom_rect).not.toBeVisible({ timeout: 1000 })
   })
+
+  test(`one-sided axis range pins via controls`, async ({ page }) => {
+    const histogram = page.locator(`#basic-single-series svg`).first()
+    await expect(histogram).toBeVisible()
+
+    const toggle = page.locator(`#basic-single-series .histogram-controls-toggle`)
+    await toggle.click()
+    const pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    await expect(pane.getByText(`Axis Range`)).toBeVisible({ timeout: 10000 })
+
+    const [x_axis, y_axis] = [
+      histogram.locator(`g.x-axis`),
+      histogram.locator(`g.y-axis`),
+    ]
+    const [baseline_x, baseline_y] = await Promise.all([
+      get_histogram_tick_range(x_axis),
+      get_histogram_tick_range(y_axis),
+    ])
+    const [x_min, x_max, y_min, y_max] = [
+      Math.min(...baseline_x.ticks),
+      Math.max(...baseline_x.ticks),
+      Math.min(...baseline_y.ticks),
+      Math.max(...baseline_y.ticks),
+    ]
+
+    const set_input = async (input: string, val: string) => {
+      await pane.locator(input).evaluate(
+        (el, v) => {
+          ;(el as HTMLInputElement).value = v
+          el.dispatchEvent(new Event(`input`, { bubbles: true }))
+          el.blur()
+        },
+        val,
+      )
+      await page.waitForTimeout(100)
+    }
+
+    // Test: pin x_min, pin x_max, pin y_min, pin y_max
+    const scenarios = [
+      [`x`, `min`, x_min + (x_max - x_min) * 0.2, x_min, x_max],
+      [`x`, `max`, x_max - (x_max - x_min) * 0.2, x_min, x_max],
+      [`y`, `min`, y_min + (y_max - y_min) * 0.2, y_min, y_max],
+      [`y`, `max`, y_max - (y_max - y_min) * 0.2, y_min, y_max],
+    ] as const
+
+    for (const [axis, bound, pin, base_min, base_max] of scenarios) {
+      await set_input(`input#${axis}-range-${bound}`, String(pin))
+      await set_input(`input#${axis}-range-${bound === `min` ? `max` : `min`}`, ``)
+
+      const { ticks } = await get_histogram_tick_range(axis === `x` ? x_axis : y_axis)
+      const [obs_min, obs_max] = [Math.min(...ticks), Math.max(...ticks)]
+      const tol = (base_max - base_min) * 0.25
+
+      if (bound === `min`) {
+        expect(obs_min).toBeGreaterThanOrEqual(pin - tol)
+        expect(Math.abs(obs_max - base_max)).toBeLessThanOrEqual(tol)
+      } else {
+        expect(obs_max).toBeLessThanOrEqual(pin + tol)
+        expect(Math.abs(obs_min - base_min)).toBeLessThanOrEqual(tol)
+      }
+
+      await Promise.all([
+        set_input(`input#${axis}-range-min`, ``),
+        set_input(`input#${axis}-range-max`, ``),
+      ])
+    }
+
+    // Test: combined pin (x_min + y_max)
+    await Promise.all([
+      set_input(`input#x-range-min`, String(x_min + (x_max - x_min) * 0.25)),
+      set_input(`input#y-range-max`, String(y_max - (y_max - y_min) * 0.25)),
+    ])
+
+    const [x_res, y_res] = await Promise.all([
+      get_histogram_tick_range(x_axis),
+      get_histogram_tick_range(y_axis),
+    ])
+    expect(Math.min(...x_res.ticks)).toBeGreaterThanOrEqual(
+      x_min + (x_max - x_min) * 0.25 - (x_max - x_min) * 0.3,
+    )
+    expect(Math.max(...y_res.ticks)).toBeLessThanOrEqual(
+      y_max - (y_max - y_min) * 0.25 + (y_max - y_min) * 0.3,
+    )
+
+    await toggle.click()
+  })
 })

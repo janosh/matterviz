@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { DemoNav, element_data } from '$lib'
+  import { element_data, Nav } from '$lib'
   import '$lib/app.css'
   import { theme_state } from '$lib/state.svelte'
   import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'
@@ -62,7 +62,7 @@
 <ThemeControl />
 
 <!-- using a random MP ID to pre-populate the structure viewer when optimade explorer loads -->
-<DemoNav
+<Nav
   routes={[
     [`/`, `Home`],
     ...demo_routes.map((route) =>
@@ -70,7 +70,7 @@
     ),
     [`/optimade-mp-1226325`, `Optimade`],
   ]}
-  style="text-transform: capitalize"
+  style="text-transform: capitalize; flex-direction: column; max-height: 4em; place-items: center"
   aria-label="Main navigation"
 />
 
