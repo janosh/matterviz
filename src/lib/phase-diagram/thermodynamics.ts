@@ -1,5 +1,6 @@
 import type { ElementSymbol } from '$lib'
 import { sort_by_electronegativity } from '$lib/composition/parse'
+import * as math from '$lib/math'
 import type {
   ConvexHullFace,
   ConvexHullTriangle,
@@ -520,7 +521,7 @@ export const compute_e_above_hull_for_points = (
     const z_hull = e_hull_at_xy(models, p.x, p.y)
     if (z_hull === null) return 0
     const e_above_hull = p.z - z_hull
-    return e_above_hull > 1e-9 ? e_above_hull : 0
+    return e_above_hull > EPS ? e_above_hull : 0
   })
 
 // ================= 4D Convex Hull (Quaternary Phase Diagrams) =================
@@ -596,46 +597,40 @@ function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): P
   const v3 = subtract_4d(p4, p1)
 
   // Build matrix [v1; v2; v3] and compute normal via cofactor expansion
-  const det_matrix = [
+  const matrix = [
     [v1.x, v1.y, v1.z, v1.w],
     [v2.x, v2.y, v2.z, v2.w],
     [v3.x, v3.y, v3.z, v3.w],
   ]
 
-  // Normal components from 3×3 determinants (Laplace expansion along each column)
-  // nx = +det(M with column 0 removed)
-  // ny = -det(M with column 1 removed)
-  // nz = +det(M with column 2 removed)
-  // nw = -det(M with column 3 removed)
-  const nx = det_matrix[0][1] *
-      (det_matrix[1][2] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][2]) -
-    det_matrix[0][2] *
-      (det_matrix[1][1] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][1]) +
-    det_matrix[0][3] *
-      (det_matrix[1][1] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][1])
+  // Helper: extract 3×3 submatrix by removing column col_skip, then compute determinant
+  const det_submatrix = (col_skip: number): number => {
+    const cols = [0, 1, 2, 3].filter((col) => col !== col_skip)
+    const submatrix: math.Matrix3x3 = [
+      [matrix[0][cols[0]], matrix[0][cols[1]], matrix[0][cols[2]]],
+      [matrix[1][cols[0]], matrix[1][cols[1]], matrix[1][cols[2]]],
+      [matrix[2][cols[0]], matrix[2][cols[1]], matrix[2][cols[2]]],
+    ]
+    return math.det_3x3(submatrix)
+  }
 
-  const ny = -(det_matrix[0][0] *
-      (det_matrix[1][2] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][2]) -
-    det_matrix[0][2] *
-      (det_matrix[1][0] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][0]) +
-    det_matrix[0][3] *
-      (det_matrix[1][0] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][0]))
+  // Compute normal components using Laplace expansion along each column
+  // Alternating signs: +, -, +, -
+  const signs = [1, -1, 1, -1]
+  const normal_components = [0, 1, 2, 3].map(
+    (col_idx) => signs[col_idx] * det_submatrix(col_idx),
+  )
 
-  const nz = det_matrix[0][0] *
-      (det_matrix[1][1] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][1]) -
-    det_matrix[0][1] *
-      (det_matrix[1][0] * det_matrix[2][3] - det_matrix[1][3] * det_matrix[2][0]) +
-    det_matrix[0][3] *
-      (det_matrix[1][0] * det_matrix[2][1] - det_matrix[1][1] * det_matrix[2][0])
+  const [x, y, z, w] = normal_components
+  const normal = normalize_4d({ x, y, z, w })
 
-  const nw = -(det_matrix[0][0] *
-      (det_matrix[1][1] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][1]) -
-    det_matrix[0][1] *
-      (det_matrix[1][0] * det_matrix[2][2] - det_matrix[1][2] * det_matrix[2][0]) +
-    det_matrix[0][2] *
-      (det_matrix[1][0] * det_matrix[2][1] - det_matrix[1][1] * det_matrix[2][0]))
+  // Guard against degenerate (nearly co-planar) points
+  const normal_magnitude = Math.abs(normal.x) + Math.abs(normal.y) + Math.abs(normal.z) +
+    Math.abs(normal.w)
+  if (normal_magnitude < EPS) {
+    return { normal: { x: 0, y: 0, z: 0, w: 0 }, offset: 0 }
+  }
 
-  const normal = normalize_4d({ x: nx, y: ny, z: nz, w: nw })
   const offset = -dot_4d(normal, p1)
 
   return { normal, offset }
@@ -728,14 +723,33 @@ function choose_initial_4_simplex(
 ): [number, number, number, number, number] | null {
   if (points.length < 5) return null
 
-  // Find two points farthest apart in x
+  // Find two points farthest apart across all dimensions for better numerical stability
+  // Sample a small subset if dataset is large to avoid O(n²) scaling
+  const sample_size = Math.min(points.length, 100)
+  const sample_indices = points.length <= sample_size
+    ? points.map((_, idx) => idx)
+    : Array.from({ length: sample_size }, (_, idx) =>
+      Math.floor((idx * points.length) / sample_size))
+
   let idx_min_x = 0
   let idx_max_x = 0
-  for (let idx = 1; idx < points.length; idx++) {
-    if (points[idx].x < points[idx_min_x].x) idx_min_x = idx
-    if (points[idx].x > points[idx_max_x].x) idx_max_x = idx
+  let max_dist_sq = -1
+
+  for (const idx_a of sample_indices) {
+    for (const idx_b of sample_indices) {
+      if (idx_a >= idx_b) continue
+      const pa = points[idx_a]
+      const pb = points[idx_b]
+      const dist_sq = (pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2 + (pa.z - pb.z) ** 2 +
+        (pa.w - pb.w) ** 2
+      if (dist_sq > max_dist_sq) {
+        max_dist_sq = dist_sq
+        idx_min_x = idx_a
+        idx_max_x = idx_b
+      }
+    }
   }
-  if (idx_min_x === idx_max_x) return null
+  if (idx_min_x === idx_max_x || max_dist_sq < EPS) return null
 
   // Find point farthest from line through idx_min_x and idx_max_x
   let idx_far_line = -1
@@ -1042,33 +1056,8 @@ function point_in_tetrahedron_3d(
   ]
   const rhs = [point.x, point.y, point.z, 1]
 
-  // Solve using Cramer's rule (4x4 determinant)
-  const det = (m: number[][]): number => {
-    // 4x4 determinant using cofactor expansion
-    const a = m[0], b = m[1], c = m[2], d = m[3]
-    return a[0] * (
-          b[1] * (c[2] * d[3] - c[3] * d[2]) -
-          b[2] * (c[1] * d[3] - c[3] * d[1]) +
-          b[3] * (c[1] * d[2] - c[2] * d[1])
-        ) -
-      a[1] * (
-          b[0] * (c[2] * d[3] - c[3] * d[2]) -
-          b[2] * (c[0] * d[3] - c[3] * d[0]) +
-          b[3] * (c[0] * d[2] - c[2] * d[0])
-        ) +
-      a[2] * (
-          b[0] * (c[1] * d[3] - c[3] * d[1]) -
-          b[1] * (c[0] * d[3] - c[3] * d[0]) +
-          b[3] * (c[0] * d[1] - c[1] * d[0])
-        ) -
-      a[3] * (
-          b[0] * (c[1] * d[2] - c[2] * d[1]) -
-          b[1] * (c[0] * d[2] - c[2] * d[0]) +
-          b[2] * (c[0] * d[1] - c[1] * d[0])
-        )
-  }
-
-  const det_main = det(matrix)
+  // Solve using Cramer's rule with 4x4 determinants
+  const det_main = math.det_4x4(matrix)
   if (Math.abs(det_main) < EPS) {
     return { inside: false, bary: [0, 0, 0, 0] }
   }
@@ -1080,7 +1069,7 @@ function point_in_tetrahedron_3d(
     for (let row = 0; row < 4; row++) {
       m_i[row][idx] = rhs[row]
     }
-    bary[idx] = det(m_i) / det_main
+    bary[idx] = math.det_4x4(m_i) / det_main
   }
 
   // Check if inside: all barycentric coords must be >= 0 and sum to 1
@@ -1091,35 +1080,81 @@ function point_in_tetrahedron_3d(
   return { inside, bary }
 }
 
+// Precomputed bounding box for fast 3D containment checks
+// Speed boost: 6 cheap comparisons (bounding box) vs expensive matrix solve (barycentric)
+// helps filter out most tetrahedra for containment checks before doing the slow calculation
+interface TetrahedronModel {
+  vertices: [Point4D, Point4D, Point4D, Point4D]
+  vertices_3d: [Point3D, Point3D, Point3D, Point3D]
+  min_x: number
+  max_x: number
+  min_y: number
+  max_y: number
+  min_z: number
+  max_z: number
+}
+
+function build_tetrahedron_models(
+  hull_tetrahedra: ConvexHullTetrahedron[],
+): TetrahedronModel[] {
+  return hull_tetrahedra.map((tet) => {
+    const [p0, p1, p2, p3] = tet.vertices
+    const vertices_3d: [Point3D, Point3D, Point3D, Point3D] = [
+      { x: p0.x, y: p0.y, z: p0.z },
+      { x: p1.x, y: p1.y, z: p1.z },
+      { x: p2.x, y: p2.y, z: p2.z },
+      { x: p3.x, y: p3.y, z: p3.z },
+    ]
+    const xs = [p0.x, p1.x, p2.x, p3.x]
+    const ys = [p0.y, p1.y, p2.y, p3.y]
+    const zs = [p0.z, p1.z, p2.z, p3.z]
+    return {
+      vertices: tet.vertices,
+      vertices_3d,
+      min_x: Math.min(...xs),
+      max_x: Math.max(...xs),
+      min_y: Math.min(...ys),
+      max_y: Math.max(...ys),
+      min_z: Math.min(...zs),
+      max_z: Math.max(...zs),
+    }
+  })
+}
+
 // Compute distance from point to lower hull in 4D
 export const compute_e_above_hull_4d = (
   points: Point4D[],
   hull_tetrahedra: ConvexHullTetrahedron[],
-) =>
-  points.map((point) => {
+) => {
+  // Precompute bounding boxes for fast prefiltering
+  const models = build_tetrahedron_models(hull_tetrahedra)
+
+  return points.map((point) => {
     let hull_w: number | null = null
+    const point_3d: Point3D = { x: point.x, y: point.y, z: point.z }
 
-    for (const tet of hull_tetrahedra) {
-      const [p0, p1, p2, p3] = tet.vertices
-
-      // Project 4D tetrahedron vertices to 3D (x,y,z) space
-      const p0_3d: Point3D = { x: p0.x, y: p0.y, z: p0.z }
-      const p1_3d: Point3D = { x: p1.x, y: p1.y, z: p1.z }
-      const p2_3d: Point3D = { x: p2.x, y: p2.y, z: p2.z }
-      const p3_3d: Point3D = { x: p3.x, y: p3.y, z: p3.z }
+    for (const model of models) {
+      // Fast bounding box prefilter
+      if (
+        point.x < model.min_x - EPS || point.x > model.max_x + EPS ||
+        point.y < model.min_y - EPS || point.y > model.max_y + EPS ||
+        point.z < model.min_z - EPS || point.z > model.max_z + EPS
+      ) {
+        continue
+      }
 
       // Check if point's (x,y,z) is inside the 3D projection of the tetrahedron
-      const point_3d: Point3D = { x: point.x, y: point.y, z: point.z }
       const { inside, bary } = point_in_tetrahedron_3d(
-        p0_3d,
-        p1_3d,
-        p2_3d,
-        p3_3d,
+        model.vertices_3d[0],
+        model.vertices_3d[1],
+        model.vertices_3d[2],
+        model.vertices_3d[3],
         point_3d,
       )
 
       if (inside) {
         // Compute w on the hull at this (x,y,z) using barycentric interpolation
+        const [p0, p1, p2, p3] = model.vertices
         const w_on_hull = bary[0] * p0.w + bary[1] * p1.w + bary[2] * p2.w +
           bary[3] * p3.w
         hull_w = hull_w === null ? w_on_hull : Math.min(hull_w, w_on_hull)
@@ -1128,5 +1163,6 @@ export const compute_e_above_hull_4d = (
 
     if (hull_w === null) return 0
     const distance = point.w - hull_w
-    return distance > 1e-9 ? distance : 0
+    return distance > EPS ? distance : 0
   })
+}

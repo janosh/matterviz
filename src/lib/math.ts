@@ -322,3 +322,24 @@ export function get_coefficient_of_variation(values: number[]): number {
     ? Math.sqrt(variance) / Math.abs(mean)
     : Math.sqrt(variance)
 }
+
+// Compute 4x4 determinant (used for 4D barycentric coordinates)
+export function det_4x4(matrix: number[][]): number {
+  const [a, b, c, d] = matrix
+  const [a0, a1, a2, a3] = a
+  const [b0, b1, b2, b3] = b
+  const [c0, c1, c2, c3] = c
+  const [d0, d1, d2, d3] = d
+  return (a0 *
+      (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
+    a1 *
+      (b0 * (c2 * d3 - c3 * d2) - b2 * (c0 * d3 - c3 * d0) + b3 * (c0 * d2 - c2 * d0)) +
+    a2 *
+      (b0 * (c1 * d3 - c3 * d1) - b1 * (c0 * d3 - c3 * d0) + b3 * (c0 * d1 - c1 * d0)) -
+    a3 * (b0 * (c1 * d2 - c2 * d1) - b1 * (c0 * d2 - c2 * d0) + b2 * (c0 * d1 - c1 * d0)))
+}
+
+// 3D cross product
+export function cross_3d(a: Vec3, b: Vec3): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}

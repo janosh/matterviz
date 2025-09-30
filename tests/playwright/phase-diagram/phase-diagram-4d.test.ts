@@ -111,23 +111,17 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     // With on-the-fly computation enabled, entries without precomputed e_above_hull
     // will have it computed automatically. The quaternary entry with energy=-3
     // will be evaluated against the hull and may be stable or slightly unstable
-    const unstable_text = await info.getByText(/Visible unstable/i).locator(`..`)
-      .textContent()
+    const unstable_text = await info.getByTestId(`pd-visible-unstable`).textContent()
     expect(unstable_text).toBeTruthy()
-    const unstable_match = unstable_text?.match(
-      /Visible unstable[^0-9]*([0-9]+)\s*\/\s*([0-9]+)/i,
-    )
+    const unstable_match = unstable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
     expect(unstable_match).toBeTruthy()
     const u_visible = Number(unstable_match?.[1])
     const u_total = Number(unstable_match?.[2])
     expect(Number.isFinite(u_visible) && Number.isFinite(u_total)).toBe(true)
 
     // Expect stable entries to include at minimum the 4 elemental refs + 1 marked stable
-    const stable_text = await info.getByText(/Visible stable/i).locator(`..`)
-      .textContent()
-    const stable_match = stable_text?.match(
-      /Visible stable[^0-9]*([0-9]+)\s*\/\s*([0-9]+)/i,
-    )
+    const stable_text = await info.getByTestId(`pd-visible-stable`).textContent()
+    const stable_match = stable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
     expect(stable_match).toBeTruthy()
     const s_visible = Number(stable_match?.[1])
     const s_total = Number(stable_match?.[2])
