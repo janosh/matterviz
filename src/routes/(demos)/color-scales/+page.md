@@ -41,10 +41,11 @@
       </section>
       <strong style="height: 25pt">
         {#if active_element?.name}
-          {active_element?.name}: {format_num(mp_elem_counts[active_element?.symbol])}
+          {@const elem_counts = data_name == `WBM` ? wbm_elem_counts : mp_elem_counts}
+          {active_element?.name}: {format_num(elem_counts[active_element?.symbol])}
           <!-- compute percent of total -->
-          {#if mp_elem_counts[active_element?.symbol] > 0}
-            ({format_num((mp_elem_counts[active_element?.symbol] / total) * 100)}%)
+          {#if elem_counts[active_element?.symbol] > 0}
+            ({format_num(elem_counts[active_element?.symbol] / total, `.2~%`)})
           {/if}
         {/if}
       </strong>

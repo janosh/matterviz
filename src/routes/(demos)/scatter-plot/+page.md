@@ -1312,7 +1312,7 @@ This example shows how to place the color bar vertically on the right side of th
     x: Array(point_count).fill(0).map((_, idx) => (idx / point_count) * 90 + 5), // Range 5 to 95
     y: Array(point_count).fill(0).map(() => Math.random() * 90 + 5), // Range 5 to 95
     // Color value based on the y-coordinate
-    color_values: Array(point_count).fill(0).map((_, idx) => idx * 2), // Values from 0 to 98
+    color_values: Array(point_count).fill(0).map((_, idx) => idx * 2 + 1), // 1..99
     point_style: {
       radius: 6,
       stroke: `black`,
