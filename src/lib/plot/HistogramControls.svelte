@@ -20,6 +20,7 @@
     mode?: `single` | `overlay`
     bar_opacity?: number
     bar_stroke_width?: number
+    bar_color?: string
     show_legend?: boolean
     // Display controls
     show_zero_lines?: boolean
@@ -53,6 +54,7 @@
     mode = $bindable(DEFAULTS.trajectory.histogram_mode),
     bar_opacity = $bindable(DEFAULTS.trajectory.histogram_bar_opacity),
     bar_stroke_width = $bindable(DEFAULTS.trajectory.histogram_bar_stroke_width),
+    bar_color = $bindable(`#4682b4`),
     show_legend = $bindable(DEFAULTS.trajectory.histogram_show_legend),
     // Display controls
     show_zero_lines = $bindable(DEFAULTS.plot.show_zero_lines),
@@ -239,7 +241,6 @@
         </label>
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Axis Range"
         current_values={{ x_range, y_range }}
@@ -260,7 +261,6 @@
         <input {...input_props(`y`, `max`, y_range)} />
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Histogram"
         current_values={{ bins, mode, show_legend }}
@@ -314,13 +314,13 @@
         </label>
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Bar Style"
-        current_values={{ bar_opacity, bar_stroke_width }}
+        current_values={{ bar_opacity, bar_stroke_width, bar_color }}
         on_reset={() => {
           bar_opacity = DEFAULTS.trajectory.histogram_bar_opacity
           bar_stroke_width = DEFAULTS.trajectory.histogram_bar_stroke_width
+          bar_color = `#4682b4`
         }}
         class="pane-grid"
         style="grid-template-columns: auto 1fr auto"
@@ -357,9 +357,17 @@
           step="0.1"
           bind:value={bar_stroke_width}
         />
+        {#if visible_series.length === 1}
+          <label for="bar-color-input">Color:</label>
+          <input
+            id="bar-color-input"
+            type="color"
+            bind:value={bar_color}
+            style="grid-column: 2 / 4"
+          />
+        {/if}
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Scale Type"
         current_values={{ x_scale_type, y_scale_type }}
@@ -382,7 +390,6 @@
         </select>
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Ticks"
         current_values={{ x_ticks, y_ticks }}
@@ -415,7 +422,6 @@
         />
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Tick Format"
         current_values={{ x_format, y_format }}

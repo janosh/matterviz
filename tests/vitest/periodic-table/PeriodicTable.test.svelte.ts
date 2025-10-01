@@ -542,4 +542,141 @@ describe(`PeriodicTable`, () => {
       tiles[1].dispatchEvent(mouseleave)
     })
   })
+
+  describe(`automatic ColorBar integration`, () => {
+    // Helper to get numeric tick values from colorbar
+    const get_tick_values = (colorbar: Element | null) =>
+      Array.from(colorbar?.querySelectorAll(`.tick-label`) || [])
+        .map((tick) => parseFloat((tick as HTMLElement).textContent?.trim() || ``))
+        .filter((val) => !isNaN(val))
+
+    test(`shows ColorBar with correct structure and defaults`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [1, 2, 3, 4, 5] },
+      })
+
+      const table_inset = document.querySelector(`.table-inset`)
+      const colorbar = table_inset?.querySelector(`.colorbar`)
+      const bar = colorbar?.querySelector(`.bar`)
+
+      // Structure: TableInset > ColorBar > bar with gradient
+      expect(document.querySelector(`.periodic-table`)?.firstElementChild).toBe(
+        table_inset,
+      )
+      expect(colorbar).toBeTruthy()
+      expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
+
+      // Defaults: 5 ticks on primary side
+      expect(colorbar?.querySelectorAll(`.tick-label.tick-primary`).length).toBe(5)
+    })
+
+    test.each([
+      [{ show_color_bar: false }, `show_color_bar=false`],
+      [{ heatmap_values: [] }, `empty heatmap`],
+      [{ heatmap_values: [`#f00`, `#0f0`] as never }, `color-only values`],
+    ])(`does not show ColorBar for %s`, (props, _desc) => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [1, 2, 3], ...props },
+      })
+      expect(document.querySelector(`.colorbar`)).toBeNull()
+    })
+
+    test(`custom inset takes precedence over automatic ColorBar`, () => {
+      let rendered = false
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [1, 2, 3], inset: () => (rendered = true, ``) },
+      })
+
+      expect(document.querySelector(`.colorbar`)).toBeNull()
+      expect(rendered).toBe(true)
+    })
+
+    test(`color-only heatmap tiles are still colored`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [`#ff0000`, `#00ff00`, `#0000ff`] as never },
+      })
+
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      expect([
+        tiles[0].style.backgroundColor,
+        tiles[1].style.backgroundColor,
+        tiles[2].style.backgroundColor,
+      ])
+        .toEqual([`#ff0000`, `#00ff00`, `#0000ff`])
+    })
+
+    test(`respects color_bar_title and positioning styles`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [1, 2, 3], color_bar_title: `Test Property` },
+      })
+
+      const inset = document.querySelector(`.table-inset`) as HTMLElement
+      const colorbar = inset?.querySelector(`.colorbar`) as HTMLElement
+
+      expect(inset.getAttribute(`style`)).toMatch(/place-items: center.*padding/)
+      expect(colorbar.getAttribute(`style`)).toContain(`width: 100%`)
+      expect(colorbar.querySelector(`.label`)?.textContent).toBe(`Test Property`)
+    })
+
+    test(`uses log scale with powers-of-10 ticks`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [1, 10, 100, 1000], log: true },
+      })
+
+      const tick_text = Array.from(document.querySelectorAll(`.tick-label`))
+        .map((el) => el.textContent?.trim())
+
+      expect(tick_text.some((t) => t === `1`)).toBeTruthy()
+      expect(tick_text.some((t) => t && t.includes(`1`) && t.length > 1)).toBeTruthy()
+    })
+
+    test(`customizes via color_bar_props`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [1, 2, 3],
+          color_bar_props: { tick_labels: 3, tick_side: `secondary`, snap_ticks: false },
+        },
+      })
+
+      expect(document.querySelectorAll(`.tick-label.tick-secondary`).length).toBe(3)
+    })
+
+    test.each([
+      [[10, 20, 30, 40, 50], undefined, [10, 50]],
+      [[10, 20, 30, 40, 50], [0, 100], [0, 100]],
+    ])(
+      `calculates range correctly`,
+      (heatmap_values, color_scale_range, [exp_min, exp_max]) => {
+        mount(PeriodicTable, {
+          target: document.body,
+          props: { heatmap_values, color_scale_range },
+        })
+
+        const ticks = get_tick_values(document.querySelector(`.colorbar`))
+        expect(Math.min(...ticks)).toBeLessThanOrEqual(exp_min)
+        expect(Math.max(...ticks)).toBeGreaterThanOrEqual(exp_max)
+      },
+    )
+
+    test.each([
+      [[1, 2, `#ff0000`, 4, 5], [1, 5], `mixed numeric and color`],
+      [[[1, 2], [3, 4], 5], [1, 5], `array values`],
+    ])(`handles %s values`, (heatmap_values, [exp_min, exp_max], _desc) => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: heatmap_values as never },
+      })
+
+      const ticks = get_tick_values(document.querySelector(`.colorbar`))
+      expect(Math.min(...ticks)).toBeLessThanOrEqual(exp_min)
+      expect(Math.max(...ticks)).toBeGreaterThanOrEqual(exp_max)
+    })
+  })
 })
