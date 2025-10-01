@@ -52,6 +52,14 @@
     tooltip?: Snippet<[{ value: number; count: number; property: string }]>
     hovered?: boolean
     change?: (data: { value: number; count: number; property: string } | null) => void
+    on_bar_click?: (
+      data: { value: number; count: number; property: string; event: MouseEvent },
+    ) => void
+    on_bar_hover?: (
+      data:
+        | { value: number; count: number; property: string; event: MouseEvent }
+        | null,
+    ) => void
     show_controls?: boolean
     controls_open?: boolean
     plot_controls?: Snippet<[]>
@@ -88,6 +96,8 @@
     tooltip,
     hovered = $bindable(false),
     change = () => {},
+    on_bar_click,
+    on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     plot_controls,
@@ -319,7 +329,7 @@
   }
 
   function handle_mouse_move(
-    _: MouseEvent,
+    evt: MouseEvent,
     value: number,
     count: number,
     property: string,
@@ -327,6 +337,7 @@
     hovered = true
     hover_info = { value, count, property }
     change({ value, count, property })
+    on_bar_hover?.({ value, count, property, event: evt })
   }
 
   function toggle_series_visibility(series_idx: number) {
@@ -350,6 +361,7 @@
       onmouseleave={() => {
         hovered = false
         hover_info = null
+        on_bar_hover?.(null)
       }}
       ondblclick={handle_double_click}
       style:cursor="crosshair"
@@ -422,8 +434,30 @@
                 onmouseleave={() => {
                   hover_info = null
                   change(null)
+                  on_bar_hover?.(null)
                 }}
-                style:cursor="pointer"
+                onclick={(evt) => {
+                  if (on_bar_click && bin.x0 !== undefined && bin.x1 !== undefined) {
+                    const value = (bin.x0 + bin.x1) / 2
+                    const count = bin.length
+                    on_bar_click({ value, count, property: label, event: evt })
+                  }
+                }}
+                onkeydown={(evt: KeyboardEvent) => {
+                  if (
+                    [`Enter`, ` `].includes(evt.key) && bin.x0 !== undefined &&
+                    bin.x1 !== undefined
+                  ) {
+                    evt.preventDefault()
+                    if (on_bar_click) {
+                      const value = (bin.x0 + bin.x1) / 2
+                      const count = bin.length
+                      const event = evt as unknown as MouseEvent
+                      on_bar_click({ value, count, property: label, event })
+                    }
+                  }
+                }}
+                style:cursor={on_bar_click ? `pointer` : undefined}
               />
             {/if}
           {/each}

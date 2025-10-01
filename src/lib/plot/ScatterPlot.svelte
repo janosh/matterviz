@@ -125,6 +125,10 @@
       string,
       (payload: { point: InternalPoint; event: Event }) => void
     >
+    on_point_click?: (payload: { point: InternalPoint; event: MouseEvent }) => void
+    on_point_hover?: (
+      payload: { point: InternalPoint | null; event?: MouseEvent },
+    ) => void
     // Control pane props
     show_controls?: boolean // Whether to show the control pane
     controls_open?: boolean // Whether the control pane is open
@@ -200,18 +204,20 @@
     point_tween,
     line_tween,
     point_events,
+    on_point_click,
+    on_point_hover,
     show_controls = false,
     controls_open = $bindable(false),
     plot_controls,
     // Style control props
     point_size = $bindable(4),
-    point_color = $bindable(`#4682b4`),
+    point_color = $bindable(`cornflowerblue`),
     point_opacity = $bindable(1),
     point_stroke_width = $bindable(1),
     point_stroke_color = $bindable(`#000000`),
     point_stroke_opacity = $bindable(1),
     line_width = $bindable(2),
-    line_color = $bindable(`#4682b4`),
+    line_color = $bindable(`cornflowerblue`),
     line_opacity = $bindable(1),
     line_dash = $bindable(DEFAULTS.scatter.line_dash),
     show_points = $bindable(true),
@@ -991,6 +997,7 @@
     // Reset drag state if mouse leaves plot area
     hovered = false
     tooltip_point = null
+    on_point_hover?.({ point: null })
   }
 
   function handle_double_click() {
@@ -1001,7 +1008,11 @@
   }
 
   // tooltip logic: find closest point and update tooltip state
-  function update_tooltip_point(x_rel: number, y_rel: number): void {
+  function update_tooltip_point(
+    x_rel: number,
+    y_rel: number,
+    evt?: MouseEvent,
+  ): void {
     if (!width || !height) return
 
     let closest_point_internal: InternalPoint | null = null
@@ -1049,10 +1060,14 @@
       const { x, y, metadata } = closest_point_internal // Extract base Point props
       // Call change handler with closest point's data
       change({ x, y, metadata, series: closest_series })
+      // Call hover handler with point data
+      on_point_hover?.({ point: closest_point_internal, event: evt })
     } else {
       // No point close enough or no points at all
       tooltip_point = null
       change(null)
+      // Call hover handler with null to indicate no point hovered
+      on_point_hover?.({ point: null, event: evt })
     }
   }
 
@@ -1062,7 +1077,7 @@
     const coords = get_relative_coords(evt)
     if (!coords) return
 
-    update_tooltip_point(coords.x, coords.y)
+    update_tooltip_point(coords.x, coords.y, evt)
   }
 
   // Merge user config with defaults before the effect that uses it
@@ -1449,14 +1464,14 @@
                   series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
                 ]}
                 line_color={apply_line_controls
-                ? line_color ?? `#4682b4`
+                ? line_color ?? `cornflowerblue`
                 : series_data.line_style?.stroke ??
                   (Array.isArray(series_data.point_style)
                     ? series_data.point_style[0]?.fill
                     : series_data.point_style?.fill) ??
                   (series_data.color_values?.[0] != null
                     ? color_scale_fn(series_data.color_values[0])
-                    : `#4682b4`)}
+                    : `cornflowerblue`)}
                 line_width={apply_line_controls
                 ? line_width ?? 2
                 : series_data.line_style?.stroke_width ?? 2}
@@ -1490,17 +1505,13 @@
                 (x_format?.startsWith(`%`)
                   ? x_scale_fn(new Date(point.x))
                   : x_scale_fn(point.x)),
-              y: calculated_label_pos.y -
-                (series_data.y_axis === `y2`
-                  ? y2_scale_fn(point.y)
-                  : y_scale_fn(point.y)),
+              y: calculated_label_pos.y - (series_data.y_axis === `y2`
+                ? y2_scale_fn(point.y)
+                : y_scale_fn(point.y)),
             },
           }
           : label_style}
-                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(
-          point,
-          series_data,
-        )}
+                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
                 {@const screen_x = isFinite(raw_screen_x) ? raw_screen_x : x_scale_fn.range()[0]}
                 {@const screen_y = isFinite(raw_screen_y)
           ? raw_screen_y
@@ -1539,6 +1550,7 @@
                       ? point_opacity ??
                         point.point_style?.fill_opacity ?? 1
                       : point.point_style?.fill_opacity ?? 1,
+                    cursor: on_point_click ? `pointer` : undefined,
                   }}
                   hover={point.point_hover ?? {}}
                   label={final_label}
@@ -1549,15 +1561,15 @@
                   ? color_scale_fn(point.color_value)
                   : apply_controls
                   ? point_color ?? point.point_style?.fill ??
-                    `#4682b4`
-                  : point.point_style?.fill ?? `#4682b4`}
+                    `cornflowerblue`
+                  : point.point_style?.fill ?? `cornflowerblue`}
                   {...point_events &&
                   Object.fromEntries(
-                    Object.entries(point_events).map(([event_name, handler]) => [
-                      event_name,
-                      (event: Event) => handler({ point, event }),
-                    ]),
+                    Object.entries(point_events).map((
+                      [event_name, handler],
+                    ) => [event_name, (event: Event) => handler({ point, event })]),
                   )}
+                  onclick={(event: MouseEvent) => on_point_click?.({ point, event })}
                 />
               {/each}
             {/if}
@@ -1586,9 +1598,7 @@
 
                   {#if tick >= x_min && tick <= x_max}
                     {@const { x, y } = x_tick_label_shift}
-                    <text {x} {y}>
-                      {format_value(tick, x_format)}
-                    </text>
+                    <text {x} {y}>{format_value(tick, x_format)}</text>
                   {/if}
                 </g>
               {/if}
