@@ -53,7 +53,12 @@
     hovered?: boolean
     change?: (data: { value: number; count: number; property: string } | null) => void
     on_bar_click?: (
-      data: { value: number; count: number; property: string; event: MouseEvent },
+      data: {
+        value: number
+        count: number
+        property: string
+        event: MouseEvent | KeyboardEvent
+      },
     ) => void
     on_bar_hover?: (
       data:
@@ -417,6 +422,7 @@
             {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
             {@const bar_height = Math.max(0, (height - padding.b) - scales.y(bin.length))}
             {@const bar_y = scales.y(bin.length)}
+            {@const value = (bin.x0! + bin.x1!) / 2}
             {#if bar_height > 0}
               <rect
                 x={bar_x}
@@ -429,32 +435,18 @@
                 stroke-width={mode === `overlay` ? bar_stroke_width : 0}
                 role="button"
                 tabindex="0"
-                onmousemove={(evt) =>
-                handle_mouse_move(evt, (bin.x0! + bin.x1!) / 2, bin.length, label)}
+                onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
                 onmouseleave={() => {
                   hover_info = null
                   change(null)
                   on_bar_hover?.(null)
                 }}
-                onclick={(evt) => {
-                  if (on_bar_click && bin.x0 !== undefined && bin.x1 !== undefined) {
-                    const value = (bin.x0 + bin.x1) / 2
-                    const count = bin.length
-                    on_bar_click({ value, count, property: label, event: evt })
-                  }
-                }}
-                onkeydown={(evt: KeyboardEvent) => {
-                  if (
-                    [`Enter`, ` `].includes(evt.key) && bin.x0 !== undefined &&
-                    bin.x1 !== undefined
-                  ) {
-                    evt.preventDefault()
-                    if (on_bar_click) {
-                      const value = (bin.x0 + bin.x1) / 2
-                      const count = bin.length
-                      const event = evt as unknown as MouseEvent
-                      on_bar_click({ value, count, property: label, event })
-                    }
+                onclick={(event) =>
+                on_bar_click?.({ value, count: bin.length, property: label, event })}
+                onkeydown={(event: KeyboardEvent) => {
+                  if ([`Enter`, ` `].includes(event.key)) {
+                    event.preventDefault()
+                    on_bar_click?.({ value, count: bin.length, property: label, event })
                   }
                 }}
                 style:cursor={on_bar_click ? `pointer` : undefined}

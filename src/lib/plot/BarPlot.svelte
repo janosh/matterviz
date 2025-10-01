@@ -47,7 +47,9 @@
     tooltip?: Snippet<[BarTooltipProps]>
     hovered?: boolean
     change?: (data: BarTooltipProps | null) => void
-    on_bar_click?: (data: BarTooltipProps & { event: MouseEvent }) => void
+    on_bar_click?: (
+      data: BarTooltipProps & { event: MouseEvent | KeyboardEvent },
+    ) => void
     on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
     show_controls?: boolean
     controls_open?: boolean
@@ -289,12 +291,7 @@
   // Tooltip state
   let hover_info = $state<BarTooltipProps | null>(null)
 
-  function handle_bar_click_internal(
-    series_idx: number,
-    bar_idx: number,
-    color: string,
-  ) {
-    if (!on_bar_click) return
+  function get_bar_data(series_idx: number, bar_idx: number, color: string) {
     const srs = series[series_idx]
     const x = srs.x[bar_idx]
     const y = srs.y[bar_idx]
@@ -307,36 +304,13 @@
   }
 
   function handle_bar_hover(
-    params: {
-      series_idx: number
-      bar_idx: number
-      x: number
-      y: number
-      color: string
-      event: MouseEvent
-    },
+    series_idx: number,
+    bar_idx: number,
+    color: string,
+    event: MouseEvent,
   ) {
-    const { color, series_idx, bar_idx, event } = params
     hovered = true
-    const srs = series[series_idx]
-    const x = srs.x[params.bar_idx]
-    const y = srs.y[params.bar_idx]
-    const label = srs.labels?.[bar_idx] ?? null
-    const metadata = Array.isArray(srs.metadata)
-      ? (srs.metadata[bar_idx] as Record<string, unknown> | undefined)
-      : (srs.metadata as Record<string, unknown> | undefined)
-    const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
-    hover_info = {
-      x,
-      y,
-      orient_x,
-      orient_y,
-      series_idx,
-      bar_idx,
-      metadata,
-      label,
-      color,
-    }
+    hover_info = get_bar_data(series_idx, bar_idx, color)
     change(hover_info)
     on_bar_hover?.({ ...hover_info, event })
   }
@@ -458,31 +432,24 @@
                     tabindex="0"
                     aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
                     style:cursor={on_bar_click ? `pointer` : undefined}
-                    onmousemove={(evt) => {
-                      const coords = get_relative_coords(evt)
-                      if (!coords) return
-                      const { x, y } = coords
-                      handle_bar_hover({ series_idx, bar_idx, x, y, color, event: evt })
-                    }}
+                    onmousemove={(evt) => handle_bar_hover(series_idx, bar_idx, color, evt)}
                     onmouseleave={() => {
                       hover_info = null
                       change(null)
                       on_bar_hover?.(null)
                     }}
-                    onclick={(evt) => {
-                      const data = handle_bar_click_internal(series_idx, bar_idx, color)
-                      if (data) on_bar_click?.({ ...data, event: evt })
-                    }}
+                    onclick={(evt) =>
+                    on_bar_click?.({
+                      ...get_bar_data(series_idx, bar_idx, color),
+                      event: evt,
+                    })}
                     onkeydown={(evt) => {
                       if (evt.key === `Enter` || evt.key === ` `) {
                         evt.preventDefault()
-                        const data = handle_bar_click_internal(series_idx, bar_idx, color)
-                        if (data) {
-                          on_bar_click?.({
-                            ...data,
-                            event: evt as unknown as MouseEvent,
-                          })
-                        }
+                        on_bar_click?.({
+                          ...get_bar_data(series_idx, bar_idx, color),
+                          event: evt,
+                        })
                       }
                     }}
                   />
@@ -521,34 +488,24 @@
                     tabindex="0"
                     aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
                     style:cursor={on_bar_click ? `pointer` : undefined}
-                    onmousemove={(evt) => {
-                      const coords = get_relative_coords(evt)
-                      if (!coords) return
-                      handle_bar_hover({
-                        series_idx,
-                        bar_idx,
-                        x: coords.x,
-                        y: coords.y,
-                        color,
-                        event: evt,
-                      })
-                    }}
+                    onmousemove={(evt) => handle_bar_hover(series_idx, bar_idx, color, evt)}
                     onmouseleave={() => {
                       hover_info = null
                       change(null)
                       on_bar_hover?.(null)
                     }}
-                    onclick={(evt) => {
-                      const data = handle_bar_click_internal(series_idx, bar_idx, color)
-                      if (data) on_bar_click?.({ ...data, event: evt })
-                    }}
+                    onclick={(evt) =>
+                    on_bar_click?.({
+                      ...get_bar_data(series_idx, bar_idx, color),
+                      event: evt,
+                    })}
                     onkeydown={(evt) => {
                       if (evt.key === `Enter` || evt.key === ` `) {
                         evt.preventDefault()
-                        const data = handle_bar_click_internal(series_idx, bar_idx, color)
-                        if (data) {
-                          on_bar_click?.({ ...data, event: evt as unknown as MouseEvent })
-                        }
+                        on_bar_click?.({
+                          ...get_bar_data(series_idx, bar_idx, color),
+                          event: evt,
+                        })
                       }
                     }}
                   />
