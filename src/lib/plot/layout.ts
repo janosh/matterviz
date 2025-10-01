@@ -114,11 +114,15 @@ export function find_best_legend_placement(
     const y = base_y +
       (anchor.y === 0 ? margin : anchor.y === 1 ? -margin : 0)
 
+    // Calculate rectangle center for distance measurement
+    const center_x = x + width * (0.5 - anchor.x)
+    const center_y = y + height * (0.5 - anchor.y)
+
     // Count nearby points
     let count = 0
     for (const point of points) {
-      const dx = point.x - x
-      const dy = point.y - y
+      const dx = point.x - center_x
+      const dy = point.y - center_y
       if (dx * dx + dy * dy <= radius_sq) count++
     }
 

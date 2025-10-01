@@ -257,17 +257,17 @@
   )
 
   // Determine whether to automatically show the color bar
-  let should_show_color_bar = $derived(
-    show_color_bar &&
-      !inset && // Don't show if custom inset provided
-      heat_values.length > 0 &&
-      // Only show if heatmap contains numeric values (not just color strings)
-      heat_values.some((val) =>
-        Array.isArray(val)
-          ? val.some((v) => typeof v === `number`)
-          : typeof val === `number`
-      ),
-  )
+  let should_show_color_bar = $derived.by(() => {
+    if (!show_color_bar || inset || heat_values.length === 0) return false
+
+    const num_vals = heat_values
+      .flat()
+      .filter((v): v is number => typeof v === `number`)
+
+    const usable_values = log ? num_vals.filter((v) => v > 0) : num_vals
+
+    return usable_values.length > 0
+  })
 
   // Calculate heat range for color bar
   let heat_range = $derived.by(() => {
@@ -276,13 +276,14 @@
     const numeric_values = heat_values
       .flat()
       .filter((v): v is number => typeof v === `number`)
+    const usable_values = log ? numeric_values.filter((v) => v > 0) : numeric_values
 
-    if (numeric_values.length === 0) return [0, 1] as [number, number]
+    if (usable_values.length === 0) return [0, 1] as [number, number]
 
-    return [
-      color_scale_range[0] ?? Math.min(...numeric_values),
-      color_scale_range[1] ?? Math.max(...numeric_values),
-    ] as [number, number]
+    const min = color_scale_range[0] ?? Math.min(...usable_values)
+    const max = color_scale_range[1] ?? Math.max(...usable_values)
+
+    return [min, max] as [number, number]
   })
 </script>
 

@@ -2,23 +2,24 @@
 <script>
   import { ColorBar, ColorScaleSelect, PeriodicTable, TableInset } from 'matterviz'
   import { format_num } from 'matterviz/labels'
-  import { RadioButtons } from 'svelte-multiselect'
   import mp_elem_counts from './mp-element-counts.json'
   import wbm_elem_counts from './wbm-element-counts.json'
 
   let log_scale = $state(true)
-  let data = $state(`MP`)
+  let data_name = $state(`MP`)
   let color_scale = $derived(`interpolateViridis`)
   let heatmap_values = $derived(
-    Object.values(data == `WBM` ? wbm_elem_counts : mp_elem_counts),
+    Object.values(data_name == `WBM` ? wbm_elem_counts : mp_elem_counts),
   )
   let total = $derived(heatmap_values.reduce((a, b) => a + b, 0))
   let nice_range = $state([])
 </script>
 
-<h1>Color Scales</h1>
+<h1 style="text-align: center">Color Scales</h1>
 
-<h2>{data == 'MP' ? 'Materials Project' : 'WBM'} Element Occurrence Counts</h2>
+<h2 style="text-align: center">
+  {{ MP: `Materials Project` }[data_name] ?? data_name} Element Occurrence Counts
+</h2>
 
 <PeriodicTable
   {heatmap_values}
@@ -31,7 +32,9 @@
       <section>
         <span>
           Data set &ensp;
-          <RadioButtons options={[`MP`, `WBM`]} bind:selected={data} />
+          {#each [`MP`, `WBM`] as data_set}
+            <input type="radio" bind:group={data_name} value={data_set} /> {data_set}
+          {/each}
         </span>
         <span>Log color scale <input type="checkbox" bind:checked={log_scale} /></span>
         <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />

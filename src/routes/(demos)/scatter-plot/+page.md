@@ -1328,67 +1328,63 @@ This example shows how to place the color bar vertically on the right side of th
   let color_scale = $state({ type: `linear`, scheme: `interpolateCool` }) // Track which color scale type is active
 </script>
 
-<div>
-  <div
-    style="margin-bottom: 1em; display: flex; gap: 1em; flex-wrap: wrap; align-items: center"
-  >
-    <div>
-      <strong>Color Scale Type:</strong>
-      {#each ['linear', 'log'] as scale_type}
-        <label style="margin-left: 0.5em">
-          <input
-            type="radio"
-            name="scale_type"
-            value={scale_type}
-            bind:group={color_scale.type}
-          />
-          {scale_type}
-        </label>
-      {/each}
-    </div>
+<div
+  style="margin-bottom: 1em; display: flex; gap: 6pt; flex-wrap: wrap; align-items: center"
+>
+  <strong>Color Scale Type:</strong>
+  {#each [`linear`, `log`] as scale_type (scale_type)}
+    <label>
+      <input
+        type="radio"
+        name="scale_type"
+        value={scale_type}
+        bind:group={color_scale.type}
+      />
+      {scale_type}
+    </label>
+  {/each}
 
-    <ColorScaleSelect bind:value={color_scale.scheme} selected={[color_scale.scheme]} />
-  </div>
-
-  The color bar is positioned vertically to the right, outside the plot. The plot's right
-  padding is increased to prevent overlap. Use the controls above to change the color
-  scheme and scale type.
-
-  <ScatterPlot
-    series={[vertical_color_data]}
-    x_label="X Position"
-    y_label="Y Position"
-    x_lim={[0, 100]}
-    y_lim={[0, 100]}
-    x_format=".2"
-    y_format=".2"
-    markers="points"
-    {color_scale}
-    padding={plot_padding}
-    color_bar={{
-      title: `Color Bar Title (${color_scale.type})`,
-      orientation: `vertical`,
-      tick_side: `primary`,
-      wrapper_style: `
-        position: absolute;
-        /* Position outside the plot area using padding values */
-        right: 10px; /* Distance from the container's right edge */
-        top: ${plot_padding.t}px; /* Align with top padding */
-        /* Set height directly for the wrapper */
-        height: calc(100% - ${
-        plot_padding.t + plot_padding.b
-      }px); /* Fill vertical space */
-      `,
-      style: `width: 15px; height: 100%;`,
-    }}
-    style="height: 400px"
-  >
-    {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
-      Point ({x_formatted}, {y_formatted})<br />
-      Color value: {color_value?.toFixed(1)}
-    {/snippet}
-  </ScatterPlot>
+  <ColorScaleSelect bind:value={color_scale.scheme} selected={[color_scale.scheme]} />
 </div>
+
+The color bar is positioned vertically to the right, outside the plot. The plot's right
+padding is increased to prevent overlap. Use the controls above to change the color scheme
+and scale type.
+
+<ScatterPlot
+  series={[vertical_color_data]}
+  x_label="X Position"
+  y_label="Y Position"
+  x_lim={[0, 100]}
+  y_lim={[0, 100]}
+  x_format=".2"
+  y_format=".2"
+  markers="points"
+  {color_scale}
+  padding={plot_padding}
+  color_bar={{
+    title: `Color Bar Title (${color_scale.type})`,
+    orientation: `vertical`,
+    tick_side: `primary`,
+    wrapper_style: `
+      position: absolute;
+      /* Position outside the plot area using padding values */
+      right: 10px; /* Distance from the container's right edge */
+      top: ${plot_padding.t}px; /* Align with top padding */
+      /* Set height directly for the wrapper */
+      height: calc(100% - ${
+      plot_padding.t + plot_padding.b
+    }px); /* Fill vertical space */
+    `,
+    style: `width: 15px; height: 100%;`,
+  }}
+  style="height: 400px"
+>
+  {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
+    Point ({x_formatted}, {y_formatted})<br />
+    Color value: {color_value?.toFixed(1)}
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Line Clipping with Fixed Ranges

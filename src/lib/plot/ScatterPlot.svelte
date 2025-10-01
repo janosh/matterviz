@@ -792,7 +792,7 @@
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
-    const margin = normalize_margin(color_bar?.margin).t || 10
+    const margin = normalize_margin(color_bar?.margin).t ?? 10
 
     // Place opposite of legend: if legend is top, colorbar is bottom
     const is_top = !legend_placement?.position.startsWith(`top`)
@@ -810,9 +810,9 @@
 
     // Skip auto-placement if user set explicit position
     const style = legend?.wrapper_style ?? ``
-    if (/(\b(top|bottom|left|right)\s*:)|(position\s*:\s*absolute)/.test(style)) {
-      return null
-    }
+    if (
+      /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style)
+    ) return null
 
     // Responsive mode: always use current best placement
     if (legend?.responsive) return legend_placement
