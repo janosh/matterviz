@@ -111,6 +111,20 @@
       visible: true,
     },
   ]
+
+  const handlers_series: BarSeries[] = [
+    {
+      x: [1, 2, 3, 4],
+      y: [12, 25, 18, 32],
+      label: `With Handlers`,
+      color: `#9467bd`,
+      bar_width: 0.6,
+      visible: true,
+    },
+  ]
+
+  let hover_msg = $state(`Hover over a bar`)
+  let click_msg = $state(`Click on a bar`)
 </script>
 
 <svelte:head>
@@ -222,5 +236,31 @@
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
+  </div>
+</section>
+
+<section id="handlers-bar">
+  <h2>With Handlers</h2>
+  <BarPlot
+    series={handlers_series}
+    x_label="X"
+    y_label="Y"
+    on_bar_hover={(data) => {
+      if (data) {
+        hover_msg = `Hovering: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
+      } else {
+        hover_msg = `Hover over a bar`
+      }
+    }}
+    on_bar_click={(data) => {
+      click_msg = `Clicked: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
+    }}
+    show_controls
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+  <div class="handler-info">
+    <p>{hover_msg}</p>
+    <p>{click_msg}</p>
   </div>
 </section>

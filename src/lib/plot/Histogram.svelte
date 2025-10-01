@@ -52,6 +52,19 @@
     tooltip?: Snippet<[{ value: number; count: number; property: string }]>
     hovered?: boolean
     change?: (data: { value: number; count: number; property: string } | null) => void
+    on_bar_click?: (
+      data: {
+        value: number
+        count: number
+        property: string
+        event: MouseEvent | KeyboardEvent
+      },
+    ) => void
+    on_bar_hover?: (
+      data:
+        | { value: number; count: number; property: string; event: MouseEvent }
+        | null,
+    ) => void
     show_controls?: boolean
     controls_open?: boolean
     plot_controls?: Snippet<[]>
@@ -77,7 +90,7 @@
     legend = { series_data: [] },
     bar_opacity = $bindable(0.7),
     bar_stroke_width = $bindable(1),
-    bar_color = $bindable(`#4682b4`),
+    bar_color = $bindable(`cornflowerblue`),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     show_zero_lines = $bindable(true),
@@ -88,6 +101,8 @@
     tooltip,
     hovered = $bindable(false),
     change = () => {},
+    on_bar_click,
+    on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     plot_controls,
@@ -319,7 +334,7 @@
   }
 
   function handle_mouse_move(
-    _: MouseEvent,
+    evt: MouseEvent,
     value: number,
     count: number,
     property: string,
@@ -327,6 +342,7 @@
     hovered = true
     hover_info = { value, count, property }
     change({ value, count, property })
+    on_bar_hover?.({ value, count, property, event: evt })
   }
 
   function toggle_series_visibility(series_idx: number) {
@@ -350,6 +366,7 @@
       onmouseleave={() => {
         hovered = false
         hover_info = null
+        on_bar_hover?.(null)
       }}
       ondblclick={handle_double_click}
       style:cursor="crosshair"
@@ -405,6 +422,7 @@
             {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
             {@const bar_height = Math.max(0, (height - padding.b) - scales.y(bin.length))}
             {@const bar_y = scales.y(bin.length)}
+            {@const value = (bin.x0! + bin.x1!) / 2}
             {#if bar_height > 0}
               <rect
                 x={bar_x}
@@ -417,13 +435,21 @@
                 stroke-width={mode === `overlay` ? bar_stroke_width : 0}
                 role="button"
                 tabindex="0"
-                onmousemove={(evt) =>
-                handle_mouse_move(evt, (bin.x0! + bin.x1!) / 2, bin.length, label)}
+                onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
                 onmouseleave={() => {
                   hover_info = null
                   change(null)
+                  on_bar_hover?.(null)
                 }}
-                style:cursor="pointer"
+                onclick={(event) =>
+                on_bar_click?.({ value, count: bin.length, property: label, event })}
+                onkeydown={(event: KeyboardEvent) => {
+                  if ([`Enter`, ` `].includes(event.key)) {
+                    event.preventDefault()
+                    on_bar_click?.({ value, count: bin.length, property: label, event })
+                  }
+                }}
+                style:cursor={on_bar_click ? `pointer` : undefined}
               />
             {/if}
           {/each}
