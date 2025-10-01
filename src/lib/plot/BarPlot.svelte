@@ -142,16 +142,17 @@
     }
   })
 
+  // Layout helpers
+  const pad = $derived({ t: 20, b: 60, l: 60, r: 20, ...padding })
+  const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
+  // Ensure enough headroom for tallest label above bars (~14px). Add 8px extra buffer.
+  const extra_top = $derived(14 + 8)
+  const chart_height = $derived(Math.max(1, height - (pad.t + extra_top) - pad.b))
+
   // Scales (linear only for now)
   let scales = $derived({
-    x: create_scale(`linear`, ranges.current.x, [
-      padding.l ?? 0,
-      Math.max(1, width - (padding.r ?? 0)),
-    ]),
-    y: create_scale(`linear`, ranges.current.y, [
-      Math.max(1, height - (padding.b ?? 0)),
-      padding.t ?? 0,
-    ]),
+    x: create_scale(`linear`, ranges.current.x, [pad.l, width - pad.r]),
+    y: create_scale(`linear`, ranges.current.y, [height - pad.b, pad.t]),
   })
 
   // Ticks
@@ -249,22 +250,16 @@
         const y_val = srs.y[bar_idx]
 
         if (orientation === `vertical`) {
-          const bar_x = scales.x(x_val) - pad.l
-          const bar_y = scales.y(y_val) - pad.t
+          const bar_x = scales.x(x_val)
+          const bar_y = scales.y(y_val)
           if (isFinite(bar_x) && isFinite(bar_y)) {
-            points.push({
-              x: pad.l + bar_x,
-              y: pad.t + bar_y,
-            })
+            points.push({ x: bar_x, y: bar_y })
           }
         } else {
-          const bar_x = scales.x(y_val) - pad.l
-          const bar_y = scales.y(x_val) - pad.t
+          const bar_x = scales.x(y_val)
+          const bar_y = scales.y(x_val)
           if (isFinite(bar_x) && isFinite(bar_y)) {
-            points.push({
-              x: pad.l + bar_x,
-              y: pad.t + bar_y,
-            })
+            points.push({ x: bar_x, y: bar_y })
           }
         }
       }
@@ -314,13 +309,6 @@
     }
     change(hover_info)
   }
-
-  // Layout helpers
-  const pad = $derived({ t: 20, b: 60, l: 60, r: 20, ...padding })
-  const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
-  // Ensure enough headroom for tallest label above bars (~14px). Add 8px extra buffer.
-  const extra_top = $derived(14 + 8)
-  const chart_height = $derived(Math.max(1, height - (pad.t + extra_top) - pad.b))
 
   // Stack offsets (only for vertical stacked mode)
   let stacked_offsets = $derived.by(() => {
@@ -374,157 +362,155 @@
       tabindex="0"
       aria-label="Interactive bar plot with zoom and tooltip"
     >
-      <g transform="translate({pad.l}, {pad.t})">
-        <!-- Zero lines -->
-        {#if show_zero_lines}
-          {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-            {@const zx = scales.x(0) - pad.l}
-            {#if isFinite(zx)}
-              <line
-                x1={zx}
-                x2={zx}
-                y1={0}
-                y2={chart_height}
-                stroke="gray"
-                stroke-width="0.5"
-              />
-            {/if}
-          {/if}
-          {#if ranges.current.y[0] < 0 && ranges.current.y[1] > 0}
-            {@const zy = scales.y(0) - pad.t}
-            {#if isFinite(zy)}
-              <line
-                x1={0}
-                x2={chart_width}
-                y1={zy}
-                y2={zy}
-                stroke="gray"
-                stroke-width="0.5"
-              />
-            {/if}
+      <!-- Zero lines -->
+      {#if show_zero_lines}
+        {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+          {@const zx = scales.x(0)}
+          {#if isFinite(zx)}
+            <line
+              x1={zx}
+              x2={zx}
+              y1={pad.t}
+              y2={height - pad.b}
+              stroke="gray"
+              stroke-width="0.5"
+            />
           {/if}
         {/if}
+        {#if ranges.current.y[0] < 0 && ranges.current.y[1] > 0}
+          {@const zy = scales.y(0)}
+          {#if isFinite(zy)}
+            <line
+              x1={pad.l}
+              x2={width - pad.r}
+              y1={zy}
+              y2={zy}
+              stroke="gray"
+              stroke-width="0.5"
+            />
+          {/if}
+        {/if}
+      {/if}
 
-        <!-- Bars -->
-        {#each series as srs, series_idx (series_idx)}
-          {#if srs?.visible ?? true}
-            <g class="bar-series" data-series-idx={series_idx}>
-              {#each srs.x as x_val, bar_idx (bar_idx)}
-                {@const y_val = srs.y[bar_idx]}
-                {@const base = mode === `stacked`
-            ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
-            : 0}
-                {@const color = srs.color ?? `var(--bar-color, #4682b4)`}
-                {#if orientation === `vertical`}
-                  {@const half = (Array.isArray(srs.bar_width)
-            ? (srs.bar_width[bar_idx] ?? 0.5)
-            : (srs.bar_width ?? 0.5)) / 2}
-                  {@const x0v = scales.x(x_val - half) - pad.l}
-                  {@const x1v = scales.x(x_val + half) - pad.l}
-                  {@const y0v = scales.y(base) - pad.t}
-                  {@const y1v = scales.y(base + y_val) - pad.t}
-                  {@const rect_x = Math.min(x0v, x1v)}
-                  {@const rect_y = Math.min(y0v, y1v)}
-                  {@const rect_w = Math.max(1, Math.abs(x1v - x0v))}
-                  {@const rect_h = Math.max(0, Math.abs(y1v - y0v))}
-                  {#if rect_h > 0}
-                    <rect
-                      x={rect_x}
-                      y={rect_y}
-                      width={rect_w}
-                      height={rect_h}
-                      fill={color}
-                      opacity={mode === `overlay` ? 0.85 : 1}
-                      role="button"
-                      tabindex="0"
-                      aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                      onmousemove={(evt) => {
-                        const coords = get_relative_coords(evt)
-                        if (!coords) return
-                        const { x, y } = coords
-                        handle_bar_hover({ series_idx, bar_idx, x, y, color })
-                      }}
-                      onmouseleave={() => {
-                        hover_info = null
-                        change(null)
-                      }}
-                    />
-                    {#if srs.labels?.[bar_idx]}
-                      <text
-                        x={(x0v + x1v) / 2}
-                        y={Math.max(0, Math.min(y0v, y1v) - 6)}
-                        text-anchor="middle"
-                        class="bar-label"
-                      >
-                        {srs.labels[bar_idx]}
-                      </text>
-                    {/if}
-                  {/if}
-                {:else}
-                  {@const half_h = (Array.isArray(srs.bar_width)
-            ? (srs.bar_width[bar_idx] ?? 0.5)
-            : (srs.bar_width ?? 0.5)) / 2}
-                  {@const y0h = scales.y(x_val - half_h) - pad.t}
-                  {@const y1h = scales.y(x_val + half_h) - pad.t}
-                  {@const x0h = scales.x(base)}
-                  {@const x1h = scales.x(base + y_val)}
-                  {@const rect_xh = Math.min(x0h, x1h) - pad.l}
-                  {@const rect_yh = Math.min(y0h, y1h)}
-                  {@const rect_wh = Math.max(1, Math.abs(x1h - x0h))}
-                  {@const rect_hh = Math.max(0, Math.abs(y1h - y0h))}
-                  {#if rect_wh > 0}
-                    <rect
-                      x={rect_xh}
-                      y={rect_yh}
-                      width={rect_wh}
-                      height={rect_hh}
-                      fill={color}
-                      opacity={mode === `overlay` ? 0.85 : 1}
-                      role="button"
-                      tabindex="0"
-                      aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                      onmousemove={(evt) => {
-                        const coords = get_relative_coords(evt)
-                        if (!coords) return
-                        handle_bar_hover({
-                          series_idx,
-                          bar_idx,
-                          x: coords.x,
-                          y: coords.y,
-                          color,
-                        })
-                      }}
-                      onmouseleave={() => {
-                        hover_info = null
-                        change(null)
-                      }}
-                    />
-                    {#if srs.labels?.[bar_idx]}
-                      <text
-                        x={Math.max(x0h, x1h) - pad.l + 4}
-                        y={(y0h + y1h) / 2}
-                        dominant-baseline="central"
-                        class="bar-label"
-                      >
-                        {srs.labels[bar_idx]}
-                      </text>
-                    {/if}
+      <!-- Bars -->
+      {#each series as srs, series_idx (series_idx)}
+        {#if srs?.visible ?? true}
+          <g class="bar-series" data-series-idx={series_idx}>
+            {#each srs.x as x_val, bar_idx (bar_idx)}
+              {@const y_val = srs.y[bar_idx]}
+              {@const base = mode === `stacked`
+          ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
+          : 0}
+              {@const color = srs.color ?? `var(--bar-color, #4682b4)`}
+              {#if orientation === `vertical`}
+                {@const half = (Array.isArray(srs.bar_width)
+          ? (srs.bar_width[bar_idx] ?? 0.5)
+          : (srs.bar_width ?? 0.5)) / 2}
+                {@const x0v = scales.x(x_val - half)}
+                {@const x1v = scales.x(x_val + half)}
+                {@const y0v = scales.y(base)}
+                {@const y1v = scales.y(base + y_val)}
+                {@const rect_x = Math.min(x0v, x1v)}
+                {@const rect_y = Math.min(y0v, y1v)}
+                {@const rect_w = Math.max(1, Math.abs(x1v - x0v))}
+                {@const rect_h = Math.max(0, Math.abs(y1v - y0v))}
+                {#if rect_h > 0}
+                  <rect
+                    x={rect_x}
+                    y={rect_y}
+                    width={rect_w}
+                    height={rect_h}
+                    fill={color}
+                    opacity={mode === `overlay` ? 0.85 : 1}
+                    role="button"
+                    tabindex="0"
+                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
+                    onmousemove={(evt) => {
+                      const coords = get_relative_coords(evt)
+                      if (!coords) return
+                      const { x, y } = coords
+                      handle_bar_hover({ series_idx, bar_idx, x, y, color })
+                    }}
+                    onmouseleave={() => {
+                      hover_info = null
+                      change(null)
+                    }}
+                  />
+                  {#if srs.labels?.[bar_idx]}
+                    <text
+                      x={(x0v + x1v) / 2}
+                      y={Math.max(0, Math.min(y0v, y1v) - 6)}
+                      text-anchor="middle"
+                      class="bar-label"
+                    >
+                      {srs.labels[bar_idx]}
+                    </text>
                   {/if}
                 {/if}
-              {/each}
-            </g>
-          {/if}
-        {/each}
-
-        <!-- Zoom rectangle -->
-        {#if drag_state.start && drag_state.current}
-          {@const x = Math.min(drag_state.start.x, drag_state.current.x) - pad.l}
-          {@const y = Math.min(drag_state.start.y, drag_state.current.y) - pad.t}
-          {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}
-          {@const rect_h = Math.abs(drag_state.start.y - drag_state.current.y)}
-          <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
+              {:else}
+                {@const half_h = (Array.isArray(srs.bar_width)
+          ? (srs.bar_width[bar_idx] ?? 0.5)
+          : (srs.bar_width ?? 0.5)) / 2}
+                {@const y0h = scales.y(x_val - half_h)}
+                {@const y1h = scales.y(x_val + half_h)}
+                {@const x0h = scales.x(base)}
+                {@const x1h = scales.x(base + y_val)}
+                {@const rect_xh = Math.min(x0h, x1h)}
+                {@const rect_yh = Math.min(y0h, y1h)}
+                {@const rect_wh = Math.max(1, Math.abs(x1h - x0h))}
+                {@const rect_hh = Math.max(0, Math.abs(y1h - y0h))}
+                {#if rect_wh > 0}
+                  <rect
+                    x={rect_xh}
+                    y={rect_yh}
+                    width={rect_wh}
+                    height={rect_hh}
+                    fill={color}
+                    opacity={mode === `overlay` ? 0.85 : 1}
+                    role="button"
+                    tabindex="0"
+                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
+                    onmousemove={(evt) => {
+                      const coords = get_relative_coords(evt)
+                      if (!coords) return
+                      handle_bar_hover({
+                        series_idx,
+                        bar_idx,
+                        x: coords.x,
+                        y: coords.y,
+                        color,
+                      })
+                    }}
+                    onmouseleave={() => {
+                      hover_info = null
+                      change(null)
+                    }}
+                  />
+                  {#if srs.labels?.[bar_idx]}
+                    <text
+                      x={Math.max(x0h, x1h) + 4}
+                      y={(y0h + y1h) / 2}
+                      dominant-baseline="central"
+                      class="bar-label"
+                    >
+                      {srs.labels[bar_idx]}
+                    </text>
+                  {/if}
+                {/if}
+              {/if}
+            {/each}
+          </g>
         {/if}
-      </g>
+      {/each}
+
+      <!-- Zoom rectangle -->
+      {#if drag_state.start && drag_state.current}
+        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
+        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
+        {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}
+        {@const rect_h = Math.abs(drag_state.start.y - drag_state.current.y)}
+        <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
+      {/if}
 
       <!-- X-axis -->
       <g class="x-axis">
