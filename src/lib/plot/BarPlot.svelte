@@ -9,7 +9,7 @@
     Orientation,
     Sides,
   } from '$lib/plot'
-  import { PlotLegend } from '$lib/plot'
+  import { find_best_legend_placement, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
   import {
@@ -236,6 +236,56 @@
       )
     }
   }
+
+  // Collect bar positions for legend placement
+  let bar_points_for_placement = $derived.by(() => {
+    if (!width || !height || !visible_series.length) return []
+
+    const points: { x: number; y: number }[] = []
+
+    for (const srs of visible_series) {
+      for (let bar_idx = 0; bar_idx < srs.x.length; bar_idx++) {
+        const x_val = srs.x[bar_idx]
+        const y_val = srs.y[bar_idx]
+
+        if (orientation === `vertical`) {
+          const bar_x = scales.x(x_val) - pad.l
+          const bar_y = scales.y(y_val) - pad.t
+          if (isFinite(bar_x) && isFinite(bar_y)) {
+            points.push({
+              x: pad.l + bar_x,
+              y: pad.t + bar_y,
+            })
+          }
+        } else {
+          const bar_x = scales.x(y_val) - pad.l
+          const bar_y = scales.y(x_val) - pad.t
+          if (isFinite(bar_x) && isFinite(bar_y)) {
+            points.push({
+              x: pad.l + bar_x,
+              y: pad.t + bar_y,
+            })
+          }
+        }
+      }
+    }
+    return points
+  })
+
+  // Calculate best legend placement
+  let legend_placement = $derived.by(() => {
+    const should_place = (series?.length ?? 0) > 1
+
+    if (!should_place || !width || !height) return null
+
+    return find_best_legend_placement(bar_points_for_placement, {
+      plot_width: chart_width,
+      plot_height: chart_height,
+      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
+      margin: 10,
+      legend_size: { width: 120, height: 60 },
+    })
+  })
 
   // Tooltip state
   let hover_info = $state<BarTooltipProps | null>(null)
@@ -560,12 +610,12 @@
     </svg>
 
     <!-- Legend -->
-    {#if (series?.length ?? 0) > 1}
+    {#if (series?.length ?? 0) > 1 && legend_placement}
       <PlotLegend
         {...legend}
         series_data={legend_data}
         on_toggle={legend?.on_toggle || toggle_series_visibility}
-        wrapper_style="position: absolute; top: 10px; right: 10px; {legend?.wrapper_style || ``}"
+        wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
       />
     {/if}
 

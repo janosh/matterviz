@@ -1,7 +1,11 @@
 <script lang="ts">
   import { DraggablePane } from '$lib'
   import type { DataSeries } from '$lib/plot'
-  import { HistogramControls, PlotLegend } from '$lib/plot'
+  import {
+    find_best_legend_placement,
+    HistogramControls,
+    PlotLegend,
+  } from '$lib/plot'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -37,6 +41,7 @@
     legend?: LegendConfig | null
     bar_opacity?: number
     bar_stroke_width?: number
+    bar_color?: string
     selected_property?: string
     mode?: `single` | `overlay`
     show_zero_lines?: boolean
@@ -72,6 +77,7 @@
     legend = { series_data: [] },
     bar_opacity = $bindable(0.7),
     bar_stroke_width = $bindable(1),
+    bar_color = $bindable(`#4682b4`),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     show_zero_lines = $bindable(true),
@@ -194,7 +200,9 @@
       return {
         series_idx,
         label: series_data.label || `Series ${series_idx + 1}`,
-        color: extract_series_color(series_data),
+        color: selected_series.length === 1
+          ? bar_color
+          : extract_series_color(series_data),
         bins: bins_arr,
         max_count: max(bins_arr, (d) => d.length) || 0,
       }
@@ -215,6 +223,53 @@
   })
 
   let legend_data = $derived(prepare_legend_data(series))
+
+  // Collect histogram bar positions for legend placement
+  let hist_points_for_placement = $derived.by(() => {
+    if (!width || !height || !histogram_data.length) return []
+
+    const points: { x: number; y: number }[] = []
+
+    for (const { bins } of histogram_data) {
+      for (const bin of bins) {
+        if (bin.length > 0) {
+          const bar_x = scales.x(bin.x0!)
+          const bar_y = scales.y(bin.length)
+          if (isFinite(bar_x) && isFinite(bar_y)) {
+            // Add multiple points for taller bars to increase their weight
+            const weight = Math.ceil(bin.length / 10) // More points for taller bars
+            for (let idx = 0; idx < weight; idx++) {
+              points.push({ x: bar_x, y: bar_y })
+            }
+          }
+        }
+      }
+    }
+    return points
+  })
+
+  // Calculate best legend placement
+  let legend_placement = $derived.by(() => {
+    const should_place = show_legend && legend && series.length > 1
+
+    if (!should_place || !width || !height) return null
+
+    const chart_width = width - padding.l - padding.r
+    const chart_height = height - padding.t - padding.b
+
+    return find_best_legend_placement(hist_points_for_placement, {
+      plot_width: chart_width,
+      plot_height: chart_height,
+      padding: {
+        t: padding.t,
+        b: padding.b,
+        l: padding.l,
+        r: padding.r,
+      },
+      margin: 10,
+      legend_size: { width: 120, height: 60 },
+    })
+  })
 
   // Event handlers
   const handle_zoom = () => {
@@ -516,6 +571,7 @@
       bind:mode
       bind:bar_opacity
       bind:bar_stroke_width
+      bind:bar_color
       bind:show_legend
       bind:x_grid
       bind:y_grid
@@ -536,12 +592,12 @@
     />
   {/if}
 
-  {#if show_legend && legend && series.length > 1}
+  {#if show_legend && legend && series.length > 1 && legend_placement}
     <PlotLegend
       {...legend}
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
-      wrapper_style="position: absolute; top: 10px; right: 10px; {legend?.wrapper_style || ``}"
+      wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
     />
   {/if}
 </div>
