@@ -283,7 +283,6 @@
         {/if}
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Axis Range"
         current_values={{ x_range, y_range, y2_range }}
@@ -311,7 +310,6 @@
         {/if}
       </SettingsSection>
 
-      <hr />
       <SettingsSection
         title="Tick Format"
         current_values={{ x_format, y_format, y2_format }}
@@ -367,7 +365,6 @@
 
       <!-- Point Style Controls -->
       {#if show_points}
-        <hr />
         <SettingsSection
           title="Point Style"
           current_values={{
@@ -454,7 +451,6 @@
 
       <!-- Line Style Controls -->
       {#if show_lines}
-        <hr />
         <SettingsSection
           title="Line Style"
           current_values={{ line_width, line_color, line_opacity, line_dash }}

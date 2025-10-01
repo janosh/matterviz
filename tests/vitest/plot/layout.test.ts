@@ -1,5 +1,9 @@
-import { constrain_tooltip_position, get_chart_dimensions } from '$lib/plot/layout'
-import { describe, expect, test } from 'vitest'
+import {
+  constrain_tooltip_position,
+  find_best_legend_placement,
+  get_chart_dimensions,
+} from '$lib/plot/layout'
+import { describe, expect, it, test } from 'vitest'
 
 describe(`layout utility functions`, () => {
   describe(`constrain_tooltip_position`, () => {
@@ -320,6 +324,101 @@ describe(`layout utility functions`, () => {
       // Use approximate equality for floating-point comparisons
       expect(result.width).toBeCloseTo(expected.width, 10)
       expect(result.height).toBeCloseTo(expected.height, 10)
+    })
+  })
+
+  describe(`find_best_legend_placement`, () => {
+    const base_config = {
+      plot_width: 400,
+      plot_height: 300,
+      padding: { t: 20, b: 40, l: 50, r: 20 },
+      margin: 10,
+      legend_size: { width: 100, height: 60 },
+    }
+
+    it(`should place legend in top-left corner when no points exist`, () => {
+      const result = find_best_legend_placement([], base_config)
+
+      expect(result.position).toBe(`top-left`)
+      expect(result.x).toBeGreaterThan(0)
+      expect(result.y).toBeGreaterThan(0)
+    })
+
+    it(`should avoid regions with many points`, () => {
+      // Create points clustered in top-left
+      const points = Array.from({ length: 20 }, () => ({
+        x: base_config.padding.l + 50,
+        y: base_config.padding.t + 50,
+      }))
+
+      const result = find_best_legend_placement(points, base_config)
+
+      // Should NOT be top-left since that's crowded
+      expect(result.position).not.toBe(`top-left`)
+    })
+
+    it(`should prefer corners over edge midpoints`, () => {
+      // Create points only in center, leaving all corners clear
+      const points = [
+        {
+          x: base_config.padding.l + base_config.plot_width / 2,
+          y: base_config.padding.t + base_config.plot_height / 2,
+        },
+      ]
+
+      const result = find_best_legend_placement(points, base_config)
+
+      // Should be one of the four corners
+      const corners = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
+      expect(corners).toContain(result.position)
+    })
+
+    it(`should choose least populated region among similar options`, () => {
+      // Create 5 points in top-right, 3 in bottom-right, none elsewhere
+      const points = [
+        ...Array.from({ length: 5 }, () => ({
+          x: base_config.padding.l + base_config.plot_width - 20,
+          y: base_config.padding.t + 20,
+        })),
+        ...Array.from({ length: 3 }, () => ({
+          x: base_config.padding.l + base_config.plot_width - 20,
+          y: base_config.padding.t + base_config.plot_height - 20,
+        })),
+      ]
+
+      const result = find_best_legend_placement(points, base_config)
+
+      // Should prefer top-left or bottom-left (both have 0 points)
+      expect([`top-left`, `bottom-left`]).toContain(result.position)
+    })
+
+    it(`should respect margin settings`, () => {
+      const config_with_margin = { ...base_config, margin: 20 }
+      const result = find_best_legend_placement([], config_with_margin)
+
+      // Top-left corner with margin
+      expect(result.x).toBe(base_config.padding.l + 20)
+      expect(result.y).toBe(base_config.padding.t + 20)
+    })
+
+    it(`should calculate correct coordinates within plot area`, () => {
+      const result = find_best_legend_placement([], base_config)
+
+      // Should be within plot area boundaries
+      expect(result.x).toBeGreaterThanOrEqual(base_config.padding.l)
+      expect(result.x).toBeLessThanOrEqual(
+        base_config.padding.l + base_config.plot_width,
+      )
+      expect(result.y).toBeGreaterThanOrEqual(base_config.padding.t)
+      expect(result.y).toBeLessThanOrEqual(
+        base_config.padding.t + base_config.plot_height,
+      )
+    })
+
+    it(`should always return a transform string`, () => {
+      const result = find_best_legend_placement([], base_config)
+
+      expect(typeof result.transform).toBe(`string`)
     })
   })
 })

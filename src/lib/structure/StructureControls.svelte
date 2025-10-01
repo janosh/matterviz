@@ -298,7 +298,6 @@
     </label>
   </SettingsSection>
 
-  <hr />
   <h4>Export</h4>
   <div class="export-buttons">
     {#each export_formats as { label, format } (format)}
@@ -352,7 +351,6 @@
     </label>
   </div>
 
-  <hr />
   <SettingsSection
     title="Camera"
     current_values={{
@@ -503,7 +501,6 @@
     </div>
   </SettingsSection>
 
-  <hr />
   <SettingsSection
     title="Atoms"
     current_values={{
@@ -577,7 +574,6 @@
   </SettingsSection>
 
   {#if scene_props.show_site_labels || scene_props.show_site_indices}
-    <hr />
     <SettingsSection
       title="Labels"
       current_values={{
@@ -676,7 +672,6 @@
   {/if}
 
   {#if has_forces && scene_props.show_force_vectors}
-    <hr />
     <SettingsSection
       title="Force Vectors"
       current_values={{
@@ -715,7 +710,6 @@
   {/if}
 
   {#if has_lattice}
-    <hr />
     <SettingsSection
       title="Cell"
       current_values={{
@@ -813,7 +807,6 @@
     </SettingsSection>
   {/if}
 
-  <hr />
   <SettingsSection
     title="Background"
     current_values={{
@@ -851,7 +844,6 @@
     </div>
   </SettingsSection>
 
-  <hr />
   <SettingsSection
     title="Lighting"
     current_values={{
@@ -906,7 +898,6 @@
   </SettingsSection>
 
   {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
-    <hr />
     <SettingsSection
       title="Bonds"
       current_values={{

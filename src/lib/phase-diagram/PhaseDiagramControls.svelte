@@ -216,10 +216,11 @@
     </div>
   {:else}
     <!-- Color scale selector -->
-    <div class="control-row">
+    <div style="display: grid; gap: 8px; grid-template-columns: auto 1fr">
       <span {@attach tooltip({ content: `Choose energy colormap` })}>Color scale</span>
       <ColorScaleSelect
         bind:value={color_scale}
+        selected={[color_scale]}
         placeholder="Select color scale"
         {@attach tooltip({ content: `Set interpolator for energy colors` })}
       />

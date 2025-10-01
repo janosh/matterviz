@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { cells_3x3, corner_cells, DraggablePane, Line, symbol_names } from '$lib'
+  import { DraggablePane, Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
-    Cell3x3,
-    Corner,
     D3SymbolName,
     DataSeries,
     HoverConfig,
@@ -24,7 +22,13 @@
     UserContentProps,
     XyObj,
   } from '$lib/plot'
-  import { ColorBar, PlotLegend, ScatterPlotControls, ScatterPoint } from '$lib/plot'
+  import {
+    ColorBar,
+    find_best_legend_placement,
+    PlotLegend,
+    ScatterPlotControls,
+    ScatterPoint,
+  } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
@@ -289,8 +293,7 @@
   let label_positions = $state<Record<string, XyObj>>({})
 
   // State for initial (non-responsive) legend placement
-  let initial_legend_cell = $state<Cell3x3 | null>(null)
-  let is_initial_legend_placement_calculated = $state(false)
+  let initial_legend_placement = $state<typeof legend_placement | null>(null)
 
   // State for legend dragging
   let legend_is_dragging = $state(false)
@@ -299,58 +302,12 @@
 
   // Module-level constants to avoid repeated allocations
   const DEFAULT_MARGIN = { t: 10, l: 10, b: 10, r: 10 } as const
-  const X_FACTORS = {
-    left: { anchor: 0, transform: `0` },
-    center: { anchor: 0.5, transform: `-50%` },
-    right: { anchor: 1, transform: `-100%` },
-  } as const
-  type XFactorKey = keyof typeof X_FACTORS
-  const Y_FACTORS = {
-    top: { anchor: 0, transform: `0` },
-    middle: { anchor: 0.5, transform: `-50%` },
-    bottom: { anchor: 1, transform: `-100%` },
-  } as const
-  type YFactorKey = keyof typeof Y_FACTORS
 
   function normalize_margin(margin: number | Sides | undefined): Required<Sides> {
     if (typeof margin === `number`) {
       return { t: margin, l: margin, b: margin, r: margin }
     }
     return { ...DEFAULT_MARGIN, ...margin }
-  }
-
-  function get_placement_styles( //  based on grid cell
-    cell: Cell3x3 | null,
-    item_type: `legend` | `colorbar`,
-  ): { left: number; top: number; transform: string } {
-    if (!cell || !width || !height) return { left: 0, top: 0, transform: `` }
-
-    const effective_pad = { t: 0, b: 0, l: 0, r: 0, ...padding }
-    const plot_width = width - effective_pad.l - effective_pad.r
-    const plot_height = height - effective_pad.t - effective_pad.b
-
-    const margin = normalize_margin(
-      item_type === `legend` ? legend?.margin : color_bar?.margin,
-    )
-
-    const [y_part, x_part] = cell.split(`-`) as [YFactorKey, XFactorKey]
-    const x_factor = X_FACTORS[x_part]
-    const y_factor = Y_FACTORS[y_part]
-
-    const base_x = effective_pad.l + plot_width * x_factor.anchor
-    const base_y = effective_pad.t + plot_height * y_factor.anchor
-
-    // Adjust base position by margin depending on anchor point
-    const target_x = base_x +
-      (x_part === `left` ? margin.l : x_part === `right` ? -margin.r : 0)
-    const target_y = base_y +
-      (y_part === `top` ? margin.t : y_part === `bottom` ? -margin.b : 0)
-
-    const transform = x_factor.transform !== `0` || y_factor.transform !== `0`
-      ? `translate(${x_factor.transform}, ${y_factor.transform})`
-      : ``
-
-    return { left: target_x, top: target_y, transform }
   }
 
   // Create raw data points from all series
@@ -692,24 +649,11 @@
     }
   })
 
-  // Calculate point counts per 3x3 grid cell
-  let grid_cell_counts = $derived.by(() => {
-    const counts = cells_3x3.reduce(
-      (acc, cell) => {
-        acc[cell] = 0
-        return acc
-      },
-      {} as Record<Cell3x3, number>,
-    )
+  // Collect all plot points for legend placement calculation
+  let plot_points_for_placement = $derived.by(() => {
+    if (!width || !height || !filtered_series) return []
 
-    if (!width || !height || !filtered_series) return counts
-
-    const plot_width = width - pad.l - pad.r
-    const plot_height = height - pad.t - pad.b
-    const x_boundary1 = pad.l + plot_width / 3
-    const x_boundary2 = pad.l + (2 * plot_width) / 3
-    const y_boundary1 = pad.t + plot_height / 3
-    const y_boundary2 = pad.t + (2 * plot_height) / 3
+    const points: { x: number; y: number }[] = []
 
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
@@ -722,23 +666,12 @@
             point.y,
           )
 
-        // Determine grid cell parts
-        const x_part = point_x_coord < x_boundary1
-          ? `left`
-          : point_x_coord < x_boundary2
-          ? `center`
-          : `right`
-        const y_part = point_y_coord < y_boundary1
-          ? `top`
-          : point_y_coord < y_boundary2
-          ? `middle`
-          : `bottom`
-        const cell: Cell3x3 = `${y_part}-${x_part}`
-
-        counts[cell]++
+        if (isFinite(point_x_coord) && isFinite(point_y_coord)) {
+          points.push({ x: point_x_coord, y: point_y_coord })
+        }
       }
     }
-    return counts
+    return points
   })
 
   // Prepare data needed for the legend component
@@ -834,55 +767,58 @@
     })
   })
 
-  // Get best placement cells, prioritizing corners first, then by density
-  let ranked_grid_cells = $derived.by(() => {
-    // Separate corners from non-corners and sort each by density (count)
-    const corners = corner_cells
-      .map((cell) => ({ cell, count: grid_cell_counts[cell] }))
-      .sort((a, b) => a.count - b.count)
-
-    const non_corners = cells_3x3
-      .filter((cell) => !corner_cells.includes(cell as Corner))
-      .map((cell) => ({ cell, count: grid_cell_counts[cell] }))
-      .sort((a, b) => a.count - b.count)
-
-    // Return corners first, then non-corners (extract just the cell names)
-    return [...corners, ...non_corners].map(({ cell }) => cell)
-  })
-
-  // Determine legend and color bar placement
-  let legend_cell = $derived.by(() => {
+  // Calculate best legend placement using new simple system
+  let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
       (legend_data.length > 1 || JSON.stringify(legend) !== `{}`)
-    return should_place && ranked_grid_cells.length > 0 ? ranked_grid_cells[0] : null
+
+    if (!should_place || !width || !height) return null
+
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+
+    return find_best_legend_placement(plot_points_for_placement, {
+      plot_width,
+      plot_height,
+      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
+      margin: normalize_margin(legend?.margin).t, // Use top margin as default spacing
+      legend_size: { width: 120, height: 80 }, // Estimated legend size
+    })
   })
 
-  let color_bar_cell = $derived.by(() => {
-    const should_place = color_bar && all_color_values.length > 0
-    return should_place && ranked_grid_cells.length > 0
-      ? (ranked_grid_cells.find((cell) => cell !== legend_cell) ?? null)
-      : null
-  })
+  // Calculate color bar placement (simple: opposite corner from legend)
+  let color_bar_placement = $derived.by(() => {
+    if (!color_bar || !all_color_values.length || !width || !height) return null
 
-  // Determine the final placement cell for the legend based on mode
-  let legend_placement_cell = $derived.by(() => {
-    if (!legend_cell) return null // No legend cell assigned
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+    const margin = normalize_margin(color_bar?.margin).t ?? 10
 
-    const is_responsive = legend?.responsive ?? false
-    const style = legend?.wrapper_style ?? ``
-    // Check if position is explicitly set via top/bottom/left/right or position: absolute
-    const is_fixed_position = typeof style === `string` &&
-      /(\b(top|bottom|left|right)\s*:)|(position\s*:\s*absolute)/.test(style)
+    // Place opposite of legend: if legend is top, colorbar is bottom
+    const is_top = !legend_placement?.position.startsWith(`top`)
 
-    if (is_fixed_position) return null // Fixed position, no auto-placement needed
-
-    if (is_responsive) return legend_cell // Use the current dynamically best cell
-    else {
-      // Not responsive, use initial cell if calculated, else the current best as fallback
-      return is_initial_legend_placement_calculated
-        ? initial_legend_cell
-        : legend_cell
+    return {
+      x: pad.l + plot_width - margin,
+      y: is_top ? pad.t + margin : pad.t + plot_height - margin,
+      transform: is_top ? `translateX(-100%)` : `translate(-100%, -100%)`,
     }
+  })
+
+  // Use responsive or fixed initial placement
+  let active_legend_placement = $derived.by(() => {
+    if (!legend_placement) return null
+
+    // Skip auto-placement if user set explicit position
+    const style = legend?.wrapper_style ?? ``
+    if (
+      /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style)
+    ) return null
+
+    // Responsive mode: always use current best placement
+    if (legend?.responsive) return legend_placement
+
+    // Fixed mode: use initial placement (set in effect below)
+    return initial_legend_placement ?? legend_placement
   })
 
   // Initialize tweened values for color bar position
@@ -896,54 +832,31 @@
     { duration: 400, ...(legend?.tween ?? {}) },
   )
 
-  // Effect to calculate the initial grid cell ONCE for non-responsive legend
-  // And update legend and color bar tweened positions
+  // Update placement positions (with animation)
   $effect(() => {
-    if (!width || !height) return // Need dimensions
+    if (!width || !height) return
 
-    const is_responsive = legend?.responsive ?? false
-    const style = legend?.wrapper_style ?? ``
-    const is_fixed_position = typeof style === `string` &&
-      /(\b(top|bottom|left|right)\s*:)|(position\s*:\s*absolute)/.test(style)
-
-    // Calculate initial legend cell if needed
-    if (
-      legend_cell &&
-      !is_initial_legend_placement_calculated &&
-      !is_responsive &&
-      !is_fixed_position
-    ) {
-      initial_legend_cell = legend_cell
-      is_initial_legend_placement_calculated = true
+    // Store initial placement for non-responsive mode
+    if (legend_placement && !initial_legend_placement && !legend?.responsive) {
+      initial_legend_placement = legend_placement
     }
 
-    // Reset initial calculation flag if mode changes TO responsive or TO fixed
-    if (
-      (is_responsive || is_fixed_position) && is_initial_legend_placement_calculated
-    ) {
-      is_initial_legend_placement_calculated = false
-      initial_legend_cell = null // Clear stored cell
+    // Update color bar
+    if (color_bar_placement) {
+      tweened_colorbar_coords.set({
+        x: color_bar_placement.x,
+        y: color_bar_placement.y,
+      })
     }
 
-    // Update Color Bar Position
-    if (color_bar_cell) {
-      const { left: target_x, top: target_y } = get_placement_styles(
-        color_bar_cell,
-        `colorbar`,
-      )
-      tweened_colorbar_coords.set({ x: target_x, y: target_y })
-    }
-
-    // Update Legend Position using the calculated placement cell (only if not manually positioned)
-    if (legend_placement_cell && !legend_manual_position) {
-      const { left: target_x, top: target_y } = get_placement_styles(
-        legend_placement_cell,
-        `legend`,
-      )
-      tweened_legend_coords.set({ x: target_x, y: target_y })
-    } else if (legend_manual_position && !legend_is_dragging) {
-      // Use manual position if set and not currently dragging
+    // Update legend (unless manually positioned)
+    if (legend_manual_position && !legend_is_dragging) {
       tweened_legend_coords.set(legend_manual_position)
+    } else if (active_legend_placement && !legend_is_dragging) {
+      tweened_legend_coords.set({
+        x: active_legend_placement.x,
+        y: active_legend_placement.y,
+      })
     }
   })
 
@@ -1301,37 +1214,34 @@
     return unit1 === unit2
   }
 
-  function resolve_unit_conflicts(
-    series: DataSeries[],
-    target_idx: number,
-  ): DataSeries[] {
-    const target_series = series[target_idx]
-    const target_axis = target_series.y_axis ?? `y1`
-
-    return series.map((s, idx) => ({
-      ...s,
-      visible: idx === target_idx ||
-        !(s.visible && (s.y_axis ?? `y1`) === target_axis &&
-          !have_compatible_units(target_series, s)),
-    }))
-  }
-
   // Function to toggle series visibility
   function toggle_series_visibility(series_idx: number) {
-    if (series_idx >= 0 && series_idx < series.length && series[series_idx]) {
-      const toggled_series = series[series_idx]
-      const new_visibility = !(toggled_series.visible ?? true)
+    if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return
 
-      if (new_visibility) {
-        series = resolve_unit_conflicts(series, series_idx)
-      } else {
-        // Just toggle visibility normally when hiding
-        series = series.map((s, idx) => {
-          if (idx === series_idx) return { ...s, visible: false }
-          return s
-        })
+    const toggled_series = series[series_idx]
+    const new_visibility = !(toggled_series.visible ?? true)
+    const target_axis = toggled_series.y_axis ?? `y1`
+
+    // Only create new objects for series that need to change to preserve series IDs
+    series = series.map((s, idx) => {
+      if (idx === series_idx) {
+        // Toggle the clicked series
+        return { ...s, visible: new_visibility }
       }
-    }
+
+      // If we're showing a series, hide incompatible series on same axis
+      if (new_visibility && (s.y_axis ?? `y1`) === target_axis) {
+        if (!have_compatible_units(toggled_series, s)) {
+          // Only create new object if we need to change visibility
+          if (s.visible ?? true) {
+            return { ...s, visible: false }
+          }
+        }
+      }
+
+      // Keep the SAME object reference for unchanged series (preserves cached ID)
+      return s
+    })
   }
 
   // Function to handle double-click on legend item
@@ -1343,10 +1253,15 @@
 
     if (is_currently_isolated && previous_series_visibility) {
       // Restore previous visibility state
-      series = series.map((s, idx) => ({
-        ...s,
-        visible: previous_series_visibility![idx],
-      }))
+      // Only create new objects for series whose visibility actually changes
+      series = series.map((s, idx) => {
+        const target_visibility = previous_series_visibility![idx]
+        const current_visibility = s?.visible ?? true
+        if (current_visibility !== target_visibility) {
+          return { ...s, visible: target_visibility }
+        }
+        return s // Preserve object reference
+      })
       previous_series_visibility = null // Clear memory
     } else {
       // Isolate the double-clicked series
@@ -1354,10 +1269,15 @@
       if (visible_count > 1) {
         previous_series_visibility = [...current_visibility] // Store current state
       }
-      series = series.map((s, idx) => ({
-        ...s,
-        visible: idx === double_clicked_idx,
-      }))
+      // Only create new objects for series whose visibility needs to change
+      series = series.map((s, idx) => {
+        const target_visibility = idx === double_clicked_idx
+        const current_visibility = s?.visible ?? true
+        if (current_visibility !== target_visibility) {
+          return { ...s, visible: target_visibility }
+        }
+        return s // Preserve object reference
+      })
     }
   }
 
@@ -1366,14 +1286,15 @@
     if (!svg_element) return
 
     legend_is_dragging = true
-    const svg_rect = svg_element.getBoundingClientRect()
-    const current_legend_x = tweened_legend_coords.current.x
-    const current_legend_y = tweened_legend_coords.current.y
 
-    // Calculate offset from mouse to current legend position
+    // Get the actual rendered position of the legend element (accounts for transforms)
+    const legend_element = event.currentTarget as HTMLElement
+    const legend_rect = legend_element.getBoundingClientRect()
+
+    // Calculate offset from mouse to legend's actual rendered position relative to SVG
     legend_drag_offset = {
-      x: event.clientX - svg_rect.left - current_legend_x,
-      y: event.clientY - svg_rect.top - current_legend_y,
+      x: event.clientX - legend_rect.left,
+      y: event.clientY - legend_rect.top,
     }
   }
 
@@ -1381,17 +1302,16 @@
     if (!legend_is_dragging || !svg_element) return
 
     const svg_rect = svg_element.getBoundingClientRect()
+
+    // Calculate new position: mouse position relative to SVG, minus the offset within the legend
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
     const new_y = event.clientY - svg_rect.top - legend_drag_offset.y
 
-    // Constrain to plot bounds
+    // Constrain to plot bounds (with some margin)
     const constrained_x = Math.max(0, Math.min(width - 100, new_x)) // Assume legend width ~100px
     const constrained_y = Math.max(0, Math.min(height - 50, new_y)) // Assume legend height ~50px
 
     legend_manual_position = { x: constrained_x, y: constrained_y }
-
-    // Update tweened position immediately during drag
-    tweened_legend_coords.set({ x: constrained_x, y: constrained_y }, { duration: 0 })
   }
 
   function handle_legend_drag_end(_event: MouseEvent) {
@@ -1933,7 +1853,7 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && all_color_values.length > 0 && color_bar_cell}
+    {#if color_bar && all_color_values.length > 0 && color_bar_placement}
       {@const color_domain = [
       color_scale.value_range?.[0] ?? auto_color_range[0],
       color_scale.value_range?.[1] ?? auto_color_range[1],
@@ -1946,11 +1866,11 @@
         scale_type={color_scale.type}
         range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style={`
-        position: absolute;
-        left: ${tweened_colorbar_coords.current.x}px;
-        top: ${tweened_colorbar_coords.current.y}px;
-        transform: ${get_placement_styles(color_bar_cell, `colorbar`).transform};
-        ${color_bar?.wrapper_style ?? ``}`}
+          position: absolute;
+          left: ${tweened_colorbar_coords.current.x}px;
+          top: ${tweened_colorbar_coords.current.y}px;
+          transform: ${color_bar_placement?.transform ?? ``};
+          ${color_bar?.wrapper_style ?? ``}`}
         bar_style="width: 280px; height: 20px; {color_bar?.style ?? ``}"
         {...color_bar}
       />
@@ -1958,7 +1878,7 @@
 
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
-    {#if legend != null && legend_data.length > 0 && legend_cell &&
+    {#if legend != null && legend_data.length > 0 && legend_placement &&
       (legend_data.length > 1 || (legend != null && JSON.stringify(legend) !== `{}`))}
       <PlotLegend
         series_data={legend_data}
@@ -1973,13 +1893,19 @@
         handle_legend_double_click}
         wrapper_style={`
           position: absolute;
-          left: ${tweened_legend_coords.current.x}px;
-          top: ${tweened_legend_coords.current.y}px;
+          left: ${
+          legend_is_dragging && legend_manual_position
+            ? legend_manual_position.x
+            : tweened_legend_coords.current.x
+        }px;
+          top: ${
+          legend_is_dragging && legend_manual_position
+            ? legend_manual_position.y
+            : tweened_legend_coords.current.y
+        }px;
           transform: ${
-        // Use the derived legend_placement_cell to get the correct transform (only if not manually positioned)
-        legend_manual_position
-          ? ``
-          : get_placement_styles(legend_placement_cell, `legend`).transform};
+          legend_manual_position ? `` : active_legend_placement?.transform ?? ``
+        };
           pointer-events: auto;
           ${legend?.wrapper_style ?? ``}
         `}

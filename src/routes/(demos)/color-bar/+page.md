@@ -50,22 +50,19 @@ You can make fat and skinny bars:
 <br />
 ```
 
-`PeriodicTable.svelte` heatmap example with `ColorBar` inside `TableInset`
+`PeriodicTable.svelte` now automatically shows a `ColorBar` when `heatmap_values` is provided!
 
 ```svelte example code_above
 <script>
   import { element_data } from 'matterviz'
-  import { ColorBar, ColorScaleSelect } from 'matterviz/plot'
-  import { PeriodicTable, PropertySelect, TableInset } from 'matterviz/periodic-table'
+  import { ColorScaleSelect } from 'matterviz/plot'
+  import { PeriodicTable, PropertySelect } from 'matterviz/periodic-table'
 
   let color_scale = $state(`interpolateCividis`)
   let heatmap_key = $state(``)
   let heat_label = $state(``)
   let heatmap_values = $derived(
     heatmap_key ? element_data.map((el) => el[heatmap_key]) : [],
-  )
-  let heat_range = $derived(
-    heatmap_key ? [Math.min(...heatmap_values), Math.max(...heatmap_values)] : [0, 1],
   )
 </script>
 
@@ -78,22 +75,9 @@ You can make fat and skinny bars:
   {heatmap_values}
   style="margin: 2em auto 4em"
   bind:color_scale
-  color_scale_range={heat_range}
+  color_bar_title={heat_label}
   links="name"
->
-  {#snippet inset()}
-    <TableInset style="place-items: center; padding: 2em">
-      <ColorBar
-        {color_scale}
-        title={heat_label}
-        range={heat_range}
-        tick_labels={5}
-        tick_side="primary"
-        --cbar-width="calc(100% - 2em)"
-      />
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
+/>
 
 <style>
   form {
@@ -104,6 +88,39 @@ You can make fat and skinny bars:
     margin: 2em auto;
   }
 </style>
+```
+
+For more control, you can also manually add a `ColorBar` inside a custom `TableInset` (which overrides the automatic color bar):
+
+```svelte example
+<script>
+  import { element_data } from 'matterviz'
+  import { ColorBar } from 'matterviz/plot'
+  import { PeriodicTable, TableInset } from 'matterviz/periodic-table'
+
+  const heatmap_values = element_data.map((el) => el.atomic_mass)
+  const heat_range = [Math.min(...heatmap_values), Math.max(...heatmap_values)]
+</script>
+
+<PeriodicTable
+  {heatmap_values}
+  style="margin: 2em auto"
+  color_scale="interpolateInferno"
+  color_scale_range={heat_range}
+>
+  {#snippet inset()}
+    <TableInset style="place-items: center; padding: 2em">
+      <ColorBar
+        color_scale="interpolateInferno"
+        title="Atomic Mass (u)"
+        range={heat_range}
+        tick_labels={5}
+        tick_side="primary"
+        --cbar-width="calc(100% - 2em)"
+      />
+    </TableInset>
+  {/snippet}
+</PeriodicTable>
 ```
 
 Example demonstrating `title_side` and `tick_side` interaction:
