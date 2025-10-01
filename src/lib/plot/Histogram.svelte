@@ -90,7 +90,7 @@
     legend = { series_data: [] },
     bar_opacity = $bindable(0.7),
     bar_stroke_width = $bindable(1),
-    bar_color = $bindable(`#4682b4`),
+    bar_color = $bindable(`cornflowerblue`),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     show_zero_lines = $bindable(true),

@@ -12,12 +12,8 @@
   import { find_best_legend_placement, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
-  import {
-    create_scale,
-    generate_ticks,
-    get_nice_data_range,
-    type TicksOption,
-  } from '$lib/plot/scales'
+  import type { TicksOption } from '$lib/plot/scales'
+  import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import BarPlotControls from './BarPlotControls.svelte'
@@ -303,17 +299,13 @@
     return { x, y, orient_x, orient_y, series_idx, bar_idx, metadata, label, color }
   }
 
-  function handle_bar_hover(
-    series_idx: number,
-    bar_idx: number,
-    color: string,
-    event: MouseEvent,
-  ) {
-    hovered = true
-    hover_info = get_bar_data(series_idx, bar_idx, color)
-    change(hover_info)
-    on_bar_hover?.({ ...hover_info, event })
-  }
+  const handle_bar_hover =
+    (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
+      hovered = true
+      hover_info = get_bar_data(series_idx, bar_idx, color)
+      change(hover_info)
+      on_bar_hover?.({ ...hover_info, event })
+    }
 
   // Stack offsets (only for vertical stacked mode)
   let stacked_offsets = $derived.by(() => {
@@ -432,7 +424,7 @@
                     tabindex="0"
                     aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
                     style:cursor={on_bar_click ? `pointer` : undefined}
-                    onmousemove={(evt) => handle_bar_hover(series_idx, bar_idx, color, evt)}
+                    onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={() => {
                       hover_info = null
                       change(null)
@@ -488,7 +480,7 @@
                     tabindex="0"
                     aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
                     style:cursor={on_bar_click ? `pointer` : undefined}
-                    onmousemove={(evt) => handle_bar_hover(series_idx, bar_idx, color, evt)}
+                    onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={() => {
                       hover_info = null
                       change(null)
