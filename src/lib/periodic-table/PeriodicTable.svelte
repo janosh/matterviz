@@ -3,11 +3,13 @@
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { default_category_colors, is_color } from '$lib/colors'
   import element_data from '$lib/element/data'
+  import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
   import type { ScaleContext } from './index'
+  import { TableInset } from './index'
 
   const default_f_block_inset_tiles = [
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
@@ -48,6 +50,12 @@
     missing_color?: string
     // control the layout of multi-value splits for all tiles
     split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+    // automatically show a color bar when heatmap_values is provided (default: true)
+    show_color_bar?: boolean
+    // title for the color bar (optional)
+    color_bar_title?: string
+    // additional props to pass to the ColorBar component
+    color_bar_props?: Partial<ComponentProps<typeof ColorBar>>
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
@@ -87,6 +95,9 @@
     labels = {},
     missing_color = `element-category`,
     split_layout = undefined,
+    show_color_bar = true,
+    color_bar_title = undefined,
+    color_bar_props = {},
     inset,
     bottom_left_inset,
     tooltip = false,
@@ -244,13 +255,58 @@
       })
     },
   )
+
+  // Determine whether to automatically show the color bar
+  let should_show_color_bar = $derived(
+    show_color_bar &&
+      !inset && // Don't show if custom inset provided
+      heat_values.length > 0 &&
+      // Only show if heatmap contains numeric values (not just color strings)
+      heat_values.some((val) =>
+        Array.isArray(val)
+          ? val.some((v) => typeof v === `number`)
+          : typeof val === `number`
+      ),
+  )
+
+  // Calculate heat range for color bar
+  let heat_range = $derived.by(() => {
+    if (!should_show_color_bar) return [0, 1] as [number, number]
+
+    const numeric_values = heat_values
+      .flat()
+      .filter((v): v is number => typeof v === `number`)
+
+    if (numeric_values.length === 0) return [0, 1] as [number, number]
+
+    return [
+      color_scale_range[0] ?? Math.min(...numeric_values),
+      color_scale_range[1] ?? Math.max(...numeric_values),
+    ] as [number, number]
+  })
 </script>
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
 <div {...rest} class="periodic-table-container {rest.class ?? ``}">
   <div class="periodic-table" style:gap>
-    {@render inset?.({ active_element })}
+    {#if should_show_color_bar}
+      <TableInset style="place-items: center; padding: 1em 2em">
+        <ColorBar
+          {color_scale}
+          title={color_bar_title}
+          range={heat_range}
+          tick_labels={5}
+          tick_side="primary"
+          scale_type={log ? `log` : `linear`}
+          wrapper_style="width: 100%;"
+          bar_style="width: 100%;"
+          {...color_bar_props}
+        />
+      </TableInset>
+    {:else}
+      {@render inset?.({ active_element })}
+    {/if}
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
@@ -263,10 +319,10 @@
         ? typeof links == `string`
           ? `${element[links]}`.toLowerCase()
           : links[symbol]
-        : null}
+        : undefined}
         {style}
         {value}
-        bg_color={color_overrides[symbol] ?? bg_color(value, element)}
+        bg_color={color_overrides[symbol] ?? bg_color(value, element) ?? undefined}
         bg_colors={Array.isArray(value) ? bg_colors(value, element) : []}
         {active}
         label={labels[symbol]}
