@@ -10,11 +10,34 @@
   let bins = $state(50)
   let sample_size = $state(1000)
   let show_controls = $state(true)
+  let hover_info = $state('Hover over a bar to see details')
+  let click_info = $state('Click on a bar to select it')
 
   let data = $derived({
     y: generate_normal(sample_size, 50, 15),
     label: `Normal Distribution (μ=50, σ=15)`,
   })
+
+  function handle_bar_hover(data) {
+    if (data) {
+      const { value, count, property } = data
+      hover_info = `Hovering: ${property} - Value: ${
+        value.toFixed(1)
+      }, Count: ${count}, Percentage: ${(count / sample_size * 100).toFixed(1)}%`
+    } else {
+      hover_info = 'Hover over a bar to see details'
+    }
+  }
+
+  function handle_bar_click(data) {
+    const { value, count, property } = data
+    click_info = `Clicked: ${property} - Value: ${
+      value.toFixed(1)
+    }, Count: ${count}, Percentage: ${(count / sample_size * 100).toFixed(1)}%`
+  }
+
+  const info_style =
+    'margin: 1em 0; padding: 2pt 5pt; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px'
 </script>
 
 <label>Bins: {bins}<input type="range" bind:value={bins} min="5" max="200" /></label>
@@ -27,6 +50,8 @@
   series={[data]}
   {bins}
   {show_controls}
+  on_bar_hover={handle_bar_hover}
+  on_bar_click={handle_bar_click}
   style="height: 400px"
 >
   {#snippet tooltip({ value, count })}
@@ -34,6 +59,9 @@
     %: {(count / sample_size * 100).toFixed(1)}%
   {/snippet}
 </Histogram>
+
+<div style={info_style}>{hover_info}</div>
+<div style={info_style}>{click_info}</div>
 ```
 
 ## Multiple Series Overlay

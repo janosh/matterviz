@@ -98,6 +98,55 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(tooltip).toBeVisible()
   })
 
+  test(`cursor is not pointer when no click handler provided`, async ({ page }) => {
+    const plot = page.locator(`#basic-bar .bar-plot`)
+    const bar = plot.locator(`svg rect`).first()
+    await expect(bar).toBeVisible()
+
+    // Check cursor is not pointer (no click handler)
+    const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
+    expect(cursor).not.toBe(`pointer`)
+  })
+
+  test(`on_bar_hover and on_bar_click handlers with pointer cursor`, async ({ page }) => {
+    const section = page.locator(`#handlers-bar`)
+    const plot = section.locator(`.bar-plot`)
+    await expect(plot).toBeVisible()
+
+    const bars = plot.locator(`svg rect[role="button"]`)
+    const bar_count = await bars.count()
+    expect(bar_count).toBeGreaterThan(0)
+
+    const first_bar = bars.first()
+
+    // Check cursor is pointer (click handler is defined)
+    const cursor = await first_bar.evaluate((el) =>
+      globalThis.getComputedStyle(el).cursor
+    )
+    expect(cursor).toBe(`pointer`)
+
+    const info = section.locator(`.handler-info`)
+    const hover_p = info.locator(`p`).first()
+    const click_p = info.locator(`p`).last()
+
+    // Initial state
+    await expect(hover_p).toContainText(`Hover over a bar`)
+    await expect(click_p).toContainText(`Click on a bar`)
+
+    // Test hover
+    await first_bar.hover()
+    await page.waitForTimeout(100)
+    await expect(hover_p).toContainText(`Hovering:`)
+
+    // Test click
+    await first_bar.click()
+    await expect(click_p).toContainText(`Clicked:`)
+
+    // Test hover clears on mouse leave
+    await page.mouse.move(0, 0)
+    await expect(hover_p).toContainText(`Hover over a bar`)
+  })
+
   test(`controls pane toggles grid and updates tick formats`, async ({ page }) => {
     const section = page.locator(`#basic-bar`)
     const plot = section.locator(`.bar-plot`)

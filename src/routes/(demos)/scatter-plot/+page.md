@@ -36,6 +36,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   let display_mode = $state('line+points')
   let clicked_point_info = $state('No point clicked yet.')
   let double_clicked_point_info = $state('No point double-clicked yet.')
+  let hovered_point_info = $state('No point hovered yet.')
 
   // It's good practice to type event handlers if you know the structure
   function handle_point_click({ point }) {
@@ -57,6 +58,21 @@ A simple scatter plot showing different display modes (points, lines, or both). 
     }', Point Index: ${point_idx}`
     if (metadata) {
       double_clicked_point_info += `, Metadata ID: ${metadata.id}`
+    }
+  }
+
+  function handle_point_hover({ point }) {
+    if (point) {
+      const { x, y, metadata, series_idx, point_idx } = point
+      hovered_point_info = `Hovering: Point (${x}, ${y}), Series: '${
+        metadata?.series_label ??
+          (series_idx === 0 ? basic_data.label : second_series.label)
+      }', Point Index: ${point_idx}`
+      if (metadata) {
+        hovered_point_info += `, Metadata ID: ${metadata.id}`
+      }
+    } else {
+      hovered_point_info = 'No point hovered yet.'
     }
   }
 
@@ -86,6 +102,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   y_label="Y Value"
   markers={display_mode}
   point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
+  on_point_hover={handle_point_hover}
   show_controls
   style="height: 300px"
 />
@@ -94,6 +111,9 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 </div>
 <div {style}>
   {double_clicked_point_info}
+</div>
+<div {style}>
+  {hovered_point_info}
 </div>
 ```
 

@@ -73,6 +73,7 @@
     fill="var(--point-fill-color, {style.fill ?? `black`})"
     class="marker"
     class:is-hovered={is_hovered && (hover.enabled ?? true)}
+    style:cursor={style.cursor}
   />
   {#if label.text}
     <text

@@ -12,12 +12,8 @@
   import { find_best_legend_placement, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
-  import {
-    create_scale,
-    generate_ticks,
-    get_nice_data_range,
-    type TicksOption,
-  } from '$lib/plot/scales'
+  import type { TicksOption } from '$lib/plot/scales'
+  import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import BarPlotControls from './BarPlotControls.svelte'
@@ -47,6 +43,10 @@
     tooltip?: Snippet<[BarTooltipProps]>
     hovered?: boolean
     change?: (data: BarTooltipProps | null) => void
+    on_bar_click?: (
+      data: BarTooltipProps & { event: MouseEvent | KeyboardEvent },
+    ) => void
+    on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
     show_controls?: boolean
     controls_open?: boolean
     plot_controls?: Snippet<[]>
@@ -73,10 +73,12 @@
     y_grid = $bindable(true),
     show_zero_lines = $bindable(true),
     legend = {},
-    padding = { t: 0, b: 60, l: 60, r: 30 },
+    padding = { t: 10, b: 60, l: 60, r: 30 },
     tooltip,
     hovered = $bindable(false),
     change = () => {},
+    on_bar_click,
+    on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     plot_controls,
@@ -285,30 +287,25 @@
   // Tooltip state
   let hover_info = $state<BarTooltipProps | null>(null)
 
-  function handle_bar_hover(params: BarTooltipProps) {
-    const { color, series_idx, bar_idx } = params
-    hovered = true
+  function get_bar_data(series_idx: number, bar_idx: number, color: string) {
     const srs = series[series_idx]
-    const x = srs.x[params.bar_idx]
-    const y = srs.y[params.bar_idx]
+    const x = srs.x[bar_idx]
+    const y = srs.y[bar_idx]
     const label = srs.labels?.[bar_idx] ?? null
     const metadata = Array.isArray(srs.metadata)
       ? (srs.metadata[bar_idx] as Record<string, unknown> | undefined)
       : (srs.metadata as Record<string, unknown> | undefined)
     const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
-    hover_info = {
-      x,
-      y,
-      orient_x,
-      orient_y,
-      series_idx,
-      bar_idx,
-      metadata,
-      label,
-      color,
-    }
-    change(hover_info)
+    return { x, y, orient_x, orient_y, series_idx, bar_idx, metadata, label, color }
   }
+
+  const handle_bar_hover =
+    (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
+      hovered = true
+      hover_info = get_bar_data(series_idx, bar_idx, color)
+      change(hover_info)
+      on_bar_hover?.({ ...hover_info, event })
+    }
 
   // Stack offsets (only for vertical stacked mode)
   let stacked_offsets = $derived.by(() => {
@@ -356,6 +353,7 @@
         hovered = false
         hover_info = null
         change(null)
+        on_bar_hover?.(null)
       }}
       style:cursor="crosshair"
       role="button"
@@ -425,15 +423,26 @@
                     role="button"
                     tabindex="0"
                     aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                    onmousemove={(evt) => {
-                      const coords = get_relative_coords(evt)
-                      if (!coords) return
-                      const { x, y } = coords
-                      handle_bar_hover({ series_idx, bar_idx, x, y, color })
-                    }}
+                    style:cursor={on_bar_click ? `pointer` : undefined}
+                    onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={() => {
                       hover_info = null
                       change(null)
+                      on_bar_hover?.(null)
+                    }}
+                    onclick={(evt) =>
+                    on_bar_click?.({
+                      ...get_bar_data(series_idx, bar_idx, color),
+                      event: evt,
+                    })}
+                    onkeydown={(evt) => {
+                      if (evt.key === `Enter` || evt.key === ` `) {
+                        evt.preventDefault()
+                        on_bar_click?.({
+                          ...get_bar_data(series_idx, bar_idx, color),
+                          event: evt,
+                        })
+                      }
                     }}
                   />
                   {#if srs.labels?.[bar_idx]}
@@ -470,20 +479,26 @@
                     role="button"
                     tabindex="0"
                     aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                    onmousemove={(evt) => {
-                      const coords = get_relative_coords(evt)
-                      if (!coords) return
-                      handle_bar_hover({
-                        series_idx,
-                        bar_idx,
-                        x: coords.x,
-                        y: coords.y,
-                        color,
-                      })
-                    }}
+                    style:cursor={on_bar_click ? `pointer` : undefined}
+                    onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={() => {
                       hover_info = null
                       change(null)
+                      on_bar_hover?.(null)
+                    }}
+                    onclick={(evt) =>
+                    on_bar_click?.({
+                      ...get_bar_data(series_idx, bar_idx, color),
+                      event: evt,
+                    })}
+                    onkeydown={(evt) => {
+                      if (evt.key === `Enter` || evt.key === ` `) {
+                        evt.preventDefault()
+                        on_bar_click?.({
+                          ...get_bar_data(series_idx, bar_idx, color),
+                          event: evt,
+                        })
+                      }
                     }}
                   />
                   {#if srs.labels?.[bar_idx]}

@@ -76,6 +76,11 @@ test.describe(`Histogram Component Tests`, () => {
       expect(bar_count).toBeGreaterThan(5)
     }).toPass({ timeout: 1000 })
 
+    // Check cursor is not pointer (no click handler)
+    const bar = histogram.locator(`rect[fill]:not([fill="none"])`).first()
+    const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
+    expect(cursor).not.toBe(`pointer`)
+
     const [bar_count, x_tick_count, y_tick_count] = await Promise.all([
       get_bar_count(histogram),
       histogram.locator(`g.x-axis .tick`).count(),
@@ -1465,5 +1470,48 @@ test.describe(`Histogram Component Tests`, () => {
     )
 
     await toggle.click()
+  })
+
+  test(`on_bar_hover and on_bar_click handlers`, async ({ page }) => {
+    await page.goto(`/histogram`)
+    const example = page.locator(`.code-example`).first()
+
+    const hover_div = example.locator(`div`).filter({
+      hasText: /^(Hover over a bar|Hovering)/,
+    })
+    const click_div = example.locator(`div`).filter({
+      hasText: /^(Click on a bar|Clicked)/,
+    })
+
+    await expect(hover_div).toContainText(`Hover over a bar`)
+    await expect(click_div).toContainText(`Click on a bar`)
+
+    const svg = example.locator(`.histogram svg`)
+    const bars = svg.locator(`rect[role="button"]`)
+    const bar_count = await bars.count()
+    expect(bar_count).toBeGreaterThan(0)
+
+    const first_bar = bars.first()
+
+    // Check cursor is pointer (click handler is defined)
+    const cursor = await first_bar.evaluate((el) =>
+      globalThis.getComputedStyle(el).cursor
+    )
+    expect(cursor).toBe(`pointer`)
+
+    // Test hover
+    await first_bar.hover()
+    await page.waitForTimeout(100)
+    await expect(hover_div).toContainText(`Hovering:`)
+    await expect(hover_div).toContainText(`Normal Distribution`)
+
+    // Test click
+    await first_bar.click()
+    await expect(click_div).toContainText(`Clicked:`)
+    await expect(click_div).toContainText(`Normal Distribution`)
+
+    // Test hover clears on mouse leave
+    await page.mouse.move(0, 0)
+    await expect(hover_div).toContainText(`Hover over a bar`)
   })
 })

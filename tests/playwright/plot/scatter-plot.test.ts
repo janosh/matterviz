@@ -245,6 +245,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot.locator(`.axis-label.x-label`)).toHaveText(`X Axis`)
     await expect(scatter_plot.locator(`.axis-label.y-label`)).toHaveText(`Y Axis`)
 
+    // Check cursor is not pointer (no click handler)
+    const point = scatter_plot.locator(`path.marker`).first()
+    const cursor = await point.evaluate((el) => globalThis.getComputedStyle(el).cursor)
+    expect(cursor).not.toBe(`pointer`)
+
     // Check tick counts and values
     await expect(scatter_plot.locator(`g.x-axis .tick`)).toHaveCount(12)
     await expect(scatter_plot.locator(`g.y-axis .tick`)).toHaveCount(5)
@@ -1737,5 +1742,34 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Reset viewport
     await page.setViewportSize({ width: 1280, height: 720 })
+  })
+
+  test(`on_point_hover and on_point_click handlers`, async ({ page }) => {
+    await page.goto(`/scatter-plot`)
+    const example = page.locator(`.code-example`).first()
+    const info_div = example.locator(`div`).filter({
+      hasText: /^(No point hovered|Hovering)/,
+    })
+
+    await expect(info_div).toContainText(/No point hovered/)
+
+    const svg = example.locator(`.scatter svg`)
+    const box = await svg.boundingBox()
+    if (!box) throw new Error(`SVG not found`)
+
+    // Hover near a point
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
+    await page.waitForTimeout(100)
+
+    await expect(info_div).toContainText(`Hovering: Point`)
+
+    // Check cursor is pointer (click handler is defined)
+    const point = svg.locator(`path.marker`).first()
+    const cursor = await point.evaluate((el) => globalThis.getComputedStyle(el).cursor)
+    expect(cursor).toBe(`pointer`)
+
+    // Move away clears hover
+    await page.mouse.move(box.x - 50, box.y - 50)
+    await expect(info_div).toContainText(/No point hovered/)
   })
 })
