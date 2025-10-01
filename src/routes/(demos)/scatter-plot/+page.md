@@ -846,29 +846,26 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     </label>
   </div>
 
-  <!-- Use #key to ensure plot redraws correctly when scale types change -->
-  {#key [x_scale_type, y_scale_type]}
-    <ScatterPlot
-      series={all_series}
-      {x_scale_type}
-      {y_scale_type}
-      {x_lim}
-      {y_lim}
-      x_label="X Axis ({x_scale_type})"
-      y_label="Y Axis ({y_scale_type})"
-      {size_scale}
-      x_format="~s"
-      y_format="~s"
-      markers="line+points"
-      style="height: 400px"
-    >
-      {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
-        <strong>{metadata.label ?? metadata.series}</strong><br />
-        X: {x_formatted || x.toPrecision(3)}<br />
-        Y: {y_formatted || y.toPrecision(3)}
-      {/snippet}
-    </ScatterPlot>
-  {/key}
+  <ScatterPlot
+    series={all_series}
+    {x_scale_type}
+    {y_scale_type}
+    {x_lim}
+    {y_lim}
+    x_label="X Axis ({x_scale_type})"
+    y_label="Y Axis ({y_scale_type})"
+    {size_scale}
+    x_format="~s"
+    y_format="~s"
+    markers="line+points"
+    style="height: 400px"
+  >
+    {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
+      <strong>{metadata.label ?? metadata.series}</strong><br />
+      X: {x_formatted || x.toPrecision(3)}<br />
+      Y: {y_formatted || y.toPrecision(3)}
+    {/snippet}
+  </ScatterPlot>
 </div>
 ```
 
@@ -1173,6 +1170,7 @@ This example demonstrates how the color bar automatically positions itself in on
       ['bottom_right', 'Bottom Right'],
     ] as
     [quadrant, label]
+    (quadrant)
   }
     <label>{label}: {density[quadrant]}
       <input
@@ -1266,7 +1264,16 @@ This example demonstrates automatic placement with several clusters of points:
     ],
   }
 
-  let auto_place_enabled = true
+  let auto_place_enabled = $state(true)
+
+  // Derive the series data reactively so it updates when auto_place_enabled changes
+  const series_data = $derived([{
+    ...combined_series,
+    point_label: combined_series.point_label.map((lbl) => ({
+      ...lbl,
+      auto_placement: auto_place_enabled,
+    })),
+  }])
 </script>
 
 <div>
@@ -1275,24 +1282,15 @@ This example demonstrates automatic placement with several clusters of points:
     Enable Automatic Label Placement
   </label>
 
-  <!-- Use #key to force re-render when auto_place_enabled changes -->
-  {#key auto_place_enabled}
-    <ScatterPlot
-      series={[{
-        ...combined_series,
-        point_label: combined_series.point_label.map((lbl) => ({
-          ...lbl,
-          auto_placement: auto_place_enabled,
-        })),
-      }]}
-      x_label="X Position"
-      y_label="Y Position"
-      x_lim={[0, 100]}
-      y_lim={[0, 100]}
-      markers="points"
-      style="height: 500px"
-    />
-  {/key}
+  <ScatterPlot
+    series={series_data}
+    x_label="X Position"
+    y_label="Y Position"
+    x_lim={[0, 100]}
+    y_lim={[0, 100]}
+    markers="points"
+    style="height: 500px"
+  />
 </div>
 ```
 
@@ -1312,7 +1310,7 @@ This example shows how to place the color bar vertically on the right side of th
     x: Array(point_count).fill(0).map((_, idx) => (idx / point_count) * 90 + 5), // Range 5 to 95
     y: Array(point_count).fill(0).map(() => Math.random() * 90 + 5), // Range 5 to 95
     // Color value based on the y-coordinate
-    color_values: Array(point_count).fill(0).map((_, idx) => idx * 2), // Values from 0 to 98
+    color_values: Array(point_count).fill(0).map((_, idx) => idx * 2 + 1), // 1..99
     point_style: {
       radius: 6,
       stroke: `black`,
@@ -1328,67 +1326,63 @@ This example shows how to place the color bar vertically on the right side of th
   let color_scale = $state({ type: `linear`, scheme: `interpolateCool` }) // Track which color scale type is active
 </script>
 
-<div>
-  <div
-    style="margin-bottom: 1em; display: flex; gap: 1em; flex-wrap: wrap; align-items: center"
-  >
-    <div>
-      <strong>Color Scale Type:</strong>
-      {#each ['linear', 'log'] as scale_type}
-        <label style="margin-left: 0.5em">
-          <input
-            type="radio"
-            name="scale_type"
-            value={scale_type}
-            bind:group={color_scale.type}
-          />
-          {scale_type}
-        </label>
-      {/each}
-    </div>
+<div
+  style="margin-bottom: 1em; display: flex; gap: 6pt; flex-wrap: wrap; align-items: center"
+>
+  <strong>Color Scale Type:</strong>
+  {#each [`linear`, `log`] as scale_type (scale_type)}
+    <label>
+      <input
+        type="radio"
+        name="scale_type"
+        value={scale_type}
+        bind:group={color_scale.type}
+      />
+      {scale_type}
+    </label>
+  {/each}
 
-    <ColorScaleSelect bind:value={color_scale.scheme} selected={[color_scale.scheme]} />
-  </div>
-
-  The color bar is positioned vertically to the right, outside the plot. The plot's right
-  padding is increased to prevent overlap. Use the controls above to change the color
-  scheme and scale type.
-
-  <ScatterPlot
-    series={[vertical_color_data]}
-    x_label="X Position"
-    y_label="Y Position"
-    x_lim={[0, 100]}
-    y_lim={[0, 100]}
-    x_format=".2"
-    y_format=".2"
-    markers="points"
-    {color_scale}
-    padding={plot_padding}
-    color_bar={{
-      title: `Color Bar Title (${color_scale.type})`,
-      orientation: `vertical`,
-      tick_side: `primary`,
-      wrapper_style: `
-        position: absolute;
-        /* Position outside the plot area using padding values */
-        right: 10px; /* Distance from the container's right edge */
-        top: ${plot_padding.t}px; /* Align with top padding */
-        /* Set height directly for the wrapper */
-        height: calc(100% - ${
-        plot_padding.t + plot_padding.b
-      }px); /* Fill vertical space */
-      `,
-      style: `width: 15px; height: 100%;`,
-    }}
-    style="height: 400px"
-  >
-    {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
-      Point ({x_formatted}, {y_formatted})<br />
-      Color value: {color_value?.toFixed(1)}
-    {/snippet}
-  </ScatterPlot>
+  <ColorScaleSelect bind:value={color_scale.scheme} selected={[color_scale.scheme]} />
 </div>
+
+The color bar is positioned vertically to the right, outside the plot. The plot's right
+padding is increased to prevent overlap. Use the controls above to change the color scheme
+and scale type.
+
+<ScatterPlot
+  series={[vertical_color_data]}
+  x_label="X Position"
+  y_label="Y Position"
+  x_lim={[0, 100]}
+  y_lim={[0, 100]}
+  x_format=".2"
+  y_format=".2"
+  markers="points"
+  {color_scale}
+  padding={plot_padding}
+  color_bar={{
+    title: `Color Bar Title (${color_scale.type})`,
+    orientation: `vertical`,
+    tick_side: `primary`,
+    wrapper_style: `
+      position: absolute;
+      /* Position outside the plot area using padding values */
+      right: 10px; /* Distance from the container's right edge */
+      top: ${plot_padding.t}px; /* Align with top padding */
+      /* Set height directly for the wrapper */
+      height: calc(100% - ${
+      plot_padding.t + plot_padding.b
+    }px); /* Fill vertical space */
+    `,
+    style: `width: 15px; height: 100%;`,
+  }}
+  style="height: 400px"
+>
+  {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}
+    Point ({x_formatted}, {y_formatted})<br />
+    Color value: {color_value?.toFixed(1)}
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Line Clipping with Fixed Ranges
