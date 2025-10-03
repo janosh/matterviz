@@ -6,9 +6,10 @@
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { T } from '@threlte/core'
   import { interactivity } from '@threlte/extras'
+  import type { ComponentProps } from 'svelte'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
-  interface Props {
+  interface Props extends ComponentProps<typeof T.Mesh> {
     from: Vec3
     to: Vec3
     color?: string
@@ -37,6 +38,7 @@
     hovered_bond_data,
     onbondhover,
     ontooltipchange,
+    ...rest
   }: Props = $props()
 
   interactivity()
@@ -123,6 +125,7 @@
 {#if gradient_texture}
   <!-- Use gradient material for bonds with two colors -->
   <T.Mesh
+    {...rest}
     {position}
     {rotation}
     scale={[thickness, height, thickness]}
@@ -134,6 +137,7 @@
 {:else}
   <!-- Fallback to solid color -->
   <T.Mesh
+    {...rest}
     {position}
     {rotation}
     scale={[thickness, height, thickness]}

@@ -2,8 +2,9 @@
   import type { AnyStructure } from '$lib'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     structure: AnyStructure
     place_right?: boolean
     width?: number
@@ -18,6 +19,7 @@
     height = 400,
     onclose,
     stats,
+    ...rest
   }: Props = $props()
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -38,7 +40,8 @@
 <svelte:document onclick={handle_click_outside} />
 
 <div
-  class="structure-popup {place_right ? `right` : `left`}"
+  {...rest}
+  class="structure-popup {place_right ? `right` : `left`} {rest.class ?? ``}"
   role="dialog"
   aria-modal="true"
   tabindex="-1"

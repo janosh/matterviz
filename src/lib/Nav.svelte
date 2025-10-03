@@ -7,8 +7,9 @@
   interface Props extends HTMLAttributes<HTMLElementTagNameMap[`nav`]> {
     routes: (string | [string, string])[]
     link?: Snippet<[{ href: string; label: string }]>
+    menu_style?: string
   }
-  let { routes = [], children, link, ...rest }: Props = $props()
+  let { routes = [], children, link, menu_style, ...rest }: Props = $props()
 
   let is_open = $state(false)
   function onkeydown(event: KeyboardEvent) {
@@ -51,6 +52,7 @@
     tabindex="0"
     role="menu"
     {onkeydown}
+    style={menu_style}
   >
     {#each routes as route (JSON.stringify(route))}
       {@const [href, label] = Array.isArray(route) ? route : [route, route]}
