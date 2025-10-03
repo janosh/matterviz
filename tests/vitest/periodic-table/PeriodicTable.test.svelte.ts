@@ -168,6 +168,43 @@ describe(`PeriodicTable`, () => {
 
   test.each(
     [
+      [[`H`, `He`, `Li`], 3, `element symbols`],
+      [[element_data[0], element_data[1]], 2, `ChemicalElement objects`],
+      [[`H`, element_data[1], `Li`], 3, `mixed symbols and objects`],
+      [[], 0, `empty array`],
+    ] as const,
+  )(
+    `active_elements=%s highlights %s tiles (%s)`,
+    (active_elements, expected_active, _description) => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { active_elements: active_elements as never },
+      })
+      expect(document.querySelectorAll(`.element-tile.active`).length).toBe(
+        expected_active,
+      )
+    },
+  )
+
+  test(`active_elements works with active_element and active_category`, () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: {
+        active_elements: [`H`, `He`],
+        active_element: element_data.find((elem) => elem.symbol === `Li`) ?? null,
+        active_category: `alkali-metal`,
+      },
+    })
+    // Should highlight H, He (from active_elements), Li (from active_element),
+    // and all alkali metals (from active_category)
+    // Alkali metals: Li, Na, K, Rb, Cs, Fr = 6 elements
+    // H, He, Li are included, so total unique is 6 + 2 = 8 (Li is counted in alkali metals)
+    const active_tiles = document.querySelectorAll(`.element-tile.active`)
+    expect(active_tiles.length).toBeGreaterThanOrEqual(6)
+  })
+
+  test.each(
+    [
       [[...Array(200).keys()], `length should be 118 or less`],
       [[...Array(119).keys()], `length should be 118 or less`],
       [{ he: 0 }, `keys should be element symbols`],

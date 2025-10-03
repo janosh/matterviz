@@ -592,14 +592,21 @@
     }
     ctx.stroke()
 
-    // Reset stroke style to default for other elements (like element labels)
+    // Reset stroke style to default for other elements
     const styles = getComputedStyle(canvas)
     ctx.strokeStyle = styles.getPropertyValue(`--pd-edge-color`) || `#212121`
     ctx.setLineDash([]) // Reset line dash for other drawing operations
+  }
+
+  function draw_element_labels(): void {
+    if (!ctx || elements.length !== 3) return
+
+    ctx.save()
+    const styles = getComputedStyle(canvas)
 
     // Draw element labels outside triangle corners
     const centroid = get_triangle_centroid()
-    ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
+    ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
     ctx.font = `bold 16px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
@@ -624,6 +631,8 @@
       const proj = project_3d_point(label_pos.x, label_pos.y, label_pos.z)
       ctx.fillText(elements[idx], proj.x, proj.y)
     }
+
+    ctx.restore()
   }
 
   function draw_convex_hull_faces(): void {
@@ -688,6 +697,9 @@
         ctx.closePath()
         ctx.fillStyle = hex_to_rgba(hull_face_color, (a1 + a2 + a3) / 3)
         ctx.fill()
+        ctx.strokeStyle = hull_face_color
+        ctx.lineWidth = 1
+        ctx.stroke()
         ctx.restore()
       } else {
         const vx = a / mag
@@ -716,12 +728,11 @@
         ctx.closePath()
         ctx.fillStyle = grad
         ctx.fill()
+        ctx.strokeStyle = hull_face_color
+        ctx.lineWidth = 1
+        ctx.stroke()
         ctx.restore()
       }
-
-      ctx.strokeStyle = hull_face_color
-      ctx.lineWidth = 1
-      ctx.stroke()
     }
   }
 
@@ -841,8 +852,8 @@
     }
 
     // Draw labels for hull points (lowest energy at each composition)
-    ctx.fillStyle =
-      getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) || `#212121`
+    ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--pd-text-color`) ||
+      `#212121`
     ctx.font = `12px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `top`
@@ -945,6 +956,9 @@
 
     // Draw hull labels after points
     draw_hull_labels()
+
+    // Draw element labels on top of everything
+    draw_element_labels()
   }
 
   function handle_mouse_down(event: MouseEvent) {
@@ -1136,7 +1150,7 @@
     `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
     --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
     --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-annotation-color:${
+     --pd-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     }`,
   )

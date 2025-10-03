@@ -592,7 +592,7 @@
         z: (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4,
       }
 
-      ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
+      ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
       ctx.font = `bold 18px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -819,7 +819,7 @@
       )
 
       if (should_show_label) {
-        ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
+        ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
 
         // For compound entries, use name, formula, or entry_id as fallback
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
@@ -1060,7 +1060,7 @@
     `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
     --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
     --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-annotation-color:${
+     --pd-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     }`,
   )

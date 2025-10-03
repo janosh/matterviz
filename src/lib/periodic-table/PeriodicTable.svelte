@@ -32,6 +32,8 @@
     color_scale?: D3InterpolateName | ((num: number) => string)
     active_element?: ChemicalElement | null
     active_category?: ElementCategory | null
+    // array of element symbols or ChemicalElement objects to highlight
+    active_elements?: (ElementSymbol | ChemicalElement)[]
     gap?: string // gap between element tiles, default is 0.3% of container width
     inner_transition_metal_offset?: number
     // show lanthanides and actinides as tiles
@@ -82,6 +84,7 @@
     color_scale = $bindable(`interpolateViridis`),
     active_element = $bindable(null),
     active_category = $bindable(null),
+    active_elements = $bindable([]),
     gap = `0.3cqw`,
     inner_transition_metal_offset = 0.5,
     lanth_act_tiles = tile_props?.show_symbol == false
@@ -307,8 +310,14 @@
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
+      {@const is_in_active_elements = active_elements?.some((active_elem) =>
+        typeof active_elem === `string`
+          ? active_elem === symbol
+          : active_elem?.symbol === symbol
+      )}
       {@const active = active_category === category.replaceAll(` `, `-`) ||
-        active_element?.name === name}
+        active_element?.name === name ||
+        is_in_active_elements}
       {@const style = `grid-column: ${column}; grid-row: ${row};`}
       <ElementTile
         {element}
