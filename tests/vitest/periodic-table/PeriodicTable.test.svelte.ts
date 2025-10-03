@@ -609,10 +609,13 @@ describe(`PeriodicTable`, () => {
         .toEqual([`#ff0000`, `#00ff00`, `#0000ff`])
     })
 
-    test(`respects color_bar_title and positioning styles`, () => {
+    test(`respects color_bar_props.title and positioning styles`, () => {
       mount(PeriodicTable, {
         target: document.body,
-        props: { heatmap_values: [1, 2, 3], color_bar_title: `Test Property` },
+        props: {
+          heatmap_values: [1, 2, 3],
+          color_bar_props: { title: `Test Property` },
+        },
       })
 
       const inset = document.querySelector(`.table-inset`) as HTMLElement

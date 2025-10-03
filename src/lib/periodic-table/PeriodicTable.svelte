@@ -52,9 +52,7 @@
     split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
     // automatically show a color bar when heatmap_values is provided (default: true)
     show_color_bar?: boolean
-    // title for the color bar (optional)
-    color_bar_title?: string
-    // additional props to pass to the ColorBar component
+    // props to pass to the ColorBar component (e.g. { title: 'Bar Title', tick_labels: 5 })
     color_bar_props?: Partial<ComponentProps<typeof ColorBar>>
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
@@ -96,7 +94,6 @@
     missing_color = `element-category`,
     split_layout = undefined,
     show_color_bar = true,
-    color_bar_title = undefined,
     color_bar_props = {},
     inset,
     bottom_left_inset,
@@ -295,7 +292,6 @@
       <TableInset style="place-items: center; padding: 1em 2em">
         <ColorBar
           {color_scale}
-          title={color_bar_title}
           range={heat_range}
           tick_labels={5}
           tick_side="primary"

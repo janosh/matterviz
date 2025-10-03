@@ -3,21 +3,7 @@
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { PlotEntry3D } from './types'
-
-  interface PhaseStats {
-    total: number
-    unary: number
-    binary: number
-    ternary: number
-    quaternary: number
-    stable: number
-    unstable: number
-    energy_range: { min: number; max: number; avg: number }
-    hull_distance: { max: number; avg: number }
-    elements: number
-    chemical_system: string
-  }
+  import type { PhaseStats, PlotEntry3D } from './types'
 
   interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `onclose`> {
     phase_stats: PhaseStats | null
