@@ -78,6 +78,9 @@
     energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
     // Bindable phase diagram statistics - computed internally but exposed for external use
     phase_stats?: PhaseStats | null
+    // Bindable stable and unstable entries - computed internally but exposed for external use
+    stable_entries_out?: TernaryPlotEntry[]
+    unstable_entries_out?: TernaryPlotEntry[]
   }
   let {
     entries,
@@ -103,6 +106,8 @@
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
+    stable_entries_out = $bindable([]),
+    unstable_entries_out = $bindable([]),
     ...rest
   }: Props = $props()
 
@@ -457,6 +462,12 @@
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
     phase_stats = get_phase_diagram_stats(processed_entries, elements, 3)
+  })
+
+  // Sync stable and unstable entries to bindable props
+  $effect(() => {
+    stable_entries_out = stable_entries
+    unstable_entries_out = unstable_entries
   })
 
   // 3D to 2D projection for ternary diagrams

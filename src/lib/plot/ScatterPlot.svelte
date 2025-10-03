@@ -280,9 +280,6 @@
     })
   })
 
-  // Controls component reference to access internal states
-  let controls_component: ScatterPlotControls | undefined = $state(undefined)
-
   // State for rectangle zoom selection
   let drag_start_coords = $state<XyObj | null>(null)
   let drag_current_coords = $state<XyObj | null>(null)
@@ -1826,7 +1823,6 @@
     {#if show_controls}
       <ScatterPlotControls
         toggle_props={controls_toggle_props}
-        bind:this={controls_component}
         bind:show_controls
         bind:controls_open
         bind:markers

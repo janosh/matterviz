@@ -326,7 +326,7 @@
           role="button"
           tabindex="0"
           onkeydown={(event) => {
-            if (event.key === `Enter` || event.key === ` `) {
+            if ([`Enter`, ` `].includes(event.key)) {
               event.preventDefault()
               copy_item(label, value, key ?? label)
             }
