@@ -43,7 +43,7 @@
   })
 </script>
 
-<svg {...rest} width="100%" height="100%" viewBox="0 0 {size} {size}">
+<svg width="100%" height="100%" viewBox="0 0 {size} {size}" {...rest}>
   <circle r={radius} cx={radius} cy={radius} fill={neutron_color} {stroke}>
     <title>Neutrons: {neutrons}</title>
   </circle>

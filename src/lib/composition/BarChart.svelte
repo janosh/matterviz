@@ -86,7 +86,7 @@
       const segment_size = Math.min(width, size)
       const base_scale = Math.min(2, Math.max(1, segment_size / 40))
       const label_text = element + (show_amounts ? amount!.toString() : ``) +
-        (show_percentages ? `${percentage.toFixed(1)}%` : ``)
+        (show_percentages ? `${format_num(percentage, `.1~%`)}` : ``)
       const font_scale = get_chart_font_scale(
         base_scale,
         label_text,
@@ -142,7 +142,7 @@
   {/if}
   {#if show_percentages}
     <tspan class="percentage" style:font-size="{8 * segment.font_scale}px" dx="1" dy="5">
-      {format_num(segment.percentage, 1)}%
+      {format_num(segment.percentage, `.1~%`)}
     </tspan>
   {/if}
 {/snippet}
@@ -221,14 +221,14 @@
           tabindex: 0,
           'aria-label': `${segment.element}: ${segment.amount} ${
             segment.amount === 1 ? `atom` : `atoms`
-          } (${segment.percentage.toFixed(1)}%)`,
+          } (${format_num(segment.percentage, `.1~%`)})`,
         }
         : {})}
       >
         <title>
           {segment.element}: {segment.amount} {segment.amount === 1 ? `atom` : `atoms`} ({
-            segment.percentage.toFixed(1)
-          }%)
+            format_num(segment.percentage, `.1~%`)
+          })
         </title>
       </rect>
       {#if segment_content}

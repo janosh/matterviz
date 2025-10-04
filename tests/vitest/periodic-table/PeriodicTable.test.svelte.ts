@@ -176,13 +176,9 @@ describe(`PeriodicTable`, () => {
   )(
     `active_elements=%s highlights %s tiles (%s)`,
     (active_elements, expected_active, _description) => {
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { active_elements: active_elements as never },
-      })
-      expect(document.querySelectorAll(`.element-tile.active`).length).toBe(
-        expected_active,
-      )
+      mount(PeriodicTable, { target: document.body, props: { active_elements } })
+      const active_tiles = document.querySelectorAll(`.element-tile.active`)
+      expect(active_tiles.length).toBe(expected_active)
     },
   )
 

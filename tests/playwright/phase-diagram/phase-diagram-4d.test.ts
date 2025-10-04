@@ -147,4 +147,27 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     const color_bar_title = color_bar.getByText(/Energy above hull/i)
     await expect(color_bar_title).toBeVisible()
   })
+
+  test(`resets drag state on mouseup outside canvas`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const canvas_box = await diagram.locator(`canvas`).boundingBox()
+    if (!canvas_box) return
+
+    // Drag on canvas then release outside
+    await page.mouse.move(
+      canvas_box.x + canvas_box.width / 2,
+      canvas_box.y + canvas_box.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      canvas_box.x + canvas_box.width / 2 + 50,
+      canvas_box.y + canvas_box.height / 2 + 50,
+    )
+    await page.mouse.move(canvas_box.x + canvas_box.width + 100, canvas_box.y - 100)
+    await page.mouse.up()
+
+    // Verify subsequent click works (would be blocked if drag_started wasn't reset)
+    await diagram.locator(`.info-btn`).click()
+    await expect(diagram.locator(`.draggable-pane.phase-diagram-info-pane`)).toBeVisible()
+  })
 })

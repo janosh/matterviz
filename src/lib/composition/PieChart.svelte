@@ -128,7 +128,7 @@
         const base_scale = min_font_scale +
           scale_factor * (max_font_scale - min_font_scale)
         const label_text = element + (show_amounts ? amount!.toString() : ``) +
-          (show_percentages ? `${percentage.toFixed(1)}%` : ``)
+          (show_percentages ? `${format_num(percentage, `.1~%`)}` : ``)
         const available_space = is_very_thin_slice
           ? outer_radius * 0.8 // More space outside the slice
           : Math.min(
@@ -187,12 +187,14 @@
         tabindex: 0,
         'aria-label': `${segment.element}: ${segment.amount} ${
           segment.amount === 1 ? `atom` : `atoms`
-        } (${segment.percentage.toFixed(1)}%)`,
+        } (${format_num(segment.percentage, `.1~%`)})`,
       }}
     >
       <title>
         {segment.element}: {segment.amount}
-        {segment.amount === 1 ? `atom` : `atoms`} ({segment.percentage.toFixed(1)}%)
+        {segment.amount === 1 ? `atom` : `atoms`} ({
+          format_num(segment.percentage, `.1~%`)
+        })
       </title>
     </path>
 
@@ -225,7 +227,7 @@
             </sub>{/if}
           {#if show_percentages}
             <sub class="percentage" style:font-size="{11 * segment.font_scale}px">
-              {format_num(segment.percentage, 1)}%
+              {format_num(segment.percentage, `.1~%`)}
             </sub>
           {/if}
         </div>

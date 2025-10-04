@@ -13,7 +13,11 @@
     if (format === `compact`) { // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
       return hkl.map((val) => {
         // Use combining overline character (U+0305) for negative values
-        if (val < 0) return `${Math.abs(val)}\u0305`
+        // Apply overbar to each digit for multi-digit numbers
+        if (val < 0) {
+          const digits = String(Math.abs(val))
+          return digits.split(``).map((digit) => `${digit}\u0305`).join(``)
+        }
         return `${val}`
       }).join(``)
     }

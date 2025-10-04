@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
+  import { DraggablePane, format_num } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
@@ -311,8 +311,8 @@
           style="flex: 1; min-width: 80px"
         />
         <span style="font-size: 0.75em; min-width: 2em; text-align: right">{
-            (hull_face_opacity * 100).toFixed(0)
-          }%</span>
+          format_num(hull_face_opacity, `.1%`)
+        }</span>
       </div>
     </div>
   {/if}

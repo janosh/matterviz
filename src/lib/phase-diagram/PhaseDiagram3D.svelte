@@ -490,11 +490,11 @@
     let centered_x = x - triangle_centroid.x
     let centered_y = y - triangle_centroid.y
 
-    // Scale z-coordinate to normalize by data range: constant visual depth regardless of energy range
-    const base_depth_factor = 0.003 // Depth per pixel of height
-    const target_depth = Math.pow(canvas.clientHeight * base_depth_factor, 0.1)
+    const triangle_height = 1.5 // arbitrary choice, picked for visual appeal
+    const z_depth_ratio = 0.5 // Z-axis depth as fraction of triangle height (tune for visual balance)
+    const target_z_range = triangle_height * z_depth_ratio // Target Z range in coordinate units
     const energy_range = e_form_max - e_form_min
-    const z_scale = target_depth / Math.max(energy_range, 0.001) // Avoid division by zero
+    const z_scale = target_z_range / Math.max(energy_range, 0.001) // Avoid division by zero
     let centered_z = (z - energy_center) * z_scale
 
     // Apply 3D transformations with fixed z-axis pointing up
@@ -1161,14 +1161,14 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => (is_dragging = false)}
+  onmouseup={() => [is_dragging, drag_started] = [false, false]}
 />
 
 <div
   {...rest}
   class="phase-diagram-3d {rest.class ?? ``}"
   class:dragover={drag_over}
-  style={`${style} ${rest.style ?? ``}`}
+  style={`${style}; ${rest.style ?? ``}`}
   bind:this={wrapper}
   role="application"
   tabindex="-1"

@@ -4,8 +4,12 @@
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`nav`]> {
+  interface Props
+    extends Omit<HTMLAttributes<HTMLElementTagNameMap[`nav`]>, `children`> {
     routes: (string | [string, string])[]
+    children?: Snippet<
+      [{ is_open: boolean; panel_id: string; routes: (string | [string, string])[] }]
+    >
     link?: Snippet<[{ href: string; label: string }]>
     menu_style?: string
   }
@@ -64,7 +68,7 @@
       {/if}
     {/each}
 
-    {@render children?.()}
+    {@render children?.({ is_open, panel_id, routes })}
   </div>
 </nav>
 

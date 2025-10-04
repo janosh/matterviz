@@ -80,8 +80,8 @@
       phase_items.push({
         label: `Unary phases`,
         value: `${format_num(phase_stats.unary)} (${
-          ((phase_stats.unary / phase_stats.total) * 100).toFixed(1)
-        }%)`,
+          format_num(phase_stats.unary / phase_stats.total, `.2~%`)
+        })`,
         key: `unary-phases`,
       })
     }
@@ -89,8 +89,8 @@
       phase_items.push({
         label: `Binary phases`,
         value: `${format_num(phase_stats.binary)} (${
-          ((phase_stats.binary / phase_stats.total) * 100).toFixed(1)
-        }%)`,
+          format_num(phase_stats.binary / phase_stats.total, `.2~%`)
+        })`,
         key: `binary-phases`,
       })
     }
@@ -98,8 +98,8 @@
       phase_items.push({
         label: `Ternary phases`,
         value: `${format_num(phase_stats.ternary)} (${
-          ((phase_stats.ternary / phase_stats.total) * 100).toFixed(1)
-        }%)`,
+          format_num(phase_stats.ternary / phase_stats.total, `.2~%`)
+        })`,
         key: `ternary-phases`,
       })
     }
@@ -107,8 +107,8 @@
       phase_items.push({
         label: `Quaternary phases`,
         value: `${format_num(phase_stats.quaternary)} (${
-          ((phase_stats.quaternary / phase_stats.total) * 100).toFixed(1)
-        }%)`,
+          format_num(phase_stats.quaternary / phase_stats.total, `.2~%`)
+        })`,
         key: `quaternary-phases`,
       })
     }
@@ -125,15 +125,15 @@
         {
           label: `Stable phases`,
           value: `${format_num(phase_stats.stable)} (${
-            ((phase_stats.stable / phase_stats.total) * 100).toFixed(1)
-          }%)`,
+            format_num(phase_stats.stable / phase_stats.total, `.2~%`)
+          })`,
           key: `stable-phases`,
         },
         {
           label: `Unstable phases`,
           value: `${format_num(phase_stats.unstable)} (${
-            ((phase_stats.unstable / phase_stats.total) * 100).toFixed(1)
-          }%)`,
+            format_num(phase_stats.unstable / phase_stats.total, `.2~%`)
+          })`,
           key: `unstable-phases`,
         },
       ],

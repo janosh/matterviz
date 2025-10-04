@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { DraggablePane, Lattice, SettingsSection } from '$lib'
+  import { DraggablePane, format_num, Lattice, SettingsSection } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { axis_colors, element_color_schemes } from '$lib/colors'
   import { export_canvas_as_png } from '$lib/io/export'
@@ -89,8 +89,8 @@
     scene_props.site_label_color = site_label_hex_color
     scene_props.site_label_bg_color =
       `color-mix(in srgb, ${site_label_bg_hex_color} ${
-        site_label_background_opacity * 100
-      }%, transparent)`
+        format_num(site_label_background_opacity, `.1~%`)
+      }, transparent)`
   })
 
   // Ensure site_label_offset is always available
@@ -99,12 +99,7 @@
   // Copy button feedback state
   let copy_status = $state<
     { json: boolean; xyz: boolean; cif: boolean; poscar: boolean }
-  >({
-    json: false,
-    xyz: false,
-    cif: false,
-    poscar: false,
-  })
+  >({ json: false, xyz: false, cif: false, poscar: false })
 
   // Dynamic button text based on copy status
   const copy_confirm = `✅`

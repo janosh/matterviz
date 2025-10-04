@@ -38,6 +38,8 @@
     hovered_bond_data,
     onbondhover,
     ontooltipchange,
+    onpointerenter,
+    onpointerleave,
     ...rest
   }: Props = $props()
 
@@ -77,15 +79,17 @@
   })
 
   const pointer_handlers = {
-    onpointerenter: () => {
+    onpointerenter: (event: PointerEvent) => {
       if (bond_data) {
         onbondhover?.(bond_data)
         ontooltipchange?.(`bond`)
       }
+      onpointerenter?.(event)
     },
-    onpointerleave: () => {
+    onpointerleave: (event: PointerEvent) => {
       onbondhover?.(null)
       ontooltipchange?.(null)
+      onpointerleave?.(event)
     },
   }
 
