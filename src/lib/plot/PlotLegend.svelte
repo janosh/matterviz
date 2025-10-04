@@ -118,7 +118,7 @@
         on_double_click(series.series_idx)
       }}
       onkeydown={(event) => {
-        if (event.key === `Enter` || event.key === ` `) {
+        if ([`Enter`, ` `].includes(event.key)) {
           event.preventDefault()
           on_toggle(series.series_idx)
         }

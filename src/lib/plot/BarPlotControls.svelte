@@ -60,10 +60,10 @@
   }
 
   // Element refs for per-instance range inputs
-  const range_inputs = {
+  const range_inputs = $state({
     x: { min: null as HTMLInputElement | null, max: null as HTMLInputElement | null },
     y: { min: null as HTMLInputElement | null, max: null as HTMLInputElement | null },
-  }
+  })
 
   // Applies the min/max inputs for the given axis after blur/Enter.
   // - Validates the pair (min < max)

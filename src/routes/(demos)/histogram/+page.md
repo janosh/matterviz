@@ -4,7 +4,7 @@
 
 ```svelte example
 <script>
-  import { Histogram } from 'matterviz'
+  import { format_num, Histogram } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
   let bins = $state(50)
@@ -23,7 +23,9 @@
       const { value, count, property } = data
       hover_info = `Hovering: ${property} - Value: ${
         value.toFixed(1)
-      }, Count: ${count}, Percentage: ${(count / sample_size * 100).toFixed(1)}%`
+      }, Count: ${count}, Percentage: ${
+        format_num(count / sample_size * 100, `.2~%`)
+      }`
     } else {
       hover_info = 'Hover over a bar to see details'
     }
@@ -33,7 +35,7 @@
     const { value, count, property } = data
     click_info = `Clicked: ${property} - Value: ${
       value.toFixed(1)
-    }, Count: ${count}, Percentage: ${(count / sample_size * 100).toFixed(1)}%`
+    }, Count: ${count}, Percentage: ${format_num(count / sample_size * 100, `.2~%`)}`
   }
 
   const info_style =
@@ -56,7 +58,7 @@
 >
   {#snippet tooltip({ value, count })}
     Value: {value.toFixed(1)}<br>Count: {count}<br>
-    %: {(count / sample_size * 100).toFixed(1)}%
+    %: {format_num(count / sample_size * 100, `.2~%`)}
   {/snippet}
 </Histogram>
 
@@ -286,9 +288,9 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {#snippet tooltip({ value, count, property })}
     <strong>{property}</strong><br>
     {{ age: `Age`, discrete: `Rating` }[selected] ?? `Value`}: {
-      value.toFixed(selected === `discrete` ? 1 : 0)
+      format_num(value, selected === `discrete` ? `.1f` : `.0f`)
     }<br>
-    Count: {count}<br>%: {(count / current.data.length * 100).toFixed(1)}%
+    Count: {count}<br>%: {format_num(count / current.data.length * 100, `.2~%`)}
   {/snippet}
 </Histogram>
 ```

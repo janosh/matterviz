@@ -109,8 +109,7 @@ export const normalize_composition = (
   return normalized
 }
 
-// Convert composition to percentages
-export const composition_to_percentages = (
+export const fractional_composition = (
   composition: CompositionType,
   by_weight = false,
 ): CompositionType => {
@@ -134,7 +133,7 @@ export const composition_to_percentages = (
     return Object.fromEntries(
       Object.entries(element_weights).map(([element, weight]) => [
         element,
-        (weight / total_weight) * 100,
+        weight / total_weight,
       ]),
     )
   }
@@ -145,7 +144,7 @@ export const composition_to_percentages = (
   return Object.fromEntries(
     Object.entries(composition).map(([element, amount]) => [
       element,
-      ((amount ?? 0) / total) * 100,
+      (amount ?? 0) / total,
     ]),
   )
 }

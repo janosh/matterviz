@@ -75,7 +75,7 @@ You can make fat and skinny bars:
   {heatmap_values}
   style="margin: 2em auto 4em"
   bind:color_scale
-  color_bar_title={heat_label}
+  color_bar_props={{ title: heat_label }}
   links="name"
 />
 

@@ -3,7 +3,7 @@ import { atomic_number_to_symbol } from '$lib/composition'
 import {
   atomic_num_to_symbols,
   atomic_symbol_to_num,
-  composition_to_percentages,
+  fractional_composition,
   get_alphabetical_formula,
   get_electro_neg_formula,
   get_total_atoms,
@@ -138,25 +138,25 @@ describe(`normalize_composition`, () => {
   })
 })
 
-describe(`composition_to_percentages`, () => {
+describe(`fractional_composition`, () => {
   test.each([
-    [{ H: 2, O: 1 }, { H: 66.67, O: 33.33 }, `water composition`],
-    [{ H: 5 }, { H: 100 }, `single element`],
-    [{ H: 1, O: 1, N: 1 }, { H: 33.33, O: 33.33, N: 33.33 }, `equal amounts`],
+    [{ H: 2, O: 1 }, { H: 0.6667, O: 0.3333 }, `water composition`],
+    [{ H: 5 }, { H: 1.0 }, `single element`],
+    [{ H: 1, O: 1, N: 1 }, { H: 0.3333, O: 0.3333, N: 0.3333 }, `equal amounts`],
     [{}, {}, `empty composition`],
     [{ H: 0, O: 0 }, {}, `zero total`],
   ])(
-    `should convert %s to percentages (%s)`,
-    (input, expected_percentages, _description) => {
-      const result = composition_to_percentages(input)
-      if (Object.keys(expected_percentages).length === 0) {
-        expect(result).toEqual(expected_percentages)
+    `should convert %s to fractions (%s)`,
+    (input, expected_fractions, _description) => {
+      const result = fractional_composition(input)
+      if (Object.keys(expected_fractions).length === 0) {
+        expect(result).toEqual(expected_fractions)
       } else {
-        Object.entries(expected_percentages).forEach(
-          ([element, expected_pct]) => {
+        Object.entries(expected_fractions).forEach(
+          ([element, expected_frac]) => {
             expect(result[element as keyof typeof result]).toBeCloseTo(
-              expected_pct as number,
-              1,
+              expected_frac as number,
+              3,
             )
           },
         )
@@ -164,50 +164,50 @@ describe(`composition_to_percentages`, () => {
     },
   )
 
-  describe(`weight-based percentages`, () => {
+  describe(`weight-based fractions`, () => {
     test.each([
       // Basic compounds
-      [{ H: 2, O: 1 }, { H: 11.19, O: 88.81 }],
-      [{ Fe: 2, O: 3 }, { Fe: 69.94, O: 30.06 }],
-      [{ Na: 1, Cl: 1 }, { Na: 39.34, Cl: 60.66 }],
-      [{ C: 1, O: 2 }, { C: 27.29, O: 72.71 }],
-      [{ Ca: 1, C: 1, O: 3 }, { Ca: 40.04, C: 11.99, O: 47.96 }],
-      [{ Al: 2, O: 3 }, { Al: 52.92, O: 47.08 }],
-      [{ Li: 1, F: 1 }, { Li: 26.75, F: 73.25 }],
-      [{ Au: 1, Cl: 3 }, { Au: 64.95, Cl: 35.05 }],
+      [{ H: 2, O: 1 }, { H: 0.1119, O: 0.8881 }],
+      [{ Fe: 2, O: 3 }, { Fe: 0.6994, O: 0.3006 }],
+      [{ Na: 1, Cl: 1 }, { Na: 0.3934, Cl: 0.6066 }],
+      [{ C: 1, O: 2 }, { C: 0.2729, O: 0.7271 }],
+      [{ Ca: 1, C: 1, O: 3 }, { Ca: 0.4004, C: 0.1199, O: 0.4796 }],
+      [{ Al: 2, O: 3 }, { Al: 0.5292, O: 0.4708 }],
+      [{ Li: 1, F: 1 }, { Li: 0.2675, F: 0.7325 }],
+      [{ Au: 1, Cl: 3 }, { Au: 0.6495, Cl: 0.3505 }],
       // Edge cases
-      [{ C: 1 }, { C: 100 }],
-      [{ H: 1 }, { H: 100 }],
-      [{ Au: 1 }, { Au: 100 }],
-      [{ H: 1, Li: 1 }, { H: 12.7, Li: 87.3 }],
-      [{ H: 10, Li: 1 }, { H: 59.2, Li: 40.8 }],
-      [{ C: 0.5, H: 2 }, { C: 74.87, H: 25.13 }],
-      [{ Fe: 0.1, Au: 0.1 }, { Fe: 22.1, Au: 77.9 }],
+      [{ C: 1 }, { C: 1.0 }],
+      [{ H: 1 }, { H: 1.0 }],
+      [{ Au: 1 }, { Au: 1.0 }],
+      [{ H: 1, Li: 1 }, { H: 0.127, Li: 0.873 }],
+      [{ H: 10, Li: 1 }, { H: 0.592, Li: 0.408 }],
+      [{ C: 0.5, H: 2 }, { C: 0.7487, H: 0.2513 }],
+      [{ Fe: 0.1, Au: 0.1 }, { Fe: 0.221, Au: 0.779 }],
       [{ H: 1, He: 1, Li: 1, Be: 1, B: 1 }, {
-        H: 3.17,
-        He: 12.58,
-        Li: 21.82,
-        Be: 28.35,
-        B: 34.0,
+        H: 0.0317,
+        He: 0.1258,
+        Li: 0.2182,
+        Be: 0.2835,
+        B: 0.34,
       }],
       // Complex compositions
-      [{ C: 8, H: 10, N: 4, O: 2 }, { C: 49.48, H: 5.19, N: 28.87, O: 16.47 }],
-      [{ Ca: 3, P: 2, O: 8 }, { Ca: 38.76, P: 19.97, O: 41.27 }],
+      [{ C: 8, H: 10, N: 4, O: 2 }, { C: 0.4948, H: 0.0519, N: 0.2887, O: 0.1647 }],
+      [{ Ca: 3, P: 2, O: 8 }, { Ca: 0.3876, P: 0.1997, O: 0.4127 }],
       [{ Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 }, {
-        Fe: 71.54,
-        Cr: 17.13,
-        Ni: 8.64,
-        Mn: 2.02,
-        Si: 0.52,
-        C: 0.22,
+        Fe: 0.7154,
+        Cr: 0.1713,
+        Ni: 0.0864,
+        Mn: 0.0202,
+        Si: 0.0052,
+        C: 0.0022,
       }],
-      [{ Al: 1, Si: 1, O: 5 }, { Al: 19.98, Si: 20.79, O: 59.23 }],
+      [{ Al: 1, Si: 1, O: 5 }, { Al: 0.1998, Si: 0.2079, O: 0.5923 }],
     ])(
-      `should calculate weight percentages correctly for %s`,
-      (composition, expected_percentages) => {
-        const result = composition_to_percentages(composition, true)
-        Object.entries(expected_percentages).forEach(([element, expected]) => {
-          const tolerance = Object.keys(expected_percentages).length === 1 ? 0 : 1
+      `should calculate weight fractions correctly for %s`,
+      (composition, expected_fractions) => {
+        const result = fractional_composition(composition, true)
+        Object.entries(expected_fractions).forEach(([element, expected]) => {
+          const tolerance = Object.keys(expected_fractions).length === 1 ? 0 : 3
           expect(result[element as keyof typeof result]).toBeCloseTo(
             expected,
             tolerance,
@@ -217,15 +217,15 @@ describe(`composition_to_percentages`, () => {
     )
 
     test(`should handle empty composition`, () => {
-      expect(composition_to_percentages({}, true)).toEqual({})
+      expect(fractional_composition({}, true)).toEqual({})
     })
 
     test(`should throw error for unknown elements`, () => {
-      expect(() => composition_to_percentages({ Xx: 1 } as CompositionType, true))
+      expect(() => fractional_composition({ Xx: 1 } as CompositionType, true))
         .toThrow(`Unknown element: Xx`)
     })
 
-    test(`should always sum to 100%`, () => {
+    test(`should always sum to 1.0`, () => {
       ;[
         { H: 2, O: 1 },
         { Fe: 2, O: 3 },
@@ -233,9 +233,9 @@ describe(`composition_to_percentages`, () => {
         { Ca: 1, C: 1, O: 3 },
         { Na: 2, S: 1, O: 4 },
       ].forEach((comp) => {
-        const result = composition_to_percentages(comp, true)
-        const total = Object.values(result).reduce((sum, pct) => sum + pct, 0)
-        expect(total).toBeCloseTo(100, 0)
+        const result = fractional_composition(comp, true)
+        const total = Object.values(result).reduce((sum, frac) => sum + frac, 0)
+        expect(total).toBeCloseTo(1.0, 3)
       })
     })
   })
@@ -334,12 +334,12 @@ describe(`edge cases and error handling`, () => {
     const total = get_total_atoms(large_composition)
     expect(total).toBeGreaterThan(1000)
 
-    const percentages = composition_to_percentages(large_composition)
-    const percentage_sum = Object.values(percentages).reduce(
-      (sum, pct) => sum + pct,
+    const fractions = fractional_composition(large_composition)
+    const fraction_sum = Object.values(fractions).reduce(
+      (sum, frac) => sum + frac,
       0,
     )
-    expect(percentage_sum).toBeCloseTo(100, 1)
+    expect(fraction_sum).toBeCloseTo(1.0, 3)
   })
 
   test(`should handle complex formulas with multiple element repetitions`, () => {

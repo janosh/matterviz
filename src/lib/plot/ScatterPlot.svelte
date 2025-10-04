@@ -149,6 +149,7 @@
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    children?: Snippet<[]>
   }
   let {
     series = [],
@@ -225,6 +226,7 @@
     selected_series_idx = $bindable(0),
     color_axis_labels = true,
     controls_toggle_props,
+    children,
     ...rest
   }: Props = $props()
 
@@ -279,9 +281,6 @@
       return { ...s, _id: new_id }
     })
   })
-
-  // Controls component reference to access internal states
-  let controls_component: ScatterPlotControls | undefined = $state(undefined)
 
   // State for rectangle zoom selection
   let drag_start_coords = $state<XyObj | null>(null)
@@ -1826,7 +1825,6 @@
     {#if show_controls}
       <ScatterPlotControls
         toggle_props={controls_toggle_props}
-        bind:this={controls_component}
         bind:show_controls
         bind:controls_open
         bind:markers
@@ -1921,6 +1919,11 @@
         `}
       />
     {/if}
+  {/if}
+
+  <!-- User-provided children (e.g., for custom absolutely-positioned overlays) -->
+  {#if children}
+    {@render children()}
   {/if}
 </div>
 

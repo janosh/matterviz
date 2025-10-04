@@ -70,7 +70,7 @@
     ),
     [`/optimade-mp-1226325`, `Optimade`],
   ]}
-  style="text-transform: capitalize; flex-direction: column; max-height: 4em; place-items: center"
+  menu_style="text-transform: capitalize; display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
   aria-label="Main navigation"
 />
 

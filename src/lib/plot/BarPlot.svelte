@@ -51,6 +51,7 @@
     controls_open?: boolean
     plot_controls?: Snippet<[]>
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    children?: Snippet<[]>
   }
   let {
     series = $bindable([]),
@@ -83,6 +84,7 @@
     controls_open = $bindable(false),
     plot_controls,
     controls_toggle_props,
+    children,
     ...rest
   }: Props = $props()
 
@@ -657,6 +659,11 @@
       />
     {/if}
   {/if}
+
+  <!-- User-provided children (e.g., for custom absolutely-positioned overlays) -->
+  {#if children}
+    {@render children()}
+  {/if}
 </div>
 
 <style>
@@ -676,6 +683,7 @@
   svg {
     width: 100%;
     height: 100%;
+    overflow: var(--svg-overflow, visible);
   }
   g:is(.x-axis, .y-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em);

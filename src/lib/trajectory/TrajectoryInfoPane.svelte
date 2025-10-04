@@ -275,13 +275,12 @@
           .filter((v) => v > 0)
 
         if (volumes.length > 1) {
-          const vol_change =
-            ((Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)) *
-            100
+          const vol_change = (Math.max(...volumes) - Math.min(...volumes)) /
+            Math.min(...volumes)
           if (Math.abs(vol_change) > 0.1 && is_valid_number(vol_change)) {
             const vol_items = [safe_item(
               `Volume Change`,
-              `${format_num(vol_change, `.2~f`)}%`,
+              `${format_num(vol_change, `.2~%`)}`,
               `vol-change`,
             )].filter(is_info_item)
 
@@ -326,7 +325,7 @@
           role="button"
           tabindex="0"
           onkeydown={(event) => {
-            if (event.key === `Enter` || event.key === ` `) {
+            if ([`Enter`, ` `].includes(event.key)) {
               event.preventDefault()
               copy_item(label, value, key ?? label)
             }

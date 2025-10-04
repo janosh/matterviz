@@ -6,6 +6,7 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
+  import type { HTMLAttributes } from 'svelte/elements'
   import {
     barycentric_to_tetrahedral,
     compute_4d_coords,
@@ -38,10 +39,11 @@
     PDControlsType,
     PhaseDiagramConfig,
     PhaseEntry,
+    PhaseStats,
     PlotEntry3D,
   } from './types'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     entries: PhaseEntry[]
     controls?: Partial<PDControlsType>
     config?: Partial<PhaseDiagramConfig>
@@ -70,6 +72,8 @@
     // Enable structure preview overlay when hovering over entries with structure data
     enable_structure_preview?: boolean
     energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
+    // Bindable phase diagram statistics - computed internally but exposed for external use
+    phase_stats?: PhaseStats | null
   }
   let {
     entries,
@@ -94,6 +98,8 @@
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
+    phase_stats = $bindable(null),
+    ...rest
   }: Props = $props()
 
   const merged_controls: PDControlsType = $derived({
@@ -463,10 +469,10 @@
     compute_max_energy_threshold(processed_entries),
   )
 
-  // Phase diagram statistics
-  const phase_stats = $derived.by(() =>
-    get_phase_diagram_stats(processed_entries, elements, 4)
-  )
+  // Phase diagram statistics - compute internally and expose via bindable prop
+  $effect(() => {
+    phase_stats = get_phase_diagram_stats(processed_entries, elements, 4)
+  })
 
   // Utility: convert hex color to rgba string with alpha
   function hex_to_rgba(hex: string, alpha: number): string {
@@ -586,7 +592,7 @@
         z: (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4,
       }
 
-      ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
+      ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
       ctx.font = `bold 18px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -813,7 +819,7 @@
       )
 
       if (should_show_label) {
-        ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
+        ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
 
         // For compound entries, use name, formula, or entry_id as fallback
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
@@ -878,8 +884,8 @@
     if (!is_dragging) return
     const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
 
-    // Detect if significant movement occurred (indicates actual drag)
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag_started = true
+    // Mark as drag if any movement occurred
+    if (dx !== 0 || dy !== 0) drag_started = true
 
     // With Cmd/Ctrl held: pan the view instead of rotating
     if (event.metaKey || event.ctrlKey) {
@@ -893,11 +899,6 @@
       )
     }
     last_mouse = { x: event.clientX, y: event.clientY }
-  }
-
-  const handle_mouse_up = () => {
-    is_dragging = false
-    drag_started = false
   }
 
   const handle_wheel = (event: WheelEvent) => {
@@ -929,11 +930,11 @@
 
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
-    // Don't trigger click if this was a drag operation
-    if (drag_started) {
-      drag_started = false
-      return
-    }
+
+    // Check if this was a drag operation (any mouse movement during drag)
+    const was_drag = drag_started
+    drag_started = false // Reset for next interaction
+    if (was_drag) return // Don't trigger click if this was a drag
 
     const entry = find_entry_at_mouse(event)
     if (entry) {
@@ -1059,7 +1060,7 @@
     `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
     --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
     --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-annotation-color:${
+     --pd-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     }`,
   )
@@ -1070,14 +1071,14 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={handle_mouse_up}
+  onmouseup={() => [is_dragging, drag_started] = [false, false]}
 />
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  class="phase-diagram-4d"
+  {...rest}
+  class="phase-diagram-4d {rest.class ?? ``}"
   class:dragover={drag_over}
-  {style}
+  style={`${style}; ${rest.style ?? ``}`}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
@@ -1096,6 +1097,7 @@
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {phase_stats?.chemical_system}
   </h3>
+
   <canvas
     bind:this={canvas}
     onmousedown={handle_mouse_down}

@@ -129,7 +129,7 @@
   role="button"
   tabindex={0}
   onkeydown={(event: KeyboardEvent) => {
-    if (event.key === `Enter` || event.key === ` `) {
+    if ([`Enter`, ` `].includes(event.key)) {
       event.preventDefault()
       const target = event.currentTarget as Element
       const rect = target.getBoundingClientRect()

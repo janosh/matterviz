@@ -2,8 +2,9 @@
   import type { ElementCategory } from '$lib'
   import { default_category_colors } from '$lib/colors'
   import { colors, selected } from '$lib/state.svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     // Appearance control values
     tile_gap?: string
     symbol_font_size?: number
@@ -47,6 +48,7 @@
     tooltip_padding = $bindable(`4px 6px`),
     tooltip_line_height = $bindable(1.2),
     tooltip_text_align = $bindable(`center`),
+    ...rest
   }: Props = $props()
 
   // Default values for easy reset
@@ -213,7 +215,7 @@
   }
 </script>
 
-<div class="controls-grid">
+<div {...rest} class="controls-grid {rest.class ?? ``}">
   <section class="category-colors">
     <h3 style="grid-column: span 2">
       Element Category Colors

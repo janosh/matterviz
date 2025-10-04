@@ -12,7 +12,7 @@ export type CompositionType = Partial<Record<ElementSymbol, number>>
 export type ChartSegmentData = {
   element: ElementSymbol
   amount: number
-  percentage: number
+  fraction: number
   color: string
   font_scale: number
   text_color: string

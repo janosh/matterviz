@@ -1,5 +1,5 @@
 import { PieChart } from '$lib/composition'
-import { composition_to_percentages, get_total_atoms } from '$lib/composition/parse'
+import { fractional_composition, get_total_atoms } from '$lib/composition/parse'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
@@ -38,28 +38,28 @@ describe(`PieChart component`, () => {
 
 describe(`PieChart data processing`, () => {
   test.each([
-    [{ H: 2, O: 1 }, { H: 66.67, O: 33.33 }, 3],
+    [{ H: 2, O: 1 }, { H: 0.6667, O: 0.3333 }, 3],
     [{}, {}, 0],
-    [{ H: 5 }, { H: 100 }, 5],
+    [{ H: 5 }, { H: 1.0 }, 5],
     [
       { C: 8, H: 10, N: 4, O: 2 },
-      { C: 33.33, H: 41.67, N: 16.67, O: 8.33 },
+      { C: 0.3333, H: 0.4167, N: 0.1667, O: 0.0833 },
       24,
     ],
   ])(
     `processes composition correctly`,
-    (composition, expected_percentages, expected_total) => {
+    (composition, expected_fractions, expected_total) => {
       expect(get_total_atoms(composition)).toBe(expected_total)
 
-      const percentages = composition_to_percentages(composition)
-      if (Object.keys(expected_percentages).length === 0) {
-        expect(Object.keys(percentages)).toHaveLength(0)
+      const fractions = fractional_composition(composition)
+      if (Object.keys(expected_fractions).length === 0) {
+        expect(Object.keys(fractions)).toHaveLength(0)
       } else {
-        Object.entries(expected_percentages).forEach(
-          ([element, expected_pct]) => {
+        Object.entries(expected_fractions).forEach(
+          ([element, expected_frac]) => {
             expect(
-              percentages[element as keyof typeof percentages],
-            ).toBeCloseTo(expected_pct as number, 1)
+              fractions[element as keyof typeof fractions],
+            ).toBeCloseTo(expected_frac as number, 3)
           },
         )
       }

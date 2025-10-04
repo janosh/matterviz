@@ -259,9 +259,8 @@
   // Create supercell if needed
   let supercell_structure = $state(structure)
   $effect(() => {
-    if (!structure || !(`lattice` in structure)) {
-      supercell_structure = structure
-    } else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
+    if (!structure || !(`lattice` in structure)) supercell_structure = structure
+    else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
       supercell_structure = structure
     } else if (!is_valid_supercell_input(supercell_scaling)) {
       supercell_structure = structure
