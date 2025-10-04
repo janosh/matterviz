@@ -13,7 +13,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `onclose`> {
     structure: AnyStructure
     pane_open?: boolean
     atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
@@ -355,7 +355,7 @@
             role="button"
             tabindex="0"
             onkeydown={(event) => {
-              if (event.key === `Enter` || event.key === ` `) {
+              if ([`Enter`, ` `].includes(event.key)) {
                 event.preventDefault()
                 handle_click(item, section.title)
               }

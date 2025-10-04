@@ -7,30 +7,28 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
   })
 
   test(`renders binary phase diagram with scatter plot and colorbar`, async ({ page }) => {
-    await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible({
-      timeout: 15000,
-    })
+    await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
     const binary_grid = page.locator(`.binary-grid`)
-    await expect(binary_grid).toBeVisible({ timeout: 15000 })
+    await expect(binary_grid).toBeVisible()
 
     const pd2d = binary_grid.locator(`.phase-diagram-2d`).first()
-    await expect(pd2d).toBeVisible({ timeout: 15000 })
+    await expect(pd2d).toBeVisible()
 
     // ScatterPlot should be present inside 2D diagram
     const scatter = pd2d.locator(`.scatter`)
-    await expect(scatter).toBeVisible({ timeout: 15000 })
+    await expect(scatter).toBeVisible()
 
     // Colorbar should be rendered for energy mode (pick first visible within this diagram)
     await expect(pd2d.locator(`.colorbar`).first()).toBeVisible()
 
     // Hull line segments should render (dashed)
     const line_segments = scatter.locator(`path[fill='none']`)
-    await expect(line_segments.first()).toBeVisible({ timeout: 15000 })
+    await expect(line_segments.first()).toBeVisible()
   })
 
   test(`opens legend controls and info pane`, async ({ page }) => {
     const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
-    await expect(pd2d).toBeVisible({ timeout: 15000 })
+    await expect(pd2d).toBeVisible()
 
     const info_btn = pd2d.locator(`.info-btn`)
     await dom_click(info_btn)
@@ -43,7 +41,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
 
   test(`color mode toggles switch visible controls and do not error`, async ({ page }) => {
     const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
-    await expect(pd2d).toBeVisible({ timeout: 15000 })
+    await expect(pd2d).toBeVisible()
 
     // Open controls
     await dom_click(pd2d.locator(`.legend-controls-btn`))
@@ -62,9 +60,9 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
 
   test(`threshold slider filters entries and info pane reflects changes`, async ({ page }) => {
     const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
-    await expect(pd2d).toBeVisible({ timeout: 15000 })
+    await expect(pd2d).toBeVisible()
 
-    const { info } = await open_info_and_controls(pd2d)
+    const { info, controls } = await open_info_and_controls(pd2d)
 
     const get_visible_unstable = async () => {
       const text = await info.getByTestId(`pd-visible-unstable`).textContent()
@@ -75,10 +73,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
 
     const before = await get_visible_unstable()
 
-    // Open controls and set threshold to 0
-    const controls_btn = pd2d.locator(`.legend-controls-btn`)
-    await dom_click(controls_btn)
-    const controls = pd2d.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    // Set threshold to 0
     const number_input = controls.locator(`input.threshold-input`).first()
     const scatter = pd2d.locator(`.scatter`)
     const markers = scatter.locator(`path.marker`)
@@ -104,16 +99,16 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
 
   test(`stability mode 'Above hull' toggle hides unstable points (info pane)`, async ({ page }) => {
     const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
-    await expect(pd2d).toBeVisible({ timeout: 15000 })
+    await expect(pd2d).toBeVisible()
 
     // Open info pane and controls
     await dom_click(pd2d.locator(`.info-btn`))
     const info = pd2d.locator(`.draggable-pane.phase-diagram-info-pane`)
-    await expect(info.getByText(`Phase Diagram Statistics`, { exact: false }))
-      .toBeVisible({ timeout: 15000 })
+    await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
+      .toBeVisible()
     await dom_click(pd2d.locator(`.legend-controls-btn`))
     const controls = pd2d.locator(`.draggable-pane.phase-diagram-controls-pane`)
-    await expect(controls).toBeVisible({ timeout: 15000 })
+    await expect(controls).toBeVisible()
 
     // Switch to Stability mode to reveal Points toggles
     await dom_click(controls.getByText(`Stability`, { exact: true }))

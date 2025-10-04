@@ -6,11 +6,21 @@
   import { format_value } from '$lib/plot/formatting'
   import { parse_any_structure } from '$lib/structure/parse'
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
-  import type { ComponentProps } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
-    if (format === `compact`) return `${hkl[0]}${hkl[1]}${hkl[2]}`
+    if (format === `compact`) { // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
+      return hkl.map((val) => {
+        // Use combining overline character (U+0305) for negative values
+        // Apply overbar to each digit for multi-digit numbers
+        if (val < 0) {
+          const digits = String(Math.abs(val))
+          return digits.split(``).map((digit) => `${digit}\u0305`).join(``)
+        }
+        return `${val}`
+      }).join(``)
+    }
     if (format === `full`) return `(${hkl.join(`, `)})`
     return ``
   }
@@ -31,6 +41,7 @@
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     loading?: boolean
     error_msg?: string
+    children?: Snippet<[]>
   }
   let {
     patterns,
@@ -46,6 +57,7 @@
     on_file_drop,
     loading = $bindable(false),
     error_msg = $bindable(undefined),
+    children,
     ...rest
   }: Props = $props()
 
@@ -145,7 +157,9 @@
           const hkl_text = hkls && hkl_format
             ? hkls.map((h) => format_hkl(h, hkl_format)).join(`, `)
             : ``
-          const text = [hkl_text, angle_text].filter(Boolean).join(` `)
+          // Use @ separator between hkl and angle for better clarity
+          const separator = hkl_text && angle_text ? ` @ ` : ``
+          const text = [hkl_text, angle_text].filter(Boolean).join(separator)
           labels.push(text)
         } else labels.push(null)
       }
@@ -258,4 +272,6 @@
     dragover = false
   }}
   class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+  style={`overflow: visible; ${rest.style ?? ``}`}
+  {children}
 />

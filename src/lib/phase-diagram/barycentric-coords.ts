@@ -1,5 +1,6 @@
 import type { ElementSymbol } from '$lib'
 import type { Vec3 } from '$lib/math'
+import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
 import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types'
 import { is_unary_entry } from './types'
 
@@ -80,26 +81,59 @@ export function calculate_face_centroid(p1: Point3D, p2: Point3D, p3: Point3D): 
 export function get_ternary_3d_coordinates(
   entries: PhaseEntry[],
   elements: ElementSymbol[],
+  el_refs?: Record<string, PhaseEntry>, // Optional: pass precomputed refs to avoid recomputing
 ): TernaryPlotEntry[] {
   if (elements.length !== 3) {
     throw new Error(
       `Ternary phase diagram requires exactly 3 elements, got ${elements.length}`,
     )
   }
-  if (!(`e_form_per_atom` in entries[0])) {
+
+  // Filter to entries within the ternary system first (use Set for O(1) lookups)
+  const element_set = new Set(elements)
+  const within_system = entries.filter((entry) =>
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
+  )
+
+  if (within_system.length === 0) {
     throw new Error(
-      `Ternary phase diagram requires e_form_per_atom field for z-axis positioning`,
+      `No entries found within the ternary system: ${elements.join(`-`)}`,
     )
   }
-  const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => elements.includes(el as ElementSymbol))
+
+  // Check if we have formation energies - provide detailed diagnostics if missing
+  const entries_with_e_form = within_system.filter((entry) =>
+    typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
   )
+
+  // If none have e_form_per_atom, try to derive them using refs; only error if we can't
+  const refs = el_refs ?? find_lowest_energy_unary_refs(entries)
+  if (entries_with_e_form.length === 0) {
+    const missing_refs = elements.filter((el) => !refs[el])
+    if (missing_refs.length > 0) {
+      throw new Error(
+        [
+          `Ternary phase diagram requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
+            elements.join(`-`)
+          } system have this field.`,
+          `\nCannot compute formation energies because elemental references are missing for: ${
+            missing_refs.join(`, `)
+          }.`,
+          `To fix: Ensure your dataset includes stable unary (single-element) entries for each element.`,
+        ].join(`\n`),
+      )
+    }
+    // proceed; values will be computed during mapping below
+  }
+
+  // Map entries to ternary plot coordinates
   const result = within_system.map((entry) => {
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
-    const { x, y, z } = barycentric_to_ternary_xyz(
-      barycentric,
-      entry.e_form_per_atom ?? NaN,
-    )
+    const e_form = typeof entry.e_form_per_atom === `number` &&
+        Number.isFinite(entry.e_form_per_atom)
+      ? entry.e_form_per_atom
+      : compute_e_form_per_atom(entry, refs) ?? NaN
+    const { x, y, z } = barycentric_to_ternary_xyz(barycentric, e_form)
     const is_element = is_unary_entry(entry)
     return {
       ...entry,
@@ -107,7 +141,7 @@ export function get_ternary_3d_coordinates(
       y,
       z,
       barycentric,
-      formation_energy: entry.e_form_per_atom ?? NaN,
+      formation_energy: e_form,
       is_element,
       visible: true,
     }
@@ -177,8 +211,10 @@ export function compute_4d_coords(
   if (elements.length !== 4) {
     throw new Error(`Quaternary phase diagram requires exactly ${4} elements`)
   }
+  // Use Set for O(1) lookups instead of O(n) includes
+  const element_set = new Set(elements)
   const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => (elements as string[]).includes(el))
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
   )
   return within_system.map((entry) => {
     const barycentric_4d = composition_to_barycentric_4d(

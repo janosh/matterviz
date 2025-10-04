@@ -11,6 +11,7 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ScatterPlot } from '$lib/plot'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     compute_max_energy_threshold,
@@ -32,11 +33,12 @@
     PDControlsType,
     PhaseDiagramConfig,
     PhaseEntry,
+    PhaseStats,
     PlotEntry3D,
   } from './types'
 
   // Binary phase diagram rendered as energy vs composition (x in [0, 1])
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     entries: PhaseEntry[]
     controls?: Partial<PDControlsType>
     config?: Partial<PhaseDiagramConfig>
@@ -63,6 +65,8 @@
     // Enable structure preview overlay when hovering over entries with structure data
     enable_structure_preview?: boolean
     energy_source_mode?: `precomputed` | `on-the-fly`
+    // Bindable phase diagram statistics - computed internally but exposed for external use
+    phase_stats?: PhaseStats | null
   }
   let {
     entries,
@@ -85,6 +89,8 @@
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
+    phase_stats = $bindable(null),
+    ...rest
   }: Props = $props()
 
   const merged_controls: PDControlsType = $derived({
@@ -404,9 +410,10 @@
     compute_max_energy_threshold(processed_entries),
   )
 
-  const phase_stats = $derived.by(() =>
-    get_phase_diagram_stats(processed_entries, elements, 3)
-  )
+  // Phase diagram statistics - compute internally and expose via bindable prop
+  $effect(() => {
+    phase_stats = get_phase_diagram_stats(processed_entries, elements, 3)
+  })
 
   // Labels with smart defaults
   let show_stable_labels = $state(true)
@@ -497,7 +504,7 @@
     `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
     --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
     --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-annotation-color:${
+     --pd-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     };`,
   )
@@ -556,11 +563,11 @@
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  class="phase-diagram-2d"
+  {...rest}
+  class="phase-diagram-2d {rest.class ?? ``}"
   class:dragover={drag_over}
-  {style}
+  style={`${style}; ${rest.style ?? ``}`}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
