@@ -5,7 +5,7 @@
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
-  import { composition_to_percentages } from './parse'
+  import { fractional_composition } from './parse'
 
   type BarSegmentData = ChartSegmentData & {
     x: number
@@ -42,7 +42,7 @@
     label_height = 20,
     gap = 2,
     min_segment_size_for_label = 15,
-    thin_segment_threshold = 20,
+    thin_segment_threshold = 0.2,
     external_label_size_threshold = 5,
     outer_corners_only = true,
     show_labels = true,
@@ -58,7 +58,7 @@
   let element_colors = $derived(
     element_color_schemes[color_scheme] || element_color_schemes.Vesta,
   )
-  let percentages = $derived(composition_to_percentages(composition))
+  let fractions = $derived(fractional_composition(composition))
 
   let svg_height = $derived(label_height + gap + bar_height + gap + label_height)
   let bar_y = $derived(label_height + gap)
@@ -77,16 +77,16 @@
     let current_x = 0
 
     return element_entries.map(([element, amount]) => {
-      const percentage = percentages[element] || 0
+      const fraction = fractions[element] || 0
       const color = element_colors[element] || `#cccccc`
-      const width = (percentage / 100) * size
+      const width = fraction * size
       const x = current_x
       current_x += width
 
       const segment_size = Math.min(width, size)
       const base_scale = Math.min(2, Math.max(1, segment_size / 40))
       const label_text = element + (show_amounts ? amount!.toString() : ``) +
-        (show_percentages ? `${format_num(percentage, `.1~%`)}` : ``)
+        (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
       const font_scale = get_chart_font_scale(
         base_scale,
         label_text,
@@ -97,7 +97,7 @@
 
       // Label positioning
       const can_show_label = segment_size >= min_segment_size_for_label
-      const is_thin = percentage < thin_segment_threshold
+      const is_thin = fraction < thin_segment_threshold
       const can_show_external_label = segment_size >= external_label_size_threshold
       const needs_external_label = is_thin && can_show_external_label
 
@@ -110,8 +110,8 @@
 
       return {
         element,
-        amount: amount!,
-        percentage,
+        amount,
+        fraction,
         color,
         x,
         width,
@@ -142,7 +142,7 @@
   {/if}
   {#if show_percentages}
     <tspan class="percentage" style:font-size="{8 * segment.font_scale}px" dx="1" dy="5">
-      {format_num(segment.percentage, `.1~%`)}
+      {format_num(segment.fraction, `.1~%`)}
     </tspan>
   {/if}
 {/snippet}
@@ -221,13 +221,13 @@
           tabindex: 0,
           'aria-label': `${segment.element}: ${segment.amount} ${
             segment.amount === 1 ? `atom` : `atoms`
-          } (${format_num(segment.percentage, `.1~%`)})`,
+          } (${format_num(segment.fraction, `.1~%`)})`,
         }
         : {})}
       >
         <title>
           {segment.element}: {segment.amount} {segment.amount === 1 ? `atom` : `atoms`} ({
-            format_num(segment.percentage, `.1~%`)
+            format_num(segment.fraction, `.1~%`)
           })
         </title>
       </rect>
