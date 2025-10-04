@@ -267,6 +267,19 @@
     } else supercell_structure = make_supercell(structure, supercell_scaling)
   })
 
+  // Clear selections when transformations change site indices
+  $effect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    ;[supercell_scaling, show_image_atoms, structure]
+
+    untrack(() => {
+      if (selected_sites.length > 0 || measured_sites.length > 0) {
+        selected_sites = []
+        measured_sites = []
+      }
+    })
+  })
+
   // Apply image atoms to the supercell structure
   $effect(() => {
     if (
@@ -534,7 +547,7 @@
               <button
                 type="button"
                 aria-label="Reset selection"
-                onclick={() => (measured_sites = [])}
+                onclick={() => [measured_sites, selected_sites] = [[], []]}
               >
                 <Icon icon="Reset" style="margin-left: -4px" />
               </button>

@@ -10,7 +10,6 @@
     angle_between_vectors,
     distance_pbc,
     MAX_SELECTED_SITES,
-    smart_displacement_vectors,
   } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
@@ -745,15 +744,16 @@
               }
                 {@const site_a = structure.sites[idx_a]}
                 {@const site_b = structure.sites[idx_b]}
-                {@const [v1, v2] = smart_displacement_vectors(
-          center.xyz,
-          site_a.xyz,
-          site_b.xyz,
-          lattice?.matrix,
-          center.abc,
-          site_a.abc,
-          site_b.abc,
-        )}
+                {@const v1 = [
+          site_a.xyz[0] - center.xyz[0],
+          site_a.xyz[1] - center.xyz[1],
+          site_a.xyz[2] - center.xyz[2],
+        ] as Vec3}
+                {@const v2 = [
+          site_b.xyz[0] - center.xyz[0],
+          site_b.xyz[1] - center.xyz[1],
+          site_b.xyz[2] - center.xyz[2],
+        ] as Vec3}
                 {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
                 {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
                 {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
