@@ -106,79 +106,34 @@ export function get_ternary_3d_coordinates(
     typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
   )
 
+  // If none have e_form_per_atom, try to derive them using refs; only error if we can't
+  const refs = el_refs ?? find_lowest_energy_unary_refs(entries)
   if (entries_with_e_form.length === 0) {
-    // Build detailed error message explaining why e_form_per_atom is missing
-    const error_parts: string[] = [
-      `Ternary phase diagram requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
-        elements.join(`-`)
-      } system have this field.`,
-    ]
-
-    // Try to diagnose why - use provided refs or compute only for needed elements
-    const unary_refs = el_refs ?? find_lowest_energy_unary_refs(entries)
-    const missing_refs = elements.filter((el) => !unary_refs[el])
-
+    const missing_refs = elements.filter((el) => !refs[el])
     if (missing_refs.length > 0) {
-      error_parts.push(
-        `\nCannot compute formation energies because elemental references are missing for: ${
-          missing_refs.join(`, `)
-        }.`,
+      throw new Error(
+        [
+          `Ternary phase diagram requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
+            elements.join(`-`)
+          } system have this field.`,
+          `\nCannot compute formation energies because elemental references are missing for: ${
+            missing_refs.join(`, `)
+          }.`,
+          `To fix: Ensure your dataset includes stable unary (single-element) entries for each element.`,
+        ].join(`\n`),
       )
-      error_parts.push(
-        `To fix: Ensure your dataset includes stable unary (single-element) entries for each element.`,
-      )
-    } else {
-      // Try computing for a sample entry to find the issue
-      const sample_entry = within_system[0]
-      const computed_e_form = compute_e_form_per_atom(sample_entry, unary_refs)
-
-      if (computed_e_form === null) {
-        // Check if the entry has energy data
-        const has_energy = typeof sample_entry.energy === `number` ||
-          typeof sample_entry.energy_per_atom === `number`
-
-        if (!has_energy) {
-          error_parts.push(
-            `\nEntries are missing energy data (neither 'energy' nor 'energy_per_atom' field is present).`,
-          )
-          error_parts.push(
-            `To fix: Ensure your entries include energy values.`,
-          )
-        } else {
-          error_parts.push(
-            `\nFormation energy computation failed despite having energy data and elemental references.`,
-          )
-        }
-      } else {
-        error_parts.push(
-          `\nFormation energies can be computed on-the-fly. This error suggests entries were not preprocessed correctly.`,
-        )
-        error_parts.push(
-          `To fix: Use 'effective_entries' which automatically computes e_form_per_atom, or precompute it in your data pipeline.`,
-        )
-      }
     }
-
-    throw new Error(error_parts.join(`\n`))
-  }
-
-  // Warn if some entries are missing formation energies
-  if (entries_with_e_form.length < within_system.length) {
-    const missing_count = within_system.length - entries_with_e_form.length
-    console.warn(
-      `Warning: ${missing_count} of ${within_system.length} entries in ${
-        elements.join(`-`)
-      } system are missing e_form_per_atom and will have NaN z-coordinates`,
-    )
+    // proceed; values will be computed during mapping below
   }
 
   // Map entries to ternary plot coordinates
   const result = within_system.map((entry) => {
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
-    const { x, y, z } = barycentric_to_ternary_xyz(
-      barycentric,
-      entry.e_form_per_atom ?? NaN,
-    )
+    const e_form = typeof entry.e_form_per_atom === `number` &&
+        Number.isFinite(entry.e_form_per_atom)
+      ? entry.e_form_per_atom
+      : compute_e_form_per_atom(entry, refs) ?? NaN
+    const { x, y, z } = barycentric_to_ternary_xyz(barycentric, e_form)
     const is_element = is_unary_entry(entry)
     return {
       ...entry,
@@ -186,7 +141,7 @@ export function get_ternary_3d_coordinates(
       y,
       z,
       barycentric,
-      formation_energy: entry.e_form_per_atom ?? NaN,
+      formation_energy: e_form,
       is_element,
       visible: true,
     }
@@ -257,9 +212,9 @@ export function compute_4d_coords(
     throw new Error(`Quaternary phase diagram requires exactly ${4} elements`)
   }
   // Use Set for O(1) lookups instead of O(n) includes
-  const element_set = new Set(elements as string[])
+  const element_set = new Set(elements)
   const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => element_set.has(el))
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
   )
   return within_system.map((entry) => {
     const barycentric_4d = composition_to_barycentric_4d(
