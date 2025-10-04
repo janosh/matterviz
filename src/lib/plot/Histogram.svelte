@@ -172,16 +172,10 @@
   $effect(() => {
     // Support one-sided range pinning: merge user range with auto range for null values
     const new_x: [number, number] = x_range
-      ? [
-        x_range[0] ?? auto_ranges.x[0],
-        x_range[1] ?? auto_ranges.x[1],
-      ]
+      ? [x_range[0] ?? auto_ranges.x[0], x_range[1] ?? auto_ranges.x[1]]
       : auto_ranges.x
     const new_y: [number, number] = y_range
-      ? [
-        y_range[0] ?? auto_ranges.y[0],
-        y_range[1] ?? auto_ranges.y[1],
-      ]
+      ? [y_range[0] ?? auto_ranges.y[0], y_range[1] ?? auto_ranges.y[1]]
       : auto_ranges.y
 
     const x_changed =
@@ -265,18 +259,10 @@
 
     if (!should_place || !width || !height) return null
 
-    const chart_width = width - padding.l - padding.r
-    const chart_height = height - padding.t - padding.b
-
     return find_best_legend_placement(hist_points_for_placement, {
-      plot_width: chart_width,
-      plot_height: chart_height,
-      padding: {
-        t: padding.t,
-        b: padding.b,
-        l: padding.l,
-        r: padding.r,
-      },
+      plot_width: width - padding.l - padding.r,
+      plot_height: height - padding.t - padding.b,
+      padding,
       margin: 10,
       legend_size: { width: 120, height: 60 },
     })
@@ -377,7 +363,7 @@
         if (event.key === `Escape` && drag_state.start) {
           drag_state = { start: null, current: null, bounds: null }
         }
-        if (event.key === `Enter` || event.key === ` `) {
+        if ([`Enter`, ` `].includes(event.key)) {
           event.preventDefault()
           handle_double_click()
         }

@@ -17,7 +17,7 @@
     | `triangular`
     | `quadrant`
 
-  interface Props extends HTMLAttributes<HTMLElement> {
+  interface Props extends Omit<HTMLAttributes<HTMLElement>, `onclick`> {
     element: ChemicalElement
     bg_color?: string
     show_symbol?: boolean
@@ -38,6 +38,7 @@
     show_values?: boolean // explicitly control whether to show values when colors are passed
     // control the layout of multi-value splits
     split_layout?: SplitLayout
+    onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
   }
   let {
     element,
@@ -57,6 +58,7 @@
     bg_colors = [],
     show_values = undefined,
     split_layout = undefined, // auto-determine based on value count if not specified
+    onclick,
     ...rest
   }: Props = $props()
 
@@ -170,6 +172,7 @@
   style:color={text_color}
   {@attach text_color ? null : contrast_color()}
   {...(href ? { role: `link`, tabindex: 0 } : {})}
+  onclick={(event) => onclick?.({ element, event })}
   {...rest}
 >
   {#if should_show_number}

@@ -6,7 +6,7 @@ export interface PhaseEntry {
   // Core required fields
   composition: Record<ElementSymbol, number>
   energy: number
-  entry_id: string
+  entry_id?: string
 
   // Common computed fields
   e_above_hull?: number
@@ -114,16 +114,29 @@ export interface ConvexHullTriangle {
 
 // Ternary plot entry with additional face information
 export interface TernaryPlotEntry extends PlotEntry3D {
-  // Barycentric coordinates for ternary system
-  barycentric: [number, number, number]
-  // Formation energy for z-axis positioning
-  formation_energy: number
+  barycentric: [number, number, number] // Barycentric coordinates for ternary system
+  formation_energy: number // for z-axis positioning
 }
 
 // Hover data for tooltips
 export interface HoverData3D<T = PlotEntry3D> {
   entry: T
   position: { x: number; y: number }
+}
+
+// Phase diagram statistics
+export interface PhaseStats {
+  total: number
+  unary: number
+  binary: number
+  ternary: number
+  quaternary: number
+  stable: number
+  unstable: number
+  energy_range: { min: number; max: number; avg: number }
+  hull_distance: { max: number; avg: number }
+  elements: number
+  chemical_system: string
 }
 
 // Arity helpers (inlined from former arity.ts)

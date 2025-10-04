@@ -5,7 +5,7 @@
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
-  import { composition_to_percentages, get_total_atoms } from './parse'
+  import { fractional_composition, get_total_atoms } from './parse'
 
   // Constants for pie chart calculations
   const VERY_THIN_SLICE_THRESHOLD = 20 // degrees
@@ -54,7 +54,7 @@
   let element_colors = $derived(
     element_color_schemes[color_scheme] || element_color_schemes.Vesta,
   )
-  let percentages = $derived(composition_to_percentages(composition))
+  let fractions = $derived(fractional_composition(composition))
   let total_atoms = $derived(get_total_atoms(composition))
   let outer_radius = $derived(size / 2 - stroke_width)
   let inner_radius_adjusted = $derived(Math.min(inner_radius, outer_radius - 10))
@@ -68,9 +68,9 @@
       .filter(([_, amount]) => amount && amount > 0)
       .map(([element_key, amount]) => {
         const element = element_key as ElementSymbol
-        const percentage = percentages[element] || 0
+        const fraction = fractions[element] || 0
         // use 359.99° to avoid 360° for single-element compositions which cause SVG arc issues
-        const angle_span = percentage === 100 ? 359.99 : (percentage / 100) * 360
+        const angle_span = fraction === 1 ? 359.99 : fraction * 360
         const start_angle = current_angle
         const end_angle = current_angle + angle_span
 
@@ -128,7 +128,7 @@
         const base_scale = min_font_scale +
           scale_factor * (max_font_scale - min_font_scale)
         const label_text = element + (show_amounts ? amount!.toString() : ``) +
-          (show_percentages ? `${percentage.toFixed(1)}%` : ``)
+          (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
         const available_space = is_very_thin_slice
           ? outer_radius * 0.8 // More space outside the slice
           : Math.min(
@@ -146,7 +146,7 @@
         return {
           element,
           amount: amount!,
-          percentage,
+          fraction,
           color,
           start_angle,
           end_angle,
@@ -187,12 +187,12 @@
         tabindex: 0,
         'aria-label': `${segment.element}: ${segment.amount} ${
           segment.amount === 1 ? `atom` : `atoms`
-        } (${segment.percentage.toFixed(1)}%)`,
+        } (${format_num(segment.fraction, `.1~%`)})`,
       }}
     >
       <title>
         {segment.element}: {segment.amount}
-        {segment.amount === 1 ? `atom` : `atoms`} ({segment.percentage.toFixed(1)}%)
+        {segment.amount === 1 ? `atom` : `atoms`} ({format_num(segment.fraction, `.1~%`)})
       </title>
     </path>
 
@@ -225,7 +225,7 @@
             </sub>{/if}
           {#if show_percentages}
             <sub class="percentage" style:font-size="{11 * segment.font_scale}px">
-              {format_num(segment.percentage, 1)}%
+              {format_num(segment.fraction, `.1~%`)}
             </sub>
           {/if}
         </div>

@@ -6,6 +6,7 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     get_ternary_3d_coordinates,
@@ -41,11 +42,12 @@
     PDControlsType,
     PhaseDiagramConfig,
     PhaseEntry,
+    PhaseStats,
     Point3D,
     TernaryPlotEntry,
   } from './types'
 
-  interface Props {
+  interface Props extends HTMLAttributes<HTMLDivElement> {
     entries: PhaseEntry[]
     controls?: Partial<PDControlsType>
     config?: Partial<PhaseDiagramConfig>
@@ -74,6 +76,11 @@
     // Enable structure preview overlay when hovering over entries with structure data
     enable_structure_preview?: boolean
     energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
+    // Bindable phase diagram statistics - computed internally but exposed for external use
+    phase_stats?: PhaseStats | null
+    // Bindable stable and unstable entries - computed internally but exposed for external use
+    stable_entries_out?: TernaryPlotEntry[]
+    unstable_entries_out?: TernaryPlotEntry[]
   }
   let {
     entries,
@@ -98,6 +105,10 @@
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
+    phase_stats = $bindable(null),
+    stable_entries_out = $bindable([]),
+    unstable_entries_out = $bindable([]),
+    ...rest
   }: Props = $props()
 
   const merged_controls: PDControlsType = $derived({
@@ -195,7 +206,12 @@
   const coords_entries = $derived.by(() => {
     if (elements.length !== 3) return []
     try {
-      const coords = get_ternary_3d_coordinates(pd_data.entries, elements)
+      // Pass precomputed el_refs to avoid recomputing in error diagnostics
+      const coords = get_ternary_3d_coordinates(
+        pd_data.entries,
+        elements,
+        pd_data.el_refs,
+      )
       return coords
     } catch (error) {
       console.error(`Error computing ternary coordinates:`, error)
@@ -443,10 +459,16 @@
     compute_max_energy_threshold(processed_entries),
   )
 
-  // Phase diagram statistics
-  const phase_stats = $derived.by(() =>
-    get_phase_diagram_stats(processed_entries, elements, 3)
-  )
+  // Phase diagram statistics - compute internally and expose via bindable prop
+  $effect(() => {
+    phase_stats = get_phase_diagram_stats(processed_entries, elements, 3)
+  })
+
+  // Sync stable and unstable entries to bindable props
+  $effect(() => {
+    stable_entries_out = stable_entries
+    unstable_entries_out = unstable_entries
+  })
 
   // 3D to 2D projection for ternary diagrams
   function project_3d_point(
@@ -468,10 +490,12 @@
     let centered_x = x - triangle_centroid.x
     let centered_y = y - triangle_centroid.y
 
-    // Scale the z-coordinate to be proportional to the triangle size
-    // Formation energies are typically -5 to 0 eV/atom, so scale to triangle height
-    const triangle_height = Math.sqrt(3) / 2 // Height of equilateral triangle with side 1
-    let centered_z = (z - energy_center) * triangle_height / 3 // Center around energy midpoint
+    const triangle_height = 1.5 // arbitrary choice, picked for visual appeal
+    const z_depth_ratio = 0.5 // Z-axis depth as fraction of triangle height (tune for visual balance)
+    const target_z_range = triangle_height * z_depth_ratio // Target Z range in coordinate units
+    const energy_range = e_form_max - e_form_min
+    const z_scale = target_z_range / Math.max(energy_range, 0.001) // Avoid division by zero
+    let centered_z = (z - energy_center) * z_scale
 
     // Apply 3D transformations with fixed z-axis pointing up
     // Convert camera angles from degrees to radians
@@ -568,14 +592,21 @@
     }
     ctx.stroke()
 
-    // Reset stroke style to default for other elements (like element labels)
+    // Reset stroke style to default for other elements
     const styles = getComputedStyle(canvas)
     ctx.strokeStyle = styles.getPropertyValue(`--pd-edge-color`) || `#212121`
     ctx.setLineDash([]) // Reset line dash for other drawing operations
+  }
+
+  function draw_element_labels(): void {
+    if (!ctx || elements.length !== 3) return
+
+    ctx.save()
+    const styles = getComputedStyle(canvas)
 
     // Draw element labels outside triangle corners
     const centroid = get_triangle_centroid()
-    ctx.fillStyle = styles.getPropertyValue(`--pd-annotation-color`) || `#212121`
+    ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
     ctx.font = `bold 16px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
@@ -600,6 +631,8 @@
       const proj = project_3d_point(label_pos.x, label_pos.y, label_pos.z)
       ctx.fillText(elements[idx], proj.x, proj.y)
     }
+
+    ctx.restore()
   }
 
   function draw_convex_hull_faces(): void {
@@ -664,6 +697,9 @@
         ctx.closePath()
         ctx.fillStyle = hex_to_rgba(hull_face_color, (a1 + a2 + a3) / 3)
         ctx.fill()
+        ctx.strokeStyle = hull_face_color
+        ctx.lineWidth = 1
+        ctx.stroke()
         ctx.restore()
       } else {
         const vx = a / mag
@@ -692,12 +728,11 @@
         ctx.closePath()
         ctx.fillStyle = grad
         ctx.fill()
+        ctx.strokeStyle = hull_face_color
+        ctx.lineWidth = 1
+        ctx.stroke()
         ctx.restore()
       }
-
-      ctx.strokeStyle = hull_face_color
-      ctx.lineWidth = 1
-      ctx.stroke()
     }
   }
 
@@ -788,29 +823,6 @@
       ctx.arc(projected.x, projected.y, size, 0, 2 * Math.PI)
       ctx.fill()
       ctx.stroke()
-
-      // Draw labels based on controls - but not for elemental entries
-      // Corner element labels are drawn separately in draw_triangle_structure()
-      const should_show_label = merged_config.show_labels && !entry.is_element && (
-        (is_stable && show_stable_labels) ||
-        (!is_stable && show_unstable_labels &&
-          (typeof entry.e_above_hull === `number` &&
-            entry.e_above_hull <= label_energy_threshold))
-      )
-
-      if (should_show_label) {
-        ctx.fillStyle =
-          getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) ||
-          `#212121`
-
-        const label = entry.name || entry.reduced_formula || entry.entry_id ||
-          `Unknown`
-        const font_size = Math.round(12 * container_scale)
-        ctx.font = `${font_size}px Arial`
-        ctx.textAlign = `center`
-        ctx.textBaseline = `middle`
-        ctx.fillText(label, projected.x, projected.y + size + 6 * container_scale)
-      }
     }
   }
 
@@ -840,9 +852,9 @@
     }
 
     // Draw labels for hull points (lowest energy at each composition)
-    ctx.fillStyle =
-      getComputedStyle(canvas).getPropertyValue(`--pd-annotation-color`) || `#212121`
-    ctx.font = `10px Arial`
+    ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--pd-text-color`) ||
+      `#212121`
+    ctx.font = `12px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `top`
 
@@ -897,8 +909,8 @@
           .join(``)
       }
 
-      // Position label below the point
-      const label_offset = 12 * container_scale
+      // Position label below the point with sufficient spacing
+      const label_offset = 16 * container_scale
       ctx.fillText(formula, projected.x, projected.y + label_offset)
     }
   }
@@ -944,6 +956,9 @@
 
     // Draw hull labels after points
     draw_hull_labels()
+
+    // Draw element labels on top of everything
+    draw_element_labels()
   }
 
   function handle_mouse_down(event: MouseEvent) {
@@ -956,8 +971,8 @@
     if (is_dragging) {
       const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
 
-      // Detect if significant movement occurred (indicates actual drag)
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag_started = true
+      // Mark as drag if any movement occurred
+      if (dx !== 0 || dy !== 0) drag_started = true
 
       // With Cmd/Ctrl held: pan the view instead of rotating
       if (event.metaKey || event.ctrlKey) {
@@ -965,19 +980,14 @@
         camera.center_y += dy
       } else {
         // Horizontal drag -> azimuth rotation around z-axis
-        camera.azimuth -= dx * 0.3 // Convert pixels to degrees
+        camera.azimuth += dx * 0.3 // Positive dx (drag right) rotates clockwise
 
         // Vertical drag -> elevation angle (full range)
-        camera.elevation = camera.elevation + dy * 0.3 // No constraints - allow full rotation
+        camera.elevation -= dy * 0.3 // Positive dy (drag down) tilts view down
       }
 
       last_mouse = { x: event.clientX, y: event.clientY }
     }
-  }
-
-  const handle_mouse_up = () => {
-    is_dragging = false
-    drag_started = false
   }
 
   const handle_wheel = (event: WheelEvent) => {
@@ -1009,10 +1019,10 @@
 
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
-    if (drag_started) { // Don't trigger click if this was a drag operation
-      drag_started = false
-      return
-    }
+    // Check if this was a drag operation (any mouse movement during drag)
+    const was_drag = drag_started
+    drag_started = false // Reset for next interaction
+    if (was_drag) return // Don't trigger click if this was a drag
 
     const entry = find_entry_at_mouse(event)
     if (entry) {
@@ -1140,7 +1150,7 @@
     `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
     --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
     --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-annotation-color:${
+     --pd-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     }`,
   )
@@ -1151,14 +1161,14 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={handle_mouse_up}
+  onmouseup={() => [is_dragging, drag_started] = [false, false]}
 />
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  class="phase-diagram-3d"
+  {...rest}
+  class="phase-diagram-3d {rest.class ?? ``}"
   class:dragover={drag_over}
-  {style}
+  style={`${style}; ${rest.style ?? ``}`}
   bind:this={wrapper}
   role="application"
   tabindex="-1"

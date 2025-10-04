@@ -4,11 +4,16 @@
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`nav`]> {
+  interface Props
+    extends Omit<HTMLAttributes<HTMLElementTagNameMap[`nav`]>, `children`> {
     routes: (string | [string, string])[]
+    children?: Snippet<
+      [{ is_open: boolean; panel_id: string; routes: (string | [string, string])[] }]
+    >
     link?: Snippet<[{ href: string; label: string }]>
+    menu_style?: string
   }
-  let { routes = [], children, link, ...rest }: Props = $props()
+  let { routes = [], children, link, menu_style, ...rest }: Props = $props()
 
   let is_open = $state(false)
   function onkeydown(event: KeyboardEvent) {
@@ -51,6 +56,7 @@
     tabindex="0"
     role="menu"
     {onkeydown}
+    style={menu_style}
   >
     {#each routes as route (JSON.stringify(route))}
       {@const [href, label] = Array.isArray(route) ? route : [route, route]}
@@ -62,7 +68,7 @@
       {/if}
     {/each}
 
-    {@render children?.()}
+    {@render children?.({ is_open, panel_id, routes })}
   </div>
 </nav>
 
