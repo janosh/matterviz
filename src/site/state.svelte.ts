@@ -11,12 +11,10 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svel
 
 if (routes.length === 0) console.error(`No routes found: ${routes.length}`)
 
-// Group demo routes by parent/child structure
-function group_demo_routes() {
-  const demos = routes
-    .filter(({ filename }) => filename.includes(`/(demos)/`))
-    .map(({ route }) => route)
+export type RouteEntry = string | [string, string[]]
 
+// Group demo routes by parent/child structure
+export function group_demo_routes(demos: string[]): RouteEntry[] {
   const grouped = new SvelteMap<string, string[]>()
   const standalone: string[] = []
 
@@ -52,7 +50,6 @@ function group_demo_routes() {
   }
 
   // Convert to array of route entries
-  type RouteEntry = string | [string, string[]]
   const result: RouteEntry[] = []
 
   for (const route of standalone) {
@@ -72,4 +69,8 @@ function group_demo_routes() {
   })
 }
 
-export const demo_routes = $state(group_demo_routes())
+export const demo_routes = $state(group_demo_routes(
+  routes
+    .filter(({ filename }) => filename.includes(`/(demos)/`))
+    .map(({ route }) => route),
+))

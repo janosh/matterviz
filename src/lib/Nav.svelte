@@ -1,11 +1,10 @@
 <script lang="ts">
+  import type { RouteEntry } from '$site/state.svelte'
   import type { Page } from '@sveltejs/kit'
   import type { Snippet } from 'svelte'
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
   import Icon from './Icon.svelte'
-
-  type RouteEntry = string | [string, string] | [string, string[]]
 
   interface Props
     extends Omit<HTMLAttributes<HTMLElementTagNameMap[`nav`]>, `children`> {
@@ -23,19 +22,97 @@
 
   let is_open = $state(false)
   let hovered_dropdown = $state<string | null>(null)
+  let focused_item_index = $state<number>(-1)
+  let is_touch_device = $state(false)
   const panel_id = `nav-menu-${crypto.randomUUID()}`
+
+  // Detect touch device
+  $effect(() => {
+    if (typeof globalThis !== `undefined`) {
+      is_touch_device = `ontouchstart` in globalThis || navigator.maxTouchPoints > 0
+    }
+  })
 
   function close_menus() {
     is_open = false
     hovered_dropdown = null
+    focused_item_index = -1
   }
 
-  function toggle_dropdown(href: string) {
+  function toggle_dropdown(href: string, focus_first = false) {
+    const is_opening = hovered_dropdown !== href
     hovered_dropdown = hovered_dropdown === href ? null : href
+    focused_item_index = is_opening && focus_first ? 0 : -1
+
+    // Focus management for keyboard users
+    if (is_opening && focus_first) {
+      setTimeout(() => {
+        const dropdown = document.querySelector(
+          `.dropdown-wrapper[data-href="${href}"]`,
+        )
+        const first_link = dropdown?.querySelector(`.dropdown-menu a`)
+        if (first_link instanceof HTMLElement) {
+          first_link.focus()
+        }
+      }, 0)
+    }
   }
 
   function onkeydown(event: KeyboardEvent) {
     if (event.key === `Escape`) close_menus()
+  }
+
+  function handle_dropdown_keydown(
+    event: KeyboardEvent,
+    href: string,
+    sub_routes: string[],
+  ) {
+    const { key } = event
+
+    if (key === `Enter` || key === ` `) {
+      event.preventDefault()
+      toggle_dropdown(href, true)
+      return
+    }
+
+    // Arrow key navigation within open dropdown
+    if (hovered_dropdown === href && (key === `ArrowDown` || key === `ArrowUp`)) {
+      event.preventDefault()
+      const direction = key === `ArrowDown` ? 1 : -1
+      const new_index = Math.max(
+        0,
+        Math.min(sub_routes.length - 1, focused_item_index + direction),
+      )
+      focused_item_index = new_index
+
+      const dropdown = document.querySelector(
+        `.dropdown-wrapper[data-href="${href}"]`,
+      )
+      const links = dropdown?.querySelectorAll(`.dropdown-menu a`)
+      if (links?.[new_index] instanceof HTMLElement) {
+        links[new_index].focus()
+      }
+    }
+
+    // Open dropdown with ArrowDown when closed
+    if (hovered_dropdown !== href && key === `ArrowDown`) {
+      event.preventDefault()
+      toggle_dropdown(href, true)
+    }
+  }
+
+  function handle_dropdown_item_keydown(event: KeyboardEvent, href: string) {
+    if (event.key === `Escape`) {
+      event.preventDefault()
+      close_menus()
+      // Return focus to dropdown trigger
+      const dropdown = document.querySelector(
+        `.dropdown-wrapper[data-href="${href}"]`,
+      )
+      if (dropdown instanceof HTMLElement) {
+        dropdown.focus()
+      }
+    }
   }
 
   function is_current(path: string) {
@@ -102,15 +179,17 @@
           data-href={href}
           aria-expanded={hovered_dropdown === href}
           aria-haspopup="true"
-          onmouseenter={() => (hovered_dropdown = href)}
-          onmouseleave={() => (hovered_dropdown = null)}
-          onclick={() => toggle_dropdown(href)}
-          onkeydown={(event) => {
-            if (event.key === `Enter` || event.key === ` `) {
-              event.preventDefault()
-              toggle_dropdown(href)
+          onmouseenter={() => !is_touch_device && (hovered_dropdown = href)}
+          onmouseleave={() => !is_touch_device && (hovered_dropdown = null)}
+          onfocusin={() => (hovered_dropdown = href)}
+          onfocusout={(event) => {
+            const next = event.relatedTarget as Node | null
+            if (!next || !(event.currentTarget as HTMLElement).contains(next)) {
+              hovered_dropdown = null
             }
           }}
+          onclick={() => toggle_dropdown(href, false)}
+          onkeydown={(event) => handle_dropdown_keydown(event, href, sub_routes)}
         >
           <span class="dropdown-trigger" style={parent.style}>
             {@html parent.label}
@@ -124,8 +203,15 @@
             class:visible={hovered_dropdown === href}
             role="menu"
             tabindex="-1"
-            onmouseenter={() => (hovered_dropdown = href)}
-            onmouseleave={() => (hovered_dropdown = null)}
+            onmouseenter={() => !is_touch_device && (hovered_dropdown = href)}
+            onmouseleave={() => !is_touch_device && (hovered_dropdown = null)}
+            onfocusin={() => (hovered_dropdown = href)}
+            onfocusout={(event) => {
+              const next = event.relatedTarget as Node | null
+              if (!next || !(event.currentTarget as HTMLElement).contains(next)) {
+                hovered_dropdown = null
+              }
+            }}
           >
             {#each sub_routes as child_href (child_href)}
               {@const child = format_label(
@@ -140,6 +226,7 @@
                   role="menuitem"
                   aria-current={is_current(child_href)}
                   onclick={close_menus}
+                  onkeydown={(event) => handle_dropdown_item_keydown(event, href)}
                   style={child.style}
                 >
                   {@html child.label}
@@ -157,7 +244,7 @@
           <a
             {href}
             aria-current={is_current(href)}
-            onclick={() => (is_open = false)}
+            onclick={close_menus}
             style={regular.style}
           >
             {@html regular.label}

@@ -323,7 +323,7 @@
         {element}
         href={links
         ? typeof links == `string`
-          ? `${element[links]}`.toLowerCase()
+          ? `/${element[links]}`.toLowerCase()
           : links[symbol]
         : undefined}
         {style}

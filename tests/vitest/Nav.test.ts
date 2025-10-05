@@ -10,7 +10,6 @@ describe(`Nav`, () => {
   const default_routes = [`/`, `/about`, `/contact`]
   const click = async (el: Element) => {
     el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
-    await tick()
     await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
@@ -79,7 +78,6 @@ describe(`Nav`, () => {
 
     // Escape does nothing when already closed
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-    await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
   })
 
@@ -187,7 +185,6 @@ describe(`Nav`, () => {
     expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
 
     menu.click()
-    await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
 
     const outside_div = document.createElement(`div`)
@@ -236,14 +233,6 @@ describe(`Nav`, () => {
   })
 
   test.each([
-    [`keyboard Enter/Space`, async (wrapper: Element, menu: Element) => {
-      wrapper.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
-      await tick()
-      expect(menu.classList.contains(`visible`)).toBe(true)
-      wrapper.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
-      await tick()
-      expect(menu.classList.contains(`visible`)).toBe(false)
-    }],
     [`mouse hover on wrapper`, async (wrapper: Element, menu: Element) => {
       wrapper.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       await tick()
@@ -416,5 +405,92 @@ describe(`Nav`, () => {
     const dropdown_links = dropdown1.querySelectorAll(`a`)
     expect(dropdown_links[0].getAttribute(`aria-current`)).toBe(`page`)
     expect(dropdown_links[1].getAttribute(`aria-current`)).toBe(`page`)
+  })
+
+  test(`keyboard navigation: Enter/Space/ArrowDown open, arrows navigate, Escape closes`, async () => {
+    mount(Nav, { target: document.body, props: { routes: [[`/p`, [`/p/1`, `/p/2`]]] } })
+    const wrapper = doc_query(`.dropdown-wrapper`)
+    const menu = doc_query(`.dropdown-menu`)
+    const key = (k: string, target = wrapper) =>
+      target.dispatchEvent(new KeyboardEvent(`keydown`, { key: k, bubbles: true }))
+    const wait = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    // Enter/Space/ArrowDown all open and focus first item
+
+    for (const open_key of [`Enter`, ` `, `ArrowDown`]) {
+      key(open_key)
+      // deno-lint-ignore no-await-in-loop
+      await wait()
+      expect(menu.classList.contains(`visible`)).toBe(true)
+      expect(document.activeElement).toBe(menu.querySelector(`a`))
+      globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    }
+
+    // Arrow navigation
+    const [item1, item2] = Array.from(menu.querySelectorAll(`a`))
+    key(`Enter`)
+    await wait()
+    expect(document.activeElement).toBe(item1)
+    key(`ArrowDown`)
+    expect(document.activeElement).toBe(item2)
+    key(`ArrowDown`)
+    expect(document.activeElement).toBe(item2) // stays at end
+    key(`ArrowUp`)
+    expect(document.activeElement).toBe(item1)
+
+    // Escape from item returns focus to trigger
+    key(`Escape`, item1 as HTMLElement)
+    await wait()
+    expect(menu.classList.contains(`visible`)).toBe(false)
+    expect(document.activeElement).toBe(wrapper)
+  })
+
+  test(`touch disables hover; focus in/out; link closes all menus`, async () => {
+    mount(Nav, { target: document.body, props: { routes: [[`/p`, [`/p/1`]], `/s`] } })
+    const wrapper = doc_query(`.dropdown-wrapper`)
+    const menu = doc_query(`.dropdown-menu`)
+    const burger = doc_query(`.burger-button`)
+
+    // Touch device disables hover
+    Object.defineProperty(navigator, `maxTouchPoints`, { value: 1, configurable: true })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    wrapper.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(menu.classList.contains(`visible`)).toBe(false)
+    Object.defineProperty(navigator, `maxTouchPoints`, { value: 0, configurable: true })
+
+    // Focus in opens, focus out to external closes, focus to internal stays open
+    wrapper.dispatchEvent(
+      new FocusEvent(`focusin`, { bubbles: true, relatedTarget: null }),
+    )
+    await tick()
+    expect(menu.classList.contains(`visible`)).toBe(true)
+    const external = document.createElement(`button`)
+    document.body.appendChild(external)
+    wrapper.dispatchEvent(
+      new FocusEvent(`focusout`, { bubbles: true, relatedTarget: external }),
+    )
+    await tick()
+    expect(menu.classList.contains(`visible`)).toBe(false)
+    wrapper.dispatchEvent(
+      new FocusEvent(`focusin`, { bubbles: true, relatedTarget: null }),
+    )
+    wrapper.dispatchEvent(
+      new FocusEvent(`focusout`, {
+        bubbles: true,
+        relatedTarget: menu.querySelector(`a`),
+      }),
+    )
+    await tick()
+    expect(menu.classList.contains(`visible`)).toBe(true)
+    external.remove()
+
+    // Link click closes all menus
+    await click(burger)
+    await click(wrapper)
+    await click(doc_query(`a[href="/s"]`))
+    expect(burger.getAttribute(`aria-expanded`)).toBe(`false`)
+    expect(menu.classList.contains(`visible`)).toBe(false)
   })
 })
