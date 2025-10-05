@@ -336,7 +336,9 @@
 
     return visible_series.flatMap((srs) => {
       const is_line = srs.render_mode === `line`
-      const series_offsets = stacked_offsets[visible_series.indexOf(srs)] ?? []
+      // Use original series index to look up stacked_offsets
+      const series_idx = series.indexOf(srs)
+      const series_offsets = stacked_offsets[series_idx] ?? []
       return srs.x.map((x_val, bar_idx) => {
         const y_val = srs.y[bar_idx]
         const base = !is_line && mode === `stacked`
@@ -790,7 +792,7 @@
 
     {#if show_controls}
       <BarPlotControls
-        toggle_props={{ style: `font-size: clamp(1em, 2.1cqw, 2em)`, ...controls_toggle_props }}
+        toggle_props={controls_toggle_props}
         bind:show_controls
         bind:controls_open
         bind:orientation
@@ -823,7 +825,6 @@
     container-type: size;
     z-index: var(--barplot-z-index, auto);
     border-radius: var(--border-radius, 4px);
-    container-type: size;
   }
   .bar-plot.dragover {
     border: var(--barplot-dragover-border, var(--dragover-border));
