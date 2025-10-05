@@ -52,7 +52,7 @@
       : `${format_num(bytes / 1024, `.2~f`)} KB`
 
   const is_valid_number = (val: unknown): val is number =>
-    typeof val === `number` && !isNaN(val) && isFinite(val)
+    typeof val === `number` && isFinite(val)
 
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
     frames.map((f) => f.metadata?.[prop]).filter(is_valid_number)

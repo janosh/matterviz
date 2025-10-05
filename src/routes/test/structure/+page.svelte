@@ -15,6 +15,8 @@
   let selected_sites = $state<number[]>([])
   let measured_sites = $state<number[]>([])
   let enable_measure_mode = $state(true)
+  let supercell_scaling = $state(`1x1x1`)
+  let show_image_atoms = $state(true)
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
@@ -182,6 +184,22 @@
       <option value="speed">Speed</option>
     </select>
   </label>
+  <label>
+    Supercell Scaling:
+    <input
+      type="text"
+      bind:value={supercell_scaling}
+      data-testid="supercell-input"
+    />
+  </label><br />
+  <label>
+    Show Image Atoms:
+    <input
+      type="checkbox"
+      bind:checked={show_image_atoms}
+      data-testid="image-atoms-checkbox"
+    />
+  </label>
   <div style="margin-top: 0.5em">
     {#each [
         [`set-selected`, () => selected_sites = [0, 1]],
@@ -222,6 +240,8 @@
   bind:selected_sites
   bind:measured_sites
   {enable_measure_mode}
+  bind:supercell_scaling
+  bind:show_image_atoms
 />
 
 <div data-testid="pane-open-status" style="margin-top: 10px">

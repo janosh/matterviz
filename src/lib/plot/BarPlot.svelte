@@ -256,15 +256,11 @@
         if (orientation === `vertical`) {
           const bar_x = scales.x(x_val)
           const bar_y = scales.y(y_val)
-          if (isFinite(bar_x) && isFinite(bar_y)) {
-            points.push({ x: bar_x, y: bar_y })
-          }
+          if (isFinite(bar_x) && isFinite(bar_y)) points.push({ x: bar_x, y: bar_y })
         } else {
           const bar_x = scales.x(y_val)
           const bar_y = scales.y(x_val)
-          if (isFinite(bar_x) && isFinite(bar_y)) {
-            points.push({ x: bar_x, y: bar_y })
-          }
+          if (isFinite(bar_x) && isFinite(bar_y)) points.push({ x: bar_x, y: bar_y })
         }
       }
     }

@@ -8,9 +8,9 @@
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
     angle_between_vectors,
+    displacement_pbc,
     distance_pbc,
     MAX_SELECTED_SITES,
-    smart_displacement_vectors,
   } from '$lib/structure/measure'
   import { T } from '@threlte/core'
   import * as Extras from '@threlte/extras'
@@ -390,6 +390,14 @@
       camera_is_moving = false
     },
   })
+
+  // Theme-aware measurement line color from CSS variable
+  let measure_line_color = $derived.by(() => {
+    if (typeof window === `undefined`) return
+    const root_styles = getComputedStyle(document.documentElement)
+    const text_color = root_styles.getPropertyValue(`--text-color`).trim()
+    return text_color || `#808080`
+  })
 </script>
 
 {#snippet site_label_snippet(position: Vec3, site_idx: number)}
@@ -710,7 +718,7 @@
               {@const site_j = structure.sites[idx_j]}
               {@const pos_i = site_i.xyz}
               {@const pos_j = site_j.xyz}
-              <Bond from={pos_i} to={pos_j} thickness={0.06} color="#cccccc" />
+              <Bond from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
               {@const midpoint = [
           (pos_i[0] + pos_j[0]) / 2,
           (pos_i[1] + pos_j[1]) / 2,
@@ -745,15 +753,8 @@
               }
                 {@const site_a = structure.sites[idx_a]}
                 {@const site_b = structure.sites[idx_b]}
-                {@const [v1, v2] = smart_displacement_vectors(
-          center.xyz,
-          site_a.xyz,
-          site_b.xyz,
-          lattice?.matrix,
-          center.abc,
-          site_a.abc,
-          site_b.abc,
-        )}
+                {@const v1 = displacement_pbc(center.xyz, site_a.xyz, lattice?.matrix)}
+                {@const v2 = displacement_pbc(center.xyz, site_b.xyz, lattice?.matrix)}
                 {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
                 {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
                 {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
@@ -763,13 +764,13 @@
                     from={center.xyz}
                     to={site_a.xyz}
                     thickness={0.05}
-                    color="#bbbbbb"
+                    color={measure_line_color}
                   />
                   <Bond
                     from={center.xyz}
                     to={site_b.xyz}
                     thickness={0.05}
-                    color="#bbbbbb"
+                    color={measure_line_color}
                   />
                   {@const bisector = [
           v1[0] / n1 + v2[0] / n2,
@@ -832,7 +833,8 @@
     margin: var(--canvas-tooltip-coords-margin);
   }
   .measure-label {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--measure-label-bg, var(--surface-bg));
+    color: var(--measure-label-color, var(--text-color));
     border-radius: 4px;
     padding: 0 5px;
     user-select: none;
@@ -841,6 +843,7 @@
     place-items: center;
     line-height: 1.2;
     font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
+    box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .selection-label {
     display: inline-flex;

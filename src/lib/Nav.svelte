@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/state'
+  import type { Page } from '@sveltejs/kit'
   import type { Snippet } from 'svelte'
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -12,8 +12,9 @@
     >
     link?: Snippet<[{ href: string; label: string }]>
     menu_style?: string
+    page?: Page // needs to be a prop instead of direct sveltekit import to avoid runtime import error when used outside of sveltekit
   }
-  let { routes = [], children, link, menu_style, ...rest }: Props = $props()
+  let { routes = [], children, link, menu_style, page, ...rest }: Props = $props()
 
   let is_open = $state(false)
   function onkeydown(event: KeyboardEvent) {
@@ -24,8 +25,8 @@
   const panel_id = `nav-menu-${crypto.randomUUID()}`
 
   let is_current = $derived((path: string) => {
-    if (path === `/`) return page.url.pathname === `/` ? `page` : undefined
-    if (page.url.pathname.startsWith(path)) return `page`
+    if (path === `/`) return page?.url.pathname === `/` ? `page` : undefined
+    if (page?.url.pathname.startsWith(path)) return `page`
     return undefined
   })
 </script>

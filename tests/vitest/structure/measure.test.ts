@@ -4,10 +4,7 @@ import {
   angle_between_vectors,
   displacement_pbc,
   distance_pbc,
-  smart_displacement_vectors,
 } from '$lib/structure/measure'
-import { parse_poscar } from '$lib/structure/parse'
-import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { describe, expect, test } from 'vitest'
 
 const cubic = (a: number): Matrix3x3 => [[a, 0, 0], [0, a, 0], [0, 0, a]]
@@ -17,13 +14,13 @@ describe(`measure: distances`, () => {
     const lat = cubic(10)
 
     // Test basic PBC distance
-    const a: Vec3 = [0.5, 0.5, 0.5]
-    const b: Vec3 = [9.8, 9.6, 9.5]
-    const disp = displacement_pbc(a, b, lat)
+    const v1: Vec3 = [0.5, 0.5, 0.5]
+    const v2: Vec3 = [9.8, 9.6, 9.5]
+    const disp = displacement_pbc(v1, v2, lat)
     expect(disp[0]).toBeCloseTo(-0.7, 10)
     expect(disp[1]).toBeCloseTo(-0.9, 10)
     expect(disp[2]).toBeCloseTo(-1.0, 10)
-    expect(distance_pbc(a, b, lat)).toBeCloseTo(Math.hypot(0.7, 0.9, 1.0), 10)
+    expect(distance_pbc(v1, v2, lat)).toBeCloseTo(Math.hypot(0.7, 0.9, 1.0), 10)
 
     // Test edge cases
     const pos: Vec3 = [5.0, 5.0, 5.0]
@@ -37,20 +34,157 @@ describe(`measure: distances`, () => {
     expect(disp2[1]).toBeCloseTo(-1.5, 10)
     expect(disp2[2]).toBeCloseTo(-2.5, 10)
   })
+
+  test.each([null, undefined])(
+    `displacement_pbc with %s lattice returns Euclidean displacement`,
+    (lattice_matrix) => {
+      const from: Vec3 = [1, 2, 3]
+      const to: Vec3 = [4, 7, 8]
+      expect(displacement_pbc(from, to, lattice_matrix)).toEqual([3, 5, 5])
+    },
+  )
 })
 
 describe(`measure: angles`, () => {
   test.each([
-    { v1: [1, 0, 0] as Vec3, v2: [0, 1, 0] as Vec3, deg: 90 },
-    { v1: [1, 0, 0] as Vec3, v2: [0.5, Math.sqrt(3) / 2, 0] as Vec3, deg: 60 },
-    { v1: [1, 0, 0] as Vec3, v2: [-1, 0, 0] as Vec3, deg: 180 },
-    { v1: [1, 0, 0] as Vec3, v2: [2, 0, 0] as Vec3, deg: 0 },
-  ] as { v1: Vec3; v2: Vec3; deg: number }[])(
-    `basic angles: %#`,
+    { v1: [1, 0, 0] as Vec3, v2: [0, 1, 0] as Vec3, deg: 90, desc: `x and y axes` },
+    { v1: [1, 0, 0] as Vec3, v2: [0, 0, 1] as Vec3, deg: 90, desc: `x and z axes` },
+    { v1: [0, 1, 0] as Vec3, v2: [0, 0, 1] as Vec3, deg: 90, desc: `y and z axes` },
+    {
+      v1: [1, 0, 0] as Vec3,
+      v2: [0.5, Math.sqrt(3) / 2, 0] as Vec3,
+      deg: 60,
+      desc: `60° angle`,
+    },
+    {
+      v1: [1, 0, 0] as Vec3,
+      v2: [Math.sqrt(3) / 2, 0.5, 0] as Vec3,
+      deg: 30,
+      desc: `30° angle`,
+    },
+    {
+      v1: [1, 0, 0] as Vec3,
+      v2: [-1, 0, 0] as Vec3,
+      deg: 180,
+      desc: `opposite directions`,
+    },
+    { v1: [1, 0, 0] as Vec3, v2: [2, 0, 0] as Vec3, deg: 0, desc: `same direction` },
+    { v1: [1, 1, 0] as Vec3, v2: [-1, 1, 0] as Vec3, deg: 90, desc: `diagonal vectors` },
+    { v1: [1, 1, 1] as Vec3, v2: [1, 1, 1] as Vec3, deg: 0, desc: `identical vectors` },
+  ] as { v1: Vec3; v2: Vec3; deg: number; desc: string }[])(
+    `basic angles: $desc`,
     ({ v1, v2, deg }) => {
       expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(deg, 10)
     },
   )
+
+  test.each([
+    { v1: [1, 0, 0] as Vec3, v2: [0, 1, 0] as Vec3, desc: `x ⊥ y` },
+    { v1: [1, 0, 0] as Vec3, v2: [0, 0, 1] as Vec3, desc: `x ⊥ z` },
+    { v1: [0, 1, 0] as Vec3, v2: [0, 0, 1] as Vec3, desc: `y ⊥ z` },
+    { v1: [1, 1, 0] as Vec3, v2: [-1, 1, 0] as Vec3, desc: `diagonal` },
+    { v1: [1, 0, 1] as Vec3, v2: [-1, 0, 1] as Vec3, desc: `3D diagonal` },
+    { v1: [2, 3, 0] as Vec3, v2: [0, 0, 5] as Vec3, desc: `scaled` },
+    { v1: [1, 2, 3] as Vec3, v2: [-2, 1, 0] as Vec3, desc: `dot=0` },
+  ])(`orthogonality: $desc`, ({ v1, v2 }) => {
+    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(90, 10)
+  })
+
+  test(`triangle angle sum property: angles in any triangle sum to 180°`, () => {
+    // Test multiple triangles with different shapes
+    const triangles = [
+      {
+        name: `equilateral`,
+        vertices: [
+          [0, 0, 0] as Vec3,
+          [1, 0, 0] as Vec3,
+          [0.5, Math.sqrt(3) / 2, 0] as Vec3,
+        ],
+        expected_angles: [60, 60, 60],
+      },
+      {
+        name: `right triangle`,
+        vertices: [[0, 0, 0] as Vec3, [3, 0, 0] as Vec3, [0, 4, 0] as Vec3],
+        expected_angles: [
+          90,
+          Math.atan(4 / 3) * 180 / Math.PI,
+          Math.atan(3 / 4) * 180 / Math.PI,
+        ],
+      },
+      {
+        name: `isosceles`,
+        vertices: [[0, 0, 0] as Vec3, [2, 0, 0] as Vec3, [1, 2, 0] as Vec3],
+      },
+      {
+        name: `scalene`,
+        vertices: [[0, 0, 0] as Vec3, [3, 0, 0] as Vec3, [1, 2, 0] as Vec3],
+      },
+      {
+        name: `3D triangle`,
+        vertices: [[0, 0, 0] as Vec3, [1, 0, 0] as Vec3, [0, 1, 1] as Vec3],
+      },
+    ]
+
+    for (const triangle of triangles) {
+      const [a, b, c] = triangle.vertices
+
+      // Calculate angle at vertex a (between vectors ab and ac)
+      const ab: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+      const ac: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+      const angle_a = angle_between_vectors(ab, ac, `degrees`)
+
+      // Calculate angle at vertex b (between vectors ba and bc)
+      const ba: Vec3 = [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+      const bc: Vec3 = [c[0] - b[0], c[1] - b[1], c[2] - b[2]]
+      const angle_b = angle_between_vectors(ba, bc, `degrees`)
+
+      // Calculate angle at vertex c (between vectors ca and cb)
+      const ca: Vec3 = [a[0] - c[0], a[1] - c[1], a[2] - c[2]]
+      const cb: Vec3 = [b[0] - c[0], b[1] - c[1], b[2] - c[2]]
+      const angle_c = angle_between_vectors(ca, cb, `degrees`)
+
+      // Sum should be 180° for any triangle
+      const sum = angle_a + angle_b + angle_c
+      expect(sum).toBeCloseTo(180, 8)
+
+      // If expected angles provided, check them too
+      if (triangle.expected_angles) {
+        expect(angle_a).toBeCloseTo(triangle.expected_angles[0], 5)
+        expect(angle_b).toBeCloseTo(triangle.expected_angles[1], 5)
+        expect(angle_c).toBeCloseTo(triangle.expected_angles[2], 5)
+      }
+    }
+  })
+
+  test.each([
+    [[1, 0, 0] as Vec3, [0, 1, 0] as Vec3],
+    [[1, 2, 3] as Vec3, [4, 5, 6] as Vec3],
+    [[1, 1, 1] as Vec3, [-1, -1, -1] as Vec3],
+    [[2, 0, 0] as Vec3, [1, 1, 0] as Vec3],
+  ])(`angle symmetry: angle(v1,v2) = angle(v2,v1)`, (v1, v2) => {
+    const angle_12 = angle_between_vectors(v1, v2, `degrees`)
+    const angle_21 = angle_between_vectors(v2, v1, `degrees`)
+    expect(angle_12).toBeCloseTo(angle_21, 12)
+  })
+
+  test(`angle scaling invariance: angle independent of vector magnitude`, () => {
+    const v1: Vec3 = [1, 2, 3]
+    const v2: Vec3 = [4, 5, 6]
+    const base_angle = angle_between_vectors(v1, v2, `degrees`)
+
+    // Scale vectors by various factors
+    for (const scale of [0.1, 0.5, 2, 10, 100]) {
+      const scaled_v1: Vec3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale]
+      const scaled_v2: Vec3 = [v2[0] * scale, v2[1] * scale, v2[2] * scale]
+
+      expect(angle_between_vectors(scaled_v1, v2, `degrees`)).toBeCloseTo(base_angle, 10)
+      expect(angle_between_vectors(v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
+      expect(angle_between_vectors(scaled_v1, scaled_v2, `degrees`)).toBeCloseTo(
+        base_angle,
+        10,
+      )
+    }
+  })
 
   test(`angle edge cases`, () => {
     // Zero vectors
@@ -70,90 +204,6 @@ describe(`measure: angles`, () => {
     const eps = 1e-10
     expect(angle_between_vectors([1, 0, 0], [1, eps, 0])).toBeCloseTo(0, 6)
     expect(angle_between_vectors([1, 0, 0], [-1, eps, 0])).toBeCloseTo(180, 6)
-  })
-
-  test(`smart displacement preserves collinearity`, () => {
-    // Direct collinear case
-    const [v1, v2] = smart_displacement_vectors([0, 0, 0], [1, 0, 0], [2, 0, 0])
-    expect(angle_between_vectors(v1, v2)).toBeCloseTo(0, 5)
-
-    // PBC wrapping case (atoms collinear only after PBC)
-    const lat = cubic(10)
-    const center: Vec3 = [0.1, 0.1, 0.1]
-    const a: Vec3 = [9.9, 0.1, 0.1] // wraps to negative side
-    const b: Vec3 = [0.3, 0.1, 0.1] // positive side
-
-    // Test direct PBC calculation for this edge case
-    const v1_pbc = displacement_pbc(center, a, lat)
-    const v2_pbc = displacement_pbc(center, b, lat)
-    expect(angle_between_vectors(v1_pbc, v2_pbc)).toBeCloseTo(180, 5)
-  })
-
-  test(`real structure angles: aviary-CuF3K-triolith.poscar`, async () => {
-    const fs = await import(`fs`)
-    const path = await import(`path`)
-    const process = await import(`node:process`)
-
-    const poscar_path = path.join(
-      process.cwd(),
-      `static/structures/aviary-CuF3K-triolith.poscar`,
-    )
-    const poscar_content = fs.readFileSync(poscar_path, `utf-8`)
-
-    const structure = parse_poscar(poscar_content)
-    if (!structure) {
-      throw new Error(`Failed to parse POSCAR file`)
-    }
-    const with_images = get_pbc_image_sites(structure)
-
-    // Test Zr collinear atoms: should give 0° for end atoms
-    const zr_sites = with_images.sites.filter((s) => s.species[0].element === `Zr`)
-    const zr_site_0 = zr_sites.find((s) =>
-      s.xyz.every((coord, idx) => Math.abs(coord - [0, 0, 0][idx]) < 0.01)
-    )
-    const zr_site_1 = zr_sites.find((s) =>
-      s.xyz.every((coord, idx) => Math.abs(coord - [3.019349, 3.019349, 0][idx]) < 0.01)
-    )
-    const zr_site_2 = zr_sites.find((s) =>
-      s.xyz.every((coord, idx) => Math.abs(coord - [6.038698, 6.038698, 0][idx]) < 0.01)
-    )
-
-    if (!zr_site_0 || !zr_site_1 || !zr_site_2) {
-      throw new Error(`Could not find expected Zr sites in structure`)
-    }
-
-    const zr_triplet = [zr_site_0, zr_site_1, zr_site_2]
-
-    const [v1, v2] = smart_displacement_vectors(
-      zr_triplet[0].xyz,
-      zr_triplet[1].xyz,
-      zr_triplet[2].xyz,
-      structure.lattice?.matrix,
-      zr_triplet[0].abc,
-      zr_triplet[1].abc,
-      zr_triplet[2].abc,
-    )
-    expect(angle_between_vectors(v1, v2)).toBeCloseTo(0, 1)
-
-    // Test N square: should give 45°/90° angles
-    const n_sites = with_images.sites.filter((s) => s.species[0].element === `N`).slice(
-      0,
-      4,
-    )
-
-    if (n_sites.length >= 4) {
-      const [v3, v4] = smart_displacement_vectors(
-        n_sites[0].xyz,
-        n_sites[1].xyz,
-        n_sites[2].xyz,
-        structure.lattice?.matrix,
-        n_sites[0].abc,
-        n_sites[1].abc,
-        n_sites[2].abc,
-      )
-      const square_angle = angle_between_vectors(v3, v4, `degrees`)
-      expect([45, 90, 135].some((exp) => Math.abs(square_angle - exp) < 5)).toBe(true)
-    }
   })
 
   test(`PBC distance regression: opposing corners of cubic cell`, () => {

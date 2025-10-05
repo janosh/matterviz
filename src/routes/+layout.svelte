@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
+  import { page } from '$app/state'
   import { element_data, Nav } from '$lib'
   import '$lib/app.css'
   import { theme_state } from '$lib/state.svelte'
@@ -72,6 +73,7 @@
   ]}
   menu_style="text-transform: capitalize; display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
   aria-label="Main navigation"
+  {page}
 />
 
 <main>
