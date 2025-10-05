@@ -2,7 +2,7 @@
   "name": "matterviz-vscode",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -650,6 +650,26 @@
             "Dark Mode"
           ]
         },
+        "matterviz.scatter.symbol_type": {
+          "type": "string",
+          "default": "Circle",
+          "description": "Default symbol type for scatter plots",
+          "enum": [
+            "Circle",
+            "Cross",
+            "Diamond",
+            "Square",
+            "Star",
+            "Triangle",
+            "Wye",
+            "Plus",
+            "Times",
+            "Triangle2",
+            "Asterisk",
+            "Square2",
+            "Diamond2"
+          ]
+        },
         "matterviz.scatter.line_width": {
           "type": "number",
           "default": 2,
@@ -725,8 +745,7 @@
         "matterviz.scatter.line_dash": {
           "type": "string",
           "default": "solid",
-          "description": "Line dash pattern for scatter plots: 'solid' or dash arrays like '4 2' / '4,2,2'",
-          "pattern": "^(solid|(?:\\d+(?:\\.\\d+)?(?:[\\s,]+\\d+(?:\\.\\d+)?)*))$"
+          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
         },
         "matterviz.scatter.show_points": {
           "type": "boolean",
@@ -1010,8 +1029,8 @@
         },
         "matterviz.phase_diagram.ternary.hull_face_opacity": {
           "type": "number",
-          "default": 0.35,
-          "description": "Opacity for lower hull faces in 3D PD",
+          "default": 0.3,
+          "description": "Opacity for hull faces in 3D PD (0-1)",
           "minimum": 0,
           "maximum": 1
         },
@@ -1095,6 +1114,23 @@
           "default": false,
           "description": "Show labels for unstable phases in 4D PD"
         },
+        "matterviz.phase_diagram.quaternary.show_hull_faces": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show convex hull faces in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.hull_face_color": {
+          "type": "string",
+          "default": "#4caf50",
+          "description": "Color for hull faces in 4D PD"
+        },
+        "matterviz.phase_diagram.quaternary.hull_face_opacity": {
+          "type": "number",
+          "default": 0.06,
+          "description": "Opacity for hull faces in 4D PD (0-1)",
+          "minimum": 0,
+          "maximum": 1
+        },
         "matterviz.phase_diagram.quaternary.energy_threshold": {
           "type": "number",
           "default": 0.1,
@@ -1128,10 +1164,10 @@
     }
   },
   "scripts": {
-    "sync-config": "deno run -A scripts/sync-config.ts",
+    "sync-config": "deno run -A --node-modules-dir scripts/sync-config.ts",
     "prebuild": "pnpm sync-config",
     "build": "rm -rf dist && vite build --config vite.webview.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
-    "package": "pnpm build && vsce package",
+    "package": "pnpm build && vsce package --no-dependencies",
     "test": "vitest"
   },
   "devDependencies": {

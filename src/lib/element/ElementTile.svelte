@@ -79,9 +79,7 @@
 
   // Helper function to format values appropriately
   const format_value = (val: string | number): string => {
-    if (is_color(val)) {
-      return show_values === true ? val.toString() : ``
-    }
+    if (is_color(val)) return show_values === true ? val.toString() : ``
 
     // Handle numeric values
     if (typeof val === `number`) return format_num(val, float_fmt)
@@ -89,9 +87,7 @@
     // Handle string values - check if it's a numeric string
     if (typeof val === `string`) {
       const parsed_num = parseFloat(val)
-      if (!isNaN(parsed_num) && isFinite(parsed_num)) {
-        return format_num(parsed_num, float_fmt)
-      }
+      if (isFinite(parsed_num)) return format_num(parsed_num, float_fmt)
       // If show_values is true, return the string as-is to preserve non-numeric strings
       return show_values === true ? val : ``
     }

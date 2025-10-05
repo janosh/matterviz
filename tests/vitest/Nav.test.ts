@@ -1,4 +1,5 @@
 import { Nav } from '$lib'
+import type { Page } from '@sveltejs/kit'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
@@ -156,12 +157,13 @@ describe(`Nav`, () => {
     [`/contact`, `/about`, null],
     [`/`, `/`, `page`],
     [`/home`, `/`, null],
-  ])(`aria-current: pathname=%s link=%s -> %s`, async (pathname, link_href, expected) => {
-    const { page } = vi.mocked(await import(`$app/state`))
-    // @ts-expect-error - mocking pathname for testing
-    page.url.pathname = pathname
+  ])(`aria-current: pathname=%s link=%s -> %s`, (pathname, link_href, expected) => {
+    const mock_page = { url: { pathname } } as Page
 
-    mount(Nav, { target: document.body, props: { routes: [link_href] } })
+    mount(Nav, {
+      target: document.body,
+      props: { routes: [link_href], page: mock_page },
+    })
     const link = doc_query(`a[href="${link_href}"]`)
     expect(link.getAttribute(`aria-current`)).toBe(expected)
   })

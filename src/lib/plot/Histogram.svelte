@@ -243,9 +243,7 @@
           if (isFinite(bar_x) && isFinite(bar_y)) {
             // Add multiple points for taller bars to increase their weight
             const weight = Math.ceil(bin.length / 10) // More points for taller bars
-            for (let idx = 0; idx < weight; idx++) {
-              points.push({ x: bar_x, y: bar_y })
-            }
+            for (let idx = 0; idx < weight; idx++) points.push({ x: bar_x, y: bar_y })
           }
         }
       }
