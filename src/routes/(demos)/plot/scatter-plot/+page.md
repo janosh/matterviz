@@ -103,7 +103,6 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   markers={display_mode}
   point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
   on_point_hover={handle_point_hover}
-  show_controls
   style="height: 300px"
 />
 <div {style}>
@@ -1009,7 +1008,6 @@ This example combines multiple features including different display modes, custo
     y_label={axis_labels.y}
     markers={display_mode}
     change={(point) => (hovered_point = point)}
-    show_controls
     style="height: 400px;"
     legend={null}
   >

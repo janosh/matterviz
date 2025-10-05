@@ -259,7 +259,6 @@
   mode="single"
   x_label="Value"
   y_label="Frequency"
-  show_controls
 />
 
 <label>Opacity: <input
@@ -285,7 +284,6 @@
   bins={30}
   mode="overlay"
   show_legend
-  show_controls
 />
 
 <label>X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
@@ -301,7 +299,6 @@
   mode="overlay"
   x_scale_type={x_scale}
   y_scale_type={y_scale}
-  show_controls
 />
 
 <label>Distribution Type: <select bind:value={distribution_type}>
@@ -355,7 +352,6 @@
   y_ticks={y_tick_count}
   x_label="Value (Custom X Ticks)"
   y_label="Count (Custom Y Ticks)"
-  show_controls
 />
 
 <Histogram
@@ -367,7 +363,6 @@
   y_label="Count (Custom Range)"
   {x_range}
   {y_range}
-  show_controls
 />
 
 <Histogram
@@ -378,7 +373,6 @@
   x_label="Value"
   y_label="Count"
   show_zero_lines
-  show_controls
 />
 
 <Histogram
@@ -388,7 +382,6 @@
   mode="single"
   x_label="Value"
   y_label="Count"
-  show_controls
 >
   {#snippet tooltip(props)}
     <div style="background: #8b5cf6; color: white; padding: 8px; border-radius: 4px">
@@ -407,7 +400,6 @@
   mode="single"
   x_label="Value"
   y_label="Count"
-  show_controls
 />
 
 Plot is currently hovered: <strong>{is_plot_hovered}</strong>
@@ -419,7 +411,6 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   x_label="Value"
   y_label="Count"
   bind:hovered={is_plot_hovered}
-  show_controls
 />
 
 <Histogram
@@ -429,7 +420,6 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   mode="single"
   x_label="Value (Wide Range)"
   y_label="Count"
-  show_controls
 />
 
 <Histogram
@@ -440,5 +430,4 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   x_label="Value (Small Range)"
   y_label="Count"
   x_format=".6f"
-  show_controls
 />

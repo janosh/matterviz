@@ -140,7 +140,6 @@
     x_label="X"
     y_label="Y"
     y_range={[0, 50]}
-    show_controls
     controls_open={false}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
@@ -153,7 +152,6 @@
     series={legend_series}
     x_label="Category"
     y_label="Value"
-    show_controls
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />
@@ -167,7 +165,6 @@
       x_label="X"
       y_label="Y"
       mode="overlay"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -178,7 +175,6 @@
       x_label="X"
       y_label="Y"
       mode="stacked"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -189,7 +185,6 @@
       x_label="X"
       y_label="Y"
       mode="stacked"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -199,7 +194,6 @@
       series={zero_value_series}
       x_label="X"
       y_label="Y"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -209,7 +203,6 @@
       series={width_array_series}
       x_label="X"
       y_label="Y"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -221,7 +214,6 @@
       y_label="X"
       mode="stacked"
       orientation="horizontal"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -232,7 +224,6 @@
       x_label="Y"
       y_label="X"
       orientation="horizontal"
-      show_controls
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -255,7 +246,6 @@
     on_bar_click={(data) => {
       click_msg = `Clicked: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
     }}
-    show_controls
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />

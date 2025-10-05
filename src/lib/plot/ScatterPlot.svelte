@@ -61,7 +61,7 @@
     y_lim?: [number | null, number | null]
     x_range?: [number | null, number | null] // Explicit ranges for x and y axes. Null pins a side to auto.
     y_range?: [number | null, number | null] // Use null on one side to auto that bound.
-    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g., current frame)
+    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g. current frame)
     // Right y-axis configuration
     y2_lim?: [number | null, number | null]
     y2_range?: [number | null, number | null]
@@ -103,7 +103,7 @@
     }
     size_scale?: {
       type?: ScaleType // Type of scale for size mapping
-      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g., [2, 10])
+      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g. [2, 10])
       value_range?: [number, number] // Min/max for size scaling (auto detected if not provided)
     }
     // Props for the ColorBar component, plus an optional 'margin' used for plot corner distance when auto placing
@@ -120,7 +120,7 @@
     legend?: LegendConfig | null // Configuration for the legend
     point_tween?: LocalTweenedOptions<XyObj>
     line_tween?: LocalTweenedOptions<string>
-    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g., 0.05 = 5%)
+    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g. 0.05 = 5%)
     point_events?: Record<
       string,
       (payload: { point: InternalPoint; event: Event }) => void
@@ -951,7 +951,7 @@
         Math.max(start_data_y_val, end_data_y_val),
       ]
 
-      // Check for minuscule zoom box (e.g., accidental click)
+      // Check for minuscule zoom box (e.g. accidental click)
       const min_zoom_size = 5 // Minimum pixels to trigger zoom
       const dx = Math.abs(drag_start_coords.x - drag_current_coords.x)
       const dy = Math.abs(drag_start_coords.y - drag_current_coords.y)
@@ -1921,10 +1921,8 @@
     {/if}
   {/if}
 
-  <!-- User-provided children (e.g., for custom absolutely-positioned overlays) -->
-  {#if children}
-    {@render children()}
-  {/if}
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.()}
 </div>
 
 <style>
