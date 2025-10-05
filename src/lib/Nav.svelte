@@ -3,32 +3,55 @@
   import type { Snippet } from 'svelte'
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import Icon from './Icon.svelte'
+
+  type RouteEntry = string | [string, string] | [string, string[]]
 
   interface Props
     extends Omit<HTMLAttributes<HTMLElementTagNameMap[`nav`]>, `children`> {
-    routes: (string | [string, string])[]
+    routes: RouteEntry[]
     children?: Snippet<
-      [{ is_open: boolean; panel_id: string; routes: (string | [string, string])[] }]
+      [{ is_open: boolean; panel_id: string; routes: RouteEntry[] }]
     >
     link?: Snippet<[{ href: string; label: string }]>
     menu_style?: string
-    page?: Page // needs to be a prop instead of direct sveltekit import to avoid runtime import error when used outside of sveltekit
+    page?: Page
   }
   let { routes = [], children, link, menu_style, page, ...rest }: Props = $props()
 
   let is_open = $state(false)
-  function onkeydown(event: KeyboardEvent) {
-    if (event.key === `Escape` && is_open) is_open = false
-  }
-
-  // Generate unique ID for the menu panel
+  let hovered_dropdown = $state<string | null>(null)
   const panel_id = `nav-menu-${crypto.randomUUID()}`
 
-  let is_current = $derived((path: string) => {
+  function close_menus() {
+    is_open = false
+    hovered_dropdown = null
+  }
+
+  function onkeydown(event: KeyboardEvent) {
+    if (event.key === `Escape`) close_menus()
+    if ((event.key === `Enter` || event.key === ` `) && hovered_dropdown) {
+      event.preventDefault()
+    }
+  }
+
+  function is_current(path: string) {
     if (path === `/`) return page?.url.pathname === `/` ? `page` : undefined
-    if (page?.url.pathname.startsWith(path)) return `page`
-    return undefined
-  })
+    return page?.url.pathname.startsWith(path) ? `page` : undefined
+  }
+
+  function format_label(text: string, remove_parent = false) {
+    if (remove_parent) text = text.split(`/`).filter(Boolean).pop() ?? text
+    return text.replace(/^\//, ``).replaceAll(`-`, ` `)
+  }
+
+  function parse_route(route: RouteEntry) {
+    if (typeof route === `string`) return { href: route, label: route }
+    const [first, second] = route
+    return Array.isArray(second)
+      ? { href: first, label: first, children: second }
+      : { href: first, label: second }
+  }
 </script>
 
 <svelte:window {onkeydown} />
@@ -60,12 +83,57 @@
     style={menu_style}
   >
     {#each routes as route (JSON.stringify(route))}
-      {@const [href, label] = Array.isArray(route) ? route : [route, route]}
-      {#if link}
-        {@render link({ href, label })}
+      {@const { href, label, children: sub_routes } = parse_route(route)}
+
+      {#if sub_routes}
+        <!-- Dropdown menu item -->
+        <div
+          class="dropdown-wrapper"
+          role="button"
+          tabindex="0"
+          onmouseenter={() => (hovered_dropdown = href)}
+          onmouseleave={() => (hovered_dropdown = null)}
+        >
+          <span class="dropdown-trigger" aria-haspopup="true">
+            {@html format_label(label)}
+            <Icon
+              icon="ArrowDown"
+              style="width: 0.8em; height: 0.8em; margin-left: 0.2em"
+            />
+          </span>
+          <div
+            class="dropdown-menu"
+            class:visible={hovered_dropdown === href}
+            role="menu"
+            tabindex="-1"
+            onmouseenter={() => (hovered_dropdown = href)}
+            onmouseleave={() => (hovered_dropdown = null)}
+          >
+            {#each sub_routes as child_href (child_href)}
+              {@const child_label = format_label(child_href, true)}
+              {#if link}
+                {@render link({ href: child_href, label: child_label })}
+              {:else}
+                <a
+                  href={child_href}
+                  aria-current={is_current(child_href)}
+                  onclick={close_menus}
+                >
+                  {@html child_label}
+                </a>
+              {/if}
+            {/each}
+          </div>
+        </div>
       {:else}
-        <a {href} aria-current={is_current(href)} onclick={() => is_open = false}>
-          {@html label}</a>
+        <!-- Regular link item -->
+        {#if link}
+          {@render link({ href, label })}
+        {:else}
+          <a {href} aria-current={is_current(href)} onclick={() => (is_open = false)}>
+            {@html format_label(label)}
+          </a>
+        {/if}
       {/if}
     {/each}
 
@@ -85,7 +153,8 @@
     flex-wrap: wrap;
     padding: 0.5em;
   }
-  .menu-content > a {
+  .menu-content > a,
+  .dropdown-wrapper {
     line-height: 1.3;
     padding: 1pt 5pt;
     border-radius: 2pt;
@@ -93,12 +162,67 @@
     color: inherit;
     transition: background-color 0.2s;
   }
-  .menu-content > a:hover {
+  .menu-content > a:hover,
+  .dropdown-wrapper:hover {
     background-color: var(--nav-link-bg-hover);
   }
   .menu-content > a[aria-current='page'] {
     color: var(--nav-link-active-color);
     background-color: var(--nav-link-bg-hover, rgba(128, 128, 128, 0.24));
+  }
+
+  /* Dropdown styles */
+  .dropdown-wrapper {
+    position: relative;
+    cursor: pointer;
+  }
+  .dropdown-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: var(--nav-dropdown-margin, 3pt);
+  }
+  .dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.2em;
+    user-select: none;
+  }
+  .dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin: var(--nav-dropdown-margin, 3pt 0 0 0);
+    min-width: max-content;
+    background-color: var(--nav-dropdown-bg, var(--surface-bg, var(--bg-color, #ffffff)));
+    border: 1px solid
+      var(--nav-dropdown-border-color, var(--border-color, rgba(128, 128, 128, 0.25)));
+    border-radius: var(--nav-dropdown-border-radius, 6pt);
+    box-shadow: var(--nav-dropdown-shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
+    padding: var(--nav-dropdown-padding, 2pt 3pt);
+    display: none;
+    flex-direction: column;
+    gap: var(--nav-dropdown-gap, 5pt);
+    z-index: var(--nav-dropdown-z-index, 100);
+  }
+  .dropdown-menu.visible {
+    display: flex;
+  }
+  .dropdown-menu a {
+    padding: var(--nav-dropdown-link-padding, 1pt 4pt);
+    border-radius: var(--nav-dropdown-link-border-radius, 4pt);
+    text-decoration: none;
+    color: inherit;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+  }
+  .dropdown-menu a:hover {
+    background-color: var(--nav-link-bg-hover);
+  }
+  .dropdown-menu a[aria-current='page'] {
+    color: var(--nav-link-active-color);
   }
   /* Mobile burger button */
   .burger-button {
@@ -138,6 +262,7 @@
     .menu-content {
       position: fixed;
       top: 3rem;
+      left: 1rem;
       background-color: var(--surface-bg, var(--bg-color, #ffffff));
       opacity: 0;
       visibility: hidden;
@@ -156,8 +281,26 @@
       opacity: 1;
       visibility: visible;
     }
-    .menu-content > a {
+    .menu-content > a,
+    .dropdown-wrapper {
       padding: 2pt 8pt;
+    }
+
+    /* Mobile dropdown styles - show as expandable section */
+    .dropdown-wrapper {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .dropdown-menu {
+      position: static;
+      border: none;
+      box-shadow: none;
+      margin-top: 0.25em;
+      padding: 0 0 0 1em;
+      background-color: transparent;
+    }
+    .dropdown-trigger {
+      cursor: pointer;
     }
   }
 </style>
