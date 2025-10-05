@@ -1,4 +1,5 @@
 <script>
+  import { page } from '$app/state'
   import { Nav } from '$lib'
   import { routes as all_routes } from '$site/state.svelte'
 
@@ -11,4 +12,4 @@
 
 The files in this directory are used for end-to-end testing with Playwright.
 
-<Nav {routes} />
+<Nav {routes} {page} />
