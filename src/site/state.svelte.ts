@@ -11,7 +11,7 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svel
 
 if (routes.length === 0) console.error(`No routes found: ${routes.length}`)
 
-export type RouteEntry = string | [string, string[]]
+export type RouteEntry = string | [string, string] | [string, string[]]
 
 // Group demo routes by parent/child structure
 export function group_demo_routes(demos: string[]): RouteEntry[] {
@@ -52,20 +52,16 @@ export function group_demo_routes(demos: string[]): RouteEntry[] {
   // Convert to array of route entries
   const result: RouteEntry[] = []
 
-  for (const route of standalone) {
-    result.push(route)
-  }
+  for (const route of standalone) result.push(route)
 
   for (const [parent, children] of grouped) {
-    if (children.length > 0) {
-      result.push([parent, children.sort()])
-    }
+    if (children.length > 0) result.push([parent, children.sort()])
   }
 
-  return result.sort((a, b) => {
-    const a_str = typeof a === `string` ? a : a[0]
-    const b_str = typeof b === `string` ? b : b[0]
-    return a_str.localeCompare(b_str)
+  return result.sort((r1, r2) => {
+    const r1_str = typeof r1 === `string` ? r1 : r1[0]
+    const r2_str = typeof r2 === `string` ? r2 : r2[0]
+    return r1_str.localeCompare(r2_str)
   })
 }
 
