@@ -17,13 +17,20 @@
   import { optimade_to_pymatgen } from '$lib/structure/parse'
   import { tooltip } from 'svelte-multiselect'
 
+  interface Props {
+    structure_id?: string
+    selected_provider?: string
+  }
+  let { structure_id: init_structure_id, selected_provider: init_provider }: Props =
+    $props()
+
   let structure = $state<PymatgenStructure | null>(null)
   let [loading_struct, loading_suggestions] = $state([false, false])
   let struct_error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])
   let providers_error = $state<string | null>(null)
-  let selected_db = $state(`mp`)
-  let input_value = $state(``)
+  let selected_db = $state(init_provider ?? `mp`)
+  let input_value = $state(init_structure_id ?? ``)
   let suggested_structures = $state<OptimadeStructure[]>([])
   let last_loaded_db = $state<string | null>(null)
   let structure_id = $derived(input_value.trim())
@@ -31,7 +38,9 @@
     available_providers.find((p) => p.id === selected_db),
   )
 
-  $effect(() => { // Initialize from URL slug
+  $effect(() => { // Initialize from URL slug (only if no props provided)
+    if (init_structure_id || init_provider) return // Props take precedence
+
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
     if (available_providers.length > 0) {
       const provider = detect_provider_from_slug(decoded_slug, available_providers)
@@ -108,8 +117,6 @@
     history.pushState({}, ``, `/optimade-${encode_structure_id(id)}`)
   }
 </script>
-
-<h1 style="margin-top: 0">OPTIMADE Explorer</h1>
 
 <div class="input-section">
   <input

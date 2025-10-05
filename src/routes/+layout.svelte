@@ -62,16 +62,13 @@
 
 <ThemeControl />
 
-<!-- using a random MP ID to pre-populate the structure viewer when optimade explorer loads -->
 <Nav
-  routes={[
-    [`/`, `Home`],
-    ...demo_routes.map((route) =>
-      [route, route.replaceAll(`/`, ``).replaceAll(`-`, ` `)] satisfies [string, string]
-    ),
-    [`/optimade-mp-1226325`, `Optimade`],
-  ]}
-  menu_style="text-transform: capitalize; display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
+  routes={[[`/`, `Home`], ...demo_routes]}
+  labels={{
+    '/how-to/hook-up-to-external-api': `Hook up to external API`,
+    '/how-to/use-without-svelte': `Use without Svelte`,
+  }}
+  menu_style="display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
   aria-label="Main navigation"
   {page}
 />
