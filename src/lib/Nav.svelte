@@ -16,8 +16,10 @@
     link?: Snippet<[{ href: string; label: string }]>
     menu_style?: string
     page?: Page
+    labels?: Record<string, string>
   }
-  let { routes = [], children, link, menu_style, page, ...rest }: Props = $props()
+  let { routes = [], children, link, menu_style, page, labels, ...rest }: Props =
+    $props()
 
   let is_open = $state(false)
   let hovered_dropdown = $state<string | null>(null)
@@ -28,11 +30,12 @@
     hovered_dropdown = null
   }
 
+  function toggle_dropdown(href: string) {
+    hovered_dropdown = hovered_dropdown === href ? null : href
+  }
+
   function onkeydown(event: KeyboardEvent) {
     if (event.key === `Escape`) close_menus()
-    if ((event.key === `Enter` || event.key === ` `) && hovered_dropdown) {
-      event.preventDefault()
-    }
   }
 
   function is_current(path: string) {
@@ -41,8 +44,12 @@
   }
 
   function format_label(text: string, remove_parent = false) {
+    const custom_label = labels?.[text]
+    if (custom_label) return { label: custom_label, style: `` }
+
     if (remove_parent) text = text.split(`/`).filter(Boolean).pop() ?? text
-    return text.replace(/^\//, ``).replaceAll(`-`, ` `)
+    const label = text.replace(/^\//, ``).replaceAll(`-`, ` `)
+    return { label, style: `text-transform: capitalize` }
   }
 
   function parse_route(route: RouteEntry) {
@@ -87,15 +94,26 @@
 
       {#if sub_routes}
         <!-- Dropdown menu item -->
+        {@const parent = format_label(label)}
         <div
           class="dropdown-wrapper"
           role="button"
           tabindex="0"
+          data-href={href}
+          aria-expanded={hovered_dropdown === href}
+          aria-haspopup="true"
           onmouseenter={() => (hovered_dropdown = href)}
           onmouseleave={() => (hovered_dropdown = null)}
+          onclick={() => toggle_dropdown(href)}
+          onkeydown={(event) => {
+            if (event.key === `Enter` || event.key === ` `) {
+              event.preventDefault()
+              toggle_dropdown(href)
+            }
+          }}
         >
-          <span class="dropdown-trigger" aria-haspopup="true">
-            {@html format_label(label)}
+          <span class="dropdown-trigger" style={parent.style}>
+            {@html parent.label}
             <Icon
               icon="ArrowDown"
               style="width: 0.8em; height: 0.8em; margin-left: 0.2em"
@@ -110,16 +128,21 @@
             onmouseleave={() => (hovered_dropdown = null)}
           >
             {#each sub_routes as child_href (child_href)}
-              {@const child_label = format_label(child_href, true)}
+              {@const child = format_label(
+            child_href,
+            true,
+          )}
               {#if link}
-                {@render link({ href: child_href, label: child_label })}
+                {@render link({ href: child_href, label: child.label })}
               {:else}
                 <a
                   href={child_href}
+                  role="menuitem"
                   aria-current={is_current(child_href)}
                   onclick={close_menus}
+                  style={child.style}
                 >
-                  {@html child_label}
+                  {@html child.label}
                 </a>
               {/if}
             {/each}
@@ -127,11 +150,17 @@
         </div>
       {:else}
         <!-- Regular link item -->
+        {@const regular = format_label(label)}
         {#if link}
           {@render link({ href, label })}
         {:else}
-          <a {href} aria-current={is_current(href)} onclick={() => (is_open = false)}>
-            {@html format_label(label)}
+          <a
+            {href}
+            aria-current={is_current(href)}
+            onclick={() => (is_open = false)}
+            style={regular.style}
+          >
+            {@html regular.label}
           </a>
         {/if}
       {/if}

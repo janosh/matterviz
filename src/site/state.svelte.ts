@@ -25,7 +25,11 @@ function group_demo_routes() {
     if (parts.length > 1) {
       // Nested route like /plot/color-bar
       const parent = `/${parts[0]}`
-      if (!grouped.has(parent)) grouped.set(parent, [])
+      if (!grouped.has(parent)) {
+        // Initialize with parent route if it exists
+        const parent_exists = demos.includes(parent)
+        grouped.set(parent, parent_exists ? [parent] : [])
+      }
       const parent_routes = grouped.get(parent)
       if (parent_routes) parent_routes.push(route)
     } else {
@@ -34,7 +38,13 @@ function group_demo_routes() {
       // Check if this route has children
       const has_children = demos.some((r) => r.startsWith(`${route}/`) && r !== route)
       if (has_children) {
-        if (!grouped.has(parent)) grouped.set(parent, [])
+        // Include the parent route itself as the first child
+        if (!grouped.has(parent)) {
+          grouped.set(parent, [parent])
+        } else if (!grouped.get(parent)?.includes(parent)) {
+          // Parent was already initialized but doesn't include itself yet
+          grouped.get(parent)?.unshift(parent)
+        }
       } else {
         standalone.push(route)
       }
