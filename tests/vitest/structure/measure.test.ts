@@ -14,13 +14,13 @@ describe(`measure: distances`, () => {
     const lat = cubic(10)
 
     // Test basic PBC distance
-    const a: Vec3 = [0.5, 0.5, 0.5]
-    const b: Vec3 = [9.8, 9.6, 9.5]
-    const disp = displacement_pbc(a, b, lat)
+    const v1: Vec3 = [0.5, 0.5, 0.5]
+    const v2: Vec3 = [9.8, 9.6, 9.5]
+    const disp = displacement_pbc(v1, v2, lat)
     expect(disp[0]).toBeCloseTo(-0.7, 10)
     expect(disp[1]).toBeCloseTo(-0.9, 10)
     expect(disp[2]).toBeCloseTo(-1.0, 10)
-    expect(distance_pbc(a, b, lat)).toBeCloseTo(Math.hypot(0.7, 0.9, 1.0), 10)
+    expect(distance_pbc(v1, v2, lat)).toBeCloseTo(Math.hypot(0.7, 0.9, 1.0), 10)
 
     // Test edge cases
     const pos: Vec3 = [5.0, 5.0, 5.0]
@@ -34,6 +34,15 @@ describe(`measure: distances`, () => {
     expect(disp2[1]).toBeCloseTo(-1.5, 10)
     expect(disp2[2]).toBeCloseTo(-2.5, 10)
   })
+
+  test.each([null, undefined])(
+    `displacement_pbc with %s lattice returns Euclidean displacement`,
+    (lattice_matrix) => {
+      const from: Vec3 = [1, 2, 3]
+      const to: Vec3 = [4, 7, 8]
+      expect(displacement_pbc(from, to, lattice_matrix)).toEqual([3, 5, 5])
+    },
+  )
 })
 
 describe(`measure: angles`, () => {

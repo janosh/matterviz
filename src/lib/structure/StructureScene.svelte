@@ -8,6 +8,7 @@
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
     angle_between_vectors,
+    displacement_pbc,
     distance_pbc,
     MAX_SELECTED_SITES,
   } from '$lib/structure/measure'
@@ -744,16 +745,8 @@
               }
                 {@const site_a = structure.sites[idx_a]}
                 {@const site_b = structure.sites[idx_b]}
-                {@const v1 = [
-          site_a.xyz[0] - center.xyz[0],
-          site_a.xyz[1] - center.xyz[1],
-          site_a.xyz[2] - center.xyz[2],
-        ] as Vec3}
-                {@const v2 = [
-          site_b.xyz[0] - center.xyz[0],
-          site_b.xyz[1] - center.xyz[1],
-          site_b.xyz[2] - center.xyz[2],
-        ] as Vec3}
+                {@const v1 = displacement_pbc(center.xyz, site_a.xyz, lattice?.matrix)}
+                {@const v2 = displacement_pbc(center.xyz, site_b.xyz, lattice?.matrix)}
                 {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
                 {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
                 {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}

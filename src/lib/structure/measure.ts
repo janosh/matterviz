@@ -7,12 +7,17 @@ export type AngleMode = `degrees` | `radians`
 
 export const MAX_SELECTED_SITES = 8
 
+// Calculate minimum image displacement between two points under PBC
+// If lattice_matrix is null/undefined, returns Euclidean displacement
 export function displacement_pbc(
   from: Vec3,
   to: Vec3,
-  lattice_matrix: Matrix3x3,
+  lattice_matrix: Matrix3x3 | null | undefined,
   lattice_inv?: Matrix3x3,
 ): Vec3 {
+  // For non-periodic structures, return direct displacement
+  if (!lattice_matrix) return [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
+
   const inv_mat = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
   const frac_from = mat3x3_vec3_multiply(inv_mat, from)
   const frac_to = mat3x3_vec3_multiply(inv_mat, to)
@@ -34,14 +39,14 @@ export function displacement_pbc(
   let best_displacement: Vec3 = [0, 0, 0]
 
   // Test lattice images in a 3x3x3 neighborhood (sufficient for minimum image)
-  for (let i = -1; i <= 1; i++) {
-    for (let j = -1; j <= 1; j++) {
-      for (let k = -1; k <= 1; k++) {
+  for (let ii = -1; ii <= 1; ii++) {
+    for (let jj = -1; jj <= 1; jj++) {
+      for (let kk = -1; kk <= 1; kk++) {
         // Fractional displacement with lattice translation
         const frac_diff: Vec3 = [
-          frac_to_wrapped[0] - frac_from_wrapped[0] + i,
-          frac_to_wrapped[1] - frac_from_wrapped[1] + j,
-          frac_to_wrapped[2] - frac_from_wrapped[2] + k,
+          frac_to_wrapped[0] - frac_from_wrapped[0] + ii,
+          frac_to_wrapped[1] - frac_from_wrapped[1] + jj,
+          frac_to_wrapped[2] - frac_from_wrapped[2] + kk,
         ]
 
         // Convert to cartesian

@@ -509,7 +509,10 @@
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
             {:else}
-              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+              <Icon
+                icon="{fullscreen ? `Exit` : ``}Fullscreen"
+                style="width: clamp(1em, 2cqmin, 2.5em)"
+              />
             {/if}
           </button>
         {/if}
