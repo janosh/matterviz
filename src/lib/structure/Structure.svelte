@@ -267,11 +267,15 @@
     } else supercell_structure = make_supercell(structure, supercell_scaling)
   })
 
-  // Clear selections when transformations change site indices
+  // Clear selections when transformations change site indices (skip first run to preserve parent-provided selections)
+  let first_run = true
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     ;[supercell_scaling, show_image_atoms, structure]
-
+    if (first_run) {
+      first_run = false
+      return
+    }
     untrack(() => {
       if (selected_sites.length > 0 || measured_sites.length > 0) {
         selected_sites = []

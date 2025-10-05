@@ -390,6 +390,14 @@
       camera_is_moving = false
     },
   })
+
+  // Theme-aware measurement line color from CSS variable
+  let measure_line_color = $derived.by(() => {
+    if (typeof window === `undefined`) return
+    const root_styles = getComputedStyle(document.documentElement)
+    const text_color = root_styles.getPropertyValue(`--text-color`).trim()
+    return text_color || `#808080`
+  })
 </script>
 
 {#snippet site_label_snippet(position: Vec3, site_idx: number)}
@@ -710,7 +718,7 @@
               {@const site_j = structure.sites[idx_j]}
               {@const pos_i = site_i.xyz}
               {@const pos_j = site_j.xyz}
-              <Bond from={pos_i} to={pos_j} thickness={0.06} color="#cccccc" />
+              <Bond from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
               {@const midpoint = [
           (pos_i[0] + pos_j[0]) / 2,
           (pos_i[1] + pos_j[1]) / 2,
@@ -756,13 +764,13 @@
                     from={center.xyz}
                     to={site_a.xyz}
                     thickness={0.05}
-                    color="#bbbbbb"
+                    color={measure_line_color}
                   />
                   <Bond
                     from={center.xyz}
                     to={site_b.xyz}
                     thickness={0.05}
-                    color="#bbbbbb"
+                    color={measure_line_color}
                   />
                   {@const bisector = [
           v1[0] / n1 + v2[0] / n2,
@@ -825,7 +833,8 @@
     margin: var(--canvas-tooltip-coords-margin);
   }
   .measure-label {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--measure-label-bg, var(--surface-bg));
+    color: var(--measure-label-color, var(--text-color));
     border-radius: 4px;
     padding: 0 5px;
     user-select: none;
@@ -834,6 +843,7 @@
     place-items: center;
     line-height: 1.2;
     font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
+    box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .selection-label {
     display: inline-flex;
