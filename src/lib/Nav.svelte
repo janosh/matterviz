@@ -1,34 +1,141 @@
 <script lang="ts">
+  import type { RouteEntry } from '$site/state.svelte'
   import type { Page } from '@sveltejs/kit'
   import type { Snippet } from 'svelte'
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import Icon from './Icon.svelte'
 
   interface Props
     extends Omit<HTMLAttributes<HTMLElementTagNameMap[`nav`]>, `children`> {
-    routes: (string | [string, string])[]
+    routes: RouteEntry[]
     children?: Snippet<
-      [{ is_open: boolean; panel_id: string; routes: (string | [string, string])[] }]
+      [{ is_open: boolean; panel_id: string; routes: RouteEntry[] }]
     >
     link?: Snippet<[{ href: string; label: string }]>
     menu_style?: string
-    page?: Page // needs to be a prop instead of direct sveltekit import to avoid runtime import error when used outside of sveltekit
+    page?: Page
+    labels?: Record<string, string>
   }
-  let { routes = [], children, link, menu_style, page, ...rest }: Props = $props()
+  let { routes = [], children, link, menu_style, page, labels, ...rest }: Props =
+    $props()
 
   let is_open = $state(false)
-  function onkeydown(event: KeyboardEvent) {
-    if (event.key === `Escape` && is_open) is_open = false
-  }
-
-  // Generate unique ID for the menu panel
+  let hovered_dropdown = $state<string | null>(null)
+  let focused_item_index = $state<number>(-1)
+  let is_touch_device = $state(false)
   const panel_id = `nav-menu-${crypto.randomUUID()}`
 
-  let is_current = $derived((path: string) => {
-    if (path === `/`) return page?.url.pathname === `/` ? `page` : undefined
-    if (page?.url.pathname.startsWith(path)) return `page`
-    return undefined
+  // Detect touch device
+  $effect(() => {
+    if (typeof globalThis !== `undefined`) {
+      is_touch_device = `ontouchstart` in globalThis || navigator.maxTouchPoints > 0
+    }
   })
+
+  function close_menus() {
+    is_open = false
+    hovered_dropdown = null
+    focused_item_index = -1
+  }
+
+  function toggle_dropdown(href: string, focus_first = false) {
+    const is_opening = hovered_dropdown !== href
+    hovered_dropdown = hovered_dropdown === href ? null : href
+    focused_item_index = is_opening && focus_first ? 0 : -1
+
+    // Focus management for keyboard users
+    if (is_opening && focus_first) {
+      setTimeout(() => {
+        const dropdown = document.querySelector(
+          `.dropdown-wrapper[data-href="${href}"]`,
+        )
+        const first_link = dropdown?.querySelector(`.dropdown-menu a`)
+        if (first_link instanceof HTMLElement) {
+          first_link.focus()
+        }
+      }, 0)
+    }
+  }
+
+  function onkeydown(event: KeyboardEvent) {
+    if (event.key === `Escape`) close_menus()
+  }
+
+  function handle_dropdown_keydown(
+    event: KeyboardEvent,
+    href: string,
+    sub_routes: string[],
+  ) {
+    const { key } = event
+
+    if (key === `Enter` || key === ` `) {
+      event.preventDefault()
+      toggle_dropdown(href, true)
+      return
+    }
+
+    // Arrow key navigation within open dropdown
+    if (hovered_dropdown === href && (key === `ArrowDown` || key === `ArrowUp`)) {
+      event.preventDefault()
+      const direction = key === `ArrowDown` ? 1 : -1
+      const new_index = Math.max(
+        0,
+        Math.min(sub_routes.length - 1, focused_item_index + direction),
+      )
+      focused_item_index = new_index
+
+      const dropdown = document.querySelector(
+        `.dropdown-wrapper[data-href="${href}"]`,
+      )
+      const links = dropdown?.querySelectorAll(`.dropdown-menu a`)
+      if (links?.[new_index] instanceof HTMLElement) {
+        links[new_index].focus()
+      }
+    }
+
+    // Open dropdown with ArrowDown when closed
+    if (hovered_dropdown !== href && key === `ArrowDown`) {
+      event.preventDefault()
+      toggle_dropdown(href, true)
+    }
+  }
+
+  function handle_dropdown_item_keydown(event: KeyboardEvent, href: string) {
+    if (event.key === `Escape`) {
+      event.preventDefault()
+      close_menus()
+      // Return focus to dropdown trigger
+      const dropdown = document.querySelector(
+        `.dropdown-wrapper[data-href="${href}"]`,
+      )
+      if (dropdown instanceof HTMLElement) {
+        dropdown.focus()
+      }
+    }
+  }
+
+  function is_current(path: string) {
+    if (path === `/`) return page?.url.pathname === `/` ? `page` : undefined
+    return page?.url.pathname.startsWith(path) ? `page` : undefined
+  }
+
+  function format_label(text: string, remove_parent = false) {
+    const custom_label = labels?.[text]
+    if (custom_label) return { label: custom_label, style: `` }
+
+    if (remove_parent) text = text.split(`/`).filter(Boolean).pop() ?? text
+    const label = text.replace(/^\//, ``).replaceAll(`-`, ` `)
+    return { label, style: `text-transform: capitalize` }
+  }
+
+  function parse_route(route: RouteEntry) {
+    if (typeof route === `string`) return { href: route, label: route }
+    const [first, second] = route
+    return Array.isArray(second)
+      ? { href: first, label: first, children: second }
+      : { href: first, label: second }
+  }
 </script>
 
 <svelte:window {onkeydown} />
@@ -60,12 +167,89 @@
     style={menu_style}
   >
     {#each routes as route (JSON.stringify(route))}
-      {@const [href, label] = Array.isArray(route) ? route : [route, route]}
-      {#if link}
-        {@render link({ href, label })}
+      {@const { href, label, children: sub_routes } = parse_route(route)}
+
+      {#if sub_routes}
+        <!-- Dropdown menu item -->
+        {@const parent = format_label(label)}
+        <div
+          class="dropdown-wrapper"
+          role="button"
+          tabindex="0"
+          data-href={href}
+          aria-expanded={hovered_dropdown === href}
+          aria-haspopup="true"
+          onmouseenter={() => !is_touch_device && (hovered_dropdown = href)}
+          onmouseleave={() => !is_touch_device && (hovered_dropdown = null)}
+          onfocusin={() => (hovered_dropdown = href)}
+          onfocusout={(event) => {
+            const next = event.relatedTarget as Node | null
+            if (!next || !(event.currentTarget as HTMLElement).contains(next)) {
+              hovered_dropdown = null
+            }
+          }}
+          onclick={() => toggle_dropdown(href, false)}
+          onkeydown={(event) => handle_dropdown_keydown(event, href, sub_routes)}
+        >
+          <span class="dropdown-trigger" style={parent.style}>
+            {@html parent.label}
+            <Icon
+              icon="ArrowDown"
+              style="width: 0.8em; height: 0.8em; margin-left: 0.2em"
+            />
+          </span>
+          <div
+            class="dropdown-menu"
+            class:visible={hovered_dropdown === href}
+            role="menu"
+            tabindex="-1"
+            onmouseenter={() => !is_touch_device && (hovered_dropdown = href)}
+            onmouseleave={() => !is_touch_device && (hovered_dropdown = null)}
+            onfocusin={() => (hovered_dropdown = href)}
+            onfocusout={(event) => {
+              const next = event.relatedTarget as Node | null
+              if (!next || !(event.currentTarget as HTMLElement).contains(next)) {
+                hovered_dropdown = null
+              }
+            }}
+          >
+            {#each sub_routes as child_href (child_href)}
+              {@const child = format_label(
+            child_href,
+            true,
+          )}
+              {#if link}
+                {@render link({ href: child_href, label: child.label })}
+              {:else}
+                <a
+                  href={child_href}
+                  role="menuitem"
+                  aria-current={is_current(child_href)}
+                  onclick={close_menus}
+                  onkeydown={(event) => handle_dropdown_item_keydown(event, href)}
+                  style={child.style}
+                >
+                  {@html child.label}
+                </a>
+              {/if}
+            {/each}
+          </div>
+        </div>
       {:else}
-        <a {href} aria-current={is_current(href)} onclick={() => is_open = false}>
-          {@html label}</a>
+        <!-- Regular link item -->
+        {@const regular = format_label(label)}
+        {#if link}
+          {@render link({ href, label })}
+        {:else}
+          <a
+            {href}
+            aria-current={is_current(href)}
+            onclick={close_menus}
+            style={regular.style}
+          >
+            {@html regular.label}
+          </a>
+        {/if}
       {/if}
     {/each}
 
@@ -85,7 +269,8 @@
     flex-wrap: wrap;
     padding: 0.5em;
   }
-  .menu-content > a {
+  .menu-content > a,
+  .dropdown-wrapper {
     line-height: 1.3;
     padding: 1pt 5pt;
     border-radius: 2pt;
@@ -93,12 +278,67 @@
     color: inherit;
     transition: background-color 0.2s;
   }
-  .menu-content > a:hover {
+  .menu-content > a:hover,
+  .dropdown-wrapper:hover {
     background-color: var(--nav-link-bg-hover);
   }
   .menu-content > a[aria-current='page'] {
     color: var(--nav-link-active-color);
     background-color: var(--nav-link-bg-hover, rgba(128, 128, 128, 0.24));
+  }
+
+  /* Dropdown styles */
+  .dropdown-wrapper {
+    position: relative;
+    cursor: pointer;
+  }
+  .dropdown-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: var(--nav-dropdown-margin, 3pt);
+  }
+  .dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.2em;
+    user-select: none;
+  }
+  .dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin: var(--nav-dropdown-margin, 3pt 0 0 0);
+    min-width: max-content;
+    background-color: var(--nav-dropdown-bg, var(--surface-bg, var(--bg-color, #ffffff)));
+    border: 1px solid
+      var(--nav-dropdown-border-color, var(--border-color, rgba(128, 128, 128, 0.25)));
+    border-radius: var(--nav-dropdown-border-radius, 6pt);
+    box-shadow: var(--nav-dropdown-shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
+    padding: var(--nav-dropdown-padding, 2pt 3pt);
+    display: none;
+    flex-direction: column;
+    gap: var(--nav-dropdown-gap, 5pt);
+    z-index: var(--nav-dropdown-z-index, 100);
+  }
+  .dropdown-menu.visible {
+    display: flex;
+  }
+  .dropdown-menu a {
+    padding: var(--nav-dropdown-link-padding, 1pt 4pt);
+    border-radius: var(--nav-dropdown-link-border-radius, 4pt);
+    text-decoration: none;
+    color: inherit;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+  }
+  .dropdown-menu a:hover {
+    background-color: var(--nav-link-bg-hover);
+  }
+  .dropdown-menu a[aria-current='page'] {
+    color: var(--nav-link-active-color);
   }
   /* Mobile burger button */
   .burger-button {
@@ -138,6 +378,7 @@
     .menu-content {
       position: fixed;
       top: 3rem;
+      left: 1rem;
       background-color: var(--surface-bg, var(--bg-color, #ffffff));
       opacity: 0;
       visibility: hidden;
@@ -156,8 +397,26 @@
       opacity: 1;
       visibility: visible;
     }
-    .menu-content > a {
+    .menu-content > a,
+    .dropdown-wrapper {
       padding: 2pt 8pt;
+    }
+
+    /* Mobile dropdown styles - show as expandable section */
+    .dropdown-wrapper {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .dropdown-menu {
+      position: static;
+      border: none;
+      box-shadow: none;
+      margin-top: 0.25em;
+      padding: 0 0 0 1em;
+      background-color: transparent;
+    }
+    .dropdown-trigger {
+      cursor: pointer;
     }
   }
 </style>

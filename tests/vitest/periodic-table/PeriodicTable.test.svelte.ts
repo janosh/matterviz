@@ -294,7 +294,7 @@ describe(`PeriodicTable`, () => {
 
   test.each(
     [
-      [`symbol`, `A`, `h`],
+      [`symbol`, `A`, `/h`],
       [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
       [null, `DIV`, null],
     ] as const,
