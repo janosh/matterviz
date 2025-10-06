@@ -24,7 +24,7 @@
   } from '$lib/plot'
   import {
     ColorBar,
-    find_best_legend_placement,
+    find_best_plot_area,
     PlotLegend,
     ScatterPlotControls,
     ScatterPoint,
@@ -45,6 +45,7 @@
   import { Tween } from 'svelte/motion'
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
+  import { calc_auto_padding } from './layout'
   import { generate_ticks, get_nice_data_range, type TicksOption } from './scales'
 
   // Local type definition since TweenedOptions is not exported
@@ -61,7 +62,7 @@
     y_lim?: [number | null, number | null]
     x_range?: [number | null, number | null] // Explicit ranges for x and y axes. Null pins a side to auto.
     y_range?: [number | null, number | null] // Use null on one side to auto that bound.
-    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g., current frame)
+    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g. current frame)
     // Right y-axis configuration
     y2_lim?: [number | null, number | null]
     y2_range?: [number | null, number | null]
@@ -103,7 +104,7 @@
     }
     size_scale?: {
       type?: ScaleType // Type of scale for size mapping
-      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g., [2, 10])
+      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g. [2, 10])
       value_range?: [number, number] // Min/max for size scaling (auto detected if not provided)
     }
     // Props for the ColorBar component, plus an optional 'margin' used for plot corner distance when auto placing
@@ -120,7 +121,7 @@
     legend?: LegendConfig | null // Configuration for the legend
     point_tween?: LocalTweenedOptions<XyObj>
     line_tween?: LocalTweenedOptions<string>
-    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g., 0.05 = 5%)
+    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g. 0.05 = 5%)
     point_events?: Record<
       string,
       (payload: { point: InternalPoint; event: Event }) => void
@@ -207,7 +208,7 @@
     point_events,
     on_point_click,
     on_point_hover,
-    show_controls = false,
+    show_controls = true,
     controls_open = $bindable(false),
     plot_controls,
     // Style control props
@@ -337,7 +338,28 @@
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
 
-  let pad = $derived({ t: 5, b: 50, l: 50, r: 20, ...padding })
+  // Layout: dynamic padding based on tick label widths
+  const default_padding = { t: 5, b: 50, l: 50, r: 20 }
+  let pad = $state({ ...default_padding, ...padding })
+  // Update padding when format or ticks change, but prevent infinite loop
+  $effect(() => {
+    const base_pad = { ...default_padding, ...padding }
+    const new_pad = width && height && (y_tick_values.length || y2_tick_values.length)
+      ? calc_auto_padding({
+        base_padding: base_pad,
+        y_ticks: y_tick_values,
+        y_format,
+        y2_ticks: y2_tick_values,
+        y2_format,
+      })
+      : base_pad
+
+    // Only update if padding actually changed (prevents infinite loop)
+    if (
+      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
+      pad.r !== new_pad.r
+    ) pad = new_pad
+  })
 
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
@@ -782,7 +804,7 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    return find_best_legend_placement(plot_points_for_placement, {
+    return find_best_plot_area(plot_points_for_placement, {
       plot_width,
       plot_height,
       padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
@@ -791,22 +813,27 @@
     })
   })
 
-  // Calculate color bar placement (simple: opposite corner from legend)
+  // Calculate color bar placement
   let color_bar_placement = $derived.by(() => {
     if (!color_bar || !all_color_values.length || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
-    const margin = normalize_margin(color_bar?.margin).t ?? 10
 
-    // Place opposite of legend: if legend is top, colorbar is bottom
-    const is_top = !legend_placement?.position.startsWith(`top`)
+    // Use the same smart placement logic as the legend
+    // Color bar is typically smaller than legend, estimate ~80x20 (horizontal) or ~20x80 (vertical)
+    const is_horizontal = color_bar.orientation === `horizontal`
+    const estimated_size = is_horizontal
+      ? { width: 80, height: 20 }
+      : { width: 20, height: 80 }
 
-    return {
-      x: pad.l + plot_width - margin,
-      y: is_top ? pad.t + margin : pad.t + plot_height - margin,
-      transform: is_top ? `translateX(-100%)` : `translate(-100%, -100%)`,
-    }
+    return find_best_plot_area(plot_points_for_placement, {
+      plot_width,
+      plot_height,
+      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
+      margin: normalize_margin(color_bar?.margin).t ?? 10,
+      legend_size: estimated_size,
+    })
   })
 
   // Use responsive or fixed initial placement
@@ -951,7 +978,7 @@
         Math.max(start_data_y_val, end_data_y_val),
       ]
 
-      // Check for minuscule zoom box (e.g., accidental click)
+      // Check for minuscule zoom box (e.g. accidental click)
       const min_zoom_size = 5 // Minimum pixels to trigger zoom
       const dx = Math.abs(drag_start_coords.x - drag_current_coords.x)
       const dy = Math.abs(drag_start_coords.y - drag_current_coords.y)
@@ -1921,10 +1948,8 @@
     {/if}
   {/if}
 
-  <!-- User-provided children (e.g., for custom absolutely-positioned overlays) -->
-  {#if children}
-    {@render children()}
-  {/if}
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.()}
 </div>
 
 <style>

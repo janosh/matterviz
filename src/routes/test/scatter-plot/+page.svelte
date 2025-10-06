@@ -491,7 +491,6 @@
     x_label="X Axis"
     y_label="Y Axis"
     markers="line+points"
-    show_controls
   />
 </section>
 
@@ -720,7 +719,6 @@
   <ScatterPlot
     series={legend_multi_series}
     legend={{ draggable: true }}
-    show_controls
     markers="points"
     id="legend-multi-default"
   />
