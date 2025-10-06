@@ -176,6 +176,7 @@
     bind:this={toggle_pane_btn}
     aria-expanded={show}
     {...toggle_props}
+    style={`font-size: clamp(1em, 2.2cqw, 2em); ${toggle_props.style ?? ``}`}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}

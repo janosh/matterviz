@@ -197,6 +197,7 @@
     border-radius: var(--plot-legend-border-radius, 3px);
     font-size: var(--plot-legend-font-size, 0.8em);
     max-width: var(--plot-legend-max-width);
+    width: fit-content;
     z-index: var(--plot-legend-z-index, 2);
     box-sizing: border-box;
   }

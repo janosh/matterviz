@@ -1,6 +1,6 @@
 import {
   constrain_tooltip_position,
-  find_best_legend_placement,
+  find_best_plot_area,
   get_chart_dimensions,
 } from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
@@ -327,7 +327,7 @@ describe(`layout utility functions`, () => {
     })
   })
 
-  describe(`find_best_legend_placement`, () => {
+  describe(`find_best_plot_area`, () => {
     const base_config = {
       plot_width: 400,
       plot_height: 300,
@@ -337,7 +337,7 @@ describe(`layout utility functions`, () => {
     }
 
     it(`should place legend in top-left corner when no points exist`, () => {
-      const result = find_best_legend_placement([], base_config)
+      const result = find_best_plot_area([], base_config)
 
       expect(result.position).toBe(`top-left`)
       expect(result.x).toBeGreaterThan(0)
@@ -351,7 +351,7 @@ describe(`layout utility functions`, () => {
         y: base_config.padding.t + 50,
       }))
 
-      const result = find_best_legend_placement(points, base_config)
+      const result = find_best_plot_area(points, base_config)
 
       // Should NOT be top-left since that's crowded
       expect(result.position).not.toBe(`top-left`)
@@ -366,7 +366,7 @@ describe(`layout utility functions`, () => {
         },
       ]
 
-      const result = find_best_legend_placement(points, base_config)
+      const result = find_best_plot_area(points, base_config)
 
       // Should be one of the four corners
       const corners = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
@@ -386,7 +386,7 @@ describe(`layout utility functions`, () => {
         })),
       ]
 
-      const result = find_best_legend_placement(points, base_config)
+      const result = find_best_plot_area(points, base_config)
 
       // Should prefer top-left or bottom-left (both have 0 points)
       expect([`top-left`, `bottom-left`]).toContain(result.position)
@@ -394,7 +394,7 @@ describe(`layout utility functions`, () => {
 
     it(`should respect margin settings`, () => {
       const config_with_margin = { ...base_config, margin: 20 }
-      const result = find_best_legend_placement([], config_with_margin)
+      const result = find_best_plot_area([], config_with_margin)
 
       // Top-left corner with margin
       expect(result.x).toBe(base_config.padding.l + 20)
@@ -402,7 +402,7 @@ describe(`layout utility functions`, () => {
     })
 
     it(`should calculate correct coordinates within plot area`, () => {
-      const result = find_best_legend_placement([], base_config)
+      const result = find_best_plot_area([], base_config)
 
       // Should be within plot area boundaries
       expect(result.x).toBeGreaterThanOrEqual(base_config.padding.l)
@@ -416,7 +416,7 @@ describe(`layout utility functions`, () => {
     })
 
     it(`should always return a transform string`, () => {
-      const result = find_best_legend_placement([], base_config)
+      const result = find_best_plot_area([], base_config)
 
       expect(typeof result.transform).toBe(`string`)
     })

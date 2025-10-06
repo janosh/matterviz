@@ -118,7 +118,6 @@ Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_sc
   y_scale_type={y_scale}
   x_grid={show_grid}
   y_grid={show_grid}
-  show_controls
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -191,7 +190,6 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   y_label="Frequency ({y_scale} scale)"
   x_format="~s"
   y_format={y_scale === `log` ? `~s` : `d`}
-  show_controls
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
@@ -281,7 +279,6 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   x_label={selected === `age` ? `Age (years)` : selected === `discrete` ? `Rating` : `Value`}
   y_label="Count"
   x_format={selected === `discrete` ? `.1f` : `.0f`}
-  show_controls
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
@@ -342,7 +339,6 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   bins={show_overlay ? 25 : bin_counts[1]}
   mode={show_overlay ? `overlay` : `single`}
   bar_opacity={opacity}
-  show_controls
   show_legend={show_overlay}
   style="height: 450px; margin-block: 1em;"
 >
@@ -401,7 +397,6 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   y_label={y_format === `percentage` ? `Percentage` : `Count`}
   x_format={x_formats[x_format]}
   y_format={y_format === `percentage` ? `.1%` : y_formats[y_format]}
-  show_controls
   style="height: 450px; border: 2px solid {color_schemes[color_scheme][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -491,7 +486,6 @@ points, {bins} bins, {mode} mode
   series={series_data}
   {mode}
   {bins}
-  show_controls
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >

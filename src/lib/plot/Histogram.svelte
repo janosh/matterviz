@@ -1,11 +1,7 @@
 <script lang="ts">
   import { DraggablePane } from '$lib'
   import type { DataSeries } from '$lib/plot'
-  import {
-    find_best_legend_placement,
-    HistogramControls,
-    PlotLegend,
-  } from '$lib/plot'
+  import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -16,7 +12,7 @@
   } from './data-transform'
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
-  import { constrain_tooltip_position } from './layout'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { ScaleType, TicksOption } from './scales'
   import { create_scale, generate_ticks, get_nice_data_range } from './scales'
 
@@ -189,10 +185,28 @@
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
   })
 
+  // Layout: dynamic padding based on tick label widths
+  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
+  let pad = $state({ ...default_padding, ...padding })
+
+  // Update padding when format or ticks change, but prevent infinite loop
+  $effect(() => {
+    const base_pad = { ...default_padding, ...padding }
+    const new_pad = width && height && ticks.y.length
+      ? calc_auto_padding({ base_padding: base_pad, y_ticks: ticks.y, y_format })
+      : base_pad
+
+    // Only update if padding actually changed (prevents infinite loop)
+    if (
+      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
+      pad.r !== new_pad.r
+    ) pad = new_pad
+  })
+
   // Scales and data
   let scales = $derived({
-    x: create_scale(x_scale_type, ranges.current.x, [padding.l, width - padding.r]),
-    y: create_scale(y_scale_type, ranges.current.y, [height - padding.b, padding.t]),
+    x: create_scale(x_scale_type, ranges.current.x, [pad.l, width - pad.r]),
+    y: create_scale(y_scale_type, ranges.current.y, [height - pad.b, pad.t]),
   })
 
   let histogram_data = $derived.by(() => {
@@ -257,10 +271,10 @@
 
     if (!should_place || !width || !height) return null
 
-    return find_best_legend_placement(hist_points_for_placement, {
-      plot_width: width - padding.l - padding.r,
-      plot_height: height - padding.t - padding.b,
-      padding,
+    return find_best_plot_area(hist_points_for_placement, {
+      plot_width: width - pad.l - pad.r,
+      plot_height: height - pad.t - pad.b,
+      padding: pad,
       margin: 10,
       legend_size: { width: 120, height: 60 },
     })
@@ -373,8 +387,8 @@
           {@const zero_x = scales.x(0)}
           {#if isFinite(zero_x)}
             <line
-              y1={padding.t}
-              y2={height - padding.b}
+              y1={pad.t}
+              y2={height - pad.b}
               x1={zero_x}
               x2={zero_x}
               stroke="gray"
@@ -387,8 +401,8 @@
           {@const zero_y = scales.y(0)}
           {#if isFinite(zero_y)}
             <line
-              x1={padding.l}
-              x2={width - padding.r}
+              x1={pad.l}
+              x2={width - pad.r}
               y1={zero_y}
               y2={zero_y}
               stroke="gray"
@@ -404,7 +418,7 @@
           {#each bins as bin, bin_idx (bin_idx)}
             {@const bar_x = scales.x(bin.x0!)}
             {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
-            {@const bar_height = Math.max(0, (height - padding.b) - scales.y(bin.length))}
+            {@const bar_height = Math.max(0, (height - pad.b) - scales.y(bin.length))}
             {@const bar_y = scales.y(bin.length)}
             {@const value = (bin.x0! + bin.x1!) / 2}
             {#if bar_height > 0}
@@ -483,19 +497,19 @@
       <!-- X-axis -->
       <g class="x-axis">
         <line
-          x1={padding.l}
-          x2={width - padding.r}
-          y1={height - padding.b}
-          y2={height - padding.b}
+          x1={pad.l}
+          x2={width - pad.r}
+          y1={height - pad.b}
+          y2={height - pad.b}
           stroke="var(--border-color, gray)"
           stroke-width="1"
         />
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
-          <g class="tick" transform="translate({tick_x}, {height - padding.b})">
+          <g class="tick" transform="translate({tick_x}, {height - pad.b})">
             {#if x_grid}
               <line
-                y1={-(height - padding.b - padding.t)}
+                y1={-(height - pad.b - pad.t)}
                 y2="0"
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
@@ -510,7 +524,7 @@
           </g>
         {/each}
         <text
-          x={(padding.l + width - padding.r) / 2}
+          x={(pad.l + width - pad.r) / 2}
           y={height - 10}
           text-anchor="middle"
           fill="var(--text-color)"
@@ -522,20 +536,20 @@
       <!-- Y-axis -->
       <g class="y-axis">
         <line
-          x1={padding.l}
-          x2={padding.l}
-          y1={padding.t}
-          y2={height - padding.b}
+          x1={pad.l}
+          x2={pad.l}
+          y1={pad.t}
+          y2={height - pad.b}
           stroke="var(--border-color, gray)"
           stroke-width="1"
         />
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
-          <g class="tick" transform="translate({padding.l}, {tick_y})">
+          <g class="tick" transform="translate({pad.l}, {tick_y})">
             {#if y_grid}
               <line
                 x1="0"
-                x2={width - padding.l - padding.r}
+                x2={width - pad.l - pad.r}
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
@@ -555,10 +569,10 @@
         {/each}
         <text
           x={15}
-          y={(padding.t + height - padding.b) / 2}
+          y={(pad.t + height - pad.b) / 2}
           text-anchor="middle"
           fill="var(--text-color)"
-          transform="rotate(-90, 15, {(padding.t + height - padding.b) / 2})"
+          transform="rotate(-90, 15, {(pad.t + height - pad.b) / 2})"
         >
           {y_label}
         </text>

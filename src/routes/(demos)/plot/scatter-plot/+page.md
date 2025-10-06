@@ -103,7 +103,6 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   markers={display_mode}
   point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
   on_point_hover={handle_point_hover}
-  show_controls
   style="height: 300px"
 />
 <div {style}>
@@ -1009,7 +1008,6 @@ This example combines multiple features including different display modes, custo
     y_label={axis_labels.y}
     markers={display_mode}
     change={(point) => (hovered_point = point)}
-    show_controls
     style="height: 400px;"
     legend={null}
   >
@@ -1386,15 +1384,11 @@ and scale type.
     tick_side: `primary`,
     wrapper_style: `
       position: absolute;
-      /* Position outside the plot area using padding values */
-      right: 10px; /* Distance from the container's right edge */
-      top: ${plot_padding.t}px; /* Align with top padding */
-      /* Set height directly for the wrapper */
-      height: calc(100% - ${
-      plot_padding.t + plot_padding.b
-    }px); /* Fill vertical space */
+      right: 10px;
+      top: ${plot_padding.t}px;
+      height: calc(100% - ${plot_padding.t + plot_padding.b}px);
     `,
-    style: `width: 15px; height: 100%;`,
+    bar_style: `width: 15px; height: 100%;`,
   }}
   style="height: 400px"
 >
@@ -1407,7 +1401,7 @@ and scale type.
 
 ## Line Clipping with Fixed Ranges
 
-This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Observe how the lines originating and ending outside the plot area are correctly cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
+This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
 
 ```svelte example
 <script>
@@ -1507,11 +1501,5 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
   y_label="Y Axis (Fixed Range)"
   markers="line"
   style="height: 400px"
-  show_zero_lines
-  padding={{ l: 150 }}
-  legend={{
-    wrapper_style:
-      `position: absolute; right: 0; transform: translateX(100%); max-width: 400px;`,
-  }}
 />
 ```

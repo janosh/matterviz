@@ -162,6 +162,7 @@
           <select bind:value={mode} id="mode-select">
             <option value="overlay">Overlay</option>
             <option value="stacked">Stacked</option>
+            <option value="grouped">Grouped (Side-by-Side)</option>
           </select>
         </label>
       </SettingsSection>

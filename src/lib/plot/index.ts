@@ -255,7 +255,7 @@ export type UserContentProps = {
 }
 
 export type Orientation = `vertical` | `horizontal`
-export type BarMode = `overlay` | `stacked`
+export type BarMode = `overlay` | `stacked` | `grouped`
 
 export interface BarSeries {
   x: readonly number[]
@@ -266,4 +266,9 @@ export interface BarSeries {
   visible?: boolean
   metadata?: Record<string, unknown>[] | Record<string, unknown>
   labels?: readonly (string | null | undefined)[]
+  render_mode?: `bar` | `line` // Render as bars (default) or as a line
+  line_style?: {
+    stroke_width?: number
+    line_dash?: string
+  }
 }

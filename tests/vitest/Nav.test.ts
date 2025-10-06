@@ -493,4 +493,54 @@ describe(`Nav`, () => {
     expect(burger.getAttribute(`aria-expanded`)).toBe(`false`)
     expect(menu.classList.contains(`visible`)).toBe(false)
   })
+
+  test.each([
+    [`/parent/child1`, `/parent`, true],
+    [`/parent/child2`, `/parent`, true],
+    [`/parent`, `/parent`, true],
+    [`/other-route`, `/parent`, false],
+    [`/`, `/parent`, false],
+  ])(
+    `dropdown active when child is current: pathname=%s parent=%s -> active=%s`,
+    (pathname, parent_href, should_be_active) => {
+      const mock_page = { url: { pathname } } as Page
+      mount(Nav, {
+        target: document.body,
+        props: {
+          routes: [[parent_href, [
+            parent_href,
+            `${parent_href}/child1`,
+            `${parent_href}/child2`,
+          ]]],
+          page: mock_page,
+        },
+      })
+
+      const dropdown = doc_query(`.dropdown-wrapper`)
+      expect(dropdown.classList.contains(`active`)).toBe(should_be_active)
+      expect(dropdown.getAttribute(`aria-current`)).toBe(
+        should_be_active ? `true` : null,
+      )
+    },
+  )
+
+  test(`only active dropdown gets highlighted, not others`, () => {
+    const mock_page = { url: { pathname: `/parent1/child` } } as Page
+    mount(Nav, {
+      target: document.body,
+      props: {
+        routes: [
+          [`/parent1`, [`/parent1`, `/parent1/child`]],
+          [`/parent2`, [`/parent2`, `/parent2/child`]],
+        ],
+        page: mock_page,
+      },
+    })
+
+    const [dropdown1, dropdown2] = Array.from(
+      document.querySelectorAll(`.dropdown-wrapper`),
+    )
+    expect(dropdown1.classList.contains(`active`)).toBe(true)
+    expect(dropdown2.classList.contains(`active`)).toBe(false)
+  })
 })
