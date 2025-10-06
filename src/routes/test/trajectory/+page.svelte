@@ -391,3 +391,10 @@
   layout="horizontal"
   plot_skimming={false}
 />
+
+<Trajectory
+  id="with-export-pane"
+  trajectory={test_trajectory}
+  layout="horizontal"
+  show_controls
+/>
