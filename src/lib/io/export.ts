@@ -232,8 +232,11 @@ export function get_ffmpeg_conversion_command(input_filename: string): string {
   return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
 }
 
-/** Export trajectory video with frame-by-frame rendering (prevents dropped frames) */
-export async function export_trajectory_as_mp4(
+/**
+ * Export trajectory video as WebM with frame-by-frame rendering (prevents dropped frames).
+ * Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
+ */
+export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
   filename: string,
   options: {
@@ -242,13 +245,14 @@ export async function export_trajectory_as_mp4(
     on_progress?: (progress: number) => void
     on_step?: (step_idx: number) => void | Promise<void>
     bitrate?: number
-    format?: `webm` | `mp4`
   } = {},
 ): Promise<void> {
   const { fps = 30, total_frames = 100, on_progress, on_step, bitrate = 20_000_000 } =
     options
 
-  if (!canvas || !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)) return
+  if (!canvas || !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)) {
+    throw new Error(`WebM video recording not supported in this browser`)
+  }
 
   const stream = canvas.captureStream(0)
   const chunks: Blob[] = []
@@ -257,37 +261,84 @@ export async function export_trajectory_as_mp4(
     videoBitsPerSecond: bitrate,
   })
 
-  recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data)
-  recorder.start()
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) chunks.push(event.data)
+  }
 
   const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
     requestFrame?: () => void
   }
-  const delay = 1000 / fps
 
-  // Render each frame sequentially
-  for (let i = 0; i < total_frames; i++) {
-    on_progress?.((i / total_frames) * 100)
-    if (on_step) await on_step(i)
-    // Double RAF ensures Three.js completes rendering
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  // Start recording
+  recorder.start()
+
+  const frame_duration = 1000 / fps
+
+  // Render each frame sequentially with precise timing
+  for (let idx = 0; idx < total_frames; idx++) {
+    const frame_start = performance.now()
+
+    on_progress?.((idx / total_frames) * 100)
+
+    // Update trajectory step
+    if (on_step) await on_step(idx)
+
+    // Double RAF ensures Three.js completes rendering before capture
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    )
+
+    // Capture frame
     track.requestFrame?.()
-    await new Promise((r) => setTimeout(r, delay))
+
+    // Wait for remaining frame time to maintain consistent FPS
+    const elapsed = performance.now() - frame_start
+    const remaining = Math.max(0, frame_duration - elapsed)
+    if (remaining > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remaining))
+    }
   }
 
   // Finalize recording
   return new Promise((resolve, reject) => {
+    let is_resolved = false
+
     recorder.onstop = () => {
+      if (is_resolved) return
+      is_resolved = true
+
       try {
         const blob = new Blob(chunks, { type: `video/webm` })
-        download(blob, filename.replace(/\.(mp4|webm)$/i, `.webm`), `video/webm`)
+        const webm_filename = filename.replace(/\.(mp4|webm)$/i, `.webm`)
+        download(blob, webm_filename, `video/webm`)
         on_progress?.(100)
         resolve()
       } catch (error) {
         reject(error)
       }
     }
-    recorder.onerror = reject
-    setTimeout(() => recorder.stop(), 100)
+
+    recorder.onerror = (event) => {
+      if (is_resolved) return
+      is_resolved = true
+      reject(new Error(`MediaRecorder error: ${event}`))
+    }
+
+    // Stop recording with safety timeout
+    try {
+      recorder.stop()
+      // Fallback: force resolution if recorder doesn't stop within 5 seconds
+      setTimeout(() => {
+        if (!is_resolved) {
+          is_resolved = true
+          reject(new Error(`Recording timeout - recorder did not stop`))
+        }
+      }, 5000)
+    } catch (error) {
+      if (!is_resolved) {
+        is_resolved = true
+        reject(error)
+      }
+    }
   })
 }

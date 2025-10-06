@@ -1,7 +1,7 @@
 <script lang="ts">
   import { DraggablePane, SettingsSection } from '$lib'
   import {
-    export_trajectory_as_mp4,
+    export_trajectory_video,
     get_ffmpeg_conversion_command,
   } from '$lib/io/export'
   import type { TrajectoryType } from '$lib/trajectory'
@@ -57,16 +57,15 @@
     export_progress = 0
 
     try {
-      await export_trajectory_as_mp4(canvas, `${filename}.${format}`, {
+      await export_trajectory_video(canvas, `${filename}.webm`, {
         fps: video_fps,
         total_frames,
         bitrate: video_bitrate,
-        format,
-        on_progress: (p) => (export_progress = p),
+        on_progress: (progress) => (export_progress = progress),
         on_step: on_step_change,
       })
 
-      // Copy ffmpeg command for MP4
+      // Copy ffmpeg command for MP4 conversion
       if (format === `mp4`) {
         const cmd = get_ffmpeg_conversion_command(`${filename}.webm`)
         navigator.clipboard.writeText(cmd).catch(console.warn)
