@@ -208,7 +208,7 @@
     point_events,
     on_point_click,
     on_point_hover,
-    show_controls = false,
+    show_controls = true,
     controls_open = $bindable(false),
     plot_controls,
     // Style control props
@@ -344,7 +344,7 @@
   // Update padding when format or ticks change, but prevent infinite loop
   $effect(() => {
     const base_pad = { ...default_padding, ...padding }
-    const new_pad = width && height && y_tick_values.length
+    const new_pad = width && height && (y_tick_values.length || y2_tick_values.length)
       ? calc_auto_padding({
         base_padding: base_pad,
         y_ticks: y_tick_values,

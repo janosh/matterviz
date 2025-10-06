@@ -42,6 +42,7 @@
     show_zero_lines?: boolean
     legend?: LegendConfig | null
     padding?: Sides
+    default_bar_color?: string
     tooltip?: Snippet<[BarTooltipProps]>
     hovered?: boolean
     change?: (data: BarTooltipProps | null) => void
@@ -77,6 +78,7 @@
     show_zero_lines = $bindable(true),
     legend = {},
     padding = { t: 10, b: 60, l: 60, r: 30 },
+    default_bar_color = `var(--bar-color, #4682b4)`,
     tooltip,
     hovered = $bindable(false),
     change = () => {},
@@ -294,8 +296,14 @@
       label: srs.label ?? `Series ${idx + 1}`,
       visible: srs.visible ?? true,
       display_style: srs.render_mode === `line`
-        ? { line_color: srs.color ?? `black`, line_dash: srs.line_style?.line_dash }
-        : { symbol_type: `Square` as const, symbol_color: srs.color ?? `black` },
+        ? {
+          line_color: srs.color ?? default_bar_color,
+          line_dash: srs.line_style?.line_dash,
+        }
+        : {
+          symbol_type: `Square` as const,
+          symbol_color: srs.color ?? default_bar_color,
+        },
     }))
   )
 
@@ -470,7 +478,7 @@
             >
               {#if is_line}
                 <!-- Render as line -->
-                {@const color = srs.color ?? `var(--bar-color, #4682b4)`}
+                {@const color = srs.color ?? default_bar_color}
                 {@const stroke_width = srs.line_style?.stroke_width ?? 2}
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const points = srs.x.map((x_val, idx) => {
@@ -556,7 +564,7 @@
                   {@const base = mode === `stacked`
             ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
             : 0}
-                  {@const color = srs.color ?? `var(--bar-color, #4682b4)`}
+                  {@const color = srs.color ?? default_bar_color}
                   {@const bar_width_val = Array.isArray(srs.bar_width)
             ? (srs.bar_width[bar_idx] ?? 0.5)
             : (srs.bar_width ?? 0.5)}
