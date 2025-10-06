@@ -1098,7 +1098,6 @@
             markers="line"
             x_format=".3~s"
             x_ticks={step_label_positions}
-            show_controls
             bind:controls_open={panes_open.plot_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}

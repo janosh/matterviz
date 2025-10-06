@@ -1,4 +1,54 @@
 import type { Sides } from '$lib/plot'
+import { format_value } from './formatting'
+
+// Measure text width using canvas (singleton pattern for performance)
+let measurement_canvas: HTMLCanvasElement | null = null
+
+export function measure_text_width(
+  text: string,
+  font: string = `12px sans-serif`,
+): number {
+  if (typeof document === `undefined`) return 0
+  if (!measurement_canvas) {
+    measurement_canvas = document.createElement(`canvas`)
+  }
+  const ctx = measurement_canvas.getContext(`2d`)
+  if (!ctx) return 0
+  ctx.font = font
+  return ctx.measureText(text).width
+}
+
+// Calculate auto-adjusted padding based on tick label widths
+// This ensures tick labels don't overlap with axis labels
+export interface AutoPaddingConfig {
+  base_padding: Required<Sides>
+  y_ticks?: (string | number)[]
+  y_format?: string
+  y2_ticks?: (string | number)[]
+  y2_format?: string
+  label_gap?: number // Gap between tick labels and axis labels (default: 45px)
+}
+
+// Helper to measure max tick width
+const measure_max_tick_width = (ticks: (string | number)[], format: string) =>
+  ticks.length === 0 ? 0 : Math.max(
+    ...ticks.map((tick) =>
+      measure_text_width(format_value(tick as number, format), `12px sans-serif`)
+    ),
+  )
+
+export const calc_auto_padding = ({
+  base_padding,
+  y_ticks = [],
+  y_format = ``,
+  y2_ticks = [],
+  y2_format = ``,
+  label_gap = 45,
+}: AutoPaddingConfig): Required<Sides> => ({
+  ...base_padding,
+  l: Math.max(base_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
+  r: Math.max(base_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
+})
 
 // Constrain tooltip position within chart bounds
 export function constrain_tooltip_position(
@@ -85,8 +135,9 @@ export const PLACEMENT_PRIORITY: PlacementPosition[] = [
   `left-center`,
 ]
 
-// Find the best placement position for a legend
-export function find_best_legend_placement(
+// Find the best placement position for a legend or color bar
+// (as in emptiest region of a plot that causes the least overlap with plot elements)
+export function find_best_plot_area(
   points: { x: number; y: number }[],
   config: PlacementConfig,
 ): LegendPlacement {
@@ -138,10 +189,7 @@ export function find_best_legend_placement(
   const base_x = padding.l + plot_width * anchor.x
   const base_y = padding.t + plot_height * anchor.y
 
-  return {
-    x: base_x + (anchor.x === 0 ? margin : anchor.x === 1 ? -margin : 0),
-    y: base_y + (anchor.y === 0 ? margin : anchor.y === 1 ? -margin : 0),
-    transform,
-    position: best_position,
-  }
+  const x = base_x + (anchor.x === 0 ? margin : anchor.x === 1 ? -margin : 0)
+  const y = base_y + (anchor.y === 0 ? margin : anchor.y === 1 ? -margin : 0)
+  return { x, y, transform, position: best_position }
 }

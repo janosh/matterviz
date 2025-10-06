@@ -215,7 +215,6 @@
   bind:trajectory={loaded_trajectory}
   bind:current_step_idx={current_step}
   allow_file_drop
-  show_controls
   step_labels={3}
 />
 
@@ -225,7 +224,6 @@
   id="vertical-layout"
   trajectory={test_trajectory}
   layout="vertical"
-  show_controls
   step_labels={[-1]}
 />
 
@@ -322,7 +320,6 @@
   id="single-frame"
   trajectory={single_frame_trajectory}
   layout="horizontal"
-  show_controls
 />
 
 <Trajectory
@@ -393,5 +390,4 @@
   trajectory={test_trajectory}
   layout="horizontal"
   plot_skimming={false}
-  show_controls
 />
