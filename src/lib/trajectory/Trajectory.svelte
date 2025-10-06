@@ -997,7 +997,7 @@
                   title={current_view_label}
                   class="view-mode-button"
                   class:active={view_mode_dropdown_open}
-                  style="background-color: transparent; font-size: clamp(1em, 2cqw, 1.1em); padding: 0"
+                  style="background-color: transparent; padding: 0"
                 >
                   <Icon
                     icon={({
@@ -1262,7 +1262,7 @@
     display: flex;
     align-items: center;
     gap: clamp(2pt, 1cqw, 1ex);
-    padding: clamp(2pt, 0.5cqw, 1ex);
+    padding: clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
@@ -1273,6 +1273,7 @@
   }
   .trajectory-controls button {
     background: var(--btn-bg);
+    font-size: clamp(0.8rem, 2cqw, 1rem);
   }
   .trajectory-controls button:hover:not(:disabled) {
     background: var(--btn-bg-hover);
@@ -1335,7 +1336,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
-    font-size: clamp(0.8rem, 2cqw, 0.9rem);
     position: relative;
   }
   @keyframes fade-in {
@@ -1345,7 +1345,6 @@
   }
   .fullscreen-button {
     background: transparent !important;
-    font-size: clamp(1rem, 2cqw, 1.3rem);
     padding: 0;
   }
   .fullscreen-button:hover:not(:disabled) {
@@ -1353,13 +1352,13 @@
   }
   .info-section {
     display: flex;
-    place-items: center;
-    gap: clamp(3pt, 0.5cqw, 1ex);
+    align-items: center;
+    gap: clamp(6pt, 1cqw, 1.5ex);
+    position: relative;
   }
 
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);
-    font-size: clamp(0.8rem, 2.5cqw, 0.9rem);
   }
   .play-button:hover:not(:disabled) {
     background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));

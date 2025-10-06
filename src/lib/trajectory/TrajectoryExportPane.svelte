@@ -19,7 +19,7 @@
     filename?: string
     // Export settings
     video_fps?: number
-    video_bitrate?: number
+    resolution_multiplier?: number
     // Function to change trajectory step during export
     on_step_change?: (step_idx: number) => Promise<void> | void
     // Pane customization
@@ -33,7 +33,7 @@
     wrapper = undefined,
     filename = `trajectory`,
     video_fps = $bindable(30),
-    video_bitrate = $bindable(20000000),
+    resolution_multiplier = $bindable(1),
     on_step_change = undefined,
     pane_props = $bindable({}),
     toggle_props = $bindable({}),
@@ -44,8 +44,34 @@
   let export_progress = $state(0)
   let export_format = $state<`webm` | `mp4`>(`webm`)
 
-  let total_frames = $derived(
+  let total_frames_available = $derived(
     trajectory?.total_frames || trajectory?.frames?.length || 0,
+  )
+
+  let start_frame = $state(0)
+  let end_frame = $state(0)
+
+  // Initialize end_frame when trajectory changes
+  $effect(() => {
+    if (total_frames_available > 0) {
+      end_frame = total_frames_available - 1
+    }
+  })
+
+  // Validate and constrain frame range
+  $effect(() => {
+    if (start_frame < 0) start_frame = 0
+    if (start_frame >= total_frames_available) {
+      start_frame = Math.max(0, total_frames_available - 1)
+    }
+    if (end_frame < start_frame) end_frame = start_frame
+    if (end_frame >= total_frames_available) {
+      end_frame = Math.max(0, total_frames_available - 1)
+    }
+  })
+
+  let export_frame_count = $derived(
+    end_frame >= start_frame ? end_frame - start_frame + 1 : 0,
   )
 
   async function handle_video_export(format: `webm` | `mp4` = `webm`) {
@@ -59,10 +85,13 @@
     try {
       await export_trajectory_video(canvas, `${filename}.webm`, {
         fps: video_fps,
-        total_frames,
-        bitrate: video_bitrate,
+        total_frames: export_frame_count,
+        resolution_multiplier,
         on_progress: (progress) => (export_progress = progress),
-        on_step: on_step_change,
+        on_step: async (idx) => {
+          // Map export frame index to actual trajectory frame
+          await on_step_change(start_frame + idx)
+        },
       })
 
       // Copy ffmpeg command for MP4 conversion
@@ -123,8 +152,13 @@
   {:else}
     <SettingsSection
       title="Video Settings"
-      current_values={{ video_fps, video_bitrate }}
-      on_reset={() => ((video_fps = 30), (video_bitrate = 20_000_000))}
+      current_values={{ video_fps, resolution_multiplier, start_frame, end_frame }}
+      on_reset={() => {
+        video_fps = 30
+        resolution_multiplier = 1
+        start_frame = 0
+        end_frame = total_frames_available - 1
+      }}
     >
       <label>
         Frame Rate (FPS)
@@ -139,20 +173,51 @@
       </label>
 
       <label>
-        Quality (Mbps)
+        Resolution
+        <div class="resolution-buttons">
+          {#each [0.5, 1, 2, 4, 8] as multiplier (multiplier)}
+            <button
+              type="button"
+              class:active={resolution_multiplier === multiplier}
+              onclick={() => (resolution_multiplier = multiplier)}
+              {@attach tooltip({ content: `${multiplier}x canvas resolution` })}
+            >
+              {multiplier}x
+            </button>
+          {/each}
+        </div>
+      </label>
+
+      <label>
+        Start Frame
         <input
           type="number"
-          min={5}
-          max={50}
-          value={(video_bitrate / 1_000_000).toFixed(0)}
-          oninput={(e) => (video_bitrate = Number(e.currentTarget.value) * 1_000_000)}
+          min={0}
+          max={Math.max(0, total_frames_available - 1)}
+          bind:value={start_frame}
         />
         <input
           type="range"
-          min={5}
-          max={50}
-          value={video_bitrate / 1_000_000}
-          oninput={(e) => (video_bitrate = Number(e.currentTarget.value) * 1_000_000)}
+          min={0}
+          max={Math.max(0, total_frames_available - 1)}
+          bind:value={start_frame}
+          style="accent-color: var(--accent-color)"
+        />
+      </label>
+
+      <label>
+        End Frame
+        <input
+          type="number"
+          min={start_frame}
+          max={Math.max(0, total_frames_available - 1)}
+          bind:value={end_frame}
+        />
+        <input
+          type="range"
+          min={start_frame}
+          max={Math.max(0, total_frames_available - 1)}
+          bind:value={end_frame}
           style="accent-color: var(--accent-color)"
         />
       </label>
@@ -186,7 +251,9 @@
         </div>
       {/each}
       <div style="font-size: 0.9em; color: var(--text-color-muted)">
-        {(total_frames / video_fps).toFixed(1)}s ({total_frames} frames)
+        {(export_frame_count / video_fps).toFixed(1)}s ({export_frame_count} frames: {
+          start_frame
+        }–{end_frame})
       </div>
     </div>
 
@@ -210,5 +277,27 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 1ex;
+  }
+  .resolution-buttons {
+    display: flex;
+    gap: 6pt;
+    margin: 4pt;
+  }
+  .resolution-buttons button {
+    flex: 1;
+    padding: 1pt 4pt;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+    background: var(--btn-bg, rgba(255, 255, 255, 0.1));
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .resolution-buttons button:hover {
+    background: var(--btn-bg-hover, rgba(255, 255, 255, 0.2));
+  }
+  .resolution-buttons button.active {
+    background: var(--accent-color, #4a9eff);
+    border-color: var(--accent-color, #4a9eff);
+    color: white;
   }
 </style>

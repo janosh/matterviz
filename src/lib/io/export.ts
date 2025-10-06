@@ -244,15 +244,43 @@ export async function export_trajectory_video(
     total_frames?: number
     on_progress?: (progress: number) => void
     on_step?: (step_idx: number) => void | Promise<void>
-    bitrate?: number
+    resolution_multiplier?: number
   } = {},
 ): Promise<void> {
-  const { fps = 30, total_frames = 100, on_progress, on_step, bitrate = 20_000_000 } =
-    options
+  const {
+    fps = 30,
+    total_frames = 100,
+    on_progress,
+    on_step,
+    resolution_multiplier = 1,
+  } = options
 
   if (!canvas || !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)) {
     throw new Error(`WebM video recording not supported in this browser`)
   }
+
+  const canvas_with_renderer = canvas as CanvasWithRenderer
+  const renderer = canvas_with_renderer.__customRenderer
+
+  // Store original renderer settings if using high resolution
+  let original_pixel_ratio: number | undefined
+  let original_size: THREE.Vector2 | undefined
+
+  if (resolution_multiplier > 1 && renderer) {
+    original_pixel_ratio = renderer.getPixelRatio()
+    original_size = renderer.getSize(new Vector2())
+    // Set higher pixel ratio for high-res export
+    renderer.setPixelRatio(resolution_multiplier)
+    renderer.setSize(original_size.width, original_size.height, false)
+  }
+
+  // Calculate bitrate based on actual video dimensions
+  // VP9 typically needs 0.08-0.12 bits per pixel per frame for good quality
+  const target_width = canvas.width * resolution_multiplier
+  const target_height = canvas.height * resolution_multiplier
+  const pixels_per_frame = target_width * target_height
+  const bits_per_pixel_per_frame = 0.1 // Good quality for VP9
+  const bitrate = Math.round(pixels_per_frame * fps * bits_per_pixel_per_frame)
 
   const stream = canvas.captureStream(0)
   const chunks: Blob[] = []
@@ -274,28 +302,36 @@ export async function export_trajectory_video(
 
   const frame_duration = 1000 / fps
 
-  // Render each frame sequentially with precise timing
-  for (let idx = 0; idx < total_frames; idx++) {
-    const frame_start = performance.now()
+  try {
+    // Render each frame sequentially with precise timing
+    for (let idx = 0; idx < total_frames; idx++) {
+      const frame_start = performance.now()
 
-    on_progress?.((idx / total_frames) * 100)
+      on_progress?.((idx / total_frames) * 100)
 
-    // Update trajectory step
-    if (on_step) await on_step(idx)
+      // Update trajectory step
+      if (on_step) await on_step(idx)
 
-    // Double RAF ensures Three.js completes rendering before capture
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve))
-    )
+      // Double RAF ensures Three.js completes rendering before capture
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )
 
-    // Capture frame
-    track.requestFrame?.()
+      // Capture frame
+      track.requestFrame?.()
 
-    // Wait for remaining frame time to maintain consistent FPS
-    const elapsed = performance.now() - frame_start
-    const remaining = Math.max(0, frame_duration - elapsed)
-    if (remaining > 0) {
-      await new Promise((resolve) => setTimeout(resolve, remaining))
+      // Wait for remaining frame time to maintain consistent FPS
+      const elapsed = performance.now() - frame_start
+      const remaining = Math.max(0, frame_duration - elapsed)
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining))
+      }
+    }
+  } finally {
+    // Restore original renderer settings
+    if (original_pixel_ratio !== undefined && original_size && renderer) {
+      renderer.setPixelRatio(original_pixel_ratio)
+      renderer.setSize(original_size.width, original_size.height, false)
     }
   }
 
