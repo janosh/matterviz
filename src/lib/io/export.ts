@@ -255,22 +255,24 @@ export async function export_trajectory_video(
     resolution_multiplier = 1,
   } = options
 
-  if (!canvas || !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)) {
-    throw new Error(`WebM video recording not supported in this browser`)
-  }
+  if (
+    !canvas ||
+    typeof MediaRecorder === `undefined` ||
+    !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+  ) throw new Error(`WebM video recording not supported in this browser`)
 
   const canvas_with_renderer = canvas as CanvasWithRenderer
   const renderer = canvas_with_renderer.__customRenderer
 
-  // Store original renderer settings if using high resolution
+  // Store original renderer settings if changing resolution
   let original_pixel_ratio: number | undefined
   let original_size: THREE.Vector2 | undefined
 
-  if (resolution_multiplier > 1 && renderer) {
+  if (resolution_multiplier !== 1 && renderer) {
     original_pixel_ratio = renderer.getPixelRatio()
     original_size = renderer.getSize(new Vector2())
-    // Set higher pixel ratio for high-res export
-    renderer.setPixelRatio(resolution_multiplier)
+    // Adjust pixel ratio for different resolution export
+    renderer.setPixelRatio(original_pixel_ratio * resolution_multiplier)
     renderer.setSize(original_size.width, original_size.height, false)
   }
 
@@ -280,7 +282,9 @@ export async function export_trajectory_video(
   const target_height = canvas.height * resolution_multiplier
   const pixels_per_frame = target_width * target_height
   const bits_per_pixel_per_frame = 0.1 // Good quality for VP9
-  const bitrate = Math.round(pixels_per_frame * fps * bits_per_pixel_per_frame)
+  // Clamp bitrate to reasonable bounds (1 Mbps min, 200 Mbps max)
+  const calculated_bitrate = pixels_per_frame * fps * bits_per_pixel_per_frame
+  const bitrate = Math.max(1_000_000, Math.min(calculated_bitrate, 200_000_000))
 
   const stream = canvas.captureStream(0)
   const chunks: Blob[] = []

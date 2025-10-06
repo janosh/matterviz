@@ -43,6 +43,7 @@
   let is_exporting = $state(false)
   let export_progress = $state(0)
   let export_format = $state<`webm` | `mp4`>(`webm`)
+  let export_error = $state<string | null>(null)
 
   let total_frames_available = $derived(
     trajectory?.total_frames || trajectory?.frames?.length || 0,
@@ -50,6 +51,16 @@
 
   let start_frame = $state(0)
   let end_frame = $state(0)
+
+  let canvas = $derived(wrapper?.querySelector(`canvas`) as HTMLCanvasElement)
+
+  // Estimated file size in MB
+  let file_size_mb = $derived.by(() => {
+    if (!canvas) return 0
+    const pixels = canvas.width * canvas.height * resolution_multiplier ** 2
+    const bitrate = Math.max(1e6, Math.min(pixels * video_fps * 0.1, 2e8))
+    return (bitrate * export_frame_count / video_fps) / 8 / 1024 / 1024
+  })
 
   // Initialize end_frame when trajectory changes
   $effect(() => {
@@ -75,8 +86,17 @@
   )
 
   async function handle_video_export(format: `webm` | `mp4` = `webm`) {
-    const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
-    if (!trajectory || !on_step_change || !canvas) return
+    export_error = null
+
+    // Validate
+    if (!trajectory || !on_step_change || !canvas || export_frame_count === 0) {
+      export_error = !trajectory
+        ? `No trajectory`
+        : !canvas
+        ? `Canvas not ready`
+        : `Invalid frame range`
+      return
+    }
 
     export_format = format
     is_exporting = true
@@ -88,16 +108,13 @@
         total_frames: export_frame_count,
         resolution_multiplier,
         on_progress: (progress) => (export_progress = progress),
-        on_step: async (idx) => {
-          // Map export frame index to actual trajectory frame
-          await on_step_change(start_frame + idx)
-        },
+        on_step: async (idx) => await on_step_change(start_frame + idx),
       })
 
-      // Copy ffmpeg command for MP4 conversion
       if (format === `mp4`) {
-        const cmd = get_ffmpeg_conversion_command(`${filename}.webm`)
-        navigator.clipboard.writeText(cmd).catch(console.warn)
+        navigator.clipboard
+          .writeText(get_ffmpeg_conversion_command(`${filename}.webm`))
+          .catch(console.warn)
       }
 
       export_progress = 100
@@ -107,6 +124,7 @@
       }, 1000)
     } catch (error) {
       console.error(`Export failed:`, error)
+      export_error = error instanceof Error ? error.message : String(error)
       is_exporting = false
       export_progress = 0
     }
@@ -176,11 +194,15 @@
         Resolution
         <div class="resolution-buttons">
           {#each [0.5, 1, 2, 4, 8] as multiplier (multiplier)}
+            {@const w = canvas ? Math.round(canvas.width * multiplier) : 0}
+            {@const h = canvas ? Math.round(canvas.height * multiplier) : 0}
             <button
               type="button"
               class:active={resolution_multiplier === multiplier}
               onclick={() => (resolution_multiplier = multiplier)}
-              {@attach tooltip({ content: `${multiplier}x canvas resolution` })}
+              {@attach tooltip({
+                content: canvas ? `${multiplier}x (${w}×${h})` : `${multiplier}x`,
+              })}
             >
               {multiplier}x
             </button>
@@ -224,14 +246,15 @@
     </SettingsSection>
 
     <h4>Export Formats</h4>
+
+    {#if export_error}
+      <div class="error-message">⚠️ {export_error}</div>
+    {/if}
+
     <div class="export-buttons">
       {#each [
         { label: `WebM`, format: `webm`, hint: `Export as WebM video` },
-        {
-          label: `MP4`,
-          format: `mp4`,
-          hint: `Downloads WebM + copies ffmpeg conversion command`,
-        },
+        { label: `MP4`, format: `mp4`, hint: `WebM + ffmpeg command` },
       ] as const as
         { label, format, hint }
         (format)
@@ -245,38 +268,61 @@
             {@attach tooltip({ content: hint })}
           >
             {#if is_exporting && export_format === format}
-              {export_progress.toFixed(0)}% ({format})
+              {export_progress.toFixed(0)}%
             {:else}⬇{/if}
           </button>
         </div>
       {/each}
-      <div style="font-size: 0.9em; color: var(--text-color-muted)">
-        {(export_frame_count / video_fps).toFixed(1)}s ({export_frame_count} frames: {
-          start_frame
-        }–{end_frame})
-      </div>
+    </div>
+
+    <div class="export-info">
+      {(export_frame_count / video_fps).toFixed(1)}s ({export_frame_count} frames: {
+        start_frame
+      }–{end_frame})
+      {#if file_size_mb > 0}
+        • ~{
+          file_size_mb < 1
+          ? `${(file_size_mb * 1024).toFixed(0)} KB`
+          : `${file_size_mb.toFixed(1)} MB`
+        }
+      {/if}
     </div>
 
     {#if trajectory && !has_canvas}
-      <div class="warning" style="font-size: 0.9em; padding: 0.5ex">
-        Waiting for canvas...
-      </div>
+      <div class="warning">Waiting for canvas...</div>
     {/if}
   {/if}
 </DraggablePane>
 
 <style>
-  .warning {
+  .warning, .error-message {
     padding: 1ex;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  .warning {
     background: var(--warning-bg, rgba(255, 165, 0, 0.1));
     border: 1px solid var(--warning-color, orange);
-    border-radius: 4px;
+  }
+  .error-message {
+    background: var(--error-bg, rgba(255, 0, 0, 0.1));
+    border: 1px solid var(--error-color, rgba(255, 0, 0, 0.5));
+    color: var(--error-color, #ff6b6b);
+    margin-bottom: 1ex;
   }
   .export-buttons {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 1ex;
+  }
+  .export-info {
+    margin-top: 1ex;
+    padding: 1ex;
+    background: var(--surface-bg, rgba(0, 0, 0, 0.05));
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: var(--text-color-muted);
   }
   .resolution-buttons {
     display: flex;
