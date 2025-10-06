@@ -18,7 +18,7 @@
     TrajectoryType,
     TrajHandlerData,
   } from './index'
-  import { TrajectoryError, TrajectoryInfoPane } from './index'
+  import { TrajectoryError, TrajectoryExportPane, TrajectoryInfoPane } from './index'
   import type { LoadingOptions } from './parse'
   import {
     create_frame_loader,
@@ -791,6 +791,7 @@
     structure_info: false,
     structure_controls: false,
     plot_controls: false,
+    export_pane: false,
   })
   let fullscreen = $state(false)
 </script>
@@ -805,7 +806,7 @@
 <div
   class:dragover
   class:active={is_playing || panes_open.structure_info || panes_open.structure_controls ||
-  panes_open.plot_controls || info_pane_open}
+  panes_open.plot_controls || panes_open.export_pane || info_pane_open}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -979,6 +980,15 @@
                 pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
               />
             {/if}
+            <!-- Trajectory Export Pane -->
+            <TrajectoryExportPane
+              bind:export_pane_open={panes_open.export_pane}
+              {trajectory}
+              {wrapper}
+              filename={current_filename || `trajectory`}
+              on_step_change={go_to_step}
+              pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
+            />
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0}
               <div class="view-mode-dropdown-wrapper">
@@ -987,6 +997,7 @@
                   title={current_view_label}
                   class="view-mode-button"
                   class:active={view_mode_dropdown_open}
+                  style="background-color: transparent; font-size: clamp(1em, 2cqw, 1.1em); padding: 0"
                 >
                   <Icon
                     icon={({
@@ -1333,7 +1344,9 @@
     }
   }
   .fullscreen-button {
-    background: transparent;
+    background: transparent !important;
+    font-size: clamp(1rem, 2cqw, 1.3rem);
+    padding: 0;
   }
   .fullscreen-button:hover:not(:disabled) {
     background: var(--border-color);

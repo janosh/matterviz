@@ -630,7 +630,7 @@ test.describe(`Trajectory Component`, () => {
         const fps_slider = fps_section.locator(`input[type="range"]`)
 
         // Test range of FPS values via slider
-        for (const fps of [`0.2`, `5`, `15`, `30`]) {
+        for (const fps of [`0.2`, `5`, `15`, `60`]) {
           await fps_slider.fill(fps)
           await expect(fps_input).toHaveValue(fps)
         }
@@ -642,7 +642,7 @@ test.describe(`Trajectory Component`, () => {
 
         // Verify attributes and UI elements
         await expect(fps_slider).toHaveAttribute(`min`, `0.2`)
-        await expect(fps_slider).toHaveAttribute(`max`, `30`)
+        await expect(fps_slider).toHaveAttribute(`max`, `60`)
         await expect(fps_input).toHaveAttribute(`step`, `0.1`)
         await expect(fps_section).toContainText(`fps`)
       }

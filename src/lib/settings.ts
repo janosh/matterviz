@@ -526,7 +526,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 60,
     },
     fps_range: {
-      value: [0.2, 30] as const,
+      value: [0.2, 60] as const,
       description: `Allowed range for playback speed [min, max]`,
       minItems: 2,
       maxItems: 2,

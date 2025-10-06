@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-await-in-loop
 import type { AnyStructure } from '$lib'
 import { download } from '$lib/io/fetch'
 import { create_structure_filename } from '$lib/structure/export'
@@ -223,4 +224,70 @@ export function export_svg_as_png(
   } catch (error) {
     console.error(`Error exporting PNG:`, error)
   }
+}
+
+/** Generate FFmpeg command for WebM to MP4 conversion */
+export function get_ffmpeg_conversion_command(input_filename: string): string {
+  const output = input_filename.replace(/\.webm$/i, `.mp4`)
+  return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
+}
+
+/** Export trajectory video with frame-by-frame rendering (prevents dropped frames) */
+export async function export_trajectory_as_mp4(
+  canvas: HTMLCanvasElement | null,
+  filename: string,
+  options: {
+    fps?: number
+    total_frames?: number
+    on_progress?: (progress: number) => void
+    on_step?: (step_idx: number) => void | Promise<void>
+    bitrate?: number
+    format?: `webm` | `mp4`
+  } = {},
+): Promise<void> {
+  const { fps = 30, total_frames = 100, on_progress, on_step, bitrate = 20_000_000 } =
+    options
+
+  if (!canvas || !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)) return
+
+  const stream = canvas.captureStream(0)
+  const chunks: Blob[] = []
+  const recorder = new MediaRecorder(stream, {
+    mimeType: `video/webm;codecs=vp9`,
+    videoBitsPerSecond: bitrate,
+  })
+
+  recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data)
+  recorder.start()
+
+  const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
+    requestFrame?: () => void
+  }
+  const delay = 1000 / fps
+
+  // Render each frame sequentially
+  for (let i = 0; i < total_frames; i++) {
+    on_progress?.((i / total_frames) * 100)
+    if (on_step) await on_step(i)
+    // Double RAF ensures Three.js completes rendering
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    track.requestFrame?.()
+    await new Promise((r) => setTimeout(r, delay))
+  }
+
+  // Finalize recording
+  return new Promise((resolve, reject) => {
+    recorder.onstop = () => {
+      try {
+        const blob = new Blob(chunks, { type: `video/webm` })
+        download(blob, filename.replace(/\.(mp4|webm)$/i, `.webm`), `video/webm`)
+        on_progress?.(100)
+        resolve()
+      } catch (error) {
+        reject(error)
+      }
+    }
+    recorder.onerror = reject
+    setTimeout(() => recorder.stop(), 100)
+  })
 }
