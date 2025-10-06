@@ -306,7 +306,6 @@ Bar plots handle negative values automatically and display zero lines for refere
   series={formation_energies}
   x_label="Compound"
   y_label="Formation Energy (eV/atom)"
-  show_zero_lines
   style="height: 400px"
 />
 ```

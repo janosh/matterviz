@@ -9,7 +9,7 @@
     Orientation,
     Sides,
   } from '$lib/plot'
-  import { find_best_legend_placement, PlotLegend } from '$lib/plot'
+  import { find_best_plot_area, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { TicksOption } from '$lib/plot/scales'
@@ -18,6 +18,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import BarPlotControls from './BarPlotControls.svelte'
+  import { calc_auto_padding, measure_text_width } from './layout'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
     series?: BarSeries[]
@@ -198,45 +199,21 @@
     }
   })
 
-  // Measure text width helper
-  let measurement_canvas: HTMLCanvasElement | null = null
-  function measure_text_width(
-    text: string,
-    font: string = `12px sans-serif`,
-  ): number {
-    if (typeof document === `undefined`) return 0
-    if (!measurement_canvas) {
-      measurement_canvas = document.createElement(`canvas`)
-    }
-    const ctx = measurement_canvas.getContext(`2d`)
-    if (!ctx) return 0
-    ctx.font = font
-    return ctx.measureText(text).width
-  }
-
-  // Layout helpers with dynamic padding based on tick label sizes
-  // Use $state to break circular dependency with ticks
-  let pad = $state({ t: 20, b: 60, l: 60, r: 20, ...padding })
-
+  // Layout: dynamic padding based on tick label widths
+  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
+  let pad = $state({ ...default_padding, ...padding })
   // Update padding when format or ticks change, but prevent infinite loop
   $effect(() => {
-    const base_pad = { t: 20, b: 60, l: 60, r: 20, ...padding }
+    const base_pad = { ...default_padding, ...padding }
+    const new_pad = width && height && ticks.y.length
+      ? calc_auto_padding({ base_padding: base_pad, y_ticks: ticks.y, y_format })
+      : base_pad
 
-    if (!width || !height || !ticks.x.length || !ticks.y.length) {
-      if (JSON.stringify(pad) !== JSON.stringify(base_pad)) pad = base_pad
-      return
-    }
-
-    // Measure y-axis tick labels
-    const max_y_tick_width = Math.max(
-      0,
-      ...ticks.y.map((tick) =>
-        measure_text_width(format_value(tick, y_format), `12px sans-serif`)
-      ),
-    )
-    const new_pad = { ...base_pad, l: Math.max(base_pad.l, max_y_tick_width + 45) }
-
-    if (JSON.stringify(pad) !== JSON.stringify(new_pad)) pad = new_pad
+    // Only update if padding actually changed (prevents infinite loop)
+    if (
+      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
+      pad.r !== new_pad.r
+    ) pad = new_pad
   })
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
@@ -355,7 +332,7 @@
   // Calculate best legend placement
   let legend_placement = $derived.by(() =>
     series.length > 1 && width && height
-      ? find_best_legend_placement(bar_points_for_placement, {
+      ? find_best_plot_area(bar_points_for_placement, {
         plot_width: chart_width,
         plot_height: chart_height,
         padding: pad,

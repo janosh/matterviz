@@ -372,7 +372,6 @@
   mode="single"
   x_label="Value"
   y_label="Count"
-  show_zero_lines
 />
 
 <Histogram

@@ -1384,15 +1384,11 @@ and scale type.
     tick_side: `primary`,
     wrapper_style: `
       position: absolute;
-      /* Position outside the plot area using padding values */
-      right: 10px; /* Distance from the container's right edge */
-      top: ${plot_padding.t}px; /* Align with top padding */
-      /* Set height directly for the wrapper */
-      height: calc(100% - ${
-      plot_padding.t + plot_padding.b
-    }px); /* Fill vertical space */
+      right: 10px;
+      top: ${plot_padding.t}px;
+      height: calc(100% - ${plot_padding.t + plot_padding.b}px);
     `,
-    style: `width: 15px; height: 100%;`,
+    bar_style: `width: 15px; height: 100%;`,
   }}
   style="height: 400px"
 >
@@ -1405,7 +1401,7 @@ and scale type.
 
 ## Line Clipping with Fixed Ranges
 
-This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Observe how the lines originating and ending outside the plot area are correctly cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
+This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
 
 ```svelte example
 <script>
@@ -1505,11 +1501,5 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
   y_label="Y Axis (Fixed Range)"
   markers="line"
   style="height: 400px"
-  show_zero_lines
-  padding={{ l: 150 }}
-  legend={{
-    wrapper_style:
-      `position: absolute; right: 0; transform: translateX(100%); max-width: 400px;`,
-  }}
 />
 ```

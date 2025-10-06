@@ -120,6 +120,9 @@
     return page?.url.pathname.startsWith(path) ? `page` : undefined
   }
 
+  const is_child_current = (sub_routes: string[]) =>
+    sub_routes.some((child_path) => is_current(child_path) === `page`)
+
   function format_label(text: string, remove_parent = false) {
     const custom_label = labels?.[text]
     if (custom_label) return { label: custom_label, style: `` }
@@ -172,11 +175,14 @@
       {#if sub_routes}
         <!-- Dropdown menu item -->
         {@const parent = format_label(label)}
+        {@const child_is_active = is_child_current(sub_routes)}
         <div
           class="dropdown-wrapper"
+          class:active={child_is_active}
           role="button"
           tabindex="0"
           data-href={href}
+          aria-current={child_is_active ? `true` : undefined}
           aria-expanded={hovered_dropdown === href}
           aria-haspopup="true"
           onmouseenter={() => !is_touch_device && (hovered_dropdown = href)}
@@ -261,6 +267,7 @@
   nav {
     position: relative;
     margin: -0.75em auto 1.25em;
+    --nav-border-radius: 6pt;
   }
   .menu-content {
     display: flex;
@@ -270,27 +277,29 @@
     padding: 0.5em;
   }
   .menu-content > a,
-  .dropdown-wrapper {
+  .dropdown-trigger {
     line-height: 1.3;
     padding: 1pt 5pt;
-    border-radius: 2pt;
+    border-radius: var(--nav-border-radius);
     text-decoration: none;
     color: inherit;
     transition: background-color 0.2s;
   }
   .menu-content > a:hover,
-  .dropdown-wrapper:hover {
+  .dropdown-wrapper:hover .dropdown-trigger {
     background-color: var(--nav-link-bg-hover);
   }
   .menu-content > a[aria-current='page'] {
     color: var(--nav-link-active-color);
-    background-color: var(--nav-link-bg-hover, rgba(128, 128, 128, 0.24));
   }
 
   /* Dropdown styles */
   .dropdown-wrapper {
     position: relative;
     cursor: pointer;
+  }
+  .dropdown-wrapper.active > .dropdown-trigger {
+    color: var(--nav-link-active-color);
   }
   .dropdown-wrapper::after {
     content: '';
@@ -315,7 +324,7 @@
     background-color: var(--nav-dropdown-bg, var(--surface-bg, var(--bg-color, #ffffff)));
     border: 1px solid
       var(--nav-dropdown-border-color, var(--border-color, rgba(128, 128, 128, 0.25)));
-    border-radius: var(--nav-dropdown-border-radius, 6pt);
+    border-radius: var(--nav-border-radius, 6pt);
     box-shadow: var(--nav-dropdown-shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
     padding: var(--nav-dropdown-padding, 2pt 3pt);
     display: none;
@@ -328,7 +337,7 @@
   }
   .dropdown-menu a {
     padding: var(--nav-dropdown-link-padding, 1pt 4pt);
-    border-radius: var(--nav-dropdown-link-border-radius, 4pt);
+    border-radius: var(--nav-border-radius);
     text-decoration: none;
     color: inherit;
     white-space: nowrap;
