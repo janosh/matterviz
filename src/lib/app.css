@@ -49,6 +49,10 @@ button, a.btn {
   border-radius: 3pt;
   padding: 2pt 4pt;
 }
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 a:hover {
   color: var(--accent-hover-color, orange);
 }

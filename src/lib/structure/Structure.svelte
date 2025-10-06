@@ -513,10 +513,7 @@
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle()}
             {:else}
-              <Icon
-                icon="{fullscreen ? `Exit` : ``}Fullscreen"
-                style="width: clamp(1em, 2cqmin, 2.5em)"
-              />
+              <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
             {/if}
           </button>
         {/if}
@@ -686,7 +683,6 @@
   section.control-buttons {
     position: absolute;
     display: flex;
-    place-items: center;
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqmin, 9pt);
@@ -705,6 +701,7 @@
     background-color: transparent;
     display: flex;
     padding: 0;
+    font-size: clamp(1em, 2cqmin, 2.5em);
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--pane-btn-bg-hover);

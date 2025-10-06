@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-await-in-loop
 import type { AnyStructure } from '$lib'
 import { download } from '$lib/io/fetch'
 import { create_structure_filename } from '$lib/structure/export'
@@ -223,4 +224,161 @@ export function export_svg_as_png(
   } catch (error) {
     console.error(`Error exporting PNG:`, error)
   }
+}
+
+/** Generate FFmpeg command for WebM to MP4 conversion */
+export function get_ffmpeg_conversion_command(input_filename: string): string {
+  const output = input_filename.replace(/\.webm$/i, `.mp4`)
+  return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
+}
+
+/**
+ * Export trajectory video as WebM with frame-by-frame rendering (prevents dropped frames).
+ * Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
+ */
+export async function export_trajectory_video(
+  canvas: HTMLCanvasElement | null,
+  filename: string,
+  options: {
+    fps?: number
+    total_frames?: number
+    on_progress?: (progress: number) => void
+    on_step?: (step_idx: number) => void | Promise<void>
+    resolution_multiplier?: number
+  } = {},
+): Promise<void> {
+  const {
+    fps = 30,
+    total_frames = 100,
+    on_progress,
+    on_step,
+    resolution_multiplier = 1,
+  } = options
+
+  if (
+    !canvas ||
+    typeof MediaRecorder === `undefined` ||
+    !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+  ) throw new Error(`WebM video recording not supported in this browser`)
+
+  const canvas_with_renderer = canvas as CanvasWithRenderer
+  const renderer = canvas_with_renderer.__customRenderer
+
+  // Store original renderer settings if changing resolution
+  let original_pixel_ratio: number | undefined
+  let original_size: THREE.Vector2 | undefined
+
+  if (resolution_multiplier !== 1 && renderer) {
+    original_pixel_ratio = renderer.getPixelRatio()
+    original_size = renderer.getSize(new Vector2())
+    // Adjust pixel ratio for different resolution export
+    renderer.setPixelRatio(original_pixel_ratio * resolution_multiplier)
+    renderer.setSize(original_size.width, original_size.height, false)
+  }
+
+  // Calculate bitrate based on actual video dimensions
+  // VP9 typically needs 0.08-0.12 bits per pixel per frame for good quality
+  const target_width = canvas.width * resolution_multiplier
+  const target_height = canvas.height * resolution_multiplier
+  const pixels_per_frame = target_width * target_height
+  const bits_per_pixel_per_frame = 0.1 // Good quality for VP9
+  // Clamp bitrate to reasonable bounds (1 Mbps min, 200 Mbps max)
+  const calculated_bitrate = pixels_per_frame * fps * bits_per_pixel_per_frame
+  const bitrate = Math.max(1_000_000, Math.min(calculated_bitrate, 200_000_000))
+
+  const stream = canvas.captureStream(0)
+  const chunks: Blob[] = []
+  const recorder = new MediaRecorder(stream, {
+    mimeType: `video/webm;codecs=vp9`,
+    videoBitsPerSecond: bitrate,
+  })
+
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) chunks.push(event.data)
+  }
+
+  const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
+    requestFrame?: () => void
+  }
+
+  // Start recording
+  recorder.start()
+
+  const frame_duration = 1000 / fps
+
+  try {
+    // Render each frame sequentially with precise timing
+    for (let idx = 0; idx < total_frames; idx++) {
+      const frame_start = performance.now()
+
+      on_progress?.((idx / total_frames) * 100)
+
+      // Update trajectory step
+      if (on_step) await on_step(idx)
+
+      // Double RAF ensures Three.js completes rendering before capture
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )
+
+      // Capture frame
+      track.requestFrame?.()
+
+      // Wait for remaining frame time to maintain consistent FPS
+      const elapsed = performance.now() - frame_start
+      const remaining = Math.max(0, frame_duration - elapsed)
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining))
+      }
+    }
+  } finally {
+    // Restore original renderer settings
+    if (original_pixel_ratio !== undefined && original_size && renderer) {
+      renderer.setPixelRatio(original_pixel_ratio)
+      renderer.setSize(original_size.width, original_size.height, false)
+    }
+  }
+
+  // Finalize recording
+  return new Promise((resolve, reject) => {
+    let is_resolved = false
+
+    recorder.onstop = () => {
+      if (is_resolved) return
+      is_resolved = true
+
+      try {
+        const blob = new Blob(chunks, { type: `video/webm` })
+        const webm_filename = filename.replace(/\.(mp4|webm)$/i, `.webm`)
+        download(blob, webm_filename, `video/webm`)
+        on_progress?.(100)
+        resolve()
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    recorder.onerror = (event) => {
+      if (is_resolved) return
+      is_resolved = true
+      reject(new Error(`MediaRecorder error: ${event}`))
+    }
+
+    // Stop recording with safety timeout
+    try {
+      recorder.stop()
+      // Fallback: force resolution if recorder doesn't stop within 5 seconds
+      setTimeout(() => {
+        if (!is_resolved) {
+          is_resolved = true
+          reject(new Error(`Recording timeout - recorder did not stop`))
+        }
+      }, 5000)
+    } catch (error) {
+      if (!is_resolved) {
+        is_resolved = true
+        reject(error)
+      }
+    }
+  })
 }

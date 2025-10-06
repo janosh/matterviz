@@ -427,7 +427,7 @@
           "type": "array",
           "default": [
             0.2,
-            30
+            60
           ],
           "description": "Allowed range for playback speed [min, max]",
           "minItems": 2,

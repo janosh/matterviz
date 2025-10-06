@@ -451,6 +451,11 @@ export const icon_data = {
     path:
       `<path fill="#444" d="M3.75 9v14h24.5V9L16 2"/><path fill="#939393" d="M16 16V2L3.75 9l24.5 14L16 30L3.75 23"/><path fill="#e3e3e3" d="M28.25 9H16v21"/><path fill="#fff" d="M3.75 9h24.5L16 16"/>`,
   },
+  Export: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<path d="M11.293 2.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1-1.414 1.414L13 5.414V16a1 1 0 1 1-2 0V5.414L8.707 7.707a1 1 0 0 1-1.414-1.414zM5 17a1 1 0 0 1 1 1v2h12v-2a1 1 0 1 1 2 0v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a1 1 0 0 1 1-1"/>`,
+  },
 } as const
 
 export type IconName = keyof typeof icon_data

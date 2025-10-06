@@ -142,7 +142,7 @@ const themes = {
   },
 
   // Interactive elements (buttons, etc.)
-  'btn-bg': btn_bg(0.1, 0.12),
+  'btn-bg': btn_bg(0.3, 0.12),
   'btn-bg-hover': btn_bg(0.2, 0.25),
   'btn-disabled-bg': btn_bg(0.1, 0.05),
 

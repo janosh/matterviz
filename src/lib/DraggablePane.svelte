@@ -176,7 +176,7 @@
     bind:this={toggle_pane_btn}
     aria-expanded={show}
     {...toggle_props}
-    style={`font-size: clamp(1em, 2.2cqw, 2em); ${toggle_props.style ?? ``}`}
+    style={`font-size: clamp(1em, 2.2cqw, 1.2em); ${toggle_props.style ?? ``}`}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
@@ -329,10 +329,13 @@
   }
   .draggable-pane :global(button) {
     width: max-content;
-    background-color: var(--pane-btn-bg, rgba(255, 255, 255, 0.1));
+    background-color: var(--pane-btn-bg, var(--btn-bg, rgba(255, 255, 255, 0.1)));
   }
   .draggable-pane :global(button:hover) {
-    background-color: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
+    background-color: var(
+      --pane-btn-bg-hover,
+      var(--btn-bg-hover, rgba(255, 255, 255, 0.2))
+    );
   }
   .draggable-pane :global(select) {
     margin: 0 0 0 5pt;
