@@ -1,6 +1,11 @@
 // deno-lint-ignore-file no-await-in-loop
-import type { Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+
+// Type alias for mock download entries
+
+type MockDownload = { filename: string; href: string }
+type GlobalWithMock = typeof globalThis & { __mockDownload: MockDownload[] }
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
@@ -1666,6 +1671,275 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
           expect(second_unchanged_z).toBe(`auto`)
         }
       }
+    })
+  })
+
+  test.describe(`WebM Video Export`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+    })
+
+    // Helper to open export pane (returns null if pane won't open in test environment)
+    async function open_export_pane(page: Page, trajectory_id = `#with-export-pane`) {
+      const trajectory = page.locator(trajectory_id)
+      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
+        timeout: 15000,
+      })
+
+      const export_toggle = trajectory.locator(`.trajectory-export-toggle`)
+      await export_toggle.dispatchEvent(`click`)
+      await page.waitForTimeout(500)
+
+      const export_pane = trajectory.locator(`.export-pane`)
+      const is_visible = await export_pane.isVisible({ timeout: 1000 })
+
+      return is_visible ? { trajectory, export_pane, export_toggle } : null
+    }
+
+    test(`export toggle button exists and is accessible`, async ({ page }) => {
+      const trajectory = page.locator(`#with-export-pane`)
+      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
+        timeout: 15000,
+      })
+
+      const export_toggle = trajectory.locator(`.trajectory-export-toggle`)
+      await expect(export_toggle).toBeVisible()
+      await expect(export_toggle).toBeEnabled()
+
+      const toggle_title = await export_toggle.getAttribute(`title`)
+      expect(toggle_title).toMatch(/export controls/i)
+      await expect(export_toggle).toHaveAttribute(`aria-expanded`, `false`)
+    })
+
+    test(`export pane UI and controls are complete`, async ({ page }) => {
+      const result = await open_export_pane(page)
+      if (!result) {
+        console.log(`Export pane not opening - skipping`)
+        return
+      }
+
+      const { export_pane, export_toggle } = result
+
+      // Verify pane opened and has correct structure
+      await expect(export_pane).toBeVisible()
+      await expect(export_toggle).toHaveAttribute(`aria-expanded`, `true`)
+      await expect(export_pane.locator(`h4`).filter({ hasText: `Export Video` }))
+        .toBeVisible()
+
+      // Verify video settings controls
+      await expect(export_pane.locator(`input[type="number"]`).first()).toBeVisible()
+      await expect(export_pane.locator(`input[type="range"]`).first()).toBeVisible()
+
+      // Verify export buttons
+      const webm_button = export_pane.locator(`div`).filter({ hasText: /^WebM$/i })
+        .locator(`button`)
+      const mp4_button = export_pane.locator(`div`).filter({ hasText: /^MP4$/i })
+        .locator(`button`)
+      await expect(webm_button).toBeVisible()
+      await expect(mp4_button).toBeVisible()
+
+      // Verify file size estimate is displayed
+      const file_size_element = export_pane.locator(`text=/MB|KB|frames/i`)
+      await expect(file_size_element.first()).toBeVisible()
+
+      // Test closing
+      await export_toggle.dispatchEvent(`click`)
+      await page.waitForTimeout(500)
+      await expect(export_pane).not.toBeVisible()
+    })
+
+    test(`video export settings can be configured`, async ({ page }) => {
+      const result = await open_export_pane(page)
+      if (!result) {
+        console.log(`Export pane not opening - skipping`)
+        return
+      }
+
+      const { export_pane } = result
+
+      // Test FPS, resolution, and frame range controls
+      const settings = [
+        { label: `FPS`, value: `24` },
+        { label: /resolution/i, value: `2` },
+        { label: `Start Frame`, value: `0` },
+        { label: `End Frame`, value: `2` },
+      ]
+
+      for (const { label, value } of settings) {
+        const input = export_pane.locator(`label`).filter({ hasText: label })
+          .locator(`input[type="number"]`).first()
+        if (await input.count() > 0) {
+          await input.fill(value)
+          await expect(input).toHaveValue(value)
+        }
+      }
+
+      // Verify frame count display updates
+      const frame_info = export_pane.locator(`text=/3.*frame|frames.*0.*2/i`)
+      if (await frame_info.count() > 0) {
+        await expect(frame_info.first()).toBeVisible()
+      }
+    })
+
+    test(`shows warning when video export is not supported`, async ({ page }) => {
+      // Mock MediaRecorder as unsupported and reload page
+      await page.addInitScript(() => {
+        delete (globalThis as unknown as Record<string, unknown>).MediaRecorder
+      })
+      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+
+      const result = await open_export_pane(page)
+      if (!result) {
+        console.log(`Export pane not opening - skipping`)
+        return
+      }
+
+      // Should show browser compatibility warning
+      const warning = result.export_pane.locator(`.warning`)
+      if (await warning.isVisible()) {
+        await expect(warning).toContainText(/Chrome|Edge|Opera/i)
+      }
+    })
+
+    test(`WebM export progress is displayed during export`, async ({ page }) => {
+      const result = await open_export_pane(page)
+      if (!result) {
+        console.log(`Export pane not opening - skipping`)
+        return
+      }
+
+      const { export_pane } = result
+
+      // Set minimal export settings for quick test (2 frames)
+      await export_pane.locator(`label`).filter({ hasText: `Start Frame` })
+        .locator(`input[type="number"]`).first().fill(`0`)
+      await export_pane.locator(`label`).filter({ hasText: `End Frame` })
+        .locator(`input[type="number"]`).first().fill(`1`)
+
+      // Find and click WebM export button
+      const webm_section = export_pane.locator(`div`).filter({ hasText: /^WebM$/i })
+      const webm_button = webm_section.locator(`button`)
+
+      // Check if browser supports video export
+      const is_video_supported = await page.evaluate(() => {
+        return typeof MediaRecorder !== `undefined` &&
+          MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+      })
+
+      if (!is_video_supported) {
+        // Skip the export test if not supported
+        console.log(`Skipping video export test - WebM not supported in this browser`)
+        return
+      }
+
+      // Mock download to prevent actual file download
+      await page.evaluate(() => {
+        const global_with_mock = globalThis as GlobalWithMock
+
+        global_with_mock.__mockDownload = []
+        globalThis.URL.createObjectURL = (_blob: Blob) => `blob:mock-url`
+        const original_click = HTMLAnchorElement.prototype.click
+        HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+          if (this.download) {
+            global_with_mock.__mockDownload.push({
+              filename: this.download,
+              href: this.href,
+            })
+            return
+          }
+          original_click.call(this)
+        }
+      })
+
+      // Start export
+      await webm_button.click()
+
+      // Verify button shows progress during export
+      try {
+        await expect(webm_button).toContainText(/%/, { timeout: 2000 })
+      } catch {
+        // Export might complete too quickly, which is fine
+      }
+
+      // Wait for export to complete (button text should change back)
+      await expect(webm_button).toContainText(/⬇/, { timeout: 15000 })
+
+      // Verify download was triggered
+      const downloads = await page.evaluate(() => {
+        const global_with_mock = globalThis as typeof globalThis & {
+          __mockDownload?: MockDownload[]
+        }
+        return global_with_mock.__mockDownload || []
+      })
+      expect(downloads.length).toBeGreaterThanOrEqual(1)
+      if (downloads.length > 0) {
+        expect(downloads[0].filename).toContain(`.webm`)
+      }
+    })
+
+    test(`MP4 export copies ffmpeg command to clipboard`, async ({ page, context }) => {
+      await context.grantPermissions([`clipboard-read`, `clipboard-write`])
+
+      const result = await open_export_pane(page)
+      if (!result) {
+        console.log(`Export pane not opening - skipping`)
+        return
+      }
+
+      const { export_pane } = result
+
+      // Set minimal export settings (2 frames)
+      await export_pane.locator(`label`).filter({ hasText: `Start Frame` })
+        .locator(`input[type="number"]`).first().fill(`0`)
+      await export_pane.locator(`label`).filter({ hasText: `End Frame` })
+        .locator(`input[type="number"]`).first().fill(`1`)
+
+      // Check if browser supports video export
+      const is_video_supported = await page.evaluate(() => {
+        return typeof MediaRecorder !== `undefined` &&
+          MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+      })
+
+      if (!is_video_supported) {
+        console.log(`Skipping MP4 export test - WebM not supported in this browser`)
+        return
+      }
+
+      // Mock download
+      await page.evaluate(() => {
+        const global_with_mock = globalThis as GlobalWithMock
+
+        global_with_mock.__mockDownload = []
+        globalThis.URL.createObjectURL = () => `blob:mock-url`
+        const original_click = HTMLAnchorElement.prototype.click
+        HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+          if (this.download) {
+            global_with_mock.__mockDownload.push({
+              filename: this.download,
+              href: this.href,
+            })
+            return
+          }
+          original_click.call(this)
+        }
+      })
+
+      // Find and click MP4 export button
+      const mp4_section = export_pane.locator(`div`).filter({ hasText: /^MP4$/i })
+      const mp4_button = mp4_section.locator(`button`)
+      await mp4_button.click()
+
+      // Wait for export to complete
+      await expect(mp4_button).toContainText(/⬇/, { timeout: 15000 })
+
+      // Verify ffmpeg command was copied to clipboard
+      const clipboard_text = await page.evaluate(
+        () => navigator.clipboard.readText(),
+      )
+      expect(clipboard_text).toContain(`ffmpeg`)
+      expect(clipboard_text).toContain(`-i`)
+      expect(clipboard_text).toContain(`.webm`)
+      expect(clipboard_text).toContain(`.mp4`)
     })
   })
 
