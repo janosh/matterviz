@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.1.11](https://github.com/janosh/matterviz/compare/v0.1.9...v0.1.11)
+
+> 6 October 2025
+
+### 🛠 Enhancements
+
+- Structure from string by @janosh in https://github.com/janosh/matterviz/pull/150
+- 2/3/4D Phase diagrams by @janosh in https://github.com/janosh/matterviz/pull/152
+- `XrdPlot.svelte` powered by new `BarPlot.svelte` by @janosh in https://github.com/janosh/matterviz/pull/153
+- `ScatterPlot`/`Histogram` support one-sided pin on `x`/`y` range by @janosh in https://github.com/janosh/matterviz/pull/154
+- Support on-the-fly 4D energy above hull calculation by @janosh in https://github.com/janosh/matterviz/pull/155
+- Enhance interactivity in plotting components by @janosh in https://github.com/janosh/matterviz/pull/157
+- Tweaks and tests by @janosh in https://github.com/janosh/matterviz/pull/159
+- Add `grouped` mode to `BarPlot` + interactivity improvements by @janosh in https://github.com/janosh/matterviz/pull/162
+- Add WebM video export to `Trajectory` by @janosh in https://github.com/janosh/matterviz/pull/163
+
+### 🐛 Bug Fixes
+
+- Fix angle calculation in `Structure` measure mode by @janosh in https://github.com/janosh/matterviz/pull/160
+
+### 📖 Documentation
+
+- Site reorg by @janosh in https://github.com/janosh/matterviz/pull/161
+
 ## [v0.1.9](https://github.com/janosh/matterviz/compare/v0.1.8...v0.1.9)
 
 > 5 September 2025
