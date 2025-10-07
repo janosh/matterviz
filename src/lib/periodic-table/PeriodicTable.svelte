@@ -2,7 +2,7 @@
   import type { ChemicalElement, ElementCategory, XyObj } from '$lib'
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { default_category_colors, is_color } from '$lib/colors'
-  import element_data from '$lib/element/data'
+  import { element_data } from '$lib/element'
   import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'

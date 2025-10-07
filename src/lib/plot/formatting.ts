@@ -10,8 +10,7 @@ export type D3SymbolName = Exclude<
 >
 
 export const symbol_names = [
-  ...d3_symbols.symbolsFill,
-  ...d3_symbols.symbolsStroke,
+  ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
 ].map((sym) => {
   // Attempt to find the key associated with this symbol function object
   for (const key in d3_symbols) {

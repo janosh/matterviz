@@ -1,6 +1,6 @@
 import type { ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { atomic_weights } from '$lib/composition/parse'
-import element_data from '$lib/element/data'
+import { element_data } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { ComponentProps } from 'svelte'
