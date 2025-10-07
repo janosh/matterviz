@@ -5,7 +5,7 @@
   "homepage": "https://janosh.github.io/matterviz",
   "repository": "https://github.com/janosh/matterviz",
   "license": "MIT",
-  "version": "0.1.9",
+  "version": "0.1.12",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/matterviz/issues",

@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib'
-import element_data from '$lib/element/data'
+import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure/index'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json

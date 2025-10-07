@@ -1,6 +1,6 @@
 import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
 import { elem_symbols, format_num } from '$lib'
-import element_data from '$lib/element/data'
+import { element_data } from '$lib/element'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
 export const atomic_number_to_symbol: Record<number, ElementSymbol> = {}
