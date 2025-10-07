@@ -1,8 +1,8 @@
 {
-  "name": "matterviz-vscode",
+  "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.1.10",
+  "version": "0.1.12",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
