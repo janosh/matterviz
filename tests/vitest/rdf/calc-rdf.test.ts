@@ -1,5 +1,6 @@
 import type { ElementSymbol } from '$lib'
-import { calculate_all_pair_rdfs, calculate_rdf, type PymatgenStructure } from '$lib/rdf'
+import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
+import type { PymatgenStructure } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 
@@ -29,12 +30,10 @@ function check_basic_rdf_properties(
 // Helper to create simple test structures
 function create_test_structure(
   lattice_size: number,
-  sites_data: Array<
-    {
-      species: { element: string; occu: number; oxidation_state: number }[]
-      xyz: number[]
-    }
-  >,
+  sites_data: {
+    species: { element: string; occu: number; oxidation_state: number }[]
+    xyz: number[]
+  }[],
 ): PymatgenStructure {
   return {
     lattice: {
@@ -431,8 +430,7 @@ describe(`calculate_all_pair_rdfs`, () => {
   )
 
   test(`different expansion_factors should give similar RDF shapes`, () => {
-    const cutoff = 8
-    const n_bins = 80
+    const [cutoff, n_bins] = [8, 80]
     const factors = [1.5, 2.0, 2.5]
 
     const results = factors.map((expansion_factor) =>
@@ -467,8 +465,7 @@ describe(`calculate_all_pair_rdfs`, () => {
   })
 
   test(`full RDF should properly weight element pairs`, () => {
-    const cutoff = 5
-    const n_bins = 50
+    const [cutoff, n_bins] = [5, 50]
 
     const full_rdf_correct = calculate_rdf(bi2zr2o8_structure, { cutoff, n_bins })
 
