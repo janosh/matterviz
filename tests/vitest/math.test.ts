@@ -675,6 +675,129 @@ describe(`pbc_dist`, () => {
       expect(result).toBeCloseTo(expected, 4)
     }
   })
+
+  test(`axis-specific PBC flags (mixed boundary conditions)`, () => {
+    // Test slab geometry: periodic in xy, not in z
+    const slab_lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 20]]
+
+    // Slab: periodic in xy, not in z
+    expect(
+      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, false]),
+    )
+      .toBeCloseTo(18, 5)
+    expect(
+      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, true]),
+    )
+      .toBeCloseTo(2, 5)
+    expect(
+      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
+        true,
+        true,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+    expect(
+      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
+        false,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(9, 5)
+
+    // Nanowire: periodic only in z
+    const wire_lattice: math.Matrix3x3 = [[20, 0, 0], [0, 20, 0], [0, 0, 10]]
+    expect(
+      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [
+        false,
+        false,
+        true,
+      ]),
+    )
+      .toBeCloseTo(2, 5)
+    expect(
+      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [
+        false,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(8, 5)
+
+    // Single-axis periodicity: only x-axis periodic
+    expect(
+      math.pbc_dist([0.5, 10, 10], [9.5, 10, 10], slab_lattice, undefined, [
+        true,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+    expect(
+      math.pbc_dist([5, 0.5, 10], [5, 9.5, 10], slab_lattice, undefined, [
+        false,
+        true,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+
+    // Triclinic lattice with mixed PBC
+    const triclinic: math.Matrix3x3 = [
+      [10.0, 0.0, 0.0],
+      [2.0, 8.0, 0.0],
+      [1.0, 1.0, 12.0],
+    ]
+    // Test that wrapping respects each axis independently in a triclinic system
+    // Key property: enabling PBC on specific axes should give different results than no PBC
+    const pos1: math.Vec3 = [0.5, 1.0, 1.0]
+    const pos2: math.Vec3 = [9.5, 1.0, 11.0]
+
+    const dist_no_pbc = math.pbc_dist(
+      pos1,
+      pos2,
+      triclinic,
+      undefined,
+      [false, false, false],
+    )
+    const dist_x_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [
+      true,
+      false,
+      false,
+    ])
+    const dist_z_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [
+      false,
+      false,
+      true,
+    ])
+    const dist_xz = math.pbc_dist(pos1, pos2, triclinic, undefined, [true, false, true])
+
+    // Each PBC setting should give different results
+    expect(dist_x_only).toBeLessThan(dist_no_pbc)
+    expect(dist_z_only).toBeLessThan(dist_no_pbc)
+    expect(dist_xz).toBeLessThan(dist_x_only)
+    expect(dist_xz).toBeLessThan(dist_z_only)
+
+    // Verify wrapping is selective: enabling one axis shouldn't affect orthogonal separations
+    // Points separated only in z with PBC only in x should not wrap
+    const dist_z_sep_x_pbc = math.pbc_dist(
+      [5.0, 4.0, 1.0],
+      [5.0, 4.0, 11.0],
+      triclinic,
+      undefined,
+      [true, false, false],
+    )
+    const dist_z_sep_no_pbc = math.pbc_dist(
+      [5.0, 4.0, 1.0],
+      [5.0, 4.0, 11.0],
+      triclinic,
+      undefined,
+      [false, false, false],
+    )
+    // These should be equal (x-wrapping shouldn't affect z-separation)
+    expect(dist_z_sep_x_pbc).toBeCloseTo(dist_z_sep_no_pbc, 5)
+  })
 })
 
 describe(`tensor conversion utilities`, () => {

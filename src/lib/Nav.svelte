@@ -176,15 +176,14 @@
         <!-- Dropdown menu item -->
         {@const parent = format_label(label)}
         {@const child_is_active = is_child_current(sub_routes)}
+        {@const parent_page_exists = sub_routes.includes(href)}
+        {@const filtered_sub_routes = sub_routes.filter((route) => route !== href)}
         <div
           class="dropdown-wrapper"
           class:active={child_is_active}
-          role="button"
-          tabindex="0"
           data-href={href}
+          role="group"
           aria-current={child_is_active ? `true` : undefined}
-          aria-expanded={hovered_dropdown === href}
-          aria-haspopup="true"
           onmouseenter={() => !is_touch_device && (hovered_dropdown = href)}
           onmouseleave={() => !is_touch_device && (hovered_dropdown = null)}
           onfocusin={() => (hovered_dropdown = href)}
@@ -194,16 +193,33 @@
               hovered_dropdown = null
             }
           }}
-          onclick={() => toggle_dropdown(href, false)}
-          onkeydown={(event) => handle_dropdown_keydown(event, href, sub_routes)}
         >
-          <span class="dropdown-trigger" style={parent.style}>
-            {@html parent.label}
-            <Icon
-              icon="ArrowDown"
-              style="width: 0.8em; height: 0.8em; margin-left: 0.2em"
-            />
-          </span>
+          <div class="dropdown-trigger-wrapper">
+            <svelte:element
+              this={parent_page_exists ? `a` : `span`}
+              href={parent_page_exists ? href : undefined}
+              class="dropdown-trigger"
+              aria-current={is_current(href)}
+              onclick={close_menus}
+              role={parent_page_exists ? undefined : `button`}
+              style={parent.style}
+            >
+              {@html parent.label}
+            </svelte:element>
+            <button
+              class="dropdown-toggle"
+              aria-label="Toggle {parent.label} submenu"
+              aria-expanded={hovered_dropdown === href}
+              aria-haspopup="true"
+              onclick={() => toggle_dropdown(href, false)}
+              onkeydown={(event) => handle_dropdown_keydown(event, href, filtered_sub_routes)}
+            >
+              <Icon
+                icon="ArrowDown"
+                style="width: 0.8em; height: 0.8em"
+              />
+            </button>
+          </div>
           <div
             class="dropdown-menu"
             class:visible={hovered_dropdown === href}
@@ -219,11 +235,8 @@
               }
             }}
           >
-            {#each sub_routes as child_href (child_href)}
-              {@const child = format_label(
-            child_href,
-            true,
-          )}
+            {#each filtered_sub_routes as child_href (child_href)}
+              {@const child = format_label(child_href, true)}
               {#if link}
                 {@render link({ href: child_href, label: child.label })}
               {:else}
@@ -276,8 +289,7 @@
     flex-wrap: wrap;
     padding: 0.5em;
   }
-  .menu-content > a,
-  .dropdown-trigger {
+  .menu-content > a {
     line-height: 1.3;
     padding: 1pt 5pt;
     border-radius: var(--nav-border-radius);
@@ -285,8 +297,7 @@
     color: inherit;
     transition: background-color 0.2s;
   }
-  .menu-content > a:hover,
-  .dropdown-wrapper:hover .dropdown-trigger {
+  .menu-content > a:hover {
     background-color: var(--nav-link-bg-hover);
   }
   .menu-content > a[aria-current='page'] {
@@ -296,9 +307,8 @@
   /* Dropdown styles */
   .dropdown-wrapper {
     position: relative;
-    cursor: pointer;
   }
-  .dropdown-wrapper.active > .dropdown-trigger {
+  .dropdown-wrapper.active .dropdown-trigger {
     color: var(--nav-link-active-color);
   }
   .dropdown-wrapper::after {
@@ -309,11 +319,36 @@
     right: 0;
     height: var(--nav-dropdown-margin, 3pt);
   }
-  .dropdown-trigger {
+  .dropdown-trigger-wrapper {
     display: flex;
     align-items: center;
-    gap: 0.2em;
-    user-select: none;
+    gap: 0;
+    border-radius: var(--nav-border-radius);
+    transition: background-color 0.2s;
+  }
+  .dropdown-trigger-wrapper:hover {
+    background-color: var(--nav-link-bg-hover);
+  }
+  .dropdown-trigger {
+    line-height: 1.3;
+    padding: 1pt 5pt;
+    text-decoration: none;
+    color: inherit;
+    border-radius: var(--nav-border-radius) 0 0 var(--nav-border-radius);
+  }
+  .dropdown-trigger[aria-current='page'] {
+    color: var(--nav-link-active-color);
+  }
+  .dropdown-toggle {
+    padding: 1pt 3pt;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0 var(--nav-border-radius) var(--nav-border-radius) 0;
   }
   .dropdown-menu {
     position: absolute;
@@ -416,6 +451,19 @@
       flex-direction: column;
       align-items: stretch;
     }
+    .dropdown-trigger-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .dropdown-trigger {
+      flex: 1;
+      border-radius: var(--nav-border-radius);
+    }
+    .dropdown-toggle {
+      padding: 4pt 8pt;
+      border-radius: var(--nav-border-radius);
+    }
     .dropdown-menu {
       position: static;
       border: none;
@@ -423,9 +471,6 @@
       margin-top: 0.25em;
       padding: 0 0 0 1em;
       background-color: transparent;
-    }
-    .dropdown-trigger {
-      cursor: pointer;
     }
   }
 </style>

@@ -278,10 +278,7 @@ describe(`image atom behavior`, () => {
 
   test(`handles edge cases correctly`, () => {
     // Structure without lattice
-    const no_lattice = {
-      ...sample_structure,
-      lattice: undefined,
-    } as unknown as PymatgenStructure
+    const no_lattice = { ...sample_structure, lattice: undefined }
     expect(find_image_atoms(no_lattice)).toEqual([])
 
     // Trajectory-like data
