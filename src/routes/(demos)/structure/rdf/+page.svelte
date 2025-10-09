@@ -9,10 +9,10 @@
   import pd from '$site/structures/mp-2.json'
 
   const structures = {
-    NaCl: nacl as unknown as PymatgenStructure,
-    Pd: pd as unknown as PymatgenStructure,
-    'Bi₂Zr₂O₈': bi2zr2o8 as unknown as PymatgenStructure,
-  }
+    NaCl: nacl,
+    Pd: pd,
+    'Bi₂Zr₂O₈': bi2zr2o8,
+  } as unknown as Record<string, PymatgenStructure>
 
   let selected = $state([`NaCl`, `Pd`])
   let mode = $state<`element_pairs` | `full`>(`full`)
