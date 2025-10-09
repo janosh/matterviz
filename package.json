@@ -147,6 +147,10 @@
       "types": "./dist/trajectory/index.d.ts",
       "default": "./dist/trajectory/index.js"
     },
+    "./rdf": {
+      "types": "./dist/rdf/index.d.ts",
+      "default": "./dist/rdf/index.js"
+    },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",
       "default": "./dist/xrd/index.js"

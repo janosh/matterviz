@@ -557,30 +557,31 @@ describe(`Export functionality`, () => {
       expect(() => func(structure_no_lattice)).toThrow(error_msg)
     })
 
-    it.each([
-      {
-        name: `species without element`,
-        species: [{ element: undefined, occu: 1, oxidation_state: 0 }],
-        expected: `X 0.000000 0.000000 0.000000`,
-      },
-      {
-        name: `empty species array`,
-        species: [],
-        expected: `X 0.000000 0.000000 0.000000`,
-      },
-      {
-        name: `missing coordinates`,
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        xyz: undefined,
-        abc: undefined,
-        expected: `H 0.000000 0.000000 0.000000`,
-      },
-    ])(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
+    it.each(
+      [
+        {
+          name: `species without element`,
+          species: [{ element: undefined, occu: 1, oxidation_state: 0 }],
+          expected: `X 0.000000 0.000000 0.000000`,
+        },
+        {
+          name: `empty species array`,
+          species: [],
+          expected: `X 0.000000 0.000000 0.000000`,
+        },
+        {
+          name: `missing coordinates`,
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          xyz: undefined,
+          abc: undefined,
+          expected: `H 0.000000 0.000000 0.000000`,
+        },
+      ] as const,
+    )(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
       const structure: AnyStructure = {
         sites: [{
-          species: species as unknown as Array<
-            { element: string; occu: number; oxidation_state: number }
-          >,
+          // @ts-expect-error - test invalid species
+          species,
           xyz: xyz || [0.0, 0.0, 0.0],
           abc: abc || [0.0, 0.0, 0.0],
           label: `H`,
