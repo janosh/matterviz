@@ -78,9 +78,9 @@
 <h1>Radial Distribution Functions (RDF)</h1>
 
 <p>
-  Radial distribution functions g(r) describe the probability of finding an atom at
-  distance r from a reference atom, normalized by bulk density. The line at g(r) = 1
-  represents uniform distribution (ideal gas).
+  g(r) describes the probability of finding an atom at distance r from a reference atom,
+  normalized by bulk density. The line at g(r) = 1 represents uniform distribution (ideal
+  gas).
 </p>
 
 <div class="bleed-1400">
@@ -217,6 +217,9 @@
 <style>
   .bleed-1400 > section {
     margin: 2em 0;
+  }
+  h2, p {
+    text-align: center;
   }
   .grid {
     display: grid;
