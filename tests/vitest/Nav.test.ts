@@ -63,6 +63,7 @@ describe(`Nav`, () => {
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
     await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
+    expect(menu.classList.contains(`open`)).toBe(false)
 
     await click(button)
     expect(menu.classList.contains(`open`)).toBe(true)
@@ -161,7 +162,7 @@ describe(`Nav`, () => {
 
     const outside = document.createElement(`div`)
     document.body.appendChild(outside)
-    outside.click()
+    outside.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
     await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
     outside.remove()
@@ -177,6 +178,7 @@ describe(`Nav`, () => {
     expect(dropdown.getAttribute(`data-href`)).toBe(`/parent`)
 
     const parent_link = doc_query(`.dropdown-trigger`)
+    expect(parent_link.tagName).toBe(`A`)
     expect(parent_link.getAttribute(`href`)).toBe(`/parent`)
 
     const toggle = doc_query(`.dropdown-toggle`)
@@ -253,7 +255,42 @@ describe(`Nav`, () => {
     mount(Nav, { target: document.body, props: { routes: [route], labels } })
     const link = doc_query(`a[href="${route}"]`)
     expect(link.textContent?.trim()).toBe(expected)
+    // Test inline style since format_label intentionally sets text-transform
     expect(link.getAttribute(`style`)).toBe(labels ? `` : `text-transform: capitalize;`)
+  })
+
+  test(`dropdown trigger is not a link when parent page does not exist`, () => {
+    mount(Nav, {
+      target: document.body,
+      props: { routes: [[`/how-to`, [`/how-to/guide-1`, `/how-to/guide-2`]]] },
+    })
+
+    const dropdown_trigger = doc_query(`.dropdown-trigger`)
+    expect(dropdown_trigger.tagName).toBe(`SPAN`)
+    expect(dropdown_trigger.getAttribute(`href`)).toBeNull()
+    expect(dropdown_trigger.textContent?.trim()).toBe(`how to`)
+
+    const dropdown_menu_links = Array.from(
+      document.querySelectorAll(`.dropdown-menu a`),
+    ).map((link) => link.getAttribute(`href`))
+    expect(dropdown_menu_links).toEqual([`/how-to/guide-1`, `/how-to/guide-2`])
+  })
+
+  test(`dropdown trigger is a link when parent page exists`, () => {
+    mount(Nav, {
+      target: document.body,
+      props: { routes: [[`/docs`, [`/docs`, `/docs/intro`, `/docs/api`]]] },
+    })
+
+    const dropdown_trigger = doc_query(`.dropdown-trigger`)
+    expect(dropdown_trigger.tagName).toBe(`A`)
+    expect(dropdown_trigger.getAttribute(`href`)).toBe(`/docs`)
+    expect(dropdown_trigger.textContent?.trim()).toBe(`docs`)
+
+    const dropdown_menu_links = Array.from(
+      document.querySelectorAll(`.dropdown-menu a`),
+    ).map((link) => link.getAttribute(`href`))
+    expect(dropdown_menu_links).toEqual([`/docs/intro`, `/docs/api`])
   })
 
   test(`dropdown accessibility and state management`, async () => {
@@ -276,6 +313,7 @@ describe(`Nav`, () => {
     const toggle1 = dropdown1.querySelector(`.dropdown-toggle`) as HTMLElement
 
     // aria-expanded toggles correctly on toggle button
+    // Note: aria-controls linkage is not currently implemented for dropdowns (only for burger menu)
     expect(toggle1.getAttribute(`aria-expanded`)).toBe(`false`)
     await click(toggle1)
     expect(toggle1.getAttribute(`aria-expanded`)).toBe(`true`)

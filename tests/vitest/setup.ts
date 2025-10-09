@@ -1,7 +1,7 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { PymatgenStructure, Site } from '$lib/structure'
+import type { Pbc, PymatgenStructure, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
 
 beforeEach(() => {
@@ -10,7 +10,7 @@ beforeEach(() => {
 
 export function doc_query<T extends HTMLElement>(selector: string): T {
   const node = document.querySelector(selector)
-  if (!node) throw `No element found for selector: ${selector}`
+  if (!node) throw new Error(`No element found for selector: ${selector}`)
   return node as T
 }
 
@@ -66,18 +66,7 @@ export function create_test_structure(
     : lattice
 
   // Calculate lattice parameters from matrix
-  const [avec, bvec, cvec] = lattice_matrix
-  const a_len = Math.hypot(...avec)
-  const b_len = Math.hypot(...bvec)
-  const c_len = Math.hypot(...cvec)
-
-  // Calculate angles (in degrees)
-  const dot = (v1: Vec3, v2: Vec3) => v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
-  const alpha = (Math.acos(dot(bvec, cvec) / (b_len * c_len)) * 180) / Math.PI
-  const beta = (Math.acos(dot(avec, cvec) / (a_len * c_len)) * 180) / Math.PI
-  const gamma = (Math.acos(dot(avec, bvec) / (a_len * b_len)) * 180) / Math.PI
-
-  const volume = math.det_3x3(lattice_matrix)
+  const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
 
   let sites: Site[]
 
@@ -102,7 +91,7 @@ export function create_test_structure(
         ...sp,
         element: sp.element as ElementSymbol,
       })),
-      xyz: site.xyz as [number, number, number],
+      xyz: site.xyz as Vec3,
       // Calculate fractional coordinates: abc = inverse(lattice_matrix) · xyz
       abc: math.mat3x3_vec3_multiply(
         math.matrix_inverse_3x3(lattice_matrix),
@@ -113,18 +102,9 @@ export function create_test_structure(
     }))
   }
 
+  const lattice_params = { a, b, c, alpha, beta, gamma, pbc: [true, true, true] as Pbc }
   return {
-    lattice: {
-      matrix: lattice_matrix,
-      pbc: [true, true, true],
-      volume,
-      a: a_len,
-      b: b_len,
-      c: c_len,
-      alpha,
-      beta,
-      gamma,
-    },
+    lattice: { matrix: lattice_matrix, ...lattice_params, volume },
     sites,
   }
 }

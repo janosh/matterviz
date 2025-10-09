@@ -176,6 +176,7 @@
         <!-- Dropdown menu item -->
         {@const parent = format_label(label)}
         {@const child_is_active = is_child_current(sub_routes)}
+        {@const parent_page_exists = sub_routes.includes(href)}
         {@const filtered_sub_routes = sub_routes.filter((route) => route !== href)}
         <div
           class="dropdown-wrapper"
@@ -194,15 +195,17 @@
           }}
         >
           <div class="dropdown-trigger-wrapper">
-            <a
-              {href}
+            <svelte:element
+              this={parent_page_exists ? `a` : `span`}
+              href={parent_page_exists ? href : undefined}
               class="dropdown-trigger"
               aria-current={is_current(href)}
               onclick={close_menus}
+              role={parent_page_exists ? undefined : `button`}
               style={parent.style}
             >
               {@html parent.label}
-            </a>
+            </svelte:element>
             <button
               class="dropdown-toggle"
               aria-label="Toggle {parent.label} submenu"

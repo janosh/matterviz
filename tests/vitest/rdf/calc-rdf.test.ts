@@ -1,5 +1,6 @@
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
+import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 import { create_test_structure } from '../setup'
@@ -138,7 +139,7 @@ describe(`calculate_rdf`, () => {
 
   test.each([
     {
-      pbc: [true, true, true] as [boolean, boolean, boolean],
+      pbc: [true, true, true] as Pbc,
       name: `full PBC`,
       sites: [
         {
@@ -160,7 +161,7 @@ describe(`calculate_rdf`, () => {
       ],
     },
     {
-      pbc: [false, false, false] as [boolean, boolean, boolean],
+      pbc: [false, false, false] as Pbc,
       name: `no PBC`,
       sites: [
         {
@@ -182,7 +183,7 @@ describe(`calculate_rdf`, () => {
       ],
     },
     {
-      pbc: [true, true, false] as [boolean, boolean, boolean],
+      pbc: [true, true, false] as Pbc,
       name: `slab PBC (xy only)`,
       sites: [
         {

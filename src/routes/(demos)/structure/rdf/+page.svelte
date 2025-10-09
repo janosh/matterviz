@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { ElementSymbol } from '$lib'
+  import type { ElementSymbol, Matrix3x3 } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { RdfPlot } from '$lib/rdf'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Pbc, PymatgenStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
   import nacl from '$site/structures/mp-1234.json'
@@ -52,16 +52,8 @@
 
     return {
       lattice: {
-        matrix: [
-          [box_size, 0, 0],
-          [0, box_size, 0],
-          [0, 0, box_size],
-        ] as [
-          [number, number, number],
-          [number, number, number],
-          [number, number, number],
-        ],
-        pbc: [true, true, true] as [boolean, boolean, boolean],
+        matrix: [[box_size, 0, 0], [0, box_size, 0], [0, 0, box_size]] as Matrix3x3,
+        pbc: [true, true, true] as Pbc,
         a: box_size,
         b: box_size,
         c: box_size,
