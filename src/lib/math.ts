@@ -1,4 +1,4 @@
-import type { LatticeParams } from '$lib/structure/index'
+import type { LatticeParams, Pbc } from '$lib/structure/index'
 
 export type Vec3 = [number, number, number]
 export type Vec9 = [
@@ -71,17 +71,17 @@ export function pbc_dist(
   pos2: Vec3, // Second position vector (Cartesian coordinates)
   lattice_matrix: Matrix3x3, // 3x3 lattice matrix where each row is a lattice vector
   lattice_inv?: Matrix3x3, // Optional pre-computed inverse matrix for optimization (since lattice is usually constant and repeatedly inverting matrix is expensive)
+  pbc: Pbc = [true, true, true],
 ): number {
-  // Use provided inverse or compute it
   const inv_matrix = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
 
   // Convert Cartesian coordinates to fractional coordinates
   const [fx1, fy1, fz1] = mat3x3_vec3_multiply(inv_matrix, pos1)
   const [fx2, fy2, fz2] = mat3x3_vec3_multiply(inv_matrix, pos2)
 
-  // Apply minimum image convention: wrap to [-0.5, 0.5)
-  const wrapped_frac_diff = [fx1 - fx2, fy1 - fy2, fz1 - fz2].map((x) =>
-    x - Math.round(x)
+  // Apply minimum image convention only for periodic axes
+  const wrapped_frac_diff = [fx1 - fx2, fy1 - fy2, fz1 - fz2].map((diff, idx) =>
+    pbc[idx] ? diff - Math.round(diff) : diff
   ) as Vec3
 
   // Convert back to Cartesian coordinates

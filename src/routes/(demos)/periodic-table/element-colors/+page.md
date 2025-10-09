@@ -4,9 +4,7 @@
 
 # Element Color Schemes
 
-## Multi-Scheme Comparison
-
-Compare three element color palettes side by side using horizontal bars within each element tile.
+**Multi-scheme comparison**: Compare 3 color palettes side by side as horizontal bars in each element tile.
 
 ```svelte example
 <script>

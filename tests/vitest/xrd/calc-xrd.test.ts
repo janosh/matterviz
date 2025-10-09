@@ -47,7 +47,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       expect(parsed).not.toBeNull()
       if (!parsed) return
 
-      const structure = parsed as unknown as PymatgenStructure
+      const structure = parsed as PymatgenStructure
       const expected = JSON.parse(fs.readFileSync(pair.xrd_path, `utf8`))
 
       const computed = compute_xrd_pattern(structure, {

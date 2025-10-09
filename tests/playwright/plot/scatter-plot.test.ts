@@ -1196,11 +1196,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
 
     // Scenarios: axis/bound/value and assertion function
-    const scenarios: Array<{
-      axis: `x` | `y`
-      bound: `min` | `max`
-      value: number
-    }> = [
+    const scenarios: { axis: `x` | `y`; bound: `min` | `max`; value: number }[] = [
       {
         axis: `x`,
         bound: `min`,

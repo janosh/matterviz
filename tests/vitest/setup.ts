@@ -1,7 +1,7 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { PymatgenStructure, Site } from '$lib/structure'
+import type { Pbc, PymatgenStructure, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
 
 beforeEach(() => {
@@ -10,7 +10,7 @@ beforeEach(() => {
 
 export function doc_query<T extends HTMLElement>(selector: string): T {
   const node = document.querySelector(selector)
-  if (!node) throw `No element found for selector: ${selector}`
+  if (!node) throw new Error(`No element found for selector: ${selector}`)
   return node as T
 }
 
@@ -44,31 +44,67 @@ export const get_dummy_structure = (
 }
 
 // Helper to create test crystal structures with proper lattice handling
+// Supports two modes:
+// 1. Fractional coordinates: create_test_structure(lattice, elements, frac_coords)
+// 2. Cartesian coordinates: create_test_structure(lattice, sites_data)
 export function create_test_structure(
-  lattice: Matrix3x3,
-  elements: ElementSymbol[],
-  frac_coords: Vec3[],
+  lattice: Matrix3x3 | number,
+  elements_or_sites:
+    | ElementSymbol[]
+    | {
+      species: { element: string; occu: number; oxidation_state: number }[]
+      xyz: number[]
+    }[],
+  frac_coords?: Vec3[],
 ): PymatgenStructure {
-  const sites: Site[] = frac_coords.map((frac_coord, idx) => ({
-    xyz: math.mat3x3_vec3_multiply(lattice, frac_coord),
-    abc: frac_coord,
-    species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
-    label: elements[idx],
-    properties: {},
-  }))
+  const lattice_matrix: Matrix3x3 = typeof lattice === `number`
+    ? [
+      [lattice, 0.0, 0.0],
+      [0.0, lattice, 0.0],
+      [0.0, 0.0, lattice],
+    ]
+    : lattice
 
+  // Calculate lattice parameters from matrix
+  const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
+
+  let sites: Site[]
+
+  // Mode 1: Fractional coordinates (original behavior)
+  if (frac_coords) {
+    const elements = elements_or_sites as ElementSymbol[]
+    sites = frac_coords.map((frac_coord, idx) => ({
+      xyz: math.mat3x3_vec3_multiply(lattice_matrix, frac_coord),
+      abc: frac_coord,
+      species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
+      label: elements[idx],
+      properties: {},
+    }))
+  } // Mode 2: Cartesian coordinates (new behavior for RDF tests)
+  else {
+    const sites_data = elements_or_sites as {
+      species: { element: string; occu: number; oxidation_state: number }[]
+      xyz: number[]
+    }[]
+    sites = sites_data.map((site, idx) => ({
+      species: site.species.map((sp) => ({
+        ...sp,
+        element: sp.element as ElementSymbol,
+      })),
+      xyz: site.xyz as Vec3,
+      // Calculate fractional coordinates: abc = inverse(lattice_matrix) · xyz
+      abc: math.mat3x3_vec3_multiply(
+        math.matrix_inverse_3x3(lattice_matrix),
+        site.xyz as Vec3,
+      ),
+      label: `${site.species[0].element}${idx}`,
+      properties: {},
+    }))
+  }
+
+  const lattice_params = { a, b, c, alpha, beta, gamma, pbc: [true, true, true] as Pbc }
   return {
-    lattice: {
-      matrix: lattice,
-      pbc: [true, true, true],
-      volume: math.det_3x3(lattice),
-      a: Math.hypot(...lattice[0]),
-      b: Math.hypot(...lattice[1]),
-      c: Math.hypot(...lattice[2]),
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-    },
+    lattice: { matrix: lattice_matrix, ...lattice_params, volume },
     sites,
   }
 }

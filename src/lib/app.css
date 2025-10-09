@@ -6,6 +6,10 @@
 
   --sms-max-width: 20em;
   --sms-text-color: var(--text-color);
+
+  /* Svelte MultiSelect */
+  --sms-options-bg: var(--page-bg);
+  --sms-active-color: light-dark(var(--accent-color), cornflowerblue);
 }
 
 /* Targeted theme transitions for performance */
