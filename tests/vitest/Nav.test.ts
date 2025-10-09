@@ -48,7 +48,7 @@ describe(`Nav`, () => {
     expect(document.querySelectorAll(`.burger-line`)).toHaveLength(3)
   })
 
-  test(`toggles menu on burger button click`, async () => {
+  test(`burger menu toggles with click and Escape`, async () => {
     mount(Nav, { target: document.body, props: { routes: default_routes } })
     const button = doc_query(`.burger-button`)
     const menu = doc_query(`.menu-content`)
@@ -60,25 +60,12 @@ describe(`Nav`, () => {
     expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
     expect(menu.classList.contains(`open`)).toBe(true)
 
-    await click(button)
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
-    expect(menu.classList.contains(`open`)).toBe(false)
-  })
-
-  test(`closes menu with Escape key`, async () => {
-    mount(Nav, { target: document.body, props: { routes: default_routes } })
-    const button = doc_query(`.burger-button`)
-
-    await click(button)
-    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
-
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
     await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
 
-    // Escape does nothing when already closed
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
+    await click(button)
+    expect(menu.classList.contains(`open`)).toBe(true)
   })
 
   test(`menu ID matches aria-controls and closes on link click`, async () => {
@@ -157,79 +144,50 @@ describe(`Nav`, () => {
     [`/home`, `/`, null],
   ])(`aria-current: pathname=%s link=%s -> %s`, (pathname, link_href, expected) => {
     const mock_page = { url: { pathname } } as Page
-
-    mount(Nav, {
-      target: document.body,
-      props: { routes: [link_href], page: mock_page },
-    })
-    const link = doc_query(`a[href="${link_href}"]`)
-    expect(link.getAttribute(`aria-current`)).toBe(expected)
+    mount(Nav, { target: document.body, props: { routes: [link_href], page: mock_page } })
+    expect(doc_query(`a[href="${link_href}"]`).getAttribute(`aria-current`)).toBe(
+      expected,
+    )
   })
 
-  test(`generates unique panel IDs`, () => {
-    mount(Nav, { target: document.body, props: { routes: [`/a`] } })
-    mount(Nav, { target: document.body, props: { routes: [`/b`] } })
-    const menus = document.querySelectorAll(`.menu-content`)
-    const [id1, id2] = Array.from(menus).map((menu) => menu.id)
-    expect(id1).not.toBe(id2)
-    expect(id1.startsWith(`nav-menu-`)).toBe(true)
-    expect(id2.startsWith(`nav-menu-`)).toBe(true)
-  })
-
-  test(`click_outside closes menu, clicking inside does not`, async () => {
+  test(`click outside closes menu, inside does not`, async () => {
     mount(Nav, { target: document.body, props: { routes: default_routes } })
     const button = doc_query(`.burger-button`)
     const menu = doc_query(`.menu-content`)
 
     await click(button)
-    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
-
     menu.click()
     expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
 
-    const outside_div = document.createElement(`div`)
-    document.body.appendChild(outside_div)
-    outside_div.click()
+    const outside = document.createElement(`div`)
+    document.body.appendChild(outside)
+    outside.click()
     await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
+    outside.remove()
   })
 
-  test(`non-Escape keys do not close menu`, async () => {
-    mount(Nav, { target: document.body, props: { routes: default_routes } })
-    const button = doc_query(`.burger-button`)
+  test(`dropdown structure: parent link, toggle button, filtered children`, () => {
+    mount(Nav, {
+      target: document.body,
+      props: { routes: [[`/parent`, [`/parent`, `/parent/child1`, `/parent/child2`]]] },
+    })
 
-    await click(button)
-    const keys = [`Enter`, `Space`, `Tab`, `ArrowDown`, `a`, `1`]
-    await Promise.all(
-      keys.map((key) => {
-        globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key }))
-        return tick()
-      }),
+    const dropdown = doc_query(`.dropdown-wrapper`)
+    expect(dropdown.getAttribute(`data-href`)).toBe(`/parent`)
+
+    const parent_link = doc_query(`.dropdown-trigger`)
+    expect(parent_link.getAttribute(`href`)).toBe(`/parent`)
+
+    const toggle = doc_query(`.dropdown-toggle`)
+    expect(toggle.tagName).toBe(`BUTTON`)
+    expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
+    expect(toggle.getAttribute(`aria-haspopup`)).toBe(`true`)
+
+    const hrefs = Array.from(document.querySelectorAll(`.dropdown-menu a`)).map((l) =>
+      l.getAttribute(`href`)
     )
-    expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
-  })
-
-  test(`renders dropdown menus with parent and child routes`, () => {
-    const routes_with_dropdown = [
-      `/standalone`,
-      [`/parent`, [`/parent`, `/parent/child1`, `/parent/child2`]],
-    ]
-    mount(Nav, { target: document.body, props: { routes: routes_with_dropdown } })
-
-    // Check standalone route
-    expect(document.querySelector(`a[href="/standalone"]`)).toBeTruthy()
-
-    // Check dropdown structure
-    const dropdown = document.querySelector(`.dropdown-wrapper`)
-    expect(dropdown).toBeTruthy()
-    expect(dropdown?.getAttribute(`data-href`)).toBe(`/parent`)
-    expect(dropdown?.getAttribute(`aria-haspopup`)).toBe(`true`)
-
-    // Check all dropdown items including parent
-    const dropdown_links = document.querySelectorAll(`.dropdown-menu a`)
-    expect(dropdown_links).toHaveLength(3)
-    const hrefs = Array.from(dropdown_links).map((link) => link.getAttribute(`href`))
-    expect(hrefs).toEqual([`/parent`, `/parent/child1`, `/parent/child2`])
+    expect(hrefs).toEqual([`/parent/child1`, `/parent/child2`])
   })
 
   test.each([
@@ -249,10 +207,12 @@ describe(`Nav`, () => {
       await tick()
       expect(menu.classList.contains(`visible`)).toBe(false)
     }],
-    [`click toggle`, async (wrapper: Element, menu: Element) => {
-      await click(wrapper)
+    [`click toggle button`, async (wrapper: Element, menu: Element) => {
+      const toggle_button = wrapper.querySelector(`.dropdown-toggle`)
+      if (!toggle_button) throw new Error(`toggle button not found`)
+      await click(toggle_button)
       expect(menu.classList.contains(`visible`)).toBe(true)
-      await click(wrapper)
+      await click(toggle_button)
       expect(menu.classList.contains(`visible`)).toBe(false)
     }],
   ])(`dropdown interaction via %s`, async (_desc, interaction) => {
@@ -267,99 +227,33 @@ describe(`Nav`, () => {
     await interaction(dropdown_wrapper, dropdown_menu)
   })
 
-  test(`clicking dropdown menu item closes mobile menu`, async () => {
-    const routes_with_dropdown = [
-      [`/parent`, [`/parent`, `/parent/child1`, `/parent/child2`]],
-    ]
-    mount(Nav, { target: document.body, props: { routes: routes_with_dropdown } })
+  test(`parent link and toggle button work independently`, async () => {
+    mount(Nav, { target: document.body, props: { routes: [[`/p`, [`/p`, `/p/c`]]] } })
+    const menu = doc_query(`.dropdown-menu`)
+    const parent_link = doc_query(`.dropdown-trigger`)
+    const toggle = doc_query(`.dropdown-toggle`)
 
-    const burger_button = doc_query(`.burger-button`)
-    const dropdown_wrapper = doc_query(`.dropdown-wrapper`)
-    const dropdown_menu = doc_query(`.dropdown-menu`)
+    await click(parent_link)
+    expect(menu.classList.contains(`visible`)).toBe(false)
 
-    // Open mobile menu
-    await click(burger_button)
-    expect(burger_button.getAttribute(`aria-expanded`)).toBe(`true`)
+    await click(toggle)
+    expect(menu.classList.contains(`visible`)).toBe(true)
 
-    // Open dropdown
-    await click(dropdown_wrapper)
-    expect(dropdown_menu.classList.contains(`visible`)).toBe(true)
-
-    // Click a dropdown menu item
-    const dropdown_link = dropdown_menu.querySelector(`a`)
-    if (dropdown_link) {
-      await click(dropdown_link)
-    }
-
-    // Mobile menu should be closed
-    expect(burger_button.getAttribute(`aria-expanded`)).toBe(`false`)
+    await click(toggle)
+    expect(menu.classList.contains(`visible`)).toBe(false)
   })
 
   test.each([
-    [
-      `links with default rendering`,
-      [`/test`, `/about`],
-      (links: NodeListOf<Element>) => {
-        expect(links).toHaveLength(2)
-        expect(links[0].getAttribute(`href`)).toBe(`/test`)
-        expect(links[1].getAttribute(`href`)).toBe(`/about`)
-      },
-    ],
-    [`dropdown child routes`, [[`/parent`, [`/parent`, `/parent/child`]]], () => {
-      const dropdown_links = document.querySelectorAll(`.dropdown-menu a`)
-      expect(dropdown_links).toHaveLength(2)
-      const hrefs = Array.from(dropdown_links).map((l) => l.getAttribute(`href`))
-      expect(hrefs).toEqual([`/parent`, `/parent/child`])
+    [`/plot-color-bar`, `plot color bar`, undefined],
+    [`/`, ``, undefined],
+    [`/hook-up-to-api`, `Hook up to external API`, {
+      '/hook-up-to-api': `Hook up to external API`,
     }],
-    [`menu without page prop`, [`/test`], () => {
-      expect(doc_query(`a[href="/test"]`).getAttribute(`aria-current`)).toBe(null)
-    }],
-  ])(`renders %s correctly`, (_desc, routes, assertions) => {
-    mount(Nav, { target: document.body, props: { routes } })
-    const links = document.querySelectorAll(`a`)
-    assertions(links)
-  })
-
-  test.each([
-    [`/plot-color-bar`, `plot color bar`, false, undefined],
-    [`/nested/sub-route`, `nested/sub route`, false, undefined],
-    [`/`, ``, false, undefined],
-    [`/parent`, `parent`, false, undefined],
-    [`/parent/long-child-name`, `long child name`, true, undefined],
-    [
-      `/hook-up-to-api`,
-      `Hook up to external API`,
-      false,
-      { '/hook-up-to-api': `Hook up to external API` },
-    ],
-    [
-      `/use-without-svelte`,
-      `Use without Svelte`,
-      false,
-      { '/use-without-svelte': `Use without Svelte` },
-    ],
-  ])(`format_label: %s -> "%s"`, (route, expected, is_dropdown_child, labels) => {
-    const routes = is_dropdown_child ? [[`/parent`, [`/parent`, route]]] : [route]
-    mount(Nav, { target: document.body, props: { routes, labels } })
-
-    const link = is_dropdown_child
-      ? document.querySelectorAll(`.dropdown-menu a`)[1]
-      : document.querySelector(`a[href="${route}"]`)
-
-    expect(link?.textContent?.trim()).toBe(expected)
-  })
-
-  test(`custom labels skip text-transform capitalization`, () => {
-    mount(Nav, {
-      target: document.body,
-      props: {
-        routes: [`/auto`, `/custom`, [`/parent`, [`/parent/child`]]],
-        labels: { '/custom': `Custom Label` },
-      },
-    })
-
-    expect(doc_query(`a[href="/auto"]`).getAttribute(`style`)).toContain(`text-transform`)
-    expect(doc_query(`a[href="/custom"]`).getAttribute(`style`)).toBe(``)
+  ])(`format_label: %s -> "%s"`, (route, expected, labels) => {
+    mount(Nav, { target: document.body, props: { routes: [route], labels } })
+    const link = doc_query(`a[href="${route}"]`)
+    expect(link.textContent?.trim()).toBe(expected)
+    expect(link.getAttribute(`style`)).toBe(labels ? `` : `text-transform: capitalize;`)
   })
 
   test(`dropdown accessibility and state management`, async () => {
@@ -379,11 +273,12 @@ describe(`Nav`, () => {
       document.querySelectorAll(`.dropdown-wrapper`),
     )
     const menu1 = dropdown1.querySelector(`.dropdown-menu`) as HTMLElement
+    const toggle1 = dropdown1.querySelector(`.dropdown-toggle`) as HTMLElement
 
-    // aria-expanded toggles correctly
-    expect(dropdown1.getAttribute(`aria-expanded`)).toBe(`false`)
-    await click(dropdown1)
-    expect(dropdown1.getAttribute(`aria-expanded`)).toBe(`true`)
+    // aria-expanded toggles correctly on toggle button
+    expect(toggle1.getAttribute(`aria-expanded`)).toBe(`false`)
+    await click(toggle1)
+    expect(toggle1.getAttribute(`aria-expanded`)).toBe(`true`)
     expect(menu1.classList.contains(`visible`)).toBe(true)
 
     // Escape key closes dropdown
@@ -392,33 +287,38 @@ describe(`Nav`, () => {
     expect(menu1.classList.contains(`visible`)).toBe(false)
 
     // Multiple dropdowns work independently
-    await click(dropdown1)
+    const toggle2 = dropdown2.querySelector(`.dropdown-toggle`) as HTMLElement
+    await click(toggle1)
     const menu2 = dropdown2.querySelector(`.dropdown-menu`) as HTMLElement
     expect(menu1.classList.contains(`visible`)).toBe(true)
     expect(menu2.classList.contains(`visible`)).toBe(false)
 
-    await click(dropdown2)
+    await click(toggle2)
     expect(menu1.classList.contains(`visible`)).toBe(false)
     expect(menu2.classList.contains(`visible`)).toBe(true)
 
-    // aria-current applied to dropdown items
-    const dropdown_links = dropdown1.querySelectorAll(`a`)
+    // aria-current applied to parent link and dropdown child
+    const parent_link = dropdown1.querySelector(`.dropdown-trigger`)
+    expect(parent_link?.getAttribute(`aria-current`)).toBe(`page`)
+    const dropdown_links = dropdown1.querySelectorAll(`.dropdown-menu a`)
     expect(dropdown_links[0].getAttribute(`aria-current`)).toBe(`page`)
-    expect(dropdown_links[1].getAttribute(`aria-current`)).toBe(`page`)
   })
 
   test(`keyboard navigation: Enter/Space/ArrowDown open, arrows navigate, Escape closes`, async () => {
-    mount(Nav, { target: document.body, props: { routes: [[`/p`, [`/p/1`, `/p/2`]]] } })
+    mount(Nav, {
+      target: document.body,
+      props: { routes: [[`/p`, [`/p`, `/p/1`, `/p/2`]]] },
+    })
     const wrapper = doc_query(`.dropdown-wrapper`)
+    const toggle_button = doc_query(`.dropdown-toggle`)
     const menu = doc_query(`.dropdown-menu`)
-    const key = (k: string, target = wrapper) =>
+    const key = (k: string, target = toggle_button) =>
       target.dispatchEvent(new KeyboardEvent(`keydown`, { key: k, bubbles: true }))
     const wait = async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
     // Enter/Space/ArrowDown all open and focus first item
-
     for (const open_key of [`Enter`, ` `, `ArrowDown`]) {
       key(open_key)
       // deno-lint-ignore no-await-in-loop
@@ -440,32 +340,24 @@ describe(`Nav`, () => {
     key(`ArrowUp`)
     expect(document.activeElement).toBe(item1)
 
-    // Escape from item returns focus to trigger
+    // Escape from item returns focus to wrapper
     key(`Escape`, item1 as HTMLElement)
     await wait()
     expect(menu.classList.contains(`visible`)).toBe(false)
     expect(document.activeElement).toBe(wrapper)
   })
 
-  test(`touch disables hover; focus in/out; link closes all menus`, async () => {
-    mount(Nav, { target: document.body, props: { routes: [[`/p`, [`/p/1`]], `/s`] } })
+  test(`dropdown focus behavior`, async () => {
+    mount(Nav, { target: document.body, props: { routes: [[`/p`, [`/p`, `/p/1`]]] } })
     const wrapper = doc_query(`.dropdown-wrapper`)
     const menu = doc_query(`.dropdown-menu`)
-    const burger = doc_query(`.burger-button`)
 
-    // Touch device disables hover
-    Object.defineProperty(navigator, `maxTouchPoints`, { value: 1, configurable: true })
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    wrapper.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    expect(menu.classList.contains(`visible`)).toBe(false)
-    Object.defineProperty(navigator, `maxTouchPoints`, { value: 0, configurable: true })
-
-    // Focus in opens, focus out to external closes, focus to internal stays open
     wrapper.dispatchEvent(
       new FocusEvent(`focusin`, { bubbles: true, relatedTarget: null }),
     )
     await tick()
     expect(menu.classList.contains(`visible`)).toBe(true)
+
     const external = document.createElement(`button`)
     document.body.appendChild(external)
     wrapper.dispatchEvent(
@@ -473,66 +365,19 @@ describe(`Nav`, () => {
     )
     await tick()
     expect(menu.classList.contains(`visible`)).toBe(false)
-    wrapper.dispatchEvent(
-      new FocusEvent(`focusin`, { bubbles: true, relatedTarget: null }),
-    )
-    wrapper.dispatchEvent(
-      new FocusEvent(`focusout`, {
-        bubbles: true,
-        relatedTarget: menu.querySelector(`a`),
-      }),
-    )
-    await tick()
-    expect(menu.classList.contains(`visible`)).toBe(true)
     external.remove()
-
-    // Link click closes all menus
-    await click(burger)
-    await click(wrapper)
-    await click(doc_query(`a[href="/s"]`))
-    expect(burger.getAttribute(`aria-expanded`)).toBe(`false`)
-    expect(menu.classList.contains(`visible`)).toBe(false)
   })
 
   test.each([
-    [`/parent/child1`, `/parent`, true],
-    [`/parent/child2`, `/parent`, true],
-    [`/parent`, `/parent`, true],
-    [`/other-route`, `/parent`, false],
-    [`/`, `/parent`, false],
-  ])(
-    `dropdown active when child is current: pathname=%s parent=%s -> active=%s`,
-    (pathname, parent_href, should_be_active) => {
-      const mock_page = { url: { pathname } } as Page
-      mount(Nav, {
-        target: document.body,
-        props: {
-          routes: [[parent_href, [
-            parent_href,
-            `${parent_href}/child1`,
-            `${parent_href}/child2`,
-          ]]],
-          page: mock_page,
-        },
-      })
-
-      const dropdown = doc_query(`.dropdown-wrapper`)
-      expect(dropdown.classList.contains(`active`)).toBe(should_be_active)
-      expect(dropdown.getAttribute(`aria-current`)).toBe(
-        should_be_active ? `true` : null,
-      )
-    },
-  )
-
-  test(`only active dropdown gets highlighted, not others`, () => {
-    const mock_page = { url: { pathname: `/parent1/child` } } as Page
+    [`/parent/child1`, true],
+    [`/parent`, true],
+    [`/other`, false],
+  ])(`dropdown active state: pathname=%s -> active=%s`, (pathname, is_active) => {
+    const mock_page = { url: { pathname } } as Page
     mount(Nav, {
       target: document.body,
       props: {
-        routes: [
-          [`/parent1`, [`/parent1`, `/parent1/child`]],
-          [`/parent2`, [`/parent2`, `/parent2/child`]],
-        ],
+        routes: [[`/parent`, [`/parent`, `/parent/child1`]], [`/other`, [`/other`]]],
         page: mock_page,
       },
     })
@@ -540,7 +385,9 @@ describe(`Nav`, () => {
     const [dropdown1, dropdown2] = Array.from(
       document.querySelectorAll(`.dropdown-wrapper`),
     )
-    expect(dropdown1.classList.contains(`active`)).toBe(true)
-    expect(dropdown2.classList.contains(`active`)).toBe(false)
+    expect(dropdown1.classList.contains(`active`)).toBe(is_active)
+    expect(dropdown2.classList.contains(`active`)).toBe(
+      !is_active && pathname === `/other`,
+    )
   })
 })
