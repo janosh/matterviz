@@ -70,7 +70,7 @@ describe(`calculate_rdf`, () => {
     const result = calculate_rdf(pd_structure, { cutoff, n_bins })
 
     const max_r = Math.max(...result.r)
-    expect(max_r).toBeCloseTo(cutoff, 2)
+    expect(max_r).toBeCloseTo((n_bins - 0.5) * (cutoff / n_bins), 2)
   })
 
   test(`should calculate partial RDF for specific element pairs`, () => {
@@ -151,7 +151,7 @@ describe(`calculate_rdf`, () => {
 
     const bin_size = cutoff / n_bins
     for (let idx = 0; idx < n_bins; idx++) {
-      const expected_r = (idx + 1) * bin_size
+      const expected_r = (idx + 0.5) * bin_size
       expect(result.r[idx]).toBeCloseTo(expected_r, 10)
     }
   })
@@ -517,7 +517,7 @@ describe(`calculate_all_pair_rdfs`, () => {
     for (const pattern of patterns) {
       expect(pattern.r).toHaveLength(n_bins)
       expect(pattern.g_r).toHaveLength(n_bins)
-      expect(Math.max(...pattern.r)).toBeCloseTo(cutoff, 2)
+      expect(Math.max(...pattern.r)).toBeCloseTo((n_bins - 0.5) * (cutoff / n_bins), 2)
     }
   })
 
@@ -681,6 +681,102 @@ describe(`calculate_all_pair_rdfs`, () => {
 
     // Should still work (PBC handles it)
     expect(result_no_expand.g_r.length).toBe(100)
+  })
+
+  test.each([
+    [1.5, `minimal safety factor`],
+    [2.0, `standard safety factor (default)`],
+    [2.5, `conservative safety factor`],
+    [3.0, `extra conservative safety factor`],
+  ])(`expansion_factor=%s (%s)`, (expansion_factor, _description) => {
+    const result = calculate_rdf(pd_structure, {
+      cutoff: 10,
+      n_bins: 100,
+      auto_expand: true,
+      expansion_factor,
+    })
+
+    check_basic_rdf_properties(
+      result.r,
+      result.g_r,
+      100,
+      `expansion_factor_${expansion_factor}`,
+    )
+
+    // Should have reasonable values regardless of expansion factor
+    const max_g_r = Math.max(...result.g_r)
+    expect(max_g_r).toBeGreaterThan(0)
+    expect(max_g_r).toBeLessThan(50)
+
+    // Should not have artificial peaks at short distances
+    const min_expected_dist = 2.0
+    const bins_should_be_zero = Math.floor(min_expected_dist / (10 / 100))
+    for (let idx = 0; idx < bins_should_be_zero; idx++) {
+      expect(result.g_r[idx]).toBe(0)
+    }
+  })
+
+  test(`different expansion_factor values should give consistent RDFs`, () => {
+    // All expansion factors should give similar results, just with better
+    // convergence for larger factors (less finite-size effects)
+    const cutoff = 8
+    const n_bins = 80
+
+    const result_1_5 = calculate_rdf(pd_structure, {
+      cutoff,
+      n_bins,
+      auto_expand: true,
+      expansion_factor: 1.5,
+    })
+
+    const result_2_0 = calculate_rdf(pd_structure, {
+      cutoff,
+      n_bins,
+      auto_expand: true,
+      expansion_factor: 2.0,
+    })
+
+    const result_2_5 = calculate_rdf(pd_structure, {
+      cutoff,
+      n_bins,
+      auto_expand: true,
+      expansion_factor: 2.5,
+    })
+
+    check_basic_rdf_properties(result_1_5.r, result_1_5.g_r, n_bins, `factor_1.5`)
+    check_basic_rdf_properties(result_2_0.r, result_2_0.g_r, n_bins, `factor_2.0`)
+    check_basic_rdf_properties(result_2_5.r, result_2_5.g_r, n_bins, `factor_2.5`)
+
+    // All should have similar shapes (correlate well)
+    // Calculate correlation between RDFs
+    const sum_1_5 = result_1_5.g_r.reduce((sum, val) => sum + val, 0)
+    const sum_2_0 = result_2_0.g_r.reduce((sum, val) => sum + val, 0)
+    const sum_2_5 = result_2_5.g_r.reduce((sum, val) => sum + val, 0)
+
+    // Sums should be similar (within 20% of each other)
+    const avg_sum = (sum_1_5 + sum_2_0 + sum_2_5) / 3
+    expect(Math.abs(sum_1_5 - avg_sum) / avg_sum).toBeLessThan(0.2)
+    expect(Math.abs(sum_2_0 - avg_sum) / avg_sum).toBeLessThan(0.2)
+    expect(Math.abs(sum_2_5 - avg_sum) / avg_sum).toBeLessThan(0.2)
+  })
+
+  test(`expansion_factor should be passed through calculate_all_pair_rdfs`, () => {
+    const expansion_factor = 2.5
+    const patterns = calculate_all_pair_rdfs(pd_structure, {
+      cutoff: 10,
+      n_bins: 50,
+      expansion_factor,
+    })
+
+    // Should work without errors and produce valid results
+    expect(patterns).toHaveLength(1) // Pd-Pd only
+    expect(patterns[0].element_pair).toEqual([`Pd`, `Pd`])
+    check_basic_rdf_properties(patterns[0].r, patterns[0].g_r, 50, `all_pairs_expansion`)
+
+    // Should have reasonable values
+    const max_g_r = Math.max(...patterns[0].g_r)
+    expect(max_g_r).toBeGreaterThan(0)
+    expect(max_g_r).toBeLessThan(50)
   })
 
   test(`full RDF should properly weight pairs, not average uniformly`, () => {

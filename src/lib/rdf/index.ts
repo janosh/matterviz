@@ -18,25 +18,30 @@ export interface RdfEntry {
   color?: string
 }
 
+export interface RdfOptions {
+  center_species?: string
+  neighbor_species?: string
+  cutoff?: number
+  n_bins?: number
+  pbc?: Pbc
+  auto_expand?: boolean
+  expansion_factor?: number
+}
+
 // Calculate radial distribution function
 export function calculate_rdf(
   structure: Structure,
-  {
+  options: RdfOptions = {},
+): RdfPattern {
+  const {
     center_species,
     neighbor_species,
     cutoff = 15,
     n_bins = 75,
-    pbc = [true, true, true],
     auto_expand = true,
-  }: {
-    center_species?: string
-    neighbor_species?: string
-    cutoff?: number
-    n_bins?: number
-    pbc?: Pbc
-    auto_expand?: boolean
-  } = {},
-): RdfPattern {
+    expansion_factor = 2.0,
+  } = options
+  let { pbc = [true, true, true] } = options
   if (cutoff <= 0 || n_bins <= 0) {
     throw new Error(`cutoff and n_bins must be positive`)
   }
@@ -49,12 +54,12 @@ export function calculate_rdf(
   let lattice: Matrix3x3 = structure.lattice.matrix
   let { sites } = structure
 
-  // Expand structure if needed to ensure shortest lattice vector is 1.5× the cutoff
+  // Expand structure if needed to ensure shortest lattice vector is expansion_factor× the cutoff
   // This prevents artificial close contacts at cell boundaries when using PBC
+  // Standard practice uses 2.0-2.5× to eliminate finite-size effects
   if (auto_expand) {
     const { a, b, c } = calc_lattice_params(lattice)
-    const EXPANSION_SAFETY_FACTOR = 1.5
-    const min_size = cutoff * EXPANSION_SAFETY_FACTOR
+    const min_size = cutoff * expansion_factor
     const [n_a, n_b, n_c] = [a, b, c].map((len) => Math.ceil(min_size / len))
 
     if (n_a > 1 || n_b > 1 || n_c > 1) {
@@ -70,7 +75,7 @@ export function calculate_rdf(
   }
 
   const bin_size = cutoff / n_bins
-  const r = Array.from({ length: n_bins }, (_, idx) => (idx + 1) * bin_size)
+  const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
   const g_r = new Array(n_bins).fill(0)
 
   if (sites.length === 0) return { r, g_r }
@@ -128,12 +133,7 @@ export function calculate_rdf(
 // Calculate RDF for all element pairs
 export function calculate_all_pair_rdfs(
   structure: Structure,
-  options: {
-    cutoff?: number
-    n_bins?: number
-    pbc?: Pbc
-    auto_expand?: boolean
-  } = {},
+  options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
   const elems = [...new Set(structure.sites.map((s) => s.species[0].element))].sort()
   return elems.flatMap((el1, idx1) =>
