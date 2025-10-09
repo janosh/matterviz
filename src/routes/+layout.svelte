@@ -67,6 +67,8 @@
   labels={{
     '/how-to/hook-up-to-external-api': `Hook up to external API`,
     '/how-to/use-without-svelte': `Use without Svelte`,
+    '/structure/rdf': `RDF`,
+    '/structure/xrd': `XRD`,
   }}
   menu_style="display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
   aria-label="Main navigation"
