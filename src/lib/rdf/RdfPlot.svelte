@@ -3,9 +3,9 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import type { PymatgenStructure as Structure } from '$lib/structure'
+  import type { Pbc, PymatgenStructure as Structure } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { calculate_all_pair_rdfs, type RdfEntry } from './index'
+  import { calculate_all_pair_rdfs, calculate_rdf, type RdfEntry } from './index'
 
   let {
     patterns,
@@ -16,7 +16,7 @@
     y_label = `g(r)`,
     cutoff = 15,
     n_bins = 75,
-    pbc = [1, 1, 1],
+    pbc = [true, true, true],
     enable_drop = false,
     children,
     ...rest
@@ -29,7 +29,7 @@
     y_label?: string
     cutoff?: number
     n_bins?: number
-    pbc?: [0 | 1, 0 | 1, 0 | 1]
+    pbc?: Pbc
     enable_drop?: boolean
     children?: Snippet<[]>
   } & ComponentProps<typeof ScatterPlot> = $props()
@@ -69,8 +69,8 @@
     )
 
     for (const { struct, label } of struct_list) {
-      const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
       if (mode === `element_pairs`) {
+        const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
         result.push(
           ...pairs.map((p) => ({
             label: p.element_pair
@@ -79,12 +79,9 @@
             pattern: p,
           })),
         )
-      } else {
-        const r = pairs[0]?.r ?? []
-        const g_r = r.map((_, i) =>
-          pairs.reduce((sum, p) => sum + p.g_r[i], 0) / pairs.length
-        )
-        result.push({ label, pattern: { r, g_r } })
+      } else { // Calculate full RDF directly without element filters to properly weight all pairs
+        const full_rdf = calculate_rdf(struct, { cutoff, n_bins, pbc })
+        result.push({ label, pattern: full_rdf })
       }
     }
 

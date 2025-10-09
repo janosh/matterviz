@@ -114,22 +114,18 @@ describe(`calculate_rdf`, () => {
   })
 
   test(`should respect PBC parameter`, () => {
-    // With PBC disabled in all directions
     const no_pbc_result = calculate_rdf(pd_structure, {
-      pbc: [0, 0, 0],
+      pbc: [false, false, false],
       cutoff: 10,
       n_bins: 50,
     })
 
-    // With PBC enabled
     const pbc_result = calculate_rdf(pd_structure, {
-      pbc: [1, 1, 1],
+      pbc: [true, true, true],
       cutoff: 10,
       n_bins: 50,
     })
 
-    // Results should be the same for this small structure within the cutoff
-    // but in general they could differ for larger structures or different cutoffs
     expect(no_pbc_result.r).toHaveLength(50)
     expect(pbc_result.r).toHaveLength(50)
   })
@@ -174,7 +170,7 @@ describe(`calculate_rdf`, () => {
 
     for (let idx = 0; idx < n_atoms; idx++) {
       sites.push({
-        species: [{ element: `Si`, occu: 1 }],
+        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
         xyz: [random() * 30, random() * 30, random() * 30],
       })
     }
@@ -225,10 +221,22 @@ describe(`calculate_rdf`, () => {
       },
       sites: [
         // Place atoms near cell boundaries so PBC matters
-        { species: [{ element: `Si`, occu: 1 }], xyz: [0.5, 0.5, 0.5] },
-        { species: [{ element: `Si`, occu: 1 }], xyz: [9.5, 0.5, 0.5] },
-        { species: [{ element: `Si`, occu: 1 }], xyz: [0.5, 9.5, 0.5] },
-        { species: [{ element: `Si`, occu: 1 }], xyz: [9.5, 9.5, 0.5] },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.5, 0.5, 0.5],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [9.5, 0.5, 0.5],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.5, 9.5, 0.5],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [9.5, 9.5, 0.5],
+        },
       ],
     }
 
@@ -238,15 +246,15 @@ describe(`calculate_rdf`, () => {
     const result_full_pbc = calculate_rdf(test_structure, {
       cutoff,
       n_bins,
-      pbc: [1, 1, 1],
-      auto_expand: false, // Disable to test PBC behavior
+      pbc: [true, true, true],
+      auto_expand: false,
     })
 
     const result_no_pbc = calculate_rdf(test_structure, {
       cutoff,
       n_bins,
-      pbc: [0, 0, 0],
-      auto_expand: false, // Disable to test PBC behavior
+      pbc: [false, false, false],
+      auto_expand: false,
     })
 
     check_basic_rdf_properties(result_full_pbc.r, result_full_pbc.g_r, n_bins, `full_pbc`)
@@ -257,6 +265,60 @@ describe(`calculate_rdf`, () => {
     const sum_no = result_no_pbc.g_r.reduce((sum, val) => sum + val, 0)
 
     expect(sum_full).toBeGreaterThan(sum_no)
+  })
+
+  test(`should respect axis-specific PBC flags (slab geometry)`, () => {
+    const slab_structure: PymatgenStructure = {
+      lattice: {
+        matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 20.0]],
+      },
+      sites: [
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.5, 0.5, 5.0],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [9.5, 0.5, 5.0],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [5.0, 5.0, 1.0],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [5.0, 5.0, 19.0],
+        },
+      ],
+    }
+
+    const result_slab_pbc = calculate_rdf(slab_structure, {
+      cutoff: 8,
+      n_bins: 100,
+      pbc: [true, true, false],
+      auto_expand: false,
+    })
+
+    const result_full_pbc = calculate_rdf(slab_structure, {
+      cutoff: 8,
+      n_bins: 100,
+      pbc: [true, true, true],
+      auto_expand: false,
+    })
+
+    const result_no_pbc = calculate_rdf(slab_structure, {
+      cutoff: 8,
+      n_bins: 100,
+      pbc: [false, false, false],
+      auto_expand: false,
+    })
+
+    const sum_slab = result_slab_pbc.g_r.reduce((sum, val) => sum + val, 0)
+    const sum_full = result_full_pbc.g_r.reduce((sum, val) => sum + val, 0)
+    const sum_no = result_no_pbc.g_r.reduce((sum, val) => sum + val, 0)
+
+    expect(sum_slab).toBeGreaterThan(sum_no)
+    expect(sum_full).toBeGreaterThan(sum_slab)
   })
 
   test(`should handle single atom structure (all zeros)`, () => {
@@ -270,7 +332,7 @@ describe(`calculate_rdf`, () => {
       },
       sites: [
         {
-          species: [{ element: `Si`, occu: 1 }],
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
           xyz: [0.0, 0.0, 0.0],
         },
       ],
@@ -298,11 +360,11 @@ describe(`calculate_rdf`, () => {
       },
       sites: [
         {
-          species: [{ element: `Si`, occu: 1 }],
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
           xyz: [0.0, 0.0, 0.0],
         },
         {
-          species: [{ element: `Si`, occu: 1 }],
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
           xyz: [4.5, 4.5, 4.5], // Very far away
         },
       ],
@@ -311,9 +373,9 @@ describe(`calculate_rdf`, () => {
     const result = calculate_rdf(distant_atoms, {
       center_species: `Si`,
       neighbor_species: `Si`,
-      cutoff: 0.1, // Very small cutoff
+      cutoff: 0.1,
       n_bins: 30,
-      pbc: [0, 0, 0], // No PBC
+      pbc: [false, false, false],
     })
 
     check_basic_rdf_properties(result.r, result.g_r, 30, `distant_atoms`)
@@ -331,10 +393,22 @@ describe(`calculate_rdf`, () => {
         ],
       },
       sites: [
-        { species: [{ element: `Si`, occu: 1 }], xyz: [0.0, 0.0, 0.0] },
-        { species: [{ element: `Si`, occu: 1 }], xyz: [2.5, 0.0, 0.0] },
-        { species: [{ element: `Ge`, occu: 1 }], xyz: [1.25, 1.25, 0.0] },
-        { species: [{ element: `Ge`, occu: 1 }], xyz: [3.75, 1.25, 0.0] },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.0, 0.0, 0.0],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [2.5, 0.0, 0.0],
+        },
+        {
+          species: [{ element: `Ge`, occu: 1, oxidation_state: 0 }],
+          xyz: [1.25, 1.25, 0.0],
+        },
+        {
+          species: [{ element: `Ge`, occu: 1, oxidation_state: 0 }],
+          xyz: [3.75, 1.25, 0.0],
+        },
       ],
     }
 
@@ -346,7 +420,7 @@ describe(`calculate_rdf`, () => {
       neighbor_species: `Si`,
       cutoff,
       n_bins,
-      pbc: [0, 0, 0],
+      pbc: [false, false, false],
     })
 
     const rdf_ge_ge = calculate_rdf(si_ge_structure, {
@@ -354,7 +428,7 @@ describe(`calculate_rdf`, () => {
       neighbor_species: `Ge`,
       cutoff,
       n_bins,
-      pbc: [0, 0, 0],
+      pbc: [false, false, false],
     })
 
     const rdf_si_ge = calculate_rdf(si_ge_structure, {
@@ -362,7 +436,7 @@ describe(`calculate_rdf`, () => {
       neighbor_species: `Ge`,
       cutoff,
       n_bins,
-      pbc: [0, 0, 0],
+      pbc: [false, false, false],
     })
 
     check_basic_rdf_properties(rdf_si_si.r, rdf_si_si.g_r, n_bins, `Si-Si`)
@@ -607,5 +681,43 @@ describe(`calculate_all_pair_rdfs`, () => {
 
     // Should still work (PBC handles it)
     expect(result_no_expand.g_r.length).toBe(100)
+  })
+
+  test(`full RDF should properly weight pairs, not average uniformly`, () => {
+    // Use a multicomponent structure where simple averaging would be wrong
+    // Bi2Zr2O8 has different numbers of each element, so weighting matters
+    const cutoff = 5
+    const n_bins = 50
+
+    // Calculate full RDF directly (correct approach)
+    const full_rdf_correct = calculate_rdf(bi2zr2o8_structure, { cutoff, n_bins })
+
+    // Calculate partial RDFs and average them uniformly (incorrect approach)
+    const partial_rdfs = calculate_all_pair_rdfs(bi2zr2o8_structure, { cutoff, n_bins })
+    const full_rdf_wrong = {
+      r: partial_rdfs[0]?.r ?? [],
+      g_r: partial_rdfs[0].r.map((_, idx) =>
+        partial_rdfs.reduce((sum, p) => sum + p.g_r[idx], 0) / partial_rdfs.length
+      ),
+    }
+
+    // The two approaches should give different results
+    // Calculate the difference between them
+    let max_diff = 0
+    for (let idx = 0; idx < n_bins; idx++) {
+      const diff = Math.abs(full_rdf_correct.g_r[idx] - full_rdf_wrong.g_r[idx])
+      max_diff = Math.max(max_diff, diff)
+    }
+
+    // They should differ significantly for this multicomponent structure
+    expect(max_diff).toBeGreaterThan(0.1)
+
+    // The correct full RDF should have reasonable properties
+    check_basic_rdf_properties(
+      full_rdf_correct.r,
+      full_rdf_correct.g_r,
+      n_bins,
+      `full_correct`,
+    )
   })
 })

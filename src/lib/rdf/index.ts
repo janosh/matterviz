@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { calc_lattice_params, euclidean_dist, pbc_dist } from '$lib/math'
-import type { PymatgenStructure as Structure } from '$lib/structure'
+import type { Pbc, PymatgenStructure as Structure } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 
 export type { PymatgenStructure } from '$lib/structure'
@@ -26,14 +26,14 @@ export function calculate_rdf(
     neighbor_species,
     cutoff = 15,
     n_bins = 75,
-    pbc = [1, 1, 1] as [0 | 1, 0 | 1, 0 | 1],
+    pbc = [true, true, true],
     auto_expand = true,
   }: {
     center_species?: string
     neighbor_species?: string
     cutoff?: number
     n_bins?: number
-    pbc?: [0 | 1, 0 | 1, 0 | 1]
+    pbc?: Pbc
     auto_expand?: boolean
   } = {},
 ): RdfPattern {
@@ -65,7 +65,7 @@ export function calculate_rdf(
       )
       sites = expanded_structure.sites
       lattice = expanded_structure.lattice.matrix
-      pbc = [0, 0, 0] // Disable PBC since we explicitly expanded the structure
+      pbc = [false, false, false] // Disable PBC since we explicitly expanded the structure
     }
   }
 
@@ -91,15 +91,14 @@ export function calculate_rdf(
   }
 
   // Calculate distances and bin them
-  const use_pbc = pbc[0] === 1 || pbc[1] === 1 || pbc[2] === 1
+  const use_pbc = pbc.some((flag) => flag)
 
   for (const center of centers) {
     for (const neighbor of neighbors) {
       if (center === neighbor) continue
 
-      // Use existing utility functions for distance calculation
       const dist = use_pbc
-        ? pbc_dist(center.xyz as Vec3, neighbor.xyz as Vec3, lattice)
+        ? pbc_dist(center.xyz as Vec3, neighbor.xyz as Vec3, lattice, undefined, pbc)
         : euclidean_dist(center.xyz, neighbor.xyz)
 
       if (dist > 0 && dist < cutoff) {
@@ -132,7 +131,7 @@ export function calculate_all_pair_rdfs(
   options: {
     cutoff?: number
     n_bins?: number
-    pbc?: [0 | 1, 0 | 1, 0 | 1]
+    pbc?: Pbc
     auto_expand?: boolean
   } = {},
 ): RdfPattern[] {

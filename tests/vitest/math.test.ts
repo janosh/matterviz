@@ -675,6 +675,56 @@ describe(`pbc_dist`, () => {
       expect(result).toBeCloseTo(expected, 4)
     }
   })
+
+  test(`axis-specific PBC flags (mixed boundary conditions)`, () => {
+    // Test slab geometry: periodic in xy, not in z
+    const slab_lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 20]]
+
+    // Slab: periodic in xy, not in z
+    expect(
+      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, false]),
+    )
+      .toBeCloseTo(18, 5)
+    expect(
+      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, true]),
+    )
+      .toBeCloseTo(2, 5)
+    expect(
+      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
+        true,
+        true,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+    expect(
+      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
+        false,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(9, 5)
+
+    // Nanowire: periodic only in z
+    const wire_lattice: math.Matrix3x3 = [[20, 0, 0], [0, 20, 0], [0, 0, 10]]
+    expect(
+      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [
+        false,
+        false,
+        true,
+      ]),
+    )
+      .toBeCloseTo(2, 5)
+    expect(
+      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [
+        false,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(8, 5)
+  })
 })
 
 describe(`tensor conversion utilities`, () => {
