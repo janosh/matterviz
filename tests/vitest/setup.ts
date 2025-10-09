@@ -44,30 +44,86 @@ export const get_dummy_structure = (
 }
 
 // Helper to create test crystal structures with proper lattice handling
+// Supports two modes:
+// 1. Fractional coordinates: create_test_structure(lattice, elements, frac_coords)
+// 2. Cartesian coordinates: create_test_structure(lattice, sites_data)
 export function create_test_structure(
-  lattice: Matrix3x3,
-  elements: ElementSymbol[],
-  frac_coords: Vec3[],
+  lattice: Matrix3x3 | number,
+  elements_or_sites:
+    | ElementSymbol[]
+    | {
+      species: { element: string; occu: number; oxidation_state: number }[]
+      xyz: number[]
+    }[],
+  frac_coords?: Vec3[],
 ): PymatgenStructure {
-  const sites: Site[] = frac_coords.map((frac_coord, idx) => ({
-    xyz: math.mat3x3_vec3_multiply(lattice, frac_coord),
-    abc: frac_coord,
-    species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
-    label: elements[idx],
-    properties: {},
-  }))
+  const lattice_matrix: Matrix3x3 = typeof lattice === `number`
+    ? [
+      [lattice, 0.0, 0.0],
+      [0.0, lattice, 0.0],
+      [0.0, 0.0, lattice],
+    ]
+    : lattice
+
+  // Calculate lattice parameters from matrix
+  const [avec, bvec, cvec] = lattice_matrix
+  const a_len = Math.hypot(...avec)
+  const b_len = Math.hypot(...bvec)
+  const c_len = Math.hypot(...cvec)
+
+  // Calculate angles (in degrees)
+  const dot = (v1: Vec3, v2: Vec3) => v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
+  const alpha = (Math.acos(dot(bvec, cvec) / (b_len * c_len)) * 180) / Math.PI
+  const beta = (Math.acos(dot(avec, cvec) / (a_len * c_len)) * 180) / Math.PI
+  const gamma = (Math.acos(dot(avec, bvec) / (a_len * b_len)) * 180) / Math.PI
+
+  const volume = math.det_3x3(lattice_matrix)
+
+  let sites: Site[]
+
+  // Mode 1: Fractional coordinates (original behavior)
+  if (frac_coords) {
+    const elements = elements_or_sites as ElementSymbol[]
+    sites = frac_coords.map((frac_coord, idx) => ({
+      xyz: math.mat3x3_vec3_multiply(lattice_matrix, frac_coord),
+      abc: frac_coord,
+      species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
+      label: elements[idx],
+      properties: {},
+    }))
+  } // Mode 2: Cartesian coordinates (new behavior for RDF tests)
+  else {
+    const sites_data = elements_or_sites as {
+      species: { element: string; occu: number; oxidation_state: number }[]
+      xyz: number[]
+    }[]
+    sites = sites_data.map((site, idx) => ({
+      species: site.species.map((sp) => ({
+        ...sp,
+        element: sp.element as ElementSymbol,
+      })),
+      xyz: site.xyz as [number, number, number],
+      // Calculate fractional coordinates: abc = inverse(lattice_matrix) · xyz
+      abc: math.mat3x3_vec3_multiply(
+        math.matrix_inverse_3x3(lattice_matrix),
+        site.xyz as Vec3,
+      ),
+      label: `${site.species[0].element}${idx}`,
+      properties: {},
+    }))
+  }
 
   return {
     lattice: {
-      matrix: lattice,
+      matrix: lattice_matrix,
       pbc: [true, true, true],
-      volume: math.det_3x3(lattice),
-      a: Math.hypot(...lattice[0]),
-      b: Math.hypot(...lattice[1]),
-      c: Math.hypot(...lattice[2]),
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
+      volume,
+      a: a_len,
+      b: b_len,
+      c: c_len,
+      alpha,
+      beta,
+      gamma,
     },
     sites,
   }

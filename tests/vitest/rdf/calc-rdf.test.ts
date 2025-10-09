@@ -1,8 +1,8 @@
-import type { ElementSymbol } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
-import type { PymatgenStructure } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
+import { create_test_structure } from '../setup'
 
 // Use actual structure files from the project
 const lu_al_structure = structure_map.get(`mp-1234`) // Lu-Al structure (binary compound)
@@ -25,47 +25,6 @@ function check_basic_rdf_properties(
   expect(g_r.every((val) => val >= 0)).toBe(true)
   expect(g_r[0]).toBe(0)
   expect(radii.every((r, idx) => idx === 0 || r > radii[idx - 1])).toBe(true)
-}
-
-// Helper to create simple test structures
-function create_test_structure(
-  lattice_size: number,
-  sites_data: {
-    species: { element: string; occu: number; oxidation_state: number }[]
-    xyz: number[]
-  }[],
-): PymatgenStructure {
-  return {
-    lattice: {
-      matrix: [
-        [lattice_size, 0.0, 0.0],
-        [0.0, lattice_size, 0.0],
-        [0.0, 0.0, lattice_size],
-      ],
-      pbc: [true, true, true],
-      volume: lattice_size ** 3,
-      a: lattice_size,
-      b: lattice_size,
-      c: lattice_size,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-    },
-    sites: sites_data.map((site, idx) => ({
-      species: site.species.map((sp) => ({
-        ...sp,
-        element: sp.element as ElementSymbol,
-      })),
-      xyz: site.xyz as [number, number, number],
-      abc: [
-        site.xyz[0] / lattice_size,
-        site.xyz[1] / lattice_size,
-        site.xyz[2] / lattice_size,
-      ] as [number, number, number],
-      label: `${site.species[0].element}${idx}`,
-      properties: {},
-    })),
-  }
 }
 
 describe(`calculate_rdf`, () => {
@@ -278,6 +237,117 @@ describe(`calculate_rdf`, () => {
     expect(result1.r).toEqual(result2.r)
     expect(result1.g_r).toEqual(result2.g_r)
   })
+
+  test.each([
+    {
+      name: `triclinic`,
+      lattice: [[5.0, 0.0, 0.0], [1.0, 6.0, 0.0], [0.5, 1.5, 7.0]] as Matrix3x3,
+      sites: [
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.0, 0.0, 0.0],
+        },
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [2.5, 3.0, 3.5],
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          xyz: [1.0, 1.0, 1.0],
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          xyz: [3.0, 4.0, 4.5],
+        },
+      ],
+      cutoff: 10,
+      n_bins: 100,
+      expected_angles: {
+        alpha: { not_close_to: 90 },
+        beta: { not_close_to: 90 },
+        gamma: { not_close_to: 90 },
+      },
+      expected_lengths_differ: true,
+    },
+    {
+      name: `monoclinic`,
+      lattice: [[5.0, 0.0, 0.0], [0.0, 6.0, 0.0], [2.0, 0.0, 7.0]] as Matrix3x3,
+      sites: [
+        {
+          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
+          xyz: [0.0, 0.0, 0.0],
+        },
+        {
+          species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
+          xyz: [2.5, 3.0, 3.5],
+        },
+      ],
+      cutoff: 8,
+      n_bins: 80,
+      expected_angles: {
+        alpha: { close_to: 90 },
+        beta: { not_close_to: 90 },
+        gamma: { close_to: 90 },
+      },
+      expected_lengths_differ: false,
+    },
+  ])(
+    `should calculate RDF correctly for $name lattice`,
+    ({ lattice, sites, cutoff, n_bins, expected_angles, expected_lengths_differ }) => {
+      const structure = create_test_structure(lattice, sites)
+      const result = calculate_rdf(structure, { cutoff, n_bins, pbc: [true, true, true] })
+
+      // Check basic RDF properties
+      check_basic_rdf_properties(result.r, result.g_r, n_bins)
+      expect(result.g_r.some((val) => val > 0)).toBe(true)
+      expect(result.g_r.every((val) => isFinite(val))).toBe(true)
+
+      // Check no negative or NaN values
+      expect(result.g_r.every((val) => val >= 0 && !Number.isNaN(val))).toBe(true)
+
+      // Verify correct lattice angles
+      const check_angle = (
+        angle: number,
+        expected: { close_to?: number; not_close_to?: number },
+      ) => {
+        if (expected.close_to !== undefined) {
+          expect(angle).toBeCloseTo(expected.close_to, 1)
+        }
+        if (expected.not_close_to !== undefined) {
+          expect(Math.abs(angle - expected.not_close_to)).toBeGreaterThan(1)
+        }
+      }
+
+      check_angle(structure.lattice.alpha, expected_angles.alpha)
+      check_angle(structure.lattice.beta, expected_angles.beta)
+      check_angle(structure.lattice.gamma, expected_angles.gamma)
+
+      // Verify lattice length differences
+      if (expected_lengths_differ) {
+        expect(Math.abs(structure.lattice.a - structure.lattice.b)).toBeGreaterThan(0.1)
+        expect(Math.abs(structure.lattice.b - structure.lattice.c)).toBeGreaterThan(0.1)
+        expect(Math.abs(structure.lattice.a - structure.lattice.c)).toBeGreaterThan(0.1)
+      }
+
+      // Verify volume is positive
+      expect(structure.lattice.volume).toBeGreaterThan(0)
+
+      // Check that fractional coordinates were calculated correctly
+      // For at least one site, verify xyz = lattice · abc
+      const site = structure.sites[0]
+      const xyz_from_abc = [
+        lattice[0][0] * site.abc[0] + lattice[1][0] * site.abc[1] +
+        lattice[2][0] * site.abc[2],
+        lattice[0][1] * site.abc[0] + lattice[1][1] * site.abc[1] +
+        lattice[2][1] * site.abc[2],
+        lattice[0][2] * site.abc[0] + lattice[1][2] * site.abc[1] +
+        lattice[2][2] * site.abc[2],
+      ]
+      expect(xyz_from_abc[0]).toBeCloseTo(site.xyz[0], 10)
+      expect(xyz_from_abc[1]).toBeCloseTo(site.xyz[1], 10)
+      expect(xyz_from_abc[2]).toBeCloseTo(site.xyz[2], 10)
+    },
+  )
 })
 
 describe(`calculate_all_pair_rdfs`, () => {
