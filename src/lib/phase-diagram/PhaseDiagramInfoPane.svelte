@@ -9,8 +9,8 @@
     phase_stats: PhaseStats | null
     stable_entries: PlotEntry3D[]
     unstable_entries: PlotEntry3D[]
-    energy_threshold: number
-    label_energy_threshold: number
+    max_hull_dist_show_phases: number
+    max_hull_dist_show_labels: number
     label_threshold: number
     pane_open?: boolean
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
@@ -20,8 +20,8 @@
     phase_stats,
     stable_entries,
     unstable_entries,
-    energy_threshold,
-    label_energy_threshold,
+    max_hull_dist_show_phases,
+    max_hull_dist_show_labels,
     label_threshold,
     pane_open = $bindable(false),
     toggle_props = $bindable({}),
@@ -69,11 +69,11 @@
     </div>
     <div class="setting-item" data-testid="pd-show-threshold">
       <span>Points threshold:</span>
-      <span>{energy_threshold.toFixed(3)} eV/atom</span>
+      <span>{max_hull_dist_show_phases.toFixed(3)} eV/atom</span>
     </div>
     <div class="setting-item" data-testid="pd-label-threshold">
       <span>Label threshold:</span>
-      <span>{label_energy_threshold.toFixed(3)} eV/atom</span>
+      <span>{max_hull_dist_show_labels.toFixed(3)} eV/atom</span>
     </div>
     <div class="setting-item" data-testid="pd-entry-limit-labels">
       <span>Entry limit for labels:</span>

@@ -39,7 +39,7 @@
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
-    energy_threshold = $bindable(0.1),
+    max_hull_dist_show_phases = $bindable(0.1),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -219,13 +219,13 @@
       const above = y_hull == null ? 0 : Math.max(0, e.y - y_hull)
       const is_stable = above <= 1e-9
       const visible = (is_stable && show_stable) ||
-        (!is_stable && show_unstable && above <= energy_threshold)
+        (!is_stable && show_unstable && above <= max_hull_dist_show_phases)
       return { ...e, e_above_hull: above, is_stable, visible }
     })
 
     return enriched.filter((
       e,
-    ) => (e.is_stable || (e.e_above_hull ?? 0) <= energy_threshold))
+    ) => (e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases))
   })
 
   const stable_entries = $derived(
@@ -330,8 +330,8 @@
 
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
-  const max_energy_threshold = $derived(
-    helpers.compute_max_energy_threshold(processed_entries),
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(processed_entries),
   )
 
   // Phase diagram statistics - compute internally and expose via bindable prop
@@ -342,7 +342,7 @@
   // Labels with smart defaults
   let show_stable_labels = $state(true)
   let show_unstable_labels = $state(false)
-  let label_energy_threshold = $state(0.1)
+  let max_hull_dist_show_labels = $state(0.1)
   $effect(() => {
     const total_entries = processed_entries.length
     if (total_entries > label_threshold) {
@@ -374,8 +374,8 @@
     show_unstable = PD_DEFAULTS.binary.show_unstable
     show_stable_labels = PD_DEFAULTS.binary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.binary.show_unstable_labels
-    energy_threshold = PD_DEFAULTS.binary.energy_threshold
-    label_energy_threshold = PD_DEFAULTS.binary.label_energy_threshold
+    max_hull_dist_show_phases = PD_DEFAULTS.binary.max_hull_dist_show_phases
+    max_hull_dist_show_labels = PD_DEFAULTS.binary.max_hull_dist_show_labels
     reset_counter += 1
   }
   // Custom hover tooltip state used with ScatterPlot events
@@ -582,12 +582,10 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
-          {energy_threshold}
-          {label_energy_threshold}
+          {max_hull_dist_show_phases}
+          {max_hull_dist_show_labels}
           {label_threshold}
-          toggle_props={{
-            class: `info-btn`,
-          }}
+          toggle_props={{ class: `info-btn` }}
         />
       {/if}
 
@@ -610,17 +608,15 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:energy_threshold
-        bind:label_energy_threshold
-        {max_energy_threshold}
+        bind:max_hull_dist_show_phases
+        bind:max_hull_dist_show_labels
+        {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
         {camera}
         {merged_controls}
-        toggle_props={{
-          class: `legend-controls-btn`,
-        }}
+        toggle_props={{ class: `legend-controls-btn` }}
         bind:energy_source_mode
         {has_precomputed_e_form}
         {can_compute_e_form}

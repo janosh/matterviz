@@ -196,8 +196,8 @@ export interface SettingsConfig {
       show_unstable: SettingType<boolean>
       show_stable_labels: SettingType<boolean>
       show_unstable_labels: SettingType<boolean>
-      energy_threshold: SettingType<number>
-      label_energy_threshold: SettingType<number>
+      max_hull_dist_show_phases: SettingType<number>
+      max_hull_dist_show_labels: SettingType<number>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -214,8 +214,8 @@ export interface SettingsConfig {
       show_unstable: SettingType<boolean>
       show_stable_labels: SettingType<boolean>
       show_unstable_labels: SettingType<boolean>
-      energy_threshold: SettingType<number>
-      label_energy_threshold: SettingType<number>
+      max_hull_dist_show_phases: SettingType<number>
+      max_hull_dist_show_labels: SettingType<number>
       show_hull_faces: SettingType<boolean>
       hull_face_color: SettingType<string>
       hull_face_opacity: SettingType<number>
@@ -238,8 +238,8 @@ export interface SettingsConfig {
       show_hull_faces: SettingType<boolean>
       hull_face_color: SettingType<string>
       hull_face_opacity: SettingType<number>
-      energy_threshold: SettingType<number>
-      label_energy_threshold: SettingType<number>
+      max_hull_dist_show_phases: SettingType<number>
+      max_hull_dist_show_labels: SettingType<number>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -922,13 +922,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: false,
         description: `Show labels for unstable phases in 2D PD`,
       },
-      energy_threshold: {
+      max_hull_dist_show_phases: {
         value: 0.1,
         description: `Max eV/atom above hull for showing unstable entries in 2D PD`,
         minimum: 0,
         maximum: 2,
       },
-      label_energy_threshold: {
+      max_hull_dist_show_labels: {
         value: 0.1,
         description: `Max eV/atom above hull for labeling unstable entries in 2D PD`,
         minimum: 0,
@@ -999,13 +999,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: false,
         description: `Show labels for unstable phases in 3D PD`,
       },
-      energy_threshold: {
+      max_hull_dist_show_phases: {
         value: 0.5,
         description: `Max eV/atom above hull for showing unstable entries in 3D PD`,
         minimum: 0,
         maximum: 2,
       },
-      label_energy_threshold: {
+      max_hull_dist_show_labels: {
         value: 0.1,
         description: `Max eV/atom above hull for labeling unstable entries in 3D PD`,
         minimum: 0,
@@ -1104,13 +1104,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 0,
         maximum: 1,
       },
-      energy_threshold: {
+      max_hull_dist_show_phases: {
         value: 0.1,
         description: `Max eV/atom above hull for showing unstable entries in 4D PD`,
         minimum: 0,
         maximum: 2,
       },
-      label_energy_threshold: {
+      max_hull_dist_show_labels: {
         value: 0.1,
         description: `Max eV/atom above hull for labeling unstable entries in 4D PD`,
         minimum: 0,

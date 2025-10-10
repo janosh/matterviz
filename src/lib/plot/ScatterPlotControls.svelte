@@ -85,6 +85,7 @@
         point_stroke_width = ps.stroke_width ?? 1
         point_stroke_color = ps.stroke ?? `#000`
         point_opacity = ps.fill_opacity ?? 1
+        if (ps.stroke_opacity != null) point_stroke_opacity = ps.stroke_opacity
       }
       if (series_item.line_style) {
         line_width = series_item.line_style.stroke_width ?? 2
@@ -295,16 +296,7 @@
         </div>
         <div class="pane-row">
           <label for="line-style-select">Line Style:</label>
-          <select
-            id="line-style-select"
-            value={line_dash ?? `solid`}
-            onchange={(event) => {
-              const target = event.currentTarget as HTMLSelectElement
-              line_dash = target.value === `solid`
-                ? DEFAULTS.scatter.line_dash
-                : target.value
-            }}
-          >
+          <select id="line-style-select" bind:value={line_dash}>
             <option value="solid">Solid</option>
             <option value="4,4">Dashed</option>
             <option value="2,2">Dotted</option>

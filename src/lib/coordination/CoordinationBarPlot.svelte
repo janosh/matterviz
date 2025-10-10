@@ -78,12 +78,10 @@
   })
 
   // Compute coordination data for each structure
-  const entries_with_data = $derived.by(() => {
-    return structure_entries.map((entry) => ({
-      ...entry,
-      data: calc_coordination_numbers(entry.structure, strategy),
-    }))
-  })
+  const entries_with_data = $derived(structure_entries.map((entry) => ({
+    ...entry,
+    data: calc_coordination_numbers(entry.structure, strategy),
+  })))
 
   // Compute appropriate ranges
   const ranges = $derived.by(() => {
@@ -92,10 +90,7 @@
     // CN axis should always start at 0 (even if min CN is higher)
     const cn_range: [number, null] = [0, null]
 
-    return {
-      count: count_range,
-      cn: cn_range,
-    }
+    return { count: count_range, cn: cn_range }
   })
 
   // Build BarPlot series based on split_mode
@@ -272,7 +267,8 @@
   y_label_shift={{ x: 2 }}
   x_range={orientation === `horizontal` ? ranges.count : ranges.cn}
   y_range={orientation === `horizontal` ? ranges.cn : ranges.count}
-  show_zero_lines={{ x: false, y: true }}
+  show_x_zero_line={false}
+  show_y_zero_line={true}
   {tooltip}
   ondrop={handle_file_drop}
   ondragover={(event) => {

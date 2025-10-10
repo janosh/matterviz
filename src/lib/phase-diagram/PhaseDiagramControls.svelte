@@ -38,9 +38,9 @@
     has_precomputed_e_form?: boolean
     can_compute_e_form?: boolean
     // Thresholds
-    energy_threshold?: number
-    label_energy_threshold?: number
-    max_energy_threshold?: number
+    max_hull_dist_show_phases?: number
+    max_hull_dist_show_labels?: number
+    max_hull_dist_in_data?: number
     // Data for visualization
     stable_entries: PlotEntry3D[]
     unstable_entries: PlotEntry3D[]
@@ -67,9 +67,9 @@
     on_hull_face_color_change,
     hull_face_opacity = $bindable(0.06),
     on_hull_face_opacity_change,
-    energy_threshold = $bindable(0),
-    label_energy_threshold = $bindable(0.1),
-    max_energy_threshold = 0.5,
+    max_hull_dist_show_phases = $bindable(0),
+    max_hull_dist_show_labels = $bindable(0.1),
+    max_hull_dist_in_data = 0.5,
     energy_source_mode = $bindable(`precomputed`),
     has_precomputed_hull = false,
     can_compute_hull = false,
@@ -159,18 +159,18 @@
       <input
         type="number"
         min="0"
-        max={max_energy_threshold}
+        max={max_hull_dist_in_data}
         step="0.01"
-        bind:value={energy_threshold}
+        bind:value={max_hull_dist_show_phases}
         class="threshold-input"
       />
       <span style="white-space: nowrap; font-size: 0.85em">eV/atom</span>
       <input
         type="range"
         min="0"
-        max={max_energy_threshold}
+        max={max_hull_dist_in_data}
         step="0.01"
-        bind:value={energy_threshold}
+        bind:value={max_hull_dist_show_phases}
         class="threshold-slider"
       />
     </label>
@@ -263,14 +263,14 @@
         <span class="control-label">Label threshold</span>
         <label style="display: flex; align-items: center; gap: 4px; flex: 1">
           <span style="white-space: nowrap; font-size: 0.85em">{
-              label_energy_threshold.toFixed(2)
+              max_hull_dist_show_labels.toFixed(2)
             } eV/atom</span>
           <input
             type="range"
             min="0"
-            max={max_energy_threshold}
+            max={max_hull_dist_in_data}
             step="0.01"
-            bind:value={label_energy_threshold}
+            bind:value={max_hull_dist_show_labels}
             class="threshold-slider"
           />
         </label>

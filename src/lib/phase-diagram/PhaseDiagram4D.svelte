@@ -43,7 +43,7 @@
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
-    energy_threshold = $bindable(0.1), // eV/atom above hull for showing entries
+    max_hull_dist_show_phases = $bindable(0.1), // eV/atom above hull for showing entries
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -115,18 +115,16 @@
       // Get coords with formation energies
       const coords = compute_4d_coords(pd_data.entries, elements)
 
-      // Convert to 4D points for hull computation
-      const points_4d: Point4D[] = coords.map((entry) => {
-        const amounts = elements.map((el) => entry.composition[el] || 0)
-        const total = amounts.reduce((sum, amt) => sum + amt, 0)
-        const [x, y, z] = amounts.map((amt) => amt / total)
-        const w = entry.e_form_per_atom ?? 0
+      // Convert to 4D points for hull computation (use precomputed barycentric coords)
+      const points_4d: Point4D[] = coords
+        .filter(
+          (ent) =>
+            Number.isFinite(ent.e_form_per_atom) &&
+            [ent.x, ent.y, ent.z].every(Number.isFinite),
+        )
+        .map((ent) => ({ x: ent.x, y: ent.y, z: ent.z, w: ent.e_form_per_atom! }))
 
-        return { x, y, z, w }
-      })
-
-      // Filter out points with no formation energy
-      const valid_points = points_4d.filter((p) => typeof p.w === `number`)
+      const valid_points = points_4d
 
       if (valid_points.length < 5) return [] // Need at least 5 points for 4D hull
 
@@ -148,21 +146,30 @@
       // Compute or use precomputed hull distances
       const enriched = (() => {
         if (energy_mode === `on-the-fly` && hull_4d.length > 0) {
-          // Build 4D points for distance calculation
-          const points_4d: Point4D[] = coords.map((entry) => {
-            const amounts = elements.map((el) => entry.composition[el] || 0)
-            const total = amounts.reduce((sum, amt) => sum + amt, 0)
-            const [x, y, z] = amounts.map((amt) => amt / total)
-            const w = entry.e_form_per_atom ?? 0
-
-            return { x, y, z, w }
+          // Build 4D points for distance calculation (use precomputed barycentric coords)
+          // Track indices to map hull distances back to original coords
+          const valid_entries: Array<{ entry: PlotEntry3D; orig_idx: number }> = []
+          coords.forEach((ent, idx) => {
+            if (
+              Number.isFinite(ent.e_form_per_atom) &&
+              [ent.x, ent.y, ent.z].every(Number.isFinite)
+            ) valid_entries.push({ entry: ent, orig_idx: idx })
           })
 
+          const points_4d: Point4D[] = valid_entries.map((
+            { entry: { x, y, z, ...rest } },
+          ) => ({ x, y, z, w: rest.e_form_per_atom ?? NaN }))
+
           const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
-          return coords.map((entry, idx) => ({
-            ...entry,
-            e_above_hull: e_hulls[idx],
-          }))
+
+          // Map hull distances back to all coords
+          return coords.map((entry, idx) => {
+            const valid_idx = valid_entries.findIndex((v) => v.orig_idx === idx)
+            return {
+              ...entry,
+              e_above_hull: valid_idx >= 0 ? e_hulls[valid_idx] : undefined,
+            }
+          })
         }
         return coords
       })()
@@ -175,7 +182,7 @@
           if (entry.e_above_hull === 0 || entry.is_stable) return true
           // Include other elemental polymorphs only if toggle is enabled AND e_above_hull is defined
           return typeof entry.e_above_hull === `number` &&
-            entry.e_above_hull <= energy_threshold
+            entry.e_above_hull <= max_hull_dist_show_phases
         }
         // Include stable entries (treat near-zero as stable)
         if (
@@ -184,7 +191,7 @@
         ) return true
         // Include unstable entries within threshold
         return typeof entry.e_above_hull === `number` &&
-          entry.e_above_hull <= energy_threshold
+          entry.e_above_hull <= max_hull_dist_show_phases
       })
       return energy_filtered
         .map((entry: PlotEntry3D) => {
@@ -275,7 +282,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
 
     render_once()
   })
@@ -285,7 +292,7 @@
   // Label controls with smart defaults based on entry count
   let show_stable_labels = $state(true)
   let show_unstable_labels = $state(false)
-  let label_energy_threshold = $state(0.1) // eV/atom above hull for showing labels
+  let max_hull_dist_show_labels = $state(0.1) // eV/atom above hull for showing labels
 
   // Smart label defaults - hide labels if too many entries
   $effect(() => {
@@ -328,8 +335,8 @@
     show_unstable = PD_DEFAULTS.quaternary.show_unstable
     show_stable_labels = PD_DEFAULTS.quaternary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.quaternary.show_unstable_labels
-    energy_threshold = PD_DEFAULTS.quaternary.energy_threshold
-    label_energy_threshold = PD_DEFAULTS.quaternary.label_energy_threshold
+    max_hull_dist_show_phases = PD_DEFAULTS.quaternary.max_hull_dist_show_phases
+    max_hull_dist_show_labels = PD_DEFAULTS.quaternary.max_hull_dist_show_labels
     show_hull_faces = PD_DEFAULTS.quaternary.show_hull_faces
     hull_face_color = PD_DEFAULTS.quaternary.hull_face_color
     hull_face_opacity = PD_DEFAULTS.quaternary.hull_face_opacity
@@ -375,8 +382,8 @@
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_energy_threshold = $derived(
-    helpers.compute_max_energy_threshold(processed_entries),
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(processed_entries),
   )
 
   // Phase diagram statistics - compute internally and expose via bindable prop
@@ -725,7 +732,7 @@
       const should_show_label = merged_config.show_labels && (
         (is_stable && show_stable_labels) ||
         (!is_stable && show_unstable_labels &&
-          (entry.e_above_hull ?? 0) <= label_energy_threshold)
+          (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
       )
 
       if (should_show_label) {
@@ -1038,12 +1045,10 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
-          {energy_threshold}
-          {label_energy_threshold}
+          {max_hull_dist_show_phases}
+          {max_hull_dist_show_labels}
           {label_threshold}
-          toggle_props={{
-            class: `info-btn`,
-          }}
+          toggle_props={{ class: `info-btn` }}
         />
       {/if}
 
@@ -1067,17 +1072,15 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:energy_threshold
-        bind:label_energy_threshold
-        {max_energy_threshold}
+        bind:max_hull_dist_show_phases
+        bind:max_hull_dist_show_labels
+        {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
         {camera}
         {merged_controls}
-        toggle_props={{
-          class: `legend-controls-btn`,
-        }}
+        toggle_props={{ class: `legend-controls-btn` }}
         {show_hull_faces}
         on_hull_faces_change={(value) => show_hull_faces = value}
         {hull_face_color}

@@ -25,8 +25,8 @@
 
   interface Props extends BasePhaseDiagramProps<TernaryPlotEntry>, Hull3DProps {
     // Bindable stable and unstable entries - computed internally but exposed for external use
-    stable_entries_out?: TernaryPlotEntry[]
-    unstable_entries_out?: TernaryPlotEntry[]
+    stable_entries?: TernaryPlotEntry[]
+    unstable_entries?: TernaryPlotEntry[]
   }
   let {
     entries,
@@ -47,13 +47,13 @@
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
-    energy_threshold = $bindable(0.5), // eV/atom above hull for showing entries
+    max_hull_dist_show_phases = $bindable(0.5), // eV/atom above hull for showing entries
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
-    stable_entries_out = $bindable([]),
-    unstable_entries_out = $bindable([]),
+    stable_entries = $bindable([]),
+    unstable_entries = $bindable([]),
     ...rest
   }: Props = $props()
 
@@ -144,7 +144,7 @@
     })()
 
     const energy_filtered = enriched.filter((entry: TernaryPlotEntry) =>
-      (entry.e_above_hull ?? 0) <= energy_threshold
+      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
     )
 
     return energy_filtered.map((entry: TernaryPlotEntry) => {
@@ -156,18 +156,15 @@
     })
   })
 
-  const stable_entries = $derived(
-    plot_entries.filter((entry: TernaryPlotEntry) =>
+  $effect(() => {
+    stable_entries = plot_entries.filter((entry: TernaryPlotEntry) =>
       entry.is_stable || entry.e_above_hull === 0
-    ),
-  )
-
-  const unstable_entries = $derived(
-    plot_entries.filter((entry: TernaryPlotEntry) =>
+    )
+    unstable_entries = plot_entries.filter((entry: TernaryPlotEntry) =>
       typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
       !entry.is_stable
-    ),
-  )
+    )
+  })
 
   // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
   type HullTriangle = {
@@ -269,7 +266,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
 
     render_once()
   })
@@ -277,7 +274,7 @@
   // Label controls with smart defaults based on entry count
   let show_stable_labels = $state(true)
   let show_unstable_labels = $state(false)
-  let label_energy_threshold = $state(0.1) // eV/atom above hull for showing labels
+  let max_hull_dist_show_labels = $state(0.1) // eV/atom above hull for showing labels
 
   // Smart label defaults - hide labels if too many entries
   $effect(() => {
@@ -314,8 +311,8 @@
     show_unstable = PD_DEFAULTS.ternary.show_unstable
     show_stable_labels = PD_DEFAULTS.ternary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.ternary.show_unstable_labels
-    label_energy_threshold = PD_DEFAULTS.ternary.label_energy_threshold
-    energy_threshold = PD_DEFAULTS.ternary.energy_threshold
+    max_hull_dist_show_labels = PD_DEFAULTS.ternary.max_hull_dist_show_labels
+    max_hull_dist_show_phases = PD_DEFAULTS.ternary.max_hull_dist_show_phases
     show_hull_faces = PD_DEFAULTS.ternary.show_hull_faces
     hull_face_color = PD_DEFAULTS.ternary.hull_face_color
     hull_face_opacity = PD_DEFAULTS.ternary.hull_face_opacity
@@ -361,19 +358,13 @@
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_energy_threshold = $derived(
-    helpers.compute_max_energy_threshold(processed_entries),
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(processed_entries),
   )
 
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
     phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
-  })
-
-  // Sync stable and unstable entries to bindable props
-  $effect(() => {
-    stable_entries_out = stable_entries
-    unstable_entries_out = unstable_entries
   })
 
   // 3D to 2D projection for ternary diagrams
@@ -773,7 +764,7 @@
       const can_label_stable = is_stable_point && show_stable_labels
       const can_label_unstable = !is_stable_point && show_unstable_labels &&
         (typeof entry.e_above_hull === `number` &&
-          entry.e_above_hull <= label_energy_threshold)
+          entry.e_above_hull <= max_hull_dist_show_labels)
       if (!(can_label_stable || can_label_unstable)) continue
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
@@ -1136,12 +1127,10 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
-          {energy_threshold}
-          {label_energy_threshold}
+          {max_hull_dist_show_phases}
+          {max_hull_dist_show_labels}
           {label_threshold}
-          toggle_props={{
-            class: `info-btn`,
-          }}
+          toggle_props={{ class: `info-btn` }}
         />
       {/if}
 
@@ -1165,17 +1154,15 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:energy_threshold
-        bind:label_energy_threshold
-        {max_energy_threshold}
+        bind:max_hull_dist_show_phases
+        bind:max_hull_dist_show_labels
+        {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
         {camera}
         {merged_controls}
-        toggle_props={{
-          class: `legend-controls-btn`,
-        }}
+        toggle_props={{ class: `legend-controls-btn` }}
         {show_hull_faces}
         on_hull_faces_change={(value) => show_hull_faces = value}
         {hull_face_color}

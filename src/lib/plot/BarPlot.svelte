@@ -453,7 +453,7 @@
             <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
         {/if}
-        {#if show_y_zero_line && ranges.current.y[0] < 0 && ranges.current.y[1] > 0}
+        {#if show_y_zero_line && ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
           {@const zy = scales.y(0)}
           {#if isFinite(zy)}
             <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />

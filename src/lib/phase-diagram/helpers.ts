@@ -62,7 +62,9 @@ export async function parse_pd_entries_from_drop(
 }
 
 // Compute a consistent max energy threshold for controls (shared)
-export function compute_max_energy_threshold(processed_entries: PhaseEntry[]): number {
+export function calc_max_hull_dist_in_data(
+  processed_entries: PhaseEntry[],
+): number {
   if (processed_entries.length === 0) return 0.5
   const hull_distances = processed_entries
     .map((e) => e.e_above_hull)

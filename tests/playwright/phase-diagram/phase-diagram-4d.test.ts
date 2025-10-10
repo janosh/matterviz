@@ -72,6 +72,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await expect(diagram).toBeVisible()
 
     // Craft a minimal quaternary dataset with missing e_above_hull
+    // Also includes edge cases: invalid energy values that should be filtered out
     const data = [
       // Elemental reference corners (always include)
       { composition: { A: 1 }, energy: 0, e_above_hull: 0 },
@@ -84,6 +85,10 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
       { composition: { A: 1, B: 1, C: 1, D: 1 }, energy: -4, is_stable: true },
       // Non-elemental without e_above_hull (will be computed on-the-fly)
       { composition: { A: 1, B: 1, C: 1, D: 1 }, energy: -3 },
+      // Edge cases that should be filtered out (non-finite energies)
+      { composition: { A: 1, B: 1 }, energy: NaN }, // NaN energy
+      { composition: { A: 1, C: 1 }, energy: Infinity }, // Infinity energy
+      { composition: { B: 1, D: 1 } }, // Missing energy entirely
     ]
 
     // Build DataTransfer with a JSON file and dispatch drop on the diagram
@@ -109,6 +114,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     // With on-the-fly computation enabled, entries without precomputed e_above_hull
     // will have it computed automatically. The quaternary entry with energy=-3
     // will be evaluated against the hull and may be stable or slightly unstable
+    // Invalid entries (NaN, Infinity, missing energy) should be filtered out gracefully
     const unstable_text = await info.getByTestId(`pd-visible-unstable`).textContent()
     expect(unstable_text).toBeTruthy()
     const unstable_match = unstable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
@@ -118,6 +124,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     expect(Number.isFinite(u_visible) && Number.isFinite(u_total)).toBe(true)
 
     // Expect stable entries to include at minimum the 4 elemental refs + 1 marked stable
+    // The 3 invalid entries (NaN, Infinity, missing) should be filtered out
     const stable_text = await info.getByTestId(`pd-visible-stable`).textContent()
     const stable_match = stable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
     expect(stable_match).toBeTruthy()

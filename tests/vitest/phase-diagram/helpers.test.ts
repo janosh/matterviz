@@ -2,7 +2,7 @@ import type { ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import {
   build_entry_tooltip_text,
-  compute_max_energy_threshold,
+  calc_max_hull_dist_show_phases,
   find_pd_entry_at_mouse,
   get_energy_color_scale,
   get_point_color_for_entry,
@@ -56,18 +56,18 @@ describe(`helpers: energy color scale + point color`, () => {
 })
 
 describe(`helpers: thresholds and tooltips`, () => {
-  test(`compute_max_energy_threshold returns robust default and range`, () => {
-    expect(compute_max_energy_threshold([] as unknown as PhaseEntry[])).toBeCloseTo(0.5)
-    const v = compute_max_energy_threshold([
-      { e_above_hull: 0 } as unknown as PhaseEntry,
-      { e_above_hull: 0.2 } as unknown as PhaseEntry,
+  test(`calc_max_hull_dist_show_phases returns robust default and range`, () => {
+    expect(calc_max_hull_dist_show_phases([])).toBeCloseTo(0.5)
+    const v = calc_max_hull_dist_show_phases([
+      { e_above_hull: 0 } as PhaseEntry,
+      { e_above_hull: 0.2 } as PhaseEntry,
     ])
     expect(v).toBeGreaterThan(0.2)
   })
 
   test(`build_entry_tooltip_text contains key fields`, () => {
     const t1 = build_entry_tooltip_text(
-      { composition: { Li: 1 }, energy: -1 } as unknown as PhaseEntry,
+      { composition: { Li: 1 }, energy: -1 } as PhaseEntry,
     )
     expect(t1).toMatch(/Li/)
     const t2 = build_entry_tooltip_text(
@@ -77,7 +77,7 @@ describe(`helpers: thresholds and tooltips`, () => {
         e_form_per_atom: -3,
         e_above_hull: 0,
         entry_id: `mp-1`,
-      } as unknown as PhaseEntry,
+      } as PhaseEntry,
     )
     expect(t2).toMatch(/E above hull/)
     expect(t2).toMatch(/Formation Energy/)
