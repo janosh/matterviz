@@ -159,10 +159,12 @@
       <div class="pane-row">
         <label for="series-select">Series</label>
         <select bind:value={selected_series_idx} id="series-select">
-          {#each series.filter(Boolean) as series_data, idx (series_data.label ?? idx)}
-            <option value={idx}>
-              {series_data.label ?? `Series ${idx + 1}`}
-            </option>
+          {#each series as series_data, idx (idx)}
+            {#if series_data}
+              <option value={idx}>
+                {series_data.label ?? `Series ${idx + 1}`}
+              </option>
+            {/if}
           {/each}
         </select>
       </div>

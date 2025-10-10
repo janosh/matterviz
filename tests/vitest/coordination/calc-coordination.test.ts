@@ -73,7 +73,7 @@ describe(`calc_coordination_numbers`, () => {
     expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
   })
 
-  test(`should work with distance cutoff strategy`, () => {
+  test(`should work with max distance ratio strategy`, () => {
     const result = calc_coordination_numbers(simple_cubic, 4.0)
 
     expect(result.sites.length).toBe(4)
@@ -103,7 +103,7 @@ describe(`calc_coordination_numbers`, () => {
     }
   })
 
-  test(`should handle structure with distant atoms using distance cutoff`, () => {
+  test(`should handle structure with distant atoms using max distance ratio`, () => {
     const isolated_atoms: PymatgenStructure = {
       lattice: {
         matrix: [
@@ -138,11 +138,11 @@ describe(`calc_coordination_numbers`, () => {
       ],
     }
 
-    // Use distance cutoff of 5.0 Å - atoms 50 Å apart should have no bonds
+    // Use max distance ratio 1.2 - atoms 50 Å apart should have no bonds
     const result = calc_coordination_numbers(isolated_atoms, 1.2)
 
     expect(result.sites.length).toBe(2)
-    // With 5 Å cutoff and atoms 50 Å apart, both should have CN = 0
+    // With max distance ratio 1.2 and atoms 50 Å apart, both should have CN = 0
     const cn_values = result.sites.map((site) => site.coordination_number)
     expect(cn_values.every((cn) => cn === 0)).toBe(true)
     expect(result.cn_histogram.get(0)).toBe(2)

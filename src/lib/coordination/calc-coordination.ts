@@ -18,20 +18,15 @@ export interface CoordinationData {
   cn_histogram_by_element: Map<string, Map<number, number>>
 }
 
-/**
- * Calculate coordination numbers for all sites in a structure.
- * @param structure - The crystal structure to analyze
- * @param strategy - Either a bonding strategy name or a distance cutoff (in Angstroms)
- * @returns Coordination data including per-site and aggregated coordination numbers
- */
+// Calculate coordination numbers for all sites in a structure. Returned as both per-site and whole-structure aggregated data.
 export function calc_coordination_numbers(
   structure: AnyStructure,
-  strategy: CoordinationStrategy = `nearest_neighbor`,
+  strategy: CoordinationStrategy = `nearest_neighbor`, // Either a bonding strategy name or a unitless max_distance_ratio (e.g., 4.0) that multiplies the sum of covalent radii to determine bonding cutoff
 ): CoordinationData {
   // Get bonds using the specified strategy
   let bonds: BondPair[]
   if (typeof strategy === `number`) {
-    // Use distance cutoff
+    // Use max distance ratio
     bonds = BONDING_STRATEGIES.max_dist(structure, { max_distance_ratio: strategy })
   } else {
     // Use named bonding strategy

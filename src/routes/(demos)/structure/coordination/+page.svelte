@@ -68,7 +68,7 @@
     { value: `nearest_neighbor`, label: `Nearest Neighbor` },
     { value: `max_dist`, label: `Max Distance` },
     { value: `electroneg_ratio`, label: `Electronegativity` },
-    { value: 4.0, label: `Distance Cutoff (4.0 Å)` },
+    { value: 4.0, label: `Max Distance Ratio (4.0)` },
   ]
 
   const split_modes: { value: SplitMode; label: string }[] = [
@@ -227,10 +227,10 @@
       metal-nonmetal bonds and penalizes metal-metal bonds.
     </dd>
 
-    <dt>Distance Cutoff</dt>
+    <dt>Max Distance Ratio</dt>
     <dd>
-      Simple cutoff distance in Ångströms. Two atoms are bonded if they are closer than
-      this distance.
+      Uses a unitless ratio multiplied by the sum of covalent radii. Two atoms are bonded
+      if their distance is within this ratio times the sum of their covalent radii.
     </dd>
   </dl>
 </div>

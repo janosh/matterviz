@@ -40,6 +40,15 @@
   let y_format_input = $state(y_format)
   let y2_format_input = $state(y2_format)
 
+  // Range input state
+  let range_inputs = $state(
+    { x: [null, null], y: [null, null], y2: [null, null] } as Record<
+      `x` | `y` | `y2`,
+      [number | null, number | null]
+    >,
+  )
+  let range_els: Record<string, HTMLInputElement> = {}
+
   // Derived state
   let x_includes_zero = $derived(
     ((x_range?.[0] ?? auto_x_range[0]) <= 0) &&
@@ -85,81 +94,38 @@
     }
   }
 
-  // Handle ticks input changes
-  const ticks_input_handler = (axis: `x` | `y`) => (event: Event) => {
-    const input = event.target as HTMLInputElement
-    const value = parseInt(input.value, 10)
-
-    if (!isNaN(value) && value > 0) {
-      if (axis === `x`) x_ticks = value
-      else if (axis === `y`) y_ticks = value
-    }
-  }
-
-  // Range control helpers
-  const range_complete = (axis: `x` | `y` | `y2`) => {
-    const [min_el, max_el] = [`min`, `max`].map((b) =>
-      document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
-    )
-    if (!min_el || !max_el) return
-
-    const [min, max] = [min_el, max_el].map(
-      (el) => (el.classList.remove(`invalid`), el.value === `` ? null : +el.value),
-    )
+  // Handle range input changes
+  const update_range = (axis: `x` | `y` | `y2`, bound: 0 | 1, value: string) => {
+    range_inputs[axis][bound] = value === `` ? null : +value
+    const [min, max] = range_inputs[axis]
     const auto = { x: auto_x_range, y: auto_y_range, y2: auto_y2_range }[axis]
 
-    if (min !== null && max !== null && min >= max) {
-      ;[min_el, max_el].forEach((el) => el.classList.add(`invalid`))
-      return
-    }
+    // Validate and update range
+    const invalid = min !== null && max !== null && min >= max
+    Object.values(range_els).forEach((el) => el?.classList.toggle(`invalid`, invalid))
+    if (invalid) return
 
-    const ranges = {
-      x: (r: typeof x_range) => (x_range = r),
-      y: (r: typeof y_range) => (y_range = r),
-      y2: (r: typeof y2_range) => (y2_range = r),
-    }
-    ranges[axis](
-      min === null && max === null ? undefined : [min ?? auto[0], max ?? auto[1]],
-    )
+    const new_range = min === null && max === null
+      ? undefined
+      : [min ?? auto[0], max ?? auto[1]] as [number, number]
+    if (axis === `x`) x_range = new_range
+    else if (axis === `y`) y_range = new_range
+    else y2_range = new_range
   }
 
-  const input_props = (
-    axis: `x` | `y` | `y2`,
-    bound: `min` | `max`,
-    range?: [number | null, number | null],
-  ) => ({
-    id: `${axis}-range-${bound}`,
-    type: `number`,
-    value: range?.[bound === `min` ? 0 : 1] ?? ``,
-    placeholder: `auto`,
-    class: `range-input`,
-    onblur: () => range_complete(axis),
-    onkeydown: (e: KeyboardEvent) =>
-      e.key === `Enter` && (e.target as HTMLElement).blur(),
-  })
-
-  // Sync local format inputs with props
+  // Sync format inputs
   $effect(() => {
     x_format_input = x_format
     y_format_input = y_format
     y2_format_input = y2_format
   })
 
-  // Update range inputs when ranges change
-  $effect(() =>
-    [
-      [x_range, `x`],
-      [y_range, `y`],
-      [y2_range, `y2`],
-    ].forEach(([range, axis]) => {
-      if (!range) {
-        ;[`min`, `max`].forEach((b) => {
-          const el = document.getElementById(`${axis}-range-${b}`) as HTMLInputElement
-          if (el) el.value = ``
-        })
-      }
-    })
-  )
+  // Sync range inputs from props
+  $effect(() => {
+    range_inputs.x = [x_range?.[0] ?? null, x_range?.[1] ?? null]
+    range_inputs.y = [y_range?.[0] ?? null, y_range?.[1] ?? null]
+    range_inputs.y2 = [y2_range?.[0] ?? null, y2_range?.[1] ?? null]
+  })
 </script>
 
 {#if show_controls}
@@ -178,7 +144,7 @@
     pane_props={{
       ...pane_props,
       class: `${controls_class}-controls-pane ${pane_props?.class ?? ``}`,
-      style: `--pane-padding: 4px; --pane-gap: 4px; ${pane_props?.style ?? ``}`,
+      style: `--pane-padding: 12px; --pane-gap: 4px; ${pane_props?.style ?? ``}`,
     }}
   >
     {#if plot_controls}
@@ -200,30 +166,48 @@
         }}
         style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
-        {#if x_includes_zero}
-          <label>
-            <input type="checkbox" bind:checked={show_x_zero_line} /> X zero line
-          </label>
-        {/if}
-        {#if y_includes_zero}
-          <label>
-            <input type="checkbox" bind:checked={show_y_zero_line} /> Y zero line
-          </label>
-        {/if}
-        <label>
-          <input type="checkbox" bind:checked={x_grid as boolean} /> X-axis grid
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis grid
-        </label>
-        {#if has_y2_points}
-          <label>
-            <input type="checkbox" bind:checked={y2_grid as boolean} /> Y2-axis grid
-          </label>
-        {/if}
+        {#if x_includes_zero}<label><input
+              type="checkbox"
+              bind:checked={show_x_zero_line}
+            /> X zero line</label>{/if}
+        {#if y_includes_zero}<label><input
+              type="checkbox"
+              bind:checked={show_y_zero_line}
+            /> Y zero line</label>{/if}
+        <label><input type="checkbox" bind:checked={x_grid as boolean} /> X-axis
+          grid</label>
+        <label><input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis
+          grid</label>
+        {#if has_y2_points}<label><input
+              type="checkbox"
+              bind:checked={y2_grid as boolean}
+            /> Y2-axis grid</label>{/if}
       </SettingsSection>
 
       <!-- Base Axis Range controls -->
+      {#snippet range_row(axis: `x` | `y` | `y2`, label: string)}
+        <label>{label}:
+          <input
+            type="number"
+            value={range_inputs[axis][0] ?? ``}
+            bind:this={range_els[`${axis}-min`]}
+            placeholder="auto"
+            class="range-input"
+            oninput={(e) => update_range(axis, 0, e.currentTarget.value)}
+            onkeydown={(e) => e.key === `Enter` && e.currentTarget.blur()}
+          />
+          &nbsp;to
+          <input
+            type="number"
+            value={range_inputs[axis][1] ?? ``}
+            bind:this={range_els[`${axis}-max`]}
+            placeholder="auto"
+            class="range-input"
+            oninput={(e) => update_range(axis, 1, e.currentTarget.value)}
+            onkeydown={(e) => e.key === `Enter` && e.currentTarget.blur()}
+          />
+        </label>
+      {/snippet}
       <SettingsSection
         title="Axis Range"
         current_values={{ x_range, y_range, y2_range }}
@@ -233,22 +217,10 @@
           y2_range = undefined
         }}
         class="pane-grid"
-        style="grid-template-columns: repeat(4, max-content)"
       >
-        <label for="x-range-min">X-axis:</label>
-        <input {...input_props(`x`, `min`, x_range)} />
-        &nbsp;to
-        <input {...input_props(`x`, `max`, x_range)} />
-        <label for="y-range-min">Y-axis:</label>
-        <input {...input_props(`y`, `min`, y_range)} />
-        &nbsp;to
-        <input {...input_props(`y`, `max`, y_range)} />
-        {#if has_y2_points}
-          <label for="y2-range-min">Y2-axis:</label>
-          <input {...input_props(`y2`, `min`, y2_range)} />
-          &nbsp;to
-          <input {...input_props(`y2`, `max`, y2_range)} />
-        {/if}
+        {@render range_row(`x`, `X-axis`)}
+        {@render range_row(`y`, `Y-axis`)}
+        {#if has_y2_points}{@render range_row(`y2`, `Y2-axis`)}{/if}
       </SettingsSection>
 
       <!-- Optional Ticks controls -->
@@ -263,26 +235,28 @@
           class="pane-grid"
           style="grid-template-columns: auto 1fr"
         >
-          <label for="x-ticks-input">X-axis:</label>
-          <input
-            id="x-ticks-input"
-            type="number"
-            min="2"
-            max="20"
-            step="1"
-            value={typeof x_ticks === `number` ? x_ticks : 8}
-            oninput={ticks_input_handler(`x`)}
-          />
-          <label for="y-ticks-input">Y-axis:</label>
-          <input
-            id="y-ticks-input"
-            type="number"
-            min="2"
-            max="20"
-            step="1"
-            value={typeof y_ticks === `number` ? y_ticks : 6}
-            oninput={ticks_input_handler(`y`)}
-          />
+          <label>X-axis: <input
+              type="number"
+              min="2"
+              max="20"
+              step="1"
+              value={typeof x_ticks === `number` ? x_ticks : 8}
+              oninput={(e) => {
+                const v = parseInt(e.currentTarget.value, 10)
+                if (!isNaN(v) && v > 0) x_ticks = v
+              }}
+            /></label>
+          <label>Y-axis: <input
+              type="number"
+              min="2"
+              max="20"
+              step="1"
+              value={typeof y_ticks === `number` ? y_ticks : 6}
+              oninput={(e) => {
+                const v = parseInt(e.currentTarget.value, 10)
+                if (!isNaN(v) && v > 0) y_ticks = v
+              }}
+            /></label>
         </SettingsSection>
       {/if}
 
@@ -296,33 +270,26 @@
           y2_format = DEFAULTS.plot.y2_format
         }}
         class="pane-grid"
-        style="grid-template-columns: auto 1fr"
       >
-        <label for="x-format">X-axis:</label>
-        <input
-          id="x-format"
-          type="text"
-          bind:value={x_format_input}
-          placeholder=".2~s / .0% / %Y-%m-%d"
-          oninput={format_input_handler(`x`)}
-        />
-        <label for="y-format">Y-axis:</label>
-        <input
-          id="y-format"
-          type="text"
-          bind:value={y_format_input}
-          placeholder="d / .1e / .0%"
-          oninput={format_input_handler(`y`)}
-        />
-        {#if has_y2_points}
-          <label for="y2-format">Y2-axis:</label>
-          <input
-            id="y2-format"
+        <label>X-axis: <input
             type="text"
-            bind:value={y2_format_input}
-            placeholder=".2f / .1e / .0%"
-            oninput={format_input_handler(`y2`)}
-          />
+            bind:value={x_format_input}
+            placeholder=".2~s / .0% / %Y-%m-%d"
+            oninput={format_input_handler(`x`)}
+          /></label>
+        <label>Y-axis: <input
+            type="text"
+            bind:value={y_format_input}
+            placeholder="d / .1e / .0%"
+            oninput={format_input_handler(`y`)}
+          /></label>
+        {#if has_y2_points}
+          <label>Y2-axis: <input
+              type="text"
+              bind:value={y2_format_input}
+              placeholder=".2f / .1e / .0%"
+              oninput={format_input_handler(`y2`)}
+            /></label>
         {/if}
       </SettingsSection>
 
@@ -331,10 +298,3 @@
     {/if}
   </DraggablePane>
 {/if}
-
-<style>
-  label {
-    display: inline-flex !important;
-    margin: 0 0 0 5pt;
-  }
-</style>
