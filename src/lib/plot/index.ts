@@ -284,8 +284,6 @@ export interface PlotControlsProps {
   // Custom snippets for additional controls
   children?: Snippet<[]>
   post_children?: Snippet<[]>
-  // Custom content that completely replaces the default controls
-  plot_controls?: Snippet<[]>
   // Display controls
   show_x_zero_line?: boolean
   show_y_zero_line?: boolean

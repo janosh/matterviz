@@ -55,7 +55,6 @@
     on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
     show_controls?: boolean
     controls_open?: boolean
-    plot_controls?: Snippet<[]>
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     children?: Snippet<[]>
@@ -93,7 +92,6 @@
     on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    plot_controls,
     controls_toggle_props,
     controls_pane_props,
     children,
@@ -102,7 +100,7 @@
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
-  let clip_path_id = `chart-clip-${Math.random().toString(36).slice(2)}`
+  let clip_path_id = `chart-clip-${crypto?.randomUUID?.()}`
 
   // Compute auto ranges from visible series
   let visible_series = $derived(series.filter((s) => s?.visible ?? true))
@@ -169,13 +167,8 @@
 
     // Only adjust if no explicit y_lim is set
     if (!y_lim?.[0] && !y_lim?.[1]) {
-      if (has_positive && !has_negative) {
-        // All positive/zero values: always start from 0
-        y_range = [0, y_range[1]]
-      } else if (has_negative && !has_positive) {
-        // All negative values: end at 0
-        y_range = [y_range[0], 0]
-      }
+      if (has_positive && !has_negative) y_range = [0, y_range[1]] // All positive/zero values: always start from 0
+      else if (has_negative && !has_positive) y_range = [y_range[0], 0] // All negative values: end at 0
       // Mixed positive/negative: keep natural range (will include 0)
     }
 
@@ -568,9 +561,11 @@
             ? bar_width_val / (2 * group_info.bar_series_count)
             : bar_width_val / 2}
                   {@const group_offset = mode === `grouped` && group_info.bar_series_count > 1
-            ? ((pos = group_info.bar_series_indices.indexOf(series_idx)) =>
+            ? ((pos) =>
               (pos - (group_info.bar_series_count - 1) / 2) *
-              (bar_width_val / group_info.bar_series_count))()
+              (bar_width_val / group_info.bar_series_count))(
+                group_info.bar_series_indices.indexOf(series_idx),
+              )
             : 0}
                   {@const is_vertical = orientation === `vertical`}
                   {@const cat_val = x_val}
@@ -791,7 +786,6 @@
         bind:y_range
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
-        {plot_controls}
       />
     {/if}
   {/if}

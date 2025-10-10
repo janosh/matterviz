@@ -52,7 +52,6 @@
   }: Props = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
-
   const merged_config = $derived({
     ...default_pd_config,
     ...config,
@@ -60,23 +59,20 @@
     margin: { t: 60, r: 60, b: 60, l: 60, ...(config.margin || {}) },
   })
 
-  // Compute energy mode information (shared logic)
-  const energy_info = $derived(
-    helpers.compute_energy_mode_info(
-      entries,
-      thermo.find_lowest_energy_unary_refs,
-      energy_source_mode,
-    ),
-  )
-
-  const {
+  let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
     can_compute_e_form,
     can_compute_hull,
     energy_mode,
     unary_refs,
-  } = $derived(energy_info)
+  } = $derived(
+    helpers.compute_energy_mode_info(
+      entries,
+      thermo.find_lowest_energy_unary_refs,
+      energy_source_mode,
+    ),
+  )
 
   const effective_entries = $derived(
     helpers.get_effective_entries(
@@ -93,18 +89,16 @@
   const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
-    const all_elements = pd_data.elements
-
-    if (all_elements.length > 4) {
+    if (pd_data.elements.length > 4) {
       console.error(
-        `PhaseDiagram4D: Dataset contains ${all_elements.length} elements, but quaternary diagrams require exactly 4. Found: [${
-          all_elements.join(`, `)
+        `PhaseDiagram4D: Dataset contains ${pd_data.elements.length} elements, but quaternary diagrams require exactly 4. Found: [${
+          pd_data.elements.join(`, `)
         }]`,
       )
       return []
     }
 
-    return all_elements
+    return pd_data.elements
   })
 
   // Compute 4D hull for visualization (always compute when we have formation energies)
@@ -123,13 +117,13 @@
             [ent.x, ent.y, ent.z].every(Number.isFinite),
         )
         .map((ent) => {
-          // Use composition to get barycentric coordinates, NOT the 3D projection coordinates
           const amounts = elements.map((el) => ent.composition[el] || 0)
           const total = amounts.reduce((sum, amt) => sum + amt, 0)
+          if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
           const [x, y, z] = amounts.map((amt) => amt / total)
-
-          return { x, y, z, w: ent.e_form_per_atom ?? NaN }
+          return { x, y, z, w: ent.e_form_per_atom! }
         })
+        .filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
 
       const valid_points = points_4d
 
@@ -143,9 +137,7 @@
   })
 
   const plot_entries = $derived.by(() => {
-    if (elements.length !== 4) {
-      return []
-    }
+    if (elements.length !== 4) return []
 
     try {
       const coords = compute_4d_coords(pd_data.entries, elements)
@@ -163,16 +155,15 @@
             ) valid_entries.push({ entry: ent, orig_idx: idx })
           })
 
-          const points_4d: Point4D[] = valid_entries.map((
-            { entry },
-          ) => {
-            // Use composition to get barycentric coordinates, NOT the 3D projection coordinates
-            const amounts = elements.map((el) => entry.composition[el] || 0)
-            const total = amounts.reduce((sum, amt) => sum + amt, 0)
-            const [x, y, z] = amounts.map((amt) => amt / total)
-
-            return { x, y, z, w: entry.e_form_per_atom ?? NaN }
-          })
+          const points_4d: Point4D[] = valid_entries
+            .map(({ entry }) => {
+              const amounts = elements.map((el) => entry.composition[el] || 0)
+              const total = amounts.reduce((sum, amt) => sum + amt, 0)
+              if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
+              const [x, y, z] = amounts.map((amt) => amt / total)
+              return { x, y, z, w: entry.e_form_per_atom! }
+            })
+            .filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
 
           const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
 

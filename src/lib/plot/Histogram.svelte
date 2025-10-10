@@ -68,7 +68,6 @@
     ) => void
     show_controls?: boolean
     controls_open?: boolean
-    plot_controls?: Snippet<[]>
     on_series_toggle?: (series_idx: number) => void
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
@@ -113,7 +112,6 @@
     on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    plot_controls,
     on_series_toggle = () => {},
     controls_toggle_props,
     controls_pane_props,
@@ -433,8 +431,9 @@
                 height={bar_height}
                 fill={color}
                 opacity={bar_opacity}
-                stroke={mode === `overlay` ? color : `none`}
-                stroke-width={mode === `overlay` ? bar_stroke_width : 0}
+                stroke={bar_stroke_width > 0 ? `black` : `none`}
+                stroke-opacity={bar_stroke_width > 0 ? 0.5 : 0}
+                stroke-width={bar_stroke_width}
                 role="button"
                 tabindex="0"
                 onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
@@ -616,7 +615,6 @@
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
       {series}
-      {plot_controls}
     />
   {/if}
 

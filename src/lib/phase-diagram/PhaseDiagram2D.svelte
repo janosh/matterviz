@@ -48,7 +48,6 @@
   }: BasePhaseDiagramProps = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
-
   const merged_config = $derived({
     ...default_pd_config,
     point_size: 6, // Binary diagrams use slightly smaller points
@@ -57,23 +56,20 @@
     margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
-  // Compute energy mode information (shared logic)
-  const energy_info = $derived(
-    helpers.compute_energy_mode_info(
-      entries,
-      thermo.find_lowest_energy_unary_refs,
-      energy_source_mode,
-    ),
-  )
-
-  const {
+  let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
     can_compute_e_form,
     can_compute_hull,
     energy_mode,
     unary_refs,
-  } = $derived(energy_info)
+  } = $derived(
+    helpers.compute_energy_mode_info(
+      entries,
+      thermo.find_lowest_energy_unary_refs,
+      energy_source_mode,
+    ),
+  )
 
   const effective_entries = $derived(
     helpers.get_effective_entries(
@@ -89,16 +85,15 @@
   const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
-    const all_elements = pd_data.elements
-    if (all_elements.length > 2) {
+    if (pd_data.elements.length > 2) {
       console.error(
-        `PhaseDiagram2D: Dataset contains ${all_elements.length} elements, but binary diagrams require exactly 2. Found: [${
-          all_elements.join(`, `)
+        `PhaseDiagram2D: Dataset contains ${pd_data.elements.length} elements, but binary diagrams require exactly 2. Found: [${
+          pd_data.elements.join(`, `)
         }]`,
       )
       return []
     }
-    return all_elements
+    return pd_data.elements
   })
 
   // Coordinate computation ----------------------------------------------------

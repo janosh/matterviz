@@ -23,7 +23,6 @@
   let {
     show_controls = $bindable(false),
     controls_open = $bindable(false),
-    plot_controls,
     series = [],
     bins = $bindable(DEFAULTS.trajectory.histogram_bin_count),
     mode = $bindable(DEFAULTS.trajectory.histogram_mode),
@@ -76,7 +75,6 @@
   bind:y_format
   {auto_x_range}
   {auto_y_range}
-  {plot_controls}
   show_ticks={true}
   controls_title="histogram"
   controls_class="histogram"
@@ -93,34 +91,36 @@
     }}
   >
     <div class="pane-row">
-      <label for="bins-input">Bins:</label>
-      <input
-        id="bins-input"
-        type="range"
-        min="5"
-        max="100"
-        step="5"
-        bind:value={bins}
-      />
+      <label>Bins:
+        <input
+          type="range"
+          min="5"
+          max="100"
+          step="5"
+          bind:value={bins}
+        />
+      </label>
       <input type="number" min="5" max="100" step="5" bind:value={bins} />
     </div>
     {#if has_multiple_series}
       <div class="pane-row">
-        <label for="mode-select">Mode:</label>
-        <select bind:value={mode} id="mode-select">
-          <option value="single">Single</option>
-          <option value="overlay">Overlay</option>
-        </select>
+        <label>Mode:
+          <select bind:value={mode}>
+            <option value="single">Single</option>
+            <option value="overlay">Overlay</option>
+          </select>
+        </label>
       </div>
       {#if mode === `single`}
         <div class="pane-row">
-          <label for="property-select">Property:</label>
-          <select bind:value={selected_property} id="property-select">
-            <option value="">All</option>
-            {#each series_options as option (option)}
-              <option value={option}>{option}</option>
-            {/each}
-          </select>
+          <label>Property:
+            <select bind:value={selected_property}>
+              <option value="">All</option>
+              {#each series_options as option (option)}
+                <option value={option}>{option}</option>
+              {/each}
+            </select>
+          </label>
         </div>
       {/if}
     {/if}
@@ -139,42 +139,47 @@
       bar_color = `#4682b4`
     }}
     class="pane-grid"
-    style="grid-template-columns: auto 1fr auto"
   >
-    <label for="bar-opacity-range">Opacity:</label>
-    <input
-      id="bar-opacity-range"
-      type="range"
-      min="0"
-      max="1"
-      step="0.05"
-      bind:value={bar_opacity}
-    />
-    <input type="number" min="0" max="1" step="0.05" bind:value={bar_opacity} />
-    <label for="bar-stroke-width-range">Stroke Width:</label>
-    <input
-      id="bar-stroke-width-range"
-      type="range"
-      min="0"
-      max="5"
-      step="0.1"
-      bind:value={bar_stroke_width}
-    />
-    <input
-      type="number"
-      min="0"
-      max="5"
-      step="0.1"
-      bind:value={bar_stroke_width}
-    />
-    {#if visible_series.length === 1}
-      <label for="bar-color-input">Color:</label>
+    <label>Opacity:
       <input
-        id="bar-color-input"
-        type="color"
-        bind:value={bar_color}
-        style="grid-column: 2 / 4"
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        bind:value={bar_opacity}
+        aria-label="Bar opacity"
       />
+      <input
+        type="number"
+        min="0"
+        max="1"
+        step="0.05"
+        bind:value={bar_opacity}
+        aria-label="Bar opacity value"
+      />
+    </label>
+    <label>Stroke Width:
+      <input
+        type="range"
+        min="0"
+        max="5"
+        step="0.1"
+        bind:value={bar_stroke_width}
+        aria-label="Bar stroke width"
+      />
+      <input
+        type="number"
+        min="0"
+        max="5"
+        step="0.1"
+        bind:value={bar_stroke_width}
+        aria-label="Bar stroke width value"
+      />
+    </label>
+    {#if visible_series.length === 1}
+      <label>Color:
+        <input type="color" bind:value={bar_color} aria-label="Bar color" />
+      </label>
     {/if}
   </SettingsSection>
 
@@ -186,17 +191,19 @@
       y_scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
     }}
     class="pane-grid"
-    style="grid-template-columns: auto 1fr"
+    style="grid-template-columns: 1fr 1fr"
   >
-    <label for="x-scale-select">X-axis:</label>
-    <select bind:value={x_scale_type} id="x-scale-select">
-      <option value="linear">Linear</option>
-      <option value="log">Log</option>
-    </select>
-    <label for="y-scale-select">Y-axis:</label>
-    <select bind:value={y_scale_type} id="y-scale-select">
-      <option value="linear">Linear</option>
-      <option value="log">Log</option>
-    </select>
+    <label>X-axis:
+      <select bind:value={x_scale_type} aria-label="X-axis scale type">
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+    </label>
+    <label>Y-axis:
+      <select bind:value={y_scale_type} aria-label="Y-axis scale type">
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+    </label>
   </SettingsSection>
 </PlotControls>

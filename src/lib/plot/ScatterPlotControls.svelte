@@ -6,10 +6,8 @@
   import PlotControls from './PlotControls.svelte'
 
   interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
-    // Series data for multi-series controls
     series?: readonly DataSeries[]
-    // Display options
-    markers?: Markers
+    markers?: Markers // Display options
     // Style controls
     point_size?: number
     point_color?: string
@@ -28,7 +26,6 @@
   let {
     show_controls = $bindable(false),
     controls_open = $bindable(false),
-    plot_controls,
     series = [],
     markers = $bindable(DEFAULTS.scatter.markers),
     show_x_zero_line = $bindable(false),
@@ -122,7 +119,6 @@
   {auto_y_range}
   {auto_y2_range}
   {has_y2_points}
-  {plot_controls}
   controls_title="scatter plot"
   controls_class="scatter"
   {toggle_props}

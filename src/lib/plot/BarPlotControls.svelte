@@ -24,7 +24,6 @@
     y_range = $bindable<[number | null, number | null] | undefined>(undefined),
     auto_x_range = [0, 1] as [number, number],
     auto_y_range = [0, 1] as [number, number],
-    plot_controls,
     toggle_props = {},
     pane_props = {},
   }: Props = $props()
@@ -45,22 +44,25 @@
   bind:y_format
   {auto_x_range}
   {auto_y_range}
-  {plot_controls}
   show_ticks={true}
   controls_title="bar plot"
   controls_class="bar"
   {toggle_props}
   {pane_props}
 >
-  <SettingsSection title="Layout" current_values={{ orientation, mode }}>
-    <label>
+  <SettingsSection
+    title="Layout"
+    current_values={{ orientation, mode }}
+    style="display: flex; gap: 2ex"
+  >
+    <label style="flex: 1">
       Orientation:
       <select bind:value={orientation} id="orientation-select">
         <option value="vertical">Vertical</option>
         <option value="horizontal">Horizontal</option>
       </select>
     </label>
-    <label>
+    <label style="flex: 1">
       Mode:
       <select bind:value={mode} id="mode-select">
         <option value="overlay">Overlay</option>
@@ -70,10 +72,3 @@
     </label>
   </SettingsSection>
 </PlotControls>
-
-<style>
-  label {
-    display: inline-flex !important;
-    margin: 0 0 0 5pt;
-  }
-</style>

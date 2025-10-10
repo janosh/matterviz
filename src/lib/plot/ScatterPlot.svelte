@@ -137,7 +137,6 @@
     // Control pane props
     show_controls?: boolean // Whether to show the control pane
     controls_open?: boolean // Whether the control pane is open
-    plot_controls?: Snippet<[]> // Custom content for the control pane
     // Style control props
     point_size?: number
     point_color?: string
@@ -219,7 +218,6 @@
     on_point_hover,
     show_controls = true,
     controls_open = $bindable(false),
-    plot_controls,
     // Style control props
     point_size = $bindable(4),
     point_color = $bindable(`cornflowerblue`),
@@ -1889,7 +1887,6 @@
         bind:y_format
         bind:y2_format
         series={series_with_ids}
-        {plot_controls}
         has_y2_points={y2_points.length > 0}
       />
     {/if}
