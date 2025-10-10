@@ -18,6 +18,29 @@ export const default_controls: PDControlsType = {
   show_label_controls: true,
 }
 
+// Phase diagram defaults shared by 2D, 3D, and 4D
+export const default_pd_config: PhaseDiagramConfig = {
+  width: 600,
+  height: 600,
+  unstable_threshold: 0.2,
+  show_labels: true,
+  show_hull: true,
+  point_size: 8,
+  line_width: 2,
+  font_size: 12,
+  colors: {
+    stable: `#0072B2`,
+    unstable: `#E69F00`,
+    hull_line: `var(--accent-color, #1976D2)`,
+    background: `transparent`,
+    text: `var(--text-color, #212121)`,
+    edge: `var(--text-color, #212121)`,
+    tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
+    tooltip_text: `var(--tooltip-text, white)`,
+    annotation: `var(--text-color, #212121)`,
+  },
+}
+
 // Shared PD styles (single source of truth shared by 2D, 3D, and 4D)
 export const PD_STYLE = Object.freeze({
   structure_line: Object.freeze({

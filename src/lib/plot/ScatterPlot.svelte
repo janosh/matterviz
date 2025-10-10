@@ -73,7 +73,6 @@
     y2_format?: string
     y2_ticks?: TicksOption
     y2_scale_type?: ScaleType
-    y2_grid?: boolean | Record<string, unknown>
     padding?: Sides
     x_label?: string
     x_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis label in px
@@ -94,9 +93,11 @@
     y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
     x_scale_type?: ScaleType // Type of scale for x-axis
     y_scale_type?: ScaleType // Type of scale for y-axis
-    show_zero_lines?: boolean
-    x_grid?: boolean | Record<string, unknown> // Control x-axis grid lines visibility and styling
-    y_grid?: boolean | Record<string, unknown> // Control y-axis grid lines visibility and styling
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    x_grid?: boolean | HTMLAttributes<SVGLineElement> // Control x-axis grid lines visibility and styling
+    y_grid?: boolean | HTMLAttributes<SVGLineElement> // Control y-axis grid lines visibility and styling
+    y2_grid?: boolean | HTMLAttributes<SVGLineElement>
     color_scale?: {
       type?: ScaleType // Type of scale for color mapping
       scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
@@ -126,9 +127,9 @@
       string,
       (payload: { point: InternalPoint; event: Event }) => void
     >
-    on_point_click?: (payload: { point: InternalPoint; event: MouseEvent }) => void
+    on_point_click?: (data: { point: InternalPoint; event: MouseEvent }) => void
     on_point_hover?: (
-      payload: { point: InternalPoint | null; event?: MouseEvent },
+      data: { point: InternalPoint | null; event?: MouseEvent },
     ) => void
     // Control pane props
     show_controls?: boolean // Whether to show the control pane
@@ -150,6 +151,7 @@
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     children?: Snippet<[]>
   }
   let {
@@ -190,7 +192,8 @@
     y_ticks = 5,
     x_scale_type = `linear`,
     y_scale_type = `linear`,
-    show_zero_lines = true,
+    show_x_zero_line = false,
+    show_y_zero_line = false,
     x_grid = true,
     y_grid = true,
     color_scale = {
@@ -227,6 +230,7 @@
     selected_series_idx = $bindable(0),
     color_axis_labels = true,
     controls_toggle_props,
+    controls_pane_props,
     children,
     ...rest
   }: Props = $props()
@@ -1421,36 +1425,31 @@
         pad,
       })}
 
-      <!-- Guide lines -->
       <!-- Zero lines -->
-      {#if show_zero_lines}
-        {#if x_min <= 0 && x_max >= 0}
-          {@const zero_x_pos = x_format?.startsWith(`%`)
+      {#if show_x_zero_line && x_min <= 0 && x_max >= 0}
+        {@const zero_x_pos = x_format?.startsWith(`%`)
         ? x_scale_fn(new Date(0))
         : x_scale_fn(0)}
-          {#if isFinite(zero_x_pos)}
-            <line
-              y1={pad.t}
-              y2={height - pad.b}
-              x1={zero_x_pos}
-              x2={zero_x_pos}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+        {#if isFinite(zero_x_pos)}
+          <line
+            class="zero-line"
+            x1={zero_x_pos}
+            x2={zero_x_pos}
+            y1={pad.t}
+            y2={height - pad.b}
+          />
         {/if}
-        {#if y_scale_type === `linear` && y_min < 0 && y_max > 0}
-          {@const zero_y_pos = y_scale_fn(0)}
-          {#if isFinite(zero_y_pos)}
-            <line
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zero_y_pos}
-              y2={zero_y_pos}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+      {/if}
+      {#if show_y_zero_line && y_scale_type === `linear` && y_min < 0 && y_max > 0}
+        {@const zero_y_pos = y_scale_fn(0)}
+        {#if isFinite(zero_y_pos)}
+          <line
+            class="zero-line"
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={zero_y_pos}
+            y2={zero_y_pos}
+          />
         {/if}
       {/if}
 
@@ -1852,10 +1851,12 @@
     {#if show_controls}
       <ScatterPlotControls
         toggle_props={controls_toggle_props}
+        pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open
         bind:markers
-        bind:show_zero_lines
+        bind:show_x_zero_line
+        bind:show_y_zero_line
         bind:x_grid
         bind:y_grid
         bind:y2_grid
@@ -2023,5 +2024,11 @@
     stroke: var(--scatter-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
     stroke-width: var(--scatter-zoom-rect-stroke-width, 1);
     pointer-events: none; /* Prevent rect from interfering with mouse events */
+  }
+  .zero-line {
+    stroke: var(--scatter-zero-line-color, black);
+    stroke-width: var(--scatter-zero-line-width, 1);
+    stroke-dasharray: none;
+    opacity: var(--scatter-zero-line-opacity, 0.3);
   }
 </style>

@@ -16,6 +16,7 @@
   import {
     compute_max_energy_threshold,
     default_controls,
+    default_pd_config,
     parse_pd_entries_from_drop,
     PD_STYLE,
   } from './helpers'
@@ -98,31 +99,12 @@
     ...controls,
   })
 
-  const default_config: PhaseDiagramConfig = {
-    margin: { top: 40, right: 40, bottom: 60, left: 60 },
-    unstable_threshold: 0.2,
-    show_labels: true,
-    show_hull: true,
-    point_size: 6,
-    line_width: 2,
-    font_size: 12,
-    colors: {
-      stable: `#0072B2`,
-      unstable: `#E69F00`,
-      hull_line: `var(--accent-color, #1976D2)`,
-      background: `transparent`,
-      text: `var(--text-color, #212121)`,
-      edge: `var(--text-color, #212121)`,
-      tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
-      tooltip_text: `var(--tooltip-text, white)`,
-      annotation: `var(--text-color, #212121)`,
-    },
-  }
-
   const merged_config = $derived({
-    ...default_config,
+    ...default_pd_config,
+    point_size: 6, // Binary diagrams use slightly smaller points
     ...config,
-    margin: { ...default_config.margin, ...(config.margin || {}) },
+    colors: { ...default_pd_config.colors, ...(config.colors || {}) },
+    margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
   // Decide which energy source to use per entry (consistent with 3D/4D)

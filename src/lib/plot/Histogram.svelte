@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DraggablePane } from '$lib'
-  import type { DataSeries } from '$lib/plot'
+  import type { DataSeries, Sides } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -27,12 +27,14 @@
     range_padding?: number
     bins?: number
     x_label?: string
+    x_label_shift?: { x?: number; y?: number }
     y_label?: string
+    y_label_shift?: { x?: number; y?: number }
     x_format?: string
     y_format?: string
     x_scale_type?: ScaleType
     y_scale_type?: ScaleType
-    padding?: { t: number; b: number; l: number; r: number }
+    padding?: Sides
     show_legend?: boolean
     legend?: LegendConfig | null
     bar_opacity?: number
@@ -40,9 +42,10 @@
     bar_color?: string
     selected_property?: string
     mode?: `single` | `overlay`
-    show_zero_lines?: boolean
-    x_grid?: boolean | Record<string, unknown>
-    y_grid?: boolean | Record<string, unknown>
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    x_grid?: boolean | HTMLAttributes<SVGLineElement>
+    y_grid?: boolean | HTMLAttributes<SVGLineElement>
     x_ticks?: TicksOption
     y_ticks?: TicksOption
     tooltip?: Snippet<[{ value: number; count: number; property: string }]>
@@ -66,6 +69,8 @@
     plot_controls?: Snippet<[]>
     on_series_toggle?: (series_idx: number) => void
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    children?: Snippet<[]>
   }
   let {
     series = $bindable([]),
@@ -76,7 +81,9 @@
     range_padding = 0.05,
     bins = $bindable(100),
     x_label = `Value`,
+    x_label_shift = { x: 0, y: 0 },
     y_label = `Count`,
+    y_label_shift = { x: 0, y: 0 },
     x_format = $bindable(`.2~s`),
     y_format = $bindable(`d`),
     x_scale_type = $bindable(`linear`),
@@ -89,7 +96,8 @@
     bar_color = $bindable(`cornflowerblue`),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
-    show_zero_lines = $bindable(true),
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
     x_grid = $bindable(true),
     y_grid = $bindable(true),
     x_ticks = $bindable(8),
@@ -104,6 +112,8 @@
     plot_controls,
     on_series_toggle = () => {},
     controls_toggle_props,
+    controls_pane_props,
+    children,
     ...rest
   }: Props = $props()
 
@@ -382,33 +392,23 @@
       }}
     >
       <!-- Zero lines -->
-      {#if show_zero_lines}
-        {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-          {@const zero_x = scales.x(0)}
-          {#if isFinite(zero_x)}
-            <line
-              y1={pad.t}
-              y2={height - pad.b}
-              x1={zero_x}
-              x2={zero_x}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+      {#if show_x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+        {@const zero_x = scales.x(0)}
+        {#if isFinite(zero_x)}
+          <line
+            class="zero-line"
+            x1={zero_x}
+            x2={zero_x}
+            y1={pad.t}
+            y2={height - pad.b}
+          />
         {/if}
-        {#if y_scale_type === `linear` && ranges.current.y[0] < 0 &&
+      {/if}
+      {#if show_y_zero_line && y_scale_type === `linear` && ranges.current.y[0] < 0 &&
         ranges.current.y[1] > 0}
-          {@const zero_y = scales.y(0)}
-          {#if isFinite(zero_y)}
-            <line
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zero_y}
-              y2={zero_y}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+        {@const zero_y = scales.y(0)}
+        {#if isFinite(zero_y)}
+          <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
         {/if}
       {/if}
 
@@ -524,8 +524,8 @@
           </g>
         {/each}
         <text
-          x={(pad.l + width - pad.r) / 2}
-          y={height - 10}
+          x={(pad.l + width - pad.r) / 2 + (x_label_shift.x ?? 0)}
+          y={height - 10 + (x_label_shift.y ?? 0)}
           text-anchor="middle"
           fill="var(--text-color)"
         >
@@ -567,15 +567,19 @@
             </text>
           </g>
         {/each}
-        <text
-          x={15}
-          y={(pad.t + height - pad.b) / 2}
-          text-anchor="middle"
-          fill="var(--text-color)"
-          transform="rotate(-90, 15, {(pad.t + height - pad.b) / 2})"
-        >
-          {y_label}
-        </text>
+        {#if true}
+          {@const y_label_x = 15 + (y_label_shift.x ?? 0)}
+          {@const y_label_y = (pad.t + height - pad.b) / 2 + (y_label_shift.y ?? 0)}
+          <text
+            x={y_label_x}
+            y={y_label_y}
+            text-anchor="middle"
+            fill="var(--text-color)"
+            transform="rotate(-90, {y_label_x}, {y_label_y})"
+          >
+            {y_label}
+          </text>
+        {/if}
       </g>
     </svg>
   {/if}
@@ -583,6 +587,7 @@
   {#if show_controls}
     <HistogramControls
       toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
       bind:show_controls
       bind:controls_open
       bind:bins
@@ -600,7 +605,8 @@
       bind:x_format
       bind:y_format
       bind:selected_property
-      bind:show_zero_lines
+      bind:show_x_zero_line
+      bind:show_y_zero_line
       bind:x_range
       bind:y_range
       auto_x_range={auto_ranges.x}
@@ -618,6 +624,9 @@
       wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
     />
   {/if}
+
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.()}
 </div>
 
 <style>
@@ -657,5 +666,10 @@
     stroke: var(--histogram-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
     stroke-width: var(--histogram-zoom-rect-stroke-width, 1);
     pointer-events: none;
+  }
+  .zero-line {
+    stroke: var(--histogram-zero-line-color, black);
+    stroke-width: var(--histogram-zero-line-width, 1);
+    opacity: var(--histogram-zero-line-opacity, 0.3);
   }
 </style>

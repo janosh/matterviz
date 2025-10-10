@@ -37,9 +37,10 @@
     y_format?: string
     x_ticks?: TicksOption
     y_ticks?: TicksOption
-    x_grid?: boolean | Record<string, unknown>
-    y_grid?: boolean | Record<string, unknown>
-    show_zero_lines?: boolean
+    x_grid?: boolean | HTMLAttributes<SVGLineElement>
+    y_grid?: boolean | HTMLAttributes<SVGLineElement>
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
     legend?: LegendConfig | null
     padding?: Sides
     default_bar_color?: string
@@ -54,6 +55,7 @@
     controls_open?: boolean
     plot_controls?: Snippet<[]>
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     children?: Snippet<[]>
   }
   let {
@@ -75,9 +77,10 @@
     y_ticks = $bindable(6),
     x_grid = $bindable(true),
     y_grid = $bindable(true),
-    show_zero_lines = $bindable(true),
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
     legend = {},
-    padding = { t: 10, b: 60, l: 60, r: 30 },
+    padding = { t: 20, b: 60, l: 60, r: 20 },
     default_bar_color = `var(--bar-color, #4682b4)`,
     tooltip,
     hovered = $bindable(false),
@@ -88,6 +91,7 @@
     controls_open = $bindable(false),
     plot_controls,
     controls_toggle_props,
+    controls_pane_props,
     children,
     ...rest
   }: Props = $props()
@@ -443,28 +447,16 @@
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
         <!-- Zero lines -->
-        {#if show_zero_lines}
+        {#if show_x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
           {@const zx = scales.x(0)}
-          {@const zy = scales.y(0)}
-          {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0 && isFinite(zx)}
-            <line
-              x1={zx}
-              x2={zx}
-              y1={pad.t}
-              y2={height - pad.b}
-              stroke="gray"
-              stroke-width="0.5"
-            />
+          {#if isFinite(zx)}
+            <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
-          {#if ranges.current.y[0] < 0 && ranges.current.y[1] > 0 && isFinite(zy)}
-            <line
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zy}
-              y2={zy}
-              stroke="gray"
-              stroke-width="0.5"
-            />
+        {/if}
+        {#if show_y_zero_line && ranges.current.y[0] < 0 && ranges.current.y[1] > 0}
+          {@const zy = scales.y(0)}
+          {#if isFinite(zy)}
+            <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
           {/if}
         {/if}
 
@@ -778,10 +770,13 @@
     {#if show_controls}
       <BarPlotControls
         toggle_props={controls_toggle_props}
+        pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open
         bind:orientation
         bind:mode
+        bind:show_x_zero_line
+        bind:show_y_zero_line
         bind:x_grid
         bind:y_grid
         bind:x_ticks
@@ -840,5 +835,10 @@
   .bar-label {
     fill: var(--text-color);
     font-size: 11px;
+  }
+  .zero-line {
+    stroke: var(--barplot-zero-line-color, black);
+    stroke-width: var(--barplot-zero-line-width, 1);
+    opacity: var(--barplot-zero-line-opacity, 0.3);
   }
 </style>

@@ -16,6 +16,7 @@
     build_entry_tooltip_text,
     compute_max_energy_threshold,
     default_controls,
+    default_pd_config,
     find_pd_entry_at_mouse,
     get_energy_color_scale,
     get_point_color_for_entry,
@@ -108,26 +109,10 @@
   })
 
   const merged_config = $derived({
-    width: 600,
-    height: 600,
-    show_labels: true,
-    show_hull: true,
-    point_size: 8,
-    line_width: 2,
-    font_size: 12,
-    colors: {
-      stable: `#0072B2`,
-      unstable: `#E69F00`,
-      hull_line: `var(--accent-color, #1976D2)`,
-      background: `transparent`,
-      text: `var(--text-color, #212121)`,
-      edge: `var(--text-color, #212121)`,
-      tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
-      tooltip_text: `var(--tooltip-text, white)`,
-      annotation: `var(--text-color, #212121)`,
-    },
+    ...default_pd_config,
     ...config,
-    margin: { top: 60, right: 60, bottom: 60, left: 60, ...(config.margin || {}) },
+    colors: { ...default_pd_config.colors, ...(config.colors || {}) },
+    margin: { t: 60, r: 60, b: 60, l: 60, ...(config.margin || {}) },
   })
 
   // Decide which energy source to use per entry (keep e_form and e_above_hull consistent)
