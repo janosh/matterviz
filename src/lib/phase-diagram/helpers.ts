@@ -1,58 +1,11 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import { elem_symbol_to_name } from '$lib/composition'
 import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { PDControlsType, PhaseDiagramConfig, PhaseEntry } from './types'
+import type { PhaseDiagramConfig, PhaseEntry } from './types'
 import { is_unary_entry } from './types'
-
-// Default legend configuration shared by 3D and 4D diagrams
-export const default_controls: PDControlsType = {
-  title: ``,
-  show: true,
-  position: `top-right`,
-  width: 280,
-  show_counts: true,
-  show_color_toggle: true,
-  show_label_controls: true,
-}
-
-// Phase diagram defaults shared by 2D, 3D, and 4D
-export const default_pd_config: PhaseDiagramConfig = {
-  width: 600,
-  height: 600,
-  unstable_threshold: 0.2,
-  show_labels: true,
-  show_hull: true,
-  point_size: 8,
-  line_width: 2,
-  font_size: 12,
-  colors: {
-    stable: `#0072B2`,
-    unstable: `#E69F00`,
-    hull_line: `var(--accent-color, #1976D2)`,
-    background: `transparent`,
-    text: `var(--text-color, #212121)`,
-    edge: `var(--text-color, #212121)`,
-    tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
-    tooltip_text: `var(--tooltip-text, white)`,
-    annotation: `var(--text-color, #212121)`,
-  },
-}
-
-// Shared PD styles (single source of truth shared by 2D, 3D, and 4D)
-export const PD_STYLE = Object.freeze({
-  structure_line: Object.freeze({
-    color: `rgba(128, 128, 128, 0.6)`,
-    dash: [3, 3] as [number, number],
-    line_width: 2,
-  }),
-  z_index: Object.freeze({
-    tooltip: 6000,
-    copy_feedback: 10000,
-  }),
-})
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -188,4 +141,91 @@ export function find_pd_entry_at_mouse<
     if (distance < base * container_scale + 5) return entry
   }
   return null
+}
+
+// Calculate which side of the viewport has more space for modal placement
+export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boolean {
+  if (!wrapper) return true
+  const rect = wrapper.getBoundingClientRect()
+  const viewport_width = globalThis.innerWidth
+  const space_on_right = viewport_width - rect.right
+  const space_on_left = rect.left
+  return space_on_right >= space_on_left
+}
+
+// Setup fullscreen effect for phase diagrams with optional camera reset callback
+export function setup_fullscreen_effect(
+  fullscreen: boolean,
+  wrapper: HTMLDivElement | undefined,
+  on_fullscreen_change?: (entering_fullscreen: boolean) => void,
+): void {
+  if (typeof window === `undefined`) return
+
+  if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
+    wrapper.requestFullscreen().catch(console.error)
+    on_fullscreen_change?.(true)
+  } else if (!fullscreen && document.fullscreenElement) {
+    document.exitFullscreen()
+    on_fullscreen_change?.(false)
+  }
+}
+
+// Compute energy source mode information for phase diagram entries. Returns energy mode information including capability flags and resolved mode.
+// This determines whether we can use precomputed energies or need to compute on-the-fly.
+export function compute_energy_mode_info(
+  entries: PhaseEntry[], // Array of phase entries to analyze
+  find_lowest_energy_unary_refs_fn: (entries: PhaseEntry[]) => Record<string, PhaseEntry>, // Function to find unary references
+  energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
+): EnergyModeInfo {
+  const has_precomputed_e_form = entries.length > 0 &&
+    entries.every((e) => typeof e.e_form_per_atom === `number`)
+  const has_precomputed_hull = entries.length > 0 &&
+    entries.every((e) => typeof e.e_above_hull === `number`)
+
+  const unary_refs = find_lowest_energy_unary_refs_fn(entries)
+
+  const elements_in_entries = Array.from(
+    new Set(entries.flatMap((e) => Object.keys(e.composition))),
+  )
+  const can_compute_e_form = elements_in_entries.every((el) => Boolean(unary_refs[el]))
+  const can_compute_hull = can_compute_e_form
+
+  // Resolve mode to avoid inconsistent states:
+  // - If full precomputed available, honor user toggle
+  // - Else if we can compute both, use on-the-fly automatically
+  // - Else fall back to precomputed (best-effort)
+  const energy_mode = has_precomputed_e_form && has_precomputed_hull
+    ? energy_source_mode
+    : can_compute_e_form && can_compute_hull
+    ? `on-the-fly`
+    : `precomputed`
+
+  return {
+    has_precomputed_e_form,
+    has_precomputed_hull,
+    can_compute_e_form,
+    can_compute_hull,
+    energy_mode,
+    unary_refs,
+  }
+}
+
+// Compute effective entries with formation energies based on the energy mode.
+// Returns entries with formation energies populated (either precomputed or on-the-fly)
+export function get_effective_entries(
+  entries: PhaseEntry[], // Original phase entries
+  energy_mode: `precomputed` | `on-the-fly`, // Energy source mode (precomputed or on-the-fly)
+  unary_refs: Record<string, PhaseEntry>, // Unary reference entries for energy computation
+  compute_e_form_fn: (
+    entry: PhaseEntry,
+    unary_refs: Record<string, PhaseEntry>,
+  ) => number | null, // Function to compute formation energy per atom
+): PhaseEntry[] {
+  if (energy_mode === `precomputed`) return entries
+
+  return entries.map((entry) => {
+    const e_form = compute_e_form_fn(entry, unary_refs)
+    if (e_form === null) return entry
+    return { ...entry, e_form_per_atom: e_form }
+  })
 }

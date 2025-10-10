@@ -6,7 +6,6 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
-  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     get_ternary_3d_coordinates,
@@ -15,70 +14,16 @@
     get_triangle_vertical_edges,
     TRIANGLE_VERTICES,
   } from './barycentric-coords'
-  import {
-    build_entry_tooltip_text,
-    compute_max_energy_threshold,
-    default_controls,
-    default_pd_config,
-    find_pd_entry_at_mouse,
-    get_energy_color_scale,
-    get_point_color_for_entry,
-    parse_pd_entries_from_drop,
-    PD_STYLE,
-  } from './helpers'
+  import * as helpers from './helpers'
+  import type { BasePhaseDiagramProps, Hull3DProps } from './index'
+  import { default_controls, default_pd_config, PD_STYLE } from './index'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
-  import {
-    build_lower_hull_model,
-    compute_e_above_hull_for_points,
-    compute_e_form_per_atom,
-    compute_lower_hull_triangles,
-    find_lowest_energy_unary_refs,
-    get_phase_diagram_stats,
-    process_pd_entries,
-  } from './thermodynamics'
-  import type {
-    HoverData3D,
-    PDControlsType,
-    PhaseDiagramConfig,
-    PhaseEntry,
-    PhaseStats,
-    Point3D,
-    TernaryPlotEntry,
-  } from './types'
+  import * as thermo from './thermodynamics'
+  import type { HoverData3D, Point3D, TernaryPlotEntry } from './types'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    entries: PhaseEntry[]
-    controls?: Partial<PDControlsType>
-    config?: Partial<PhaseDiagramConfig>
-    on_point_click?: (entry: TernaryPlotEntry) => void
-    on_point_hover?: (data: HoverData3D<TernaryPlotEntry> | null) => void
-    fullscreen?: boolean
-    enable_fullscreen?: boolean
-    enable_info_pane?: boolean
-    wrapper?: HTMLDivElement
-    // Smart label defaults - hide labels if more than this many entries
-    label_threshold?: number
-    // Bindable visibility and interaction state
-    show_stable?: boolean
-    show_unstable?: boolean
-    show_hull_faces?: boolean
-    hull_face_opacity?: number
-    color_mode?: `stability` | `energy`
-    color_scale?: D3InterpolateName
-    info_pane_open?: boolean
-    // Legend pane visibility
-    legend_pane_open?: boolean
-    // Energy threshold for showing unstable entries (eV/atom above hull)
-    energy_threshold?: number
-    // Callback for when JSON files are dropped
-    on_file_drop?: (entries: PhaseEntry[]) => void
-    // Enable structure preview overlay when hovering over entries with structure data
-    enable_structure_preview?: boolean
-    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
-    // Bindable phase diagram statistics - computed internally but exposed for external use
-    phase_stats?: PhaseStats | null
+  interface Props extends BasePhaseDiagramProps<TernaryPlotEntry>, Hull3DProps {
     // Bindable stable and unstable entries - computed internally but exposed for external use
     stable_entries_out?: TernaryPlotEntry[]
     unstable_entries_out?: TernaryPlotEntry[]
@@ -112,10 +57,7 @@
     ...rest
   }: Props = $props()
 
-  const merged_controls: PDControlsType = $derived({
-    ...default_controls,
-    ...controls,
-  })
+  const merged_controls = $derived({ ...default_controls, ...controls })
 
   const merged_config = $derived({
     ...default_pd_config,
@@ -124,47 +66,36 @@
     margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
-  // Decide which energy source to use per entry
-  const has_precomputed_e_form = $derived(
-    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`),
-  )
-  const has_precomputed_hull = $derived(
-    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`),
-  )
-
-  // Build unary references once from entries; inexpensive and used for capability checks
-  const unary_refs = $derived.by(() => find_lowest_energy_unary_refs(entries))
-
-  const can_compute_e_form = $derived.by(() => {
-    const elements_in_entries = Array.from(
-      new Set(entries.flatMap((e) => Object.keys(e.composition))),
-    )
-    return elements_in_entries.every((el) => Boolean(unary_refs[el]))
-  })
-  const can_compute_hull = $derived(can_compute_e_form)
-
-  // Resolve mode to avoid inconsistent states:
-  // - If full precomputed available, honor user toggle
-  // - Else if we can compute both, use on-the-fly automatically
-  // - Else fall back to precomputed (best-effort)
-  const energy_mode = $derived(
-    (has_precomputed_e_form && has_precomputed_hull)
-      ? energy_source_mode
-      : ((can_compute_e_form && can_compute_hull) ? `on-the-fly` : `precomputed`),
+  // Compute energy mode information (shared logic)
+  const energy_info = $derived(
+    helpers.compute_energy_mode_info(
+      entries,
+      thermo.find_lowest_energy_unary_refs,
+      energy_source_mode,
+    ),
   )
 
-  const effective_entries = $derived.by(() => {
-    if (energy_mode === `precomputed`) return entries
-    return entries.map((entry) => {
-      const e_form = compute_e_form_per_atom(entry, unary_refs)
-      if (e_form == null) return entry
-      return { ...entry, e_form_per_atom: e_form }
-    })
-  })
+  const {
+    has_precomputed_e_form,
+    has_precomputed_hull,
+    can_compute_e_form,
+    can_compute_hull,
+    energy_mode,
+    unary_refs,
+  } = $derived(energy_info)
+
+  const effective_entries = $derived(
+    helpers.get_effective_entries(
+      entries,
+      energy_mode,
+      unary_refs,
+      thermo.compute_e_form_per_atom,
+    ),
+  )
 
   // Process phase diagram data with unified PhaseEntry interface using effective entries
   const processed_entries = $derived(effective_entries)
-  const pd_data = $derived(process_pd_entries(processed_entries))
+  const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
     const all_elements = pd_data.elements
@@ -206,7 +137,7 @@
     const enriched = (() => {
       if (energy_mode === `on-the-fly`) {
         const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-        const e_hulls = compute_e_above_hull_for_points(pts, hull_model)
+        const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
         return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
       }
       return coords_entries
@@ -250,7 +181,7 @@
     }
     const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
     try {
-      return compute_lower_hull_triangles(points)
+      return thermo.compute_lower_hull_triangles(points)
     } catch (error) {
       console.error(`Error computing convex hull:`, error)
       return []
@@ -258,7 +189,7 @@
   })
 
   // Cached hull model for e_above_hull queries; recompute only when faces change
-  let hull_model = $derived.by(() => build_lower_hull_model(hull_faces))
+  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
 
   // Total counts based on hull-enriched entries
   const total_unstable_count = $derived(
@@ -371,9 +302,6 @@
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: TernaryPlotEntry) =>
-    build_entry_tooltip_text(entry)
-
   const reset_camera = () => Object.assign(camera, camera_default)
   function reset_all() {
     reset_camera()
@@ -409,7 +337,7 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await parse_pd_entries_from_drop(event)
+    const data = await helpers.parse_pd_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 
@@ -420,27 +348,26 @@
     setTimeout(() => copy_feedback_visible = false, 1500)
   }
 
-  function get_point_color(entry: TernaryPlotEntry): string {
-    return get_point_color_for_entry(
+  const get_point_color = (entry: TernaryPlotEntry): string =>
+    helpers.get_point_color_for_entry(
       entry,
       color_mode,
       merged_config.colors,
       energy_color_scale,
     )
-  }
 
   // Cache energy color scale per frame/setting
   const energy_color_scale = $derived.by(() =>
-    get_energy_color_scale(color_mode, color_scale, plot_entries)
+    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
   const max_energy_threshold = $derived(
-    compute_max_energy_threshold(processed_entries),
+    helpers.compute_max_energy_threshold(processed_entries),
   )
 
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = get_phase_diagram_stats(processed_entries, elements, 3)
+    phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
   })
 
   // Sync stable and unstable entries to bindable props
@@ -986,7 +913,7 @@
   }
 
   const find_entry_at_mouse = (event: MouseEvent): TernaryPlotEntry | null =>
-    find_pd_entry_at_mouse(
+    helpers.find_pd_entry_at_mouse(
       canvas,
       event,
       plot_entries,
@@ -1012,21 +939,11 @@
         if (structure) {
           selected_structure = structure
           selected_entry = entry
-          calculate_modal_side()
+          modal_place_right = helpers.calculate_modal_side(wrapper)
           modal_open = true
         }
       }
     } else if (modal_open) close_structure_popup()
-  }
-
-  // Decide side based on available viewport room; modal is absolutely positioned
-  function calculate_modal_side() {
-    if (!wrapper) return
-    const rect = wrapper.getBoundingClientRect()
-    const viewport_width = globalThis.innerWidth
-    const space_on_right = viewport_width - rect.right
-    const space_on_left = rect.left
-    modal_place_right = space_on_right >= space_on_left
   }
 
   function close_structure_popup() {
@@ -1038,7 +955,7 @@
   const handle_double_click = (event: MouseEvent) => {
     const entry = find_entry_at_mouse(event)
     if (entry) {
-      copy_to_clipboard(get_tooltip_text(entry), {
+      copy_to_clipboard(helpers.build_entry_tooltip_text(entry), {
         x: event.clientX,
         y: event.clientY,
       })
@@ -1109,20 +1026,14 @@
   // Fullscreen handling with camera reset on transitions
   let was_fullscreen = $state(fullscreen)
   $effect(() => {
-    if (typeof window === `undefined`) return
-
-    if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else if (!fullscreen && document.fullscreenElement) {
-      document.exitFullscreen()
-    }
-
-    // Reset camera only on fullscreen transitions
-    if (fullscreen !== was_fullscreen) {
-      camera.center_x = 0
-      camera.center_y = -50
-      was_fullscreen = fullscreen
-    }
+    helpers.setup_fullscreen_effect(fullscreen, wrapper, (entering_fullscreen) => {
+      // Reset camera only on fullscreen transitions
+      if (entering_fullscreen !== was_fullscreen) {
+        camera.center_x = 0
+        camera.center_y = -50
+        was_fullscreen = entering_fullscreen
+      }
+    })
   })
 
   let style = $derived(
