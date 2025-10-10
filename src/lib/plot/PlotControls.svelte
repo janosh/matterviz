@@ -13,9 +13,9 @@
     plot_controls,
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
-    x_grid = $bindable(DEFAULTS.plot.x_grid),
-    y_grid = $bindable(DEFAULTS.plot.y_grid),
-    y2_grid = $bindable(DEFAULTS.plot.y2_grid),
+    show_x_grid = $bindable(DEFAULTS.plot.show_x_grid),
+    show_y_grid = $bindable(DEFAULTS.plot.show_y_grid),
+    show_y2_grid = $bindable(DEFAULTS.plot.show_y2_grid),
     has_y2_points = false,
     x_range = $bindable(undefined),
     y_range = $bindable(undefined),
@@ -89,9 +89,7 @@
       if (format_type === `x`) x_format = input.value
       else if (format_type === `y`) y_format = input.value
       else y2_format = input.value
-    } else {
-      input.classList.add(`invalid`)
-    }
+    } else input.classList.add(`invalid`)
   }
 
   // Handle range input changes
@@ -102,7 +100,8 @@
 
     // Validate and update range
     const invalid = min !== null && max !== null && min >= max
-    Object.values(range_els).forEach((el) => el?.classList.toggle(`invalid`, invalid))
+    range_els[`${axis}-min`]?.classList.toggle(`invalid`, invalid)
+    range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
     if (invalid) return
 
     const new_range = min === null && max === null
@@ -156,13 +155,13 @@
       <!-- Base Display controls -->
       <SettingsSection
         title="Display"
-        current_values={{ show_x_zero_line, show_y_zero_line, x_grid, y_grid, y2_grid }}
+        current_values={{ show_x_zero_line, show_y_zero_line, show_x_grid, show_y_grid, show_y2_grid }}
         on_reset={() => {
           show_x_zero_line = false
           show_y_zero_line = false
-          x_grid = DEFAULTS.plot.x_grid
-          y_grid = DEFAULTS.plot.y_grid
-          y2_grid = DEFAULTS.plot.y2_grid
+          show_x_grid = DEFAULTS.plot.show_x_grid
+          show_y_grid = DEFAULTS.plot.show_y_grid
+          show_y2_grid = DEFAULTS.plot.show_y2_grid
         }}
         style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
@@ -174,13 +173,11 @@
               type="checkbox"
               bind:checked={show_y_zero_line}
             /> Y zero line</label>{/if}
-        <label><input type="checkbox" bind:checked={x_grid as boolean} /> X-axis
-          grid</label>
-        <label><input type="checkbox" bind:checked={y_grid as boolean} /> Y-axis
-          grid</label>
+        <label><input type="checkbox" bind:checked={show_x_grid} /> X-axis grid</label>
+        <label><input type="checkbox" bind:checked={show_y_grid} /> Y-axis grid</label>
         {#if has_y2_points}<label><input
               type="checkbox"
-              bind:checked={y2_grid as boolean}
+              bind:checked={show_y2_grid}
             /> Y2-axis grid</label>{/if}
       </SettingsSection>
 

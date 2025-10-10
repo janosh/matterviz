@@ -33,9 +33,9 @@
     markers = $bindable(DEFAULTS.scatter.markers),
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
-    x_grid = $bindable(DEFAULTS.plot.x_grid),
-    y_grid = $bindable(DEFAULTS.plot.y_grid),
-    y2_grid = $bindable(DEFAULTS.plot.y2_grid),
+    show_x_grid = $bindable(DEFAULTS.plot.show_x_grid),
+    show_y_grid = $bindable(DEFAULTS.plot.show_y_grid),
+    show_y2_grid = $bindable(DEFAULTS.plot.show_y2_grid),
     has_y2_points = false,
     // Range controls
     x_range = $bindable(undefined),
@@ -109,9 +109,9 @@
   bind:controls_open
   bind:show_x_zero_line
   bind:show_y_zero_line
-  bind:x_grid
-  bind:y_grid
-  bind:y2_grid
+  bind:show_x_grid
+  bind:show_y_grid
+  bind:show_y2_grid
   bind:x_range
   bind:y_range
   bind:y2_range

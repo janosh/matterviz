@@ -115,14 +115,21 @@
       // Get coords with formation energies
       const coords = compute_4d_coords(pd_data.entries, elements)
 
-      // Convert to 4D points for hull computation (use precomputed barycentric coords)
+      // Convert to 4D points for hull computation using barycentric coordinates (composition fractions)
       const points_4d: Point4D[] = coords
         .filter(
           (ent) =>
             Number.isFinite(ent.e_form_per_atom) &&
             [ent.x, ent.y, ent.z].every(Number.isFinite),
         )
-        .map((ent) => ({ x: ent.x, y: ent.y, z: ent.z, w: ent.e_form_per_atom! }))
+        .map((ent) => {
+          // Use composition to get barycentric coordinates, NOT the 3D projection coordinates
+          const amounts = elements.map((el) => ent.composition[el] || 0)
+          const total = amounts.reduce((sum, amt) => sum + amt, 0)
+          const [x, y, z] = amounts.map((amt) => amt / total)
+
+          return { x, y, z, w: ent.e_form_per_atom ?? NaN }
+        })
 
       const valid_points = points_4d
 
@@ -146,7 +153,7 @@
       // Compute or use precomputed hull distances
       const enriched = (() => {
         if (energy_mode === `on-the-fly` && hull_4d.length > 0) {
-          // Build 4D points for distance calculation (use precomputed barycentric coords)
+          // Build 4D points for distance calculation using barycentric coordinates
           // Track indices to map hull distances back to original coords
           const valid_entries: Array<{ entry: PlotEntry3D; orig_idx: number }> = []
           coords.forEach((ent, idx) => {
@@ -157,8 +164,15 @@
           })
 
           const points_4d: Point4D[] = valid_entries.map((
-            { entry: { x, y, z, ...rest } },
-          ) => ({ x, y, z, w: rest.e_form_per_atom ?? NaN }))
+            { entry },
+          ) => {
+            // Use composition to get barycentric coordinates, NOT the 3D projection coordinates
+            const amounts = elements.map((el) => entry.composition[el] || 0)
+            const total = amounts.reduce((sum, amt) => sum + amt, 0)
+            const [x, y, z] = amounts.map((amt) => amt / total)
+
+            return { x, y, z, w: entry.e_form_per_atom ?? NaN }
+          })
 
           const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
 

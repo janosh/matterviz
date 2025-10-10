@@ -95,9 +95,12 @@
     y_scale_type?: ScaleType // Type of scale for y-axis
     show_x_zero_line?: boolean
     show_y_zero_line?: boolean
-    x_grid?: boolean | HTMLAttributes<SVGLineElement> // Control x-axis grid lines visibility and styling
-    y_grid?: boolean | HTMLAttributes<SVGLineElement> // Control y-axis grid lines visibility and styling
-    y2_grid?: boolean | HTMLAttributes<SVGLineElement>
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    show_y2_grid?: boolean
+    x_grid_style?: HTMLAttributes<SVGLineElement>
+    y_grid_style?: HTMLAttributes<SVGLineElement>
+    y2_grid_style?: HTMLAttributes<SVGLineElement>
     color_scale?: {
       type?: ScaleType // Type of scale for color mapping
       scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
@@ -170,7 +173,8 @@
     y2_format = $bindable(``),
     y2_ticks = 5,
     y2_scale_type = `linear`,
-    y2_grid = true,
+    show_y2_grid = true,
+    y2_grid_style,
     padding = {},
     range_padding = 0.05, // Default padding factor
     x_label = ``,
@@ -194,8 +198,10 @@
     y_scale_type = `linear`,
     show_x_zero_line = false,
     show_y_zero_line = false,
-    x_grid = true,
-    y_grid = true,
+    show_x_grid = true,
+    show_y_grid = true,
+    x_grid_style,
+    y_grid_style,
     color_scale = {
       type: `linear`,
       scheme: `interpolateViridis`,
@@ -1613,11 +1619,11 @@
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
                 <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                  {#if x_grid}
+                  {#if show_x_grid}
                     <line
                       y1={-(height - pad.b - pad.t)}
                       y2="0"
-                      {...typeof x_grid === `object` ? x_grid : {}}
+                      {...x_grid_style ?? {}}
                     />
                   {/if}
 
@@ -1675,11 +1681,11 @@
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
                 <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                  {#if y_grid}
+                  {#if show_y_grid}
                     <line
                       x1="0"
                       x2={width - pad.l - pad.r}
-                      {...typeof y_grid === `object` ? y_grid : {}}
+                      {...y_grid_style ?? {}}
                     />
                   {/if}
 
@@ -1728,11 +1734,11 @@
                 {@const tick_pos = tick_pos_raw}
                 {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
                   <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
-                    {#if y2_grid}
+                    {#if show_y2_grid}
                       <line
                         x1={-(width - pad.l - pad.r)}
                         x2="0"
-                        {...typeof y2_grid === `object` ? y2_grid : {}}
+                        {...y2_grid_style ?? {}}
                       />
                     {/if}
 
@@ -1857,9 +1863,9 @@
         bind:markers
         bind:show_x_zero_line
         bind:show_y_zero_line
-        bind:x_grid
-        bind:y_grid
-        bind:y2_grid
+        bind:show_x_grid
+        bind:show_y_grid
+        bind:show_y2_grid
         bind:x_range
         bind:y_range
         bind:y2_range

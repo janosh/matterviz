@@ -86,9 +86,7 @@ describe(`calc_coordination_numbers`, () => {
 
     expect(cn_values.length).toBeGreaterThan(0)
     // Check if sorted
-    for (let idx = 1; idx < cn_values.length; idx++) {
-      expect(cn_values[idx]).toBeGreaterThanOrEqual(cn_values[idx - 1])
-    }
+    expect(cn_values).toEqual([...cn_values].sort((a, b) => a - b))
   })
 
   test(`get_coordination_elements should return sorted element symbols`, () => {
@@ -98,9 +96,7 @@ describe(`calc_coordination_numbers`, () => {
     expect(elements).toContain(`Na`)
     expect(elements).toContain(`Cl`)
     // Check if sorted
-    for (let idx = 1; idx < elements.length; idx++) {
-      expect(elements[idx].localeCompare(elements[idx - 1])).toBeGreaterThan(0)
-    }
+    expect(elements).toEqual([...elements].sort())
   })
 
   test(`should handle structure with distant atoms using max distance ratio`, () => {
@@ -138,11 +134,12 @@ describe(`calc_coordination_numbers`, () => {
       ],
     }
 
-    // Use max distance ratio 1.2 - atoms 50 Å apart should have no bonds
+    // Use max distance ratio 1.2 — with atoms 50 Å apart and small covalent radii,
+    // 1.2 × (r_H + r_He) << 50 Å, so no bonds should form
     const result = calc_coordination_numbers(isolated_atoms, 1.2)
 
     expect(result.sites.length).toBe(2)
-    // With max distance ratio 1.2 and atoms 50 Å apart, both should have CN = 0
+    // Both atoms should have CN = 0 since bonding distance is well below separation
     const cn_values = result.sites.map((site) => site.coordination_number)
     expect(cn_values.every((cn) => cn === 0)).toBe(true)
     expect(result.cn_histogram.get(0)).toBe(2)

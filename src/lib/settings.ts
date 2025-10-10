@@ -149,10 +149,11 @@ export interface SettingsConfig {
     auto_fit_range: SettingType<boolean>
     grid_lines: SettingType<boolean>
     axis_labels: SettingType<boolean>
-    show_zero_lines: SettingType<boolean>
-    x_grid: SettingType<boolean>
-    y_grid: SettingType<boolean>
-    y2_grid: SettingType<boolean>
+    show_x_zero_line: SettingType<boolean>
+    show_y_zero_line: SettingType<boolean>
+    show_x_grid: SettingType<boolean>
+    show_y_grid: SettingType<boolean>
+    show_y2_grid: SettingType<boolean>
     x_format: SettingType<string>
     y_format: SettingType<string>
     y2_format: SettingType<string>
@@ -829,19 +830,23 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Show axis labels in plots`,
     },
-    show_zero_lines: {
+    show_x_zero_line: {
       value: true,
-      description: `Show zero reference lines in plots`,
+      description: `Show X-axis zero reference line`,
     },
-    x_grid: {
+    show_y_zero_line: {
+      value: true,
+      description: `Show Y-axis zero reference line`,
+    },
+    show_x_grid: {
       value: true,
       description: `Show X-axis grid lines`,
     },
-    y_grid: {
+    show_y_grid: {
       value: true,
       description: `Show Y-axis grid lines`,
     },
-    y2_grid: {
+    show_y2_grid: {
       value: true,
       description: `Show secondary Y-axis grid lines`,
     },

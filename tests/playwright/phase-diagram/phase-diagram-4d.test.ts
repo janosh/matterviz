@@ -177,4 +177,165 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await diagram.locator(`.info-btn`).click()
     await expect(diagram.locator(`.draggable-pane.phase-diagram-info-pane`)).toBeVisible()
   })
+
+  test(`hull facets render and are toggleable`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const canvas = diagram.locator(`canvas`)
+
+    // Verify hull faces are visible by default (semi-transparent pixels)
+    const initial_semi_transparent = await canvas.evaluate((el) => {
+      const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+      if (!ctx) return 0
+      const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+      let count = 0
+      for (let idx = 3; idx < data.length; idx += 4) {
+        if (data[idx] > 0 && data[idx] < 255) count++
+      }
+      return count
+    })
+
+    expect(initial_semi_transparent).toBeGreaterThan(100)
+
+    // Toggle hull faces off via checkbox (find by "Hull Faces" section)
+    await diagram.locator(`.legend-controls-btn`).click()
+    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    await controls.getByText(`Hull Faces`).locator(`..`).locator(`input[type="checkbox"]`)
+      .click()
+    await page.waitForTimeout(100)
+
+    // Verify fewer semi-transparent pixels after toggle
+    const after_toggle_semi_transparent = await canvas.evaluate((el) => {
+      const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+      if (!ctx) return 0
+      const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+      let count = 0
+      for (let idx = 3; idx < data.length; idx += 4) {
+        if (data[idx] > 0 && data[idx] < 255) count++
+      }
+      return count
+    })
+
+    expect(after_toggle_semi_transparent).toBeLessThan(initial_semi_transparent / 2)
+  })
+
+  test(`hull content stays centered`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const canvas = diagram.locator(`canvas`)
+
+    // Verify content is centered by checking bounding box of visible pixels
+    const { centered, pixel_count } = await canvas.evaluate((el) => {
+      const canvas_el = el as HTMLCanvasElement
+      const ctx = canvas_el.getContext(`2d`)
+      if (!ctx) return { centered: false, pixel_count: 0 }
+
+      const { width, height } = canvas_el
+      const { data } = ctx.getImageData(0, 0, width, height)
+
+      let min_x = width
+      let max_x = 0
+      let min_y = height
+      let max_y = 0
+      let count = 0
+
+      for (let y_idx = 0; y_idx < height; y_idx++) {
+        for (let x_idx = 0; x_idx < width; x_idx++) {
+          if (data[(y_idx * width + x_idx) * 4 + 3] > 10) {
+            min_x = Math.min(min_x, x_idx)
+            max_x = Math.max(max_x, x_idx)
+            min_y = Math.min(min_y, y_idx)
+            max_y = Math.max(max_y, y_idx)
+            count++
+          }
+        }
+      }
+
+      const center_x = (min_x + max_x) / 2
+      const center_y = (min_y + max_y) / 2
+      const x_diff = Math.abs(center_x - width / 2) / width
+      const y_diff = Math.abs(center_y - height / 2) / height
+
+      return {
+        centered: x_diff < 0.3 && y_diff < 0.3,
+        pixel_count: count,
+      }
+    })
+
+    expect(pixel_count).toBeGreaterThan(1000)
+    expect(centered).toBe(true)
+  })
+
+  test(`hull faces stay within boundaries`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const canvas = diagram.locator(`canvas`)
+
+    // Verify content stays mostly within canvas (not escaping tetrahedron)
+    const { escapes_significantly } = await canvas.evaluate((el) => {
+      const canvas_el = el as HTMLCanvasElement
+      const ctx = canvas_el.getContext(`2d`)
+      if (!ctx) return { escapes_significantly: true }
+
+      const { width, height } = canvas_el
+      const { data } = ctx.getImageData(0, 0, width, height)
+      const strict_margin = 5 // Very tight margin
+
+      let min_x = width
+      let max_x = 0
+      let min_y = height
+      let max_y = 0
+
+      for (let y_idx = 0; y_idx < height; y_idx++) {
+        for (let x_idx = 0; x_idx < width; x_idx++) {
+          if (data[(y_idx * width + x_idx) * 4 + 3] > 20) {
+            min_x = Math.min(min_x, x_idx)
+            max_x = Math.max(max_x, x_idx)
+            min_y = Math.min(min_y, y_idx)
+            max_y = Math.max(max_y, y_idx)
+          }
+        }
+      }
+
+      // Check if content significantly escapes canvas bounds
+      const escapes = min_x < strict_margin || max_x > width - strict_margin ||
+        min_y < strict_margin || max_y > height - strict_margin
+
+      return { escapes_significantly: escapes }
+    })
+
+    // Main assertion: hull should not escape canvas bounds
+    expect(escapes_significantly).toBe(false)
+  })
+
+  test(`hull opacity slider works`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const canvas = diagram.locator(`canvas`)
+
+    const get_avg_alpha = () =>
+      canvas.evaluate((el) => {
+        const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+        if (!ctx) return 0
+        const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+        let total = 0
+        let count = 0
+        for (let idx = 3; idx < data.length; idx += 4) {
+          if (data[idx] > 0 && data[idx] < 255) {
+            total += data[idx]
+            count++
+          }
+        }
+        return count > 0 ? total / count : 0
+      })
+
+    const initial_alpha = await get_avg_alpha()
+
+    // Increase opacity via slider
+    await diagram.locator(`.legend-controls-btn`).click()
+    const slider = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`).locator(
+      `input[type="range"][aria-label*="opacity"]`,
+    )
+    await slider.fill(`0.2`)
+    await page.waitForTimeout(100)
+
+    const updated_alpha = await get_avg_alpha()
+    expect(updated_alpha).toBeGreaterThan(initial_alpha)
+  })
 })

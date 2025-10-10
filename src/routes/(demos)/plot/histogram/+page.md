@@ -116,8 +116,8 @@ Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_sc
   bar_stroke_width={stroke_width}
   x_scale_type={x_scale}
   y_scale_type={y_scale}
-  x_grid={show_grid}
-  y_grid={show_grid}
+  show_x_grid={show_grid}
+  show_y_grid={show_grid}
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}

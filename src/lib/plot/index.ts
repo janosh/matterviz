@@ -289,9 +289,12 @@ export interface PlotControlsProps {
   // Display controls
   show_x_zero_line?: boolean
   show_y_zero_line?: boolean
-  x_grid?: boolean | HTMLAttributes<SVGLineElement>
-  y_grid?: boolean | HTMLAttributes<SVGLineElement>
-  y2_grid?: boolean | HTMLAttributes<SVGLineElement>
+  show_x_grid?: boolean
+  show_y_grid?: boolean
+  show_y2_grid?: boolean
+  x_grid_style?: HTMLAttributes<SVGLineElement>
+  y_grid_style?: HTMLAttributes<SVGLineElement>
+  y2_grid_style?: HTMLAttributes<SVGLineElement>
   has_y2_points?: boolean
   // Range controls
   x_range?: [number | null, number | null]

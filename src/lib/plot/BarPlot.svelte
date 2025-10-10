@@ -37,8 +37,10 @@
     y_format?: string
     x_ticks?: TicksOption
     y_ticks?: TicksOption
-    x_grid?: boolean | HTMLAttributes<SVGLineElement>
-    y_grid?: boolean | HTMLAttributes<SVGLineElement>
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    x_grid_style?: HTMLAttributes<SVGLineElement>
+    y_grid_style?: HTMLAttributes<SVGLineElement>
     show_x_zero_line?: boolean
     show_y_zero_line?: boolean
     legend?: LegendConfig | null
@@ -75,8 +77,10 @@
     y_format = $bindable(``),
     x_ticks = $bindable(8),
     y_ticks = $bindable(6),
-    x_grid = $bindable(true),
-    y_grid = $bindable(true),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
     legend = {},
@@ -659,11 +663,11 @@
           {@const tick_x = scales.x(tick as number)}
           {#if isFinite(tick_x)}
             <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-              {#if x_grid}
+              {#if show_x_grid}
                 <line
                   y1={-(height - pad.b - pad.t)}
                   y2="0"
-                  {...typeof x_grid === `object` ? x_grid : {}}
+                  {...x_grid_style ?? {}}
                 />
               {/if}
               <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -699,11 +703,11 @@
           {@const tick_y = scales.y(tick as number)}
           {#if isFinite(tick_y)}
             <g class="tick" transform="translate({pad.l}, {tick_y})">
-              {#if y_grid}
+              {#if show_y_grid}
                 <line
                   x1="0"
                   x2={width - pad.l - pad.r}
-                  {...typeof y_grid === `object` ? y_grid : {}}
+                  {...y_grid_style ?? {}}
                 />
               {/if}
               <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -777,8 +781,8 @@
         bind:mode
         bind:show_x_zero_line
         bind:show_y_zero_line
-        bind:x_grid
-        bind:y_grid
+        bind:show_x_grid
+        bind:show_y_grid
         bind:x_ticks
         bind:y_ticks
         bind:x_format

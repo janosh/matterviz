@@ -34,8 +34,8 @@
     // Display controls
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
-    x_grid = $bindable(DEFAULTS.plot.x_grid),
-    y_grid = $bindable(DEFAULTS.plot.y_grid),
+    show_x_grid = $bindable(DEFAULTS.plot.show_x_grid),
+    show_y_grid = $bindable(DEFAULTS.plot.show_y_grid),
     // Scale type controls
     x_scale_type = $bindable(DEFAULTS.plot.x_scale_type as `linear` | `log`),
     y_scale_type = $bindable(DEFAULTS.plot.y_scale_type as `linear` | `log`),
@@ -66,8 +66,8 @@
   bind:controls_open
   bind:show_x_zero_line
   bind:show_y_zero_line
-  bind:x_grid
-  bind:y_grid
+  bind:show_x_grid
+  bind:show_y_grid
   bind:x_range
   bind:y_range
   bind:x_ticks

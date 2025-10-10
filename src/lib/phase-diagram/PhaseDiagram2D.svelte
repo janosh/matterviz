@@ -503,8 +503,8 @@
       y_range={y_domain}
       x_ticks={4}
       y_ticks={4}
-      x_grid={false}
-      y_grid={false}
+      show_x_grid={false}
+      show_y_grid={false}
       x_label={elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`}
       y_label="E<sub>form</sub> (eV/atom)"
       legend={null}

@@ -44,8 +44,10 @@
     mode?: `single` | `overlay`
     show_x_zero_line?: boolean
     show_y_zero_line?: boolean
-    x_grid?: boolean | HTMLAttributes<SVGLineElement>
-    y_grid?: boolean | HTMLAttributes<SVGLineElement>
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    x_grid_style?: HTMLAttributes<SVGLineElement>
+    y_grid_style?: HTMLAttributes<SVGLineElement>
     x_ticks?: TicksOption
     y_ticks?: TicksOption
     tooltip?: Snippet<[{ value: number; count: number; property: string }]>
@@ -98,8 +100,10 @@
     mode = $bindable(`single`),
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
-    x_grid = $bindable(true),
-    y_grid = $bindable(true),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
     x_ticks = $bindable(8),
     y_ticks = $bindable(6),
     tooltip,
@@ -507,14 +511,14 @@
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
           <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-            {#if x_grid}
+            {#if show_x_grid}
               <line
                 y1={-(height - pad.b - pad.t)}
                 y2="0"
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
-                {...typeof x_grid === `object` ? x_grid : {}}
+                {...x_grid_style ?? {}}
               />
             {/if}
             <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -546,14 +550,14 @@
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
           <g class="tick" transform="translate({pad.l}, {tick_y})">
-            {#if y_grid}
+            {#if show_y_grid}
               <line
                 x1="0"
                 x2={width - pad.l - pad.r}
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
-                {...typeof y_grid === `object` ? y_grid : {}}
+                {...y_grid_style ?? {}}
               />
             {/if}
             <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -596,8 +600,8 @@
       bind:bar_stroke_width
       bind:bar_color
       bind:show_legend
-      bind:x_grid
-      bind:y_grid
+      bind:show_x_grid
+      bind:show_y_grid
       bind:x_scale_type
       bind:y_scale_type
       bind:x_ticks
