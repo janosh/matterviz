@@ -23,11 +23,6 @@
   import * as thermo from './thermodynamics'
   import type { HoverData3D, Point3D, TernaryPlotEntry } from './types'
 
-  interface Props extends BasePhaseDiagramProps<TernaryPlotEntry>, Hull3DProps {
-    // Bindable stable and unstable entries - computed internally but exposed for external use
-    stable_entries?: TernaryPlotEntry[]
-    unstable_entries?: TernaryPlotEntry[]
-  }
   let {
     entries,
     controls = {},
@@ -55,7 +50,11 @@
     stable_entries = $bindable([]),
     unstable_entries = $bindable([]),
     ...rest
-  }: Props = $props()
+  }: BasePhaseDiagramProps<TernaryPlotEntry> & Hull3DProps & {
+    // Bindable stable and unstable entries - computed internally but exposed for external use
+    stable_entries?: TernaryPlotEntry[]
+    unstable_entries?: TernaryPlotEntry[]
+  } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({

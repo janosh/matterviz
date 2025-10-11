@@ -15,18 +15,6 @@
     Vector3,
   } from 'three'
 
-  interface Props {
-    matrix?: math.Matrix3x3
-    cell_edge_color?: string
-    cell_surface_color?: string
-    cell_edge_width?: number // thickness of the cell edges
-    cell_edge_opacity?: number // opacity of the cell edges
-    cell_surface_opacity?: number // opacity of the cell surfaces
-    show_cell_vectors?: boolean // whether to show the lattice vectors
-    vector_colors?: readonly [string, string, string] // lattice vector colors
-    vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
-    float_fmt?: string
-  }
   let {
     matrix = undefined,
     cell_edge_color = DEFAULTS.structure.cell_edge_color,
@@ -38,7 +26,18 @@
     vector_colors = [`red`, `green`, `blue`],
     vector_origin = [-1, -1, -1] satisfies Vec3,
     float_fmt = `.2f`,
-  }: Props = $props()
+  }: {
+    matrix?: math.Matrix3x3
+    cell_edge_color?: string
+    cell_surface_color?: string
+    cell_edge_width?: number // thickness of the cell edges
+    cell_edge_opacity?: number // opacity of the cell edges
+    cell_surface_opacity?: number // opacity of the cell surfaces
+    show_cell_vectors?: boolean // whether to show the lattice vectors
+    vector_colors?: readonly [string, string, string] // lattice vector colors
+    vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
+    float_fmt?: string
+  } = $props()
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
   let lattice_center = $derived(

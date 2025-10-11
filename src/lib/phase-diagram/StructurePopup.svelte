@@ -4,14 +4,6 @@
   import { Structure } from '$lib/structure'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    structure: AnyStructure
-    place_right?: boolean
-    width?: number
-    height?: number
-    onclose?: () => void
-    stats?: { id?: string; e_above_hull?: number; e_form?: number }
-  }
   let {
     structure,
     place_right = true,
@@ -20,7 +12,14 @@
     onclose,
     stats,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    structure: AnyStructure
+    place_right?: boolean
+    width?: number
+    height?: number
+    onclose?: () => void
+    stats?: { id?: string; e_above_hull?: number; e_form?: number }
+  } = $props()
 
   const handle_keydown = (event: KeyboardEvent) => {
     if (event.key === `Escape`) onclose?.()

@@ -15,7 +15,37 @@
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
     { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
   ] as const
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  let {
+    tile_props,
+    show_photo = false,
+    disabled = false,
+    heatmap_values = [],
+    links = null,
+    log = false,
+    color_scale = $bindable(`interpolateViridis`),
+    active_element = $bindable(null),
+    active_category = $bindable(null),
+    active_elements = $bindable([]),
+    gap = `0.3cqw`,
+    inner_transition_metal_offset = 0.5,
+    lanth_act_tiles = tile_props?.show_symbol == false
+      ? []
+      : [...default_f_block_inset_tiles],
+    lanth_act_style = ``,
+    color_scale_range = [null, null],
+    color_overrides = {},
+    labels = {},
+    missing_color = `element-category`,
+    split_layout = undefined,
+    show_color_bar = true,
+    color_bar_props = {},
+    inset,
+    bottom_left_inset,
+    tooltip = false,
+    onenter,
+    children,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
@@ -73,38 +103,7 @@
       | boolean
     children?: Snippet
     onenter?: (element: ChemicalElement) => void
-  }
-  let {
-    tile_props,
-    show_photo = false,
-    disabled = false,
-    heatmap_values = [],
-    links = null,
-    log = false,
-    color_scale = $bindable(`interpolateViridis`),
-    active_element = $bindable(null),
-    active_category = $bindable(null),
-    active_elements = $bindable([]),
-    gap = `0.3cqw`,
-    inner_transition_metal_offset = 0.5,
-    lanth_act_tiles = tile_props?.show_symbol == false
-      ? []
-      : [...default_f_block_inset_tiles],
-    lanth_act_style = ``,
-    color_scale_range = [null, null],
-    color_overrides = {},
-    labels = {},
-    missing_color = `element-category`,
-    split_layout = undefined,
-    show_color_bar = true,
-    color_bar_props = {},
-    inset,
-    bottom_left_inset,
-    tooltip = false,
-    onenter,
-    children,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let heat_values = $derived.by(() => {
     if (Array.isArray(heatmap_values)) {

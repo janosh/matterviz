@@ -2,13 +2,14 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    error_msg: string
-    on_dismiss: () => void
-    // Custom error snippet for advanced error handling
-    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-  }
-  let { error_msg, on_dismiss, error_snippet, ...rest }: Props = $props()
+  let { error_msg, on_dismiss, error_snippet, ...rest }:
+    & HTMLAttributes<HTMLDivElement>
+    & {
+      error_msg: string
+      on_dismiss: () => void
+      // Custom error snippet for advanced error handling
+      error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
+    } = $props()
 </script>
 
 <div {...rest}>

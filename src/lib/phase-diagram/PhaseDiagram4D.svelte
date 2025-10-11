@@ -21,9 +21,6 @@
   import * as thermo from './thermodynamics'
   import type { HoverData3D, PlotEntry3D } from './types'
 
-  interface Props extends BasePhaseDiagramProps<PlotEntry3D>, Hull3DProps {
-    on_point_hover?: (data: HoverData3D | null) => void
-  }
   let {
     entries,
     controls = {},
@@ -49,7 +46,9 @@
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
     ...rest
-  }: Props = $props()
+  }: BasePhaseDiagramProps<PlotEntry3D> & Hull3DProps & {
+    on_point_hover?: (data: HoverData3D | null) => void
+  } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({

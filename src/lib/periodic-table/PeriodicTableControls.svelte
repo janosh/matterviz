@@ -4,29 +4,6 @@
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    // Appearance control values
-    tile_gap?: string
-    symbol_font_size?: number
-    number_font_size?: number
-    name_font_size?: number
-    value_font_size?: number
-    tooltip_font_size?: number
-    tooltip_bg_color?: string
-    tile_border_radius?: number
-    inner_transition_offset?: number
-    tile_font_color?: string
-    // Additional Element Tile controls
-    tile_transition_duration?: number
-    hover_border_width?: number
-    symbol_font_weight?: number
-    number_font_weight?: number
-    // Additional Tooltip controls
-    tooltip_border_radius?: number
-    tooltip_padding?: string
-    tooltip_line_height?: number
-    tooltip_text_align?: string
-  }
   let {
     tile_gap = $bindable(`0.3cqw`),
     symbol_font_size = $bindable(40),
@@ -49,7 +26,29 @@
     tooltip_line_height = $bindable(1.2),
     tooltip_text_align = $bindable(`center`),
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    // Appearance control values
+    tile_gap?: string
+    symbol_font_size?: number
+    number_font_size?: number
+    name_font_size?: number
+    value_font_size?: number
+    tooltip_font_size?: number
+    tooltip_bg_color?: string
+    tile_border_radius?: number
+    inner_transition_offset?: number
+    tile_font_color?: string
+    // Additional Element Tile controls
+    tile_transition_duration?: number
+    hover_border_width?: number
+    symbol_font_weight?: number
+    number_font_weight?: number
+    // Additional Tooltip controls
+    tooltip_border_radius?: number
+    tooltip_padding?: string
+    tooltip_line_height?: number
+    tooltip_text_align?: string
+  } = $props()
 
   // Default values for easy reset
   const defaults = {

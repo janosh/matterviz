@@ -20,22 +20,6 @@
     color?: string
     data?: CoordinationData
   }
-
-  interface Props extends ComponentProps<typeof BarPlot> {
-    structures:
-      | AnyStructure
-      | Record<string, AnyStructure | { structure: AnyStructure; color?: string }>
-      | StructureEntry[]
-    strategy?: CoordinationStrategy
-    split_mode?: SplitMode
-    x_label?: string
-    y_label?: string
-    allow_file_drop?: boolean
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
-    loading?: boolean
-    error_msg?: string
-  }
-
   let {
     structures,
     strategy = `nearest_neighbor`,
@@ -49,7 +33,20 @@
     loading = $bindable(false),
     error_msg = $bindable(undefined),
     ...rest
-  }: Props = $props()
+  }: ComponentProps<typeof BarPlot> & {
+    structures:
+      | AnyStructure
+      | Record<string, AnyStructure | { structure: AnyStructure; color?: string }>
+      | StructureEntry[]
+    strategy?: CoordinationStrategy
+    split_mode?: SplitMode
+    x_label?: string
+    y_label?: string
+    allow_file_drop?: boolean
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    loading?: boolean
+    error_msg?: string
+  } = $props()
 
   let dragover = $state(false)
   let dropped_entries = $state<StructureEntry[]>([])

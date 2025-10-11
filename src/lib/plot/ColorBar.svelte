@@ -9,7 +9,26 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  let {
+    title = undefined,
+    color_scale = $bindable(`interpolateViridis`),
+    bar_style = undefined,
+    title_style = undefined,
+    wrapper_style = undefined,
+    tick_labels = $bindable(4),
+    tick_format = undefined,
+    range = [0, 1],
+    orientation = `horizontal`,
+    snap_ticks = true,
+    steps = 50,
+    nice_range = $bindable(range),
+    title_side = undefined, // no default here, depends on orientation and tick_side
+    tick_side = `primary`,
+    scale_type = `linear`,
+    color_scale_fn = undefined,
+    color_scale_domain = undefined,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     title?: string
     color_scale?: ((x: number) => string) | string | null
     title_side?: `left` | `right` | `top` | `bottom`
@@ -38,27 +57,7 @@
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
     color_scale_domain?: [number, number]
-  }
-  let {
-    title = undefined,
-    color_scale = $bindable(`interpolateViridis`),
-    bar_style = undefined,
-    title_style = undefined,
-    wrapper_style = undefined,
-    tick_labels = $bindable(4),
-    tick_format = undefined,
-    range = [0, 1],
-    orientation = `horizontal`,
-    snap_ticks = true,
-    steps = 50,
-    nice_range = $bindable(range),
-    title_side = undefined, // no default here, depends on orientation and tick_side
-    tick_side = `primary`,
-    scale_type = `linear`,
-    color_scale_fn = undefined,
-    color_scale_domain = undefined,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let actual_title_side = $derived.by(() => {
     if (title_side !== undefined) return title_side // Use user-provided value if available

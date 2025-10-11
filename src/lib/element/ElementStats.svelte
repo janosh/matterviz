@@ -3,10 +3,9 @@
   import { ElementHeading, format_num, Icon } from '$lib'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  let { element, ...rest }: HTMLAttributes<HTMLDivElement> & {
     element: ChemicalElement | null
-  }
-  let { element, ...rest }: Props = $props()
+  } = $props()
 </script>
 
 {#if element}

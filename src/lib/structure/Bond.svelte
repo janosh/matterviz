@@ -9,21 +9,6 @@
   import type { ComponentProps } from 'svelte'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
-  interface Props extends ComponentProps<typeof T.Mesh> {
-    from: Vec3
-    to: Vec3
-    color?: string
-    thickness?: number
-    offset?: number
-    from_color?: string // color of atom 1
-    to_color?: string // color of atom 2
-    bond_data?: BondPair // full bond data for tooltips
-    bonding_strategy?: BondingStrategy // current bonding algorithm
-    active_tooltip?: `atom` | `bond` | null // global tooltip state
-    hovered_bond_data?: BondPair | null // currently hovered bond
-    onbondhover?: (bond_data: BondPair | null) => void // callback for bond hover
-    ontooltipchange?: (type: `atom` | `bond` | null) => void // callback for tooltip state
-  }
   let {
     from,
     to,
@@ -41,7 +26,21 @@
     onpointerenter,
     onpointerleave,
     ...rest
-  }: Props = $props()
+  }: ComponentProps<typeof T.Mesh> & {
+    from: Vec3
+    to: Vec3
+    color?: string
+    thickness?: number
+    offset?: number
+    from_color?: string // color of atom 1
+    to_color?: string // color of atom 2
+    bond_data?: BondPair // full bond data for tooltips
+    bonding_strategy?: BondingStrategy // current bonding algorithm
+    active_tooltip?: `atom` | `bond` | null // global tooltip state
+    hovered_bond_data?: BondPair | null // currently hovered bond
+    onbondhover?: (bond_data: BondPair | null) => void // callback for bond hover
+    ontooltipchange?: (type: `atom` | `bond` | null) => void // callback for tooltip state
+  } = $props()
 
   interactivity()
 
