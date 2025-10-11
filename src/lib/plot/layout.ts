@@ -66,9 +66,8 @@ export function constrain_tooltip_position(
   }
 }
 
-// Simple, performant legend auto-placement for plot components
+// Legend auto-placement for plot components
 // Finds the least populated region inside the plot area for placing the legend
-
 export type PlacementPosition =
   | `top-left`
   | `top-right`
@@ -133,7 +132,7 @@ export function find_best_plot_area(
   const { width = 120, height = 80 } = config.legend_size ?? {}
 
   // Detection radius for point counting (legend diagonal / 2)
-  const radius = Math.sqrt(width ** 2 + height ** 2) / 2
+  const radius = Math.hypot(width, height) / 2
   const radius_sq = radius * radius
 
   let best_position: PlacementPosition = `top-right`

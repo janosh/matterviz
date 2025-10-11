@@ -32,11 +32,10 @@ export function composition_to_barycentric_3d(
 
 // map barycentric coordinates to triangular 2D coordinates
 export function barycentric_to_ternary_xy(barycentric: Vec3): [number, number] {
+  const [v0, v1, v2] = TRIANGLE_VERTICES
   const [a, b, c] = barycentric
-  const x = TRIANGLE_VERTICES[0][0] * a + TRIANGLE_VERTICES[1][0] * b +
-    TRIANGLE_VERTICES[2][0] * c
-  const y = TRIANGLE_VERTICES[0][1] * a + TRIANGLE_VERTICES[1][1] * b +
-    TRIANGLE_VERTICES[2][1] * c
+  const x = v0[0] * a + v1[0] * b + v2[0] * c
+  const y = v0[1] * a + v1[1] * b + v2[1] * c
   return [x, y]
 }
 
@@ -50,24 +49,21 @@ export function barycentric_to_ternary_xyz(
 }
 
 export function get_triangle_centroid(): Point3D {
-  const centroid_x =
-    (TRIANGLE_VERTICES[0][0] + TRIANGLE_VERTICES[1][0] + TRIANGLE_VERTICES[2][0]) / 3
-  const centroid_y =
-    (TRIANGLE_VERTICES[0][1] + TRIANGLE_VERTICES[1][1] + TRIANGLE_VERTICES[2][1]) / 3
+  const [v0, v1, v2] = TRIANGLE_VERTICES
+  const centroid_x = (v0[0] + v1[0] + v2[0]) / 3
+  const centroid_y = (v0[1] + v1[1] + v2[1]) / 3
   return { x: centroid_x, y: centroid_y, z: 0 }
 }
 
 export function calculate_face_normal(p1: Point3D, p2: Point3D, p3: Point3D): Point3D {
   const edge1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z }
   const edge2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z }
-  const normal = {
-    x: edge1.y * edge2.z - edge1.z * edge2.y,
-    y: edge1.z * edge2.x - edge1.x * edge2.z,
-    z: edge1.x * edge2.y - edge1.y * edge2.x,
-  }
-  const magnitude = Math.sqrt(normal.x ** 2 + normal.y ** 2 + normal.z ** 2)
+  const nx = edge1.y * edge2.z - edge1.z * edge2.y
+  const ny = edge1.z * edge2.x - edge1.x * edge2.z
+  const nz = edge1.x * edge2.y - edge1.y * edge2.x
+  const magnitude = Math.hypot(nx, ny, nz)
   if (magnitude === 0) return { x: 0, y: 0, z: 1 }
-  return { x: normal.x / magnitude, y: normal.y / magnitude, z: normal.z / magnitude }
+  return { x: nx / magnitude, y: ny / magnitude, z: nz / magnitude }
 }
 
 export function calculate_face_centroid(p1: Point3D, p2: Point3D, p3: Point3D): Point3D {
@@ -133,18 +129,9 @@ export function get_ternary_3d_coordinates(
         Number.isFinite(entry.e_form_per_atom)
       ? entry.e_form_per_atom
       : compute_e_form_per_atom(entry, refs) ?? NaN
-    const { x, y, z } = barycentric_to_ternary_xyz(barycentric, e_form)
+    const xyz = barycentric_to_ternary_xyz(barycentric, e_form)
     const is_element = is_unary_entry(entry)
-    return {
-      ...entry,
-      x,
-      y,
-      z,
-      barycentric,
-      formation_energy: e_form,
-      is_element,
-      visible: true,
-    }
+    return { ...entry, ...xyz, barycentric, e_form, is_element, visible: true }
   })
   return result
 }
@@ -163,7 +150,6 @@ export function get_triangle_vertical_edges(
 }
 
 // ================= Quaternary coordinates =================
-
 export const TETRAHEDRON_VERTICES = [
   [1, 0, 0],
   [0.5, Math.sqrt(3) / 2, 0],

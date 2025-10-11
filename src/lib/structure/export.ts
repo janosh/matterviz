@@ -2,6 +2,99 @@ import type { AnyStructure, Vec3 } from '$lib'
 import { electro_neg_formula } from '$lib'
 import { download } from '$lib/io/fetch'
 import * as math from '$lib/math'
+import {
+  Group,
+  type InstancedMesh,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  type Scene,
+} from 'three'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
+import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js'
+
+// Helper function to convert InstancedMesh to regular Mesh objects for export
+// This is necessary because GLB/OBJ exporters don't handle InstancedMesh properly
+// Note: Threlte's InstancedMesh sets isInstancedMesh=true but type remains "Mesh"
+function convert_instanced_meshes_to_regular(scene: Scene): Scene {
+  const cloned_scene = scene.clone()
+
+  // Find all InstancedMesh objects in the cloned scene
+  const instanced_meshes: InstancedMesh[] = []
+  cloned_scene.traverse((object) => {
+    // Check for isInstancedMesh property (Threlte) or type === InstancedMesh (vanilla Three.js)
+    // @ts-expect-error - checking for isInstancedMesh property
+    const is_instanced = object.isInstancedMesh === true ||
+      object.type === `InstancedMesh`
+    if (is_instanced) {
+      instanced_meshes.push(object as InstancedMesh)
+    }
+  })
+
+  // Convert each InstancedMesh to individual Mesh objects
+  for (const instanced_mesh of instanced_meshes) {
+    const parent = instanced_mesh.parent
+    if (!parent || !instanced_mesh.instanceMatrix) continue
+
+    // Create a group to hold all the individual meshes
+    const group = new Group()
+    group.name = instanced_mesh.name
+
+    // Get the base transform from the InstancedMesh
+    const base_matrix = new Matrix4()
+    base_matrix.copy(instanced_mesh.matrix)
+
+    // Create individual meshes for each instance
+    const instance_matrix = new Matrix4()
+    for (let idx = 0; idx < instanced_mesh.count; idx++) {
+      instanced_mesh.getMatrixAt(idx, instance_matrix)
+
+      // Clone geometry for each instance (applyMatrix4 modifies geometry in place)
+      const mesh = new Mesh(
+        instanced_mesh.geometry.clone(),
+        instanced_mesh.material instanceof Array
+          ? instanced_mesh.material.map((mat) => mat.clone())
+          : instanced_mesh.material.clone(),
+      )
+
+      // Combine base transform with instance transform
+      const combined_matrix = new Matrix4()
+      combined_matrix.multiplyMatrices(base_matrix, instance_matrix)
+      mesh.applyMatrix4(combined_matrix)
+
+      // Copy instance color if it exists
+      if (instanced_mesh.instanceColor) {
+        const color_r = instanced_mesh.instanceColor.getX(idx)
+        const color_g = instanced_mesh.instanceColor.getY(idx)
+        const color_b = instanced_mesh.instanceColor.getZ(idx)
+
+        if (mesh.material instanceof MeshStandardMaterial) {
+          mesh.material.color.setRGB(color_r, color_g, color_b)
+        } else if (Array.isArray(mesh.material)) {
+          mesh.material.forEach((mat) => {
+            if (mat instanceof MeshStandardMaterial) {
+              mat.color.setRGB(color_r, color_g, color_b)
+            }
+          })
+        }
+      }
+
+      group.add(mesh)
+    }
+
+    // Replace the InstancedMesh with the Group in the parent
+    parent.remove(instanced_mesh)
+    parent.add(group)
+
+    // Update world matrices after scene graph modification
+    group.updateMatrixWorld(true)
+  }
+
+  // Update all world matrices in the modified scene
+  cloned_scene.updateMatrixWorld(true)
+
+  return cloned_scene
+}
 
 // Generate a filename for structure exports based on structure metadata
 export function create_structure_filename(
@@ -411,5 +504,72 @@ export function export_structure_as_json(structure?: AnyStructure): void {
     download(data, filename, `application/json`)
   } catch (error) {
     console.error(`Error exporting JSON:`, error)
+  }
+}
+
+// Export Three.js scene as GLB (binary GLTF) file
+// GLB preserves materials and colors, making it ideal for element visualization
+export function export_structure_as_glb(
+  scene: Scene | null,
+  structure: AnyStructure | undefined,
+): void {
+  try {
+    if (!scene) {
+      console.warn(`No scene available for GLB export`)
+      return
+    }
+
+    // Convert instanced meshes to regular meshes for export
+    const export_scene = convert_instanced_meshes_to_regular(scene)
+
+    const exporter = new GLTFExporter()
+    const filename = create_structure_filename(structure, `glb`)
+
+    // Export as binary GLB format
+    exporter.parse(
+      export_scene,
+      (result) => {
+        if (result instanceof ArrayBuffer) {
+          const blob = new Blob([result], { type: `model/gltf-binary` })
+          download(blob, filename, `model/gltf-binary`)
+        } else {
+          console.error(`GLB export returned unexpected format`)
+        }
+      },
+      (error) => {
+        console.error(`GLB export failed:`, error)
+      },
+      { binary: true },
+    )
+  } catch (error) {
+    console.error(`Error exporting GLB:`, error)
+  }
+}
+
+// Export Three.js scene as OBJ (Wavefront Object) file
+// OBJ exports geometry with material references, widely supported format
+export function export_structure_as_obj(
+  scene: Scene | null,
+  structure: AnyStructure | undefined,
+): void {
+  try {
+    if (!scene) {
+      console.warn(`No scene available for OBJ export`)
+      return
+    }
+
+    // Convert instanced meshes to regular meshes for export
+    const export_scene = convert_instanced_meshes_to_regular(scene)
+
+    const exporter = new OBJExporter()
+    const filename = create_structure_filename(structure, `obj`)
+
+    const result = exporter.parse(export_scene)
+
+    // OBJ exporter returns a string
+    const blob = new Blob([result], { type: `text/plain` })
+    download(blob, filename, `text/plain`)
+  } catch (error) {
+    console.error(`Error exporting OBJ:`, error)
   }
 }
