@@ -1,8 +1,9 @@
 import type { AnyStructure } from '$lib'
+import { export_canvas_as_png } from '$lib/io/export'
 import { StructureExportPane } from '$lib/structure'
 import * as export_funcs from '$lib/structure/export'
 import { mount } from 'svelte'
-import type { Scene } from 'three'
+import type { Camera, Scene } from 'three'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
 
@@ -88,9 +89,14 @@ describe(`StructureExportPane`, () => {
       expect(document.body.textContent).toContain(label)
     }
 
-    // Should have download and copy buttons for each format (2 buttons × 4 formats = 8)
-    const buttons = document.querySelectorAll(`.export-buttons button`)
-    expect(buttons.length).toBeGreaterThanOrEqual(8)
+    // Should have exactly 2 buttons per format (download + copy) × 4 formats = 8
+    const h4_elements = Array.from(document.querySelectorAll(`h4`))
+    const text_h4 = h4_elements.find((h4) =>
+      h4.textContent?.includes(`Export Text Formats`)
+    )
+    const text_section = text_h4?.nextElementSibling
+    const buttons = text_section?.querySelectorAll(`button`)
+    expect(buttons?.length).toBe(8)
   })
 
   test.each([
@@ -264,24 +270,6 @@ describe(`StructureExportPane`, () => {
     expect(dpi_input.max).toBe(`500`)
   })
 
-  test(`PNG export button is disabled without canvas`, () => {
-    const empty_wrapper = document.createElement(`div`)
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-        wrapper: empty_wrapper,
-      },
-    })
-
-    const png_buttons = Array.from(document.querySelectorAll(`button`)).filter(
-      (btn) => btn.title?.includes(`PNG`),
-    )
-    expect(png_buttons.length).toBeGreaterThan(0)
-    expect(png_buttons[0]?.disabled).toBe(true)
-  })
-
   test(`PNG export button is enabled with canvas`, () => {
     mount(StructureExportPane, {
       target: document.body,
@@ -441,10 +429,10 @@ describe(`StructureExportPane`, () => {
     }
 
     // Mock the functions to throw errors for formats that require lattice
-    vi.mocked(export_funcs.structure_to_cif_str).mockImplementation(() => {
+    vi.mocked(export_funcs.structure_to_cif_str).mockImplementationOnce(() => {
       throw new Error(`No lattice found`)
     })
-    vi.mocked(export_funcs.structure_to_poscar_str).mockImplementation(() => {
+    vi.mocked(export_funcs.structure_to_poscar_str).mockImplementationOnce(() => {
       throw new Error(`No lattice found`)
     })
 
@@ -546,5 +534,100 @@ describe(`StructureExportPane`, () => {
 
     const toggle = doc_query(`.structure-export-toggle`)
     expect(toggle.classList.contains(`custom-export-toggle`)).toBe(true)
+  })
+
+  test(`PNG export button invokes export_canvas_as_png with camera when provided`, async () => {
+    // Need to import the export module to check mocks
+    const mock_camera = { type: `PerspectiveCamera` } as Camera
+
+    mount(StructureExportPane, {
+      target: document.body,
+      props: {
+        export_pane_open: true,
+        structure: simple_structure,
+        wrapper: wrapper_div,
+        png_dpi: 200,
+        camera: mock_camera,
+        scene: mock_scene,
+      },
+    })
+
+    const png_button = Array.from(document.querySelectorAll(`button`)).find((btn) =>
+      btn.title?.includes(`PNG`)
+    )
+    expect(png_button).toBeTruthy()
+    expect(png_button?.disabled).toBe(false)
+
+    png_button?.dispatchEvent(new Event(`click`, { bubbles: true }))
+
+    await vi.waitFor(() => {
+      expect(export_canvas_as_png).toHaveBeenCalledWith(
+        wrapper_div.querySelector(`canvas`),
+        simple_structure,
+        200,
+        mock_scene,
+        mock_camera,
+      )
+    })
+  })
+
+  test(`PNG export button invokes export_canvas_as_png with undefined camera when not provided`, async () => {
+    mount(StructureExportPane, {
+      target: document.body,
+      props: {
+        export_pane_open: true,
+        structure: simple_structure,
+        wrapper: wrapper_div,
+        png_dpi: 150,
+        camera: undefined,
+        scene: mock_scene,
+      },
+    })
+
+    const png_button = Array.from(document.querySelectorAll(`button`)).find((btn) =>
+      btn.title?.includes(`PNG`)
+    )
+    expect(png_button).toBeTruthy()
+
+    png_button?.dispatchEvent(new Event(`click`, { bubbles: true }))
+
+    await vi.waitFor(() => {
+      expect(export_canvas_as_png).toHaveBeenCalledWith(
+        wrapper_div.querySelector(`canvas`),
+        simple_structure,
+        150,
+        mock_scene,
+        undefined,
+      )
+    })
+  })
+
+  test(`PNG export button passes correct DPI value`, async () => {
+    const png_dpi = 300
+    mount(StructureExportPane, {
+      target: document.body,
+      props: {
+        export_pane_open: true,
+        structure: simple_structure,
+        wrapper: wrapper_div,
+        png_dpi,
+      },
+    })
+
+    const png_button = Array.from(document.querySelectorAll(`button`)).find((btn) =>
+      btn.title?.includes(`PNG`)
+    )
+
+    png_button?.dispatchEvent(new Event(`click`, { bubbles: true }))
+
+    await vi.waitFor(() => {
+      expect(export_canvas_as_png).toHaveBeenCalledWith(
+        wrapper_div.querySelector(`canvas`),
+        simple_structure,
+        png_dpi,
+        undefined,
+        undefined,
+      )
+    })
   })
 })
