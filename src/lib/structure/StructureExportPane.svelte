@@ -100,19 +100,15 @@
     }
   }
 
-  // Handle 3D model exports
-  async function handle_3d_export(format: `glb` | `obj`) {
+  function handle_3d_export(format: `glb` | `obj`) {
     if (!scene) {
       console.warn(`No scene available for ${format.toUpperCase()} export`)
       return
     }
 
     try {
-      if (format === `glb`) {
-        await exports.export_structure_as_glb(scene, structure)
-      } else if (format === `obj`) {
-        exports.export_structure_as_obj(scene, structure)
-      }
+      if (format === `glb`) exports.export_structure_as_glb(scene, structure)
+      else if (format === `obj`) exports.export_structure_as_obj(scene, structure)
     } catch (error) {
       console.error(`Failed to export ${format.toUpperCase()}:`, error)
     }

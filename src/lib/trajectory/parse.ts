@@ -546,7 +546,10 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
       metadata.forces = forces
       const magnitudes = forces.map((force) => Math.hypot(...force))
       metadata.force_max = Math.max(...magnitudes)
-      metadata.force_norm = Math.hypot(...magnitudes) / magnitudes.length
+      // Calculate RMS (root mean square) of force magnitudes
+      metadata.force_norm = Math.sqrt(
+        magnitudes.reduce((sum, mag) => sum + mag ** 2, 0) / magnitudes.length,
+      )
     }
     frames.push(
       create_trajectory_frame(
@@ -1177,17 +1180,17 @@ export async function parse_trajectory_data(
           if (key === `forces` && Array.isArray(array_obj.data)) {
             const forces = array_obj.data as number[][]
             const force_magnitudes = forces.map((force) =>
-              Math.sqrt((force as number[]).reduce((sum, f) => sum + f * f, 0))
+              Math.sqrt(force.reduce((sum, f) => sum + f ** 2, 0))
             )
             processed_properties.force_max = Math.max(...force_magnitudes)
             processed_properties.force_norm = Math.sqrt(
-              force_magnitudes.reduce((sum, f) => sum + f * f, 0),
+              force_magnitudes.reduce((sum, f) => sum + f ** 2, 0),
             )
           }
 
           // Calculate stress statistics for stress tensor
           if (key === `stress` && Array.isArray(array_obj.data)) {
-            const stress_tensor = array_obj.data as number[][]
+            const stress_tensor = array_obj.data
             // Calculate stress components (diagonal elements represent normal stresses)
             const normal_stresses = [
               stress_tensor[0][0],
