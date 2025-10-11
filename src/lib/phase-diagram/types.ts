@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol, Sides } from '$lib'
 import type { Vec3 } from '$lib/math'
 
 // Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
@@ -60,7 +60,7 @@ export interface PlotEntry3D extends PhaseEntry, Point3D {
 export interface PhaseDiagramConfig {
   width?: number
   height?: number
-  margin?: { top: number; right: number; bottom: number; left: number }
+  margin?: Sides
   unstable_threshold?: number // eV/atom threshold for showing unstable entries
   show_labels?: boolean
   show_hull?: boolean

@@ -1,8 +1,11 @@
+import type DraggablePane from '$lib/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
-import type { ComponentProps } from 'svelte'
+import type { ComponentProps, Snippet } from 'svelte'
+import type { HTMLAttributes } from 'svelte/elements'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
 import type { D3SymbolName } from './formatting'
+import type { TicksOption } from './scales'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
 // pending https://github.com/sveltejs/svelte/issues/16151
@@ -21,6 +24,7 @@ export { default as ElementScatter } from './ElementScatter.svelte'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
 export { default as Line } from './Line.svelte'
+export { default as PlotControls } from './PlotControls.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
@@ -271,4 +275,43 @@ export interface BarSeries {
     stroke_width?: number
     line_dash?: string
   }
+}
+
+export interface PlotControlsProps {
+  // Control pane visibility
+  show_controls?: boolean
+  controls_open?: boolean
+  // Custom snippets for additional controls
+  children?: Snippet<[]>
+  post_children?: Snippet<[]>
+  // Display controls
+  show_x_zero_line?: boolean
+  show_y_zero_line?: boolean
+  show_x_grid?: boolean
+  show_y_grid?: boolean
+  show_y2_grid?: boolean
+  x_grid_style?: HTMLAttributes<SVGLineElement>
+  y_grid_style?: HTMLAttributes<SVGLineElement>
+  y2_grid_style?: HTMLAttributes<SVGLineElement>
+  has_y2_points?: boolean
+  // Range controls
+  x_range?: [number | null, number | null]
+  y_range?: [number | null, number | null]
+  y2_range?: [number | null, number | null]
+  auto_x_range?: [number, number]
+  auto_y_range?: [number, number]
+  auto_y2_range?: [number, number]
+  // Tick controls (optional - only shown if show_ticks is true)
+  show_ticks?: boolean
+  x_ticks?: TicksOption
+  y_ticks?: TicksOption
+  // Format controls
+  x_format?: string
+  y_format?: string
+  y2_format?: string
+  // Component props
+  controls_title?: string
+  controls_class?: string
+  toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+  pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
 }

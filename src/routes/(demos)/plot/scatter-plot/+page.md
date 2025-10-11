@@ -1071,7 +1071,7 @@ This example combines multiple features including different display modes, custo
     y_lim={[-15, 15]}
     x_ticks={ticks.x}
     y_ticks={ticks.y}
-    x_grid={grid.x}
+    show_x_grid={grid.x}
     markers="points"
     style="height: 400px; position: relative;"
     legend={{

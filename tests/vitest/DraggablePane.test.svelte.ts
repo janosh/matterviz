@@ -95,17 +95,31 @@ describe(`DraggablePane`, () => {
     expect(onclose).toHaveBeenCalled()
   })
 
-  test(`Escape closes`, async () => {
+  test(`Escape closes only when pane is open`, async () => {
     const onclose = vi.fn()
+
+    // First test: Escape when pane is closed should not call onclose
+    mount(DraggablePane, {
+      target: document.body,
+      props: { ...default_props, onclose, show: false },
+    })
+
+    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    await tick()
+    expect(onclose).not.toHaveBeenCalled()
+
+    // Clean up and test second scenario
+    document.body.innerHTML = ``
+    onclose.mockClear()
+
+    // Second test: Escape when pane is open should call onclose
     mount(DraggablePane, {
       target: document.body,
       props: { ...default_props, onclose, show: true },
     })
 
-    // Press Escape on window (where the event listener is attached)
     globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
     await tick()
-    // The Escape key handler should call onclose
     expect(onclose).toHaveBeenCalledTimes(1)
   })
 
