@@ -107,15 +107,6 @@ export interface SettingsConfig {
     use_indexing: SettingType<boolean>
     chunk_size: SettingType<number>
 
-    // Histogram specific
-    histogram_mode: SettingType<`overlay` | `single`>
-    histogram_show_legend: SettingType<boolean>
-    histogram_bin_count: SettingType<number>
-
-    // Histogram specific (additional to existing)
-    histogram_bar_opacity: SettingType<number>
-    histogram_bar_stroke_width: SettingType<number>
-
     // Formatting
     step_label_format: SettingType<string>
     property_value_format: SettingType<string>
@@ -179,6 +170,24 @@ export interface SettingsConfig {
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
+  }
+
+  histogram: { // Histogram settings
+    mode: SettingType<`overlay` | `single`>
+    show_legend: SettingType<boolean>
+    bin_count: SettingType<number>
+    bar_opacity: SettingType<number>
+    bar_stroke_width: SettingType<number>
+    bar_stroke_color: SettingType<string>
+    bar_stroke_opacity: SettingType<number>
+    bar_color: SettingType<string>
+  }
+
+  bar: { // Bar plot settings
+    bar_color: SettingType<string>
+    bar_opacity: SettingType<number>
+    line_width: SettingType<number>
+    line_color: SettingType<string>
   }
 
   composition: { // Composition specific settings
@@ -593,36 +602,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 10000,
     },
 
-    // Histogram specific
-    histogram_mode: {
-      value: `overlay` as const,
-      description:
-        `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
-      enum: [`overlay`, `single`],
-    },
-    histogram_show_legend: {
-      value: true,
-      description: `Show legend in histogram plots`,
-    },
-    histogram_bin_count: {
-      value: 100,
-      description: `Number of bins for histogram plots`,
-      minimum: 1,
-      maximum: 1000,
-    },
-    histogram_bar_opacity: {
-      value: 0.7,
-      description: `Opacity of histogram bars`,
-      minimum: 0,
-      maximum: 1,
-    },
-    histogram_bar_stroke_width: {
-      value: 1,
-      description: `Stroke width for histogram bars`,
-      minimum: 0,
-      maximum: 5,
-    },
-
     // Formatting
     step_label_format: {
       value: `.3~s`,
@@ -706,6 +685,76 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
   },
 
+  // Histogram specific
+  histogram: {
+    mode: {
+      value: `overlay` as const,
+      description:
+        `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
+      enum: [`overlay`, `single`],
+    },
+    show_legend: {
+      value: true,
+      description: `Show legend in histogram plots`,
+    },
+    bin_count: {
+      value: 100,
+      description: `Number of bins for histogram plots`,
+      minimum: 1,
+      maximum: 1000,
+    },
+    bar_opacity: {
+      value: 0.7,
+      description: `Histogram bar opacity`,
+      minimum: 0,
+      maximum: 1,
+    },
+    bar_stroke_width: {
+      value: 1,
+      description: `Histogram bar stroke width`,
+      minimum: 0,
+      maximum: 5,
+    },
+    bar_stroke_color: {
+      value: `#000000`,
+      description: `Histogram bar stroke color`,
+    },
+    bar_stroke_opacity: {
+      value: 0.5,
+      description: `Histogram bar stroke opacity`,
+      minimum: 0,
+      maximum: 1,
+    },
+    bar_color: {
+      value: `#4A9EFF`,
+      description: `Histogram bar fill color`,
+    },
+  },
+
+  // Bar plot specific
+  bar: {
+    bar_color: {
+      value: `#4A9EFF`,
+      description: `Bar plot fill color`,
+    },
+    bar_opacity: {
+      value: 0.6,
+      description: `Bar plot opacity (overlay mode)`,
+      minimum: 0,
+      maximum: 1,
+    },
+    line_width: {
+      value: 2,
+      description: `Bar plot line width`,
+      minimum: 0.5,
+      maximum: 10,
+    },
+    line_color: {
+      value: `#4A9EFF`,
+      description: `Bar plot line color`,
+    },
+  },
+
   // Composition specific
   composition: {
     display_mode: {
@@ -751,7 +800,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: [`line`, `points`, `line+points`],
     },
     point_color: {
-      value: `#4682b4`,
+      value: `#4A9EFF`,
       description: `Default color for scatter plot points`,
     },
     point_opacity: {
@@ -777,7 +826,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1,
     },
     line_color: {
-      value: `#4682b4`,
+      value: `#4A9EFF`,
       description: `Default color for scatter plot lines`,
     },
     line_opacity: {
@@ -1180,6 +1229,8 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
   plot: { ...DEFAULTS.plot, ...(user?.plot || {}) },
   scatter: { ...DEFAULTS.scatter, ...(user?.scatter || {}) },
+  histogram: { ...DEFAULTS.histogram, ...(user?.histogram || {}) },
+  bar: { ...DEFAULTS.bar, ...(user?.bar || {}) },
   phase_diagram: {
     ...DEFAULTS.phase_diagram,
     ...(user?.phase_diagram || {}),

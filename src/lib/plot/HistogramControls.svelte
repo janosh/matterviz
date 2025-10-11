@@ -12,6 +12,8 @@
     mode?: `single` | `overlay`
     bar_opacity?: number
     bar_stroke_width?: number
+    bar_stroke_color?: string
+    bar_stroke_opacity?: number
     bar_color?: string
     show_legend?: boolean
     // Scale type controls
@@ -24,12 +26,14 @@
     show_controls = $bindable(false),
     controls_open = $bindable(false),
     series = [],
-    bins = $bindable(DEFAULTS.trajectory.histogram_bin_count),
-    mode = $bindable(DEFAULTS.trajectory.histogram_mode),
-    bar_opacity = $bindable(DEFAULTS.trajectory.histogram_bar_opacity),
-    bar_stroke_width = $bindable(DEFAULTS.trajectory.histogram_bar_stroke_width),
-    bar_color = $bindable(`#4682b4`),
-    show_legend = $bindable(DEFAULTS.trajectory.histogram_show_legend),
+    bins = $bindable(DEFAULTS.histogram.bin_count),
+    mode = $bindable(DEFAULTS.histogram.mode),
+    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
+    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
+    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
+    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
+    bar_color = $bindable(DEFAULTS.histogram.bar_color),
+    show_legend = $bindable(DEFAULTS.histogram.show_legend),
     // Display controls
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
@@ -85,9 +89,8 @@
     title="Histogram"
     current_values={{ bins, mode, show_legend }}
     on_reset={() => {
-      bins = DEFAULTS.trajectory.histogram_bin_count
-      mode = DEFAULTS.trajectory.histogram_mode
-      show_legend = DEFAULTS.trajectory.histogram_show_legend
+      bins = DEFAULTS.histogram.bin_count
+      ;({ mode, show_legend } = DEFAULTS.histogram)
     }}
   >
     <div class="pane-row">
@@ -132,55 +135,47 @@
 
   <SettingsSection
     title="Bar Style"
-    current_values={{ bar_opacity, bar_stroke_width, bar_color }}
+    current_values={{
+      bar_opacity,
+      bar_stroke_width,
+      bar_stroke_color,
+      bar_stroke_opacity,
+      bar_color,
+    }}
     on_reset={() => {
-      bar_opacity = DEFAULTS.trajectory.histogram_bar_opacity
-      bar_stroke_width = DEFAULTS.trajectory.histogram_bar_stroke_width
-      bar_color = `#4682b4`
+      ;({
+        bar_opacity,
+        bar_stroke_width,
+        bar_stroke_color,
+        bar_stroke_opacity,
+        bar_color,
+      } = DEFAULTS.histogram)
     }}
     class="pane-grid"
   >
+    {#if visible_series.length === 1}
+      <label>Fill: <input type="color" bind:value={bar_color} /></label>
+    {/if}
     <label>Opacity:
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        bind:value={bar_opacity}
-        aria-label="Bar opacity"
-      />
-      <input
-        type="number"
-        min="0"
-        max="1"
-        step="0.05"
-        bind:value={bar_opacity}
-        aria-label="Bar opacity value"
-      />
+      <input type="range" min="0" max="1" step="0.05" bind:value={bar_opacity} />
+      <input type="number" min="0" max="1" step="0.05" bind:value={bar_opacity} />
     </label>
     <label>Stroke Width:
+      <input type="range" min="0" max="5" step="0.1" bind:value={bar_stroke_width} />
+      <input type="number" min="0" max="5" step="0.1" bind:value={bar_stroke_width} />
+    </label>
+    <label>Stroke Color:
+      <input type="color" bind:value={bar_stroke_color} />
       <input
         type="range"
         min="0"
-        max="5"
-        step="0.1"
-        bind:value={bar_stroke_width}
-        aria-label="Bar stroke width"
+        max="1"
+        step="0.05"
+        bind:value={bar_stroke_opacity}
+        title="Opacity"
       />
-      <input
-        type="number"
-        min="0"
-        max="5"
-        step="0.1"
-        bind:value={bar_stroke_width}
-        aria-label="Bar stroke width value"
-      />
+      <input type="number" min="0" max="1" step="0.05" bind:value={bar_stroke_opacity} />
     </label>
-    {#if visible_series.length === 1}
-      <label>Color:
-        <input type="color" bind:value={bar_color} aria-label="Bar color" />
-      </label>
-    {/if}
   </SettingsSection>
 
   <SettingsSection
@@ -193,17 +188,13 @@
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"
   >
-    <label>X-axis:
-      <select bind:value={x_scale_type} aria-label="X-axis scale type">
+    <label>X: <select bind:value={x_scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
-      </select>
-    </label>
-    <label>Y-axis:
-      <select bind:value={y_scale_type} aria-label="Y-axis scale type">
+      </select></label>
+    <label>Y: <select bind:value={y_scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
-      </select>
-    </label>
+      </select></label>
   </SettingsSection>
 </PlotControls>

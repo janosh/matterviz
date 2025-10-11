@@ -162,9 +162,10 @@
 
 <svelte:window
   onkeydown={(event: KeyboardEvent) => {
-    if (event.key !== `Escape`) return
-    event.preventDefault()
-    close_pane()
+    if (event.key === `Escape` && show) {
+      event.preventDefault()
+      close_pane()
+    }
   }}
   onresize={handle_resize}
 />

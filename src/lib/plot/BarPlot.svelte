@@ -14,6 +14,7 @@
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { TicksOption } from '$lib/plot/scales'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
+  import { DEFAULTS } from '$lib/settings'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
@@ -46,6 +47,9 @@
     legend?: LegendConfig | null
     padding?: Sides
     default_bar_color?: string
+    bar_opacity?: number
+    line_width?: number
+    line_color?: string
     tooltip?: Snippet<[BarTooltipProps]>
     hovered?: boolean
     change?: (data: BarTooltipProps | null) => void
@@ -84,7 +88,10 @@
     show_y_zero_line = $bindable(false),
     legend = {},
     padding = { t: 20, b: 60, l: 60, r: 20 },
-    default_bar_color = `var(--bar-color, #4682b4)`,
+    default_bar_color = DEFAULTS.bar.bar_color,
+    bar_opacity = DEFAULTS.bar.bar_opacity,
+    line_width = DEFAULTS.bar.line_width,
+    line_color = DEFAULTS.bar.line_color,
     tooltip,
     hovered = $bindable(false),
     change = () => {},
@@ -166,7 +173,7 @@
     const has_positive = all_points.some((p) => p.y > 0)
 
     // Only adjust if no explicit y_lim is set
-    if (!y_lim?.[0] && !y_lim?.[1]) {
+    if (y_lim?.[0] == null && y_lim?.[1] == null) {
       if (has_positive && !has_negative) y_range = [0, y_range[1]] // All positive/zero values: always start from 0
       else if (has_negative && !has_positive) y_range = [y_range[0], 0] // All negative values: end at 0
       // Mixed positive/negative: keep natural range (will include 0)
@@ -467,8 +474,8 @@
             >
               {#if is_line}
                 <!-- Render as line -->
-                {@const color = srs.color ?? default_bar_color}
-                {@const stroke_width = srs.line_style?.stroke_width ?? 2}
+                {@const color = srs.color ?? line_color}
+                {@const stroke_width = srs.line_style?.stroke_width ?? line_width}
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const points = srs.x.map((x_val, idx) => {
             const y_val = srs.y[idx]
@@ -590,7 +597,7 @@
                       width={rect_w}
                       height={rect_h}
                       fill={color}
-                      opacity={mode === `overlay` ? 0.6 : 1}
+                      opacity={mode === `overlay` ? bar_opacity : 1}
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
@@ -835,7 +842,7 @@
     font-size: 11px;
   }
   .zero-line {
-    stroke: var(--barplot-zero-line-color, black);
+    stroke: var(--barplot-zero-line-color, light-dark(black, white));
     stroke-width: var(--barplot-zero-line-width, 1);
     opacity: var(--barplot-zero-line-opacity, 0.3);
   }

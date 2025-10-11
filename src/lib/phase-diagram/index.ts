@@ -42,6 +42,9 @@ export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
   legend_pane_open?: boolean
   // Energy threshold for showing unstable entries (eV/atom above hull)
   max_hull_dist_show_phases?: number
+  max_hull_dist_show_labels?: number
+  show_stable_labels?: boolean
+  show_unstable_labels?: boolean
   // Callback for when JSON files are dropped
   on_file_drop?: (entries: PhaseEntry[]) => void
   // Enable structure preview overlay when hovering over entries with structure data

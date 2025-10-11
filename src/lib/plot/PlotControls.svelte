@@ -268,7 +268,8 @@
         y_format = DEFAULTS.plot.y_format
         y2_format = DEFAULTS.plot.y2_format
       }}
-      style="display: flex; gap: 2ex"
+      class="pane-grid"
+      style="grid-template-columns: 1fr 1fr"
     >
       <label style="white-space: nowrap">X-axis:
         <input
@@ -284,6 +285,7 @@
           bind:value={y_format_input}
           placeholder="d / .1e / .0%"
           oninput={format_input_handler(`y`)}
+          style="width: 100%"
         />
       </label>
       {#if has_y2_points}
@@ -293,6 +295,7 @@
             bind:value={y2_format_input}
             placeholder=".2f / .1e / .0%"
             oninput={format_input_handler(`y2`)}
+            style="width: 100%"
           />
         </label>
       {/if}

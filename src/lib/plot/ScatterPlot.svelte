@@ -2029,7 +2029,7 @@
     pointer-events: none; /* Prevent rect from interfering with mouse events */
   }
   .zero-line {
-    stroke: var(--scatter-zero-line-color, black);
+    stroke: var(--scatter-zero-line-color, light-dark(black, white));
     stroke-width: var(--scatter-zero-line-width, 1);
     stroke-dasharray: none;
     opacity: var(--scatter-zero-line-opacity, 0.3);

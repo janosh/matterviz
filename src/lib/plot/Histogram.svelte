@@ -2,6 +2,7 @@
   import { DraggablePane } from '$lib'
   import type { DataSeries, Sides } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -39,6 +40,8 @@
     legend?: LegendConfig | null
     bar_opacity?: number
     bar_stroke_width?: number
+    bar_stroke_color?: string
+    bar_stroke_opacity?: number
     bar_color?: string
     selected_property?: string
     mode?: `single` | `overlay`
@@ -92,9 +95,11 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar_opacity = $bindable(0.7),
-    bar_stroke_width = $bindable(1),
-    bar_color = $bindable(`cornflowerblue`),
+    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
+    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
+    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
+    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
+    bar_color = $bindable(DEFAULTS.histogram.bar_color),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     show_x_zero_line = $bindable(false),
@@ -431,8 +436,8 @@
                 height={bar_height}
                 fill={color}
                 opacity={bar_opacity}
-                stroke={bar_stroke_width > 0 ? `black` : `none`}
-                stroke-opacity={bar_stroke_width > 0 ? 0.5 : 0}
+                stroke={bar_stroke_width > 0 ? bar_stroke_color : `none`}
+                stroke-opacity={bar_stroke_width > 0 ? bar_stroke_opacity : 0}
                 stroke-width={bar_stroke_width}
                 role="button"
                 tabindex="0"
@@ -597,6 +602,8 @@
       bind:mode
       bind:bar_opacity
       bind:bar_stroke_width
+      bind:bar_stroke_color
+      bind:bar_stroke_opacity
       bind:bar_color
       bind:show_legend
       bind:show_x_grid
@@ -670,7 +677,7 @@
     pointer-events: none;
   }
   .zero-line {
-    stroke: var(--histogram-zero-line-color, black);
+    stroke: var(--histogram-zero-line-color, light-dark(black, white));
     stroke-width: var(--histogram-zero-line-width, 1);
     opacity: var(--histogram-zero-line-opacity, 0.3);
   }

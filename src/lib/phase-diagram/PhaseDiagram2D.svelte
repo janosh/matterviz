@@ -40,6 +40,9 @@
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
     max_hull_dist_show_phases = $bindable(0.1),
+    max_hull_dist_show_labels = $bindable(0.1),
+    show_stable_labels = $bindable(true),
+    show_unstable_labels = $bindable(false),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -334,10 +337,6 @@
     phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
   })
 
-  // Labels with smart defaults
-  let show_stable_labels = $state(true)
-  let show_unstable_labels = $state(false)
-  let max_hull_dist_show_labels = $state(0.1)
   $effect(() => {
     const total_entries = processed_entries.length
     if (total_entries > label_threshold) {

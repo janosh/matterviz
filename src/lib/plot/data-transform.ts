@@ -8,7 +8,7 @@ export function extract_series_color(series_data: DataSeries): string {
     (Array.isArray(series_data.point_style)
       ? series_data.point_style[0]?.fill
       : series_data.point_style?.fill) ||
-    `#4682b4`
+    `#4A9EFF`
 }
 
 // Prepare legend data from series array

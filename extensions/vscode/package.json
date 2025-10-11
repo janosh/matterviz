@@ -701,7 +701,7 @@
         },
         "matterviz.scatter.point_color": {
           "type": "string",
-          "default": "#4682b4",
+          "default": "#4A9EFF",
           "description": "Default color for scatter plot points"
         },
         "matterviz.scatter.point_opacity": {
@@ -732,7 +732,7 @@
         },
         "matterviz.scatter.line_color": {
           "type": "string",
-          "default": "#4682b4",
+          "default": "#4A9EFF",
           "description": "Default color for scatter plot lines"
         },
         "matterviz.scatter.line_opacity": {

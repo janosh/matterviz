@@ -78,7 +78,7 @@
         : series_item.point_style
       if (ps) {
         point_size = ps.radius ?? 4
-        point_color = ps.fill ?? `#4682b4`
+        point_color = ps.fill ?? `#4A9EFF`
         point_stroke_width = ps.stroke_width ?? 1
         point_stroke_color = ps.stroke ?? `#000`
         point_opacity = ps.fill_opacity ?? 1
@@ -86,7 +86,7 @@
       }
       if (series_item.line_style) {
         line_width = series_item.line_style.stroke_width ?? 2
-        line_color = series_item.line_style.stroke ?? `#4682b4`
+        line_color = series_item.line_style.stroke ?? `#4A9EFF`
         line_dash = series_item.line_style.line_dash ?? DEFAULTS.scatter.line_dash
       }
     }
@@ -156,10 +156,10 @@
       <div class="pane-row">
         <label for="series-select">Series</label>
         <select bind:value={selected_series_idx} id="series-select">
-          {#each series as series_data, idx (idx)}
-            {#if series_data}
+          {#each series as srs, idx (idx)}
+            {#if srs}
               <option value={idx}>
-                {series_data.label ?? `Series ${idx + 1}`}
+                {srs.label ?? `Series ${idx + 1}`}
               </option>
             {/if}
           {/each}

@@ -43,7 +43,7 @@ describe(`data-transform utility functions`, () => {
       {
         name: `returns default color when no styles defined`,
         series: { x: [1, 2, 3], y: [1, 2, 3] },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `returns default color when styles exist but no color`,
@@ -53,22 +53,22 @@ describe(`data-transform utility functions`, () => {
           line_style: { stroke_width: 2 },
           point_style: { radius: 5 },
         },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `handles empty point_style array`,
         series: { x: [1, 2, 3], y: [1, 2, 3], point_style: [] },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `handles undefined stroke color`,
         series: { x: [1, 2, 3], y: [1, 2, 3], line_style: { stroke: undefined } },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `handles undefined fill color`,
         series: { x: [1, 2, 3], y: [1, 2, 3], point_style: { fill: undefined } },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
     ])(`$name`, ({ series, expected }) => {
       expect(extract_series_color(series as DataSeries)).toBe(expected)
@@ -180,7 +180,7 @@ describe(`data-transform utility functions`, () => {
             visible: true,
             display_style: {
               symbol_type: DEFAULTS.scatter.symbol_type,
-              symbol_color: `#4682b4`,
+              symbol_color: `#4A9EFF`,
             },
           },
         ],
