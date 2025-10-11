@@ -24,28 +24,8 @@
     selected_series_idx?: number
   }
   let {
-    show_controls = $bindable(false),
-    controls_open = $bindable(false),
     series = [],
     markers = $bindable(DEFAULTS.scatter.markers),
-    show_x_zero_line = $bindable(false),
-    show_y_zero_line = $bindable(false),
-    show_x_grid = $bindable(DEFAULTS.plot.show_x_grid),
-    show_y_grid = $bindable(DEFAULTS.plot.show_y_grid),
-    show_y2_grid = $bindable(DEFAULTS.plot.show_y2_grid),
-    has_y2_points = false,
-    // Range controls
-    x_range = $bindable(undefined),
-    y_range = $bindable(undefined),
-    y2_range = $bindable(undefined),
-    // Auto-detected ranges for fallback when only one value is set
-    auto_x_range = [0, 1],
-    auto_y_range = [0, 1],
-    auto_y2_range = [0, 1],
-    // Format controls
-    x_format = $bindable(DEFAULTS.plot.x_format),
-    y_format = $bindable(DEFAULTS.plot.y_format),
-    y2_format = $bindable(DEFAULTS.plot.y2_format),
     // Style controls
     point_size = $bindable(DEFAULTS.scatter.point_size),
     point_color = $bindable(DEFAULTS.scatter.point_color),
@@ -60,8 +40,7 @@
     show_points = $bindable(DEFAULTS.scatter.show_points),
     show_lines = $bindable(DEFAULTS.scatter.show_lines),
     selected_series_idx = $bindable(0),
-    toggle_props = {},
-    pane_props = {},
+    ...rest
   }: Props = $props()
 
   // Derived state
@@ -101,29 +80,7 @@
   })
 </script>
 
-<PlotControls
-  bind:show_controls
-  bind:controls_open
-  bind:show_x_zero_line
-  bind:show_y_zero_line
-  bind:show_x_grid
-  bind:show_y_grid
-  bind:show_y2_grid
-  bind:x_range
-  bind:y_range
-  bind:y2_range
-  bind:x_format
-  bind:y_format
-  bind:y2_format
-  {auto_x_range}
-  {auto_y_range}
-  {auto_y2_range}
-  {has_y2_points}
-  controls_title="scatter plot"
-  controls_class="scatter"
-  {toggle_props}
-  {pane_props}
->
+<PlotControls {...rest}>
   <!-- Add show_points and show_lines checkboxes to Display section by extending it -->
   <!-- This is done via the Display section in PlotControls, but we need custom controls -->
   <!-- For now, we'll add a separate section for markers -->

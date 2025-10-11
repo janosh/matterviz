@@ -870,9 +870,7 @@
           modal_open = true
         }
       }
-    } else if (modal_open) {
-      close_structure_popup()
-    }
+    } else if (modal_open) close_structure_popup()
   }
 
   function close_structure_popup() {
@@ -977,7 +975,7 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => [is_dragging, drag_started] = [false, false]}
+  onmouseup={() => is_dragging = false}
 />
 
 <div

@@ -569,12 +569,13 @@
                   {@const half = mode === `grouped` && group_info.bar_series_count > 1
             ? bar_width_val / (2 * group_info.bar_series_count)
             : bar_width_val / 2}
+                  {@const calculate_group_offset = (idx: number) => {
+            const position = group_info.bar_series_indices.indexOf(idx)
+            const offset = position - (group_info.bar_series_count - 1) / 2
+            return offset * (bar_width_val / group_info.bar_series_count)
+          }}
                   {@const group_offset = mode === `grouped` && group_info.bar_series_count > 1
-            ? ((pos) =>
-              (pos - (group_info.bar_series_count - 1) / 2) *
-              (bar_width_val / group_info.bar_series_count))(
-                group_info.bar_series_indices.indexOf(series_idx),
-              )
+            ? calculate_group_offset(series_idx)
             : 0}
                   {@const is_vertical = orientation === `vertical`}
                   {@const cat_val = x_val}

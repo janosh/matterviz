@@ -23,8 +23,6 @@
     selected_property?: string
   }
   let {
-    show_controls = $bindable(false),
-    controls_open = $bindable(false),
     series = [],
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
@@ -34,28 +32,10 @@
     bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
     bar_color = $bindable(DEFAULTS.histogram.bar_color),
     show_legend = $bindable(DEFAULTS.histogram.show_legend),
-    // Display controls
-    show_x_zero_line = $bindable(false),
-    show_y_zero_line = $bindable(false),
-    show_x_grid = $bindable(DEFAULTS.plot.show_x_grid),
-    show_y_grid = $bindable(DEFAULTS.plot.show_y_grid),
-    // Scale type controls
     x_scale_type = $bindable(DEFAULTS.plot.x_scale_type as `linear` | `log`),
     y_scale_type = $bindable(DEFAULTS.plot.y_scale_type as `linear` | `log`),
-    // Range controls
-    x_range = $bindable(undefined),
-    y_range = $bindable(undefined),
-    auto_x_range = [0, 1],
-    auto_y_range = [0, 1],
-    // Tick controls
-    x_ticks = $bindable(DEFAULTS.plot.x_ticks),
-    y_ticks = $bindable(DEFAULTS.plot.y_ticks),
-    // Format controls
-    x_format = $bindable(DEFAULTS.plot.x_format),
-    y_format = $bindable(DEFAULTS.plot.y_format),
     selected_property = $bindable(``),
-    toggle_props = {},
-    pane_props = {},
+    ...rest
   }: Props = $props()
 
   // Derived state
@@ -64,27 +44,7 @@
   let series_options = $derived(visible_series.map((s) => s.label || `Series`))
 </script>
 
-<PlotControls
-  bind:show_controls
-  bind:controls_open
-  bind:show_x_zero_line
-  bind:show_y_zero_line
-  bind:show_x_grid
-  bind:show_y_grid
-  bind:x_range
-  bind:y_range
-  bind:x_ticks
-  bind:y_ticks
-  bind:x_format
-  bind:y_format
-  {auto_x_range}
-  {auto_y_range}
-  show_ticks={true}
-  controls_title="histogram"
-  controls_class="histogram"
-  {toggle_props}
-  {pane_props}
->
+<PlotControls {...rest}>
   <SettingsSection
     title="Histogram"
     current_values={{ bins, mode, show_legend }}

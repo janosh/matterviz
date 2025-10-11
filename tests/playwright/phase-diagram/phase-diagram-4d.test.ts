@@ -178,6 +178,26 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await expect(diagram.locator(`.draggable-pane.phase-diagram-info-pane`)).toBeVisible()
   })
 
+  test(`suppresses clicks immediately after drag to prevent accidental selections`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const canvas = diagram.locator(`canvas`)
+    const box = await canvas.boundingBox()
+    if (!box) return
+
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+
+    // Drag then immediately click
+    await page.mouse.move(center.x, center.y)
+    await page.mouse.down()
+    await page.mouse.move(center.x + 30, center.y + 30)
+    await page.mouse.up()
+    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } })
+    await page.waitForTimeout(100)
+
+    // Click after drag should be suppressed (no structure popup)
+    await expect(diagram.locator(`.structure-popup`)).not.toBeVisible()
+  })
+
   test(`hull facets render and are toggleable`, async ({ page }) => {
     const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
     const canvas = diagram.locator(`canvas`)

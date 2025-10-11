@@ -208,9 +208,8 @@
       title="Axis Range"
       current_values={{ x_range, y_range, y2_range }}
       on_reset={() => {
-        x_range = undefined
-        y_range = undefined
-        y2_range = undefined
+        ;[x_range, y_range, y2_range] = [undefined, undefined, undefined]
+        Object.values(range_els).forEach((el) => el.classList.remove(`invalid`))
       }}
       class="pane-grid"
     >

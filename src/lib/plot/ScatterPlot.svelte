@@ -1444,7 +1444,7 @@
           />
         {/if}
       {/if}
-      {#if show_y_zero_line && y_scale_type === `linear` && y_min < 0 && y_max > 0}
+      {#if show_y_zero_line && y_scale_type === `linear` && y_min <= 0 && y_max >= 0}
         {@const zero_y_pos = y_scale_fn(0)}
         {#if isFinite(zero_y_pos)}
           <line
