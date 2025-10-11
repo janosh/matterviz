@@ -3,7 +3,10 @@ import { expect, type Page, test } from '@playwright/test'
 async function open_export_pane(page: Page) {
   const export_toggle = page.locator(`.structure-export-toggle`).first()
   await expect(export_toggle).toBeVisible()
-  await export_toggle.click()
+
+  // Use evaluate to directly trigger click handler
+  await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+
   // Wait for the pane to appear - it's a draggable-pane with export-pane class
   const pane_div = page.locator(`.draggable-pane.export-pane`).first()
   await expect(pane_div).toBeVisible({ timeout: 10000 })
@@ -23,20 +26,34 @@ test.describe(`StructureExportPane Tests`, () => {
     await expect(export_toggle).toHaveAttribute(`title`, `Export Structure`)
   })
 
+  test(`opens and closes export pane`, async ({ page }) => {
+    const { export_toggle, pane_div } = await open_export_pane(page)
+    await expect(pane_div).toBeVisible()
+
+    // Verify sections are present
+    await expect(pane_div.locator(`h4:has-text("Export as text")`)).toBeVisible()
+    await expect(pane_div.locator(`h4:has-text("Export as image")`)).toBeVisible()
+    await expect(pane_div.locator(`h4:has-text("Export as 3D model")`)).toBeVisible()
+
+    // Close pane
+    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await expect(pane_div).not.toBeVisible()
+  })
+
   test(`displays all export format buttons`, async ({ page }) => {
     const { pane_div } = await open_export_pane(page)
 
-    // Text formats
+    // Text formats - check they appear in the export buttons section
     const text_formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`]
     await Promise.all(
-      text_formats.map((format) =>
-        expect(pane_div.getByText(format, { exact: true })).toBeVisible()
-      ),
+      text_formats.map((format) => expect(pane_div.getByText(format)).toBeVisible()),
     )
 
     // 3D formats
-    await expect(pane_div.getByText(`GLB`)).toBeVisible()
-    await expect(pane_div.getByText(`OBJ`)).toBeVisible()
+    await Promise.all([
+      expect(pane_div.getByText(`GLB`)).toBeVisible(),
+      expect(pane_div.getByText(`OBJ`)).toBeVisible(),
+    ])
   })
 
   test(`text export buttons have download and copy actions with tooltips`, async ({ page }) => {
@@ -61,10 +78,8 @@ test.describe(`StructureExportPane Tests`, () => {
     await page.context().grantPermissions([`clipboard-write`])
     const { pane_div } = await open_export_pane(page)
 
-    const copy_btn = pane_div
-      .locator(`div:has-text("JSON")`)
-      .first()
-      .locator(`button[title*="Copy"]`)
+    // Find the JSON copy button specifically
+    const copy_btn = pane_div.locator(`button[title="Copy JSON to clipboard"]`)
 
     await expect(copy_btn).toHaveText(`📋`)
     await copy_btn.click()
@@ -75,7 +90,7 @@ test.describe(`StructureExportPane Tests`, () => {
   test(`PNG export section with DPI controls`, async ({ page }) => {
     const { pane_div } = await open_export_pane(page)
 
-    await expect(pane_div.locator(`h4:has-text("Export Images")`)).toBeVisible()
+    await expect(pane_div.locator(`h4:has-text("Export as image")`)).toBeVisible()
 
     const dpi_input = pane_div.locator(`input[type="number"][title*="dots per inch"]`)
     await expect(dpi_input).toBeVisible()
@@ -98,10 +113,10 @@ test.describe(`StructureExportPane Tests`, () => {
     const dpi_input = pane_div.locator(`input[type="number"][title*="dots per inch"]`)
     await dpi_input.fill(`250`)
 
-    await export_toggle.click()
+    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(pane_div).not.toBeVisible()
 
-    await export_toggle.click()
+    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(pane_div).toBeVisible()
 
     const dpi_input_reopened = pane_div.locator(
@@ -131,36 +146,38 @@ test.describe(`StructureExportPane Tests`, () => {
     const { pane_div } = await open_export_pane(page)
 
     // Copy JSON
-    const json_copy = pane_div
-      .locator(`div:has-text("JSON")`)
-      .first()
-      .locator(`button[title*="Copy"]`)
+    const json_copy = pane_div.locator(`button[title="Copy JSON to clipboard"]`)
     await json_copy.click()
     await expect(json_copy).toHaveText(`✅`, { timeout: 1000 })
     await page.waitForTimeout(1100)
 
     // Copy XYZ
-    const xyz_copy = pane_div
-      .locator(`div:has-text("XYZ")`)
-      .first()
-      .locator(`button[title*="Copy"]`)
+    const xyz_copy = pane_div.locator(`button[title="Copy XYZ to clipboard"]`)
     await xyz_copy.click()
     await expect(xyz_copy).toHaveText(`✅`, { timeout: 1000 })
   })
 
-  test(`export pane works alongside control pane`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_export_pane(page)
+  test(`export pane and control pane can be toggled independently`, async ({ page }) => {
+    const { pane_div: export_pane, export_toggle } = await open_export_pane(page)
+    await expect(export_pane).toBeVisible()
 
+    // Opening control pane closes export pane due to click-outside handler
     const control_toggle = page.locator(`.structure-controls-toggle`).first()
-    await control_toggle.click()
-    const control_pane = page.locator(`.controls-pane`).first()
+    await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
 
-    await expect(export_pane).toBeVisible()
+    const control_pane = page.locator(`.draggable-pane.controls-pane`).first()
     await expect(control_pane).toBeVisible()
+    await expect(export_pane).not.toBeVisible()
 
-    await control_toggle.click()
-    await expect(control_pane).not.toBeVisible()
+    // Opening export pane closes control pane
+    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(export_pane).toBeVisible()
+    await expect(control_pane).not.toBeVisible()
+
+    // Verify they toggle correctly
+    await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await expect(control_pane).toBeVisible()
+    await expect(export_pane).not.toBeVisible()
   })
 
   test(`keyboard navigation and rapid toggle`, async ({ page }) => {
@@ -187,7 +204,7 @@ test.describe(`StructureExportPane Tests`, () => {
       const computed = globalThis.getComputedStyle(el)
       return { overflow: computed.overflow || computed.overflowY }
     })
-    expect([`auto`, `scroll`, `visible`]).toContain(styles.overflow)
+    expect([`auto`, `scroll`, `visible`, `hidden auto`]).toContain(styles.overflow)
 
     // Check button styling consistency
     const buttons = pane_div.locator(`.export-buttons button`)

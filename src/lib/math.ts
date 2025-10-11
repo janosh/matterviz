@@ -343,3 +343,10 @@ export function det_4x4(matrix: number[][]): number {
 export function cross_3d(a: Vec3, b: Vec3): Vec3 {
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
+
+// Check if a matrix is square with dimension NxN
+export function is_square_matrix(matrix: unknown, dim: number): boolean {
+  if (!Array.isArray(matrix)) return false
+  if (matrix.length !== dim) return false
+  return matrix.every((row) => Array.isArray(row) && row.length === dim)
+}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { DraggablePane, SettingsSection } from '$lib'
+  import { DraggablePane } from '$lib'
   import { export_canvas_as_png } from '$lib/io/export'
   import * as exports from '$lib/structure/export'
   import type { ComponentProps } from 'svelte'
@@ -127,7 +127,7 @@
   }}
   {...rest}
 >
-  <h4>Export Text Formats</h4>
+  <h4>Export as text</h4>
   <div class="export-buttons">
     {#each text_export_formats as { label, format } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
@@ -150,14 +150,8 @@
     {/each}
   </div>
 
-  <h4>Export Images</h4>
-  <SettingsSection
-    title="PNG Settings"
-    current_values={{ png_dpi }}
-    on_reset={() => {
-      png_dpi = 150
-    }}
-  >
+  <h4>Export as image</h4>
+  <div class="export-buttons">
     <label>
       PNG
       <button
@@ -188,9 +182,9 @@
         style="margin: 0 0 0 2pt"
       />)
     </label>
-  </SettingsSection>
+  </div>
 
-  <h4>Export 3D Models</h4>
+  <h4>Export as 3D model</h4>
   <div class="export-buttons">
     {#each model_3d_formats as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
@@ -212,14 +206,14 @@
   .export-buttons {
     display: flex;
     flex-wrap: wrap;
-    gap: 1ex;
+    gap: 9pt;
     font-size: 0.95em;
   }
   .export-buttons button {
-    width: 1.6em;
+    width: 1.9em;
     height: 1.6em;
-    display: grid;
-    place-items: center;
     padding: 0;
+    margin: 0 0 0 4pt;
+    box-sizing: border-box;
   }
 </style>

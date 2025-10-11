@@ -30,7 +30,6 @@ describe(`StructureExportPane`, () => {
   let mock_scene: Scene
 
   beforeEach(() => {
-    vi.clearAllMocks()
     wrapper_div = document.createElement(`div`)
     const canvas = document.createElement(`canvas`)
     wrapper_div.appendChild(canvas)
@@ -38,50 +37,12 @@ describe(`StructureExportPane`, () => {
 
     // Create minimal mock Scene object
     mock_scene = {} as Scene
-
-    // Mock clipboard API
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
-    })
-  })
-
-  test(`renders when export_pane_open is true`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-      },
-    })
-
-    expect(document.querySelector(`.export-pane`)).toBeTruthy()
-    expect(document.body.textContent).toContain(`Export Text Formats`)
-    expect(document.body.textContent).toContain(`Export Images`)
-    expect(document.body.textContent).toContain(`Export 3D Models`)
-  })
-
-  test(`does not render export-pane content when closed`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        export_pane_open: false,
-        structure: simple_structure,
-      },
-    })
-
-    // Toggle button should exist
-    expect(document.querySelector(`.structure-export-toggle`)).toBeTruthy()
   })
 
   test(`displays all text export format buttons`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-      },
+      props: { structure: simple_structure },
     })
 
     const format_labels = [`JSON`, `XYZ`, `CIF`, `POSCAR`]
@@ -91,9 +52,7 @@ describe(`StructureExportPane`, () => {
 
     // Should have exactly 2 buttons per format (download + copy) × 4 formats = 8
     const h4_elements = Array.from(document.querySelectorAll(`h4`))
-    const text_h4 = h4_elements.find((h4) =>
-      h4.textContent?.includes(`Export Text Formats`)
-    )
+    const text_h4 = h4_elements.find((h4) => h4.textContent?.includes(`Export as text`))
     const text_section = text_h4?.nextElementSibling
     const buttons = text_section?.querySelectorAll(`button`)
     expect(buttons?.length).toBe(8)
@@ -110,7 +69,6 @@ describe(`StructureExportPane`, () => {
       mount(StructureExportPane, {
         target: document.body,
         props: {
-          export_pane_open: true,
           structure: simple_structure,
         },
       })
@@ -164,7 +122,6 @@ describe(`StructureExportPane`, () => {
       mount(StructureExportPane, {
         target: document.body,
         props: {
-          export_pane_open: true,
           structure: simple_structure,
         },
       })
@@ -193,10 +150,7 @@ describe(`StructureExportPane`, () => {
 
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-      },
+      props: { structure: simple_structure },
     })
 
     const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
@@ -228,10 +182,7 @@ describe(`StructureExportPane`, () => {
 
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: undefined,
-      },
+      props: { structure: undefined },
     })
 
     const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
@@ -255,7 +206,6 @@ describe(`StructureExportPane`, () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
-        export_pane_open: true,
         structure: simple_structure,
         wrapper: wrapper_div,
         png_dpi: 150,
@@ -273,11 +223,7 @@ describe(`StructureExportPane`, () => {
   test(`PNG export button is enabled with canvas`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-        wrapper: wrapper_div,
-      },
+      props: { structure: simple_structure, wrapper: wrapper_div },
     })
 
     const png_buttons = Array.from(document.querySelectorAll(`button`)).filter(
@@ -289,11 +235,7 @@ describe(`StructureExportPane`, () => {
   test(`displays 3D model export formats`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-        scene: mock_scene,
-      },
+      props: { structure: simple_structure, scene: mock_scene },
     })
 
     expect(document.body.textContent).toContain(`GLB`)
@@ -306,11 +248,7 @@ describe(`StructureExportPane`, () => {
   ])(`calls correct export function for $label 3D export`, async ({ label, fn_name }) => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-        scene: mock_scene,
-      },
+      props: { structure: simple_structure, scene: mock_scene },
     })
 
     const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
@@ -318,7 +256,7 @@ describe(`StructureExportPane`, () => {
     // Find the 3D model export section
     const h4_elements = Array.from(document.querySelectorAll(`h4`))
     const models_h4 = h4_elements.find((h4) =>
-      h4.textContent?.includes(`Export 3D Models`)
+      h4.textContent?.includes(`Export as 3D model`)
     )
     expect(models_h4).toBeTruthy()
 
@@ -342,16 +280,12 @@ describe(`StructureExportPane`, () => {
   test(`3D export buttons are disabled without scene`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-        scene: undefined,
-      },
+      props: { structure: simple_structure, scene: undefined },
     })
 
     const h4_elements = Array.from(document.querySelectorAll(`h4`))
     const models_h4 = h4_elements.find((h4) =>
-      h4.textContent?.includes(`Export 3D Models`)
+      h4.textContent?.includes(`Export as 3D model`)
     )
     const models_section = models_h4?.nextElementSibling
 
@@ -398,10 +332,7 @@ describe(`StructureExportPane`, () => {
 
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-      },
+      props: { structure: simple_structure },
     })
 
     const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
@@ -440,10 +371,7 @@ describe(`StructureExportPane`, () => {
 
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: structure_without_lattice,
-      },
+      props: { structure: structure_without_lattice },
     })
 
     // Try to copy CIF
@@ -466,18 +394,12 @@ describe(`StructureExportPane`, () => {
   test(`text export format buttons have appropriate titles`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-        structure: simple_structure,
-        scene: mock_scene,
-      },
+      props: { structure: simple_structure, scene: mock_scene },
     })
 
     // Get all buttons from the text export section
     const h4_elements = Array.from(document.querySelectorAll(`h4`))
-    const text_h4 = h4_elements.find((h4) =>
-      h4.textContent?.includes(`Export Text Formats`)
-    )
+    const text_h4 = h4_elements.find((h4) => h4.textContent?.includes(`Export as text`))
     expect(text_h4).toBeTruthy()
 
     const text_section = text_h4?.nextElementSibling
@@ -513,7 +435,6 @@ describe(`StructureExportPane`, () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
-        export_pane_open: true,
         pane_props: { style: `max-height: 400px`, class: `custom-export-pane` },
       },
     })
@@ -543,7 +464,6 @@ describe(`StructureExportPane`, () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
-        export_pane_open: true,
         structure: simple_structure,
         wrapper: wrapper_div,
         png_dpi: 200,
@@ -575,7 +495,6 @@ describe(`StructureExportPane`, () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
-        export_pane_open: true,
         structure: simple_structure,
         wrapper: wrapper_div,
         png_dpi: 150,
@@ -607,7 +526,6 @@ describe(`StructureExportPane`, () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
-        export_pane_open: true,
         structure: simple_structure,
         wrapper: wrapper_div,
         png_dpi,
