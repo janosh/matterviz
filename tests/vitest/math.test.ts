@@ -63,7 +63,7 @@ describe(`euclidean_dist`, () => {
     {
       point1: [1, 2, 3],
       point2: [4, 6, 8],
-      expected: Math.sqrt(9 + 16 + 25),
+      expected: Math.hypot(3, 4, 5),
       desc: `arbitrary points`,
     },
     {

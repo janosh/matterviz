@@ -542,16 +542,12 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
         }
       }
     }
-
     if (forces.length > 0) {
       metadata.forces = forces
-      const magnitudes = forces.map((f) => Math.sqrt(f[0] ** 2 + f[1] ** 2 + f[2] ** 2))
+      const magnitudes = forces.map((force) => Math.hypot(...force))
       metadata.force_max = Math.max(...magnitudes)
-      metadata.force_norm = Math.sqrt(
-        magnitudes.reduce((sum, f) => sum + f ** 2, 0) / magnitudes.length,
-      )
+      metadata.force_norm = Math.hypot(...magnitudes) / magnitudes.length
     }
-
     frames.push(
       create_trajectory_frame(
         positions,

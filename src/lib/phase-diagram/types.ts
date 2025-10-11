@@ -115,7 +115,7 @@ export interface ConvexHullTriangle {
 // Ternary plot entry with additional face information
 export interface TernaryPlotEntry extends PlotEntry3D {
   barycentric: [number, number, number] // Barycentric coordinates for ternary system
-  formation_energy: number // for z-axis positioning
+  e_form: number // for z-axis positioning
 }
 
 // Hover data for tooltips
