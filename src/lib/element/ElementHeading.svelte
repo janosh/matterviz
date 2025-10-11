@@ -2,10 +2,9 @@
   import type { ChemicalElement } from '$lib'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLHeadingElement> {
+  let { element, ...rest }: HTMLAttributes<HTMLHeadingElement> & {
     element: ChemicalElement
-  }
-  let { element, ...rest }: Props = $props()
+  } = $props()
 </script>
 
 <h2 {...rest}>

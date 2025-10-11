@@ -3,15 +3,6 @@
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    files: FileInfo[]
-    active_files?: string[]
-    show_category_filters?: boolean
-    on_drag_start?: (file: FileInfo, event: DragEvent) => void
-    on_drag_end?: () => void
-    type_mapper?: (file: FileInfo) => string
-    file_type_colors?: Record<string, string>
-  }
   let {
     files,
     active_files = [],
@@ -33,7 +24,15 @@
       xdatcar: `rgba(255, 215, 0, 0.8)`,
     },
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    files: FileInfo[]
+    active_files?: string[]
+    show_category_filters?: boolean
+    on_drag_start?: (file: FileInfo, event: DragEvent) => void
+    on_drag_end?: () => void
+    type_mapper?: (file: FileInfo) => string
+    file_type_colors?: Record<string, string>
+  } = $props()
 
   let active_category_filter = $state<string | null>(null)
   let active_type_filter = $state<string | null>(null)

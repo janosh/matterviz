@@ -3,15 +3,14 @@
   import type { BarMode, Orientation, PlotControlsProps } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
 
-  interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
-    orientation?: Orientation
-    mode?: BarMode
-  }
   let {
     orientation = $bindable(`vertical` as Orientation),
     mode = $bindable(`overlay` as BarMode),
     ...rest
-  }: Props = $props()
+  }: Omit<PlotControlsProps, `children` | `post_children`> & {
+    orientation?: Orientation
+    mode?: BarMode
+  } = $props()
 </script>
 
 <PlotControls {...rest}>

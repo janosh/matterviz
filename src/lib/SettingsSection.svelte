@@ -3,19 +3,18 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLElementTagNameMap[`section`]> {
-    title: string
-    current_values: Record<string, unknown>
-    children: Snippet<[]>
-    on_reset?: () => void
-  }
   let {
     title,
     current_values,
     children,
     on_reset = () => {},
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLElementTagNameMap[`section`]> & {
+    title: string
+    current_values: Record<string, unknown>
+    children: Snippet<[]>
+    on_reset?: () => void
+  } = $props()
 
   // Create a deep copy of current_values on mount to use as reference values
   function deep_copy(obj: unknown): unknown {

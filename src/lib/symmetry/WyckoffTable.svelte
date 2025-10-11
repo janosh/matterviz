@@ -4,19 +4,18 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { WyckoffPos } from '.'
 
-  interface Props extends HTMLAttributes<HTMLTableElement> {
-    wyckoff_positions: WyckoffPos[]
-    on_hover?: (site_indices: number[] | null) => void
-    on_click?: (site_indices: number[] | null) => void
-    active_color?: string
-  }
   let {
     wyckoff_positions,
     on_hover,
     on_click,
     active_color = `#2563eb`,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLTableElement> & {
+    wyckoff_positions: WyckoffPos[]
+    on_hover?: (site_indices: number[] | null) => void
+    on_click?: (site_indices: number[] | null) => void
+    active_color?: string
+  } = $props()
 
   let selected_wyckoff = $state<WyckoffPos | null>(null)
 </script>

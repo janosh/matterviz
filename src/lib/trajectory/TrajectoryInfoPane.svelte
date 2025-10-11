@@ -7,17 +7,6 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
-  interface Props extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
-    trajectory: TrajectoryType
-    current_step_idx: number
-    current_filename?: string | null
-    current_file_path?: string | null
-    file_size?: number | null
-    file_object?: File | null
-    pane_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-  }
   let {
     trajectory,
     current_step_idx,
@@ -29,7 +18,17 @@
     toggle_props,
     pane_props,
     ...rest
-  }: Props = $props()
+  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    trajectory: TrajectoryType
+    current_step_idx: number
+    current_filename?: string | null
+    current_file_path?: string | null
+    file_size?: number | null
+    file_object?: File | null
+    pane_open?: boolean
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  } = $props()
 
   let copied_items = new SvelteSet<string>()
 

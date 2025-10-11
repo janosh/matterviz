@@ -315,3 +315,28 @@ export interface PlotControlsProps {
   toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
 }
+
+// Base props shared across plot components (non-bindable props only)
+// Bindable props (x_range, y_range, formats, ticks, ...) must be declared in each component with $bindable()
+export interface BasePlotProps {
+  // Axis limits (non-bindable)
+  x_lim?: [number | null, number | null]
+  y_lim?: [number | null, number | null]
+  range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g. 0.05 = 5%)
+  // Axis labels and styling (non-bindable)
+  x_label?: string
+  x_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis label in px
+  y_label?: string
+  y_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis label in px
+  // Grid style (non-bindable)
+  x_grid_style?: HTMLAttributes<SVGLineElement>
+  y_grid_style?: HTMLAttributes<SVGLineElement>
+  // Layout (non-bindable)
+  padding?: Sides
+  // Callbacks (non-bindable)
+  change?: (...args: unknown[]) => void // Callback when hovered item changes
+  // Control pane component props (non-bindable)
+  controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+  controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  children?: Snippet<[]>
+}

@@ -1,7 +1,23 @@
 <script lang="ts">
   import type { SVGAttributes } from 'svelte/elements'
 
-  interface Props extends SVGAttributes<SVGSVGElement> {
+  let {
+    symbol = ``,
+    name = ``,
+    shells,
+    adapt_size = false,
+    shell_width = 20,
+    size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270,
+    base_fill = `var(--text-color)`,
+    orbital_period = 3,
+    nucleus_props = {},
+    shell_props = {},
+    electron_props = {},
+    highlight_shell = null,
+    number_electrons = false,
+    electron_label_props = {},
+    ...rest
+  }: SVGAttributes<SVGSVGElement> & {
     // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
     symbol?: string // usually H, He, etc. but can be anything
     name?: string // usually Hydrogen, Helium, etc. but can be anything
@@ -23,24 +39,7 @@
       | `sequential`
       | ((idx: number) => string)
     electron_label_props?: Record<string, string | number>
-  }
-  let {
-    symbol = ``,
-    name = ``,
-    shells,
-    adapt_size = false,
-    shell_width = 20,
-    size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270,
-    base_fill = `var(--text-color)`,
-    orbital_period = 3,
-    nucleus_props = {},
-    shell_props = {},
-    electron_props = {},
-    highlight_shell = null,
-    number_electrons = false,
-    electron_label_props = {},
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   // Bohr atom electron orbital period is given by
   // T = (n^3 h^3) / (4pi^2 m K e^4 Z^2) = 1.52 * 10^-16 * n^3 / Z^2 s

@@ -5,24 +5,6 @@
   import { DEFAULTS } from '$lib/settings'
   import { tooltip } from 'svelte-multiselect/attachments'
 
-  interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
-    series?: readonly DataSeries[]
-    markers?: Markers // Display options
-    // Style controls
-    point_size?: number
-    point_color?: string
-    point_opacity?: number
-    point_stroke_width?: number
-    point_stroke_color?: string
-    point_stroke_opacity?: number
-    line_width?: number
-    line_color?: string
-    line_opacity?: number
-    line_dash?: string
-    show_points?: boolean
-    show_lines?: boolean
-    selected_series_idx?: number
-  }
   let {
     series = [],
     markers = $bindable(DEFAULTS.scatter.markers),
@@ -41,7 +23,24 @@
     show_lines = $bindable(DEFAULTS.scatter.show_lines),
     selected_series_idx = $bindable(0),
     ...rest
-  }: Props = $props()
+  }: Omit<PlotControlsProps, `children` | `post_children`> & {
+    series?: readonly DataSeries[]
+    markers?: Markers // Display options
+    // Style controls
+    point_size?: number
+    point_color?: string
+    point_opacity?: number
+    point_stroke_width?: number
+    point_stroke_color?: string
+    point_stroke_opacity?: number
+    line_width?: number
+    line_color?: string
+    line_opacity?: number
+    line_dash?: string
+    show_points?: boolean
+    show_lines?: boolean
+    selected_series_idx?: number
+  } = $props()
 
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)

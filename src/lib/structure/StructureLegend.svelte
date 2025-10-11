@@ -6,14 +6,6 @@
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    elements: CompositionType
-    elem_color_picker_title?: string
-    labels?: HTMLLabelElement[]
-    amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
-    show_amounts?: boolean // Whether to show element amounts
-    get_element_label?: (element: string, amount: number) => string // Custom label function
-  }
   let {
     elements,
     elem_color_picker_title = `Double click to reset color`,
@@ -22,7 +14,14 @@
     show_amounts = true,
     get_element_label,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    elements: CompositionType
+    elem_color_picker_title?: string
+    labels?: HTMLLabelElement[]
+    amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
+    show_amounts?: boolean // Whether to show element amounts
+    get_element_label?: (element: string, amount: number) => string // Custom label function
+  } = $props()
 </script>
 
 <div {...rest} class="structure-legend {rest.class ?? ``}">

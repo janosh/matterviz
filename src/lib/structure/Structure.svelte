@@ -22,62 +22,10 @@
   } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { parse_any_structure } from './parse'
-  import type { Props as ControlProps } from './StructureControls.svelte'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
 
-  interface Props
-    extends
-      Omit<ControlProps, `children` | `onclose`>,
-      Omit<HTMLAttributes<HTMLDivElement>, `children`> {
-    scene_props?: ComponentProps<typeof StructureScene>
-    // only show the buttons when hovering over the canvas on desktop screens
-    // mobile screens don't have hover, so by default the buttons are always
-    // shown on a canvas of width below 500px
-    show_controls?: boolean | number
-    fullscreen?: boolean
-    // bindable width of the canvas
-    width?: number
-    // bindable height of the canvas
-    height?: number
-    // Canvas wrapper element (for export pane)
-    wrapper?: HTMLDivElement
-    // PNG export DPI setting
-    png_dpi?: number
-    reset_text?: string
-    hovered?: boolean
-    dragover?: boolean
-    allow_file_drop?: boolean
-    enable_info_pane?: boolean
-    enable_measure_mode?: boolean
-    info_pane_open?: boolean
-    fullscreen_toggle?: Snippet<[]> | boolean
-    bottom_left?: Snippet<[{ structure?: AnyStructure }]>
-    data_url?: string // URL to load structure from (alternative to providing structure directly)
-    // Generic callback for when files are dropped - receives raw content and filename
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
-    // spinner props (passed to Spinner component)
-    spinner_props?: ComponentProps<typeof Spinner>
-    loading?: boolean
-    error_msg?: string
-    // Performance mode: 'quality' (default) or 'speed' for large structures
-    performance_mode?: `quality` | `speed`
-    // allow parent components to control highlighted/selected site indices
-    selected_sites?: number[]
-    // explicit measured sites for distance/angle overlays
-    measured_sites?: number[]
-    // expose the displayed structure (with image atoms and/or supercell) for external use
-    displayed_structure?: AnyStructure | undefined
-    // structure content as string (alternative to providing structure directly or via data_url)
-    structure_string?: string
-    children?: Snippet<[{ structure?: AnyStructure }]>
-    on_file_load?: EventHandler
-    on_error?: EventHandler
-    on_fullscreen_change?: EventHandler
-    on_camera_move?: EventHandler
-    on_camera_reset?: EventHandler
-  }
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Scene model seeded from central defaults with a few normalized fields
   let scene_props = $state(DEFAULTS.structure)
@@ -135,7 +83,57 @@
     on_camera_move,
     on_camera_reset,
     ...rest
-  }: Props = $props()
+  }:
+    & {
+      scene_props?: ComponentProps<typeof StructureScene>
+      // only show the buttons when hovering over the canvas on desktop screens
+      // mobile screens don't have hover, so by default the buttons are always
+      // shown on a canvas of width below 500px
+      show_controls?: boolean | number
+      fullscreen?: boolean
+      // bindable width of the canvas
+      width?: number
+      // bindable height of the canvas
+      height?: number
+      // Canvas wrapper element (for export pane)
+      wrapper?: HTMLDivElement
+      // PNG export DPI setting
+      png_dpi?: number
+      reset_text?: string
+      hovered?: boolean
+      dragover?: boolean
+      allow_file_drop?: boolean
+      enable_info_pane?: boolean
+      enable_measure_mode?: boolean
+      info_pane_open?: boolean
+      fullscreen_toggle?: Snippet<[]> | boolean
+      bottom_left?: Snippet<[{ structure?: AnyStructure }]>
+      data_url?: string // URL to load structure from (alternative to providing structure directly)
+      // Generic callback for when files are dropped - receives raw content and filename
+      on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+      // spinner props (passed to Spinner component)
+      spinner_props?: ComponentProps<typeof Spinner>
+      loading?: boolean
+      error_msg?: string
+      // Performance mode: 'quality' (default) or 'speed' for large structures
+      performance_mode?: `quality` | `speed`
+      // allow parent components to control highlighted/selected site indices
+      selected_sites?: number[]
+      // explicit measured sites for distance/angle overlays
+      measured_sites?: number[]
+      // expose the displayed structure (with image atoms and/or supercell) for external use
+      displayed_structure?: AnyStructure | undefined
+      // structure content as string (alternative to providing structure directly or via data_url)
+      structure_string?: string
+      children?: Snippet<[{ structure?: AnyStructure }]>
+      on_file_load?: EventHandler
+      on_error?: EventHandler
+      on_fullscreen_change?: EventHandler
+      on_camera_move?: EventHandler
+      on_camera_reset?: EventHandler
+    }
+    & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`>
+    & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {

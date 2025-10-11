@@ -17,24 +17,6 @@
     label_y: number
   }
 
-  interface Props extends SVGAttributes<SVGSVGElement> {
-    composition: CompositionType
-    size?: number
-    bar_height?: number
-    label_height?: number
-    gap?: number
-    min_segment_size_for_label?: number
-    thin_segment_threshold?: number
-    external_label_size_threshold?: number
-    outer_corners_only?: boolean
-    show_labels?: boolean
-    show_percentages?: boolean
-    show_amounts?: boolean
-    color_scheme?: ColorSchemeName
-    segment_content?: Snippet<[BarSegmentData]>
-    interactive?: boolean
-    svg_node?: SVGSVGElement | null
-  }
   let {
     composition,
     size = 200,
@@ -53,7 +35,24 @@
     interactive = true,
     svg_node = $bindable(null),
     ...rest
-  }: Props = $props()
+  }: SVGAttributes<SVGSVGElement> & {
+    composition: CompositionType
+    size?: number
+    bar_height?: number
+    label_height?: number
+    gap?: number
+    min_segment_size_for_label?: number
+    thin_segment_threshold?: number
+    external_label_size_threshold?: number
+    outer_corners_only?: boolean
+    show_labels?: boolean
+    show_percentages?: boolean
+    show_amounts?: boolean
+    color_scheme?: ColorSchemeName
+    segment_content?: Snippet<[BarSegmentData]>
+    interactive?: boolean
+    svg_node?: SVGSVGElement | null
+  } = $props()
 
   let element_colors = $derived(
     element_color_schemes[color_scheme] || element_color_schemes.Vesta,

@@ -1,19 +1,6 @@
 <script lang="ts">
   import type { SVGAttributes } from 'svelte/elements'
 
-  interface Props extends SVGAttributes<SVGSVGElement> {
-    protons: number
-    neutrons: number
-    radius?: number
-    size?: number
-    proton_color?: string
-    neutron_color?: string
-    stroke?: string
-    proton_label?: string
-    neutron_label?: string
-    text_color?: string
-    symbol?: string
-  }
   let {
     protons,
     neutrons,
@@ -27,7 +14,19 @@
     text_color = `white`,
     symbol = ``,
     ...rest
-  }: Props = $props()
+  }: SVGAttributes<SVGSVGElement> & {
+    protons: number
+    neutrons: number
+    radius?: number
+    size?: number
+    proton_color?: string
+    neutron_color?: string
+    stroke?: string
+    proton_label?: string
+    neutron_label?: string
+    text_color?: string
+    symbol?: string
+  } = $props()
 
   $effect(() => {
     radius = size / 2

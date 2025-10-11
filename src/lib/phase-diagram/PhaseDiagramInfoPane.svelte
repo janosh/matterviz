@@ -5,17 +5,6 @@
   import PhaseDiagramStats from './PhaseDiagramStats.svelte'
   import type { PhaseStats, PlotEntry3D } from './types'
 
-  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `onclose`> {
-    phase_stats: PhaseStats | null
-    stable_entries: PlotEntry3D[]
-    unstable_entries: PlotEntry3D[]
-    max_hull_dist_show_phases: number
-    max_hull_dist_show_labels: number
-    label_threshold: number
-    pane_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-  }
   let {
     phase_stats,
     stable_entries,
@@ -27,7 +16,17 @@
     toggle_props = $bindable({}),
     pane_props = $bindable({}),
     ...rest
-  }: Props = $props()
+  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
+    phase_stats: PhaseStats | null
+    stable_entries: PlotEntry3D[]
+    unstable_entries: PlotEntry3D[]
+    max_hull_dist_show_phases: number
+    max_hull_dist_show_labels: number
+    label_threshold: number
+    pane_open?: boolean
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  } = $props()
 </script>
 
 <DraggablePane

@@ -4,12 +4,12 @@
   import type { ThemeMode } from './index'
   import { apply_theme_to_dom, save_theme_preference, THEME_OPTIONS } from './index'
 
-  interface Props extends Omit<HTMLAttributes<HTMLSelectElement>, `onchange`> {
-    theme_mode?: ThemeMode // Current theme mode (now bindable to global state)
-    onchange?: (mode: ThemeMode) => void // Callback when theme changes
-  }
   let { theme_mode = $bindable(theme_state.mode), onchange = () => {}, ...rest }:
-    Props = $props()
+    & Omit<HTMLAttributes<HTMLSelectElement>, `onchange`>
+    & {
+      theme_mode?: ThemeMode // Current theme mode (now bindable to global state)
+      onchange?: (mode: ThemeMode) => void // Callback when theme changes
+    } = $props()
 
   $effect(() => { // Sync and save to local storage when theme changes
     const prev = theme_state.mode

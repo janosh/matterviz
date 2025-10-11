@@ -6,16 +6,6 @@
   import type { ComponentProps } from 'svelte'
   import { Euler, Quaternion, Vector3 } from 'three'
 
-  interface Props extends ComponentProps<typeof T.Mesh> {
-    position: Vec3 // Starting position of the vector (atom position)
-    vector: Vec3 // Vector components [x, y, z] in appropriate units
-    scale?: number // Scale factor for vector visualization
-    color?: string // Color of the vector
-    // Arrow dimensions
-    shaft_radius?: number
-    arrow_head_radius?: number
-    arrow_head_length?: number
-  }
   let {
     position,
     vector,
@@ -25,7 +15,16 @@
     arrow_head_radius = DEFAULTS.structure.force_arrow_head_radius,
     arrow_head_length = DEFAULTS.structure.force_arrow_head_length,
     ...rest
-  }: Props = $props()
+  }: ComponentProps<typeof T.Mesh> & {
+    position: Vec3 // Starting position of the vector (atom position)
+    vector: Vec3 // Vector components [x, y, z] in appropriate units
+    scale?: number // Scale factor for vector visualization
+    color?: string // Color of the vector
+    // Arrow dimensions
+    shaft_radius?: number
+    arrow_head_radius?: number
+    arrow_head_length?: number
+  } = $props()
 
   // Calculate vector magnitude and normalized direction
   let vector_magnitude = $derived(Math.hypot(...vector))

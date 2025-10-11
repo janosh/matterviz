@@ -1,13 +1,12 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
   import type {
     BarMode,
     BarSeries,
     BarTooltipProps,
+    BasePlotProps,
     LegendConfig,
     LegendItem,
     Orientation,
-    Sides,
   } from '$lib/plot'
   import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
@@ -15,62 +14,19 @@
   import type { TicksOption } from '$lib/plot/scales'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
   import { DEFAULTS } from '$lib/settings'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import { calc_auto_padding, measure_text_width } from './layout'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    series?: BarSeries[]
-    orientation?: Orientation
-    mode?: BarMode
-    x_lim?: [number | null, number | null]
-    y_lim?: [number | null, number | null]
-    x_range?: [number | null, number | null]
-    y_range?: [number | null, number | null]
-    range_padding?: number
-    x_label?: string
-    x_label_shift?: { x?: number; y?: number }
-    y_label?: string
-    y_label_shift?: { x?: number; y?: number }
-    x_format?: string
-    y_format?: string
-    x_ticks?: TicksOption
-    y_ticks?: TicksOption
-    show_x_grid?: boolean
-    show_y_grid?: boolean
-    x_grid_style?: HTMLAttributes<SVGLineElement>
-    y_grid_style?: HTMLAttributes<SVGLineElement>
-    show_x_zero_line?: boolean
-    show_y_zero_line?: boolean
-    legend?: LegendConfig | null
-    show_legend?: boolean
-    padding?: Sides
-    default_bar_color?: string
-    bar_opacity?: number
-    line_width?: number
-    line_color?: string
-    tooltip?: Snippet<[BarTooltipProps]>
-    hovered?: boolean
-    change?: (data: BarTooltipProps | null) => void
-    on_bar_click?: (
-      data: BarTooltipProps & { event: MouseEvent | KeyboardEvent },
-    ) => void
-    on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
-    show_controls?: boolean
-    controls_open?: boolean
-    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    children?: Snippet<[]>
-  }
   let {
     series = $bindable([]),
     orientation = $bindable(`vertical` as Orientation),
     mode = $bindable(`overlay` as BarMode),
     x_lim = [null, null],
     y_lim = [null, null],
-    x_range,
-    y_range,
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
     range_padding = 0.05,
     x_label = $bindable(``),
     x_label_shift = $bindable({ x: 0, y: 0 }),
@@ -104,7 +60,37 @@
     controls_pane_props,
     children,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+    series?: BarSeries[]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
+    x_format?: string
+    y_format?: string
+    x_ticks?: TicksOption
+    y_ticks?: TicksOption
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    hovered?: boolean
+    show_controls?: boolean
+    controls_open?: boolean
+    // Component-specific props
+    orientation?: Orientation
+    mode?: BarMode
+    legend?: LegendConfig | null
+    show_legend?: boolean
+    default_bar_color?: string
+    bar_opacity?: number
+    line_width?: number
+    line_color?: string
+    tooltip?: Snippet<[BarTooltipProps]>
+    change?: (data: BarTooltipProps | null) => void
+    on_bar_click?: (
+      data: BarTooltipProps & { event: MouseEvent | KeyboardEvent },
+    ) => void
+    on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
+  } = $props()
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)

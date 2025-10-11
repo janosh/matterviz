@@ -8,7 +8,18 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
 
-  interface Props {
+  let {
+    export_pane_open = $bindable(false),
+    trajectory = undefined,
+    wrapper = undefined,
+    filename = `trajectory`,
+    video_fps = $bindable(30),
+    resolution_multiplier = $bindable(1),
+    on_step_change = undefined,
+    pane_props = $bindable({}),
+    toggle_props = $bindable({}),
+    ...rest
+  }: {
     // Control pane state
     export_pane_open?: boolean
     // Trajectory data for generating filename
@@ -25,20 +36,7 @@
     // Pane customization
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  }
-
-  let {
-    export_pane_open = $bindable(false),
-    trajectory = undefined,
-    wrapper = undefined,
-    filename = `trajectory`,
-    video_fps = $bindable(30),
-    resolution_multiplier = $bindable(1),
-    on_step_change = undefined,
-    pane_props = $bindable({}),
-    toggle_props = $bindable({}),
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let is_exporting = $state(false)
   let export_progress = $state(0)

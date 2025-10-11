@@ -16,8 +16,37 @@
     center_x: number
     center_y: number
   }
-
-  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `onclose`> {
+  let {
+    color_mode = $bindable(`stability`),
+    color_scale = $bindable(`interpolateViridis`),
+    show_stable = $bindable(true),
+    show_unstable = $bindable(true),
+    show_stable_labels = $bindable(true),
+    show_unstable_labels = $bindable(false),
+    show_hull_faces = undefined,
+    on_hull_faces_change,
+    hull_face_color = `#0072B2`,
+    on_hull_face_color_change,
+    hull_face_opacity = $bindable(0.06),
+    on_hull_face_opacity_change,
+    max_hull_dist_show_phases = $bindable(0),
+    max_hull_dist_show_labels = $bindable(0.1),
+    max_hull_dist_in_data = 0.5,
+    energy_source_mode = $bindable(`precomputed`),
+    has_precomputed_hull = false,
+    can_compute_hull = false,
+    has_precomputed_e_form = false,
+    can_compute_e_form = false,
+    stable_entries,
+    unstable_entries,
+    total_unstable_count,
+    camera,
+    merged_controls,
+    controls_open = $bindable(false),
+    toggle_props = $bindable({}),
+    pane_props = $bindable({}),
+    ...rest
+  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     // Display controls
     color_mode?: `stability` | `energy`
     color_scale?: D3InterpolateName
@@ -53,38 +82,7 @@
     controls_open?: boolean
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-  }
-  let {
-    color_mode = $bindable(`stability`),
-    color_scale = $bindable(`interpolateViridis`),
-    show_stable = $bindable(true),
-    show_unstable = $bindable(true),
-    show_stable_labels = $bindable(true),
-    show_unstable_labels = $bindable(false),
-    show_hull_faces = undefined,
-    on_hull_faces_change,
-    hull_face_color = `#0072B2`,
-    on_hull_face_color_change,
-    hull_face_opacity = $bindable(0.06),
-    on_hull_face_opacity_change,
-    max_hull_dist_show_phases = $bindable(0),
-    max_hull_dist_show_labels = $bindable(0.1),
-    max_hull_dist_in_data = 0.5,
-    energy_source_mode = $bindable(`precomputed`),
-    has_precomputed_hull = false,
-    can_compute_hull = false,
-    has_precomputed_e_form = false,
-    can_compute_e_form = false,
-    stable_entries,
-    unstable_entries,
-    total_unstable_count,
-    camera,
-    merged_controls,
-    controls_open = $bindable(false),
-    toggle_props = $bindable({}),
-    pane_props = $bindable({}),
-    ...rest
-  }: Props = $props()
+  } = $props()
 </script>
 
 <DraggablePane

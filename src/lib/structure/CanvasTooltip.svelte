@@ -4,11 +4,10 @@
     import type { Snippet } from 'svelte'
     import type { HTMLAttributes } from 'svelte/elements'
 
-    interface Props extends HTMLAttributes<HTMLDivElement> {
+    let { position, children, ...rest }: HTMLAttributes<HTMLDivElement> & {
       position: Vec3
-      children: Snippet
-    }
-    let { position, children, ...rest }: Props = $props()
+      children: Snippet<[]>
+    } = $props()
 </script>
 
 <HTML {position} pointerEvents="none">

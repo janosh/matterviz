@@ -7,17 +7,6 @@
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { Camera, Scene } from 'three'
 
-  interface Props {
-    export_pane_open?: boolean
-    structure?: AnyStructure | undefined
-    wrapper?: HTMLDivElement | undefined
-    scene?: Scene
-    camera?: Camera
-    png_dpi?: number
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  }
-
   let {
     export_pane_open = $bindable(false),
     structure = undefined,
@@ -28,7 +17,16 @@
     pane_props = $bindable({}),
     toggle_props = $bindable({}),
     ...rest
-  }: Props = $props()
+  }: {
+    export_pane_open?: boolean
+    structure?: AnyStructure | undefined
+    wrapper?: HTMLDivElement | undefined
+    scene?: Scene
+    camera?: Camera
+    png_dpi?: number
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+  } = $props()
 
   // Copy button feedback state
   let copy_status = $state<

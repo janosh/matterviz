@@ -5,13 +5,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   const options = Object.keys(heatmap_labels)
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    value?: keyof ChemicalElement | null
-    empty?: boolean
-    selected?: string[]
-    minSelect?: number
-    key?: string | null
-  }
   let {
     value = $bindable(null),
     empty = false,
@@ -19,7 +12,13 @@
     minSelect = 0,
     key = $bindable(``),
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    value?: keyof ChemicalElement | null
+    empty?: boolean
+    selected?: string[]
+    minSelect?: number
+    key?: string | null
+  } = $props()
 
   $effect.pre(() => {
     key = heatmap_labels[value ?? ``] ?? null

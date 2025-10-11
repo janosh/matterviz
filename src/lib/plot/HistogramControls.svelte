@@ -4,7 +4,21 @@
   import { PlotControls } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
 
-  interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
+  let {
+    series = [],
+    bins = $bindable(DEFAULTS.histogram.bin_count),
+    mode = $bindable(DEFAULTS.histogram.mode),
+    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
+    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
+    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
+    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
+    bar_color = $bindable(DEFAULTS.histogram.bar_color),
+    show_legend = $bindable(DEFAULTS.histogram.show_legend),
+    x_scale_type = $bindable(DEFAULTS.plot.x_scale_type as `linear` | `log`),
+    y_scale_type = $bindable(DEFAULTS.plot.y_scale_type as `linear` | `log`),
+    selected_property = $bindable(``),
+    ...rest
+  }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
     series?: readonly DataSeries[]
     // Histogram-specific controls
@@ -21,22 +35,7 @@
     y_scale_type?: `linear` | `log`
     // Selected property for single mode
     selected_property?: string
-  }
-  let {
-    series = [],
-    bins = $bindable(DEFAULTS.histogram.bin_count),
-    mode = $bindable(DEFAULTS.histogram.mode),
-    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
-    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
-    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
-    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
-    bar_color = $bindable(DEFAULTS.histogram.bar_color),
-    show_legend = $bindable(DEFAULTS.histogram.show_legend),
-    x_scale_type = $bindable(DEFAULTS.plot.x_scale_type as `linear` | `log`),
-    y_scale_type = $bindable(DEFAULTS.plot.y_scale_type as `linear` | `log`),
-    selected_property = $bindable(``),
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)

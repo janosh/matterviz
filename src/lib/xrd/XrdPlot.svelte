@@ -25,24 +25,6 @@
     return ``
   }
 
-  interface Props extends ComponentProps<typeof BarPlot> {
-    patterns:
-      | XrdPattern
-      | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
-      | PatternEntry[]
-    peak_width?: number
-    annotate_peaks?: number // int => top-k, float in (0,1) => threshold of max
-    hkl_format?: HklFormat
-    show_angles?: boolean | null
-    wavelength?: number | null
-    x_label?: string
-    y_label?: string
-    allow_file_drop?: boolean
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
-    loading?: boolean
-    error_msg?: string
-    children?: Snippet<[]>
-  }
   let {
     patterns,
     peak_width = 0.5,
@@ -59,7 +41,24 @@
     error_msg = $bindable(undefined),
     children,
     ...rest
-  }: Props = $props()
+  }: ComponentProps<typeof BarPlot> & {
+    patterns:
+      | XrdPattern
+      | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
+      | PatternEntry[]
+    peak_width?: number
+    annotate_peaks?: number // int => top-k, float in (0,1) => threshold of max
+    hkl_format?: HklFormat
+    show_angles?: boolean | null
+    wavelength?: number | null
+    x_label?: string
+    y_label?: string
+    allow_file_drop?: boolean
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    loading?: boolean
+    error_msg?: string
+    children?: Snippet<[]>
+  } = $props()
 
   let dragover = $state(false)
 
