@@ -15,7 +15,11 @@ describe(`BarPlot`, () => {
     { series: [basic], x_label: `Category`, y_label: `Value` },
     { series: [], orientation: `vertical` },
     { series: [{ ...basic, labels: [`A`, `B`, `C`, `D`, `E`] }] },
-    { series: [{ x: [1, 2, 3], y: [-5, 0, 5] }], x_grid: true, show_zero_lines: true },
+    {
+      series: [{ x: [1, 2, 3], y: [-5, 0, 5] }],
+      show_x_grid: true,
+      show_y_zero_line: true,
+    },
     { series: [{ x: [1, 2, 3, 4], y: [-10, -20, -15, -25] }] }, // all negative
     { series: [basic], x_lim: [2, 4], y_lim: [10, 25] },
     { series: [basic], x_format: `.0f`, y_format: `.2f` },
@@ -28,8 +32,8 @@ describe(`BarPlot`, () => {
     { series: [basic], legend: null },
     {
       series: [basic],
-      x_grid: { stroke: `blue`, 'stroke-width': 2 },
-      y_grid: { stroke: `red` },
+      show_x_grid: { stroke: `blue`, 'stroke-width': 2 },
+      show_y_grid: { stroke: `red` },
     },
     {
       series: [basic],
@@ -38,7 +42,10 @@ describe(`BarPlot`, () => {
       x_label_shift: { x: 10 },
       y_label_shift: { y: 10 },
     },
-    { series: [{ x: [1, 2, 3, 4], y: [-10, 5, -15, 20] }], show_zero_lines: false },
+    {
+      series: [{ x: [1, 2, 3, 4], y: [-10, 5, -15, 20] }],
+      show_y_zero_line: false,
+    },
     { series: [{ ...basic, bar_width: 0.8 }] },
     { series: [{ ...basic, bar_width: [0.3, 0.5, 0.7, 0.9, 0.4] }] },
     {

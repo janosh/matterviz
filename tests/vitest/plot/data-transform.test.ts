@@ -43,7 +43,7 @@ describe(`data-transform utility functions`, () => {
       {
         name: `returns default color when no styles defined`,
         series: { x: [1, 2, 3], y: [1, 2, 3] },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `returns default color when styles exist but no color`,
@@ -53,25 +53,25 @@ describe(`data-transform utility functions`, () => {
           line_style: { stroke_width: 2 },
           point_style: { radius: 5 },
         },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `handles empty point_style array`,
         series: { x: [1, 2, 3], y: [1, 2, 3], point_style: [] },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `handles undefined stroke color`,
         series: { x: [1, 2, 3], y: [1, 2, 3], line_style: { stroke: undefined } },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
       {
         name: `handles undefined fill color`,
         series: { x: [1, 2, 3], y: [1, 2, 3], point_style: { fill: undefined } },
-        expected: `#4682b4`,
+        expected: `#4A9EFF`,
       },
     ])(`$name`, ({ series, expected }) => {
-      expect(extract_series_color(series as DataSeries)).toBe(expected)
+      expect(extract_series_color(series)).toBe(expected)
     })
   })
 
@@ -180,7 +180,7 @@ describe(`data-transform utility functions`, () => {
             visible: true,
             display_style: {
               symbol_type: DEFAULTS.scatter.symbol_type,
-              symbol_color: `#4682b4`,
+              symbol_color: `#4A9EFF`,
             },
           },
         ],
@@ -206,7 +206,7 @@ describe(`data-transform utility functions`, () => {
         ],
       },
     ])(`$name`, ({ series, expected }) => {
-      expect(prepare_legend_data(series as DataSeries[])).toEqual(expected)
+      expect(prepare_legend_data(series)).toEqual(expected)
     })
   })
 
@@ -268,7 +268,7 @@ describe(`data-transform utility functions`, () => {
         expected_indices: [0, 1, 3],
       },
     ])(`$name`, ({ series, expected_length, expected_indices }) => {
-      const result = filter_visible_series(series as DataSeries[])
+      const result = filter_visible_series(series)
       expect(result).toHaveLength(expected_length)
       expected_indices.forEach((idx, resultIdx) => {
         expect(result[resultIdx]).toBe(series[idx])
@@ -378,9 +378,7 @@ describe(`data-transform utility functions`, () => {
         ],
       },
     ])(`$name`, ({ series, filter_fn, expected }) => {
-      const result = filter_fn
-        ? create_data_points(series as DataSeries[], filter_fn)
-        : create_data_points(series as DataSeries[])
+      const result = create_data_points(series, filter_fn)
       expect(result).toEqual(expected)
     })
   })

@@ -9,15 +9,15 @@
     Orientation,
     Sides,
   } from '$lib/plot'
-  import { find_best_plot_area, PlotLegend } from '$lib/plot'
+  import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { TicksOption } from '$lib/plot/scales'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
+  import { DEFAULTS } from '$lib/settings'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import BarPlotControls from './BarPlotControls.svelte'
   import { calc_auto_padding, measure_text_width } from './layout'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
@@ -37,12 +37,19 @@
     y_format?: string
     x_ticks?: TicksOption
     y_ticks?: TicksOption
-    x_grid?: boolean | Record<string, unknown>
-    y_grid?: boolean | Record<string, unknown>
-    show_zero_lines?: boolean
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    x_grid_style?: HTMLAttributes<SVGLineElement>
+    y_grid_style?: HTMLAttributes<SVGLineElement>
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
     legend?: LegendConfig | null
+    show_legend?: boolean
     padding?: Sides
     default_bar_color?: string
+    bar_opacity?: number
+    line_width?: number
+    line_color?: string
     tooltip?: Snippet<[BarTooltipProps]>
     hovered?: boolean
     change?: (data: BarTooltipProps | null) => void
@@ -52,8 +59,8 @@
     on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
     show_controls?: boolean
     controls_open?: boolean
-    plot_controls?: Snippet<[]>
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     children?: Snippet<[]>
   }
   let {
@@ -73,12 +80,19 @@
     y_format = $bindable(``),
     x_ticks = $bindable(8),
     y_ticks = $bindable(6),
-    x_grid = $bindable(true),
-    y_grid = $bindable(true),
-    show_zero_lines = $bindable(true),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
     legend = {},
-    padding = { t: 10, b: 60, l: 60, r: 30 },
-    default_bar_color = `var(--bar-color, #4682b4)`,
+    show_legend,
+    padding = { t: 20, b: 60, l: 60, r: 20 },
+    default_bar_color = DEFAULTS.bar.bar_color,
+    bar_opacity = DEFAULTS.bar.bar_opacity,
+    line_width = DEFAULTS.bar.line_width,
+    line_color = DEFAULTS.bar.line_color,
     tooltip,
     hovered = $bindable(false),
     change = () => {},
@@ -86,15 +100,15 @@
     on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    plot_controls,
     controls_toggle_props,
+    controls_pane_props,
     children,
     ...rest
   }: Props = $props()
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
-  let clip_path_id = `chart-clip-${Math.random().toString(36).slice(2)}`
+  let clip_path_id = `chart-clip-${crypto?.randomUUID?.()}`
 
   // Compute auto ranges from visible series
   let visible_series = $derived(series.filter((s) => s?.visible ?? true))
@@ -160,14 +174,9 @@
     const has_positive = all_points.some((p) => p.y > 0)
 
     // Only adjust if no explicit y_lim is set
-    if (!y_lim?.[0] && !y_lim?.[1]) {
-      if (has_positive && !has_negative) {
-        // All positive/zero values: always start from 0
-        y_range = [0, y_range[1]]
-      } else if (has_negative && !has_positive) {
-        // All negative values: end at 0
-        y_range = [y_range[0], 0]
-      }
+    if (y_lim?.[0] == null && y_lim?.[1] == null) {
+      if (has_positive && !has_negative) y_range = [0, y_range[1]] // All positive/zero values: always start from 0
+      else if (has_negative && !has_positive) y_range = [y_range[0], 0] // All negative values: end at 0
       // Mixed positive/negative: keep natural range (will include 0)
     }
 
@@ -338,8 +347,9 @@
   })
 
   // Calculate best legend placement
-  let legend_placement = $derived.by(() =>
-    series.length > 1 && width && height
+  let legend_placement = $derived.by(() => {
+    const should_show = show_legend !== undefined ? show_legend : series.length > 1
+    return should_show && width && height
       ? find_best_plot_area(bar_points_for_placement, {
         plot_width: chart_width,
         plot_height: chart_height,
@@ -348,7 +358,7 @@
         legend_size: { width: 120, height: 60 },
       })
       : null
-  )
+  })
 
   // Tooltip state
   let hover_info = $state<BarTooltipProps | null>(null)
@@ -443,28 +453,16 @@
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
         <!-- Zero lines -->
-        {#if show_zero_lines}
+        {#if show_x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
           {@const zx = scales.x(0)}
-          {@const zy = scales.y(0)}
-          {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0 && isFinite(zx)}
-            <line
-              x1={zx}
-              x2={zx}
-              y1={pad.t}
-              y2={height - pad.b}
-              stroke="gray"
-              stroke-width="0.5"
-            />
+          {#if isFinite(zx)}
+            <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
-          {#if ranges.current.y[0] < 0 && ranges.current.y[1] > 0 && isFinite(zy)}
-            <line
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zy}
-              y2={zy}
-              stroke="gray"
-              stroke-width="0.5"
-            />
+        {/if}
+        {#if show_y_zero_line && ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
+          {@const zy = scales.y(0)}
+          {#if isFinite(zy)}
+            <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
           {/if}
         {/if}
 
@@ -478,8 +476,8 @@
             >
               {#if is_line}
                 <!-- Render as line -->
-                {@const color = srs.color ?? default_bar_color}
-                {@const stroke_width = srs.line_style?.stroke_width ?? 2}
+                {@const color = srs.color ?? line_color}
+                {@const stroke_width = srs.line_style?.stroke_width ?? line_width}
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const points = srs.x.map((x_val, idx) => {
             const y_val = srs.y[idx]
@@ -571,10 +569,13 @@
                   {@const half = mode === `grouped` && group_info.bar_series_count > 1
             ? bar_width_val / (2 * group_info.bar_series_count)
             : bar_width_val / 2}
+                  {@const calculate_group_offset = (idx: number) => {
+            const position = group_info.bar_series_indices.indexOf(idx)
+            const offset = position - (group_info.bar_series_count - 1) / 2
+            return offset * (bar_width_val / group_info.bar_series_count)
+          }}
                   {@const group_offset = mode === `grouped` && group_info.bar_series_count > 1
-            ? ((pos = group_info.bar_series_indices.indexOf(series_idx)) =>
-              (pos - (group_info.bar_series_count - 1) / 2) *
-              (bar_width_val / group_info.bar_series_count))()
+            ? calculate_group_offset(series_idx)
             : 0}
                   {@const is_vertical = orientation === `vertical`}
                   {@const cat_val = x_val}
@@ -599,7 +600,7 @@
                       width={rect_w}
                       height={rect_h}
                       fill={color}
-                      opacity={mode === `overlay` ? 0.6 : 1}
+                      opacity={mode === `overlay` ? bar_opacity : 1}
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
@@ -667,11 +668,11 @@
           {@const tick_x = scales.x(tick as number)}
           {#if isFinite(tick_x)}
             <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-              {#if x_grid}
+              {#if show_x_grid}
                 <line
                   y1={-(height - pad.b - pad.t)}
                   y2="0"
-                  {...typeof x_grid === `object` ? x_grid : {}}
+                  {...x_grid_style ?? {}}
                 />
               {/if}
               <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -707,11 +708,11 @@
           {@const tick_y = scales.y(tick as number)}
           {#if isFinite(tick_y)}
             <g class="tick" transform="translate({pad.l}, {tick_y})">
-              {#if y_grid}
+              {#if show_y_grid}
                 <line
                   x1="0"
                   x2={width - pad.l - pad.r}
-                  {...typeof y_grid === `object` ? y_grid : {}}
+                  {...y_grid_style ?? {}}
                 />
               {/if}
               <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -778,12 +779,15 @@
     {#if show_controls}
       <BarPlotControls
         toggle_props={controls_toggle_props}
+        pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open
         bind:orientation
         bind:mode
-        bind:x_grid
-        bind:y_grid
+        bind:show_x_zero_line
+        bind:show_y_zero_line
+        bind:show_x_grid
+        bind:show_y_grid
         bind:x_ticks
         bind:y_ticks
         bind:x_format
@@ -792,7 +796,6 @@
         bind:y_range
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
-        {plot_controls}
       />
     {/if}
   {/if}
@@ -840,5 +843,10 @@
   .bar-label {
     fill: var(--text-color);
     font-size: 11px;
+  }
+  .zero-line {
+    stroke: var(--barplot-zero-line-color, light-dark(black, white));
+    stroke-width: var(--barplot-zero-line-width, 1);
+    opacity: var(--barplot-zero-line-opacity, 0.3);
   }
 </style>

@@ -48,6 +48,11 @@
 </label>
 <label><input type="checkbox" bind:checked={show_controls} />Controls</label>
 
+{#snippet tooltip({ value, count })}
+  Value: {value.toFixed(1)}<br>Count: {count}<br>
+  %: {format_num(count / sample_size * 100, `.2~%`)}
+{/snippet}
+
 <Histogram
   series={[data]}
   {bins}
@@ -55,18 +60,14 @@
   on_bar_hover={handle_bar_hover}
   on_bar_click={handle_bar_click}
   style="height: 400px"
->
-  {#snippet tooltip({ value, count })}
-    Value: {value.toFixed(1)}<br>Count: {count}<br>
-    %: {format_num(count / sample_size * 100, `.2~%`)}
-  {/snippet}
-</Histogram>
+  {tooltip}
+/>
 
 <div style={info_style}>{hover_info}</div>
 <div style={info_style}>{click_info}</div>
 ```
 
-## Multiple Series Overlay
+## Multiple Histograms Overlaid
 
 ```svelte example
 <script>
@@ -92,19 +93,31 @@
   }
 </script>
 
-<label>Opacity: {opacity}<input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" /></label>
-<label>Stroke: {stroke_width}<input type="range" bind:value={stroke_width} min="0" max="5" step="0.5" /></label>
+<div style="display: flex; gap: 1em; flex-wrap: wrap; margin-block: 2em; align-items: center;">
+  <label>Opacity:
+    <input type="number" bind:value={opacity} min="0.1" max="1" step="0.1" />
+    <input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" />
+  </label>
+  <label>Stroke Width:
+    <input type="number" bind:value={stroke_width} min="0" max="5" step="0.5" />
+    <input type="range" bind:value={stroke_width} min="0" max="5" step="0.5" />
+  </label>
 
-X: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={x_scale} value={scale} />{scale}</label>{/each}
-Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_scale} value={scale} />{scale}</label>{/each}
+  <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale}
+    <input type="radio" bind:group={x_scale} value={scale} />{scale}
+  {/each}</label>
+  <label style="display: flex; gap: 5pt">Y: {#each [`linear`, `log`] as scale}
+    <input type="radio" bind:group={y_scale} value={scale} />{scale}
+  {/each}</label>
 
-<label><input type="checkbox" bind:checked={show_grid} />Grid</label>
+  <label><input type="checkbox" bind:checked={show_grid} />Grid</label>
+</div>
 
-{#each series as s, idx}
+{#each series as srs, idx}
   <label>
-    <input type="checkbox" checked={s.visible} onchange={() => toggle_series(idx)} />
-    <span style="width: 16px; height: 16px; margin: 0 0.5em; background: {s.line_style.stroke}"></span>
-    {s.label}
+    <input type="checkbox" checked={srs.visible} onchange={() => toggle_series(idx)} />
+    <span style="width: 16px; height: 16px; margin: 0 0.5em; background: {srs.line_style.stroke}"></span>
+    {srs.label}
   </label>
 {/each}
 
@@ -116,15 +129,21 @@ Y: {#each [`linear`, `log`] as scale}<label><input type="radio" bind:group={y_sc
   bar_stroke_width={stroke_width}
   x_scale_type={x_scale}
   y_scale_type={y_scale}
-  x_grid={show_grid}
-  y_grid={show_grid}
+  show_x_grid={show_grid}
+  show_y_grid={show_grid}
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong style="color: {series.find(s => s.label === property)?.line_style?.stroke}">{property}</strong><br>
+    <strong style="color: {series.find(srs => srs.label === property)?.line_style?.stroke}">{property}</strong><br>
     Value: {value.toFixed(2)}<br>Count: {count}
   {/snippet}
 </Histogram>
+
+<style>
+  .histogram {
+    align-content: center;
+  }
+</style>
 ```
 
 ## Logarithmic Scales

@@ -701,7 +701,7 @@
         },
         "matterviz.scatter.point_color": {
           "type": "string",
-          "default": "#4682b4",
+          "default": "#4A9EFF",
           "description": "Default color for scatter plot points"
         },
         "matterviz.scatter.point_opacity": {
@@ -732,7 +732,7 @@
         },
         "matterviz.scatter.line_color": {
           "type": "string",
-          "default": "#4682b4",
+          "default": "#4A9EFF",
           "description": "Default color for scatter plot lines"
         },
         "matterviz.scatter.line_opacity": {
@@ -909,14 +909,14 @@
           "default": false,
           "description": "Show labels for unstable phases in 2D PD"
         },
-        "matterviz.phase_diagram.binary.energy_threshold": {
+        "matterviz.phase_diagram.binary.max_hull_dist_show_phases": {
           "type": "number",
           "default": 0.1,
           "description": "Max eV/atom above hull for showing unstable entries in 2D PD",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.binary.label_energy_threshold": {
+        "matterviz.phase_diagram.binary.max_hull_dist_show_labels": {
           "type": "number",
           "default": 0.1,
           "description": "Max eV/atom above hull for labeling unstable entries in 2D PD",
@@ -1003,14 +1003,14 @@
           "default": false,
           "description": "Show labels for unstable phases in 3D PD"
         },
-        "matterviz.phase_diagram.ternary.energy_threshold": {
+        "matterviz.phase_diagram.ternary.max_hull_dist_show_phases": {
           "type": "number",
           "default": 0.5,
           "description": "Max eV/atom above hull for showing unstable entries in 3D PD",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.ternary.label_energy_threshold": {
+        "matterviz.phase_diagram.ternary.max_hull_dist_show_labels": {
           "type": "number",
           "default": 0.1,
           "description": "Max eV/atom above hull for labeling unstable entries in 3D PD",
@@ -1131,14 +1131,14 @@
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.phase_diagram.quaternary.energy_threshold": {
+        "matterviz.phase_diagram.quaternary.max_hull_dist_show_phases": {
           "type": "number",
           "default": 0.1,
           "description": "Max eV/atom above hull for showing unstable entries in 4D PD",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.quaternary.label_energy_threshold": {
+        "matterviz.phase_diagram.quaternary.max_hull_dist_show_labels": {
           "type": "number",
           "default": 0.1,
           "description": "Max eV/atom above hull for labeling unstable entries in 4D PD",

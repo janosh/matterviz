@@ -4,10 +4,7 @@ import { format_value } from './formatting'
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
 
-export function measure_text_width(
-  text: string,
-  font: string = `12px sans-serif`,
-): number {
+export function measure_text_width(text: string, font: string = `12px sans-serif`) {
   if (typeof document === `undefined`) return 0
   if (!measurement_canvas) {
     measurement_canvas = document.createElement(`canvas`)
@@ -67,15 +64,6 @@ export function constrain_tooltip_position(
     x: Math.min(max_x, Math.max(10, base_x + 5)),
     y: Math.min(max_y, Math.max(10, base_y - 10)),
   }
-}
-
-// Get chart dimensions from width, height, and padding
-export function get_chart_dimensions(
-  width: number,
-  height: number,
-  padding: { t: number; b: number; l: number; r: number },
-) {
-  return { width: width - padding.l - padding.r, height: height - padding.t - padding.b }
 }
 
 // Simple, performant legend auto-placement for plot components

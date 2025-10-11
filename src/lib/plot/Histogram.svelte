@@ -1,7 +1,8 @@
 <script lang="ts">
   import { DraggablePane } from '$lib'
-  import type { DataSeries } from '$lib/plot'
+  import type { DataSeries, Sides } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -27,22 +28,29 @@
     range_padding?: number
     bins?: number
     x_label?: string
+    x_label_shift?: { x?: number; y?: number }
     y_label?: string
+    y_label_shift?: { x?: number; y?: number }
     x_format?: string
     y_format?: string
     x_scale_type?: ScaleType
     y_scale_type?: ScaleType
-    padding?: { t: number; b: number; l: number; r: number }
+    padding?: Sides
     show_legend?: boolean
     legend?: LegendConfig | null
     bar_opacity?: number
     bar_stroke_width?: number
+    bar_stroke_color?: string
+    bar_stroke_opacity?: number
     bar_color?: string
     selected_property?: string
     mode?: `single` | `overlay`
-    show_zero_lines?: boolean
-    x_grid?: boolean | Record<string, unknown>
-    y_grid?: boolean | Record<string, unknown>
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    x_grid_style?: HTMLAttributes<SVGLineElement>
+    y_grid_style?: HTMLAttributes<SVGLineElement>
     x_ticks?: TicksOption
     y_ticks?: TicksOption
     tooltip?: Snippet<[{ value: number; count: number; property: string }]>
@@ -63,9 +71,10 @@
     ) => void
     show_controls?: boolean
     controls_open?: boolean
-    plot_controls?: Snippet<[]>
     on_series_toggle?: (series_idx: number) => void
     controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    children?: Snippet<[]>
   }
   let {
     series = $bindable([]),
@@ -76,7 +85,9 @@
     range_padding = 0.05,
     bins = $bindable(100),
     x_label = `Value`,
+    x_label_shift = { x: 0, y: 0 },
     y_label = `Count`,
+    y_label_shift = { x: 0, y: 0 },
     x_format = $bindable(`.2~s`),
     y_format = $bindable(`d`),
     x_scale_type = $bindable(`linear`),
@@ -84,14 +95,19 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar_opacity = $bindable(0.7),
-    bar_stroke_width = $bindable(1),
-    bar_color = $bindable(`cornflowerblue`),
+    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
+    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
+    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
+    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
+    bar_color = $bindable(DEFAULTS.histogram.bar_color),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
-    show_zero_lines = $bindable(true),
-    x_grid = $bindable(true),
-    y_grid = $bindable(true),
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
     x_ticks = $bindable(8),
     y_ticks = $bindable(6),
     tooltip,
@@ -101,9 +117,10 @@
     on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    plot_controls,
     on_series_toggle = () => {},
     controls_toggle_props,
+    controls_pane_props,
+    children,
     ...rest
   }: Props = $props()
 
@@ -382,33 +399,23 @@
       }}
     >
       <!-- Zero lines -->
-      {#if show_zero_lines}
-        {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-          {@const zero_x = scales.x(0)}
-          {#if isFinite(zero_x)}
-            <line
-              y1={pad.t}
-              y2={height - pad.b}
-              x1={zero_x}
-              x2={zero_x}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+      {#if show_x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+        {@const zero_x = scales.x(0)}
+        {#if isFinite(zero_x)}
+          <line
+            class="zero-line"
+            x1={zero_x}
+            x2={zero_x}
+            y1={pad.t}
+            y2={height - pad.b}
+          />
         {/if}
-        {#if y_scale_type === `linear` && ranges.current.y[0] < 0 &&
-        ranges.current.y[1] > 0}
-          {@const zero_y = scales.y(0)}
-          {#if isFinite(zero_y)}
-            <line
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zero_y}
-              y2={zero_y}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+      {/if}
+      {#if show_y_zero_line && y_scale_type === `linear` && ranges.current.y[0] <= 0 &&
+        ranges.current.y[1] >= 0}
+        {@const zero_y = scales.y(0)}
+        {#if isFinite(zero_y)}
+          <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
         {/if}
       {/if}
 
@@ -429,8 +436,9 @@
                 height={bar_height}
                 fill={color}
                 opacity={bar_opacity}
-                stroke={mode === `overlay` ? color : `none`}
-                stroke-width={mode === `overlay` ? bar_stroke_width : 0}
+                stroke={bar_stroke_width > 0 ? bar_stroke_color : `none`}
+                stroke-opacity={bar_stroke_width > 0 ? bar_stroke_opacity : 0}
+                stroke-width={bar_stroke_width}
                 role="button"
                 tabindex="0"
                 onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
@@ -507,14 +515,14 @@
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
           <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-            {#if x_grid}
+            {#if show_x_grid}
               <line
                 y1={-(height - pad.b - pad.t)}
                 y2="0"
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
-                {...typeof x_grid === `object` ? x_grid : {}}
+                {...x_grid_style ?? {}}
               />
             {/if}
             <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -524,8 +532,8 @@
           </g>
         {/each}
         <text
-          x={(pad.l + width - pad.r) / 2}
-          y={height - 10}
+          x={(pad.l + width - pad.r) / 2 + (x_label_shift.x ?? 0)}
+          y={height - 10 + (x_label_shift.y ?? 0)}
           text-anchor="middle"
           fill="var(--text-color)"
         >
@@ -546,14 +554,14 @@
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
           <g class="tick" transform="translate({pad.l}, {tick_y})">
-            {#if y_grid}
+            {#if show_y_grid}
               <line
                 x1="0"
                 x2={width - pad.l - pad.r}
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
-                {...typeof y_grid === `object` ? y_grid : {}}
+                {...y_grid_style ?? {}}
               />
             {/if}
             <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -567,15 +575,19 @@
             </text>
           </g>
         {/each}
-        <text
-          x={15}
-          y={(pad.t + height - pad.b) / 2}
-          text-anchor="middle"
-          fill="var(--text-color)"
-          transform="rotate(-90, 15, {(pad.t + height - pad.b) / 2})"
-        >
-          {y_label}
-        </text>
+        {#if true}
+          {@const y_label_x = 15 + (y_label_shift.x ?? 0)}
+          {@const y_label_y = (pad.t + height - pad.b) / 2 + (y_label_shift.y ?? 0)}
+          <text
+            x={y_label_x}
+            y={y_label_y}
+            text-anchor="middle"
+            fill="var(--text-color)"
+            transform="rotate(-90, {y_label_x}, {y_label_y})"
+          >
+            {y_label}
+          </text>
+        {/if}
       </g>
     </svg>
   {/if}
@@ -583,16 +595,19 @@
   {#if show_controls}
     <HistogramControls
       toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
       bind:show_controls
       bind:controls_open
       bind:bins
       bind:mode
       bind:bar_opacity
       bind:bar_stroke_width
+      bind:bar_stroke_color
+      bind:bar_stroke_opacity
       bind:bar_color
       bind:show_legend
-      bind:x_grid
-      bind:y_grid
+      bind:show_x_grid
+      bind:show_y_grid
       bind:x_scale_type
       bind:y_scale_type
       bind:x_ticks
@@ -600,13 +615,13 @@
       bind:x_format
       bind:y_format
       bind:selected_property
-      bind:show_zero_lines
+      bind:show_x_zero_line
+      bind:show_y_zero_line
       bind:x_range
       bind:y_range
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
       {series}
-      {plot_controls}
     />
   {/if}
 
@@ -618,6 +633,9 @@
       wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
     />
   {/if}
+
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.()}
 </div>
 
 <style>
@@ -657,5 +675,10 @@
     stroke: var(--histogram-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
     stroke-width: var(--histogram-zoom-rect-stroke-width, 1);
     pointer-events: none;
+  }
+  .zero-line {
+    stroke: var(--histogram-zero-line-color, light-dark(black, white));
+    stroke-width: var(--histogram-zero-line-width, 1);
+    opacity: var(--histogram-zero-line-opacity, 0.3);
   }
 </style>
