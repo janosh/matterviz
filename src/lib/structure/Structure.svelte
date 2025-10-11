@@ -15,6 +15,7 @@
   import type { StructureHandlerData } from './index'
   import {
     StructureControls,
+    StructureExportPane,
     StructureInfoPane,
     StructureLegend,
     StructureScene,
@@ -40,6 +41,10 @@
     width?: number
     // bindable height of the canvas
     height?: number
+    // Canvas wrapper element (for export pane)
+    wrapper?: HTMLDivElement
+    // PNG export DPI setting
+    png_dpi?: number
     reset_text?: string
     hovered?: boolean
     dragover?: boolean
@@ -250,6 +255,7 @@
   // Measurement mode and selection state
   let measure_mode: `distance` | `angle` = $state(`distance`)
   let measure_menu_open = $state(false)
+  let export_pane_open = $state(false)
 
   let visible_buttons = $derived(
     show_controls === true ||
@@ -461,7 +467,7 @@
 
 <div
   class:dragover
-  class:active={info_pane_open || controls_open}
+  class:active={info_pane_open || controls_open || export_pane_open}
   role="region"
   aria-label="Structure viewer"
   bind:this={wrapper}
@@ -591,6 +597,16 @@
           />
         {/if}
 
+        <StructureExportPane
+          bind:export_pane_open
+          {structure}
+          {wrapper}
+          {scene}
+          {camera}
+          bind:png_dpi
+          pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
+        />
+
         <StructureControls
           bind:controls_open
           bind:scene_props
@@ -600,11 +616,7 @@
           bind:background_color
           bind:background_opacity
           bind:color_scheme
-          bind:png_dpi
           {structure}
-          {wrapper}
-          {scene}
-          {camera}
         />
       {/if}
     </section>
@@ -623,6 +635,8 @@
             bind:camera_is_moving
             bind:selected_sites
             bind:measured_sites
+            bind:scene
+            bind:camera
             {measure_mode}
             {width}
             {height}

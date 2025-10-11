@@ -143,8 +143,7 @@
     {#if show_cell_vectors}
       <T.Group position={vector_origin}>
         {#each matrix as vec, idx (vec)}
-          {@const vector_length = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)}
-          {@const shaft_length = vector_length * 0.85}
+          {@const shaft_length = Math.hypot(...vec) * 0.85}
           <!-- Shaft goes to 85% of vector length -->
           {@const tip_start_position = math.scale(vec, 0.85) as Vec3}
           <!-- Calculate rotation to align with vector direction -->

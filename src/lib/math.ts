@@ -325,11 +325,11 @@ export function get_coefficient_of_variation(values: number[]): number {
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
 export function det_4x4(matrix: number[][]): number {
-  const [a, b, c, d] = matrix
-  const [a0, a1, a2, a3] = a
-  const [b0, b1, b2, b3] = b
-  const [c0, c1, c2, c3] = c
-  const [d0, d1, d2, d3] = d
+  const [a_row, b_row, c_row, d_row] = matrix
+  const [a0, a1, a2, a3] = a_row
+  const [b0, b1, b2, b3] = b_row
+  const [c0, c1, c2, c3] = c_row
+  const [d0, d1, d2, d3] = d_row
   return (a0 *
       (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
     a1 *
@@ -342,4 +342,11 @@ export function det_4x4(matrix: number[][]): number {
 // 3D cross product
 export function cross_3d(a: Vec3, b: Vec3): Vec3 {
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+
+// Check if a matrix is square with dimension NxN
+export function is_square_matrix(matrix: unknown, dim: number): boolean {
+  if (!Array.isArray(matrix)) return false
+  if (matrix.length !== dim) return false
+  return matrix.every((row) => Array.isArray(row) && row.length === dim)
 }

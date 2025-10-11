@@ -1013,13 +1013,11 @@
 
   <!-- Energy above hull Color Bar -->
   {#if color_mode === `energy` && plot_entries.length > 0}
-    {@const formation_energies = plot_entries
+    {@const hull_distances = plot_entries
       .map((e) => e.e_above_hull)
       .filter((v): v is number => typeof v === `number`)}
-    {@const min_energy = formation_energies.length > 0 ? Math.min(...formation_energies) : 0}
-    {@const max_energy = formation_energies.length > 0
-      ? Math.max(...formation_energies, 0.1)
-      : 0.1}
+    {@const min_energy = hull_distances.length > 0 ? Math.min(...hull_distances) : 0}
+    {@const max_energy = hull_distances.length > 0 ? Math.max(...hull_distances, 0.1) : 0.1}
     <ColorBar
       title="Energy above hull (eV/atom)"
       range={[min_energy, max_energy]}

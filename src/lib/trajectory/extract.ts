@@ -48,10 +48,9 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
     if (frame.metadata.forces && Array.isArray(frame.metadata.forces)) {
       const forces = frame.metadata.forces as number[][]
       if (forces.length > 0) {
-        const force_magnitudes = forces.map((force) =>
-          Math.sqrt(force[0] ** 2 + force[1] ** 2 + force[2] ** 2)
-        )
+        const force_magnitudes = forces.map((force) => Math.hypot(...force))
         data.force_max = Math.max(...force_magnitudes)
+        // Calculate RMS (root mean square) of force magnitudes
         data.force_norm = Math.sqrt(
           force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
             force_magnitudes.length,

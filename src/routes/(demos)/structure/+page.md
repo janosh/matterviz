@@ -13,6 +13,12 @@
 
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
 
+  const all_files = [...structure_files, ...molecule_files]
+  function get_file_url(filename) {
+    const file_info = all_files.find((file) => file.name === filename)
+    return file_info?.url || `/structures/${filename}`
+  }
+
   $effect(() => {
     if (!browser) return
     const file = page.url.searchParams.get(`file`)
@@ -21,7 +27,7 @@
 </script>
 
 <Structure
-  data_url="/structures/{current_filename}"
+  data_url={get_file_url(current_filename)}
   on_file_load={(data) => {
     current_filename = data.filename
     page.url.searchParams.set(`file`, current_filename)
@@ -38,7 +44,7 @@
 </Structure>
 
 <FilePicker
-  files={[...structure_files, ...molecule_files]}
+  files={all_files}
   show_category_filters
   style="margin-block: 2em"
 />

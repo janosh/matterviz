@@ -12,11 +12,12 @@
     distance_pbc,
     MAX_SELECTED_SITES,
   } from '$lib/structure/measure'
-  import { T } from '@threlte/core'
+  import { T, useThrelte } from '@threlte/core'
   import * as Extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+  import type { Camera, Scene } from 'three'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -93,6 +94,9 @@
     active_sites?: number[]
     active_highlight_color?: string
     rotation?: Vec3 // rotation control prop
+    // Expose scene and camera for external use (e.g., export pane)
+    scene?: Scene
+    camera?: Camera
   }
   let {
     structure = undefined,
@@ -145,7 +149,17 @@
     active_sites = $bindable([]),
     active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
     rotation = DEFAULTS.structure.rotation,
+    scene = $bindable(undefined),
+    camera = $bindable(undefined),
   }: Props = $props()
+
+  // Get scene and camera from Threlte context and expose them
+  const threlte = useThrelte()
+  $effect(() => {
+    // scene is directly a Scene object, camera needs .current
+    scene = threlte.scene
+    camera = threlte.camera.current
+  })
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
@@ -772,24 +786,10 @@
                     thickness={0.05}
                     color={measure_line_color}
                   />
-                  {@const bisector = [
-          v1[0] / n1 + v2[0] / n2,
-          v1[1] / n1 + v2[1] / n2,
-          v1[2] / n1 + v2[2] / n2,
-        ] as Vec3}
-                  {@const bis_norm =
-          Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) ||
-          1}
-                  {@const offset_dir = [
-          bisector[0] / bis_norm,
-          bisector[1] / bis_norm,
-          bisector[2] / bis_norm,
-        ] as Vec3}
-                  {@const label_pos = [
-          center.xyz[0] + offset_dir[0] * 0.6,
-          center.xyz[1] + offset_dir[1] * 0.6,
-          center.xyz[2] + offset_dir[2] * 0.6,
-        ] as Vec3}
+                  {@const bisector = math.add(math.scale(v1, 1 / n1), math.scale(v2, 1 / n2))}
+                  {@const bis_norm = Math.hypot(...bisector) || 1}
+                  {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
+                  {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
                   <Extras.HTML center position={label_pos}>
                     <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
                   </Extras.HTML>

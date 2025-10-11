@@ -373,7 +373,7 @@
     const triangle_centroid = get_triangle_centroid()
 
     // Calculate the energy center (middle of formation energy range)
-    const formation_energies = plot_entries.map((e) => e.formation_energy)
+    const formation_energies = plot_entries.map((e) => e.e_form)
     const e_form_min = Math.min(0, ...formation_energies)
     const e_form_max = Math.max(0, ...formation_energies)
     const energy_center = (e_form_min + e_form_max) / 2
@@ -440,7 +440,7 @@
     if (!ctx) return
 
     // Get formation energy range for vertical edges
-    const formation_energies = plot_entries.map((e) => e.formation_energy)
+    const formation_energies = plot_entries.map((e) => e.e_form)
     const e_form_min = Math.min(0, ...formation_energies) // Include 0 for elemental references
     const e_form_max = Math.max(0, ...formation_energies) // Include 0 for elemental references
 
@@ -530,7 +530,7 @@
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
     // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> hull_face_opacity
-    const formation_energies = plot_entries.map((e) => e.formation_energy)
+    const formation_energies = plot_entries.map((e) => e.e_form)
     const min_fe = Math.min(0, ...formation_energies)
     const norm_alpha = (z: number) => {
       const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
@@ -629,7 +629,7 @@
 
   // Formation energy color bar helpers
   const e_form_range = $derived.by((): [number, number] => {
-    const energies = plot_entries.map((e) => e.formation_energy)
+    const energies = plot_entries.map((e) => e.e_form)
     const min_fe = energies.length ? Math.min(0, ...energies) : -1
     return [min_fe, 0]
   })
@@ -1073,13 +1073,11 @@
 
   <!-- Formation Energy Color Bar (bottom-left corner) -->
   {#if color_mode === `energy` && plot_entries.length > 0}
-    {@const formation_energies = plot_entries
+    {@const hull_distances = plot_entries
       .map((e) => e.e_above_hull)
       .filter((v): v is number => typeof v === `number`)}
-    {@const min_energy = formation_energies.length > 0 ? Math.min(...formation_energies) : 0}
-    {@const max_energy = formation_energies.length > 0
-      ? Math.max(...formation_energies, 0.1)
-      : 0.1}
+    {@const min_energy = hull_distances.length > 0 ? Math.min(...hull_distances) : 0}
+    {@const max_energy = hull_distances.length > 0 ? Math.max(...hull_distances, 0.1) : 0.1}
     <ColorBar
       title="Energy above hull (eV/atom)"
       range={[min_energy, max_energy]}

@@ -542,16 +542,15 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
         }
       }
     }
-
     if (forces.length > 0) {
       metadata.forces = forces
-      const magnitudes = forces.map((f) => Math.sqrt(f[0] ** 2 + f[1] ** 2 + f[2] ** 2))
+      const magnitudes = forces.map((force) => Math.hypot(...force))
       metadata.force_max = Math.max(...magnitudes)
+      // Calculate RMS (root mean square) of force magnitudes
       metadata.force_norm = Math.sqrt(
-        magnitudes.reduce((sum, f) => sum + f ** 2, 0) / magnitudes.length,
+        magnitudes.reduce((sum, mag) => sum + mag ** 2, 0) / magnitudes.length,
       )
     }
-
     frames.push(
       create_trajectory_frame(
         positions,
@@ -1180,28 +1179,31 @@ export async function parse_trajectory_data(
           // Calculate force statistics for forces
           if (key === `forces` && Array.isArray(array_obj.data)) {
             const forces = array_obj.data as number[][]
-            const force_magnitudes = forces.map((force) =>
-              Math.sqrt((force as number[]).reduce((sum, f) => sum + f * f, 0))
-            )
+            const force_magnitudes = forces.map((force) => Math.hypot(...force))
             processed_properties.force_max = Math.max(...force_magnitudes)
             processed_properties.force_norm = Math.sqrt(
-              force_magnitudes.reduce((sum, f) => sum + f * f, 0),
+              force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
+                force_magnitudes.length,
             )
           }
 
           // Calculate stress statistics for stress tensor
           if (key === `stress` && Array.isArray(array_obj.data)) {
-            const stress_tensor = array_obj.data as number[][]
-            // Calculate stress components (diagonal elements represent normal stresses)
-            const normal_stresses = [
-              stress_tensor[0][0],
-              stress_tensor[1][1],
-              stress_tensor[2][2],
-            ]
-            processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
-            // Calculate hydrostatic pressure (negative of mean normal stress)
-            processed_properties.pressure =
-              -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
+            const stress_tensor = array_obj.data
+            if (!math.is_square_matrix(stress_tensor, 3)) {
+              console.warn(`Invalid stress tensor structure in frame ${idx}`)
+            } else {
+              // Calculate stress components (diagonal elements represent normal stresses)
+              const normal_stresses = [
+                stress_tensor[0][0],
+                stress_tensor[1][1],
+                stress_tensor[2][2],
+              ]
+              processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
+              // Calculate hydrostatic pressure (negative of mean normal stress)
+              processed_properties.pressure =
+                -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
+            }
           }
         } else {
           processed_properties[key] = value

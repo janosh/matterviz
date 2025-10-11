@@ -63,7 +63,7 @@ describe(`euclidean_dist`, () => {
     {
       point1: [1, 2, 3],
       point2: [4, 6, 8],
-      expected: Math.sqrt(9 + 16 + 25),
+      expected: Math.hypot(3, 4, 5),
       desc: `arbitrary points`,
     },
     {
@@ -1412,5 +1412,38 @@ describe(`cross_3d`, () => {
     // Triangle normal (convex hull use case)
     const normal = math.cross_3d([1, 0, 0], [0, 1, 0])
     expect(normal).toEqual([0, 0, 1])
+  })
+})
+
+describe(`is_square_matrix`, () => {
+  test.each([
+    // Valid square matrices
+    [[[1]], 1, true],
+    [[[1, 2], [3, 4]], 2, true],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 3, true],
+    [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], 4, true],
+    [Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 1)), 5, true],
+    // Non-square matrices
+    [[[1, 2, 3], [4, 5, 6]], 2, false],
+    [[[1, 2], [3, 4], [5, 6]], 3, false],
+    // Wrong dimension checks
+    [[[1, 2], [3, 4]], 3, false],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2, false],
+    // Jagged arrays
+    [[[1, 2, 3], [4, 5], [7, 8, 9]], 3, false],
+    [[[1, 2, 3], [4, 5, 6, 7], [8, 9, 10]], 3, false],
+    // Edge cases
+    [[], 0, true],
+    [[[]], 1, false],
+    [[], -1, false],
+    // Invalid inputs
+    [`not an array`, 3, false],
+    [123, 3, false],
+    [null, 3, false],
+    [undefined, 3, false],
+    [[1, 2, 3], 3, false],
+    [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
+  ])(`dim=%i expected=%s`, (matrix, dim, expected) => {
+    expect(math.is_square_matrix(matrix, dim)).toBe(expected)
   })
 })

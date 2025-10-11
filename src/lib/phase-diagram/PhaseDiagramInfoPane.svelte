@@ -34,7 +34,7 @@
   bind:show={pane_open}
   max_width="24em"
   toggle_props={{
-    title: `${pane_open ? `Close` : `Open`} phase diagram info`,
+    title: pane_open ? `` : `Phase diagram info`,
     class: `phase-diagram-info-toggle`,
     ...toggle_props,
   }}

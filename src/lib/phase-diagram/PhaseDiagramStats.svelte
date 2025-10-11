@@ -24,7 +24,7 @@
   }
 
   // Prepare histogram data for formation energies and hull distances
-  let formation_energy_data = $derived.by(() => {
+  let e_form_data = $derived.by(() => {
     const all_entries = [...stable_entries, ...unstable_entries]
     const energies = all_entries
       .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
@@ -220,9 +220,9 @@
       {/each}
 
       {#if section.title === `Energy Statistics (eV/atom)` &&
-        formation_energy_data[0].y.length > 0}
+        e_form_data[0].y.length > 0}
         <Histogram
-          series={formation_energy_data}
+          series={e_form_data}
           bins={50}
           x_label=""
           y_label=""
