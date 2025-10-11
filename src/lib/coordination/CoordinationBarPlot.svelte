@@ -40,7 +40,7 @@
     structures,
     strategy = `nearest_neighbor`,
     split_mode = `by_element`,
-    mode = $bindable(`stacked`),
+    mode = $bindable(`grouped`),
     orientation = `vertical` as Orientation,
     x_label = `Coordination Number`,
     y_label = `Count`,
@@ -85,12 +85,26 @@
 
   // Compute appropriate ranges
   const ranges = $derived.by(() => {
-    // Count axis should always start at 0
-    const count_range: [number, null] = [0, null]
-    // CN axis should always start at 0 (even if min CN is higher)
-    const cn_range: [number, null] = [0, null]
+    // CN axis should always start at 0 and show at least [0,4]
+    let max_cn = 4 // minimum max value
+    for (const entry of entries_with_data) {
+      for (const [cn] of entry.data.cn_histogram) max_cn = Math.max(max_cn, cn)
+    }
+    const cn_range: [number, number] = [-0.5, max_cn + 0.5]
 
-    return { count: count_range, cn: cn_range }
+    return { count: [0, null], cn: cn_range } // Count axis should always start at 0
+  })
+
+  // Derive integer CN ticks for axis labels
+  const cn_ticks = $derived.by(() => {
+    const all_cns = new SvelteSet<number>()
+    // Always include minimum CN values 0-4
+    for (let idx = 0; idx <= 4; idx++) all_cns.add(idx)
+    // Add actual CN values from data
+    for (const entry of entries_with_data) {
+      for (const [cn] of entry.data.cn_histogram) all_cns.add(cn)
+    }
+    return Array.from(all_cns).sort((cn1, cn2) => cn1 - cn2)
   })
 
   // Build BarPlot series based on split_mode
@@ -267,6 +281,11 @@
   y_label_shift={{ x: 2 }}
   x_range={orientation === `horizontal` ? ranges.count : ranges.cn}
   y_range={orientation === `horizontal` ? ranges.cn : ranges.count}
+  x_ticks={orientation === `horizontal` ? undefined : cn_ticks}
+  y_ticks={orientation === `horizontal` ? cn_ticks : undefined}
+  x_format={orientation === `horizontal` ? `d` : ``}
+  y_format={orientation === `horizontal` ? `` : `d`}
+  show_legend={true}
   show_x_zero_line={false}
   show_y_zero_line={true}
   {tooltip}

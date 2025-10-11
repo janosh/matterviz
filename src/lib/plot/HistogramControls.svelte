@@ -1,8 +1,8 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
   import type { DataSeries, PlotControlsProps } from '$lib/plot'
+  import { PlotControls } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
-  import PlotControls from './PlotControls.svelte'
 
   interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
     // Series data for multi-series controls

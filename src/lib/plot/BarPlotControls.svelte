@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
   import type { BarMode, Orientation, PlotControlsProps } from '$lib/plot'
-  import PlotControls from './PlotControls.svelte'
+  import { PlotControls } from '$lib/plot'
 
   interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
     orientation?: Orientation

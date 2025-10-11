@@ -205,63 +205,20 @@
       {/each}
     </div>
   </section>
-
-  <h2>Bonding Strategies</h2>
-
-  <dl>
-    <dt>Nearest Neighbor</dt>
-    <dd>
-      Identifies bonds based on proximity to the nearest neighbors. Considers only atoms
-      within a tolerance factor of the closest neighbor distance.
-    </dd>
-
-    <dt>Max Distance</dt>
-    <dd>
-      Uses covalent radii to determine bonds. Two atoms are bonded if their distance is
-      within a maximum ratio of the sum of their covalent radii.
-    </dd>
-
-    <dt>Electronegativity</dt>
-    <dd>
-      Weights bonds based on electronegativity differences between atoms. Favors
-      metal-nonmetal bonds and penalizes metal-metal bonds.
-    </dd>
-
-    <dt>Max Distance Ratio</dt>
-    <dd>
-      Uses a unitless ratio multiplied by the sum of covalent radii. Two atoms are bonded
-      if their distance is within this ratio times the sum of their covalent radii.
-    </dd>
-  </dl>
 </div>
 
 <style>
-  .bleed-1400 > section {
-    display: grid;
-    gap: 1em;
-  }
-
   .controls {
     display: flex;
     gap: 1em;
     margin: 1em 0;
     flex-wrap: wrap;
   }
-
   .controls label {
     display: flex;
     align-items: center;
     gap: 0.5em;
   }
-
-  .controls select {
-    padding: 4px 8px;
-    border: 1px solid var(--border-color, #ccc);
-    border-radius: 4px;
-    background: var(--bg-color, white);
-    color: var(--text-color);
-  }
-
   nav {
     display: flex;
     flex-wrap: wrap;
@@ -269,50 +226,36 @@
     gap: 6px;
     margin: 1em;
   }
-
   nav button {
     font-size: 0.8em;
     flex: 0 0 auto;
     padding: 6px 8px 3px;
-    border: 1px dotted var(--text-color-muted);
-    background: transparent;
-    cursor: pointer;
+    background: color-mix(in srgb, var(--nav-link-bg) 40%, transparent);
   }
-
   nav button.selected {
-    outline: 2px solid var(--accent-color, #4e79a7);
+    outline: 1px solid var(--accent-color, #4e79a7);
   }
-
-  nav button.active {
-    border-style: solid;
-  }
-
   nav .id {
     font-weight: 500;
   }
-
   nav .formula {
     color: var(--text-color-muted);
     font-size: 0.9em;
   }
-
   .bleed-1400 > section {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1em;
   }
-
   .selected-structures-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5em;
     align-content: start;
   }
-
   .structure-tile {
     border-radius: 4px;
     position: relative;
-
     h3 {
       margin: 0;
       font-size: 14px;
@@ -321,20 +264,5 @@
       left: 1ex;
       z-index: 1;
     }
-  }
-
-  dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.5em 1em;
-    margin: 1em 0;
-  }
-
-  dt {
-    font-weight: 600;
-  }
-
-  dd {
-    margin: 0;
   }
 </style>

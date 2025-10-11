@@ -93,7 +93,10 @@
 
   // Handle range input changes
   const update_range = (axis: `x` | `y` | `y2`, bound: 0 | 1, value: string) => {
-    range_inputs[axis][bound] = value === `` ? null : +value
+    const parsed = value === `` ? null : Number(value)
+    range_inputs[axis][bound] = parsed === null || Number.isFinite(parsed)
+      ? parsed
+      : null
     const [min, max] = range_inputs[axis]
     const auto = { x: auto_x_range, y: auto_y_range, y2: auto_y2_range }[axis]
 

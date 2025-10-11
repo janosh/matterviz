@@ -411,8 +411,8 @@
           />
         {/if}
       {/if}
-      {#if show_y_zero_line && y_scale_type === `linear` && ranges.current.y[0] < 0 &&
-        ranges.current.y[1] > 0}
+      {#if show_y_zero_line && y_scale_type === `linear` && ranges.current.y[0] <= 0 &&
+        ranges.current.y[1] >= 0}
         {@const zero_y = scales.y(0)}
         {#if isFinite(zero_y)}
           <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />

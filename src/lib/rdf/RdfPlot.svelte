@@ -84,7 +84,6 @@
         result.push({ label, pattern: full_rdf })
       }
     }
-
     return result
   })
 
@@ -92,14 +91,14 @@
   const max_g = $derived(Math.max(1.2, ...entries.flatMap((e) => e.pattern.g_r)))
 
   const series = $derived<DataSeries[]>(
-    entries.map((e, i) => ({
-      x: e.pattern.r,
-      y: e.pattern.g_r,
-      label: e.label,
+    entries.map((ent, idx) => ({
+      x: ent.pattern.r,
+      y: ent.pattern.g_r,
+      label: ent.label,
       visible: true,
       markers: `line` as const,
       line_style: {
-        stroke: e.color ?? plot_colors[i % plot_colors.length],
+        stroke: ent.color ?? plot_colors[idx % plot_colors.length],
         stroke_width: 2,
       },
     })),

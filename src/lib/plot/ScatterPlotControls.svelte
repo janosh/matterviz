@@ -1,9 +1,9 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
   import type { DataSeries, Markers, PlotControlsProps } from '$lib/plot'
+  import { PlotControls } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { tooltip } from 'svelte-multiselect/attachments'
-  import PlotControls from './PlotControls.svelte'
 
   interface Props extends Omit<PlotControlsProps, `children` | `post_children`> {
     series?: readonly DataSeries[]

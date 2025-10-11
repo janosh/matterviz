@@ -1031,7 +1031,7 @@
     // Reset drag state if mouse leaves plot area
     hovered = false
     tooltip_point = null
-    on_point_hover?.({ point: null })
+    on_point_hover?.({ point: null, event: undefined })
   }
 
   function handle_double_click() {

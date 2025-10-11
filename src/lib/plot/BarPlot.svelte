@@ -9,7 +9,7 @@
     Orientation,
     Sides,
   } from '$lib/plot'
-  import { find_best_plot_area, PlotLegend } from '$lib/plot'
+  import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { TicksOption } from '$lib/plot/scales'
@@ -18,7 +18,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import BarPlotControls from './BarPlotControls.svelte'
   import { calc_auto_padding, measure_text_width } from './layout'
 
   interface Props extends HTMLAttributes<HTMLDivElement> {
@@ -45,6 +44,7 @@
     show_x_zero_line?: boolean
     show_y_zero_line?: boolean
     legend?: LegendConfig | null
+    show_legend?: boolean
     padding?: Sides
     default_bar_color?: string
     bar_opacity?: number
@@ -87,6 +87,7 @@
     show_x_zero_line = $bindable(false),
     show_y_zero_line = $bindable(false),
     legend = {},
+    show_legend,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     default_bar_color = DEFAULTS.bar.bar_color,
     bar_opacity = DEFAULTS.bar.bar_opacity,
@@ -346,8 +347,9 @@
   })
 
   // Calculate best legend placement
-  let legend_placement = $derived.by(() =>
-    series.length > 1 && width && height
+  let legend_placement = $derived.by(() => {
+    const should_show = show_legend !== undefined ? show_legend : series.length > 1
+    return should_show && width && height
       ? find_best_plot_area(bar_points_for_placement, {
         plot_width: chart_width,
         plot_height: chart_height,
@@ -356,7 +358,7 @@
         legend_size: { width: 120, height: 60 },
       })
       : null
-  )
+  })
 
   // Tooltip state
   let hover_info = $state<BarTooltipProps | null>(null)
