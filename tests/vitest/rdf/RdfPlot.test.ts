@@ -1,6 +1,6 @@
 import { RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Pbc, PymatgenStructure } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -78,12 +78,13 @@ describe(`RdfPlot`, () => {
       target: document.body,
       props: { structures: pd_structure, ...opts },
     })
-  })
+  }, 10_000 // Increased timeout for long tests in CI
+  )
 
   // Test PBC settings
   test.each([
-    [[1, 1, 1] as [0 | 1, 0 | 1, 0 | 1]],
-    [[0, 0, 0] as [0 | 1, 0 | 1, 0 | 1]],
+    [[true, true, true] as Pbc],
+    [[false, false, false] as Pbc],
   ])(`pbc=%s`, (pbc) => {
     mount(RdfPlot, { target: document.body, props: { structures: nacl_structure, pbc } })
   })

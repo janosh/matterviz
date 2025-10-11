@@ -1,17 +1,17 @@
 <script lang="ts">
   import type { ElementSymbol } from '$lib'
   import { decompress_data } from '$lib/io/decompress'
+  import type {
+    PhaseStats,
+    PymatgenEntry,
+    TernaryPlotEntry,
+  } from '$lib/phase-diagram'
   import {
     PhaseDiagram2D,
     PhaseDiagram3D,
     PhaseDiagram4D,
     PhaseDiagramStats,
   } from '$lib/phase-diagram'
-  import type {
-    PhaseStats,
-    PymatgenEntry,
-    TernaryPlotEntry,
-  } from '$lib/phase-diagram/types'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -29,12 +29,10 @@
   let loaded_data = $state(new SvelteMap())
 
   // State for the 3D example with stats display
-  let example_phase_stats = $state<PhaseStats | null>(null)
-  let example_stable_entries = $state<TernaryPlotEntry[]>([])
-  let example_unstable_entries = $state<TernaryPlotEntry[]>([])
-  let example_energy_threshold = $state(0.5)
-  let example_label_energy_threshold = $state(0.1)
-  let example_label_threshold = $state(50)
+  let phase_stats = $state<PhaseStats | null>(null)
+  let stable_entries = $state<TernaryPlotEntry[]>([])
+  let unstable_entries = $state<TernaryPlotEntry[]>([])
+  let max_hull_dist_show_phases = $state(0.5)
 
   onMount(async () => {
     const results = await Promise.allSettled(
@@ -191,20 +189,13 @@
       <PhaseDiagram3D
         entries={na_fe_o_entries}
         controls={{ title: `Na-Fe-O with Stats` }}
-        bind:phase_stats={example_phase_stats}
-        bind:stable_entries_out={example_stable_entries}
-        bind:unstable_entries_out={example_unstable_entries}
-        bind:energy_threshold={example_energy_threshold}
+        bind:phase_stats
+        bind:stable_entries
+        bind:unstable_entries
+        bind:max_hull_dist_show_phases
       />
-      {#if example_phase_stats}
-        <PhaseDiagramStats
-          phase_stats={example_phase_stats}
-          stable_entries={example_stable_entries}
-          unstable_entries={example_unstable_entries}
-          energy_threshold={example_energy_threshold}
-          label_energy_threshold={example_label_energy_threshold}
-          label_threshold={example_label_threshold}
-        />
+      {#if phase_stats}
+        <PhaseDiagramStats {phase_stats} {stable_entries} {unstable_entries} />
       {/if}
     </div>
   {:else}

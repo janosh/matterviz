@@ -6,7 +6,6 @@
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
-  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     get_ternary_3d_coordinates,
@@ -15,72 +14,19 @@
     get_triangle_vertical_edges,
     TRIANGLE_VERTICES,
   } from './barycentric-coords'
-  import {
-    build_entry_tooltip_text,
-    compute_max_energy_threshold,
-    default_controls,
-    find_pd_entry_at_mouse,
-    get_energy_color_scale,
-    get_point_color_for_entry,
-    parse_pd_entries_from_drop,
-    PD_STYLE,
-  } from './helpers'
+  import * as helpers from './helpers'
+  import type { BasePhaseDiagramProps, Hull3DProps } from './index'
+  import { default_controls, default_pd_config, PD_STYLE } from './index'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
-  import {
-    build_lower_hull_model,
-    compute_e_above_hull_for_points,
-    compute_e_form_per_atom,
-    compute_lower_hull_triangles,
-    find_lowest_energy_unary_refs,
-    get_phase_diagram_stats,
-    process_pd_entries,
-  } from './thermodynamics'
-  import type {
-    HoverData3D,
-    PDControlsType,
-    PhaseDiagramConfig,
-    PhaseEntry,
-    PhaseStats,
-    Point3D,
-    TernaryPlotEntry,
-  } from './types'
+  import * as thermo from './thermodynamics'
+  import type { HoverData3D, Point3D, TernaryPlotEntry } from './types'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    entries: PhaseEntry[]
-    controls?: Partial<PDControlsType>
-    config?: Partial<PhaseDiagramConfig>
-    on_point_click?: (entry: TernaryPlotEntry) => void
-    on_point_hover?: (data: HoverData3D<TernaryPlotEntry> | null) => void
-    fullscreen?: boolean
-    enable_fullscreen?: boolean
-    enable_info_pane?: boolean
-    wrapper?: HTMLDivElement
-    // Smart label defaults - hide labels if more than this many entries
-    label_threshold?: number
-    // Bindable visibility and interaction state
-    show_stable?: boolean
-    show_unstable?: boolean
-    show_hull_faces?: boolean
-    hull_face_opacity?: number
-    color_mode?: `stability` | `energy`
-    color_scale?: D3InterpolateName
-    info_pane_open?: boolean
-    // Legend pane visibility
-    legend_pane_open?: boolean
-    // Energy threshold for showing unstable entries (eV/atom above hull)
-    energy_threshold?: number
-    // Callback for when JSON files are dropped
-    on_file_drop?: (entries: PhaseEntry[]) => void
-    // Enable structure preview overlay when hovering over entries with structure data
-    enable_structure_preview?: boolean
-    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
-    // Bindable phase diagram statistics - computed internally but exposed for external use
-    phase_stats?: PhaseStats | null
+  interface Props extends BasePhaseDiagramProps<TernaryPlotEntry>, Hull3DProps {
     // Bindable stable and unstable entries - computed internally but exposed for external use
-    stable_entries_out?: TernaryPlotEntry[]
-    unstable_entries_out?: TernaryPlotEntry[]
+    stable_entries?: TernaryPlotEntry[]
+    unstable_entries?: TernaryPlotEntry[]
   }
   let {
     entries,
@@ -101,105 +47,63 @@
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
-    energy_threshold = $bindable(0.5), // eV/atom above hull for showing entries
+    max_hull_dist_show_phases = $bindable(0.5), // eV/atom above hull for showing entries
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
-    stable_entries_out = $bindable([]),
-    unstable_entries_out = $bindable([]),
+    stable_entries = $bindable([]),
+    unstable_entries = $bindable([]),
     ...rest
   }: Props = $props()
 
-  const merged_controls: PDControlsType = $derived({
-    ...default_controls,
-    ...controls,
-  })
-
-  const default_config: PhaseDiagramConfig = {
-    margin: { top: 40, right: 40, bottom: 60, left: 60 },
-    width: 600,
-    height: 600,
-    unstable_threshold: 0.2,
-    show_labels: true,
-    show_hull: true,
-    point_size: 8,
-    line_width: 2,
-    font_size: 12,
-    colors: {
-      stable: `#0072B2`,
-      unstable: `#E69F00`,
-      hull_line: `var(--accent-color, #1976D2)`,
-      background: `transparent`,
-      text: `var(--text-color, #212121)`,
-      edge: `var(--text-color, #212121)`,
-      tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
-      tooltip_text: `var(--tooltip-text, white)`,
-      annotation: `var(--text-color, #212121)`,
-    },
-  }
-
+  const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({
-    ...default_config,
+    ...default_pd_config,
     ...config,
-    margin: { ...default_config.margin, ...(config.margin || {}) },
+    colors: { ...default_pd_config.colors, ...(config.colors || {}) },
+    margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
-  // Decide which energy source to use per entry
-  const has_precomputed_e_form = $derived(
-    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`),
-  )
-  const has_precomputed_hull = $derived(
-    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`),
-  )
-
-  // Build unary references once from entries; inexpensive and used for capability checks
-  const unary_refs = $derived.by(() => find_lowest_energy_unary_refs(entries))
-
-  const can_compute_e_form = $derived.by(() => {
-    const elements_in_entries = Array.from(
-      new Set(entries.flatMap((e) => Object.keys(e.composition))),
-    )
-    return elements_in_entries.every((el) => Boolean(unary_refs[el]))
-  })
-  const can_compute_hull = $derived(can_compute_e_form)
-
-  // Resolve mode to avoid inconsistent states:
-  // - If full precomputed available, honor user toggle
-  // - Else if we can compute both, use on-the-fly automatically
-  // - Else fall back to precomputed (best-effort)
-  const energy_mode = $derived(
-    (has_precomputed_e_form && has_precomputed_hull)
-      ? energy_source_mode
-      : ((can_compute_e_form && can_compute_hull) ? `on-the-fly` : `precomputed`),
+  let { // Compute energy mode information
+    has_precomputed_e_form,
+    has_precomputed_hull,
+    can_compute_e_form,
+    can_compute_hull,
+    energy_mode,
+    unary_refs,
+  } = $derived(
+    helpers.compute_energy_mode_info(
+      entries,
+      thermo.find_lowest_energy_unary_refs,
+      energy_source_mode,
+    ),
   )
 
-  const effective_entries = $derived.by(() => {
-    if (energy_mode === `precomputed`) return entries
-    return entries.map((entry) => {
-      const e_form = compute_e_form_per_atom(entry, unary_refs)
-      if (e_form == null) return entry
-      return { ...entry, e_form_per_atom: e_form }
-    })
-  })
+  const effective_entries = $derived(
+    helpers.get_effective_entries(
+      entries,
+      energy_mode,
+      unary_refs,
+      thermo.compute_e_form_per_atom,
+    ),
+  )
 
   // Process phase diagram data with unified PhaseEntry interface using effective entries
   const processed_entries = $derived(effective_entries)
-  const pd_data = $derived(process_pd_entries(processed_entries))
+  const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
-    const all_elements = pd_data.elements
-
-    if (all_elements.length > 3) {
+    if (pd_data.elements.length > 3) {
       console.error(
-        `PhaseDiagram3D: Dataset contains ${all_elements.length} elements, but ternary diagrams require exactly 3. Found: [${
-          all_elements.join(`, `)
+        `PhaseDiagram3D: Dataset contains ${pd_data.elements.length} elements, but ternary diagrams require exactly 3. Found: [${
+          pd_data.elements.join(`, `)
         }]`,
       )
       return []
     }
 
-    return all_elements
+    return pd_data.elements
   })
 
   // 1) Raw 3D coordinates (formation-energy z), independent of hull state
@@ -227,14 +131,14 @@
     const enriched = (() => {
       if (energy_mode === `on-the-fly`) {
         const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-        const e_hulls = compute_e_above_hull_for_points(pts, hull_model)
+        const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
         return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
       }
       return coords_entries
     })()
 
     const energy_filtered = enriched.filter((entry: TernaryPlotEntry) =>
-      (entry.e_above_hull ?? 0) <= energy_threshold
+      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
     )
 
     return energy_filtered.map((entry: TernaryPlotEntry) => {
@@ -246,18 +150,15 @@
     })
   })
 
-  const stable_entries = $derived(
-    plot_entries.filter((entry: TernaryPlotEntry) =>
+  $effect(() => {
+    stable_entries = plot_entries.filter((entry: TernaryPlotEntry) =>
       entry.is_stable || entry.e_above_hull === 0
-    ),
-  )
-
-  const unstable_entries = $derived(
-    plot_entries.filter((entry: TernaryPlotEntry) =>
+    )
+    unstable_entries = plot_entries.filter((entry: TernaryPlotEntry) =>
       typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
       !entry.is_stable
-    ),
-  )
+    )
+  })
 
   // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
   type HullTriangle = {
@@ -271,7 +172,7 @@
     }
     const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
     try {
-      return compute_lower_hull_triangles(points)
+      return thermo.compute_lower_hull_triangles(points)
     } catch (error) {
       console.error(`Error computing convex hull:`, error)
       return []
@@ -279,7 +180,7 @@
   })
 
   // Cached hull model for e_above_hull queries; recompute only when faces change
-  let hull_model = $derived.by(() => build_lower_hull_model(hull_faces))
+  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
 
   // Total counts based on hull-enriched entries
   const total_unstable_count = $derived(
@@ -359,7 +260,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, energy_threshold, show_stable_labels, show_unstable_labels, label_energy_threshold, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
 
     render_once()
   })
@@ -367,7 +268,7 @@
   // Label controls with smart defaults based on entry count
   let show_stable_labels = $state(true)
   let show_unstable_labels = $state(false)
-  let label_energy_threshold = $state(0.1) // eV/atom above hull for showing labels
+  let max_hull_dist_show_labels = $state(0.1) // eV/atom above hull for showing labels
 
   // Smart label defaults - hide labels if too many entries
   $effect(() => {
@@ -392,9 +293,6 @@
     return original_entry?.structure as AnyStructure || null
   }
 
-  const get_tooltip_text = (entry: TernaryPlotEntry) =>
-    build_entry_tooltip_text(entry)
-
   const reset_camera = () => Object.assign(camera, camera_default)
   function reset_all() {
     reset_camera()
@@ -407,8 +305,8 @@
     show_unstable = PD_DEFAULTS.ternary.show_unstable
     show_stable_labels = PD_DEFAULTS.ternary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.ternary.show_unstable_labels
-    label_energy_threshold = PD_DEFAULTS.ternary.label_energy_threshold
-    energy_threshold = PD_DEFAULTS.ternary.energy_threshold
+    max_hull_dist_show_labels = PD_DEFAULTS.ternary.max_hull_dist_show_labels
+    max_hull_dist_show_phases = PD_DEFAULTS.ternary.max_hull_dist_show_phases
     show_hull_faces = PD_DEFAULTS.ternary.show_hull_faces
     hull_face_color = PD_DEFAULTS.ternary.hull_face_color
     hull_face_opacity = PD_DEFAULTS.ternary.hull_face_opacity
@@ -430,7 +328,7 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await parse_pd_entries_from_drop(event)
+    const data = await helpers.parse_pd_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 
@@ -441,33 +339,26 @@
     setTimeout(() => copy_feedback_visible = false, 1500)
   }
 
-  function get_point_color(entry: TernaryPlotEntry): string {
-    return get_point_color_for_entry(
+  const get_point_color = (entry: TernaryPlotEntry): string =>
+    helpers.get_point_color_for_entry(
       entry,
       color_mode,
       merged_config.colors,
       energy_color_scale,
     )
-  }
 
   // Cache energy color scale per frame/setting
   const energy_color_scale = $derived.by(() =>
-    get_energy_color_scale(color_mode, color_scale, plot_entries)
+    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_energy_threshold = $derived(
-    compute_max_energy_threshold(processed_entries),
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(processed_entries),
   )
 
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = get_phase_diagram_stats(processed_entries, elements, 3)
-  })
-
-  // Sync stable and unstable entries to bindable props
-  $effect(() => {
-    stable_entries_out = stable_entries
-    unstable_entries_out = unstable_entries
+    phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
   })
 
   // 3D to 2D projection for ternary diagrams
@@ -867,7 +758,7 @@
       const can_label_stable = is_stable_point && show_stable_labels
       const can_label_unstable = !is_stable_point && show_unstable_labels &&
         (typeof entry.e_above_hull === `number` &&
-          entry.e_above_hull <= label_energy_threshold)
+          entry.e_above_hull <= max_hull_dist_show_labels)
       if (!(can_label_stable || can_label_unstable)) continue
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
@@ -1007,7 +898,7 @@
   }
 
   const find_entry_at_mouse = (event: MouseEvent): TernaryPlotEntry | null =>
-    find_pd_entry_at_mouse(
+    helpers.find_pd_entry_at_mouse(
       canvas,
       event,
       plot_entries,
@@ -1033,21 +924,11 @@
         if (structure) {
           selected_structure = structure
           selected_entry = entry
-          calculate_modal_side()
+          modal_place_right = helpers.calculate_modal_side(wrapper)
           modal_open = true
         }
       }
     } else if (modal_open) close_structure_popup()
-  }
-
-  // Decide side based on available viewport room; modal is absolutely positioned
-  function calculate_modal_side() {
-    if (!wrapper) return
-    const rect = wrapper.getBoundingClientRect()
-    const viewport_width = globalThis.innerWidth
-    const space_on_right = viewport_width - rect.right
-    const space_on_left = rect.left
-    modal_place_right = space_on_right >= space_on_left
   }
 
   function close_structure_popup() {
@@ -1059,7 +940,7 @@
   const handle_double_click = (event: MouseEvent) => {
     const entry = find_entry_at_mouse(event)
     if (entry) {
-      copy_to_clipboard(get_tooltip_text(entry), {
+      copy_to_clipboard(helpers.build_entry_tooltip_text(entry), {
         x: event.clientX,
         y: event.clientY,
       })
@@ -1130,20 +1011,14 @@
   // Fullscreen handling with camera reset on transitions
   let was_fullscreen = $state(fullscreen)
   $effect(() => {
-    if (typeof window === `undefined`) return
-
-    if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
-      wrapper.requestFullscreen().catch(console.error)
-    } else if (!fullscreen && document.fullscreenElement) {
-      document.exitFullscreen()
-    }
-
-    // Reset camera only on fullscreen transitions
-    if (fullscreen !== was_fullscreen) {
-      camera.center_x = 0
-      camera.center_y = -50
-      was_fullscreen = fullscreen
-    }
+    helpers.setup_fullscreen_effect(fullscreen, wrapper, (entering_fullscreen) => {
+      // Reset camera only on fullscreen transitions
+      if (entering_fullscreen !== was_fullscreen) {
+        camera.center_x = 0
+        camera.center_y = -50
+        was_fullscreen = entering_fullscreen
+      }
+    })
   })
 
   let style = $derived(
@@ -1246,12 +1121,10 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
-          {energy_threshold}
-          {label_energy_threshold}
+          {max_hull_dist_show_phases}
+          {max_hull_dist_show_labels}
           {label_threshold}
-          toggle_props={{
-            class: `info-btn`,
-          }}
+          toggle_props={{ class: `info-btn` }}
         />
       {/if}
 
@@ -1275,17 +1148,15 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:energy_threshold
-        bind:label_energy_threshold
-        {max_energy_threshold}
+        bind:max_hull_dist_show_phases
+        bind:max_hull_dist_show_labels
+        {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
         {camera}
         {merged_controls}
-        toggle_props={{
-          class: `legend-controls-btn`,
-        }}
+        toggle_props={{ class: `legend-controls-btn` }}
         {show_hull_faces}
         on_hull_faces_change={(value) => show_hull_faces = value}
         {hull_face_color}

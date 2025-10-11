@@ -1,10 +1,10 @@
 <script lang="ts">
+  import { Icon } from '$lib'
   import type { RouteEntry } from '$site/state.svelte'
   import type { Page } from '@sveltejs/kit'
   import type { Snippet } from 'svelte'
   import { click_outside } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import Icon from './Icon.svelte'
 
   interface Props
     extends Omit<HTMLAttributes<HTMLElementTagNameMap[`nav`]>, `children`> {

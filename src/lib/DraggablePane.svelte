@@ -162,9 +162,10 @@
 
 <svelte:window
   onkeydown={(event: KeyboardEvent) => {
-    if (event.key !== `Escape`) return
-    event.preventDefault()
-    close_pane()
+    if (event.key === `Escape` && show) {
+      event.preventDefault()
+      close_pane()
+    }
   }}
   onresize={handle_resize}
 />
@@ -292,7 +293,7 @@
     text-align: right; /* right align long line-breaking trajectory file names */
   }
   .draggable-pane :global(label) {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--pane-label-gap, 2pt);
   }

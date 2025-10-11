@@ -1,12 +1,6 @@
 import type { ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
-import {
-  build_entry_tooltip_text,
-  compute_max_energy_threshold,
-  find_pd_entry_at_mouse,
-  get_energy_color_scale,
-  get_point_color_for_entry,
-} from '$lib/phase-diagram/helpers'
+import * as helpers from '$lib/phase-diagram/helpers'
 import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
 import type { PhaseEntry } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
@@ -14,7 +8,7 @@ import { describe, expect, test } from 'vitest'
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
     const color_scale: D3InterpolateName = `interpolateViridis`
-    const scale_null = get_energy_color_scale(`stability`, color_scale, [])
+    const scale_null = helpers.get_energy_color_scale(`stability`, color_scale, [])
     expect(scale_null).toBeNull()
   })
 
@@ -23,10 +17,15 @@ describe(`helpers: energy color scale + point color`, () => {
       e_above_hull: 0.5,
     }]
     const color_scale: D3InterpolateName = `interpolateViridis`
-    const scale = get_energy_color_scale(`energy`, color_scale, entries)
+    const scale = helpers.get_energy_color_scale(`energy`, color_scale, entries)
     expect(scale).not.toBeNull()
-    const c0 = get_point_color_for_entry({ e_above_hull: 0 }, `energy`, undefined, scale)
-    const c1 = get_point_color_for_entry(
+    const c0 = helpers.get_point_color_for_entry(
+      { e_above_hull: 0 },
+      `energy`,
+      undefined,
+      scale,
+    )
+    const c1 = helpers.get_point_color_for_entry(
       { e_above_hull: 0.5 },
       `energy`,
       undefined,
@@ -38,13 +37,13 @@ describe(`helpers: energy color scale + point color`, () => {
   })
 
   test(`get_point_color_for_entry stability mode`, () => {
-    const stable = get_point_color_for_entry(
+    const stable = helpers.get_point_color_for_entry(
       { is_stable: true },
       `stability`,
       undefined,
       null,
     )
-    const unstable = get_point_color_for_entry(
+    const unstable = helpers.get_point_color_for_entry(
       { is_stable: false },
       `stability`,
       undefined,
@@ -56,28 +55,28 @@ describe(`helpers: energy color scale + point color`, () => {
 })
 
 describe(`helpers: thresholds and tooltips`, () => {
-  test(`compute_max_energy_threshold returns robust default and range`, () => {
-    expect(compute_max_energy_threshold([] as unknown as PhaseEntry[])).toBeCloseTo(0.5)
-    const v = compute_max_energy_threshold([
-      { e_above_hull: 0 } as unknown as PhaseEntry,
-      { e_above_hull: 0.2 } as unknown as PhaseEntry,
+  test(`calc_max_hull_dist_in_data returns robust default and range`, () => {
+    expect(helpers.calc_max_hull_dist_in_data([])).toBeCloseTo(0.5)
+    const v = helpers.calc_max_hull_dist_in_data([
+      { e_above_hull: 0 } as PhaseEntry,
+      { e_above_hull: 0.2 } as PhaseEntry,
     ])
     expect(v).toBeGreaterThan(0.2)
   })
 
   test(`build_entry_tooltip_text contains key fields`, () => {
-    const t1 = build_entry_tooltip_text(
-      { composition: { Li: 1 }, energy: -1 } as unknown as PhaseEntry,
+    const t1 = helpers.build_entry_tooltip_text(
+      { composition: { Li: 1 }, energy: -1 } as PhaseEntry,
     )
     expect(t1).toMatch(/Li/)
-    const t2 = build_entry_tooltip_text(
+    const t2 = helpers.build_entry_tooltip_text(
       {
         composition: { Li: 1, O: 1 },
         energy: -6,
         e_form_per_atom: -3,
         e_above_hull: 0,
         entry_id: `mp-1`,
-      } as unknown as PhaseEntry,
+      } as PhaseEntry,
     )
     expect(t2).toMatch(/E above hull/)
     expect(t2).toMatch(/Formation Energy/)
@@ -191,7 +190,7 @@ describe(`helpers: energy range preserves zero formation energy`, () => {
 
 describe(`helpers: mouse hit testing`, () => {
   test(`find_pd_entry_at_mouse returns null when no canvas`, () => {
-    const hit = find_pd_entry_at_mouse(
+    const hit = helpers.find_pd_entry_at_mouse(
       undefined as unknown as HTMLCanvasElement,
       { clientX: 0, clientY: 0 } as unknown as MouseEvent,
       [],
@@ -214,7 +213,7 @@ describe(`helpers: mouse hit testing`, () => {
       visible: true,
     }]
     const project = (x: number, y: number) => ({ x, y })
-    const hit = find_pd_entry_at_mouse(
+    const hit = helpers.find_pd_entry_at_mouse(
       canvas,
       { clientX: 102, clientY: 102 } as unknown as MouseEvent,
       plot_entries,

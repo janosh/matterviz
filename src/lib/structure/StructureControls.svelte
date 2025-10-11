@@ -16,25 +16,16 @@
 
   export interface Props
     extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
-    // Control pane state
-    controls_open?: boolean
-    // Scene properties (bindable from parent)
+    controls_open?: boolean // Control pane state
     scene_props?: ComponentProps<typeof StructureScene>
-    // Lattice properties (bindable from parent)
     lattice_props?: ComponentProps<typeof Lattice>
-    // Display options (bindable from parent)
     show_image_atoms?: boolean
-    // Supercell options (bindable from parent)
     supercell_scaling?: string
-    // Background settings (bindable from parent)
     background_color?: string
     background_opacity?: number
-    // Color scheme (bindable from parent)
     color_scheme?: string
-    // Structure for export functions
     structure?: AnyStructure | undefined
-    // Canvas wrapper for PNG export
-    wrapper?: HTMLDivElement
+    wrapper?: HTMLDivElement // Canvas wrapper for PNG export
     // Export settings
     png_dpi?: number
     scene?: Scene
