@@ -3,15 +3,6 @@
   import { selected } from '$lib/state.svelte'
   import type { ComponentProps } from 'svelte'
 
-  interface Props extends ComponentProps<typeof ScatterPlot> {
-    y: number[] // array of length 118 (one value for each element)
-    x_label?: string
-    y_label?: string
-    y_unit?: string
-    tooltip_point?: InternalPoint | null
-    hovered?: boolean
-    y_format?: string
-  }
   let {
     y,
     x_label = `Atomic Number`,
@@ -21,7 +12,15 @@
     hovered = $bindable(false),
     y_format = `~s`,
     ...rest
-  }: Props = $props()
+  }: ComponentProps<typeof ScatterPlot> & {
+    y: number[] // array of length 118 (one value for each element)
+    x_label?: string
+    y_label?: string
+    y_unit?: string
+    tooltip_point?: InternalPoint | null
+    hovered?: boolean
+    y_format?: string
+  } = $props()
 
   // update tooltip on hover element tile
   $effect.pre(() => {

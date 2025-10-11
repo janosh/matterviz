@@ -16,8 +16,27 @@
     | `vertical`
     | `triangular`
     | `quadrant`
-
-  interface Props extends Omit<HTMLAttributes<HTMLElement>, `onclick`> {
+  let {
+    element,
+    bg_color = undefined,
+    show_symbol = true,
+    show_number = undefined, // auto-determine based on multi-value splits
+    show_name = true,
+    value = undefined,
+    symbol_style = ``,
+    active = false,
+    href = undefined,
+    luminance_threshold = 0.7,
+    text_color = $bindable(),
+    float_fmt = undefined,
+    node = $bindable(null),
+    label = undefined,
+    bg_colors = [],
+    show_values = undefined,
+    split_layout = undefined, // auto-determine based on value count if not specified
+    onclick,
+    ...rest
+  }: Omit<HTMLAttributes<HTMLElement>, `onclick`> & {
     element: ChemicalElement
     bg_color?: string
     show_symbol?: boolean
@@ -39,28 +58,7 @@
     // control the layout of multi-value splits
     split_layout?: SplitLayout
     onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
-  }
-  let {
-    element,
-    bg_color = undefined,
-    show_symbol = true,
-    show_number = undefined, // auto-determine based on multi-value splits
-    show_name = true,
-    value = undefined,
-    symbol_style = ``,
-    active = false,
-    href = undefined,
-    luminance_threshold = 0.7,
-    text_color = $bindable(),
-    float_fmt = undefined,
-    node = $bindable(null),
-    label = undefined,
-    bg_colors = [],
-    show_values = undefined,
-    split_layout = undefined, // auto-determine based on value count if not specified
-    onclick,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)

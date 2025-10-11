@@ -13,10 +13,7 @@
   import { CmdPalette, CopyButton, GitHubCorner } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
 
-  interface Props {
-    children?: Snippet
-  }
-  let { children }: Props = $props()
+  let { children }: { children?: Snippet<[]> } = $props()
 
   let cmd_palette_open = $state(false)
 

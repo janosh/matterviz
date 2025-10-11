@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { DraggablePane, Line, symbol_names } from '$lib'
+  import { Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
+    BasePlotProps,
     D3SymbolName,
     DataSeries,
     HoverConfig,
@@ -56,12 +57,105 @@
     interpolate?: (a: T, b: T) => (t: number) => T
   }
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  let {
+    series = [],
+    x_lim = [null, null],
+    y_lim = [null, null],
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
+    current_x_value = null,
+    y2_lim = [null, null],
+    y2_range = $bindable(undefined),
+    y2_label = ``,
+    y2_label_shift = { y: 60 },
+    y2_tick_label_shift = { x: 8, y: 0 },
+    y2_unit = ``,
+    y2_format = $bindable(``),
+    y2_ticks = 5,
+    y2_scale_type = `linear`,
+    show_y2_grid = $bindable(true),
+    y2_grid_style,
+    padding = {},
+    range_padding = 0.05,
+    x_label = ``,
+    x_label_shift = { x: 0, y: -40 },
+    x_tick_label_shift = { x: 0, y: 20 },
+    y_label = ``,
+    y_label_shift = { y: 12 },
+    y_tick_label_shift = { x: -8, y: 0 },
+    y_unit = ``,
+    tooltip_point = $bindable(null),
+    hovered = $bindable(false),
+    markers = DEFAULTS.scatter.markers,
+    x_format = $bindable(``),
+    y_format = $bindable(``),
+    tooltip,
+    user_content,
+    change = () => {},
+    x_ticks,
+    y_ticks = 5,
+    x_scale_type = `linear`,
+    y_scale_type = `linear`,
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
+    color_scale = {
+      type: `linear`,
+      scheme: `interpolateViridis`,
+      value_range: undefined,
+    },
+    color_bar = {},
+    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
+    label_placement_config = {},
+    hover_config = {},
+    legend = {},
+    point_tween,
+    line_tween,
+    point_events,
+    on_point_click,
+    on_point_hover,
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
+    // Style control props
+    point_size = $bindable(4),
+    point_color = $bindable(`cornflowerblue`),
+    point_opacity = $bindable(1),
+    point_stroke_width = $bindable(1),
+    point_stroke_color = $bindable(`#000000`),
+    point_stroke_opacity = $bindable(1),
+    line_width = $bindable(2),
+    line_color = $bindable(`cornflowerblue`),
+    line_opacity = $bindable(1),
+    line_dash = $bindable(DEFAULTS.scatter.line_dash),
+    show_points = $bindable(true),
+    show_lines = $bindable(true),
+    selected_series_idx = $bindable(0),
+    color_axis_labels = true,
+    controls_toggle_props,
+    controls_pane_props,
+    children,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
     series?: DataSeries[]
-    x_lim?: [number | null, number | null]
-    y_lim?: [number | null, number | null]
     x_range?: [number | null, number | null] // Explicit ranges for x and y axes. Null pins a side to auto.
     y_range?: [number | null, number | null] // Use null on one side to auto that bound.
+    x_format?: string
+    y_format?: string
+    x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
+    y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
+    x_scale_type?: ScaleType // Type of scale for x-axis
+    y_scale_type?: ScaleType // Type of scale for y-axis
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
+    show_controls?: boolean // Whether to show the control pane
+    controls_open?: boolean // Whether the control pane is open
+    // Component-specific props
     current_x_value?: number | null // Current x value to highlight on the x-axis (e.g. current frame)
     // Right y-axis configuration
     y2_lim?: [number | null, number | null]
@@ -73,34 +167,16 @@
     y2_format?: string
     y2_ticks?: TicksOption
     y2_scale_type?: ScaleType
-    padding?: Sides
-    x_label?: string
-    x_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis label in px
+    show_y2_grid?: boolean
+    y2_grid_style?: HTMLAttributes<SVGLineElement>
     x_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis tick labels in px
-    y_label?: string
-    y_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis label in px
     y_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis tick labels in px
     y_unit?: string
     tooltip_point?: InternalPoint | null // Point being hovered over, to display in tooltip (bindable)
-    hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
     markers?: Markers
-    x_format?: string
-    y_format?: string
     tooltip?: Snippet<[PlotPoint & ScatterTooltipProps]>
     user_content?: Snippet<[UserContentProps]>
     change?: (data: (Point & { series: DataSeries }) | null) => void
-    x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
-    y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
-    x_scale_type?: ScaleType // Type of scale for x-axis
-    y_scale_type?: ScaleType // Type of scale for y-axis
-    show_x_zero_line?: boolean
-    show_y_zero_line?: boolean
-    show_x_grid?: boolean
-    show_y_grid?: boolean
-    show_y2_grid?: boolean
-    x_grid_style?: HTMLAttributes<SVGLineElement>
-    y_grid_style?: HTMLAttributes<SVGLineElement>
-    y2_grid_style?: HTMLAttributes<SVGLineElement>
     color_scale?: {
       type?: ScaleType // Type of scale for color mapping
       scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
@@ -125,7 +201,6 @@
     legend?: LegendConfig | null // Configuration for the legend
     point_tween?: LocalTweenedOptions<XyObj>
     line_tween?: LocalTweenedOptions<string>
-    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g. 0.05 = 5%)
     point_events?: Record<
       string,
       (payload: { point: InternalPoint; event: Event }) => void
@@ -134,9 +209,6 @@
     on_point_hover?: (
       data: { point: InternalPoint | null; event?: MouseEvent },
     ) => void
-    // Control pane props
-    show_controls?: boolean // Whether to show the control pane
-    controls_open?: boolean // Whether the control pane is open
     // Style control props
     point_size?: number
     point_color?: string
@@ -152,92 +224,7 @@
     show_lines?: boolean
     selected_series_idx?: number
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
-    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    children?: Snippet<[]>
-  }
-  let {
-    series = [],
-    x_lim = [null, null],
-    y_lim = [null, null],
-    x_range,
-    y_range,
-    current_x_value = null,
-    y2_lim = [null, null],
-    y2_range,
-    y2_label = ``,
-    y2_label_shift = { y: 60 },
-    y2_tick_label_shift = { x: 8, y: 0 },
-    y2_unit = ``,
-    y2_format = $bindable(``),
-    y2_ticks = 5,
-    y2_scale_type = `linear`,
-    show_y2_grid = true,
-    y2_grid_style,
-    padding = {},
-    range_padding = 0.05, // Default padding factor
-    x_label = ``,
-    x_label_shift = { x: 0, y: -40 },
-    x_tick_label_shift = { x: 0, y: 20 },
-    y_label = ``,
-    y_label_shift = { y: 12 },
-    y_tick_label_shift = { x: -8, y: 0 },
-    y_unit = ``,
-    tooltip_point = $bindable(null),
-    hovered = $bindable(false),
-    markers = DEFAULTS.scatter.markers,
-    x_format = $bindable(``),
-    y_format = $bindable(``),
-    tooltip,
-    user_content,
-    change = () => {},
-    x_ticks,
-    y_ticks = 5,
-    x_scale_type = `linear`,
-    y_scale_type = `linear`,
-    show_x_zero_line = false,
-    show_y_zero_line = false,
-    show_x_grid = true,
-    show_y_grid = true,
-    x_grid_style,
-    y_grid_style,
-    color_scale = {
-      type: `linear`,
-      scheme: `interpolateViridis`,
-      value_range: undefined,
-    },
-    color_bar = {},
-    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
-    label_placement_config = {},
-    hover_config = {},
-    legend = {},
-    point_tween,
-    line_tween,
-    point_events,
-    on_point_click,
-    on_point_hover,
-    show_controls = true,
-    controls_open = $bindable(false),
-    // Style control props
-    point_size = $bindable(4),
-    point_color = $bindable(`cornflowerblue`),
-    point_opacity = $bindable(1),
-    point_stroke_width = $bindable(1),
-    point_stroke_color = $bindable(`#000000`),
-    point_stroke_opacity = $bindable(1),
-    line_width = $bindable(2),
-    line_color = $bindable(`cornflowerblue`),
-    line_opacity = $bindable(1),
-    line_dash = $bindable(DEFAULTS.scatter.line_dash),
-    show_points = $bindable(true),
-    show_lines = $bindable(true),
-    selected_series_idx = $bindable(0),
-    color_axis_labels = true,
-    controls_toggle_props,
-    controls_pane_props,
-    children,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element

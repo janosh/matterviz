@@ -5,7 +5,24 @@
   import { draggable, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  let {
+    show = $bindable(false),
+    show_pane = true,
+    children,
+    toggle_props = {},
+    open_icon = `Cross`,
+    closed_icon = `Settings`,
+    icon_style = ``,
+    offset = { x: 5, y: 5 },
+    max_width = `450px`,
+    pane_props = {},
+    onclose = () => {},
+    on_drag_start = () => {},
+    toggle_pane_btn = $bindable(undefined),
+    pane_div = $bindable(undefined),
+    has_been_dragged = $bindable(false),
+    currently_dragging = $bindable(false),
+  }: {
     show?: boolean
     show_pane?: boolean
     children: Snippet<[]>
@@ -26,25 +43,7 @@
     pane_div?: HTMLDivElement
     has_been_dragged?: boolean
     currently_dragging?: boolean
-  }
-  let {
-    show = $bindable(false),
-    show_pane = true,
-    children,
-    toggle_props = {},
-    open_icon = `Cross`,
-    closed_icon = `Settings`,
-    icon_style = ``,
-    offset = { x: 5, y: 5 },
-    max_width = `450px`,
-    pane_props = {},
-    onclose = () => {},
-    on_drag_start = () => {},
-    toggle_pane_btn = $bindable(undefined),
-    pane_div = $bindable(undefined),
-    has_been_dragged = $bindable(false),
-    currently_dragging = $bindable(false),
-  }: Props = $props()
+  } = $props()
 
   let initial_position = $state({ left: `50px`, top: `50px` })
   let show_control_buttons = $state(false)
@@ -317,10 +316,14 @@
     flex: 1;
     min-width: 60px;
   }
+  .draggable-pane :global(input[type='color']) {
+    width: 2.5em;
+    height: 1.3em;
+    margin: 0 5pt;
+  }
   .draggable-pane :global(input[type='number']) {
     box-sizing: border-box;
     text-align: center;
-    border-radius: 3pt;
     width: 2.2em;
     margin: 0 3pt 0 6pt;
     flex-shrink: 0;

@@ -53,7 +53,7 @@ describe(`RdfPlot`, () => {
     [{ structures: [nacl_structure, pd_structure] }, `structures array`],
     [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }, `structures object`],
     [{ structures: [], patterns: [] }, `empty inputs`],
-  ])(`renders %s`, (props, _desc) => {
+  ])(`renders patterns and structures`, (props, _desc) => {
     mount(RdfPlot, { target: document.body, props })
   })
 

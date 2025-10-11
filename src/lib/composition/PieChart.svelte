@@ -20,21 +20,6 @@
     label_y: number
     is_outside_slice: boolean
   }
-
-  interface Props extends SVGAttributes<SVGSVGElement> {
-    composition: CompositionType
-    size?: number
-    stroke_width?: number
-    inner_radius?: number
-    show_labels?: boolean
-    show_percentages?: boolean
-    show_amounts?: boolean
-    color_scheme?: ColorSchemeName
-    center_content?: Snippet<[{ composition: CompositionType; total_atoms: number }]>
-    segment_content?: Snippet<[PieSegmentData]>
-    interactive?: boolean
-    svg_node?: SVGSVGElement | null
-  }
   let {
     composition,
     size = 200,
@@ -49,7 +34,20 @@
     interactive = true,
     svg_node = $bindable(null),
     ...rest
-  }: Props = $props()
+  }: SVGAttributes<SVGSVGElement> & {
+    composition: CompositionType
+    size?: number
+    stroke_width?: number
+    inner_radius?: number
+    show_labels?: boolean
+    show_percentages?: boolean
+    show_amounts?: boolean
+    color_scheme?: ColorSchemeName
+    center_content?: Snippet<[{ composition: CompositionType; total_atoms: number }]>
+    segment_content?: Snippet<[PieSegmentData]>
+    interactive?: boolean
+    svg_node?: SVGSVGElement | null
+  } = $props()
 
   let element_colors = $derived(
     element_color_schemes[color_scheme] || element_color_schemes.Vesta,

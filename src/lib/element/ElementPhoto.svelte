@@ -3,11 +3,9 @@
   import { Icon } from '$lib'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props extends HTMLAttributes<HTMLImageElement | HTMLDivElement> {
-    element: ChemicalElement
-    missing_msg?: string
-  }
-  let { element, missing_msg = `No image for `, ...rest }: Props = $props()
+  let { element, missing_msg = `No image for `, ...rest }:
+    & HTMLAttributes<HTMLImageElement | HTMLDivElement>
+    & { element: ChemicalElement; missing_msg?: string } = $props()
 
   let { name, number } = $derived(element ?? {})
   let file = $derived(`elements/${number}-${name?.toLowerCase()}.avif`)

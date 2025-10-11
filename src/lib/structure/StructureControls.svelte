@@ -11,20 +11,6 @@
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
 
-  export interface Props
-    extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
-    controls_open?: boolean // Control pane state
-    scene_props?: ComponentProps<typeof StructureScene>
-    lattice_props?: ComponentProps<typeof Lattice>
-    show_image_atoms?: boolean
-    supercell_scaling?: string
-    background_color?: string
-    background_opacity?: number
-    color_scheme?: string
-    structure?: AnyStructure | undefined
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  }
   let {
     controls_open = $bindable(false),
     scene_props = $bindable({}),
@@ -45,7 +31,19 @@
     pane_props = $bindable({}),
     toggle_props = $bindable({}),
     ...rest
-  }: Props = $props()
+  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    controls_open?: boolean // Control pane state
+    scene_props?: ComponentProps<typeof StructureScene>
+    lattice_props?: ComponentProps<typeof Lattice>
+    show_image_atoms?: boolean
+    supercell_scaling?: string
+    background_color?: string
+    background_opacity?: number
+    color_scheme?: string
+    structure?: AnyStructure | undefined
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+  } = $props()
 
   // Color scheme selection state
   let color_scheme_selected = $state([color_scheme])

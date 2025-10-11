@@ -48,7 +48,40 @@
     on_error?: (data: TrajHandlerData) => void
   }
 
-  interface Props extends EventHandlers, HTMLAttributes<HTMLDivElement> {
+  let {
+    trajectory = $bindable(undefined),
+    data_url,
+    current_step_idx = $bindable(0),
+    data_extractor = full_data_extractor,
+    allow_file_drop = true,
+    layout = `auto`,
+    structure_props = {},
+    scatter_props = {},
+    histogram_props = {},
+    spinner_props = {},
+    trajectory_controls,
+    error_snippet,
+    show_controls = true,
+    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
+    auto_play = false,
+    display_mode = $bindable(`structure+scatter`),
+    step_labels = 5,
+    on_play,
+    on_pause,
+    on_step_change,
+    on_end,
+    on_loop,
+    on_frame_rate_change,
+    on_display_mode_change,
+    on_fullscreen_change,
+    on_file_load,
+    on_error,
+    fps_range = DEFAULTS.trajectory.fps_range,
+    fps = $bindable(5),
+    loading_options = {},
+    plot_skimming = true,
+    ...rest
+  }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
     // trajectory data - can be provided directly or loaded from file
     trajectory?: TrajectoryType | undefined
     // URL to load trajectory from (alternative to providing trajectory directly)
@@ -83,7 +116,6 @@
     >
     // Custom error snippet for advanced error handling
     error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
     fullscreen_toggle?: Snippet<[]> | boolean
@@ -127,41 +159,7 @@
     loading_options?: LoadingOptions
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
-  }
-  let {
-    trajectory = $bindable(undefined),
-    data_url,
-    current_step_idx = $bindable(0),
-    data_extractor = full_data_extractor,
-    allow_file_drop = true,
-    layout = `auto`,
-    structure_props = {},
-    scatter_props = {},
-    histogram_props = {},
-    spinner_props = {},
-    trajectory_controls,
-    error_snippet,
-    show_controls = true,
-    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
-    auto_play = false,
-    display_mode = $bindable(`structure+scatter`),
-    step_labels = 5,
-    on_play,
-    on_pause,
-    on_step_change,
-    on_end,
-    on_loop,
-    on_frame_rate_change,
-    on_display_mode_change,
-    on_fullscreen_change,
-    on_file_load,
-    on_error,
-    fps_range = DEFAULTS.trajectory.fps_range,
-    fps = $bindable(5),
-    loading_options = {},
-    plot_skimming = true,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let dragover = $state(false)
   let loading = $state(false)

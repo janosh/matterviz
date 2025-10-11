@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
-  import type { DataSeries, Sides } from '$lib/plot'
+  import type { BasePlotProps, DataSeries } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
@@ -19,69 +18,12 @@
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    series: DataSeries[]
-    x_lim?: [number | null, number | null]
-    y_lim?: [number | null, number | null]
-    x_range?: [number | null, number | null]
-    y_range?: [number | null, number | null]
-    range_padding?: number
-    bins?: number
-    x_label?: string
-    x_label_shift?: { x?: number; y?: number }
-    y_label?: string
-    y_label_shift?: { x?: number; y?: number }
-    x_format?: string
-    y_format?: string
-    x_scale_type?: ScaleType
-    y_scale_type?: ScaleType
-    padding?: Sides
-    show_legend?: boolean
-    legend?: LegendConfig | null
-    bar_opacity?: number
-    bar_stroke_width?: number
-    bar_stroke_color?: string
-    bar_stroke_opacity?: number
-    bar_color?: string
-    selected_property?: string
-    mode?: `single` | `overlay`
-    show_x_zero_line?: boolean
-    show_y_zero_line?: boolean
-    show_x_grid?: boolean
-    show_y_grid?: boolean
-    x_grid_style?: HTMLAttributes<SVGLineElement>
-    y_grid_style?: HTMLAttributes<SVGLineElement>
-    x_ticks?: TicksOption
-    y_ticks?: TicksOption
-    tooltip?: Snippet<[{ value: number; count: number; property: string }]>
-    hovered?: boolean
-    change?: (data: { value: number; count: number; property: string } | null) => void
-    on_bar_click?: (
-      data: {
-        value: number
-        count: number
-        property: string
-        event: MouseEvent | KeyboardEvent
-      },
-    ) => void
-    on_bar_hover?: (
-      data:
-        | { value: number; count: number; property: string; event: MouseEvent }
-        | null,
-    ) => void
-    show_controls?: boolean
-    controls_open?: boolean
-    on_series_toggle?: (series_idx: number) => void
-    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    children?: Snippet<[]>
-  }
   let {
     series = $bindable([]),
     x_lim = [null, null],
     y_lim = [null, null],
-    x_range,
-    y_range,
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
     range_padding = 0.05,
     bins = $bindable(100),
     x_label = `Value`,
@@ -122,7 +64,51 @@
     controls_pane_props,
     children,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+    series: DataSeries[]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
+    x_format?: string
+    y_format?: string
+    x_scale_type?: ScaleType
+    y_scale_type?: ScaleType
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    x_ticks?: TicksOption
+    y_ticks?: TicksOption
+    hovered?: boolean
+    show_controls?: boolean
+    controls_open?: boolean
+    // Component-specific props
+    bins?: number
+    show_legend?: boolean
+    legend?: LegendConfig | null
+    bar_opacity?: number
+    bar_stroke_width?: number
+    bar_stroke_color?: string
+    bar_stroke_opacity?: number
+    bar_color?: string
+    selected_property?: string
+    mode?: `single` | `overlay`
+    tooltip?: Snippet<[{ value: number; count: number; property: string }]>
+    change?: (data: { value: number; count: number; property: string } | null) => void
+    on_bar_click?: (
+      data: {
+        value: number
+        count: number
+        property: string
+        event: MouseEvent | KeyboardEvent
+      },
+    ) => void
+    on_bar_hover?: (
+      data:
+        | { value: number; count: number; property: string; event: MouseEvent }
+        | null,
+    ) => void
+    on_series_toggle?: (series_idx: number) => void
+  } = $props()
 
   // Core state
   let [width, height] = $state([0, 0])
