@@ -94,7 +94,7 @@
     class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,
   }}
   toggle_props={{
-    title: `${controls_open ? `Close` : `Open`} phase diagram controls`,
+    title: controls_open ? `` : `Phase diagram controls`,
     class: `phase-diagram-controls-toggle`,
     ...toggle_props,
   }}

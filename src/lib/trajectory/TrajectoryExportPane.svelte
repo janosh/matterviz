@@ -157,7 +157,7 @@
   closed_icon="Export"
   pane_props={{ ...pane_props, class: `export-pane ${pane_props?.class ?? ``}` }}
   toggle_props={{
-    title: `${export_pane_open ? `Close` : `Open`} export controls`,
+    title: export_pane_open ? `` : `Export Trajectory`,
     ...toggle_props,
     class: `trajectory-export-toggle ${toggle_props?.class ?? ``}`,
   }}

@@ -1,5 +1,4 @@
 import type { AnyStructure } from '$lib'
-import { export_canvas_as_png } from '$lib/io/export'
 import { StructureControls } from '$lib/structure'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -18,58 +17,7 @@ describe(`StructureControls`, () => {
     wrapper_div.appendChild(canvas)
   })
 
-  test.each([
-    {
-      name: `disabled without wrapper/canvas`,
-      props: { structure: simple_structure, controls_open: true },
-      disabled: true,
-    },
-    {
-      name: `disabled without wrapper prop`,
-      props: { structure: simple_structure, controls_open: true },
-      disabled: true,
-    },
-  ])(`PNG button state: $name`, ({ props, disabled }) => {
-    mount(StructureControls, { target: document.body, props })
-    const png_button = doc_query<HTMLButtonElement>(`button[title*="PNG"]`)
-    expect(png_button.disabled).toBe(disabled)
-  })
-
-  test(`PNG button enabled with canvas`, () => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        controls_open: true,
-        wrapper: wrapper_div,
-      },
-    })
-    const png_button = doc_query<HTMLButtonElement>(`button[title*="PNG"]`)
-    expect(png_button.disabled).toBe(false)
-  })
-
-  test(`PNG button click triggers export`, () => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        controls_open: true,
-        wrapper: wrapper_div,
-        png_dpi: 150,
-      },
-    })
-    const png_button = doc_query<HTMLButtonElement>(`button[title*="PNG"]`)
-    png_button.click()
-    expect(export_canvas_as_png).toHaveBeenCalledWith(
-      expect.any(HTMLCanvasElement),
-      simple_structure,
-      150,
-      undefined,
-      undefined,
-    )
-  })
-
-  // Covered by the first parameterized test
+  // PNG export functionality moved to StructureExportPane
 
   test(`supercell input accessibility attributes (valid)`, () => {
     mount(StructureControls, {

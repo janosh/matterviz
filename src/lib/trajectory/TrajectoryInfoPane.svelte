@@ -300,7 +300,7 @@
   bind:show={pane_open}
   max_width="24em"
   toggle_props={{
-    title: `${pane_open ? `Close` : `Open`} trajectory info`,
+    title: pane_open ? `` : `Trajectory info`,
     ...toggle_props,
     class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
   }}
