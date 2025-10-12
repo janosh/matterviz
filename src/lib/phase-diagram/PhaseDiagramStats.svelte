@@ -233,8 +233,7 @@
           show_controls={false}
           padding={{ t: 5, b: 25, l: 35, r: 5 }}
           style="height: 100px; --histogram-min-height: 100px"
-          bar_color="steelblue"
-          bar_opacity={0.7}
+          bar={{ color: `steelblue`, opacity: 0.7 }}
         />
       {/if}
 
@@ -252,8 +251,7 @@
           show_controls={false}
           padding={{ t: 5, b: 25, l: 35, r: 5 }}
           style="height: 100px; --histogram-min-height: 100px"
-          bar_color="coral"
-          bar_opacity={0.7}
+          bar={{ color: `coral`, opacity: 0.7 }}
         />
       {/if}
     </section>

@@ -125,12 +125,10 @@
   {series}
   mode="overlay"
   bins={50}
-  bar_opacity={opacity}
-  bar_stroke_width={stroke_width}
-  x_scale_type={x_scale}
-  y_scale_type={y_scale}
-  show_x_grid={show_grid}
-  show_y_grid={show_grid}
+  bar={{ opacity, stroke_width }}
+  x_axis={{ scale_type: x_scale }}
+  y_axis={{ scale_type: y_scale }}
+  display={{ x_grid: show_grid, y_grid: show_grid }}
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -138,12 +136,6 @@
     Value: {value.toFixed(2)}<br>Count: {count}
   {/snippet}
 </Histogram>
-
-<style>
-  .histogram {
-    align-content: center;
-  }
-</style>
 ```
 
 ## Logarithmic Scales
@@ -203,12 +195,12 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   mode="overlay"
   {bins}
-  x_scale_type={x_scale}
-  y_scale_type={y_scale}
-  x_label="Value ({x_scale} scale)"
-  y_label="Frequency ({y_scale} scale)"
-  x_format="~s"
-  y_format={y_scale === `log` ? `~s` : `d`}
+  x_axis={{ scale_type: x_scale, label: `Value (${x_scale} scale)`, format: `~s` }}
+  y_axis={{
+    scale_type: y_scale,
+    label: `Frequency (${y_scale} scale)`,
+    format: y_scale === `log` ? `~s` : `d`,
+  }}
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
@@ -295,9 +287,15 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   series={series_data}
   {mode}
   bins={selected === `discrete` ? 10 : 40}
-  x_label={selected === `age` ? `Age (years)` : selected === `discrete` ? `Rating` : `Value`}
-  y_label="Count"
-  x_format={selected === `discrete` ? `.1f` : `.0f`}
+  x_axis={{
+    label: selected === `age`
+      ? `Age (years)`
+      : selected === `discrete`
+      ? `Rating`
+      : `Value`,
+    format: selected === `discrete` ? `.1f` : `.0f`,
+  }}
+  y_axis={{ label: `Count` }}
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
@@ -357,7 +355,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   bins={show_overlay ? 25 : bin_counts[1]}
   mode={show_overlay ? `overlay` : `single`}
-  bar_opacity={opacity}
+  bar={{ opacity }}
   show_legend={show_overlay}
   style="height: 450px; margin-block: 1em;"
 >
@@ -412,10 +410,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 <Histogram
   {series}
   bins={35}
-  x_label={x_format === `currency` ? `Stock Price` : `Value`}
-  y_label={y_format === `percentage` ? `Percentage` : `Count`}
-  x_format={x_formats[x_format]}
-  y_format={y_format === `percentage` ? `.1%` : y_formats[y_format]}
+  x_axis={{ label: x_format === `currency` ? `Stock Price` : `Value`, format: x_formats[x_format] }}
+  y_axis={{ label: y_format === `percentage` ? `Percentage` : `Count`, format: y_format === `percentage` ? `.1%` : y_formats[y_format] }}
   style="height: 450px; border: 2px solid {color_schemes[color_scheme][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}

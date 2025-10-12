@@ -1,17 +1,21 @@
 <script lang="ts">
   import type {
+    AxisConfig,
     BarMode,
     BarSeries,
+    BarStyle,
     BarTooltipProps,
     BasePlotProps,
+    DisplayConfig,
     LegendConfig,
     LegendItem,
+    LineStyle,
     Orientation,
+    UserContentProps,
   } from '$lib/plot'
   import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
-  import type { TicksOption } from '$lib/plot/scales'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -23,33 +27,19 @@
     series = $bindable([]),
     orientation = $bindable(`vertical` as Orientation),
     mode = $bindable(`overlay` as BarMode),
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    display = $bindable({}),
     x_lim = [null, null],
     y_lim = [null, null],
-    x_range = $bindable(undefined),
-    y_range = $bindable(undefined),
     range_padding = 0.05,
-    x_label = $bindable(``),
-    x_label_shift = $bindable({ x: 0, y: 0 }),
-    y_label = $bindable(``),
-    y_label_shift = $bindable({ x: 0, y: 0 }),
-    x_format = $bindable(``),
-    y_format = $bindable(``),
-    x_ticks = $bindable(8),
-    y_ticks = $bindable(6),
-    show_x_grid = $bindable(true),
-    show_y_grid = $bindable(true),
-    x_grid_style,
-    y_grid_style,
-    show_x_zero_line = $bindable(false),
-    show_y_zero_line = $bindable(false),
+    padding = { t: 20, b: 60, l: 60, r: 20 },
     legend = {},
     show_legend,
-    padding = { t: 20, b: 60, l: 60, r: 20 },
-    default_bar_color = DEFAULTS.bar.bar_color,
-    bar_opacity = DEFAULTS.bar.bar_opacity,
-    line_width = DEFAULTS.bar.line_width,
-    line_color = DEFAULTS.bar.line_color,
+    bar = $bindable({}),
+    line = $bindable({}),
     tooltip,
+    user_content,
     hovered = $bindable(false),
     change = () => {},
     on_bar_click,
@@ -62,16 +52,9 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
     series?: BarSeries[]
-    x_range?: [number | null, number | null]
-    y_range?: [number | null, number | null]
-    x_format?: string
-    y_format?: string
-    x_ticks?: TicksOption
-    y_ticks?: TicksOption
-    show_x_grid?: boolean
-    show_y_grid?: boolean
-    show_x_zero_line?: boolean
-    show_y_zero_line?: boolean
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+    display?: DisplayConfig
     hovered?: boolean
     show_controls?: boolean
     controls_open?: boolean
@@ -80,17 +63,23 @@
     mode?: BarMode
     legend?: LegendConfig | null
     show_legend?: boolean
-    default_bar_color?: string
-    bar_opacity?: number
-    line_width?: number
-    line_color?: string
+    bar?: BarStyle
+    line?: LineStyle
     tooltip?: Snippet<[BarTooltipProps]>
+    user_content?: Snippet<[UserContentProps]>
     change?: (data: BarTooltipProps | null) => void
     on_bar_click?: (
       data: BarTooltipProps & { event: MouseEvent | KeyboardEvent },
     ) => void
     on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
   } = $props()
+
+  $effect(() => { // Initialize bar and line styles
+    bar.color ??= DEFAULTS.bar.bar.color
+    bar.opacity ??= DEFAULTS.bar.bar.opacity
+    line.color ??= DEFAULTS.bar.line.color
+    line.width ??= DEFAULTS.bar.line.width
+  })
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
@@ -143,7 +132,7 @@
       x_lim,
       `linear`,
       range_padding,
-      x_format?.startsWith(`%`) || false,
+      x_axis.format?.startsWith(`%`) || false,
     )
     let y_range = get_nice_data_range(
       all_points,
@@ -181,14 +170,14 @@
     current: { x: [0, 1], y: [0, 1] },
   })
 
-  $effect(() => { // handle x|y_range changes
+  $effect(() => { // handle x_axis.range / y_axis.range changes
     const new_x = [
-      x_range?.[0] ?? auto_ranges.x[0],
-      x_range?.[1] ?? auto_ranges.x[1],
+      x_axis.range?.[0] ?? auto_ranges.x[0],
+      x_axis.range?.[1] ?? auto_ranges.x[1],
     ] as [number, number]
     const new_y = [
-      y_range?.[0] ?? auto_ranges.y[0],
-      y_range?.[1] ?? auto_ranges.y[1],
+      y_axis.range?.[0] ?? auto_ranges.y[0],
+      y_axis.range?.[1] ?? auto_ranges.y[1],
     ] as [number, number]
     ranges = {
       initial: { x: new_x, y: new_y },
@@ -203,7 +192,11 @@
   $effect(() => {
     const base_pad = { ...default_padding, ...padding }
     const new_pad = width && height && ticks.y.length
-      ? calc_auto_padding({ base_padding: base_pad, y_ticks: ticks.y, y_format })
+      ? calc_auto_padding({
+        base_padding: base_pad,
+        y_ticks: ticks.y,
+        y_format: y_axis.format,
+      })
       : base_pad
 
     // Only update if padding actually changed (prevents infinite loop)
@@ -224,12 +217,12 @@
   // Ticks
   let ticks = $derived({
     x: width && height
-      ? generate_ticks(ranges.current.x, `linear`, x_ticks, scales.x, {
+      ? generate_ticks(ranges.current.x, `linear`, x_axis.ticks, scales.x, {
         default_count: 8,
       })
       : [],
     y: width && height
-      ? generate_ticks(ranges.current.y, `linear`, y_ticks, scales.y, {
+      ? generate_ticks(ranges.current.y, `linear`, y_axis.ticks, scales.y, {
         default_count: 6,
       })
       : [],
@@ -292,12 +285,12 @@
       visible: srs.visible ?? true,
       display_style: srs.render_mode === `line`
         ? {
-          line_color: srs.color ?? default_bar_color,
+          line_color: srs.color ?? line.color,
           line_dash: srs.line_style?.line_dash,
         }
         : {
           symbol_type: `Square` as const,
-          symbol_color: srs.color ?? default_bar_color,
+          symbol_color: srs.color ?? bar.color,
         },
     }))
   )
@@ -439,13 +432,15 @@
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
         <!-- Zero lines -->
-        {#if show_x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+        {#if display.x_zero_line && ranges.current.x[0] <= 0 &&
+          ranges.current.x[1] >= 0}
           {@const zx = scales.x(0)}
           {#if isFinite(zx)}
             <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
         {/if}
-        {#if show_y_zero_line && ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
+        {#if display.y_zero_line && ranges.current.y[0] <= 0 &&
+          ranges.current.y[1] >= 0}
           {@const zy = scales.y(0)}
           {#if isFinite(zy)}
             <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
@@ -462,8 +457,8 @@
             >
               {#if is_line}
                 <!-- Render as line -->
-                {@const color = srs.color ?? line_color}
-                {@const stroke_width = srs.line_style?.stroke_width ?? line_width}
+                {@const color = srs.color ?? line.color ?? `steelblue`}
+                {@const stroke_width = srs.line_style?.stroke_width ?? line.width ?? 2}
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const points = srs.x.map((x_val, idx) => {
             const y_val = srs.y[idx]
@@ -548,7 +543,7 @@
                   {@const base = mode === `stacked`
             ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
             : 0}
-                  {@const color = srs.color ?? default_bar_color}
+                  {@const color = srs.color ?? bar.color ?? `steelblue`}
                   {@const bar_width_val = Array.isArray(srs.bar_width)
             ? (srs.bar_width[bar_idx] ?? 0.5)
             : (srs.bar_width ?? 0.5)}
@@ -586,7 +581,7 @@
                       width={rect_w}
                       height={rect_h}
                       fill={color}
-                      opacity={mode === `overlay` ? bar_opacity : 1}
+                      opacity={mode === `overlay` ? bar.opacity : 1}
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
@@ -640,6 +635,19 @@
         <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
       {/if}
 
+      <!-- User content (custom overlays, reference lines, etc.) -->
+      {@render user_content?.({
+        height,
+        width,
+        x_scale_fn: scales.x,
+        y_scale_fn: scales.y,
+        pad,
+        x_min: ranges.current.x[0],
+        y_min: ranges.current.y[0],
+        x_max: ranges.current.x[1],
+        y_max: ranges.current.y[1],
+      })}
+
       <!-- X-axis -->
       <g class="x-axis">
         <line
@@ -653,29 +661,44 @@
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
           {#if isFinite(tick_x)}
+            {@const rotation = x_axis.tick_rotation ?? 0}
+            {@const shift_x = x_axis.tick_label_shift?.x ?? 0}
+            {@const shift_y = x_axis.tick_label_shift?.y ?? 0}
+            {@const text_y = rotation !== 0 ? 8 + shift_y : 18 + shift_y}
+            {@const text_anchor = rotation !== 0 ? `start` : `middle`}
             <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-              {#if show_x_grid}
+              {#if display.x_grid}
                 <line
                   y1={-(height - pad.b - pad.t)}
                   y2="0"
-                  {...x_grid_style ?? {}}
+                  {...x_axis.grid_style ?? {}}
                 />
               {/if}
               <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
-              <text y="18" text-anchor="middle" fill="var(--text-color)">
-                {format_value(tick, x_format)}
+              <text
+                x={shift_x}
+                y={text_y}
+                text-anchor={text_anchor}
+                fill="var(--text-color)"
+                transform={rotation !== 0
+                ? `rotate(${rotation}, ${shift_x}, ${text_y})`
+                : undefined}
+              >
+                {format_value(tick, x_axis.format)}
               </text>
             </g>
           {/if}
         {/each}
-        {#if x_label}
+        {#if x_axis.label}
+          {@const shift_x = x_axis.label_shift?.x ?? 0}
+          {@const shift_y = x_axis.label_shift?.y ?? 0}
           <text
-            x={pad.l + chart_width / 2 + (x_label_shift.x ?? 0)}
-            y={height - (pad.b / 3) + (x_label_shift.y ?? 0)}
+            x={pad.l + chart_width / 2 + shift_x}
+            y={height - (pad.b / 3) + shift_y}
             text-anchor="middle"
             fill="var(--text-color)"
           >
-            {x_label}
+            {x_axis.label}
           </text>
         {/if}
       </g>
@@ -693,36 +716,49 @@
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
           {#if isFinite(tick_y)}
+            {@const rotation = y_axis.tick_rotation ?? 0}
+            {@const shift_x = y_axis.tick_label_shift?.x ?? 0}
+            {@const shift_y = y_axis.tick_label_shift?.y ?? 0}
+            {@const text_x = -10 + shift_x}
+            {@const text_anchor = rotation !== 0 ? `end` : `end`}
             <g class="tick" transform="translate({pad.l}, {tick_y})">
-              {#if show_y_grid}
+              {#if display.y_grid}
                 <line
                   x1="0"
                   x2={width - pad.l - pad.r}
-                  {...y_grid_style ?? {}}
+                  {...y_axis.grid_style ?? {}}
                 />
               {/if}
               <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
               <text
-                x="-10"
-                text-anchor="end"
+                x={text_x}
+                y={shift_y}
+                text-anchor={text_anchor}
                 dominant-baseline="central"
                 fill="var(--text-color)"
+                transform={rotation !== 0
+                ? `rotate(${rotation}, ${text_x}, ${shift_y})`
+                : undefined}
               >
-                {format_value(tick, y_format)}
+                {format_value(tick, y_axis.format)}
               </text>
             </g>
           {/if}
         {/each}
-        {#if y_label}
+        {#if y_axis.label}
           {@const max_y_tick_width = Math.max(
           0,
           ...ticks.y.map((tick) =>
-            measure_text_width(format_value(tick, y_format), `12px sans-serif`)
+            measure_text_width(
+              format_value(tick, y_axis.format),
+              `12px sans-serif`,
+            )
           ),
         )}
-          {@const y_label_x = Math.max(15, pad.l - max_y_tick_width - 35) +
-          (y_label_shift.x ?? 0)}
-          {@const y_label_y = pad.t + chart_height / 2 + (y_label_shift.y ?? 0)}
+          {@const shift_x = y_axis.label_shift?.x ?? 0}
+          {@const shift_y = y_axis.label_shift?.y ?? 0}
+          {@const y_label_x = Math.max(15, pad.l - max_y_tick_width - 35) + shift_x}
+          {@const y_label_y = pad.t + chart_height / 2 + shift_y}
           <text
             x={y_label_x}
             y={y_label_y}
@@ -730,7 +766,7 @@
             fill="var(--text-color)"
             transform="rotate(-90, {y_label_x}, {y_label_y})"
           >
-            {y_label}
+            {y_axis.label}
           </text>
         {/if}
       </g>
@@ -756,8 +792,12 @@
         {#if tooltip}
           {@render tooltip(hover_info)}
         {:else}
-          <div>{x_label || `x`}: {format_value(hover_info.orient_x, x_format)}</div>
-          <div>{y_label || `y`}: {format_value(hover_info.orient_y, y_format)}</div>
+          <div>
+            {x_axis.label || `x`}: {format_value(hover_info.orient_x, x_axis.format)}
+          </div>
+          <div>
+            {y_axis.label || `y`}: {format_value(hover_info.orient_y, y_axis.format)}
+          </div>
         {/if}
       </div>
     {/if}
@@ -770,16 +810,9 @@
         bind:controls_open
         bind:orientation
         bind:mode
-        bind:show_x_zero_line
-        bind:show_y_zero_line
-        bind:show_x_grid
-        bind:show_y_grid
-        bind:x_ticks
-        bind:y_ticks
-        bind:x_format
-        bind:y_format
-        bind:x_range
-        bind:y_range
+        bind:x_axis
+        bind:y_axis
+        bind:display
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
       />

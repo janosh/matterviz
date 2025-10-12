@@ -155,39 +155,49 @@ export interface SettingsConfig {
   }
 
   scatter: { // Scatter plot settings
-    point_size: SettingType<number>
     show_legend: SettingType<boolean>
     markers: SettingType<Markers>
-    point_color: SettingType<string>
-    point_opacity: SettingType<number>
-    point_stroke_width: SettingType<number>
-    point_stroke_color: SettingType<string>
-    point_stroke_opacity: SettingType<number>
-    line_width: SettingType<number>
-    line_color: SettingType<string>
-    line_opacity: SettingType<number>
-    line_dash: SettingType<string>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
+    point: {
+      size: SettingType<number>
+      color: SettingType<string>
+      opacity: SettingType<number>
+      stroke_width: SettingType<number>
+      stroke_color: SettingType<string>
+      stroke_opacity: SettingType<number>
+    }
+    line: {
+      width: SettingType<number>
+      color: SettingType<string>
+      opacity: SettingType<number>
+      dash: SettingType<string>
+    }
   }
 
   histogram: { // Histogram settings
     mode: SettingType<`overlay` | `single`>
     show_legend: SettingType<boolean>
     bin_count: SettingType<number>
-    bar_opacity: SettingType<number>
-    bar_stroke_width: SettingType<number>
-    bar_stroke_color: SettingType<string>
-    bar_stroke_opacity: SettingType<number>
-    bar_color: SettingType<string>
+    bar: {
+      color: SettingType<string>
+      opacity: SettingType<number>
+      stroke_width: SettingType<number>
+      stroke_color: SettingType<string>
+      stroke_opacity: SettingType<number>
+    }
   }
 
   bar: { // Bar plot settings
-    bar_color: SettingType<string>
-    bar_opacity: SettingType<number>
-    line_width: SettingType<number>
-    line_color: SettingType<string>
+    bar: {
+      color: SettingType<string>
+      opacity: SettingType<number>
+    }
+    line: {
+      width: SettingType<number>
+      color: SettingType<string>
+    }
   }
 
   composition: { // Composition specific settings
@@ -703,55 +713,61 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 1,
       maximum: 1000,
     },
-    bar_opacity: {
-      value: 0.7,
-      description: `Histogram bar opacity`,
-      minimum: 0,
-      maximum: 1,
-    },
-    bar_stroke_width: {
-      value: 1,
-      description: `Histogram bar stroke width`,
-      minimum: 0,
-      maximum: 5,
-    },
-    bar_stroke_color: {
-      value: `#000000`,
-      description: `Histogram bar stroke color`,
-    },
-    bar_stroke_opacity: {
-      value: 0.5,
-      description: `Histogram bar stroke opacity`,
-      minimum: 0,
-      maximum: 1,
-    },
-    bar_color: {
-      value: `#4A9EFF`,
-      description: `Histogram bar fill color`,
+    bar: {
+      color: {
+        value: `#4A9EFF`,
+        description: `Histogram bar fill color`,
+      },
+      opacity: {
+        value: 0.7,
+        description: `Histogram bar opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 1,
+        description: `Histogram bar stroke width`,
+        minimum: 0,
+        maximum: 5,
+      },
+      stroke_color: {
+        value: `#000000`,
+        description: `Histogram bar stroke color`,
+      },
+      stroke_opacity: {
+        value: 0.5,
+        description: `Histogram bar stroke opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
     },
   },
 
   // Bar plot specific
   bar: {
-    bar_color: {
-      value: `#4A9EFF`,
-      description: `Bar plot fill color`,
+    bar: {
+      color: {
+        value: `#4A9EFF`,
+        description: `Bar plot fill color`,
+      },
+      opacity: {
+        value: 0.6,
+        description: `Bar plot opacity (overlay mode)`,
+        minimum: 0,
+        maximum: 1,
+      },
     },
-    bar_opacity: {
-      value: 0.6,
-      description: `Bar plot opacity (overlay mode)`,
-      minimum: 0,
-      maximum: 1,
-    },
-    line_width: {
-      value: 2,
-      description: `Bar plot line width`,
-      minimum: 0.5,
-      maximum: 10,
-    },
-    line_color: {
-      value: `#4A9EFF`,
-      description: `Bar plot line color`,
+    line: {
+      width: {
+        value: 2,
+        description: `Bar plot line width`,
+        minimum: 0.5,
+        maximum: 10,
+      },
+      color: {
+        value: `#4A9EFF`,
+        description: `Bar plot line color`,
+      },
     },
   },
 
@@ -776,68 +792,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Default symbol type for scatter plots`,
       enum: symbol_names,
     },
-    line_width: {
-      value: 2,
-      description: `Line width for scatter plot connections`,
-      minimum: 0.5,
-      maximum: 10,
-    },
-    point_size: {
-      value: 4,
-      description: `Point size for scatter plots`,
-      minimum: 1,
-      maximum: 20,
-    },
     show_legend: {
       value: true,
       description: `Show legend in scatter plots`,
     },
-
-    // Scatter plot specific
     markers: {
       value: `line+points`,
       description: `Scatter plot marker type`,
       enum: [`line`, `points`, `line+points`],
-    },
-    point_color: {
-      value: `#4A9EFF`,
-      description: `Default color for scatter plot points`,
-    },
-    point_opacity: {
-      value: 1,
-      description: `Opacity of scatter plot points`,
-      minimum: 0,
-      maximum: 1,
-    },
-    point_stroke_width: {
-      value: 1,
-      description: `Stroke width for scatter plot points`,
-      minimum: 0,
-      maximum: 5,
-    },
-    point_stroke_color: {
-      value: `#000000`,
-      description: `Stroke color for scatter plot points`,
-    },
-    point_stroke_opacity: {
-      value: 1,
-      description: `Stroke opacity for scatter plot points`,
-      minimum: 0,
-      maximum: 1,
-    },
-    line_color: {
-      value: `#4A9EFF`,
-      description: `Default color for scatter plot lines`,
-    },
-    line_opacity: {
-      value: 1,
-      description: `Opacity of scatter plot lines`,
-      minimum: 0,
-      maximum: 1,
-    },
-    line_dash: {
-      value: `solid`,
-      description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
     },
     show_points: {
       value: true,
@@ -846,6 +808,62 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_lines: {
       value: true,
       description: `Show connecting lines in scatter plots`,
+    },
+    point: {
+      size: {
+        value: 4,
+        description: `Point size for scatter plots`,
+        minimum: 1,
+        maximum: 20,
+      },
+      color: {
+        value: `#4A9EFF`,
+        description: `Default color for scatter plot points`,
+      },
+      opacity: {
+        value: 1,
+        description: `Opacity of scatter plot points`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 1,
+        description: `Stroke width for scatter plot points`,
+        minimum: 0,
+        maximum: 5,
+      },
+      stroke_color: {
+        value: `#000000`,
+        description: `Stroke color for scatter plot points`,
+      },
+      stroke_opacity: {
+        value: 1,
+        description: `Stroke opacity for scatter plot points`,
+        minimum: 0,
+        maximum: 1,
+      },
+    },
+    line: {
+      width: {
+        value: 2,
+        description: `Line width for scatter plot connections`,
+        minimum: 0.5,
+        maximum: 10,
+      },
+      color: {
+        value: `#4A9EFF`,
+        description: `Default color for scatter plot lines`,
+      },
+      opacity: {
+        value: 1,
+        description: `Opacity of scatter plot lines`,
+        minimum: 0,
+        maximum: 1,
+      },
+      dash: {
+        value: `solid`,
+        description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
+      },
     },
   },
 

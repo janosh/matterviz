@@ -1,11 +1,8 @@
 import * as math from '$lib/math'
-import type { Point } from '$lib/plot'
+import type { Point, ScaleType, TimeInterval } from '$lib/plot'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric } from 'd3-scale'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
-
-export type ScaleType = `linear` | `log`
-export type TimeInterval = `day` | `month` | `year`
 
 // Type for ticks parameter - can be count, array of values, or time interval
 export type TicksOption = number | number[] | TimeInterval

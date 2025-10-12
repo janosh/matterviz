@@ -5,21 +5,23 @@
   import * as math from '$lib/math'
   import type {
     AnchorNode,
-    BasePlotProps,
+    AxisConfig,
+    ControlsConfig,
     D3SymbolName,
     DataSeries,
+    DisplayConfig,
     HoverConfig,
     InternalPoint,
     LabelNode,
     LabelPlacementConfig,
     LegendConfig,
-    Markers,
     PlotPoint,
     Point,
     PointStyle,
     ScaleType,
     ScatterTooltipProps,
     Sides,
+    StyleOverrides,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -47,61 +49,24 @@
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding } from './layout'
-  import { generate_ticks, get_nice_data_range, type TicksOption } from './scales'
-
-  // Local type definition since TweenedOptions is not exported
-  type LocalTweenedOptions<T> = {
-    duration?: number
-    delay?: number
-    easing?: (t: number) => number
-    interpolate?: (a: T, b: T) => (t: number) => T
-  }
+  import { generate_ticks, get_nice_data_range } from './scales'
 
   let {
     series = [],
-    x_lim = [null, null],
-    y_lim = [null, null],
-    x_range = $bindable(undefined),
-    y_range = $bindable(undefined),
-    current_x_value = null,
-    y2_lim = [null, null],
-    y2_range = $bindable(undefined),
-    y2_label = ``,
-    y2_label_shift = { y: 60 },
-    y2_tick_label_shift = { x: 8, y: 0 },
-    y2_unit = ``,
-    y2_format = $bindable(``),
-    y2_ticks = 5,
-    y2_scale_type = `linear`,
-    show_y2_grid = $bindable(true),
-    y2_grid_style,
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
+    display = $bindable({}),
+    styles = $bindable({}),
+    controls = $bindable({}),
     padding = {},
     range_padding = 0.05,
-    x_label = ``,
-    x_label_shift = { x: 0, y: -40 },
-    x_tick_label_shift = { x: 0, y: 20 },
-    y_label = ``,
-    y_label_shift = { y: 12 },
-    y_tick_label_shift = { x: -8, y: 0 },
-    y_unit = ``,
+    current_x_value = null,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    markers = DEFAULTS.scatter.markers,
-    x_format = $bindable(``),
-    y_format = $bindable(``),
     tooltip,
     user_content,
     change = () => {},
-    x_ticks,
-    y_ticks = 5,
-    x_scale_type = `linear`,
-    y_scale_type = `linear`,
-    show_x_zero_line = $bindable(false),
-    show_y_zero_line = $bindable(false),
-    show_x_grid = $bindable(true),
-    show_y_grid = $bindable(true),
-    x_grid_style,
-    y_grid_style,
     color_scale = {
       type: `linear`,
       scheme: `interpolateViridis`,
@@ -117,88 +82,45 @@
     point_events,
     on_point_click,
     on_point_hover,
-    show_controls = $bindable(true),
-    controls_open = $bindable(false),
-    // Style control props
-    point_size = $bindable(4),
-    point_color = $bindable(`cornflowerblue`),
-    point_opacity = $bindable(1),
-    point_stroke_width = $bindable(1),
-    point_stroke_color = $bindable(`#000000`),
-    point_stroke_opacity = $bindable(1),
-    line_width = $bindable(2),
-    line_color = $bindable(`cornflowerblue`),
-    line_opacity = $bindable(1),
-    line_dash = $bindable(DEFAULTS.scatter.line_dash),
-    show_points = $bindable(true),
-    show_lines = $bindable(true),
     selected_series_idx = $bindable(0),
     color_axis_labels = true,
-    controls_toggle_props,
-    controls_pane_props,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+  }: HTMLAttributes<HTMLDivElement> & {
     series?: DataSeries[]
-    x_range?: [number | null, number | null] // Explicit ranges for x and y axes. Null pins a side to auto.
-    y_range?: [number | null, number | null] // Use null on one side to auto that bound.
-    x_format?: string
-    y_format?: string
-    x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
-    y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
-    x_scale_type?: ScaleType // Type of scale for x-axis
-    y_scale_type?: ScaleType // Type of scale for y-axis
-    show_x_zero_line?: boolean
-    show_y_zero_line?: boolean
-    show_x_grid?: boolean
-    show_y_grid?: boolean
-    hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
-    show_controls?: boolean // Whether to show the control pane
-    controls_open?: boolean // Whether the control pane is open
-    // Component-specific props
-    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g. current frame)
-    // Right y-axis configuration
-    y2_lim?: [number | null, number | null]
-    y2_range?: [number | null, number | null]
-    y2_label?: string
-    y2_label_shift?: { x?: number; y?: number }
-    y2_tick_label_shift?: { x?: number; y?: number }
-    y2_unit?: string
-    y2_format?: string
-    y2_ticks?: TicksOption
-    y2_scale_type?: ScaleType
-    show_y2_grid?: boolean
-    y2_grid_style?: HTMLAttributes<SVGLineElement>
-    x_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis tick labels in px
-    y_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis tick labels in px
-    y_unit?: string
-    tooltip_point?: InternalPoint | null // Point being hovered over, to display in tooltip (bindable)
-    markers?: Markers
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+    y2_axis?: AxisConfig
+    display?: DisplayConfig
+    styles?: StyleOverrides
+    controls?: ControlsConfig
+    padding?: Sides
+    range_padding?: number
+    current_x_value?: number | null
+    tooltip_point?: InternalPoint | null
+    hovered?: boolean
     tooltip?: Snippet<[PlotPoint & ScatterTooltipProps]>
     user_content?: Snippet<[UserContentProps]>
     change?: (data: (Point & { series: DataSeries }) | null) => void
     color_scale?: {
-      type?: ScaleType // Type of scale for color mapping
-      scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
-      value_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
+      type?: ScaleType
+      scheme?: D3ColorSchemeName | D3InterpolateName
+      value_range?: [number, number]
     }
     size_scale?: {
-      type?: ScaleType // Type of scale for size mapping
-      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g. [2, 10])
-      value_range?: [number, number] // Min/max for size scaling (auto detected if not provided)
+      type?: ScaleType
+      radius_range?: [number, number]
+      value_range?: [number, number]
     }
-    // Props for the ColorBar component, plus an optional 'margin' used for plot corner distance when auto placing
-    // Set to null or undefined to hide the color bar.
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
         tween?: LocalTweenedOptions<XyObj>
       })
       | null
-    // Label auto-placement simulation parameters
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
-    legend?: LegendConfig | null // Configuration for the legend
+    legend?: LegendConfig | null
     point_tween?: LocalTweenedOptions<XyObj>
     line_tween?: LocalTweenedOptions<string>
     point_events?: Record<
@@ -209,22 +131,65 @@
     on_point_hover?: (
       data: { point: InternalPoint | null; event?: MouseEvent },
     ) => void
-    // Style control props
-    point_size?: number
-    point_color?: string
-    point_opacity?: number
-    point_stroke_width?: number
-    point_stroke_color?: string
-    point_stroke_opacity?: number
-    line_width?: number
-    line_color?: string
-    line_opacity?: number
-    line_dash?: string
-    show_points?: boolean
-    show_lines?: boolean
     selected_series_idx?: number
-    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
+    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null }
   } = $props()
+
+  // Initialize default values for grouped configs
+  $effect(() => {
+    // X-axis defaults
+    x_axis.format ??= ``
+    x_axis.scale_type ??= `linear`
+    x_axis.label_shift ??= { x: 0, y: -40 }
+    x_axis.tick_label_shift ??= { x: 0, y: 20 }
+    x_axis.lim ??= [null, null]
+
+    // Y-axis defaults
+    y_axis.format ??= ``
+    y_axis.scale_type ??= `linear`
+    y_axis.ticks ??= 5
+    y_axis.label_shift ??= { y: 12 }
+    y_axis.tick_label_shift ??= { x: -8, y: 0 }
+    y_axis.lim ??= [null, null]
+
+    // Y2-axis defaults
+    y2_axis.format ??= ``
+    y2_axis.scale_type ??= `linear`
+    y2_axis.ticks ??= 5
+    y2_axis.label_shift ??= { y: 60 }
+    y2_axis.tick_label_shift ??= { x: 8, y: 0 }
+    y2_axis.lim ??= [null, null]
+
+    // Display defaults
+    display.markers ??= DEFAULTS.scatter.markers
+    display.x_grid ??= true
+    display.y_grid ??= true
+    display.y2_grid ??= true
+    display.x_zero_line ??= false
+    display.y_zero_line ??= false
+
+    // Style overrides defaults
+    if (!styles.point) styles.point = {}
+    styles.point.size ??= 4
+    styles.point.color ??= `cornflowerblue`
+    styles.point.opacity ??= 1
+    styles.point.stroke_width ??= 1
+    styles.point.stroke_color ??= `#000000`
+    styles.point.stroke_opacity ??= 1
+
+    if (!styles.line) styles.line = {}
+    styles.line.width ??= 2
+    styles.line.color ??= `cornflowerblue`
+    styles.line.opacity ??= 1
+    styles.line.dash ??= DEFAULTS.scatter.line.dash
+
+    styles.show_points ??= true
+    styles.show_lines ??= true
+
+    // Controls defaults
+    controls.show ??= true
+    controls.open ??= false
+  })
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
@@ -258,23 +223,12 @@
     return series
   })
 
-  // Stable ID assignment for series - computed once and cached
-  let next_id = 0
-  const series_id_cache = new WeakMap<object, number>()
+  // Assign stable IDs to series for keying
   let series_with_ids = $derived.by(() => {
-    return processed_series.map((s) => {
+    return processed_series.map((s, idx) => {
       if (!s || typeof s !== `object`) return s
-      if (`_id` in s && typeof s._id === `number`) return s // Already has stable ID
-
-      // Check cache first
-      if (series_id_cache.has(s)) {
-        return { ...s, _id: series_id_cache.get(s)! }
-      }
-
-      // Assign and cache new stable ID
-      const new_id = next_id++
-      series_id_cache.set(s, new_id)
-      return { ...s, _id: new_id }
+      // Use index as stable ID since series array order should be stable
+      return { ...s, _id: idx }
     })
   })
 
@@ -282,19 +236,14 @@
   let drag_start_coords = $state<XyObj | null>(null)
   let drag_current_coords = $state<XyObj | null>(null)
 
-  let initial_x_range = $state<[number, number]>([0, 1])
-  let initial_y_range = $state<[number, number]>([0, 1])
-  let initial_y2_range = $state<[number, number]>([0, 1])
-  let current_x_range = $state<[number, number]>([0, 1])
-  let current_y_range = $state<[number, number]>([0, 1])
-  let current_y2_range = $state<[number, number]>([0, 1])
-  let previous_series_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
+  // Zoom/pan state - single range state used for both initial and current
+  let zoom_x_range = $state<[number, number]>([0, 1])
+  let zoom_y_range = $state<[number, number]>([0, 1])
+  let zoom_y2_range = $state<[number, number]>([0, 1])
+  let previous_series_visibility: boolean[] | null = $state(null)
 
   // State to hold the calculated label positions after simulation
   let label_positions = $state<Record<string, XyObj>>({})
-
-  // State for initial (non-responsive) legend placement
-  let initial_legend_placement = $state<typeof legend_placement | null>(null)
 
   // State for legend dragging
   let legend_is_dragging = $state(false)
@@ -343,9 +292,9 @@
       ? calc_auto_padding({
         base_padding: base_pad,
         y_ticks: y_tick_values,
-        y_format,
+        y_format: y_axis.format!,
         y2_ticks: y2_tick_values,
-        y2_format,
+        y2_format: y2_axis.format!,
       })
       : base_pad
 
@@ -380,10 +329,10 @@
     get_nice_data_range(
       all_points,
       (point) => point.x,
-      x_lim,
-      x_scale_type,
+      (x_axis.lim ?? [null, null]) as [number | null, number | null],
+      x_axis.scale_type!,
       range_padding,
-      x_format?.startsWith(`%`) || false,
+      x_axis.format?.startsWith(`%`) || false,
     ),
   )
 
@@ -391,8 +340,8 @@
     get_nice_data_range(
       y1_points,
       (point) => point.y,
-      y_lim,
-      y_scale_type,
+      (y_axis.lim ?? [null, null]) as [number | null, number | null],
+      y_axis.scale_type!,
       range_padding,
       false,
     ),
@@ -402,46 +351,42 @@
     get_nice_data_range(
       y2_points,
       (point) => point.y,
-      y2_lim,
-      y2_scale_type,
+      (y2_axis.lim ?? [null, null]) as [number | null, number | null],
+      y2_axis.scale_type!,
       range_padding,
       false,
     ),
   )
 
-  // Store initial ranges and initialize current ranges
+  // Update zoom ranges when auto ranges or explicit ranges change
   $effect(() => {
-    const new_init_x = [
-      x_range?.[0] ?? auto_x_range[0],
-      x_range?.[1] ?? auto_x_range[1],
+    const new_x = [
+      x_axis.range?.[0] ?? auto_x_range[0],
+      x_axis.range?.[1] ?? auto_x_range[1],
     ] as [number, number]
-    const new_init_y = [
-      y_range?.[0] ?? auto_y_range[0],
-      y_range?.[1] ?? auto_y_range[1],
+    const new_y = [
+      y_axis.range?.[0] ?? auto_y_range[0],
+      y_axis.range?.[1] ?? auto_y_range[1],
     ] as [number, number]
-    const new_init_y2 = [
-      y2_range?.[0] ?? auto_y2_range[0],
-      y2_range?.[1] ?? auto_y2_range[1],
+    const new_y2 = [
+      y2_axis.range?.[0] ?? auto_y2_range[0],
+      y2_axis.range?.[1] ?? auto_y2_range[1],
     ] as [number, number]
 
-    // Only update if the initial range fundamentally changes
-    if (
-      new_init_x[0] !== initial_x_range[0] || new_init_x[1] !== initial_x_range[1]
-    ) [initial_x_range, current_x_range] = [new_init_x, new_init_x]
-    if (
-      new_init_y[0] !== initial_y_range[0] || new_init_y[1] !== initial_y_range[1]
-    ) [initial_y_range, current_y_range] = [new_init_y, new_init_y]
-    if (
-      new_init_y2[0] !== initial_y2_range[0] || new_init_y2[1] !== initial_y2_range[1]
-    ) {
-      initial_y2_range = new_init_y2 as [number, number]
-      current_y2_range = new_init_y2 as [number, number]
+    if (new_x[0] !== zoom_x_range[0] || new_x[1] !== zoom_x_range[1]) {
+      zoom_x_range = new_x
+    }
+    if (new_y[0] !== zoom_y_range[0] || new_y[1] !== zoom_y_range[1]) {
+      zoom_y_range = new_y
+    }
+    if (new_y2[0] !== zoom_y2_range[0] || new_y2[1] !== zoom_y2_range[1]) {
+      zoom_y2_range = new_y2
     }
   })
 
-  let [x_min, x_max] = $derived(current_x_range) // Use current range for scales/axes
-  let [y_min, y_max] = $derived(current_y_range) // Use current range for scales/axes
-  let [y2_min, y2_max] = $derived(current_y2_range) // Use current range for scales/axes
+  let [x_min, x_max] = $derived(zoom_x_range)
+  let [y_min, y_max] = $derived(zoom_y_range)
+  let [y2_min, y2_max] = $derived(zoom_y2_range)
 
   // Create auto color range
   let auto_color_range = $derived(
@@ -455,11 +400,11 @@
 
   // Create scale functions
   let x_scale_fn = $derived(
-    x_format?.startsWith(`%`)
+    x_axis.format?.startsWith(`%`)
       ? scaleTime()
         .domain([new Date(x_min), new Date(x_max)])
         .range([pad.l, width - pad.r])
-      : x_scale_type === `log`
+      : x_axis.scale_type === `log`
       ? scaleLog()
         .domain([x_min, x_max])
         .range([pad.l, width - pad.r])
@@ -469,7 +414,7 @@
   )
 
   let y_scale_fn = $derived(
-    y_scale_type === `log`
+    y_axis.scale_type === `log`
       ? scaleLog()
         .domain([y_min, y_max])
         .range([height - pad.b, pad.t])
@@ -479,7 +424,7 @@
   )
 
   let y2_scale_fn = $derived(
-    y2_scale_type === `log`
+    y2_axis.scale_type === `log`
       ? scaleLog()
         .domain([y2_min, y2_max])
         .range([height - pad.b, pad.t])
@@ -557,9 +502,9 @@
           return {
             x: [],
             y: [],
-            visible: true, // Assume visible if undefined but we somehow process it
+            visible: true,
             filtered_data: [],
-            _id: next_id++,
+            _id: series_idx,
           } as unknown as DataSeries & { filtered_data: InternalPoint[]; _id: number }
         }
 
@@ -680,7 +625,7 @@
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
       for (const point of series_data.filtered_data) {
-        const point_x_coord = x_format?.startsWith(`%`)
+        const point_x_coord = x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
         const point_y_coord =
@@ -723,7 +668,7 @@
         line_color: `black`, // Default line color
       }
 
-      const series_markers = (data_series?.markers ?? markers) ?? ``
+      const series_markers = (data_series?.markers ?? display.markers) ?? ``
 
       // Check point_style (could be object or array)
       const first_point_style = Array.isArray(data_series?.point_style)
@@ -831,21 +776,17 @@
     })
   })
 
-  // Use responsive or fixed initial placement
+  // Active legend placement (null if user set explicit position)
   let active_legend_placement = $derived.by(() => {
     if (!legend_placement) return null
 
-    // Skip auto-placement if user set explicit position
+    // Skip auto-placement if user set explicit position in style
     const style = legend?.wrapper_style ?? ``
     if (
       /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style)
     ) return null
 
-    // Responsive mode: always use current best placement
-    if (legend?.responsive) return legend_placement
-
-    // Fixed mode: use initial placement (set in effect below)
-    return initial_legend_placement ?? legend_placement
+    return legend_placement
   })
 
   // Initialize tweened values for color bar position
@@ -863,12 +804,6 @@
   $effect(() => {
     if (!width || !height) return
 
-    // Store initial placement for non-responsive mode
-    if (legend_placement && !initial_legend_placement && !legend?.responsive) {
-      initial_legend_placement = legend_placement
-    }
-
-    // Update color bar
     if (color_bar_placement) {
       tweened_colorbar_coords.set({
         x: color_bar_placement.x,
@@ -876,7 +811,6 @@
       })
     }
 
-    // Update legend (unless manually positioned)
     if (legend_manual_position && !legend_is_dragging) {
       tweened_legend_coords.set(legend_manual_position)
     } else if (active_legend_placement && !legend_is_dragging) {
@@ -893,27 +827,45 @@
 
     // Use a numeric scale for tick generation to satisfy typings;
     // time formatting is handled via the format option inside generate_ticks
-    const x_scale_for_ticks = x_scale_type === `log`
+    const x_scale_for_ticks = x_axis.scale_type === `log`
       ? scaleLog().domain([x_min, x_max])
       : scaleLinear().domain([x_min, x_max])
 
-    return generate_ticks([x_min, x_max], x_scale_type, x_ticks, x_scale_for_ticks, {
-      format: x_format,
-    })
+    return generate_ticks(
+      [x_min, x_max],
+      x_axis.scale_type!,
+      x_axis.ticks,
+      x_scale_for_ticks,
+      {
+        format: x_axis.format,
+      },
+    )
   })
 
   let y_tick_values = $derived.by(() => {
     if (!width || !height) return []
-    return generate_ticks([y_min, y_max], y_scale_type, y_ticks, y_scale_fn, {
-      default_count: 5,
-    })
+    return generate_ticks(
+      [y_min, y_max],
+      y_axis.scale_type!,
+      y_axis.ticks!,
+      y_scale_fn,
+      {
+        default_count: 5,
+      },
+    )
   })
 
   let y2_tick_values = $derived.by(() => {
     if (!width || !height || y2_points.length === 0) return []
-    return generate_ticks([y2_min, y2_max], y2_scale_type, y2_ticks, y2_scale_fn, {
-      default_count: 5,
-    })
+    return generate_ticks(
+      [y2_min, y2_max],
+      y2_axis.scale_type!,
+      y2_axis.ticks!,
+      y2_scale_fn,
+      {
+        default_count: 5,
+      },
+    )
   })
 
   // Define global handlers reference for adding/removing listeners
@@ -984,16 +936,15 @@
         next_x_range[0] !== next_x_range[1] &&
         next_y_range[0] !== next_y_range[1]
       ) {
-        current_x_range = next_x_range
-        current_y_range = next_y_range
+        zoom_x_range = next_x_range
+        zoom_y_range = next_y_range
       }
-      // If the box is too small, we just reset without zooming (effectively ignoring the drag)
     }
 
     // Reset states and remove listeners
     drag_start_coords = null
     drag_current_coords = null
-    svg_bounding_box = null // Clear stored bounds
+    svg_bounding_box = null
     window.removeEventListener(`mousemove`, on_window_mouse_move)
     window.removeEventListener(`mouseup`, on_window_mouse_up)
     document.body.style.cursor = `default`
@@ -1003,29 +954,34 @@
     const coords = get_relative_coords(evt)
     if (!coords || !svg_element) return
     drag_start_coords = coords
-    drag_current_coords = coords // Initialize current coords
-    svg_bounding_box = svg_element.getBoundingClientRect() // Store bounds on drag start
+    drag_current_coords = coords
+    svg_bounding_box = svg_element.getBoundingClientRect()
 
-    // Add listeners to window
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
-
-    // Prevent text selection during drag
     evt.preventDefault()
   }
 
   function handle_mouse_leave() {
-    // Reset drag state if mouse leaves plot area
     hovered = false
     tooltip_point = null
     on_point_hover?.({ point: null, event: undefined })
   }
 
   function handle_double_click() {
-    // Reset zoom/pan to initial ranges
-    current_x_range = [...initial_x_range]
-    current_y_range = [...initial_y_range]
-    current_y2_range = [...initial_y2_range]
+    // Reset zoom to auto ranges
+    zoom_x_range = [
+      x_axis.range?.[0] ?? auto_x_range[0],
+      x_axis.range?.[1] ?? auto_x_range[1],
+    ]
+    zoom_y_range = [
+      y_axis.range?.[0] ?? auto_y_range[0],
+      y_axis.range?.[1] ?? auto_y_range[1],
+    ]
+    zoom_y2_range = [
+      y2_axis.range?.[0] ?? auto_y2_range[0],
+      y2_axis.range?.[1] ?? auto_y2_range[1],
+    ]
   }
 
   // tooltip logic: find closest point and update tooltip state
@@ -1049,7 +1005,7 @@
 
       for (const point of series_data.filtered_data) {
         // Calculate screen coordinates of the point
-        const point_cx = x_format?.startsWith(`%`)
+        const point_cx = x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
         const point_cy = (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(
@@ -1114,129 +1070,96 @@
   $effect(() => {
     if (!width || !height) return
 
-    // 1. Collect nodes for simulation (only those with auto_placement)
-    const nodes_to_simulate: LabelNode[] = []
+    // Collect auto-placed labels and their anchors
+    const label_nodes: LabelNode[] = []
     const anchor_nodes: AnchorNode[] = []
     const links: { source: string; target: string }[] = []
 
-    filtered_series.forEach((series_data) => {
-      series_data.filtered_data.forEach((point) => {
-        if (point.point_label?.auto_placement && point.point_label.text) {
-          const anchor_x = x_format?.startsWith(`%`)
-            ? x_scale_fn(new Date(point.x))
-            : x_scale_fn(point.x)
-          const anchor_y = y_scale_fn(point.y)
+    for (const series_data of filtered_series) {
+      for (const point of series_data.filtered_data) {
+        if (!point.point_label?.auto_placement || !point.point_label.text) continue
 
-          const id = `${point.series_idx}-${point.point_idx}`
+        const anchor_x = x_axis.format?.startsWith(`%`)
+          ? x_scale_fn(new Date(point.x))
+          : x_scale_fn(point.x)
+        const anchor_y = y_scale_fn(point.y)
+        const id = `${point.series_idx}-${point.point_idx}`
+        const anchor_id = `anchor-${id}`
 
-          // Estimate label size (simple approximation)
-          const label_width = point.point_label.text.length * 6 + 10 // Approx 6px per char + padding
-          const label_height = 14 // Approx font height + padding
+        label_nodes.push({
+          id,
+          anchor_x,
+          anchor_y,
+          point_node: point,
+          label_width: point.point_label.text.length * 6 + 10,
+          label_height: 14,
+          x: anchor_x + (point.point_label.offset?.x ?? 5),
+          y: anchor_y + (point.point_label.offset?.y ?? 0),
+        })
 
-          const label_node: LabelNode = {
-            id,
-            anchor_x,
-            anchor_y,
-            point_node: point,
-            label_width,
-            label_height,
-            x: anchor_x + (point.point_label.offset?.x ?? 5), // Start at default offset
-            y: anchor_y + (point.point_label.offset?.y ?? 0),
-          }
-          nodes_to_simulate.push(label_node)
+        anchor_nodes.push({
+          id: anchor_id,
+          fx: anchor_x,
+          fy: anchor_y,
+          point_radius: point.point_style?.radius ?? 3,
+        })
 
-          // Create a fixed anchor node for the link force
-          const fixed_anchor_id = `anchor-${id}`
-          // Get the radius for the point, default if not specified
-          const point_radius = point.point_style?.radius ?? 3 // Default radius 3
-          anchor_nodes.push({
-            id: fixed_anchor_id,
-            fx: anchor_x,
-            fy: anchor_y,
-            point_radius,
-          })
-
-          // Link label to its fixed anchor
-          links.push({ source: id, target: fixed_anchor_id })
-        }
-      })
-    })
-
-    if (nodes_to_simulate.length === 0) {
-      label_positions = {}
-      return // No labels to place
+        links.push({ source: id, target: anchor_id })
+      }
     }
 
-    // Combine nodes for the simulation
-    const all_simulation_nodes: (LabelNode | AnchorNode)[] = [
-      ...nodes_to_simulate,
-      ...anchor_nodes,
-    ]
+    if (label_nodes.length === 0) {
+      label_positions = {}
+      return
+    }
 
-    // 2. Setup and run the simulation
-    const simulation = forceSimulation(all_simulation_nodes)
+    // Run force simulation
+    forceSimulation([...label_nodes, ...anchor_nodes])
       .force(
         `link`,
         forceLink(links)
           .id((d) => (d as { id: string }).id)
           .distance(actual_label_config.link_distance)
           .strength(actual_label_config.link_strength),
-      ) // Cast d to ensure id exists
+      )
       .force(
         `collide`,
-        forceCollide()
-          .radius((d_node) => {
-            const node_as_label = d_node as LabelNode
-            const node_as_anchor = d_node as AnchorNode // Use defined AnchorNode type
-
-            if (node_as_label.label_width) {
-              const size =
-                Math.max(node_as_label.label_width, node_as_label.label_height) / 2
-              // Check if it's a LabelNode via a unique property
-              // Collision radius based on label dimensions
-              return size + 2 // +2 buffer
-            } else if (node_as_anchor.point_radius !== undefined) {
-              // Check if it's our AnchorNode
-              // Collision radius based on the point's visual radius
-              return node_as_anchor.point_radius + 2 // +2 buffer
-            }
-            return 0 // Should not happen if nodes are constructed correctly
-          })
-          .strength(actual_label_config.collision_strength),
+        forceCollide().radius((node) => {
+          const label = node as LabelNode
+          const anchor = node as AnchorNode
+          return label.label_width
+            ? Math.max(label.label_width, label.label_height) / 2 + 2
+            : (anchor.point_radius ?? 0) + 2
+        }).strength(actual_label_config.collision_strength),
       )
       .stop()
+      .tick(actual_label_config.placement_ticks)
 
-    // Run simulation for a fixed number of ticks
-    simulation.tick(actual_label_config.placement_ticks)
-
-    // 3. Store the final positions, applying link_distance_range constraint
-    nodes_to_simulate.forEach((node) => {
+    // Apply distance constraints and store final positions
+    const [min_dist, max_dist] = actual_label_config.link_distance_range ??
+      [null, null]
+    for (const node of label_nodes) {
       let final_x = node.x!
       let final_y = node.y!
-      const dist_range = actual_label_config.link_distance_range
 
-      if (dist_range) {
-        const [min_dist, max_dist] = dist_range
+      if (min_dist || max_dist) {
         const dx = final_x - node.anchor_x
         const dy = final_y - node.anchor_y
-        const dist_sq = dx * dx + dy * dy
-        const current_dist = Math.sqrt(dist_sq)
+        const dist = Math.sqrt(dx * dx + dy * dy)
 
-        if (max_dist && current_dist > max_dist) {
-          // Clamp to max distance
-          const scale_factor = max_dist / current_dist
-          final_x = node.anchor_x + dx * scale_factor
-          final_y = node.anchor_y + dy * scale_factor
-        } else if (min_dist && current_dist < min_dist && current_dist > 0) {
-          // Clamp to min distance (if not directly at anchor point)
-          const scale_factor = min_dist / current_dist
-          final_x = node.anchor_x + dx * scale_factor
-          final_y = node.anchor_y + dy * scale_factor
+        if (max_dist && dist > max_dist) {
+          const scale = max_dist / dist
+          final_x = node.anchor_x + dx * scale
+          final_y = node.anchor_y + dy * scale
+        } else if (min_dist && dist > 0 && dist < min_dist) {
+          const scale = min_dist / dist
+          final_x = node.anchor_x + dx * scale
+          final_y = node.anchor_y + dy * scale
         }
       }
 
       label_positions[node.id] = { x: final_x, y: final_y }
-    })
+    }
   })
 
   // Helper function to check if two series have compatible units
@@ -1356,7 +1279,7 @@
 
   function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
     // convert data coordinates to potentially non-finite screen coordinates
-    const screen_x = x_format?.startsWith(`%`)
+    const screen_x = x_axis.format?.startsWith(`%`)
       ? x_scale_fn(new Date(point.x))
       : x_scale_fn(point.x)
 
@@ -1365,13 +1288,13 @@
     const use_y2 = series?.y_axis === `y2`
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const min_domain_y = use_y2
-      ? y2_scale_type === `log` ? y_scale.domain()[0] : -Infinity
-      : y_scale_type === `log`
+      ? y2_axis.scale_type === `log` ? y_scale.domain()[0] : -Infinity
+      : y_axis.scale_type === `log`
       ? y_scale.domain()[0]
       : -Infinity
     const safe_y_val = use_y2
-      ? y2_scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
-      : y_scale_type === `log`
+      ? y2_axis.scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
+      : y_axis.scale_type === `log`
       ? Math.max(y_val, min_domain_y)
       : y_val
     const screen_y = y_scale(safe_y_val) // This might be non-finite
@@ -1379,7 +1302,7 @@
     return [screen_x, screen_y]
   }
 
-  let using_controls = $derived(show_controls)
+  let using_controls = $derived(controls.show)
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 </script>
 
@@ -1417,8 +1340,8 @@
       })}
 
       <!-- Zero lines -->
-      {#if show_x_zero_line && x_min <= 0 && x_max >= 0}
-        {@const zero_x_pos = x_format?.startsWith(`%`)
+      {#if display.x_zero_line && x_min <= 0 && x_max >= 0}
+        {@const zero_x_pos = x_axis.format?.startsWith(`%`)
         ? x_scale_fn(new Date(0))
         : x_scale_fn(0)}
         {#if isFinite(zero_x_pos)}
@@ -1431,7 +1354,8 @@
           />
         {/if}
       {/if}
-      {#if show_y_zero_line && y_scale_type === `linear` && y_min <= 0 && y_max >= 0}
+      {#if display.y_zero_line && y_axis.scale_type === `linear` && y_min <= 0 &&
+        y_max >= 0}
         {@const zero_y_pos = y_scale_fn(0)}
         {#if isFinite(zero_y_pos)}
           <line
@@ -1456,9 +1380,9 @@
       </defs>
 
       <!-- Lines -->
-      {#if markers?.includes(`line`) && show_lines}
+      {#if display.markers?.includes(`line`) && styles.show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
-          {@const series_markers = series_data.markers ?? markers}
+          {@const series_markers = series_data.markers ?? display.markers}
           <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
             {#if series_markers?.includes(`line`)}
               {@const all_line_points = series_data.x.map((x, idx) => ({
@@ -1474,13 +1398,13 @@
               <Line
                 points={finite_screen_points}
                 origin={[
-                  x_format?.startsWith(`%`)
+                  x_axis.format?.startsWith(`%`)
                     ? x_scale_fn(new Date(x_min))
                     : x_scale_fn(x_min),
                   series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
                 ]}
                 line_color={apply_line_controls
-                ? line_color ?? `cornflowerblue`
+                ? styles.line?.color ?? `cornflowerblue`
                 : series_data.line_style?.stroke ??
                   (Array.isArray(series_data.point_style)
                     ? series_data.point_style[0]?.fill
@@ -1489,9 +1413,11 @@
                     ? color_scale_fn(series_data.color_values[0])
                     : `cornflowerblue`)}
                 line_width={apply_line_controls
-                ? line_width ?? 2
+                ? styles.line?.width ?? 2
                 : series_data.line_style?.stroke_width ?? 2}
-                line_dash={apply_line_controls ? line_dash : series_data.line_style?.line_dash}
+                line_dash={apply_line_controls
+                ? styles.line?.dash
+                : series_data.line_style?.line_dash}
                 area_color="transparent"
                 {line_tween}
               />
@@ -1501,9 +1427,9 @@
       {/if}
 
       <!-- Points -->
-      {#if markers?.includes(`points`) && show_points}
+      {#if display.markers?.includes(`points`) && styles.show_points}
         {#each filtered_series ?? [] as series_data (series_data._id)}
-          {@const series_markers = series_data.markers ?? markers}
+          {@const series_markers = series_data.markers ?? display.markers}
           <g data-series-id={series_data._id}>
             {#if series_markers?.includes(`points`)}
               {#each series_data.filtered_data as
@@ -1518,7 +1444,7 @@
             ...label_style,
             offset: {
               x: calculated_label_pos.x -
-                (x_format?.startsWith(`%`)
+                (x_axis.format?.startsWith(`%`)
                   ? x_scale_fn(new Date(point.x))
                   : x_scale_fn(point.x)),
               y: calculated_label_pos.y - (series_data.y_axis === `y2`
@@ -1544,26 +1470,26 @@
                   style={{
                     ...point.point_style,
                     radius: apply_controls
-                      ? point_size ?? (point.size_value != null
+                      ? styles.point?.size ?? (point.size_value != null
                         ? size_scale_fn(point.size_value)
                         : point.point_style?.radius ?? 4)
                       : point.size_value != null
                       ? size_scale_fn(point.size_value)
                       : point.point_style?.radius ?? 4,
                     stroke_width: apply_controls
-                      ? point_stroke_width ??
+                      ? styles.point?.stroke_width ??
                         point.point_style?.stroke_width ?? 1
                       : point.point_style?.stroke_width ?? 1,
                     stroke: apply_controls
-                      ? point_stroke_color ??
+                      ? styles.point?.stroke_color ??
                         point.point_style?.stroke ?? `#000`
                       : point.point_style?.stroke ?? `#000`,
                     stroke_opacity: apply_controls
-                      ? point_stroke_opacity ??
+                      ? styles.point?.stroke_opacity ??
                         point.point_style?.stroke_opacity ?? 1
                       : point.point_style?.stroke_opacity ?? 1,
                     fill_opacity: apply_controls
-                      ? point_opacity ??
+                      ? styles.point?.opacity ??
                         point.point_style?.fill_opacity ?? 1
                       : point.point_style?.fill_opacity ?? 1,
                     cursor: on_point_click ? `pointer` : undefined,
@@ -1576,7 +1502,7 @@
                   --point-fill-color={point.color_value != null
                   ? color_scale_fn(point.color_value)
                   : apply_controls
-                  ? point_color ?? point.point_style?.fill ??
+                  ? styles.point?.color ?? point.point_style?.fill ??
                     `cornflowerblue`
                   : point.point_style?.fill ?? `cornflowerblue`}
                   {...point_events &&
@@ -1596,7 +1522,7 @@
       <g class="x-axis">
         {#if width > 0 && height > 0}
           {#each x_tick_values as tick (tick)}
-            {@const tick_pos_raw = x_format?.startsWith(`%`)
+            {@const tick_pos_raw = x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(tick))
           : x_scale_fn(tick)}
             {#if isFinite(tick_pos_raw)}
@@ -1604,17 +1530,17 @@
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
                 <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                  {#if show_x_grid}
+                  {#if display.x_grid}
                     <line
                       y1={-(height - pad.b - pad.t)}
                       y2="0"
-                      {...x_grid_style ?? {}}
+                      {...x_axis.grid_style ?? {}}
                     />
                   {/if}
 
                   {#if tick >= x_min && tick <= x_max}
-                    {@const { x, y } = x_tick_label_shift}
-                    <text {x} {y}>{format_value(tick, x_format)}</text>
+                    {@const { x, y } = x_axis.tick_label_shift ?? { x: 0, y: 20 }}
+                    <text {x} {y}>{format_value(tick, x_axis.format ?? ``)}</text>
                   {/if}
                 </g>
               {/if}
@@ -1624,7 +1550,7 @@
 
         <!-- Current frame indicator -->
         {#if current_x_value !== null && current_x_value !== undefined}
-          {@const current_pos_raw = x_format?.startsWith(`%`)
+          {@const current_pos_raw = x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(current_x_value))
           : x_scale_fn(current_x_value)}
           {#if isFinite(current_pos_raw)}
@@ -1646,13 +1572,13 @@
         {/if}
 
         <foreignObject
-          x={width / 2 + (x_label_shift.x ?? 0) - 100}
-          y={height - pad.b - (x_label_shift.y ?? 0) - 10}
+          x={width / 2 + (x_axis.label_shift?.x ?? 0) - 100}
+          y={height - pad.b - (x_axis.label_shift?.y ?? -40) - 10}
           width="200"
           height="20"
         >
           <div class="axis-label x-label">
-            {@html x_label ?? ``}
+            {@html x_axis.label ?? ``}
           </div>
         </foreignObject>
       </g>
@@ -1666,20 +1592,20 @@
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
                 <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                  {#if show_y_grid}
+                  {#if display.y_grid}
                     <line
                       x1="0"
                       x2={width - pad.l - pad.r}
-                      {...y_grid_style ?? {}}
+                      {...y_axis.grid_style ?? {}}
                     />
                   {/if}
 
                   {#if tick >= y_min && tick <= y_max}
-                    {@const { x, y } = y_tick_label_shift}
+                    {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
                     <text {x} {y} text-anchor="end" fill={axis_colors.y1 || undefined}>
-                      {format_value(tick, y_format)}
-                      {#if y_unit && idx === 0}
-                        &zwnj;&ensp;{y_unit}
+                      {format_value(tick, y_axis.format ?? ``)}
+                      {#if y_axis.unit && idx === 0}
+                        &zwnj;&ensp;{y_axis.unit}
                       {/if}
                     </text>
                   {/if}
@@ -1695,14 +1621,14 @@
             y={-10}
             width="200"
             height="20"
-            transform="rotate(-90, {y_label_shift.y ?? 20}, {pad.t +
+            transform="rotate(-90, {(y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
-              (y_label_shift.x ?? 0)}) translate({y_label_shift.y ?? 20}, {pad.t +
+              ((y_axis.label_shift?.x ?? 0))}) translate({(y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
-              (y_label_shift.x ?? 0)})"
+              ((y_axis.label_shift?.x ?? 0))})"
           >
             <div class="axis-label y-label" style:color={axis_colors.y1 || undefined}>
-              {@html y_label ?? ``}
+              {@html y_axis.label ?? ``}
             </div>
           </foreignObject>
         {/if}
@@ -1719,20 +1645,20 @@
                 {@const tick_pos = tick_pos_raw}
                 {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
                   <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
-                    {#if show_y2_grid}
+                    {#if display.y2_grid}
                       <line
                         x1={-(width - pad.l - pad.r)}
                         x2="0"
-                        {...y2_grid_style ?? {}}
+                        {...y2_axis.grid_style ?? {}}
                       />
                     {/if}
 
                     {#if tick >= y2_min && tick <= y2_max}
-                      {@const { x, y } = y2_tick_label_shift}
+                      {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
                       <text {x} {y} text-anchor="start" fill={axis_colors.y2}>
-                        {format_value(tick, y2_format)}
-                        {#if y2_unit && idx === 0}
-                          &zwnj;&ensp;{y2_unit}
+                        {format_value(tick, y2_axis.format ?? ``)}
+                        {#if y2_axis.unit && idx === 0}
+                          &zwnj;&ensp;{y2_axis.unit}
                         {/if}
                       </text>
                     {/if}
@@ -1742,22 +1668,22 @@
             {/each}
           {/if}
 
-          {#if height > 0 && y2_label}
+          {#if height > 0 && y2_axis.label}
             <foreignObject
               x={-100}
               y={-10}
               width="200"
               height="20"
-              transform="rotate(-90, {width - pad.r + (y2_label_shift.y ?? 0)}, {pad.t +
+              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
-                (y2_label_shift.x ?? 0)}) translate({width -
+                ((y2_axis.label_shift?.x ?? 0))}) translate({width -
                 pad.r +
-                (y2_label_shift.y ?? 0)}, {pad.t +
+                ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
-                (y2_label_shift.x ?? 0)})"
+                ((y2_axis.label_shift?.x ?? 0))})"
             >
               <div class="axis-label y2-label" style:color={axis_colors.y2}>
-                {@html y2_label ?? ``}
+                {@html y2_axis.label ?? ``}
               </div>
             </foreignObject>
           {/if}
@@ -1781,7 +1707,7 @@
       {@const { x, y, metadata, color_value, point_label, point_style, series_idx } =
       tooltip_point}
       {@const hovered_series = series_with_ids[series_idx]}
-      {@const series_markers = hovered_series?.markers ?? markers}
+      {@const series_markers = hovered_series?.markers ?? display.markers}
       {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
       !color || color === `none` || color === `transparent` ||
       (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}
@@ -1816,10 +1742,10 @@
       }
       return `rgba(0, 0, 0, 0.7)`
     })()}
-      {@const cx = x_format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
+      {@const cx = x_axis.format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
       {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
-      {@const x_formatted = format_value(x, x_format)}
-      {@const y_formatted = format_value(y, y_format)}
+      {@const x_formatted = format_value(x, x_axis.format ?? ``)}
+      {@const y_formatted = format_value(y, y_axis.format ?? ``)}
       {@const label = point_label?.text ?? null}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
       {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
@@ -1838,41 +1764,21 @@
       </div>
     {/if}
 
-    <!-- Control Pane positioned in top-right corner -->
-    {#if show_controls}
+    <!-- Control Pane -->
+    {#if controls.show}
       <ScatterPlotControls
-        toggle_props={controls_toggle_props}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:markers
-        bind:show_x_zero_line
-        bind:show_y_zero_line
-        bind:show_x_grid
-        bind:show_y_grid
-        bind:show_y2_grid
-        bind:x_range
-        bind:y_range
-        bind:y2_range
+        toggle_props={controls.toggle_props}
+        pane_props={controls.pane_props}
+        bind:x_axis
+        bind:y_axis
+        bind:y2_axis
+        bind:display
+        bind:styles
+        bind:controls
         {auto_x_range}
         {auto_y_range}
         {auto_y2_range}
-        bind:point_size
-        bind:point_color
-        bind:point_opacity
-        bind:point_stroke_width
-        bind:point_stroke_color
-        bind:point_stroke_opacity
-        bind:line_width
-        bind:line_color
-        bind:line_opacity
-        bind:line_dash
-        bind:show_points
-        bind:show_lines
         bind:selected_series_idx
-        bind:x_format
-        bind:y_format
-        bind:y2_format
         series={series_with_ids}
         has_y2_points={y2_points.length > 0}
       />
