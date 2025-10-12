@@ -22,7 +22,7 @@
     series = $bindable([]),
     x_axis = $bindable({ label: `Value`, format: `.2~s`, scale_type: `linear` }),
     y_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
-    display = $bindable({}),
+    display = $bindable(DEFAULTS.histogram.display),
     x_lim = [null, null],
     y_lim = [null, null],
     range_padding = 0.05,
@@ -374,70 +374,6 @@
         }
       }}
     >
-      <!-- Zero lines -->
-      {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-        {@const zero_x = scales.x(0)}
-        {#if isFinite(zero_x)}
-          <line
-            class="zero-line"
-            x1={zero_x}
-            x2={zero_x}
-            y1={pad.t}
-            y2={height - pad.b}
-          />
-        {/if}
-      {/if}
-      {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
-        ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
-        {@const zero_y = scales.y(0)}
-        {#if isFinite(zero_y)}
-          <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
-        {/if}
-      {/if}
-
-      <!-- Histogram bars -->
-      {#each histogram_data as { id, bins, color, label }, series_idx (id ?? series_idx)}
-        <g class="histogram-series" data-series-idx={series_idx}>
-          {#each bins as bin, bin_idx (bin_idx)}
-            {@const bar_x = scales.x(bin.x0!)}
-            {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
-            {@const bar_height = Math.max(0, (height - pad.b) - scales.y(bin.length))}
-            {@const bar_y = scales.y(bin.length)}
-            {@const value = (bin.x0! + bin.x1!) / 2}
-            {#if bar_height > 0}
-              <rect
-                x={bar_x}
-                y={bar_y}
-                width={bar_width}
-                height={bar_height}
-                fill={color}
-                opacity={bar.opacity}
-                stroke={bar.stroke_width && bar.stroke_width > 0 ? bar.stroke_color : `none`}
-                stroke-opacity={bar.stroke_width && bar.stroke_width > 0 ? bar.stroke_opacity : 0}
-                stroke-width={bar.stroke_width}
-                role="button"
-                tabindex="0"
-                onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
-                onmouseleave={() => {
-                  hover_info = null
-                  change(null)
-                  on_bar_hover?.(null)
-                }}
-                onclick={(event) =>
-                on_bar_click?.({ value, count: bin.length, property: label, event })}
-                onkeydown={(event: KeyboardEvent) => {
-                  if ([`Enter`, ` `].includes(event.key)) {
-                    event.preventDefault()
-                    on_bar_click?.({ value, count: bin.length, property: label, event })
-                  }
-                }}
-                style:cursor={on_bar_click ? `pointer` : undefined}
-              />
-            {/if}
-          {/each}
-        </g>
-      {/each}
-
       <!-- Tooltip -->
       {#if hover_info}
         {@const tooltip_x = scales.x(hover_info.value)}
@@ -497,7 +433,7 @@
                 y2="0"
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
-                stroke-width="0.4"
+                stroke-width="1"
                 {...x_axis.grid_style ?? {}}
               />
             {/if}
@@ -536,7 +472,7 @@
                 x2={width - pad.l - pad.r}
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
-                stroke-width="0.4"
+                stroke-width="1"
                 {...y_axis.grid_style ?? {}}
               />
             {/if}
@@ -565,6 +501,70 @@
           </text>
         {/if}
       </g>
+
+      <!-- Zero lines -->
+      {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+        {@const zero_x = scales.x(0)}
+        {#if isFinite(zero_x)}
+          <line
+            class="zero-line"
+            x1={zero_x}
+            x2={zero_x}
+            y1={pad.t}
+            y2={height - pad.b}
+          />
+        {/if}
+      {/if}
+      {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
+        ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
+        {@const zero_y = scales.y(0)}
+        {#if isFinite(zero_y)}
+          <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
+        {/if}
+      {/if}
+
+      <!-- Histogram bars -->
+      {#each histogram_data as { id, bins, color, label }, series_idx (id ?? series_idx)}
+        <g class="histogram-series" data-series-idx={series_idx}>
+          {#each bins as bin, bin_idx (bin_idx)}
+            {@const bar_x = scales.x(bin.x0!)}
+            {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
+            {@const bar_height = Math.max(0, (height - pad.b) - scales.y(bin.length))}
+            {@const bar_y = scales.y(bin.length)}
+            {@const value = (bin.x0! + bin.x1!) / 2}
+            {#if bar_height > 0}
+              <rect
+                x={bar_x}
+                y={bar_y}
+                width={bar_width}
+                height={bar_height}
+                fill={color}
+                opacity={bar.opacity}
+                stroke={bar.stroke_color}
+                stroke-opacity={bar.stroke_opacity}
+                stroke-width={bar.stroke_width}
+                role="button"
+                tabindex="0"
+                onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
+                onmouseleave={() => {
+                  hover_info = null
+                  change(null)
+                  on_bar_hover?.(null)
+                }}
+                onclick={(event) =>
+                on_bar_click?.({ value, count: bin.length, property: label, event })}
+                onkeydown={(event: KeyboardEvent) => {
+                  if ([`Enter`, ` `].includes(event.key)) {
+                    event.preventDefault()
+                    on_bar_click?.({ value, count: bin.length, property: label, event })
+                  }
+                }}
+                style:cursor={on_bar_click ? `pointer` : undefined}
+              />
+            {/if}
+          {/each}
+        </g>
+      {/each}
     </svg>
   {/if}
 
@@ -642,6 +642,6 @@
   .zero-line {
     stroke: var(--histogram-zero-line-color, light-dark(black, white));
     stroke-width: var(--histogram-zero-line-width, 1);
-    opacity: var(--histogram-zero-line-opacity, 0.3);
+    opacity: var(--histogram-zero-line-opacity);
   }
 </style>

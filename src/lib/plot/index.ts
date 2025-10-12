@@ -52,3 +52,10 @@ export const corner_cells = [
 // Define the structure for GridCell and GridCellCounts for 3x3 grid
 export type Cell3x3 = (typeof cells_3x3)[number]
 export type Corner = (typeof corner_cells)[number]
+
+// Default grid line style (SSOT for all plot components)
+export const DEFAULT_GRID_STYLE = {
+  'stroke': `var(--border-color, gray)`,
+  'stroke-dasharray': `4`,
+  'stroke-width': `1`,
+} as const

@@ -22,6 +22,69 @@ export interface SettingType<T = unknown> {
 export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof show_bonds_options)[number]
 
+// Reusable type definitions for common setting patterns
+type DisplayConfigType = {
+  x_grid: SettingType<boolean>
+  y_grid: SettingType<boolean>
+  x_zero_line: SettingType<boolean>
+  y_zero_line: SettingType<boolean>
+}
+
+type DisplayConfigWithY2Type = DisplayConfigType & {
+  y2_grid: SettingType<boolean>
+}
+
+type BarStyleType = {
+  color: SettingType<string>
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+  stroke_color: SettingType<string>
+  stroke_opacity: SettingType<number>
+}
+
+type PointStyleType = {
+  size: SettingType<number>
+  color: SettingType<string>
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+  stroke_color: SettingType<string>
+  stroke_opacity: SettingType<number>
+}
+
+type LineStyleType = {
+  width: SettingType<number>
+  color: SettingType<string>
+  opacity: SettingType<number>
+  dash: SettingType<string>
+}
+
+type SimpleBarStyleType = { color: SettingType<string>; opacity: SettingType<number> }
+
+type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
+
+type PhaseDiagramCommonType = {
+  camera_zoom: SettingType<number>
+  camera_center_x: SettingType<number>
+  camera_center_y: SettingType<number>
+  color_mode: SettingType<`stability` | `energy`>
+  color_scale: SettingType<string>
+  show_stable: SettingType<boolean>
+  show_unstable: SettingType<boolean>
+  show_stable_labels: SettingType<boolean>
+  show_unstable_labels: SettingType<boolean>
+  max_hull_dist_show_phases: SettingType<number>
+  max_hull_dist_show_labels: SettingType<number>
+  fullscreen: SettingType<boolean>
+  info_pane_open: SettingType<boolean>
+  legend_pane_open: SettingType<boolean>
+}
+
+type PhaseDiagramWith3DType = PhaseDiagramCommonType & {
+  show_hull_faces: SettingType<boolean>
+  hull_face_color: SettingType<string>
+  hull_face_opacity: SettingType<number>
+}
+
 export interface SettingsConfig {
   // General display settings
   color_scheme: SettingType<string>
@@ -160,44 +223,23 @@ export interface SettingsConfig {
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
-    point: {
-      size: SettingType<number>
-      color: SettingType<string>
-      opacity: SettingType<number>
-      stroke_width: SettingType<number>
-      stroke_color: SettingType<string>
-      stroke_opacity: SettingType<number>
-    }
-    line: {
-      width: SettingType<number>
-      color: SettingType<string>
-      opacity: SettingType<number>
-      dash: SettingType<string>
-    }
+    display: DisplayConfigWithY2Type
+    point: PointStyleType
+    line: LineStyleType
   }
 
   histogram: { // Histogram settings
     mode: SettingType<`overlay` | `single`>
     show_legend: SettingType<boolean>
     bin_count: SettingType<number>
-    bar: {
-      color: SettingType<string>
-      opacity: SettingType<number>
-      stroke_width: SettingType<number>
-      stroke_color: SettingType<string>
-      stroke_opacity: SettingType<number>
-    }
+    bar: BarStyleType
+    display: DisplayConfigType
   }
 
   bar: { // Bar plot settings
-    bar: {
-      color: SettingType<string>
-      opacity: SettingType<number>
-    }
-    line: {
-      width: SettingType<number>
-      color: SettingType<string>
-    }
+    display: DisplayConfigType
+    bar: SimpleBarStyleType
+    line: SimpleLineStyleType
   }
 
   composition: { // Composition specific settings
@@ -206,66 +248,36 @@ export interface SettingsConfig {
   }
 
   phase_diagram: { // Phase diagram defaults (binary/ternary/quaternary)
-    binary: {
-      camera_zoom: SettingType<number>
-      camera_center_x: SettingType<number>
-      camera_center_y: SettingType<number>
-      color_mode: SettingType<`stability` | `energy`>
-      color_scale: SettingType<string>
-      show_stable: SettingType<boolean>
-      show_unstable: SettingType<boolean>
-      show_stable_labels: SettingType<boolean>
-      show_unstable_labels: SettingType<boolean>
-      max_hull_dist_show_phases: SettingType<number>
-      max_hull_dist_show_labels: SettingType<number>
-      fullscreen: SettingType<boolean>
-      info_pane_open: SettingType<boolean>
-      legend_pane_open: SettingType<boolean>
-    }
-    ternary: {
+    binary: PhaseDiagramCommonType
+    ternary: PhaseDiagramWith3DType & {
       camera_elevation: SettingType<number>
       camera_azimuth: SettingType<number>
-      camera_zoom: SettingType<number>
-      camera_center_x: SettingType<number>
-      camera_center_y: SettingType<number>
-      color_mode: SettingType<`stability` | `energy`>
-      color_scale: SettingType<string>
-      show_stable: SettingType<boolean>
-      show_unstable: SettingType<boolean>
-      show_stable_labels: SettingType<boolean>
-      show_unstable_labels: SettingType<boolean>
-      max_hull_dist_show_phases: SettingType<number>
-      max_hull_dist_show_labels: SettingType<number>
-      show_hull_faces: SettingType<boolean>
-      hull_face_color: SettingType<string>
-      hull_face_opacity: SettingType<number>
-      fullscreen: SettingType<boolean>
-      info_pane_open: SettingType<boolean>
-      legend_pane_open: SettingType<boolean>
     }
-    quaternary: {
+    quaternary: PhaseDiagramWith3DType & {
       camera_rotation_x: SettingType<number>
       camera_rotation_y: SettingType<number>
-      camera_zoom: SettingType<number>
-      camera_center_x: SettingType<number>
-      camera_center_y: SettingType<number>
-      color_mode: SettingType<`stability` | `energy`>
-      color_scale: SettingType<string>
-      show_stable: SettingType<boolean>
-      show_unstable: SettingType<boolean>
-      show_stable_labels: SettingType<boolean>
-      show_unstable_labels: SettingType<boolean>
-      show_hull_faces: SettingType<boolean>
-      hull_face_color: SettingType<string>
-      hull_face_opacity: SettingType<number>
-      max_hull_dist_show_phases: SettingType<number>
-      max_hull_dist_show_labels: SettingType<number>
-      fullscreen: SettingType<boolean>
-      info_pane_open: SettingType<boolean>
-      legend_pane_open: SettingType<boolean>
     }
   }
 }
+
+const DISPLAY_CONFIG = {
+  x_grid: {
+    value: true,
+    description: `Show X-axis grid lines`,
+  },
+  y_grid: {
+    value: true,
+    description: `Show Y-axis grid lines`,
+  },
+  x_zero_line: {
+    value: false,
+    description: `Show X-axis zero reference line`,
+  },
+  y_zero_line: {
+    value: false,
+    description: `Show Y-axis zero reference line`,
+  },
+} as const
 
 // Complete settings configuration with values, descriptions, and constraints
 export const SETTINGS_CONFIG: SettingsConfig = {
@@ -741,10 +753,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 1,
       },
     },
+    display: DISPLAY_CONFIG,
   },
 
   // Bar plot specific
   bar: {
+    display: DISPLAY_CONFIG,
     bar: {
       color: {
         value: `#4A9EFF`,
@@ -808,6 +822,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_lines: {
       value: true,
       description: `Show connecting lines in scatter plots`,
+    },
+    display: {
+      ...DISPLAY_CONFIG,
+      y2_grid: {
+        value: true,
+        description: `Show secondary Y-axis grid lines`,
+      },
     },
     point: {
       size: {
@@ -1238,33 +1259,40 @@ const extract_values = (
 // Runtime defaults - extracted values for use in components
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 
+// Helper to merge nested objects (1 level deep)
+const merge_nested = <T extends Record<string, unknown>>(
+  defaults: T,
+  user?: Partial<T>,
+): T => {
+  const result = { ...defaults, ...(user || {}) } as T
+  // Merge nested objects one level deep
+  for (const key in defaults) {
+    if (
+      typeof defaults[key] === `object` &&
+      defaults[key] !== null &&
+      !Array.isArray(defaults[key])
+    ) {
+      result[key] = {
+        ...defaults[key],
+        ...(user?.[key] as Record<string, unknown>),
+      } as T[Extract<keyof T, string>]
+    }
+  }
+  return result
+}
+
 // Helper to merge with defaults - handles nested structure
 export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   ...DEFAULTS,
   ...(user || {}),
-  structure: { ...DEFAULTS.structure, ...(user?.structure || {}) },
-  trajectory: { ...DEFAULTS.trajectory, ...(user?.trajectory || {}) },
-  composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
-  plot: { ...DEFAULTS.plot, ...(user?.plot || {}) },
-  scatter: { ...DEFAULTS.scatter, ...(user?.scatter || {}) },
-  histogram: { ...DEFAULTS.histogram, ...(user?.histogram || {}) },
-  bar: { ...DEFAULTS.bar, ...(user?.bar || {}) },
-  phase_diagram: {
-    ...DEFAULTS.phase_diagram,
-    ...(user?.phase_diagram || {}),
-    binary: {
-      ...DEFAULTS.phase_diagram.binary,
-      ...(user?.phase_diagram?.binary || {}),
-    },
-    ternary: {
-      ...DEFAULTS.phase_diagram.ternary,
-      ...(user?.phase_diagram?.ternary || {}),
-    },
-    quaternary: {
-      ...DEFAULTS.phase_diagram.quaternary,
-      ...(user?.phase_diagram?.quaternary || {}),
-    },
-  },
+  structure: merge_nested(DEFAULTS.structure, user?.structure),
+  trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
+  composition: merge_nested(DEFAULTS.composition, user?.composition),
+  plot: merge_nested(DEFAULTS.plot, user?.plot),
+  scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
+  histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
+  bar: merge_nested(DEFAULTS.bar, user?.bar),
+  phase_diagram: merge_nested(DEFAULTS.phase_diagram, user?.phase_diagram),
 } as DefaultSettings)
 
 // Narrowed accessor for phase diagram defaults to ensure strong typing at call sites

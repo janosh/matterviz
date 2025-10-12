@@ -37,7 +37,7 @@
       [number | null, number | null]
     >,
   )
-  let range_els: Record<string, HTMLInputElement> = {}
+  let range_els = $state<Record<string, HTMLInputElement>>({})
 
   // Derived state
   let x_includes_zero = $derived(

@@ -27,6 +27,7 @@
   } from '$lib/plot'
   import {
     ColorBar,
+    DEFAULT_GRID_STYLE,
     find_best_plot_area,
     PlotLegend,
     ScatterPlotControls,
@@ -56,7 +57,7 @@
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
-    display = $bindable({}),
+    display = $bindable(DEFAULTS.scatter.display),
     styles = $bindable({}),
     controls = $bindable({}),
     padding = {},
@@ -166,11 +167,6 @@
 
     // Display defaults
     display.markers ??= DEFAULTS.scatter.markers
-    display.x_grid ??= true
-    display.y_grid ??= true
-    display.y2_grid ??= true
-    display.x_zero_line ??= false
-    display.y_zero_line ??= false
 
     styles.show_points ??= true
     styles.show_lines ??= true
@@ -1332,6 +1328,190 @@
         y_max,
         pad,
       })}
+      <g class="x-axis">
+        {#if width > 0 && height > 0}
+          {#each x_tick_values as tick (tick)}
+            {@const tick_pos_raw = x_axis.format?.startsWith(`%`)
+          ? x_scale_fn(new Date(tick))
+          : x_scale_fn(tick)}
+            {#if isFinite(tick_pos_raw)}
+              // Check if tick position is finite
+              {@const tick_pos = tick_pos_raw}
+              {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
+                <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
+                  {#if display.x_grid}
+                    <line
+                      y1={-(height - pad.b - pad.t)}
+                      y2="0"
+                      {...DEFAULT_GRID_STYLE}
+                      {...(x_axis.grid_style ?? {})}
+                    />
+                  {/if}
+
+                  {#if tick >= x_min && tick <= x_max}
+                    {@const { x, y } = x_axis.tick_label_shift ?? { x: 0, y: 20 }}
+                    <text {x} {y}>{format_value(tick, x_axis.format ?? ``)}</text>
+                  {/if}
+                </g>
+              {/if}
+            {/if}
+          {/each}
+        {/if}
+
+        <!-- Current frame indicator -->
+        {#if current_x_value !== null && current_x_value !== undefined}
+          {@const current_pos_raw = x_axis.format?.startsWith(`%`)
+          ? x_scale_fn(new Date(current_x_value))
+          : x_scale_fn(current_x_value)}
+          {#if isFinite(current_pos_raw)}
+            {@const current_pos = current_pos_raw}
+            {#if current_pos >= pad.l && current_pos <= width - pad.r}
+              {@const active_tick_height = 7}
+              <rect
+                x={current_pos - 1.5}
+                y={height - pad.b - active_tick_height / 2}
+                width="3"
+                height={active_tick_height}
+                fill="var(--scatter-current-frame-color, #ff6b35)"
+                stroke="white"
+                stroke-width="1"
+                class="current-frame-indicator"
+              />
+            {/if}
+          {/if}
+        {/if}
+
+        <foreignObject
+          x={width / 2 + (x_axis.label_shift?.x ?? 0) - 100}
+          y={height - pad.b - (x_axis.label_shift?.y ?? -40) - 10}
+          width="200"
+          height="20"
+        >
+          <div class="axis-label x-label">
+            {@html x_axis.label ?? ``}
+          </div>
+        </foreignObject>
+      </g>
+
+      <g class="y-axis">
+        {#if width > 0 && height > 0}
+          {#each y_tick_values as tick, idx (tick)}
+            {@const tick_pos_raw = y_scale_fn(tick)}
+            {#if isFinite(tick_pos_raw)}
+              // Check if tick position is finite
+              {@const tick_pos = tick_pos_raw}
+              {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
+                <g class="tick" transform="translate({pad.l}, {tick_pos})">
+                  {#if display.y_grid}
+                    <line
+                      x1="0"
+                      x2={width - pad.l - pad.r}
+                      {...DEFAULT_GRID_STYLE}
+                      {...(y_axis.grid_style ?? {})}
+                    />
+                  {/if}
+
+                  {#if tick >= y_min && tick <= y_max}
+                    {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
+                    <text {x} {y} text-anchor="end" fill={axis_colors.y1 || undefined}>
+                      {format_value(tick, y_axis.format ?? ``)}
+                      {#if y_axis.unit && idx === 0}
+                        &zwnj;&ensp;{y_axis.unit}
+                      {/if}
+                    </text>
+                  {/if}
+                </g>
+              {/if}
+            {/if}
+          {/each}
+        {/if}
+
+        {#if height > 0}
+          <foreignObject
+            x={-100}
+            y={-10}
+            width="200"
+            height="20"
+            transform="rotate(-90, {(y_axis.label_shift?.y ?? 12)}, {pad.t +
+              (height - pad.t - pad.b) / 2 +
+              ((y_axis.label_shift?.x ?? 0))}) translate({(y_axis.label_shift?.y ?? 12)}, {pad.t +
+              (height - pad.t - pad.b) / 2 +
+              ((y_axis.label_shift?.x ?? 0))})"
+          >
+            <div class="axis-label y-label" style:color={axis_colors.y1 || undefined}>
+              {@html y_axis.label ?? ``}
+            </div>
+          </foreignObject>
+        {/if}
+      </g>
+
+      <!-- Y2-axis (Right) -->
+      {#if y2_points.length > 0}
+        <g class="y2-axis">
+          {#if width > 0 && height > 0}
+            {#each y2_tick_values as tick, idx (tick)}
+              {@const tick_pos_raw = y2_scale_fn(tick)}
+              {#if isFinite(tick_pos_raw)}
+                // Check if tick position is finite
+                {@const tick_pos = tick_pos_raw}
+                {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
+                  <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
+                    {#if display.y2_grid}
+                      <line
+                        x1={-(width - pad.l - pad.r)}
+                        x2="0"
+                        {...DEFAULT_GRID_STYLE}
+                        {...(y2_axis.grid_style ?? {})}
+                      />
+                    {/if}
+
+                    {#if tick >= y2_min && tick <= y2_max}
+                      {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
+                      <text {x} {y} text-anchor="start" fill={axis_colors.y2}>
+                        {format_value(tick, y2_axis.format ?? ``)}
+                        {#if y2_axis.unit && idx === 0}
+                          &zwnj;&ensp;{y2_axis.unit}
+                        {/if}
+                      </text>
+                    {/if}
+                  </g>
+                {/if}
+              {/if}
+            {/each}
+          {/if}
+
+          {#if height > 0 && y2_axis.label}
+            <foreignObject
+              x={-100}
+              y={-10}
+              width="200"
+              height="20"
+              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
+                (height - pad.t - pad.b) / 2 +
+                ((y2_axis.label_shift?.x ?? 0))}) translate({width -
+                pad.r +
+                ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
+                (height - pad.t - pad.b) / 2 +
+                ((y2_axis.label_shift?.x ?? 0))})"
+            >
+              <div class="axis-label y2-label" style:color={axis_colors.y2}>
+                {@html y2_axis.label ?? ``}
+              </div>
+            </foreignObject>
+          {/if}
+        </g>
+      {/if}
+
+      <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
+
+      <!-- Zoom Selection Rectangle -->
+      {#if drag_start_coords && drag_current_coords}
+        {@const x = Math.min(drag_start_coords.x, drag_current_coords.x)}
+        {@const y = Math.min(drag_start_coords.y, drag_current_coords.y)}
+        {@const rect_width = Math.abs(drag_start_coords.x - drag_current_coords.x)}
+        {@const rect_height = Math.abs(drag_start_coords.y - drag_current_coords.y)}
+        <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
+      {/if}
 
       <!-- Zero lines -->
       {#if display.x_zero_line && x_axis.scale_type === `linear` &&
@@ -1510,188 +1690,6 @@
             {/if}
           </g>
         {/each}
-      {/if}
-
-      <g class="x-axis">
-        {#if width > 0 && height > 0}
-          {#each x_tick_values as tick (tick)}
-            {@const tick_pos_raw = x_axis.format?.startsWith(`%`)
-          ? x_scale_fn(new Date(tick))
-          : x_scale_fn(tick)}
-            {#if isFinite(tick_pos_raw)}
-              // Check if tick position is finite
-              {@const tick_pos = tick_pos_raw}
-              {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
-                <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                  {#if display.x_grid}
-                    <line
-                      y1={-(height - pad.b - pad.t)}
-                      y2="0"
-                      {...x_axis.grid_style ?? {}}
-                    />
-                  {/if}
-
-                  {#if tick >= x_min && tick <= x_max}
-                    {@const { x, y } = x_axis.tick_label_shift ?? { x: 0, y: 20 }}
-                    <text {x} {y}>{format_value(tick, x_axis.format ?? ``)}</text>
-                  {/if}
-                </g>
-              {/if}
-            {/if}
-          {/each}
-        {/if}
-
-        <!-- Current frame indicator -->
-        {#if current_x_value !== null && current_x_value !== undefined}
-          {@const current_pos_raw = x_axis.format?.startsWith(`%`)
-          ? x_scale_fn(new Date(current_x_value))
-          : x_scale_fn(current_x_value)}
-          {#if isFinite(current_pos_raw)}
-            {@const current_pos = current_pos_raw}
-            {#if current_pos >= pad.l && current_pos <= width - pad.r}
-              {@const active_tick_height = 7}
-              <rect
-                x={current_pos - 1.5}
-                y={height - pad.b - active_tick_height / 2}
-                width="3"
-                height={active_tick_height}
-                fill="var(--scatter-current-frame-color, #ff6b35)"
-                stroke="white"
-                stroke-width="0.5"
-                class="current-frame-indicator"
-              />
-            {/if}
-          {/if}
-        {/if}
-
-        <foreignObject
-          x={width / 2 + (x_axis.label_shift?.x ?? 0) - 100}
-          y={height - pad.b - (x_axis.label_shift?.y ?? -40) - 10}
-          width="200"
-          height="20"
-        >
-          <div class="axis-label x-label">
-            {@html x_axis.label ?? ``}
-          </div>
-        </foreignObject>
-      </g>
-
-      <g class="y-axis">
-        {#if width > 0 && height > 0}
-          {#each y_tick_values as tick, idx (tick)}
-            {@const tick_pos_raw = y_scale_fn(tick)}
-            {#if isFinite(tick_pos_raw)}
-              // Check if tick position is finite
-              {@const tick_pos = tick_pos_raw}
-              {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                  {#if display.y_grid}
-                    <line
-                      x1="0"
-                      x2={width - pad.l - pad.r}
-                      {...y_axis.grid_style ?? {}}
-                    />
-                  {/if}
-
-                  {#if tick >= y_min && tick <= y_max}
-                    {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
-                    <text {x} {y} text-anchor="end" fill={axis_colors.y1 || undefined}>
-                      {format_value(tick, y_axis.format ?? ``)}
-                      {#if y_axis.unit && idx === 0}
-                        &zwnj;&ensp;{y_axis.unit}
-                      {/if}
-                    </text>
-                  {/if}
-                </g>
-              {/if}
-            {/if}
-          {/each}
-        {/if}
-
-        {#if height > 0}
-          <foreignObject
-            x={-100}
-            y={-10}
-            width="200"
-            height="20"
-            transform="rotate(-90, {(y_axis.label_shift?.y ?? 12)}, {pad.t +
-              (height - pad.t - pad.b) / 2 +
-              ((y_axis.label_shift?.x ?? 0))}) translate({(y_axis.label_shift?.y ?? 12)}, {pad.t +
-              (height - pad.t - pad.b) / 2 +
-              ((y_axis.label_shift?.x ?? 0))})"
-          >
-            <div class="axis-label y-label" style:color={axis_colors.y1 || undefined}>
-              {@html y_axis.label ?? ``}
-            </div>
-          </foreignObject>
-        {/if}
-      </g>
-
-      <!-- Y2-axis (Right) -->
-      {#if y2_points.length > 0}
-        <g class="y2-axis">
-          {#if width > 0 && height > 0}
-            {#each y2_tick_values as tick, idx (tick)}
-              {@const tick_pos_raw = y2_scale_fn(tick)}
-              {#if isFinite(tick_pos_raw)}
-                // Check if tick position is finite
-                {@const tick_pos = tick_pos_raw}
-                {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                  <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
-                    {#if display.y2_grid}
-                      <line
-                        x1={-(width - pad.l - pad.r)}
-                        x2="0"
-                        {...y2_axis.grid_style ?? {}}
-                      />
-                    {/if}
-
-                    {#if tick >= y2_min && tick <= y2_max}
-                      {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
-                      <text {x} {y} text-anchor="start" fill={axis_colors.y2}>
-                        {format_value(tick, y2_axis.format ?? ``)}
-                        {#if y2_axis.unit && idx === 0}
-                          &zwnj;&ensp;{y2_axis.unit}
-                        {/if}
-                      </text>
-                    {/if}
-                  </g>
-                {/if}
-              {/if}
-            {/each}
-          {/if}
-
-          {#if height > 0 && y2_axis.label}
-            <foreignObject
-              x={-100}
-              y={-10}
-              width="200"
-              height="20"
-              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
-                (height - pad.t - pad.b) / 2 +
-                ((y2_axis.label_shift?.x ?? 0))}) translate({width -
-                pad.r +
-                ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
-                (height - pad.t - pad.b) / 2 +
-                ((y2_axis.label_shift?.x ?? 0))})"
-            >
-              <div class="axis-label y2-label" style:color={axis_colors.y2}>
-                {@html y2_axis.label ?? ``}
-              </div>
-            </foreignObject>
-          {/if}
-        </g>
-      {/if}
-
-      <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
-
-      <!-- Zoom Selection Rectangle -->
-      {#if drag_start_coords && drag_current_coords}
-        {@const x = Math.min(drag_start_coords.x, drag_current_coords.x)}
-        {@const y = Math.min(drag_start_coords.y, drag_current_coords.y)}
-        {@const rect_width = Math.abs(drag_start_coords.x - drag_current_coords.x)}
-        {@const rect_height = Math.abs(drag_start_coords.y - drag_current_coords.y)}
-        <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
       {/if}
     </svg>
 

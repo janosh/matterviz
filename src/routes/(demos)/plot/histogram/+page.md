@@ -72,11 +72,10 @@
   import { Histogram } from 'matterviz'
   import { generate_normal, generate_exponential, generate_uniform, generate_gamma } from '$site/plot-utils'
 
-  let opacity = $state(0.6)
-  let stroke_width = $state(1.5)
-  let x_scale = $state(`linear`)
-  let y_scale = $state(`linear`)
-  let show_grid = $state(true)
+  let x_axis = $state({scale_type: `linear`})
+  let y_axis = $state({scale_type: `linear`})
+  let display = $state({ x_grid: true, y_grid: true })
+  let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
   let series = $state([
     { y: generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
@@ -93,22 +92,23 @@
 
 <div style="display: flex; gap: 1em; flex-wrap: wrap; margin-block: 2em; align-items: center;">
   <label>Opacity:
-    <input type="number" bind:value={opacity} min="0.1" max="1" step="0.1" />
-    <input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" />
+    <input type="number" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
+    <input type="range" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
   </label>
   <label>Stroke Width:
-    <input type="number" bind:value={stroke_width} min="0" max="5" step="0.5" />
-    <input type="range" bind:value={stroke_width} min="0" max="5" step="0.5" />
+    <input type="number" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
+    <input type="range" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
   </label>
 
   <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale}
-    <input type="radio" bind:group={x_scale} value={scale} />{scale}
+    <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
   {/each}</label>
   <label style="display: flex; gap: 5pt">Y: {#each [`linear`, `log`] as scale}
-    <input type="radio" bind:group={y_scale} value={scale} />{scale}
+    <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
   {/each}</label>
 
-  <label><input type="checkbox" bind:checked={show_grid} />Grid</label>
+  <label><input type="checkbox" bind:checked={display.x_grid} />Show x grid</label>
+  <label><input type="checkbox" bind:checked={display.y_grid} />Show y grid</label>
 </div>
 
 {#each series as srs, idx}
@@ -123,10 +123,10 @@
   {series}
   mode="overlay"
   bins={50}
-  bar={{ opacity, stroke_width }}
-  x_axis={{ scale_type: x_scale }}
-  y_axis={{ scale_type: y_scale }}
-  display={{ x_grid: show_grid, y_grid: show_grid }}
+  bind:bar
+  bind:x_axis
+  bind:y_axis
+  bind:display
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -147,8 +147,14 @@
     generate_power_law,
   } from '$site/plot-utils'
 
-  let x_scale = $state(`linear`)
-  let y_scale = $state(`log`)
+  let x_axis = $state({ scale_type: `linear` })
+  let y_axis = $state({ scale_type: `log` })
+  $effect(() => {
+    x_axis.label = `Value (${x_axis.scale_type} scale)`
+    x_axis.format = x_axis.scale_type === `log` ? `~s` : `d`
+    y_axis.label = `Frequency (${y_axis.scale_type} scale)`
+    y_axis.format = y_axis.scale_type === `log` ? `~s` : `d`
+  })
   let bins = $state(40)
 
   let series = $state([
@@ -172,12 +178,12 @@
 
 X: {#each [`linear`, `log`] as scale (scale)}
   <label>
-    <input type="radio" bind:group={x_scale} value={scale} />{scale}
+    <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
   </label>
 {/each}
 Y: {#each [`linear`, `log`] as scale (scale)}
   <label>
-    <input type="radio" bind:group={y_scale} value={scale} />{scale}
+    <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
   </label>
 {/each}
 
@@ -193,12 +199,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   mode="overlay"
   {bins}
-  x_axis={{ scale_type: x_scale, label: `Value (${x_scale} scale)`, format: `~s` }}
-  y_axis={{
-    scale_type: y_scale,
-    label: `Frequency (${y_scale} scale)`,
-    format: y_scale === `log` ? `~s` : `d`,
-  }}
+  bind:x_axis
+  bind:y_axis
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}

@@ -17,8 +17,8 @@ const page_bg_black = `#000000` // Pure black
 // Borders
 const border_light = `#d1d5db` // Gray border
 const border_dark = `#404040` // Dark gray border
-const border_white = `#f0f0f0` // Light border
-const border_black = `#202020` // Dark border
+const border_white = `#d1d5db` // Light border
+const border_black = `#404040` // Dark border
 
 // Accents
 const acc_light = `#4f46e5` // Indigo

@@ -13,7 +13,12 @@
     Orientation,
     UserContentProps,
   } from '$lib/plot'
-  import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
+  import {
+    BarPlotControls,
+    DEFAULT_GRID_STYLE,
+    find_best_plot_area,
+    PlotLegend,
+  } from '$lib/plot'
   import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
@@ -23,15 +28,13 @@
   import { SvelteMap } from 'svelte/reactivity'
   import { calc_auto_padding, measure_text_width } from './layout'
 
-  const default_grid_style = { stroke: `#e6e6e6`, 'stroke-width': 1, fill: `none` }
-
   let {
     series = $bindable([]),
     orientation = $bindable(`vertical` as Orientation),
     mode = $bindable(`overlay` as BarMode),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
-    display = $bindable({}),
+    display = $bindable(DEFAULTS.bar.display),
     x_lim = [null, null],
     y_lim = [null, null],
     range_padding = 0.05,
@@ -429,6 +432,152 @@
       tabindex="0"
       aria-label="Interactive bar plot with zoom and tooltip"
     >
+      <!-- Zoom rectangle -->
+      {#if drag_state.start && drag_state.current}
+        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
+        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
+        {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}
+        {@const rect_h = Math.abs(drag_state.start.y - drag_state.current.y)}
+        <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
+      {/if}
+
+      <!-- User content (custom overlays, reference lines, etc.) -->
+      {@render user_content?.({
+        height,
+        width,
+        x_scale_fn: scales.x,
+        y_scale_fn: scales.y,
+        pad,
+        x_min: ranges.current.x[0],
+        y_min: ranges.current.y[0],
+        x_max: ranges.current.x[1],
+        y_max: ranges.current.y[1],
+      })}
+
+      <!-- X-axis -->
+      <g class="x-axis">
+        <line
+          x1={pad.l}
+          x2={width - pad.r}
+          y1={height - pad.b}
+          y2={height - pad.b}
+          stroke="var(--border-color, gray)"
+          stroke-width="1"
+        />
+        {#each ticks.x as tick (tick)}
+          {@const tick_x = scales.x(tick as number)}
+          {#if isFinite(tick_x)}
+            {@const rotation = x_axis.tick_rotation ?? 0}
+            {@const shift_x = x_axis.tick_label_shift?.x ?? 0}
+            {@const shift_y = x_axis.tick_label_shift?.y ?? 0}
+            {@const text_y = rotation !== 0 ? 8 + shift_y : 18 + shift_y}
+            {@const text_anchor = rotation !== 0 ? `start` : `middle`}
+            <g class="tick" transform="translate({tick_x}, {height - pad.b})">
+              {#if display.x_grid}
+                <line
+                  y1={-(height - pad.b - pad.t)}
+                  y2="0"
+                  {...DEFAULT_GRID_STYLE}
+                  {...(x_axis.grid_style ?? {})}
+                />
+              {/if}
+              <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
+              <text
+                x={shift_x}
+                y={text_y}
+                text-anchor={text_anchor}
+                fill="var(--text-color)"
+                transform={rotation !== 0
+                ? `rotate(${rotation}, ${shift_x}, ${text_y})`
+                : undefined}
+              >
+                {format_value(tick, x_axis.format)}
+              </text>
+            </g>
+          {/if}
+        {/each}
+        {#if x_axis.label}
+          {@const shift_x = x_axis.label_shift?.x ?? 0}
+          {@const shift_y = x_axis.label_shift?.y ?? 0}
+          <text
+            x={pad.l + chart_width / 2 + shift_x}
+            y={height - (pad.b / 3) + shift_y}
+            text-anchor="middle"
+            fill="var(--text-color)"
+          >
+            {x_axis.label}
+          </text>
+        {/if}
+      </g>
+
+      <!-- Y-axis -->
+      <g class="y-axis">
+        <line
+          x1={pad.l}
+          x2={pad.l}
+          y1={pad.t}
+          y2={height - pad.b}
+          stroke="var(--border-color, gray)"
+          stroke-width="1"
+        />
+        {#each ticks.y as tick (tick)}
+          {@const tick_y = scales.y(tick as number)}
+          {#if isFinite(tick_y)}
+            {@const rotation = y_axis.tick_rotation ?? 0}
+            {@const shift_x = y_axis.tick_label_shift?.x ?? 0}
+            {@const shift_y = y_axis.tick_label_shift?.y ?? 0}
+            {@const text_x = -10 + shift_x}
+            <g class="tick" transform="translate({pad.l}, {tick_y})">
+              {#if display.y_grid}
+                <line
+                  x1="0"
+                  x2={width - pad.l - pad.r}
+                  {...DEFAULT_GRID_STYLE}
+                  {...(y_axis.grid_style ?? {})}
+                />
+              {/if}
+              <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
+              <text
+                x={text_x}
+                y={shift_y}
+                text-anchor="end"
+                dominant-baseline="central"
+                fill="var(--text-color)"
+                transform={rotation !== 0
+                ? `rotate(${rotation}, ${text_x}, ${shift_y})`
+                : undefined}
+              >
+                {format_value(tick, y_axis.format)}
+              </text>
+            </g>
+          {/if}
+        {/each}
+        {#if y_axis.label}
+          {@const max_y_tick_width = Math.max(
+          0,
+          ...ticks.y.map((tick) =>
+            measure_text_width(
+              format_value(tick, y_axis.format),
+              `12px sans-serif`,
+            )
+          ),
+        )}
+          {@const shift_x = y_axis.label_shift?.x ?? 0}
+          {@const shift_y = y_axis.label_shift?.y ?? 0}
+          {@const y_label_x = Math.max(15, pad.l - max_y_tick_width - 35) + shift_x}
+          {@const y_label_y = pad.t + chart_height / 2 + shift_y}
+          <text
+            x={y_label_x}
+            y={y_label_y}
+            text-anchor="middle"
+            fill="var(--text-color)"
+            transform="rotate(-90, {y_label_x}, {y_label_y})"
+          >
+            {y_axis.label}
+          </text>
+        {/if}
+      </g>
+
       <!-- Define clip path for chart area -->
       <defs>
         <clipPath id={clip_path_id}>
@@ -631,152 +780,6 @@
             </g>
           {/if}
         {/each}
-      </g>
-
-      <!-- Zoom rectangle -->
-      {#if drag_state.start && drag_state.current}
-        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
-        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
-        {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}
-        {@const rect_h = Math.abs(drag_state.start.y - drag_state.current.y)}
-        <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
-      {/if}
-
-      <!-- User content (custom overlays, reference lines, etc.) -->
-      {@render user_content?.({
-        height,
-        width,
-        x_scale_fn: scales.x,
-        y_scale_fn: scales.y,
-        pad,
-        x_min: ranges.current.x[0],
-        y_min: ranges.current.y[0],
-        x_max: ranges.current.x[1],
-        y_max: ranges.current.y[1],
-      })}
-
-      <!-- X-axis -->
-      <g class="x-axis">
-        <line
-          x1={pad.l}
-          x2={width - pad.r}
-          y1={height - pad.b}
-          y2={height - pad.b}
-          stroke="var(--border-color, gray)"
-          stroke-width="1"
-        />
-        {#each ticks.x as tick (tick)}
-          {@const tick_x = scales.x(tick as number)}
-          {#if isFinite(tick_x)}
-            {@const rotation = x_axis.tick_rotation ?? 0}
-            {@const shift_x = x_axis.tick_label_shift?.x ?? 0}
-            {@const shift_y = x_axis.tick_label_shift?.y ?? 0}
-            {@const text_y = rotation !== 0 ? 8 + shift_y : 18 + shift_y}
-            {@const text_anchor = rotation !== 0 ? `start` : `middle`}
-            <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-              {#if display.x_grid}
-                <line
-                  y1={-(height - pad.b - pad.t)}
-                  y2="0"
-                  {...default_grid_style}
-                  {...(x_axis.grid_style ?? {})}
-                />
-              {/if}
-              <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
-              <text
-                x={shift_x}
-                y={text_y}
-                text-anchor={text_anchor}
-                fill="var(--text-color)"
-                transform={rotation !== 0
-                ? `rotate(${rotation}, ${shift_x}, ${text_y})`
-                : undefined}
-              >
-                {format_value(tick, x_axis.format)}
-              </text>
-            </g>
-          {/if}
-        {/each}
-        {#if x_axis.label}
-          {@const shift_x = x_axis.label_shift?.x ?? 0}
-          {@const shift_y = x_axis.label_shift?.y ?? 0}
-          <text
-            x={pad.l + chart_width / 2 + shift_x}
-            y={height - (pad.b / 3) + shift_y}
-            text-anchor="middle"
-            fill="var(--text-color)"
-          >
-            {x_axis.label}
-          </text>
-        {/if}
-      </g>
-
-      <!-- Y-axis -->
-      <g class="y-axis">
-        <line
-          x1={pad.l}
-          x2={pad.l}
-          y1={pad.t}
-          y2={height - pad.b}
-          stroke="var(--border-color, gray)"
-          stroke-width="1"
-        />
-        {#each ticks.y as tick (tick)}
-          {@const tick_y = scales.y(tick as number)}
-          {#if isFinite(tick_y)}
-            {@const rotation = y_axis.tick_rotation ?? 0}
-            {@const shift_x = y_axis.tick_label_shift?.x ?? 0}
-            {@const shift_y = y_axis.tick_label_shift?.y ?? 0}
-            {@const text_x = -10 + shift_x}
-            <g class="tick" transform="translate({pad.l}, {tick_y})">
-              {#if display.y_grid}
-                <line
-                  x1="0"
-                  x2={width - pad.l - pad.r}
-                  {...default_grid_style}
-                  {...(y_axis.grid_style ?? {})}
-                />
-              {/if}
-              <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
-              <text
-                x={text_x}
-                y={shift_y}
-                text-anchor="end"
-                dominant-baseline="central"
-                fill="var(--text-color)"
-                transform={rotation !== 0
-                ? `rotate(${rotation}, ${text_x}, ${shift_y})`
-                : undefined}
-              >
-                {format_value(tick, y_axis.format)}
-              </text>
-            </g>
-          {/if}
-        {/each}
-        {#if y_axis.label}
-          {@const max_y_tick_width = Math.max(
-          0,
-          ...ticks.y.map((tick) =>
-            measure_text_width(
-              format_value(tick, y_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-          {@const shift_x = y_axis.label_shift?.x ?? 0}
-          {@const shift_y = y_axis.label_shift?.y ?? 0}
-          {@const y_label_x = Math.max(15, pad.l - max_y_tick_width - 35) + shift_x}
-          {@const y_label_y = pad.t + chart_height / 2 + shift_y}
-          <text
-            x={y_label_x}
-            y={y_label_y}
-            text-anchor="middle"
-            fill="var(--text-color)"
-            transform="rotate(-90, {y_label_x}, {y_label_y})"
-          >
-            {y_axis.label}
-          </text>
-        {/if}
       </g>
     </svg>
 
