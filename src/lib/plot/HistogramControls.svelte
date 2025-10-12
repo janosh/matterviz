@@ -1,22 +1,22 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
-  import type { DataSeries, PlotControlsProps } from '$lib/plot'
+  import type { AxisConfig, BarStyle, DataSeries } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
+  import type { DisplayConfig, PlotControlsProps } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
 
   let {
     series = [],
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
-    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
-    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
-    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
-    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
-    bar_color = $bindable(DEFAULTS.histogram.bar_color),
+    bar = $bindable({}),
     show_legend = $bindable(DEFAULTS.histogram.show_legend),
-    x_scale_type = $bindable(DEFAULTS.plot.x_scale_type as `linear` | `log`),
-    y_scale_type = $bindable(DEFAULTS.plot.y_scale_type as `linear` | `log`),
     selected_property = $bindable(``),
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    display = $bindable({}),
+    show_controls = $bindable(false),
+    controls_open = $bindable(false),
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
@@ -24,18 +24,19 @@
     // Histogram-specific controls
     bins?: number
     mode?: `single` | `overlay`
-    bar_opacity?: number
-    bar_stroke_width?: number
-    bar_stroke_color?: string
-    bar_stroke_opacity?: number
-    bar_color?: string
+    bar?: BarStyle
     show_legend?: boolean
-    // Scale type controls
-    x_scale_type?: `linear` | `log`
-    y_scale_type?: `linear` | `log`
-    // Selected property for single mode
     selected_property?: string
+    // Grouped configs
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+    display?: DisplayConfig
+    show_controls?: boolean
+    controls_open?: boolean
   } = $props()
+
+  // Initialize bar styles with defaults (runs once)
+  bar = { ...DEFAULTS.histogram.bar, ...bar }
 
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
@@ -43,13 +44,19 @@
   let series_options = $derived(visible_series.map((s) => s.label || `Series`))
 </script>
 
-<PlotControls {...rest}>
+<PlotControls
+  bind:show_controls
+  bind:controls_open
+  bind:x_axis
+  bind:y_axis
+  bind:display
+  {...rest}
+>
   <SettingsSection
     title="Histogram"
     current_values={{ bins, mode, show_legend }}
     on_reset={() => {
-      bins = DEFAULTS.histogram.bin_count
-      ;({ mode, show_legend } = DEFAULTS.histogram)
+      ;({ bin_count: bins, mode, show_legend } = DEFAULTS.histogram)
     }}
   >
     <div class="pane-row">
@@ -94,64 +101,60 @@
 
   <SettingsSection
     title="Bar Style"
-    current_values={{
-      bar_opacity,
-      bar_stroke_width,
-      bar_stroke_color,
-      bar_stroke_opacity,
-      bar_color,
-    }}
+    current_values={bar}
     on_reset={() => {
-      ;({
-        bar_opacity,
-        bar_stroke_width,
-        bar_stroke_color,
-        bar_stroke_opacity,
-        bar_color,
-      } = DEFAULTS.histogram)
+      bar = { ...DEFAULTS.histogram.bar }
     }}
     class="pane-grid"
   >
-    {#if visible_series.length === 1}
-      <label>Fill: <input type="color" bind:value={bar_color} /></label>
+    {#if bar}
+      {#if visible_series.length === 1}
+        <label>Fill: <input type="color" bind:value={bar.color} /></label>
+      {/if}
+      <label>Opacity:
+        <input type="range" min="0" max="1" step="0.05" bind:value={bar.opacity} />
+        <input type="number" min="0" max="1" step="0.05" bind:value={bar.opacity} />
+      </label>
+      <label>Stroke Width:
+        <input type="range" min="0" max="5" step="0.1" bind:value={bar.stroke_width} />
+        <input type="number" min="0" max="5" step="0.1" bind:value={bar.stroke_width} />
+      </label>
+      <label>Stroke Color:
+        <input type="color" bind:value={bar.stroke_color} />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          bind:value={bar.stroke_opacity}
+          title="Opacity"
+        />
+        <input
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          bind:value={bar.stroke_opacity}
+        />
+      </label>
     {/if}
-    <label>Opacity:
-      <input type="range" min="0" max="1" step="0.05" bind:value={bar_opacity} />
-      <input type="number" min="0" max="1" step="0.05" bind:value={bar_opacity} />
-    </label>
-    <label>Stroke Width:
-      <input type="range" min="0" max="5" step="0.1" bind:value={bar_stroke_width} />
-      <input type="number" min="0" max="5" step="0.1" bind:value={bar_stroke_width} />
-    </label>
-    <label>Stroke Color:
-      <input type="color" bind:value={bar_stroke_color} />
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        bind:value={bar_stroke_opacity}
-        title="Opacity"
-      />
-      <input type="number" min="0" max="1" step="0.05" bind:value={bar_stroke_opacity} />
-    </label>
   </SettingsSection>
 
   <SettingsSection
     title="Scale Type"
-    current_values={{ x_scale_type, y_scale_type }}
+    current_values={{ x_scale_type: x_axis.scale_type, y_scale_type: y_axis.scale_type }}
     on_reset={() => {
-      x_scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
-      y_scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
+      x_axis.scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
+      y_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
     }}
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"
   >
-    <label>X: <select bind:value={x_scale_type}>
+    <label>X: <select bind:value={x_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>
-    <label>Y: <select bind:value={y_scale_type}>
+    <label>Y: <select bind:value={y_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>

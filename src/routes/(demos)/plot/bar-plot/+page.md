@@ -21,8 +21,8 @@ A simple bar plot showing lattice parameters across different crystal systems. U
 
 <BarPlot
   series={lattice_params}
-  x_label="Crystal System"
-  y_label="Lattice Parameter (Å)"
+  x_axis={{ label: `Crystal System` }}
+  y_axis={{ label: `Lattice Parameter (Å)` }}
   style="height: 400px"
 />
 ```
@@ -69,8 +69,8 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 <BarPlot
   series={band_gaps}
   {mode}
-  x_label="Material (1=Si, 2=GaAs, 3=GaN, 4=ZnO, 5=Diamond)"
-  y_label="Band Gap (eV)"
+  x_axis={{ label: `Material (1=Si, 2=GaAs, 3=GaN, 4=ZnO, 5=Diamond)` }}
+  y_axis={{ label: `Band Gap (eV)` }}
   style="height: 400px"
 />
 ```
@@ -123,8 +123,8 @@ Combine bars and lines to show product formation alongside process parameters. L
 <BarPlot
   series={reaction_data}
   mode="stacked"
-  x_label="Time (minutes)"
-  y_label="Amount / Temperature"
+  x_axis={{ label: `Time (minutes)` }}
+  y_axis={{ label: `Amount / Temperature` }}
   style="height: 450px"
 />
 ```
@@ -171,10 +171,8 @@ Horizontal bar charts work well for categorical data with long labels:
 <BarPlot
   series={abundances}
   {orientation}
-  x_label="Abundance (ppm)"
-  y_label="Element"
-  x_format="~s"
-  y_format="~s"
+  x_axis={{ label: `Abundance (ppm)`, format: `~s` }}
+  y_axis={{ label: `Element`, format: `~s` }}
   style="height: 400px"
 />
 ```
@@ -229,9 +227,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
     if (data) {
       const { metadata, y } = data
       hovered_info = `${metadata.phase} at ${metadata.temp}: ${y}% stability`
-    } else {
-      hovered_info = `Hover over a bar`
-    }
+    } else hovered_info = `Hover over a bar`
   }
 
   const info_style =
@@ -241,8 +237,8 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 <BarPlot
   series={phase_stability}
   mode="grouped"
-  x_label="Temperature Point"
-  y_label="Stability (%)"
+  x_axis={{ label: `Temperature Point` }}
+  y_axis={{ label: `Stability (%)` }}
   on_bar_click={handle_click}
   on_bar_hover={handle_hover}
   style="height: 400px"
@@ -304,8 +300,8 @@ Bar plots handle negative values automatically and display zero lines for refere
 
 <BarPlot
   series={formation_energies}
-  x_label="Compound"
-  y_label="Formation Energy (eV/atom)"
+  x_axis={{ label: `Compound` }}
+  y_axis={{ label: `Formation Energy (eV/atom)` }}
   style="height: 400px"
 />
 ```
@@ -338,48 +334,37 @@ Custom formatting, tick control, and axis configuration for publication-quality 
     },
   ]
 
-  let x_format = $state(`d`)
-  let y_format = $state(`.2s`)
-  let x_ticks = $state(7)
-  let y_ticks = $state(6)
+  let x_axis = $state({ label: `Year`, format: `d`, ticks: 7 })
+  let y_axis = $state({ label: `Number of Materials`, format: `.2s`, ticks: 6 })
 </script>
 
 <div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">
   <label>
     X Format:
-    <select bind:value={x_format}>
+    <select bind:value={x_axis.format}>
       <option value="d">Integer (2020)</option>
       <option value=".0f">Float (2020.0)</option>
     </select>
   </label>
   <label>
     Y Format:
-    <select bind:value={y_format}>
+    <select bind:value={y_axis.format}>
       <option value=".2s">Short (1.6M)</option>
       <option value=",.0f">Full (1,600,000)</option>
       <option value=".3s">Precise (1.60M)</option>
     </select>
   </label>
   <label>
-    X Ticks: {x_ticks}
-    <input type="range" bind:value={x_ticks} min="3" max="10" style="width: 100px">
+    X Ticks: {x_axis.ticks}
+    <input type="range" bind:value={x_axis.ticks} min="3" max="10" style="width: 100px">
   </label>
   <label>
-    Y Ticks: {y_ticks}
-    <input type="range" bind:value={y_ticks} min="3" max="10" style="width: 100px">
+    Y Ticks: {y_axis.ticks}
+    <input type="range" bind:value={y_axis.ticks} min="3" max="10" style="width: 100px">
   </label>
 </div>
 
-<BarPlot
-  series={yearly_discoveries}
-  {x_format}
-  {y_format}
-  {x_ticks}
-  {y_ticks}
-  x_label="Year"
-  y_label="Number of Materials"
-  style="height: 400px"
-/>
+<BarPlot series={yearly_discoveries} bind:x_axis bind:y_axis style="height: 400px" />
 ```
 
 ## Spectroscopy Data with Zoom
@@ -419,8 +404,8 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
 
 <BarPlot
   series={spectroscopy}
-  x_label="Wavelength (nm)"
-  y_label="Absorption Coefficient"
+  x_axis={{ label: `Wavelength (nm)` }}
+  y_axis={{ label: `Absorption Coefficient` }}
   style="height: 450px"
 />
 ```

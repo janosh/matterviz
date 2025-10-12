@@ -98,9 +98,9 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 
 <ScatterPlot
   series={[basic_data, second_series]}
-  x_label="X Axis"
-  y_label="Y Value"
-  markers={display_mode}
+  x_axis={{ label: 'X Axis' }}
+  y_axis={{ label: 'Y Value' }}
+  display={{ markers: display_mode }}
   point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
   on_point_hover={handle_point_hover}
   style="height: 300px"
@@ -247,10 +247,9 @@ Demonstrate various point styles, custom tooltips, and hover effects:
 
 <ScatterPlot
   series={series_with_styles}
-  x_label="X Axis"
-  y_label="Point Style Examples"
-  y_lim={[0, 12]}
-  markers="points"
+  x_axis={{ label: 'X Axis' }}
+  y_axis={{ label: 'Point Style Examples', lim: [0, 12] }}
+  display={{ markers: 'points' }}
   change={(point) => (hovered_point = point)}
   style="height: 400px"
 >
@@ -372,11 +371,9 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 
 <ScatterPlot
   series={[spiral_data]}
-  x_label="X Axis"
-  y_label="Y Axis"
-  x_lim={[-15, 15]}
-  y_lim={[-15, 15]}
-  markers="points"
+  x_axis={{ label: 'X Axis', lim: [-15, 15] }}
+  y_axis={{ label: 'Y Axis', lim: [-15, 15] }}
+  display={{ markers: 'points' }}
   {size_scale}
   style="height: 500px"
 >
@@ -455,13 +452,9 @@ This example shows categorized data with color coding, custom tick intervals, an
 
 <ScatterPlot
   series={series_data}
-  x_label="X Value"
-  y_label="Y Value"
-  x_lim={[-15, 15]}
-  y_lim={[-15, 15]}
-  x_ticks={ticks.x}
-  y_ticks={ticks.y}
-  markers="points"
+  x_axis={{ label: "X Value", lim: [-15, 15], ticks: ticks.x }}
+  y_axis={{ label: "Y Value", lim: [-15, 15], ticks: ticks.y }}
+  display={{ markers: "points" }}
   style="height: 400px;"
 >
   {#snippet tooltip({ x, y, metadata })}
@@ -551,13 +544,9 @@ Using time data on the x-axis with custom formatting:
 
   <ScatterPlot
     series={time_series}
-    markers="line+points"
-    x_format={date_format}
-    {y_format}
-    x_ticks={-7}
-    y_ticks={5}
-    x_label="Date"
-    y_label="Value"
+    x_axis={{ format: date_format, ticks: -7, label: 'Date' }}
+    y_axis={{ format: y_format, ticks: 5, label: 'Value' }}
+    display={{ markers: 'line+points' }}
     style="height: 350px"
     legend={{
       layout: `horizontal`,
@@ -615,12 +604,8 @@ This example demonstrates how points with identical coordinates can still be ind
 
 <ScatterPlot
   series={[shared_coords_data]}
-  x_lim={[0, 10]}
-  y_lim={[0, 6]}
-  x_ticks={1}
-  y_ticks={1}
-  x_label="X Axis"
-  y_label="Y Axis"
+  x_axis={{ lim: [0, 10], ticks: 1, label: 'X Axis' }}
+  y_axis={{ lim: [0, 6], ticks: 1, label: 'Y Axis' }}
   change={(point) => (hovered_point = point)}
   style="height: 350px"
 >
@@ -667,11 +652,9 @@ This example shows how to add permanent text labels to your scatter points:
 
 <ScatterPlot
   series={[data]}
-  x_label="X Axis"
-  y_label="Y Axis"
-  x_lim={[0, 10]}
-  y_lim={[0, 10]}
-  markers="points"
+  x_axis={{ label: 'X Axis', lim: [0, 10] }}
+  y_axis={{ label: 'Y Axis', lim: [0, 10] }}
+  display={{ markers: 'points' }}
   style="height: 350px"
 />
 ```
@@ -701,11 +684,9 @@ You can position labels in different directions relative to each point:
 
 <ScatterPlot
   series={[position_data]}
-  x_label="X Axis"
-  y_label="Y Axis"
-  x_lim={[0, 10]}
-  y_lim={[0, 6]}
-  markers="points"
+  x_axis={{ label: 'X Axis', lim: [0, 10] }}
+  y_axis={{ label: 'Y Axis', lim: [0, 6] }}
+  display={{ markers: 'points' }}
   style="height: 350px"
 />
 ```
@@ -867,16 +848,20 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 
   <ScatterPlot
     series={all_series}
-    {x_scale_type}
-    {y_scale_type}
-    {x_lim}
-    {y_lim}
-    x_label="X Axis ({x_scale_type})"
-    y_label="Y Axis ({y_scale_type})"
+    x_axis={{
+      scale_type: x_scale_type,
+      lim: x_lim,
+      label: `X Axis (${x_scale_type})`,
+      format: '~s',
+    }}
+    y_axis={{
+      scale_type: y_scale_type,
+      lim: y_lim,
+      label: `Y Axis (${y_scale_type})`,
+      format: '~s',
+    }}
     {size_scale}
-    x_format="~s"
-    y_format="~s"
-    markers="line+points"
+    display={{ markers: 'line+points' }}
     style="height: 400px"
   >
     {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
@@ -1004,9 +989,9 @@ This example combines multiple features including different display modes, custo
 
   <ScatterPlot
     series={displayed_series}
-    x_label={axis_labels.x}
-    y_label={axis_labels.y}
-    markers={display_mode}
+    x_axis={{ label: axis_labels.x }}
+    y_axis={{ label: axis_labels.y }}
+    display={{ markers: display_mode }}
     change={(point) => (hovered_point = point)}
     style="height: 400px;"
     legend={null}
@@ -1065,14 +1050,9 @@ This example combines multiple features including different display modes, custo
 
   <ScatterPlot
     series={random_series}
-    x_label={axis_labels.x}
-    y_label={axis_labels.y}
-    x_lim={[-15, 15]}
-    y_lim={[-15, 15]}
-    x_ticks={ticks.x}
-    y_ticks={ticks.y}
-    show_x_grid={grid.x}
-    markers="points"
+    x_axis={{ label: axis_labels.x, lim: [-15, 15], ticks: ticks.x }}
+    y_axis={{ label: axis_labels.y, lim: [-15, 15], ticks: ticks.y }}
+    display={{ x_grid: grid.x, markers: "points" }}
     style="height: 400px; position: relative;"
     legend={{
       wrapper_style: `
@@ -1205,13 +1185,9 @@ This example demonstrates how the color bar automatically positions itself in on
 
 <ScatterPlot
   series={plot_series}
-  x_label="X Position"
-  y_label="Y Position"
-  x_lim={[0, 100]}
-  y_lim={[0, 100]}
-  x_format=".2"
-  y_format=".2"
-  markers="points+text"
+  x_axis={{ label: 'X Position', lim: [0, 100], format: '.2' }}
+  y_axis={{ label: 'Y Position', lim: [0, 100], format: '.2' }}
+  display={{ markers: 'points+text' }}
   color_scale={{ scheme: `turbo` }}
   color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
   style="height: 450px; margin-block: 1em"
@@ -1302,11 +1278,9 @@ This example demonstrates automatic placement with several clusters of points:
 
   <ScatterPlot
     series={series_data}
-    x_label="X Position"
-    y_label="Y Position"
-    x_lim={[0, 100]}
-    y_lim={[0, 100]}
-    markers="points"
+    x_axis={{ label: 'X Position', lim: [0, 100] }}
+    y_axis={{ label: 'Y Position', lim: [0, 100] }}
+    display={{ markers: 'points' }}
     style="height: 500px"
   />
 </div>
@@ -1369,13 +1343,9 @@ and scale type.
 
 <ScatterPlot
   series={[vertical_color_data]}
-  x_label="X Position"
-  y_label="Y Position"
-  x_lim={[0, 100]}
-  y_lim={[0, 100]}
-  x_format=".2"
-  y_format=".2"
-  markers="points"
+  x_axis={{ label: 'X Position', lim: [0, 100], format: '.2' }}
+  y_axis={{ label: 'Y Position', lim: [0, 100], format: '.2' }}
+  display={{ markers: 'points' }}
   {color_scale}
   padding={plot_padding}
   color_bar={{
@@ -1495,11 +1465,9 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 
 <ScatterPlot
   series={clipping_series}
-  x_lim={x_limits}
-  y_lim={y_limits}
-  x_label="X Axis (Fixed Range)"
-  y_label="Y Axis (Fixed Range)"
-  markers="line"
+  x_axis={{ lim: x_limits, label: 'X Axis (Fixed Range)' }}
+  y_axis={{ lim: y_limits, label: 'Y Axis (Fixed Range)' }}
+  display={{ markers: 'line' }}
   style="height: 400px"
 />
 ```

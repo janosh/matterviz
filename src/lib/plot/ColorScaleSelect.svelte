@@ -11,7 +11,7 @@
     ) as D3InterpolateName[],
     value = $bindable(options[0] as D3InterpolateName),
     selected = $bindable([]),
-    minSelect = 0,
+    minSelect = 1,
     placeholder = `Select a color scale`,
     colorbar = {},
     ...rest

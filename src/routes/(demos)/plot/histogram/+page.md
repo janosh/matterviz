@@ -23,9 +23,7 @@
       const { value, count, property } = data
       hover_info = `Hovering: ${property} - Value: ${
         value.toFixed(1)
-      }, Count: ${count}, Percentage: ${
-        format_num(count / sample_size * 100, `.2~%`)
-      }`
+      }, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
     } else {
       hover_info = 'Hover over a bar to see details'
     }
@@ -35,7 +33,7 @@
     const { value, count, property } = data
     click_info = `Clicked: ${property} - Value: ${
       value.toFixed(1)
-    }, Count: ${count}, Percentage: ${format_num(count / sample_size * 100, `.2~%`)}`
+    }, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
   }
 
   const info_style =
@@ -50,7 +48,7 @@
 
 {#snippet tooltip({ value, count })}
   Value: {value.toFixed(1)}<br>Count: {count}<br>
-  %: {format_num(count / sample_size * 100, `.2~%`)}
+  %: {format_num(count / sample_size, `.2~%`)}
 {/snippet}
 
 <Histogram
@@ -59,8 +57,8 @@
   {show_controls}
   on_bar_hover={handle_bar_hover}
   on_bar_click={handle_bar_click}
-  style="height: 400px"
   {tooltip}
+  style="height: 400px"
 />
 
 <div style={info_style}>{hover_info}</div>
@@ -74,11 +72,10 @@
   import { Histogram } from 'matterviz'
   import { generate_normal, generate_exponential, generate_uniform, generate_gamma } from '$site/plot-utils'
 
-  let opacity = $state(0.6)
-  let stroke_width = $state(1.5)
-  let x_scale = $state(`linear`)
-  let y_scale = $state(`linear`)
-  let show_grid = $state(true)
+  let x_axis = $state({scale_type: `linear`})
+  let y_axis = $state({scale_type: `linear`})
+  let display = $state({ x_grid: true, y_grid: true })
+  let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
   let series = $state([
     { y: generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
@@ -95,22 +92,23 @@
 
 <div style="display: flex; gap: 1em; flex-wrap: wrap; margin-block: 2em; align-items: center;">
   <label>Opacity:
-    <input type="number" bind:value={opacity} min="0.1" max="1" step="0.1" />
-    <input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" />
+    <input type="number" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
+    <input type="range" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
   </label>
   <label>Stroke Width:
-    <input type="number" bind:value={stroke_width} min="0" max="5" step="0.5" />
-    <input type="range" bind:value={stroke_width} min="0" max="5" step="0.5" />
+    <input type="number" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
+    <input type="range" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
   </label>
 
   <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale}
-    <input type="radio" bind:group={x_scale} value={scale} />{scale}
+    <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
   {/each}</label>
   <label style="display: flex; gap: 5pt">Y: {#each [`linear`, `log`] as scale}
-    <input type="radio" bind:group={y_scale} value={scale} />{scale}
+    <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
   {/each}</label>
 
-  <label><input type="checkbox" bind:checked={show_grid} />Grid</label>
+  <label><input type="checkbox" bind:checked={display.x_grid} />Show x grid</label>
+  <label><input type="checkbox" bind:checked={display.y_grid} />Show y grid</label>
 </div>
 
 {#each series as srs, idx}
@@ -125,12 +123,10 @@
   {series}
   mode="overlay"
   bins={50}
-  bar_opacity={opacity}
-  bar_stroke_width={stroke_width}
-  x_scale_type={x_scale}
-  y_scale_type={y_scale}
-  show_x_grid={show_grid}
-  show_y_grid={show_grid}
+  bind:bar
+  bind:x_axis
+  bind:y_axis
+  bind:display
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -138,12 +134,6 @@
     Value: {value.toFixed(2)}<br>Count: {count}
   {/snippet}
 </Histogram>
-
-<style>
-  .histogram {
-    align-content: center;
-  }
-</style>
 ```
 
 ## Logarithmic Scales
@@ -157,8 +147,14 @@
     generate_power_law,
   } from '$site/plot-utils'
 
-  let x_scale = $state(`linear`)
-  let y_scale = $state(`log`)
+  let x_axis = $state({ scale_type: `linear` })
+  let y_axis = $state({ scale_type: `log` })
+  $effect(() => {
+    x_axis.label = `Value (${x_axis.scale_type} scale)`
+    x_axis.format = x_axis.scale_type === `log` ? `~s` : `d`
+    y_axis.label = `Frequency (${y_axis.scale_type} scale)`
+    y_axis.format = y_axis.scale_type === `log` ? `~s` : `d`
+  })
   let bins = $state(40)
 
   let series = $state([
@@ -182,12 +178,12 @@
 
 X: {#each [`linear`, `log`] as scale (scale)}
   <label>
-    <input type="radio" bind:group={x_scale} value={scale} />{scale}
+    <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
   </label>
 {/each}
 Y: {#each [`linear`, `log`] as scale (scale)}
   <label>
-    <input type="radio" bind:group={y_scale} value={scale} />{scale}
+    <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
   </label>
 {/each}
 
@@ -203,12 +199,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   mode="overlay"
   {bins}
-  x_scale_type={x_scale}
-  y_scale_type={y_scale}
-  x_label="Value ({x_scale} scale)"
-  y_label="Frequency ({y_scale} scale)"
-  x_format="~s"
-  y_format={y_scale === `log` ? `~s` : `d`}
+  bind:x_axis
+  bind:y_axis
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
@@ -230,9 +222,16 @@ Y: {#each [`linear`, `log`] as scale (scale)}
     generate_mixture,
     generate_skewed,
   } from '$site/plot-utils'
+  import { format_num } from 'matterviz'
 
   let selected = $state(`bimodal`)
   let mode = $state(`single`)
+  let x_axis = $state({})
+  let y_axis = $state({ label: `Count` })
+  $effect(() => {
+    x_axis.label = { discrete: `Rating`, age: `Age` }[selected] ?? `Value`
+    x_axis.format = selected === `discrete` ? `.1f` : `.0f`
+  })
 
   let distributions = $derived({
     bimodal: {
@@ -295,9 +294,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   series={series_data}
   {mode}
   bins={selected === `discrete` ? 10 : 40}
-  x_label={selected === `age` ? `Age (years)` : selected === `discrete` ? `Rating` : `Value`}
-  y_label="Count"
-  x_format={selected === `discrete` ? `.1f` : `.0f`}
+  bind:x_axis
+  bind:y_axis
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
@@ -306,7 +304,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
     {{ age: `Age`, discrete: `Rating` }[selected] ?? `Value`}: {
       format_num(value, selected === `discrete` ? `.1f` : `.0f`)
     }<br>
-    Count: {count}<br>%: {format_num(count / current.data.length * 100, `.2~%`)}
+    Count: {count}<br>%: {format_num(count / current.data.length, `.2~%`)}
   {/snippet}
 </Histogram>
 ```
@@ -321,7 +319,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   let bin_counts = $state([10, 25, 50, 100])
   let show_overlay = $state(true)
   let data_type = $state(`mixed`)
-  let opacity = $state(0.6)
+  let bar = $state({ opacity: 0.6 })
 
   const base_data = $derived(data_type === `mixed` ? generate_mixed_data(3000) : generate_complex_distribution(3000))
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`]
@@ -343,7 +341,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 
 <label><input type="checkbox" bind:checked={show_overlay} />Multiple Bin Sizes</label>
 
-<label>Opacity: {opacity}<input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" /></label>
+<label>Opacity: {bar.opacity}<input type="range" bind:value={bar.opacity} min="0.1" max="1" step="0.1" /></label>
 
 {#if !show_overlay}
   <label>Bins: {bin_counts[1]}<input type="range" bind:value={bin_counts[1]} min="5" max="200" step="5" /></label>
@@ -357,7 +355,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   bins={show_overlay ? 25 : bin_counts[1]}
   mode={show_overlay ? `overlay` : `single`}
-  bar_opacity={opacity}
+  bind:bar
   show_legend={show_overlay}
   style="height: 450px; margin-block: 1em;"
 >
@@ -387,6 +385,14 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   const x_formats = { number: `.1f`, scientific: `.2e`, percentage: `.1%`, currency: `$,.0f`, engineering: `.2~s` }
   const y_formats = { count: `d`, percentage: `.1%`, thousands: `,.0f`, scientific: `.1e` }
 
+  let x_axis = $state({})
+  let y_axis = $state({})
+  $effect(() => {
+    x_axis.label = x_format === `currency` ? `Stock Price` : `Value`
+    x_axis.format = x_formats[x_format]
+    y_axis.label = y_format === `percentage` ? `Percentage` : `Count`
+    y_axis.format = y_format === `percentage` ? `.1%` : y_formats[y_format]
+  })
   let data = $derived(data_source === `financial` ? generate_financial_data(1200) : generate_scientific_data(1200))
   let series = $derived([{
     y: data,
@@ -412,10 +418,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 <Histogram
   {series}
   bins={35}
-  x_label={x_format === `currency` ? `Stock Price` : `Value`}
-  y_label={y_format === `percentage` ? `Percentage` : `Count`}
-  x_format={x_formats[x_format]}
-  y_format={y_format === `percentage` ? `.1%` : y_formats[y_format]}
+  bind:x_axis
+  bind:y_axis
   style="height: 450px; border: 2px solid {color_schemes[color_scheme][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}
