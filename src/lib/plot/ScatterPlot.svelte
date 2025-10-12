@@ -168,6 +168,11 @@
 
     // Display defaults
     display.markers ??= DEFAULTS.scatter.markers
+    display.x_grid ??= DEFAULTS.scatter.display.x_grid
+    display.y_grid ??= DEFAULTS.scatter.display.y_grid
+    display.y2_grid ??= DEFAULTS.scatter.display.y2_grid
+    display.x_zero_line ??= DEFAULTS.scatter.display.x_zero_line
+    display.y_zero_line ??= DEFAULTS.scatter.display.y_zero_line
 
     styles.show_points ??= true
     styles.show_lines ??= true

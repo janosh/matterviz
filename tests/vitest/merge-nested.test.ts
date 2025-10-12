@@ -35,6 +35,15 @@ describe(`merge_nested`, () => {
     ).toEqual({ a: null, nested: { b: null } })
   })
 
+  test(`replaces nested object with null without throwing`, () => {
+    expect(
+      merge_nested(
+        { nested: { a: 1, b: 2 } },
+        { nested: null } as never,
+      ),
+    ).toEqual({ nested: null })
+  })
+
   test(`only merges 1 level deep`, () => {
     expect(
       merge_nested(

@@ -226,6 +226,12 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 
   let selected = $state(`bimodal`)
   let mode = $state(`single`)
+  let x_axis = $state({})
+  let y_axis = $state({ label: `Count` })
+  $effect(() => {
+    x_axis.label = { discrete: `Rating`, age: `Age` }[selected] ?? `Value`
+    x_axis.format = selected === `discrete` ? `.1f` : `.0f`
+  })
 
   let distributions = $derived({
     bimodal: {
@@ -288,15 +294,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   series={series_data}
   {mode}
   bins={selected === `discrete` ? 10 : 40}
-  x_axis={{
-    label: selected === `age`
-      ? `Age (years)`
-      : selected === `discrete`
-      ? `Rating`
-      : `Value`,
-    format: selected === `discrete` ? `.1f` : `.0f`,
-  }}
-  y_axis={{ label: `Count` }}
+  bind:x_axis
+  bind:y_axis
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
@@ -320,7 +319,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   let bin_counts = $state([10, 25, 50, 100])
   let show_overlay = $state(true)
   let data_type = $state(`mixed`)
-  let opacity = $state(0.6)
+  let bar = $state({ opacity: 0.6 })
 
   const base_data = $derived(data_type === `mixed` ? generate_mixed_data(3000) : generate_complex_distribution(3000))
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`]
@@ -342,7 +341,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 
 <label><input type="checkbox" bind:checked={show_overlay} />Multiple Bin Sizes</label>
 
-<label>Opacity: {opacity}<input type="range" bind:value={opacity} min="0.1" max="1" step="0.1" /></label>
+<label>Opacity: {bar.opacity}<input type="range" bind:value={bar.opacity} min="0.1" max="1" step="0.1" /></label>
 
 {#if !show_overlay}
   <label>Bins: {bin_counts[1]}<input type="range" bind:value={bin_counts[1]} min="5" max="200" step="5" /></label>
@@ -356,7 +355,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   bins={show_overlay ? 25 : bin_counts[1]}
   mode={show_overlay ? `overlay` : `single`}
-  bar={{ opacity }}
+  bind:bar
   show_legend={show_overlay}
   style="height: 450px; margin-block: 1em;"
 >
@@ -386,6 +385,14 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   const x_formats = { number: `.1f`, scientific: `.2e`, percentage: `.1%`, currency: `$,.0f`, engineering: `.2~s` }
   const y_formats = { count: `d`, percentage: `.1%`, thousands: `,.0f`, scientific: `.1e` }
 
+  let x_axis = $state({})
+  let y_axis = $state({})
+  $effect(() => {
+    x_axis.label = x_format === `currency` ? `Stock Price` : `Value`
+    x_axis.format = x_formats[x_format]
+    y_axis.label = y_format === `percentage` ? `Percentage` : `Count`
+    y_axis.format = y_format === `percentage` ? `.1%` : y_formats[y_format]
+  })
   let data = $derived(data_source === `financial` ? generate_financial_data(1200) : generate_scientific_data(1200))
   let series = $derived([{
     y: data,
@@ -411,8 +418,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 <Histogram
   {series}
   bins={35}
-  x_axis={{ label: x_format === `currency` ? `Stock Price` : `Value`, format: x_formats[x_format] }}
-  y_axis={{ label: y_format === `percentage` ? `Percentage` : `Count`, format: y_format === `percentage` ? `.1%` : y_formats[y_format] }}
+  bind:x_axis
+  bind:y_axis
   style="height: 450px; border: 2px solid {color_schemes[color_scheme][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}

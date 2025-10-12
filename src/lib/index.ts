@@ -149,10 +149,18 @@ export const merge_nested = <T extends Record<string, unknown>>(
       defaults[key] !== null &&
       !Array.isArray(defaults[key])
     ) {
-      result[key] = {
-        ...defaults[key],
-        ...(user?.[key] as Record<string, unknown>),
-      } as T[Extract<keyof T, string>]
+      // Only deep-merge if user value is also a plain object
+      if (
+        user?.[key] &&
+        typeof user[key] === `object` &&
+        !Array.isArray(user[key])
+      ) {
+        result[key] = {
+          ...defaults[key],
+          ...(user[key] as Record<string, unknown>),
+        } as T[Extract<keyof T, string>]
+      }
+      // Otherwise keep the top-level override (already applied above)
     }
   }
   return result

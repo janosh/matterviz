@@ -364,12 +364,7 @@ Custom formatting, tick control, and axis configuration for publication-quality 
   </label>
 </div>
 
-<BarPlot
-  series={yearly_discoveries}
-  {x_axis}
-  {y_axis}
-  style="height: 400px"
-/>
+<BarPlot series={yearly_discoveries} bind:x_axis bind:y_axis style="height: 400px" />
 ```
 
 ## Spectroscopy Data with Zoom
