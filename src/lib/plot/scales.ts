@@ -1,11 +1,8 @@
 import * as math from '$lib/math'
-import type { Point } from '$lib/plot'
+import type { Point, ScaleType, TimeInterval } from '$lib/plot'
 import { extent, range } from 'd3-array'
-import type { ScaleContinuousNumeric } from 'd3-scale'
+import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
-
-export type ScaleType = `linear` | `log`
-export type TimeInterval = `day` | `month` | `year`
 
 // Type for ticks parameter - can be count, array of values, or time interval
 export type TicksOption = number | number[] | TimeInterval
@@ -37,7 +34,7 @@ export function generate_ticks(
   domain: [number, number],
   scale_type: ScaleType,
   ticks_option: TicksOption | undefined,
-  scale_fn: ScaleContinuousNumeric<number, number>, // D3 scale function with .ticks() method
+  scale_fn: ScaleContinuousNumeric<number, number> | ScaleTime<number, number>, // D3 scale function with .ticks() method
   options: {
     format?: string // For detecting time format
     default_count?: number // Default tick count

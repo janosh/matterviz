@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { TweenedOptions } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { curveMonotoneX, line } from 'd3-shape'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween, type TweenedOptions } from 'svelte/motion'
+  import { Tween } from 'svelte/motion'
 
   let {
     points,
@@ -15,7 +16,7 @@
     area_color = `rgba(255, 255, 255, 0.1)`,
     area_stroke = null,
     line_tween = {},
-    line_dash = DEFAULTS.scatter.line_dash,
+    line_dash = DEFAULTS.scatter.line.dash,
     ...rest
   }: Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> & {
     points: readonly [number, number][]

@@ -135,3 +135,33 @@ export type InfoItem = Readonly<{
   key?: string
   tooltip?: string
 }>
+
+// Helper to merge nested objects (1 level deep)
+export const merge_nested = <T extends Record<string, unknown>>(
+  defaults: T,
+  user?: Partial<T>,
+): T => {
+  const result = { ...defaults, ...(user || {}) } as T
+  // Merge nested objects one level deep
+  for (const key in defaults) {
+    if (
+      typeof defaults[key] === `object` &&
+      defaults[key] !== null &&
+      !Array.isArray(defaults[key])
+    ) {
+      // Only deep-merge if user value is also a plain object
+      if (
+        user?.[key] &&
+        typeof user[key] === `object` &&
+        !Array.isArray(user[key])
+      ) {
+        result[key] = {
+          ...defaults[key],
+          ...(user[key] as Record<string, unknown>),
+        } as T[Extract<keyof T, string>]
+      }
+      // Otherwise keep the top-level override (already applied above)
+    }
+  }
+  return result
+}

@@ -1,6 +1,7 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
+import { merge_nested } from '$lib'
 import type { Vec3 } from '$lib/math'
 import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
 import { symbol_names } from '$lib/plot/formatting'
@@ -21,6 +22,65 @@ export interface SettingType<T = unknown> {
 
 export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof show_bonds_options)[number]
+
+// Reusable type definitions for common setting patterns
+type DisplayConfigType = {
+  x_grid: SettingType<boolean>
+  y_grid: SettingType<boolean>
+  x_zero_line: SettingType<boolean>
+  y_zero_line: SettingType<boolean>
+}
+
+type BarStyleType = {
+  color: SettingType<string>
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+  stroke_color: SettingType<string>
+  stroke_opacity: SettingType<number>
+}
+
+type PointStyleType = {
+  size: SettingType<number>
+  color: SettingType<string>
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+  stroke_color: SettingType<string>
+  stroke_opacity: SettingType<number>
+}
+
+type LineStyleType = {
+  width: SettingType<number>
+  color: SettingType<string>
+  opacity: SettingType<number>
+  dash: SettingType<string>
+}
+
+type SimpleBarStyleType = { color: SettingType<string>; opacity: SettingType<number> }
+
+type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
+
+type PhaseDiagramCommonType = {
+  camera_zoom: SettingType<number>
+  camera_center_x: SettingType<number>
+  camera_center_y: SettingType<number>
+  color_mode: SettingType<`stability` | `energy`>
+  color_scale: SettingType<string>
+  show_stable: SettingType<boolean>
+  show_unstable: SettingType<boolean>
+  show_stable_labels: SettingType<boolean>
+  show_unstable_labels: SettingType<boolean>
+  max_hull_dist_show_phases: SettingType<number>
+  max_hull_dist_show_labels: SettingType<number>
+  fullscreen: SettingType<boolean>
+  info_pane_open: SettingType<boolean>
+  legend_pane_open: SettingType<boolean>
+}
+
+type PhaseDiagramWith3DType = PhaseDiagramCommonType & {
+  show_hull_faces: SettingType<boolean>
+  hull_face_color: SettingType<string>
+  hull_face_opacity: SettingType<number>
+}
 
 export interface SettingsConfig {
   // General display settings
@@ -155,39 +215,28 @@ export interface SettingsConfig {
   }
 
   scatter: { // Scatter plot settings
-    point_size: SettingType<number>
     show_legend: SettingType<boolean>
     markers: SettingType<Markers>
-    point_color: SettingType<string>
-    point_opacity: SettingType<number>
-    point_stroke_width: SettingType<number>
-    point_stroke_color: SettingType<string>
-    point_stroke_opacity: SettingType<number>
-    line_width: SettingType<number>
-    line_color: SettingType<string>
-    line_opacity: SettingType<number>
-    line_dash: SettingType<string>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
+    display: DisplayConfigType & { y2_grid: SettingType<boolean> }
+    point: PointStyleType
+    line: LineStyleType
   }
 
   histogram: { // Histogram settings
     mode: SettingType<`overlay` | `single`>
     show_legend: SettingType<boolean>
     bin_count: SettingType<number>
-    bar_opacity: SettingType<number>
-    bar_stroke_width: SettingType<number>
-    bar_stroke_color: SettingType<string>
-    bar_stroke_opacity: SettingType<number>
-    bar_color: SettingType<string>
+    bar: BarStyleType
+    display: DisplayConfigType
   }
 
   bar: { // Bar plot settings
-    bar_color: SettingType<string>
-    bar_opacity: SettingType<number>
-    line_width: SettingType<number>
-    line_color: SettingType<string>
+    display: DisplayConfigType
+    bar: SimpleBarStyleType
+    line: SimpleLineStyleType
   }
 
   composition: { // Composition specific settings
@@ -196,66 +245,36 @@ export interface SettingsConfig {
   }
 
   phase_diagram: { // Phase diagram defaults (binary/ternary/quaternary)
-    binary: {
-      camera_zoom: SettingType<number>
-      camera_center_x: SettingType<number>
-      camera_center_y: SettingType<number>
-      color_mode: SettingType<`stability` | `energy`>
-      color_scale: SettingType<string>
-      show_stable: SettingType<boolean>
-      show_unstable: SettingType<boolean>
-      show_stable_labels: SettingType<boolean>
-      show_unstable_labels: SettingType<boolean>
-      max_hull_dist_show_phases: SettingType<number>
-      max_hull_dist_show_labels: SettingType<number>
-      fullscreen: SettingType<boolean>
-      info_pane_open: SettingType<boolean>
-      legend_pane_open: SettingType<boolean>
-    }
-    ternary: {
+    binary: PhaseDiagramCommonType
+    ternary: PhaseDiagramWith3DType & {
       camera_elevation: SettingType<number>
       camera_azimuth: SettingType<number>
-      camera_zoom: SettingType<number>
-      camera_center_x: SettingType<number>
-      camera_center_y: SettingType<number>
-      color_mode: SettingType<`stability` | `energy`>
-      color_scale: SettingType<string>
-      show_stable: SettingType<boolean>
-      show_unstable: SettingType<boolean>
-      show_stable_labels: SettingType<boolean>
-      show_unstable_labels: SettingType<boolean>
-      max_hull_dist_show_phases: SettingType<number>
-      max_hull_dist_show_labels: SettingType<number>
-      show_hull_faces: SettingType<boolean>
-      hull_face_color: SettingType<string>
-      hull_face_opacity: SettingType<number>
-      fullscreen: SettingType<boolean>
-      info_pane_open: SettingType<boolean>
-      legend_pane_open: SettingType<boolean>
     }
-    quaternary: {
+    quaternary: PhaseDiagramWith3DType & {
       camera_rotation_x: SettingType<number>
       camera_rotation_y: SettingType<number>
-      camera_zoom: SettingType<number>
-      camera_center_x: SettingType<number>
-      camera_center_y: SettingType<number>
-      color_mode: SettingType<`stability` | `energy`>
-      color_scale: SettingType<string>
-      show_stable: SettingType<boolean>
-      show_unstable: SettingType<boolean>
-      show_stable_labels: SettingType<boolean>
-      show_unstable_labels: SettingType<boolean>
-      show_hull_faces: SettingType<boolean>
-      hull_face_color: SettingType<string>
-      hull_face_opacity: SettingType<number>
-      max_hull_dist_show_phases: SettingType<number>
-      max_hull_dist_show_labels: SettingType<number>
-      fullscreen: SettingType<boolean>
-      info_pane_open: SettingType<boolean>
-      legend_pane_open: SettingType<boolean>
     }
   }
 }
+
+const DISPLAY_CONFIG = {
+  x_grid: {
+    value: true,
+    description: `Show X-axis grid lines`,
+  },
+  y_grid: {
+    value: true,
+    description: `Show Y-axis grid lines`,
+  },
+  x_zero_line: {
+    value: false,
+    description: `Show X-axis zero reference line`,
+  },
+  y_zero_line: {
+    value: false,
+    description: `Show Y-axis zero reference line`,
+  },
+} as const
 
 // Complete settings configuration with values, descriptions, and constraints
 export const SETTINGS_CONFIG: SettingsConfig = {
@@ -703,55 +722,63 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 1,
       maximum: 1000,
     },
-    bar_opacity: {
-      value: 0.7,
-      description: `Histogram bar opacity`,
-      minimum: 0,
-      maximum: 1,
+    bar: {
+      color: {
+        value: `#4A9EFF`,
+        description: `Histogram bar fill color`,
+      },
+      opacity: {
+        value: 0.7,
+        description: `Histogram bar opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 1,
+        description: `Histogram bar stroke width`,
+        minimum: 0,
+        maximum: 5,
+      },
+      stroke_color: {
+        value: `#000000`,
+        description: `Histogram bar stroke color`,
+      },
+      stroke_opacity: {
+        value: 0.5,
+        description: `Histogram bar stroke opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
     },
-    bar_stroke_width: {
-      value: 1,
-      description: `Histogram bar stroke width`,
-      minimum: 0,
-      maximum: 5,
-    },
-    bar_stroke_color: {
-      value: `#000000`,
-      description: `Histogram bar stroke color`,
-    },
-    bar_stroke_opacity: {
-      value: 0.5,
-      description: `Histogram bar stroke opacity`,
-      minimum: 0,
-      maximum: 1,
-    },
-    bar_color: {
-      value: `#4A9EFF`,
-      description: `Histogram bar fill color`,
-    },
+    display: DISPLAY_CONFIG,
   },
 
   // Bar plot specific
   bar: {
-    bar_color: {
-      value: `#4A9EFF`,
-      description: `Bar plot fill color`,
+    display: DISPLAY_CONFIG,
+    bar: {
+      color: {
+        value: `#4A9EFF`,
+        description: `Bar plot fill color`,
+      },
+      opacity: {
+        value: 0.6,
+        description: `Bar plot opacity (overlay mode)`,
+        minimum: 0,
+        maximum: 1,
+      },
     },
-    bar_opacity: {
-      value: 0.6,
-      description: `Bar plot opacity (overlay mode)`,
-      minimum: 0,
-      maximum: 1,
-    },
-    line_width: {
-      value: 2,
-      description: `Bar plot line width`,
-      minimum: 0.5,
-      maximum: 10,
-    },
-    line_color: {
-      value: `#4A9EFF`,
-      description: `Bar plot line color`,
+    line: {
+      width: {
+        value: 2,
+        description: `Bar plot line width`,
+        minimum: 0.5,
+        maximum: 10,
+      },
+      color: {
+        value: `#4A9EFF`,
+        description: `Bar plot line color`,
+      },
     },
   },
 
@@ -776,68 +803,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Default symbol type for scatter plots`,
       enum: symbol_names,
     },
-    line_width: {
-      value: 2,
-      description: `Line width for scatter plot connections`,
-      minimum: 0.5,
-      maximum: 10,
-    },
-    point_size: {
-      value: 4,
-      description: `Point size for scatter plots`,
-      minimum: 1,
-      maximum: 20,
-    },
     show_legend: {
       value: true,
       description: `Show legend in scatter plots`,
     },
-
-    // Scatter plot specific
     markers: {
       value: `line+points`,
       description: `Scatter plot marker type`,
-      enum: [`line`, `points`, `line+points`],
-    },
-    point_color: {
-      value: `#4A9EFF`,
-      description: `Default color for scatter plot points`,
-    },
-    point_opacity: {
-      value: 1,
-      description: `Opacity of scatter plot points`,
-      minimum: 0,
-      maximum: 1,
-    },
-    point_stroke_width: {
-      value: 1,
-      description: `Stroke width for scatter plot points`,
-      minimum: 0,
-      maximum: 5,
-    },
-    point_stroke_color: {
-      value: `#000000`,
-      description: `Stroke color for scatter plot points`,
-    },
-    point_stroke_opacity: {
-      value: 1,
-      description: `Stroke opacity for scatter plot points`,
-      minimum: 0,
-      maximum: 1,
-    },
-    line_color: {
-      value: `#4A9EFF`,
-      description: `Default color for scatter plot lines`,
-    },
-    line_opacity: {
-      value: 1,
-      description: `Opacity of scatter plot lines`,
-      minimum: 0,
-      maximum: 1,
-    },
-    line_dash: {
-      value: `solid`,
-      description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
+      enum: [`line`, `points`, `line+points`, `none`],
     },
     show_points: {
       value: true,
@@ -846,6 +819,69 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_lines: {
       value: true,
       description: `Show connecting lines in scatter plots`,
+    },
+    display: {
+      ...DISPLAY_CONFIG,
+      y2_grid: {
+        value: true,
+        description: `Show secondary Y-axis grid lines`,
+      },
+    },
+    point: {
+      size: {
+        value: 4,
+        description: `Point size for scatter plots`,
+        minimum: 1,
+        maximum: 20,
+      },
+      color: {
+        value: `#4A9EFF`,
+        description: `Default color for scatter plot points`,
+      },
+      opacity: {
+        value: 1,
+        description: `Opacity of scatter plot points`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 1,
+        description: `Stroke width for scatter plot points`,
+        minimum: 0,
+        maximum: 5,
+      },
+      stroke_color: {
+        value: `#000000`,
+        description: `Stroke color for scatter plot points`,
+      },
+      stroke_opacity: {
+        value: 1,
+        description: `Stroke opacity for scatter plot points`,
+        minimum: 0,
+        maximum: 1,
+      },
+    },
+    line: {
+      width: {
+        value: 2,
+        description: `Line width for scatter plot connections`,
+        minimum: 0.5,
+        maximum: 10,
+      },
+      color: {
+        value: `#4A9EFF`,
+        description: `Default color for scatter plot lines`,
+      },
+      opacity: {
+        value: 1,
+        description: `Opacity of scatter plot lines`,
+        minimum: 0,
+        maximum: 1,
+      },
+      dash: {
+        value: `solid`,
+        description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
+      },
     },
   },
 
@@ -1224,29 +1260,14 @@ export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   ...DEFAULTS,
   ...(user || {}),
-  structure: { ...DEFAULTS.structure, ...(user?.structure || {}) },
-  trajectory: { ...DEFAULTS.trajectory, ...(user?.trajectory || {}) },
-  composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
-  plot: { ...DEFAULTS.plot, ...(user?.plot || {}) },
-  scatter: { ...DEFAULTS.scatter, ...(user?.scatter || {}) },
-  histogram: { ...DEFAULTS.histogram, ...(user?.histogram || {}) },
-  bar: { ...DEFAULTS.bar, ...(user?.bar || {}) },
-  phase_diagram: {
-    ...DEFAULTS.phase_diagram,
-    ...(user?.phase_diagram || {}),
-    binary: {
-      ...DEFAULTS.phase_diagram.binary,
-      ...(user?.phase_diagram?.binary || {}),
-    },
-    ternary: {
-      ...DEFAULTS.phase_diagram.ternary,
-      ...(user?.phase_diagram?.ternary || {}),
-    },
-    quaternary: {
-      ...DEFAULTS.phase_diagram.quaternary,
-      ...(user?.phase_diagram?.quaternary || {}),
-    },
-  },
+  structure: merge_nested(DEFAULTS.structure, user?.structure),
+  trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
+  composition: merge_nested(DEFAULTS.composition, user?.composition),
+  plot: merge_nested(DEFAULTS.plot, user?.plot),
+  scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
+  histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
+  bar: merge_nested(DEFAULTS.bar, user?.bar),
+  phase_diagram: merge_nested(DEFAULTS.phase_diagram, user?.phase_diagram),
 } as DefaultSettings)
 
 // Narrowed accessor for phase diagram defaults to ensure strong typing at call sites

@@ -1,19 +1,37 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
-  import type { BarMode, Orientation, PlotControlsProps } from '$lib/plot'
+  import type { AxisConfig, BarMode, DisplayConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
+  import type { Orientation, PlotControlsProps } from '$lib/plot/types'
 
   let {
     orientation = $bindable(`vertical` as Orientation),
     mode = $bindable(`overlay` as BarMode),
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    display = $bindable({}),
+    show_controls = $bindable(false),
+    controls_open = $bindable(false),
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     orientation?: Orientation
     mode?: BarMode
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+    display?: DisplayConfig
+    show_controls?: boolean
+    controls_open?: boolean
   } = $props()
 </script>
 
-<PlotControls {...rest}>
+<PlotControls
+  bind:show_controls
+  bind:controls_open
+  bind:x_axis
+  bind:y_axis
+  bind:display
+  {...rest}
+>
   <SettingsSection
     title="Layout"
     current_values={{ orientation, mode }}
