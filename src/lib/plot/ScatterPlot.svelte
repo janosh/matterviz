@@ -22,6 +22,7 @@
     ScatterTooltipProps,
     Sides,
     StyleOverrides,
+    TweenedOptions,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -116,14 +117,14 @@
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
-        tween?: LocalTweenedOptions<XyObj>
+        tween?: TweenedOptions<XyObj>
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
     legend?: LegendConfig | null
-    point_tween?: LocalTweenedOptions<XyObj>
-    line_tween?: LocalTweenedOptions<string>
+    point_tween?: TweenedOptions<XyObj>
+    line_tween?: TweenedOptions<string>
     point_events?: Record<
       string,
       (payload: { point: InternalPoint; event: Event }) => void

@@ -89,7 +89,7 @@
     }
     const cn_range: [number, number] = [-0.5, max_cn + 0.5]
 
-    return { count: [0, null], cn: cn_range } // Count axis should always start at 0
+    return { count: [0, null] as [number, null], cn: cn_range } // Count axis should always start at 0
   })
 
   // Derive integer CN ticks for axis labels
@@ -272,19 +272,22 @@
   series={bar_series}
   bind:orientation
   bind:mode
-  x_label={orientation === `horizontal` ? y_label : x_label}
-  y_label={orientation === `horizontal` ? x_label : y_label}
-  x_label_shift={{ y: 20 }}
-  y_label_shift={{ x: 2 }}
-  x_range={orientation === `horizontal` ? ranges.count : ranges.cn}
-  y_range={orientation === `horizontal` ? ranges.cn : ranges.count}
-  x_ticks={orientation === `horizontal` ? undefined : cn_ticks}
-  y_ticks={orientation === `horizontal` ? cn_ticks : undefined}
-  x_format={orientation === `horizontal` ? `d` : ``}
-  y_format={orientation === `horizontal` ? `` : `d`}
+  x_axis={{
+    label: orientation === `horizontal` ? y_label : x_label,
+    label_shift: { y: 20 },
+    range: orientation === `horizontal` ? ranges.count : ranges.cn,
+    ticks: orientation === `horizontal` ? undefined : cn_ticks,
+    format: orientation === `horizontal` ? `d` : ``,
+  }}
+  y_axis={{
+    label: orientation === `horizontal` ? x_label : y_label,
+    label_shift: { x: 2 },
+    range: orientation === `horizontal` ? ranges.cn : ranges.count,
+    ticks: orientation === `horizontal` ? cn_ticks : undefined,
+    format: orientation === `horizontal` ? `` : `d`,
+  }}
+  display={{ x_zero_line: false, y_zero_line: true }}
   show_legend={true}
-  show_x_zero_line={false}
-  show_y_zero_line={true}
   {tooltip}
   ondrop={handle_file_drop}
   ondragover={(event) => {

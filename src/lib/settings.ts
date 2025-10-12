@@ -1,6 +1,7 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
+import { merge_nested } from '$lib'
 import type { Vec3 } from '$lib/math'
 import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
 import { symbol_names } from '$lib/plot/formatting'
@@ -28,10 +29,6 @@ type DisplayConfigType = {
   y_grid: SettingType<boolean>
   x_zero_line: SettingType<boolean>
   y_zero_line: SettingType<boolean>
-}
-
-type DisplayConfigWithY2Type = DisplayConfigType & {
-  y2_grid: SettingType<boolean>
 }
 
 type BarStyleType = {
@@ -223,7 +220,7 @@ export interface SettingsConfig {
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
-    display: DisplayConfigWithY2Type
+    display: DisplayConfigType & { y2_grid: SettingType<boolean> }
     point: PointStyleType
     line: LineStyleType
   }
@@ -1258,28 +1255,6 @@ const extract_values = (
 
 // Runtime defaults - extracted values for use in components
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
-
-// Helper to merge nested objects (1 level deep)
-const merge_nested = <T extends Record<string, unknown>>(
-  defaults: T,
-  user?: Partial<T>,
-): T => {
-  const result = { ...defaults, ...(user || {}) } as T
-  // Merge nested objects one level deep
-  for (const key in defaults) {
-    if (
-      typeof defaults[key] === `object` &&
-      defaults[key] !== null &&
-      !Array.isArray(defaults[key])
-    ) {
-      result[key] = {
-        ...defaults[key],
-        ...(user?.[key] as Record<string, unknown>),
-      } as T[Extract<keyof T, string>]
-    }
-  }
-  return result
-}
 
 // Helper to merge with defaults - handles nested structure
 export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
