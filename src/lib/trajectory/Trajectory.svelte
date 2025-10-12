@@ -2,7 +2,7 @@
   import { Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
-  import type { DataSeries, Point } from '$lib/plot'
+  import type { DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { scaleLinear } from 'd3-scale'
@@ -18,7 +18,7 @@
     TrajectoryType,
     TrajHandlerData,
   } from './index'
-  import { TrajectoryError, TrajectoryInfoPane } from './index'
+  import { TrajectoryError, TrajectoryExportPane, TrajectoryInfoPane } from './index'
   import type { LoadingOptions } from './parse'
   import {
     create_frame_loader,
@@ -48,7 +48,40 @@
     on_error?: (data: TrajHandlerData) => void
   }
 
-  interface Props extends EventHandlers, HTMLAttributes<HTMLDivElement> {
+  let {
+    trajectory = $bindable(undefined),
+    data_url,
+    current_step_idx = $bindable(0),
+    data_extractor = full_data_extractor,
+    allow_file_drop = true,
+    layout = `auto`,
+    structure_props = {},
+    scatter_props = {},
+    histogram_props = {},
+    spinner_props = {},
+    trajectory_controls,
+    error_snippet,
+    show_controls = true,
+    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
+    auto_play = false,
+    display_mode = $bindable(`structure+scatter`),
+    step_labels = 5,
+    on_play,
+    on_pause,
+    on_step_change,
+    on_end,
+    on_loop,
+    on_frame_rate_change,
+    on_display_mode_change,
+    on_fullscreen_change,
+    on_file_load,
+    on_error,
+    fps_range = DEFAULTS.trajectory.fps_range,
+    fps = $bindable(5),
+    loading_options = {},
+    plot_skimming = true,
+    ...rest
+  }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
     // trajectory data - can be provided directly or loaded from file
     trajectory?: TrajectoryType | undefined
     // URL to load trajectory from (alternative to providing trajectory directly)
@@ -61,7 +94,7 @@
     // file drop handlers
     allow_file_drop?: boolean
     // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
-    layout?: `auto` | `horizontal` | `vertical`
+    layout?: `auto` | Orientation
     // structure viewer props (passed to Structure component)
     structure_props?: ComponentProps<typeof Structure>
     // plot props (passed to ScatterPlot component)
@@ -83,7 +116,6 @@
     >
     // Custom error snippet for advanced error handling
     error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
     fullscreen_toggle?: Snippet<[]> | boolean
@@ -127,41 +159,7 @@
     loading_options?: LoadingOptions
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
-  }
-  let {
-    trajectory = $bindable(undefined),
-    data_url,
-    current_step_idx = $bindable(0),
-    data_extractor = full_data_extractor,
-    allow_file_drop = true,
-    layout = `auto`,
-    structure_props = {},
-    scatter_props = {},
-    histogram_props = {},
-    spinner_props = {},
-    trajectory_controls,
-    error_snippet,
-    show_controls = true,
-    fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
-    auto_play = false,
-    display_mode = $bindable(`structure+scatter`),
-    step_labels = 5,
-    on_play,
-    on_pause,
-    on_step_change,
-    on_end,
-    on_loop,
-    on_frame_rate_change,
-    on_display_mode_change,
-    on_fullscreen_change,
-    on_file_load,
-    on_error,
-    fps_range = DEFAULTS.trajectory.fps_range,
-    fps = $bindable(5),
-    loading_options = {},
-    plot_skimming = true,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let dragover = $state(false)
   let loading = $state(false)
@@ -189,12 +187,11 @@
   let original_data = $state<string | ArrayBuffer | null>(null)
 
   // Reactive layout based on viewport aspect ratio
-  let actual_layout = $derived.by((): `horizontal` | `vertical` => {
+  let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
     if (viewport.width > 0 && viewport.height > 0) {
       return viewport.width > viewport.height ? `horizontal` : `vertical`
     }
-
     return `horizontal` // Fallback to horizontal if dimensions not available yet
   })
 
@@ -792,6 +789,7 @@
     structure_info: false,
     structure_controls: false,
     plot_controls: false,
+    export_pane: false,
   })
   let fullscreen = $state(false)
 </script>
@@ -806,7 +804,7 @@
 <div
   class:dragover
   class:active={is_playing || panes_open.structure_info || panes_open.structure_controls ||
-  panes_open.plot_controls || info_pane_open}
+  panes_open.plot_controls || panes_open.export_pane || info_pane_open}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -980,6 +978,15 @@
                 pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
               />
             {/if}
+            <!-- Trajectory Export Pane -->
+            <TrajectoryExportPane
+              bind:export_pane_open={panes_open.export_pane}
+              {trajectory}
+              {wrapper}
+              filename={current_filename || `trajectory`}
+              on_step_change={go_to_step}
+              pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
+            />
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0}
               <div class="view-mode-dropdown-wrapper">
@@ -988,6 +995,7 @@
                   title={current_view_label}
                   class="view-mode-button"
                   class:active={view_mode_dropdown_open}
+                  style="background-color: transparent; padding: 0"
                 >
                   <Icon
                     icon={({
@@ -1099,7 +1107,6 @@
             markers="line"
             x_format=".3~s"
             x_ticks={step_label_positions}
-            show_controls
             bind:controls_open={panes_open.plot_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
@@ -1253,7 +1260,7 @@
     display: flex;
     align-items: center;
     gap: clamp(2pt, 1cqw, 1ex);
-    padding: clamp(2pt, 0.5cqw, 1ex);
+    padding: clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex);
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
@@ -1264,6 +1271,7 @@
   }
   .trajectory-controls button {
     background: var(--btn-bg);
+    font-size: clamp(0.8rem, 2cqw, 1rem);
   }
   .trajectory-controls button:hover:not(:disabled) {
     background: var(--btn-bg-hover);
@@ -1326,7 +1334,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
-    font-size: clamp(0.8rem, 2cqw, 0.9rem);
     position: relative;
   }
   @keyframes fade-in {
@@ -1335,20 +1342,21 @@
     }
   }
   .fullscreen-button {
-    background: transparent;
+    background: transparent !important;
+    padding: 0;
   }
   .fullscreen-button:hover:not(:disabled) {
     background: var(--border-color);
   }
   .info-section {
     display: flex;
-    place-items: center;
-    gap: clamp(3pt, 0.5cqw, 1ex);
+    align-items: center;
+    gap: clamp(6pt, 1cqw, 1.5ex);
+    position: relative;
   }
 
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);
-    font-size: clamp(0.8rem, 2.5cqw, 0.9rem);
   }
   .play-button:hover:not(:disabled) {
     background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));

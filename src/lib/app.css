@@ -6,6 +6,10 @@
 
   --sms-max-width: 20em;
   --sms-text-color: var(--text-color);
+
+  /* Svelte MultiSelect */
+  --sms-options-bg: var(--page-bg);
+  --sms-active-color: light-dark(var(--accent-color), cornflowerblue);
 }
 
 /* Targeted theme transitions for performance */
@@ -48,6 +52,10 @@ button, a.btn {
   border: none;
   border-radius: 3pt;
   padding: 2pt 4pt;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 a:hover {
   color: var(--accent-hover-color, orange);

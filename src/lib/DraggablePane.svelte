@@ -5,7 +5,24 @@
   import { draggable, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
+  let {
+    show = $bindable(false),
+    show_pane = true,
+    children,
+    toggle_props = {},
+    open_icon = `Cross`,
+    closed_icon = `Settings`,
+    icon_style = ``,
+    offset = { x: 5, y: 5 },
+    max_width = `450px`,
+    pane_props = {},
+    onclose = () => {},
+    on_drag_start = () => {},
+    toggle_pane_btn = $bindable(undefined),
+    pane_div = $bindable(undefined),
+    has_been_dragged = $bindable(false),
+    currently_dragging = $bindable(false),
+  }: {
     show?: boolean
     show_pane?: boolean
     children: Snippet<[]>
@@ -26,25 +43,7 @@
     pane_div?: HTMLDivElement
     has_been_dragged?: boolean
     currently_dragging?: boolean
-  }
-  let {
-    show = $bindable(false),
-    show_pane = true,
-    children,
-    toggle_props = {},
-    open_icon = `Cross`,
-    closed_icon = `Settings`,
-    icon_style = ``,
-    offset = { x: 5, y: 5 },
-    max_width = `450px`,
-    pane_props = {},
-    onclose = () => {},
-    on_drag_start = () => {},
-    toggle_pane_btn = $bindable(undefined),
-    pane_div = $bindable(undefined),
-    has_been_dragged = $bindable(false),
-    currently_dragging = $bindable(false),
-  }: Props = $props()
+  } = $props()
 
   let initial_position = $state({ left: `50px`, top: `50px` })
   let show_control_buttons = $state(false)
@@ -162,9 +161,10 @@
 
 <svelte:window
   onkeydown={(event: KeyboardEvent) => {
-    if (event.key !== `Escape`) return
-    event.preventDefault()
-    close_pane()
+    if (event.key === `Escape` && show) {
+      event.preventDefault()
+      close_pane()
+    }
   }}
   onresize={handle_resize}
 />
@@ -176,6 +176,7 @@
     bind:this={toggle_pane_btn}
     aria-expanded={show}
     {...toggle_props}
+    style={`font-size: clamp(1em, 2.2cqw, 1.2em); ${toggle_props.style ?? ``}`}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
@@ -264,7 +265,7 @@
     overflow-x: var(--pane-overflow-x, hidden);
     overflow-y: var(--pane-overflow-y, auto);
     min-height: min(
-      var(--pane-min-height, 400px),
+      var(--pane-min-height),
       calc(100cqh - var(--pane-bottom-margin, 40px))
     ); /* Ensure pane never exceeds its query container, enabling internal scroll */
     max-height: var(--pane-max-height, calc(100cqh - var(--pane-bottom-margin, 40px)));
@@ -291,7 +292,7 @@
     text-align: right; /* right align long line-breaking trajectory file names */
   }
   .draggable-pane :global(label) {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--pane-label-gap, 2pt);
   }
@@ -315,10 +316,14 @@
     flex: 1;
     min-width: 60px;
   }
+  .draggable-pane :global(input[type='color']) {
+    width: 2.5em;
+    height: 1.3em;
+    margin: 0 5pt;
+  }
   .draggable-pane :global(input[type='number']) {
     box-sizing: border-box;
     text-align: center;
-    border-radius: 3pt;
     width: 2.2em;
     margin: 0 3pt 0 6pt;
     flex-shrink: 0;
@@ -328,10 +333,13 @@
   }
   .draggable-pane :global(button) {
     width: max-content;
-    background-color: var(--pane-btn-bg, rgba(255, 255, 255, 0.1));
+    background-color: var(--pane-btn-bg, var(--btn-bg, rgba(255, 255, 255, 0.1)));
   }
   .draggable-pane :global(button:hover) {
-    background-color: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
+    background-color: var(
+      --pane-btn-bg-hover,
+      var(--btn-bg-hover, rgba(255, 255, 255, 0.2))
+    );
   }
   .draggable-pane :global(select) {
     margin: 0 0 0 5pt;

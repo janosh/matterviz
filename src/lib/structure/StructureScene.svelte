@@ -8,17 +8,17 @@
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
     angle_between_vectors,
+    displacement_pbc,
     distance_pbc,
     MAX_SELECTED_SITES,
-    smart_displacement_vectors,
   } from '$lib/structure/measure'
-  import { T } from '@threlte/core'
+  import { T, useThrelte } from '@threlte/core'
   import * as Extras from '@threlte/extras'
   import { TransformControls } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Mesh } from 'three'
+  import type { Camera, Mesh, Scene } from 'three'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -41,75 +41,6 @@
     return () => cancelAnimationFrame(frame_id)
   })
 
-  interface Props {
-    structure?: AnyStructure | undefined
-    atom_radius?: number // scale factor for atomic radii
-    same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
-    // determined by the atomic radius of the element
-    camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
-    camera_projection?: `perspective` | `orthographic` // camera projection type
-    rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
-    // zoom level of the camera
-    max_zoom?: number | undefined
-    min_zoom?: number | undefined
-    zoom_speed?: number // zoom speed. set to 0 to disable zooming.
-    pan_speed?: number // pan speed. set to 0 to disable panning.
-    show_atoms?: boolean
-    show_bonds?: ShowBonds
-    show_site_labels?: boolean
-    show_site_indices?: boolean
-    show_force_vectors?: boolean
-    force_scale?: number
-    force_color?: string
-    gizmo?: boolean | ComponentProps<typeof Extras.Gizmo>
-    hovered_idx?: number | null
-    hovered_site?: Site | null
-    float_fmt?: string
-    auto_rotate?: number
-    initial_zoom?: number
-    bond_thickness?: number
-    bond_color?: string
-    bonding_strategy?: BondingStrategy
-    bonding_options?: Record<string, unknown>
-    fov?: number
-    ambient_light?: number
-    directional_light?: number
-    sphere_segments?: number
-    lattice_props?: ComponentProps<typeof Lattice>
-    atom_label?: Snippet<[Site, number]>
-    site_label_size?: number
-    site_label_offset?: Vec3
-    site_label_bg_color?: string
-    site_label_color?: string
-    site_label_padding?: number
-    camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
-    orbit_controls?: ComponentProps<typeof Extras.OrbitControls>[`ref`]
-    width?: number // Viewer dimensions for responsive zoom
-    height?: number
-    // measurement props
-    measure_mode?: `distance` | `angle` | `edit`
-    selected_sites?: number[]
-    measured_sites?: number[]
-    selection_highlight_color?: string
-    // Support for active highlight group with different color
-    active_sites?: number[]
-    active_highlight_color?: string
-    rotation?: Vec3 // rotation control prop
-    original_atom_count?: number // number of atoms in original structure (before image atoms)
-    on_atom_move?: (
-      event: {
-        detail: {
-          site_idx: number
-          new_position: Vec3
-          new_abc?: Vec3
-          element?: ElementSymbol
-          delete_site_idx?: number
-        }
-      },
-    ) => void
-    on_operation_start?: () => void
-    on_operation_end?: () => void
-  }
   let {
     structure = undefined,
     atom_radius = DEFAULTS.structure.atom_radius,
@@ -161,11 +92,87 @@
     active_sites = $bindable([]),
     active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
     rotation = DEFAULTS.structure.rotation,
+    scene = $bindable(undefined),
+    camera = $bindable(undefined),
     original_atom_count,
     on_atom_move,
     on_operation_start,
     on_operation_end,
-  }: Props = $props()
+  }: {
+    structure?: AnyStructure | undefined
+    atom_radius?: number
+    same_size_atoms?: boolean
+    camera_position?: [x: number, y: number, z: number]
+    camera_projection?: `perspective` | `orthographic`
+    rotation_damping?: number
+    max_zoom?: number | undefined
+    min_zoom?: number | undefined
+    zoom_speed?: number
+    pan_speed?: number
+    show_atoms?: boolean
+    show_bonds?: ShowBonds
+    show_site_labels?: boolean
+    show_site_indices?: boolean
+    show_force_vectors?: boolean
+    force_scale?: number
+    force_color?: string
+    gizmo?: boolean | ComponentProps<typeof Extras.Gizmo>
+    hovered_idx?: number | null
+    hovered_site?: Site | null
+    float_fmt?: string
+    auto_rotate?: number
+    initial_zoom?: number
+    bond_thickness?: number
+    bond_color?: string
+    bonding_strategy?: BondingStrategy
+    bonding_options?: Record<string, unknown>
+    fov?: number
+    ambient_light?: number
+    directional_light?: number
+    sphere_segments?: number
+    lattice_props?: ComponentProps<typeof Lattice>
+    atom_label?: Snippet<[Site, number]>
+    site_label_size?: number
+    site_label_offset?: Vec3
+    site_label_bg_color?: string
+    site_label_color?: string
+    site_label_padding?: number
+    camera_is_moving?: boolean
+    orbit_controls?: ComponentProps<typeof Extras.OrbitControls>[`ref`]
+    width?: number
+    height?: number
+    measure_mode?: `distance` | `angle` | `edit`
+    selected_sites?: number[]
+    measured_sites?: number[]
+    selection_highlight_color?: string
+    active_sites?: number[]
+    active_highlight_color?: string
+    rotation?: Vec3
+    scene?: Scene
+    camera?: Camera
+    original_atom_count?: number
+    on_atom_move?: (
+      event: {
+        detail: {
+          site_idx: number
+          new_position: Vec3
+          new_abc?: Vec3
+          element?: ElementSymbol
+          delete_site_idx?: number
+        }
+      },
+    ) => void
+    on_operation_start?: () => void
+    on_operation_end?: () => void
+  } = $props()
+
+  // Get scene and camera from Threlte context and expose them
+  const threlte = useThrelte()
+  $effect(() => {
+    // scene is directly a Scene object, camera needs .current
+    scene = threlte.scene
+    camera = threlte.camera.current
+  })
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
@@ -174,7 +181,6 @@
   // Transform controls state
   let is_transforming = $state(false)
   let transform_object = $state<Mesh | undefined>(undefined)
-  let drag_coordinates = $state<{ xyz: Vec3; abc?: Vec3 } | null>(null)
   let has_saved_history_for_drag = $state(false)
 
   // Context menu and add-atom UI can be implemented here if needed in future
@@ -245,53 +251,6 @@
     for (const { site_idx, new_position } of updates) {
       update_atom_position(site_idx, new_position)
     }
-  }
-
-  // Add atom at position
-  function add_atom(position: Vec3, element: ElementSymbol) {
-    if (!on_atom_move) return
-
-    let abc: Vec3 | undefined
-    if (lattice) {
-      try {
-        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
-        const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-        const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, position)
-        abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
-      } catch {
-        console.warn(`Failed to calculate fractional coordinates for new atom`)
-      }
-    }
-
-    // Emit add atom event with special site_idx of -1 to indicate new atom
-    on_atom_move({
-      detail: {
-        site_idx: -1,
-        new_position: [...position] as Vec3,
-        new_abc: abc,
-        element,
-      },
-    })
-  }
-
-  // Delete selected atoms
-  function delete_selected_atoms() {
-    if (!on_atom_move || selected_sites.length === 0) return
-
-    // Emit delete events for selected atoms (site_idx: -2 indicates deletion)
-    for (const site_idx of selected_sites) {
-      on_atom_move({
-        detail: {
-          site_idx: -2,
-          new_position: [0, 0, 0] as Vec3,
-          delete_site_idx: site_idx,
-        },
-      })
-    }
-
-    // Clear selection
-    selected_sites = []
-    measured_sites = []
   }
 
   function toggle_selection(site_index: number, evt?: Event) {
@@ -599,6 +558,14 @@
     onend: () => {
       camera_is_moving = false
     },
+  })
+
+  // Theme-aware measurement line color from CSS variable
+  let measure_line_color = $derived.by(() => {
+    if (typeof window === `undefined`) return
+    const root_styles = getComputedStyle(document.documentElement)
+    const text_color = root_styles.getPropertyValue(`--text-color`).trim()
+    return text_color || `#808080`
   })
 </script>
 
@@ -943,26 +910,6 @@
                 has_saved_history_for_drag = false
                 if (orbit_controls) orbit_controls.enabled = false
                 on_operation_start?.()
-
-                // Initialize drag coordinates snapshot
-                if (transform_object?.position) {
-                  const { x, y, z } = transform_object.position
-                  const xyz = [x, y, z] as Vec3
-                  let abc: Vec3 | undefined
-                  if (lattice) {
-                    try {
-                      const lattice_transposed = math.transpose_3x3_matrix(
-                        lattice.matrix,
-                      )
-                      const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-                      const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-                      abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
-                    } catch {
-                      // ignore conversion errors
-                    }
-                  }
-                  drag_coordinates = { xyz, abc }
-                }
               }
               if (transform_object?.position && selected_atoms.length > 0) {
                 const { x, y, z } = transform_object.position
@@ -989,28 +936,6 @@
                   })
                   .filter(Boolean) as Array<{ site_idx: number; new_position: Vec3 }>
 
-                // Update drag coordinates for display
-                if (lattice) {
-                  try {
-                    const lattice_transposed = math.transpose_3x3_matrix(
-                      lattice.matrix,
-                    )
-                    const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-                    const raw_abc = math.mat3x3_vec3_multiply(
-                      lattice_inv,
-                      new_centroid,
-                    )
-                    const abc = raw_abc.map((coord) =>
-                      coord - Math.floor(coord)
-                    ) as Vec3
-                    drag_coordinates = { xyz: new_centroid, abc }
-                  } catch {
-                    drag_coordinates = { xyz: new_centroid }
-                  }
-                } else {
-                  drag_coordinates = { xyz: new_centroid }
-                }
-
                 // Save history only on first change of this drag operation
                 const should_save_history = !has_saved_history_for_drag
                 if (should_save_history) {
@@ -1036,31 +961,10 @@
 
                 // Notify parent that a continuous operation is starting
                 on_operation_start?.()
-
-                // Initialize drag coordinates
-                if (transform_object?.position) {
-                  const { x, y, z } = transform_object.position
-                  const xyz = [x, y, z] as Vec3
-                  let abc: Vec3 | undefined
-                  if (lattice) {
-                    try {
-                      const lattice_transposed = math.transpose_3x3_matrix(
-                        lattice.matrix,
-                      )
-                      const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-                      const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-                      abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
-                    } catch {
-                      // Ignore coordinate conversion errors during drag
-                    }
-                  }
-                  drag_coordinates = { xyz, abc }
-                }
               }
             }}
             ondragend={() => {
               is_transforming = false
-              drag_coordinates = null
               if (orbit_controls) orbit_controls.enabled = true
 
               // Notify parent that the continuous operation has ended
@@ -1079,7 +983,7 @@
               {@const site_j = structure.sites[idx_j]}
               {@const pos_i = site_i.xyz}
               {@const pos_j = site_j.xyz}
-              <Bond from={pos_i} to={pos_j} thickness={0.06} color="#cccccc" />
+              <Bond from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
               {@const midpoint = [
           (pos_i[0] + pos_j[0]) / 2,
           (pos_i[1] + pos_j[1]) / 2,
@@ -1114,15 +1018,8 @@
               }
                 {@const site_a = structure.sites[idx_a]}
                 {@const site_b = structure.sites[idx_b]}
-                {@const [v1, v2] = smart_displacement_vectors(
-          center.xyz,
-          site_a.xyz,
-          site_b.xyz,
-          lattice?.matrix,
-          center.abc,
-          site_a.abc,
-          site_b.abc,
-        )}
+                {@const v1 = displacement_pbc(center.xyz, site_a.xyz, lattice?.matrix)}
+                {@const v2 = displacement_pbc(center.xyz, site_b.xyz, lattice?.matrix)}
                 {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
                 {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
                 {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
@@ -1132,32 +1029,18 @@
                     from={center.xyz}
                     to={site_a.xyz}
                     thickness={0.05}
-                    color="#bbbbbb"
+                    color={measure_line_color}
                   />
                   <Bond
                     from={center.xyz}
                     to={site_b.xyz}
                     thickness={0.05}
-                    color="#bbbbbb"
+                    color={measure_line_color}
                   />
-                  {@const bisector = [
-          v1[0] / n1 + v2[0] / n2,
-          v1[1] / n1 + v2[1] / n2,
-          v1[2] / n1 + v2[2] / n2,
-        ] as Vec3}
-                  {@const bis_norm =
-          Math.sqrt(bisector[0] ** 2 + bisector[1] ** 2 + bisector[2] ** 2) ||
-          1}
-                  {@const offset_dir = [
-          bisector[0] / bis_norm,
-          bisector[1] / bis_norm,
-          bisector[2] / bis_norm,
-        ] as Vec3}
-                  {@const label_pos = [
-          center.xyz[0] + offset_dir[0] * 0.6,
-          center.xyz[1] + offset_dir[1] * 0.6,
-          center.xyz[2] + offset_dir[2] * 0.6,
-        ] as Vec3}
+                  {@const bisector = math.add(math.scale(v1, 1 / n1), math.scale(v2, 1 / n2))}
+                  {@const bis_norm = Math.hypot(...bisector) || 1}
+                  {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
+                  {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
                   <Extras.HTML center position={label_pos}>
                     <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
                   </Extras.HTML>
@@ -1201,7 +1084,8 @@
     margin: var(--canvas-tooltip-coords-margin);
   }
   .measure-label {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--measure-label-bg, var(--surface-bg));
+    color: var(--measure-label-color, var(--text-color));
     border-radius: 4px;
     padding: 0 5px;
     user-select: none;
@@ -1210,6 +1094,7 @@
     place-items: center;
     line-height: 1.2;
     font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
+    box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .selection-label {
     display: inline-flex;

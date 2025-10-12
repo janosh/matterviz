@@ -1,4 +1,6 @@
 import type { ElementSymbol } from '$lib'
+import type { Vec3 } from '$lib/math'
+import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
 import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types'
 import { is_unary_entry } from './types'
 
@@ -13,7 +15,7 @@ export const TRIANGLE_VERTICES = [
 export function composition_to_barycentric_3d(
   composition: Record<string, number>,
   elements: ElementSymbol[],
-): [number, number, number] {
+): Vec3 {
   if (elements.length !== 3) {
     throw new Error(`Ternary system requires exactly 3 elements, got ${elements.length}`)
   }
@@ -29,20 +31,17 @@ export function composition_to_barycentric_3d(
 }
 
 // map barycentric coordinates to triangular 2D coordinates
-export function barycentric_to_ternary_xy(
-  barycentric: [number, number, number],
-): [number, number] {
+export function barycentric_to_ternary_xy(barycentric: Vec3): [number, number] {
+  const [v0, v1, v2] = TRIANGLE_VERTICES
   const [a, b, c] = barycentric
-  const x = TRIANGLE_VERTICES[0][0] * a + TRIANGLE_VERTICES[1][0] * b +
-    TRIANGLE_VERTICES[2][0] * c
-  const y = TRIANGLE_VERTICES[0][1] * a + TRIANGLE_VERTICES[1][1] * b +
-    TRIANGLE_VERTICES[2][1] * c
+  const x = v0[0] * a + v1[0] * b + v2[0] * c
+  const y = v0[1] * a + v1[1] * b + v2[1] * c
   return [x, y]
 }
 
 // map barycentric coordinates to ternary 3D coordinates
 export function barycentric_to_ternary_xyz(
-  barycentric: [number, number, number],
+  barycentric: Vec3,
   formation_energy: number,
 ): Point3D {
   const [x, y] = barycentric_to_ternary_xy(barycentric)
@@ -50,24 +49,21 @@ export function barycentric_to_ternary_xyz(
 }
 
 export function get_triangle_centroid(): Point3D {
-  const centroid_x =
-    (TRIANGLE_VERTICES[0][0] + TRIANGLE_VERTICES[1][0] + TRIANGLE_VERTICES[2][0]) / 3
-  const centroid_y =
-    (TRIANGLE_VERTICES[0][1] + TRIANGLE_VERTICES[1][1] + TRIANGLE_VERTICES[2][1]) / 3
+  const [v0, v1, v2] = TRIANGLE_VERTICES
+  const centroid_x = (v0[0] + v1[0] + v2[0]) / 3
+  const centroid_y = (v0[1] + v1[1] + v2[1]) / 3
   return { x: centroid_x, y: centroid_y, z: 0 }
 }
 
 export function calculate_face_normal(p1: Point3D, p2: Point3D, p3: Point3D): Point3D {
   const edge1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z }
   const edge2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z }
-  const normal = {
-    x: edge1.y * edge2.z - edge1.z * edge2.y,
-    y: edge1.z * edge2.x - edge1.x * edge2.z,
-    z: edge1.x * edge2.y - edge1.y * edge2.x,
-  }
-  const magnitude = Math.sqrt(normal.x ** 2 + normal.y ** 2 + normal.z ** 2)
+  const nx = edge1.y * edge2.z - edge1.z * edge2.y
+  const ny = edge1.z * edge2.x - edge1.x * edge2.z
+  const nz = edge1.x * edge2.y - edge1.y * edge2.x
+  const magnitude = Math.hypot(nx, ny, nz)
   if (magnitude === 0) return { x: 0, y: 0, z: 1 }
-  return { x: normal.x / magnitude, y: normal.y / magnitude, z: normal.z / magnitude }
+  return { x: nx / magnitude, y: ny / magnitude, z: nz / magnitude }
 }
 
 export function calculate_face_centroid(p1: Point3D, p2: Point3D, p3: Point3D): Point3D {
@@ -81,37 +77,61 @@ export function calculate_face_centroid(p1: Point3D, p2: Point3D, p3: Point3D): 
 export function get_ternary_3d_coordinates(
   entries: PhaseEntry[],
   elements: ElementSymbol[],
+  el_refs?: Record<string, PhaseEntry>, // Optional: pass precomputed refs to avoid recomputing
 ): TernaryPlotEntry[] {
   if (elements.length !== 3) {
     throw new Error(
       `Ternary phase diagram requires exactly 3 elements, got ${elements.length}`,
     )
   }
-  if (!(`e_form_per_atom` in entries[0])) {
+
+  // Filter to entries within the ternary system first (use Set for O(1) lookups)
+  const element_set = new Set(elements)
+  const within_system = entries.filter((entry) =>
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
+  )
+
+  if (within_system.length === 0) {
     throw new Error(
-      `Ternary phase diagram requires e_form_per_atom field for z-axis positioning`,
+      `No entries found within the ternary system: ${elements.join(`-`)}`,
     )
   }
-  const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => elements.includes(el as ElementSymbol))
+
+  // Check if we have formation energies - provide detailed diagnostics if missing
+  const entries_with_e_form = within_system.filter((entry) =>
+    typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
   )
+
+  // If none have e_form_per_atom, try to derive them using refs; only error if we can't
+  const refs = el_refs ?? find_lowest_energy_unary_refs(entries)
+  if (entries_with_e_form.length === 0) {
+    const missing_refs = elements.filter((el) => !refs[el])
+    if (missing_refs.length > 0) {
+      throw new Error(
+        [
+          `Ternary phase diagram requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
+            elements.join(`-`)
+          } system have this field.`,
+          `\nCannot compute formation energies because elemental references are missing for: ${
+            missing_refs.join(`, `)
+          }.`,
+          `To fix: Ensure your dataset includes stable unary (single-element) entries for each element.`,
+        ].join(`\n`),
+      )
+    }
+    // proceed; values will be computed during mapping below
+  }
+
+  // Map entries to ternary plot coordinates
   const result = within_system.map((entry) => {
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
-    const { x, y, z } = barycentric_to_ternary_xyz(
-      barycentric,
-      entry.e_form_per_atom ?? NaN,
-    )
+    const e_form = typeof entry.e_form_per_atom === `number` &&
+        Number.isFinite(entry.e_form_per_atom)
+      ? entry.e_form_per_atom
+      : compute_e_form_per_atom(entry, refs) ?? NaN
+    const xyz = barycentric_to_ternary_xyz(barycentric, e_form)
     const is_element = is_unary_entry(entry)
-    return {
-      ...entry,
-      x,
-      y,
-      z,
-      barycentric,
-      formation_energy: entry.e_form_per_atom ?? NaN,
-      is_element,
-      visible: true,
-    }
+    return { ...entry, ...xyz, barycentric, e_form, is_element, visible: true }
   })
   return result
 }
@@ -130,7 +150,6 @@ export function get_triangle_vertical_edges(
 }
 
 // ================= Quaternary coordinates =================
-
 export const TETRAHEDRON_VERTICES = [
   [1, 0, 0],
   [0.5, Math.sqrt(3) / 2, 0],
@@ -178,8 +197,10 @@ export function compute_4d_coords(
   if (elements.length !== 4) {
     throw new Error(`Quaternary phase diagram requires exactly ${4} elements`)
   }
+  // Use Set for O(1) lookups instead of O(n) includes
+  const element_set = new Set(elements)
   const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => (elements as string[]).includes(el))
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
   )
   return within_system.map((entry) => {
     const barycentric_4d = composition_to_barycentric_4d(

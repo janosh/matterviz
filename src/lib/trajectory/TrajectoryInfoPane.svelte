@@ -7,17 +7,6 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
-  interface Props extends Omit<ComponentProps<typeof DraggablePane>, `children`> {
-    trajectory: TrajectoryType
-    current_step_idx: number
-    current_filename?: string | null
-    current_file_path?: string | null
-    file_size?: number | null
-    file_object?: File | null
-    pane_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-  }
   let {
     trajectory,
     current_step_idx,
@@ -29,7 +18,17 @@
     toggle_props,
     pane_props,
     ...rest
-  }: Props = $props()
+  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    trajectory: TrajectoryType
+    current_step_idx: number
+    current_filename?: string | null
+    current_file_path?: string | null
+    file_size?: number | null
+    file_object?: File | null
+    pane_open?: boolean
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  } = $props()
 
   let copied_items = new SvelteSet<string>()
 
@@ -52,7 +51,7 @@
       : `${format_num(bytes / 1024, `.2~f`)} KB`
 
   const is_valid_number = (val: unknown): val is number =>
-    typeof val === `number` && !isNaN(val) && isFinite(val)
+    typeof val === `number` && isFinite(val)
 
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
     frames.map((f) => f.metadata?.[prop]).filter(is_valid_number)
@@ -275,13 +274,12 @@
           .filter((v) => v > 0)
 
         if (volumes.length > 1) {
-          const vol_change =
-            ((Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)) *
-            100
+          const vol_change = (Math.max(...volumes) - Math.min(...volumes)) /
+            Math.min(...volumes)
           if (Math.abs(vol_change) > 0.1 && is_valid_number(vol_change)) {
             const vol_items = [safe_item(
               `Volume Change`,
-              `${format_num(vol_change, `.2~f`)}%`,
+              `${format_num(vol_change, `.2~%`)}`,
               `vol-change`,
             )].filter(is_info_item)
 
@@ -301,7 +299,7 @@
   bind:show={pane_open}
   max_width="24em"
   toggle_props={{
-    title: `${pane_open ? `Close` : `Open`} trajectory info`,
+    title: pane_open ? `` : `Trajectory info`,
     ...toggle_props,
     class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
   }}
@@ -326,7 +324,7 @@
           role="button"
           tabindex="0"
           onkeydown={(event) => {
-            if (event.key === `Enter` || event.key === ` `) {
+            if ([`Enter`, ` `].includes(event.key)) {
               event.preventDefault()
               copy_item(label, value, key ?? label)
             }

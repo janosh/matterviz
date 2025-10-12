@@ -6,23 +6,9 @@
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { T } from '@threlte/core'
   import { interactivity } from '@threlte/extras'
+  import type { ComponentProps } from 'svelte'
   import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
 
-  interface Props {
-    from: Vec3
-    to: Vec3
-    color?: string
-    thickness?: number
-    offset?: number
-    from_color?: string // color of atom 1
-    to_color?: string // color of atom 2
-    bond_data?: BondPair // full bond data for tooltips
-    bonding_strategy?: BondingStrategy // current bonding algorithm
-    active_tooltip?: `atom` | `bond` | null // global tooltip state
-    hovered_bond_data?: BondPair | null // currently hovered bond
-    onbondhover?: (bond_data: BondPair | null) => void // callback for bond hover
-    ontooltipchange?: (type: `atom` | `bond` | null) => void // callback for tooltip state
-  }
   let {
     from,
     to,
@@ -37,7 +23,24 @@
     hovered_bond_data,
     onbondhover,
     ontooltipchange,
-  }: Props = $props()
+    onpointerenter,
+    onpointerleave,
+    ...rest
+  }: ComponentProps<typeof T.Mesh> & {
+    from: Vec3
+    to: Vec3
+    color?: string
+    thickness?: number
+    offset?: number
+    from_color?: string // color of atom 1
+    to_color?: string // color of atom 2
+    bond_data?: BondPair // full bond data for tooltips
+    bonding_strategy?: BondingStrategy // current bonding algorithm
+    active_tooltip?: `atom` | `bond` | null // global tooltip state
+    hovered_bond_data?: BondPair | null // currently hovered bond
+    onbondhover?: (bond_data: BondPair | null) => void // callback for bond hover
+    ontooltipchange?: (type: `atom` | `bond` | null) => void // callback for tooltip state
+  } = $props()
 
   interactivity()
 
@@ -75,15 +78,17 @@
   })
 
   const pointer_handlers = {
-    onpointerenter: () => {
+    onpointerenter: (event: PointerEvent) => {
       if (bond_data) {
         onbondhover?.(bond_data)
         ontooltipchange?.(`bond`)
       }
+      onpointerenter?.(event)
     },
-    onpointerleave: () => {
+    onpointerleave: (event: PointerEvent) => {
       onbondhover?.(null)
       ontooltipchange?.(null)
+      onpointerleave?.(event)
     },
   }
 
@@ -123,6 +128,7 @@
 {#if gradient_texture}
   <!-- Use gradient material for bonds with two colors -->
   <T.Mesh
+    {...rest}
     {position}
     {rotation}
     scale={[thickness, height, thickness]}
@@ -134,6 +140,7 @@
 {:else}
   <!-- Fallback to solid color -->
   <T.Mesh
+    {...rest}
     {position}
     {rotation}
     scale={[thickness, height, thickness]}

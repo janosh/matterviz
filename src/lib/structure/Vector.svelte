@@ -3,18 +3,9 @@
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
+  import type { ComponentProps } from 'svelte'
   import { Euler, Quaternion, Vector3 } from 'three'
 
-  interface Props {
-    position: Vec3 // Starting position of the vector (atom position)
-    vector: Vec3 // Vector components [x, y, z] in appropriate units
-    scale?: number // Scale factor for vector visualization
-    color?: string // Color of the vector
-    // Arrow dimensions
-    shaft_radius?: number
-    arrow_head_radius?: number
-    arrow_head_length?: number
-  }
   let {
     position,
     vector,
@@ -23,7 +14,17 @@
     shaft_radius = DEFAULTS.structure.force_shaft_radius,
     arrow_head_radius = DEFAULTS.structure.force_arrow_head_radius,
     arrow_head_length = DEFAULTS.structure.force_arrow_head_length,
-  }: Props = $props()
+    ...rest
+  }: ComponentProps<typeof T.Mesh> & {
+    position: Vec3 // Starting position of the vector (atom position)
+    vector: Vec3 // Vector components [x, y, z] in appropriate units
+    scale?: number // Scale factor for vector visualization
+    color?: string // Color of the vector
+    // Arrow dimensions
+    shaft_radius?: number
+    arrow_head_radius?: number
+    arrow_head_length?: number
+  } = $props()
 
   // Calculate vector magnitude and normalized direction
   let vector_magnitude = $derived(Math.hypot(...vector))
@@ -66,14 +67,14 @@
 
 <!-- Vector shaft (cylinder) -->
 {#if shaft_length > 0.01}
-  <T.Mesh position={shaft_center} {rotation}>
+  <T.Mesh {...rest} position={shaft_center} {rotation}>
     <T.CylinderGeometry args={[shaft_radius, shaft_radius, shaft_length, 12]} />
     <T.MeshStandardMaterial {color} />
   </T.Mesh>
 {/if}
 
 <!-- Arrow head (cone) -->
-<T.Mesh position={arrow_head_position} {rotation}>
+<T.Mesh {...rest} position={arrow_head_position} {rotation}>
   <T.ConeGeometry args={[arrow_head_radius, arrow_head_length, 12]} />
   <T.MeshStandardMaterial {color} />
 </T.Mesh>

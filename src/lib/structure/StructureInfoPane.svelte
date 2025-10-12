@@ -13,15 +13,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    structure: AnyStructure
-    pane_open?: boolean
-    atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
-    selected_sites?: number[] // Sites selected from Wyckoff table click
-  }
   let {
     structure,
     pane_open = $bindable(false),
@@ -31,7 +22,15 @@
     highlighted_sites = $bindable([]),
     selected_sites = $bindable([]),
     ...rest
-  }: Props = $props()
+  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
+    structure: AnyStructure
+    pane_open?: boolean
+    atom_count_thresholds?: [number, number] // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
+    selected_sites?: number[] // Sites selected from Wyckoff table click
+  } = $props()
 
   let copied_items = new SvelteSet<string>()
   let sites_expanded = $state(false)
@@ -355,7 +354,7 @@
             role="button"
             tabindex="0"
             onkeydown={(event) => {
-              if (event.key === `Enter` || event.key === ` `) {
+              if ([`Enter`, ` `].includes(event.key)) {
                 event.preventDefault()
                 handle_click(item, section.title)
               }

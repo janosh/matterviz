@@ -1,9 +1,10 @@
 import type { ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { atomic_weights } from '$lib/composition/parse'
-import element_data from '$lib/element/data'
+import { element_data } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { ComponentProps } from 'svelte'
+import type { Pbc } from './pbc'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
@@ -12,6 +13,7 @@ export { default as Lattice } from './Lattice.svelte'
 export * from './pbc'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureControls } from './StructureControls.svelte'
+export { default as StructureExportPane } from './StructureExportPane.svelte'
 export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
@@ -45,7 +47,7 @@ export type LatticeParams = { [key in (typeof lattice_param_keys)[number]]: numb
 
 export type PymatgenLattice = {
   matrix: Matrix3x3
-  pbc: [boolean, boolean, boolean]
+  pbc: Pbc
   volume: number
 } & LatticeParams
 

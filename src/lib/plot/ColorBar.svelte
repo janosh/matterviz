@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '$lib'
+  import { format_num, type Orientation } from '$lib'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
@@ -9,36 +9,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    title?: string
-    color_scale?: ((x: number) => string) | string | null
-    title_side?: `left` | `right` | `top` | `bottom`
-    bar_style?: string
-    title_style?: string
-    wrapper_style?: string
-    tick_labels?: (string | number)[] | number
-    tick_format?: string
-    range?: [number, number]
-    // tick_side determines tick placement relative to orientation:
-    // 'primary'   = bottom (horizontal) / right (vertical), outside bar
-    // 'secondary' = top (horizontal) / left (vertical), outside bar
-    // 'inside'    = centered within bar, hiding first/last
-    tick_side?: `primary` | `secondary` | `inside`
-    orientation?: `horizontal` | `vertical`
-    // snap ticks to pretty, more readable values
-    snap_ticks?: boolean
-    // number of equidistant points to sample color scale
-    steps?: number
-    // computed "nice" range resulting from snapping ticks
-    // https://github.com/d3/d3-scale/issues/86
-    nice_range?: [number, number]
-    // type of scale to use for ticks and potentially color (if color_scale_fn not provided)
-    scale_type?: `linear` | `log`
-    // Optional pre-configured d3 color scale function
-    color_scale_fn?: (value: number) => string
-    // Optional domain for pre-configured color scale function
-    color_scale_domain?: [number, number]
-  }
   let {
     title = undefined,
     color_scale = $bindable(`interpolateViridis`),
@@ -58,7 +28,36 @@
     color_scale_fn = undefined,
     color_scale_domain = undefined,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    title?: string
+    color_scale?: ((x: number) => string) | string | null
+    title_side?: `left` | `right` | `top` | `bottom`
+    bar_style?: string
+    title_style?: string
+    wrapper_style?: string
+    tick_labels?: (string | number)[] | number
+    tick_format?: string
+    range?: [number, number]
+    // tick_side determines tick placement relative to orientation:
+    // 'primary'   = bottom (horizontal) / right (vertical), outside bar
+    // 'secondary' = top (horizontal) / left (vertical), outside bar
+    // 'inside'    = centered within bar, hiding first/last
+    tick_side?: `primary` | `secondary` | `inside`
+    orientation?: Orientation
+    // snap ticks to pretty, more readable values
+    snap_ticks?: boolean
+    // number of equidistant points to sample color scale
+    steps?: number
+    // computed "nice" range resulting from snapping ticks
+    // https://github.com/d3/d3-scale/issues/86
+    nice_range?: [number, number]
+    // type of scale to use for ticks and potentially color (if color_scale_fn not provided)
+    scale_type?: `linear` | `log`
+    // Optional pre-configured d3 color scale function
+    color_scale_fn?: (value: number) => string
+    // Optional domain for pre-configured color scale function
+    color_scale_domain?: [number, number]
+  } = $props()
 
   let actual_title_side = $derived.by(() => {
     if (title_side !== undefined) return title_side // Use user-provided value if available

@@ -142,7 +142,7 @@ const themes = {
   },
 
   // Interactive elements (buttons, etc.)
-  'btn-bg': btn_bg(0.1, 0.12),
+  'btn-bg': btn_bg(0.3, 0.12),
   'btn-bg-hover': btn_bg(0.2, 0.25),
   'btn-disabled-bg': btn_bg(0.1, 0.05),
 
@@ -157,10 +157,16 @@ const themes = {
 
   // Structure-specific
   'struct-bg': {
-    light: `rgba(0, 0, 0, 0.04)`,
+    light: `rgba(0, 0, 0, 0.02)`,
     dark: `rgba(255, 255, 255, 0.07)`,
-    white: `rgba(0, 0, 0, 0.02)`,
+    white: `rgba(0, 0, 0, 0.01)`,
     black: `rgba(255, 255, 255, 0.1)`,
+  },
+  'struct-bg-fullscreen': {
+    light: page_bg_light,
+    dark: page_bg_dark,
+    white: page_bg_white,
+    black: page_bg_black,
   },
 
   // Pane backgrounds (DraggablePane, etc.)
@@ -220,10 +226,10 @@ const themes = {
   },
 
   // Plot legend
-  'plot-legend-background-color': {
-    light: `rgba(255, 255, 255, 0.95)`,
+  'plot-legend-bg-color': {
+    light: `rgba(255, 255, 255, 0.6)`,
     dark: `rgba(0, 0, 0, 0.2)`,
-    white: `rgba(255, 255, 255, 0.98)`,
+    white: `rgba(255, 255, 255, 0.9)`,
     black: `rgba(0, 0, 0, 0.3)`,
   },
   'plot-legend-border': {
@@ -238,21 +244,7 @@ const themes = {
     white: txt_white,
     black: txt_black,
   },
-  'plot-legend-item-hover-background-color': btn_bg(0.1, 0.1),
-
-  // Svelte MultiSelect
-  'sms-options-bg': {
-    light: `rgba(255, 255, 255, 0.95)`,
-    dark: `rgb(20, 18, 36)`,
-    white: `rgba(255, 255, 255, 0.98)`,
-    black: `rgba(15, 15, 15, 0.95)`,
-  },
-  'sms-active-color': {
-    light: acc_light,
-    dark: `cornflowerblue`,
-    white: acc_white,
-    black: acc_black,
-  },
+  'plot-legend-item-hover-bg-color': btn_bg(0.1, 0.1),
 
   'github-corner-color': {
     light: page_bg_light,

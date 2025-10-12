@@ -2,7 +2,7 @@
 // Used by both main package and VSCode extension
 
 import type { Vec3 } from '$lib/math'
-import type { D3SymbolName, Markers } from '$lib/plot'
+import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
 import { symbol_names } from '$lib/plot/formatting'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
@@ -98,7 +98,7 @@ export interface SettingsConfig {
     show_controls: SettingType<boolean>
     fullscreen_toggle: SettingType<boolean>
     step_labels: SettingType<number>
-    layout: SettingType<`auto` | `horizontal` | `vertical`>
+    layout: SettingType<`auto` | Orientation>
 
     // File handling and loading
     allow_file_drop: SettingType<boolean>
@@ -106,15 +106,6 @@ export interface SettingsConfig {
     text_file_threshold: SettingType<number>
     use_indexing: SettingType<boolean>
     chunk_size: SettingType<number>
-
-    // Histogram specific
-    histogram_mode: SettingType<`overlay` | `single`>
-    histogram_show_legend: SettingType<boolean>
-    histogram_bin_count: SettingType<number>
-
-    // Histogram specific (additional to existing)
-    histogram_bar_opacity: SettingType<number>
-    histogram_bar_stroke_width: SettingType<number>
 
     // Formatting
     step_label_format: SettingType<string>
@@ -149,10 +140,11 @@ export interface SettingsConfig {
     auto_fit_range: SettingType<boolean>
     grid_lines: SettingType<boolean>
     axis_labels: SettingType<boolean>
-    show_zero_lines: SettingType<boolean>
-    x_grid: SettingType<boolean>
-    y_grid: SettingType<boolean>
-    y2_grid: SettingType<boolean>
+    show_x_zero_line: SettingType<boolean>
+    show_y_zero_line: SettingType<boolean>
+    show_x_grid: SettingType<boolean>
+    show_y_grid: SettingType<boolean>
+    show_y2_grid: SettingType<boolean>
     x_format: SettingType<string>
     y_format: SettingType<string>
     y2_format: SettingType<string>
@@ -180,6 +172,24 @@ export interface SettingsConfig {
     symbol_type: SettingType<D3SymbolName>
   }
 
+  histogram: { // Histogram settings
+    mode: SettingType<`overlay` | `single`>
+    show_legend: SettingType<boolean>
+    bin_count: SettingType<number>
+    bar_opacity: SettingType<number>
+    bar_stroke_width: SettingType<number>
+    bar_stroke_color: SettingType<string>
+    bar_stroke_opacity: SettingType<number>
+    bar_color: SettingType<string>
+  }
+
+  bar: { // Bar plot settings
+    bar_color: SettingType<string>
+    bar_opacity: SettingType<number>
+    line_width: SettingType<number>
+    line_color: SettingType<string>
+  }
+
   composition: { // Composition specific settings
     display_mode: SettingType<`pie` | `bubble` | `bar`>
     color_scheme: SettingType<string>
@@ -196,8 +206,8 @@ export interface SettingsConfig {
       show_unstable: SettingType<boolean>
       show_stable_labels: SettingType<boolean>
       show_unstable_labels: SettingType<boolean>
-      energy_threshold: SettingType<number>
-      label_energy_threshold: SettingType<number>
+      max_hull_dist_show_phases: SettingType<number>
+      max_hull_dist_show_labels: SettingType<number>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -214,10 +224,11 @@ export interface SettingsConfig {
       show_unstable: SettingType<boolean>
       show_stable_labels: SettingType<boolean>
       show_unstable_labels: SettingType<boolean>
-      energy_threshold: SettingType<number>
-      label_energy_threshold: SettingType<number>
+      max_hull_dist_show_phases: SettingType<number>
+      max_hull_dist_show_labels: SettingType<number>
       show_hull_faces: SettingType<boolean>
       hull_face_color: SettingType<string>
+      hull_face_opacity: SettingType<number>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -234,8 +245,11 @@ export interface SettingsConfig {
       show_unstable: SettingType<boolean>
       show_stable_labels: SettingType<boolean>
       show_unstable_labels: SettingType<boolean>
-      energy_threshold: SettingType<number>
-      label_energy_threshold: SettingType<number>
+      show_hull_faces: SettingType<boolean>
+      hull_face_color: SettingType<string>
+      hull_face_opacity: SettingType<number>
+      max_hull_dist_show_phases: SettingType<number>
+      max_hull_dist_show_labels: SettingType<number>
       fullscreen: SettingType<boolean>
       info_pane_open: SettingType<boolean>
       legend_pane_open: SettingType<boolean>
@@ -522,7 +536,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 60,
     },
     fps_range: {
-      value: [0.2, 30] as const,
+      value: [0.2, 60] as const,
       description: `Allowed range for playback speed [min, max]`,
       minItems: 2,
       maxItems: 2,
@@ -586,36 +600,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Number of frames to process at once`,
       minimum: 10,
       maximum: 10000,
-    },
-
-    // Histogram specific
-    histogram_mode: {
-      value: `overlay` as const,
-      description:
-        `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
-      enum: [`overlay`, `single`],
-    },
-    histogram_show_legend: {
-      value: true,
-      description: `Show legend in histogram plots`,
-    },
-    histogram_bin_count: {
-      value: 100,
-      description: `Number of bins for histogram plots`,
-      minimum: 1,
-      maximum: 1000,
-    },
-    histogram_bar_opacity: {
-      value: 0.7,
-      description: `Opacity of histogram bars`,
-      minimum: 0,
-      maximum: 1,
-    },
-    histogram_bar_stroke_width: {
-      value: 1,
-      description: `Stroke width for histogram bars`,
-      minimum: 0,
-      maximum: 5,
     },
 
     // Formatting
@@ -701,6 +685,76 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
   },
 
+  // Histogram specific
+  histogram: {
+    mode: {
+      value: `overlay` as const,
+      description:
+        `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
+      enum: [`overlay`, `single`],
+    },
+    show_legend: {
+      value: true,
+      description: `Show legend in histogram plots`,
+    },
+    bin_count: {
+      value: 100,
+      description: `Number of bins for histogram plots`,
+      minimum: 1,
+      maximum: 1000,
+    },
+    bar_opacity: {
+      value: 0.7,
+      description: `Histogram bar opacity`,
+      minimum: 0,
+      maximum: 1,
+    },
+    bar_stroke_width: {
+      value: 1,
+      description: `Histogram bar stroke width`,
+      minimum: 0,
+      maximum: 5,
+    },
+    bar_stroke_color: {
+      value: `#000000`,
+      description: `Histogram bar stroke color`,
+    },
+    bar_stroke_opacity: {
+      value: 0.5,
+      description: `Histogram bar stroke opacity`,
+      minimum: 0,
+      maximum: 1,
+    },
+    bar_color: {
+      value: `#4A9EFF`,
+      description: `Histogram bar fill color`,
+    },
+  },
+
+  // Bar plot specific
+  bar: {
+    bar_color: {
+      value: `#4A9EFF`,
+      description: `Bar plot fill color`,
+    },
+    bar_opacity: {
+      value: 0.6,
+      description: `Bar plot opacity (overlay mode)`,
+      minimum: 0,
+      maximum: 1,
+    },
+    line_width: {
+      value: 2,
+      description: `Bar plot line width`,
+      minimum: 0.5,
+      maximum: 10,
+    },
+    line_color: {
+      value: `#4A9EFF`,
+      description: `Bar plot line color`,
+    },
+  },
+
   // Composition specific
   composition: {
     display_mode: {
@@ -746,7 +800,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: [`line`, `points`, `line+points`],
     },
     point_color: {
-      value: `#4682b4`,
+      value: `#4A9EFF`,
       description: `Default color for scatter plot points`,
     },
     point_opacity: {
@@ -772,7 +826,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1,
     },
     line_color: {
-      value: `#4682b4`,
+      value: `#4A9EFF`,
       description: `Default color for scatter plot lines`,
     },
     line_opacity: {
@@ -825,19 +879,23 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Show axis labels in plots`,
     },
-    show_zero_lines: {
+    show_x_zero_line: {
       value: true,
-      description: `Show zero reference lines in plots`,
+      description: `Show X-axis zero reference line`,
     },
-    x_grid: {
+    show_y_zero_line: {
+      value: true,
+      description: `Show Y-axis zero reference line`,
+    },
+    show_x_grid: {
       value: true,
       description: `Show X-axis grid lines`,
     },
-    y_grid: {
+    show_y_grid: {
       value: true,
       description: `Show Y-axis grid lines`,
     },
-    y2_grid: {
+    show_y2_grid: {
       value: true,
       description: `Show secondary Y-axis grid lines`,
     },
@@ -918,13 +976,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: false,
         description: `Show labels for unstable phases in 2D PD`,
       },
-      energy_threshold: {
+      max_hull_dist_show_phases: {
         value: 0.1,
         description: `Max eV/atom above hull for showing unstable entries in 2D PD`,
         minimum: 0,
         maximum: 2,
       },
-      label_energy_threshold: {
+      max_hull_dist_show_labels: {
         value: 0.1,
         description: `Max eV/atom above hull for labeling unstable entries in 2D PD`,
         minimum: 0,
@@ -995,13 +1053,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: false,
         description: `Show labels for unstable phases in 3D PD`,
       },
-      energy_threshold: {
+      max_hull_dist_show_phases: {
         value: 0.5,
         description: `Max eV/atom above hull for showing unstable entries in 3D PD`,
         minimum: 0,
         maximum: 2,
       },
-      label_energy_threshold: {
+      max_hull_dist_show_labels: {
         value: 0.1,
         description: `Max eV/atom above hull for labeling unstable entries in 3D PD`,
         minimum: 0,
@@ -1014,6 +1072,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       hull_face_color: {
         value: `#4caf50`,
         description: `Color for lower hull faces in 3D PD`,
+      },
+      hull_face_opacity: {
+        value: 0.3,
+        description: `Opacity for hull faces in 3D PD (0-1)`,
+        minimum: 0,
+        maximum: 1,
       },
       fullscreen: {
         value: false,
@@ -1080,13 +1144,27 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: false,
         description: `Show labels for unstable phases in 4D PD`,
       },
-      energy_threshold: {
+      show_hull_faces: {
+        value: true,
+        description: `Show convex hull faces in 4D PD`,
+      },
+      hull_face_color: {
+        value: `#4caf50`,
+        description: `Color for hull faces in 4D PD`,
+      },
+      hull_face_opacity: {
+        value: 0.06,
+        description: `Opacity for hull faces in 4D PD (0-1)`,
+        minimum: 0,
+        maximum: 1,
+      },
+      max_hull_dist_show_phases: {
         value: 0.1,
         description: `Max eV/atom above hull for showing unstable entries in 4D PD`,
         minimum: 0,
         maximum: 2,
       },
-      label_energy_threshold: {
+      max_hull_dist_show_labels: {
         value: 0.1,
         description: `Max eV/atom above hull for labeling unstable entries in 4D PD`,
         minimum: 0,
@@ -1151,6 +1229,8 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   composition: { ...DEFAULTS.composition, ...(user?.composition || {}) },
   plot: { ...DEFAULTS.plot, ...(user?.plot || {}) },
   scatter: { ...DEFAULTS.scatter, ...(user?.scatter || {}) },
+  histogram: { ...DEFAULTS.histogram, ...(user?.histogram || {}) },
+  bar: { ...DEFAULTS.bar, ...(user?.bar || {}) },
   phase_diagram: {
     ...DEFAULTS.phase_diagram,
     ...(user?.phase_diagram || {}),

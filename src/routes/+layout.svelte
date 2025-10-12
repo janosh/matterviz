@@ -1,20 +1,21 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { element_data } from '$lib'
+  import { page } from '$app/state'
+  import { element_data, Icon, Nav } from '$lib'
   import '$lib/app.css'
   import { theme_state } from '$lib/state.svelte'
   import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
-  import { DemoNav, Footer } from '$site'
+  import { Footer } from '$site'
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
   import { CmdPalette, CopyButton, GitHubCorner } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
 
-  interface Props {
-    children?: Snippet
-  }
-  let { children }: Props = $props()
+  let { children }: { children?: Snippet<[]> } = $props()
+
+  let cmd_palette_open = $state(false)
 
   $effect(() => { // Apply theme changes when mode changes (after SSR)
     if (typeof window !== `undefined`) apply_theme_to_dom(theme_state.mode)
@@ -55,24 +56,33 @@
     })
 </script>
 
-<CmdPalette {actions} placeholder="Go to..." />
+<CmdPalette bind:open={cmd_palette_open} {actions} placeholder="Go to..." />
 <GitHubCorner href={pkg.repository} />
 <CopyButton global class="copy-btn" />
 
 <ThemeControl />
 
-<!-- using a random MP ID to pre-populate the structure viewer when optimade explorer loads -->
-<DemoNav
-  routes={[
-    [`/`, `Home`],
-    ...demo_routes.map((route) =>
-      [route, route.replaceAll(`/`, ``).replaceAll(`-`, ` `)] satisfies [string, string]
-    ),
-    [`/optimade-mp-1226325`, `Optimade`],
-  ]}
-  style="text-transform: capitalize"
+<Nav
+  routes={[[`/`, `Home`], ...demo_routes]}
+  labels={{
+    '/how-to/hook-up-to-external-api': `Hook up to external API`,
+    '/how-to/use-without-svelte': `Use without Svelte`,
+    '/structure/rdf': `RDF`,
+    '/structure/xrd': `XRD`,
+  }}
+  menu_style="display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
   aria-label="Main navigation"
-/>
+  {page}
+>
+  <button
+    onclick={() => cmd_palette_open = true}
+    aria-label="Open search"
+    style="background: transparent"
+    {@attach tooltip({ content: `Search (⌘K)` })}
+  >
+    <Icon icon="Search" style="width: 1.4em; height: 1.4em" />
+  </button>
+</Nav>
 
 <main>
   {@render children?.()}

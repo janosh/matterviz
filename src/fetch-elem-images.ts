@@ -1,4 +1,4 @@
-import elements from '$lib/element/data'
+import { element_data } from '$lib/element'
 import fs from 'node:fs'
 import process from 'node:process'
 import sharp from 'npm:sharp'
@@ -66,7 +66,7 @@ if (action === `report`) console.log(`Missing images`)
 
 const download_promises: Promise<{ num_name: string; url: string | undefined }>[] = []
 
-for (const { name, number } of elements) {
+for (const { name, number } of element_data) {
   const num_name = `${number}-${name.toLowerCase()}`
   const have_img = fs.existsSync(`./static/elements/${num_name}.avif`)
 

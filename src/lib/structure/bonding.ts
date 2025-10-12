@@ -1,5 +1,5 @@
 import type { AnyStructure, BondPair } from '$lib'
-import element_data from '$lib/element/data'
+import { element_data } from '$lib/element'
 
 // Bonding strategy map
 export const BONDING_STRATEGIES = {

@@ -15,7 +15,18 @@
     Vector3,
   } from 'three'
 
-  interface Props {
+  let {
+    matrix = undefined,
+    cell_edge_color = DEFAULTS.structure.cell_edge_color,
+    cell_surface_color = DEFAULTS.structure.cell_surface_color,
+    cell_edge_width = DEFAULTS.structure.cell_edge_width,
+    cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
+    cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
+    show_cell_vectors = true,
+    vector_colors = [`red`, `green`, `blue`],
+    vector_origin = [-1, -1, -1] satisfies Vec3,
+    float_fmt = `.2f`,
+  }: {
     matrix?: math.Matrix3x3
     cell_edge_color?: string
     cell_surface_color?: string
@@ -26,23 +37,13 @@
     vector_colors?: readonly [string, string, string] // lattice vector colors
     vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
     float_fmt?: string
-  }
-  let {
-    matrix = undefined,
-    cell_edge_color = DEFAULTS.structure.cell_edge_color,
-    cell_surface_color = DEFAULTS.structure.cell_surface_color,
-    cell_edge_width = DEFAULTS.structure.cell_edge_width,
-    cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
-    cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
-    show_cell_vectors = true,
-    vector_colors = [`red`, `green`, `blue`],
-    vector_origin = [-1, -1, -1] as Vec3,
-    float_fmt = `.2f`,
-  }: Props = $props()
+  } = $props()
 
   let hovered_idx = $state<number | null>(null) // track hovered vector
   let lattice_center = $derived(
-    matrix ? (math.scale(math.add(...matrix), 0.5) as Vec3) : ([0, 0, 0] as Vec3),
+    matrix
+      ? (math.scale(math.add(...matrix), 0.5) satisfies Vec3)
+      : ([0, 0, 0] satisfies Vec3),
   )
 
   // Extract line segments from EdgesGeometry for cylinder-based thick lines
@@ -141,8 +142,7 @@
     {#if show_cell_vectors}
       <T.Group position={vector_origin}>
         {#each matrix as vec, idx (vec)}
-          {@const vector_length = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)}
-          {@const shaft_length = vector_length * 0.85}
+          {@const shaft_length = Math.hypot(...vec) * 0.85}
           <!-- Shaft goes to 85% of vector length -->
           {@const tip_start_position = math.scale(vec, 0.85) as Vec3}
           <!-- Calculate rotation to align with vector direction -->

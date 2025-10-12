@@ -54,7 +54,9 @@
     "exclude": [
       "src/site/structures/*.json",
       "src/site/molecules/*.json",
-      "src/site/trajectories/*.json"
+      "src/site/trajectories/*.json",
+      "tests/vitest/fixtures/xrd/*.json",
+      "tmp"
     ],
     "indentWidth": 2,
     "lineWidth": 90,

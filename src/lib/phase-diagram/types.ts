@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol, Sides } from '$lib'
 import type { Vec3 } from '$lib/math'
 
 // Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
@@ -6,7 +6,7 @@ export interface PhaseEntry {
   // Core required fields
   composition: Record<ElementSymbol, number>
   energy: number
-  entry_id: string
+  entry_id?: string
 
   // Common computed fields
   e_above_hull?: number
@@ -60,7 +60,7 @@ export interface PlotEntry3D extends PhaseEntry, Point3D {
 export interface PhaseDiagramConfig {
   width?: number
   height?: number
-  margin?: { top: number; right: number; bottom: number; left: number }
+  margin?: Sides
   unstable_threshold?: number // eV/atom threshold for showing unstable entries
   show_labels?: boolean
   show_hull?: boolean
@@ -114,16 +114,29 @@ export interface ConvexHullTriangle {
 
 // Ternary plot entry with additional face information
 export interface TernaryPlotEntry extends PlotEntry3D {
-  // Barycentric coordinates for ternary system
-  barycentric: [number, number, number]
-  // Formation energy for z-axis positioning
-  formation_energy: number
+  barycentric: [number, number, number] // Barycentric coordinates for ternary system
+  e_form: number // for z-axis positioning
 }
 
 // Hover data for tooltips
 export interface HoverData3D<T = PlotEntry3D> {
   entry: T
   position: { x: number; y: number }
+}
+
+// Phase diagram statistics
+export interface PhaseStats {
+  total: number
+  unary: number
+  binary: number
+  ternary: number
+  quaternary: number
+  stable: number
+  unstable: number
+  energy_range: { min: number; max: number; avg: number }
+  hull_distance: { max: number; avg: number }
+  elements: number
+  chemical_system: string
 }
 
 // Arity helpers (inlined from former arity.ts)

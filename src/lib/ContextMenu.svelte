@@ -8,16 +8,6 @@
     label?: string
     disabled?: boolean
   }
-
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    sections: Readonly<{ title: string; options: readonly MenuOption[] }[]>
-    selected_values?: Record<string, string>
-    on_select?: (section_title: string, option: MenuOption) => void
-    position: { x: number; y: number }
-    visible: boolean
-    on_close?: () => void
-    menu_element?: HTMLDivElement
-  }
   let {
     sections,
     selected_values = {},
@@ -25,9 +15,17 @@
     position,
     visible,
     on_close,
-    menu_element = $bindable(),
+    menu_element,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & {
+    sections: Readonly<{ title: string; options: readonly MenuOption[] }[]>
+    selected_values?: Record<string, string>
+    on_select?: (section_title: string, option: MenuOption) => void
+    position: { x: number; y: number }
+    visible: boolean
+    on_close?: () => void
+    menu_element?: HTMLDivElement
+  } = $props()
 
   // Calculate smart position that keeps menu in viewport
   function get_smart_position() {

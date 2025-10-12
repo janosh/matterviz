@@ -63,7 +63,7 @@ describe(`euclidean_dist`, () => {
     {
       point1: [1, 2, 3],
       point2: [4, 6, 8],
-      expected: Math.sqrt(9 + 16 + 25),
+      expected: Math.hypot(3, 4, 5),
       desc: `arbitrary points`,
     },
     {
@@ -246,7 +246,7 @@ test.each([
     volume: 12,
   }],
 ])(`calc_lattice_params`, (matrix, expected) => {
-  const result = math.calc_lattice_params(matrix as [Vec3, Vec3, Vec3])
+  const result = math.calc_lattice_params(matrix as math.Matrix3x3)
   expect(result.a).toBeCloseTo(expected.a, 2)
   expect(result.b).toBeCloseTo(expected.b, 2)
   expect(result.c).toBeCloseTo(expected.c, 2)
@@ -258,7 +258,7 @@ test.each([
 
 describe(`pbc_dist`, () => {
   test(`basic functionality with comprehensive scenarios`, () => {
-    const cubic_lattice: [Vec3, Vec3, Vec3] = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+    const cubic_lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
 
     // Opposite corners via PBC
     expect(math.pbc_dist([1, 1, 1], [9, 9, 9], cubic_lattice)).toBeCloseTo(
@@ -283,7 +283,7 @@ describe(`pbc_dist`, () => {
     expect(math.pbc_dist([0.5, 5, 5], [9.7, 5, 5], cubic_lattice)).toBeCloseTo(0.8, 5)
 
     // Hexagonal lattice
-    const hex_lattice: [Vec3, Vec3, Vec3] = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
+    const hex_lattice: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
     expect(math.euclidean_dist([0.2, 0.2, 1], [3.8, 3.264, 7])).toBeCloseTo(7.639, 3)
     expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.3, 3)
 
@@ -675,6 +675,129 @@ describe(`pbc_dist`, () => {
       expect(result).toBeCloseTo(expected, 4)
     }
   })
+
+  test(`axis-specific PBC flags (mixed boundary conditions)`, () => {
+    // Test slab geometry: periodic in xy, not in z
+    const slab_lattice: math.Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 20]]
+
+    // Slab: periodic in xy, not in z
+    expect(
+      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, false]),
+    )
+      .toBeCloseTo(18, 5)
+    expect(
+      math.pbc_dist([5, 5, 1], [5, 5, 19], slab_lattice, undefined, [true, true, true]),
+    )
+      .toBeCloseTo(2, 5)
+    expect(
+      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
+        true,
+        true,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+    expect(
+      math.pbc_dist([0.5, 5, 10], [9.5, 5, 10], slab_lattice, undefined, [
+        false,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(9, 5)
+
+    // Nanowire: periodic only in z
+    const wire_lattice: math.Matrix3x3 = [[20, 0, 0], [0, 20, 0], [0, 0, 10]]
+    expect(
+      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [
+        false,
+        false,
+        true,
+      ]),
+    )
+      .toBeCloseTo(2, 5)
+    expect(
+      math.pbc_dist([10, 10, 1], [10, 10, 9], wire_lattice, undefined, [
+        false,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(8, 5)
+
+    // Single-axis periodicity: only x-axis periodic
+    expect(
+      math.pbc_dist([0.5, 10, 10], [9.5, 10, 10], slab_lattice, undefined, [
+        true,
+        false,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+    expect(
+      math.pbc_dist([5, 0.5, 10], [5, 9.5, 10], slab_lattice, undefined, [
+        false,
+        true,
+        false,
+      ]),
+    )
+      .toBeCloseTo(1, 5)
+
+    // Triclinic lattice with mixed PBC
+    const triclinic: math.Matrix3x3 = [
+      [10.0, 0.0, 0.0],
+      [2.0, 8.0, 0.0],
+      [1.0, 1.0, 12.0],
+    ]
+    // Test that wrapping respects each axis independently in a triclinic system
+    // Key property: enabling PBC on specific axes should give different results than no PBC
+    const pos1: math.Vec3 = [0.5, 1.0, 1.0]
+    const pos2: math.Vec3 = [9.5, 1.0, 11.0]
+
+    const dist_no_pbc = math.pbc_dist(
+      pos1,
+      pos2,
+      triclinic,
+      undefined,
+      [false, false, false],
+    )
+    const dist_x_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [
+      true,
+      false,
+      false,
+    ])
+    const dist_z_only = math.pbc_dist(pos1, pos2, triclinic, undefined, [
+      false,
+      false,
+      true,
+    ])
+    const dist_xz = math.pbc_dist(pos1, pos2, triclinic, undefined, [true, false, true])
+
+    // Each PBC setting should give different results
+    expect(dist_x_only).toBeLessThan(dist_no_pbc)
+    expect(dist_z_only).toBeLessThan(dist_no_pbc)
+    expect(dist_xz).toBeLessThan(dist_x_only)
+    expect(dist_xz).toBeLessThan(dist_z_only)
+
+    // Verify wrapping is selective: enabling one axis shouldn't affect orthogonal separations
+    // Points separated only in z with PBC only in x should not wrap
+    const dist_z_sep_x_pbc = math.pbc_dist(
+      [5.0, 4.0, 1.0],
+      [5.0, 4.0, 11.0],
+      triclinic,
+      undefined,
+      [true, false, false],
+    )
+    const dist_z_sep_no_pbc = math.pbc_dist(
+      [5.0, 4.0, 1.0],
+      [5.0, 4.0, 11.0],
+      triclinic,
+      undefined,
+      [false, false, false],
+    )
+    // These should be equal (x-wrapping shouldn't affect z-separation)
+    expect(dist_z_sep_x_pbc).toBeCloseTo(dist_z_sep_no_pbc, 5)
+  })
 })
 
 describe(`tensor conversion utilities`, () => {
@@ -807,17 +930,11 @@ describe(`tensor conversion utilities`, () => {
       [`sequential tensor`, tensor_3x3, flat_array],
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [1, 0, 0, 0, 1, 0, 0, 0, 1]],
       [`symmetric`, [[1, 2, 3], [2, 4, 5], [3, 5, 6]], [1, 2, 3, 2, 4, 5, 3, 5, 6]],
-      [`negative`, [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]], [
-        -1,
-        -2,
-        -3,
-        -4,
-        -5,
-        -6,
-        -7,
-        -8,
-        -9,
-      ]],
+      [`negative`, [
+        [-1, -2, -3],
+        [-4, -5, -6],
+        [-7, -8, -9],
+      ], [-1, -2, -3, -4, -5, -6, -7, -8, -9]],
     ])(`converts %s to flat array`, (_, tensor, expected) => {
       expect(math.tensor_to_flat_array(tensor)).toEqual(expected)
     })
@@ -850,13 +967,11 @@ describe(`tensor conversion utilities`, () => {
         -9,
       ]]],
     ])(`%s matrix`, (_, input, expected) => {
-      expect(math.transpose_3x3_matrix(input as [Vec3, Vec3, Vec3])).toEqual(
-        expected,
-      )
+      expect(math.transpose_3x3_matrix(input as math.Matrix3x3)).toEqual(expected)
     })
 
     it(`is involution (A^T^T = A)`, () => {
-      const matrix: [Vec3, Vec3, Vec3] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+      const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
       expect(math.transpose_3x3_matrix(math.transpose_3x3_matrix(matrix))).toEqual(matrix)
     })
   })
@@ -1207,4 +1322,128 @@ describe(`get_coefficient_of_variation`, () => {
       expect(result).toBeCloseTo(expected, 3)
     },
   )
+})
+
+describe(`det_4x4`, () => {
+  test.each([
+    [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], 1, `identity`],
+    [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5], 120, `diagonal`],
+    [[1, 2, 3, 4], [0, 5, 6, 7], [0, 0, 8, 9], [0, 0, 0, 10], 400, `upper triangular`],
+    [[1, 0, 0, 0], [2, 3, 0, 0], [4, 5, 6, 0], [7, 8, 9, 10], 180, `lower triangular`],
+    [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+      [9, 10, 11, 12],
+      [13, 14, 15, 16],
+      0,
+      `singular`,
+    ],
+    [[3, 1, 0, 2], [1, 4, 2, 1], [0, 2, 5, 3], [2, 1, 3, 6], 112, `symmetric PD`],
+    [[1, 2, 3, 4], [2, 3, 4, 1], [3, 4, 1, 2], [4, 1, 2, 3], 160, `general`],
+    [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1], 1, `negative identity`],
+    [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
+    [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
+  ])(`%s`, (r0, r1, r2, r3, expected) => {
+    expect(math.det_4x4([r0, r1, r2, r3] as number[][])).toBeCloseTo(expected, -30)
+  })
+
+  test(`barycentric coordinates (tetrahedron unit test)`, () => {
+    const tet_matrix = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
+    expect(math.det_4x4(tet_matrix)).toBeCloseTo(-1, 10)
+
+    const bary_matrix = [[0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1]]
+    expect(math.det_4x4(bary_matrix) / math.det_4x4(tet_matrix)).toBeCloseTo(0.25, 10)
+  })
+})
+
+describe(`cross_3d`, () => {
+  test.each([
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1], `x × y = z`],
+    [[0, 1, 0], [0, 0, 1], [1, 0, 0], `y × z = x`],
+    [[0, 0, 1], [1, 0, 0], [0, 1, 0], `z × x = y`],
+    [[1, 0, 0], [0, 0, 1], [0, -1, 0], `x × z = -y`],
+    [[1, 0, 0], [1, 0, 0], [0, 0, 0], `parallel`],
+    [[1, 0, 0], [-1, 0, 0], [0, 0, 0], `anti-parallel`],
+    [[2, 3, 4], [5, 6, 7], [-3, 6, -3], `general`],
+    [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
+    [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
+  ])(`%s`, (a, b, expected) => {
+    const result = math.cross_3d(a as Vec3, b as Vec3)
+    expect(result).toEqual(
+      expected.map((val) => expect.closeTo(val, val < 1e10 ? 10 : -10)),
+    )
+  })
+
+  test(`mathematical properties`, () => {
+    const a: Vec3 = [2, 3, 4]
+    const b: Vec3 = [5, 6, 7]
+    const c: Vec3 = [1, 2, 3]
+    const cross_ab = math.cross_3d(a, b)
+    const cross_ba = math.cross_3d(b, a)
+
+    // Anti-commutative: a × b = -(b × a)
+    expect(cross_ab).toEqual(cross_ba.map((v) => expect.closeTo(-v, 10)))
+
+    // Orthogonality: (a × b) ⊥ a and (a × b) ⊥ b
+    expect(cross_ab[0] * a[0] + cross_ab[1] * a[1] + cross_ab[2] * a[2]).toBeCloseTo(
+      0,
+      10,
+    )
+    expect(cross_ab[0] * b[0] + cross_ab[1] * b[1] + cross_ab[2] * b[2]).toBeCloseTo(
+      0,
+      10,
+    )
+
+    // Magnitude for orthogonal vectors: |a × b| = |a| * |b|
+    const orth_cross = math.cross_3d([3, 0, 0], [0, 4, 0])
+    expect(Math.hypot(...orth_cross)).toBeCloseTo(12, 10)
+
+    // Distributive: a × (b + c) = a × b + a × c
+    const b_plus_c: Vec3 = [b[0] + c[0], b[1] + c[1], b[2] + c[2]]
+    const left = math.cross_3d(a, b_plus_c)
+    const cross_ac = math.cross_3d(a, c)
+    const right: Vec3 = [
+      cross_ab[0] + cross_ac[0],
+      cross_ab[1] + cross_ac[1],
+      cross_ab[2] + cross_ac[2],
+    ]
+    expect(left).toEqual(right.map((v) => expect.closeTo(v, 10)))
+
+    // Triangle normal (convex hull use case)
+    const normal = math.cross_3d([1, 0, 0], [0, 1, 0])
+    expect(normal).toEqual([0, 0, 1])
+  })
+})
+
+describe(`is_square_matrix`, () => {
+  test.each([
+    // Valid square matrices
+    [[[1]], 1, true],
+    [[[1, 2], [3, 4]], 2, true],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 3, true],
+    [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], 4, true],
+    [Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 1)), 5, true],
+    // Non-square matrices
+    [[[1, 2, 3], [4, 5, 6]], 2, false],
+    [[[1, 2], [3, 4], [5, 6]], 3, false],
+    // Wrong dimension checks
+    [[[1, 2], [3, 4]], 3, false],
+    [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2, false],
+    // Jagged arrays
+    [[[1, 2, 3], [4, 5], [7, 8, 9]], 3, false],
+    [[[1, 2, 3], [4, 5, 6, 7], [8, 9, 10]], 3, false],
+    // Edge cases
+    [[], 0, true],
+    [[[]], 1, false],
+    [[], -1, false],
+    // Invalid inputs
+    [`not an array`, 3, false],
+    [123, 3, false],
+    [null, 3, false],
+    [undefined, 3, false],
+    [[1, 2, 3], 3, false],
+    [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
+  ])(`dim=%i expected=%s`, (matrix, dim, expected) => {
+    expect(math.is_square_matrix(matrix, dim)).toBe(expected)
+  })
 })

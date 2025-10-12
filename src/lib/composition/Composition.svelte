@@ -7,19 +7,18 @@
   import { get_electro_neg_formula, parse_composition } from './parse'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
-  interface Props extends SVGAttributes<SVGSVGElement> {
-    composition: string | CompositionType
-    mode?: CompositionChartMode
-    on_composition_change?: (composition: CompositionType) => void
-    color_scheme?: ColorSchemeName
-  }
   let {
     composition,
     mode = `pie`,
     on_composition_change,
     color_scheme = `Vesta`,
     ...rest
-  }: Props = $props()
+  }: SVGAttributes<SVGSVGElement> & {
+    composition: string | CompositionType
+    mode?: CompositionChartMode
+    on_composition_change?: (composition: CompositionType) => void
+    color_scheme?: ColorSchemeName
+  } = $props()
 
   // Make these reactive so context menu changes propagate
   let current_color_scheme = $state(color_scheme as ColorSchemeName)
@@ -129,7 +128,7 @@
   role="button"
   tabindex={0}
   onkeydown={(event: KeyboardEvent) => {
-    if (event.key === `Enter` || event.key === ` `) {
+    if ([`Enter`, ` `].includes(event.key)) {
       event.preventDefault()
       const target = event.currentTarget as Element
       const rect = target.getBoundingClientRect()

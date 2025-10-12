@@ -1,8 +1,17 @@
 <script lang="ts">
   import type { ElementSymbol } from '$lib'
   import { decompress_data } from '$lib/io/decompress'
-  import { PhaseDiagram2D, PhaseDiagram3D, PhaseDiagram4D } from '$lib/phase-diagram'
-  import type { PymatgenEntry } from '$lib/phase-diagram/types'
+  import type {
+    PhaseStats,
+    PymatgenEntry,
+    TernaryPlotEntry,
+  } from '$lib/phase-diagram'
+  import {
+    PhaseDiagram2D,
+    PhaseDiagram3D,
+    PhaseDiagram4D,
+    PhaseDiagramStats,
+  } from '$lib/phase-diagram'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -18,6 +27,12 @@
 
   let entries_map = $state(new SvelteMap())
   let loaded_data = $state(new SvelteMap())
+
+  // State for the 3D example with stats display
+  let phase_stats = $state<PhaseStats | null>(null)
+  let stable_entries = $state<TernaryPlotEntry[]>([])
+  let unstable_entries = $state<TernaryPlotEntry[]>([])
+  let max_hull_dist_show_phases = $state(0.5)
 
   onMount(async () => {
     const results = await Promise.allSettled(
@@ -164,6 +179,25 @@
         <PhaseDiagram2D {entries} controls={{ title }} />
       {/each}
     </div>
+
+    <h2>3D Phase Diagram with Statistics</h2>
+    <p class="section-description">
+      Example of a 3D ternary phase diagram displayed alongside its computed statistics.
+      The stats are bound to the diagram and update automatically when the data changes.
+    </p>
+    <div class="stats-example-grid">
+      <PhaseDiagram3D
+        entries={na_fe_o_entries}
+        controls={{ title: `Na-Fe-O with Stats` }}
+        bind:phase_stats
+        bind:stable_entries
+        bind:unstable_entries
+        bind:max_hull_dist_show_phases
+      />
+      {#if phase_stats}
+        <PhaseDiagramStats {phase_stats} {stable_entries} {unstable_entries} />
+      {/if}
+    </div>
   {:else}
     <div class="loading-state">
       <p>Loading phase diagrams...</p>
@@ -200,6 +234,14 @@
     width: 100%;
     margin: 2rem auto 0 auto;
   }
+  .stats-example-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+    width: 100%;
+    margin: 2rem auto 0 auto;
+    align-items: start;
+  }
   .loading-state {
     display: flex;
     justify-content: center;
@@ -207,10 +249,13 @@
     min-height: 200px;
     color: var(--text-color-muted);
   }
-  @media (max-width: 1000px) {
+  @media (max-width: 1100px) {
     .ternary-grid,
     .quaternary-grid,
     .binary-grid {
+      grid-template-columns: 1fr;
+    }
+    .stats-example-grid {
       grid-template-columns: 1fr;
     }
   }

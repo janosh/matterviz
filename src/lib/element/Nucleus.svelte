@@ -1,17 +1,6 @@
 <script lang="ts">
-  interface Props {
-    protons: number
-    neutrons: number
-    radius?: number
-    size?: number
-    proton_color?: string
-    neutron_color?: string
-    stroke?: string
-    proton_label?: string
-    neutron_label?: string
-    text_color?: string
-    symbol?: string
-  }
+  import type { SVGAttributes } from 'svelte/elements'
+
   let {
     protons,
     neutrons,
@@ -24,7 +13,20 @@
     neutron_label = ` N`,
     text_color = `white`,
     symbol = ``,
-  }: Props = $props()
+    ...rest
+  }: SVGAttributes<SVGSVGElement> & {
+    protons: number
+    neutrons: number
+    radius?: number
+    size?: number
+    proton_color?: string
+    neutron_color?: string
+    stroke?: string
+    proton_label?: string
+    neutron_label?: string
+    text_color?: string
+    symbol?: string
+  } = $props()
 
   $effect(() => {
     radius = size / 2
@@ -40,7 +42,7 @@
   })
 </script>
 
-<svg width="100%" height="100%" viewBox="0 0 {size} {size}">
+<svg width="100%" height="100%" viewBox="0 0 {size} {size}" {...rest}>
   <circle r={radius} cx={radius} cy={radius} fill={neutron_color} {stroke}>
     <title>Neutrons: {neutrons}</title>
   </circle>

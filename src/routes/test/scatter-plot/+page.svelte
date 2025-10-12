@@ -303,7 +303,7 @@
       // Assign a color value (e.g., based on distance from origin)
       const center_x = x_range[0] + (x_range[1] - x_range[0]) / 2
       const center_y = y_range[0] + (y_range[1] - y_range[0]) / 2
-      const color_val = Math.sqrt(center_x ** 2 + center_y ** 2) * Math.random() * 2 // Add some variation
+      const color_val = Math.hypot(center_x, center_y) * Math.random() * 2 // Add some variation
 
       points.push({ x: x_val, y: y_val, color_value: color_val })
     }
@@ -491,7 +491,6 @@
     x_label="X Axis"
     y_label="Y Axis"
     markers="line+points"
-    show_controls
   />
 </section>
 
@@ -720,7 +719,6 @@
   <ScatterPlot
     series={legend_multi_series}
     legend={{ draggable: true }}
-    show_controls
     markers="points"
     id="legend-multi-default"
   />

@@ -7,16 +7,6 @@
   import type { SVGAttributes } from 'svelte/elements'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
-  interface Props extends Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> {
-    points: readonly [number, number][]
-    origin: [number, number]
-    line_color?: string
-    line_width?: number
-    area_color?: string
-    area_stroke?: string | null
-    line_tween?: TweenedOptions<string>
-    line_dash?: string
-  }
   let {
     points,
     origin = [0, 0],
@@ -27,7 +17,16 @@
     line_tween = {},
     line_dash = DEFAULTS.scatter.line_dash,
     ...rest
-  }: Props = $props()
+  }: Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> & {
+    points: readonly [number, number][]
+    origin: [number, number]
+    line_color?: string
+    line_width?: number
+    area_color?: string
+    area_stroke?: string | null
+    line_tween?: TweenedOptions<string>
+    line_dash?: string
+  } = $props()
 
   const lineGenerator = line()
     .x((point) => point[0])

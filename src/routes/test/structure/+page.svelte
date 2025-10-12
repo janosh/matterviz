@@ -14,14 +14,15 @@
   // expose selection state for tests
   let selected_sites = $state<number[]>([])
   let measured_sites = $state<number[]>([])
+  let enable_measure_mode = $state(true)
+  let supercell_scaling = $state(`1x1x1`)
+  let show_image_atoms = $state(true)
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
 
   // Structure state - can be overridden by data_url
-  let structure = $state<PymatgenStructure | undefined>(
-    mp1_struct as unknown as PymatgenStructure,
-  )
+  let structure = $state(mp1_struct as unknown as PymatgenStructure)
 
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
@@ -91,6 +92,12 @@
     if (url_params.has(`performance_mode`)) {
       const mode = url_params.get(`performance_mode`)
       if (mode === `speed` || mode === `quality`) performance_mode = mode
+    }
+
+    if (url_params.has(`enable_measure_mode`)) {
+      const param = url_params.get(`enable_measure_mode`)
+      if (param === `true`) enable_measure_mode = true
+      else if (param === `false`) enable_measure_mode = false
     }
 
     // Site labeling parameters
@@ -175,6 +182,22 @@
       <option value="speed">Speed</option>
     </select>
   </label>
+  <label>
+    Supercell Scaling:
+    <input
+      type="text"
+      bind:value={supercell_scaling}
+      data-testid="supercell-input"
+    />
+  </label><br />
+  <label>
+    Show Image Atoms:
+    <input
+      type="checkbox"
+      bind:checked={show_image_atoms}
+      data-testid="image-atoms-checkbox"
+    />
+  </label>
   <div style="margin-top: 0.5em">
     {#each [
         [`set-selected`, () => selected_sites = [0, 1]],
@@ -214,6 +237,9 @@
   on_camera_reset={create_event_handler(`on_camera_reset`)}
   bind:selected_sites
   bind:measured_sites
+  {enable_measure_mode}
+  bind:supercell_scaling
+  bind:show_image_atoms
 />
 
 <div data-testid="pane-open-status" style="margin-top: 10px">

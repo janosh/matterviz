@@ -2,15 +2,8 @@
   import type { AnyStructure } from '$lib'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
-    structure: AnyStructure
-    place_right?: boolean
-    width?: number
-    height?: number
-    onclose?: () => void
-    stats?: { id?: string; e_above_hull?: number; e_form?: number }
-  }
   let {
     structure,
     place_right = true,
@@ -18,7 +11,15 @@
     height = 400,
     onclose,
     stats,
-  }: Props = $props()
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
+    structure: AnyStructure
+    place_right?: boolean
+    width?: number
+    height?: number
+    onclose?: () => void
+    stats?: { id?: string; e_above_hull?: number; e_form?: number }
+  } = $props()
 
   const handle_keydown = (event: KeyboardEvent) => {
     if (event.key === `Escape`) onclose?.()
@@ -38,7 +39,8 @@
 <svelte:document onclick={handle_click_outside} />
 
 <div
-  class="structure-popup {place_right ? `right` : `left`}"
+  {...rest}
+  class="structure-popup {place_right ? `right` : `left`} {rest.class ?? ``}"
   role="dialog"
   aria-modal="true"
   tabindex="-1"

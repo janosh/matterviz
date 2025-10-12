@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
+  import { DraggablePane, format_num } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
@@ -16,42 +16,6 @@
     center_x: number
     center_y: number
   }
-
-  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `onclose`> {
-    // Display controls
-    color_mode?: `stability` | `energy`
-    color_scale?: D3InterpolateName
-    show_stable?: boolean
-    show_unstable?: boolean
-    show_stable_labels?: boolean
-    show_unstable_labels?: boolean
-    // 3D specific controls
-    show_hull_faces?: boolean
-    on_hull_faces_change?: (value: boolean) => void
-    hull_face_color?: string
-    on_hull_face_color_change?: (value: string) => void
-    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
-    has_precomputed_hull?: boolean
-    can_compute_hull?: boolean
-    has_precomputed_e_form?: boolean
-    can_compute_e_form?: boolean
-    // Thresholds
-    energy_threshold?: number
-    label_energy_threshold?: number
-    max_energy_threshold?: number
-    // Data for visualization
-    stable_entries: PlotEntry3D[]
-    unstable_entries: PlotEntry3D[]
-    total_unstable_count: number
-    // Camera state
-    camera: CameraState
-    // Legend configuration
-    merged_controls: PDControlsType
-    // Pane state
-    controls_open?: boolean
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-  }
   let {
     color_mode = $bindable(`stability`),
     color_scale = $bindable(`interpolateViridis`),
@@ -63,9 +27,11 @@
     on_hull_faces_change,
     hull_face_color = `#0072B2`,
     on_hull_face_color_change,
-    energy_threshold = $bindable(0),
-    label_energy_threshold = $bindable(0.1),
-    max_energy_threshold = 0.5,
+    hull_face_opacity = $bindable(0.06),
+    on_hull_face_opacity_change,
+    max_hull_dist_show_phases = $bindable(0),
+    max_hull_dist_show_labels = $bindable(0.1),
+    max_hull_dist_in_data = 0.5,
     energy_source_mode = $bindable(`precomputed`),
     has_precomputed_hull = false,
     can_compute_hull = false,
@@ -80,7 +46,43 @@
     toggle_props = $bindable({}),
     pane_props = $bindable({}),
     ...rest
-  }: Props = $props()
+  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
+    // Display controls
+    color_mode?: `stability` | `energy`
+    color_scale?: D3InterpolateName
+    show_stable?: boolean
+    show_unstable?: boolean
+    show_stable_labels?: boolean
+    show_unstable_labels?: boolean
+    // 3D specific controls
+    show_hull_faces?: boolean
+    on_hull_faces_change?: (value: boolean) => void
+    hull_face_color?: string
+    on_hull_face_color_change?: (value: string) => void
+    hull_face_opacity?: number
+    on_hull_face_opacity_change?: (value: number) => void
+    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
+    has_precomputed_hull?: boolean
+    can_compute_hull?: boolean
+    has_precomputed_e_form?: boolean
+    can_compute_e_form?: boolean
+    // Thresholds
+    max_hull_dist_show_phases?: number
+    max_hull_dist_show_labels?: number
+    max_hull_dist_in_data?: number
+    // Data for visualization
+    stable_entries: PlotEntry3D[]
+    unstable_entries: PlotEntry3D[]
+    total_unstable_count: number
+    // Camera state
+    camera: CameraState
+    // Legend configuration
+    merged_controls: PDControlsType
+    // Pane state
+    controls_open?: boolean
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  } = $props()
 </script>
 
 <DraggablePane
@@ -90,7 +92,7 @@
     class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,
   }}
   toggle_props={{
-    title: `${controls_open ? `Close` : `Open`} phase diagram controls`,
+    title: controls_open ? `` : `Phase diagram controls`,
     class: `phase-diagram-controls-toggle`,
     ...toggle_props,
   }}
@@ -155,18 +157,18 @@
       <input
         type="number"
         min="0"
-        max={max_energy_threshold}
+        max={max_hull_dist_in_data}
         step="0.01"
-        bind:value={energy_threshold}
+        bind:value={max_hull_dist_show_phases}
         class="threshold-input"
       />
       <span style="white-space: nowrap; font-size: 0.85em">eV/atom</span>
       <input
         type="range"
         min="0"
-        max={max_energy_threshold}
+        max={max_hull_dist_in_data}
         step="0.01"
-        bind:value={energy_threshold}
+        bind:value={max_hull_dist_show_phases}
         class="threshold-slider"
       />
     </label>
@@ -212,10 +214,11 @@
     </div>
   {:else}
     <!-- Color scale selector -->
-    <div class="control-row">
+    <div style="display: grid; gap: 8px; grid-template-columns: auto 1fr">
       <span {@attach tooltip({ content: `Choose energy colormap` })}>Color scale</span>
       <ColorScaleSelect
         bind:value={color_scale}
+        selected={[color_scale]}
         placeholder="Select color scale"
         {@attach tooltip({ content: `Set interpolator for energy colors` })}
       />
@@ -258,14 +261,14 @@
         <span class="control-label">Label threshold</span>
         <label style="display: flex; align-items: center; gap: 4px; flex: 1">
           <span style="white-space: nowrap; font-size: 0.85em">{
-              label_energy_threshold.toFixed(2)
+              max_hull_dist_show_labels.toFixed(2)
             } eV/atom</span>
           <input
             type="range"
             min="0"
-            max={max_energy_threshold}
+            max={max_hull_dist_in_data}
             step="0.01"
-            bind:value={label_energy_threshold}
+            bind:value={max_hull_dist_show_labels}
             class="threshold-slider"
           />
         </label>
@@ -273,109 +276,123 @@
     {/if}
   {/if}
 
-  <!-- Hull faces toggle (for 3D ternary diagrams) -->
+  <!-- Hull faces toggle (for 3D ternary and 4D quaternary diagrams) -->
   {#if show_hull_faces !== undefined}
     <div class="control-row">
-      <span class="control-label">3D Hull</span>
+      <span class="control-label">Hull Faces</span>
       <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
         <input
           type="checkbox"
           checked={show_hull_faces}
           oninput={(e) => on_hull_faces_change?.((e.target as HTMLInputElement).checked)}
         />
-        <span>Show faces</span>
+        <span>Show</span>
       </label>
-      <span class="control-label" style="min-width: auto">Hull color</span>
-      <input
-        type="color"
-        value={hull_face_color}
-        oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
-        {@attach tooltip({ content: `Set hull face color` })}
-      />
+      <div style="display: flex; gap: 6px; align-items: center; flex: 1">
+        <input
+          type="color"
+          value={hull_face_color}
+          oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
+          {@attach tooltip({ content: `Set hull face color` })}
+          style="width: 40px; height: 28px"
+        />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          aria-label="Hull face opacity"
+          bind:value={hull_face_opacity}
+          oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
+          {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
+          class="threshold-slider"
+          style="flex: 1; min-width: 80px"
+        />
+        <span style="font-size: 0.75em; min-width: 2em; text-align: right">{
+          format_num(hull_face_opacity, `.1%`)
+        }</span>
+      </div>
     </div>
   {/if}
 
-  <!-- Camera controls -->
-  <div class="control-row">
+  <div class="camera-controls">
     <span class="control-label">Camera</span>
-    <div class="camera-controls">
-      {#if camera.elevation !== undefined && camera.azimuth !== undefined}
-        <!-- Ternary camera controls (elevation/azimuth) -->
-        <label
-          class="angle-input"
-          {@attach tooltip({
-            content:
-              `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
-          })}
-        >
-          <span>Elev</span>
-          <input
-            type="number"
-            value={camera.elevation.toFixed(0)}
-            step="5"
-            oninput={(e) =>
-            camera.elevation = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-          <span>°</span>
-        </label>
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
-        >
-          <span>Azim</span>
-          <input
-            type="number"
-            value={camera.azimuth.toFixed(0)}
-            step="15"
-            oninput={(e) =>
-            camera.azimuth = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-          <span>°</span>
-        </label>
-      {:else}
-        <!-- Quaternary camera controls (rotation_x/rotation_y) -->
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
-        >
-          <span>φ</span>
-          <input
-            type="number"
-            value={(camera.rotation_x ?? 0).toFixed(2)}
-            step="0.1"
-            min={-Math.PI / 3}
-            max={Math.PI / 3}
-            oninput={(e) =>
-            camera.rotation_x = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-        </label>
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
-        >
-          <span>θ</span>
-          <input
-            type="number"
-            value={(camera.rotation_y ?? 0).toFixed(2)}
-            step="0.1"
-            oninput={(e) =>
-            camera.rotation_y = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
-            style="width: 3em"
-          />
-        </label>
-      {/if}
-    </div>
+    {#if camera.elevation !== undefined && camera.azimuth !== undefined}
+      <!-- Ternary camera controls (elevation/azimuth) -->
+      <label
+        class="angle-input"
+        {@attach tooltip({
+          content:
+            `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
+        })}
+      >
+        <span>Elev</span>
+        <input
+          type="number"
+          value={camera.elevation.toFixed(0)}
+          step="5"
+          oninput={(e) =>
+          camera.elevation = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+        <span>°</span>
+      </label>
+      <label
+        class="angle-input"
+        {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
+      >
+        <span>Azim</span>
+        <input
+          type="number"
+          value={camera.azimuth.toFixed(0)}
+          step="15"
+          oninput={(e) =>
+          camera.azimuth = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+        <span>°</span>
+      </label>
+    {:else}
+      <!-- Quaternary camera controls (rotation_x/rotation_y) -->
+      <label
+        class="angle-input"
+        {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
+      >
+        <span>φ</span>
+        <input
+          type="number"
+          value={(camera.rotation_x ?? 0).toFixed(2)}
+          step="0.1"
+          min={-Math.PI / 3}
+          max={Math.PI / 3}
+          oninput={(e) =>
+          camera.rotation_x = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+      </label>
+      <label
+        class="angle-input"
+        {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
+      >
+        <span>θ</span>
+        <input
+          type="number"
+          value={(camera.rotation_y ?? 0).toFixed(2)}
+          step="0.1"
+          oninput={(e) =>
+          camera.rotation_y = parseFloat(
+            (e.target as HTMLInputElement).value,
+          )}
+          style="width: 3em"
+        />
+      </label>
+    {/if}
   </div>
 </DraggablePane>
 
@@ -395,8 +412,9 @@
     gap: 4px;
     flex: 1;
   }
-  .toggle-btn {
+  button {
     flex: 1;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
   }
   .toggle-btn.active, .toggle-btn:hover.active {
     background: var(--accent-color, #1976d2);

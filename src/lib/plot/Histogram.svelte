@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
-  import type { DataSeries } from '$lib/plot'
-  import { HistogramControls, PlotLegend } from '$lib/plot'
+  import type { BasePlotProps, DataSeries } from '$lib/plot'
+  import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -12,57 +12,24 @@
   } from './data-transform'
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
-  import { constrain_tooltip_position, get_chart_dimensions } from './layout'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { ScaleType, TicksOption } from './scales'
   import { create_scale, generate_ticks, get_nice_data_range } from './scales'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    series: DataSeries[]
-    x_lim?: [number | null, number | null]
-    y_lim?: [number | null, number | null]
-    x_range?: [number, number]
-    y_range?: [number, number]
-    range_padding?: number
-    bins?: number
-    x_label?: string
-    y_label?: string
-    x_format?: string
-    y_format?: string
-    x_scale_type?: ScaleType
-    y_scale_type?: ScaleType
-    padding?: { t: number; b: number; l: number; r: number }
-    show_legend?: boolean
-    legend?: LegendConfig | null
-    bar_opacity?: number
-    bar_stroke_width?: number
-    selected_property?: string
-    mode?: `single` | `overlay`
-    show_zero_lines?: boolean
-    x_grid?: boolean | Record<string, unknown>
-    y_grid?: boolean | Record<string, unknown>
-    x_ticks?: TicksOption
-    y_ticks?: TicksOption
-    tooltip?: Snippet<[{ value: number; count: number; property: string }]>
-    hovered?: boolean
-    change?: (data: { value: number; count: number; property: string } | null) => void
-    show_controls?: boolean
-    controls_open?: boolean
-    plot_controls?: Snippet<[]>
-    on_series_toggle?: (series_idx: number) => void
-    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  }
   let {
     series = $bindable([]),
     x_lim = [null, null],
     y_lim = [null, null],
-    x_range,
-    y_range,
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
     range_padding = 0.05,
     bins = $bindable(100),
     x_label = `Value`,
+    x_label_shift = { x: 0, y: 0 },
     y_label = `Count`,
+    y_label_shift = { x: 0, y: 0 },
     x_format = $bindable(`.2~s`),
     y_format = $bindable(`d`),
     x_scale_type = $bindable(`linear`),
@@ -70,29 +37,81 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar_opacity = $bindable(0.7),
-    bar_stroke_width = $bindable(1),
+    bar_opacity = $bindable(DEFAULTS.histogram.bar_opacity),
+    bar_stroke_width = $bindable(DEFAULTS.histogram.bar_stroke_width),
+    bar_stroke_color = $bindable(DEFAULTS.histogram.bar_stroke_color),
+    bar_stroke_opacity = $bindable(DEFAULTS.histogram.bar_stroke_opacity),
+    bar_color = $bindable(DEFAULTS.histogram.bar_color),
     selected_property = $bindable(``),
     mode = $bindable(`single`),
-    show_zero_lines = $bindable(true),
-    x_grid = $bindable(true),
-    y_grid = $bindable(true),
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
     x_ticks = $bindable(8),
     y_ticks = $bindable(6),
     tooltip,
     hovered = $bindable(false),
     change = () => {},
+    on_bar_click,
+    on_bar_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    plot_controls,
     on_series_toggle = () => {},
     controls_toggle_props,
+    controls_pane_props,
+    children,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+    series: DataSeries[]
+    x_range?: [number | null, number | null]
+    y_range?: [number | null, number | null]
+    x_format?: string
+    y_format?: string
+    x_scale_type?: ScaleType
+    y_scale_type?: ScaleType
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    x_ticks?: TicksOption
+    y_ticks?: TicksOption
+    hovered?: boolean
+    show_controls?: boolean
+    controls_open?: boolean
+    // Component-specific props
+    bins?: number
+    show_legend?: boolean
+    legend?: LegendConfig | null
+    bar_opacity?: number
+    bar_stroke_width?: number
+    bar_stroke_color?: string
+    bar_stroke_opacity?: number
+    bar_color?: string
+    selected_property?: string
+    mode?: `single` | `overlay`
+    tooltip?: Snippet<[{ value: number; count: number; property: string }]>
+    change?: (data: { value: number; count: number; property: string } | null) => void
+    on_bar_click?: (
+      data: {
+        value: number
+        count: number
+        property: string
+        event: MouseEvent | KeyboardEvent
+      },
+    ) => void
+    on_bar_hover?: (
+      data:
+        | { value: number; count: number; property: string; event: MouseEvent }
+        | null,
+    ) => void
+    on_series_toggle?: (series_idx: number) => void
+  } = $props()
 
   // Core state
-  let width = $state(0)
-  let height = $state(0)
+  let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
   let hover_info = $state<{ value: number; count: number; property: string } | null>(
     null,
@@ -108,10 +127,6 @@
     mode === `single` && selected_property
       ? filter_visible_series(series).filter((s) => s.label === selected_property)
       : filter_visible_series(series),
-  )
-
-  let { width: chart_width, height: chart_height } = $derived(
-    get_chart_dimensions(width, height, padding),
   )
 
   let auto_ranges = $derived.by(() => {
@@ -154,8 +169,13 @@
   })
 
   $effect(() => {
-    const new_x = x_range ?? auto_ranges.x
-    const new_y = y_range ?? auto_ranges.y
+    // Support one-sided range pinning: merge user range with auto range for null values
+    const new_x: [number, number] = x_range
+      ? [x_range[0] ?? auto_ranges.x[0], x_range[1] ?? auto_ranges.x[1]]
+      : auto_ranges.x
+    const new_y: [number, number] = y_range
+      ? [y_range[0] ?? auto_ranges.y[0], y_range[1] ?? auto_ranges.y[1]]
+      : auto_ranges.y
 
     const x_changed =
       (x_range !== undefined) !== (ranges.initial.x === auto_ranges.x) ||
@@ -168,10 +188,28 @@
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
   })
 
+  // Layout: dynamic padding based on tick label widths
+  const default_padding = { t: 20, b: 60, l: 60, r: 20 }
+  let pad = $state({ ...default_padding, ...padding })
+
+  // Update padding when format or ticks change, but prevent infinite loop
+  $effect(() => {
+    const base_pad = { ...default_padding, ...padding }
+    const new_pad = width && height && ticks.y.length
+      ? calc_auto_padding({ base_padding: base_pad, y_ticks: ticks.y, y_format })
+      : base_pad
+
+    // Only update if padding actually changed (prevents infinite loop)
+    if (
+      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
+      pad.r !== new_pad.r
+    ) pad = new_pad
+  })
+
   // Scales and data
   let scales = $derived({
-    x: create_scale(x_scale_type, ranges.current.x, [0, chart_width]),
-    y: create_scale(y_scale_type, ranges.current.y, [chart_height, 0]),
+    x: create_scale(x_scale_type, ranges.current.x, [pad.l, width - pad.r]),
+    y: create_scale(y_scale_type, ranges.current.y, [height - pad.b, pad.t]),
   })
 
   let histogram_data = $derived.by(() => {
@@ -184,7 +222,9 @@
       return {
         series_idx,
         label: series_data.label || `Series ${series_idx + 1}`,
-        color: extract_series_color(series_data),
+        color: selected_series.length === 1
+          ? bar_color
+          : extract_series_color(series_data),
         bins: bins_arr,
         max_count: max(bins_arr, (d) => d.length) || 0,
       }
@@ -205,6 +245,43 @@
   })
 
   let legend_data = $derived(prepare_legend_data(series))
+
+  // Collect histogram bar positions for legend placement
+  let hist_points_for_placement = $derived.by(() => {
+    if (!width || !height || !histogram_data.length) return []
+
+    const points: { x: number; y: number }[] = []
+
+    for (const { bins } of histogram_data) {
+      for (const bin of bins) {
+        if (bin.length > 0) {
+          const bar_x = scales.x((bin.x0! + bin.x1!) / 2)
+          const bar_y = scales.y(bin.length)
+          if (isFinite(bar_x) && isFinite(bar_y)) {
+            // Add multiple points for taller bars to increase their weight
+            const weight = Math.ceil(bin.length / 10) // More points for taller bars
+            for (let idx = 0; idx < weight; idx++) points.push({ x: bar_x, y: bar_y })
+          }
+        }
+      }
+    }
+    return points
+  })
+
+  // Calculate best legend placement
+  let legend_placement = $derived.by(() => {
+    const should_place = show_legend && legend && series.length > 1
+
+    if (!should_place || !width || !height) return null
+
+    return find_best_plot_area(hist_points_for_placement, {
+      plot_width: width - pad.l - pad.r,
+      plot_height: height - pad.t - pad.b,
+      padding: pad,
+      margin: 10,
+      legend_size: { width: 120, height: 60 },
+    })
+  })
 
   // Event handlers
   const handle_zoom = () => {
@@ -258,7 +335,7 @@
   }
 
   function handle_mouse_move(
-    _: MouseEvent,
+    evt: MouseEvent,
     value: number,
     count: number,
     property: string,
@@ -266,6 +343,7 @@
     hovered = true
     hover_info = { value, count, property }
     change({ value, count, property })
+    on_bar_hover?.({ value, count, property, event: evt })
   }
 
   function toggle_series_visibility(series_idx: number) {
@@ -289,6 +367,7 @@
       onmouseleave={() => {
         hovered = false
         hover_info = null
+        on_bar_hover?.(null)
       }}
       ondblclick={handle_double_click}
       style:cursor="crosshair"
@@ -299,139 +378,137 @@
         if (event.key === `Escape` && drag_state.start) {
           drag_state = { start: null, current: null, bounds: null }
         }
-        if (event.key === `Enter` || event.key === ` `) {
+        if ([`Enter`, ` `].includes(event.key)) {
           event.preventDefault()
           handle_double_click()
         }
       }}
     >
-      <g transform="translate({padding.l}, {padding.t})">
-        <!-- Zero lines -->
-        {#if show_zero_lines}
-          {#if ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-            {@const zero_x = scales.x(0)}
-            {#if isFinite(zero_x)}
-              <line
-                y1={0}
-                y2={chart_height}
-                x1={zero_x}
-                x2={zero_x}
-                stroke="gray"
-                stroke-width="0.5"
+      <!-- Zero lines -->
+      {#if show_x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+        {@const zero_x = scales.x(0)}
+        {#if isFinite(zero_x)}
+          <line
+            class="zero-line"
+            x1={zero_x}
+            x2={zero_x}
+            y1={pad.t}
+            y2={height - pad.b}
+          />
+        {/if}
+      {/if}
+      {#if show_y_zero_line && y_scale_type === `linear` && ranges.current.y[0] <= 0 &&
+        ranges.current.y[1] >= 0}
+        {@const zero_y = scales.y(0)}
+        {#if isFinite(zero_y)}
+          <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
+        {/if}
+      {/if}
+
+      <!-- Histogram bars -->
+      {#each histogram_data as { bins, color, label }, series_idx (series_idx)}
+        <g class="histogram-series" data-series-idx={series_idx}>
+          {#each bins as bin, bin_idx (bin_idx)}
+            {@const bar_x = scales.x(bin.x0!)}
+            {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
+            {@const bar_height = Math.max(0, (height - pad.b) - scales.y(bin.length))}
+            {@const bar_y = scales.y(bin.length)}
+            {@const value = (bin.x0! + bin.x1!) / 2}
+            {#if bar_height > 0}
+              <rect
+                x={bar_x}
+                y={bar_y}
+                width={bar_width}
+                height={bar_height}
+                fill={color}
+                opacity={bar_opacity}
+                stroke={bar_stroke_width > 0 ? bar_stroke_color : `none`}
+                stroke-opacity={bar_stroke_width > 0 ? bar_stroke_opacity : 0}
+                stroke-width={bar_stroke_width}
+                role="button"
+                tabindex="0"
+                onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
+                onmouseleave={() => {
+                  hover_info = null
+                  change(null)
+                  on_bar_hover?.(null)
+                }}
+                onclick={(event) =>
+                on_bar_click?.({ value, count: bin.length, property: label, event })}
+                onkeydown={(event: KeyboardEvent) => {
+                  if ([`Enter`, ` `].includes(event.key)) {
+                    event.preventDefault()
+                    on_bar_click?.({ value, count: bin.length, property: label, event })
+                  }
+                }}
+                style:cursor={on_bar_click ? `pointer` : undefined}
               />
             {/if}
-          {/if}
-          {#if y_scale_type === `linear` && ranges.current.y[0] < 0 &&
-          ranges.current.y[1] > 0}
-            {@const zero_y = scales.y(0)}
-            {#if isFinite(zero_y)}
-              <line
-                x1={0}
-                x2={chart_width}
-                y1={zero_y}
-                y2={zero_y}
-                stroke="gray"
-                stroke-width="0.5"
-              />
+          {/each}
+        </g>
+      {/each}
+
+      <!-- Tooltip -->
+      {#if hover_info}
+        {@const tooltip_x = scales.x(hover_info.value)}
+        {@const tooltip_y = scales.y(hover_info.count)}
+        {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
+        {@const tooltip_pos = constrain_tooltip_position(
+        tooltip_x,
+        tooltip_y,
+        tooltip_size.width,
+        tooltip_size.height,
+        width,
+        height,
+      )}
+        <foreignObject
+          x={tooltip_pos.x}
+          y={tooltip_pos.y}
+          width={tooltip_size.width}
+          height={tooltip_size.height}
+        >
+          <div class="tooltip">
+            {#if tooltip}
+              {@render tooltip(hover_info)}
+            {:else}
+              <div>Value: {format_value(hover_info.value, x_format)}</div>
+              <div>Count: {hover_info.count}</div>
+              {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
             {/if}
-          {/if}
-        {/if}
+          </div>
+        </foreignObject>
+      {/if}
 
-        <!-- Histogram bars -->
-        {#each histogram_data as { bins, color, label }, series_idx (series_idx)}
-          <g class="histogram-series" data-series-idx={series_idx}>
-            {#each bins as bin, bin_idx (bin_idx)}
-              {@const bar_x = scales.x(bin.x0!)}
-              {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
-              {@const bar_height = Math.max(0, chart_height - scales.y(bin.length))}
-              {@const bar_y = scales.y(bin.length)}
-              {#if bar_height > 0}
-                <rect
-                  x={bar_x}
-                  y={bar_y}
-                  width={bar_width}
-                  height={bar_height}
-                  fill={color}
-                  opacity={bar_opacity}
-                  stroke={mode === `overlay` ? color : `none`}
-                  stroke-width={mode === `overlay` ? bar_stroke_width : 0}
-                  role="button"
-                  tabindex="0"
-                  onmousemove={(evt) =>
-                  handle_mouse_move(evt, (bin.x0! + bin.x1!) / 2, bin.length, label)}
-                  onmouseleave={() => {
-                    hover_info = null
-                    change(null)
-                  }}
-                  style:cursor="pointer"
-                />
-              {/if}
-            {/each}
-          </g>
-        {/each}
-
-        <!-- Tooltip -->
-        {#if hover_info}
-          {@const tooltip_x = scales.x(hover_info.value)}
-          {@const tooltip_y = scales.y(hover_info.count)}
-          {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
-          {@const tooltip_pos = constrain_tooltip_position(
-          tooltip_x,
-          tooltip_y,
-          tooltip_size.width,
-          tooltip_size.height,
-          chart_width,
-          chart_height,
-        )}
-          <foreignObject
-            x={tooltip_pos.x}
-            y={tooltip_pos.y}
-            width={tooltip_size.width}
-            height={tooltip_size.height}
-          >
-            <div class="tooltip">
-              {#if tooltip}
-                {@render tooltip(hover_info)}
-              {:else}
-                <div>Value: {format_value(hover_info.value, x_format)}</div>
-                <div>Count: {hover_info.count}</div>
-                {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
-              {/if}
-            </div>
-          </foreignObject>
-        {/if}
-
-        <!-- Zoom Selection Rectangle -->
-        {#if drag_state.start && drag_state.current}
-          {@const x = Math.min(drag_state.start.x, drag_state.current.x) - padding.l}
-          {@const y = Math.min(drag_state.start.y, drag_state.current.y) - padding.t}
-          {@const rect_width = Math.abs(drag_state.start.x - drag_state.current.x)}
-          {@const rect_height = Math.abs(drag_state.start.y - drag_state.current.y)}
-          <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
-        {/if}
-      </g>
+      <!-- Zoom Selection Rectangle -->
+      {#if drag_state.start && drag_state.current}
+        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
+        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
+        {@const rect_width = Math.abs(drag_state.start.x - drag_state.current.x)}
+        {@const rect_height = Math.abs(drag_state.start.y - drag_state.current.y)}
+        <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
+      {/if}
 
       <!-- X-axis -->
       <g class="x-axis">
         <line
-          x1={padding.l}
-          x2={width - padding.r}
-          y1={height - padding.b}
-          y2={height - padding.b}
+          x1={pad.l}
+          x2={width - pad.r}
+          y1={height - pad.b}
+          y2={height - pad.b}
           stroke="var(--border-color, gray)"
           stroke-width="1"
         />
         {#each ticks.x as tick (tick)}
-          {@const tick_x = padding.l + scales.x(tick as number)}
-          <g class="tick" transform="translate({tick_x}, {height - padding.b})">
-            {#if x_grid}
+          {@const tick_x = scales.x(tick as number)}
+          <g class="tick" transform="translate({tick_x}, {height - pad.b})">
+            {#if show_x_grid}
               <line
-                y1={-(height - padding.b - padding.t)}
+                y1={-(height - pad.b - pad.t)}
                 y2="0"
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
-                {...typeof x_grid === `object` ? x_grid : {}}
+                {...x_grid_style ?? {}}
               />
             {/if}
             <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -441,8 +518,8 @@
           </g>
         {/each}
         <text
-          x={padding.l + chart_width / 2}
-          y={height - 10}
+          x={(pad.l + width - pad.r) / 2 + (x_label_shift.x ?? 0)}
+          y={height - 10 + (x_label_shift.y ?? 0)}
           text-anchor="middle"
           fill="var(--text-color)"
         >
@@ -453,24 +530,24 @@
       <!-- Y-axis -->
       <g class="y-axis">
         <line
-          x1={padding.l}
-          x2={padding.l}
-          y1={padding.t}
-          y2={height - padding.b}
+          x1={pad.l}
+          x2={pad.l}
+          y1={pad.t}
+          y2={height - pad.b}
           stroke="var(--border-color, gray)"
           stroke-width="1"
         />
         {#each ticks.y as tick (tick)}
-          {@const tick_y = padding.t + scales.y(tick as number)}
-          <g class="tick" transform="translate({padding.l}, {tick_y})">
-            {#if y_grid}
+          {@const tick_y = scales.y(tick as number)}
+          <g class="tick" transform="translate({pad.l}, {tick_y})">
+            {#if show_y_grid}
               <line
                 x1="0"
-                x2={width - padding.l - padding.r}
+                x2={width - pad.l - pad.r}
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="0.4"
-                {...typeof y_grid === `object` ? y_grid : {}}
+                {...y_grid_style ?? {}}
               />
             {/if}
             <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -484,15 +561,19 @@
             </text>
           </g>
         {/each}
-        <text
-          x={15}
-          y={padding.t + chart_height / 2}
-          text-anchor="middle"
-          fill="var(--text-color)"
-          transform="rotate(-90, 15, {padding.t + chart_height / 2})"
-        >
-          {y_label}
-        </text>
+        {#if true}
+          {@const y_label_x = 15 + (y_label_shift.x ?? 0)}
+          {@const y_label_y = (pad.t + height - pad.b) / 2 + (y_label_shift.y ?? 0)}
+          <text
+            x={y_label_x}
+            y={y_label_y}
+            text-anchor="middle"
+            fill="var(--text-color)"
+            transform="rotate(-90, {y_label_x}, {y_label_y})"
+          >
+            {y_label}
+          </text>
+        {/if}
       </g>
     </svg>
   {/if}
@@ -500,15 +581,19 @@
   {#if show_controls}
     <HistogramControls
       toggle_props={controls_toggle_props}
+      pane_props={controls_pane_props}
       bind:show_controls
       bind:controls_open
       bind:bins
       bind:mode
       bind:bar_opacity
       bind:bar_stroke_width
+      bind:bar_stroke_color
+      bind:bar_stroke_opacity
+      bind:bar_color
       bind:show_legend
-      bind:x_grid
-      bind:y_grid
+      bind:show_x_grid
+      bind:show_y_grid
       bind:x_scale_type
       bind:y_scale_type
       bind:x_ticks
@@ -516,24 +601,27 @@
       bind:x_format
       bind:y_format
       bind:selected_property
-      bind:show_zero_lines
+      bind:show_x_zero_line
+      bind:show_y_zero_line
       bind:x_range
       bind:y_range
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
       {series}
-      {plot_controls}
     />
   {/if}
 
-  {#if show_legend && legend && series.length > 1}
+  {#if show_legend && legend && series.length > 1 && legend_placement}
     <PlotLegend
       {...legend}
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
-      wrapper_style="position: absolute; top: 10px; right: 10px; {legend?.wrapper_style || ``}"
+      wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
     />
   {/if}
+
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.()}
 </div>
 
 <style>
@@ -573,5 +661,10 @@
     stroke: var(--histogram-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
     stroke-width: var(--histogram-zoom-rect-stroke-width, 1);
     pointer-events: none;
+  }
+  .zero-line {
+    stroke: var(--histogram-zero-line-color, light-dark(black, white));
+    stroke-width: var(--histogram-zero-line-width, 1);
+    opacity: var(--histogram-zero-line-opacity, 0.3);
   }
 </style>

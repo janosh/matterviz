@@ -3,7 +3,7 @@
     AnyStructure,
     ElementSymbol,
     PlotPoint,
-    TooltipProps,
+    ScatterTooltipProps,
     UserContentProps,
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
@@ -12,58 +12,16 @@
   import { format_fractional, format_num } from '$lib/labels'
   import { ScatterPlot } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
-  import {
-    compute_max_energy_threshold,
-    default_controls,
-    parse_pd_entries_from_drop,
-    PD_STYLE,
-  } from './helpers'
+  import * as helpers from './helpers'
+  import type { BasePhaseDiagramProps } from './index'
+  import { default_controls, default_pd_config, PD_STYLE } from './index'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
   import StructurePopup from './StructurePopup.svelte'
-  import {
-    compute_e_form_per_atom,
-    find_lowest_energy_unary_refs,
-    get_phase_diagram_stats,
-    process_pd_entries,
-  } from './thermodynamics'
-  import type {
-    HoverData3D,
-    PDControlsType,
-    PhaseDiagramConfig,
-    PhaseEntry,
-    PlotEntry3D,
-  } from './types'
+  import * as thermo from './thermodynamics'
+  import type { HoverData3D, PhaseEntry, PlotEntry3D } from './types'
 
   // Binary phase diagram rendered as energy vs composition (x in [0, 1])
-  interface Props {
-    entries: PhaseEntry[]
-    controls?: Partial<PDControlsType>
-    config?: Partial<PhaseDiagramConfig>
-    on_point_click?: (entry: PlotEntry3D) => void
-    on_point_hover?: (data: HoverData3D<PlotEntry3D> | null) => void
-    fullscreen?: boolean
-    enable_fullscreen?: boolean
-    enable_info_pane?: boolean
-    wrapper?: HTMLDivElement
-    // Smart label defaults - hide labels if more than this many entries
-    label_threshold?: number
-    // Visibility
-    show_stable?: boolean
-    show_unstable?: boolean
-    color_mode?: `stability` | `energy`
-    color_scale?: D3InterpolateName
-    info_pane_open?: boolean
-    // Legend pane visibility
-    legend_pane_open?: boolean
-    // Energy threshold for showing unstable entries (eV/atom above hull)
-    energy_threshold?: number
-    // Callback for when JSON files are dropped
-    on_file_drop?: (entries: PhaseEntry[]) => void
-    // Enable structure preview overlay when hovering over entries with structure data
-    enable_structure_preview?: boolean
-    energy_source_mode?: `precomputed` | `on-the-fly`
-  }
   let {
     entries,
     controls = {},
@@ -81,94 +39,64 @@
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
-    energy_threshold = $bindable(0.1),
+    max_hull_dist_show_phases = $bindable(0.1),
+    max_hull_dist_show_labels = $bindable(0.1),
+    show_stable_labels = $bindable(true),
+    show_unstable_labels = $bindable(false),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
-  }: Props = $props()
+    phase_stats = $bindable(null),
+    ...rest
+  }: BasePhaseDiagramProps = $props()
 
-  const merged_controls: PDControlsType = $derived({
-    ...default_controls,
-    ...controls,
-  })
-
-  const default_config: PhaseDiagramConfig = {
-    margin: { top: 40, right: 40, bottom: 60, left: 60 },
-    unstable_threshold: 0.2,
-    show_labels: true,
-    show_hull: true,
-    point_size: 6,
-    line_width: 2,
-    font_size: 12,
-    colors: {
-      stable: `#0072B2`,
-      unstable: `#E69F00`,
-      hull_line: `var(--accent-color, #1976D2)`,
-      background: `transparent`,
-      text: `var(--text-color, #212121)`,
-      edge: `var(--text-color, #212121)`,
-      tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
-      tooltip_text: `var(--tooltip-text, white)`,
-      annotation: `var(--text-color, #212121)`,
-    },
-  }
-
+  const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({
-    ...default_config,
+    ...default_pd_config,
+    point_size: 6, // Binary diagrams use slightly smaller points
     ...config,
-    margin: { ...default_config.margin, ...(config.margin || {}) },
+    colors: { ...default_pd_config.colors, ...(config.colors || {}) },
+    margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
-  // Decide which energy source to use per entry (consistent with 3D/4D)
-  const has_precomputed_e_form = $derived(
-    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`),
-  )
-  const has_precomputed_hull = $derived(
-    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`),
-  )
-
-  const unary_refs = $derived.by(() => find_lowest_energy_unary_refs(entries))
-
-  const can_compute_e_form = $derived.by(() => {
-    const elements_in_entries = Array.from(
-      new Set(entries.flatMap((e) => Object.keys(e.composition))),
-    )
-    return elements_in_entries.every((el) => Boolean(unary_refs[el]))
-  })
-
-  // In 2D we can compute hull distances from formation energies
-  const can_compute_hull = $derived(can_compute_e_form)
-
-  const energy_mode = $derived(
-    (has_precomputed_e_form && has_precomputed_hull)
-      ? energy_source_mode
-      : ((can_compute_e_form && can_compute_hull) ? `on-the-fly` : `precomputed`),
+  let { // Compute energy mode information
+    has_precomputed_e_form,
+    has_precomputed_hull,
+    can_compute_e_form,
+    can_compute_hull,
+    energy_mode,
+    unary_refs,
+  } = $derived(
+    helpers.compute_energy_mode_info(
+      entries,
+      thermo.find_lowest_energy_unary_refs,
+      energy_source_mode,
+    ),
   )
 
-  const effective_entries = $derived.by(() => {
-    if (energy_mode === `precomputed`) return entries
-    return entries.map((entry) => {
-      const e_form = compute_e_form_per_atom(entry, unary_refs)
-      if (e_form == null) return entry
-      return { ...entry, e_form_per_atom: e_form }
-    })
-  })
+  const effective_entries = $derived(
+    helpers.get_effective_entries(
+      entries,
+      energy_mode,
+      unary_refs,
+      thermo.compute_e_form_per_atom,
+    ),
+  )
 
   // Process data and element set
   const processed_entries = $derived(effective_entries)
-  const pd_data = $derived(process_pd_entries(processed_entries))
+  const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
   const elements = $derived.by(() => {
-    const all_elements = pd_data.elements
-    if (all_elements.length > 2) {
+    if (pd_data.elements.length > 2) {
       console.error(
-        `PhaseDiagram2D: Dataset contains ${all_elements.length} elements, but binary diagrams require exactly 2. Found: [${
-          all_elements.join(`, `)
+        `PhaseDiagram2D: Dataset contains ${pd_data.elements.length} elements, but binary diagrams require exactly 2. Found: [${
+          pd_data.elements.join(`, `)
         }]`,
       )
       return []
     }
-    return all_elements
+    return pd_data.elements
   })
 
   // Coordinate computation ----------------------------------------------------
@@ -186,17 +114,8 @@
       const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
       if (total <= 0) continue
       const frac_b = (entry.composition[el2] || 0) / total
-      const is_element = Object.keys(entry.composition).filter((el) =>
-        entry.composition[el] > 0
-      ).length === 1
-      coords.push({
-        ...entry,
-        x: frac_b,
-        y: e_form,
-        z: 0,
-        is_element,
-        visible: true,
-      })
+      const is_element = is_unary_entry(entry)
+      coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element, visible: true })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
     const el_a: PlotEntry3D | undefined = coords.find((e) =>
@@ -298,13 +217,13 @@
       const above = y_hull == null ? 0 : Math.max(0, e.y - y_hull)
       const is_stable = above <= 1e-9
       const visible = (is_stable && show_stable) ||
-        (!is_stable && show_unstable && above <= energy_threshold)
+        (!is_stable && show_unstable && above <= max_hull_dist_show_phases)
       return { ...e, e_above_hull: above, is_stable, visible }
     })
 
     return enriched.filter((
       e,
-    ) => (e.is_stable || (e.e_above_hull ?? 0) <= energy_threshold))
+    ) => (e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases))
   })
 
   const stable_entries = $derived(
@@ -409,18 +328,15 @@
 
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
-  const max_energy_threshold = $derived(
-    compute_max_energy_threshold(processed_entries),
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(processed_entries),
   )
 
-  const phase_stats = $derived.by(() =>
-    get_phase_diagram_stats(processed_entries, elements, 3)
-  )
+  // Phase diagram statistics - compute internally and expose via bindable prop
+  $effect(() => {
+    phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
+  })
 
-  // Labels with smart defaults
-  let show_stable_labels = $state(true)
-  let show_unstable_labels = $state(false)
-  let label_energy_threshold = $state(0.1)
   $effect(() => {
     const total_entries = processed_entries.length
     if (total_entries > label_threshold) {
@@ -452,8 +368,8 @@
     show_unstable = PD_DEFAULTS.binary.show_unstable
     show_stable_labels = PD_DEFAULTS.binary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.binary.show_unstable_labels
-    energy_threshold = PD_DEFAULTS.binary.energy_threshold
-    label_energy_threshold = PD_DEFAULTS.binary.label_energy_threshold
+    max_hull_dist_show_phases = PD_DEFAULTS.binary.max_hull_dist_show_phases
+    max_hull_dist_show_labels = PD_DEFAULTS.binary.max_hull_dist_show_labels
     reset_counter += 1
   }
   // Custom hover tooltip state used with ScatterPlot events
@@ -473,17 +389,8 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await parse_pd_entries_from_drop(event)
+    const data = await helpers.parse_pd_entries_from_drop(event)
     if (data) on_file_drop?.(data)
-  }
-
-  function calculate_modal_side() {
-    if (!wrapper) return
-    const rect = wrapper.getBoundingClientRect()
-    const viewport_width = globalThis.innerWidth
-    const space_on_right = viewport_width - rect.right
-    const space_on_left = rect.left
-    modal_place_right = space_on_right >= space_on_left
   }
 
   function close_structure_popup() {
@@ -494,20 +401,14 @@
 
   // Fullscreen handling
   $effect(() => {
-    if (typeof window !== `undefined`) {
-      if (fullscreen && !document.fullscreenElement && wrapper) {
-        wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) {
-        document.exitFullscreen()
-      }
-    }
+    helpers.setup_fullscreen_effect(fullscreen, wrapper)
   })
 
   let style = $derived(
     `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
     --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
     --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-annotation-color:${
+     --pd-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     };`,
   )
@@ -520,18 +421,17 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: PlotPoint & TooltipProps)}
+{#snippet tooltip(point: PlotPoint & ScatterTooltipProps)}
   {@const entry = point.metadata as unknown as PlotEntry3D}
   {@const is_element = is_unary_entry(entry)}
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
   <div class="tooltip-title">
-    {@html get_electro_neg_formula(entry.composition)}
+    {@html get_electro_neg_formula(entry.composition)}{
+      is_element
+      ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
+      : ``
+    }
   </div>
-  {#if is_element}
-    <div class="element-name">
-      {elem_symbol_to_name[elem_symbol as ElementSymbol]}
-    </div>
-  {/if}
 
   <div>
     E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
@@ -567,11 +467,11 @@
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  class="phase-diagram-2d"
+  {...rest}
+  class="phase-diagram-2d {rest.class ?? ``}"
   class:dragover={drag_over}
-  {style}
+  style={`${style}; ${rest.style ?? ``}`}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
@@ -597,8 +497,8 @@
       y_range={y_domain}
       x_ticks={4}
       y_ticks={4}
-      x_grid={false}
-      y_grid={false}
+      show_x_grid={false}
+      show_y_grid={false}
       x_label={elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`}
       y_label="E<sub>form</sub> (eV/atom)"
       legend={null}
@@ -619,7 +519,7 @@
             if (structure) {
               selected_structure = structure
               selected_entry = entry
-              calculate_modal_side()
+              modal_place_right = helpers.calculate_modal_side(wrapper)
               modal_open = true
             }
           }
@@ -676,12 +576,10 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
-          {energy_threshold}
-          {label_energy_threshold}
+          {max_hull_dist_show_phases}
+          {max_hull_dist_show_labels}
           {label_threshold}
-          toggle_props={{
-            class: `info-btn`,
-          }}
+          toggle_props={{ class: `info-btn` }}
         />
       {/if}
 
@@ -704,17 +602,15 @@
         bind:show_unstable
         bind:show_stable_labels
         bind:show_unstable_labels
-        bind:energy_threshold
-        bind:label_energy_threshold
-        {max_energy_threshold}
+        bind:max_hull_dist_show_phases
+        bind:max_hull_dist_show_labels
+        {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
         {total_unstable_count}
         {camera}
         {merged_controls}
-        toggle_props={{
-          class: `legend-controls-btn`,
-        }}
+        toggle_props={{ class: `legend-controls-btn` }}
         bind:energy_source_mode
         {has_precomputed_e_form}
         {can_compute_e_form}

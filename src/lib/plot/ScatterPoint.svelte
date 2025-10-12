@@ -8,19 +8,6 @@
   import type { SVGAttributes } from 'svelte/elements'
   import { Tween, type TweenedOptions } from 'svelte/motion'
 
-  interface Props
-    extends
-      Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> {
-    x: number
-    y: number
-    style?: PointStyle
-    hover?: HoverStyle
-    label?: LabelStyle
-    offset?: Point[`offset`]
-    point_tween?: TweenedOptions<XyObj>
-    origin?: XyObj
-    is_hovered?: boolean
-  }
   let {
     x,
     y,
@@ -32,7 +19,17 @@
     origin = { x: 0, y: 0 },
     is_hovered = false,
     ...rest
-  }: Props = $props()
+  }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> & {
+    x: number
+    y: number
+    style?: PointStyle
+    hover?: HoverStyle
+    label?: LabelStyle
+    offset?: Point[`offset`]
+    point_tween?: TweenedOptions<XyObj>
+    origin?: XyObj
+    is_hovered?: boolean
+  } = $props()
 
   // get the SVG path data as 'd' attribute
   function get_symbol_path(): string {
@@ -73,6 +70,7 @@
     fill="var(--point-fill-color, {style.fill ?? `black`})"
     class="marker"
     class:is-hovered={is_hovered && (hover.enabled ?? true)}
+    style:cursor={style.cursor}
   />
   {#if label.text}
     <text

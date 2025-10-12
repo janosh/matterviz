@@ -16,8 +16,27 @@
     | `vertical`
     | `triangular`
     | `quadrant`
-
-  interface Props extends HTMLAttributes<HTMLElement> {
+  let {
+    element,
+    bg_color = undefined,
+    show_symbol = true,
+    show_number = undefined, // auto-determine based on multi-value splits
+    show_name = true,
+    value = undefined,
+    symbol_style = ``,
+    active = false,
+    href = undefined,
+    luminance_threshold = 0.7,
+    text_color = $bindable(),
+    float_fmt = undefined,
+    node = $bindable(null),
+    label = undefined,
+    bg_colors = [],
+    show_values = undefined,
+    split_layout = undefined, // auto-determine based on value count if not specified
+    onclick,
+    ...rest
+  }: Omit<HTMLAttributes<HTMLElement>, `onclick`> & {
     element: ChemicalElement
     bg_color?: string
     show_symbol?: boolean
@@ -38,27 +57,8 @@
     show_values?: boolean // explicitly control whether to show values when colors are passed
     // control the layout of multi-value splits
     split_layout?: SplitLayout
-  }
-  let {
-    element,
-    bg_color = undefined,
-    show_symbol = true,
-    show_number = undefined, // auto-determine based on multi-value splits
-    show_name = true,
-    value = undefined,
-    symbol_style = ``,
-    active = false,
-    href = undefined,
-    luminance_threshold = 0.7,
-    text_color = $bindable(),
-    float_fmt = undefined,
-    node = $bindable(null),
-    label = undefined,
-    bg_colors = [],
-    show_values = undefined,
-    split_layout = undefined, // auto-determine based on value count if not specified
-    ...rest
-  }: Props = $props()
+    onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
+  } = $props()
 
   let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
@@ -77,9 +77,7 @@
 
   // Helper function to format values appropriately
   const format_value = (val: string | number): string => {
-    if (is_color(val)) {
-      return show_values === true ? val.toString() : ``
-    }
+    if (is_color(val)) return show_values === true ? val.toString() : ``
 
     // Handle numeric values
     if (typeof val === `number`) return format_num(val, float_fmt)
@@ -87,9 +85,7 @@
     // Handle string values - check if it's a numeric string
     if (typeof val === `string`) {
       const parsed_num = parseFloat(val)
-      if (!isNaN(parsed_num) && isFinite(parsed_num)) {
-        return format_num(parsed_num, float_fmt)
-      }
+      if (isFinite(parsed_num)) return format_num(parsed_num, float_fmt)
       // If show_values is true, return the string as-is to preserve non-numeric strings
       return show_values === true ? val : ``
     }
@@ -170,6 +166,7 @@
   style:color={text_color}
   {@attach text_color ? null : contrast_color()}
   {...(href ? { role: `link`, tabindex: 0 } : {})}
+  onclick={(event) => onclick?.({ element, event })}
   {...rest}
 >
   {#if should_show_number}

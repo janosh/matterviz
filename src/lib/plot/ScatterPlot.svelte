@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { cells_3x3, corner_cells, DraggablePane, Line, symbol_names } from '$lib'
+  import { Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
-    Cell3x3,
-    Corner,
+    BasePlotProps,
     D3SymbolName,
     DataSeries,
     HoverConfig,
@@ -19,12 +18,18 @@
     Point,
     PointStyle,
     ScaleType,
+    ScatterTooltipProps,
     Sides,
-    TooltipProps,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
-  import { ColorBar, PlotLegend, ScatterPlotControls, ScatterPoint } from '$lib/plot'
+  import {
+    ColorBar,
+    find_best_plot_area,
+    PlotLegend,
+    ScatterPlotControls,
+    ScatterPoint,
+  } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceSimulation } from 'd3-force'
@@ -41,6 +46,7 @@
   import { Tween } from 'svelte/motion'
   import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
+  import { calc_auto_padding } from './layout'
   import { generate_ticks, get_nice_data_range, type TicksOption } from './scales'
 
   // Local type definition since TweenedOptions is not exported
@@ -51,106 +57,15 @@
     interpolate?: (a: T, b: T) => (t: number) => T
   }
 
-  interface Props extends HTMLAttributes<HTMLDivElement> {
-    series?: DataSeries[]
-    x_lim?: [number | null, number | null]
-    y_lim?: [number | null, number | null]
-    x_range?: [number, number] // Explicit ranges for x and y axes. If provided, this overrides the auto-computed range.
-    y_range?: [number, number] // Use this to set fixed ranges regardless of the data.
-    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g., current frame)
-    // Right y-axis configuration
-    y2_lim?: [number | null, number | null]
-    y2_range?: [number, number]
-    y2_label?: string
-    y2_label_shift?: { x?: number; y?: number }
-    y2_tick_label_shift?: { x?: number; y?: number }
-    y2_unit?: string
-    y2_format?: string
-    y2_ticks?: TicksOption
-    y2_scale_type?: ScaleType
-    y2_grid?: boolean | Record<string, unknown>
-    padding?: Sides
-    x_label?: string
-    x_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis label in px
-    x_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis tick labels in px
-    y_label?: string
-    y_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis label in px
-    y_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis tick labels in px
-    y_unit?: string
-    tooltip_point?: InternalPoint | null // Point being hovered over, to display in tooltip (bindable)
-    hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
-    markers?: Markers
-    x_format?: string
-    y_format?: string
-    tooltip?: Snippet<[PlotPoint & TooltipProps]>
-    user_content?: Snippet<[UserContentProps]>
-    change?: (data: (Point & { series: DataSeries }) | null) => void
-    x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
-    y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
-    x_scale_type?: ScaleType // Type of scale for x-axis
-    y_scale_type?: ScaleType // Type of scale for y-axis
-    show_zero_lines?: boolean
-    x_grid?: boolean | Record<string, unknown> // Control x-axis grid lines visibility and styling
-    y_grid?: boolean | Record<string, unknown> // Control y-axis grid lines visibility and styling
-    color_scale?: {
-      type?: ScaleType // Type of scale for color mapping
-      scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
-      value_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
-    }
-    size_scale?: {
-      type?: ScaleType // Type of scale for size mapping
-      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g., [2, 10])
-      value_range?: [number, number] // Min/max for size scaling (auto detected if not provided)
-    }
-    // Props for the ColorBar component, plus an optional 'margin' used for plot corner distance when auto placing
-    // Set to null or undefined to hide the color bar.
-    color_bar?:
-      | (ComponentProps<typeof ColorBar> & {
-        margin?: number | Sides
-        tween?: LocalTweenedOptions<XyObj>
-      })
-      | null
-    // Label auto-placement simulation parameters
-    label_placement_config?: Partial<LabelPlacementConfig>
-    hover_config?: Partial<HoverConfig>
-    legend?: LegendConfig | null // Configuration for the legend
-    point_tween?: LocalTweenedOptions<XyObj>
-    line_tween?: LocalTweenedOptions<string>
-    range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g., 0.05 = 5%)
-    point_events?: Record<
-      string,
-      (payload: { point: InternalPoint; event: Event }) => void
-    >
-    // Control pane props
-    show_controls?: boolean // Whether to show the control pane
-    controls_open?: boolean // Whether the control pane is open
-    plot_controls?: Snippet<[]> // Custom content for the control pane
-    // Style control props
-    point_size?: number
-    point_color?: string
-    point_opacity?: number
-    point_stroke_width?: number
-    point_stroke_color?: string
-    point_stroke_opacity?: number
-    line_width?: number
-    line_color?: string
-    line_opacity?: number
-    line_dash?: string
-    show_points?: boolean
-    show_lines?: boolean
-    selected_series_idx?: number
-    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
-    controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-  }
   let {
     series = [],
     x_lim = [null, null],
     y_lim = [null, null],
-    x_range,
-    y_range,
+    x_range = $bindable(undefined),
+    y_range = $bindable(undefined),
     current_x_value = null,
     y2_lim = [null, null],
-    y2_range,
+    y2_range = $bindable(undefined),
     y2_label = ``,
     y2_label_shift = { y: 60 },
     y2_tick_label_shift = { x: 8, y: 0 },
@@ -158,9 +73,10 @@
     y2_format = $bindable(``),
     y2_ticks = 5,
     y2_scale_type = `linear`,
-    y2_grid = true,
+    show_y2_grid = $bindable(true),
+    y2_grid_style,
     padding = {},
-    range_padding = 0.05, // Default padding factor
+    range_padding = 0.05,
     x_label = ``,
     x_label_shift = { x: 0, y: -40 },
     x_tick_label_shift = { x: 0, y: 20 },
@@ -180,9 +96,12 @@
     y_ticks = 5,
     x_scale_type = `linear`,
     y_scale_type = `linear`,
-    show_zero_lines = true,
-    x_grid = true,
-    y_grid = true,
+    show_x_zero_line = $bindable(false),
+    show_y_zero_line = $bindable(false),
+    show_x_grid = $bindable(true),
+    show_y_grid = $bindable(true),
+    x_grid_style,
+    y_grid_style,
     color_scale = {
       type: `linear`,
       scheme: `interpolateViridis`,
@@ -196,18 +115,19 @@
     point_tween,
     line_tween,
     point_events,
-    show_controls = false,
+    on_point_click,
+    on_point_hover,
+    show_controls = $bindable(true),
     controls_open = $bindable(false),
-    plot_controls,
     // Style control props
     point_size = $bindable(4),
-    point_color = $bindable(`#4682b4`),
+    point_color = $bindable(`cornflowerblue`),
     point_opacity = $bindable(1),
     point_stroke_width = $bindable(1),
     point_stroke_color = $bindable(`#000000`),
     point_stroke_opacity = $bindable(1),
     line_width = $bindable(2),
-    line_color = $bindable(`#4682b4`),
+    line_color = $bindable(`cornflowerblue`),
     line_opacity = $bindable(1),
     line_dash = $bindable(DEFAULTS.scatter.line_dash),
     show_points = $bindable(true),
@@ -215,16 +135,103 @@
     selected_series_idx = $bindable(0),
     color_axis_labels = true,
     controls_toggle_props,
+    controls_pane_props,
+    children,
     ...rest
-  }: Props = $props()
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+    series?: DataSeries[]
+    x_range?: [number | null, number | null] // Explicit ranges for x and y axes. Null pins a side to auto.
+    y_range?: [number | null, number | null] // Use null on one side to auto that bound.
+    x_format?: string
+    y_format?: string
+    x_ticks?: TicksOption // tick count or string (day/month/year). Negative number: interval.
+    y_ticks?: TicksOption // tick count or array of tick values. Negative number: interval.
+    x_scale_type?: ScaleType // Type of scale for x-axis
+    y_scale_type?: ScaleType // Type of scale for y-axis
+    show_x_zero_line?: boolean
+    show_y_zero_line?: boolean
+    show_x_grid?: boolean
+    show_y_grid?: boolean
+    hovered?: boolean // Whether the mouse is hovering over the plot (bindable)
+    show_controls?: boolean // Whether to show the control pane
+    controls_open?: boolean // Whether the control pane is open
+    // Component-specific props
+    current_x_value?: number | null // Current x value to highlight on the x-axis (e.g. current frame)
+    // Right y-axis configuration
+    y2_lim?: [number | null, number | null]
+    y2_range?: [number | null, number | null]
+    y2_label?: string
+    y2_label_shift?: { x?: number; y?: number }
+    y2_tick_label_shift?: { x?: number; y?: number }
+    y2_unit?: string
+    y2_format?: string
+    y2_ticks?: TicksOption
+    y2_scale_type?: ScaleType
+    show_y2_grid?: boolean
+    y2_grid_style?: HTMLAttributes<SVGLineElement>
+    x_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis tick labels in px
+    y_tick_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis tick labels in px
+    y_unit?: string
+    tooltip_point?: InternalPoint | null // Point being hovered over, to display in tooltip (bindable)
+    markers?: Markers
+    tooltip?: Snippet<[PlotPoint & ScatterTooltipProps]>
+    user_content?: Snippet<[UserContentProps]>
+    change?: (data: (Point & { series: DataSeries }) | null) => void
+    color_scale?: {
+      type?: ScaleType // Type of scale for color mapping
+      scheme?: D3ColorSchemeName | D3InterpolateName // Color scheme from d3-scale-chromatic
+      value_range?: [number, number] // Min/max for color scaling (auto detected if not provided)
+    }
+    size_scale?: {
+      type?: ScaleType // Type of scale for size mapping
+      radius_range?: [number, number] // Min/max point radius in pixels (auto detected if not provided, e.g. [2, 10])
+      value_range?: [number, number] // Min/max for size scaling (auto detected if not provided)
+    }
+    // Props for the ColorBar component, plus an optional 'margin' used for plot corner distance when auto placing
+    // Set to null or undefined to hide the color bar.
+    color_bar?:
+      | (ComponentProps<typeof ColorBar> & {
+        margin?: number | Sides
+        tween?: LocalTweenedOptions<XyObj>
+      })
+      | null
+    // Label auto-placement simulation parameters
+    label_placement_config?: Partial<LabelPlacementConfig>
+    hover_config?: Partial<HoverConfig>
+    legend?: LegendConfig | null // Configuration for the legend
+    point_tween?: LocalTweenedOptions<XyObj>
+    line_tween?: LocalTweenedOptions<string>
+    point_events?: Record<
+      string,
+      (payload: { point: InternalPoint; event: Event }) => void
+    >
+    on_point_click?: (data: { point: InternalPoint; event: MouseEvent }) => void
+    on_point_hover?: (
+      data: { point: InternalPoint | null; event?: MouseEvent },
+    ) => void
+    // Style control props
+    point_size?: number
+    point_color?: string
+    point_opacity?: number
+    point_stroke_width?: number
+    point_stroke_color?: string
+    point_stroke_opacity?: number
+    line_width?: number
+    line_color?: string
+    line_opacity?: number
+    line_dash?: string
+    show_points?: boolean
+    show_lines?: boolean
+    selected_series_idx?: number
+    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null } // Y-axis label colors: true (auto), false (none), or explicit colors
+  } = $props()
 
-  let width = $state(0)
-  let height = $state(0)
+  let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
   // Unique component ID to avoid clipPath conflicts between multiple instances
-  let component_id = $state(`scatter-${Math.random().toString(36).substring(2, 9)}`)
+  let component_id = $state(`scatter-${crypto.randomUUID()}`)
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
   // Process series to ensure single visible series are always on y1 (left) axis.
@@ -271,9 +278,6 @@
     })
   })
 
-  // Controls component reference to access internal states
-  let controls_component: ScatterPlotControls | undefined = $state(undefined)
-
   // State for rectangle zoom selection
   let drag_start_coords = $state<XyObj | null>(null)
   let drag_current_coords = $state<XyObj | null>(null)
@@ -290,8 +294,7 @@
   let label_positions = $state<Record<string, XyObj>>({})
 
   // State for initial (non-responsive) legend placement
-  let initial_legend_cell = $state<Cell3x3 | null>(null)
-  let is_initial_legend_placement_calculated = $state(false)
+  let initial_legend_placement = $state<typeof legend_placement | null>(null)
 
   // State for legend dragging
   let legend_is_dragging = $state(false)
@@ -300,58 +303,12 @@
 
   // Module-level constants to avoid repeated allocations
   const DEFAULT_MARGIN = { t: 10, l: 10, b: 10, r: 10 } as const
-  const X_FACTORS = {
-    left: { anchor: 0, transform: `0` },
-    center: { anchor: 0.5, transform: `-50%` },
-    right: { anchor: 1, transform: `-100%` },
-  } as const
-  type XFactorKey = keyof typeof X_FACTORS
-  const Y_FACTORS = {
-    top: { anchor: 0, transform: `0` },
-    middle: { anchor: 0.5, transform: `-50%` },
-    bottom: { anchor: 1, transform: `-100%` },
-  } as const
-  type YFactorKey = keyof typeof Y_FACTORS
 
   function normalize_margin(margin: number | Sides | undefined): Required<Sides> {
     if (typeof margin === `number`) {
       return { t: margin, l: margin, b: margin, r: margin }
     }
     return { ...DEFAULT_MARGIN, ...margin }
-  }
-
-  function get_placement_styles( //  based on grid cell
-    cell: Cell3x3 | null,
-    item_type: `legend` | `colorbar`,
-  ): { left: number; top: number; transform: string } {
-    if (!cell || !width || !height) return { left: 0, top: 0, transform: `` }
-
-    const effective_pad = { t: 0, b: 0, l: 0, r: 0, ...padding }
-    const plot_width = width - effective_pad.l - effective_pad.r
-    const plot_height = height - effective_pad.t - effective_pad.b
-
-    const margin = normalize_margin(
-      item_type === `legend` ? legend?.margin : color_bar?.margin,
-    )
-
-    const [y_part, x_part] = cell.split(`-`) as [YFactorKey, XFactorKey]
-    const x_factor = X_FACTORS[x_part]
-    const y_factor = Y_FACTORS[y_part]
-
-    const base_x = effective_pad.l + plot_width * x_factor.anchor
-    const base_y = effective_pad.t + plot_height * y_factor.anchor
-
-    // Adjust base position by margin depending on anchor point
-    const target_x = base_x +
-      (x_part === `left` ? margin.l : x_part === `right` ? -margin.r : 0)
-    const target_y = base_y +
-      (y_part === `top` ? margin.t : y_part === `bottom` ? -margin.b : 0)
-
-    const transform = x_factor.transform !== `0` || y_factor.transform !== `0`
-      ? `translate(${x_factor.transform}, ${y_factor.transform})`
-      : ``
-
-    return { left: target_x, top: target_y, transform }
   }
 
   // Create raw data points from all series
@@ -376,7 +333,28 @@
       .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
   )
 
-  let pad = $derived({ t: 5, b: 50, l: 50, r: 20, ...padding })
+  // Layout: dynamic padding based on tick label widths
+  const default_padding = { t: 5, b: 50, l: 50, r: 20 }
+  let pad = $state({ ...default_padding, ...padding })
+  // Update padding when format or ticks change, but prevent infinite loop
+  $effect(() => {
+    const base_pad = { ...default_padding, ...padding }
+    const new_pad = width && height && (y_tick_values.length || y2_tick_values.length)
+      ? calc_auto_padding({
+        base_padding: base_pad,
+        y_ticks: y_tick_values,
+        y_format,
+        y2_ticks: y2_tick_values,
+        y2_format,
+      })
+      : base_pad
+
+    // Only update if padding actually changed (prevents infinite loop)
+    if (
+      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
+      pad.r !== new_pad.r
+    ) pad = new_pad
+  })
 
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
@@ -433,11 +411,20 @@
 
   // Store initial ranges and initialize current ranges
   $effect(() => {
-    const new_init_x = x_range ?? auto_x_range
-    const new_init_y = y_range ?? auto_y_range
-    const new_init_y2 = y2_range ?? auto_y2_range
+    const new_init_x = [
+      x_range?.[0] ?? auto_x_range[0],
+      x_range?.[1] ?? auto_x_range[1],
+    ] as [number, number]
+    const new_init_y = [
+      y_range?.[0] ?? auto_y_range[0],
+      y_range?.[1] ?? auto_y_range[1],
+    ] as [number, number]
+    const new_init_y2 = [
+      y2_range?.[0] ?? auto_y2_range[0],
+      y2_range?.[1] ?? auto_y2_range[1],
+    ] as [number, number]
 
-    // Only update if the initial range fundamentally changes, force type
+    // Only update if the initial range fundamentally changes
     if (
       new_init_x[0] !== initial_x_range[0] || new_init_x[1] !== initial_x_range[1]
     ) [initial_x_range, current_x_range] = [new_init_x, new_init_x]
@@ -445,8 +432,7 @@
       new_init_y[0] !== initial_y_range[0] || new_init_y[1] !== initial_y_range[1]
     ) [initial_y_range, current_y_range] = [new_init_y, new_init_y]
     if (
-      new_init_y2[0] !== initial_y2_range[0] ||
-      new_init_y2[1] !== initial_y2_range[1]
+      new_init_y2[0] !== initial_y2_range[0] || new_init_y2[1] !== initial_y2_range[1]
     ) {
       initial_y2_range = new_init_y2 as [number, number]
       current_y2_range = new_init_y2 as [number, number]
@@ -461,9 +447,11 @@
   let auto_color_range = $derived(
     // Ensure we only calculate extent on actual numbers, filtering out nulls/undefined
     all_color_values.length > 0
-      ? extent(all_color_values.filter((val): val is number => val != null))
+      ? extent(
+        all_color_values.filter((val): val is number => typeof val === `number`),
+      )
       : [0, 1],
-  )
+  ) as [number, number]
 
   // Create scale functions
   let x_scale_fn = $derived(
@@ -683,24 +671,11 @@
     }
   })
 
-  // Calculate point counts per 3x3 grid cell
-  let grid_cell_counts = $derived.by(() => {
-    const counts = cells_3x3.reduce(
-      (acc, cell) => {
-        acc[cell] = 0
-        return acc
-      },
-      {} as Record<Cell3x3, number>,
-    )
+  // Collect all plot points for legend placement calculation
+  let plot_points_for_placement = $derived.by(() => {
+    if (!width || !height || !filtered_series) return []
 
-    if (!width || !height || !filtered_series) return counts
-
-    const plot_width = width - pad.l - pad.r
-    const plot_height = height - pad.t - pad.b
-    const x_boundary1 = pad.l + plot_width / 3
-    const x_boundary2 = pad.l + (2 * plot_width) / 3
-    const y_boundary1 = pad.t + plot_height / 3
-    const y_boundary2 = pad.t + (2 * plot_height) / 3
+    const points: { x: number; y: number }[] = []
 
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
@@ -713,23 +688,12 @@
             point.y,
           )
 
-        // Determine grid cell parts
-        const x_part = point_x_coord < x_boundary1
-          ? `left`
-          : point_x_coord < x_boundary2
-          ? `center`
-          : `right`
-        const y_part = point_y_coord < y_boundary1
-          ? `top`
-          : point_y_coord < y_boundary2
-          ? `middle`
-          : `bottom`
-        const cell: Cell3x3 = `${y_part}-${x_part}`
-
-        counts[cell]++
+        if (isFinite(point_x_coord) && isFinite(point_y_coord)) {
+          points.push({ x: point_x_coord, y: point_y_coord })
+        }
       }
     }
-    return counts
+    return points
   })
 
   // Prepare data needed for the legend component
@@ -759,7 +723,7 @@
         line_color: `black`, // Default line color
       }
 
-      const series_markers = data_series?.markers ?? markers
+      const series_markers = (data_series?.markers ?? markers) ?? ``
 
       // Check point_style (could be object or array)
       const first_point_style = Array.isArray(data_series?.point_style)
@@ -770,7 +734,11 @@
         if (first_point_style) {
           // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
           let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
-          if (symbol_names.includes(first_point_style.shape as D3SymbolName)) {
+          if (
+            Array.isArray(symbol_names) &&
+            typeof first_point_style.shape === `string` &&
+            symbol_names.includes(first_point_style.shape as D3SymbolName)
+          ) {
             final_shape = first_point_style.shape as D3SymbolName
           }
           display_style.symbol_type = final_shape
@@ -797,10 +765,14 @@
 
       // Check line_style
       if (series_markers?.includes(`line`)) {
-        display_style.line_color = data_series?.line_style?.stroke ??
-          (display_style.symbol_color && series_markers.includes(`points`)
-            ? display_style.symbol_color
-            : `black`) // Default line color
+        // Prefer explicit line stroke
+        let legend_line_color = data_series?.line_style?.stroke
+        if (!legend_line_color) { // If no explicit stroke, inherit a reasonable point color even when points aren't shown
+          // Order of preference: point fill -> point stroke -> symbol_color -> black
+          legend_line_color = first_point_style?.fill || first_point_style?.stroke ||
+            display_style.symbol_color || `black`
+        }
+        display_style.line_color = legend_line_color
         display_style.line_dash = data_series?.line_style?.line_dash
       } else {
         // If no line marker, explicitly remove line style for legend
@@ -817,55 +789,63 @@
     })
   })
 
-  // Get best placement cells, prioritizing corners first, then by density
-  let ranked_grid_cells = $derived.by(() => {
-    // Separate corners from non-corners and sort each by density (count)
-    const corners = corner_cells
-      .map((cell) => ({ cell, count: grid_cell_counts[cell] }))
-      .sort((a, b) => a.count - b.count)
-
-    const non_corners = cells_3x3
-      .filter((cell) => !corner_cells.includes(cell as Corner))
-      .map((cell) => ({ cell, count: grid_cell_counts[cell] }))
-      .sort((a, b) => a.count - b.count)
-
-    // Return corners first, then non-corners (extract just the cell names)
-    return [...corners, ...non_corners].map(({ cell }) => cell)
-  })
-
-  // Determine legend and color bar placement
-  let legend_cell = $derived.by(() => {
+  // Calculate best legend placement using new simple system
+  let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
       (legend_data.length > 1 || JSON.stringify(legend) !== `{}`)
-    return should_place && ranked_grid_cells.length > 0 ? ranked_grid_cells[0] : null
+
+    if (!should_place || !width || !height) return null
+
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+
+    return find_best_plot_area(plot_points_for_placement, {
+      plot_width,
+      plot_height,
+      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
+      margin: normalize_margin(legend?.margin).t, // Use top margin as default spacing
+      legend_size: { width: 120, height: 80 }, // Estimated legend size
+    })
   })
 
-  let color_bar_cell = $derived.by(() => {
-    const should_place = color_bar && all_color_values.length > 0
-    return should_place && ranked_grid_cells.length > 0
-      ? (ranked_grid_cells.find((cell) => cell !== legend_cell) ?? null)
-      : null
+  // Calculate color bar placement
+  let color_bar_placement = $derived.by(() => {
+    if (!color_bar || !all_color_values.length || !width || !height) return null
+
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+
+    // Use the same smart placement logic as the legend
+    // Color bar is typically smaller than legend, estimate ~80x20 (horizontal) or ~20x80 (vertical)
+    const is_horizontal = color_bar.orientation === `horizontal`
+    const estimated_size = is_horizontal
+      ? { width: 80, height: 20 }
+      : { width: 20, height: 80 }
+
+    return find_best_plot_area(plot_points_for_placement, {
+      plot_width,
+      plot_height,
+      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
+      margin: normalize_margin(color_bar?.margin).t ?? 10,
+      legend_size: estimated_size,
+    })
   })
 
-  // Determine the final placement cell for the legend based on mode
-  let legend_placement_cell = $derived.by(() => {
-    if (!legend_cell) return null // No legend cell assigned
+  // Use responsive or fixed initial placement
+  let active_legend_placement = $derived.by(() => {
+    if (!legend_placement) return null
 
-    const is_responsive = legend?.responsive ?? false
+    // Skip auto-placement if user set explicit position
     const style = legend?.wrapper_style ?? ``
-    // Check if position is explicitly set via top/bottom/left/right or position: absolute
-    const is_fixed_position = typeof style === `string` &&
-      /(\b(top|bottom|left|right)\s*:)|(position\s*:\s*absolute)/.test(style)
+    if (
+      /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style)
+    ) return null
 
-    if (is_fixed_position) return null // Fixed position, no auto-placement needed
+    // Responsive mode: always use current best placement
+    if (legend?.responsive) return legend_placement
 
-    if (is_responsive) return legend_cell // Use the current dynamically best cell
-    else {
-      // Not responsive, use initial cell if calculated, else the current best as fallback
-      return is_initial_legend_placement_calculated
-        ? initial_legend_cell
-        : legend_cell
-    }
+    // Fixed mode: use initial placement (set in effect below)
+    return initial_legend_placement ?? legend_placement
   })
 
   // Initialize tweened values for color bar position
@@ -879,54 +859,31 @@
     { duration: 400, ...(legend?.tween ?? {}) },
   )
 
-  // Effect to calculate the initial grid cell ONCE for non-responsive legend
-  // And update legend and color bar tweened positions
+  // Update placement positions (with animation)
   $effect(() => {
-    if (!width || !height) return // Need dimensions
+    if (!width || !height) return
 
-    const is_responsive = legend?.responsive ?? false
-    const style = legend?.wrapper_style ?? ``
-    const is_fixed_position = typeof style === `string` &&
-      /(\b(top|bottom|left|right)\s*:)|(position\s*:\s*absolute)/.test(style)
-
-    // Calculate initial legend cell if needed
-    if (
-      legend_cell &&
-      !is_initial_legend_placement_calculated &&
-      !is_responsive &&
-      !is_fixed_position
-    ) {
-      initial_legend_cell = legend_cell
-      is_initial_legend_placement_calculated = true
+    // Store initial placement for non-responsive mode
+    if (legend_placement && !initial_legend_placement && !legend?.responsive) {
+      initial_legend_placement = legend_placement
     }
 
-    // Reset initial calculation flag if mode changes TO responsive or TO fixed
-    if (
-      (is_responsive || is_fixed_position) && is_initial_legend_placement_calculated
-    ) {
-      is_initial_legend_placement_calculated = false
-      initial_legend_cell = null // Clear stored cell
+    // Update color bar
+    if (color_bar_placement) {
+      tweened_colorbar_coords.set({
+        x: color_bar_placement.x,
+        y: color_bar_placement.y,
+      })
     }
 
-    // Update Color Bar Position
-    if (color_bar_cell) {
-      const { left: target_x, top: target_y } = get_placement_styles(
-        color_bar_cell,
-        `colorbar`,
-      )
-      tweened_colorbar_coords.set({ x: target_x, y: target_y })
-    }
-
-    // Update Legend Position using the calculated placement cell (only if not manually positioned)
-    if (legend_placement_cell && !legend_manual_position) {
-      const { left: target_x, top: target_y } = get_placement_styles(
-        legend_placement_cell,
-        `legend`,
-      )
-      tweened_legend_coords.set({ x: target_x, y: target_y })
-    } else if (legend_manual_position && !legend_is_dragging) {
-      // Use manual position if set and not currently dragging
+    // Update legend (unless manually positioned)
+    if (legend_manual_position && !legend_is_dragging) {
       tweened_legend_coords.set(legend_manual_position)
+    } else if (active_legend_placement && !legend_is_dragging) {
+      tweened_legend_coords.set({
+        x: active_legend_placement.x,
+        y: active_legend_placement.y,
+      })
     }
   })
 
@@ -934,13 +891,15 @@
   let x_tick_values = $derived.by(() => {
     if (!width || !height) return []
 
-    return generate_ticks(
-      [x_min, x_max],
-      x_scale_type,
-      x_ticks,
-      x_scale_fn,
-      { format: x_format },
-    )
+    // Use a numeric scale for tick generation to satisfy typings;
+    // time formatting is handled via the format option inside generate_ticks
+    const x_scale_for_ticks = x_scale_type === `log`
+      ? scaleLog().domain([x_min, x_max])
+      : scaleLinear().domain([x_min, x_max])
+
+    return generate_ticks([x_min, x_max], x_scale_type, x_ticks, x_scale_for_ticks, {
+      format: x_format,
+    })
   })
 
   let y_tick_values = $derived.by(() => {
@@ -1014,7 +973,7 @@
         Math.max(start_data_y_val, end_data_y_val),
       ]
 
-      // Check for minuscule zoom box (e.g., accidental click)
+      // Check for minuscule zoom box (e.g. accidental click)
       const min_zoom_size = 5 // Minimum pixels to trigger zoom
       const dx = Math.abs(drag_start_coords.x - drag_current_coords.x)
       const dy = Math.abs(drag_start_coords.y - drag_current_coords.y)
@@ -1059,6 +1018,7 @@
     // Reset drag state if mouse leaves plot area
     hovered = false
     tooltip_point = null
+    on_point_hover?.({ point: null, event: undefined })
   }
 
   function handle_double_click() {
@@ -1069,7 +1029,11 @@
   }
 
   // tooltip logic: find closest point and update tooltip state
-  function update_tooltip_point(x_rel: number, y_rel: number): void {
+  function update_tooltip_point(
+    x_rel: number,
+    y_rel: number,
+    evt?: MouseEvent,
+  ): void {
     if (!width || !height) return
 
     let closest_point_internal: InternalPoint | null = null
@@ -1117,10 +1081,14 @@
       const { x, y, metadata } = closest_point_internal // Extract base Point props
       // Call change handler with closest point's data
       change({ x, y, metadata, series: closest_series })
+      // Call hover handler with point data
+      on_point_hover?.({ point: closest_point_internal, event: evt })
     } else {
       // No point close enough or no points at all
       tooltip_point = null
       change(null)
+      // Call hover handler with null to indicate no point hovered
+      on_point_hover?.({ point: null, event: evt })
     }
   }
 
@@ -1130,7 +1098,7 @@
     const coords = get_relative_coords(evt)
     if (!coords) return
 
-    update_tooltip_point(coords.x, coords.y)
+    update_tooltip_point(coords.x, coords.y, evt)
   }
 
   // Merge user config with defaults before the effect that uses it
@@ -1282,37 +1250,34 @@
     return unit1 === unit2
   }
 
-  function resolve_unit_conflicts(
-    series: DataSeries[],
-    target_idx: number,
-  ): DataSeries[] {
-    const target_series = series[target_idx]
-    const target_axis = target_series.y_axis ?? `y1`
-
-    return series.map((s, idx) => ({
-      ...s,
-      visible: idx === target_idx ||
-        !(s.visible && (s.y_axis ?? `y1`) === target_axis &&
-          !have_compatible_units(target_series, s)),
-    }))
-  }
-
   // Function to toggle series visibility
   function toggle_series_visibility(series_idx: number) {
-    if (series_idx >= 0 && series_idx < series.length && series[series_idx]) {
-      const toggled_series = series[series_idx]
-      const new_visibility = !(toggled_series.visible ?? true)
+    if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return
 
-      if (new_visibility) {
-        series = resolve_unit_conflicts(series, series_idx)
-      } else {
-        // Just toggle visibility normally when hiding
-        series = series.map((s, idx) => {
-          if (idx === series_idx) return { ...s, visible: false }
-          return s
-        })
+    const toggled_series = series[series_idx]
+    const new_visibility = !(toggled_series.visible ?? true)
+    const target_axis = toggled_series.y_axis ?? `y1`
+
+    // Only create new objects for series that need to change to preserve series IDs
+    series = series.map((s, idx) => {
+      if (idx === series_idx) {
+        // Toggle the clicked series
+        return { ...s, visible: new_visibility }
       }
-    }
+
+      // If we're showing a series, hide incompatible series on same axis
+      if (new_visibility && (s.y_axis ?? `y1`) === target_axis) {
+        if (!have_compatible_units(toggled_series, s)) {
+          // Only create new object if we need to change visibility
+          if (s.visible ?? true) {
+            return { ...s, visible: false }
+          }
+        }
+      }
+
+      // Keep the SAME object reference for unchanged series (preserves cached ID)
+      return s
+    })
   }
 
   // Function to handle double-click on legend item
@@ -1324,10 +1289,15 @@
 
     if (is_currently_isolated && previous_series_visibility) {
       // Restore previous visibility state
-      series = series.map((s, idx) => ({
-        ...s,
-        visible: previous_series_visibility![idx],
-      }))
+      // Only create new objects for series whose visibility actually changes
+      series = series.map((s, idx) => {
+        const target_visibility = previous_series_visibility![idx]
+        const current_visibility = s?.visible ?? true
+        if (current_visibility !== target_visibility) {
+          return { ...s, visible: target_visibility }
+        }
+        return s // Preserve object reference
+      })
       previous_series_visibility = null // Clear memory
     } else {
       // Isolate the double-clicked series
@@ -1335,10 +1305,15 @@
       if (visible_count > 1) {
         previous_series_visibility = [...current_visibility] // Store current state
       }
-      series = series.map((s, idx) => ({
-        ...s,
-        visible: idx === double_clicked_idx,
-      }))
+      // Only create new objects for series whose visibility needs to change
+      series = series.map((s, idx) => {
+        const target_visibility = idx === double_clicked_idx
+        const current_visibility = s?.visible ?? true
+        if (current_visibility !== target_visibility) {
+          return { ...s, visible: target_visibility }
+        }
+        return s // Preserve object reference
+      })
     }
   }
 
@@ -1347,14 +1322,15 @@
     if (!svg_element) return
 
     legend_is_dragging = true
-    const svg_rect = svg_element.getBoundingClientRect()
-    const current_legend_x = tweened_legend_coords.current.x
-    const current_legend_y = tweened_legend_coords.current.y
 
-    // Calculate offset from mouse to current legend position
+    // Get the actual rendered position of the legend element (accounts for transforms)
+    const legend_element = event.currentTarget as HTMLElement
+    const legend_rect = legend_element.getBoundingClientRect()
+
+    // Calculate offset from mouse to legend's actual rendered position relative to SVG
     legend_drag_offset = {
-      x: event.clientX - svg_rect.left - current_legend_x,
-      y: event.clientY - svg_rect.top - current_legend_y,
+      x: event.clientX - legend_rect.left,
+      y: event.clientY - legend_rect.top,
     }
   }
 
@@ -1362,17 +1338,16 @@
     if (!legend_is_dragging || !svg_element) return
 
     const svg_rect = svg_element.getBoundingClientRect()
+
+    // Calculate new position: mouse position relative to SVG, minus the offset within the legend
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
     const new_y = event.clientY - svg_rect.top - legend_drag_offset.y
 
-    // Constrain to plot bounds
+    // Constrain to plot bounds (with some margin)
     const constrained_x = Math.max(0, Math.min(width - 100, new_x)) // Assume legend width ~100px
     const constrained_y = Math.max(0, Math.min(height - 50, new_y)) // Assume legend height ~50px
 
     legend_manual_position = { x: constrained_x, y: constrained_y }
-
-    // Update tweened position immediately during drag
-    tweened_legend_coords.set({ x: constrained_x, y: constrained_y }, { duration: 0 })
   }
 
   function handle_legend_drag_end(_event: MouseEvent) {
@@ -1441,36 +1416,31 @@
         pad,
       })}
 
-      <!-- Guide lines -->
       <!-- Zero lines -->
-      {#if show_zero_lines}
-        {#if x_min <= 0 && x_max >= 0}
-          {@const zero_x_pos = x_format?.startsWith(`%`)
+      {#if show_x_zero_line && x_min <= 0 && x_max >= 0}
+        {@const zero_x_pos = x_format?.startsWith(`%`)
         ? x_scale_fn(new Date(0))
         : x_scale_fn(0)}
-          {#if isFinite(zero_x_pos)}
-            <line
-              y1={pad.t}
-              y2={height - pad.b}
-              x1={zero_x_pos}
-              x2={zero_x_pos}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+        {#if isFinite(zero_x_pos)}
+          <line
+            class="zero-line"
+            x1={zero_x_pos}
+            x2={zero_x_pos}
+            y1={pad.t}
+            y2={height - pad.b}
+          />
         {/if}
-        {#if y_scale_type === `linear` && y_min < 0 && y_max > 0}
-          {@const zero_y_pos = y_scale_fn(0)}
-          {#if isFinite(zero_y_pos)}
-            <line
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zero_y_pos}
-              y2={zero_y_pos}
-              stroke="gray"
-              stroke-width="0.5"
-            />
-          {/if}
+      {/if}
+      {#if show_y_zero_line && y_scale_type === `linear` && y_min <= 0 && y_max >= 0}
+        {@const zero_y_pos = y_scale_fn(0)}
+        {#if isFinite(zero_y_pos)}
+          <line
+            class="zero-line"
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={zero_y_pos}
+            y2={zero_y_pos}
+          />
         {/if}
       {/if}
 
@@ -1510,14 +1480,14 @@
                   series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
                 ]}
                 line_color={apply_line_controls
-                ? line_color ?? `#4682b4`
+                ? line_color ?? `cornflowerblue`
                 : series_data.line_style?.stroke ??
                   (Array.isArray(series_data.point_style)
                     ? series_data.point_style[0]?.fill
                     : series_data.point_style?.fill) ??
                   (series_data.color_values?.[0] != null
                     ? color_scale_fn(series_data.color_values[0])
-                    : `#4682b4`)}
+                    : `cornflowerblue`)}
                 line_width={apply_line_controls
                 ? line_width ?? 2
                 : series_data.line_style?.stroke_width ?? 2}
@@ -1551,17 +1521,13 @@
                 (x_format?.startsWith(`%`)
                   ? x_scale_fn(new Date(point.x))
                   : x_scale_fn(point.x)),
-              y: calculated_label_pos.y -
-                (series_data.y_axis === `y2`
-                  ? y2_scale_fn(point.y)
-                  : y_scale_fn(point.y)),
+              y: calculated_label_pos.y - (series_data.y_axis === `y2`
+                ? y2_scale_fn(point.y)
+                : y_scale_fn(point.y)),
             },
           }
           : label_style}
-                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(
-          point,
-          series_data,
-        )}
+                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
                 {@const screen_x = isFinite(raw_screen_x) ? raw_screen_x : x_scale_fn.range()[0]}
                 {@const screen_y = isFinite(raw_screen_y)
           ? raw_screen_y
@@ -1600,6 +1566,7 @@
                       ? point_opacity ??
                         point.point_style?.fill_opacity ?? 1
                       : point.point_style?.fill_opacity ?? 1,
+                    cursor: on_point_click ? `pointer` : undefined,
                   }}
                   hover={point.point_hover ?? {}}
                   label={final_label}
@@ -1610,15 +1577,15 @@
                   ? color_scale_fn(point.color_value)
                   : apply_controls
                   ? point_color ?? point.point_style?.fill ??
-                    `#4682b4`
-                  : point.point_style?.fill ?? `#4682b4`}
+                    `cornflowerblue`
+                  : point.point_style?.fill ?? `cornflowerblue`}
                   {...point_events &&
                   Object.fromEntries(
-                    Object.entries(point_events).map(([event_name, handler]) => [
-                      event_name,
-                      (event: Event) => handler({ point, event }),
-                    ]),
+                    Object.entries(point_events).map((
+                      [event_name, handler],
+                    ) => [event_name, (event: Event) => handler({ point, event })]),
                   )}
+                  onclick={(event: MouseEvent) => on_point_click?.({ point, event })}
                 />
               {/each}
             {/if}
@@ -1637,19 +1604,17 @@
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
                 <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                  {#if x_grid}
+                  {#if show_x_grid}
                     <line
                       y1={-(height - pad.b - pad.t)}
                       y2="0"
-                      {...typeof x_grid === `object` ? x_grid : {}}
+                      {...x_grid_style ?? {}}
                     />
                   {/if}
 
                   {#if tick >= x_min && tick <= x_max}
                     {@const { x, y } = x_tick_label_shift}
-                    <text {x} {y}>
-                      {format_value(tick, x_format)}
-                    </text>
+                    <text {x} {y}>{format_value(tick, x_format)}</text>
                   {/if}
                 </g>
               {/if}
@@ -1701,11 +1666,11 @@
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
                 <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                  {#if y_grid}
+                  {#if show_y_grid}
                     <line
                       x1="0"
                       x2={width - pad.l - pad.r}
-                      {...typeof y_grid === `object` ? y_grid : {}}
+                      {...y_grid_style ?? {}}
                     />
                   {/if}
 
@@ -1754,11 +1719,11 @@
                 {@const tick_pos = tick_pos_raw}
                 {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
                   <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
-                    {#if y2_grid}
+                    {#if show_y2_grid}
                       <line
                         x1={-(width - pad.l - pad.r)}
                         x2="0"
-                        {...typeof y2_grid === `object` ? y2_grid : {}}
+                        {...y2_grid_style ?? {}}
                       />
                     {/if}
 
@@ -1845,7 +1810,7 @@
         ) line_color_candidate = color_scale_fn(first_color_value)
         if (
           is_transparent_or_none(line_color_candidate) &&
-          series_markers.includes(`points`)
+          series_markers?.includes(`points`)
         ) line_color_candidate = first_point_style?.stroke
         if (!is_transparent_or_none(line_color_candidate)) return line_color_candidate
       }
@@ -1865,7 +1830,7 @@
         }px; top: ${cy}px; background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color}); z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
       >
         {#if tooltip}
-          {@const tooltip_props = { x_formatted, y_formatted, color_value, label }}
+          {@const tooltip_props = { x_formatted, y_formatted, color_value, label, series_idx }}
           {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
         {:else}
           {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
@@ -1877,14 +1842,15 @@
     {#if show_controls}
       <ScatterPlotControls
         toggle_props={controls_toggle_props}
-        bind:this={controls_component}
+        pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open
         bind:markers
-        bind:show_zero_lines
-        bind:x_grid
-        bind:y_grid
-        bind:y2_grid
+        bind:show_x_zero_line
+        bind:show_y_zero_line
+        bind:show_x_grid
+        bind:show_y_grid
+        bind:show_y2_grid
         bind:x_range
         bind:y_range
         bind:y2_range
@@ -1908,32 +1874,29 @@
         bind:y_format
         bind:y2_format
         series={series_with_ids}
-        {plot_controls}
         has_y2_points={y2_points.length > 0}
       />
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && all_color_values.length > 0 && color_bar_cell}
-      {@const effective_color_domain = (color_scale.value_range ?? auto_color_range) as [
-      number,
-      number,
-    ]}
+    {#if color_bar && all_color_values.length > 0 && color_bar_placement}
+      {@const color_domain = [
+      color_scale.value_range?.[0] ?? auto_color_range[0],
+      color_scale.value_range?.[1] ?? auto_color_range[1],
+    ] as [number, number]}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {color_scale_fn}
-        color_scale_domain={effective_color_domain}
+        color_scale_domain={color_domain}
         scale_type={color_scale.type}
-        range={effective_color_domain?.every((val) => val != null)
-        ? effective_color_domain
-        : undefined}
+        range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style={`
-        position: absolute;
-        left: ${tweened_colorbar_coords.current.x}px;
-        top: ${tweened_colorbar_coords.current.y}px;
-        transform: ${get_placement_styles(color_bar_cell, `colorbar`).transform};
-        ${color_bar?.wrapper_style ?? ``}`}
+          position: absolute;
+          left: ${tweened_colorbar_coords.current.x}px;
+          top: ${tweened_colorbar_coords.current.y}px;
+          transform: ${color_bar_placement?.transform ?? ``};
+          ${color_bar?.wrapper_style ?? ``}`}
         bar_style="width: 280px; height: 20px; {color_bar?.style ?? ``}"
         {...color_bar}
       />
@@ -1941,7 +1904,7 @@
 
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
-    {#if legend != null && legend_data.length > 0 && legend_cell &&
+    {#if legend != null && legend_data.length > 0 && legend_placement &&
       (legend_data.length > 1 || (legend != null && JSON.stringify(legend) !== `{}`))}
       <PlotLegend
         series_data={legend_data}
@@ -1956,19 +1919,28 @@
         handle_legend_double_click}
         wrapper_style={`
           position: absolute;
-          left: ${tweened_legend_coords.current.x}px;
-          top: ${tweened_legend_coords.current.y}px;
+          left: ${
+          legend_is_dragging && legend_manual_position
+            ? legend_manual_position.x
+            : tweened_legend_coords.current.x
+        }px;
+          top: ${
+          legend_is_dragging && legend_manual_position
+            ? legend_manual_position.y
+            : tweened_legend_coords.current.y
+        }px;
           transform: ${
-        // Use the derived legend_placement_cell to get the correct transform (only if not manually positioned)
-        legend_manual_position
-          ? ``
-          : get_placement_styles(legend_placement_cell, `legend`).transform};
+          legend_manual_position ? `` : active_legend_placement?.transform ?? ``
+        };
           pointer-events: auto;
           ${legend?.wrapper_style ?? ``}
         `}
       />
     {/if}
   {/if}
+
+  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
+  {@render children?.()}
 </div>
 
 <style>
@@ -2042,5 +2014,11 @@
     stroke: var(--scatter-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
     stroke-width: var(--scatter-zoom-rect-stroke-width, 1);
     pointer-events: none; /* Prevent rect from interfering with mouse events */
+  }
+  .zero-line {
+    stroke: var(--scatter-zero-line-color, light-dark(black, white));
+    stroke-width: var(--scatter-zero-line-width, 1);
+    stroke-dasharray: none;
+    opacity: var(--scatter-zero-line-opacity, 0.3);
   }
 </style>

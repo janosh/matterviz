@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const TEST_FRAME_RATE_FPS = 30
+const TEST_FRAME_RATE_FPS = 60
 
 test.describe(`Trajectory Performance Tests`, () => {
   test(`large MOF5 trajectory playback performance`, async ({ page }) => {

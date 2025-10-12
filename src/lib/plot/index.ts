@@ -1,7 +1,11 @@
+import type DraggablePane from '$lib/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
-import type { ComponentProps } from 'svelte'
+import type { ComponentProps, Snippet } from 'svelte'
+import type { HTMLAttributes } from 'svelte/elements'
 import type ColorBar from './ColorBar.svelte'
 import PlotLegend from './PlotLegend.svelte'
+import type { D3SymbolName } from './formatting'
+import type { TicksOption } from './scales'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
 // pending https://github.com/sveltejs/svelte/issues/16151
@@ -12,21 +16,24 @@ export interface TweenedOptions<T> {
   interpolate?: (a: T, b: T) => (t: number) => T
 }
 
+export { default as BarPlot } from './BarPlot.svelte'
+export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
-export * from './data-transform'
 export { default as ElementScatter } from './ElementScatter.svelte'
-export * from './formatting'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
-export * from './interactions'
-export * from './layout'
 export { default as Line } from './Line.svelte'
+export { default as PlotControls } from './PlotControls.svelte'
 export { default as PlotLegend } from './PlotLegend.svelte'
-export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
+export * from './data-transform'
+export * from './formatting'
+export * from './interactions'
+export * from './layout'
+export * from './scales'
 
 export type XyObj = { x: number; y: number }
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
@@ -51,6 +58,7 @@ export interface PointStyle {
   symbol_type?: D3SymbolName
   symbol_size?: number | null // Optional override for marker size
   shape?: string // Add optional shape (string for flexibility)
+  cursor?: string // Cursor style for the point
 }
 
 export interface HoverStyle {
@@ -123,16 +131,26 @@ export interface Tooltip {
   items?: { label: string; value: string; color?: string }[]
 }
 
-export type TooltipProps = {
+export interface TooltipProps {
   x: number
   y: number
+  metadata?: Record<string, unknown> | null
+  color?: string | null
+  label?: string | null
+  series_idx: number
+}
+
+export interface ScatterTooltipProps extends TooltipProps {
   cx: number
   cy: number
   x_formatted: string
   y_formatted: string
-  metadata?: Record<string, unknown>
-  color_value?: number | null
-  label?: string | null
+}
+
+export interface BarTooltipProps extends TooltipProps {
+  bar_idx: number
+  orient_x: number
+  orient_y: number
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -238,4 +256,87 @@ export type UserContentProps = {
   y_min: number
   x_max: number
   y_max: number
+}
+
+export type Orientation = `vertical` | `horizontal`
+export type BarMode = `overlay` | `stacked` | `grouped`
+
+export interface BarSeries {
+  x: readonly number[]
+  y: readonly number[]
+  label?: string
+  color?: string
+  bar_width?: number | readonly number[]
+  visible?: boolean
+  metadata?: Record<string, unknown>[] | Record<string, unknown>
+  labels?: readonly (string | null | undefined)[]
+  render_mode?: `bar` | `line` // Render as bars (default) or as a line
+  line_style?: {
+    stroke_width?: number
+    line_dash?: string
+  }
+}
+
+export interface PlotControlsProps {
+  // Control pane visibility
+  show_controls?: boolean
+  controls_open?: boolean
+  // Custom snippets for additional controls
+  children?: Snippet<[]>
+  post_children?: Snippet<[]>
+  // Display controls
+  show_x_zero_line?: boolean
+  show_y_zero_line?: boolean
+  show_x_grid?: boolean
+  show_y_grid?: boolean
+  show_y2_grid?: boolean
+  x_grid_style?: HTMLAttributes<SVGLineElement>
+  y_grid_style?: HTMLAttributes<SVGLineElement>
+  y2_grid_style?: HTMLAttributes<SVGLineElement>
+  has_y2_points?: boolean
+  // Range controls
+  x_range?: [number | null, number | null]
+  y_range?: [number | null, number | null]
+  y2_range?: [number | null, number | null]
+  auto_x_range?: [number, number]
+  auto_y_range?: [number, number]
+  auto_y2_range?: [number, number]
+  // Tick controls (optional - only shown if show_ticks is true)
+  show_ticks?: boolean
+  x_ticks?: TicksOption
+  y_ticks?: TicksOption
+  // Format controls
+  x_format?: string
+  y_format?: string
+  y2_format?: string
+  // Component props
+  controls_title?: string
+  controls_class?: string
+  toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+  pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+}
+
+// Base props shared across plot components (non-bindable props only)
+// Bindable props (x_range, y_range, formats, ticks, ...) must be declared in each component with $bindable()
+export interface BasePlotProps {
+  // Axis limits (non-bindable)
+  x_lim?: [number | null, number | null]
+  y_lim?: [number | null, number | null]
+  range_padding?: number // Factor to pad auto-detected ranges *before* nicing (e.g. 0.05 = 5%)
+  // Axis labels and styling (non-bindable)
+  x_label?: string
+  x_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of x-axis label in px
+  y_label?: string
+  y_label_shift?: { x?: number; y?: number } // horizontal and vertical shift of y-axis label in px
+  // Grid style (non-bindable)
+  x_grid_style?: HTMLAttributes<SVGLineElement>
+  y_grid_style?: HTMLAttributes<SVGLineElement>
+  // Layout (non-bindable)
+  padding?: Sides
+  // Callbacks (non-bindable)
+  change?: (...args: unknown[]) => void // Callback when hovered item changes
+  // Control pane component props (non-bindable)
+  controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+  controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  children?: Snippet<[]>
 }

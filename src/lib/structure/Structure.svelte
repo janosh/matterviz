@@ -15,6 +15,7 @@
   import type { StructureHandlerData } from './index'
   import {
     StructureControls,
+    StructureExportPane,
     StructureInfoPane,
     StructureLegend,
     StructureScene,
@@ -25,59 +26,6 @@
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
 
-  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `children`> {
-    structure?: AnyStructure | undefined
-    scene_props?: ComponentProps<typeof StructureScene>
-    lattice_props?: ComponentProps<typeof import('$lib/structure').Lattice>
-    controls_open?: boolean
-    background_color?: string
-    background_opacity?: number
-    wrapper?: HTMLDivElement
-    color_scheme?: ColorSchemeName
-    png_dpi?: number
-    show_image_atoms?: boolean
-    supercell_scaling?: string
-    // only show the buttons when hovering over the canvas on desktop screens
-    // mobile screens don't have hover, so by default the buttons are always
-    // shown on a canvas of width below 500px
-    show_controls?: boolean | number
-    fullscreen?: boolean
-    // bindable width of the canvas
-    width?: number
-    // bindable height of the canvas
-    height?: number
-    reset_text?: string
-    hovered?: boolean
-    dragover?: boolean
-    allow_file_drop?: boolean
-    enable_info_pane?: boolean
-    info_pane_open?: boolean
-    fullscreen_toggle?: Snippet<[]> | boolean
-    bottom_left?: Snippet<[{ structure?: AnyStructure }]>
-    data_url?: string // URL to load structure from (alternative to providing structure directly)
-    // Generic callback for when files are dropped - receives raw content and filename
-    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
-    // spinner props (passed to Spinner component)
-    spinner_props?: ComponentProps<typeof Spinner>
-    loading?: boolean
-    error_msg?: string
-    // Performance mode: 'quality' (default) or 'speed' for large structures
-    performance_mode?: `quality` | `speed`
-    // allow parent components to control highlighted/selected site indices
-    selected_sites?: number[]
-    // explicit measured sites for distance/angle overlays
-    measured_sites?: number[]
-    // expose the displayed structure (with image atoms and/or supercell) for external use
-    displayed_structure?: AnyStructure | undefined
-    // structure content as string (alternative to providing structure directly or via data_url)
-    structure_string?: string
-    children?: Snippet<[{ structure?: AnyStructure }]>
-    on_file_load?: EventHandler
-    on_error?: EventHandler
-    on_fullscreen_change?: EventHandler
-    on_camera_move?: EventHandler
-    on_camera_reset?: EventHandler
-  }
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Scene model seeded from central defaults with a few normalized fields
   let scene_props = $state(DEFAULTS.structure)
@@ -96,6 +44,7 @@
     lattice_props: lattice_props_in = $bindable(undefined),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
+    enable_measure_mode = $bindable(true),
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_controls = 0,
@@ -134,7 +83,57 @@
     on_camera_move,
     on_camera_reset,
     ...rest
-  }: Props = $props()
+  }:
+    & {
+      scene_props?: ComponentProps<typeof StructureScene>
+      // only show the buttons when hovering over the canvas on desktop screens
+      // mobile screens don't have hover, so by default the buttons are always
+      // shown on a canvas of width below 500px
+      show_controls?: boolean | number
+      fullscreen?: boolean
+      // bindable width of the canvas
+      width?: number
+      // bindable height of the canvas
+      height?: number
+      // Canvas wrapper element (for export pane)
+      wrapper?: HTMLDivElement
+      // PNG export DPI setting
+      png_dpi?: number
+      reset_text?: string
+      hovered?: boolean
+      dragover?: boolean
+      allow_file_drop?: boolean
+      enable_info_pane?: boolean
+      enable_measure_mode?: boolean
+      info_pane_open?: boolean
+      fullscreen_toggle?: Snippet<[]> | boolean
+      bottom_left?: Snippet<[{ structure?: AnyStructure }]>
+      data_url?: string // URL to load structure from (alternative to providing structure directly)
+      // Generic callback for when files are dropped - receives raw content and filename
+      on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+      // spinner props (passed to Spinner component)
+      spinner_props?: ComponentProps<typeof Spinner>
+      loading?: boolean
+      error_msg?: string
+      // Performance mode: 'quality' (default) or 'speed' for large structures
+      performance_mode?: `quality` | `speed`
+      // allow parent components to control highlighted/selected site indices
+      selected_sites?: number[]
+      // explicit measured sites for distance/angle overlays
+      measured_sites?: number[]
+      // expose the displayed structure (with image atoms and/or supercell) for external use
+      displayed_structure?: AnyStructure | undefined
+      // structure content as string (alternative to providing structure directly or via data_url)
+      structure_string?: string
+      children?: Snippet<[{ structure?: AnyStructure }]>
+      on_file_load?: EventHandler
+      on_error?: EventHandler
+      on_fullscreen_change?: EventHandler
+      on_camera_move?: EventHandler
+      on_camera_reset?: EventHandler
+    }
+    & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`>
+    & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
@@ -254,6 +253,7 @@
   // Measurement mode and selection state
   let measure_mode: `distance` | `angle` | `edit` = $state(`distance`)
   let measure_menu_open = $state(false)
+  let export_pane_open = $state(false)
 
   // Undo/redo system
   let structure_history = $state<typeof structure[]>([])
@@ -321,6 +321,14 @@
 
   // Keyboard shortcuts
   function handle_keydown(event: KeyboardEvent) {
+    // Don't handle shortcuts if user is typing in an input field
+    const target = event.target as HTMLElement
+    const is_input_focused = target.tagName === `INPUT` ||
+      target.tagName === `TEXTAREA`
+
+    if (is_input_focused) return
+
+    // Undo/redo shortcuts
     if (event.ctrlKey || event.metaKey) {
       if (event.key === `z` && !event.shiftKey) {
         event.preventDefault()
@@ -354,6 +362,52 @@
           }
         }
       }
+    } else if (event.key === `f` && fullscreen_toggle) {
+      // Fullscreen toggle
+      toggle_fullscreen(wrapper)
+    } else if (event.key === `i` && enable_info_pane) {
+      // Info pane toggle
+      toggle_info()
+    } else if (event.key === `Escape`) {
+      // Prioritize closing panes over exiting fullscreen
+      if (info_pane_open) info_pane_open = false
+      else if (controls_open) controls_open = false
+    } else if (measure_mode === `edit` && event.key.toLowerCase() === `a`) {
+      // Add a default atom at structure center (Carbon) in edit mode
+      event.preventDefault()
+      if (!structure?.sites) return
+      const center: [number, number, number] = [0, 0, 0]
+      if (
+        `lattice` in (structure as AnyStructure) &&
+        (structure as AnyStructure & { lattice: PymatgenLattice }).lattice
+      ) {
+        // center of cell
+        const mat =
+          (structure as AnyStructure & { lattice: PymatgenLattice }).lattice.matrix
+        const cell_center: [number, number, number] = [
+          (mat[0][0] + mat[1][0] + mat[2][0]) / 2,
+          (mat[0][1] + mat[1][1] + mat[2][1]) / 2,
+          (mat[0][2] + mat[1][2] + mat[2][2]) / 2,
+        ]
+        center[0] = cell_center[0]
+        center[1] = cell_center[1]
+        center[2] = cell_center[2]
+      }
+      // Save history before adding
+      save_to_history()
+      structure = {
+        ...structure,
+        sites: [
+          ...structure.sites,
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            xyz: center,
+            abc: [0.5, 0.5, 0.5],
+            properties: {},
+            label: `C`,
+          } as Site,
+        ],
+      }
     }
   }
 
@@ -365,13 +419,29 @@
   // Create supercell if needed
   let supercell_structure = $state(structure)
   $effect(() => {
-    if (!structure || !(`lattice` in structure)) {
-      supercell_structure = structure
-    } else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
+    if (!structure || !(`lattice` in structure)) supercell_structure = structure
+    else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
       supercell_structure = structure
     } else if (!is_valid_supercell_input(supercell_scaling)) {
       supercell_structure = structure
     } else supercell_structure = make_supercell(structure, supercell_scaling)
+  })
+
+  // Clear selections when transformations change site indices (skip first run to preserve parent-provided selections)
+  let first_run = true
+  $effect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    ;[supercell_scaling, show_image_atoms, structure]
+    if (first_run) {
+      first_run = false
+      return
+    }
+    untrack(() => {
+      if (selected_sites.length > 0 || measured_sites.length > 0) {
+        selected_sites = []
+        measured_sites = []
+      }
+    })
   })
 
   // Apply image atoms to the supercell structure
@@ -498,60 +568,6 @@
     }
   }
 
-  function onkeydown(event: KeyboardEvent) {
-    // Don't handle shortcuts if user is typing in an input field
-    const target = event.target as HTMLElement
-    const is_input_focused = target.tagName === `INPUT` ||
-      target.tagName === `TEXTAREA`
-
-    if (is_input_focused) return
-
-    // Interface shortcuts
-    if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    else if (event.key === `i` && enable_info_pane) toggle_info()
-    else if (event.key === `Escape`) {
-      // Prioritize closing panes over exiting fullscreen
-      if (info_pane_open) info_pane_open = false
-      else if (controls_open) controls_open = false
-    } else if (measure_mode === `edit` && event.key.toLowerCase() === `a`) {
-      // Add a default atom at structure center (Carbon) in edit mode
-      event.preventDefault()
-      if (!structure?.sites) return
-      const center: [number, number, number] = [0, 0, 0]
-      if (
-        `lattice` in (structure as AnyStructure) &&
-        (structure as AnyStructure & { lattice: PymatgenLattice }).lattice
-      ) {
-        // center of cell
-        const mat =
-          (structure as AnyStructure & { lattice: PymatgenLattice }).lattice.matrix
-        const cell_center: [number, number, number] = [
-          (mat[0][0] + mat[1][0] + mat[2][0]) / 2,
-          (mat[0][1] + mat[1][1] + mat[2][1]) / 2,
-          (mat[0][2] + mat[1][2] + mat[2][2]) / 2,
-        ]
-        center[0] = cell_center[0]
-        center[1] = cell_center[1]
-        center[2] = cell_center[2]
-      }
-      // Save history before adding
-      save_to_history()
-      structure = {
-        ...structure,
-        sites: [
-          ...structure.sites,
-          {
-            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-            xyz: center,
-            abc: [0.5, 0.5, 0.5],
-            properties: {},
-            label: `C`,
-          } as Site,
-        ],
-      }
-    }
-  }
-
   // Only set background override when background_color is explicitly provided
   $effect(() => {
     if (typeof window !== `undefined` && wrapper && background_color) {
@@ -587,7 +603,7 @@
 
 <div
   class:dragover
-  class:active={info_pane_open || controls_open}
+  class:active={info_pane_open || controls_open || export_pane_open}
   role="application"
   aria-label="Structure viewer with keyboard shortcuts"
   bind:this={wrapper}
@@ -647,103 +663,105 @@
         {/if}
 
         <!-- Measurement mode dropdown (match Trajectory display mode UI) -->
-        <div
-          class="measure-mode-dropdown"
-          {@attach click_outside({ callback: () => measure_menu_open = false })}
-        >
-          <button
-            onclick={() => (measure_menu_open = !measure_menu_open)}
-            title="Measurement mode"
-            class="view-mode-button"
-            class:active={measure_menu_open}
-            aria-expanded={measure_menu_open}
-            style="transform: scale(1.2)"
+        {#if enable_measure_mode}
+          <div
+            class="measure-mode-dropdown"
+            {@attach click_outside({ callback: () => measure_menu_open = false })}
           >
-            {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
-              <span class="selection-limit-text">
-                {measured_sites.length}/{MAX_SELECTED_SITES}
-              </span>
-            {:else}
-              <Icon
-                icon={({ distance: `Ruler`, angle: `Angle`, edit: `Edit` } as const)[
-                  measure_mode
-                ]}
-                style="transform: scale({{ distance: 0.9, angle: 1.1, edit: 1.0 }[measure_mode]})"
-              />
-            {/if}
-            <Icon
-              icon="Arrow{measure_menu_open ? `Up` : `Down`}"
-              style="margin-left: -2px"
-            />
-          </button>
-          {#if (measured_sites?.length ?? 0) > 0}
             <button
-              type="button"
-              aria-label="Reset selection"
-              onclick={() => (measured_sites = [])}
+              onclick={() => (measure_menu_open = !measure_menu_open)}
+              title="Measurement mode"
+              class="view-mode-button"
+              class:active={measure_menu_open}
+              aria-expanded={measure_menu_open}
+              style="transform: scale(1.2)"
             >
-              <Icon icon="Reset" style="margin-left: -4px" />
+              {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
+                <span class="selection-limit-text">
+                  {measured_sites.length}/{MAX_SELECTED_SITES}
+                </span>
+              {:else}
+                <Icon
+                  icon={({ distance: `Ruler`, angle: `Angle`, edit: `Edit` } as const)[
+                    measure_mode
+                  ]}
+                  style="transform: scale({{ distance: 0.9, angle: 1.1, edit: 1.0 }[measure_mode]})"
+                />
+              {/if}
+              <Icon
+                icon="Arrow{measure_menu_open ? `Up` : `Down`}"
+                style="margin-left: -2px"
+              />
             </button>
-          {/if}
+            {#if (measured_sites?.length ?? 0) > 0}
+              <button
+                type="button"
+                aria-label="Reset selection"
+                onclick={() => [measured_sites, selected_sites] = [[], []]}
+              >
+                <Icon icon="Reset" style="margin-left: -4px" />
+              </button>
+            {/if}
 
-          <!-- Undo/Redo buttons (only show in edit mode) -->
-          {#if measure_mode === `edit`}
-            {@const undo_count = history_index}
-            {@const redo_count = structure_history.length - 1 - history_index}
-            <div class="undo-redo-container">
-              <button
-                type="button"
-                aria-label="Undo (Ctrl+Z)"
-                disabled={history_index <= 0}
-                onclick={undo}
-                title="Undo (Ctrl+Z)"
-                class="undo-redo-button"
-              >
-                <Icon icon="Undo" />
-                {#if undo_count > 0}
-                  <span class="history-count">{undo_count}</span>
-                {/if}
-              </button>
-              <button
-                type="button"
-                aria-label="Redo (Ctrl+Y)"
-                disabled={history_index >= structure_history.length - 1}
-                onclick={redo}
-                title="Redo (Ctrl+Y)"
-                class="undo-redo-button"
-              >
-                <Icon icon="Redo" />
-                {#if redo_count > 0}
-                  <span class="history-count">{redo_count}</span>
-                {/if}
-              </button>
-            </div>
-          {/if}
-          {#if measure_menu_open}
-            <div class="view-mode-dropdown">
-              {#each [
+            <!-- Undo/Redo buttons (only show in edit mode) -->
+            {#if measure_mode === `edit`}
+              {@const undo_count = history_index}
+              {@const redo_count = structure_history.length - 1 - history_index}
+              <div class="undo-redo-container">
+                <button
+                  type="button"
+                  aria-label="Undo (Ctrl+Z)"
+                  disabled={history_index <= 0}
+                  onclick={undo}
+                  title="Undo (Ctrl+Z)"
+                  class="undo-redo-button"
+                >
+                  <Icon icon="Undo" />
+                  {#if undo_count > 0}
+                    <span class="history-count">{undo_count}</span>
+                  {/if}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Redo (Ctrl+Y)"
+                  disabled={history_index >= structure_history.length - 1}
+                  onclick={redo}
+                  title="Redo (Ctrl+Y)"
+                  class="undo-redo-button"
+                >
+                  <Icon icon="Redo" />
+                  {#if redo_count > 0}
+                    <span class="history-count">{redo_count}</span>
+                  {/if}
+                </button>
+              </div>
+            {/if}
+            {#if measure_menu_open}
+              <div class="view-mode-dropdown">
+                {#each [
             { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
             { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
             { mode: `edit`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
           ] as const as
-                { mode, icon, label, scale }
-                (mode)
-              }
-                <button
-                  class="view-mode-option"
-                  class:selected={measure_mode === mode}
-                  onclick={() => {
-                    measure_mode = mode
-                    measure_menu_open = false
-                  }}
-                >
-                  <Icon {icon} style="transform: scale({scale})" />
-                  <span>{label}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+                  { mode, icon, label, scale }
+                  (mode)
+                }
+                  <button
+                    class="view-mode-option"
+                    class:selected={measure_mode === mode}
+                    onclick={() => {
+                      measure_mode = mode
+                      measure_menu_open = false
+                    }}
+                  >
+                    <Icon {icon} style="transform: scale({scale})" />
+                    <span>{label}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
 
         {#if enable_info_pane && structure}
           <StructureInfoPane
@@ -754,6 +772,16 @@
           />
         {/if}
 
+        <StructureExportPane
+          bind:export_pane_open
+          {structure}
+          {wrapper}
+          {scene}
+          {camera}
+          bind:png_dpi
+          pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
+        />
+
         <StructureControls
           bind:controls_open
           bind:scene_props
@@ -763,11 +791,7 @@
           bind:background_color
           bind:background_opacity
           bind:color_scheme
-          bind:png_dpi
           {structure}
-          {wrapper}
-          {scene}
-          {camera}
         />
       {/if}
     </section>
@@ -786,6 +810,8 @@
             bind:camera_is_moving
             bind:selected_sites
             bind:measured_sites
+            bind:scene
+            bind:camera
             {measure_mode}
             {width}
             {height}
@@ -924,7 +950,6 @@
   section.control-buttons {
     position: absolute;
     display: flex;
-    place-items: center;
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqmin, 9pt);
@@ -943,6 +968,7 @@
     background-color: transparent;
     display: flex;
     padding: 0;
+    font-size: clamp(1em, 2cqmin, 2.5em);
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--pane-btn-bg-hover);

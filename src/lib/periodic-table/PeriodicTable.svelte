@@ -2,18 +2,50 @@
   import type { ChemicalElement, ElementCategory, XyObj } from '$lib'
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { default_category_colors, is_color } from '$lib/colors'
-  import element_data from '$lib/element/data'
+  import { element_data } from '$lib/element'
+  import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
   import type { ScaleContext } from './index'
+  import { TableInset } from './index'
 
   const default_f_block_inset_tiles = [
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
     { name: `Actinides`, symbol: `Ac-Lr`, number: `89-103`, category: `actinide` },
   ] as const
-  interface Props extends HTMLAttributes<HTMLDivElement> {
+  let {
+    tile_props,
+    show_photo = false,
+    disabled = false,
+    heatmap_values = [],
+    links = null,
+    log = false,
+    color_scale = $bindable(`interpolateViridis`),
+    active_element = $bindable(null),
+    active_category = $bindable(null),
+    active_elements = $bindable([]),
+    gap = `0.3cqw`,
+    inner_transition_metal_offset = 0.5,
+    lanth_act_tiles = tile_props?.show_symbol == false
+      ? []
+      : [...default_f_block_inset_tiles],
+    lanth_act_style = ``,
+    color_scale_range = [null, null],
+    color_overrides = {},
+    labels = {},
+    missing_color = `element-category`,
+    split_layout = undefined,
+    show_color_bar = true,
+    color_bar_props = {},
+    inset,
+    bottom_left_inset,
+    tooltip = false,
+    onenter,
+    children,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
@@ -30,6 +62,8 @@
     color_scale?: D3InterpolateName | ((num: number) => string)
     active_element?: ChemicalElement | null
     active_category?: ElementCategory | null
+    // array of element symbols or ChemicalElement objects to highlight
+    active_elements?: (ElementSymbol | ChemicalElement)[]
     gap?: string // gap between element tiles, default is 0.3% of container width
     inner_transition_metal_offset?: number
     // show lanthanides and actinides as tiles
@@ -48,6 +82,10 @@
     missing_color?: string
     // control the layout of multi-value splits for all tiles
     split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+    // automatically show a color bar when heatmap_values is provided (default: true)
+    show_color_bar?: boolean
+    // props to pass to the ColorBar component (e.g. { title: 'Bar Title', tick_labels: 5 })
+    color_bar_props?: Partial<ComponentProps<typeof ColorBar>>
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
@@ -65,35 +103,7 @@
       | boolean
     children?: Snippet
     onenter?: (element: ChemicalElement) => void
-  }
-  let {
-    tile_props,
-    show_photo = false,
-    disabled = false,
-    heatmap_values = [],
-    links = null,
-    log = false,
-    color_scale = $bindable(`interpolateViridis`),
-    active_element = $bindable(null),
-    active_category = $bindable(null),
-    gap = `0.3cqw`,
-    inner_transition_metal_offset = 0.5,
-    lanth_act_tiles = tile_props?.show_symbol == false
-      ? []
-      : [...default_f_block_inset_tiles],
-    lanth_act_style = ``,
-    color_scale_range = [null, null],
-    color_overrides = {},
-    labels = {},
-    missing_color = `element-category`,
-    split_layout = undefined,
-    inset,
-    bottom_left_inset,
-    tooltip = false,
-    onenter,
-    children,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   let heat_values = $derived.by(() => {
     if (Array.isArray(heatmap_values)) {
@@ -244,29 +254,80 @@
       })
     },
   )
+
+  // Determine whether to automatically show the color bar
+  let should_show_color_bar = $derived.by(() => {
+    if (!show_color_bar || inset || heat_values.length === 0) return false
+
+    const num_vals = heat_values
+      .flat()
+      .filter((v): v is number => typeof v === `number`)
+
+    const usable_values = log ? num_vals.filter((v) => v > 0) : num_vals
+
+    return usable_values.length > 0
+  })
+
+  // Calculate heat range for color bar
+  let heat_range = $derived.by(() => {
+    if (!should_show_color_bar) return [0, 1] as [number, number]
+
+    const numeric_values = heat_values
+      .flat()
+      .filter((v): v is number => typeof v === `number`)
+    const usable_values = log ? numeric_values.filter((v) => v > 0) : numeric_values
+
+    if (usable_values.length === 0) return [0, 1] as [number, number]
+
+    const min = color_scale_range[0] ?? Math.min(...usable_values)
+    const max = color_scale_range[1] ?? Math.max(...usable_values)
+
+    return [min, max] as [number, number]
+  })
 </script>
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
 <div {...rest} class="periodic-table-container {rest.class ?? ``}">
   <div class="periodic-table" style:gap>
-    {@render inset?.({ active_element })}
+    {#if should_show_color_bar}
+      <TableInset style="place-items: center; padding: 1em 2em">
+        <ColorBar
+          {color_scale}
+          range={heat_range}
+          tick_labels={5}
+          tick_side="primary"
+          scale_type={log ? `log` : `linear`}
+          wrapper_style="width: 100%;"
+          bar_style="width: 100%;"
+          {...color_bar_props}
+        />
+      </TableInset>
+    {:else}
+      {@render inset?.({ active_element })}
+    {/if}
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
+      {@const is_in_active_elements = active_elements?.some((active_elem) =>
+        typeof active_elem === `string`
+          ? active_elem === symbol
+          : active_elem?.symbol === symbol
+      )}
       {@const active = active_category === category.replaceAll(` `, `-`) ||
-        active_element?.name === name}
+        active_element?.name === name ||
+        is_in_active_elements}
       {@const style = `grid-column: ${column}; grid-row: ${row};`}
       <ElementTile
         {element}
         href={links
         ? typeof links == `string`
-          ? `${element[links]}`.toLowerCase()
+          ? `/${element[links]}`.toLowerCase()
           : links[symbol]
-        : null}
+        : undefined}
         {style}
         {value}
-        bg_color={color_overrides[symbol] ?? bg_color(value, element)}
+        bg_color={color_overrides[symbol] ?? bg_color(value, element) ?? undefined}
         bg_colors={Array.isArray(value) ? bg_colors(value, element) : []}
         {active}
         label={labels[symbol]}
