@@ -135,6 +135,10 @@
     color_axis_labels?: boolean | { y1?: string | null; y2?: string | null }
   } = $props()
 
+  // Initialize style overrides with defaults (runs once to avoid infinite loop)
+  styles.point = { ...DEFAULTS.scatter.point, ...styles.point }
+  styles.line = { ...DEFAULTS.scatter.line, ...styles.line }
+
   // Initialize default values for grouped configs
   $effect(() => {
     // X-axis defaults
@@ -167,21 +171,6 @@
     display.y2_grid ??= true
     display.x_zero_line ??= false
     display.y_zero_line ??= false
-
-    // Style overrides defaults
-    if (!styles.point) styles.point = {}
-    styles.point.size ??= 4
-    styles.point.color ??= `cornflowerblue`
-    styles.point.opacity ??= 1
-    styles.point.stroke_width ??= 1
-    styles.point.stroke_color ??= `#000000`
-    styles.point.stroke_opacity ??= 1
-
-    if (!styles.line) styles.line = {}
-    styles.line.width ??= 2
-    styles.line.color ??= `cornflowerblue`
-    styles.line.opacity ??= 1
-    styles.line.dash ??= DEFAULTS.scatter.line.dash
 
     styles.show_points ??= true
     styles.show_lines ??= true
@@ -227,8 +216,9 @@
   let series_with_ids = $derived.by(() => {
     return processed_series.map((s, idx) => {
       if (!s || typeof s !== `object`) return s
-      // Use index as stable ID since series array order should be stable
-      return { ...s, _id: idx }
+      // Use series.id if provided, otherwise fall back to index
+      // prevents re-mounts when series are reordered if stable IDs are provided
+      return { ...s, _id: s.id ?? idx }
     })
   })
 
@@ -612,7 +602,7 @@
 
     return {
       y1: y1_series.length === 1 ? get_series_color(y1_series[0]) : null,
-      y2: y2_series.length >= 1 ? get_series_color(y2_series[0]) : null,
+      y2: y2_series.length === 1 ? get_series_color(y2_series[0]) : null,
     }
   })
 
@@ -825,9 +815,11 @@
   let x_tick_values = $derived.by(() => {
     if (!width || !height) return []
 
-    // Use a numeric scale for tick generation to satisfy typings;
-    // time formatting is handled via the format option inside generate_ticks
-    const x_scale_for_ticks = x_axis.scale_type === `log`
+    // Choose appropriate scale for tick generation
+    // Time scales (format starts with %) use scaleTime for better tick placement
+    const x_scale_for_ticks = x_axis.format?.startsWith(`%`)
+      ? scaleTime().domain([new Date(x_min), new Date(x_max)])
+      : x_axis.scale_type === `log`
       ? scaleLog().domain([x_min, x_max])
       : scaleLinear().domain([x_min, x_max])
 
@@ -1082,7 +1074,9 @@
         const anchor_x = x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
-        const anchor_y = y_scale_fn(point.y)
+        const anchor_y = (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(
+          point.y,
+        )
         const id = `${point.series_idx}-${point.point_idx}`
         const anchor_id = `anchor-${id}`
 
@@ -1340,10 +1334,9 @@
       })}
 
       <!-- Zero lines -->
-      {#if display.x_zero_line && x_min <= 0 && x_max >= 0}
-        {@const zero_x_pos = x_axis.format?.startsWith(`%`)
-        ? x_scale_fn(new Date(0))
-        : x_scale_fn(0)}
+      {#if display.x_zero_line && x_axis.scale_type === `linear` &&
+        !x_axis.format?.startsWith(`%`) && x_min <= 0 && x_max >= 0}
+        {@const zero_x_pos = x_scale_fn(0)}
         {#if isFinite(zero_x_pos)}
           <line
             class="zero-line"
@@ -1745,7 +1738,10 @@
       {@const cx = x_axis.format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
       {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
       {@const x_formatted = format_value(x, x_axis.format ?? ``)}
-      {@const y_formatted = format_value(y, y_axis.format ?? ``)}
+      {@const y_formatted = format_value(
+      y,
+      (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) ?? ``,
+    )}
       {@const label = point_label?.text ?? null}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
       {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}

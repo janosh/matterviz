@@ -35,14 +35,8 @@
     controls_open?: boolean
   } = $props()
 
-  // Initialize bar styles
-  $effect(() => {
-    bar.opacity ??= DEFAULTS.histogram.bar.opacity
-    bar.stroke_width ??= DEFAULTS.histogram.bar.stroke_width
-    bar.stroke_color ??= DEFAULTS.histogram.bar.stroke_color
-    bar.stroke_opacity ??= DEFAULTS.histogram.bar.stroke_opacity
-    bar.color ??= DEFAULTS.histogram.bar.color
-  })
+  // Initialize bar styles with defaults (runs once)
+  bar = { ...DEFAULTS.histogram.bar, ...bar }
 
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)

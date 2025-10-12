@@ -23,6 +23,8 @@
   import { SvelteMap } from 'svelte/reactivity'
   import { calc_auto_padding, measure_text_width } from './layout'
 
+  const default_grid_style = { stroke: `#e6e6e6`, 'stroke-width': 1, fill: `none` }
+
   let {
     series = $bindable([]),
     orientation = $bindable(`vertical` as Orientation),
@@ -74,12 +76,9 @@
     on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
   } = $props()
 
-  $effect(() => { // Initialize bar and line styles
-    bar.color ??= DEFAULTS.bar.bar.color
-    bar.opacity ??= DEFAULTS.bar.bar.opacity
-    line.color ??= DEFAULTS.bar.line.color
-    line.width ??= DEFAULTS.bar.line.width
-  })
+  // Initialize bar and line styles with defaults (runs once)
+  bar = { ...DEFAULTS.bar.bar, ...bar }
+  line = { ...DEFAULTS.bar.line, ...line }
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
@@ -179,9 +178,17 @@
       y_axis.range?.[0] ?? auto_ranges.y[0],
       y_axis.range?.[1] ?? auto_ranges.y[1],
     ] as [number, number]
-    ranges = {
-      initial: { x: new_x, y: new_y },
-      current: { x: new_x, y: new_y },
+    // Only update if ranges actually changed
+    if (
+      ranges.current.x[0] !== new_x[0] ||
+      ranges.current.x[1] !== new_x[1] ||
+      ranges.current.y[0] !== new_y[0] ||
+      ranges.current.y[1] !== new_y[1]
+    ) {
+      ranges = {
+        initial: { x: new_x, y: new_y },
+        current: { x: new_x, y: new_y },
+      }
     }
   })
 
@@ -448,7 +455,7 @@
         {/if}
 
         <!-- Bars and Lines -->
-        {#each series as srs, series_idx (series_idx)}
+        {#each series as srs, series_idx (srs?.id ?? series_idx)}
           {#if srs?.visible ?? true}
             {@const is_line = srs.render_mode === `line`}
             <g
@@ -671,7 +678,8 @@
                 <line
                   y1={-(height - pad.b - pad.t)}
                   y2="0"
-                  {...x_axis.grid_style ?? {}}
+                  {...default_grid_style}
+                  {...(x_axis.grid_style ?? {})}
                 />
               {/if}
               <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
@@ -720,20 +728,20 @@
             {@const shift_x = y_axis.tick_label_shift?.x ?? 0}
             {@const shift_y = y_axis.tick_label_shift?.y ?? 0}
             {@const text_x = -10 + shift_x}
-            {@const text_anchor = rotation !== 0 ? `end` : `end`}
             <g class="tick" transform="translate({pad.l}, {tick_y})">
               {#if display.y_grid}
                 <line
                   x1="0"
                   x2={width - pad.l - pad.r}
-                  {...y_axis.grid_style ?? {}}
+                  {...default_grid_style}
+                  {...(y_axis.grid_style ?? {})}
                 />
               {/if}
               <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
               <text
                 x={text_x}
                 y={shift_y}
-                text-anchor={text_anchor}
+                text-anchor="end"
                 dominant-baseline="central"
                 fill="var(--text-color)"
                 transform={rotation !== 0

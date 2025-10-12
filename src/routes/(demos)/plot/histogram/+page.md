@@ -23,9 +23,7 @@
       const { value, count, property } = data
       hover_info = `Hovering: ${property} - Value: ${
         value.toFixed(1)
-      }, Count: ${count}, Percentage: ${
-        format_num(count / sample_size * 100, `.2~%`)
-      }`
+      }, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
     } else {
       hover_info = 'Hover over a bar to see details'
     }
@@ -35,7 +33,7 @@
     const { value, count, property } = data
     click_info = `Clicked: ${property} - Value: ${
       value.toFixed(1)
-    }, Count: ${count}, Percentage: ${format_num(count / sample_size * 100, `.2~%`)}`
+    }, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
   }
 
   const info_style =
@@ -50,7 +48,7 @@
 
 {#snippet tooltip({ value, count })}
   Value: {value.toFixed(1)}<br>Count: {count}<br>
-  %: {format_num(count / sample_size * 100, `.2~%`)}
+  %: {format_num(count / sample_size, `.2~%`)}
 {/snippet}
 
 <Histogram
@@ -59,8 +57,8 @@
   {show_controls}
   on_bar_hover={handle_bar_hover}
   on_bar_click={handle_bar_click}
-  style="height: 400px"
   {tooltip}
+  style="height: 400px"
 />
 
 <div style={info_style}>{hover_info}</div>
@@ -222,6 +220,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
     generate_mixture,
     generate_skewed,
   } from '$site/plot-utils'
+  import { format_num } from 'matterviz'
 
   let selected = $state(`bimodal`)
   let mode = $state(`single`)
@@ -304,7 +303,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
     {{ age: `Age`, discrete: `Rating` }[selected] ?? `Value`}: {
       format_num(value, selected === `discrete` ? `.1f` : `.0f`)
     }<br>
-    Count: {count}<br>%: {format_num(count / current.data.length * 100, `.2~%`)}
+    Count: {count}<br>%: {format_num(count / current.data.length, `.2~%`)}
   {/snippet}
 </Histogram>
 ```

@@ -42,14 +42,13 @@
     styles.show_lines ??= markers_val?.includes(`line`) ?? false
   })
 
-  // Sync display.markers when show_points/show_lines change
+  // Sync display.markers when show_points/show_lines or nested styles change
   $effect(() => {
     const { show_points = true, show_lines = true } = styles
-    display.markers = show_points && show_lines
-      ? `line+points`
-      : show_points
-      ? `points`
-      : `line`
+    if (show_points && show_lines) display.markers = `line+points`
+    else if (show_points) display.markers = `points`
+    else if (show_lines) display.markers = `line`
+    else display.markers = `none`
   })
 </script>
 
@@ -61,8 +60,8 @@
     title="Markers"
     current_values={{ show_points: styles.show_points, show_lines: styles.show_lines }}
     on_reset={() => {
-      ;({ show_points: styles.show_points, show_lines: styles.show_lines } =
-        DEFAULTS.scatter)
+      styles.show_points = DEFAULTS.scatter.show_points
+      styles.show_lines = DEFAULTS.scatter.show_lines
     }}
     style="display: flex; flex-wrap: wrap; gap: 1ex"
   >

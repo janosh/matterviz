@@ -3,7 +3,7 @@ import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type ColorBar from './ColorBar.svelte'
-import PlotLegend from './PlotLegend.svelte'
+import type PlotLegend from './PlotLegend.svelte'
 import type { D3SymbolName } from './formatting'
 import type { TicksOption } from './scales'
 
@@ -82,10 +82,11 @@ export interface PlotPoint extends Point {
   point_tween?: TweenedOptions<XyObj>
 }
 
-export type Markers = `line` | `points` | `line+points`
+export type Markers = `line` | `points` | `line+points` | `none`
 
 // Define the structure for a data series in the plot
 export interface DataSeries {
+  id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
   // Optional marker display type override for this specific series
@@ -233,6 +234,7 @@ export type Orientation = `vertical` | `horizontal`
 export type BarMode = `overlay` | `stacked` | `grouped`
 
 export interface BarSeries {
+  id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
   label?: string

@@ -78,14 +78,8 @@
     on_series_toggle?: (series_idx: number) => void
   } = $props()
 
-  // Initialize bar styles
-  $effect(() => {
-    bar.opacity ??= DEFAULTS.histogram.bar.opacity
-    bar.stroke_width ??= DEFAULTS.histogram.bar.stroke_width
-    bar.stroke_color ??= DEFAULTS.histogram.bar.stroke_color
-    bar.stroke_opacity ??= DEFAULTS.histogram.bar.stroke_opacity
-    bar.color ??= DEFAULTS.histogram.bar.color
-  })
+  // Initialize bar styles with defaults (runs once)
+  bar = { ...DEFAULTS.histogram.bar, ...bar }
 
   // Core state
   let [width, height] = $state([0, 0])
@@ -117,10 +111,8 @@
       false,
     )
     if (!selected_series.length) {
-      return {
-        x: auto_x,
-        y: [y_axis.scale_type === `log` ? 1 : 0, 1] as [number, number],
-      }
+      const y = [y_axis.scale_type === `log` ? 1 : 0, 1] as [number, number]
+      return { x: auto_x, y }
     }
     const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
     const max_count = Math.max(
@@ -209,6 +201,7 @@
     return selected_series.map((series_data, series_idx) => {
       const bins_arr = hist_generator(series_data.y)
       return {
+        id: series_data.id ?? series_idx,
         series_idx,
         label: series_data.label || `Series ${series_idx + 1}`,
         color: selected_series.length === 1
@@ -403,7 +396,7 @@
       {/if}
 
       <!-- Histogram bars -->
-      {#each histogram_data as { bins, color, label }, series_idx (series_idx)}
+      {#each histogram_data as { id, bins, color, label }, series_idx (id ?? series_idx)}
         <g class="histogram-series" data-series-idx={series_idx}>
           {#each bins as bin, bin_idx (bin_idx)}
             {@const bar_x = scales.x(bin.x0!)}

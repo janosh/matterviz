@@ -799,7 +799,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     markers: {
       value: `line+points`,
       description: `Scatter plot marker type`,
-      enum: [`line`, `points`, `line+points`],
+      enum: [`line`, `points`, `line+points`, `none`],
     },
     show_points: {
       value: true,
