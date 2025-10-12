@@ -25,7 +25,7 @@ describe(`Settings`, () => {
       check_setting(SETTINGS_CONFIG.structure.atom_radius)
       check_setting(SETTINGS_CONFIG.trajectory.auto_play)
       check_setting(SETTINGS_CONFIG.plot.grid_lines)
-      check_setting(SETTINGS_CONFIG.scatter.point_size)
+      check_setting(SETTINGS_CONFIG.scatter.point.size)
       check_setting(SETTINGS_CONFIG.composition.display_mode)
     })
 
@@ -35,7 +35,7 @@ describe(`Settings`, () => {
         SETTINGS_CONFIG.structure.sphere_segments,
         SETTINGS_CONFIG.trajectory.fps,
         SETTINGS_CONFIG.plot.zoom_factor,
-        SETTINGS_CONFIG.scatter.point_size,
+        SETTINGS_CONFIG.scatter.point.size,
       ]
 
       numeric_settings.forEach((setting) => {
@@ -130,6 +130,9 @@ describe(`Settings`, () => {
       // Check defaults are preserved where not overridden
       expect(result.structure.show_atoms).toBe(DEFAULTS.structure.show_atoms)
       expect(result.trajectory.fps).toBe(DEFAULTS.trajectory.fps)
+      // Check nested point/line properties are preserved
+      expect(result.scatter.point.size).toBe(DEFAULTS.scatter.point.size)
+      expect(result.scatter.line.width).toBe(DEFAULTS.scatter.line.width)
     })
 
     test(`should handle partial updates without affecting other sections`, () => {

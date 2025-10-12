@@ -1328,13 +1328,16 @@
   button.filename {
     align-items: center;
     white-space: nowrap;
-    padding: var(--trajectory-filename-padding, 2pt 4pt);
+    padding: var(--trajectory-filename-padding, 3pt 4pt);
     border-radius: var(--trajectory-filename-border-radius, 2px);
     max-width: clamp(150px, 20cqw, 250px);
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
     position: relative;
+    font-family: monospace;
+    font-size: 0.9em;
+    background: var(--code-bg, rgba(0, 0, 0, 0.1));
   }
   @keyframes fade-in {
     from {

@@ -12,8 +12,8 @@
     structures,
     mode = `element_pairs`,
     show_reference_line = true,
-    x_label = `r (Å)`,
-    y_label = `g(r)`,
+    x_axis = {},
+    y_axis = {},
     cutoff = 15,
     n_bins = 75,
     pbc = [true, true, true],
@@ -25,14 +25,18 @@
     structures?: Structure | Structure[] | Record<string, Structure>
     mode?: `element_pairs` | `full`
     show_reference_line?: boolean
-    x_label?: string
-    y_label?: string
+    x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
+    y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
     cutoff?: number
     n_bins?: number
     pbc?: Pbc
     enable_drop?: boolean
     children?: Snippet<[]>
   } & ComponentProps<typeof ScatterPlot> = $props()
+
+  // Set default axis labels if not provided
+  x_axis.label ??= `r (Å)`
+  y_axis.label ??= `g(r)`
 
   let dropped: Structure[] = $state([])
   let dragging = $state(false)
@@ -131,15 +135,10 @@
 <ScatterPlot
   {...rest}
   {series}
-  {x_label}
-  {y_label}
-  x_range={[0, max_r]}
-  y_range={[0, max_g * 1.05]}
-  x_label_shift={{ x: 0, y: -40 }}
-  y_label_shift={{ x: -40, y: 0 }}
-  markers="line"
-  show_lines={true}
-  show_points={false}
+  x_axis={{ ...x_axis, range: [0, max_r] }}
+  y_axis={{ ...y_axis, range: [0, max_g * 1.05] }}
+  display={{ markers: `line` }}
+  styles={{ show_lines: true, show_points: false }}
   class={`${rest.class ?? ``} ${dragging ? `dragging` : ``}`}
   style={rest.style ?? `height: 400px;`}
   ondragover={enable_drop

@@ -1,12 +1,13 @@
 <script lang="ts">
-  import type { HoverStyle, LabelStyle, Point, PointStyle, XyObj } from '$lib/plot'
+  import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import { type D3SymbolName, symbol_map } from '$lib/plot'
+  import type { PointStyle, TweenedOptions, XyObj } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween, type TweenedOptions } from 'svelte/motion'
+  import { Tween } from 'svelte/motion'
 
   let {
     x,
