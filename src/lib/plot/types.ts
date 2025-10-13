@@ -1,10 +1,10 @@
 import type DraggablePane from '$lib/DraggablePane.svelte'
+import type { D3SymbolName } from '$lib/labels'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type ColorBar from './ColorBar.svelte'
 import type PlotLegend from './PlotLegend.svelte'
-import type { D3SymbolName } from './formatting'
 import type { TicksOption } from './scales'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
@@ -146,6 +146,7 @@ export interface BarTooltipProps extends TooltipProps {
   bar_idx: number
   orient_x: number
   orient_y: number
+  y_axis: `y1` | `y2`
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -223,11 +224,11 @@ export type UserContentProps = {
   width: number
   x_scale_fn: (x: number) => number
   y_scale_fn: (y: number) => number
+  y2_scale_fn?: (y: number) => number
   pad: Required<Sides>
-  x_min: number
-  y_min: number
-  x_max: number
-  y_max: number
+  x_range: [number, number]
+  y_range: [number, number]
+  y2_range?: [number, number]
 }
 
 export type Orientation = `vertical` | `horizontal`
@@ -244,6 +245,8 @@ export interface BarSeries {
   metadata?: Record<string, unknown>[] | Record<string, unknown>
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
+  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
+  y_axis?: `y1` | `y2`
   line_style?: {
     stroke_width?: number
     line_dash?: string
@@ -263,6 +266,7 @@ export interface AxisConfig {
   tick_label_shift?: { x?: number; y?: number }
   tick_rotation?: number // Rotation angle in degrees for tick labels
   grid_style?: HTMLAttributes<SVGLineElement>
+  color?: string | null // Color for axis label, tick labels, and axis line
 }
 
 // Display configuration for grid lines and markers

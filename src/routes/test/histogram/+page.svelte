@@ -244,6 +244,55 @@
       point_style: { fill: `#ea580c` },
     }] as DataSeries[]
   })
+
+  // Y2 axis test series
+  let y2_axis_data = $derived.by(() => {
+    const y1_values = generate_normal(500, 5, 1)
+    const y2_values = generate_normal(500, 50, 10)
+    return [
+      {
+        x: y1_values.map((_, idx) => idx),
+        y: y1_values,
+        label: `Y1 Series`,
+        visible: true,
+        line_style: { stroke: `#2563eb` },
+        point_style: { fill: `#2563eb` },
+      },
+      {
+        x: y2_values.map((_, idx) => idx),
+        y: y2_values,
+        label: `Y2 Series`,
+        visible: true,
+        line_style: { stroke: `#dc2626` },
+        point_style: { fill: `#dc2626` },
+        y_axis: `y2`,
+      },
+    ] as DataSeries[]
+  })
+
+  let y2_different_scale_data = $derived.by(() => {
+    const small_values = generate_normal(500, 10, 2)
+    const large_values = generate_normal(500, 1000, 200)
+    return [
+      {
+        x: small_values.map((_, idx) => idx),
+        y: small_values,
+        label: `Small Scale (Y1)`,
+        visible: true,
+        line_style: { stroke: `#059669` },
+        point_style: { fill: `#059669` },
+      },
+      {
+        x: large_values.map((_, idx) => idx),
+        y: large_values,
+        label: `Large Scale (Y2)`,
+        visible: true,
+        line_style: { stroke: `#f59e0b` },
+        point_style: { fill: `#f59e0b` },
+        y_axis: `y2`,
+      },
+    ] as DataSeries[]
+  })
 </script>
 
 <label>Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} /> {
@@ -425,3 +474,29 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   x_axis={{ label: `Value (Small Range)`, format: `.6f` }}
   y_axis={{ label: `Count` }}
 />
+
+<section id="y2-axis-histogram">
+  <h2>Y2 Axis Histogram</h2>
+  <Histogram
+    series={y2_axis_data}
+    bins={25}
+    mode="overlay"
+    show_legend
+    x_axis={{ label: `Value` }}
+    y_axis={{ label: `Y1 Count` }}
+    y2_axis={{ label: `Y2 Count` }}
+  />
+</section>
+
+<section id="y2-different-scale">
+  <h2>Y2 Different Scale Histogram</h2>
+  <Histogram
+    series={y2_different_scale_data}
+    bins={30}
+    mode="overlay"
+    show_legend
+    x_axis={{ label: `Value` }}
+    y_axis={{ label: `Small Count` }}
+    y2_axis={{ label: `Large Count` }}
+  />
+</section>

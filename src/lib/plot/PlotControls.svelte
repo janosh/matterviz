@@ -16,7 +16,7 @@
     display = $bindable({}),
     auto_x_range = [0, 1],
     auto_y_range = [0, 1],
-    auto_y2_range = [0, 1],
+    auto_y2_range = undefined,
     has_y2_points = false,
     show_ticks = false,
     controls_title = `plot`,
@@ -94,9 +94,11 @@
     range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
     if (invalid) return
     const axis_config = { x: x_axis, y: y_axis, y2: y2_axis }[axis]
+    // If auto range is undefined, only set if both min and max are provided
+    if (!auto && (min === null || max === null)) return
     axis_config.range = min === null && max === null
       ? undefined
-      : [min ?? auto[0], max ?? auto[1]] as [number, number]
+      : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as [number, number]
   }
 
   // Sync format inputs

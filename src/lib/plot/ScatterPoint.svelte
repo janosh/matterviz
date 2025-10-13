@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
-  import { type D3SymbolName, symbol_map } from '$lib/plot'
+  import { type D3SymbolName, symbol_map } from '$lib/labels'
   import type { PointStyle, TweenedOptions, XyObj } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'

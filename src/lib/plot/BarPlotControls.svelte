@@ -9,6 +9,7 @@
     mode = $bindable(`overlay` as BarMode),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
@@ -18,6 +19,7 @@
     mode?: BarMode
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    y2_axis?: AxisConfig
     display?: DisplayConfig
     show_controls?: boolean
     controls_open?: boolean
@@ -29,6 +31,7 @@
   bind:controls_open
   bind:x_axis
   bind:y_axis
+  bind:y2_axis
   bind:display
   {...rest}
 >

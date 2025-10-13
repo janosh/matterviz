@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type BarSeries, type BarTooltipProps, format_num } from '$lib'
+  import { format_value } from '$lib/labels'
   import { BarPlot } from '$lib/plot'
-  import { format_value } from '$lib/plot/formatting'
   import type { CrystalSystem } from '$lib/symmetry'
   import {
     CRYSTAL_SYSTEM_COLORS,
