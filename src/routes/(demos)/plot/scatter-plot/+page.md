@@ -275,7 +275,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
-  import { symbol_names } from 'matterviz/plot'
+  import { symbol_names } from 'matterviz/labels'
 
   let show_labels = $state(true)
   let label_size = $state(14)
@@ -698,7 +698,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
-  import { symbol_names } from 'matterviz/plot'
+  import { symbol_names } from 'matterviz/labels'
   import * as math from 'matterviz/math'
 
   const point_count = 50
@@ -880,7 +880,7 @@ This example combines multiple features including different display modes, custo
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
-  import { symbol_names } from 'matterviz/plot'
+  import { symbol_names } from 'matterviz/labels'
 
   // Define categories and colors for data points
   const categories = ['Group A', 'Group B', 'Group C']

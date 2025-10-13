@@ -351,9 +351,19 @@
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5) {
-        ranges.current.x = [Math.min(start_x, end_x), Math.max(start_x, end_x)]
-        ranges.current.y = [Math.min(start_y, end_y), Math.max(start_y, end_y)]
-        ranges.current.y2 = [Math.min(start_y2, end_y2), Math.max(start_y2, end_y2)]
+        // Update axis ranges to trigger reactivity and prevent effect from overriding
+        x_axis = {
+          ...x_axis,
+          range: [Math.min(start_x, end_x), Math.max(start_x, end_x)],
+        }
+        y_axis = {
+          ...y_axis,
+          range: [Math.min(start_y, end_y), Math.max(start_y, end_y)],
+        }
+        y2_axis = {
+          ...y2_axis,
+          range: [Math.min(start_y2, end_y2), Math.max(start_y2, end_y2)],
+        }
       }
     }
   }
@@ -388,11 +398,10 @@
   }
 
   function handle_double_click() {
-    ranges.current = {
-      x: [...ranges.initial.x],
-      y: [...ranges.initial.y],
-      y2: [...ranges.initial.y2],
-    }
+    // Clear axis ranges to reset to auto ranges
+    x_axis = { ...x_axis, range: undefined }
+    y_axis = { ...y_axis, range: undefined }
+    y2_axis = { ...y2_axis, range: undefined }
   }
 
   function handle_mouse_move(

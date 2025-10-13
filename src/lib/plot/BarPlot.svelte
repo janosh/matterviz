@@ -312,9 +312,10 @@
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
       if (dx > 5 && dy > 5 && typeof x1 === `number` && typeof x2 === `number`) {
-        ranges.current.x = [Math.min(x1, x2), Math.max(x1, x2)]
-        ranges.current.y = [Math.min(y1, y2), Math.max(y1, y2)]
-        ranges.current.y2 = [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)]
+        // Update axis ranges to trigger reactivity and prevent effect from overriding
+        x_axis = { ...x_axis, range: [Math.min(x1, x2), Math.max(x1, x2)] }
+        y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
+        y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
       }
     }
     drag_state = { start: null, current: null, bounds: null }
@@ -337,11 +338,10 @@
   }
 
   function handle_double_click() {
-    ranges.current = {
-      x: [...ranges.initial.x],
-      y: [...ranges.initial.y],
-      y2: [...ranges.initial.y2],
-    }
+    // Clear axis ranges to reset to auto ranges
+    x_axis = { ...x_axis, range: undefined }
+    y_axis = { ...y_axis, range: undefined }
+    y2_axis = { ...y2_axis, range: undefined }
   }
 
   // Legend data and handlers
