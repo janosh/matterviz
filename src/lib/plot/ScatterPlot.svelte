@@ -139,46 +139,35 @@
   styles.point = { ...DEFAULTS.scatter.point, ...styles.point }
   styles.line = { ...DEFAULTS.scatter.line, ...styles.line }
 
-  // Initialize default values for grouped configs
-  $effect(() => {
-    // X-axis defaults
-    x_axis.format ??= ``
-    x_axis.scale_type ??= `linear`
-    x_axis.label_shift ??= { x: 0, y: -40 }
-    x_axis.tick_label_shift ??= { x: 0, y: 20 }
-    x_axis.lim ??= [null, null]
-
-    // Y-axis defaults
-    y_axis.format ??= ``
-    y_axis.scale_type ??= `linear`
-    y_axis.ticks ??= 5
-    y_axis.label_shift ??= { y: 12 }
-    y_axis.tick_label_shift ??= { x: -8, y: 0 }
-    y_axis.lim ??= [null, null]
-
-    // Y2-axis defaults
-    y2_axis.format ??= ``
-    y2_axis.scale_type ??= `linear`
-    y2_axis.ticks ??= 5
-    y2_axis.label_shift ??= { x: 0, y: 0 }
-    y2_axis.tick_label_shift ??= { x: 8, y: 0 }
-    y2_axis.lim ??= [null, null]
-
-    // Display defaults
-    display.markers ??= DEFAULTS.scatter.markers
-    display.x_grid ??= DEFAULTS.scatter.display.x_grid
-    display.y_grid ??= DEFAULTS.scatter.display.y_grid
-    display.y2_grid ??= DEFAULTS.scatter.display.y2_grid
-    display.x_zero_line ??= DEFAULTS.scatter.display.x_zero_line
-    display.y_zero_line ??= DEFAULTS.scatter.display.y_zero_line
-
-    styles.show_points ??= true
-    styles.show_lines ??= true
-
-    // Controls defaults
-    controls.show ??= true
-    controls.open ??= false
-  })
+  // Initialize default values
+  x_axis = {
+    format: ``,
+    scale_type: `linear`,
+    label_shift: { x: 0, y: -40 },
+    tick_label_shift: { x: 0, y: 20 },
+    lim: [null, null],
+    ...x_axis,
+  }
+  y_axis = {
+    format: ``,
+    scale_type: `linear`,
+    label_shift: { x: 0, y: -40 },
+    tick_label_shift: { x: 0, y: 20 },
+    lim: [null, null],
+    ...y_axis,
+  }
+  y2_axis = {
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { x: 0, y: 0 },
+    tick_label_shift: { x: 8, y: 0 },
+    lim: [null, null],
+    ...y2_axis,
+  }
+  display = { ...DEFAULTS.scatter.display, ...display }
+  styles = { show_points: true, show_lines: true, ...styles }
+  controls = { show: true, open: false, ...controls }
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element

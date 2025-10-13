@@ -146,6 +146,7 @@ export interface BarTooltipProps extends TooltipProps {
   bar_idx: number
   orient_x: number
   orient_y: number
+  y_axis: `y1` | `y2`
 }
 
 export type TimeInterval = `day` | `month` | `year`

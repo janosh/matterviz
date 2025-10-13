@@ -85,18 +85,16 @@
     on_series_toggle?: (series_idx: number) => void
   } = $props()
 
-  // Initialize bar styles with defaults (runs once)
-  bar = { ...DEFAULTS.histogram.bar, ...bar }
-
-  // Initialize y2_axis defaults
-  $effect(() => {
-    y2_axis.format ??= `d`
-    y2_axis.scale_type ??= `linear`
-    y2_axis.ticks ??= 5
-    y2_axis.label_shift ??= { x: 0, y: 0 }
-    y2_axis.tick_label_shift ??= { x: 8, y: 0 }
-    y2_axis.lim ??= [null, null]
-  })
+  bar = { ...DEFAULTS.histogram.bar, ...bar } // Initialize bar style defaults
+  y2_axis = { // Initialize y2_axis defaults
+    format: `d`,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { y: 60 },
+    tick_label_shift: { x: 8, y: 0 },
+    lim: [null, null],
+    ...y2_axis,
+  }
 
   // Core state
   let [width, height] = $state([0, 0])

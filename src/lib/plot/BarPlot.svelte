@@ -85,16 +85,15 @@
   // Initialize bar and line styles with defaults (runs once)
   bar = { ...DEFAULTS.bar.bar, ...bar }
   line = { ...DEFAULTS.bar.line, ...line }
-
-  // Initialize y2_axis defaults
-  $effect(() => {
-    y2_axis.format ??= ``
-    y2_axis.scale_type ??= `linear`
-    y2_axis.ticks ??= 5
-    y2_axis.label_shift ??= { x: 0, y: 0 }
-    y2_axis.tick_label_shift ??= { x: 8, y: 0 }
-    y2_axis.lim ??= [null, null]
-  })
+  y2_axis = { // Initialize y2_axis defaults
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { y: 60 },
+    tick_label_shift: { x: 8, y: 0 },
+    lim: [null, null],
+    ...y2_axis,
+  }
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
@@ -430,7 +429,18 @@
       ? srs.metadata[bar_idx]
       : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
-    return { x, y, orient_x, orient_y, series_idx, bar_idx, metadata, color, label }
+    return {
+      x,
+      y,
+      orient_x,
+      orient_y,
+      series_idx,
+      bar_idx,
+      metadata,
+      color,
+      label,
+      y_axis: srs.y_axis ?? `y1`,
+    }
   }
 
   const handle_bar_hover =
@@ -947,8 +957,9 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const use_y2 = series[hover_info.series_idx]?.y_axis === `y2`}
-      {@const y_cfg = use_y2 ? y2_axis : y_axis}
+      {@const srs = series[hover_info.series_idx]}
+      {@const use_y2 = srs?.y_axis === `y2`}
+      {@const active_y_axis = use_y2 ? y2_axis : y_axis}
       {@const cx = scales.x(hover_info.orient_x)}
       {@const cy = (use_y2 ? scales.y2 : scales.y)(hover_info.orient_y)}
       <div
@@ -964,8 +975,8 @@
             }
           </div>
           <div>
-            {y_cfg.label || `y`}: {
-              format_value(hover_info.orient_y, y_cfg.format || `.3~s`)
+            {active_y_axis.label || `y`}: {
+              format_value(hover_info.orient_y, active_y_axis.format || `.3~s`)
             }
           </div>
         {/if}
