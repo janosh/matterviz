@@ -13,16 +13,19 @@ export type D3SymbolName = Exclude<
 
 export const symbol_names = [
   ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
-].map((sym) => {
-  // Attempt to find the key associated with this symbol function object
-  for (const key in d3_symbols) {
-    if (
-      Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
-      d3_symbols[key as keyof typeof d3_symbols] === sym &&
-      key.match(/symbol[A-Z]/)
-    ) return key.substring(6)
-  }
-}) as D3SymbolName[]
+]
+  .map((sym) => {
+    // Attempt to find the key associated with this symbol function object
+    for (const key in d3_symbols) {
+      if (
+        Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
+        d3_symbols[key as keyof typeof d3_symbols] === sym &&
+        key.match(/symbol[A-Z]/)
+      ) return key.substring(6)
+    }
+    return undefined // Explicitly return undefined when no match found
+  })
+  .filter(Boolean) as D3SymbolName[]
 
 export const symbol_map = Object.fromEntries(
   symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),

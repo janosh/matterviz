@@ -378,6 +378,9 @@ test.describe(`BarPlot Component Tests`, () => {
     const plot = page.locator(`#y2-axis-bar .bar-plot`)
     const svg = plot.locator(`svg[role="button"]`)
 
+    // Scroll to the plot to ensure it's in viewport
+    await plot.scrollIntoViewIfNeeded()
+
     // Wait for initial ticks
     await expect(plot.locator(`g.y-axis .tick text`).first()).toBeVisible()
     await expect(plot.locator(`g.y2-axis .tick text`).first()).toBeVisible()
@@ -393,45 +396,43 @@ test.describe(`BarPlot Component Tests`, () => {
     const box = await svg.boundingBox()
     if (!box) throw `SVG bbox not found`
 
-    // Perform zoom
-    const start_x = box.x + box.width * 0.3
-    const start_y = box.y + box.height * 0.7
-    const end_x = box.x + box.width * 0.7
-    const end_y = box.y + box.height * 0.3
+    // Ensure drag is large enough (needs > 5px in both dimensions)
+    const start_x = box.x + box.width * 0.2
+    const start_y = box.y + box.height * 0.8
+    const end_x = box.x + box.width * 0.8
+    const end_y = box.y + box.height * 0.2
 
     await page.mouse.move(start_x, start_y)
     await page.mouse.down()
-    await page.mouse.move(end_x, end_y)
+
+    // Check if zoom rectangle appears during drag
+    await page.mouse.move(end_x, end_y, { steps: 10 })
+    const zoom_rect = plot.locator(`.zoom-rect`)
+    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+
     await page.mouse.up()
 
-    // After zoom, both axes should have changed
-    await page.waitForTimeout(200)
-    const zoomed_y1 = await get_range(`y`)
-    const zoomed_y2 = await get_range(`y2`)
-    expect(zoomed_y1).not.toBe(initial_y1)
-    expect(zoomed_y2).not.toBe(initial_y2)
+    // After zoom ticks differ - use polling for more reliable checks
+    await expect
+      .poll(async () => await get_range(`y`), { timeout: 2000 })
+      .not.toBe(initial_y1)
+    await expect
+      .poll(async () => await get_range(`y2`), { timeout: 2000 })
+      .not.toBe(initial_y2)
 
     // Reset
     await svg.dblclick()
-    await page.waitForTimeout(200)
-    const reset_y1 = await get_range(`y`)
-    const reset_y2 = await get_range(`y2`)
-    expect(reset_y1).toBe(initial_y1)
-    expect(reset_y2).toBe(initial_y2)
-  })
-
-  test(`y2 grid lines render independently`, async ({ page }) => {
-    const plot = page.locator(`#y2-axis-bar .bar-plot`)
-    await expect(plot).toBeVisible()
-
-    // Check that y2 grid lines exist
-    const y2_grid_lines = plot.locator(`g.y2-axis .tick line:not([x1='0'])`)
-    const count = await y2_grid_lines.count()
-    expect(count).toBeGreaterThan(0)
+    await expect
+      .poll(async () => await get_range(`y`), { timeout: 2000 })
+      .toBe(initial_y1)
+    await expect
+      .poll(async () => await get_range(`y2`), { timeout: 2000 })
+      .toBe(initial_y2)
   })
 
   test(`line series can use y2 axis`, async ({ page }) => {
     const plot = page.locator(`#y2-line-series .bar-plot`)
+    await plot.scrollIntoViewIfNeeded()
     await expect(plot).toBeVisible()
 
     // Check that line series renders

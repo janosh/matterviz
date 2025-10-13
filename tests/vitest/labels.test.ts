@@ -1,4 +1,4 @@
-import { element_data } from '$lib'
+import { element_data } from '$lib/element'
 import {
   default_fmt,
   format_fractional,

@@ -2,9 +2,10 @@
 // Used by both main package and VSCode extension
 
 import { merge_nested } from '$lib'
+import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
+import type { Markers, Orientation } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 // SettingType interface with optional context to control where settings apply

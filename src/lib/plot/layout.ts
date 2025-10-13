@@ -131,14 +131,18 @@ export function find_best_plot_area(
   const { plot_width, plot_height, padding, margin = 10 } = config
   const { width = 120, height = 80 } = config.legend_size ?? {}
 
-  // Detection radius for point counting (legend diagonal / 2)
-  const radius = Math.hypot(width, height) / 2
-  const radius_sq = radius * radius
+  // For performance, subsample points if there are too many (>500)
+  const max_points_for_full_calc = 500
+  const sampled_points = points.length > max_points_for_full_calc
+    ? points.filter((_, idx) =>
+      idx % Math.ceil(points.length / max_points_for_full_calc) === 0
+    )
+    : points
 
   let best_position: PlacementPosition = `top-right`
-  let min_count = Infinity
+  let max_min_distance = -Infinity
 
-  // Try each position in priority order, pick the one with fewest nearby points
+  // Try each position in priority order, pick the one with maximum distance to nearest point
   for (const position of PLACEMENT_PRIORITY) {
     const { anchor } = PLACEMENT_ANCHORS[position]
 
@@ -152,21 +156,24 @@ export function find_best_plot_area(
     const y = base_y +
       (anchor.y === 0 ? margin : anchor.y === 1 ? -margin : 0)
 
-    // Calculate rectangle center for distance measurement
+    // Calculate legend center for distance measurement
     const center_x = x + width * (0.5 - anchor.x)
     const center_y = y + height * (0.5 - anchor.y)
 
-    // Count nearby points
-    let count = 0
-    for (const point of points) {
+    // Find minimum distance to any point (distance to nearest point)
+    let min_distance_sq = Infinity
+    for (const point of sampled_points) {
       const dx = point.x - center_x
       const dy = point.y - center_y
-      if (dx * dx + dy * dy <= radius_sq) count++
+      const dist_sq = dx * dx + dy * dy
+      if (dist_sq < min_distance_sq) {
+        min_distance_sq = dist_sq
+      }
     }
 
-    // Update best if this position is less crowded
-    if (count < min_count) {
-      min_count = count
+    // Update best if this position has greater distance to nearest point
+    if (min_distance_sq > max_min_distance) {
+      max_min_distance = min_distance_sq
       best_position = position
     }
   }

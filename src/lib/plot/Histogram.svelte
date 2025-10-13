@@ -67,7 +67,9 @@
     bar?: BarStyle
     selected_property?: string
     mode?: `single` | `overlay`
-    tooltip?: Snippet<[{ value: number; count: number; property: string }]>
+    tooltip?: Snippet<
+      [{ value: number; count: number; property: string; axis: `y1` | `y2` }]
+    >
     change?: (data: { value: number; count: number; property: string } | null) => void
     on_bar_click?: (
       data: {
@@ -593,7 +595,7 @@
             </text>
           </g>
         {/each}
-        {#if true}
+        {#if y_axis.label}
           {@const y_label_x = 15 + (y_axis.label_shift?.x ?? 0)}
           {@const y_label_y = (pad.t + height - pad.b) / 2 + (y_axis.label_shift?.y ?? 0)}
           <text
@@ -680,6 +682,20 @@
           <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
         {/if}
       {/if}
+      {#if display.y_zero_line && y2_series.length > 0 &&
+        (y2_axis.scale_type ?? `linear`) === `linear` &&
+        ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
+        {@const zero_y2 = scales.y2(0)}
+        {#if isFinite(zero_y2)}
+          <line
+            class="zero-line"
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={zero_y2}
+            y2={zero_y2}
+          />
+        {/if}
+      {/if}
 
       <!-- Histogram bars -->
       {#each histogram_data as
@@ -750,9 +766,11 @@
       bind:selected_property
       bind:x_axis
       bind:y_axis
+      bind:y2_axis
       bind:display
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
+      auto_y2_range={auto_ranges.y2}
       {series}
     />
   {/if}

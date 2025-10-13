@@ -54,7 +54,7 @@ You can make fat and skinny bars:
 
 ```svelte example code_above
 <script>
-  import { element_data } from 'matterviz'
+  import { element_data } from 'matterviz/element'
   import { ColorScaleSelect } from 'matterviz/plot'
   import { PeriodicTable, PropertySelect } from 'matterviz/periodic-table'
 
@@ -94,7 +94,7 @@ For more control, you can also manually add a `ColorBar` inside a custom `TableI
 
 ```svelte example
 <script>
-  import { element_data } from 'matterviz'
+  import { element_data } from 'matterviz/element'
   import { ColorBar } from 'matterviz/plot'
   import { PeriodicTable, TableInset } from 'matterviz/periodic-table'
 

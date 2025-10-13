@@ -8,7 +8,8 @@
     PointStyle,
     ScaleType,
   } from '$lib/plot'
-  import { ScatterPlot, symbol_names } from '$lib/plot'
+  import { ScatterPlot } from '$lib/plot'
+  import { symbol_names } from '$lib/labels'
 
   // === Basic Example Data ===
   const basic_data = {

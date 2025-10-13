@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { Line, symbol_names } from '$lib'
+  import { Line } from '$lib/plot'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
-  import { format_value } from '$lib/labels'
+  import { format_value, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
@@ -177,32 +177,8 @@
   let component_id = $state(`scatter-${crypto.randomUUID()}`)
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
-  // Process series to ensure single visible series are always on y1 (left) axis.
-  // This prevents the scenario where the left y-axis is empty while the right y-axis
-  // has the only visible series, which would create a confusing plot layout.
-  let processed_series = $derived.by((): DataSeries[] => {
-    if (series.length === 0) return []
-
-    // Count visible series (filter out null/undefined series)
-    const visible_series = series.filter((s) => s && (s.visible ?? true))
-
-    // If only one series is visible, ensure it's on y1 axis
-    if (visible_series.length === 1) {
-      return series.map((s) => {
-        if (s && (s.visible ?? true) && s.y_axis === `y2`) {
-          // Reassign single visible series from y2 to y1
-          return { ...s, y_axis: `y1` as const }
-        }
-        return s
-      })
-    }
-
-    // For multiple visible series, keep original assignments
-    return series
-  })
-
   // Assign stable IDs to series for keying
-  let series_with_ids = $derived(processed_series.map((s, idx) => {
+  let series_with_ids = $derived(series.map((s, idx) => {
     if (!s || typeof s !== `object`) return s
     // Use series.id if provided, otherwise fall back to index
     // prevents re-mounts when series are reordered if stable IDs are provided
@@ -613,10 +589,10 @@
         let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
         if (
           Array.isArray(symbol_names) &&
-          typeof first_point_style.shape === `string` &&
-          symbol_names.includes(first_point_style.shape as D3SymbolName)
+          typeof first_point_style.symbol_type === `string` &&
+          symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
         ) {
-          final_shape = first_point_style.shape as D3SymbolName
+          final_shape = first_point_style.symbol_type as D3SymbolName
         }
         display_style.symbol_type = final_shape
 
@@ -1489,6 +1465,19 @@
             x2={width - pad.r}
             y1={zero_y_pos}
             y2={zero_y_pos}
+          />
+        {/if}
+      {/if}
+      {#if display.y_zero_line && y2_points.length > 0 &&
+        y2_axis.scale_type === `linear` && y2_min <= 0 && y2_max >= 0}
+        {@const zero_y2_pos = y2_scale_fn(0)}
+        {#if isFinite(zero_y2_pos)}
+          <line
+            class="zero-line"
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={zero_y2_pos}
+            y2={zero_y2_pos}
           />
         {/if}
       {/if}

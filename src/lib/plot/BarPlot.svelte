@@ -111,6 +111,7 @@
     const calc_y_range = (
       series_list: typeof visible_series,
       y_limit: typeof y_lim,
+      scale_type: string,
     ) => {
       let points = series_list.flatMap((s) =>
         s.x.map((x_val, idx) => ({ x: x_val, y: s.y[idx] }))
@@ -155,19 +156,22 @@
         points,
         (p) => p.y,
         y_limit,
-        `linear`,
+        scale_type,
         range_padding,
         false,
       )
 
       // For bar plots, ensure the value axis starts at 0 unless there are negative values
-      const has_negative = points.some((p) => p.y < 0)
-      const has_positive = points.some((p) => p.y > 0)
+      // Only apply zero-clamping for linear scales
+      if (scale_type === `linear`) {
+        const has_negative = points.some((p) => p.y < 0)
+        const has_positive = points.some((p) => p.y > 0)
 
-      // Only adjust if no explicit y_lim is set
-      if (y_limit?.[0] == null && y_limit?.[1] == null) {
-        if (has_positive && !has_negative) y_range = [0, y_range[1]]
-        else if (has_negative && !has_positive) y_range = [y_range[0], 0]
+        // Only adjust if no explicit y_lim is set
+        if (y_limit?.[0] == null && y_limit?.[1] == null) {
+          if (has_positive && !has_negative) y_range = [0, y_range[1]]
+          else if (has_negative && !has_positive) y_range = [y_range[0], 0]
+        }
       }
 
       return y_range
@@ -178,19 +182,20 @@
       s.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
 
+    const x_scale_type = x_axis.scale_type ?? `linear`
     const x_range = all_x_points.length
       ? get_nice_data_range(
         all_x_points,
         (p) => p.x,
         x_lim,
-        `linear`,
+        x_scale_type,
         range_padding,
         x_axis.format?.startsWith(`%`) || false,
       )
       : ([0, 1] as [number, number])
 
-    const y1_range = calc_y_range(y1_series, y_lim)
-    const y2_range = calc_y_range(y2_series, y2_lim)
+    const y1_range = calc_y_range(y1_series, y_lim, y_axis.scale_type ?? `linear`)
+    const y2_range = calc_y_range(y2_series, y2_lim, y2_axis.scale_type ?? `linear`)
 
     // Map data ranges to axis ranges depending on orientation
     return orientation === `horizontal`
@@ -759,6 +764,20 @@
           {@const zy = scales.y(0)}
           {#if isFinite(zy)}
             <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
+          {/if}
+        {/if}
+        {#if display.y_zero_line && y2_series.length > 0 &&
+          (y2_axis.scale_type ?? `linear`) === `linear` &&
+          ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
+          {@const zero_y2 = scales.y2(0)}
+          {#if isFinite(zero_y2)}
+            <line
+              class="zero-line"
+              x1={pad.l}
+              x2={width - pad.r}
+              y1={zero_y2}
+              y2={zero_y2}
+            />
           {/if}
         {/if}
 

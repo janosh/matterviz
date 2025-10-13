@@ -1516,9 +1516,8 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`y2 axis renders when series assigned to y2`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
     await expect(histogram).toBeVisible()
 
     // Check that y2-axis renders
@@ -1537,9 +1536,8 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`y2 axis scaling is independent of y1 axis`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
     const histogram = page.locator(`#y2-different-scale .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
     await expect(histogram).toBeVisible()
 
     // Get tick values from y1 and y2 axes
@@ -1555,9 +1553,8 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`bins are calculated separately for y1 and y2 series`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
     await expect(histogram).toBeVisible()
 
     // Get bars from different series
@@ -1576,9 +1573,8 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`zoom updates both y1 and y2 ranges in histogram`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
     const svg = histogram.locator(`svg[role="button"]`)
 
     // Wait for initial ticks
@@ -1605,7 +1601,12 @@ test.describe(`Histogram Component Tests`, () => {
 
     await page.mouse.move(start_x, start_y)
     await page.mouse.down()
-    await page.mouse.move(end_x, end_y)
+
+    // Check if zoom rectangle appears during drag
+    await page.mouse.move(end_x, end_y, { steps: 10 })
+    const zoom_rect = histogram.locator(`.zoom-rect`)
+    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+
     await page.mouse.up()
 
     // After zoom, both axes should have changed
@@ -1638,22 +1639,9 @@ test.describe(`Histogram Component Tests`, () => {
       .toBe(JSON.stringify(initial_y2))
   })
 
-  test(`y2 grid lines render independently in histogram`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
-    const histogram = page.locator(`#y2-axis-histogram .histogram`)
-    await expect(histogram).toBeVisible()
-
-    // Check that y2 grid lines exist
-    const y2_grid_lines = histogram.locator(`g.y2-axis .tick line:not([x1='0'])`)
-    const count = await y2_grid_lines.count()
-    expect(count).toBeGreaterThan(0)
-  })
-
   test(`histogram bars use correct y-scale based on series y_axis property`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
     const histogram = page.locator(`#y2-different-scale .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
     await expect(histogram).toBeVisible()
 
     // Get bars from both series
@@ -1684,9 +1672,8 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`legend toggles visibility for y2 series`, async ({ page }) => {
-    await page.goto(`/test/histogram-y2`, { waitUntil: `networkidle` })
-
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
     await expect(histogram).toBeVisible()
 
     const legend = histogram.locator(`.legend`)

@@ -14,9 +14,11 @@
     selected_property = $bindable(``),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
+    auto_y2_range = [0, 1],
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
@@ -30,9 +32,11 @@
     // Grouped configs
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    y2_axis?: AxisConfig
     display?: DisplayConfig
     show_controls?: boolean
     controls_open?: boolean
+    auto_y2_range?: [number, number]
   } = $props()
 
   // Initialize bar styles with defaults (runs once)
@@ -49,7 +53,9 @@
   bind:controls_open
   bind:x_axis
   bind:y_axis
+  bind:y2_axis
   bind:display
+  {auto_y2_range}
   {...rest}
 >
   <SettingsSection
