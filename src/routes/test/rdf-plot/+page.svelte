@@ -58,8 +58,8 @@
 <RdfPlot
   id="single-pattern"
   patterns={synthetic_pattern}
-  x_label="r (Å)"
-  y_label="g(r)"
+  x_axis={{ label: `r (Å)` }}
+  y_axis={{ label: `g(r)` }}
   cutoff={10}
   n_bins={50}
   style="height: 360px"
@@ -69,8 +69,8 @@
 <RdfPlot
   id="multi-pattern"
   patterns={synthetic_patterns}
-  x_label="r (Å)"
-  y_label="g(r)"
+  x_axis={{ label: `r (Å)` }}
+  y_axis={{ label: `g(r)` }}
   cutoff={10}
   n_bins={50}
   style="height: 360px"

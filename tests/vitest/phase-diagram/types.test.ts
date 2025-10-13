@@ -1,3 +1,4 @@
+import type { PhaseEntry } from '$lib/phase-diagram/types'
 import {
   get_arity,
   is_binary_entry,
@@ -10,7 +11,6 @@ import {
   is_septenary_entry,
   is_ternary_entry,
   is_unary_entry,
-  PhaseEntry,
 } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 

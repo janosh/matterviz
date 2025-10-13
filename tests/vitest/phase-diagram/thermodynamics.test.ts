@@ -136,12 +136,12 @@ describe(`energies: hull model and e_above_hull evaluation`, () => {
 
 describe(`energies: process_pd_entries categorization and element extraction`, () => {
   test(`splits stable/unstable and extracts elements + el_refs`, () => {
-    const entries: PhaseEntry[] = [
+    const entries = [
       { composition: { A: 1 }, energy: 0, e_above_hull: 0 },
       { composition: { B: 2 }, energy: 0, e_above_hull: 0 },
       { composition: { A: 1, B: 1 }, energy: -1, e_above_hull: 0.05 },
       { composition: { A: 1, B: 2 }, energy: -2, e_above_hull: 0 },
-    ]
+    ] as unknown as PhaseEntry[]
     const out = process_pd_entries(entries)
     expect(out.elements.sort()).toEqual([`A`, `B`])
     expect(out.stable_entries.length).toBe(3)
@@ -283,14 +283,14 @@ describe(`get_phase_diagram_stats: stability handling`, () => {
       expected_stable: 0,
     },
   ])(`$name`, ({ opts, expected_stable }) => {
-    const entries: PhaseEntry[] = [
+    const entries = [
       {
         composition: { Li: 1 },
         energy: 0,
         is_stable: opts.is_stable,
         e_above_hull: opts.e_above_hull,
       },
-    ]
+    ] as PhaseEntry[]
     const stats = get_phase_diagram_stats(entries, [`Li`], 3)
     expect(stats).not.toBeNull()
     expect(stats?.stable ?? -1).toBe(expected_stable)
@@ -378,7 +378,9 @@ describe(`edge cases and error handling`, () => {
 
   test(`process_pd_entries handles entries without e_above_hull`, () => {
     const entries: PhaseEntry[] = [
-      { composition: { Li: 1 }, energy: 0 }, // No e_above_hull
+      // @ts-expect-error: missing e_above_hull
+      { composition: { Li: 1 }, energy: 0 },
+      // @ts-expect-error: composition
       { composition: { O: 2 }, energy: 0, is_stable: true },
     ]
     const result = process_pd_entries(entries)
@@ -393,7 +395,8 @@ describe(`edge cases and error handling`, () => {
 
   test(`get_phase_diagram_stats handles entries without energies`, () => {
     const entries: PhaseEntry[] = [
-      { composition: { Li: 1 }, energy: 0 }, // No e_form_per_atom or energy_per_atom
+      // @ts-expect-error: missing energy_per_atom
+      { composition: { Li: 1 }, energy: 0 },
     ]
     const stats = get_phase_diagram_stats(entries, [`Li`], 3)
     expect(stats).not.toBeNull()
@@ -408,9 +411,7 @@ describe(`edge cases and error handling`, () => {
   })
 
   test(`compute_e_form_per_atom handles missing energy field`, () => {
-    const entry_no_energy: PhaseEntry = {
-      composition: { Li: 1 },
-    }
+    const entry_no_energy = { composition: { Li: 1 } } as PhaseEntry
     const refs = { Li: entry({ Li: 1 }, -1.0) }
     const result = compute_e_form_per_atom(entry_no_energy, refs)
     // Should handle gracefully, likely returning null or using default

@@ -1,5 +1,4 @@
 import * as math from '$lib/math'
-import type { ScaleType } from '$lib/plot/scales'
 import {
   calculate_domain,
   create_scale,
@@ -8,6 +7,7 @@ import {
   generate_ticks,
   get_nice_data_range,
 } from '$lib/plot/scales'
+import type { ScaleType } from '$lib/plot/types'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test } from 'vitest'
 

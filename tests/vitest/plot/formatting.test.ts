@@ -67,12 +67,7 @@ describe(`formatting utility functions`, () => {
     ])(
       `formats $value with formatter "$formatter" as "$expected"`,
       ({ value, formatter, expected }) => {
-        if (formatter === undefined) {
-          // @ts-expect-error Testing edge case
-          expect(format_value(value, formatter)).toBe(expected)
-        } else {
-          expect(format_value(value, formatter)).toBe(expected)
-        }
+        expect(format_value(value, formatter)).toBe(expected)
       },
     )
 

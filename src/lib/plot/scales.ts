@@ -172,7 +172,7 @@ export function get_nice_data_range(
     : scaleLinear().domain([data_min, data_max])
 
   scale.nice()
-  return scale.domain()
+  return scale.domain() as [number, number]
 }
 
 // Generate logarithmic ticks (from ScatterPlot)

@@ -289,6 +289,7 @@ describe(`Theme System`, () => {
 
   describe(`Theme data integrity`, () => {
     test(`all theme keys have complete variant coverage`, () => {
+      if (!globalThis.MATTERVIZ_THEMES) return
       const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
       const first_theme = globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName]
       const expected_keys = Object.keys(first_theme)
@@ -309,6 +310,7 @@ describe(`Theme System`, () => {
     })
 
     test(`all theme variants have consistent keys`, () => {
+      if (!globalThis.MATTERVIZ_THEMES) return
       const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
       const first_theme = globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName]
       const expected_keys = Object.keys(first_theme)

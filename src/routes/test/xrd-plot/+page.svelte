@@ -50,8 +50,8 @@
     patterns={single_entries}
     annotate_peaks={3}
     hkl_format="compact"
-    x_label="2θ (degrees)"
-    y_label="Intensity (a.u.)"
+    x_axis={{ label: `2θ (degrees)` }}
+    y_axis={{ label: `Intensity (a.u.)` }}
     style="height: 360px"
   />
 </section>
@@ -62,8 +62,8 @@
     patterns={multi_entries}
     annotate_peaks={0.5}
     hkl_format="full"
-    x_label="2θ (degrees)"
-    y_label="Intensity (a.u.)"
+    x_axis={{ label: `2θ (degrees)` }}
+    y_axis={{ label: `Intensity (a.u.)` }}
     style="height: 360px"
   />
 </section>
