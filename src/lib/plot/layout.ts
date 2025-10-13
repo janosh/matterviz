@@ -1,5 +1,5 @@
+import { format_value } from '$lib/labels'
 import type { Sides } from '$lib/plot'
-import { format_value } from './formatting'
 
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null

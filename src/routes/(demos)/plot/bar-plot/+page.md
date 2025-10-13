@@ -75,9 +75,9 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 />
 ```
 
-## Reaction Kinetics with Temperature Profile
+## Reaction Kinetics with Dual Y-Axes
 
-Combine bars and lines to show product formation alongside process parameters. Lines render as absolute values (perfect for trends/targets):
+Combine bars and lines with **dual y-axes** to show product formation alongside temperature. Temperature uses the right y2-axis with independent scaling:
 
 ```svelte example
 <script>
@@ -102,6 +102,7 @@ Combine bars and lines to show product formation alongside process parameters. L
       label: `Temperature (°C)`,
       color: `#ff6b6b`,
       render_mode: `line`,
+      y_axis: `y2`,
       line_style: {
         stroke_width: 3,
         line_dash: `5,5`,
@@ -110,7 +111,7 @@ Combine bars and lines to show product formation alongside process parameters. L
     {
       x: [0, 10, 20, 30, 40, 50, 60],
       y: [0, 20, 47, 77, 99, 115, 124],
-      label: `Total Yield`,
+      label: `Total Yield (mol)`,
       color: `#ffd43b`,
       render_mode: `line`,
       line_style: {
@@ -124,8 +125,57 @@ Combine bars and lines to show product formation alongside process parameters. L
   series={reaction_data}
   mode="stacked"
   x_axis={{ label: `Time (minutes)` }}
-  y_axis={{ label: `Amount / Temperature` }}
+  y_axis={{ label: `Product Amount (mol)` }}
+  y2_axis={{ label: `Temperature (°C)`, format: `.0f` }}
   style="height: 450px"
+/>
+```
+
+## Sales vs Profit Margin (Dual Y-Axes)
+
+A classic business use case: comparing raw sales (bars, left axis) with profit margins (line, right axis) that have different scales and units:
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const quarterly_data = [
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      y: [125000, 142000, 158000, 171000, 165000, 189000, 203000, 218000],
+      label: `Sales Revenue ($)`,
+      color: `#4c6ef5`,
+      labels: [
+        `Q1-22`,
+        `Q2-22`,
+        `Q3-22`,
+        `Q4-22`,
+        `Q1-23`,
+        `Q2-23`,
+        `Q3-23`,
+        `Q4-23`,
+      ],
+    },
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      y: [12.5, 15.2, 18.3, 14.8, 13.1, 19.5, 21.2, 23.8],
+      label: `Profit Margin (%)`,
+      color: `#51cf66`,
+      render_mode: `line`,
+      y_axis: `y2`,
+      line_style: {
+        stroke_width: 3,
+      },
+    },
+  ]
+</script>
+
+<BarPlot
+  series={quarterly_data}
+  x_axis={{ label: `Quarter` }}
+  y_axis={{ label: `Revenue ($)`, format: `$,.0f` }}
+  y2_axis={{ label: `Margin (%)`, format: `.1f` }}
+  style="height: 400px"
 />
 ```
 
@@ -306,15 +356,15 @@ Bar plots handle negative values automatically and display zero lines for refere
 />
 ```
 
-## Material Properties Over Time
+## Material Properties Over Time with Dual Axes
 
-Custom formatting, tick control, and axis configuration for publication-quality plots:
+Custom formatting, tick control, and **dual y-axes** showing both material counts and computational performance metrics:
 
 ```svelte example
 <script>
   import { BarPlot } from 'matterviz'
 
-  const yearly_discoveries = [
+  const yearly_data = [
     {
       x: [1990, 1995, 2000, 2005, 2010, 2015, 2020],
       y: [120000, 185000, 275000, 420000, 680000, 1050000, 1600000],
@@ -323,10 +373,11 @@ Custom formatting, tick control, and axis configuration for publication-quality 
     },
     {
       x: [1990, 1995, 2000, 2005, 2010, 2015, 2020],
-      y: [80000, 150000, 250000, 400000, 650000, 1000000, 1500000],
-      label: `Target Growth`,
+      y: [0.5, 2.3, 8.5, 28, 95, 340, 1200],
+      label: `Compute Power (TFLOPS)`,
       color: `#ff6b6b`,
       render_mode: `line`,
+      y_axis: `y2`,
       line_style: {
         stroke_width: 3,
         line_dash: `6,3`,
@@ -336,6 +387,7 @@ Custom formatting, tick control, and axis configuration for publication-quality 
 
   let x_axis = $state({ label: `Year`, format: `d`, ticks: 7 })
   let y_axis = $state({ label: `Number of Materials`, format: `.2s`, ticks: 6 })
+  let y2_axis = $state({ label: `Compute Power (TFLOPS)`, format: `.0f`, ticks: 6 })
 </script>
 
 <div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">
@@ -347,7 +399,7 @@ Custom formatting, tick control, and axis configuration for publication-quality 
     </select>
   </label>
   <label>
-    Y Format:
+    Y1 Format:
     <select bind:value={y_axis.format}>
       <option value=".2s">Short (1.6M)</option>
       <option value=",.0f">Full (1,600,000)</option>
@@ -355,16 +407,26 @@ Custom formatting, tick control, and axis configuration for publication-quality 
     </select>
   </label>
   <label>
+    Y2 Format:
+    <select bind:value={y2_axis.format}>
+      <option value=".0f">Integer (1200)</option>
+      <option value=".2s">Short (1.2k)</option>
+      <option value=".1f">Decimal (1200.0)</option>
+    </select>
+  </label>
+  <label>
     X Ticks: {x_axis.ticks}
     <input type="range" bind:value={x_axis.ticks} min="3" max="10" style="width: 100px">
   </label>
-  <label>
-    Y Ticks: {y_axis.ticks}
-    <input type="range" bind:value={y_axis.ticks} min="3" max="10" style="width: 100px">
-  </label>
 </div>
 
-<BarPlot series={yearly_discoveries} bind:x_axis bind:y_axis style="height: 400px" />
+<BarPlot
+  series={yearly_data}
+  bind:x_axis
+  bind:y_axis
+  bind:y2_axis
+  style="height: 400px"
+/>
 ```
 
 ## Spectroscopy Data with Zoom

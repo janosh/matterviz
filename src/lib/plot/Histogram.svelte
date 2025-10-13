@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_value } from '$lib/labels'
   import type { AxisConfig, BarStyle } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import type { BasePlotProps, DataSeries, DisplayConfig } from '$lib/plot/types'
@@ -11,7 +12,6 @@
     filter_visible_series,
     prepare_legend_data,
   } from './data-transform'
-  import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import { create_scale, generate_ticks, get_nice_data_range } from './scales'
@@ -22,9 +22,11 @@
     series = $bindable([]),
     x_axis = $bindable({ label: `Value`, format: `.2~s`, scale_type: `linear` }),
     y_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
+    y2_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
     display = $bindable(DEFAULTS.histogram.display),
     x_lim = [null, null],
     y_lim = [null, null],
+    y2_lim = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
@@ -43,12 +45,14 @@
     on_series_toggle = () => {},
     controls_toggle_props,
     controls_pane_props,
+    color_axis_labels: _color_axis_labels = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
     series: DataSeries[]
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    y2_axis?: AxisConfig
     display?: DisplayConfig
     hovered?: boolean
     show_controls?: boolean
@@ -76,10 +80,21 @@
         | null,
     ) => void
     on_series_toggle?: (series_idx: number) => void
+    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null }
   } = $props()
 
   // Initialize bar styles with defaults (runs once)
   bar = { ...DEFAULTS.histogram.bar, ...bar }
+
+  // Initialize y2_axis defaults
+  $effect(() => {
+    y2_axis.format ??= `d`
+    y2_axis.scale_type ??= `linear`
+    y2_axis.ticks ??= 5
+    y2_axis.label_shift ??= { y: 60 }
+    y2_axis.tick_label_shift ??= { x: 8, y: 0 }
+    y2_axis.lim ??= [null, null]
+  })
 
   // Core state
   let [width, height] = $state([0, 0])
@@ -100,6 +115,10 @@
       : filter_visible_series(series),
   )
 
+  // Separate series by y-axis
+  let y1_series = $derived(selected_series.filter((s) => (s.y_axis ?? `y1`) === `y1`))
+  let y2_series = $derived(selected_series.filter((s) => s.y_axis === `y2`))
+
   let auto_ranges = $derived.by(() => {
     const all_values = selected_series.flatMap((s) => s.y)
     const auto_x = get_nice_data_range(
@@ -110,31 +129,52 @@
       range_padding,
       false,
     )
-    if (!selected_series.length) {
-      const y = [y_axis.scale_type === `log` ? 1 : 0, 1] as [number, number]
-      return { x: auto_x, y }
+
+    // Calculate y-range for a specific set of series
+    const calc_y_range = (
+      series_list: typeof selected_series,
+      y_limit: typeof y_lim,
+      scale_type: `linear` | `log`,
+    ) => {
+      if (!series_list.length) {
+        const fallback = scale_type === `log` ? 1 : 0
+        return [fallback, 1] as [number, number]
+      }
+      const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
+      const max_count = Math.max(
+        0,
+        ...series_list.map((s) => max(hist(s.y), (d) => d.length) || 0),
+      )
+      const [y0, y1] = get_nice_data_range(
+        [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
+        (p) => p.x,
+        y_limit,
+        scale_type,
+        range_padding,
+        false,
+      )
+      const y_min = scale_type === `log` ? Math.max(1, y0) : Math.max(0, y0)
+      return [y_min, y1] as [number, number]
     }
-    const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
-    const max_count = Math.max(
-      0,
-      ...selected_series.map((s) => max(hist(s.y), (d) => d.length) || 0),
-    )
-    const [y0, y1] = get_nice_data_range(
-      [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
-      (p) => p.x,
-      y_lim,
-      y_axis.scale_type ?? `linear`,
-      range_padding,
-      false,
-    )
-    const y_min = y_axis.scale_type === `log` ? Math.max(1, y0) : Math.max(0, y0)
-    return { x: auto_x, y: [y_min, y1] as [number, number] }
+
+    const y1_range = calc_y_range(y1_series, y_lim, y_axis.scale_type ?? `linear`)
+    const y2_range = calc_y_range(y2_series, y2_lim, y2_axis.scale_type ?? `linear`)
+
+    return { x: auto_x, y: y1_range, y2: y2_range }
   })
 
   // Initialize ranges
   let ranges = $state({
-    initial: { x: [0, 1] as [number, number], y: [0, 1] as [number, number] },
-    current: { x: [0, 1] as [number, number], y: [0, 1] as [number, number] },
+    initial: {
+      x: [0, 1] as [number, number],
+      y: [0, 1] as [number, number],
+      y2: [0, 1] as [number, number],
+    },
+    current: {
+      x: [0, 1] as [number, number],
+      y: [0, 1] as [number, number],
+      y2: [0, 1] as [number, number],
+    },
   })
 
   $effect(() => {
@@ -145,6 +185,9 @@
     const new_y: [number, number] = y_axis.range
       ? [y_axis.range[0] ?? auto_ranges.y[0], y_axis.range[1] ?? auto_ranges.y[1]]
       : auto_ranges.y
+    const new_y2: [number, number] = y2_axis.range
+      ? [y2_axis.range[0] ?? auto_ranges.y2[0], y2_axis.range[1] ?? auto_ranges.y2[1]]
+      : auto_ranges.y2
 
     const x_changed =
       (x_axis.range !== undefined) !== (ranges.initial.x === auto_ranges.x) ||
@@ -152,9 +195,13 @@
     const y_changed =
       (y_axis.range !== undefined) !== (ranges.initial.y === auto_ranges.y) ||
       new_y[0] !== ranges.initial.y[0] || new_y[1] !== ranges.initial.y[1]
+    const y2_changed =
+      (y2_axis.range !== undefined) !== (ranges.initial.y2 === auto_ranges.y2) ||
+      new_y2[0] !== ranges.initial.y2[0] || new_y2[1] !== ranges.initial.y2[1]
 
     if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
+    if (y2_changed) [ranges.initial.y2, ranges.current.y2] = [new_y2, new_y2]
   })
 
   // Layout: dynamic padding based on tick label widths
@@ -191,6 +238,11 @@
       ranges.current.y,
       [height - pad.b, pad.t],
     ),
+    y2: create_scale(
+      y2_axis.scale_type ?? `linear`,
+      ranges.current.y2,
+      [height - pad.b, pad.t],
+    ),
   })
 
   let histogram_data = $derived.by(() => {
@@ -200,6 +252,7 @@
       .thresholds(bins)
     return selected_series.map((series_data, series_idx) => {
       const bins_arr = hist_generator(series_data.y)
+      const use_y2 = series_data.y_axis === `y2`
       return {
         id: series_data.id ?? series_idx,
         series_idx,
@@ -209,6 +262,8 @@
           : extract_series_color(series_data),
         bins: bins_arr,
         max_count: max(bins_arr, (d) => d.length) || 0,
+        y_axis: series_data.y_axis,
+        y_scale: use_y2 ? scales.y2 : scales.y,
       }
     })
   })
@@ -232,6 +287,15 @@
         { default_count: 6 },
       )
       : [],
+    y2: width && height && y2_series.length > 0
+      ? generate_ticks(
+        ranges.current.y2,
+        y2_axis.scale_type ?? `linear`,
+        y2_axis.ticks,
+        scales.y2,
+        { default_count: 6 },
+      )
+      : [],
   })
 
   let legend_data = $derived(prepare_legend_data(series))
@@ -242,11 +306,11 @@
 
     const points: { x: number; y: number }[] = []
 
-    for (const { bins } of histogram_data) {
+    for (const { bins, y_scale } of histogram_data) {
       for (const bin of bins) {
         if (bin.length > 0) {
           const bar_x = scales.x((bin.x0! + bin.x1!) / 2)
-          const bar_y = scales.y(bin.length)
+          const bar_y = y_scale(bin.length)
           if (isFinite(bar_x) && isFinite(bar_y)) {
             // Add multiple points for taller bars to increase their weight
             const weight = Math.ceil(bin.length / 10) // More points for taller bars
@@ -280,6 +344,8 @@
     const end_x = scales.x.invert(drag_state.current.x)
     const start_y = scales.y.invert(drag_state.start.y)
     const end_y = scales.y.invert(drag_state.current.y)
+    const start_y2 = scales.y2.invert(drag_state.start.y)
+    const end_y2 = scales.y2.invert(drag_state.current.y)
 
     if (typeof start_x === `number` && typeof end_x === `number`) {
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
@@ -287,6 +353,7 @@
       if (dx > 5 && dy > 5) {
         ranges.current.x = [Math.min(start_x, end_x), Math.max(start_x, end_x)]
         ranges.current.y = [Math.min(start_y, end_y), Math.max(start_y, end_y)]
+        ranges.current.y2 = [Math.min(start_y2, end_y2), Math.max(start_y2, end_y2)]
       }
     }
   }
@@ -321,7 +388,11 @@
   }
 
   function handle_double_click() {
-    ranges.current = { x: [...ranges.initial.x], y: [...ranges.initial.y] }
+    ranges.current = {
+      x: [...ranges.initial.x],
+      y: [...ranges.initial.y],
+      y2: [...ranges.initial.y2],
+    }
   }
 
   function handle_mouse_move(
@@ -397,8 +468,8 @@
             {#if tooltip}
               {@render tooltip(hover_info)}
             {:else}
-              <div>Value: {format_value(hover_info.value, x_axis.format)}</div>
-              <div>Count: {hover_info.count}</div>
+              <div>Value: {format_value(hover_info.value, x_axis.format || `.3~s`)}</div>
+              <div>Count: {format_value(hover_info.count, `.3~s`)}</div>
               {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
             {/if}
           </div>
@@ -449,7 +520,7 @@
           text-anchor="middle"
           fill="var(--text-color)"
         >
-          {x_axis.label}
+          {@html x_axis.label}
         </text>
       </g>
 
@@ -497,22 +568,68 @@
             fill="var(--text-color)"
             transform="rotate(-90, {y_label_x}, {y_label_y})"
           >
-            {y_axis.label}
+            {@html y_axis.label}
           </text>
         {/if}
       </g>
 
-      <!-- Zero lines -->
-      {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-        {@const zero_x = scales.x(0)}
-        {#if isFinite(zero_x)}
+      <!-- Y2-axis (Right) -->
+      {#if y2_series.length > 0}
+        <g class="y2-axis">
           <line
-            class="zero-line"
-            x1={zero_x}
-            x2={zero_x}
+            x1={width - pad.r}
+            x2={width - pad.r}
             y1={pad.t}
             y2={height - pad.b}
+            stroke="var(--border-color, gray)"
+            stroke-width="1"
           />
+          {#each ticks.y2 as tick (tick)}
+            {@const tick_y = scales.y2(tick as number)}
+            <g class="tick" transform="translate({width - pad.r}, {tick_y})">
+              {#if display.y2_grid}
+                <line
+                  x1={-(width - pad.l - pad.r)}
+                  x2="0"
+                  stroke="var(--border-color, gray)"
+                  stroke-dasharray="4"
+                  stroke-width="1"
+                  {...y2_axis.grid_style ?? {}}
+                />
+              {/if}
+              <line x1="0" x2="5" stroke="var(--border-color, gray)" stroke-width="1" />
+              <text
+                x="10"
+                text-anchor="start"
+                dominant-baseline="central"
+                fill="var(--text-color)"
+              >
+                {format_value(tick, y2_axis.format)}
+              </text>
+            </g>
+          {/each}
+          {#if y2_axis.label}
+            {@const y2_label_x = width - pad.r + 50 + (y2_axis.label_shift?.x ?? 0)}
+            {@const y2_label_y = (pad.t + height - pad.b) / 2 +
+          (y2_axis.label_shift?.y ?? 0)}
+            <text
+              x={y2_label_x}
+              y={y2_label_y}
+              text-anchor="middle"
+              fill="var(--text-color)"
+              transform="rotate(-90, {y2_label_x}, {y2_label_y})"
+            >
+              {@html y2_axis.label}
+            </text>
+          {/if}
+        </g>
+      {/if}
+
+      <!-- Zero lines -->
+      {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+        {@const x0 = scales.x(0)}
+        {#if isFinite(x0)}
+          <line class="zero-line" x1={x0} x2={x0} y1={pad.t} y2={height - pad.b} />
         {/if}
       {/if}
       {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
@@ -524,13 +641,17 @@
       {/if}
 
       <!-- Histogram bars -->
-      {#each histogram_data as { id, bins, color, label }, series_idx (id ?? series_idx)}
+      {#each histogram_data as
+        { id, bins, color, label, y_scale },
+        series_idx
+        (id ?? series_idx)
+      }
         <g class="histogram-series" data-series-idx={series_idx}>
           {#each bins as bin, bin_idx (bin_idx)}
             {@const bar_x = scales.x(bin.x0!)}
             {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
-            {@const bar_height = Math.max(0, (height - pad.b) - scales.y(bin.length))}
-            {@const bar_y = scales.y(bin.length)}
+            {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
+            {@const bar_y = y_scale(bin.length)}
             {@const value = (bin.x0! + bin.x1!) / 2}
             {#if bar_height > 0}
               <rect

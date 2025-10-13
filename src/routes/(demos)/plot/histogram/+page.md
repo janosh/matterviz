@@ -65,7 +65,50 @@
 <div style={info_style}>{click_info}</div>
 ```
 
-## Multiple Histograms Overlaid
+## Dual Y-Axes for Different Sample Sizes
+
+When comparing distributions with vastly different sample sizes, use **dual y-axes** for independent scaling. This example shows test scores from two cohorts with 1000 vs 200 samples:
+
+```svelte example
+<script>
+  import { Histogram } from 'matterviz'
+  import { generate_normal } from '$site/plot-utils'
+
+  let series = $state([
+    {
+      y: generate_normal(1000, 75, 12),
+      label: `Main Cohort (n=1000)`,
+      line_style: { stroke: `steelblue` },
+    },
+    {
+      y: generate_normal(200, 82, 10),
+      label: `Control Group (n=200)`,
+      line_style: { stroke: `coral` },
+      y_axis: `y2`,
+    },
+  ])
+</script>
+
+<Histogram
+  {series}
+  mode="overlay"
+  bins={40}
+  x_axis={{ label: `Test Score` }}
+  y_axis={{ label: `Count (Main Cohort)` }}
+  y2_axis={{ label: `Count (Control)` }}
+  bar={{ opacity: 0.6 }}
+  style="height: 400px"
+>
+  {#snippet tooltip({ value, count, property })}
+    <strong>{property}</strong><br>
+    Score: {value.toFixed(1)}<br>Count: {count}
+  {/snippet}
+</Histogram>
+```
+
+## Multiple Histograms with Dual Y-Axes
+
+Compare distributions with vastly different scales using **dual y-axes**. Some distributions use the left axis, while others use the independent right y2-axis:
 
 ```svelte example
 <script>
@@ -73,15 +116,16 @@
   import { generate_normal, generate_exponential, generate_uniform, generate_gamma } from '$site/plot-utils'
 
   let x_axis = $state({scale_type: `linear`})
-  let y_axis = $state({scale_type: `linear`})
+  let y_axis = $state({scale_type: `linear`, label: `Count (Normal/Uniform)`})
+  let y2_axis = $state({scale_type: `linear`, label: `Count (Exp/Gamma)`})
   let display = $state({ x_grid: true, y_grid: true })
   let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
   let series = $state([
     { y: generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
-    { y: generate_exponential(1200, 0.3), label: `Exponential (λ=0.3)`, line_style: { stroke: `royalblue` } },
+    { y: generate_exponential(1200, 0.3), label: `Exponential (λ=0.3)`, line_style: { stroke: `royalblue` }, y_axis: `y2` },
     { y: generate_uniform(1200, 0, 15), label: `Uniform (0-15)`, line_style: { stroke: `mediumseagreen` } },
-    { y: generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` } },
+    { y: generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` }, y_axis: `y2` },
   ])
 
   function toggle_series(idx) {
@@ -103,19 +147,22 @@
   <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale}
     <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
   {/each}</label>
-  <label style="display: flex; gap: 5pt">Y: {#each [`linear`, `log`] as scale}
+  <label style="display: flex; gap: 5pt">Y1: {#each [`linear`, `log`] as scale}
     <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
   {/each}</label>
+  <label style="display: flex; gap: 5pt">Y2: {#each [`linear`, `log`] as scale}
+    <input type="radio" bind:group={y2_axis.scale_type} value={scale} />{scale}
+  {/each}</label>
 
-  <label><input type="checkbox" bind:checked={display.x_grid} />Show x grid</label>
-  <label><input type="checkbox" bind:checked={display.y_grid} />Show y grid</label>
+  <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
+  <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
 </div>
 
 {#each series as srs, idx}
   <label>
     <input type="checkbox" checked={srs.visible} onchange={() => toggle_series(idx)} />
     <span style="width: 16px; height: 16px; margin: 0 0.5em; background: {srs.line_style.stroke}"></span>
-    {srs.label}
+    {srs.label} {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
   </label>
 {/each}
 
@@ -126,6 +173,7 @@
   bind:bar
   bind:x_axis
   bind:y_axis
+  bind:y2_axis
   bind:display
   style="height: 450px; margin-block: 1em;"
 >

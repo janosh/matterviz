@@ -1,10 +1,10 @@
 import type DraggablePane from '$lib/DraggablePane.svelte'
+import type { D3SymbolName } from '$lib/labels'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type ColorBar from './ColorBar.svelte'
 import type PlotLegend from './PlotLegend.svelte'
-import type { D3SymbolName } from './formatting'
 import type { TicksOption } from './scales'
 
 // TODO restore: import { type TweenedOptions } from 'svelte/motion'
@@ -244,6 +244,8 @@ export interface BarSeries {
   metadata?: Record<string, unknown>[] | Record<string, unknown>
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
+  // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
+  y_axis?: `y1` | `y2`
   line_style?: {
     stroke_width?: number
     line_dash?: string

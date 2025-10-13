@@ -2,9 +2,9 @@
 // Used by both main package and VSCode extension
 
 import { merge_nested } from '$lib'
+import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
-import { symbol_names } from '$lib/plot/formatting'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 // SettingType interface with optional context to control where settings apply
@@ -265,6 +265,10 @@ const DISPLAY_CONFIG = {
   y_grid: {
     value: true,
     description: `Show Y-axis grid lines`,
+  },
+  y2_grid: {
+    value: false,
+    description: `Show Y2-axis grid lines`,
   },
   x_zero_line: {
     value: false,
