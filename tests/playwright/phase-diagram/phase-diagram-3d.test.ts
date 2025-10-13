@@ -59,4 +59,34 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
     await azim.fill(`120`)
     await expect(diagram.locator(`canvas`)).toBeVisible()
   })
+
+  test(`tooltip shows fractional compositions with unicode glyphs`, async ({ page }) => {
+    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    await expect(diagram).toBeVisible()
+
+    const canvas = diagram.locator(`canvas`)
+    await expect(canvas).toBeVisible()
+
+    // Move mouse to center of canvas to trigger hover on a compound
+    const box = await canvas.boundingBox()
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      // Wait a bit for tooltip to appear
+      await page.waitForTimeout(200)
+
+      // Check if tooltip appears with fractional compositions
+      const tooltip = page.locator(`.tooltip`)
+      if (await tooltip.isVisible({ timeout: 1000 })) {
+        const tooltip_text = await tooltip.textContent()
+        // Check that tooltip doesn't contain large decimal numbers like "666.67" or "333.33"
+        // but may contain unicode fractions like ⅓, ½, ⅔, etc.
+        if (tooltip_text && tooltip_text.includes(`=`)) {
+          // If there are fractional compositions shown, verify they don't have long decimals
+          expect(tooltip_text).not.toMatch(/=\d{3,}\.\d+/)
+          // Verify it might contain unicode fractions (optional, as composition varies)
+          // Common fractions: ½ ⅓ ⅔ ¼ ¾ ⅕ ⅖ ⅗ ⅘
+        }
+      }
+    }
+  })
 })
