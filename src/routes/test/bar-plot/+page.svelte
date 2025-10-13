@@ -137,9 +137,9 @@
   <h2>Basic</h2>
   <BarPlot
     series={basic_series}
-    x_label="X"
-    y_label="Y"
-    y_range={[0, 50]}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    y_lim={[0, 50]}
     controls_open={false}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
@@ -150,8 +150,8 @@
   <h2>Legend and Overlay</h2>
   <BarPlot
     series={legend_series}
-    x_label="Category"
-    y_label="Value"
+    x_axis={{ label: `Category` }}
+    y_axis={{ label: `Value` }}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />
@@ -162,8 +162,8 @@
   <div id="overlay">
     <BarPlot
       series={modes_series_overlay}
-      x_label="X"
-      y_label="Y"
+      x_axis={{ label: `X` }}
+      y_axis={{ label: `Y` }}
       mode="overlay"
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
@@ -172,8 +172,8 @@
   <div id="stacked">
     <BarPlot
       series={modes_series_stacked}
-      x_label="X"
-      y_label="Y"
+      x_axis={{ label: `X` }}
+      y_axis={{ label: `Y` }}
       mode="stacked"
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
@@ -182,8 +182,8 @@
   <div id="stacked-mixed">
     <BarPlot
       series={stacked_mixed_series}
-      x_label="X"
-      y_label="Y"
+      x_axis={{ label: `X` }}
+      y_axis={{ label: `Y` }}
       mode="stacked"
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
@@ -192,8 +192,8 @@
   <div id="zero-values">
     <BarPlot
       series={zero_value_series}
-      x_label="X"
-      y_label="Y"
+      x_axis={{ label: `X` }}
+      y_axis={{ label: `Y` }}
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -201,8 +201,8 @@
   <div id="width-array">
     <BarPlot
       series={width_array_series}
-      x_label="X"
-      y_label="Y"
+      x_axis={{ label: `X` }}
+      y_axis={{ label: `Y` }}
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
     />
@@ -210,8 +210,8 @@
   <div id="stacked-mixed-horizontal">
     <BarPlot
       series={stacked_mixed_series}
-      x_label="Y"
-      y_label="X"
+      x_axis={{ label: `Y` }}
+      y_axis={{ label: `X` }}
       mode="stacked"
       orientation="horizontal"
       controls_toggle_props={{ class: `bar-controls-toggle` }}
@@ -221,8 +221,8 @@
   <div id="horizontal">
     <BarPlot
       series={modes_series_overlay}
-      x_label="Y"
-      y_label="X"
+      x_axis={{ label: `Y` }}
+      y_axis={{ label: `X` }}
       orientation="horizontal"
       controls_toggle_props={{ class: `bar-controls-toggle` }}
       style="height: 300px"
@@ -234,8 +234,8 @@
   <h2>With Handlers</h2>
   <BarPlot
     series={handlers_series}
-    x_label="X"
-    y_label="Y"
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
     on_bar_hover={(data) => {
       if (data) {
         hover_msg = `Hovering: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
