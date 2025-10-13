@@ -1,9 +1,9 @@
 <script lang="ts">
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
+  import { format_value } from '$lib/labels'
   import type { BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
-  import { format_value } from '$lib/plot/formatting'
   import { parse_any_structure } from '$lib/structure/parse'
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -242,8 +242,8 @@
     : ``}
   {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
   {@const series_label = info.metadata?.label ? `${String(info.metadata.label)} — ` : ``}
-  {@html series_label}2θ: {angle_text}
-  <br />
+  {@html series_label}<br />
+  2θ: {angle_text}<br />
   Intensity: {intensity_text}
   {#if hkl_text}<br />hkl: {hkl_text}{/if}
   {#if d_text}<br />d: {d_text}{/if}

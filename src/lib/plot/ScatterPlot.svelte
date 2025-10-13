@@ -2,6 +2,7 @@
   import { Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
+  import { format_value } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
@@ -48,7 +49,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
-  import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding } from './layout'
   import { generate_ticks, get_nice_data_range } from './scales'
@@ -1744,10 +1744,10 @@
     })()}
       {@const cx = x_axis.format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
       {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
-      {@const x_formatted = format_value(x, x_axis.format ?? ``)}
+      {@const x_formatted = format_value(x, x_axis.format || `.3~s`)}
       {@const y_formatted = format_value(
       y,
-      (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) ?? ``,
+      (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
     )}
       {@const label = point_label?.text ?? null}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
