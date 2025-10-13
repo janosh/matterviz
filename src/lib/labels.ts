@@ -1,5 +1,69 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
 import { format } from 'd3-format'
+import type { SymbolType } from 'd3-shape'
+import * as d3_symbols from 'd3-shape'
+import { timeFormat } from 'd3-time-format'
+
+// Symbol types and formatting utilities from d3-shape
+export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
+export type D3SymbolName = Exclude<
+  D3Symbol extends `symbol${infer Name}` ? Name : never,
+  ``
+>
+
+function name_for_symbol(sym: unknown): D3SymbolName | null {
+  for (const key in d3_symbols) {
+    if (
+      Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
+      (d3_symbols as Record<string, unknown>)[key] === sym &&
+      /^symbol[A-Z]/.test(key)
+    ) return key.substring(6) as D3SymbolName
+  }
+  return null
+}
+
+export const symbol_names = (
+  [...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke])]
+    .map((sym) => name_for_symbol(sym))
+    .filter((n): n is D3SymbolName => n !== null)
+) as D3SymbolName[]
+
+const symbols_index = d3_symbols as unknown as Record<string, SymbolType>
+export const symbol_map = Object.fromEntries(
+  symbol_names.map((name) => [name, symbols_index[`symbol${name}`]]),
+) as Record<D3SymbolName, SymbolType>
+
+// Format a value for display with optional time formatting
+export function format_value(value: number, formatter?: string): string {
+  if (!formatter) return `${value}`
+  if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
+
+  // Handle special values consistently
+  if (value === -Infinity) return `-Infinity`
+  if (value === Infinity) return `Infinity`
+  if (Number.isNaN(value)) return `NaN`
+
+  // Format and normalize unicode minus
+  const formatted = format(formatter)(value).replace(/−/g, `-`)
+
+  // Handle percentage formatting - remove trailing zeros
+  if (formatter.includes(`%`)) {
+    return formatted.includes(`.`)
+      ? formatted.replace(/(\.\d*?)0+%$/, `$1%`).replace(/\.%$/, `%`)
+      : formatted
+  }
+
+  // Handle currency formatting - preserve precision if specified
+  if (formatter.includes(`$`) && formatter.includes(`.`) && /\.\d+f/.test(formatter)) {
+    return formatted
+  }
+
+  // Remove trailing zeros after decimal point
+  const out = formatted.includes(`.`)
+    ? formatted.replace(/(\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
+    : formatted
+  return out === `-0` ? `0` : out
+}
 
 // TODO add labels and units for all elemental properties
 export const property_labels: Partial<

@@ -14,9 +14,11 @@
     selected_property = $bindable(``),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
+    auto_y2_range = undefined,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
@@ -30,9 +32,11 @@
     // Grouped configs
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    y2_axis?: AxisConfig
     display?: DisplayConfig
     show_controls?: boolean
     controls_open?: boolean
+    auto_y2_range?: [number, number]
   } = $props()
 
   // Initialize bar styles with defaults (runs once)
@@ -49,7 +53,9 @@
   bind:controls_open
   bind:x_axis
   bind:y_axis
+  bind:y2_axis
   bind:display
+  {auto_y2_range}
   {...rest}
 >
   <SettingsSection
@@ -142,10 +148,15 @@
 
   <SettingsSection
     title="Scale Type"
-    current_values={{ x_scale_type: x_axis.scale_type, y_scale_type: y_axis.scale_type }}
+    current_values={{
+      x_scale_type: x_axis.scale_type,
+      y_scale_type: y_axis.scale_type,
+      y2_scale_type: y2_axis.scale_type,
+    }}
     on_reset={() => {
       x_axis.scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
       y_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
+      y2_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
     }}
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"
@@ -155,6 +166,10 @@
         <option value="log">Log</option>
       </select></label>
     <label>Y: <select bind:value={y_axis.scale_type}>
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select></label>
+    <label>Y2: <select bind:value={y2_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>
