@@ -57,7 +57,7 @@ describe(`ColorScaleSelect`, () => {
 
     // Check initial state rendered by svelte-multiselect
     const initial_selection = doc_query(`.selected`)
-    expect(initial_selection?.textContent?.trim()).toBe(selected_array[0])
+    expect(initial_selection?.textContent?.trim()).toBe(`Viridis`)
   })
 
   test(`passes colorbar props to ColorBar snippet`, async () => {
