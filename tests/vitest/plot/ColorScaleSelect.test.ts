@@ -1,5 +1,5 @@
 import { ColorScaleSelect } from '$lib'
-import type { D3ColorSchemeName } from '$lib/colors'
+import type { D3InterpolateName } from '$lib/colors'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -27,10 +27,14 @@ describe(`ColorScaleSelect`, () => {
 
   test(`renders with custom options array`, () => {
     /** Renders the component with a specific set of options. */
-    const custom_options = [`Blues`, `Greens`, `Reds`] // Use Capitalized names for display intent
+    const custom_options: D3InterpolateName[] = [
+      `interpolateBlues`,
+      `interpolateGreens`,
+      `interpolateReds`,
+    ]
     mount(ColorScaleSelect, {
       target: document.body,
-      props: { options: custom_options as D3ColorSchemeName[] },
+      props: { options: custom_options },
     })
 
     const select_wrapper = doc_query(`div`) // Basic check
@@ -39,8 +43,8 @@ describe(`ColorScaleSelect`, () => {
 
   test(`binds value and selected correctly (initial state)`, () => {
     /** Tests if initial value and selected props are rendered correctly. */
-    const selected_value: string | null = `viridis`
-    const selected_array: string[] = [`viridis`]
+    const selected_value: D3InterpolateName = `interpolateViridis`
+    const selected_array: D3InterpolateName[] = [`interpolateViridis`]
 
     // Initial mount
     mount(ColorScaleSelect, {
@@ -67,9 +71,9 @@ describe(`ColorScaleSelect`, () => {
     mount(ColorScaleSelect, {
       target: document.body,
       props: {
-        options: [`viridis`],
+        options: [`interpolateViridis`],
         colorbar: custom_colorbar_props,
-        selected: [`viridis`],
+        selected: [`interpolateViridis`],
       },
     })
 

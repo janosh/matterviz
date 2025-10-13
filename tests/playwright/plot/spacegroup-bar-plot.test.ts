@@ -192,10 +192,13 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     const all_plots = page.locator(`.bar-plot`)
     const _plot_count = await all_plots.count()
 
-    // Just check that axes render
+    // Check that axes render
     const first_plot = all_plots.first()
     await expect(first_plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(first_plot.locator(`g.y-axis .tick`).first()).toBeVisible()
+    // Verify no data bars are present (crystal system overlays may exist, but no data bars)
+    const data_bars = first_plot.locator(`svg rect[role="button"]`)
+    await expect(data_bars).toHaveCount(0)
   })
 
   test(`multiple plots render correctly on the page`, async ({ page }) => {

@@ -7,6 +7,7 @@ function mount_histogram(props: Record<string, unknown>) {
   mount(Histogram, {
     target: document.body,
     props: {
+      series: [],
       show_controls: false,
       show_legend: false,
       style: `width: 400px; height: 300px;`,

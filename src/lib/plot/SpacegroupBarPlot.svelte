@@ -111,23 +111,16 @@
     }
 
     // Convert to BarSeries array, maintaining order of crystal systems
-    return CRYSTAL_SYSTEMS.map((system) => ({
-      system,
-      data: series_by_system.get(system),
-    }))
-      .filter((
-        entry,
-      ): entry is { system: CrystalSystem; data: { x: number[]; y: number[] } } =>
-        entry.data !== undefined
-      )
-      .map(({ system, data }) => ({
-        x: data.x,
-        y: data.y,
-        color: CRYSTAL_SYSTEM_COLORS[system],
-        label: system,
-        bar_width: 0.9,
-        visible: true,
-      }))
+    const result: BarSeries[] = []
+    for (const system of CRYSTAL_SYSTEMS) {
+      const data = series_by_system.get(system)
+      if (data) {
+        const { x, y } = data
+        const color = CRYSTAL_SYSTEM_COLORS[system]
+        result.push({ x, y, color, label: system, bar_width: 0.9, visible: true })
+      }
+    }
+    return result
   })
 
   // Always show full space group range (1-230)

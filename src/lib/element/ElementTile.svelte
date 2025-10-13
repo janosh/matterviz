@@ -166,7 +166,7 @@
   style:color={text_color}
   {@attach text_color ? null : contrast_color()}
   {...(href ? { role: `link`, tabindex: 0 } : {})}
-  onclick={(event) => onclick?.({ element, event })}
+  onclick={(event: MouseEvent) => onclick?.({ element, event })}
   {...rest}
 >
   {#if should_show_number}
