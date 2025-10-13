@@ -134,9 +134,11 @@ export function find_best_plot_area(
   // For performance, subsample points if there are too many (>500)
   const max_points_for_full_calc = 500
   const sampled_points = points.length > max_points_for_full_calc
-    ? points.filter((_, idx) =>
-      idx % Math.ceil(points.length / max_points_for_full_calc) === 0
-    )
+    ? (() => {
+      const step = points.length / max_points_for_full_calc
+      return Array.from({ length: max_points_for_full_calc }, (_, idx) =>
+        points[Math.floor(idx * step)])
+    })()
     : points
 
   let best_position: PlacementPosition = `top-right`

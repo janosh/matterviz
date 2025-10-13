@@ -277,29 +277,56 @@
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  // Scales (linear only for now)
+  // Scales
   let scales = $derived({
-    x: create_scale(`linear`, ranges.current.x, [pad.l, width - pad.r]),
-    y: create_scale(`linear`, ranges.current.y, [height - pad.b, pad.t]),
-    y2: create_scale(`linear`, ranges.current.y2, [height - pad.b, pad.t]),
+    x: create_scale(x_axis.scale_type ?? `linear`, ranges.current.x, [
+      pad.l,
+      width - pad.r,
+    ]),
+    y: create_scale(y_axis.scale_type ?? `linear`, ranges.current.y, [
+      height - pad.b,
+      pad.t,
+    ]),
+    y2: create_scale(y2_axis.scale_type ?? `linear`, ranges.current.y2, [
+      height - pad.b,
+      pad.t,
+    ]),
   })
 
   // Ticks
   let ticks = $derived({
     x: width && height
-      ? generate_ticks(ranges.current.x, `linear`, x_axis.ticks, scales.x, {
-        default_count: 8,
-      })
+      ? generate_ticks(
+        ranges.current.x,
+        x_axis.scale_type ?? `linear`,
+        x_axis.ticks,
+        scales.x,
+        {
+          default_count: 8,
+        },
+      )
       : [],
     y: width && height
-      ? generate_ticks(ranges.current.y, `linear`, y_axis.ticks, scales.y, {
-        default_count: 6,
-      })
+      ? generate_ticks(
+        ranges.current.y,
+        y_axis.scale_type ?? `linear`,
+        y_axis.ticks,
+        scales.y,
+        {
+          default_count: 6,
+        },
+      )
       : [],
     y2: width && height && y2_series.length > 0 && orientation === `vertical`
-      ? generate_ticks(ranges.current.y2, `linear`, y2_axis.ticks, scales.y2, {
-        default_count: 6,
-      })
+      ? generate_ticks(
+        ranges.current.y2,
+        y2_axis.scale_type ?? `linear`,
+        y2_axis.ticks,
+        scales.y2,
+        {
+          default_count: 6,
+        },
+      )
       : [],
   })
 
@@ -318,17 +345,25 @@
   }
   const on_window_mouse_up = () => {
     if (drag_state.start && drag_state.current) {
-      const x1 = scales.x.invert(drag_state.start.x)
-      const x2 = scales.x.invert(drag_state.current.x)
+      const x1_raw = scales.x.invert(drag_state.start.x) as number | Date
+      const x2_raw = scales.x.invert(drag_state.current.x) as number | Date
       const y1 = scales.y.invert(drag_state.start.y)
       const y2 = scales.y.invert(drag_state.current.y)
       const y2_1 = scales.y2.invert(drag_state.start.y)
       const y2_2 = scales.y2.invert(drag_state.current.y)
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (dx > 5 && dy > 5 && typeof x1 === `number` && typeof x2 === `number`) {
+
+      let xr1: number, xr2: number
+      if (x1_raw instanceof Date && x2_raw instanceof Date) {
+        ;[xr1, xr2] = [x1_raw.getTime(), x2_raw.getTime()]
+      } else if (typeof x1_raw === `number` && typeof x2_raw === `number`) {
+        ;[xr1, xr2] = [x1_raw, x2_raw]
+      } else [xr1, xr2] = [NaN, NaN] // bail: mixed types
+
+      if (dx > 5 && dy > 5 && Number.isFinite(xr1) && Number.isFinite(xr2)) {
         // Update axis ranges to trigger reactivity and prevent effect from overriding
-        x_axis = { ...x_axis, range: [Math.min(x1, x2), Math.max(x1, x2)] }
+        x_axis = { ...x_axis, range: [Math.min(xr1, xr2), Math.max(xr1, xr2)] }
         y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
         y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
       }
@@ -752,15 +787,15 @@
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
         <!-- Zero lines -->
-        {#if display.x_zero_line && ranges.current.x[0] <= 0 &&
-          ranges.current.x[1] >= 0}
+        {#if display.x_zero_line && (x_axis.scale_type ?? `linear`) === `linear` &&
+          ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
           {@const zx = scales.x(0)}
           {#if isFinite(zx)}
             <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
         {/if}
-        {#if display.y_zero_line && ranges.current.y[0] <= 0 &&
-          ranges.current.y[1] >= 0}
+        {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
+          ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
           {@const zy = scales.y(0)}
           {#if isFinite(zy)}
             <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
@@ -1012,9 +1047,11 @@
         bind:mode
         bind:x_axis
         bind:y_axis
+        bind:y2_axis
         bind:display
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
+        auto_y2_range={auto_ranges.y2 as [number, number]}
       />
     {/if}
   {/if}

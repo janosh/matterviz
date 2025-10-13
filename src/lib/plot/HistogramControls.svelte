@@ -18,7 +18,7 @@
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
-    auto_y2_range = [0, 1],
+    auto_y2_range = undefined,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
@@ -148,10 +148,15 @@
 
   <SettingsSection
     title="Scale Type"
-    current_values={{ x_scale_type: x_axis.scale_type, y_scale_type: y_axis.scale_type }}
+    current_values={{
+      x_scale_type: x_axis.scale_type,
+      y_scale_type: y_axis.scale_type,
+      y2_scale_type: y2_axis.scale_type,
+    }}
     on_reset={() => {
       x_axis.scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
       y_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
+      y2_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
     }}
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"
@@ -161,6 +166,10 @@
         <option value="log">Log</option>
       </select></label>
     <label>Y: <select bind:value={y_axis.scale_type}>
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select></label>
+    <label>Y2: <select bind:value={y2_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>

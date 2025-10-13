@@ -303,6 +303,8 @@ describe(`format_value`, () => {
     { value: 0, formatter: `.2f`, expected: `0` },
     { value: -0, formatter: `.2f`, expected: `0` },
     { value: -0, formatter: `.0f`, expected: `0` },
+    { value: -0, formatter: `.0%`, expected: `0%` },
+    { value: -0, formatter: `$,.2f`, expected: `$0.00` },
     { value: -0.001, formatter: `.2f`, expected: `0` },
     { value: 0.0001, formatter: `.4f`, expected: `0.0001` },
     { value: 999.9999, formatter: `.2f`, expected: `1000` },

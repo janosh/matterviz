@@ -220,7 +220,7 @@
       color: `#e15759`,
       visible: true,
       y_axis: `y2`,
-      type: `line`,
+      render_mode: `line`,
     },
   ]
 </script>

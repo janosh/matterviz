@@ -11,7 +11,7 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
 
     // Bars render - select bars by their role attribute to avoid clipPath rects
-    const bars = plot.locator(`svg rect[role="button"]`)
+    const bars = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(bars.first()).toBeVisible()
     await expect(bars).toHaveCount(4) // Should have 4 bars
 
@@ -31,19 +31,19 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(items).toHaveCount(2)
 
     // Initial: both visible -> bars exist
-    const initial_bars = await plot.locator(`svg rect[role="button"]`).count()
+    const initial_bars = await plot.locator(`svg rect[fill]:not([fill="none"])`).count()
     expect(initial_bars).toBeGreaterThan(0)
 
     // Toggle first series -> bar count should decrease
     await items.first().click()
     await expect
-      .poll(async () => await plot.locator(`svg rect[role="button"]`).count())
+      .poll(async () => await plot.locator(`svg rect[fill]:not([fill="none"])`).count())
       .toBeLessThan(initial_bars)
 
     // Toggle back -> bar count should be restored to initial
     await items.first().click()
     await expect
-      .poll(async () => await plot.locator(`svg rect[role="button"]`).count())
+      .poll(async () => await plot.locator(`svg rect[fill]:not([fill="none"])`).count())
       .toBe(initial_bars)
   })
 
@@ -100,7 +100,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
   test(`tooltip appears on bar hover with formatted values`, async ({ page }) => {
     const plot = page.locator(`#basic-bar .bar-plot`)
-    const bar = plot.locator(`svg rect[role="button"]`).first()
+    const bar = plot.locator(`svg rect[fill]:not([fill="none"])`).first()
     await expect(bar).toBeVisible()
     await bar.hover({ force: true })
 
@@ -110,7 +110,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
   test(`cursor is not pointer when no click handler provided`, async ({ page }) => {
     const plot = page.locator(`#basic-bar .bar-plot`)
-    const bar = plot.locator(`svg rect[role="button"]`).first()
+    const bar = plot.locator(`svg rect[fill]:not([fill="none"])`).first()
     await expect(bar).toBeVisible()
 
     // Check cursor is not pointer (no click handler)
@@ -204,7 +204,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const section = page.locator(`#basic-bar`)
     const plot = section.locator(`.bar-plot`)
     await expect(plot).toBeVisible()
-    const bars = plot.locator(`svg rect[role="button"]`)
+    const bars = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(bars.first()).toBeVisible()
     const before_boxes = (await bars.all()).slice(0, 12)
     const before_dims =
@@ -241,7 +241,7 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
 
     // Collect bars for first x index (approx top-left group); two series -> two rects per x
-    const rects = plot.locator(`svg rect[role="button"]`)
+    const rects = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(rects.first()).toBeVisible()
 
     // Measure y positions to verify one bar is above baseline and one below when values have different signs
@@ -270,7 +270,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const section = page.locator(`#modes-bar #zero-values`)
     const plot = section.locator(`.bar-plot`)
     await expect(plot).toBeVisible()
-    const rects = plot.locator(`svg rect[role="button"]`)
+    const rects = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(rects.first()).toBeVisible()
     // zero bars should not have negative size
     const boxes = (
@@ -288,7 +288,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const section = page.locator(`#modes-bar #width-array`)
     const plot = section.locator(`.bar-plot`)
     await expect(plot).toBeVisible()
-    const rects = await plot.locator(`svg rect[role="button"]`).all()
+    const rects = await plot.locator(`svg rect[fill]:not([fill="none"])`).all()
     const boxes = (
       await Promise.all(rects.slice(0, 4).map(async (h) => await h.boundingBox()))
     ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
@@ -302,7 +302,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const section = page.locator(`#modes-bar #stacked-mixed-horizontal`)
     const plot = section.locator(`.bar-plot`)
     await expect(plot).toBeVisible()
-    const rects = plot.locator(`svg rect[role="button"]`)
+    const rects = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(rects.first()).toBeVisible()
     const boxes = (
       await Promise.all(

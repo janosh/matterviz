@@ -1530,7 +1530,7 @@ test.describe(`Histogram Component Tests`, () => {
     expect(await y2_ticks.count()).toBeGreaterThan(0)
 
     // Check that histogram bars render
-    const bars = histogram.locator(`svg rect[role="button"]`)
+    const bars = histogram.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(bars.first()).toBeVisible()
     expect(await bars.count()).toBeGreaterThan(0)
   })
@@ -1558,7 +1558,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(histogram).toBeVisible()
 
     // Get bars from different series
-    const all_bars = histogram.locator(`svg rect[role="button"]`)
+    const all_bars = histogram.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(all_bars.first()).toBeVisible()
 
     // Get bars from first two series (one y1, one y2)
@@ -1575,7 +1575,7 @@ test.describe(`Histogram Component Tests`, () => {
   test(`zoom updates both y1 and y2 ranges in histogram`, async ({ page }) => {
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
     await histogram.scrollIntoViewIfNeeded()
-    const svg = histogram.locator(`svg[role="button"]`)
+    const svg = histogram.locator(`svg`)
 
     // Wait for initial ticks
     await expect(histogram.locator(`g.y-axis .tick text`).first()).toBeVisible()
@@ -1683,19 +1683,24 @@ test.describe(`Histogram Component Tests`, () => {
     expect(await items.count()).toBeGreaterThanOrEqual(2)
 
     // Get initial bar count
-    const initial_bars = await histogram.locator(`svg rect[role="button"]`).count()
+    const initial_bars = await histogram.locator(`svg rect[fill]:not([fill="none"])`)
+      .count()
     expect(initial_bars).toBeGreaterThan(0)
 
     // Toggle first series -> bar count should decrease
     await items.first().click()
     await expect
-      .poll(async () => await histogram.locator(`svg rect[role="button"]`).count())
+      .poll(async () =>
+        await histogram.locator(`svg rect[fill]:not([fill="none"])`).count()
+      )
       .toBeLessThan(initial_bars)
 
     // Toggle back -> bar count should be restored
     await items.first().click()
     await expect
-      .poll(async () => await histogram.locator(`svg rect[role="button"]`).count())
+      .poll(async () =>
+        await histogram.locator(`svg rect[fill]:not([fill="none"])`).count()
+      )
       .toBe(initial_bars)
   })
 })

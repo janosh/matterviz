@@ -1,14 +1,13 @@
 <script lang="ts">
-  import { Line } from '$lib/plot'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
+  import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
     AxisConfig,
     ControlsConfig,
-    D3SymbolName,
     DataSeries,
     DisplayConfig,
     HoverConfig,
@@ -31,6 +30,7 @@
     ColorBar,
     DEFAULT_GRID_STYLE,
     find_best_plot_area,
+    Line,
     PlotLegend,
     ScatterPlotControls,
     ScatterPoint,
@@ -1494,7 +1494,7 @@
       </defs>
 
       <!-- Lines -->
-      {#if display.markers?.includes(`line`) && styles.show_lines}
+      {#if styles.show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? display.markers}
           <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
@@ -1541,7 +1541,7 @@
       {/if}
 
       <!-- Points -->
-      {#if display.markers?.includes(`points`) && styles.show_points}
+      {#if styles.show_points}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? display.markers}
           <g data-series-id={series_data._id}>
