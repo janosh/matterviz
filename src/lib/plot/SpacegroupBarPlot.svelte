@@ -181,25 +181,16 @@
 </script>
 
 {#snippet tooltip(info: BarTooltipProps)}
-  {@const sg = info.x}
-  {@const count = info.y}
+  {@const { x: sg, y: count } = info}
   {@const system = spacegroup_to_crystal_system(sg)}
-  Space Group: {format_value(sg, `.0f`)} ({SPACEGROUP_NUM_TO_SYMBOL[sg]})
-  <br />
+  Space Group: {format_value(sg, `.0f`)} ({SPACEGROUP_NUM_TO_SYMBOL[sg]})<br />
   {#if system}
-    Crystal System: {system}
-    <br />
+    Crystal System: {system}<br />
   {/if}
   Count: {format_value(count, `.0f`)}
 {/snippet}
 
-{#snippet user_content({
-  width,
-  height,
-  x_scale_fn,
-  y_scale_fn,
-  pad,
-}: {
+{#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad }: {
   width: number
   height: number
   x_scale_fn: (x: number) => number

@@ -859,6 +859,42 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(position_after_update.y).toBeCloseTo(position_after_drag.y, 0)
   })
 
+  test(`legend line color reflects color scale for color-mapped series`, async ({ page }) => {
+    // Test with color-mapped series that has lines but no explicit line stroke
+    const section = page.locator(`#color-mapped-line-legend-test`)
+    await expect(section).toBeVisible()
+
+    const plot_locator = section.locator(`.scatter`)
+    await expect(plot_locator).toBeVisible()
+
+    // Check that legend exists and shows the line
+    const legend = plot_locator.locator(`.legend`)
+    await expect(legend).toBeVisible()
+
+    // Get legend item and check it has a line indicator
+    const legend_item = legend.locator(`.legend-item`).first()
+    await expect(legend_item).toBeVisible()
+
+    // Find the line element in the legend (it's an SVG line, not path)
+    const legend_line = legend_item.locator(`line[stroke]`)
+    // Check that at least one line element exists
+    await expect(legend_line).toHaveCount(1)
+
+    const legend_stroke = await legend_line.getAttribute(`stroke`)
+
+    // Main assertion: Legend line color should reflect the color scale, not default to black
+    // For color-mapped series with no explicit line stroke, the legend should use color_scale_fn
+    expect(legend_stroke).not.toBeNull()
+    expect(legend_stroke).not.toBe(`black`)
+    expect(legend_stroke).not.toBe(`#000000`)
+    expect(legend_stroke).not.toBe(`rgb(0, 0, 0)`)
+
+    // The legend stroke should be a Viridis color (starts with #44 for the darkest value)
+    // This verifies the fix: color_scale_fn is being used for legend lines with color_values
+    expect(legend_stroke).toMatch(/^#[0-9a-f]{6}$/i) // Valid hex color
+    expect(legend_stroke).toBe(`#440154`) // Viridis color for value 1 (first color_value)
+  })
+
   // COLORBAR PLACEMENT TESTS
 
   const colorbar_test_cases = [

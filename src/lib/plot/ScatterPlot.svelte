@@ -701,10 +701,17 @@
     if (series_markers?.includes(`line`)) {
       // Prefer explicit line stroke
       let legend_line_color = data_series?.line_style?.stroke
-      if (!legend_line_color) { // If no explicit stroke, inherit a reasonable point color even when points aren't shown
-        // Order of preference: point fill -> point stroke -> symbol_color -> black
-        legend_line_color = first_point_style?.fill || first_point_style?.stroke ||
-          display_style.symbol_color || `black`
+      if (!legend_line_color) {
+        // Try color scale if available
+        const first_cv = Array.isArray(data_series?.color_values)
+          ? data_series!.color_values!.find((v) => v != null)
+          : undefined
+        legend_line_color =
+          (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
+          first_point_style?.fill ||
+          first_point_style?.stroke ||
+          display_style.symbol_color ||
+          `black`
       }
       display_style.line_color = legend_line_color
       display_style.line_dash = data_series?.line_style?.line_dash
