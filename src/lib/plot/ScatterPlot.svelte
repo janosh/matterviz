@@ -215,14 +215,12 @@
   })
 
   // Assign stable IDs to series for keying
-  let series_with_ids = $derived.by(() => {
-    return processed_series.map((s, idx) => {
-      if (!s || typeof s !== `object`) return s
-      // Use series.id if provided, otherwise fall back to index
-      // prevents re-mounts when series are reordered if stable IDs are provided
-      return { ...s, _id: s.id ?? idx }
-    })
-  })
+  let series_with_ids = $derived(processed_series.map((s, idx) => {
+    if (!s || typeof s !== `object`) return s
+    // Use series.id if provided, otherwise fall back to index
+    // prevents re-mounts when series are reordered if stable IDs are provided
+    return { ...s, _id: s.id ?? idx }
+  }))
 
   // State for rectangle zoom selection
   let drag_start_coords = $state<XyObj | null>(null)
@@ -634,97 +632,95 @@
   })
 
   // Prepare data needed for the legend component
-  let legend_data = $derived.by(() => {
-    return series_with_ids.map((data_series, series_idx) => {
-      const is_visible = data_series?.visible ?? true
-      // Prefer top-level label, fallback to metadata label, then default
-      const label = data_series?.label ??
-        (typeof data_series?.metadata === `object` &&
-            data_series.metadata !== null &&
-            `label` in data_series.metadata &&
-            typeof data_series.metadata.label === `string`
-          ? data_series.metadata.label
-          : null) ??
-        `Series ${series_idx + 1}`
+  let legend_data = $derived(series_with_ids.map((data_series, series_idx) => {
+    const is_visible = data_series?.visible ?? true
+    // Prefer top-level label, fallback to metadata label, then default
+    const label = data_series?.label ??
+      (typeof data_series?.metadata === `object` &&
+          data_series.metadata !== null &&
+          `label` in data_series.metadata &&
+          typeof data_series.metadata.label === `string`
+        ? data_series.metadata.label
+        : null) ??
+      `Series ${series_idx + 1}`
 
-      // Explicitly define the type for display_style matching PlotLegend expectations
-      type LegendDisplayStyle = {
-        symbol_type?: D3SymbolName
-        symbol_color?: string
-        line_color?: string
-        line_dash?: string
-      }
-      const display_style: LegendDisplayStyle = {
-        symbol_type: DEFAULTS.scatter.symbol_type,
-        symbol_color: `black`, // Default marker color
-        line_color: `black`, // Default line color
-      }
+    // Explicitly define the type for display_style matching PlotLegend expectations
+    type LegendDisplayStyle = {
+      symbol_type?: D3SymbolName
+      symbol_color?: string
+      line_color?: string
+      line_dash?: string
+    }
+    const display_style: LegendDisplayStyle = {
+      symbol_type: DEFAULTS.scatter.symbol_type,
+      symbol_color: `black`, // Default marker color
+      line_color: `black`, // Default line color
+    }
 
-      const series_markers = (data_series?.markers ?? display.markers) ?? ``
+    const series_markers = (data_series?.markers ?? display.markers) ?? ``
 
-      // Check point_style (could be object or array)
-      const first_point_style = Array.isArray(data_series?.point_style)
-        ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
-        : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
+    // Check point_style (could be object or array)
+    const first_point_style = Array.isArray(data_series?.point_style)
+      ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
+      : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
 
-      if (series_markers?.includes(`points`)) {
-        if (first_point_style) {
-          // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
-          let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
+    if (series_markers?.includes(`points`)) {
+      if (first_point_style) {
+        // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
+        let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
+        if (
+          Array.isArray(symbol_names) &&
+          typeof first_point_style.shape === `string` &&
+          symbol_names.includes(first_point_style.shape as D3SymbolName)
+        ) {
+          final_shape = first_point_style.shape as D3SymbolName
+        }
+        display_style.symbol_type = final_shape
+
+        display_style.symbol_color = first_point_style.fill ??
+          display_style.symbol_color // Use default if nullish
+        if (first_point_style.stroke) {
+          // Use stroke color if fill is none or transparent
           if (
-            Array.isArray(symbol_names) &&
-            typeof first_point_style.shape === `string` &&
-            symbol_names.includes(first_point_style.shape as D3SymbolName)
+            !display_style.symbol_color ||
+            display_style.symbol_color === `none` ||
+            display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
           ) {
-            final_shape = first_point_style.shape as D3SymbolName
-          }
-          display_style.symbol_type = final_shape
-
-          display_style.symbol_color = first_point_style.fill ??
-            display_style.symbol_color // Use default if nullish
-          if (first_point_style.stroke) {
-            // Use stroke color if fill is none or transparent
-            if (
-              !display_style.symbol_color ||
-              display_style.symbol_color === `none` ||
-              display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
-            ) {
-              display_style.symbol_color = first_point_style.stroke
-            }
+            display_style.symbol_color = first_point_style.stroke
           }
         }
-        // else: keep default display_style.symbol_type/color if no point_style
-      } else {
-        // If no points marker, explicitly remove marker style for legend
-        display_style.symbol_type = undefined
-        display_style.symbol_color = undefined
       }
+      // else: keep default display_style.symbol_type/color if no point_style
+    } else {
+      // If no points marker, explicitly remove marker style for legend
+      display_style.symbol_type = undefined
+      display_style.symbol_color = undefined
+    }
 
-      // Check line_style
-      if (series_markers?.includes(`line`)) {
-        // Prefer explicit line stroke
-        let legend_line_color = data_series?.line_style?.stroke
-        if (!legend_line_color) { // If no explicit stroke, inherit a reasonable point color even when points aren't shown
-          // Order of preference: point fill -> point stroke -> symbol_color -> black
-          legend_line_color = first_point_style?.fill || first_point_style?.stroke ||
-            display_style.symbol_color || `black`
-        }
-        display_style.line_color = legend_line_color
-        display_style.line_dash = data_series?.line_style?.line_dash
-      } else {
-        // If no line marker, explicitly remove line style for legend
-        display_style.line_dash = undefined
-        display_style.line_color = undefined
+    // Check line_style
+    if (series_markers?.includes(`line`)) {
+      // Prefer explicit line stroke
+      let legend_line_color = data_series?.line_style?.stroke
+      if (!legend_line_color) { // If no explicit stroke, inherit a reasonable point color even when points aren't shown
+        // Order of preference: point fill -> point stroke -> symbol_color -> black
+        legend_line_color = first_point_style?.fill || first_point_style?.stroke ||
+          display_style.symbol_color || `black`
       }
+      display_style.line_color = legend_line_color
+      display_style.line_dash = data_series?.line_style?.line_dash
+    } else {
+      // If no line marker, explicitly remove line style for legend
+      display_style.line_dash = undefined
+      display_style.line_color = undefined
+    }
 
-      return {
-        series_idx,
-        label,
-        visible: is_visible,
-        display_style,
-      }
-    })
-  })
+    return {
+      series_idx,
+      label,
+      visible: is_visible,
+      display_style,
+    }
+  }))
 
   // Calculate best legend placement using new simple system
   let legend_placement = $derived.by(() => {

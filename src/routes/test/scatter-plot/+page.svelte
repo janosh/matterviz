@@ -266,21 +266,22 @@
 
   let enable_auto_placement = $state(true)
 
-  let auto_placement_test_series = $derived.by(() => {
-    return auto_placement_series_data.map((series) => ({
+  let auto_placement_test_series = $derived(
+    auto_placement_series_data.map((series) => ({
       ...series,
-      point_label: (Array.isArray(series.point_label)
-        ? series.point_label
-        : series.point_label
-        ? [series.point_label]
-        : []).map(
-          (lbl): LabelStyle => ({
-            ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
-            auto_placement: enable_auto_placement,
-          }),
-        ),
-    }))
-  })
+      point_label:
+        (Array.isArray(series.point_label)
+          ? series.point_label
+          : series.point_label
+          ? [series.point_label]
+          : []).map(
+            (lbl): LabelStyle => ({
+              ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+              auto_placement: enable_auto_placement,
+            }),
+          ),
+    })),
+  )
 
   // === Automatic Color Bar Placement Data ===
   let auto_placement_density = $state({

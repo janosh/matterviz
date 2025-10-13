@@ -1,10 +1,10 @@
 # Spacegroup Bar Plot
 
-Visualize the distribution of crystallographic space groups across materials datasets with automatic crystal system coloring and annotations.
+Visualize crystallographic space group distributions with automatic crystal system coloring and annotations.
 
-## Basic Spacegroup Distribution
+## Basic Usage with Interactive Controls
 
-Pass an array of space group numbers (1-230) to visualize their distribution. The plot automatically colors bars by crystal system and adds region annotations:
+Pass space group numbers (1-230) to visualize their distribution with automatic crystal system coloring and region annotations:
 
 ```svelte example
 <script>
@@ -12,18 +12,33 @@ Pass an array of space group numbers (1-230) to visualize their distribution. Th
 
   // Sample data: space group numbers from a materials database
   // deno-fmt-ignore
-  const spacegroups = [
-    225, 225, 225, 227, 229, 221, 225, 227, // Cubic (195-230)
-    194, 194, 191, 186, 194, 187, 194, // Hexagonal (168-194)
-    166, 160, 148, 167, 148, 166, 160, 148, // Trigonal (143-167)
-    123, 129, 139, 123, 129, 123, 139, 123, // Tetragonal (75-142)
-    62, 63, 61, 62, 61, 59, 62, 63, 61, 62, // Orthorhombic (16-74)
-    15, 14, 12, 14, 15, 14, 12, 14, // Monoclinic (3-15)
-    2, 1, 2, 1, 2, // Triclinic (1-2)
+  const diverse_materials = [
+    221, 221, 221, // Cubic perovskites
+    225, 225, 225, 225, 225, 229, 229, 229, // Cubic metals
+    194, 194, 194, 194, // Hexagonal metals
+    167, 167, 166, // Trigonal
+    139, 129, 123, 123, // Tetragonal
+    62, 62, 62, 62, 62, 62, 59, 61, 63, // Orthorhombic
+    15, 15, 15, 14, 14, 14, 14, 12, 11, // Monoclinic
+    2, 2, 1, // Triclinic
   ]
+
+  let show_counts = $state(true)
 </script>
 
-<SpacegroupBarPlot data={spacegroups} style="height: 450px" />
+<div
+  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
+>
+  <strong>Tip:</strong> Hover over any bar to see space group number, crystal system, and
+  count. Click and drag to zoom into specific regions. Double-click to reset.
+</div>
+
+<label style="margin-bottom: 1em; display: block">
+  <input type="checkbox" bind:checked={show_counts} />
+  Show count annotations
+</label>
+
+<SpacegroupBarPlot data={diverse_materials} {show_counts} style="height: 450px" />
 ```
 
 ## Space Group Symbols
@@ -49,36 +64,9 @@ The component also accepts space group symbols (Hermann-Mauguin notation):
 <SpacegroupBarPlot data={spacegroups_symbols} style="height: 450px" />
 ```
 
-## Hide Count Annotations
-
-Toggle the count/percentage annotations at the top of each crystal system region:
-
-```svelte example
-<script>
-  import { SpacegroupBarPlot } from 'matterviz'
-
-  // deno-fmt-ignore
-  const perovskites = [
-    221, 221, 221, 221, 221, 221, 221, 221, // Pm-3m (cubic)
-    140, 140, 140, 140, 140, // I4/mcm (tetragonal)
-    62, 62, 62, 62, 62, 62, 62, 62, 62, 62, // Pnma (orthorhombic)
-    167, 167, 167, // R-3c (trigonal)
-  ]
-
-  let show_counts = $state(true)
-</script>
-
-<label style="margin-bottom: 1em; display: block">
-  <input type="checkbox" bind:checked={show_counts} />
-  Show count annotations
-</label>
-
-<SpacegroupBarPlot data={perovskites} {show_counts} style="height: 400px" />
-```
-
 ## Horizontal Orientation
 
-Like all bar plots, spacegroup distributions can be displayed horizontally:
+Display spacegroup distributions horizontally:
 
 ```svelte example
 <script>
@@ -117,7 +105,7 @@ Like all bar plots, spacegroup distributions can be displayed horizontally:
 
 ## Real-World Example: Materials Project Data
 
-Visualize space group distributions from actual materials databases:
+Simulated space group distributions from Materials Project database:
 
 ```svelte example
 <script>
@@ -189,35 +177,4 @@ Visualize space group distributions from actual materials databases:
 </div>
 
 <SpacegroupBarPlot data={materials_db} style="height: 500px" />
-```
-
-## Interactive Tooltips
-
-Hover over bars to see detailed information about each space group:
-
-```svelte example
-<script>
-  import { SpacegroupBarPlot } from 'matterviz'
-
-  // deno-fmt-ignore
-  const diverse_materials = [
-    221, 221, 221, // Cubic perovskites
-    225, 225, 225, 225, 225, 229, 229, 229, // Cubic metals
-    194, 194, 194, 194, // Hexagonal metals
-    167, 167, 166, // Trigonal
-    139, 129, 123, 123, // Tetragonal
-    62, 62, 62, 62, 62, 62, 59, 61, 63, // Orthorhombic
-    15, 15, 15, 14, 14, 14, 14, 12, 11, // Monoclinic
-    2, 2, 1, // Triclinic
-  ]
-</script>
-
-<div
-  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
->
-  <strong>Tip:</strong> Hover over any bar to see space group number, crystal system, and
-  count. Click and drag to zoom into specific regions. Double-click to reset.
-</div>
-
-<SpacegroupBarPlot data={diverse_materials} style="height: 450px" />
 ```

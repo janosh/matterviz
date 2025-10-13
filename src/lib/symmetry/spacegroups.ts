@@ -1,14 +1,5 @@
 // Space group to crystal system mappings and utilities
 
-export type CrystalSystem =
-  | `triclinic`
-  | `monoclinic`
-  | `orthorhombic`
-  | `tetragonal`
-  | `trigonal`
-  | `hexagonal`
-  | `cubic`
-
 // Crystal system ranges: [min, max] space group numbers (inclusive)
 export const CRYSTAL_SYSTEM_RANGES: Record<CrystalSystem, [number, number]> = {
   triclinic: [1, 2],
@@ -29,10 +20,10 @@ export const CRYSTAL_SYSTEM_COLORS: Record<CrystalSystem, string> = {
   trigonal: `orange`,
   hexagonal: `purple`,
   cubic: `darkred`,
-}
+} as const
 
 // Ordered list of crystal systems (by space group number range)
-export const CRYSTAL_SYSTEMS: CrystalSystem[] = [
+export const CRYSTAL_SYSTEMS = [
   `triclinic`,
   `monoclinic`,
   `orthorhombic`,
@@ -40,7 +31,8 @@ export const CRYSTAL_SYSTEMS: CrystalSystem[] = [
   `trigonal`,
   `hexagonal`,
   `cubic`,
-]
+] as const
+export type CrystalSystem = (typeof CRYSTAL_SYSTEMS)[number]
 
 // Convert space group number to crystal system
 export function spacegroup_number_to_crystal_system(
@@ -54,48 +46,77 @@ export function spacegroup_number_to_crystal_system(
   return null
 }
 
-// Basic mapping of common Hermann-Mauguin symbols to space group numbers
-// This is a subset - full mapping would be much larger
-export const SPACEGROUP_SYMBOL_TO_NUMBER: Record<string, number> = {
+// Convert space group (number or symbol) to crystal system
+export function spacegroup_to_crystal_system(
+  spacegroup: number | string,
+): CrystalSystem | null {
+  if (typeof spacegroup === `number`) {
+    return spacegroup_number_to_crystal_system(spacegroup)
+  }
+
+  // Try to parse as symbol
+  const number = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
+  if (number !== undefined) {
+    return spacegroup_number_to_crystal_system(number)
+  }
+
+  // Try to parse string as number
+  const parsed = parseInt(spacegroup, 10)
+  if (!isNaN(parsed)) {
+    return spacegroup_number_to_crystal_system(parsed)
+  }
+
+  return null
+}
+
+// Normalize space group input to number
+export function normalize_spacegroup(spacegroup: number | string) {
+  if (typeof spacegroup === `number`) {
+    return spacegroup >= 1 && spacegroup <= 230 ? spacegroup : null
+  }
+  return SPACEGROUP_SYMBOL_TO_NUM[spacegroup] ?? null
+}
+
+export const SPACEGROUP_SYMBOL_TO_NUM: Record<string, number> = {
   // Triclinic
   'P1': 1,
   'P-1': 2,
   // Monoclinic
   'P2': 3,
-  'P21': 4,
+  'P2_1': 4,
   'C2': 5,
   'Pm': 6,
   'Pc': 7,
   'Cm': 8,
   'Cc': 9,
   'P2/m': 10,
-  'P21/m': 11,
+  'P2_1/m': 11,
   'C2/m': 12,
   'P2/c': 13,
-  'P21/c': 14,
+  'P2_1/c': 14,
   'C2/c': 15,
-  // Orthorhombic (common ones)
+  // Orthorhombic
   'P222': 16,
-  'P2221': 17,
-  'P21212': 18,
-  'P212121': 19,
-  'C2221': 20,
+  'P222_1': 17,
+  'P2_12_12': 18,
+  'P2_12_12_1': 19,
+  'C222_1': 20,
   'C222': 21,
   'F222': 22,
   'I222': 23,
-  'I212121': 24,
+  'I2_12_12_1': 24,
   'Pmm2': 25,
-  'Pmc21': 26,
+  'Pmc2_1': 26,
   'Pcc2': 27,
   'Pma2': 28,
-  'Pca21': 29,
+  'Pca2_1': 29,
   'Pnc2': 30,
-  'Pmn21': 31,
+  'Pmn2_1': 31,
   'Pba2': 32,
-  'Pna21': 33,
+  'Pna2_1': 33,
   'Pnn2': 34,
   'Cmm2': 35,
-  'Cmc21': 36,
+  'Cmc2_1': 36,
   'Ccc2': 37,
   'Amm2': 38,
   'Aem2': 39,
@@ -134,44 +155,135 @@ export const SPACEGROUP_SYMBOL_TO_NUMBER: Record<string, number> = {
   'Ibam': 72,
   'Ibca': 73,
   'Imma': 74,
-  // Tetragonal (common ones)
+  // Tetragonal
   'P4': 75,
-  'P41': 76,
-  'P42': 77,
-  'P43': 78,
+  'P4_1': 76,
+  'P4_2': 77,
+  'P4_3': 78,
   'I4': 79,
-  'I41': 80,
+  'I4_1': 80,
   'P-4': 81,
   'I-4': 82,
   'P4/m': 83,
-  'P42/m': 84,
+  'P4_2/m': 84,
   'P4/n': 85,
-  'P42/n': 86,
+  'P4_2/n': 86,
   'I4/m': 87,
-  'I41/a': 88,
-  // Trigonal (common ones)
+  'I4_1/a': 88,
+  'P422': 89,
+  'P42_12': 90,
+  'P4_122': 91,
+  'P4_12_12': 92,
+  'P4_222': 93,
+  'P4_22_12': 94,
+  'P4_322': 95,
+  'P4_32_12': 96,
+  'I422': 97,
+  'I4_122': 98,
+  'P4mm': 99,
+  'P4bm': 100,
+  'P4_2cm': 101,
+  'P4_2nm': 102,
+  'P4cc': 103,
+  'P4nc': 104,
+  'P4_2mc': 105,
+  'P4_2bc': 106,
+  'I4mm': 107,
+  'I4cm': 108,
+  'I4_1md': 109,
+  'I4_1cd': 110,
+  'P-42m': 111,
+  'P-42c': 112,
+  'P-42_1m': 113,
+  'P-42_1c': 114,
+  'P-4m2': 115,
+  'P-4c2': 116,
+  'P-4b2': 117,
+  'P-4n2': 118,
+  'I-4m2': 119,
+  'I-4c2': 120,
+  'I-42m': 121,
+  'I-42d': 122,
+  'P4/mmm': 123,
+  'P4/mcc': 124,
+  'P4/nbm': 125,
+  'P4/nnc': 126,
+  'P4/mbm': 127,
+  'P4/mnc': 128,
+  'P4/nmm': 129,
+  'P4/ncc': 130,
+  'P4_2/mmc': 131,
+  'P4_2/mcm': 132,
+  'P4_2/nbc': 133,
+  'P4_2/nnm': 134,
+  'P4_2/mbc': 135,
+  'P4_2/mnm': 136,
+  'P4_2/nmc': 137,
+  'P4_2/ncm': 138,
+  'I4/mmm': 139,
+  'I4/mcm': 140,
+  'I4_1/amd': 141,
+  'I4_1/acd': 142,
   'P3': 143,
-  'P31': 144,
-  'P32': 145,
+  'P3_1': 144,
+  'P3_2': 145,
   'R3': 146,
   'P-3': 147,
   'R-3': 148,
-  // Hexagonal (common ones)
+  // Trigonal
+  'P312': 149,
+  'P321': 150,
+  'P3_112': 151,
+  'P3_121': 152,
+  'P3_212': 153,
+  'P3_221': 154,
+  'R32': 155,
+  'P3m1': 156,
+  'P31m': 157,
+  'P3c1': 158,
+  'P31c': 159,
+  'R3m': 160,
+  'R3c': 161,
+  'P-31m': 162,
+  'P-31c': 163,
+  'P-3m1': 164,
+  'P-3c1': 165,
+  'R-3m': 166,
+  'R-3c': 167,
+  // Hexagonal
   'P6': 168,
-  'P61': 169,
-  'P65': 170,
-  'P62': 171,
-  'P64': 172,
-  'P63': 173,
+  'P6_1': 169,
+  'P6_5': 170,
+  'P6_2': 171,
+  'P6_4': 172,
+  'P6_3': 173,
   'P-6': 174,
   'P6/m': 175,
-  'P63/m': 176,
-  // Cubic (common ones)
+  'P6_3/m': 176,
+  'P622': 177,
+  'P6_122': 178,
+  'P6_522': 179,
+  'P6_222': 180,
+  'P6_422': 181,
+  'P6_322': 182,
+  'P6mm': 183,
+  'P6cc': 184,
+  'P6_3cm': 185,
+  'P6_3mc': 186,
+  'P-6m2': 187,
+  'P-6c2': 188,
+  'P-62m': 189,
+  'P-62c': 190,
+  'P6/mmm': 191,
+  'P6/mcc': 192,
+  'P6_3/mcm': 193,
+  'P6_3/mmc': 194,
+  // Cubic
   'P23': 195,
   'F23': 196,
   'I23': 197,
-  'P213': 198,
-  'I213': 199,
+  'P2_13': 198,
+  'I2_13': 199,
   'Pm-3': 200,
   'Pn-3': 201,
   'Fm-3': 202,
@@ -180,13 +292,13 @@ export const SPACEGROUP_SYMBOL_TO_NUMBER: Record<string, number> = {
   'Pa-3': 205,
   'Ia-3': 206,
   'P432': 207,
-  'P4232': 208,
+  'P4_232': 208,
   'F432': 209,
-  'F4132': 210,
+  'F4_132': 210,
   'I432': 211,
-  'P4332': 212,
-  'P4132': 213,
-  'I4132': 214,
+  'P4_332': 212,
+  'P4_132': 213,
+  'I4_132': 214,
   'P-43m': 215,
   'F-43m': 216,
   'I-43m': 217,
@@ -203,47 +315,100 @@ export const SPACEGROUP_SYMBOL_TO_NUMBER: Record<string, number> = {
   'Fd-3c': 228,
   'Im-3m': 229,
   'Ia-3d': 230,
-}
+  // Special cases
+  'P121': 3,
+  'P12_11': 4,
+  'C121': 5,
+  'P1m1': 6,
+  'P1c1': 7,
+  'C1m1': 8,
+  'C1c1': 9,
+  'P12/m1': 10,
+  'P12_1/m1': 11,
+  'C12/m1': 12,
+  'P12/c1': 13,
+  'P12_1/c1': 14,
+  'C12/c1': 15,
+  'P2/m2/m2/m': 47,
+  'P2/n2/n2/n': 48,
+  'P2/c2/c2/m': 49,
+  'P2/b2/a2/n': 50,
+  'P2_1/m2/m2/a': 51,
+  'P2/n2_1/n2/a': 52,
+  'P2/m2/n2_1/a': 53,
+  'P2_1/c2/c2/a': 54,
+  'P2_1/b2_1/a2/m': 55,
+  'P2_1/c2_1/c2/n': 56,
+  'P2/b2_1/c2_1/m': 57,
+  'P2_1/n2_1/n2/m': 58,
+  'P2_1/m2_1/m2/n': 59,
+  'P2_1/b2/c2_1/n': 60,
+  'P2_1/b2_1/c2_1/a': 61,
+  'P2_1/n2_1/m2_1/a': 62,
+  'C2/m2/c2_1/m': 63,
+  'C2/m2/c2_1/e': 64,
+  'C2/m2/m2/m': 65,
+  'C2/c2/c2/m': 66,
+  'C2/m2/m2/e': 67,
+  'C2/c2/c2/e': 68,
+  'F2/m2/m2/m': 69,
+  'F2/d2/d2/d': 70,
+  'I2/m2/m2/m': 71,
+  'I2/b2/a2/m': 72,
+  'I2/b2/c2/a': 73,
+  'I2/m2/m2/a': 74,
+  'P4/m2/m2/m': 123,
+  'P4/m2/c2/c': 124,
+  'P4/n2/b2/m': 125,
+  'P4/n2/n2/c': 126,
+  'P4/m2_1/bm': 127,
+  'P4/m2_1/nc': 128,
+  'P4/n2_1/mm': 129,
+  'P4/n2_1/cc': 130,
+  'P4_2/m2/m2/c': 131,
+  'P4_2/m2/c2/m': 132,
+  'P4_2/n2/b2/c': 133,
+  'P4_2/n2/n2/m': 134,
+  'P4_2/m2_1/b2/c': 135,
+  'P4_2/m2_1/n2/m': 136,
+  'P4_2/n2_1/m2/c': 137,
+  'P4_2/n2_1/c2/m': 138,
+  'I4/m2/m2/m': 139,
+  'I4/m2/c2/m': 140,
+  'I4_1/a2/m2/d': 141,
+  'I4_1/a2/c2/d': 142,
+  'P-312/m': 162,
+  'P-312/c': 163,
+  'P-32/m1': 164,
+  'P-32/c1': 165,
+  'R-32/m': 166,
+  'R-32/c': 167,
+  'P6/m2/m2/m': 191,
+  'P6/m2/c2/c': 192,
+  'P6_3/m2/c2/m': 193,
+  'P6_3/m2/m2/c': 194,
+  'P2/m-3': 200,
+  'P2/n-3': 201,
+  'F2/m-3': 202,
+  'F2/d-3': 203,
+  'I2/m-3': 204,
+  'P2_1/a-3': 205,
+  'I2_1/a-3': 206,
+  'P4/m-32/m': 221,
+  'P4/n-32/n': 222,
+  'P4_2/m-32/n': 223,
+  'P4_2/n-32/m': 224,
+  'F4/m-32/m': 225,
+  'F4/m-32/c': 226,
+  'F4_1/d-32/m': 227,
+  'F4_1/d-32/c': 228,
+  'I4/m-32/m': 229,
+  'I4_1/a-32/d': 230,
+} as const
 
-// Convert space group (number or symbol) to crystal system
-export function spacegroup_to_crystal_system(
-  spacegroup: number | string,
-): CrystalSystem | null {
-  if (typeof spacegroup === `number`) {
-    return spacegroup_number_to_crystal_system(spacegroup)
-  }
-
-  // Try to parse as symbol
-  const number = SPACEGROUP_SYMBOL_TO_NUMBER[spacegroup]
-  if (number !== undefined) {
-    return spacegroup_number_to_crystal_system(number)
-  }
-
-  // Try to parse string as number
-  const parsed = parseInt(spacegroup, 10)
-  if (!isNaN(parsed)) {
-    return spacegroup_number_to_crystal_system(parsed)
-  }
-
-  return null
-}
-
-// Convert space group symbol to number
-export function spacegroup_symbol_to_number(symbol: string): number | null {
-  const number = SPACEGROUP_SYMBOL_TO_NUMBER[symbol]
-  if (number !== undefined) return number
-
-  // Try to parse as number
-  const parsed = parseInt(symbol, 10)
-  if (!isNaN(parsed) && parsed >= 1 && parsed <= 230) return parsed
-
-  return null
-}
-
-// Normalize space group input to number
-export function normalize_spacegroup(spacegroup: number | string): number | null {
-  if (typeof spacegroup === `number`) {
-    return spacegroup >= 1 && spacegroup <= 230 ? spacegroup : null
-  }
-  return spacegroup_symbol_to_number(spacegroup)
-}
+export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(
+  SPACEGROUP_SYMBOL_TO_NUM,
+).reduce((acc, [symbol, num]) => {
+  if (!acc[num]) acc[num] = symbol
+  return acc
+}, {} as Record<number, string>)

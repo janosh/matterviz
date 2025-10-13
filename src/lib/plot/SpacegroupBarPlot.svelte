@@ -7,16 +7,20 @@
     CRYSTAL_SYSTEM_COLORS,
     CRYSTAL_SYSTEM_RANGES,
     CRYSTAL_SYSTEMS,
-    normalize_spacegroup,
-    spacegroup_to_crystal_system,
   } from '$lib/symmetry'
+  import {
+    normalize_spacegroup,
+    SPACEGROUP_NUM_TO_SYMBOL,
+    spacegroup_to_crystal_system,
+  } from '$lib/symmetry/spacegroups'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+
+  const MAX_SPACEGROUP = 230
 
   let {
     data,
     show_counts = true,
-    show_empty_bins = false,
     orientation = `vertical`,
     x_axis = {},
     y_axis = {},
@@ -24,15 +28,14 @@
   }: ComponentProps<typeof BarPlot> & {
     data: (number | string)[]
     show_counts?: boolean
-    show_empty_bins?: boolean
   } = $props()
 
   // Normalize input data to space group numbers
-  const normalized_data = $derived.by(() => {
-    return data
-      .map((sg) => normalize_spacegroup(sg))
-      .filter((sg): sg is number => sg !== null)
-  })
+  const normalized_data = $derived(
+    data.map((sg) => normalize_spacegroup(sg)).filter((sg): sg is number =>
+      sg !== null
+    ),
+  )
 
   // Compute histogram of space group numbers
   const histogram = $derived.by(() => {
@@ -41,13 +44,6 @@
     // Count occurrences
     for (const sg of normalized_data) {
       hist.set(sg, (hist.get(sg) ?? 0) + 1)
-    }
-
-    // Optionally add empty bins
-    if (show_empty_bins) {
-      for (let sg = 1; sg <= 230; sg++) {
-        if (!hist.has(sg)) hist.set(sg, 0)
-      }
     }
 
     return hist
@@ -83,17 +79,14 @@
 
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {
-    const non_zero_count = sorted_spacegroups.filter((sg) =>
-      (histogram.get(sg) ?? 0) > 0
+    const non_zero_count = sorted_spacegroups.filter(
+      (sg) => (histogram.get(sg) ?? 0) > 0,
     ).length
 
     // If data is dense (>40 space groups with data), show only multiples of 5
-    if (non_zero_count > 40) {
-      return sorted_spacegroups.filter((sg) => sg % 5 === 0)
-    }
-
-    // Otherwise show all ticks
-    return sorted_spacegroups
+    return non_zero_count > 40
+      ? sorted_spacegroups.filter((sg) => sg % 5 === 0)
+      : sorted_spacegroups
   })
 
   // Build BarSeries - one series per crystal system for proper coloring
@@ -103,25 +96,31 @@
       { x: number[]; y: number[] }
     >()
 
-    // Initialize series for each crystal system
-    for (const system of CRYSTAL_SYSTEMS) {
-      series_by_system.set(system, { x: [], y: [] })
-    }
-
     // Group data by crystal system
     for (const sg of sorted_spacegroups) {
       const system = spacegroup_to_crystal_system(sg)
       if (system) {
-        const series = series_by_system.get(system)!
+        let series = series_by_system.get(system)
+        if (!series) {
+          series = { x: [], y: [] }
+          series_by_system.set(system, series)
+        }
         series.x.push(sg)
         series.y.push(histogram.get(sg) ?? 0)
       }
     }
 
-    // Convert to BarSeries array
-    return Array.from(series_by_system.entries())
-      .filter(([_, data]) => data.x.length > 0) // Only include systems with data
-      .map(([system, data]) => ({
+    // Convert to BarSeries array, maintaining order of crystal systems
+    return CRYSTAL_SYSTEMS.map((system) => ({
+      system,
+      data: series_by_system.get(system),
+    }))
+      .filter((
+        entry,
+      ): entry is { system: CrystalSystem; data: { x: number[]; y: number[] } } =>
+        entry.data !== undefined
+      )
+      .map(({ system, data }) => ({
         x: data.x,
         y: data.y,
         color: CRYSTAL_SYSTEM_COLORS[system],
@@ -131,62 +130,27 @@
       }))
   })
 
-  // Calculate x-axis range - span from first to last crystal system with data
-  const x_range = $derived.by<[number, number]>(() => {
-    if (sorted_spacegroups.length === 0) return [0.5, 230.5]
-
-    // Find the first and last crystal system that contains data
-    const min_sg = sorted_spacegroups[0]
-    const max_sg = sorted_spacegroups[sorted_spacegroups.length - 1]
-
-    // Extend to the full ranges of those crystal systems
-    let range_min = min_sg
-    let range_max = max_sg
-
-    for (const system of CRYSTAL_SYSTEMS) {
-      const [system_min, system_max] = CRYSTAL_SYSTEM_RANGES[system]
-      // If this system contains our min data point, extend to system start
-      if (min_sg >= system_min && min_sg <= system_max) {
-        range_min = system_min
-      }
-      // If this system contains our max data point, extend to system end
-      if (max_sg >= system_min && max_sg <= system_max) {
-        range_max = system_max
-      }
-    }
-
-    return [range_min - 0.5, range_max + 0.5]
-  })
+  // Always show full space group range (1-230)
+  const x_range: [number, number] = [0.5, MAX_SPACEGROUP + 0.5]
 
   // Calculate crystal system region boundaries using full theoretical ranges
   const crystal_system_regions = $derived.by(() => {
-    const regions: Array<{
-      system: CrystalSystem
-      sg_start: number
-      sg_end: number
-      count: number
-      color: string
-    }> = []
-
     const [range_min, range_max] = x_range
 
-    for (const system of CRYSTAL_SYSTEMS) {
-      const stats = crystal_system_stats.get(system)
+    return CRYSTAL_SYSTEMS.map((system) => {
       const [sg_min, sg_max] = CRYSTAL_SYSTEM_RANGES[system]
+      const stats = crystal_system_stats.get(system)
 
-      // Only show crystal systems that fall within the visible range
-      if (sg_max < range_min || sg_min > range_max) continue
-
-      regions.push({
+      return {
         system,
         sg_start: sg_min,
         sg_end: sg_max,
         count: stats?.count ?? 0,
         color: CRYSTAL_SYSTEM_COLORS[system],
-      })
-    }
-
-    return regions
+      }
+    }).filter(
+      (region) => region.sg_end >= range_min && region.sg_start <= range_max, // Only visible systems
+    )
   })
 
   const total_count = $derived(normalized_data.length)
@@ -220,7 +184,7 @@
   {@const sg = info.x}
   {@const count = info.y}
   {@const system = spacegroup_to_crystal_system(sg)}
-  Space Group: {format_value(sg, `.0f`)}
+  Space Group: {format_value(sg, `.0f`)} ({SPACEGROUP_NUM_TO_SYMBOL[sg]})
   <br />
   {#if system}
     Crystal System: {system}
@@ -249,7 +213,6 @@
         {@const x_end = x_scale_fn(region.sg_end + 0.5)}
         {@const x_center = (x_start + x_end) / 2}
         {@const rect_width = x_end - x_start}
-
         <!-- Background colored rectangle (vertical mode) -->
         <rect
           x={x_start}
@@ -262,30 +225,29 @@
           stroke-width="1"
           stroke-opacity="0.3"
         />
-
-        <!-- Crystal system label (rotated 90 degrees) -->
+        <!-- Crystal system label (rotated 90 degrees) at top edge -->
         <text
           x={x_center}
-          y={pad.t + (height - pad.t - pad.b) / 2}
-          text-anchor="middle"
+          y={pad.t + 15}
+          text-anchor="start"
           font-size="14"
           fill="var(--text-color, black)"
           opacity="0.6"
-          transform="rotate(90, {x_center}, {pad.t + (height - pad.t - pad.b) / 2})"
+          transform="rotate(90, {x_center}, {pad.t + 15})"
         >
           {region.system}
         </text>
-
         <!-- Count annotation at top -->
         {#if show_counts && total_count > 0}
+          {@const y_offset = region.system === `triclinic` ? -20 : -5}
           <text
             x={x_center}
-            y={pad.t - 5}
+            y={pad.t + y_offset}
             text-anchor="middle"
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {format_num(region.count, `~`)} ({
+            {format_num(region.count, `,~`)} ({
               format_num(region.count / total_count, `.1~%`)
             })
           </text>
@@ -295,7 +257,6 @@
         {@const y_end = y_scale_fn(region.sg_start - 0.5)}
         {@const y_center = (y_start + y_end) / 2}
         {@const rect_height = y_end - y_start}
-
         <!-- Background colored rectangle (horizontal mode) -->
         <rect
           x={pad.l}
@@ -308,12 +269,11 @@
           stroke-width="1"
           stroke-opacity="0.3"
         />
-
-        <!-- Crystal system label (horizontal) -->
+        <!-- Crystal system label (horizontal) at left edge -->
         <text
-          x={pad.l + (width - pad.l - pad.r) / 2}
+          x={width - pad.r - 8}
           y={y_center}
-          text-anchor="middle"
+          text-anchor="end"
           dominant-baseline="central"
           font-size="14"
           fill="var(--text-color, black)"
@@ -321,7 +281,6 @@
         >
           {region.system}
         </text>
-
         <!-- Count annotation at right -->
         {#if show_counts && total_count > 0}
           <text
@@ -332,7 +291,7 @@
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {format_num(region.count, `~`)} ({
+            {format_num(region.count, `,~`)} ({
               format_num(region.count / total_count, `.1~%`)
             })
           </text>
