@@ -82,7 +82,7 @@
       return {
         element: data.element as ElementSymbol,
         amount: data.amount,
-        percentage: total_atoms > 0 ? (data.amount / total_atoms) * 100 : 0,
+        fraction: total_atoms > 0 ? data.amount / total_atoms : 0,
         radius,
         x: (node.x || 0) + padding, // Offset by padding
         y: (node.y || 0) + padding,

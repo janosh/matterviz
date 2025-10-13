@@ -253,13 +253,17 @@
   {...rest}
   series={bar_series}
   bind:orientation
-  x_label={orientation === `horizontal` ? y_label : x_label}
-  y_label={orientation === `horizontal` ? x_label : y_label}
-  x_label_shift={{ y: 20 }}
-  y_label_shift={{ x: 2 }}
+  x_axis={{
+    label: orientation === `horizontal` ? y_label : x_label,
+    label_shift: { y: 20 },
+    range: orientation === `horizontal` ? intensity_range : angle_range,
+  }}
+  y_axis={{
+    label: orientation === `horizontal` ? x_label : y_label,
+    label_shift: { x: 2 },
+    range: orientation === `horizontal` ? angle_range : intensity_range,
+  }}
   {tooltip}
-  x_range={orientation === `horizontal` ? intensity_range : angle_range}
-  y_range={orientation === `horizontal` ? angle_range : intensity_range}
   ondrop={handle_file_drop}
   ondragover={(event) => {
     event.preventDefault()

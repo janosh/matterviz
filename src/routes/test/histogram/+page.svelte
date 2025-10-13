@@ -257,8 +257,8 @@
   series={basic_data}
   bins={bin_count}
   mode="single"
-  x_label="Value"
-  y_label="Frequency"
+  x_axis={{ label: `Value` }}
+  y_axis={{ label: `Frequency` }}
 />
 
 <label>Opacity: <input
@@ -297,8 +297,8 @@
   series={log_data}
   bins={50}
   mode="overlay"
-  x_scale_type={x_scale}
-  y_scale_type={y_scale}
+  x_axis={{ scale_type: x_scale }}
+  y_axis={{ scale_type: y_scale }}
 />
 
 <label>Distribution Type: <select bind:value={distribution_type}>
@@ -348,10 +348,8 @@
   series={tick_test_data}
   bins={30}
   mode="single"
-  x_ticks={x_tick_count}
-  y_ticks={y_tick_count}
-  x_label="Value (Custom X Ticks)"
-  y_label="Count (Custom Y Ticks)"
+  x_axis={{ ticks: x_tick_count, label: `Value (Custom X Ticks)` }}
+  y_axis={{ ticks: y_tick_count, label: `Count (Custom Y Ticks)` }}
 />
 
 <Histogram
@@ -359,10 +357,8 @@
   series={range_test_data}
   bins={30}
   mode="single"
-  x_label="Value (Custom Range)"
-  y_label="Count (Custom Range)"
-  {x_range}
-  {y_range}
+  x_axis={{ label: `Value (Custom Range)`, range: x_range }}
+  y_axis={{ label: `Count (Custom Range)`, range: y_range }}
 />
 
 <Histogram
@@ -370,8 +366,8 @@
   series={zero_lines_data}
   bins={25}
   mode="single"
-  x_label="Value"
-  y_label="Count"
+  x_axis={{ label: `Value` }}
+  y_axis={{ label: `Count` }}
 />
 
 <Histogram
@@ -379,8 +375,8 @@
   series={custom_tooltip_data}
   bins={20}
   mode="single"
-  x_label="Value"
-  y_label="Count"
+  x_axis={{ label: `Value` }}
+  y_axis={{ label: `Count` }}
 >
   {#snippet tooltip(props)}
     <div style="background: #8b5cf6; color: white; padding: 8px; border-radius: 4px">
@@ -397,8 +393,8 @@
   series={zoom_test_data}
   bins={40}
   mode="single"
-  x_label="Value"
-  y_label="Count"
+  x_axis={{ label: `Value` }}
+  y_axis={{ label: `Count` }}
 />
 
 Plot is currently hovered: <strong>{is_plot_hovered}</strong>
@@ -407,8 +403,8 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   series={hovered_data}
   bins={25}
   mode="single"
-  x_label="Value"
-  y_label="Count"
+  x_axis={{ label: `Value` }}
+  y_axis={{ label: `Count` }}
   bind:hovered={is_plot_hovered}
 />
 
@@ -417,8 +413,8 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   series={wide_range_data}
   bins={50}
   mode="single"
-  x_label="Value (Wide Range)"
-  y_label="Count"
+  x_axis={{ label: `Value (Wide Range)` }}
+  y_axis={{ label: `Count` }}
 />
 
 <Histogram
@@ -426,7 +422,6 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   series={small_range_data}
   bins={30}
   mode="single"
-  x_label="Value (Small Range)"
-  y_label="Count"
-  x_format=".6f"
+  x_axis={{ label: `Value (Small Range)`, format: `.6f` }}
+  y_axis={{ label: `Count` }}
 />

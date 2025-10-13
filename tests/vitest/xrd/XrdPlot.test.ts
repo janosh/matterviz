@@ -12,6 +12,31 @@ const pattern: XrdPattern = {
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
 }
 
+/**
+ * Helper to create a sized container for proper plot rendering.
+ */
+function create_sized_container(): HTMLDivElement {
+  const target = document.createElement(`div`)
+  target.style.width = `800px`
+  target.style.height = `600px`
+  document.body.appendChild(target)
+  return target
+}
+
+/**
+ * Helper to mock clientWidth/clientHeight and wait for render.
+ */
+async function wait_for_plot_render(target: HTMLElement): Promise<void> {
+  const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
+  if (bar_plot) {
+    Object.defineProperty(bar_plot, `clientWidth`, { value: 800, configurable: true })
+    Object.defineProperty(bar_plot, `clientHeight`, { value: 600, configurable: true })
+    bar_plot.dispatchEvent(new Event(`resize`))
+  }
+  // Wait for reactive updates
+  await new Promise((resolve) => setTimeout(resolve, 10))
+}
+
 describe(`XrdPlot`, () => {
   test.each([
     [{ patterns: pattern }, `basic`],
@@ -61,7 +86,7 @@ describe(`XrdPlot`, () => {
     )
   })
 
-  test(`overbar notation on multi-digit negative indices`, () => {
+  test(`overbar notation on multi-digit negative indices`, async () => {
     // Regression test for overbar notation bug: multi-digit negative indices
     // should have overbar on all digits (e.g., -10 → 1̄0̄, not 10̄)
     const pattern_with_negatives: XrdPattern = {
@@ -75,12 +100,7 @@ describe(`XrdPlot`, () => {
       d_hkls: [5.9, 3.6, 2.8],
     }
 
-    // Create a sized container so the plot renders its SVG
-    const target = document.createElement(`div`)
-    target.style.width = `800px`
-    target.style.height = `600px`
-    document.body.appendChild(target)
-
+    const target = create_sized_container()
     mount(XrdPlot, {
       target,
       props: {
@@ -91,36 +111,169 @@ describe(`XrdPlot`, () => {
       },
     })
 
-    // Mock the clientWidth/clientHeight getters since happy-dom doesn't compute layout
-    const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
-    if (bar_plot) {
-      Object.defineProperty(bar_plot, `clientWidth`, { value: 800, configurable: true })
-      Object.defineProperty(bar_plot, `clientHeight`, { value: 600, configurable: true })
-      // Trigger a re-render by dispatching a resize-like event
-      bar_plot.dispatchEvent(new Event(`resize`))
+    await wait_for_plot_render(target)
+
+    const text_content = target.textContent || ``
+    const overbar = `\u0305`
+
+    // -1 should be 1̄ (single digit with overbar)
+    expect(text_content).toContain(`1${overbar}00`) // from [-1, 0, 0]
+
+    // -10 should be 1̄0̄ (both digits with overbar), not 10̄
+    expect(text_content).toContain(`1${overbar}0${overbar}2`) // from [-10, 2, -3]
+    // Check that we DON'T have 10̄ (overbar only on last digit of multi-digit number)
+    expect(text_content).not.toContain(`10${overbar}2`)
+
+    // -12 should be 1̄2̄ (both digits with overbar)
+    expect(text_content).toContain(`1${overbar}2${overbar}0`) // from [1, -12, 0]
+  })
+
+  test.each([
+    {
+      desc: `vertical orientation with custom labels`,
+      orientation: `vertical` as const,
+      x_label: `Custom 2θ Label`,
+      y_label: `Custom Intensity Label`,
+      expect_x_axis: `Custom 2θ Label`,
+      expect_y_axis: `Custom Intensity Label`,
+    },
+    {
+      desc: `horizontal orientation swaps labels`,
+      orientation: `horizontal` as const,
+      x_label: `2θ (degrees)`,
+      y_label: `Intensity (a.u.)`,
+      expect_x_axis: `Intensity`, // swapped
+      expect_y_axis: `2θ`, // swapped
+    },
+    {
+      desc: `default labels`,
+      orientation: undefined,
+      x_label: undefined,
+      y_label: undefined,
+      expect_x_axis: `2θ (degrees)`,
+      expect_y_axis: `Intensity (a.u.)`,
+    },
+  ])(
+    `axis labels: $desc`,
+    async ({ orientation, x_label, y_label, expect_x_axis, expect_y_axis }) => {
+      const target = create_sized_container()
+      mount(XrdPlot, {
+        target,
+        props: { patterns: pattern, orientation, x_label, y_label },
+      })
+
+      await wait_for_plot_render(target)
+
+      const x_axis = target.querySelector(`.x-axis`)
+      const y_axis = target.querySelector(`.y-axis`)
+      expect(x_axis?.textContent).toContain(expect_x_axis)
+      expect(y_axis?.textContent).toContain(expect_y_axis)
+    },
+  )
+
+  test.each([
+    {
+      desc: `intensity normalized to 0-100`,
+      pattern: { x: [10, 20, 30], y: [50, 100, 75] },
+      axis: `.y-axis` as const,
+      expects: [`0`, `100`],
+    },
+    {
+      desc: `angle range from 0 to max`,
+      pattern: { x: [10, 20, 42.7], y: [100, 200, 150] },
+      axis: `.x-axis` as const,
+      expects: [`0`, /4[0-9]/], // 0 and 40-49 range
+    },
+  ])(`axis ranges: $desc`, async ({ pattern, axis, expects }) => {
+    const target = create_sized_container()
+    mount(XrdPlot, { target, props: { patterns: pattern } })
+    await wait_for_plot_render(target)
+
+    const axis_el = target.querySelector(axis)
+    for (const expect_val of expects) {
+      if (typeof expect_val === `string`) {
+        expect(axis_el?.textContent).toContain(expect_val)
+      } else {
+        expect(axis_el?.textContent).toMatch(expect_val)
+      }
     }
+  })
 
-    // Wait for next tick to allow reactive updates
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        const text_content = target.textContent || ``
+  test.each([
+    {
+      desc: `multiple patterns with colors`,
+      props: {
+        patterns: { 'Pattern A': pattern, 'Pattern B': { pattern, color: `#ff0000` } },
+      },
+      expects: { labels: [`Pattern A`, `Pattern B`], min_bar_series: 2 },
+    },
+    {
+      desc: `peak annotations`,
+      props: {
+        patterns: pattern,
+        annotate_peaks: 2,
+        hkl_format: `compact`,
+        show_angles: true,
+      },
+      expects: { min_bar_labels: 1, text_match: /[12][01]{2}/ }, // hkl pattern
+    },
+  ])(`rendering: $desc`, async ({ props, expects }) => {
+    const target = create_sized_container()
+    mount(XrdPlot, { target, props })
+    await wait_for_plot_render(target)
 
-        // Check for correct overbar notation using U+0305 combining overline
-        const overbar = `\u0305`
+    const text_content = target.textContent || ``
+    if (expects.labels) {
+      for (const label of expects.labels) expect(text_content).toContain(label)
+    }
+    if (expects.min_bar_series) {
+      expect(target.querySelectorAll(`.bar-series`).length).toBeGreaterThanOrEqual(
+        expects.min_bar_series,
+      )
+    }
+    if (expects.min_bar_labels) {
+      expect(target.querySelectorAll(`.bar-label`).length).toBeGreaterThan(0)
+    }
+    if (expects.text_match) {
+      expect(text_content).toMatch(expects.text_match)
+    }
+  })
 
-        // -1 should be 1̄ (single digit with overbar)
-        expect(text_content).toContain(`1${overbar}00`) // from [-1, 0, 0]
-
-        // -10 should be 1̄0̄ (both digits with overbar), not 10̄
-        expect(text_content).toContain(`1${overbar}0${overbar}2`) // from [-10, 2, -3]
-        // Check that we DON'T have 10̄ (overbar only on last digit of multi-digit number)
-        expect(text_content).not.toContain(`10${overbar}2`)
-
-        // -12 should be 1̄2̄ (both digits with overbar)
-        expect(text_content).toContain(`1${overbar}2${overbar}0`) // from [1, -12, 0]
-
-        resolve()
-      }, 10) // Give it a bit more time
+  test(`dragover class toggles correctly`, async () => {
+    const target = create_sized_container()
+    mount(XrdPlot, {
+      target,
+      props: {
+        patterns: pattern,
+        allow_file_drop: true,
+      },
     })
+
+    await wait_for_plot_render(target)
+
+    // Verify dragover class toggles
+    const bar_plot = target.querySelector(`.bar-plot`)
+    expect(bar_plot).toBeTruthy()
+    expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
+
+    // Simulate dragover
+    const drag_event = new DragEvent(`dragover`, {
+      bubbles: true,
+      cancelable: true,
+    })
+    bar_plot?.dispatchEvent(drag_event)
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(bar_plot?.classList.contains(`dragover`)).toBe(true)
+
+    // Simulate dragleave
+    const leave_event = new DragEvent(`dragleave`, {
+      bubbles: true,
+      cancelable: true,
+    })
+    bar_plot?.dispatchEvent(leave_event)
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
   })
 })

@@ -100,7 +100,7 @@ describe(`Energy Data Extractor`, () => {
     { name: `handles missing metadata`, step: 0, metadata: {}, expected: { Step: 0 } },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
-    const data = energy_data_extractor(frame, {})
+    const data = energy_data_extractor(frame, { frames: [], metadata: {} })
     expect(data).toEqual(expected)
   })
 })
@@ -140,7 +140,7 @@ describe(`Force and Stress Data Extractor`, () => {
     },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = create_basic_frame(step, metadata)
-    const data = force_stress_data_extractor(frame, {})
+    const data = force_stress_data_extractor(frame, { frames: [], metadata: {} })
     expect(data).toEqual(expected)
   })
 })
@@ -188,7 +188,7 @@ describe(`Structural Data Extractor`, () => {
       ? create_frame_with_lattice(step, lattice_params, metadata)
       : create_basic_frame(step, metadata)
 
-    const data = structural_data_extractor(frame, {})
+    const data = structural_data_extractor(frame, { frames: [], metadata: {} })
     expect(data).toEqual(expected)
   })
 
@@ -200,7 +200,7 @@ describe(`Structural Data Extractor`, () => {
       {}, // No density in metadata
     )
 
-    const data = structural_data_extractor(frame, {})
+    const data = structural_data_extractor(frame, { frames: [], metadata: {} })
 
     // Should calculate density from structure
     expect(data.density).toBeDefined()
@@ -215,7 +215,7 @@ describe(`Structural Data Extractor`, () => {
       { density: 5.0 }, // Explicit density in metadata
     )
 
-    const data = structural_data_extractor(frame, {})
+    const data = structural_data_extractor(frame, { frames: [], metadata: {} })
 
     // Should use metadata density
     expect(data.density).toBe(5.0)

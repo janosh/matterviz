@@ -126,7 +126,7 @@
     )
     if (!el_a) {
       coords.push({
-        composition: { [el1]: 1 },
+        composition: { [el1]: 1 } as Record<ElementSymbol, number>,
         energy: 0,
         x: 0,
         y: 0,
@@ -137,7 +137,7 @@
     }
     if (!el_b) {
       coords.push({
-        composition: { [el2]: 1 },
+        composition: { [el2]: 1 } as Record<ElementSymbol, number>,
         energy: 0,
         x: 1,
         y: 0,

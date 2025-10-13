@@ -266,21 +266,22 @@
 
   let enable_auto_placement = $state(true)
 
-  let auto_placement_test_series = $derived.by(() => {
-    return auto_placement_series_data.map((series) => ({
+  let auto_placement_test_series = $derived(
+    auto_placement_series_data.map((series) => ({
       ...series,
-      point_label: (Array.isArray(series.point_label)
-        ? series.point_label
-        : series.point_label
-        ? [series.point_label]
-        : []).map(
-          (lbl): LabelStyle => ({
-            ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
-            auto_placement: enable_auto_placement,
-          }),
-        ),
-    }))
-  })
+      point_label:
+        (Array.isArray(series.point_label)
+          ? series.point_label
+          : series.point_label
+          ? [series.point_label]
+          : []).map(
+            (lbl): LabelStyle => ({
+              ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+              auto_placement: enable_auto_placement,
+            }),
+          ),
+    })),
+  )
 
   // === Automatic Color Bar Placement Data ===
   let auto_placement_density = $state({
@@ -488,9 +489,9 @@
   <h2>Basic Example</h2>
   <ScatterPlot
     series={[basic_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="line+points"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -499,23 +500,23 @@
   <h3>Points Only</h3>
   <ScatterPlot
     series={[points_data]}
-    x_label="X Axis"
-    y_label="Y Axis (Points)"
-    markers="points"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis (Points)` }}
+    display={{ markers: `points` }}
   />
   <h3>Line Only</h3>
   <ScatterPlot
     series={[line_data]}
-    x_label="X Axis"
-    y_label="Y Axis (Line)"
-    markers="line"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis (Line)` }}
+    display={{ markers: `line` }}
   />
   <h3>Line + Points</h3>
   <ScatterPlot
     series={[line_points_data]}
-    x_label="X Axis"
-    y_label="Y Axis (Line+Points)"
-    markers="line+points"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis (Line+Points)` }}
+    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -525,21 +526,17 @@
   <h3>Wide Range (-1000 to 1000)</h3>
   <ScatterPlot
     series={[wide_range_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    x_lim={[-1100, 1100]}
-    y_lim={[-550, 550]}
-    markers="line+points"
+    x_axis={{ label: `X Axis`, lim: [-1100, 1100] }}
+    y_axis={{ label: `Y Axis`, lim: [-550, 550] }}
+    display={{ markers: `line+points` }}
   />
 
   <h3>Very Small Range</h3>
   <ScatterPlot
     series={[small_range_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    x_lim={[0, 0.0006]}
-    y_lim={[0, 0.00006]}
-    markers="line+points"
+    x_axis={{ label: `X Axis`, lim: [0, 0.0006] }}
+    y_axis={{ label: `Y Axis`, lim: [0, 0.00006] }}
+    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -548,23 +545,16 @@
   <h3>Y-Axis Log Scale</h3>
   <ScatterPlot
     series={[log_scale_data]}
-    x_label="X Axis (Linear)"
-    y_label="Y Axis (Log)"
-    x_lim={[-1100, 1100]}
-    y_lim={[1, 6000]}
-    markers="line+points"
-    y_scale_type="log"
+    x_axis={{ label: `X Axis (Linear)`, lim: [-1100, 1100] }}
+    y_axis={{ label: `Y Axis (Log)`, lim: [1, 6000], scale_type: `log` }}
+    display={{ markers: `line+points` }}
   />
   <h3>X-Axis Log Scale</h3>
   <ScatterPlot
     series={[log_scale_data2]}
-    x_label="X Axis (Log)"
-    y_label="Y Axis (Linear)"
-    y_format="~s"
-    x_format="~s"
-    x_lim={[0.01, 1100]}
-    markers="line+points"
-    x_scale_type="log"
+    x_axis={{ label: `X Axis (Log)`, format: `~s`, lim: [0.01, 1100], scale_type: `log` }}
+    y_axis={{ label: `Y Axis (Linear)`, format: `~s` }}
+    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -573,16 +563,16 @@
   <h3>Rainbow Points</h3>
   <ScatterPlot
     series={[rainbow_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="points"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `points` }}
   />
   <h3>Multiple Series</h3>
   <ScatterPlot
     series={[multi_series_data1, multi_series_data2]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="line+points"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -599,9 +589,9 @@
   </div>
   <ScatterPlot
     series={[color_scale_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="points"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `points` }}
     {color_scale}
     color_bar={{}}
   />
@@ -609,7 +599,7 @@
 
 <section id="custom-tooltip">
   <h2>Custom Tooltip Example</h2>
-  <ScatterPlot series={[custom_tooltip_data]} markers="points">
+  <ScatterPlot series={[custom_tooltip_data]} display={{ markers: `points` }}>
     {#snippet tooltip(props)}
       Point Info: <strong>{props.metadata?.info}</strong><br />
       Coords: ({props.x_formatted}, {props.y_formatted})
@@ -622,7 +612,7 @@
   <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
   <ScatterPlot
     series={[bind_hovered_data]}
-    markers="points"
+    display={{ markers: `points` }}
     bind:hovered={is_plot_hovered}
   />
 </section>
@@ -639,11 +629,9 @@
   {#key enable_auto_placement}
     <ScatterPlot
       series={auto_placement_test_series}
-      x_label="X"
-      y_label="Y"
-      x_lim={[0, 100]}
-      y_lim={[0, 100]}
-      markers="points"
+      x_axis={{ label: `X`, lim: [0, 100] }}
+      y_axis={{ label: `Y`, lim: [0, 100] }}
+      display={{ markers: `points` }}
       style="height: 450px; width: 100%"
     />
   {/key}
@@ -678,11 +666,9 @@
 
   <ScatterPlot
     series={auto_placement_plot_series}
-    x_label="X Position"
-    y_label="Y Position"
-    x_lim={[0, 100]}
-    y_lim={[0, 100]}
-    markers="points"
+    x_axis={{ label: `X Position`, lim: [0, 100] }}
+    y_axis={{ label: `Y Position`, lim: [0, 100] }}
+    display={{ markers: `points` }}
     color_scale={{ scheme: `Turbo` }}
     color_bar={{ title: `Color Bar Title` }}
   >
@@ -698,28 +684,28 @@
   <h3>Single Series (Default Legend) - No Legend Expected</h3>
   <ScatterPlot
     series={legend_single_series}
-    markers="points"
+    display={{ markers: `points` }}
     id="legend-single-default"
   />
   <h3>Single Series (legend=null) - No Legend Expected</h3>
   <ScatterPlot
     series={legend_single_series}
     legend={null}
-    markers="points"
+    display={{ markers: `points` }}
     id="legend-single-null"
   />
   <h3>Single Series (Configured Legend) - Legend Expected</h3>
   <ScatterPlot
     series={legend_single_series}
     legend={{ layout: `horizontal` }}
-    markers="points"
+    display={{ markers: `points` }}
     id="legend-single-config"
   />
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
   <ScatterPlot
     series={legend_multi_series}
     legend={{ draggable: true }}
-    markers="points"
+    display={{ markers: `points` }}
     id="legend-multi-default"
   />
   <h3>Zero Series - No Legend Expected</h3>
@@ -747,11 +733,13 @@
   </div>
   <ScatterPlot
     series={[lin_log_transition_data]}
-    x_label="X Axis (Linear)"
-    y_label="Y Axis"
-    markers="line+points"
-    y_scale_type={lin_log_y_scale_type}
-    y_lim={lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null]}
+    x_axis={{ label: `X Axis (Linear)` }}
+    y_axis={{
+      label: `Y Axis`,
+      scale_type: lin_log_y_scale_type,
+      lim: lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null],
+    }}
+    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -791,11 +779,9 @@
 
 <ScatterPlot
   series={[spiral_data]}
-  x_label="X Axis"
-  y_label="Y Axis"
-  x_lim={[-15, 15]}
-  y_lim={[-15, 15]}
-  markers="points"
+  x_axis={{ label: `X Axis`, lim: [-15, 15] }}
+  y_axis={{ label: `Y Axis`, lim: [-15, 15] }}
+  display={{ markers: `points` }}
   {size_scale}
   style="height: 500px; width: 100%"
 >
@@ -815,25 +801,25 @@
   <ScatterPlot
     id="solid-line-plot"
     series={[solid_line_data_1, solid_line_data_2]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="line"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `line` }}
   />
   <h3>Dashed Line</h3>
   <ScatterPlot
     id="dashed-line-plot"
     series={[dashed_line_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="line"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `line` }}
   />
   <h3>Custom Dashed Line</h3>
   <ScatterPlot
     id="custom-dash-plot"
     series={[custom_dash_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
-    markers="line"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
+    display={{ markers: `line` }}
   />
 </section>
 
@@ -896,8 +882,8 @@
   <ScatterPlot
     id="single-axis-plot"
     series={[basic_data]}
-    x_label="X Axis"
-    y_label="Y Axis"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y Axis` }}
   />
 
   <h3>Dual Axis (With Coloring)</h3>
@@ -915,9 +901,9 @@
         line_style: { stroke: `#5555ff`, stroke_width: 2 },
       },
     ]}
-    x_label="X Axis"
-    y_label="Y1 Axis"
-    y2_label="Y2 Axis"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y1 Axis` }}
+    y2_axis={{ label: `Y2 Axis` }}
   />
 
   <h3>Color Scale (No Axis Coloring)</h3>
@@ -931,9 +917,9 @@
       },
       { ...multi_series_data2, y_axis: `y2` },
     ]}
-    x_label="X Axis"
-    y_label="Y1 Axis"
-    y2_label="Y2 Axis"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y1 Axis` }}
+    y2_axis={{ label: `Y2 Axis` }}
   />
 
   <h3>Custom Axis Colors</h3>
@@ -944,9 +930,9 @@
       { ...multi_series_data2, y_axis: `y2` },
     ]}
     color_axis_labels={{ y1: `#ff0000`, y2: `#00ff00` }}
-    x_label="X Axis"
-    y_label="Y1 Axis (Custom Red)"
-    y2_label="Y2 Axis (Custom Green)"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y1 Axis (Custom Red)` }}
+    y2_axis={{ label: `Y2 Axis (Custom Green)` }}
   />
 
   <h3>Disabled Axis Coloring</h3>
@@ -964,29 +950,57 @@
       },
     ]}
     color_axis_labels={false}
-    x_label="X Axis"
-    y_label="Y1 Axis"
-    y2_label="Y2 Axis"
+    x_axis={{ label: `X Axis` }}
+    y_axis={{ label: `Y1 Axis` }}
+    y2_axis={{ label: `Y2 Axis` }}
   />
 </section>
 
 <!-- Point Event Test -->
-<h2>Point Event Test</h2>
-<p>Clicking a point should update the text below.</p>
-<ScatterPlot
-  id="point-event-test"
-  series={point_event_data}
-  x_label="X"
-  y_label="Y"
-  markers="points"
-  point_events={{
-    onclick: handle_point_click,
-    ondblclick: handle_point_double_click,
-  }}
-/>
-<p data-testid="last-clicked-point">
-  Last Clicked Point: {last_clicked_point_id ?? `none`}
-</p>
-<p data-testid="last-double-clicked-point">
-  Last Double-Clicked Point: {last_double_clicked_point_id ?? `none`}
-</p>
+<section id="point-event-test">
+  <h2>Point Event Test</h2>
+  <p>Clicking a point should update the text below.</p>
+  <ScatterPlot
+    series={point_event_data}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    display={{ markers: `points` }}
+    point_events={{
+      onclick: handle_point_click,
+      ondblclick: handle_point_double_click,
+    }}
+  />
+  <p data-testid="last-clicked-point">
+    Last Clicked Point: {last_clicked_point_id ?? `none`}
+  </p>
+  <p data-testid="last-double-clicked-point">
+    Last Double-Clicked Point: {last_double_clicked_point_id ?? `none`}
+  </p>
+</section>
+
+<!-- Color-mapped Line Legend Test -->
+<section id="color-mapped-line-legend-test">
+  <h2>Color-mapped Line Legend Test</h2>
+  <p>
+    Tests that legend line color reflects the color scale for series with color_values.
+  </p>
+  <ScatterPlot
+    id="color-mapped-line-plot"
+    series={[
+      {
+        x: [1, 2, 3, 4, 5],
+        y: [2, 4, 3, 5, 4],
+        color_values: [1, 2, 3, 4, 5],
+        label: `Color Mapped Line`,
+        point_style: { radius: 5 },
+        markers: `line+points`,
+        // Intentionally no line_style.stroke - should use color scale
+      },
+    ]}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    color_scale={{ scheme: `Viridis` }}
+    color_bar={{ title: `Color Value` }}
+    legend={{ draggable: true }}
+  />
+</section>
