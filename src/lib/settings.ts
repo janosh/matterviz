@@ -2,9 +2,10 @@
 // Used by both main package and VSCode extension
 
 import { merge_nested } from '$lib'
+import type { D3SymbolName } from '$lib/labels'
+import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type { D3SymbolName, Markers, Orientation } from '$lib/plot'
-import { symbol_names } from '$lib/plot/formatting'
+import type { Markers, Orientation } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 // SettingType interface with optional context to control where settings apply
@@ -27,6 +28,7 @@ export type ShowBonds = (typeof show_bonds_options)[number]
 type DisplayConfigType = {
   x_grid: SettingType<boolean>
   y_grid: SettingType<boolean>
+  y2_grid: SettingType<boolean>
   x_zero_line: SettingType<boolean>
   y_zero_line: SettingType<boolean>
 }
@@ -220,7 +222,7 @@ export interface SettingsConfig {
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
-    display: DisplayConfigType & { y2_grid: SettingType<boolean> }
+    display: DisplayConfigType
     point: PointStyleType
     line: LineStyleType
   }
@@ -265,6 +267,10 @@ const DISPLAY_CONFIG = {
   y_grid: {
     value: true,
     description: `Show Y-axis grid lines`,
+  },
+  y2_grid: {
+    value: false,
+    description: `Show Y2-axis grid lines`,
   },
   x_zero_line: {
     value: false,
@@ -755,7 +761,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   // Bar plot specific
   bar: {
-    display: DISPLAY_CONFIG,
     bar: {
       color: {
         value: `#4A9EFF`,
@@ -780,6 +785,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         description: `Bar plot line color`,
       },
     },
+    display: DISPLAY_CONFIG,
   },
 
   // Composition specific
@@ -820,13 +826,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Show connecting lines in scatter plots`,
     },
-    display: {
-      ...DISPLAY_CONFIG,
-      y2_grid: {
-        value: true,
-        description: `Show secondary Y-axis grid lines`,
-      },
-    },
+    display: DISPLAY_CONFIG,
     point: {
       size: {
         value: 4,

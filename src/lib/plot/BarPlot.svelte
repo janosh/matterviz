@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_value } from '$lib/labels'
   import type {
     AxisConfig,
     BarMode,
@@ -19,7 +20,6 @@
     find_best_plot_area,
     PlotLegend,
   } from '$lib/plot'
-  import { format_value } from '$lib/plot/formatting'
   import { get_relative_coords } from '$lib/plot/interactions'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
   import { DEFAULTS } from '$lib/settings'
@@ -34,9 +34,11 @@
     mode = $bindable(`overlay` as BarMode),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
     x_lim = [null, null],
     y_lim = [null, null],
+    y2_lim = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     legend = {},
@@ -59,6 +61,7 @@
     series?: BarSeries[]
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    y2_axis?: AxisConfig
     display?: DisplayConfig
     hovered?: boolean
     show_controls?: boolean
@@ -82,6 +85,15 @@
   // Initialize bar and line styles with defaults (runs once)
   bar = { ...DEFAULTS.bar.bar, ...bar }
   line = { ...DEFAULTS.bar.line, ...line }
+  y2_axis = { // Initialize y2_axis defaults
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { y: 60 },
+    tick_label_shift: { x: 8, y: 0 },
+    lim: [null, null],
+    ...y2_axis,
+  }
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
@@ -90,89 +102,117 @@
   // Compute auto ranges from visible series
   let visible_series = $derived(series.filter((s) => s?.visible ?? true))
 
+  // Separate series by y-axis
+  let y1_series = $derived(visible_series.filter((s) => (s.y_axis ?? `y1`) === `y1`))
+  let y2_series = $derived(visible_series.filter((s) => s.y_axis === `y2`))
+
   let auto_ranges = $derived.by(() => {
-    let all_points = visible_series.flatMap((s) =>
-      s.x.map((x_val, idx) => ({ x: x_val, y: s.y[idx] }))
-    )
+    // Calculate separate ranges for y1 and y2 axes
+    const calc_y_range = (
+      series_list: typeof visible_series,
+      y_limit: typeof y_lim,
+      scale_type: string,
+    ) => {
+      let points = series_list.flatMap((s) =>
+        s.x.map((x_val, idx) => ({ x: x_val, y: s.y[idx] }))
+      )
 
-    // In stacked mode, calculate stacked totals for accurate range
-    if (mode === `stacked`) {
-      const stacked_totals = new SvelteMap<number, { pos: number; neg: number }>()
+      // In stacked mode, calculate stacked totals for accurate range (only for bars on the same axis)
+      if (mode === `stacked`) {
+        const stacked_totals = new SvelteMap<number, { pos: number; neg: number }>()
 
-      // Only include visible bar series (not lines) in stacking
-      visible_series
-        .filter((srs) => srs.render_mode !== `line`)
-        .forEach((srs) =>
-          srs.x.forEach((x_val, idx) => {
-            const y_val = srs.y[idx] ?? 0
-            const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
-            if (y_val >= 0) totals.pos += y_val
-            else totals.neg += y_val
-            stacked_totals.set(x_val, totals)
-          })
-        )
+        // Only include visible bar series (not lines) in stacking
+        series_list
+          .filter((srs) => srs.render_mode !== `line`)
+          .forEach((srs) =>
+            srs.x.forEach((x_val, idx) => {
+              const y_val = srs.y[idx] ?? 0
+              const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
+              if (y_val >= 0) totals.pos += y_val
+              else totals.neg += y_val
+              stacked_totals.set(x_val, totals)
+            })
+          )
 
-      // Replace points with stacked totals + line series (which don't stack)
-      all_points = [
-        ...Array.from(stacked_totals).flatMap(([x_val, { pos, neg }]) => [
-          ...(pos > 0 ? [{ x: x_val, y: pos }] : []),
-          ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
-        ]),
-        ...visible_series
-          .filter((srs) => srs.render_mode === `line`)
-          .flatMap((srs) => srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))),
-      ]
+        // Replace points with stacked totals + line series (which don't stack)
+        points = [
+          ...Array.from(stacked_totals).flatMap(([x_val, { pos, neg }]) => [
+            ...(pos > 0 ? [{ x: x_val, y: pos }] : []),
+            ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
+          ]),
+          ...series_list
+            .filter((srs) => srs.render_mode === `line`)
+            .flatMap((srs) =>
+              srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
+            ),
+        ]
+      }
+
+      if (!points.length) {
+        return [0, 1] as [number, number]
+      }
+
+      let y_range = get_nice_data_range(
+        points,
+        (p) => p.y,
+        y_limit,
+        scale_type,
+        range_padding,
+        false,
+      )
+
+      // For bar plots, ensure the value axis starts at 0 unless there are negative values
+      // Only apply zero-clamping for linear scales
+      if (scale_type === `linear`) {
+        const has_negative = points.some((p) => p.y < 0)
+        const has_positive = points.some((p) => p.y > 0)
+
+        // Only adjust if no explicit y_lim is set
+        if (y_limit?.[0] == null && y_limit?.[1] == null) {
+          if (has_positive && !has_negative) y_range = [0, y_range[1]]
+          else if (has_negative && !has_positive) y_range = [y_range[0], 0]
+        }
+      }
+
+      return y_range
     }
 
-    if (!all_points.length) {
-      return { x: [0, 1], y: [0, 1] }
-    }
-    // Compute data-driven ranges first (categories from x, magnitudes from y)
-    const x_range = get_nice_data_range(
-      all_points,
-      (p) => p.x,
-      x_lim,
-      `linear`,
-      range_padding,
-      x_axis.format?.startsWith(`%`) || false,
-    )
-    let y_range = get_nice_data_range(
-      all_points,
-      (p) => p.y,
-      y_lim,
-      `linear`,
-      range_padding,
-      false,
+    // Get all x values for x_range calculation
+    const all_x_points = visible_series.flatMap((s) =>
+      s.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
 
-    // For bar plots, ensure the value axis starts at 0 unless there are negative values
-    // This prevents bars from starting at arbitrary values
-    const has_negative = all_points.some((p) => p.y < 0)
-    const has_positive = all_points.some((p) => p.y > 0)
+    const x_scale_type = x_axis.scale_type ?? `linear`
+    const x_range = all_x_points.length
+      ? get_nice_data_range(
+        all_x_points,
+        (p) => p.x,
+        x_lim,
+        x_scale_type,
+        range_padding,
+        x_axis.format?.startsWith(`%`) || false,
+      )
+      : ([0, 1] as [number, number])
 
-    // Only adjust if no explicit y_lim is set
-    if (y_lim?.[0] == null && y_lim?.[1] == null) {
-      if (has_positive && !has_negative) y_range = [0, y_range[1]] // All positive/zero values: always start from 0
-      else if (has_negative && !has_positive) y_range = [y_range[0], 0] // All negative values: end at 0
-      // Mixed positive/negative: keep natural range (will include 0)
-    }
+    const y1_range = calc_y_range(y1_series, y_lim, y_axis.scale_type ?? `linear`)
+    const y2_range = calc_y_range(y2_series, y2_lim, y2_axis.scale_type ?? `linear`)
 
     // Map data ranges to axis ranges depending on orientation
     return orientation === `horizontal`
-      ? ({ x: y_range, y: x_range })
-      : ({ x: x_range, y: y_range })
+      ? ({ x: y1_range, y: x_range, y2: y2_range })
+      : ({ x: x_range, y: y1_range, y2: y2_range })
   })
 
   // Initialize and current ranges
   let ranges = $state<{
-    initial: { x: [number, number]; y: [number, number] }
-    current: { x: [number, number]; y: [number, number] }
+    initial: { x: [number, number]; y: [number, number]; y2: [number, number] }
+    current: { x: [number, number]; y: [number, number]; y2: [number, number] }
   }>({
-    initial: { x: [0, 1], y: [0, 1] },
-    current: { x: [0, 1], y: [0, 1] },
+    initial: { x: [0, 1], y: [0, 1], y2: [0, 1] },
+    current: { x: [0, 1], y: [0, 1], y2: [0, 1] },
   })
 
-  $effect(() => { // handle x_axis.range / y_axis.range changes
+  $effect(() => { // handle x_axis.range / y_axis.range / y2_axis.range changes
     const new_x = [
       x_axis.range?.[0] ?? auto_ranges.x[0],
       x_axis.range?.[1] ?? auto_ranges.x[1],
@@ -181,16 +221,22 @@
       y_axis.range?.[0] ?? auto_ranges.y[0],
       y_axis.range?.[1] ?? auto_ranges.y[1],
     ] as [number, number]
+    const new_y2 = [
+      y2_axis.range?.[0] ?? auto_ranges.y2[0],
+      y2_axis.range?.[1] ?? auto_ranges.y2[1],
+    ] as [number, number]
     // Only update if ranges actually changed
     if (
       ranges.current.x[0] !== new_x[0] ||
       ranges.current.x[1] !== new_x[1] ||
       ranges.current.y[0] !== new_y[0] ||
-      ranges.current.y[1] !== new_y[1]
+      ranges.current.y[1] !== new_y[1] ||
+      ranges.current.y2[0] !== new_y2[0] ||
+      ranges.current.y2[1] !== new_y2[1]
     ) {
       ranges = {
-        initial: { x: new_x, y: new_y },
-        current: { x: new_x, y: new_y },
+        initial: { x: new_x, y: new_y, y2: new_y2 },
+        current: { x: new_x, y: new_y, y2: new_y2 },
       }
     }
   })
@@ -208,6 +254,19 @@
         y_format: y_axis.format,
       })
       : base_pad
+    // Expand right padding if y2 ticks are shown (only for vertical orientation)
+    if (
+      width && height && y2_series.length && ticks.y2.length &&
+      orientation === `vertical`
+    ) {
+      const y2_tick_width = Math.max(
+        0,
+        ...ticks.y2.map((tick) =>
+          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
+        ),
+      )
+      new_pad.r = Math.max(new_pad.r, 10 + y2_tick_width + (y2_axis.label ? 40 : 0))
+    }
 
     // Only update if padding actually changed (prevents infinite loop)
     if (
@@ -218,23 +277,56 @@
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  // Scales (linear only for now)
+  // Scales
   let scales = $derived({
-    x: create_scale(`linear`, ranges.current.x, [pad.l, width - pad.r]),
-    y: create_scale(`linear`, ranges.current.y, [height - pad.b, pad.t]),
+    x: create_scale(x_axis.scale_type ?? `linear`, ranges.current.x, [
+      pad.l,
+      width - pad.r,
+    ]),
+    y: create_scale(y_axis.scale_type ?? `linear`, ranges.current.y, [
+      height - pad.b,
+      pad.t,
+    ]),
+    y2: create_scale(y2_axis.scale_type ?? `linear`, ranges.current.y2, [
+      height - pad.b,
+      pad.t,
+    ]),
   })
 
   // Ticks
   let ticks = $derived({
     x: width && height
-      ? generate_ticks(ranges.current.x, `linear`, x_axis.ticks, scales.x, {
-        default_count: 8,
-      })
+      ? generate_ticks(
+        ranges.current.x,
+        x_axis.scale_type ?? `linear`,
+        x_axis.ticks,
+        scales.x,
+        {
+          default_count: 8,
+        },
+      )
       : [],
     y: width && height
-      ? generate_ticks(ranges.current.y, `linear`, y_axis.ticks, scales.y, {
-        default_count: 6,
-      })
+      ? generate_ticks(
+        ranges.current.y,
+        y_axis.scale_type ?? `linear`,
+        y_axis.ticks,
+        scales.y,
+        {
+          default_count: 6,
+        },
+      )
+      : [],
+    y2: width && height && y2_series.length > 0 && orientation === `vertical`
+      ? generate_ticks(
+        ranges.current.y2,
+        y2_axis.scale_type ?? `linear`,
+        y2_axis.ticks,
+        scales.y2,
+        {
+          default_count: 6,
+        },
+      )
       : [],
   })
 
@@ -253,15 +345,27 @@
   }
   const on_window_mouse_up = () => {
     if (drag_state.start && drag_state.current) {
-      const x1 = scales.x.invert(drag_state.start.x)
-      const x2 = scales.x.invert(drag_state.current.x)
+      const x1_raw = scales.x.invert(drag_state.start.x) as number | Date
+      const x2_raw = scales.x.invert(drag_state.current.x) as number | Date
       const y1 = scales.y.invert(drag_state.start.y)
       const y2 = scales.y.invert(drag_state.current.y)
+      const y2_1 = scales.y2.invert(drag_state.start.y)
+      const y2_2 = scales.y2.invert(drag_state.current.y)
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (dx > 5 && dy > 5 && typeof x1 === `number` && typeof x2 === `number`) {
-        ranges.current.x = [Math.min(x1, x2), Math.max(x1, x2)]
-        ranges.current.y = [Math.min(y1, y2), Math.max(y1, y2)]
+
+      let xr1: number, xr2: number
+      if (x1_raw instanceof Date && x2_raw instanceof Date) {
+        ;[xr1, xr2] = [x1_raw.getTime(), x2_raw.getTime()]
+      } else if (typeof x1_raw === `number` && typeof x2_raw === `number`) {
+        ;[xr1, xr2] = [x1_raw, x2_raw]
+      } else [xr1, xr2] = [NaN, NaN] // bail: mixed types
+
+      if (dx > 5 && dy > 5 && Number.isFinite(xr1) && Number.isFinite(xr2)) {
+        // Update axis ranges to trigger reactivity and prevent effect from overriding
+        x_axis = { ...x_axis, range: [Math.min(xr1, xr2), Math.max(xr1, xr2)] }
+        y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
+        y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
       }
     }
     drag_state = { start: null, current: null, bounds: null }
@@ -284,7 +388,10 @@
   }
 
   function handle_double_click() {
-    ranges.current = { x: [...ranges.initial.x], y: [...ranges.initial.y] }
+    // Clear axis ranges to reset to auto ranges
+    x_axis = { ...x_axis, range: undefined }
+    y_axis = { ...y_axis, range: undefined }
+    y2_axis = { ...y2_axis, range: undefined }
   }
 
   // Legend data and handlers
@@ -322,13 +429,15 @@
       // Use original series index to look up stacked_offsets
       const series_idx = series.indexOf(srs)
       const series_offsets = stacked_offsets[series_idx] ?? []
+      const use_y2 = srs.y_axis === `y2`
+      const y_scale = use_y2 ? scales.y2 : scales.y
       return srs.x.map((x_val, bar_idx) => {
         const y_val = srs.y[bar_idx]
         const base = !is_line && mode === `stacked`
           ? (series_offsets[bar_idx] ?? 0)
           : 0
         const [bar_x, bar_y] = orientation === `vertical`
-          ? [scales.x(x_val), scales.y(base + y_val)]
+          ? [scales.x(x_val), y_scale(base + y_val)]
           : [scales.x(base + y_val), scales.y(x_val)]
         return { x: bar_x, y: bar_y }
       }).filter((p) => isFinite(p.x) && isFinite(p.y))
@@ -356,6 +465,10 @@
     const srs = series[series_idx]
     const [x, y] = [srs.x[bar_idx], srs.y[bar_idx]]
     const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
+    const metadata = Array.isArray(srs.metadata)
+      ? srs.metadata[bar_idx]
+      : srs.metadata
+    const label = srs.labels?.[bar_idx] ?? null
     return {
       x,
       y,
@@ -363,9 +476,10 @@
       orient_y,
       series_idx,
       bar_idx,
-      label: srs.labels?.[bar_idx] ?? null,
-      metadata: Array.isArray(srs.metadata) ? srs.metadata[bar_idx] : srs.metadata,
+      metadata,
       color,
+      label,
+      y_axis: srs.y_axis ?? `y1`,
     }
   }
 
@@ -377,16 +491,25 @@
       on_bar_hover?.({ ...hover_info, event })
     }
 
-  // Stack offsets (only for bar series in stacked mode)
+  // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived.by(() => {
     if (mode !== `stacked`) return [] as number[][]
     const max_len = Math.max(0, ...series.map((s) => s.y.length))
     const offsets = series.map(() => Array.from({ length: max_len }, () => 0))
-    const pos_acc = Array.from({ length: max_len }, () => 0)
-    const neg_acc = Array.from({ length: max_len }, () => 0)
+
+    // Separate accumulators for y1 and y2 axes
+    const y1_pos_acc = Array.from({ length: max_len }, () => 0)
+    const y1_neg_acc = Array.from({ length: max_len }, () => 0)
+    const y2_pos_acc = Array.from({ length: max_len }, () => 0)
+    const y2_neg_acc = Array.from({ length: max_len }, () => 0)
 
     series.forEach((srs, series_idx) => {
       if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
+
+      const use_y2 = srs.y_axis === `y2`
+      const pos_acc = use_y2 ? y2_pos_acc : y1_pos_acc
+      const neg_acc = use_y2 ? y2_neg_acc : y1_neg_acc
+
       for (let bar_idx = 0; bar_idx < max_len; bar_idx++) {
         const y_val = srs.y[bar_idx] ?? 0
         const acc = y_val >= 0 ? pos_acc : neg_acc
@@ -447,11 +570,11 @@
         width,
         x_scale_fn: scales.x,
         y_scale_fn: scales.y,
+        y2_scale_fn: scales.y2,
         pad,
-        x_min: ranges.current.x[0],
-        y_min: ranges.current.y[0],
-        x_max: ranges.current.x[1],
-        y_max: ranges.current.y[1],
+        x_range: ranges.current.x,
+        y_range: ranges.current.y,
+        y2_range: ranges.current.y2,
       })}
 
       <!-- X-axis -->
@@ -461,7 +584,7 @@
           x2={width - pad.r}
           y1={height - pad.b}
           y2={height - pad.b}
-          stroke="var(--border-color, gray)"
+          stroke={x_axis.color || `var(--border-color, gray)`}
           stroke-width="1"
         />
         {#each ticks.x as tick (tick)}
@@ -481,12 +604,17 @@
                   {...(x_axis.grid_style ?? {})}
                 />
               {/if}
-              <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
+              <line
+                y1="0"
+                y2="5"
+                stroke={x_axis.color || `var(--border-color, gray)`}
+                stroke-width="1"
+              />
               <text
                 x={shift_x}
                 y={text_y}
                 text-anchor={text_anchor}
-                fill="var(--text-color)"
+                fill={x_axis.color || `var(--text-color)`}
                 transform={rotation !== 0
                 ? `rotate(${rotation}, ${shift_x}, ${text_y})`
                 : undefined}
@@ -503,9 +631,9 @@
             x={pad.l + chart_width / 2 + shift_x}
             y={height - (pad.b / 3) + shift_y}
             text-anchor="middle"
-            fill="var(--text-color)"
+            fill={x_axis.color || `var(--text-color)`}
           >
-            {x_axis.label}
+            {@html x_axis.label}
           </text>
         {/if}
       </g>
@@ -517,7 +645,7 @@
           x2={pad.l}
           y1={pad.t}
           y2={height - pad.b}
-          stroke="var(--border-color, gray)"
+          stroke={y_axis.color || `var(--border-color, gray)`}
           stroke-width="1"
         />
         {#each ticks.y as tick (tick)}
@@ -536,13 +664,18 @@
                   {...(y_axis.grid_style ?? {})}
                 />
               {/if}
-              <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
+              <line
+                x1="-5"
+                x2="0"
+                stroke={y_axis.color || `var(--border-color, gray)`}
+                stroke-width="1"
+              />
               <text
                 x={text_x}
                 y={shift_y}
                 text-anchor="end"
                 dominant-baseline="central"
-                fill="var(--text-color)"
+                fill={y_axis.color || `var(--text-color)`}
                 transform={rotation !== 0
                 ? `rotate(${rotation}, ${text_x}, ${shift_y})`
                 : undefined}
@@ -570,13 +703,79 @@
             x={y_label_x}
             y={y_label_y}
             text-anchor="middle"
-            fill="var(--text-color)"
+            fill={y_axis.color || `var(--text-color)`}
             transform="rotate(-90, {y_label_x}, {y_label_y})"
           >
-            {y_axis.label}
+            {@html y_axis.label}
           </text>
         {/if}
       </g>
+
+      <!-- Y2-axis (Right) -->
+      <!-- Note: y2 axis is only supported for vertical orientation. Implementing x2 for horizontal mode requires additional complexity. -->
+      {#if y2_series.length > 0 && orientation === `vertical`}
+        <g class="y2-axis">
+          <line
+            x1={width - pad.r}
+            x2={width - pad.r}
+            y1={pad.t}
+            y2={height - pad.b}
+            stroke={y2_axis.color || `var(--border-color, gray)`}
+            stroke-width="1"
+          />
+          {#each ticks.y2 as tick (tick)}
+            {@const tick_y = scales.y2(tick as number)}
+            {#if isFinite(tick_y)}
+              {@const rotation = y2_axis.tick_rotation ?? 0}
+              {@const shift_x = y2_axis.tick_label_shift?.x ?? 8}
+              {@const shift_y = y2_axis.tick_label_shift?.y ?? 0}
+              <g class="tick" transform="translate({width - pad.r}, {tick_y})">
+                {#if display.y2_grid}
+                  <line
+                    x1={-(width - pad.l - pad.r)}
+                    x2="0"
+                    {...DEFAULT_GRID_STYLE}
+                    {...(y2_axis.grid_style ?? {})}
+                  />
+                {/if}
+                <line
+                  x1="0"
+                  x2="5"
+                  stroke={y2_axis.color || `var(--border-color, gray)`}
+                  stroke-width="1"
+                />
+                <text
+                  x={shift_x}
+                  y={shift_y}
+                  text-anchor="start"
+                  dominant-baseline="central"
+                  fill={y2_axis.color || `var(--text-color)`}
+                  transform={rotation !== 0
+                  ? `rotate(${rotation}, ${shift_x}, ${shift_y})`
+                  : undefined}
+                >
+                  {format_value(tick, y2_axis.format)}
+                </text>
+              </g>
+            {/if}
+          {/each}
+          {#if y2_axis.label}
+            {@const shift_x = y2_axis.label_shift?.x ?? 0}
+            {@const shift_y = y2_axis.label_shift?.y ?? 0}
+            {@const y2_label_x = width - pad.r + 50 + shift_x}
+            {@const y2_label_y = pad.t + chart_height / 2 + shift_y}
+            <text
+              x={y2_label_x}
+              y={y2_label_y}
+              text-anchor="middle"
+              fill={y2_axis.color || `var(--text-color)`}
+              transform="rotate(-90, {y2_label_x}, {y2_label_y})"
+            >
+              {@html y2_axis.label}
+            </text>
+          {/if}
+        </g>
+      {/if}
 
       <!-- Define clip path for chart area -->
       <defs>
@@ -588,18 +787,32 @@
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
         <!-- Zero lines -->
-        {#if display.x_zero_line && ranges.current.x[0] <= 0 &&
-          ranges.current.x[1] >= 0}
+        {#if display.x_zero_line && (x_axis.scale_type ?? `linear`) === `linear` &&
+          ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
           {@const zx = scales.x(0)}
           {#if isFinite(zx)}
             <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
         {/if}
-        {#if display.y_zero_line && ranges.current.y[0] <= 0 &&
-          ranges.current.y[1] >= 0}
+        {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
+          ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
           {@const zy = scales.y(0)}
           {#if isFinite(zy)}
             <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
+          {/if}
+        {/if}
+        {#if display.y_zero_line && y2_series.length > 0 &&
+          (y2_axis.scale_type ?? `linear`) === `linear` &&
+          ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
+          {@const zero_y2 = scales.y2(0)}
+          {#if isFinite(zero_y2)}
+            <line
+              class="zero-line"
+              x1={pad.l}
+              x2={width - pad.r}
+              y1={zero_y2}
+              y2={zero_y2}
+            />
           {/if}
         {/if}
 
@@ -616,6 +829,8 @@
                 {@const color = srs.color ?? line.color ?? `steelblue`}
                 {@const stroke_width = srs.line_style?.stroke_width ?? line.width ?? 2}
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
+                {@const use_y2 = srs.y_axis === `y2`}
+                {@const y_scale = use_y2 ? scales.y2 : scales.y}
                 {@const points = srs.x.map((x_val, idx) => {
             const y_val = srs.y[idx]
             // Lines don't stack - they show absolute values (useful for totals/trends)
@@ -623,7 +838,7 @@
               ? scales.x(x_val)
               : scales.x(y_val)
             const plot_y = orientation === `vertical`
-              ? scales.y(y_val)
+              ? y_scale(y_val)
               : scales.y(x_val)
             return { x: plot_x, y: plot_y, idx }
           }).filter((p) => isFinite(p.x) && isFinite(p.y))}
@@ -717,8 +932,10 @@
                   {@const is_vertical = orientation === `vertical`}
                   {@const cat_val = x_val}
                   {@const val = y_val}
+                  {@const use_y2 = srs.y_axis === `y2`}
+                  {@const y_scale = use_y2 ? scales.y2 : scales.y}
                   {@const [cat_scale, val_scale] = is_vertical
-            ? [scales.x, scales.y]
+            ? [scales.x, y_scale]
             : [scales.y, scales.x]}
                   {@const c0 = cat_scale(cat_val + group_offset - half)}
                   {@const c1 = cat_scale(cat_val + group_offset + half)}
@@ -794,8 +1011,11 @@
     {/if}
 
     {#if hover_info && hovered}
+      {@const srs = series[hover_info.series_idx]}
+      {@const use_y2 = srs?.y_axis === `y2`}
+      {@const active_y_axis = use_y2 ? y2_axis : y_axis}
       {@const cx = scales.x(hover_info.orient_x)}
-      {@const cy = scales.y(hover_info.orient_y)}
+      {@const cy = (use_y2 ? scales.y2 : scales.y)(hover_info.orient_y)}
       <div
         class="tooltip overlay"
         style={`position: absolute; left: ${cx + 6}px; top: ${cy}px; pointer-events: none;`}
@@ -804,10 +1024,14 @@
           {@render tooltip(hover_info)}
         {:else}
           <div>
-            {x_axis.label || `x`}: {format_value(hover_info.orient_x, x_axis.format)}
+            {x_axis.label || `x`}: {
+              format_value(hover_info.orient_x, x_axis.format || `.3~s`)
+            }
           </div>
           <div>
-            {y_axis.label || `y`}: {format_value(hover_info.orient_y, y_axis.format)}
+            {active_y_axis.label || `y`}: {
+              format_value(hover_info.orient_y, active_y_axis.format || `.3~s`)
+            }
           </div>
         {/if}
       </div>
@@ -823,9 +1047,11 @@
         bind:mode
         bind:x_axis
         bind:y_axis
+        bind:y2_axis
         bind:display
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
+        auto_y2_range={auto_ranges.y2 as [number, number]}
       />
     {/if}
   {/if}
@@ -853,7 +1079,7 @@
     height: 100%;
     overflow: var(--svg-overflow, visible);
   }
-  g:is(.x-axis, .y-axis) .tick text {
+  g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em);
   }
   .zoom-rect {

@@ -1514,4 +1514,193 @@ test.describe(`Histogram Component Tests`, () => {
     await page.mouse.move(0, 0)
     await expect(hover_div).toContainText(`Hover over a bar`)
   })
+
+  test(`y2 axis renders when series assigned to y2`, async ({ page }) => {
+    const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
+    await expect(histogram).toBeVisible()
+
+    // Check that y2-axis renders
+    const y2_axis = histogram.locator(`g.y2-axis`)
+    await expect(y2_axis).toBeVisible()
+
+    // Check that y2-axis has ticks
+    const y2_ticks = y2_axis.locator(`.tick`)
+    await expect(y2_ticks.first()).toBeVisible()
+    expect(await y2_ticks.count()).toBeGreaterThan(0)
+
+    // Check that histogram bars render
+    const bars = histogram.locator(`svg rect[fill]:not([fill="none"])`)
+    await expect(bars.first()).toBeVisible()
+    expect(await bars.count()).toBeGreaterThan(0)
+  })
+
+  test(`y2 axis scaling is independent of y1 axis`, async ({ page }) => {
+    const histogram = page.locator(`#y2-different-scale .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
+    await expect(histogram).toBeVisible()
+
+    // Get tick values from y1 and y2 axes
+    const y1_ticks = await histogram.locator(`g.y-axis .tick text`).allTextContents()
+    const y2_ticks = await histogram.locator(`g.y2-axis .tick text`).allTextContents()
+
+    // Verify both axes have ticks
+    expect(y1_ticks.length).toBeGreaterThan(0)
+    expect(y2_ticks.length).toBeGreaterThan(0)
+
+    // Verify they have different ranges (independent scaling) - compare arrays to avoid locale effects
+    expect(y1_ticks).not.toEqual(y2_ticks)
+  })
+
+  test(`bins are calculated separately for y1 and y2 series`, async ({ page }) => {
+    const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
+    await expect(histogram).toBeVisible()
+
+    // Get bars from different series
+    const all_bars = histogram.locator(`svg rect[fill]:not([fill="none"])`)
+    await expect(all_bars.first()).toBeVisible()
+
+    // Get bars from first two series (one y1, one y2)
+    const series_groups = histogram.locator(`g.histogram-series`)
+    expect(await series_groups.count()).toBeGreaterThanOrEqual(2)
+
+    // Each series should have bars
+    const first_series_bars = series_groups.nth(0).locator(`rect`)
+    const second_series_bars = series_groups.nth(1).locator(`rect`)
+    expect(await first_series_bars.count()).toBeGreaterThan(0)
+    expect(await second_series_bars.count()).toBeGreaterThan(0)
+  })
+
+  test(`zoom updates both y1 and y2 ranges in histogram`, async ({ page }) => {
+    const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
+    const svg = histogram.locator(`svg`)
+
+    // Wait for initial ticks
+    await expect(histogram.locator(`g.y-axis .tick text`).first()).toBeVisible()
+    await expect(histogram.locator(`g.y2-axis .tick text`).first()).toBeVisible()
+
+    const get_range = async (axis: `y` | `y2`) => {
+      const tick_texts = await histogram.locator(`g.${axis}-axis .tick text`)
+        .allTextContents()
+      return tick_texts
+    }
+
+    const initial_y1 = await get_range(`y`)
+    const initial_y2 = await get_range(`y2`)
+
+    const box = await svg.boundingBox()
+    if (!box) throw `SVG bbox not found`
+
+    // Perform zoom
+    const start_x = box.x + box.width * 0.3
+    const start_y = box.y + box.height * 0.7
+    const end_x = box.x + box.width * 0.7
+    const end_y = box.y + box.height * 0.3
+
+    await page.mouse.move(start_x, start_y)
+    await page.mouse.down()
+
+    // Check if zoom rectangle appears during drag
+    await page.mouse.move(end_x, end_y, { steps: 10 })
+    const zoom_rect = histogram.locator(`.zoom-rect`)
+    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+
+    await page.mouse.up()
+
+    // After zoom, both axes should have changed
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y`)
+        return JSON.stringify(range) !== JSON.stringify(initial_y1)
+      }, { timeout: 2000 })
+      .toBe(true)
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y2`)
+        return JSON.stringify(range) !== JSON.stringify(initial_y2)
+      }, { timeout: 2000 })
+      .toBe(true)
+
+    // Reset
+    await svg.dblclick()
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y`)
+        return JSON.stringify(range)
+      }, { timeout: 2000 })
+      .toBe(JSON.stringify(initial_y1))
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y2`)
+        return JSON.stringify(range)
+      }, { timeout: 2000 })
+      .toBe(JSON.stringify(initial_y2))
+  })
+
+  test(`histogram bars use correct y-scale based on series y_axis property`, async ({ page }) => {
+    const histogram = page.locator(`#y2-different-scale .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
+    await expect(histogram).toBeVisible()
+
+    // Get bars from both series
+    const series_groups = histogram.locator(`g.histogram-series`)
+    const first_series_bars = await series_groups.nth(0).locator(`rect`).all()
+    const second_series_bars = await series_groups.nth(1).locator(`rect`).all()
+
+    // Get bounding boxes
+    const first_boxes = (
+      await Promise.all(
+        first_series_bars.slice(0, 3).map(async (h) => await h.boundingBox()),
+      )
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const second_boxes = (
+      await Promise.all(
+        second_series_bars.slice(0, 3).map(async (h) => await h.boundingBox()),
+      )
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+
+    // Bars from different series should have different y positions due to different scales
+    const first_ys = first_boxes.map((bb) => bb.y)
+    const second_ys = second_boxes.map((bb) => bb.y)
+
+    // At least some bars should be at different positions
+    const all_ys = [...first_ys, ...second_ys]
+    const unique_ys = new Set(all_ys.map((y_val) => Math.round(y_val)))
+    expect(unique_ys.size).toBeGreaterThan(1)
+  })
+
+  test(`legend toggles visibility for y2 series`, async ({ page }) => {
+    const histogram = page.locator(`#y2-axis-histogram .histogram`)
+    await histogram.scrollIntoViewIfNeeded()
+    await expect(histogram).toBeVisible()
+
+    const legend = histogram.locator(`.legend`)
+    await expect(legend).toBeVisible()
+
+    const items = legend.locator(`.legend-item`)
+    expect(await items.count()).toBeGreaterThanOrEqual(2)
+
+    // Get initial bar count
+    const initial_bars = await histogram.locator(`svg rect[fill]:not([fill="none"])`)
+      .count()
+    expect(initial_bars).toBeGreaterThan(0)
+
+    // Toggle first series -> bar count should decrease
+    await items.first().click()
+    await expect
+      .poll(async () =>
+        await histogram.locator(`svg rect[fill]:not([fill="none"])`).count()
+      )
+      .toBeLessThan(initial_bars)
+
+    // Toggle back -> bar count should be restored
+    await items.first().click()
+    await expect
+      .poll(async () =>
+        await histogram.locator(`svg rect[fill]:not([fill="none"])`).count()
+      )
+      .toBe(initial_bars)
+  })
 })

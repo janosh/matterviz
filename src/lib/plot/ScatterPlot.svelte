@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { Line, symbol_names } from '$lib'
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
+  import type { D3SymbolName } from '$lib/labels'
+  import { format_value, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
     AnchorNode,
     AxisConfig,
     ControlsConfig,
-    D3SymbolName,
     DataSeries,
     DisplayConfig,
     HoverConfig,
@@ -30,6 +30,7 @@
     ColorBar,
     DEFAULT_GRID_STYLE,
     find_best_plot_area,
+    Line,
     PlotLegend,
     ScatterPlotControls,
     ScatterPoint,
@@ -48,7 +49,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
-  import { format_value } from './formatting'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding } from './layout'
   import { generate_ticks, get_nice_data_range } from './scales'
@@ -85,7 +85,6 @@
     on_point_click,
     on_point_hover,
     selected_series_idx = $bindable(0),
-    color_axis_labels = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -134,53 +133,41 @@
       data: { point: InternalPoint | null; event?: MouseEvent },
     ) => void
     selected_series_idx?: number
-    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null }
   } = $props()
 
   // Initialize style overrides with defaults (runs once to avoid infinite loop)
   styles.point = { ...DEFAULTS.scatter.point, ...styles.point }
   styles.line = { ...DEFAULTS.scatter.line, ...styles.line }
 
-  // Initialize default values for grouped configs
-  $effect(() => {
-    // X-axis defaults
-    x_axis.format ??= ``
-    x_axis.scale_type ??= `linear`
-    x_axis.label_shift ??= { x: 0, y: -40 }
-    x_axis.tick_label_shift ??= { x: 0, y: 20 }
-    x_axis.lim ??= [null, null]
-
-    // Y-axis defaults
-    y_axis.format ??= ``
-    y_axis.scale_type ??= `linear`
-    y_axis.ticks ??= 5
-    y_axis.label_shift ??= { y: 12 }
-    y_axis.tick_label_shift ??= { x: -8, y: 0 }
-    y_axis.lim ??= [null, null]
-
-    // Y2-axis defaults
-    y2_axis.format ??= ``
-    y2_axis.scale_type ??= `linear`
-    y2_axis.ticks ??= 5
-    y2_axis.label_shift ??= { y: 60 }
-    y2_axis.tick_label_shift ??= { x: 8, y: 0 }
-    y2_axis.lim ??= [null, null]
-
-    // Display defaults
-    display.markers ??= DEFAULTS.scatter.markers
-    display.x_grid ??= DEFAULTS.scatter.display.x_grid
-    display.y_grid ??= DEFAULTS.scatter.display.y_grid
-    display.y2_grid ??= DEFAULTS.scatter.display.y2_grid
-    display.x_zero_line ??= DEFAULTS.scatter.display.x_zero_line
-    display.y_zero_line ??= DEFAULTS.scatter.display.y_zero_line
-
-    styles.show_points ??= true
-    styles.show_lines ??= true
-
-    // Controls defaults
-    controls.show ??= true
-    controls.open ??= false
-  })
+  // Initialize default values
+  x_axis = {
+    format: ``,
+    scale_type: `linear`,
+    label_shift: { x: 0, y: -40 },
+    tick_label_shift: { x: 0, y: 20 },
+    lim: [null, null],
+    ...x_axis,
+  }
+  y_axis = {
+    format: ``,
+    scale_type: `linear`,
+    label_shift: { x: 0, y: -40 },
+    tick_label_shift: { x: 0, y: 20 },
+    lim: [null, null],
+    ...y_axis,
+  }
+  y2_axis = {
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { x: 0, y: 0 },
+    tick_label_shift: { x: 8, y: 0 },
+    lim: [null, null],
+    ...y2_axis,
+  }
+  display = { ...DEFAULTS.scatter.display, ...display }
+  styles = { show_points: true, show_lines: true, ...styles }
+  controls = { show: true, open: false, ...controls }
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
@@ -190,32 +177,8 @@
   let component_id = $state(`scatter-${crypto.randomUUID()}`)
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
-  // Process series to ensure single visible series are always on y1 (left) axis.
-  // This prevents the scenario where the left y-axis is empty while the right y-axis
-  // has the only visible series, which would create a confusing plot layout.
-  let processed_series = $derived.by((): DataSeries[] => {
-    if (series.length === 0) return []
-
-    // Count visible series (filter out null/undefined series)
-    const visible_series = series.filter((s) => s && (s.visible ?? true))
-
-    // If only one series is visible, ensure it's on y1 axis
-    if (visible_series.length === 1) {
-      return series.map((s) => {
-        if (s && (s.visible ?? true) && s.y_axis === `y2`) {
-          // Reassign single visible series from y2 to y1
-          return { ...s, y_axis: `y1` as const }
-        }
-        return s
-      })
-    }
-
-    // For multiple visible series, keep original assignments
-    return series
-  })
-
   // Assign stable IDs to series for keying
-  let series_with_ids = $derived(processed_series.map((s, idx) => {
+  let series_with_ids = $derived(series.map((s, idx) => {
     if (!s || typeof s !== `object`) return s
     // Use series.id if provided, otherwise fall back to index
     // prevents re-mounts when series are reordered if stable IDs are provided
@@ -562,50 +525,6 @@
       .filter((series_data) => series_data.filtered_data.length > 0),
   )
 
-  // Determine axis colors based on visible series
-  let axis_colors = $derived.by(() => {
-    // Handle explicit color overrides
-    if (typeof color_axis_labels === `object`) {
-      return { y1: color_axis_labels.y1 ?? null, y2: color_axis_labels.y2 ?? null }
-    }
-
-    // Check if axis coloring is disabled
-    if (!color_axis_labels) return { y1: null, y2: null }
-
-    const visible_series = filtered_series.filter((s) => s.visible !== false)
-
-    // Only apply axis colors if not using a color scale and both y axes are populated
-    const is_using_color_scale = all_color_values.length > 0
-    const both_axes_populated = y1_points.length > 0 && y2_points.length > 0
-
-    if (is_using_color_scale || !both_axes_populated) return { y1: null, y2: null }
-
-    // Count series by axis and get their colors
-    const y1_series = visible_series.filter((s) => (s.y_axis ?? `y1`) === `y1`)
-    const y2_series = visible_series.filter((s) => s.y_axis === `y2`)
-
-    // Helper to get series color
-    const get_series_color = (
-      series: DataSeries & { filtered_data: InternalPoint[] },
-    ) => {
-      // Check line color first, then point color
-      if (series.line_style?.stroke) return series.line_style.stroke
-
-      const first_point_style = Array.isArray(series.point_style)
-        ? series.point_style[0]
-        : series.point_style
-      if (first_point_style?.fill) return first_point_style.fill
-      if (first_point_style?.stroke) return first_point_style.stroke
-
-      return null // No color found
-    }
-
-    return {
-      y1: y1_series.length === 1 ? get_series_color(y1_series[0]) : null,
-      y2: y2_series.length === 1 ? get_series_color(y2_series[0]) : null,
-    }
-  })
-
   // Collect all plot points for legend placement calculation
   let plot_points_for_placement = $derived.by(() => {
     if (!width || !height || !filtered_series) return []
@@ -670,10 +589,10 @@
         let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
         if (
           Array.isArray(symbol_names) &&
-          typeof first_point_style.shape === `string` &&
-          symbol_names.includes(first_point_style.shape as D3SymbolName)
+          typeof first_point_style.symbol_type === `string` &&
+          symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
         ) {
-          final_shape = first_point_style.shape as D3SymbolName
+          final_shape = first_point_style.symbol_type as D3SymbolName
         }
         display_style.symbol_type = final_shape
 
@@ -1331,11 +1250,11 @@
         width,
         x_scale_fn,
         y_scale_fn,
-        x_min,
-        x_max,
-        y_min,
-        y_max,
+        y2_scale_fn,
         pad,
+        x_range: [x_min, x_max],
+        y_range: [y_min, y_max],
+        y2_range: [y2_min, y2_max],
       })}
       <g class="x-axis">
         {#if width > 0 && height > 0}
@@ -1422,7 +1341,7 @@
 
                   {#if tick >= y_min && tick <= y_max}
                     {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
-                    <text {x} {y} text-anchor="end" fill={axis_colors.y1 || undefined}>
+                    <text {x} {y} text-anchor="end" fill={y_axis.color}>
                       {format_value(tick, y_axis.format ?? ``)}
                       {#if y_axis.unit && idx === 0}
                         &zwnj;&ensp;{y_axis.unit}
@@ -1447,7 +1366,7 @@
               (height - pad.t - pad.b) / 2 +
               ((y_axis.label_shift?.x ?? 0))})"
           >
-            <div class="axis-label y-label" style:color={axis_colors.y1 || undefined}>
+            <div class="axis-label y-label" style:color={y_axis.color}>
               {@html y_axis.label ?? ``}
             </div>
           </foreignObject>
@@ -1476,7 +1395,7 @@
 
                     {#if tick >= y2_min && tick <= y2_max}
                       {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
-                      <text {x} {y} text-anchor="start" fill={axis_colors.y2}>
+                      <text {x} {y} text-anchor="start" fill={y2_axis.color}>
                         {format_value(tick, y2_axis.format ?? ``)}
                         {#if y2_axis.unit && idx === 0}
                           &zwnj;&ensp;{y2_axis.unit}
@@ -1495,15 +1414,15 @@
               y={-10}
               width="200"
               height="20"
-              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
+              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
                 ((y2_axis.label_shift?.x ?? 0))}) translate({width -
                 pad.r +
-                ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
+                ((y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
                 ((y2_axis.label_shift?.x ?? 0))})"
             >
-              <div class="axis-label y2-label" style:color={axis_colors.y2}>
+              <div class="axis-label y2-label" style:color={y2_axis.color}>
                 {@html y2_axis.label ?? ``}
               </div>
             </foreignObject>
@@ -1549,6 +1468,19 @@
           />
         {/if}
       {/if}
+      {#if display.y_zero_line && y2_points.length > 0 &&
+        y2_axis.scale_type === `linear` && y2_min <= 0 && y2_max >= 0}
+        {@const zero_y2_pos = y2_scale_fn(0)}
+        {#if isFinite(zero_y2_pos)}
+          <line
+            class="zero-line"
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={zero_y2_pos}
+            y2={zero_y2_pos}
+          />
+        {/if}
+      {/if}
 
       <defs>
         <clipPath id={clip_path_id}>
@@ -1562,7 +1494,7 @@
       </defs>
 
       <!-- Lines -->
-      {#if display.markers?.includes(`line`) && styles.show_lines}
+      {#if styles.show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? display.markers}
           <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
@@ -1609,7 +1541,7 @@
       {/if}
 
       <!-- Points -->
-      {#if display.markers?.includes(`points`) && styles.show_points}
+      {#if styles.show_points}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? display.markers}
           <g data-series-id={series_data._id}>
@@ -1744,10 +1676,10 @@
     })()}
       {@const cx = x_axis.format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
       {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
-      {@const x_formatted = format_value(x, x_axis.format ?? ``)}
+      {@const x_formatted = format_value(x, x_axis.format || `.3~s`)}
       {@const y_formatted = format_value(
       y,
-      (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) ?? ``,
+      (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
     )}
       {@const label = point_label?.text ?? null}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}

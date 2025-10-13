@@ -269,19 +269,6 @@
   let show_unstable_labels = $state(false)
   let max_hull_dist_show_labels = $state(0.1) // eV/atom above hull for showing labels
 
-  // Smart label defaults - hide labels if too many entries
-  $effect(() => {
-    const total_entries = processed_entries.length
-    if (total_entries > label_threshold) {
-      show_stable_labels = false
-      show_unstable_labels = false
-    } else {
-      // For smaller datasets, show stable labels by default
-      show_stable_labels = true
-      show_unstable_labels = false
-    }
-  })
-
   // Function to extract structure data from a phase diagram entry
   function extract_structure_from_entry(
     entry: TernaryPlotEntry,
@@ -762,39 +749,20 @@
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
 
-      // Generate simplified formula from composition
+      // Generate label from composition
       let formula = entry.reduced_formula || entry.name || ``
 
       if (!formula) {
-        // Generate reduced formula from composition
-        const composition_elements = Object.entries(entry.composition)
+        // Format composition as element fractions
+        formula = Object.entries(entry.composition)
           .filter(([, amt]) => amt > 0)
           .sort(([el1], [el2]) =>
             elements.indexOf(el1 as ElementSymbol) -
             elements.indexOf(el2 as ElementSymbol)
           )
-
-        // Find GCD to reduce the formula
-        const amounts = composition_elements.map(([, amt]) =>
-          Math.round(amt * 1000) / 1000
-        )
-        const gcd_val = amounts.reduce((a, b) => {
-          // Simple GCD for fractional numbers (scaled by 1000)
-          const scale = 1000
-          let a_int = Math.round(a * scale)
-          let b_int = Math.round(b * scale)
-          while (b_int !== 0) {
-            const temp = b_int
-            b_int = a_int % b_int
-            a_int = temp
-          }
-          return a_int / scale
-        })
-
-        formula = composition_elements
           .map(([element, amount]) => {
-            const reduced_amount = Math.round((amount / gcd_val) * 100) / 100
-            return reduced_amount === 1 ? element : `${element}${reduced_amount}`
+            if (Math.abs(amount - 1) < 1e-6) return element
+            return `${element}${format_num(amount, `.2~`)}`
           })
           .join(``)
       }
