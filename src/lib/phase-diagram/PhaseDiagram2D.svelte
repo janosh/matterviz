@@ -455,9 +455,9 @@
 {/snippet}
 
 {#snippet user_content(
-  { x_scale_fn, pad, height, y_scale_fn, y_min, width }: UserContentProps,
+  { x_scale_fn, pad, height, y_scale_fn, y_range, width }: UserContentProps,
 )}
-  {@const [x1, y0] = [x_scale_fn(1), y_scale_fn(y_min)]}
+  {@const [x1, y0] = [x_scale_fn(1), y_scale_fn(y_range[0])]}
   {@const stroke = {
     stroke: `var(--scatter-grid-stroke, gray)`,
     'stroke-width': `var(--scatter-grid-width, 0.4)`,

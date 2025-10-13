@@ -929,10 +929,9 @@
       { ...multi_series_data1, y_axis: `y1` },
       { ...multi_series_data2, y_axis: `y2` },
     ]}
-    color_axis_labels={{ y1: `#ff0000`, y2: `#00ff00` }}
     x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y1 Axis (Custom Red)` }}
-    y2_axis={{ label: `Y2 Axis (Custom Green)` }}
+    y_axis={{ label: `Y1 Axis (Custom Red)`, color: `#ff0000` }}
+    y2_axis={{ label: `Y2 Axis (Custom Green)`, color: `#00ff00` }}
   />
 
   <h3>Disabled Axis Coloring</h3>
@@ -949,7 +948,6 @@
         line_style: { stroke: `#5555ff`, stroke_width: 2 },
       },
     ]}
-    color_axis_labels={false}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y1 Axis` }}
     y2_axis={{ label: `Y2 Axis` }}

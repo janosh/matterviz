@@ -74,6 +74,7 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
   import { Histogram } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
+  let display = $state({ x_grid: true, y_grid: false, y2_grid: false })
   let series = $state([
     {
       y: generate_normal(1000, 75, 12),
@@ -89,6 +90,12 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
   ])
 </script>
 
+<div style="display: flex; gap: 1em; margin-bottom: 1em">
+  <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
+  <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
+  <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
+</div>
+
 <Histogram
   {series}
   mode="overlay"
@@ -96,6 +103,7 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
   x_axis={{ label: `Test Score` }}
   y_axis={{ label: `Count (Main Cohort)` }}
   y2_axis={{ label: `Count (Control)` }}
+  bind:display
   bar={{ opacity: 0.6 }}
   style="height: 400px"
 >
@@ -118,7 +126,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   let x_axis = $state({scale_type: `linear`})
   let y_axis = $state({scale_type: `linear`, label: `Count (Normal/Uniform)`})
   let y2_axis = $state({scale_type: `linear`, label: `Count (Exp/Gamma)`})
-  let display = $state({ x_grid: true, y_grid: true })
+  let display = $state({ x_grid: true, y_grid: true, y2_grid: false })
   let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
   let series = $state([
@@ -156,6 +164,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 
   <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
   <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
+  <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
 </div>
 
 {#each series as srs, idx}

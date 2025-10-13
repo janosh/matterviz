@@ -316,9 +316,6 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`y2 axis renders when series assigned to y2`, async ({ page }) => {
-    // Navigate to a test page with y2 axis (will need to create this)
-    await page.goto(`/test/bar-plot-y2`, { waitUntil: `networkidle` })
-
     const plot = page.locator(`#y2-axis-bar .bar-plot`)
     await expect(plot).toBeVisible()
 
@@ -338,8 +335,6 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`y2 axis scaling is independent of y1 axis`, async ({ page }) => {
-    await page.goto(`/test/bar-plot-y2`, { waitUntil: `networkidle` })
-
     const plot = page.locator(`#y2-different-scale .bar-plot`)
     await expect(plot).toBeVisible()
 
@@ -356,8 +351,6 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`stacked mode stacks series on same y-axis separately`, async ({ page }) => {
-    await page.goto(`/test/bar-plot-y2`, { waitUntil: `networkidle` })
-
     const plot = page.locator(`#y2-stacked .bar-plot`)
     await expect(plot).toBeVisible()
 
@@ -382,8 +375,6 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`zoom updates both y1 and y2 ranges`, async ({ page }) => {
-    await page.goto(`/test/bar-plot-y2`, { waitUntil: `networkidle` })
-
     const plot = page.locator(`#y2-axis-bar .bar-plot`)
     const svg = plot.locator(`svg[role="button"]`)
 
@@ -430,8 +421,6 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`y2 grid lines render independently`, async ({ page }) => {
-    await page.goto(`/test/bar-plot-y2`, { waitUntil: `networkidle` })
-
     const plot = page.locator(`#y2-axis-bar .bar-plot`)
     await expect(plot).toBeVisible()
 
@@ -442,8 +431,6 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`line series can use y2 axis`, async ({ page }) => {
-    await page.goto(`/test/bar-plot-y2`, { waitUntil: `networkidle` })
-
     const plot = page.locator(`#y2-line-series .bar-plot`)
     await expect(plot).toBeVisible()
 

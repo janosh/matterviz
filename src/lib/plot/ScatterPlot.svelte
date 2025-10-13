@@ -85,7 +85,6 @@
     on_point_click,
     on_point_hover,
     selected_series_idx = $bindable(0),
-    color_axis_labels = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -134,7 +133,6 @@
       data: { point: InternalPoint | null; event?: MouseEvent },
     ) => void
     selected_series_idx?: number
-    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null }
   } = $props()
 
   // Initialize style overrides with defaults (runs once to avoid infinite loop)
@@ -162,7 +160,7 @@
     y2_axis.format ??= ``
     y2_axis.scale_type ??= `linear`
     y2_axis.ticks ??= 5
-    y2_axis.label_shift ??= { y: 60 }
+    y2_axis.label_shift ??= { x: 0, y: 0 }
     y2_axis.tick_label_shift ??= { x: 8, y: 0 }
     y2_axis.lim ??= [null, null]
 
@@ -561,50 +559,6 @@
       // Filter series end up completely empty after point filtering
       .filter((series_data) => series_data.filtered_data.length > 0),
   )
-
-  // Determine axis colors based on visible series
-  let axis_colors = $derived.by(() => {
-    // Handle explicit color overrides
-    if (typeof color_axis_labels === `object`) {
-      return { y1: color_axis_labels.y1 ?? null, y2: color_axis_labels.y2 ?? null }
-    }
-
-    // Check if axis coloring is disabled
-    if (!color_axis_labels) return { y1: null, y2: null }
-
-    const visible_series = filtered_series.filter((s) => s.visible !== false)
-
-    // Only apply axis colors if not using a color scale and both y axes are populated
-    const is_using_color_scale = all_color_values.length > 0
-    const both_axes_populated = y1_points.length > 0 && y2_points.length > 0
-
-    if (is_using_color_scale || !both_axes_populated) return { y1: null, y2: null }
-
-    // Count series by axis and get their colors
-    const y1_series = visible_series.filter((s) => (s.y_axis ?? `y1`) === `y1`)
-    const y2_series = visible_series.filter((s) => s.y_axis === `y2`)
-
-    // Helper to get series color
-    const get_series_color = (
-      series: DataSeries & { filtered_data: InternalPoint[] },
-    ) => {
-      // Check line color first, then point color
-      if (series.line_style?.stroke) return series.line_style.stroke
-
-      const first_point_style = Array.isArray(series.point_style)
-        ? series.point_style[0]
-        : series.point_style
-      if (first_point_style?.fill) return first_point_style.fill
-      if (first_point_style?.stroke) return first_point_style.stroke
-
-      return null // No color found
-    }
-
-    return {
-      y1: y1_series.length === 1 ? get_series_color(y1_series[0]) : null,
-      y2: y2_series.length === 1 ? get_series_color(y2_series[0]) : null,
-    }
-  })
 
   // Collect all plot points for legend placement calculation
   let plot_points_for_placement = $derived.by(() => {
@@ -1331,11 +1285,11 @@
         width,
         x_scale_fn,
         y_scale_fn,
-        x_min,
-        x_max,
-        y_min,
-        y_max,
+        y2_scale_fn,
         pad,
+        x_range: [x_min, x_max],
+        y_range: [y_min, y_max],
+        y2_range: [y2_min, y2_max],
       })}
       <g class="x-axis">
         {#if width > 0 && height > 0}
@@ -1422,7 +1376,7 @@
 
                   {#if tick >= y_min && tick <= y_max}
                     {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
-                    <text {x} {y} text-anchor="end" fill={axis_colors.y1 || undefined}>
+                    <text {x} {y} text-anchor="end" fill={y_axis.color}>
                       {format_value(tick, y_axis.format ?? ``)}
                       {#if y_axis.unit && idx === 0}
                         &zwnj;&ensp;{y_axis.unit}
@@ -1447,7 +1401,7 @@
               (height - pad.t - pad.b) / 2 +
               ((y_axis.label_shift?.x ?? 0))})"
           >
-            <div class="axis-label y-label" style:color={axis_colors.y1 || undefined}>
+            <div class="axis-label y-label" style:color={y_axis.color}>
               {@html y_axis.label ?? ``}
             </div>
           </foreignObject>
@@ -1476,7 +1430,7 @@
 
                     {#if tick >= y2_min && tick <= y2_max}
                       {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
-                      <text {x} {y} text-anchor="start" fill={axis_colors.y2}>
+                      <text {x} {y} text-anchor="start" fill={y2_axis.color}>
                         {format_value(tick, y2_axis.format ?? ``)}
                         {#if y2_axis.unit && idx === 0}
                           &zwnj;&ensp;{y2_axis.unit}
@@ -1495,15 +1449,15 @@
               y={-10}
               width="200"
               height="20"
-              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
+              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
                 ((y2_axis.label_shift?.x ?? 0))}) translate({width -
                 pad.r +
-                ((y2_axis.label_shift?.y ?? 60))}, {pad.t +
+                ((y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
                 ((y2_axis.label_shift?.x ?? 0))})"
             >
-              <div class="axis-label y2-label" style:color={axis_colors.y2}>
+              <div class="axis-label y2-label" style:color={y2_axis.color}>
                 {@html y2_axis.label ?? ``}
               </div>
             </foreignObject>

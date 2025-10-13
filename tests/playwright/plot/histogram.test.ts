@@ -1550,8 +1550,8 @@ test.describe(`Histogram Component Tests`, () => {
     expect(y1_ticks.length).toBeGreaterThan(0)
     expect(y2_ticks.length).toBeGreaterThan(0)
 
-    // Verify they have different ranges (independent scaling)
-    expect(y1_ticks.join(`,`)).not.toBe(y2_ticks.join(`,`))
+    // Verify they have different ranges (independent scaling) - compare arrays to avoid locale effects
+    expect(y1_ticks).not.toEqual(y2_ticks)
   })
 
   test(`bins are calculated separately for y1 and y2 series`, async ({ page }) => {
@@ -1588,7 +1588,7 @@ test.describe(`Histogram Component Tests`, () => {
     const get_range = async (axis: `y` | `y2`) => {
       const tick_texts = await histogram.locator(`g.${axis}-axis .tick text`)
         .allTextContents()
-      return tick_texts.join(`,`)
+      return tick_texts
     }
 
     const initial_y1 = await get_range(`y`)
@@ -1609,19 +1609,33 @@ test.describe(`Histogram Component Tests`, () => {
     await page.mouse.up()
 
     // After zoom, both axes should have changed
-    await page.waitForTimeout(200)
-    const zoomed_y1 = await get_range(`y`)
-    const zoomed_y2 = await get_range(`y2`)
-    expect(zoomed_y1).not.toBe(initial_y1)
-    expect(zoomed_y2).not.toBe(initial_y2)
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y`)
+        return JSON.stringify(range) !== JSON.stringify(initial_y1)
+      }, { timeout: 2000 })
+      .toBe(true)
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y2`)
+        return JSON.stringify(range) !== JSON.stringify(initial_y2)
+      }, { timeout: 2000 })
+      .toBe(true)
 
     // Reset
     await svg.dblclick()
-    await page.waitForTimeout(200)
-    const reset_y1 = await get_range(`y`)
-    const reset_y2 = await get_range(`y2`)
-    expect(reset_y1).toBe(initial_y1)
-    expect(reset_y2).toBe(initial_y2)
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y`)
+        return JSON.stringify(range)
+      }, { timeout: 2000 })
+      .toBe(JSON.stringify(initial_y1))
+    await expect
+      .poll(async () => {
+        const range = await get_range(`y2`)
+        return JSON.stringify(range)
+      }, { timeout: 2000 })
+      .toBe(JSON.stringify(initial_y2))
   })
 
   test(`y2 grid lines render independently in histogram`, async ({ page }) => {

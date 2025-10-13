@@ -125,6 +125,104 @@
 
   let hover_msg = $state(`Hover over a bar`)
   let click_msg = $state(`Click on a bar`)
+
+  // Y2 axis test series
+  const y2_axis_series: BarSeries[] = [
+    {
+      x: [1, 2, 3, 4],
+      y: [10, 20, 15, 25],
+      label: `Y1 Series`,
+      color: `#4e79a7`,
+      bar_width: 0.6,
+      visible: true,
+    },
+    {
+      x: [1, 2, 3, 4],
+      y: [100, 200, 150, 250],
+      label: `Y2 Series`,
+      color: `#e15759`,
+      bar_width: 0.6,
+      visible: true,
+      y_axis: `y2`,
+    },
+  ]
+
+  const y2_different_scale_series: BarSeries[] = [
+    {
+      x: [1, 2, 3, 4],
+      y: [5, 10, 8, 12],
+      label: `Small Scale`,
+      color: `#59a14f`,
+      bar_width: 0.6,
+      visible: true,
+    },
+    {
+      x: [1, 2, 3, 4],
+      y: [500, 1000, 800, 1200],
+      label: `Large Scale`,
+      color: `#f28e2b`,
+      bar_width: 0.6,
+      visible: true,
+      y_axis: `y2`,
+    },
+  ]
+
+  const y2_stacked_series: BarSeries[] = [
+    {
+      x: [1, 2, 3],
+      y: [3, 5, 4],
+      label: `Y1-A`,
+      color: `#edc948`,
+      bar_width: 0.8,
+      visible: true,
+    },
+    {
+      x: [1, 2, 3],
+      y: [2, 3, 3],
+      label: `Y1-B`,
+      color: `#b07aa1`,
+      bar_width: 0.8,
+      visible: true,
+    },
+    {
+      x: [1, 2, 3],
+      y: [30, 50, 40],
+      label: `Y2-A`,
+      color: `#76b7b2`,
+      bar_width: 0.8,
+      visible: true,
+      y_axis: `y2`,
+    },
+    {
+      x: [1, 2, 3],
+      y: [20, 30, 30],
+      label: `Y2-B`,
+      color: `#ff9da7`,
+      bar_width: 0.8,
+      visible: true,
+      y_axis: `y2`,
+    },
+  ]
+
+  const y2_line_series: BarSeries[] = [
+    {
+      x: [1, 2, 3, 4],
+      y: [10, 20, 15, 25],
+      label: `Bar Series`,
+      color: `#4e79a7`,
+      bar_width: 0.6,
+      visible: true,
+    },
+    {
+      x: [1, 2, 3, 4],
+      y: [100, 200, 150, 250],
+      label: `Line Series`,
+      color: `#e15759`,
+      visible: true,
+      y_axis: `y2`,
+      type: `line`,
+    },
+  ]
 </script>
 
 <svelte:head>
@@ -253,4 +351,53 @@
     <p>{hover_msg}</p>
     <p>{click_msg}</p>
   </div>
+</section>
+
+<section id="y2-axis-bar">
+  <h2>Y2 Axis</h2>
+  <BarPlot
+    series={y2_axis_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y1` }}
+    y2_axis={{ label: `Y2` }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="y2-different-scale">
+  <h2>Y2 Different Scale</h2>
+  <BarPlot
+    series={y2_different_scale_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Small` }}
+    y2_axis={{ label: `Large` }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="y2-stacked">
+  <h2>Y2 Stacked Mode</h2>
+  <BarPlot
+    series={y2_stacked_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y1` }}
+    y2_axis={{ label: `Y2` }}
+    mode="stacked"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="y2-line-series">
+  <h2>Y2 Line Series</h2>
+  <BarPlot
+    series={y2_line_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Bars` }}
+    y2_axis={{ label: `Line` }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
 </section>

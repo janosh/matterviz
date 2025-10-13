@@ -13,7 +13,11 @@
     prepare_legend_data,
   } from './data-transform'
   import { get_relative_coords } from './interactions'
-  import { calc_auto_padding, constrain_tooltip_position } from './layout'
+  import {
+    calc_auto_padding,
+    constrain_tooltip_position,
+    measure_text_width,
+  } from './layout'
   import { create_scale, generate_ticks, get_nice_data_range } from './scales'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
@@ -45,7 +49,6 @@
     on_series_toggle = () => {},
     controls_toggle_props,
     controls_pane_props,
-    color_axis_labels: _color_axis_labels = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
@@ -80,7 +83,6 @@
         | null,
     ) => void
     on_series_toggle?: (series_idx: number) => void
-    color_axis_labels?: boolean | { y1?: string | null; y2?: string | null }
   } = $props()
 
   // Initialize bar styles with defaults (runs once)
@@ -91,7 +93,7 @@
     y2_axis.format ??= `d`
     y2_axis.scale_type ??= `linear`
     y2_axis.ticks ??= 5
-    y2_axis.label_shift ??= { y: 60 }
+    y2_axis.label_shift ??= { x: 0, y: 0 }
     y2_axis.tick_label_shift ??= { x: 8, y: 0 }
     y2_axis.lim ??= [null, null]
   })
@@ -99,7 +101,9 @@
   // Core state
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
-  let hover_info = $state<{ value: number; count: number; property: string } | null>(
+  let hover_info = $state<
+    { value: number; count: number; property: string; axis: `y1` | `y2` } | null
+  >(
     null,
   )
   let drag_state = $state<{
@@ -218,6 +222,16 @@
         y_format: y_axis.format,
       })
       : base_pad
+    if (width && height && y2_series.length && ticks.y2.length) {
+      const y2_max_w = Math.max(
+        0,
+        ...ticks.y2.map((tick) =>
+          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
+        ),
+      )
+      const label_pad = y2_axis.label ? 40 : 0
+      new_pad.r = Math.max(new_pad.r, 10 + y2_max_w + label_pad)
+    }
 
     // Only update if padding actually changed (prevents infinite loop)
     if (
@@ -409,9 +423,10 @@
     value: number,
     count: number,
     property: string,
+    axis: `y1` | `y2` = `y1`,
   ) {
     hovered = true
-    hover_info = { value, count, property }
+    hover_info = { value, count, property, axis }
     change({ value, count, property })
     on_bar_hover?.({ value, count, property, event: evt })
   }
@@ -457,7 +472,10 @@
       <!-- Tooltip -->
       {#if hover_info}
         {@const tooltip_x = scales.x(hover_info.value)}
-        {@const tooltip_y = scales.y(hover_info.count)}
+        {@const y_cfg = (hover_info.axis === `y2`) ? y2_axis : y_axis}
+        {@const tooltip_y = (hover_info.axis === `y2` ? scales.y2 : scales.y)(
+        hover_info.count,
+      )}
         {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
         {@const tooltip_pos = constrain_tooltip_position(
         tooltip_x,
@@ -478,7 +496,7 @@
               {@render tooltip(hover_info)}
             {:else}
               <div>Value: {format_value(hover_info.value, x_axis.format || `.3~s`)}</div>
-              <div>Count: {format_value(hover_info.count, `.3~s`)}</div>
+              <div>Count: {format_value(hover_info.count, y_cfg.format || `.3~s`)}</div>
               {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
             {/if}
           </div>
@@ -501,7 +519,7 @@
           x2={width - pad.r}
           y1={height - pad.b}
           y2={height - pad.b}
-          stroke="var(--border-color, gray)"
+          stroke={x_axis.color || `var(--border-color, gray)`}
           stroke-width="1"
         />
         {#each ticks.x as tick (tick)}
@@ -517,8 +535,13 @@
                 {...x_axis.grid_style ?? {}}
               />
             {/if}
-            <line y1="0" y2="5" stroke="var(--border-color, gray)" stroke-width="1" />
-            <text y="18" text-anchor="middle" fill="var(--text-color)">
+            <line
+              y1="0"
+              y2="5"
+              stroke={x_axis.color || `var(--border-color, gray)`}
+              stroke-width="1"
+            />
+            <text y="18" text-anchor="middle" fill={x_axis.color || `var(--text-color)`}>
               {format_value(tick, x_axis.format)}
             </text>
           </g>
@@ -527,7 +550,7 @@
           x={(pad.l + width - pad.r) / 2 + (x_axis.label_shift?.x ?? 0)}
           y={height - 10 + (x_axis.label_shift?.y ?? 0)}
           text-anchor="middle"
-          fill="var(--text-color)"
+          fill={x_axis.color || `var(--text-color)`}
         >
           {@html x_axis.label}
         </text>
@@ -540,7 +563,7 @@
           x2={pad.l}
           y1={pad.t}
           y2={height - pad.b}
-          stroke="var(--border-color, gray)"
+          stroke={y_axis.color || `var(--border-color, gray)`}
           stroke-width="1"
         />
         {#each ticks.y as tick (tick)}
@@ -556,12 +579,17 @@
                 {...y_axis.grid_style ?? {}}
               />
             {/if}
-            <line x1="-5" x2="0" stroke="var(--border-color, gray)" stroke-width="1" />
+            <line
+              x1="-5"
+              x2="0"
+              stroke={y_axis.color || `var(--border-color, gray)`}
+              stroke-width="1"
+            />
             <text
               x="-10"
               text-anchor="end"
               dominant-baseline="central"
-              fill="var(--text-color)"
+              fill={y_axis.color || `var(--text-color)`}
             >
               {format_value(tick, y_axis.format)}
             </text>
@@ -574,7 +602,7 @@
             x={y_label_x}
             y={y_label_y}
             text-anchor="middle"
-            fill="var(--text-color)"
+            fill={y_axis.color || `var(--text-color)`}
             transform="rotate(-90, {y_label_x}, {y_label_y})"
           >
             {@html y_axis.label}
@@ -590,7 +618,7 @@
             x2={width - pad.r}
             y1={pad.t}
             y2={height - pad.b}
-            stroke="var(--border-color, gray)"
+            stroke={y2_axis.color || `var(--border-color, gray)`}
             stroke-width="1"
           />
           {#each ticks.y2 as tick (tick)}
@@ -606,12 +634,18 @@
                   {...y2_axis.grid_style ?? {}}
                 />
               {/if}
-              <line x1="0" x2="5" stroke="var(--border-color, gray)" stroke-width="1" />
+              <line
+                x1="0"
+                x2="5"
+                stroke={y2_axis.color || `var(--border-color, gray)`}
+                stroke-width="1"
+              />
               <text
-                x="10"
+                x={y2_axis.tick_label_shift?.x ?? 8}
+                y={y2_axis.tick_label_shift?.y ?? 0}
                 text-anchor="start"
                 dominant-baseline="central"
-                fill="var(--text-color)"
+                fill={y2_axis.color || `var(--text-color)`}
               >
                 {format_value(tick, y2_axis.format)}
               </text>
@@ -625,7 +659,7 @@
               x={y2_label_x}
               y={y2_label_y}
               text-anchor="middle"
-              fill="var(--text-color)"
+              fill={y2_axis.color || `var(--text-color)`}
               transform="rotate(-90, {y2_label_x}, {y2_label_y})"
             >
               {@html y2_axis.label}
@@ -651,7 +685,7 @@
 
       <!-- Histogram bars -->
       {#each histogram_data as
-        { id, bins, color, label, y_scale },
+        { id, bins, color, label, y_scale, y_axis },
         series_idx
         (id ?? series_idx)
       }
@@ -675,7 +709,14 @@
                 stroke-width={bar.stroke_width}
                 role="button"
                 tabindex="0"
-                onmousemove={(evt) => handle_mouse_move(evt, value, bin.length, label)}
+                onmousemove={(evt) =>
+                handle_mouse_move(
+                  evt,
+                  value,
+                  bin.length,
+                  label,
+                  (y_axis ?? `y1`) as `y1` | `y2`,
+                )}
                 onmouseleave={() => {
                   hover_info = null
                   change(null)
@@ -744,7 +785,7 @@
     width: 100%;
     height: 100%;
   }
-  g:is(.x-axis, .y-axis) .tick text {
+  g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   .tooltip {

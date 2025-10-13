@@ -1,7 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { element_data, Icon, Nav } from '$lib'
+  import { Icon, Nav } from '$lib'
+  import { element_data } from '$lib/element'
   import '$lib/app.css'
   import { theme_state } from '$lib/state.svelte'
   import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'

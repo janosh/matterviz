@@ -241,8 +241,7 @@
     ? hkls.map((h) => format_hkl(h, hkl_format)).join(`, `)
     : ``}
   {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
-  {@const series_label = info.metadata?.label ? `${String(info.metadata.label)} — ` : ``}
-  {@html series_label}<br />
+  {@html info.metadata?.label ?? ``}<br />
   2θ: {angle_text}<br />
   Intensity: {intensity_text}
   {#if hkl_text}<br />hkl: {hkl_text}{/if}

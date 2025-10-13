@@ -54,9 +54,10 @@ export function format_value(value: number, formatter?: string): string {
   }
 
   // Remove trailing zeros after decimal point
-  return formatted.includes(`.`)
+  const out = formatted.includes(`.`)
     ? formatted.replace(/(\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
     : formatted
+  return out === `-0` ? `0` : out
 }
 
 // TODO add labels and units for all elemental properties

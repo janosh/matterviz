@@ -223,11 +223,11 @@ export type UserContentProps = {
   width: number
   x_scale_fn: (x: number) => number
   y_scale_fn: (y: number) => number
+  y2_scale_fn?: (y: number) => number
   pad: Required<Sides>
-  x_min: number
-  y_min: number
-  x_max: number
-  y_max: number
+  x_range: [number, number]
+  y_range: [number, number]
+  y2_range?: [number, number]
 }
 
 export type Orientation = `vertical` | `horizontal`
@@ -265,6 +265,7 @@ export interface AxisConfig {
   tick_label_shift?: { x?: number; y?: number }
   tick_rotation?: number // Rotation angle in degrees for tick labels
   grid_style?: HTMLAttributes<SVGLineElement>
+  color?: string | null // Color for axis label, tick labels, and axis line
 }
 
 // Display configuration for grid lines and markers
