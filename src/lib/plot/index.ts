@@ -25,6 +25,7 @@ export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
+export { default as SpacegroupBarPlot } from './SpacegroupBarPlot.svelte'
 export * from './types'
 
 export const line_types = [`solid`, `dashed`, `dotted`] as const
