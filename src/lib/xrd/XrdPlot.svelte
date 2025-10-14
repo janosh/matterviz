@@ -255,12 +255,12 @@
   x_axis={{
     label_shift: { y: 20 },
     range: orientation === `horizontal` ? intensity_range : angle_range,
-    ...(orientation === `horizontal` ? x_axis : y_axis),
+    ...(orientation === `horizontal` ? y_axis : x_axis),
   }}
   y_axis={{
     label_shift: { x: 2 },
     range: orientation === `horizontal` ? angle_range : intensity_range,
-    ...(orientation === `horizontal` ? y_axis : x_axis),
+    ...(orientation === `horizontal` ? x_axis : y_axis),
   }}
   {tooltip}
   ondrop={handle_file_drop}

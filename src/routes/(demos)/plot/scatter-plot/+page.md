@@ -1371,7 +1371,7 @@ and scale type.
 
 ## Line Clipping with Fixed Ranges
 
-This example demonstrates how lines are clipped when they extend beyond the fixed `x_range` and `y_range` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
+This example demonstrates how lines are clipped when they extend beyond the fixed `x_axis.range` and `y_axis.range` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
 
 ```svelte example
 <script>
