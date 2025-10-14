@@ -137,6 +137,28 @@ describe(`scales`, () => {
         padding: 0.1,
         check: (range: [number, number]) => expect(range).toEqual([0, 1]),
       },
+      {
+        points: sample_points,
+        limits: [null, 1000],
+        scale_type: `linear`,
+        is_time: false,
+        padding: 0.05,
+        check: (range: [number, number]) => {
+          expect(range[0]).toBeLessThan(1)
+          expect(range[1]).toBe(1000)
+        },
+      },
+      {
+        points: sample_points,
+        limits: [0, null],
+        scale_type: `linear`,
+        is_time: false,
+        padding: 0.05,
+        check: (range: [number, number]) => {
+          expect(range[0]).toBe(0)
+          expect(range[1]).toBeGreaterThanOrEqual(5)
+        },
+      },
     ])(
       `nice range: $scale_type, $points.length points`,
       ({ points, limits, scale_type, is_time, padding, check }) => {

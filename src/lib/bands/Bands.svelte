@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { plot_colors } from '$lib/colors'
-  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
-  import type { AxisConfig, DataSeries } from '$lib/plot/types'
-  import type { ComponentProps } from 'svelte'
-  import {
-    N_ACOUSTIC_MODES,
-    normalize_band_structure,
-    pretty_sym_point,
-  } from './helpers'
+  import * as helpers from '$lib/bands/helpers'
   import type {
     BandStructureType,
     BaseBandStructure,
     LineKwargs,
     PathMode,
-  } from './types'
+  } from '$lib/bands/types'
+  import { plot_colors } from '$lib/colors'
+  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
+  import type { AxisConfig, DataSeries } from '$lib/plot/types'
+  import type { ComponentProps } from 'svelte'
 
   let {
     band_structs,
@@ -33,10 +29,6 @@
     band_type?: BandStructureType
     show_legend?: boolean
   } = $props()
-
-  // Helper function to create segment key from labels
-  const get_segment_key = (start_label?: string, end_label?: string) =>
-    `${start_label || `null`}_${end_label || `null`}`
 
   // Helper function to get line styling for a band
   function get_line_style(
@@ -84,7 +76,7 @@
     const is_single_struct = `qpoints` in band_structs && `branches` in band_structs
 
     if (is_single_struct) {
-      const normalized = normalize_band_structure(band_structs)
+      const normalized = helpers.normalize_band_structure(band_structs)
       return normalized ? { default: normalized } : {}
     }
 
@@ -95,7 +87,7 @@
         band_structs as Record<string, BaseBandStructure>,
       )
     ) {
-      const normalized = normalize_band_structure(bs)
+      const normalized = helpers.normalize_band_structure(bs)
       if (normalized) result[key] = normalized
     }
     return result
@@ -112,7 +104,7 @@
       for (const branch of bs.branches) {
         const start_label = bs.qpoints[branch.start_index]?.label ?? undefined
         const end_label = bs.qpoints[branch.end_index]?.label ?? undefined
-        const segment_key = get_segment_key(start_label, end_label)
+        const segment_key = helpers.get_segment_key(start_label, end_label)
 
         all_segments[segment_key] ??= []
         all_segments[segment_key].push([label, bs])
@@ -152,14 +144,7 @@
 
     // Preserve physical path order using the first available structure
     const canonical = Object.values(band_structs_dict)[0]
-    const ordered_segments = canonical
-      ? canonical.branches.map((br) =>
-        get_segment_key(
-          canonical.qpoints[br.start_index]?.label ?? undefined,
-          canonical.qpoints[br.end_index]?.label ?? undefined,
-        )
-      )
-      : Array.from(segments_to_plot)
+    const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
     for (const segment_key of ordered_segments) {
       if (!segments_to_plot.has(segment_key)) continue
@@ -205,7 +190,7 @@
         const end_idx = branch.end_index + 1
         const start_label = bs.qpoints[start_idx]?.label ?? undefined
         const end_label = bs.qpoints[end_idx - 1]?.label ?? undefined
-        const segment_key = get_segment_key(start_label, end_label)
+        const segment_key = helpers.get_segment_key(start_label, end_label)
 
         if (!segments_to_plot.has(segment_key)) continue
 
@@ -225,7 +210,7 @@
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
           const frequencies = bs.bands[band_idx].slice(start_idx, end_idx)
           const is_acoustic = detected_band_type === `phonon` &&
-            band_idx < N_ACOUSTIC_MODES
+            band_idx < helpers.N_ACOUSTIC_MODES
           const mode_type = is_acoustic ? `acoustic` : `optical`
 
           const line_style = get_line_style(
@@ -264,13 +249,15 @@
       // Add start label if not already present
       if (!(x_start in tick_labels)) {
         const pretty_start = start_label !== `null`
-          ? pretty_sym_point(start_label)
+          ? helpers.pretty_sym_point(start_label)
           : ``
         if (pretty_start) tick_labels[x_start] = pretty_start
       }
 
       // Add end label
-      const pretty_end = end_label !== `null` ? pretty_sym_point(end_label) : ``
+      const pretty_end = end_label !== `null`
+        ? helpers.pretty_sym_point(end_label)
+        : ``
       if (pretty_end) tick_labels[x_end] = pretty_end
     }
 

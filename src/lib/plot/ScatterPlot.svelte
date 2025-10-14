@@ -424,15 +424,20 @@
 
   // Color scale function
   let color_scale_fn = $derived.by(() => {
-    const color_func_name = color_scale.scheme as keyof typeof d3_sc
+    const color_func_name = (typeof color_scale === `string`
+      ? color_scale
+      : color_scale.scheme) as keyof typeof d3_sc
     const interpolator = typeof d3_sc[color_func_name] === `function`
       ? d3_sc[color_func_name]
       : d3_sc.interpolateViridis
 
-    const [min_val, max_val] = color_scale.value_range ??
-      (auto_color_range as [number, number])
+    const [min_val, max_val] =
+      (typeof color_scale === `string` ? undefined : color_scale.value_range) ??
+        (auto_color_range as [number, number])
 
-    return color_scale.type === `log`
+    const scale_type = typeof color_scale === `string` ? undefined : color_scale.type
+
+    return scale_type === `log`
       ? scaleSequentialLog(interpolator).domain([
         Math.max(min_val, math.LOG_EPS),
         Math.max(max_val, min_val * 1.1),
@@ -445,22 +450,11 @@
     series_with_ids
       .map((data_series, series_idx) => {
         if (!(data_series?.visible ?? true)) {
-          return {
-            ...data_series,
-            visible: false,
-            filtered_data: [],
-          } as DataSeries & { filtered_data: InternalPoint[]; _id: number }
+          return { ...data_series, visible: false, filtered_data: [] }
         }
 
-        if (!data_series) {
-          // Return empty data consistent with DataSeries structure
-          return {
-            x: [],
-            y: [],
-            visible: true,
-            filtered_data: [],
-            _id: series_idx,
-          } as unknown as DataSeries & { filtered_data: InternalPoint[]; _id: number }
+        if (!data_series) { // Return empty data consistent with DataSeries structure
+          return { x: [], y: [], visible: true, filtered_data: [], _id: series_idx }
         }
 
         const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
@@ -652,7 +646,7 @@
         display_style,
         has_explicit_label,
       }
-    }).filter((item) => item.has_explicit_label)
+    })
 
     // Deduplicate by label - keep first occurrence of each unique label
     const seen_labels = new SvelteSet<string>()
@@ -1760,15 +1754,17 @@
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0 && color_bar_placement}
       {@const color_domain = [
-      color_scale.value_range?.[0] ?? auto_color_range[0],
-      color_scale.value_range?.[1] ?? auto_color_range[1],
+      (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
+        auto_color_range[0],
+      (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
+        auto_color_range[1],
     ] as [number, number]}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {color_scale_fn}
         color_scale_domain={color_domain}
-        scale_type={color_scale.type}
+        scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
         range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style={`
           position: absolute;

@@ -282,13 +282,13 @@
     label_shift: { y: 20 },
     range: orientation === `horizontal` ? ranges.count : ranges.cn,
     ticks: orientation === `horizontal` ? undefined : cn_ticks,
-    ...(orientation === `horizontal` ? x_axis : y_axis),
+    ...(orientation === `horizontal` ? y_axis : x_axis),
   }}
   y_axis={{
     label_shift: { x: 2 },
     range: orientation === `horizontal` ? ranges.cn : ranges.count,
     ticks: orientation === `horizontal` ? cn_ticks : undefined,
-    ...orientation === `horizontal` ? y_axis : x_axis,
+    ...orientation === `horizontal` ? x_axis : y_axis,
   }}
   display={{
     x_zero_line: orientation === `horizontal`,

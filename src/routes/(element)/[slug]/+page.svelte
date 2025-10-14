@@ -112,7 +112,7 @@
     {#if element?.discoverer && !element.discoverer.startsWith(`unknown`)}
       by <strong>{element.discoverer}</strong>
     {/if}
-    {#if typeof element?.year}
+    {#if element?.year !== null}
       in <strong>{element.year}</strong>
     {/if}
   </p>

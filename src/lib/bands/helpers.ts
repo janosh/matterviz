@@ -1,5 +1,5 @@
 // Helper utilities for band structure and DOS data processing
-
+import { subscript_map } from '$lib/labels'
 import type { BaseBandStructure, Dos, FrequencyUnit, NormalizationMode } from './types'
 
 // Physical constants for unit conversions (SI units)
@@ -21,35 +21,42 @@ export function pretty_sym_point(symbol: string): string {
   if (!symbol) return ``
 
   // Remove underscores (htmlify maps S0 → S<sub>0</sub> but leaves S_0 as is)
-  let pretty = symbol.replace(/_/g, ``)
-
   // Replace common symmetry point names with Greek letters
-  pretty = pretty
+  // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
+  // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
+  return symbol
+    .replace(/_/g, ``)
     .replace(/GAMMA/gi, `Γ`)
     .replace(/DELTA/gi, `Δ`)
     .replace(/SIGMA/gi, `Σ`)
     .replace(/LAMBDA/gi, `Λ`)
-
-  // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
-  // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
-  pretty = pretty.replace(/(\p{L})(\d+)/gu, (_, letter, num) => {
-    const subscript_map: Record<string, string> = {
-      '0': `₀`,
-      '1': `₁`,
-      '2': `₂`,
-      '3': `₃`,
-      '4': `₄`,
-      '5': `₅`,
-      '6': `₆`,
-      '7': `₇`,
-      '8': `₈`,
-      '9': `₉`,
-    }
-    return letter + num.split(``).map((d: string) => subscript_map[d] || d).join(``)
-  })
-
-  return pretty
+    .replace(
+      /(\p{L})(\d+)/gu,
+      (_, letter, num) =>
+        letter +
+        num.split(``).map((digit: string) =>
+          subscript_map[digit as keyof typeof subscript_map] ?? digit
+        ).join(``),
+    )
 }
+
+// Create segment key from start and end labels
+export const get_segment_key = (start_label?: string, end_label?: string) =>
+  `${start_label ?? `null`}_${end_label ?? `null`}`
+
+// Get ordered segment keys from a band structure, preserving physical path order.
+export const get_ordered_segments = (
+  band_struct: BaseBandStructure | null,
+  segments: Set<string>,
+) =>
+  band_struct
+    ? band_struct.branches.map((br) =>
+      get_segment_key(
+        band_struct.qpoints[br.start_index]?.label ?? undefined,
+        band_struct.qpoints[br.end_index]?.label ?? undefined,
+      )
+    )
+    : Array.from(segments)
 
 // Extract tick positions and labels for a band structure plot.
 export function get_band_xaxis_ticks(
@@ -77,11 +84,9 @@ export function get_band_xaxis_ticks(
     const this_branch = branch_names[0] || null
 
     if (point.label !== prev_label && prev_branch !== this_branch) {
-      // Branch transition - combine labels (only pop if arrays are non-empty)
-      if (tick_labels.length > 0) tick_labels.pop()
-      if (ticks_x_pos.length > 0) ticks_x_pos.pop()
-      tick_labels.push(`${prev_label || ``}|${point.label}`)
-      ticks_x_pos.push(band_struct.distance[idx])
+      // Branch transition - combine labels
+      tick_labels[tick_labels.length - 1] = `${prev_label || ``}|${point.label}`
+      ticks_x_pos[ticks_x_pos.length - 1] = band_struct.distance[idx]
     } else if (
       branches_set.size === 0 || (this_branch && branches_set.has(this_branch))
     ) {

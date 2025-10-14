@@ -660,10 +660,7 @@
   }
 
   // Load using indexed parsing for large files
-  async function load_with_indexing(
-    data: string | ArrayBuffer,
-    filename: string,
-  ) {
+  async function load_with_indexing(data: string | ArrayBuffer, filename: string) {
     try { // Use indexed parsing for efficient large file handling
       trajectory = await parse_trajectory_async(data, filename, (progress) => {
         parsing_progress = progress
@@ -673,12 +670,6 @@
       original_data = data
       // @ts-expect-error - dynamically adding frame_loader for indexed trajectories
       trajectory.frame_loader = create_frame_loader(filename)
-
-      console.log(
-        `Loaded trajectory with indexing: ${
-          trajectory.total_frames || trajectory.frames.length
-        } frames`,
-      )
     } catch (error) {
       console.error(`Indexed loading failed:`, error)
       throw error
