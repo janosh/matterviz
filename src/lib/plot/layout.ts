@@ -18,7 +18,8 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
 // Calculate auto-adjusted padding based on tick label widths
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {
-  base_padding: Required<Sides>
+  padding: Partial<Sides> // User padding (undefined sides will be auto-calculated)
+  default_padding: Required<Sides> // Default padding to use as baseline
   y_ticks?: (string | number)[]
   y_format?: string
   y2_ticks?: (string | number)[]
@@ -35,16 +36,20 @@ const measure_max_tick_width = (ticks: (string | number)[], format: string) =>
   )
 
 export const calc_auto_padding = ({
-  base_padding,
+  padding,
+  default_padding,
   y_ticks = [],
   y_format = ``,
   y2_ticks = [],
   y2_format = ``,
   label_gap = 45,
 }: AutoPaddingConfig): Required<Sides> => ({
-  ...base_padding,
-  l: Math.max(base_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
-  r: Math.max(base_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
+  t: padding.t ?? default_padding.t,
+  b: padding.b ?? default_padding.b,
+  l: padding.l ??
+    Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
+  r: padding.r ??
+    Math.max(default_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
 })
 
 // Constrain tooltip position within chart bounds

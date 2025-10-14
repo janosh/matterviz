@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
+  import { format_num, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
     DataSeries,
@@ -9,7 +9,6 @@
     ScaleType,
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import { symbol_names } from '$lib/labels'
 
   // === Basic Example Data ===
   const basic_data = {
@@ -527,16 +526,16 @@
   <h3>Wide Range (-1000 to 1000)</h3>
   <ScatterPlot
     series={[wide_range_data]}
-    x_axis={{ label: `X Axis`, lim: [-1100, 1100] }}
-    y_axis={{ label: `Y Axis`, lim: [-550, 550] }}
+    x_axis={{ label: `X Axis`, range: [-1100, 1100] }}
+    y_axis={{ label: `Y Axis`, range: [-550, 550] }}
     display={{ markers: `line+points` }}
   />
 
   <h3>Very Small Range</h3>
   <ScatterPlot
     series={[small_range_data]}
-    x_axis={{ label: `X Axis`, lim: [0, 0.0006] }}
-    y_axis={{ label: `Y Axis`, lim: [0, 0.00006] }}
+    x_axis={{ label: `X Axis`, range: [0, 0.0006] }}
+    y_axis={{ label: `Y Axis`, range: [0, 0.00006] }}
     display={{ markers: `line+points` }}
   />
 </section>
@@ -546,14 +545,14 @@
   <h3>Y-Axis Log Scale</h3>
   <ScatterPlot
     series={[log_scale_data]}
-    x_axis={{ label: `X Axis (Linear)`, lim: [-1100, 1100] }}
-    y_axis={{ label: `Y Axis (Log)`, lim: [1, 6000], scale_type: `log` }}
+    x_axis={{ label: `X Axis (Linear)`, range: [-1100, 1100] }}
+    y_axis={{ label: `Y Axis (Log)`, range: [1, 6000], scale_type: `log` }}
     display={{ markers: `line+points` }}
   />
   <h3>X-Axis Log Scale</h3>
   <ScatterPlot
     series={[log_scale_data2]}
-    x_axis={{ label: `X Axis (Log)`, format: `~s`, lim: [0.01, 1100], scale_type: `log` }}
+    x_axis={{ label: `X Axis (Log)`, format: `~s`, range: [0.01, 1100], scale_type: `log` }}
     y_axis={{ label: `Y Axis (Linear)`, format: `~s` }}
     display={{ markers: `line+points` }}
   />
@@ -630,8 +629,8 @@
   {#key enable_auto_placement}
     <ScatterPlot
       series={auto_placement_test_series}
-      x_axis={{ label: `X`, lim: [0, 100] }}
-      y_axis={{ label: `Y`, lim: [0, 100] }}
+      x_axis={{ label: `X`, range: [0, 100] }}
+      y_axis={{ label: `Y`, range: [0, 100] }}
       display={{ markers: `points` }}
       style="height: 450px; width: 100%"
     />
@@ -667,8 +666,8 @@
 
   <ScatterPlot
     series={auto_placement_plot_series}
-    x_axis={{ label: `X Position`, lim: [0, 100] }}
-    y_axis={{ label: `Y Position`, lim: [0, 100] }}
+    x_axis={{ label: `X Position`, range: [0, 100] }}
+    y_axis={{ label: `Y Position`, range: [0, 100] }}
     display={{ markers: `points` }}
     color_scale={{ scheme: `Turbo` }}
     color_bar={{ title: `Color Bar Title` }}
@@ -738,7 +737,7 @@
     y_axis={{
       label: `Y Axis`,
       scale_type: lin_log_y_scale_type,
-      lim: lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null],
+      range: lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null],
     }}
     display={{ markers: `line+points` }}
   />
@@ -780,8 +779,8 @@
 
 <ScatterPlot
   series={[spiral_data]}
-  x_axis={{ label: `X Axis`, lim: [-15, 15] }}
-  y_axis={{ label: `Y Axis`, lim: [-15, 15] }}
+  x_axis={{ label: `X Axis`, range: [-15, 15] }}
+  y_axis={{ label: `Y Axis`, range: [-15, 15] }}
   display={{ markers: `points` }}
   {size_scale}
   style="height: 500px; width: 100%"

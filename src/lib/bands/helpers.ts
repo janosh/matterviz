@@ -1,0 +1,233 @@
+// Helper utilities for band structure and DOS data processing
+
+import type {
+  BaseBandStructure,
+  BaseDos,
+  FrequencyUnit,
+  NormalizationMode,
+} from './types'
+
+// Physical constants for unit conversions (SI units)
+const PLANCK = 6.62607015e-34 // J⋅s
+const EV_TO_J = 1.602176634e-19 // J
+const C_LIGHT = 299792458 // m/s
+const THz_TO_HZ = 1e12
+const THz_TO_EV = (PLANCK * THz_TO_HZ) / EV_TO_J
+const THz_TO_MEV = THz_TO_EV * 1000
+const THz_TO_HA = THz_TO_EV / 27.211386245988 // Hartree
+const THz_TO_CM = (THz_TO_HZ / C_LIGHT) * 100 // cm^-1
+
+// Band structure constants
+export const N_ACOUSTIC_MODES = 3 // Number of acoustic modes in typical 3D crystals
+
+// Convert symmetry point symbols to pretty-printed versions.
+// Handles Greek letters and subscripts.
+export function pretty_sym_point(symbol: string): string {
+  if (!symbol) return ``
+
+  // Remove underscores (htmlify maps S0 → S<sub>0</sub> but leaves S_0 as is)
+  let pretty = symbol.replace(/_/g, ``)
+
+  // Replace common symmetry point names with Greek letters
+  pretty = pretty
+    .replace(/GAMMA/gi, `Γ`)
+    .replace(/DELTA/gi, `Δ`)
+    .replace(/SIGMA/gi, `Σ`)
+    .replace(/LAMBDA/gi, `Λ`)
+
+  // Handle subscripts: convert S0 to S₀, K1 to K₁, etc.
+  pretty = pretty.replace(/([A-Z])(\d+)/gi, (_, letter, num) => {
+    const subscript_map: Record<string, string> = {
+      '0': `₀`,
+      '1': `₁`,
+      '2': `₂`,
+      '3': `₃`,
+      '4': `₄`,
+      '5': `₅`,
+      '6': `₆`,
+      '7': `₇`,
+      '8': `₈`,
+      '9': `₉`,
+    }
+    return letter + num.split(``).map((d: string) => subscript_map[d] || d).join(``)
+  })
+
+  return pretty
+}
+
+// Extract tick positions and labels for a band structure plot.
+export function get_band_xaxis_ticks(
+  band_struct: BaseBandStructure,
+  branches: string[] | Set<string> = [],
+): [number[], string[]] {
+  const ticks_x_pos: number[] = []
+  const tick_labels: string[] = []
+  let prev_label = band_struct.qpoints[0]?.label || null
+  let prev_branch = band_struct.branches[0]?.name || null
+
+  // Convert branches to Set for consistent handling
+  const branches_set = Array.isArray(branches) ? new Set(branches) : branches
+
+  for (let idx = 0; idx < band_struct.qpoints.length; idx++) {
+    const point = band_struct.qpoints[idx]
+    if (point.label === null) continue
+
+    // Find which branch this point belongs to
+    const branch_names = band_struct.branches
+      .filter(
+        (branch) => branch.start_index <= idx && idx <= branch.end_index,
+      )
+      .map((b) => b.name)
+    const this_branch = branch_names[0] || null
+
+    if (point.label !== prev_label && prev_branch !== this_branch) {
+      // Branch transition - combine labels
+      tick_labels.pop()
+      ticks_x_pos.pop()
+      tick_labels.push(`${prev_label || ``}|${point.label}`)
+      ticks_x_pos.push(band_struct.distance[idx])
+    } else if (
+      branches_set.size === 0 || (this_branch && branches_set.has(this_branch))
+    ) {
+      tick_labels.push(point.label)
+      ticks_x_pos.push(band_struct.distance[idx])
+    }
+
+    prev_label = point.label
+    prev_branch = this_branch
+  }
+
+  return [ticks_x_pos, tick_labels.map(pretty_sym_point)]
+}
+
+// Convert frequencies from THz to specified units.
+export function convert_frequencies(
+  frequencies: number[],
+  unit: FrequencyUnit = `THz`,
+): number[] {
+  const conversion_factors: Record<FrequencyUnit, number> = {
+    'THz': 1,
+    'eV': THz_TO_EV,
+    'meV': THz_TO_MEV,
+    'Ha': THz_TO_HA,
+    'cm-1': THz_TO_CM,
+  }
+
+  const factor = conversion_factors[unit]
+  if (!factor) {
+    const valid_units = Object.keys(conversion_factors).join(`, `)
+    throw new Error(`Invalid unit: ${unit}. Must be one of ${valid_units}`)
+  }
+
+  return frequencies.map((f) => f * factor)
+}
+
+// Normalize DOS densities according to specified mode.
+export function normalize_densities(
+  densities: number[],
+  frequencies_or_energies: number[],
+  mode: NormalizationMode,
+): number[] {
+  if (!mode) return densities
+
+  const normalized = [...densities]
+
+  if (mode === `max`) {
+    const max_val = Math.max(...normalized)
+    if (max_val === 0) return normalized
+    return normalized.map((d) => d / max_val)
+  } else if (mode === `sum`) {
+    const sum = normalized.reduce((acc, d) => acc + d, 0)
+    if (sum === 0) return normalized
+    return normalized.map((d) => d / sum)
+  } else if (mode === `integral`) {
+    if (frequencies_or_energies.length < 2) return normalized
+    const bin_width = frequencies_or_energies[1] - frequencies_or_energies[0]
+    if (bin_width === 0) return normalized
+    const sum = normalized.reduce((acc, d) => acc + d, 0)
+    if (sum === 0) return normalized
+    return normalized.map((d) => d / (sum * bin_width))
+  }
+
+  return normalized
+}
+
+// Apply Gaussian smearing to DOS densities.
+export function apply_gaussian_smearing(
+  frequencies_or_energies: number[],
+  densities: number[],
+  sigma: number,
+): number[] {
+  if (sigma <= 0) return densities
+
+  const smeared = new Array(densities.length).fill(0)
+
+  for (let idx = 0; idx < frequencies_or_energies.length; idx++) {
+    const energy = frequencies_or_energies[idx]
+
+    for (let jdx = 0; jdx < frequencies_or_energies.length; jdx++) {
+      const e_j = frequencies_or_energies[jdx]
+      const gaussian = Math.exp(-((energy - e_j) ** 2) / (2 * sigma ** 2))
+      smeared[idx] += densities[jdx] * gaussian
+    }
+  }
+
+  // Normalize to preserve integral
+  const original_sum = densities.reduce((acc, d) => acc + d, 0)
+  const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
+  const normalization = original_sum / smeared_sum
+
+  return smeared.map((d) => d * normalization)
+}
+
+export function normalize_band_structure(
+  bs: unknown,
+): BaseBandStructure | null {
+  if (!bs || typeof bs !== `object`) return null
+
+  const band_struct = bs as Partial<BaseBandStructure>
+
+  // Check required fields exist and are arrays
+  const { qpoints, branches, bands, distance } = band_struct
+  if (
+    !Array.isArray(qpoints) ||
+    !Array.isArray(branches) ||
+    !Array.isArray(bands) ||
+    !Array.isArray(distance)
+  ) return null
+
+  // Validate array lengths and branch indices
+  const n_qpts = qpoints.length
+  if (
+    distance.length !== n_qpts ||
+    bands.some((band) => !Array.isArray(band) || band.length !== n_qpts) ||
+    branches.some(
+      (br) =>
+        typeof br.start_index !== `number` ||
+        typeof br.end_index !== `number` ||
+        br.start_index < 0 ||
+        br.end_index >= n_qpts ||
+        br.start_index > br.end_index,
+    )
+  ) return null
+
+  return band_struct as BaseBandStructure
+}
+
+// Validate and normalize a DOS object.
+export function normalize_dos(dos: unknown): BaseDos | null {
+  if (!dos || typeof dos !== `object`) return null
+
+  const dos_obj = dos as Partial<BaseDos>
+
+  // Check required fields
+  if (!Array.isArray(dos_obj.densities)) return null
+
+  // Must have either energies or frequencies with matching length
+  const x_array = dos_obj.frequencies ?? dos_obj.energies
+  if (!Array.isArray(x_array) || x_array.length !== dos_obj.densities.length) {
+    return null
+  }
+
+  return dos_obj as BaseDos
+}

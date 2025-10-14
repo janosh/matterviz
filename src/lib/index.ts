@@ -1,5 +1,6 @@
 import type { elem_symbols, element_categories } from './labels'
 
+export * from './bands'
 export * from './colors'
 export * from './composition'
 export { default as ContextMenu } from './ContextMenu.svelte'

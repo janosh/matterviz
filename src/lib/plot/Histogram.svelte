@@ -7,18 +7,19 @@
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import {
-    extract_series_color,
-    filter_visible_series,
-    prepare_legend_data,
-  } from './data-transform'
+  import { extract_series_color, prepare_legend_data } from './data-transform'
   import { get_relative_coords } from './interactions'
   import {
     calc_auto_padding,
     constrain_tooltip_position,
     measure_text_width,
   } from './layout'
-  import { create_scale, generate_ticks, get_nice_data_range } from './scales'
+  import {
+    create_scale,
+    generate_ticks,
+    get_nice_data_range,
+    get_tick_label,
+  } from './scales'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
@@ -94,7 +95,7 @@
     ticks: 5,
     label_shift: { y: 60 },
     tick_label_shift: { x: 8, y: 0 },
-    lim: [null, null],
+    range: [null, null],
     ...y2_axis,
   }
 
@@ -115,13 +116,17 @@
   // Derived data
   let selected_series = $derived(
     mode === `single` && selected_property
-      ? filter_visible_series(series).filter((s) => s.label === selected_property)
-      : filter_visible_series(series),
+      ? series.filter((srs) =>
+        (srs.visible ?? true) && srs.label === selected_property
+      )
+      : series.filter((srs) => srs.visible ?? true),
   )
 
   // Separate series by y-axis
-  let y1_series = $derived(selected_series.filter((s) => (s.y_axis ?? `y1`) === `y1`))
-  let y2_series = $derived(selected_series.filter((s) => s.y_axis === `y2`))
+  let y1_series = $derived(
+    selected_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
+  )
+  let y2_series = $derived(selected_series.filter((srs) => srs.y_axis === `y2`))
 
   let auto_ranges = $derived.by(() => {
     const all_values = selected_series.flatMap((s) => s.y)
@@ -214,14 +219,14 @@
 
   // Update padding when format or ticks change, but prevent infinite loop
   $effect(() => {
-    const base_pad = { ...default_padding, ...padding }
     const new_pad = width && height && ticks.y.length
       ? calc_auto_padding({
-        base_padding: base_pad,
+        padding,
+        default_padding,
         y_ticks: ticks.y,
         y_format: y_axis.format,
       })
-      : base_pad
+      : { ...default_padding, ...padding }
     if (width && height && y2_series.length && ticks.y2.length) {
       const y2_max_w = Math.max(
         0,
@@ -524,6 +529,7 @@
         />
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
+          {@const custom_label = get_tick_label(tick as number, x_axis.ticks)}
           <g class="tick" transform="translate({tick_x}, {height - pad.b})">
             {#if display.x_grid}
               <line
@@ -542,7 +548,7 @@
               stroke-width="1"
             />
             <text y="18" text-anchor="middle" fill={x_axis.color || `var(--text-color)`}>
-              {format_value(tick, x_axis.format)}
+              {custom_label ?? format_value(tick, x_axis.format)}
             </text>
           </g>
         {/each}
@@ -568,6 +574,7 @@
         />
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
+          {@const custom_label = get_tick_label(tick as number, y_axis.ticks)}
           <g class="tick" transform="translate({pad.l}, {tick_y})">
             {#if display.y_grid}
               <line
@@ -591,7 +598,7 @@
               dominant-baseline="central"
               fill={y_axis.color || `var(--text-color)`}
             >
-              {format_value(tick, y_axis.format)}
+              {custom_label ?? format_value(tick, y_axis.format)}
             </text>
           </g>
         {/each}
@@ -623,6 +630,7 @@
           />
           {#each ticks.y2 as tick (tick)}
             {@const tick_y = scales.y2(tick as number)}
+            {@const custom_label = get_tick_label(tick as number, y2_axis.ticks)}
             <g class="tick" transform="translate({width - pad.r}, {tick_y})">
               {#if display.y2_grid}
                 <line
@@ -647,7 +655,7 @@
                 dominant-baseline="central"
                 fill={y2_axis.color || `var(--text-color)`}
               >
-                {format_value(tick, y2_axis.format)}
+                {custom_label ?? format_value(tick, y2_axis.format)}
               </text>
             </g>
           {/each}
