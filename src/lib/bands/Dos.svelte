@@ -90,20 +90,16 @@
 
       // For stacked plots, accumulate densities
       if (stack && cumulative_densities) {
-        // Warn if lengths mismatch (helps debugging inconsistent DOS data)
         if (cumulative_densities.length !== densities.length) {
           console.warn(
             `DOS stacking: length mismatch (cumulative=${cumulative_densities.length}, current=${densities.length})`,
           )
         }
-        // Safe add: default to 0 if cumulative_densities[idx] is undefined
-        densities = densities.map((d, idx) => d + (cumulative_densities![idx] ?? 0))
+        densities = densities.map((d, idx) => d + (cumulative_densities?.[idx] ?? 0))
       }
 
       // Store cumulative for next iteration if stacking
-      if (stack) {
-        cumulative_densities = densities
-      }
+      if (stack) cumulative_densities = densities
 
       // Determine x and y based on orientation
       const series: DataSeries = orientation === `horizontal`
