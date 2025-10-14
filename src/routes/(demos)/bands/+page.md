@@ -37,22 +37,6 @@ Customize acoustic and optical modes with different styles:
 <Bands {band_structs} {line_kwargs} />
 ```
 
-## Shaded Regions
-
-Highlight specific frequency ranges with shaded regions (e.g., for imaginary phonon modes):
-
-```svelte example
-<script>
-  import { Bands } from 'matterviz'
-  import { phonon_bands } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const shaded_ys = [{ y0: 0, y1: -1, fill: 'red', opacity: 0.1 }]
-</script>
-
-<Bands {band_structs} {shaded_ys} />
-```
-
 ## Multiple Band Structures
 
 Compare multiple band structures on the same plot:

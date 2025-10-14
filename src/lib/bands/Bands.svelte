@@ -150,7 +150,19 @@
     const positions: Record<string, [number, number]> = {}
     let current_x = 0
 
-    for (const segment_key of Array.from(segments_to_plot).sort()) {
+    // Preserve physical path order using the first available structure
+    const canonical = Object.values(band_structs_dict)[0]
+    const ordered_segments = canonical
+      ? canonical.branches.map((br) =>
+        get_segment_key(
+          canonical.qpoints[br.start_index]?.label ?? undefined,
+          canonical.qpoints[br.end_index]?.label ?? undefined,
+        )
+      )
+      : Array.from(segments_to_plot)
+
+    for (const segment_key of ordered_segments) {
+      if (!segments_to_plot.has(segment_key)) continue
       if (positions[segment_key]) continue
 
       const [start_label, end_label] = segment_key.split(`_`)
@@ -203,9 +215,11 @@
         const segment_distances = bs.distance.slice(start_idx, end_idx)
         const dist_min = segment_distances[0]
         const dist_range = segment_distances[segment_distances.length - 1] - dist_min
-        const scaled_distances = segment_distances.map(
-          (d) => x_start + ((d - dist_min) / dist_range) * (x_end - x_start),
-        )
+        const scaled_distances = dist_range === 0
+          ? segment_distances.map(() => (x_start + x_end) / 2)
+          : segment_distances.map(
+            (d) => x_start + ((d - dist_min) / dist_range) * (x_end - x_start),
+          )
 
         // Create series for each band
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {

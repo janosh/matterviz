@@ -2,8 +2,6 @@
 
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
-export type YMin = number | `y_min`
-export type YMax = number | `y_max`
 export type FrequencyUnit = `THz` | `eV` | `meV` | `Ha` | `cm-1`
 export type NormalizationMode = `max` | `sum` | `integral` | null
 
@@ -51,23 +49,21 @@ export interface ElectronicBandStructure extends BaseBandStructure {
   }
 }
 
-// DOS base interface
-export interface BaseDos {
-  energies?: number[] // For electronic DOS
-  frequencies?: number[] // For phonon DOS
+// Phonon DOS: frequencies as independent variable
+export interface PhononDos {
+  type: `phonon`
+  frequencies: number[]
   densities: number[]
 }
-
-// Phonon DOS
-export interface PhononDos extends BaseDos {
-  frequencies: number[]
-}
-
-// Electronic DOS
-export interface ElectronicDos extends BaseDos {
+// Electronic DOS: energies as independent variable
+export interface ElectronicDos {
+  type: `electronic`
   energies: number[]
+  densities: number[]
   spin_polarized?: boolean
 }
+// Discriminated union for type-safe DOS handling
+export type Dos = PhononDos | ElectronicDos
 
 // Line styling configuration
 export type LineKwargs =

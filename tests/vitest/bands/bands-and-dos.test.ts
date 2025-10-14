@@ -20,6 +20,7 @@ const mock_band_structure: BaseBandStructure = {
 }
 
 const mock_dos: PhononDos = {
+  type: `phonon`,
   frequencies: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
   densities: [0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.5, 0.2, 0.0],
 }
@@ -63,6 +64,7 @@ describe(`BandsAndDos component`, () => {
 
   it(`handles mismatched y-ranges with independent axes`, () => {
     const high_freq_dos = {
+      type: `phonon` as const,
       frequencies: [10, 20, 30, 40],
       densities: [1, 2, 1, 0],
     }

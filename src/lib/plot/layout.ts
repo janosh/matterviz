@@ -30,9 +30,10 @@ export interface AutoPaddingConfig {
 // Helper to measure max tick width
 const measure_max_tick_width = (ticks: (string | number)[], format: string) =>
   ticks.length === 0 ? 0 : Math.max(
-    ...ticks.map((tick) =>
-      measure_text_width(format_value(tick as number, format), `12px sans-serif`)
-    ),
+    ...ticks.map((tick) => {
+      const label = typeof tick === `string` ? tick : format_value(tick, format)
+      return measure_text_width(label, `12px sans-serif`)
+    }),
   )
 
 export const calc_auto_padding = ({

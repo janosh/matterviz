@@ -1,11 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 
-import type {
-  BaseBandStructure,
-  BaseDos,
-  FrequencyUnit,
-  NormalizationMode,
-} from './types'
+import type { BaseBandStructure, Dos, FrequencyUnit, NormalizationMode } from './types'
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s
@@ -35,8 +30,9 @@ export function pretty_sym_point(symbol: string): string {
     .replace(/SIGMA/gi, `Σ`)
     .replace(/LAMBDA/gi, `Λ`)
 
-  // Handle subscripts: convert S0 to S₀, K1 to K₁, etc.
-  pretty = pretty.replace(/([A-Z])(\d+)/gi, (_, letter, num) => {
+  // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
+  // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
+  pretty = pretty.replace(/(\p{L})(\d+)/gu, (_, letter, num) => {
     const subscript_map: Record<string, string> = {
       '0': `₀`,
       '1': `₁`,
@@ -81,9 +77,9 @@ export function get_band_xaxis_ticks(
     const this_branch = branch_names[0] || null
 
     if (point.label !== prev_label && prev_branch !== this_branch) {
-      // Branch transition - combine labels
-      tick_labels.pop()
-      ticks_x_pos.pop()
+      // Branch transition - combine labels (only pop if arrays are non-empty)
+      if (tick_labels.length > 0) tick_labels.pop()
+      if (ticks_x_pos.length > 0) ticks_x_pos.pop()
       tick_labels.push(`${prev_label || ``}|${point.label}`)
       ticks_x_pos.push(band_struct.distance[idx])
     } else if (
@@ -153,27 +149,35 @@ export function normalize_densities(
 }
 
 // Apply Gaussian smearing to DOS densities.
+// Uses truncated Gaussian (±4σ) for O(n·w) complexity instead of O(n²).
 export function apply_gaussian_smearing(
   frequencies_or_energies: number[],
   densities: number[],
   sigma: number,
 ): number[] {
-  if (sigma <= 0) return densities
+  const original_sum = densities.reduce((acc, d) => acc + d, 0)
+  if (sigma <= 0 || original_sum === 0) return densities
 
   const smeared = new Array(densities.length).fill(0)
+  const truncation_width = 4 // Truncate Gaussian at ±4σ (contribution < 0.01%)
 
   for (let idx = 0; idx < frequencies_or_energies.length; idx++) {
     const energy = frequencies_or_energies[idx]
+    const cutoff = truncation_width * sigma
 
     for (let jdx = 0; jdx < frequencies_or_energies.length; jdx++) {
       const e_j = frequencies_or_energies[jdx]
+      const delta = Math.abs(energy - e_j)
+
+      // Skip points beyond truncation width
+      if (delta > cutoff) continue
+
       const gaussian = Math.exp(-((energy - e_j) ** 2) / (2 * sigma ** 2))
       smeared[idx] += densities[jdx] * gaussian
     }
   }
 
   // Normalize to preserve integral
-  const original_sum = densities.reduce((acc, d) => acc + d, 0)
   const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
   const normalization = original_sum / smeared_sum
 
@@ -215,19 +219,31 @@ export function normalize_band_structure(
 }
 
 // Validate and normalize a DOS object.
-export function normalize_dos(dos: unknown): BaseDos | null {
+export function normalize_dos(dos: unknown): Dos | null {
   if (!dos || typeof dos !== `object`) return null
 
-  const dos_obj = dos as Partial<BaseDos>
+  const { densities, frequencies, energies, spin_polarized } = dos as Partial<
+    Record<string, unknown>
+  >
 
-  // Check required fields
-  if (!Array.isArray(dos_obj.densities)) return null
+  if (!Array.isArray(densities)) return null
 
-  // Must have either energies or frequencies with matching length
-  const x_array = dos_obj.frequencies ?? dos_obj.energies
-  if (!Array.isArray(x_array) || x_array.length !== dos_obj.densities.length) {
-    return null
+  // Phonon DOS: has frequencies
+  if (Array.isArray(frequencies)) {
+    if (frequencies.length !== densities.length) return null
+    return { type: `phonon`, frequencies, densities }
   }
 
-  return dos_obj as BaseDos
+  // Electronic DOS: has energies
+  if (Array.isArray(energies)) {
+    if (energies.length !== densities.length) return null
+    return {
+      type: `electronic`,
+      energies,
+      densities,
+      spin_polarized: spin_polarized as boolean | undefined,
+    }
+  }
+
+  return null
 }

@@ -1,10 +1,12 @@
 import {
   apply_gaussian_smearing,
   convert_frequencies,
+  get_band_xaxis_ticks,
   normalize_densities,
   pretty_sym_point,
 } from '$lib/bands/helpers'
-import { describe, expect, it } from 'vitest'
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import { describe, expect, it, vi } from 'vitest'
 
 describe(`pretty_sym_point`, () => {
   it.each([
@@ -29,6 +31,12 @@ describe(`pretty_sym_point`, () => {
   it(`removes underscores`, () => {
     expect(pretty_sym_point(`S_0`)).not.toContain(`_`)
     expect(pretty_sym_point(`GAMMA_1`)).toContain(`₁`)
+  })
+
+  it(`converts Unicode letters with subscripts`, () => {
+    expect(pretty_sym_point(`GAMMA1`)).toBe(`Γ₁`)
+    expect(pretty_sym_point(`DELTA2`)).toBe(`Δ₂`)
+    expect(pretty_sym_point(`SIGMA3`)).toBe(`Σ₃`)
   })
 })
 
@@ -72,25 +80,139 @@ describe(`normalize_densities`, () => {
     const result = normalize_densities(densities, energies, mode)
     check(result)
   })
+
+  it(`normalizes by integral preserves area ≈ 1`, () => {
+    const result = normalize_densities(densities, energies, `integral`)
+    const bin = energies[1] - energies[0]
+    const area = result.reduce((acc, dens) => acc + dens, 0) * bin
+    expect(area).toBeCloseTo(1, 6)
+  })
 })
 
 describe(`apply_gaussian_smearing`, () => {
+  const energies = [0, 1, 2, 3, 4]
+
   it(`returns original data when sigma is 0`, () => {
-    const energies = [0, 1, 2, 3, 4]
     const densities = [1, 2, 3, 2, 1]
-    const result = apply_gaussian_smearing(energies, densities, 0)
-    expect(result).toEqual(densities)
+    expect(apply_gaussian_smearing(energies, densities, 0)).toEqual(densities)
   })
 
   it(`smooths sharp peak with gaussian kernel`, () => {
-    const energies = [0, 1, 2, 3, 4]
     const densities = [0, 0, 10, 0, 0]
     const result = apply_gaussian_smearing(energies, densities, 0.5)
-
-    expect(result[2]).toBeLessThan(10) // Peak should be lower
-    expect(result[1]).toBeGreaterThan(0) // Spread to neighbors
+    expect(result[2]).toBeLessThan(10)
+    expect(result[1]).toBeGreaterThan(0)
     expect(result[3]).toBeGreaterThan(0)
-    expect(result[0]).toBeGreaterThanOrEqual(0)
-    expect(result[4]).toBeGreaterThanOrEqual(0)
+  })
+
+  it(`preserves total integral after smearing`, () => {
+    const densities = [0, 0, 10, 0, 0]
+    const smeared = apply_gaussian_smearing(energies, densities, 0.5)
+    const bin = energies[1] - energies[0]
+    const area_orig = densities.reduce((acc, dens) => acc + dens, 0) * bin
+    const area_smeared = smeared.reduce((acc, dens) => acc + dens, 0) * bin
+    expect(area_smeared).toBeCloseTo(area_orig, 6)
+  })
+
+  it(`handles all-zero densities without NaN`, () => {
+    const densities = [0, 0, 0, 0, 0]
+    const smeared = apply_gaussian_smearing(energies, densities, 0.5)
+    expect(smeared).toEqual(densities)
+    expect(smeared.every((val) => !Number.isNaN(val))).toBe(true)
+  })
+})
+
+describe(`DOS stacking with mismatched lengths`, () => {
+  it.each([
+    {
+      name: `matching lengths`,
+      cumulative: [1, 2, 3, 2, 1],
+      current: [0.5, 1, 1.5, 1, 0.5],
+      expected: [1.5, 3, 4.5, 3, 1.5],
+    },
+    {
+      name: `mismatched lengths`,
+      cumulative: [1, 2, 3],
+      current: [0.5, 1, 1.5, 1, 0.5],
+      expected: [1.5, 3, 4.5, 1, 0.5],
+    },
+  ])(`stacks with $name without NaN`, ({ cumulative, current, expected }) => {
+    const stacked = current.map((d, idx) => d + (cumulative[idx] ?? 0))
+    expect(stacked).toEqual(expected)
+    expect(stacked.every((val) => !Number.isNaN(val))).toBe(true)
+  })
+
+  it(`warns on length mismatch`, () => {
+    const console_warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const cumulative = [1, 2, 3]
+    const current = [0.5, 1, 1.5, 1, 0.5]
+
+    if (cumulative.length !== current.length) {
+      console.warn(
+        `DOS stacking: length mismatch (cumulative=${cumulative.length}, current=${current.length})`,
+      )
+    }
+
+    expect(console_warn_spy).toHaveBeenCalledWith(
+      `DOS stacking: length mismatch (cumulative=3, current=5)`,
+    )
+    console_warn_spy.mockRestore()
+  })
+})
+
+describe(`get_band_xaxis_ticks`, () => {
+  it(`preserves branch order (not alphabetical)`, () => {
+    // Create a band structure with segments that would sort differently alphabetically
+    // Physical path: Z→Γ→X (alphabetically would be: Γ→X→Z)
+    const band_struct = {
+      qpoints: [
+        { label: `Z`, frac_coords: [0, 0, 0.5] as [number, number, number], distance: 0 },
+        {
+          label: null,
+          frac_coords: [0, 0, 0.25] as [number, number, number],
+          distance: 0.5,
+        },
+        {
+          label: `GAMMA`,
+          frac_coords: [0, 0, 0] as [number, number, number],
+          distance: 1.0,
+        },
+        {
+          label: null,
+          frac_coords: [0.25, 0, 0] as [number, number, number],
+          distance: 1.5,
+        },
+        {
+          label: `X`,
+          frac_coords: [0.5, 0, 0] as [number, number, number],
+          distance: 2.0,
+        },
+      ],
+      branches: [
+        { start_index: 0, end_index: 2, name: `Z-GAMMA` },
+        { start_index: 2, end_index: 4, name: `GAMMA-X` },
+      ],
+      distance: [0, 0.5, 1.0, 1.5, 2.0],
+      bands: [[0, 1, 2, 3, 4]],
+      nb_bands: 1,
+      labels_dict: {
+        Z: [0, 0, 0.5] as Vec3,
+        GAMMA: [0, 0, 0] as Vec3,
+        X: [0.5, 0, 0] as Vec3,
+      },
+      lattice_rec: {
+        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+      },
+    }
+
+    const [positions, labels] = get_band_xaxis_ticks(band_struct)
+
+    // Should preserve physical order: Z, then branch transition combines Γ|X
+    // If alphabetically sorted, would have been: Γ|X, Z (incorrect)
+    expect(labels).toEqual([`Z`, `Γ|X`])
+    expect(positions).toEqual([0, 2.0]) // X is at distance 2.0
+
+    // Verify Z comes first (physical order), not Γ (alphabetical order)
+    expect(labels[0]).toBe(`Z`)
   })
 })

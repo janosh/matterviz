@@ -6,6 +6,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { extract_series_color, prepare_legend_data } from './data-transform'
   import { get_relative_coords } from './interactions'
@@ -198,15 +199,13 @@
       ? [y2_axis.range[0] ?? auto_ranges.y2[0], y2_axis.range[1] ?? auto_ranges.y2[1]]
       : auto_ranges.y2
 
-    const x_changed =
-      (x_axis.range !== undefined) !== (ranges.initial.x === auto_ranges.x) ||
-      new_x[0] !== ranges.initial.x[0] || new_x[1] !== ranges.initial.x[1]
-    const y_changed =
-      (y_axis.range !== undefined) !== (ranges.initial.y === auto_ranges.y) ||
-      new_y[0] !== ranges.initial.y[0] || new_y[1] !== ranges.initial.y[1]
-    const y2_changed =
-      (y2_axis.range !== undefined) !== (ranges.initial.y2 === auto_ranges.y2) ||
-      new_y2[0] !== ranges.initial.y2[0] || new_y2[1] !== ranges.initial.y2[1]
+    // Only update if values changed (prevent infinite loop)
+    const x_changed = new_x[0] !== ranges.current.x[0] ||
+      new_x[1] !== ranges.current.x[1]
+    const y_changed = new_y[0] !== ranges.current.y[0] ||
+      new_y[1] !== ranges.current.y[1]
+    const y2_changed = new_y2[0] !== ranges.current.y2[0] ||
+      new_y2[1] !== ranges.current.y2[1]
 
     if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
@@ -217,28 +216,33 @@
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
   let pad = $state({ ...default_padding, ...padding })
 
-  // Update padding when format or ticks change, but prevent infinite loop
+  // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
-    const new_pad = width && height && ticks.y.length
+    const current_ticks_y = untrack(() => ticks.y)
+    const current_ticks_y2 = untrack(() => ticks.y2)
+
+    const new_pad = width && height && current_ticks_y.length
       ? calc_auto_padding({
         padding,
         default_padding,
-        y_ticks: ticks.y,
+        y_ticks: current_ticks_y,
         y_format: y_axis.format,
       })
       : { ...default_padding, ...padding }
-    if (width && height && y2_series.length && ticks.y2.length) {
+    if (width && height && y2_series.length && current_ticks_y2.length) {
       const y2_max_w = Math.max(
         0,
-        ...ticks.y2.map((tick) =>
-          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
-        ),
+        ...current_ticks_y2.map((tick) => {
+          const custom = get_tick_label(tick as number, y2_axis.ticks)
+          const label = custom ?? format_value(tick, y2_axis.format)
+          return measure_text_width(label, `12px sans-serif`)
+        }),
       )
       const label_pad = y2_axis.label ? 40 : 0
       new_pad.r = Math.max(new_pad.r, 10 + y2_max_w + label_pad)
     }
 
-    // Only update if padding actually changed (prevents infinite loop)
+    // Only update if padding actually changed
     if (
       pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
       pad.r !== new_pad.r

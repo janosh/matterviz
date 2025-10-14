@@ -3,7 +3,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import type { BaseBandStructure, BaseDos } from './types'
+  import type { BaseBandStructure, Dos as DosData } from './types'
 
   let {
     band_structs,
@@ -14,7 +14,7 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
-    doses: BaseDos | Record<string, BaseDos>
+    doses: DosData | Record<string, DosData>
     bands_props?: Partial<ComponentProps<typeof Bands>>
     dos_props?: Partial<ComponentProps<typeof Dos>>
     shared_y_axis?: boolean
@@ -22,7 +22,7 @@
   } = $props()
 
   // Shared y-axis configuration - use single object when shared_y_axis is true
-  let shared_y_axis_obj = $state<{ lim?: [number, number] }>({})
+  let shared_y_axis_obj = $state<{ range?: [number, number] }>({})
   let bands_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
   let dos_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
 
@@ -35,7 +35,7 @@
   <Bands
     {band_structs}
     y_axis={bands_y_axis}
-    {...bands_props ?? {}}
+    {...bands_props}
     padding={{ r: 15 }}
   />
 
@@ -44,6 +44,6 @@
     orientation="horizontal"
     y_axis={{ ...dos_y_axis, label: `` }}
     padding={{ l: 15 }}
-    {...dos_props ?? {}}
+    {...dos_props}
   />
 </div>

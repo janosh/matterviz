@@ -46,7 +46,11 @@ export function generate_ticks(
 
   // If ticks_option is an object (value-to-label mapping), extract values
   if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
-    return Object.keys(ticks_option).map(Number)
+    const [domain_min, domain_max] = [Math.min(...domain), Math.max(...domain)]
+    return Object.keys(ticks_option)
+      .map(Number)
+      .filter((val) => Number.isFinite(val) && val >= domain_min && val <= domain_max)
+      .sort((a, b) => a - b)
   }
 
   // If ticks_option is already an array, use it directly
@@ -218,10 +222,10 @@ export function generate_log_ticks(
       if (power * 2 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 2)
       if (power * 5 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 5)
     })
-    return detailed_ticks
+    return detailed_ticks.filter((t) => t >= min && t <= max)
   }
 
-  return powers
+  return powers.filter((p) => p >= min && p <= max)
 }
 
 // Get custom label for a tick value if provided, otherwise return null

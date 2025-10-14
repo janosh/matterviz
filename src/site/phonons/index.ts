@@ -1,6 +1,6 @@
 // Extract phonon band structures and DOS from full phonon objects
 
-import type { BaseDos, Branch, PhononBandStructure, QPoint } from '$lib/bands'
+import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/bands'
 import * as math from '$lib/math'
 
 interface RawPhononBandStructure {
@@ -76,7 +76,7 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
 
 type PhononData = {
   phonon_bandstructure?: RawPhononBandStructure
-  phonon_dos?: BaseDos
+  phonon_dos?: PhononDos
 }
 
 // Import all phonon data files (excluding compressed .xz files)

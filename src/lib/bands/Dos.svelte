@@ -9,7 +9,7 @@
     normalize_densities,
     normalize_dos,
   } from './helpers'
-  import type { BaseDos, FrequencyUnit, NormalizationMode, PhononDos } from './types'
+  import type { Dos, FrequencyUnit, NormalizationMode } from './types'
 
   let {
     doses,
@@ -23,7 +23,7 @@
     y_axis = {},
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
-    doses: BaseDos | Record<string, BaseDos>
+    doses: Dos | Record<string, Dos>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     stack?: boolean
@@ -45,18 +45,18 @@
     }
 
     // Already a dict - normalize each DOS
-    const result: Record<string, BaseDos> = {}
-    for (const [key, dos] of Object.entries(doses as Record<string, BaseDos>)) {
+    const result: Record<string, Dos> = {}
+    for (const [key, dos] of Object.entries(doses as Record<string, Dos>)) {
       const normalized = normalize_dos(dos)
       if (normalized) result[key] = normalized
     }
     return result
   })
 
-  // Determine if this is phonon or electronic DOS
+  // Determine if this is phonon or electronic DOS using discriminated union
   let is_phonon = $derived.by(() => {
     const first_dos = Object.values(doses_dict)[0]
-    return first_dos && `frequencies` in first_dos
+    return first_dos?.type === `phonon`
   })
 
   // Convert DOS data to scatter plot series
@@ -72,20 +72,11 @@
       const [label, dos] = dos_entries[dos_idx]
       const color = plot_colors[dos_idx % plot_colors.length]
 
-      // Get frequencies or energies with proper type safety
-      let x_values: number[]
-      if (is_phonon) {
-        x_values = (dos as PhononDos).frequencies
-      } else {
-        if (!dos.energies || dos.energies.length === 0) {
-          console.warn(`Electronic DOS missing energies for '${label}', skipping`)
-          continue
-        }
-        x_values = dos.energies
-      }
+      // Get frequencies or energies using discriminated union type narrowing
+      let x_values = dos.type === `phonon` ? dos.frequencies : dos.energies
 
       // Convert units if needed
-      if (is_phonon && units !== `THz`) {
+      if (dos.type === `phonon` && units !== `THz`) {
         x_values = convert_frequencies(x_values, units)
       }
 
@@ -99,7 +90,14 @@
 
       // For stacked plots, accumulate densities
       if (stack && cumulative_densities) {
-        densities = densities.map((d, idx) => d + cumulative_densities![idx])
+        // Warn if lengths mismatch (helps debugging inconsistent DOS data)
+        if (cumulative_densities.length !== densities.length) {
+          console.warn(
+            `DOS stacking: length mismatch (cumulative=${cumulative_densities.length}, current=${densities.length})`,
+          )
+        }
+        // Safe add: default to 0 if cumulative_densities[idx] is undefined
+        densities = densities.map((d, idx) => d + (cumulative_densities![idx] ?? 0))
       }
 
       // Store cumulative for next iteration if stacking
