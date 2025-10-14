@@ -2,7 +2,7 @@
   import { Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
-  import type { DataSeries, Orientation, Point } from '$lib/plot'
+  import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { scaleLinear } from 'd3-scale'
@@ -32,7 +32,6 @@
     generate_plot_series,
     generate_streaming_plot_series,
     should_hide_plot,
-    toggle_series_visibility,
   } from './plotting'
 
   type EventHandlers = {
@@ -397,11 +396,6 @@
     }
   }
 
-  // Handle legend toggling
-  function handle_legend_toggle(series_idx: number): void {
-    plot_series = toggle_series_visibility(plot_series, series_idx)
-  }
-
   // Helper function to read file content
   async function read_file_content(file: File): Promise<string | ArrayBuffer> {
     return new Promise((resolve, reject) => {
@@ -415,17 +409,6 @@
       } else reader.readAsArrayBuffer(file)
     })
   }
-
-  // Legend configuration
-  let legend_config = $derived({
-    responsive: true,
-    layout: `horizontal`,
-    layout_tracks: 3,
-    item_gap: 0,
-    padding: { t: 5, b: 5, l: 5, r: 5 },
-    ...scatter_props?.legend,
-    on_toggle: scatter_props?.legend?.on_toggle ?? handle_legend_toggle,
-  })
 
   // Play/pause functionality
   function toggle_play() {
@@ -785,12 +768,11 @@
     }
   }
 
-  let panes_open = $state({
-    structure_info: false,
-    structure_controls: false,
-    plot_controls: false,
-    export_pane: false,
-  })
+  // Separate state variables for each pane to match component prop types
+  let structure_info_open = $state(false)
+  let structure_controls_open = $state(false)
+  let scatter_controls = $state<ControlsConfig>({ open: false })
+  let trajectory_export_open = $state(false)
   let fullscreen = $state(false)
 </script>
 
@@ -803,8 +785,8 @@
 
 <div
   class:dragover
-  class:active={is_playing || panes_open.structure_info || panes_open.structure_controls ||
-  panes_open.plot_controls || panes_open.export_pane || info_pane_open}
+  class:active={is_playing || structure_info_open || structure_controls_open ||
+  scatter_controls.open || trajectory_export_open || info_pane_open}
   bind:this={wrapper}
   bind:clientWidth={viewport.width}
   bind:clientHeight={viewport.height}
@@ -980,7 +962,7 @@
             {/if}
             <!-- Trajectory Export Pane -->
             <TrajectoryExportPane
-              bind:export_pane_open={panes_open.export_pane}
+              bind:export_pane_open={trajectory_export_open}
               {trajectory}
               {wrapper}
               filename={current_filename || `trajectory`}
@@ -1084,10 +1066,9 @@
           structure={current_structure}
           allow_file_drop={false}
           style="height: 100%; min-height: 0; z-index: 3; border-radius: 0"
-          enable_tips={false}
           {...final_structure_props}
-          bind:controls_open={panes_open.structure_controls}
-          bind:info_pane_open={panes_open.structure_info}
+          bind:controls_open={structure_controls_open}
+          bind:info_pane_open={structure_info_open}
         />
       {/if}
 
@@ -1095,23 +1076,16 @@
         {#if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
-            x_label="Step"
-            y_label={y_axis_labels.y1}
-            y_label_shift={{ y: 20 }}
-            y_format=".2~s"
-            y2_format=".2~s"
-            y2_label={y_axis_labels.y2}
-            y2_label_shift={{ y: 80 }}
+            x_axis={{ label: `Step`, format: `.3~s`, ticks: step_label_positions }}
+            y_axis={{ label: y_axis_labels.y1, format: `.2~s`, label_shift: { y: 20 } }}
+            y2_axis={{ label: y_axis_labels.y2, format: `.2~s`, label_shift: { y: 80 } }}
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
-            markers="line"
-            x_format=".3~s"
-            x_ticks={step_label_positions}
-            bind:controls_open={panes_open.plot_controls}
+            bind:controls={scatter_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
-            legend={legend_config}
+            legend={scatter_props?.legend}
             {...scatter_props}
             class="plot {scatter_props.class ?? ``}"
           >
@@ -1128,26 +1102,14 @@
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}
           <Histogram
             series={plot_series}
-            x_label={String(histogram_props.x_label ?? y_axis_labels.y1)}
-            y_label={(`y_label` in histogram_props) ? histogram_props.y_label as string : `Count`}
-            x_format=".3~s"
-            y_format=".3~s"
-            mode={(`mode` in histogram_props)
-            ? histogram_props.mode as `overlay` | `single`
-            : `overlay`}
-            show_legend={(`show_legend` in histogram_props)
-            ? histogram_props.show_legend as boolean
-            : (plot_series.length > 1)}
-            legend={{
-              responsive: true,
-              layout: `horizontal`,
-              layout_tracks: 3,
-              item_gap: 0,
-              padding: { t: 5, b: 5, l: 5, r: 5 },
-              on_toggle: handle_legend_toggle,
-              series_data: [],
-              ...(histogram_props.legend || {}),
+            x_axis={{
+              label: String(histogram_props.x_axis?.label ?? y_axis_labels.y1),
+              format: `.3~s`,
             }}
+            y_axis={{ label: histogram_props.y_axis?.label ?? `Count`, format: `.3~s` }}
+            mode={histogram_props.mode ?? `overlay`}
+            show_legend={histogram_props.show_legend ?? plot_series.length > 1}
+            legend={histogram_props.legend}
             style="height: 100%"
             {...histogram_props}
             class="plot {histogram_props.class ?? ``}"

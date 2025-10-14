@@ -1,5 +1,11 @@
 <script lang="ts">
-  import type { AnyStructure, BarSeries, BarTooltipProps, Orientation } from '$lib'
+  import type {
+    AnyStructure,
+    AxisConfig,
+    BarSeries,
+    BarTooltipProps,
+    Orientation,
+  } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
@@ -26,8 +32,8 @@
     split_mode = `by_element`,
     mode = $bindable(`grouped`),
     orientation = `vertical` as Orientation,
-    x_label = `Coordination Number`,
-    y_label = `Count`,
+    x_axis = $bindable({ label: `Coordination Number`, format: `d` }),
+    y_axis = $bindable({ label: `Count`, format: `d` }),
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
@@ -40,8 +46,8 @@
       | StructureEntry[]
     strategy?: CoordinationStrategy
     split_mode?: SplitMode
-    x_label?: string
-    y_label?: string
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
     allow_file_drop?: boolean
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     loading?: boolean
@@ -273,18 +279,16 @@
   bind:orientation
   bind:mode
   x_axis={{
-    label: orientation === `horizontal` ? y_label : x_label,
     label_shift: { y: 20 },
     range: orientation === `horizontal` ? ranges.count : ranges.cn,
     ticks: orientation === `horizontal` ? undefined : cn_ticks,
-    format: orientation === `horizontal` ? `d` : ``,
+    ...(orientation === `horizontal` ? x_axis : y_axis),
   }}
   y_axis={{
-    label: orientation === `horizontal` ? x_label : y_label,
     label_shift: { x: 2 },
     range: orientation === `horizontal` ? ranges.cn : ranges.count,
     ticks: orientation === `horizontal` ? cn_ticks : undefined,
-    format: orientation === `horizontal` ? `` : `d`,
+    ...orientation === `horizontal` ? y_axis : x_axis,
   }}
   display={{
     x_zero_line: orientation === `horizontal`,

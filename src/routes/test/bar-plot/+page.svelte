@@ -236,8 +236,7 @@
   <BarPlot
     series={basic_series}
     x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
-    y_lim={[0, 50]}
+    y_axis={{ label: `Y`, range: [0, 50] }}
     controls_open={false}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"

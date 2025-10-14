@@ -30,9 +30,9 @@
     y_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
     y2_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
     display = $bindable(DEFAULTS.histogram.display),
-    x_lim = [null, null],
-    y_lim = [null, null],
-    y2_lim = [null, null],
+    x_range = [null, null],
+    y_range = [null, null],
+    y2_range = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
@@ -134,7 +134,7 @@
     const auto_x = get_nice_data_range(
       all_values.map((val) => ({ x: val, y: 0 })),
       (p) => p.x,
-      x_lim,
+      x_range,
       x_axis.scale_type ?? `linear`,
       range_padding,
       false,
@@ -143,7 +143,7 @@
     // Calculate y-range for a specific set of series
     const calc_y_range = (
       series_list: typeof selected_series,
-      y_limit: typeof y_lim,
+      y_limit: typeof y_range,
       scale_type: `linear` | `log`,
     ) => {
       if (!series_list.length) {
@@ -167,10 +167,14 @@
       return [y_min, y1] as [number, number]
     }
 
-    const y1_range = calc_y_range(y1_series, y_lim, y_axis.scale_type ?? `linear`)
-    const y2_range = calc_y_range(y2_series, y2_lim, y2_axis.scale_type ?? `linear`)
+    const y1_range = calc_y_range(y1_series, y_range, y_axis.scale_type ?? `linear`)
+    const y2_auto_range = calc_y_range(
+      y2_series,
+      y2_range,
+      y2_axis.scale_type ?? `linear`,
+    )
 
-    return { x: auto_x, y: y1_range, y2: y2_range }
+    return { x: auto_x, y: y1_range, y2: y2_auto_range }
   })
 
   // Initialize ranges

@@ -36,9 +36,9 @@
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
-    x_lim = [null, null],
-    y_lim = [null, null],
-    y2_lim = [null, null],
+    x_range = [null, null],
+    y_range = [null, null],
+    y2_range = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     legend = {},
@@ -112,7 +112,7 @@
     // Calculate separate ranges for y1 and y2 axes
     const calc_y_range = (
       series_list: typeof visible_series,
-      y_limit: typeof y_lim,
+      y_limit: typeof y_range,
       scale_type: string,
     ) => {
       let points = series_list.flatMap((srs) =>
@@ -158,7 +158,7 @@
         points,
         (p) => p.y,
         y_limit,
-        scale_type,
+        scale_type as `linear` | `log`,
         range_padding,
         false,
       )
@@ -169,7 +169,7 @@
         const has_negative = points.some((p) => p.y < 0)
         const has_positive = points.some((p) => p.y > 0)
 
-        // Only adjust if no explicit y_lim is set
+        // Only adjust if no explicit y_range is set
         if (y_limit?.[0] == null && y_limit?.[1] == null) {
           if (has_positive && !has_negative) y_range = [0, y_range[1]]
           else if (has_negative && !has_positive) y_range = [y_range[0], 0]
@@ -185,24 +185,28 @@
     )
 
     const x_scale_type = x_axis.scale_type ?? `linear`
-    const x_range = all_x_points.length
+    const x_auto_range = all_x_points.length
       ? get_nice_data_range(
         all_x_points,
         (p) => p.x,
-        x_lim,
+        x_range,
         x_scale_type,
         range_padding,
         x_axis.format?.startsWith(`%`) || false,
       )
       : ([0, 1] as [number, number])
 
-    const y1_range = calc_y_range(y1_series, y_lim, y_axis.scale_type ?? `linear`)
-    const y2_range = calc_y_range(y2_series, y2_lim, y2_axis.scale_type ?? `linear`)
+    const y1_range = calc_y_range(y1_series, y_range, y_axis.scale_type ?? `linear`)
+    const y2_auto_range = calc_y_range(
+      y2_series,
+      y2_range,
+      y2_axis.scale_type ?? `linear`,
+    )
 
     // Map data ranges to axis ranges depending on orientation
     return orientation === `horizontal`
-      ? ({ x: y1_range, y: x_range, y2: y2_range })
-      : ({ x: x_range, y: y1_range, y2: y2_range })
+      ? ({ x: y1_range, y: x_auto_range, y2: y2_auto_range })
+      : ({ x: x_auto_range, y: y1_range, y2: y2_auto_range })
   })
 
   // Initialize and current ranges

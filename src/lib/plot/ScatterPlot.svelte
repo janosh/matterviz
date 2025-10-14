@@ -109,7 +109,7 @@
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
       value_range?: [number, number]
-    }
+    } | D3InterpolateName
     size_scale?: {
       type?: ScaleType
       radius_range?: [number, number]

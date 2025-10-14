@@ -2,7 +2,7 @@
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
-  import type { BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
+  import type { AxisConfig, BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
@@ -33,8 +33,8 @@
     show_angles = null,
     orientation = `vertical` as Orientation,
     wavelength = null,
-    x_label = `2θ (degrees)`,
-    y_label = `Intensity (a.u.)`,
+    x_axis = $bindable({ label: `2θ (degrees)` }),
+    y_axis = $bindable({ label: `Intensity (a.u.)` }),
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
@@ -51,8 +51,8 @@
     hkl_format?: HklFormat
     show_angles?: boolean | null
     wavelength?: number | null
-    x_label?: string
-    y_label?: string
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
     allow_file_drop?: boolean
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     loading?: boolean
@@ -253,14 +253,14 @@
   series={bar_series}
   bind:orientation
   x_axis={{
-    label: orientation === `horizontal` ? y_label : x_label,
     label_shift: { y: 20 },
     range: orientation === `horizontal` ? intensity_range : angle_range,
+    ...(orientation === `horizontal` ? x_axis : y_axis),
   }}
   y_axis={{
-    label: orientation === `horizontal` ? x_label : y_label,
     label_shift: { x: 2 },
     range: orientation === `horizontal` ? angle_range : intensity_range,
+    ...(orientation === `horizontal` ? y_axis : x_axis),
   }}
   {tooltip}
   ondrop={handle_file_drop}

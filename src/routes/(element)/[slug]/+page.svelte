@@ -13,6 +13,7 @@
     PeriodicTable,
     PropertySelect,
   } from '$lib'
+  import type { D3InterpolateName } from '$lib/colors'
   import { format_num, property_labels } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
@@ -69,8 +70,8 @@
   )
 
   // set atomic radius as default heatmap_key
-  $effect.pre(() => {
-    if (!selected.heatmap_key) selected.heatmap_key = `atomic_radius`
+  $effect(() => {
+    selected.heatmap_key ??= `atomic_radius`
   })
 
   let head_title = $derived(`${element.name} • ${pkg.name}`)
@@ -87,7 +88,7 @@
   let [y_label, y_unit] = $derived(
     selected.heatmap_key ? (property_labels[selected.heatmap_key] ?? []) : [],
   )
-  let color_scale: string = $state(`Viridis`)
+  let color_scale: D3InterpolateName = $state(`interpolateCividis`)
 
   export const snapshot = {
     capture: () => ({ color_scale }),
@@ -127,12 +128,11 @@
   <!-- onmouseleave makes ElementScatter always show current element unless user actively hovers another element -->
   <ElementScatter
     y={scatter_plot_values}
-    {y_label}
+    y_axis={{ label: y_label, range: [0, null] }}
     {y_unit}
     {color_scale}
-    y_lim={[0, null]}
     onmouseleave={() => (selected.element = element)}
-    style="min-height: min(50vmin, 400px)"
+    style="min-height: initial"
   />
 </section>
 

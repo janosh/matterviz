@@ -798,8 +798,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   let y_scale_type = $derived(y_is_log ? `log` : `linear`)
 
   // Reactive limits based on scale type to avoid log(0) issues and accommodate data
-  let x_lim = $derived(x_is_log ? [0.1, 1000] : [null, 1000])
-  let y_lim = $derived(y_is_log ? [0.1, 10000] : [null, 10000])
+  let x_range = $derived(x_is_log ? [0.1, 1000] : [null, 1000])
+  let y_range = $derived(y_is_log ? [0.1, 10000] : [null, 10000])
 </script>
 
 <div>
@@ -850,13 +850,13 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     series={all_series}
     x_axis={{
       scale_type: x_scale_type,
-      range: x_lim,
+      range: x_range,
       label: `X Axis (${x_scale_type})`,
       format: '~s',
     }}
     y_axis={{
       scale_type: y_scale_type,
-      range: y_lim,
+      range: y_range,
       label: `Y Axis (${y_scale_type})`,
       format: '~s',
     }}
@@ -1371,15 +1371,11 @@ and scale type.
 
 ## Line Clipping with Fixed Ranges
 
-This example demonstrates how lines are clipped when they extend beyond the fixed `x_lim` and `y_lim` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
+This example demonstrates how lines are clipped when they extend beyond the fixed `x_range` and `y_range` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
 
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
-
-  // Define fixed plot limits
-  const x_limits = [-5, 5]
-  const y_limits = [-5, 5]
 
   // Function to generate a line that extends beyond the limits
   const generate_line = (start_x, start_y, end_x, end_y, steps, label) => {
@@ -1465,8 +1461,8 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 
 <ScatterPlot
   series={clipping_series}
-  x_axis={{ range: x_limits, label: 'X Axis (Fixed Range)' }}
-  y_axis={{ range: y_limits, label: 'Y Axis (Fixed Range)' }}
+  x_axis={{ range: [-5, 5], label: 'X Axis (Fixed Range)' }}
+  y_axis={{ range: [-5, 5], label: 'Y Axis (Fixed Range)' }}
   display={{ markers: 'line' }}
   style="height: 400px"
 />

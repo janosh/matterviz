@@ -1,25 +1,24 @@
 <script lang="ts">
-  import { element_data, format_num, type InternalPoint, ScatterPlot } from '$lib'
+  import type { AxisConfig, InternalPoint } from '$lib'
+  import { element_data, format_num, ScatterPlot } from '$lib'
   import { selected } from '$lib/state.svelte'
   import type { ComponentProps } from 'svelte'
 
   let {
     y,
-    x_label = `Atomic Number`,
-    y_label = ``,
+    x_axis = $bindable({ label: `Atomic Number` }),
+    y_axis = $bindable({ label: ``, format: `~s` }),
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    y_format = `~s`,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     y: number[] // array of length 118 (one value for each element)
-    x_label?: string
-    y_label?: string
-    y_unit?: string
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+    y_unit?: string | null
     tooltip_point?: InternalPoint | null
     hovered?: boolean
-    y_format?: string
   } = $props()
 
   // update tooltip on hover element tile
@@ -46,14 +45,14 @@
   ]}
   bind:tooltip_point
   bind:hovered
-  {x_label}
-  {y_label}
-  {y_format}
+  {x_axis}
+  {y_axis}
   color_bar={null}
+  padding={{ l: 45, r: 10, t: 0, b: 40 }}
   {...rest}
 >
   {#snippet tooltip({ x, y })}
     <strong>{x} - {element_data[x - 1]?.name}</strong><br />
-    {y_label} = {format_num(y, y_format)}{y_unit ?? ``}
+    {y_axis.label} = {format_num(y, y_axis.format ?? `~s`)}{y_unit ?? ``}
   {/snippet}
 </ScatterPlot>
