@@ -212,7 +212,7 @@ describe(`XrdPlot`, () => {
       props: {
         patterns: pattern,
         annotate_peaks: 2,
-        hkl_format: `compact`,
+        hkl_format: `compact` as const,
         show_angles: true,
       },
       expects: { min_bar_labels: 1, text_match: /[12][01]{2}/ }, // hkl pattern

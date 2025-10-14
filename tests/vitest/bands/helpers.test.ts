@@ -166,27 +166,11 @@ describe(`get_band_xaxis_ticks`, () => {
     // Physical path: Z→Γ→X (alphabetically would be: Γ→X→Z)
     const band_struct = {
       qpoints: [
-        { label: `Z`, frac_coords: [0, 0, 0.5] as [number, number, number], distance: 0 },
-        {
-          label: null,
-          frac_coords: [0, 0, 0.25] as [number, number, number],
-          distance: 0.5,
-        },
-        {
-          label: `GAMMA`,
-          frac_coords: [0, 0, 0] as [number, number, number],
-          distance: 1.0,
-        },
-        {
-          label: null,
-          frac_coords: [0.25, 0, 0] as [number, number, number],
-          distance: 1.5,
-        },
-        {
-          label: `X`,
-          frac_coords: [0.5, 0, 0] as [number, number, number],
-          distance: 2.0,
-        },
+        { label: `Z`, frac_coords: [0, 0, 0.5] as Vec3, distance: 0 },
+        { label: null, frac_coords: [0, 0, 0.25] as Vec3, distance: 0.5 },
+        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3, distance: 1.0 },
+        { label: null, frac_coords: [0.25, 0, 0] as Vec3, distance: 1.5 },
+        { label: `X`, frac_coords: [0.5, 0, 0] as Vec3, distance: 2.0 },
       ],
       branches: [
         { start_index: 0, end_index: 2, name: `Z-GAMMA` },

@@ -10,11 +10,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { extract_series_color, prepare_legend_data } from './data-transform'
   import { get_relative_coords } from './interactions'
-  import {
-    calc_auto_padding,
-    constrain_tooltip_position,
-    measure_text_width,
-  } from './layout'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import {
     create_scale,
     generate_ticks,
@@ -231,20 +227,10 @@
         default_padding,
         y_ticks: current_ticks_y,
         y_format: y_axis.format,
+        y2_ticks: current_ticks_y2,
+        y2_format: y2_axis.format,
       })
       : { ...default_padding, ...padding }
-    if (width && height && y2_series.length && current_ticks_y2.length) {
-      const y2_max_w = Math.max(
-        0,
-        ...current_ticks_y2.map((tick) => {
-          const custom = get_tick_label(tick as number, y2_axis.ticks)
-          const label = custom ?? format_value(tick, y2_axis.format)
-          return measure_text_width(label, `12px sans-serif`)
-        }),
-      )
-      const label_pad = y2_axis.label ? 40 : 0
-      new_pad.r = Math.max(new_pad.r, 10 + y2_max_w + label_pad)
-    }
 
     // Only update if padding actually changed
     if (

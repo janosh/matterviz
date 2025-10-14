@@ -85,6 +85,7 @@
     ...rest
   }:
     & {
+      structure?: AnyStructure | undefined
       scene_props?: ComponentProps<typeof StructureScene>
       // only show the buttons when hovering over the canvas on desktop screens
       // mobile screens don't have hover, so by default the buttons are always

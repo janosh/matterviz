@@ -126,7 +126,7 @@ export function convert_frequencies(
 // Normalize DOS densities according to specified mode.
 export function normalize_densities(
   densities: number[],
-  frequencies_or_energies: number[],
+  freqs_or_energies: number[],
   mode: NormalizationMode,
 ): number[] {
   if (!mode) return densities
@@ -142,8 +142,8 @@ export function normalize_densities(
     if (sum === 0) return normalized
     return normalized.map((d) => d / sum)
   } else if (mode === `integral`) {
-    if (frequencies_or_energies.length < 2) return normalized
-    const bin_width = frequencies_or_energies[1] - frequencies_or_energies[0]
+    if (freqs_or_energies.length < 2) return normalized
+    const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
     if (bin_width === 0) return normalized
     const sum = normalized.reduce((acc, d) => acc + d, 0)
     if (sum === 0) return normalized
@@ -156,7 +156,7 @@ export function normalize_densities(
 // Apply Gaussian smearing to DOS densities.
 // Uses truncated Gaussian (±4σ) for O(n·w) complexity instead of O(n²).
 export function apply_gaussian_smearing(
-  frequencies_or_energies: number[],
+  freqs_or_energies: number[],
   densities: number[],
   sigma: number,
 ): number[] {
@@ -166,12 +166,12 @@ export function apply_gaussian_smearing(
   const smeared = new Array(densities.length).fill(0)
   const truncation_width = 4 // Truncate Gaussian at ±4σ (contribution < 0.01%)
 
-  for (let idx = 0; idx < frequencies_or_energies.length; idx++) {
-    const energy = frequencies_or_energies[idx]
+  for (let idx = 0; idx < freqs_or_energies.length; idx++) {
+    const energy = freqs_or_energies[idx]
     const cutoff = truncation_width * sigma
 
-    for (let jdx = 0; jdx < frequencies_or_energies.length; jdx++) {
-      const e_j = frequencies_or_energies[jdx]
+    for (let jdx = 0; jdx < freqs_or_energies.length; jdx++) {
+      const e_j = freqs_or_energies[jdx]
       const delta = Math.abs(energy - e_j)
 
       // Skip points beyond truncation width
@@ -184,8 +184,8 @@ export function apply_gaussian_smearing(
 
   // Normalize to preserve integral
   const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
+  if (smeared_sum === 0) return densities
   const normalization = original_sum / smeared_sum
-
   return smeared.map((d) => d * normalization)
 }
 

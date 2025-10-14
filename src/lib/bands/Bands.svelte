@@ -265,8 +265,8 @@
   })
 
   let x_range = $derived.by((): [number, number] => {
-    const all_x = Object.values(x_positions).flat()
-    return [Math.min(...all_x), Math.max(...all_x)]
+    const all_x = Object.values(x_positions).flat().sort()
+    return [all_x.at(0) ?? 0, all_x.at(-1) ?? 1]
   })
 </script>
 

@@ -121,8 +121,8 @@
           y_axis={{ range: [0, null], label: y_label }}
           y={heatmap_values}
           {y_unit}
-          onchange={(evt) => {
-            const el = element_data.find((el) => el.number === evt.detail.x)
+          on_point_click={({ point }) => {
+            const el = element_data.find((el) => el.number === point.x)
             if (el) selected.element = el
           }}
           color_scale={{ scheme: color_scale }}
