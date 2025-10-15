@@ -1,5 +1,5 @@
 // Utility functions for working with trajectory data
-import type { AnyStructure } from '$lib'
+import type { AnyStructure, Trajectory } from '$lib'
 import type { ComponentProps } from 'svelte'
 
 export { default as Trajectory } from './Trajectory.svelte'
@@ -168,7 +168,7 @@ export function get_trajectory_stats(
   }
 
   if (frames.length > 0) {
-    const [first_frame, last_frame] = [frames[0], frames.at(-1)]
+    const [first_frame, last_frame] = [frames[0], frames.at(-1) ?? frames[0]]
     const max_sample = 100
 
     const sampled = frames.length <= max_sample ? frames : (() => {

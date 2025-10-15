@@ -44,8 +44,8 @@
 
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
-  let visible_series = $derived(series.filter((s) => s && (s.visible ?? true)))
-  let series_options = $derived(visible_series.map((s) => s.label || `Series`))
+  let visible_series = $derived(series.filter((srs) => srs && (srs.visible ?? true)))
+  let series_options = $derived(visible_series.map((srs) => srs.label || `Series`))
 </script>
 
 <PlotControls

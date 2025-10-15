@@ -2,7 +2,6 @@ import type { DataSeries } from '$lib/plot'
 import {
   create_data_points,
   extract_series_color,
-  filter_visible_series,
   prepare_legend_data,
 } from '$lib/plot/data-transform'
 import { DEFAULTS } from '$lib/settings'
@@ -207,72 +206,6 @@ describe(`data-transform utility functions`, () => {
       },
     ])(`$name`, ({ series, expected }) => {
       expect(prepare_legend_data(series)).toEqual(expected)
-    })
-  })
-
-  describe(`filter_visible_series`, () => {
-    test.each([
-      {
-        name: `filters visible series`,
-        series: [
-          { x: [1, 2], y: [1, 2], visible: true },
-          { x: [3, 4], y: [3, 4], visible: false },
-          { x: [5, 6], y: [5, 6], visible: true },
-          { x: [7, 8], y: [7, 8] },
-        ],
-        expected_length: 3,
-        expected_indices: [0, 2, 3],
-      },
-      {
-        name: `handles all visible series`,
-        series: [
-          { x: [1, 2], y: [1, 2], visible: true },
-          { x: [3, 4], y: [3, 4], visible: true },
-        ],
-        expected_length: 2,
-        expected_indices: [0, 1],
-      },
-      {
-        name: `handles all hidden series`,
-        series: [
-          { x: [1, 2], y: [1, 2], visible: false },
-          { x: [3, 4], y: [3, 4], visible: false },
-        ],
-        expected_length: 0,
-        expected_indices: [],
-      },
-      {
-        name: `handles empty series array`,
-        series: [],
-        expected_length: 0,
-        expected_indices: [],
-      },
-      {
-        name: `treats undefined visible as true`,
-        series: [
-          { x: [1, 2], y: [1, 2] },
-          { x: [3, 4], y: [3, 4] },
-        ],
-        expected_length: 2,
-        expected_indices: [0, 1],
-      },
-      {
-        name: `handles mixed visibility states`,
-        series: [
-          { x: [1, 2], y: [1, 2], visible: true },
-          { x: [3, 4], y: [3, 4] },
-          { x: [5, 6], y: [5, 6], visible: false },
-          { x: [7, 8], y: [7, 8], visible: true },
-        ],
-        expected_length: 3,
-        expected_indices: [0, 1, 3],
-      },
-    ])(`$name`, ({ series, expected_length, expected_indices }) => {
-      const result = filter_visible_series(series)
-      expect(result).toHaveLength(expected_length)
-      expected_indices.forEach((idx, resultIdx) => {
-        expect(result[resultIdx]).toBe(series[idx])
-      })
     })
   })
 

@@ -102,13 +102,12 @@ describe(`RdfPlot`, () => {
 
   // Test custom props (labels, style, class, enable_drop)
   test(`custom props`, () => {
-    const pattern = { label: `Test`, pattern: create_synthetic_pattern() }
     mount(RdfPlot, {
       target: document.body,
       props: {
-        patterns: pattern,
-        x_label: `Custom X`,
-        y_label: `Custom Y`,
+        patterns: { label: `Test`, pattern: create_synthetic_pattern() },
+        x_axis: { label: `Custom X` },
+        y_axis: { label: `Custom Y` },
         style: `height: 500px;`,
         class: `custom-class`,
         enable_drop: true,

@@ -30,6 +30,7 @@
     ColorBar,
     DEFAULT_GRID_STYLE,
     find_best_plot_area,
+    get_tick_label,
     Line,
     PlotLegend,
     ScatterPlotControls,
@@ -49,6 +50,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
+  import { SvelteSet } from 'svelte/reactivity'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding } from './layout'
   import { generate_ticks, get_nice_data_range } from './scales'
@@ -107,7 +109,7 @@
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
       value_range?: [number, number]
-    }
+    } | D3InterpolateName
     size_scale?: {
       type?: ScaleType
       radius_range?: [number, number]
@@ -145,15 +147,15 @@
     scale_type: `linear`,
     label_shift: { x: 0, y: -40 },
     tick_label_shift: { x: 0, y: 20 },
-    lim: [null, null],
+    range: [null, null],
     ...x_axis,
   }
   y_axis = {
     format: ``,
     scale_type: `linear`,
-    label_shift: { x: 0, y: -40 },
-    tick_label_shift: { x: 0, y: 20 },
-    lim: [null, null],
+    label_shift: { x: 0, y: 0 },
+    tick_label_shift: { x: -8, y: 0 },
+    range: [null, null],
     ...y_axis,
   }
   y2_axis = {
@@ -162,7 +164,7 @@
     ticks: 5,
     label_shift: { x: 0, y: 0 },
     tick_label_shift: { x: 8, y: 0 },
-    lim: [null, null],
+    range: [null, null],
     ...y2_axis,
   }
   display = { ...DEFAULTS.scatter.display, ...display }
@@ -240,16 +242,14 @@
   let pad = $state({ ...default_padding, ...padding })
   // Update padding when format or ticks change, but prevent infinite loop
   $effect(() => {
-    const base_pad = { ...default_padding, ...padding }
     const new_pad = width && height && (y_tick_values.length || y2_tick_values.length)
       ? calc_auto_padding({
-        base_padding: base_pad,
-        y_ticks: y_tick_values,
-        y_format: y_axis.format!,
-        y2_ticks: y2_tick_values,
-        y2_format: y2_axis.format!,
+        padding,
+        default_padding,
+        y_axis: { ...y_axis, tick_values: y_tick_values },
+        y2_axis: { ...y2_axis, tick_values: y2_tick_values },
       })
-      : base_pad
+      : { ...default_padding, ...padding }
 
     // Only update if padding actually changed (prevents infinite loop)
     if (
@@ -282,7 +282,7 @@
     get_nice_data_range(
       all_points,
       (point) => point.x,
-      (x_axis.lim ?? [null, null]) as [number | null, number | null],
+      (x_axis.range ?? [null, null]) as [number | null, number | null],
       x_axis.scale_type!,
       range_padding,
       x_axis.format?.startsWith(`%`) || false,
@@ -293,7 +293,7 @@
     get_nice_data_range(
       y1_points,
       (point) => point.y,
-      (y_axis.lim ?? [null, null]) as [number | null, number | null],
+      (y_axis.range ?? [null, null]) as [number | null, number | null],
       y_axis.scale_type!,
       range_padding,
       false,
@@ -304,7 +304,7 @@
     get_nice_data_range(
       y2_points,
       (point) => point.y,
-      (y2_axis.lim ?? [null, null]) as [number | null, number | null],
+      (y2_axis.range ?? [null, null]) as [number | null, number | null],
       y2_axis.scale_type!,
       range_padding,
       false,
@@ -422,15 +422,20 @@
 
   // Color scale function
   let color_scale_fn = $derived.by(() => {
-    const color_func_name = color_scale.scheme as keyof typeof d3_sc
+    const color_func_name = (typeof color_scale === `string`
+      ? color_scale
+      : color_scale.scheme) as keyof typeof d3_sc
     const interpolator = typeof d3_sc[color_func_name] === `function`
       ? d3_sc[color_func_name]
       : d3_sc.interpolateViridis
 
-    const [min_val, max_val] = color_scale.value_range ??
-      (auto_color_range as [number, number])
+    const [min_val, max_val] =
+      (typeof color_scale === `string` ? undefined : color_scale.value_range) ??
+        (auto_color_range as [number, number])
 
-    return color_scale.type === `log`
+    const scale_type = typeof color_scale === `string` ? undefined : color_scale.type
+
+    return scale_type === `log`
       ? scaleSequentialLog(interpolator).domain([
         Math.max(min_val, math.LOG_EPS),
         Math.max(max_val, min_val * 1.1),
@@ -443,22 +448,11 @@
     series_with_ids
       .map((data_series, series_idx) => {
         if (!(data_series?.visible ?? true)) {
-          return {
-            ...data_series,
-            visible: false,
-            filtered_data: [],
-          } as DataSeries & { filtered_data: InternalPoint[]; _id: number }
+          return { ...data_series, visible: false, filtered_data: [] }
         }
 
-        if (!data_series) {
-          // Return empty data consistent with DataSeries structure
-          return {
-            x: [],
-            y: [],
-            visible: true,
-            filtered_data: [],
-            _id: series_idx,
-          } as unknown as DataSeries & { filtered_data: InternalPoint[]; _id: number }
+        if (!data_series) { // Return empty data consistent with DataSeries structure
+          return { x: [], y: [], visible: true, filtered_data: [], _id: series_idx }
         }
 
         const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
@@ -551,102 +545,115 @@
   })
 
   // Prepare data needed for the legend component
-  let legend_data = $derived(series_with_ids.map((data_series, series_idx) => {
-    const is_visible = data_series?.visible ?? true
-    // Prefer top-level label, fallback to metadata label, then default
-    const label = data_series?.label ??
-      (typeof data_series?.metadata === `object` &&
-          data_series.metadata !== null &&
-          `label` in data_series.metadata &&
-          typeof data_series.metadata.label === `string`
-        ? data_series.metadata.label
-        : null) ??
-      `Series ${series_idx + 1}`
+  let legend_data = $derived.by(() => {
+    const items = series_with_ids.map((data_series, series_idx) => {
+      const is_visible = data_series?.visible ?? true
+      // Prefer top-level label, fallback to metadata label
+      const explicit_label = data_series?.label ??
+        (typeof data_series?.metadata === `object` &&
+            data_series.metadata !== null &&
+            `label` in data_series.metadata &&
+            typeof data_series.metadata.label === `string`
+          ? data_series.metadata.label
+          : null)
+      // Use explicit label or generate default
+      const label = explicit_label ?? `Series ${series_idx + 1}`
+      const has_explicit_label = explicit_label != null
 
-    // Explicitly define the type for display_style matching PlotLegend expectations
-    type LegendDisplayStyle = {
-      symbol_type?: D3SymbolName
-      symbol_color?: string
-      line_color?: string
-      line_dash?: string
-    }
-    const display_style: LegendDisplayStyle = {
-      symbol_type: DEFAULTS.scatter.symbol_type,
-      symbol_color: `black`, // Default marker color
-      line_color: `black`, // Default line color
-    }
+      // Explicitly define the type for display_style matching PlotLegend expectations
+      type LegendDisplayStyle = {
+        symbol_type?: D3SymbolName
+        symbol_color?: string
+        line_color?: string
+        line_dash?: string
+      }
+      const display_style: LegendDisplayStyle = {
+        symbol_type: DEFAULTS.scatter.symbol_type,
+        symbol_color: `black`, // Default marker color
+        line_color: `black`, // Default line color
+      }
 
-    const series_markers = (data_series?.markers ?? display.markers) ?? ``
+      const series_markers = (data_series?.markers ?? display.markers) ?? ``
 
-    // Check point_style (could be object or array)
-    const first_point_style = Array.isArray(data_series?.point_style)
-      ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
-      : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
+      // Check point_style (could be object or array)
+      const first_point_style = Array.isArray(data_series?.point_style)
+        ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
+        : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
 
-    if (series_markers?.includes(`points`)) {
-      if (first_point_style) {
-        // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
-        let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
-        if (
-          Array.isArray(symbol_names) &&
-          typeof first_point_style.symbol_type === `string` &&
-          symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
-        ) {
-          final_shape = first_point_style.symbol_type as D3SymbolName
-        }
-        display_style.symbol_type = final_shape
-
-        display_style.symbol_color = first_point_style.fill ??
-          display_style.symbol_color // Use default if nullish
-        if (first_point_style.stroke) {
-          // Use stroke color if fill is none or transparent
+      if (series_markers?.includes(`points`)) {
+        if (first_point_style) {
+          // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
+          let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
           if (
-            !display_style.symbol_color ||
-            display_style.symbol_color === `none` ||
-            display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
+            Array.isArray(symbol_names) &&
+            typeof first_point_style.symbol_type === `string` &&
+            symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
           ) {
-            display_style.symbol_color = first_point_style.stroke
+            final_shape = first_point_style.symbol_type as D3SymbolName
+          }
+          display_style.symbol_type = final_shape
+
+          display_style.symbol_color = first_point_style.fill ??
+            display_style.symbol_color // Use default if nullish
+          if (first_point_style.stroke) {
+            // Use stroke color if fill is none or transparent
+            if (
+              !display_style.symbol_color ||
+              display_style.symbol_color === `none` ||
+              display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
+            ) {
+              display_style.symbol_color = first_point_style.stroke
+            }
           }
         }
+        // else: keep default display_style.symbol_type/color if no point_style
+      } else {
+        // If no points marker, explicitly remove marker style for legend
+        display_style.symbol_type = undefined
+        display_style.symbol_color = undefined
       }
-      // else: keep default display_style.symbol_type/color if no point_style
-    } else {
-      // If no points marker, explicitly remove marker style for legend
-      display_style.symbol_type = undefined
-      display_style.symbol_color = undefined
-    }
 
-    // Check line_style
-    if (series_markers?.includes(`line`)) {
-      // Prefer explicit line stroke
-      let legend_line_color = data_series?.line_style?.stroke
-      if (!legend_line_color) {
-        // Try color scale if available
-        const first_cv = Array.isArray(data_series?.color_values)
-          ? data_series!.color_values!.find((v) => v != null)
-          : undefined
-        legend_line_color =
-          (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-          first_point_style?.fill ||
-          first_point_style?.stroke ||
-          display_style.symbol_color ||
-          `black`
+      // Check line_style
+      if (series_markers?.includes(`line`)) {
+        // Prefer explicit line stroke
+        let legend_line_color = data_series?.line_style?.stroke
+        if (!legend_line_color) {
+          // Try color scale if available
+          const first_cv = Array.isArray(data_series?.color_values)
+            ? data_series!.color_values!.find((v) => v != null)
+            : undefined
+          legend_line_color =
+            (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
+            first_point_style?.fill ||
+            first_point_style?.stroke ||
+            display_style.symbol_color ||
+            `black`
+        }
+        display_style.line_color = legend_line_color
+        display_style.line_dash = data_series?.line_style?.line_dash
+      } else {
+        // If no line marker, explicitly remove line style for legend
+        display_style.line_dash = undefined
+        display_style.line_color = undefined
       }
-      display_style.line_color = legend_line_color
-      display_style.line_dash = data_series?.line_style?.line_dash
-    } else {
-      // If no line marker, explicitly remove line style for legend
-      display_style.line_dash = undefined
-      display_style.line_color = undefined
-    }
 
-    return {
-      series_idx,
-      label,
-      visible: is_visible,
-      display_style,
-    }
-  }))
+      return {
+        series_idx,
+        label,
+        visible: is_visible,
+        display_style,
+        has_explicit_label,
+      }
+    })
+
+    // Deduplicate by label - keep first occurrence of each unique label
+    const seen_labels = new SvelteSet<string>()
+    return items.filter((item) => {
+      if (seen_labels.has(item.label)) return false
+      seen_labels.add(item.label)
+      return true
+    })
+  })
 
   // Calculate best legend placement using new simple system
   let legend_placement = $derived.by(() => {
@@ -1098,11 +1105,17 @@
     const toggled_series = series[series_idx]
     const new_visibility = !(toggled_series.visible ?? true)
     const target_axis = toggled_series.y_axis ?? `y1`
+    const toggled_label = toggled_series.label
 
     // Only create new objects for series that need to change to preserve series IDs
     series = series.map((s, idx) => {
-      if (idx === series_idx) {
-        // Toggle the clicked series
+      // Toggle all series with the same label (for grouped series like band structures)
+      if (toggled_label && s.label === toggled_label) {
+        return { ...s, visible: new_visibility }
+      }
+
+      // Also toggle the specific series if it has no label
+      if (idx === series_idx && !toggled_label) {
         return { ...s, visible: new_visibility }
       }
 
@@ -1123,12 +1136,24 @@
 
   // Function to handle double-click on legend item
   function handle_legend_double_click(double_clicked_idx: number) {
-    const current_visibility = processed_series.map((s) => s?.visible ?? true)
-    const visible_count = current_visibility.filter((v) => v).length
-    const is_currently_isolated = visible_count === 1 &&
-      current_visibility[double_clicked_idx]
+    const double_clicked_series = series[double_clicked_idx]
+    const double_clicked_label = double_clicked_series?.label
 
-    if (is_currently_isolated && previous_series_visibility) {
+    const current_visibility = series.map((s: DataSeries) => s?.visible ?? true)
+    const visible_count =
+      current_visibility.filter((visible: boolean) => visible).length
+
+    // Check if the group is currently isolated (all series with this label visible, others hidden)
+    const group_is_isolated = series.every((srs, idx) => {
+      // For unlabeled series, use index comparison; for labeled, use label comparison
+      const is_in_group = double_clicked_label
+        ? srs.label === double_clicked_label
+        : idx === double_clicked_idx
+      const is_visible = srs?.visible ?? true
+      return is_in_group ? is_visible : !is_visible
+    })
+
+    if (group_is_isolated && previous_series_visibility) {
       // Restore previous visibility state
       // Only create new objects for series whose visibility actually changes
       series = series.map((s, idx) => {
@@ -1141,14 +1166,18 @@
       })
       previous_series_visibility = null // Clear memory
     } else {
-      // Isolate the double-clicked series
+      // Isolate the double-clicked series group
       // Only store previous state if we are actually isolating (more than one series visible)
       if (visible_count > 1) {
         previous_series_visibility = [...current_visibility] // Store current state
       }
       // Only create new objects for series whose visibility needs to change
       series = series.map((s, idx) => {
-        const target_visibility = idx === double_clicked_idx
+        // For unlabeled series, use index comparison; for labeled, use label comparison
+        const is_in_group = double_clicked_label
+          ? s.label === double_clicked_label
+          : idx === double_clicked_idx
+        const target_visibility = is_in_group
         const current_visibility = s?.visible ?? true
         if (current_visibility !== target_visibility) {
           return { ...s, visible: target_visibility }
@@ -1278,7 +1307,10 @@
 
                   {#if tick >= x_min && tick <= x_max}
                     {@const { x, y } = x_axis.tick_label_shift ?? { x: 0, y: 20 }}
-                    <text {x} {y}>{format_value(tick, x_axis.format ?? ``)}</text>
+                    {@const custom_label = get_tick_label(tick, x_axis.ticks)}
+                    <text {x} {y}>
+                      {custom_label ?? format_value(tick, x_axis.format ?? ``)}
+                    </text>
                   {/if}
                 </g>
               {/if}
@@ -1309,16 +1341,18 @@
           {/if}
         {/if}
 
-        <foreignObject
-          x={width / 2 + (x_axis.label_shift?.x ?? 0) - 100}
-          y={height - pad.b - (x_axis.label_shift?.y ?? -40) - 10}
-          width="200"
-          height="20"
-        >
-          <div class="axis-label x-label">
-            {@html x_axis.label ?? ``}
-          </div>
-        </foreignObject>
+        {#if x_axis.label}
+          <foreignObject
+            x={width / 2 + (x_axis.label_shift?.x ?? 0) - 100}
+            y={height - pad.b - (x_axis.label_shift?.y ?? -40) - 10}
+            width="200"
+            height="20"
+          >
+            <div class="axis-label x-label">
+              {@html x_axis.label ?? ``}
+            </div>
+          </foreignObject>
+        {/if}
       </g>
 
       <g class="y-axis">
@@ -1341,8 +1375,9 @@
 
                   {#if tick >= y_min && tick <= y_max}
                     {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
+                    {@const custom_label = get_tick_label(tick, y_axis.ticks)}
                     <text {x} {y} text-anchor="end" fill={y_axis.color}>
-                      {format_value(tick, y_axis.format ?? ``)}
+                      {custom_label ?? format_value(tick, y_axis.format ?? ``)}
                       {#if y_axis.unit && idx === 0}
                         &zwnj;&ensp;{y_axis.unit}
                       {/if}
@@ -1354,7 +1389,7 @@
           {/each}
         {/if}
 
-        {#if height > 0}
+        {#if height > 0 && y_axis.label}
           <foreignObject
             x={-100}
             y={-10}
@@ -1395,8 +1430,9 @@
 
                     {#if tick >= y2_min && tick <= y2_max}
                       {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
+                      {@const custom_label = get_tick_label(tick, y2_axis.ticks)}
                       <text {x} {y} text-anchor="start" fill={y2_axis.color}>
-                        {format_value(tick, y2_axis.format ?? ``)}
+                        {custom_label ?? format_value(tick, y2_axis.format ?? ``)}
                         {#if y2_axis.unit && idx === 0}
                           &zwnj;&ensp;{y2_axis.unit}
                         {/if}
@@ -1722,15 +1758,17 @@
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0 && color_bar_placement}
       {@const color_domain = [
-      color_scale.value_range?.[0] ?? auto_color_range[0],
-      color_scale.value_range?.[1] ?? auto_color_range[1],
+      (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
+        auto_color_range[0],
+      (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
+        auto_color_range[1],
     ] as [number, number]}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {color_scale_fn}
         color_scale_domain={color_domain}
-        scale_type={color_scale.type}
+        scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
         range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style={`
           position: absolute;
@@ -1787,15 +1825,16 @@
 <style>
   div.scatter {
     position: relative; /* Needed for absolute positioning of children like ColorBar */
-    width: 100%;
-    height: 100%;
-    min-height: var(--scatter-min-height, 100px);
+    width: var(--scatter-width, 100%);
+    height: var(--scatter-height, 100%);
+    min-height: var(--scatter-min-height, 350px);
     container-type: size; /* enable cqh for panes */
     container-name: scatter-plot;
     z-index: var(--scatter-z-index);
   }
   svg {
     width: 100%;
+    height: 100%;
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     overflow: visible;

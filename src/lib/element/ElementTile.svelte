@@ -42,7 +42,7 @@
     show_symbol?: boolean
     show_number?: boolean
     show_name?: boolean
-    value?: number | number[] | string | string[] | false | undefined
+    value?: number | number[] | string | string[] | false
     symbol_style?: string
     active?: boolean
     href?: string

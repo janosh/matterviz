@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
   import { heatmap_labels } from '$lib/labels'
+  import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
-  import type { HTMLAttributes } from 'svelte/elements'
 
   const options = Object.keys(heatmap_labels)
   let {
@@ -10,9 +10,9 @@
     empty = false,
     selected = empty ? [] : [options[1]],
     minSelect = 0,
-    key = $bindable(``),
+    key = $bindable(null),
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Omit<ComponentProps<typeof Select>, `options`> & {
     value?: keyof ChemicalElement | null
     empty?: boolean
     selected?: string[]

@@ -10,7 +10,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
-  import { ScatterPlot } from '$lib/plot'
+  import { type AxisConfig, ScatterPlot } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
   import * as helpers from './helpers'
   import type { BasePhaseDiagramProps } from './index'
@@ -47,8 +47,13 @@
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
     ...rest
-  }: BasePhaseDiagramProps = $props()
+  }: BasePhaseDiagramProps & {
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+  } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({
@@ -493,14 +498,14 @@
   {#key reset_counter}
     <ScatterPlot
       series={scatter_series}
-      x_range={x_domain}
-      y_range={y_domain}
-      x_ticks={4}
-      y_ticks={4}
-      show_x_grid={false}
-      show_y_grid={false}
-      x_label={elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`}
-      y_label="E<sub>form</sub> (eV/atom)"
+      display={{ x_grid: false, y_grid: false }}
+      x_axis={{
+        label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
+        range: x_domain,
+        ticks: 4,
+        ...x_axis,
+      }}
+      y_axis={{ label: `E<sub>form</sub> (eV/atom)`, range: y_domain, ticks: 4, ...y_axis }}
       legend={null}
       color_bar={{
         title: `E<sub>above hull</sub> (eV/atom)`,

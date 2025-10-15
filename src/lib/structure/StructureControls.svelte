@@ -40,7 +40,7 @@
     background_color?: string
     background_opacity?: number
     color_scheme?: string
-    structure?: AnyStructure | undefined
+    structure?: AnyStructure
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
