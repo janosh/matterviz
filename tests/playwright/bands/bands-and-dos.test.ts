@@ -43,7 +43,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
     expect(bands_box).toBeTruthy()
     expect(dos_box).toBeTruthy()
     if (bands_box && dos_box) {
-      expect(Math.abs(bands_box.height - dos_box.height)).toBeLessThan(100)
+      const tolerance = Math.max(bands_box.height, dos_box.height) * 0.05 // 5% tolerance
+      expect(Math.abs(bands_box.height - dos_box.height)).toBeLessThan(tolerance)
     }
   })
 

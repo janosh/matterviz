@@ -225,10 +225,8 @@
       ? calc_auto_padding({
         padding,
         default_padding,
-        y_ticks: current_ticks_y,
-        y_format: y_axis.format,
-        y2_ticks: current_ticks_y2,
-        y2_format: y2_axis.format,
+        y_axis: { ...y_axis, tick_values: current_ticks_y },
+        y2_axis: { ...y2_axis, tick_values: current_ticks_y2 },
       })
       : { ...default_padding, ...padding }
 

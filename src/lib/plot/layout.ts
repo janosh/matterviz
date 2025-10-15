@@ -1,5 +1,5 @@
 import { format_value } from '$lib/labels'
-import type { Sides } from '$lib/plot'
+import type { AxisConfig, Sides } from '$lib/plot'
 
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
@@ -20,15 +20,13 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
 export interface AutoPaddingConfig {
   padding: Partial<Sides> // User padding (undefined sides will be auto-calculated)
   default_padding: Required<Sides> // Default padding to use as baseline
-  y_ticks?: (string | number)[]
-  y_format?: string
-  y2_ticks?: (string | number)[]
-  y2_format?: string
+  y_axis?: AxisConfig & { tick_values?: (string | number)[] }
+  y2_axis?: AxisConfig & { tick_values?: (string | number)[] }
   label_gap?: number // Gap between tick labels and axis labels (default: 45px)
 }
 
 // Helper to measure max tick width
-const measure_max_tick_width = (ticks: (string | number)[], format: string) =>
+const measure_max_tick_width = (ticks: (string | number)[], format: string = ``) =>
   ticks.length === 0 ? 0 : Math.max(
     ...ticks.map((tick) => {
       const label = typeof tick === `string` ? tick : format_value(tick, format)
@@ -39,19 +37,27 @@ const measure_max_tick_width = (ticks: (string | number)[], format: string) =>
 export const calc_auto_padding = ({
   padding,
   default_padding,
-  y_ticks = [],
-  y_format = ``,
-  y2_ticks = [],
-  y2_format = ``,
+  y_axis = {},
+  y2_axis = {},
   label_gap = 45,
-}: AutoPaddingConfig): Required<Sides> => ({
-  t: padding.t ?? default_padding.t,
-  b: padding.b ?? default_padding.b,
-  l: padding.l ??
-    Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
-  r: padding.r ??
-    Math.max(default_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
-})
+}: AutoPaddingConfig): Required<Sides> => {
+  const y_ticks = y_axis.tick_values ?? []
+  const y_format = y_axis.format ?? ``
+  const y2_ticks = y2_axis.tick_values ?? []
+  const y2_format = y2_axis.format ?? ``
+
+  return {
+    t: padding.t ?? default_padding.t,
+    b: padding.b ?? default_padding.b,
+    l: padding.l ??
+      Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
+    r: padding.r ??
+      Math.max(
+        default_padding.r,
+        measure_max_tick_width(y2_ticks, y2_format) + label_gap,
+      ),
+  }
+}
 
 // Constrain tooltip position within chart bounds
 export function constrain_tooltip_position(

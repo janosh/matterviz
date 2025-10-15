@@ -256,8 +256,8 @@
       ? calc_auto_padding({
         padding,
         default_padding,
-        y_ticks: ticks.y,
-        y_format: y_axis.format,
+        y_axis: { ...y_axis, tick_values: ticks.y },
+        y2_axis: { ...y2_axis, tick_values: ticks.y2 },
       })
       : { ...default_padding, ...padding }
     // Expand right padding if y2 ticks are shown (only for vertical orientation)

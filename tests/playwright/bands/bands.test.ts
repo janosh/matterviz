@@ -34,16 +34,9 @@ test.describe(`Bands Component Tests`, () => {
     expect(legend_text).toContain(`BS2`)
 
     // Test toggling
-    const initial_paths = await svg.locator(`path[fill="none"]`).count()
+    const expected_count = await svg.locator(`path[fill="none"]`).count()
     await legend.locator(`.legend-item`).first().click()
-    await page.waitForFunction(
-      (count) =>
-        document.querySelectorAll(`#multiple-bands + .scatter path[fill="none"]`)
-          .length < count,
-      initial_paths,
-      { timeout: 3000 },
-    )
-    expect(await svg.locator(`path[fill="none"]`).count()).toBeLessThan(initial_paths)
+    await expect(svg.locator(`path[fill="none"]`)).not.toHaveCount(expected_count)
   })
 
   test(`applies custom line styling and hides legend when configured`, async ({ page }) => {

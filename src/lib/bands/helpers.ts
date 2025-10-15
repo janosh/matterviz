@@ -48,15 +48,18 @@ export const get_segment_key = (start_label?: string, end_label?: string) =>
 export const get_ordered_segments = (
   band_struct: BaseBandStructure | null,
   segments: Set<string>,
-) =>
-  band_struct
-    ? band_struct.branches.map((br) =>
-      get_segment_key(
-        band_struct.qpoints[br.start_index]?.label ?? undefined,
-        band_struct.qpoints[br.end_index]?.label ?? undefined,
-      )
+) => {
+  if (!band_struct) return Array.from(segments)
+
+  const ordered = band_struct.branches.map((br) =>
+    get_segment_key(
+      band_struct.qpoints[br.start_index]?.label ?? undefined,
+      band_struct.qpoints[br.end_index]?.label ?? undefined,
     )
-    : Array.from(segments)
+  )
+  const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
+  return [...ordered, ...remaining]
+}
 
 // Extract tick positions and labels for a band structure plot.
 export function get_band_xaxis_ticks(

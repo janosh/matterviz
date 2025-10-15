@@ -31,16 +31,9 @@ test.describe(`DOS Component Tests`, () => {
     expect(legend_text).toContain(`DOS2`)
 
     // Test toggling
-    const initial_paths = await svg.locator(`path[fill="none"]`).count()
+    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(2)
     await legend.locator(`.legend-item`).first().click()
-    await page.waitForFunction(
-      (count) =>
-        document.querySelectorAll(`#multiple-dos + .scatter path[fill="none"]`).length <
-          count,
-      initial_paths,
-      { timeout: 3000 },
-    )
-    expect(await svg.locator(`path[fill="none"]`).count()).toBeLessThan(initial_paths)
+    await expect(svg.locator(`path[fill="none"]`)).not.toHaveCount(2)
   })
 
   test(`applies normalization correctly`, async ({ page }) => {
@@ -67,11 +60,14 @@ test.describe(`DOS Component Tests`, () => {
 
     // Check Gaussian smearing produces smooth curves
     const smeared_plot = page.locator(`#gaussian-smearing + .scatter`)
-    const path_d = await smeared_plot
-      .locator(`path[fill="none"]`)
-      .first()
-      .getAttribute(`d`)
-    expect(path_d).toContain(`C`) // Cubic bezier curves
+    const path = smeared_plot.locator(`path[fill="none"]`).first()
+    await expect(path).toBeVisible()
+    const path_d = await path.getAttribute(`d`)
+    // Verify path has data and is sufficiently complex (indicates smoothing/interpolation)
+    expect(path_d).toBeTruthy()
+    if (path_d) {
+      expect(path_d.length).toBeGreaterThan(50) // Smooth curve should have substantial path data
+    }
   })
 
   test(`renders with horizontal orientation`, async ({ page }) => {

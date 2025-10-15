@@ -147,7 +147,6 @@
     const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
     for (const segment_key of ordered_segments) {
-      if (!segments_to_plot.has(segment_key)) continue
       if (positions[segment_key]) continue
 
       const [start_label, end_label] = segment_key.split(`_`)

@@ -246,10 +246,8 @@
       ? calc_auto_padding({
         padding,
         default_padding,
-        y_ticks: y_tick_values,
-        y_format: y_axis.format,
-        y2_ticks: y2_tick_values,
-        y2_format: y2_axis.format,
+        y_axis: { ...y_axis, tick_values: y_tick_values },
+        y2_axis: { ...y2_axis, tick_values: y2_tick_values },
       })
       : { ...default_padding, ...padding }
 
@@ -1146,8 +1144,11 @@
       current_visibility.filter((visible: boolean) => visible).length
 
     // Check if the group is currently isolated (all series with this label visible, others hidden)
-    const group_is_isolated = series.every((srs) => {
-      const is_in_group = double_clicked_label && srs.label === double_clicked_label
+    const group_is_isolated = series.every((srs, idx) => {
+      // For unlabeled series, use index comparison; for labeled, use label comparison
+      const is_in_group = double_clicked_label
+        ? srs.label === double_clicked_label
+        : idx === double_clicked_idx
       const is_visible = srs?.visible ?? true
       return is_in_group ? is_visible : !is_visible
     })
@@ -1172,8 +1173,11 @@
       }
       // Only create new objects for series whose visibility needs to change
       series = series.map((s, idx) => {
-        const is_in_group = double_clicked_label && s.label === double_clicked_label
-        const target_visibility = is_in_group || idx === double_clicked_idx
+        // For unlabeled series, use index comparison; for labeled, use label comparison
+        const is_in_group = double_clicked_label
+          ? s.label === double_clicked_label
+          : idx === double_clicked_idx
+        const target_visibility = is_in_group
         const current_visibility = s?.visible ?? true
         if (current_visibility !== target_visibility) {
           return { ...s, visible: target_visibility }
