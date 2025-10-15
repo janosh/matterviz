@@ -143,7 +143,7 @@
 
         return {
           element,
-          amount: amount!,
+          amount,
           fraction,
           color,
           start_angle,

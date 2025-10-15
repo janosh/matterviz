@@ -1,4 +1,5 @@
-import type { D3SymbolName, DataSeries, Point } from '$lib/plot'
+import type { D3SymbolName } from '$lib/labels'
+import type { DataSeries, Point } from '$lib/plot'
 import { DEFAULTS } from '$lib/settings'
 
 // Extract the primary color from a series data object.
@@ -29,11 +30,6 @@ export const prepare_legend_data = (series: DataSeries[]): {
       symbol_color: extract_series_color(series_data),
     },
   }))
-
-// Filter visible series from series array
-export function filter_visible_series(series: DataSeries[]): DataSeries[] {
-  return series.filter((s) => s.visible ?? true)
-}
 
 // Create data points from series for analysis
 export function create_data_points(

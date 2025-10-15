@@ -45,21 +45,28 @@
     if (element_entries.length === 0) return []
 
     // Create hierarchy data structure for D3 pack
-    const hierarchy_data = {
+    type Child = { element: string; amount: number; color: string }
+    type HierarchyData = { children: Child[] }
+
+    const hierarchy_data: HierarchyData = {
       children: element_entries.map(([element, amount]) => ({
         element,
-        amount: amount!,
+        amount: amount ?? 0,
         color: element_colors[element] || `#cccccc`,
       })),
     }
 
     // Use D3's pack layout for proper circle packing
-    const pack_layout = pack()
-      .size([size - 2 * padding, size - 2 * padding])
+    const pack_layout = pack<HierarchyData | Child>().size([
+      size - 2 * padding,
+      size - 2 * padding,
+    ])
       .padding(padding * 0.1) // Small padding between circles
 
     const root = pack_layout(
-      hierarchy(hierarchy_data).sum((d) => d && `amount` in d ? d.amount : 0),
+      hierarchy<HierarchyData | Child>(hierarchy_data).sum((
+        d,
+      ) => (`amount` in d ? d.amount : 0)),
     )
 
     // Get max radius for font scaling
@@ -68,7 +75,7 @@
 
     return root.leaves().map((node) => {
       const radius = node.r || 0
-      const data = node.data as { element: string; amount: number; color: string }
+      const data = node.data as Child
 
       // Calculate font scale based on bubble size and smart text fitting
       const [min_font_scale, max_font_scale] = [0.6, 2] as const

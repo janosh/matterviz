@@ -19,8 +19,8 @@
     ...rest
   }: {
     export_pane_open?: boolean
-    structure?: AnyStructure | undefined
-    wrapper?: HTMLDivElement | undefined
+    structure?: AnyStructure
+    wrapper?: HTMLDivElement
     scene?: Scene
     camera?: Camera
     png_dpi?: number

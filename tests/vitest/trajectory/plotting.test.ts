@@ -87,7 +87,9 @@ function create_series(
 
 // Test assertion helpers
 function assert_unit_group_constraints(series: DataSeries[]): void {
-  const visible_units = new Set(series.filter((s) => s.visible).map((s) => s.unit))
+  const visible_units = new Set(
+    series.filter((srs) => srs.visible ?? true).map((srs) => srs.unit),
+  )
   expect(visible_units.size).toBeLessThanOrEqual(2)
 }
 
@@ -196,7 +198,7 @@ describe(`generate_plot_series`, () => {
     })
 
     assert_unit_group_constraints(series)
-    expect(series.filter((s) => s.visible).length).toBeGreaterThan(0)
+    expect(series.filter((srs) => srs.visible).length).toBeGreaterThan(0)
   })
 
   describe(`unit group priority system`, () => {
@@ -283,7 +285,7 @@ describe(`toggle_series_visibility`, () => {
     expect(updated_series[2].visible).toBe(true) // Volume (newly shown)
 
     const visible_units = new Set(
-      updated_series.filter((s) => s.visible).map((s) => s.unit),
+      updated_series.filter((srs) => srs.visible).map((srs) => srs.unit),
     )
     expect(visible_units.size).toBe(2)
     expect(visible_units).toEqual(new Set([`eV`, `Å³`]))
@@ -323,7 +325,7 @@ describe(`toggle_series_visibility`, () => {
     expect(updated_series.find((s) => s.label === `Energy`)?.visible).toBe(true)
 
     const visible_units = new Set(
-      updated_series.filter((s) => s.visible).map((s) => s.unit),
+      updated_series.filter((srs) => srs.visible).map((srs) => srs.unit),
     )
     expect(visible_units).toEqual(new Set([`Å`, `eV`]))
   })
@@ -345,7 +347,9 @@ describe(`toggle_series_visibility`, () => {
       expect(updated.find((s) => s.label === `B`)?.visible).toBe(true)
       expect(updated.find((s) => s.label === `Volume`)?.visible).toBe(false)
 
-      const visible_units = new Set(updated.filter((s) => s.visible).map((s) => s.unit))
+      const visible_units = new Set(
+        updated.filter((srs) => srs.visible).map((srs) => srs.unit),
+      )
       expect(visible_units).toEqual(new Set([`eV`, `Å`]))
     })
 
@@ -361,7 +365,9 @@ describe(`toggle_series_visibility`, () => {
       expect(updated.find((s) => s.label === `A`)?.visible).toBe(false)
       expect(updated.find((s) => s.label === `B`)?.visible).toBe(false)
 
-      const visible_units = new Set(updated.filter((s) => s.visible).map((s) => s.unit))
+      const visible_units = new Set(
+        updated.filter((srs) => srs.visible).map((srs) => srs.unit),
+      )
       expect(visible_units).toEqual(new Set([`eV`, `Å³`]))
     })
 
