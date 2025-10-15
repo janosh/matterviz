@@ -23,9 +23,9 @@
     // Control pane state
     export_pane_open?: boolean
     // Trajectory data for generating filename
-    trajectory?: TrajectoryType | undefined
+    trajectory?: TrajectoryType
     // Canvas wrapper for video export
-    wrapper?: HTMLDivElement | undefined
+    wrapper?: HTMLDivElement
     // Filename for export
     filename?: string
     // Export settings

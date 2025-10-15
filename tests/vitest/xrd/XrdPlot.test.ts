@@ -132,42 +132,53 @@ describe(`XrdPlot`, () => {
     {
       desc: `vertical orientation with custom labels`,
       orientation: `vertical` as const,
-      x_label: `Custom 2θ Label`,
-      y_label: `Custom Intensity Label`,
+      x_axis: { label: `Custom 2θ Label` },
+      y_axis: { label: `Custom Intensity Label` },
       expect_x_axis: `Custom 2θ Label`,
       expect_y_axis: `Custom Intensity Label`,
     },
     {
       desc: `horizontal orientation swaps labels`,
       orientation: `horizontal` as const,
-      x_label: `2θ (degrees)`,
-      y_label: `Intensity (a.u.)`,
+      x_axis: { label: `2θ (degrees)` },
+      y_axis: { label: `Intensity (a.u.)` },
       expect_x_axis: `Intensity`, // swapped
       expect_y_axis: `2θ`, // swapped
     },
     {
       desc: `default labels`,
       orientation: undefined,
-      x_label: undefined,
-      y_label: undefined,
+      x_axis: undefined,
+      y_axis: undefined,
       expect_x_axis: `2θ (degrees)`,
       expect_y_axis: `Intensity (a.u.)`,
     },
   ])(
     `axis labels: $desc`,
-    async ({ orientation, x_label, y_label, expect_x_axis, expect_y_axis }) => {
+    async ({ orientation, x_axis, y_axis, expect_x_axis, expect_y_axis }) => {
       const target = create_sized_container()
-      mount(XrdPlot, {
-        target,
-        props: { patterns: pattern, orientation, x_label, y_label },
-      })
+      const props: Record<string, unknown> = { patterns: pattern }
+      if (orientation !== undefined) props.orientation = orientation
+      if (x_axis !== undefined) props.x_axis = x_axis
+      if (y_axis !== undefined) props.y_axis = y_axis
+
+      mount(XrdPlot, { target, props })
 
       await wait_for_plot_render(target)
 
-      const x_axis = target.querySelector(`.x-axis`)
-      const y_axis = target.querySelector(`.y-axis`)
-      expect(x_axis?.textContent).toContain(expect_x_axis)
-      expect(y_axis?.textContent).toContain(expect_y_axis)
+      // Get all text elements in each axis and find the one with the label
+      const x_axis_texts = Array.from(target.querySelectorAll(`.x-axis text`))
+      const y_axis_texts = Array.from(target.querySelectorAll(`.y-axis text`))
+
+      const x_label_text = x_axis_texts.find((el) =>
+        el.textContent?.includes(expect_x_axis)
+      )
+      const y_label_text = y_axis_texts.find((el) =>
+        el.textContent?.includes(expect_y_axis)
+      )
+
+      expect(x_label_text?.textContent).toContain(expect_x_axis)
+      expect(y_label_text?.textContent).toContain(expect_y_axis)
     },
   )
 
@@ -212,7 +223,7 @@ describe(`XrdPlot`, () => {
       props: {
         patterns: pattern,
         annotate_peaks: 2,
-        hkl_format: `compact`,
+        hkl_format: `compact` as const,
         show_angles: true,
       },
       expects: { min_bar_labels: 1, text_match: /[12][01]{2}/ }, // hkl pattern

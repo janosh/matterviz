@@ -1,9 +1,5 @@
 import type { PymatgenStructure } from '$lib'
-import {
-  calc_coordination_numbers,
-  get_coordination_elements,
-  get_coordination_numbers,
-} from '$lib/coordination'
+import { calc_coordination_numbers } from '$lib/coordination'
 import { describe, expect, test } from 'vitest'
 
 describe(`calc_coordination_numbers`, () => {
@@ -78,25 +74,6 @@ describe(`calc_coordination_numbers`, () => {
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
-  })
-
-  test(`get_coordination_numbers should return sorted CN values`, () => {
-    const result = calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
-    const cn_values = get_coordination_numbers(result)
-
-    expect(cn_values.length).toBeGreaterThan(0)
-    // Check if sorted
-    expect(cn_values).toEqual([...cn_values].sort((a, b) => a - b))
-  })
-
-  test(`get_coordination_elements should return sorted element symbols`, () => {
-    const result = calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
-    const elements = get_coordination_elements(result)
-
-    expect(elements).toContain(`Na`)
-    expect(elements).toContain(`Cl`)
-    // Check if sorted
-    expect(elements).toEqual([...elements].sort())
   })
 
   test(`should handle structure with distant atoms using max distance ratio`, () => {

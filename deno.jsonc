@@ -56,6 +56,7 @@
       "src/site/molecules/*.json",
       "src/site/trajectories/*.json",
       "tests/vitest/fixtures/xrd/*.json",
+      "src/site/phonons/*.json",
       "tmp"
     ],
     "indentWidth": 2,

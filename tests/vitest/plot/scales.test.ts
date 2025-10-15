@@ -137,6 +137,28 @@ describe(`scales`, () => {
         padding: 0.1,
         check: (range: [number, number]) => expect(range).toEqual([0, 1]),
       },
+      {
+        points: sample_points,
+        limits: [null, 1000],
+        scale_type: `linear`,
+        is_time: false,
+        padding: 0.05,
+        check: (range: [number, number]) => {
+          expect(range[0]).toBeLessThan(1)
+          expect(range[1]).toBe(1000)
+        },
+      },
+      {
+        points: sample_points,
+        limits: [0, null],
+        scale_type: `linear`,
+        is_time: false,
+        padding: 0.05,
+        check: (range: [number, number]) => {
+          expect(range[0]).toBe(0)
+          expect(range[1]).toBeGreaterThanOrEqual(5)
+        },
+      },
     ])(
       `nice range: $scale_type, $points.length points`,
       ({ points, limits, scale_type, is_time, padding, check }) => {
@@ -191,9 +213,37 @@ describe(`scales`, () => {
       const domain: [number, number] = [0, 100]
       const scale = scaleLinear().domain(domain).range([0, 500])
       const custom_ticks = [10, 30, 50, 70, 90]
+      expect(generate_ticks(domain, `linear`, custom_ticks, scale)).toEqual(custom_ticks)
+    })
 
-      const result = generate_ticks(domain, `linear`, custom_ticks, scale)
-      expect(result).toEqual(custom_ticks)
+    test.each([
+      {
+        name: `filters out-of-domain, sorts`,
+        domain: [0, 100] as [number, number],
+        ticks: { 50: `A`, 10: `B`, 150: `C`, 90: `D`, [-10]: `E`, 30: `F` } as Record<
+          number,
+          string
+        >,
+        expected: [10, 30, 50, 90],
+      },
+      {
+        name: `filters non-finite values`,
+        domain: [0, 100] as [number, number],
+        ticks: { 25: `A`, 50: `B`, NaN: `C`, 75: `D`, [Infinity]: `E` } as Record<
+          number,
+          string
+        >,
+        expected: [25, 50, 75],
+      },
+      {
+        name: `handles reversed domain`,
+        domain: [100, 0] as [number, number],
+        ticks: { 80: `A`, 20: `B`, 150: `C`, 50: `D` } as Record<number, string>,
+        expected: [20, 50, 80],
+      },
+    ])(`object input - $name`, ({ domain, ticks, expected }) => {
+      const scale = scaleLinear().domain(domain).range([0, 500])
+      expect(generate_ticks(domain, `linear`, ticks, scale)).toEqual(expected)
     })
 
     test(`time-based ticks with % format`, () => {

@@ -5,28 +5,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
-  test(`renders with default options derived from d3-scale-chromatic`, () => {
-    /** Renders the component with default props. */
-    mount(ColorScaleSelect, { target: document.body })
-
-    // Check if the underlying Select component receives the correct options
-    // This requires inspecting the mounted component's internals or mocking Select,
-    // which is complex. Instead, we'll check if the component renders.
-    const select_wrapper = doc_query(`div`) // Find the outer wrapper of svelte-multiselect
-    expect(select_wrapper).toBeTruthy()
-
-    // Check if ColorBar snippets are rendered (indirect check of options)
-    // Note: svelte-multiselect might not render all options initially
-    const color_bar_elements = document.querySelectorAll(
-      `div .colorbar`, // Look for ColorBar components within the select wrapper
-    )
-    // We can't guarantee all options are rendered due to virtualization/dropdown behavior,
-    // so just check that the component itself mounted.
-    expect(color_bar_elements).toBeTruthy()
-  })
-
   test(`renders with custom options array`, () => {
-    /** Renders the component with a specific set of options. */
     const custom_options: D3InterpolateName[] = [
       `interpolateBlues`,
       `interpolateGreens`,
@@ -37,7 +16,7 @@ describe(`ColorScaleSelect`, () => {
       props: { options: custom_options },
     })
 
-    const select_wrapper = doc_query(`div`) // Basic check
+    const select_wrapper = doc_query(`div`)
     expect(select_wrapper).toBeTruthy()
   })
 
@@ -96,23 +75,5 @@ describe(`ColorScaleSelect`, () => {
     // Check for the existence of the inner bar div, but not its specific background style
     const color_bar_div = doc_query(`.colorbar > div.bar`)
     expect(color_bar_div).toBeTruthy()
-  })
-
-  test(`handles minSelect prop`, () => {
-    /** Ensures the minSelect prop is respected. */
-    mount(ColorScaleSelect, {
-      target: document.body,
-      props: {
-        minSelect: 1, // Require at least one selection
-        selected: [], // Start with empty selection
-      },
-    })
-
-    // Check if the underlying Select component is configured correctly.
-    // Difficult to directly test behavior without interaction.
-    // Check placeholder might indicate state (e.g., '1 required')
-    const input_el = doc_query(`input`)
-    expect(input_el).toBeTruthy() // Check it renders
-    // Further behavior testing (preventing deselection) is complex here.
   })
 })

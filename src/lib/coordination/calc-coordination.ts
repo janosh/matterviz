@@ -108,17 +108,3 @@ export function calc_coordination_numbers(
     cn_histogram_by_element,
   }
 }
-
-/**
- * Get unique coordination numbers from coordination data.
- */
-export function get_coordination_numbers(data: CoordinationData): number[] {
-  return Array.from(data.cn_histogram.keys()).sort((a, b) => a - b)
-}
-
-/**
- * Get unique elements from coordination data.
- */
-export function get_coordination_elements(data: CoordinationData): string[] {
-  return Array.from(data.cn_by_element.keys()).sort()
-}

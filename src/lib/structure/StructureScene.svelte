@@ -94,7 +94,7 @@
     scene = $bindable(undefined),
     camera = $bindable(undefined),
   }: {
-    structure?: AnyStructure | undefined
+    structure?: AnyStructure
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
     // determined by the atomic radius of the element
@@ -102,8 +102,8 @@
     camera_projection?: `perspective` | `orthographic` // camera projection type
     rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
     // zoom level of the camera
-    max_zoom?: number | undefined
-    min_zoom?: number | undefined
+    max_zoom?: number
+    min_zoom?: number
     zoom_speed?: number // zoom speed. set to 0 to disable zooming.
     pan_speed?: number // pan speed. set to 0 to disable panning.
     show_atoms?: boolean

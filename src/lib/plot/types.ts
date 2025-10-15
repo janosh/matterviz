@@ -259,7 +259,6 @@ export interface AxisConfig {
   format?: string
   ticks?: TicksOption
   scale_type?: ScaleType
-  lim?: [number | null, number | null]
   range?: [number | null, number | null]
   unit?: string
   label_shift?: { x?: number; y?: number }
@@ -337,9 +336,9 @@ export interface PlotControlsProps {
 // Components should declare x_axis, y_axis, display, etc. as $bindable() grouped configs
 export interface BasePlotProps {
   // Axis limits (non-bindable - used for auto-range calculation)
-  x_lim?: [number | null, number | null]
-  y_lim?: [number | null, number | null]
-  y2_lim?: [number | null, number | null]
+  x_range?: [number | null, number | null]
+  y_range?: [number | null, number | null]
+  y2_range?: [number | null, number | null]
   range_padding?: number // Factor to pad auto-detected ranges before nicing (e.g. 0.05 = 5%)
   // Layout (non-bindable)
   padding?: Sides

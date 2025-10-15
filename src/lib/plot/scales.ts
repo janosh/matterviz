@@ -4,8 +4,8 @@ import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 
-// Type for ticks parameter - can be count, array of values, or time interval
-export type TicksOption = number | number[] | TimeInterval
+// Type for ticks parameter - can be count, array of values, time interval, or object mapping values to labels
+export type TicksOption = number | number[] | TimeInterval | Record<number, string>
 
 // Create a scale function based on type, domain, and range
 export function create_scale(
@@ -43,6 +43,15 @@ export function generate_ticks(
 ): number[] {
   const { format, default_count = 8, interval_padding = 0.1 } = options
   const [min_val, max_val] = domain
+
+  // If ticks_option is an object (value-to-label mapping), extract values
+  if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
+    const [domain_min, domain_max] = [Math.min(...domain), Math.max(...domain)]
+    return Object.keys(ticks_option)
+      .map(Number)
+      .filter((val) => Number.isFinite(val) && val >= domain_min && val <= domain_max)
+      .sort((a, b) => a - b)
+  }
 
   // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
@@ -111,18 +120,18 @@ export function calculate_domain(
 export function get_nice_data_range(
   points: Point[],
   get_value: (p: Point) => number,
-  lim: [number | null, number | null],
+  range: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
 ): [number, number] {
-  const [min_lim, max_lim] = lim
+  const [min, max] = range
   const [min_ext, max_ext] = extent(points, get_value)
-  let data_min = min_lim ?? min_ext ?? 0
-  let data_max = max_lim ?? max_ext ?? 1
+  let data_min = min ?? min_ext ?? 0
+  let data_max = max ?? max_ext ?? 1
 
   // Apply padding *only if* limits were NOT provided
-  if (min_lim === null && max_lim === null && points.length > 0) {
+  if (min === null && max === null && points.length > 0) {
     if (data_min !== data_max) {
       // Apply percentage padding based on scale type if there's a range
       const span = data_max - data_min
@@ -213,8 +222,19 @@ export function generate_log_ticks(
       if (power * 2 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 2)
       if (power * 5 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 5)
     })
-    return detailed_ticks
+    return detailed_ticks.filter((t) => t >= min && t <= max)
   }
 
-  return powers
+  return powers.filter((p) => p >= min && p <= max)
+}
+
+// Get custom label for a tick value if provided, otherwise return null
+export function get_tick_label(
+  tick_value: number,
+  ticks_option: TicksOption | undefined,
+): string | null {
+  if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
+    return ticks_option[tick_value] ?? null
+  }
+  return null
 }

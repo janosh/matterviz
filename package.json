@@ -95,6 +95,10 @@
       "types": "./dist/app.css.d.ts",
       "default": "./dist/app.css"
     },
+    "./bands": {
+      "types": "./dist/bands/index.d.ts",
+      "default": "./dist/bands/index.js"
+    },
     "./composition": {
       "types": "./dist/composition.d.ts",
       "default": "./dist/composition.js"

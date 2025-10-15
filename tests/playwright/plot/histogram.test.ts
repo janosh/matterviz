@@ -1213,8 +1213,8 @@ test.describe(`Histogram Component Tests`, () => {
         new CustomEvent(`test-histogram-ticks`, {
           detail: {
             series: [{ label: `Custom Ticks`, y: data, visible: true }],
-            x_ticks: [0, 2.5, 5, 7.5, 10],
-            y_ticks: [0, 5, 10, 15, 20, 25],
+            x_axis: { ticks: [0, 2.5, 5, 7.5, 10] },
+            y_axis: { ticks: [0, 5, 10, 15, 20, 25] },
           },
         }),
       )
@@ -1230,11 +1230,8 @@ test.describe(`Histogram Component Tests`, () => {
     expect(basic_y.ticks.length).toBeGreaterThan(0)
 
     // Test tick consistency during data updates
-    await set_range_value(
-      page,
-      `#basic-single-series > div > input[type="range"]:nth-of-type(2)`,
-      2000,
-    )
+    const selector = `#basic-single-series > div > input[type="range"]:nth-of-type(2)`
+    await set_range_value(page, selector, 2000)
 
     const [updated_x, updated_y] = await Promise.all([
       get_histogram_tick_range(basic_histogram.locator(`g.x-axis`)),

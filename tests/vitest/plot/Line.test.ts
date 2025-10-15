@@ -196,14 +196,14 @@ describe(`Line`, () => {
       [50, 50],
     ]
     const origin: [number, number] = [0, 100]
-    const rest_props = {
+    const rest = {
       'data-testid': `custom-line`,
       'aria-label': `line chart element`,
     }
 
     mount(Line, {
       target: document.body,
-      props: { points, origin, ...rest_props },
+      props: { points, origin, ...rest },
     })
 
     const paths = document.querySelectorAll(`path`)
@@ -211,12 +211,8 @@ describe(`Line`, () => {
 
     // Check that both paths received the rest props
     paths.forEach((path_element) => {
-      expect(path_element.getAttribute(`data-testid`)).toBe(
-        rest_props[`data-testid`],
-      )
-      expect(path_element.getAttribute(`aria-label`)).toBe(
-        rest_props[`aria-label`],
-      )
+      expect(path_element.getAttribute(`data-testid`)).toBe(rest[`data-testid`])
+      expect(path_element.getAttribute(`aria-label`)).toBe(rest[`aria-label`])
     })
   })
 })

@@ -6,19 +6,17 @@
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import {
-    extract_series_color,
-    filter_visible_series,
-    prepare_legend_data,
-  } from './data-transform'
+  import { extract_series_color, prepare_legend_data } from './data-transform'
   import { get_relative_coords } from './interactions'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import {
-    calc_auto_padding,
-    constrain_tooltip_position,
-    measure_text_width,
-  } from './layout'
-  import { create_scale, generate_ticks, get_nice_data_range } from './scales'
+    create_scale,
+    generate_ticks,
+    get_nice_data_range,
+    get_tick_label,
+  } from './scales'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
@@ -28,9 +26,9 @@
     y_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
     y2_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
     display = $bindable(DEFAULTS.histogram.display),
-    x_lim = [null, null],
-    y_lim = [null, null],
-    y2_lim = [null, null],
+    x_range = [null, null],
+    y_range = [null, null],
+    y2_range = [null, null],
     range_padding = 0.05,
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
@@ -94,7 +92,7 @@
     ticks: 5,
     label_shift: { y: 60 },
     tick_label_shift: { x: 8, y: 0 },
-    lim: [null, null],
+    range: [null, null],
     ...y2_axis,
   }
 
@@ -115,20 +113,24 @@
   // Derived data
   let selected_series = $derived(
     mode === `single` && selected_property
-      ? filter_visible_series(series).filter((s) => s.label === selected_property)
-      : filter_visible_series(series),
+      ? series.filter((srs) =>
+        (srs.visible ?? true) && srs.label === selected_property
+      )
+      : series.filter((srs) => srs.visible ?? true),
   )
 
   // Separate series by y-axis
-  let y1_series = $derived(selected_series.filter((s) => (s.y_axis ?? `y1`) === `y1`))
-  let y2_series = $derived(selected_series.filter((s) => s.y_axis === `y2`))
+  let y1_series = $derived(
+    selected_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
+  )
+  let y2_series = $derived(selected_series.filter((srs) => srs.y_axis === `y2`))
 
   let auto_ranges = $derived.by(() => {
     const all_values = selected_series.flatMap((s) => s.y)
     const auto_x = get_nice_data_range(
       all_values.map((val) => ({ x: val, y: 0 })),
       (p) => p.x,
-      x_lim,
+      x_range,
       x_axis.scale_type ?? `linear`,
       range_padding,
       false,
@@ -137,7 +139,7 @@
     // Calculate y-range for a specific set of series
     const calc_y_range = (
       series_list: typeof selected_series,
-      y_limit: typeof y_lim,
+      y_limit: typeof y_range,
       scale_type: `linear` | `log`,
     ) => {
       if (!series_list.length) {
@@ -161,10 +163,14 @@
       return [y_min, y1] as [number, number]
     }
 
-    const y1_range = calc_y_range(y1_series, y_lim, y_axis.scale_type ?? `linear`)
-    const y2_range = calc_y_range(y2_series, y2_lim, y2_axis.scale_type ?? `linear`)
+    const y1_range = calc_y_range(y1_series, y_range, y_axis.scale_type ?? `linear`)
+    const y2_auto_range = calc_y_range(
+      y2_series,
+      y2_range,
+      y2_axis.scale_type ?? `linear`,
+    )
 
-    return { x: auto_x, y: y1_range, y2: y2_range }
+    return { x: auto_x, y: y1_range, y2: y2_auto_range }
   })
 
   // Initialize ranges
@@ -193,15 +199,13 @@
       ? [y2_axis.range[0] ?? auto_ranges.y2[0], y2_axis.range[1] ?? auto_ranges.y2[1]]
       : auto_ranges.y2
 
-    const x_changed =
-      (x_axis.range !== undefined) !== (ranges.initial.x === auto_ranges.x) ||
-      new_x[0] !== ranges.initial.x[0] || new_x[1] !== ranges.initial.x[1]
-    const y_changed =
-      (y_axis.range !== undefined) !== (ranges.initial.y === auto_ranges.y) ||
-      new_y[0] !== ranges.initial.y[0] || new_y[1] !== ranges.initial.y[1]
-    const y2_changed =
-      (y2_axis.range !== undefined) !== (ranges.initial.y2 === auto_ranges.y2) ||
-      new_y2[0] !== ranges.initial.y2[0] || new_y2[1] !== ranges.initial.y2[1]
+    // Only update if values changed (prevent infinite loop)
+    const x_changed = new_x[0] !== ranges.current.x[0] ||
+      new_x[1] !== ranges.current.x[1]
+    const y_changed = new_y[0] !== ranges.current.y[0] ||
+      new_y[1] !== ranges.current.y[1]
+    const y2_changed = new_y2[0] !== ranges.current.y2[0] ||
+      new_y2[1] !== ranges.current.y2[1]
 
     if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
@@ -212,28 +216,21 @@
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
   let pad = $state({ ...default_padding, ...padding })
 
-  // Update padding when format or ticks change, but prevent infinite loop
+  // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
-    const base_pad = { ...default_padding, ...padding }
-    const new_pad = width && height && ticks.y.length
-      ? calc_auto_padding({
-        base_padding: base_pad,
-        y_ticks: ticks.y,
-        y_format: y_axis.format,
-      })
-      : base_pad
-    if (width && height && y2_series.length && ticks.y2.length) {
-      const y2_max_w = Math.max(
-        0,
-        ...ticks.y2.map((tick) =>
-          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
-        ),
-      )
-      const label_pad = y2_axis.label ? 40 : 0
-      new_pad.r = Math.max(new_pad.r, 10 + y2_max_w + label_pad)
-    }
+    const current_ticks_y = untrack(() => ticks.y)
+    const current_ticks_y2 = untrack(() => ticks.y2)
 
-    // Only update if padding actually changed (prevents infinite loop)
+    const new_pad = width && height && current_ticks_y.length
+      ? calc_auto_padding({
+        padding,
+        default_padding,
+        y_axis: { ...y_axis, tick_values: current_ticks_y },
+        y2_axis: { ...y2_axis, tick_values: current_ticks_y2 },
+      })
+      : { ...default_padding, ...padding }
+
+    // Only update if padding actually changed
     if (
       pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
       pad.r !== new_pad.r
@@ -524,6 +521,7 @@
         />
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
+          {@const custom_label = get_tick_label(tick as number, x_axis.ticks)}
           <g class="tick" transform="translate({tick_x}, {height - pad.b})">
             {#if display.x_grid}
               <line
@@ -542,7 +540,7 @@
               stroke-width="1"
             />
             <text y="18" text-anchor="middle" fill={x_axis.color || `var(--text-color)`}>
-              {format_value(tick, x_axis.format)}
+              {custom_label ?? format_value(tick, x_axis.format)}
             </text>
           </g>
         {/each}
@@ -568,6 +566,7 @@
         />
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
+          {@const custom_label = get_tick_label(tick as number, y_axis.ticks)}
           <g class="tick" transform="translate({pad.l}, {tick_y})">
             {#if display.y_grid}
               <line
@@ -591,7 +590,7 @@
               dominant-baseline="central"
               fill={y_axis.color || `var(--text-color)`}
             >
-              {format_value(tick, y_axis.format)}
+              {custom_label ?? format_value(tick, y_axis.format)}
             </text>
           </g>
         {/each}
@@ -623,6 +622,7 @@
           />
           {#each ticks.y2 as tick (tick)}
             {@const tick_y = scales.y2(tick as number)}
+            {@const custom_label = get_tick_label(tick as number, y2_axis.ticks)}
             <g class="tick" transform="translate({width - pad.r}, {tick_y})">
               {#if display.y2_grid}
                 <line
@@ -647,7 +647,7 @@
                 dominant-baseline="central"
                 fill={y2_axis.color || `var(--text-color)`}
               >
-                {format_value(tick, y2_axis.format)}
+                {custom_label ?? format_value(tick, y2_axis.format)}
               </text>
             </g>
           {/each}

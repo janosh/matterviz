@@ -225,10 +225,8 @@
         <Histogram
           series={e_form_data}
           bins={50}
-          x_label=""
-          y_label=""
-          x_format=".2f"
-          y_ticks={3}
+          x_axis={{ label: ``, format: `.2f` }}
+          y_axis={{ label: ``, ticks: 3 }}
           show_legend={false}
           show_controls={false}
           padding={{ t: 5, b: 25, l: 35, r: 5 }}
@@ -242,11 +240,8 @@
         <Histogram
           series={hull_distance_data}
           bins={50}
-          x_label=""
-          y_label=""
-          x_format=".2f"
-          x_lim={[0, null]}
-          y_ticks={3}
+          x_axis={{ label: ``, format: `.2f`, range: [0, null] }}
+          y_axis={{ label: ``, ticks: 3 }}
           show_legend={false}
           show_controls={false}
           padding={{ t: 5, b: 25, l: 35, r: 5 }}

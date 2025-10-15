@@ -100,17 +100,17 @@ describe(`Histogram`, () => {
     expect(max_few).toBeGreaterThanOrEqual(max_many)
   })
 
-  test(`y_lim caps auto count domain`, async () => {
+  test(`y_range caps auto count domain`, async () => {
     document.body.innerHTML = ``
     ensure_client_size()
-    mount_histogram({ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_lim: [0, 3] })
+    mount_histogram({ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_range: [0, 3] })
     await Promise.resolve()
     const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeLessThanOrEqual(3)
   })
 
-  test(`x_lim applies domain; y max tick >= computed max bin count`, async () => {
+  test(`x_range applies domain; y max tick >= computed max bin count`, async () => {
     document.body.innerHTML = ``
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
     ensure_client_size()
@@ -124,7 +124,7 @@ describe(`Histogram`, () => {
 
     document.body.innerHTML = ``
     ensure_client_size()
-    mount_histogram({ series, bins: 5, x_lim: [0, 3] })
+    mount_histogram({ series, bins: 5, x_range: [0, 3] })
     await Promise.resolve()
     const ticks_zoom = get_y_tick_numbers()
     const zoom_max = Math.max(...ticks_zoom)
