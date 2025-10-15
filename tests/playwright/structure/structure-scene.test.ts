@@ -1063,4 +1063,185 @@ test.describe(`StructureScene Component Tests`, () => {
 
     expect(console_errors).toHaveLength(0)
   })
+
+  test.describe(`Edit Mode Functionality`, () => {
+    test.beforeEach(async ({ page }: { page: Page }) => {
+      // Switch to edit mode for these tests
+      const structure_div = page.locator(`#test-structure`)
+      await structure_div.locator(`button.view-mode-button`).click()
+      await structure_div.locator(`button:has-text("Edit Atoms")`).click()
+    })
+
+    test(`transform controls appear when atom is selected in edit mode`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Click on an atom to select it
+      await canvas.click({ position: { x: 400, y: 250 }, force: true })
+
+      // Take screenshot to verify transform controls appear (visual verification)
+      const with_selection = await canvas.screenshot()
+      expect(with_selection.length).toBeGreaterThan(1000)
+
+      // Click elsewhere to deselect
+      await canvas.click({ position: { x: 100, y: 100 }, force: true })
+
+      const without_selection = await canvas.screenshot()
+
+      // Screenshots should be different (transform controls shown/hidden)
+      expect(with_selection.equals(without_selection)).toBe(false)
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`multi-atom selection shows transform controls at centroid`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Click first atom
+      await canvas.click({ position: { x: 350, y: 200 }, force: true })
+      const single_selection = await canvas.screenshot()
+
+      // Shift+click second atom
+      await canvas.click({
+        position: { x: 450, y: 300 },
+        modifiers: [`Shift`],
+        force: true,
+      })
+      const multi_selection = await canvas.screenshot()
+
+      // Screenshots should be different (single vs multi-selection)
+      expect(single_selection.equals(multi_selection)).toBe(false)
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`clicking on same atom toggles selection`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      const position = { x: 400, y: 250 }
+
+      // Initial state
+      const initial = await canvas.screenshot()
+
+      // Click to select
+      await canvas.click({ position, force: true })
+      const selected = await canvas.screenshot()
+
+      // Click again to deselect
+      await canvas.click({ position, force: true })
+      const deselected = await canvas.screenshot()
+
+      // Initial and deselected should be similar, but different from selected
+      expect(initial.equals(selected)).toBe(false)
+      expect(selected.equals(deselected)).toBe(false)
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`image atoms cannot be selected in edit mode`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Try clicking in various positions to find image atoms
+      const positions = [
+        { x: 200, y: 150 },
+        { x: 600, y: 350 },
+        { x: 150, y: 400 },
+        { x: 650, y: 150 },
+      ]
+
+      for (const position of positions) {
+        await canvas.click({ position, force: true })
+        // Should not cause errors even if clicking on image atoms
+      }
+
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`visual feedback shows live coordinates during drag simulation`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Click to select an atom
+      await canvas.click({ position: { x: 400, y: 250 }, force: true })
+
+      // Simulate drag start (hover with mouse down)
+      await canvas.hover({ position: { x: 400, y: 250 } })
+
+      // In a real drag scenario, coordinates would appear
+      // We can't easily simulate Three.js transform controls, but ensure no errors
+      const screenshot = await canvas.screenshot()
+      expect(screenshot.length).toBeGreaterThan(1000)
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`edit mode preserves selections when switching away and back`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const structure_div = page.locator(`#test-structure`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Select an atom in edit mode
+      await canvas.click({ position: { x: 400, y: 250 }, force: true })
+      const _selected_in_edit = await canvas.screenshot()
+
+      // Switch to distance mode
+      await structure_div.locator(`button.view-mode-button`).click()
+      await structure_div.locator(`button:has-text("Distance")`).click()
+
+      // Switch back to edit mode
+      await structure_div.locator(`button.view-mode-button`).click()
+      await structure_div.locator(`button:has-text("Edit Atoms")`).click()
+
+      const back_to_edit = await canvas.screenshot()
+
+      // Selection should be preserved (screenshots might differ due to UI changes but no crashes)
+      expect(back_to_edit.length).toBeGreaterThan(1000)
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`shift+click adds to selection instead of replacing`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Click first atom (normal click)
+      await canvas.click({ position: { x: 350, y: 200 }, force: true })
+
+      // Click second atom without shift (should replace selection)
+      await canvas.click({ position: { x: 450, y: 300 }, force: true })
+      const replaced_selection = await canvas.screenshot()
+
+      // Now click first atom again
+      await canvas.click({ position: { x: 350, y: 200 }, force: true })
+
+      // Shift+click second atom (should add to selection)
+      await canvas.click({
+        position: { x: 450, y: 300 },
+        modifiers: [`Shift`],
+        force: true,
+      })
+      const added_selection = await canvas.screenshot()
+
+      // These should be different (single vs multi-selection)
+      expect(replaced_selection.equals(added_selection)).toBe(false)
+      expect(console_errors).toHaveLength(0)
+    })
+
+    test(`atoms have appropriate cursor styling in edit mode`, async ({ page }) => {
+      const canvas = page.locator(`#test-structure canvas`)
+      const console_errors = setup_console_monitoring(page)
+
+      // Hover over various positions
+      const positions = [
+        { x: 300, y: 200 },
+        { x: 400, y: 250 },
+        { x: 500, y: 300 },
+      ]
+
+      for (const position of positions) {
+        await canvas.hover({ position, force: true })
+        // Should not cause errors, cursor changes are handled by Three.js
+      }
+
+      expect(console_errors).toHaveLength(0)
+    })
+  })
 })

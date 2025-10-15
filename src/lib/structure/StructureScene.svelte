@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
+  import type { AnyStructure, BondPair, ElementSymbol, Site, Vec3 } from '$lib'
   import { atomic_radii, axis_colors, element_data, neg_axis_colors } from '$lib'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
@@ -14,10 +14,11 @@
   } from '$lib/structure/measure'
   import { T, useThrelte } from '@threlte/core'
   import * as Extras from '@threlte/extras'
+  import { TransformControls } from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Mesh, Scene } from 'three'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
@@ -93,19 +94,21 @@
     rotation = DEFAULTS.structure.rotation,
     scene = $bindable(undefined),
     camera = $bindable(undefined),
+    original_atom_count,
+    on_atom_move,
+    on_operation_start,
+    on_operation_end,
   }: {
     structure?: AnyStructure | undefined
-    atom_radius?: number // scale factor for atomic radii
-    same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
-    // determined by the atomic radius of the element
-    camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
-    camera_projection?: `perspective` | `orthographic` // camera projection type
-    rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
-    // zoom level of the camera
+    atom_radius?: number
+    same_size_atoms?: boolean
+    camera_position?: [x: number, y: number, z: number]
+    camera_projection?: `perspective` | `orthographic`
+    rotation_damping?: number
     max_zoom?: number | undefined
     min_zoom?: number | undefined
-    zoom_speed?: number // zoom speed. set to 0 to disable zooming.
-    pan_speed?: number // pan speed. set to 0 to disable panning.
+    zoom_speed?: number
+    pan_speed?: number
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
@@ -134,22 +137,33 @@
     site_label_bg_color?: string
     site_label_color?: string
     site_label_padding?: number
-    camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
+    camera_is_moving?: boolean
     orbit_controls?: ComponentProps<typeof Extras.OrbitControls>[`ref`]
-    width?: number // Viewer dimensions for responsive zoom
+    width?: number
     height?: number
-    // measurement props
-    measure_mode?: `distance` | `angle`
+    measure_mode?: `distance` | `angle` | `edit`
     selected_sites?: number[]
     measured_sites?: number[]
     selection_highlight_color?: string
-    // Support for active highlight group with different color
     active_sites?: number[]
     active_highlight_color?: string
-    rotation?: Vec3 // rotation control prop
-    // Expose scene and camera for external use (e.g., export pane)
+    rotation?: Vec3
     scene?: Scene
     camera?: Camera
+    original_atom_count?: number
+    on_atom_move?: (
+      event: {
+        detail: {
+          site_idx: number
+          new_position: Vec3
+          new_abc?: Vec3
+          element?: ElementSymbol
+          delete_site_idx?: number
+        }
+      },
+    ) => void
+    on_operation_start?: () => void
+    on_operation_end?: () => void
   } = $props()
 
   // Get scene and camera from Threlte context and expose them
@@ -164,9 +178,118 @@
   let active_tooltip = $state<`atom` | `bond` | null>(null)
   let hovered_bond_data: BondPair | null = $state(null)
 
+  // Transform controls state
+  let is_transforming = $state(false)
+  let transform_object = $state<Mesh | undefined>(undefined)
+  let has_saved_history_for_drag = $state(false)
+
+  // Context menu and add-atom UI can be implemented here if needed in future
+
+  // Helper functions
+  const get_material_props = (item: { color: string; is_image_atom?: boolean }) => ({
+    color: item.color,
+    opacity: item.is_image_atom && measure_mode === `edit` ? 0.4 : 1.0,
+    transparent: item.is_image_atom && measure_mode === `edit`,
+  })
+
+  const get_atom_handlers = (atom: typeof atom_data[0]) => ({
+    onpointerenter: () => {
+      hovered_idx = atom.site_idx
+      active_tooltip = `atom`
+      hovered_bond_data = null
+    },
+    onpointerleave: () => {
+      hovered_idx = null
+      active_tooltip = null
+    },
+    onclick: (event: MouseEvent) => {
+      if (measure_mode === `edit` && atom.is_image_atom) return
+      toggle_selection(atom.site_idx, event)
+    },
+    style: atom.is_image_atom && measure_mode === `edit`
+      ? `cursor: not-allowed`
+      : `cursor: pointer`,
+  })
+
+  // Function to update atom position after transformation
+  function update_atom_position(
+    site_idx: number,
+    new_position: Vec3,
+  ) {
+    if (!structure?.sites?.[site_idx] || !on_atom_move) return
+
+    let new_abc: Vec3 | undefined
+    if (lattice) {
+      try {
+        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
+        const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+        const raw_abc = math.mat3x3_vec3_multiply(lattice_inv, new_position)
+        new_abc = raw_abc.map((coord) => coord - Math.floor(coord)) as Vec3
+      } catch {
+        console.warn(
+          `Failed to calculate fractional coordinates for site ${site_idx}`,
+        )
+      }
+    }
+
+    on_atom_move({
+      detail: {
+        site_idx,
+        new_position: [...new_position] as Vec3,
+        new_abc,
+      },
+    })
+  }
+
+  // Function to update multiple atoms at once (for batch operations)
+  function update_multiple_atoms(
+    updates: Array<{ site_idx: number; new_position: Vec3 }>,
+  ) {
+    if (!on_atom_move || updates.length === 0) return
+
+    // For batch updates, just update all atoms without individual history saves
+    for (const { site_idx, new_position } of updates) {
+      update_atom_position(site_idx, new_position)
+    }
+  }
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
 
+    // In edit mode, allow multi-selection with Shift+Click
+    if (measure_mode === `edit`) {
+      // Disallow selecting image atoms when editing
+      if (site_index >= (base_atom_count || 0)) return
+      const is_currently_selected = selected_sites.includes(site_index)
+      const is_shift_click = evt instanceof MouseEvent && evt.shiftKey
+
+      if (is_shift_click) {
+        // Multi-selection mode
+        if (is_currently_selected) {
+          // Remove from selection
+          selected_sites = selected_sites.filter((idx) => idx !== site_index)
+          measured_sites = measured_sites.filter((idx) => idx !== site_index)
+        } else {
+          // Add to selection
+          selected_sites = [...selected_sites, site_index]
+          measured_sites = [...measured_sites, site_index]
+        }
+      } else {
+        // Single selection mode - clear previous selections and select only this atom
+        if (is_currently_selected) {
+          // Deselect this atom
+          selected_sites = []
+          measured_sites = []
+        } else {
+          // Select only this atom (clear others)
+          selected_sites = [site_index]
+          measured_sites = [site_index]
+        }
+      }
+      return
+    }
+
+    // Normal measurement mode behavior
     // Check if adding this site would exceed the soft cap
     if (
       !measured_sites.includes(site_index) &&
@@ -192,11 +315,22 @@
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
       measured_sites = []
+      selected_sites = []
       return
     }
     untrack(() => {
       measured_sites = measured_sites.filter((idx) => idx >= 0 && idx < count)
+      selected_sites = selected_sites.filter((idx) => idx >= 0 && idx < count)
     })
+  })
+
+  // Clear selection when switching away from edit mode or when switching between modes
+  $effect(() => {
+    // When switching to edit mode, limit selection to one atom
+    if (measure_mode === `edit` && selected_sites.length > 1) {
+      selected_sites = selected_sites.slice(0, 1)
+      measured_sites = measured_sites.slice(0, 1)
+    }
   })
 
   Extras.interactivity()
@@ -205,6 +339,11 @@
   })
   let lattice = $derived(
     structure && `lattice` in structure ? structure.lattice : null,
+  )
+
+  // Track number of non-image atoms to distinguish image atoms reliably
+  let base_atom_count = $derived(
+    original_atom_count || (structure?.sites ? structure.sites.length : 0),
   )
 
   // Get rotation target: cell center for crystalline structures, center of mass for molecular systems
@@ -267,12 +406,19 @@
 
   let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
     if (!show_atoms || !structure?.sites) return []
+
+    // Determine which atoms are image atoms
+    const local_base_count = base_atom_count
+
     // Build atom data with partial occupancy handling
     return structure.sites.flatMap((site, site_idx) => {
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
         (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
         0,
       ) * atom_radius
+
+      // Check if this is an image atom
+      const is_image_atom = site_idx >= local_base_count
 
       let start_angle = 0
       return site.species.map(({ element, occu }) => ({
@@ -285,6 +431,7 @@
         has_partial_occupancy: occu < 1,
         start_phi: 2 * Math.PI * start_angle,
         end_phi: 2 * Math.PI * (start_angle += occu),
+        is_image_atom, // Add flag to identify image atoms
       }))
     })
   })
@@ -325,9 +472,17 @@
         .reduce(
           (groups, atom) => {
             const { element, radius, color } = atom
-            const key = `${element}-${format_num(radius, `.3~`)}`
+            const key = `${element}-${format_num(radius, `.3~`)}-${
+              atom.is_image_atom ? `image` : `base`
+            }`
             const bucket = groups[key] ||
-              (groups[key] = { element, radius, color, atoms: [] })
+              (groups[key] = {
+                element,
+                radius,
+                color,
+                is_image_atom: atom.is_image_atom,
+                atoms: [],
+              })
             bucket.atoms.push(atom)
             return groups
           },
@@ -337,7 +492,8 @@
               element: string
               radius: number
               color: string
-              atoms: (typeof atom_data)[number][]
+              is_image_atom: boolean
+              atoms: typeof atom_data
             }
           >,
         ),
@@ -485,30 +641,21 @@
     <T.Group position={math.scale(rotation_target, -1)}>
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
-        {#each instanced_atom_groups as group (group.element + group.radius)}
+        {#each instanced_atom_groups as
+          group
+          (group.element + group.radius + group.is_image_atom)
+        }
           <Extras.InstancedMesh
-            key="{group.element}-{group.radius}-{group.atoms.length}"
+            key="{group.element}-{group.radius}-{group.atoms.length}-{group.is_image_atom}"
             range={group.atoms.length}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-            <T.MeshStandardMaterial color={group.color} />
+            <T.MeshStandardMaterial {...get_material_props(group)} />
             {#each group.atoms as atom (atom.site_idx)}
               <Extras.Instance
                 position={atom.position}
                 scale={atom.radius}
-                onpointerenter={() => {
-                  hovered_idx = atom.site_idx
-                  active_tooltip = `atom`
-                  hovered_bond_data = null
-                }}
-                onpointerleave={() => {
-                  hovered_idx = null
-                  active_tooltip = null
-                }}
-                onclick={(event: MouseEvent) => {
-                  const site_idx = atom.site_idx
-                  toggle_selection(site_idx, event)
-                }}
+                {...get_atom_handlers(atom)}
               />
             {/each}
           </Extras.InstancedMesh>
@@ -522,19 +669,7 @@
           <T.Group
             position={atom.position}
             scale={atom.radius}
-            onpointerenter={() => {
-              hovered_idx = atom.site_idx
-              active_tooltip = `atom`
-              hovered_bond_data = null
-            }}
-            onpointerleave={() => {
-              hovered_idx = null
-              active_tooltip = null
-            }}
-            onclick={(event: MouseEvent) => {
-              const site_idx = atom.site_idx
-              toggle_selection(site_idx, event)
-            }}
+            {...get_atom_handlers(atom)}
           >
             <T.Mesh>
               <T.SphereGeometry
@@ -546,17 +681,17 @@
                   2 * Math.PI * atom.occupancy,
                 ]}
               />
-              <T.MeshStandardMaterial color={atom.color} />
+              <T.MeshStandardMaterial {...get_material_props(atom)} />
             </T.Mesh>
 
             {#if atom.has_partial_occupancy}
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial {...get_material_props(atom)} side={2} />
               </T.Mesh>
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial {...get_material_props(atom)} side={2} />
               </T.Mesh>
             {/if}
           </T.Group>
@@ -617,7 +752,10 @@
       {#each [
           {
             kind: `hover`,
-            site: hovered_site,
+            site: measure_mode === `edit` && hovered_idx != null &&
+                hovered_idx >= (base_atom_count || 0)
+              ? null
+              : hovered_site,
             opacity: 0.28,
             color: `white`,
             site_idx: hovered_idx,
@@ -650,7 +788,11 @@
             position={xyz}
             scale={1.2 * highlight_radius}
             onclick={(event: MouseEvent) => {
-              if (site_idx !== null && Number.isInteger(site_idx)) {
+              if (
+                site_idx !== null &&
+                Number.isInteger(site_idx) &&
+                !(measure_mode === `edit` && site_idx >= (base_atom_count || 0))
+              ) {
                 toggle_selection(site_idx, event)
               }
             }}
@@ -670,7 +812,8 @@
       {/each}
 
       <!-- selection order labels (1, 2, 3, ...) for measured sites -->
-      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+      {#if structure?.sites && (measured_sites?.length ?? 0) > 0 &&
+          measure_mode !== `edit`}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
@@ -718,8 +861,117 @@
         </CanvasTooltip>
       {/if}
 
+      <!-- Drag coordinate overlay removed to avoid obstructing the atom during edits -->
+
       {#if lattice}
         <Lattice matrix={lattice.matrix} {...lattice_props} />
+      {/if}
+
+      <!-- Transform controls for editing atoms in edit mode -->
+      {#if measure_mode === `edit` && selected_sites.length > 0}
+        {@const selected_atoms = selected_sites.map((idx) => structure?.sites?.[idx])
+          .filter(Boolean)}
+        {#if selected_atoms.length > 0}
+          {@const centroid = selected_atoms.length === 1 ? selected_atoms[0]!.xyz : [
+          selected_atoms.reduce((sum, atom) => sum + (atom?.xyz[0] || 0), 0) /
+          selected_atoms.length,
+          selected_atoms.reduce((sum, atom) => sum + (atom?.xyz[1] || 0), 0) /
+          selected_atoms.length,
+          selected_atoms.reduce((sum, atom) => sum + (atom?.xyz[2] || 0), 0) /
+          selected_atoms.length,
+        ] as Vec3}
+
+          <!-- Invisible target object for transform controls -->
+          <T.Mesh
+            position={centroid}
+            bind:ref={transform_object}
+            onpointerenter={() => {}}
+          >
+            <T.SphereGeometry args={[0.01, 4, 4]} />
+            <T.MeshBasicMaterial transparent opacity={0} />
+          </T.Mesh>
+
+          <!-- Transform controls that manipulate the target object -->
+          <TransformControls
+            object={transform_object}
+            translationSnap={0.1}
+            rotationSnap={Math.PI / 8}
+            scaleSnap={0.1}
+            showX={true}
+            showY={true}
+            showZ={true}
+            enabled={true}
+            size={1.2}
+            space="world"
+            onchange={() => {
+              // Ensure we enter continuous-operation mode BEFORE emitting any position updates
+              if (!is_transforming) {
+                is_transforming = true
+                has_saved_history_for_drag = false
+                if (orbit_controls) orbit_controls.enabled = false
+                on_operation_start?.()
+              }
+              if (transform_object?.position && selected_atoms.length > 0) {
+                const { x, y, z } = transform_object.position
+                const new_centroid = [x, y, z] as Vec3
+                const offset = [
+                  new_centroid[0] - centroid[0],
+                  new_centroid[1] - centroid[1],
+                  new_centroid[2] - centroid[2],
+                ] as Vec3
+
+                // Prepare batch updates for all selected atoms
+                const updates = selected_sites
+                  .map((site_idx) => {
+                    const original_pos = structure?.sites?.[site_idx]?.xyz
+                    if (!original_pos) return null
+                    return {
+                      site_idx,
+                      new_position: [
+                        original_pos[0] + offset[0],
+                        original_pos[1] + offset[1],
+                        original_pos[2] + offset[2],
+                      ] as Vec3,
+                    }
+                  })
+                  .filter(Boolean) as Array<{ site_idx: number; new_position: Vec3 }>
+
+                // Save history only on first change of this drag operation
+                const should_save_history = !has_saved_history_for_drag
+                if (should_save_history) {
+                  has_saved_history_for_drag = true
+                }
+
+                // Apply batch update
+                if (updates.length === 1) {
+                  update_atom_position(
+                    updates[0].site_idx,
+                    updates[0].new_position,
+                  )
+                } else if (updates.length > 1) {
+                  update_multiple_atoms(updates)
+                }
+              }
+            }}
+            ondragstart={() => {
+              if (!is_transforming) {
+                is_transforming = true
+                has_saved_history_for_drag = false
+                if (orbit_controls) orbit_controls.enabled = false
+
+                // Notify parent that a continuous operation is starting
+                on_operation_start?.()
+              }
+            }}
+            ondragend={() => {
+              is_transforming = false
+              if (orbit_controls) orbit_controls.enabled = true
+
+              // Notify parent that the continuous operation has ended
+              on_operation_end?.()
+            }}
+          />
+        {/if}
       {/if}
 
       <!-- Measurement overlays for measured sites -->
