@@ -247,9 +247,9 @@
         padding,
         default_padding,
         y_ticks: y_tick_values,
-        y_format: y_axis.format!,
+        y_format: y_axis.format,
         y2_ticks: y2_tick_values,
-        y2_format: y2_axis.format!,
+        y2_format: y2_axis.format,
       })
       : { ...default_padding, ...padding }
 

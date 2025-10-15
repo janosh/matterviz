@@ -1,7 +1,7 @@
 import { ScatterPlot } from '$lib'
 import type { DataSeries } from '$lib/plot'
 import { mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -43,30 +43,28 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([
-    { x_ticks: -10, y_ticks: -5, x_format: `.0f`, y_format: `.0f` },
+    {
+      x: [0, 10, 20, 30, 40, 50],
+      x_axis: { ticks: -10, format: `.0f` },
+      y_axis: { ticks: -5, format: `.0f` },
+    },
     {
       x: Array.from(
         { length: 12 },
         (_, idx) => new Date().setMonth(new Date().getMonth() - (12 - idx)),
       ),
-      x_ticks: `month`,
-      x_format: `%b %Y`,
+      x_axis: { ticks: `month`, format: `%b %Y` },
     },
   ])(
     `tick formatting`,
-    ({ x, x_ticks, y_ticks = 5, x_format = `.0f`, y_format = `.0f` }) => {
+    ({ x, x_axis, y_axis }) => {
+      const y = Array.from({ length: 6 }, () => Math.random() * 100)
       mount(ScatterPlot, {
         target: document.body,
         props: {
-          series: [{
-            x: x ?? [0, 10, 20, 30, 40, 50],
-            y: Array.from({ length: 6 }, () => Math.random() * 100),
-            point_style: { fill: `steelblue`, radius: 5 },
-          }],
-          x_ticks,
-          y_ticks,
-          x_format,
-          y_format,
+          series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
+          x_axis,
+          y_axis,
         },
       })
     },
@@ -81,18 +79,13 @@ describe(`ScatterPlot`, () => {
           y: [10, 20, 30, 40, 50],
           point_style: { fill: `steelblue`, radius: 5 },
         }],
-        x_label: `Time (s)`,
-        y_label: `Speed`,
+        x_axis: { label: `Time (s)` },
+        y_labels: { label: `Speed` },
         y_unit: `m/s`,
         tooltip_point: { x: 3, y: 30, series_idx: 0, point_idx: 2 },
         hovered: true,
       },
     })
-  })
-
-  test(`events`, () => {
-    const change = vi.fn()
-    mount(ScatterPlot, { target: document.body, props: { series: [basic], change } })
   })
 
   test(`invalid data`, () => {
@@ -138,8 +131,8 @@ describe(`ScatterPlot`, () => {
         series_idx: 0,
         point_idx: 0,
       },
-      x_format: `%b %d, %Y`,
-      y_format: `.2f`,
+      x_axis: { format: `%b %d, %Y` },
+      y_axis: { format: `.2f` },
     },
     { tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 } },
   ])(`tooltip format`, (props) => {

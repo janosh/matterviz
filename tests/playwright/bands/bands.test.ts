@@ -17,10 +17,8 @@ test.describe(`Bands Component Tests`, () => {
     // Check axes and high-symmetry point labels
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
-    const x_labels = await plot.locator(`g.x-axis text`).allTextContents()
-    expect(x_labels.some((text) => text.includes(`Γ`) || text.includes(`X`))).toBe(
-      true,
-    )
+    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join()
+    expect(x_labels.includes(`Γ`) || x_labels.includes(`X`)).toBe(true)
   })
 
   test(`renders multiple band structures with toggleable legend`, async ({ page }) => {

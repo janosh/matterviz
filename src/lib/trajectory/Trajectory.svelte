@@ -82,7 +82,7 @@
     ...rest
   }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
     // trajectory data - can be provided directly or loaded from file
-    trajectory?: TrajectoryType | undefined
+    trajectory?: TrajectoryType
     // URL to load trajectory from (alternative to providing trajectory directly)
     data_url?: string
     // current step index being displayed
@@ -132,7 +132,7 @@
     // - negative number: spacing between ticks (e.g., -10 = every 10th step)
     // - array: exact step indices to label
     // - undefined: no labels
-    step_labels?: number | number[] | undefined
+    step_labels?: number | number[]
     // explicit mapping from property keys to display labels
     property_labels?: Record<string, string>
     // units configuration - developers can override these (deprecated - use property_labels instead)

@@ -132,42 +132,42 @@ describe(`XrdPlot`, () => {
     {
       desc: `vertical orientation with custom labels`,
       orientation: `vertical` as const,
-      x_label: `Custom 2θ Label`,
-      y_label: `Custom Intensity Label`,
+      x_axis: { label: `Custom 2θ Label` },
+      y_axis: { label: `Custom Intensity Label` },
       expect_x_axis: `Custom 2θ Label`,
       expect_y_axis: `Custom Intensity Label`,
     },
     {
       desc: `horizontal orientation swaps labels`,
       orientation: `horizontal` as const,
-      x_label: `2θ (degrees)`,
-      y_label: `Intensity (a.u.)`,
+      x_axis: { label: `2θ (degrees)` },
+      y_axis: { label: `Intensity (a.u.)` },
       expect_x_axis: `Intensity`, // swapped
       expect_y_axis: `2θ`, // swapped
     },
     {
       desc: `default labels`,
       orientation: undefined,
-      x_label: undefined,
-      y_label: undefined,
+      x_axis: { label: undefined },
+      y_axis: { label: undefined },
       expect_x_axis: `2θ (degrees)`,
       expect_y_axis: `Intensity (a.u.)`,
     },
   ])(
     `axis labels: $desc`,
-    async ({ orientation, x_label, y_label, expect_x_axis, expect_y_axis }) => {
+    async ({ orientation, x_axis, y_axis, expect_x_axis, expect_y_axis }) => {
       const target = create_sized_container()
       mount(XrdPlot, {
         target,
-        props: { patterns: pattern, orientation, x_label, y_label },
+        props: { patterns: pattern, orientation, x_axis, y_axis },
       })
 
       await wait_for_plot_render(target)
 
-      const x_axis = target.querySelector(`.x-axis`)
-      const y_axis = target.querySelector(`.y-axis`)
-      expect(x_axis?.textContent).toContain(expect_x_axis)
-      expect(y_axis?.textContent).toContain(expect_y_axis)
+      const x_axis_node = target.querySelector(`.x-axis`)
+      const y_axis_node = target.querySelector(`.y-axis`)
+      expect(x_axis_node?.textContent).toContain(expect_x_axis)
+      expect(y_axis_node?.textContent).toContain(expect_y_axis)
     },
   )
 

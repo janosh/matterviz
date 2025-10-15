@@ -85,7 +85,7 @@
     ...rest
   }:
     & {
-      structure?: AnyStructure | undefined
+      structure?: AnyStructure
       scene_props?: ComponentProps<typeof StructureScene>
       // only show the buttons when hovering over the canvas on desktop screens
       // mobile screens don't have hover, so by default the buttons are always
@@ -123,7 +123,7 @@
       // explicit measured sites for distance/angle overlays
       measured_sites?: number[]
       // expose the displayed structure (with image atoms and/or supercell) for external use
-      displayed_structure?: AnyStructure | undefined
+      displayed_structure?: AnyStructure
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       children?: Snippet<[{ structure?: AnyStructure }]>
