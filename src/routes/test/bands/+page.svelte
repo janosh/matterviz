@@ -44,6 +44,32 @@
       [3.5, 4.5, 5.5, 6.0],
     ],
   }
+
+  // Band structure with different segments (GAMMA-K, K-M instead of GAMMA-X, X-M)
+  const bs_alt_path: BaseBandStructure = {
+    ...mock_band_structure,
+    qpoints: [
+      { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
+      { label: `K`, frac_coords: [0.333, 0.333, 0.0], distance: 1.0 },
+      { label: `M`, frac_coords: [0.5, 0.5, 0.0], distance: 1.8 },
+    ],
+    branches: [
+      { start_index: 0, end_index: 1, name: `GAMMA-K` },
+      { start_index: 1, end_index: 2, name: `K-M` },
+    ],
+    labels_dict: {
+      GAMMA: [0.0, 0.0, 0.0],
+      K: [0.333, 0.333, 0.0],
+      M: [0.5, 0.5, 0.0],
+    },
+    distance: [0.0, 1.0, 1.8],
+    bands: [
+      [0.2, 1.5, 2.8],
+      [1.2, 2.5, 3.8],
+      [2.2, 3.5, 4.8],
+      [3.2, 4.5, 5.8],
+    ],
+  }
 </script>
 
 <h1>Bands Component Test Page</h1>
@@ -68,6 +94,12 @@
 
 <h2 id="no-legend">No Legend</h2>
 <Bands band_structs={{ BS1: mock_band_structure, BS2: bs2 }} show_legend={false} />
+
+<h2 id="union-non-canonical">Union Mode with Non-Canonical Segments</h2>
+<Bands
+  band_structs={{ canonical: mock_band_structure, alt_path: bs_alt_path }}
+  path_mode="union"
+/>
 
 <style>
   h1 {

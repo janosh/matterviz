@@ -71,4 +71,14 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toBeVisible()
     expect(await plot.boundingBox()).toBeTruthy()
   })
+
+  test(`renders non-canonical segments in union mode`, async ({ page }) => {
+    const plot = page.locator(`#union-non-canonical + .scatter`)
+    await expect(plot).toBeVisible()
+    await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
+
+    // Check non-canonical segment label appears (K only in alt_path)
+    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join()
+    expect(x_labels).toContain(`K`)
+  })
 })
