@@ -91,7 +91,6 @@ export function pbc_dist(
 }
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
-  /** Calculate the inverse of a 3x3 matrix */
   const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix
 
   const det = det_3x3(matrix)
@@ -154,6 +153,13 @@ export function add<T extends NdVector>(...vecs: T[]): T {
     }
   }
   return result as T
+}
+
+export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
+  if (vec1.length !== vec2.length) {
+    throw new Error(`Vectors must be of same length`)
+  }
+  return vec1.map((val, idx) => val - vec2[idx]) as T
 }
 
 export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[][] {

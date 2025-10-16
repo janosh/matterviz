@@ -20,3 +20,5 @@ src/site/trajectories/large
 # vscode extension
 *.vsix
 !extensions/vscode/.vscode/
+
+src/site/phonons/*.json*

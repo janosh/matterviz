@@ -13,7 +13,7 @@
     MAX_SELECTED_SITES,
   } from '$lib/structure/measure'
   import { T, useThrelte } from '@threlte/core'
-  import * as Extras from '@threlte/extras'
+  import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
@@ -113,7 +113,7 @@
     show_force_vectors?: boolean
     force_scale?: number
     force_color?: string
-    gizmo?: boolean | ComponentProps<typeof Extras.Gizmo>
+    gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     hovered_idx?: number | null
     hovered_site?: Site | null
     float_fmt?: string
@@ -135,7 +135,7 @@
     site_label_color?: string
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
-    orbit_controls?: ComponentProps<typeof Extras.OrbitControls>[`ref`]
+    orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -199,7 +199,7 @@
     })
   })
 
-  Extras.interactivity()
+  extras.interactivity()
   $effect.pre(() => {
     hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
   })
@@ -416,7 +416,7 @@
 {#snippet site_label_snippet(position: Vec3, site_idx: number)}
   {@const site = structure!.sites[site_idx]}
   {@const pos = math.add(position, site_label_offset)}
-  <Extras.HTML center position={pos}>
+  <extras.HTML center position={pos}>
     {#if atom_label}
       {@render atom_label(site, site_idx)}
     {:else}
@@ -454,14 +454,14 @@
         {/if}
       </span>
     {/if}
-  </Extras.HTML>
+  </extras.HTML>
 {/snippet}
 
 {#if camera_projection === `perspective`}
   <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
-    <Extras.OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<Extras.Gizmo {...gizmo_props} />{/if}
-    </Extras.OrbitControls>
+    <extras.OrbitControls {...orbit_controls_props}>
+      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
+    </extras.OrbitControls>
   </T.PerspectiveCamera>
 {:else}
   <T.OrthographicCamera
@@ -470,9 +470,9 @@
     zoom={computed_zoom}
     near={-100}
   >
-    <Extras.OrbitControls {...orbit_controls_props}>
-      {#if gizmo}<Extras.Gizmo {...gizmo_props} />{/if}
-    </Extras.OrbitControls>
+    <extras.OrbitControls {...orbit_controls_props}>
+      {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
+    </extras.OrbitControls>
   </T.OrthographicCamera>
 {/if}
 
@@ -486,14 +486,14 @@
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
         {#each instanced_atom_groups as group (group.element + group.radius)}
-          <Extras.InstancedMesh
+          <extras.InstancedMesh
             key="{group.element}-{group.radius}-{group.atoms.length}"
             range={group.atoms.length}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
             <T.MeshStandardMaterial color={group.color} />
             {#each group.atoms as atom (atom.site_idx)}
-              <Extras.Instance
+              <extras.Instance
                 position={atom.position}
                 scale={atom.radius}
                 onpointerenter={() => {
@@ -511,7 +511,7 @@
                 }}
               />
             {/each}
-          </Extras.InstancedMesh>
+          </extras.InstancedMesh>
         {/each}
 
         <!-- Regular rendering for partial occupancy atoms -->
@@ -677,9 +677,9 @@
             <!-- shift selected site labels down to avoid overlapping regular site labels-->
             {@const selection_offset = math.add(site_label_offset, [0, -0.5, 0])}
             {@const pos = math.add(site.xyz, selection_offset) as Vec3}
-            <Extras.HTML center position={pos}>
+            <extras.HTML center position={pos}>
               <span class="selection-label">{loop_idx + 1}</span>
-            </Extras.HTML>
+            </extras.HTML>
           {/if}
         {/each}
       {/if}
@@ -740,7 +740,7 @@
               {@const direct = math.euclidean_dist(pos_i, pos_j)}
               {@const pbc = lattice ? distance_pbc(pos_i, pos_j, lattice.matrix) : direct}
               {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-              <Extras.HTML center position={midpoint}>
+              <extras.HTML center position={midpoint}>
                 <span class="measure-label">
                   {#if differ}
                     PBC: {format_num(pbc, float_fmt)} Å<br /><small>
@@ -749,7 +749,7 @@
                     {format_num(pbc, float_fmt)} Å
                   {/if}
                 </span>
-              </Extras.HTML>
+              </extras.HTML>
             {/each}
           {/each}
         {:else if measure_mode === `angle` && measured_sites.length >= 3}
@@ -789,9 +789,9 @@
                   {@const bis_norm = Math.hypot(...bisector) || 1}
                   {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
                   {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
-                  <Extras.HTML center position={label_pos}>
+                  <extras.HTML center position={label_pos}>
                     <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
-                  </Extras.HTML>
+                  </extras.HTML>
                 {/if}
               {/each}
             {/each}

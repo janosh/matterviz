@@ -572,7 +572,6 @@
         symbol_color: `black`, // Default marker color
         line_color: `black`, // Default line color
       }
-
       const series_markers = (data_series?.markers ?? display.markers) ?? ``
 
       // Check point_style (could be object or array)
@@ -588,9 +587,7 @@
             Array.isArray(symbol_names) &&
             typeof first_point_style.symbol_type === `string` &&
             symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
-          ) {
-            final_shape = first_point_style.symbol_type as D3SymbolName
-          }
+          ) final_shape = first_point_style.symbol_type as D3SymbolName
           display_style.symbol_type = final_shape
 
           display_style.symbol_color = first_point_style.fill ??
@@ -601,9 +598,7 @@
               !display_style.symbol_color ||
               display_style.symbol_color === `none` ||
               display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
-            ) {
-              display_style.symbol_color = first_point_style.stroke
-            }
+            ) display_style.symbol_color = first_point_style.stroke
           }
         }
         // else: keep default display_style.symbol_type/color if no point_style
