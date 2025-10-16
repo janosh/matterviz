@@ -226,16 +226,14 @@ export function export_svg_as_png(
   }
 }
 
-/** Generate FFmpeg command for WebM to MP4 conversion */
+// Generate FFmpeg command for WebM to MP4 conversion
 export function get_ffmpeg_conversion_command(input_filename: string): string {
   const output = input_filename.replace(/\.webm$/i, `.mp4`)
   return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
 }
 
-/**
- * Export trajectory video as WebM with frame-by-frame rendering (prevents dropped frames).
- * Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
- */
+// Export trajectory video as WebM with frame-by-frame rendering to prevent dropped frames.
+// Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
   filename: string,

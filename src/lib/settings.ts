@@ -5,7 +5,7 @@ import { merge_nested } from '$lib'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type { Markers, Orientation } from '$lib/plot'
+import type { Orientation } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 // SettingType interface with optional context to control where settings apply
@@ -218,7 +218,6 @@ export interface SettingsConfig {
 
   scatter: { // Scatter plot settings
     show_legend: SettingType<boolean>
-    markers: SettingType<Markers>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
@@ -815,11 +814,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_legend: {
       value: true,
       description: `Show legend in scatter plots`,
-    },
-    markers: {
-      value: `line+points`,
-      description: `Scatter plot marker type`,
-      enum: [`line`, `points`, `line+points`, `none`],
     },
     show_points: {
       value: true,
