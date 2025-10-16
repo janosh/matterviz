@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure, ElementSymbol } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
@@ -37,6 +37,8 @@
     cell_edge_width: DEFAULTS.structure.cell_edge_width,
     show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
   })
+
+  let hidden_elements = $state(new Set<ElementSymbol>())
 
   let {
     structure = $bindable(undefined),
@@ -620,7 +622,10 @@
       {/if}
     </section>
 
-    <StructureLegend elements={get_elem_amounts(supercell_structure ?? structure!)} />
+    <StructureLegend
+      elements={get_elem_amounts(supercell_structure ?? structure!)}
+      bind:hidden_elements
+    />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
@@ -636,6 +641,7 @@
             bind:measured_sites
             bind:scene
             bind:camera
+            bind:hidden_elements
             {measure_mode}
             {width}
             {height}

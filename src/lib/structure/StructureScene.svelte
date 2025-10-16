@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
+  import type { AnyStructure, BondPair, ElementSymbol, Site, Vec3 } from '$lib'
   import { atomic_radii, axis_colors, element_data, neg_axis_colors } from '$lib'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
@@ -92,6 +92,7 @@
     rotation = DEFAULTS.structure.rotation,
     scene = $bindable(undefined),
     camera = $bindable(undefined),
+    hidden_elements = $bindable(new Set()),
   }: {
     structure?: AnyStructure
     atom_radius?: number // scale factor for atomic radii
@@ -148,6 +149,7 @@
     // Expose scene and camera for external use (e.g., export pane)
     scene?: Scene
     camera?: Camera
+    hidden_elements?: Set<ElementSymbol>
   } = $props()
 
   // Get scene and camera from Threlte context and expose them
@@ -263,17 +265,36 @@
       ) * atom_radius
 
       let start_angle = 0
-      return site.species.map(({ element, occu }) => ({
-        site_idx,
-        element,
-        occupancy: occu,
-        position: site.xyz,
-        radius,
-        color: colors.element?.[element],
-        has_partial_occupancy: occu < 1,
-        start_phi: 2 * Math.PI * start_angle,
-        end_phi: 2 * Math.PI * (start_angle += occu),
-      }))
+      return site.species
+        .filter(({ element }) => !hidden_elements?.has(element))
+        .map(({ element, occu }) => ({
+          site_idx,
+          element,
+          occupancy: occu,
+          position: site.xyz,
+          radius,
+          color: colors.element?.[element],
+          has_partial_occupancy: occu < 1,
+          start_phi: 2 * Math.PI * start_angle,
+          end_phi: 2 * Math.PI * (start_angle += occu),
+        }))
+    })
+  })
+
+  // Filter bonds to exclude those connected to hidden atoms
+  let filtered_bond_pairs = $derived.by(() => {
+    if (!structure?.sites || hidden_elements.size === 0) return bond_pairs
+    return bond_pairs.filter((bond) => {
+      const site_1 = structure.sites[bond.site_idx_1]
+      const site_2 = structure.sites[bond.site_idx_2]
+      // Show bond only if neither site has all its species hidden
+      const site_1_visible = site_1?.species.some(({ element }) =>
+        !hidden_elements.has(element)
+      )
+      const site_2_visible = site_2?.species.some(({ element }) =>
+        !hidden_elements.has(element)
+      )
+      return site_1_visible && site_2_visible
     })
   })
 
@@ -569,8 +590,8 @@
         {/each}
       {/if}
 
-      {#if bond_pairs.length > 0}
-        {#each bond_pairs as bond_data (JSON.stringify(bond_data))}
+      {#if filtered_bond_pairs.length > 0}
+        {#each filtered_bond_pairs as bond_data (JSON.stringify(bond_data))}
           {@const site_a = structure?.sites[bond_data.site_idx_1]}
           {@const site_b = structure?.sites[bond_data.site_idx_2]}
           {@const get_majority_color = (site: typeof site_a) => {
