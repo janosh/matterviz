@@ -82,12 +82,13 @@ test.describe(`BrillouinZone Component Tests`, () => {
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
     })
     const rotated = await canvas.screenshot()
-    expect(initial.equals(rotated)).toBe(false)
+    // Compare lengths instead of pixel-perfect equality to avoid anti-aliasing issues
+    expect(Math.abs(initial.length - rotated.length)).toBeGreaterThan(100)
 
     await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
     await page.mouse.wheel(0, -200)
     const zoomed = await canvas.screenshot()
-    expect(rotated.equals(zoomed)).toBe(false)
+    expect(Math.abs(rotated.length - zoomed.length)).toBeGreaterThan(100)
   })
 
   test(`maintains quality across BZ order changes`, async ({ page }) => {
@@ -96,7 +97,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
 
     expect((await canvas.screenshot()).length).toBeGreaterThan(1000)
     await order_input.fill(`2`)
-    await page.waitForTimeout(500)
+    await expect(page.locator(`[data-testid="bz-order"]`)).toHaveText(`2`)
     expect((await canvas.screenshot()).length).toBeGreaterThan(1000)
     await order_input.fill(`1`)
   })
@@ -105,14 +106,15 @@ test.describe(`BrillouinZone Component Tests`, () => {
     const btn = page.locator(`${BZ_SELECTOR} button.fullscreen-toggle`)
     await expect(btn).toBeVisible()
     await btn.click()
-    await page.waitForTimeout(300)
+    // Wait for any animations to settle by checking the element is still present
+    await expect(btn).toBeVisible()
   })
 
   test(`Escape closes panes`, async ({ page }) => {
     await page.locator(`#controls-open`).check()
+    await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`true`)
     await page.locator(BZ_SELECTOR).click()
     await page.keyboard.press(`Escape`)
-    await page.waitForTimeout(300)
     await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`false`)
   })
 
@@ -130,7 +132,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await order_input.fill(`1`)
     await order_input.fill(`3`)
     await order_input.fill(`1`)
-    await page.waitForTimeout(500)
+    await expect(page.locator(`[data-testid="bz-order"]`)).toHaveText(`1`)
     expect((await page.locator(`${BZ_SELECTOR} canvas`).screenshot()).length)
       .toBeGreaterThan(1000)
   })
@@ -159,7 +161,8 @@ test.describe(`BrillouinZone File Drop Tests`, () => {
         }),
       )
     })
-    await page.waitForTimeout(200)
+    // Verify element is still visible after drag event
+    await expect(bz_wrapper).toBeVisible()
     await bz_wrapper.evaluate((el) => {
       el.dispatchEvent(new DragEvent(`dragleave`, { bubbles: true, cancelable: true }))
     })
@@ -189,7 +192,8 @@ Direct
     await bz.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await bz.dispatchEvent(`drop`, { dataTransfer: data_transfer })
     await data_transfer.dispose()
-    await page.waitForTimeout(1500)
+    // Wait for canvas to be ready after file drop
+    await expect(page.locator(`${BZ_SELECTOR} canvas`)).toBeVisible()
   })
 })
 
@@ -206,7 +210,7 @@ test.describe(`BrillouinZone Error Handling Tests`, () => {
       if ((await dismiss_btn.count()) > 0) {
         await expect(dismiss_btn).toBeVisible()
         await dismiss_btn.click()
-        await page.waitForTimeout(300)
+        await expect(error_state).not.toBeVisible()
       }
     }
   })
@@ -229,13 +233,15 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
       waitUntil: `networkidle`,
     })
     await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 15000 })
-    await page.waitForTimeout(2000)
-    await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`)
+    await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
+      timeout: 5000,
+    })
   })
 
   test(`triggers on_error on failed load`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?data_url=/non-existent.json`)
-    await page.waitForTimeout(3000)
-    await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_error`)
+    await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_error`, {
+      timeout: 5000,
+    })
   })
 })

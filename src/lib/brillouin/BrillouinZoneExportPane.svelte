@@ -28,33 +28,18 @@
   let copy_status = $state(false)
   const copy_confirm = `✅`
 
-  async function export_as_png() {
+  function export_as_png() {
     const canvas = wrapper?.querySelector(`canvas`)
-    if (!canvas || !scene || !camera) {
-      console.error(`Cannot export PNG: missing canvas, scene, or camera`)
-      return
-    }
-    try {
-      const dpi = Math.max(50, Math.min(600, Math.trunc(png_dpi)))
-      export_canvas_as_png(canvas, undefined, dpi, scene, camera)
-    } catch (error) {
-      console.error(`Failed to export PNG:`, error)
-    }
+    if (!canvas || !scene || !camera) return
+
+    const dpi = Math.max(50, Math.min(600, Math.trunc(png_dpi)))
+    export_canvas_as_png(canvas, undefined, dpi, scene, camera)
   }
 
   function export_as_json() {
-    if (!bz_data) {
-      console.error(`Cannot export JSON: no BZ data available`)
-      return
-    }
-    const json_data = {
-      order: bz_data.order,
-      volume: bz_data.volume,
-      vertices: bz_data.vertices,
-      faces: bz_data.faces,
-      edges: bz_data.edges,
-      reciprocal_lattice: bz_data.k_lattice,
-    }
+    const json_data = get_json_data()
+    if (!json_data || !bz_data) return
+
     const blob = new Blob([JSON.stringify(json_data, null, 2)], {
       type: `application/json`,
     })
@@ -66,20 +51,27 @@
     URL.revokeObjectURL(url)
   }
 
-  async function copy_k_vectors() {
-    if (!bz_data?.k_lattice) return
-    const text = bz_data.k_lattice
-      .map((vec, idx) => `b${idx + 1}: [${vec.map((x) => x.toFixed(6)).join(`, `)}]`)
-      .join(`\n`)
-    try {
-      await navigator.clipboard.writeText(text)
-      copy_status = true
-      setTimeout(() => {
-        copy_status = false
-      }, 1000)
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
+  function get_json_data() {
+    if (!bz_data) return null
+    return {
+      order: bz_data.order,
+      volume: bz_data.volume,
+      vertices: bz_data.vertices,
+      faces: bz_data.faces,
+      edges: bz_data.edges,
+      reciprocal_lattice: bz_data.k_lattice,
     }
+  }
+
+  async function copy_json() {
+    const json_data = get_json_data()
+    if (!json_data) return
+
+    await navigator.clipboard.writeText(JSON.stringify(json_data, null, 2))
+    copy_status = true
+    setTimeout(() => {
+      copy_status = false
+    }, 1000)
   }
 </script>
 
@@ -130,16 +122,11 @@
     >
       ⬇
     </button>
-  </label>
-
-  <h4>Quick copy</h4>
-  <label>
-    k-vectors
     <button
       type="button"
-      onclick={copy_k_vectors}
+      onclick={copy_json}
       disabled={!bz_data}
-      title="Copy k-vectors to clipboard"
+      title="Copy JSON to clipboard"
     >
       {copy_status ? copy_confirm : `📋`}
     </button>
@@ -157,7 +144,7 @@
   button {
     width: 1.9em;
     height: 1.6em;
-    padding: 0;
+    padding: 0 6pt;
     margin: 0 0 0 4pt;
     box-sizing: border-box;
   }

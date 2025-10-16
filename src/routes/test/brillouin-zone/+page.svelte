@@ -15,7 +15,9 @@
   let show_controls = $state<boolean | number>(true)
   let png_dpi = $state(150)
 
-  let structure = $state(mp1_struct as unknown as PymatgenStructure)
+  let structure = $state<PymatgenStructure | undefined>(
+    mp1_struct as unknown as PymatgenStructure,
+  )
   let data_url = $state<string | undefined>(undefined)
   let event_calls = $state<{ event: string; data: unknown }[]>([])
 
@@ -31,7 +33,7 @@
       const url_data = params.get(`data_url`)
       if (url_data) {
         data_url = url_data
-        structure = undefined as unknown as PymatgenStructure
+        structure = undefined
       }
     }
 

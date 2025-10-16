@@ -135,19 +135,10 @@
     for (const face of bz_data.faces) {
       if (face.length < 3) continue
 
-      // Bounds check for vertex indices
-      const max_idx = bz_data.vertices.length - 1
-      if (face[0] < 0 || face[0] > max_idx) continue
-
-      const v0 = bz_data.vertices[face[0]]
       for (let i = 1; i < face.length - 1; i++) {
-        // Bounds check for vertex indices
-        if (
-          face[i] < 0 || face[i] > max_idx || face[i + 1] < 0 || face[i + 1] > max_idx
-        ) {
-          continue
-        }
-        const [v1, v2] = [bz_data.vertices[face[i]], bz_data.vertices[face[i + 1]]]
+        const indices = [face[0], face[i], face[i + 1]]
+        if (indices.some((idx) => idx < 0 || idx >= bz_data.vertices.length)) continue
+        const [v0, v1, v2] = indices.map((idx) => bz_data.vertices[idx])
         positions.push(...v0, ...v1, ...v2)
 
         // Compute normal via cross product
