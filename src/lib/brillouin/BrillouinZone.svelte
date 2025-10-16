@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
-  import { DEFAULTS } from '$lib/settings'
+  import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { PymatgenStructure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
   import { Canvas } from '@threlte/core'
@@ -73,7 +73,7 @@
       edge_width?: number
       show_vectors?: boolean
       vector_scale?: number
-      camera_projection?: `perspective` | `orthographic`
+      camera_projection?: CameraProjection
       show_controls?: boolean | number
       fullscreen?: boolean
       width?: number
@@ -119,13 +119,8 @@
 
     structure = parsed as PymatgenStructure
     current_filename = filename
-    on_file_load?.({
-      structure,
-      bz_data,
-      bz_order,
-      filename,
-      file_size: new Blob([content]).size,
-    })
+    const file_size = new Blob([content]).size
+    on_file_load?.({ structure, bz_data, bz_order, filename, file_size })
   }
 
   // Load with error handling
@@ -226,9 +221,7 @@
     if (typeof window === `undefined`) return
     if (fullscreen && !document.fullscreenElement && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
-    } else if (!fullscreen && document.fullscreenElement) {
-      document.exitFullscreen()
-    }
+    } else if (!fullscreen && document.fullscreenElement) document.exitFullscreen()
   })
 </script>
 
@@ -334,8 +327,6 @@
             {show_vectors}
             {vector_scale}
             {camera_projection}
-            {width}
-            {height}
             bind:scene
             bind:camera
           />
@@ -346,20 +337,9 @@
     <p class="warn">Structure must have a lattice to compute Brillouin zone</p>
   {:else}
     <div class="empty-state">
-      <h3>Load Crystal Structure</h3>
+      <h3>Drop Structure File</h3>
       <p>
-        Drop a structure file here (.cif, .poscar, .json) or provide structure data via
-        props
-      </p>
-      <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
-      <ul>
-        <li>CIF files (.cif)</li>
-        <li>VASP POSCAR/CONTCAR files</li>
-        <li>Pymatgen structure JSON</li>
-        <li>Compressed files (.gz)</li>
-      </ul>
-      <p>
-        💡 The Brillouin zone will be automatically computed from the crystal lattice
+        Supports CIF, POSCAR, JSON, (ext)XYZ, (+ .gz)
       </p>
     </div>
   {/if}
@@ -442,6 +422,7 @@
     height: 100%;
     padding: 2rem;
     text-align: center;
+    box-sizing: border-box;
   }
   .error-state p {
     color: var(--error-color, #ff6b6b);
@@ -459,15 +440,19 @@
     background: var(--error-color-hover, #ff5252);
   }
   .empty-state {
-    padding: 2rem;
-    border-radius: var(--bz-border-radius, 3pt);
-    background: var(--dropzone-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
   }
-  .empty-state :where(p, ul) {
+  .empty-state h3 {
+    margin: 0 0 0.5em;
+    font-size: 1.5em;
+  }
+  .empty-state p {
     color: var(--text-color-muted);
-  }
-  .empty-state :where(h3, p, ul, li, strong) {
-    max-width: 500px;
-    margin-inline: auto;
+    margin: 0;
   }
 </style>

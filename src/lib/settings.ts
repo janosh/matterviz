@@ -24,6 +24,8 @@ export interface SettingType<T = unknown> {
 export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof show_bonds_options)[number]
 
+export type CameraProjection = `perspective` | `orthographic`
+
 // Reusable type definitions for common setting patterns
 type DisplayConfigType = {
   x_grid: SettingType<boolean>
@@ -105,7 +107,7 @@ export interface SettingsConfig {
     // Camera & Controls
     show_gizmo: SettingType<boolean>
     camera_position: SettingType<Vec3>
-    camera_projection: SettingType<`perspective` | `orthographic`>
+    camera_projection: SettingType<CameraProjection>
     initial_zoom: SettingType<number>
     fov: SettingType<number>
     rotation_damping: SettingType<number>

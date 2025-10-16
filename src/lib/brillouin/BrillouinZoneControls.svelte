@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DraggablePane, SettingsSection } from '$lib'
+  import type { CameraProjection } from '$lib/settings'
 
   let {
     controls_open = $bindable(false),
@@ -20,7 +21,7 @@
     edge_width?: number
     show_vectors?: boolean
     vector_scale?: number
-    camera_projection?: `perspective` | `orthographic`
+    camera_projection?: CameraProjection
   } = $props()
 </script>
 

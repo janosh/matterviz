@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Vec3 } from '$lib'
   import { axis_colors, neg_axis_colors } from '$lib'
-  import { DEFAULTS } from '$lib/settings'
+  import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { Bond, Vector } from '$lib/structure'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -37,7 +37,7 @@
   }: {
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
-    camera_projection?: `perspective` | `orthographic`
+    camera_projection?: CameraProjection
     surface_color?: string
     surface_opacity?: number
     edge_color?: string

@@ -3,7 +3,7 @@
   import { atomic_radii, axis_colors, element_data, neg_axis_colors } from '$lib'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
-  import { DEFAULTS, type ShowBonds } from '$lib/settings'
+  import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
@@ -99,7 +99,7 @@
     same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
     // determined by the atomic radius of the element
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
-    camera_projection?: `perspective` | `orthographic` // camera projection type
+    camera_projection?: CameraProjection // camera projection type
     rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
     // zoom level of the camera
     max_zoom?: number
