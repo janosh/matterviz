@@ -12,8 +12,12 @@
   let show_vectors = $state(true)
   let vector_scale = $state(1.0)
   let camera_projection = $state<`perspective` | `orthographic`>(`perspective`)
-  let show_controls = $state<boolean | number>(true)
+  let show_controls_select = $state<string>(`true`)
   let png_dpi = $state(150)
+
+  const show_controls = $derived(
+    { true: true, false: false }[show_controls_select] ?? +show_controls_select,
+  )
 
   let structure = $state<PymatgenStructure | undefined>(
     mp1_struct as unknown as PymatgenStructure,
@@ -49,12 +53,7 @@
 
     if (params.has(`show_controls`)) {
       const param = params.get(`show_controls`)
-      if (param === `false`) show_controls = false
-      else if (param === `true`) show_controls = true
-      else {
-        const num = parseInt(param || ``)
-        if (!isNaN(num)) show_controls = num
-      }
+      if (param) show_controls_select = param
     }
 
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
@@ -84,13 +83,7 @@
     /></label><br />
   <label>Show Controls: <select
       id="show-controls"
-      bind:value={show_controls}
-      onchange={(event) => {
-        const val = (event.target as HTMLSelectElement).value
-        if (val === `true`) show_controls = true
-        else if (val === `false`) show_controls = false
-        else show_controls = parseInt(val)
-      }}
+      bind:value={show_controls_select}
     >
       <option value="true">true</option>
       <option value="false">false</option>
