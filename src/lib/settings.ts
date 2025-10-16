@@ -5,7 +5,7 @@ import { merge_nested } from '$lib'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type { Markers, Orientation } from '$lib/plot'
+import type { Orientation } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 
 // SettingType interface with optional context to control where settings apply
@@ -23,6 +23,8 @@ export interface SettingType<T = unknown> {
 
 export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof show_bonds_options)[number]
+
+export type CameraProjection = `perspective` | `orthographic`
 
 // Reusable type definitions for common setting patterns
 type DisplayConfigType = {
@@ -105,7 +107,7 @@ export interface SettingsConfig {
     // Camera & Controls
     show_gizmo: SettingType<boolean>
     camera_position: SettingType<Vec3>
-    camera_projection: SettingType<`perspective` | `orthographic`>
+    camera_projection: SettingType<CameraProjection>
     initial_zoom: SettingType<number>
     fov: SettingType<number>
     rotation_damping: SettingType<number>
@@ -218,7 +220,6 @@ export interface SettingsConfig {
 
   scatter: { // Scatter plot settings
     show_legend: SettingType<boolean>
-    markers: SettingType<Markers>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
@@ -488,21 +489,24 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Color for force vectors`,
     },
     force_shaft_radius: {
-      value: 0.02,
-      description: `Radius of force vector shaft`,
-      minimum: 0.005,
+      value: -0.01,
+      description:
+        `Radius of force vector shaft (negative = relative to length, positive = absolute)`,
+      minimum: -0.1,
       maximum: 0.1,
     },
     force_arrow_head_radius: {
-      value: 0.08,
-      description: `Radius of force vector arrow head`,
-      minimum: 0.02,
+      value: -0.025,
+      description:
+        `Radius of force vector arrow head (negative = relative to length, positive = absolute)`,
+      minimum: -0.2,
       maximum: 0.2,
     },
     force_arrow_head_length: {
-      value: 0.2,
-      description: `Length of force vector arrow head`,
-      minimum: 0.05,
+      value: -0.1,
+      description:
+        `Length of force vector arrow head (negative = relative to length, positive = absolute)`,
+      minimum: -0.5,
       maximum: 0.5,
     },
     show_cell: {
@@ -812,11 +816,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_legend: {
       value: true,
       description: `Show legend in scatter plots`,
-    },
-    markers: {
-      value: `line+points`,
-      description: `Scatter plot marker type`,
-      enum: [`line`, `points`, `line+points`, `none`],
     },
     show_points: {
       value: true,

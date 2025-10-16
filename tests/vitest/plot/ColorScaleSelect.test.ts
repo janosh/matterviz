@@ -21,7 +21,7 @@ describe(`ColorScaleSelect`, () => {
   })
 
   test(`binds value and selected correctly (initial state)`, () => {
-    /** Tests if initial value and selected props are rendered correctly. */
+    // Tests if initial value and selected props are rendered correctly.
     const selected_value: D3InterpolateName = `interpolateViridis`
     const selected_array: D3InterpolateName[] = [`interpolateViridis`]
 
@@ -40,7 +40,7 @@ describe(`ColorScaleSelect`, () => {
   })
 
   test(`passes colorbar props to ColorBar snippet`, async () => {
-    /** Verifies that props passed via the colorbar prop are applied to the ColorBar component. */
+    // Verifies that props passed via the colorbar prop are applied to the ColorBar component.
     const custom_colorbar_props = {
       tick_align: `secondary` as const,
       title_side: `right` as const,

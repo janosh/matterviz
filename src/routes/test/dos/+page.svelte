@@ -30,7 +30,7 @@
 <Dos doses={mock_dos} normalize="sum" />
 
 <h2 id="stacked-dos">Stacked DOS</h2>
-<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} stack={true} />
+<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} stack />
 
 <h2 id="gaussian-smearing">Gaussian Smearing (sigma=0.2)</h2>
 <Dos doses={mock_dos} sigma={0.2} />

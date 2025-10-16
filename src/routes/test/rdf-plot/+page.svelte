@@ -110,7 +110,7 @@
 <RdfPlot
   id="reference-line"
   patterns={synthetic_pattern}
-  show_reference_line={true}
+  show_reference_line
   cutoff={10}
   n_bins={50}
   style="height: 360px"
@@ -130,7 +130,7 @@
 <RdfPlot
   id="drag-drop"
   mode="element_pairs"
-  enable_drop={true}
+  enable_drop
   cutoff={7}
   style="height: 360px"
 />
