@@ -31,7 +31,6 @@
     gizmo = DEFAULTS.structure.show_gizmo,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     camera_is_moving = $bindable(false),
-    orbit_controls = $bindable(undefined),
     scene = $bindable(undefined),
     camera = $bindable(undefined),
   }: {
@@ -56,7 +55,6 @@
     gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     auto_rotate?: number
     camera_is_moving?: boolean
-    orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     scene?: Scene
     camera?: Camera
   } = $props()
@@ -84,15 +82,6 @@
     camera_position || ([10, 3, 8].map((x) => x * Math.max(1, bz_size)) as Vec3)
   )
 
-  $effect(() => {
-    if (orbit_controls && camera_projection) {
-      queueMicrotask(() => {
-        orbit_controls.target.set(...rotation_target)
-        orbit_controls.update()
-      })
-    }
-  })
-
   const gizmo_props = $derived.by(() => ({
     background: { enabled: false },
     className: `responsive-gizmo`,
@@ -117,7 +106,6 @@
 
   const is_ortho = $derived(camera_projection === `orthographic`)
   const orbit_controls_props = $derived({
-    'bind:ref': orbit_controls,
     position: [0, 0, 0],
     target: rotation_target,
     enableZoom: zoom_speed > 0,
@@ -177,6 +165,10 @@
     geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
     geometry.computeBoundingSphere()
     return geometry
+  })
+
+  $effect(() => { // Dispose previous geometry on change/unmount (prevent memory leaks)
+    return () => bz_geometry?.dispose()
   })
 </script>
 

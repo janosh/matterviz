@@ -276,9 +276,8 @@ export async function export_trajectory_video(
 
   // Calculate bitrate based on actual video dimensions
   // VP9 typically needs 0.08-0.12 bits per pixel per frame for good quality
-  const target_width = canvas.width * resolution_multiplier
-  const target_height = canvas.height * resolution_multiplier
-  const pixels_per_frame = target_width * target_height
+  // canvas dimensions include device pixel ratio and any resolution_multiplier
+  const pixels_per_frame = canvas.width * canvas.height
   const bits_per_pixel_per_frame = 0.1 // Good quality for VP9
   // Clamp bitrate to reasonable bounds (1 Mbps min, 200 Mbps max)
   const calculated_bitrate = pixels_per_frame * fps * bits_per_pixel_per_frame
@@ -359,7 +358,8 @@ export async function export_trajectory_video(
     recorder.onerror = (event) => {
       if (is_resolved) return
       is_resolved = true
-      reject(new Error(`MediaRecorder error: ${event}`))
+      // Extract error details from MediaRecorderErrorEvent or ErrorEvent
+      reject(new Error(`MediaRecorder error: ${event.error}`))
     }
 
     // Stop recording with safety timeout

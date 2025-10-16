@@ -155,6 +155,11 @@
 
   // Load structure from URL or string
   $effect(() => {
+    const handle_error = (err: unknown, source: string) => {
+      error_msg = err instanceof Error ? err.message : String(err)
+      on_error?.({ error_msg, filename: source })
+    }
+
     if (data_url && !structure) {
       loading = true
       error_msg = undefined
@@ -165,17 +170,18 @@
             ? on_file_drop(content, filename)
             : safe_parse(content, filename),
       )
-        .then(() => (loading = false))
-        .catch((err: Error) => {
-          error_msg = `Failed to load: ${err.message}`
-          loading = false
-          on_error?.({ error_msg, filename: data_url })
-        })
+        .catch((err) => handle_error(err, data_url))
+        .finally(() => (loading = false))
     } else if (structure_string && !data_url) {
       loading = true
       error_msg = undefined
-      safe_parse(structure_string, `string`)
-      loading = false
+      try {
+        safe_parse(structure_string, `string`)
+      } catch (err) {
+        handle_error(err, `string`)
+      } finally {
+        loading = false
+      }
     }
   })
 
@@ -219,9 +225,10 @@
 
   $effect(() => {
     if (typeof window === `undefined`) return
-    if (fullscreen && !document.fullscreenElement && wrapper) {
+    const fs_el = document.fullscreenElement
+    if (fullscreen && fs_el !== wrapper && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
-    } else if (!fullscreen && document.fullscreenElement) document.exitFullscreen()
+    } else if (!fullscreen && fs_el === wrapper) document.exitFullscreen()
   })
 </script>
 

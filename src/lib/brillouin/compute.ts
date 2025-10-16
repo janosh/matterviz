@@ -148,7 +148,10 @@ export function generate_bz_vertices(k_lattice: Matrix3x3, order = 1): Vec3[] {
 }
 
 // Build convex hull from vertices and extract topology
-export function compute_convex_hull(vertices: Vec3[]): ConvexHullData {
+export function compute_convex_hull(
+  vertices: Vec3[],
+  edge_sharp_angle_deg = 5, // Angle threshold for edge detection: edges between faces with angle > this are rendered
+): ConvexHullData {
   if (vertices.length < 4) {
     throw new Error(`Need ≥4 vertices for convex hull, got ${vertices.length}`)
   }
@@ -206,14 +209,14 @@ export function compute_convex_hull(vertices: Vec3[]): ConvexHullData {
     })
   })
 
-  // Extract edges: keep boundary edges or sharp angles (>5°)
-  const cos_5deg = Math.cos((5 * Math.PI) / 180)
+  // Extract edges: keep boundary edges or sharp angles
+  const cos_threshold = Math.cos((edge_sharp_angle_deg * Math.PI) / 180)
   const edges: [number, number][] = []
 
   for (const [key, adj] of edge_to_faces) {
     const is_sharp = adj.length === 1 ||
       (adj.length === 2 &&
-        (math.dot(face_normals[adj[0]], face_normals[adj[1]]) as number) < cos_5deg)
+        (math.dot(face_normals[adj[0]], face_normals[adj[1]]) as number) < cos_threshold)
     if (is_sharp) edges.push(key.split(`,`).map(Number) as [number, number])
   }
 
@@ -225,13 +228,14 @@ export function compute_convex_hull(vertices: Vec3[]): ConvexHullData {
 export function compute_brillouin_zone(
   k_lattice: Matrix3x3,
   order = 1,
+  edge_sharp_angle_deg = 5, // Angle threshold for edge extraction (default 5°, increase for fewer edges, decrease for more)
 ): BrillouinZoneData {
   const vertices = generate_bz_vertices(k_lattice, order)
   if (vertices.length < 4) {
     throw new Error(`Insufficient vertices for BZ (got ${vertices.length}, need ≥4)`)
   }
 
-  const hull = compute_convex_hull(vertices)
+  const hull = compute_convex_hull(vertices, edge_sharp_angle_deg)
 
   // Compute volume via divergence theorem (sum of signed tetrahedral volumes)
   const volume = Math.abs(

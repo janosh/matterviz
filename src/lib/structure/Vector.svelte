@@ -53,7 +53,7 @@
     if (mag < math.EPS) return [0, 0, 0]
     const quat = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0),
-      new Vector3(...dir).normalize(),
+      new Vector3(...dir),
     )
     return new Euler().setFromQuaternion(quat).toArray().slice(0, 3) as Vec3
   })

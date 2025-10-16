@@ -53,7 +53,7 @@ describe(`Settings`, () => {
         SETTINGS_CONFIG.trajectory.display_mode,
         SETTINGS_CONFIG.plot.x_scale_type,
         SETTINGS_CONFIG.plot.y_scale_type,
-        SETTINGS_CONFIG.scatter.markers,
+        SETTINGS_CONFIG.scatter.symbol_type,
         SETTINGS_CONFIG.composition.display_mode,
       ]
 

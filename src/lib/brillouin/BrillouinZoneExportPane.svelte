@@ -35,7 +35,8 @@
       return
     }
     try {
-      export_canvas_as_png(canvas, undefined, png_dpi, scene, camera)
+      const dpi = Math.max(50, Math.min(600, Math.trunc(png_dpi)))
+      export_canvas_as_png(canvas, undefined, dpi, scene, camera)
     } catch (error) {
       console.error(`Failed to export PNG:`, error)
     }

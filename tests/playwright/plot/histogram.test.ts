@@ -2,7 +2,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 // Helper functions
-const click_radio = async (page: Page, selector: string): Promise<void> => {
+const click_radio = async (page: Page, selector: string) => {
   await page.evaluate((sel) => {
     const radio = document.querySelector(sel) as HTMLInputElement
     if (radio) radio.click()
@@ -23,7 +23,7 @@ const set_range_value = async (page: Page, selector: string, value: number) => {
   )
 }
 
-const get_bar_count = async (histogram_locator: Locator): Promise<number> => {
+const get_bar_count = async (histogram_locator: Locator) => {
   // Look for bars with fill or stroke (for overlay mode)
   const bars_with_fill = await histogram_locator.locator(`rect[fill]:not([fill="none"])`)
     .count()

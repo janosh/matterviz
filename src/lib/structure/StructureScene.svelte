@@ -80,7 +80,6 @@
     lattice_props = {},
     atom_label,
     camera_is_moving = $bindable(false),
-    orbit_controls = $bindable(undefined),
     width = 0,
     height = 0,
     measure_mode = `distance`,
@@ -135,7 +134,6 @@
     site_label_color?: string
     site_label_padding?: number
     camera_is_moving?: boolean // used to prevent tooltip from showing while camera is moving
-    orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -255,16 +253,6 @@
     } else bond_pairs = []
   })
 
-  // Update orbit controls when switching between camera projections to ensure proper centering
-  $effect(() => {
-    if (orbit_controls && camera_projection) {
-      queueMicrotask(() => {
-        orbit_controls.target.set(...rotation_target) // Structure is positioned with rotation_target as the center
-        orbit_controls.update()
-      })
-    }
-  })
-
   let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
     if (!show_atoms || !structure?.sites) return []
     // Build atom data with partial occupancy handling
@@ -382,7 +370,6 @@
   })
 
   let orbit_controls_props = $derived({
-    'bind:ref': orbit_controls,
     position: [0, 0, 0],
     enableZoom: zoom_speed > 0,
     zoomSpeed: camera_projection === `orthographic` ? zoom_speed * 2 : zoom_speed,
