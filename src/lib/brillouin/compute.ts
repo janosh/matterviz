@@ -93,11 +93,22 @@ function intersect_planes(
 }
 
 // Generate BZ vertices for nth-order zone via three-plane intersections
-export function generate_bz_vertices(k_lattice: Matrix3x3, order = 1): Vec3[] {
+export function generate_bz_vertices(
+  k_lattice: Matrix3x3,
+  order: 1 | 2 | 3 = 1,
+  // Maximum number of Bragg planes to consider for each BZ order.
+  // Limits the number of three-plane intersections tested (O(n³) operation).
+  // Higher values give more accurate zones but increase computation time significantly.
+  // Default values: 26 (1st order), 80 (2nd order), 150 (3rd+ order)
+  max_planes_by_order: Record<1 | 2 | 3, number> = { 1: 26, 2: 80, 3: 150 },
+): Vec3[] {
   if (order > 3) order = 3 // Performance limit
 
   const k_points = generate_k_space_grid(k_lattice, order)
   const center_idx = Math.floor(k_points.length / 2)
+
+  // Determine max planes for this order (default to highest value for orders > 3)
+  const max_planes = max_planes_by_order[order] ?? 150
 
   // Create Bragg planes (perpendicular bisectors of k-points)
   const planes = k_points
@@ -108,7 +119,7 @@ export function generate_bz_vertices(k_lattice: Matrix3x3, order = 1): Vec3[] {
     })
     .filter((p): p is NonNullable<typeof p> => p !== null)
     .sort((a, b) => a.dist_sq - b.dist_sq)
-    .slice(0, order === 1 ? 26 : order === 2 ? 80 : 150) // Limit planes for performance
+    .slice(0, max_planes)
 
   // Pre-compute plane data for fast access
   const normals = planes.map((p) => p.normal)
@@ -227,10 +238,11 @@ export function compute_convex_hull(
 // Compute complete Brillouin zone with topology and volume
 export function compute_brillouin_zone(
   k_lattice: Matrix3x3,
-  order = 1,
+  order: 1 | 2 | 3 = 1,
   edge_sharp_angle_deg = 5, // Angle threshold for edge extraction (default 5°, increase for fewer edges, decrease for more)
+  max_planes_by_order: Record<number, number> = { 1: 26, 2: 80, 3: 150 }, // Customize plane count limits per BZ order
 ): BrillouinZoneData {
-  const vertices = generate_bz_vertices(k_lattice, order)
+  const vertices = generate_bz_vertices(k_lattice, order, max_planes_by_order)
   if (vertices.length < 4) {
     throw new Error(`Insufficient vertices for BZ (got ${vertices.length}, need ≥4)`)
   }

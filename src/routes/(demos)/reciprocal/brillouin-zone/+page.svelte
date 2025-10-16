@@ -116,8 +116,8 @@
         {structure}
         {surface_opacity}
         bz_order={order}
-        show_controls={true}
-        allow_file_drop={true}
+        show_controls
+        allow_file_drop
       />
     </div>
   {/each}
@@ -127,7 +127,7 @@
   .grid {
     text-align: center;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
     gap: 2em;
     margin-block: 2em;
   }

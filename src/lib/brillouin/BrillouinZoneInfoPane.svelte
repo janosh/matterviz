@@ -34,22 +34,6 @@
     if (!structure || !bz_data) return []
     const sections: { title: string; items: InfoItem[] }[] = []
 
-    // Symmetry section (if available)
-    if (sym_data) {
-      sections.push({
-        title: `Symmetry`,
-        items: [
-          {
-            label: `Space Group`,
-            value: `${sym_data.number ? `#${sym_data.number}` : ``} ${
-              sym_data.hm_symbol ?? ``
-            }`.trim(),
-            key: `space-group`,
-          },
-        ],
-      })
-    }
-
     // Brillouin Zone section
     const bz_order_suffix = [`st`, `nd`, `rd`][bz_data.order - 1] ?? `th`
     sections.push({
@@ -66,14 +50,16 @@
           key: `bz-volume`,
         },
         {
-          label: `Vertices`,
-          value: String(bz_data.vertices.length),
+          label: `Vertices / Faces`,
+          value: `${bz_data.vertices.length} / ${bz_data.faces.length}`,
           key: `bz-vertices`,
         },
         {
-          label: `Faces`,
-          value: String(bz_data.faces.length),
-          key: `bz-faces`,
+          label: `Space Group`,
+          value: `${sym_data?.number ?? ``} ${
+            sym_data?.hm_symbol ? `(${sym_data.hm_symbol})` : ``
+          }`.trim(),
+          key: `space-group`,
         },
       ],
     })
@@ -86,7 +72,7 @@
           label: `a, b, c`,
           value: `${
             [structure.lattice.a, structure.lattice.b, structure.lattice.c]
-              .map((v) => format_num(v, `.3f`))
+              .map((v) => format_num(v, `.3~f`))
               .join(`, `)
           } Å`,
           key: `real-lattice-abc`,
@@ -95,7 +81,7 @@
           label: `α, β, γ`,
           value: `${
             [structure.lattice.alpha, structure.lattice.beta, structure.lattice.gamma]
-              .map((v) => format_num(v, `.2f`))
+              .map((v) => format_num(v, `.2~f`))
               .join(`, `)
           }°`,
           key: `real-lattice-angles`,
@@ -106,14 +92,11 @@
     // Reciprocal Lattice section
     const k_lattice_items: InfoItem[] = bz_data.k_lattice.map((vec, idx) => ({
       label: [`b₁`, `b₂`, `b₃`][idx],
-      value: `(${vec.map((x) => format_num(x, `.3f`)).join(`, `)})`,
+      value: `(${vec.map((x) => format_num(x, `.3~f`)).join(`, `)})`,
       key: `reciprocal-${[`b1`, `b2`, `b3`][idx]}`,
     }))
 
-    sections.push({
-      title: `Reciprocal Lattice (Å⁻¹)`,
-      items: k_lattice_items,
-    })
+    sections.push({ title: `Reciprocal Lattice (Å⁻¹)`, items: k_lattice_items })
 
     return sections
   })
@@ -127,7 +110,6 @@
     toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
     pane_props={{ ...pane_props, class: `bz-info-pane ${pane_props?.class ?? ``}` }}
   >
-    <h4 style="margin-top: 0">Brillouin Zone Info</h4>
     {#each pane_data as section, sec_idx (section.title)}
       {#if sec_idx > 0}<hr />{/if}
       <section>

@@ -10,7 +10,6 @@
     edge_color = $bindable(`#000000`),
     edge_width = $bindable(0.05),
     show_vectors = $bindable(true),
-    vector_scale = $bindable(1.0),
     camera_projection = $bindable(`perspective`),
   }: {
     controls_open?: boolean
@@ -20,7 +19,6 @@
     edge_color?: string
     edge_width?: number
     show_vectors?: boolean
-    vector_scale?: number
     camera_projection?: CameraProjection
   } = $props()
 </script>
@@ -32,7 +30,15 @@
   pane_props={{ class: `bz-controls` }}
   toggle_props={{ class: `controls-toggle`, title: `Brillouin zone controls` }}
 >
-  <SettingsSection title="Brillouin Zone Order" current_values={{ bz_order }}>
+  <SettingsSection
+    title="Brillouin Zone Controls"
+    current_values={{ bz_order, show_vectors }}
+    on_reset={() => {
+      bz_order = 1
+      show_vectors = true
+    }}
+    style="display: flex; gap: 2ex; flex-wrap: wrap"
+  >
     <label>
       <span>Order:</span>
       <select bind:value={bz_order}>
@@ -41,9 +47,20 @@
         <option value={3}>3rd BZ</option>
       </select>
     </label>
+    <label>
+      <span>Show Vectors:</span>
+      <input type="checkbox" bind:checked={show_vectors} />
+    </label>
   </SettingsSection>
 
-  <SettingsSection title="Surface" current_values={{ surface_color, surface_opacity }}>
+  <SettingsSection
+    title="Surface"
+    current_values={{ surface_color, surface_opacity }}
+    on_reset={() => {
+      surface_color = `#4488ff`
+      surface_opacity = 0.3
+    }}
+  >
     <label>
       <span>Color:</span>
       <input type="color" bind:value={surface_color} />
@@ -55,7 +72,14 @@
     </label>
   </SettingsSection>
 
-  <SettingsSection title="Edges" current_values={{ edge_color, edge_width }}>
+  <SettingsSection
+    title="Edges"
+    current_values={{ edge_color, edge_width }}
+    on_reset={() => {
+      edge_color = `#000000`
+      edge_width = 0.05
+    }}
+  >
     <label>
       <span>Color:</span>
       <input type="color" bind:value={edge_color} />
@@ -68,23 +92,12 @@
   </SettingsSection>
 
   <SettingsSection
-    title="Reciprocal Lattice Vectors"
-    current_values={{ show_vectors, vector_scale }}
+    title="Camera"
+    current_values={{ camera_projection }}
+    on_reset={() => {
+      camera_projection = `perspective`
+    }}
   >
-    <label>
-      <span>Show Vectors:</span>
-      <input type="checkbox" bind:checked={show_vectors} />
-    </label>
-    {#if show_vectors}
-      <label>
-        <span>Scale:</span>
-        <input type="range" min="0.5" max="2" step="0.1" bind:value={vector_scale} />
-        <span class="value">{vector_scale.toFixed(1)}</span>
-      </label>
-    {/if}
-  </SettingsSection>
-
-  <SettingsSection title="Camera" current_values={{ camera_projection }}>
     <label>
       <span>Projection:</span>
       <select bind:value={camera_projection}>
@@ -94,44 +107,3 @@
     </label>
   </SettingsSection>
 </DraggablePane>
-
-<style>
-  label {
-    display: flex;
-    align-items: center;
-    gap: 1ex;
-    justify-content: space-between;
-  }
-  label > span:first-child {
-    flex: 1;
-  }
-  label input[type='range'] {
-    flex: 2;
-    min-width: 100px;
-  }
-  label input[type='color'] {
-    width: 60px;
-    height: 30px;
-    border: none;
-    cursor: pointer;
-  }
-  label input[type='checkbox'] {
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-  }
-  label select {
-    flex: 1;
-    padding: 4px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-    background: var(--surface-bg);
-    color: var(--text-color);
-  }
-  .value {
-    font-family: monospace;
-    font-size: 0.9em;
-    min-width: 3em;
-    text-align: right;
-  }
-</style>

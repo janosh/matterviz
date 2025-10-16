@@ -233,7 +233,6 @@
         <!-- Vector label beyond tip -->
         <extras.HTML center position={label_position}>
           <span
-            class="vector-label"
             style:color={vector_colors[idx]}
             style:font-size="1.2em"
           >
@@ -249,9 +248,5 @@
   :global(.brillouin-zone .responsive-gizmo) {
     width: clamp(70px, 18cqmin, 100px) !important;
     height: clamp(70px, 18cqmin, 100px) !important;
-  }
-  .vector-label {
-    user-select: none;
-    pointer-events: none;
   }
 </style>
