@@ -1,19 +1,15 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
-// HELPER FUNCTIONS
-const click_radio = async (page: Page, selector: string): Promise<void> => {
+// Helper functions
+const click_radio = async (page: Page, selector: string) => {
   await page.evaluate((sel) => {
     const radio = document.querySelector(sel) as HTMLInputElement
     if (radio) radio.click()
   }, selector)
 }
 
-const set_range_value = async (
-  page: Page,
-  selector: string,
-  value: number,
-): Promise<void> => {
+const set_range_value = async (page: Page, selector: string, value: number) => {
   await page.evaluate(
     ({ sel, val }) => {
       const input = document.querySelector(sel) as HTMLInputElement
@@ -27,7 +23,7 @@ const set_range_value = async (
   )
 }
 
-const get_bar_count = async (histogram_locator: Locator): Promise<number> => {
+const get_bar_count = async (histogram_locator: Locator) => {
   // Look for bars with fill or stroke (for overlay mode)
   const bars_with_fill = await histogram_locator.locator(`rect[fill]:not([fill="none"])`)
     .count()
@@ -39,10 +35,8 @@ const get_bar_count = async (histogram_locator: Locator): Promise<number> => {
   return Math.max(bars_with_fill, bars_with_stroke)
 }
 
-/** Get tick values and calculate range for histogram axes */
-const get_histogram_tick_range = async (
-  axis_locator: Locator,
-): Promise<{ ticks: number[]; range: number }> => {
+// Get tick values and calculate range for histogram axes
+const get_histogram_tick_range = async (axis_locator: Locator) => {
   const tick_elements = await axis_locator.locator(`.tick text`).all()
   const tick_texts = await Promise.all(
     tick_elements.map((tick) => tick.textContent()),

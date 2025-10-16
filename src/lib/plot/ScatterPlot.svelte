@@ -29,6 +29,7 @@
   import {
     ColorBar,
     DEFAULT_GRID_STYLE,
+    DEFAULT_MARKERS,
     find_best_plot_area,
     get_tick_label,
     Line,
@@ -168,7 +169,11 @@
     ...y2_axis,
   }
   display = { ...DEFAULTS.scatter.display, ...display }
-  styles = { show_points: true, show_lines: true, ...styles }
+  styles = {
+    show_points: DEFAULTS.scatter.show_points,
+    show_lines: DEFAULTS.scatter.show_lines,
+    ...styles,
+  }
   controls = { show: true, open: false, ...controls }
 
   let [width, height] = $state([0, 0])
@@ -572,8 +577,7 @@
         symbol_color: `black`, // Default marker color
         line_color: `black`, // Default line color
       }
-
-      const series_markers = (data_series?.markers ?? display.markers) ?? ``
+      const series_markers = data_series?.markers ?? DEFAULT_MARKERS
 
       // Check point_style (could be object or array)
       const first_point_style = Array.isArray(data_series?.point_style)
@@ -588,9 +592,7 @@
             Array.isArray(symbol_names) &&
             typeof first_point_style.symbol_type === `string` &&
             symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
-          ) {
-            final_shape = first_point_style.symbol_type as D3SymbolName
-          }
+          ) final_shape = first_point_style.symbol_type as D3SymbolName
           display_style.symbol_type = final_shape
 
           display_style.symbol_color = first_point_style.fill ??
@@ -601,9 +603,7 @@
               !display_style.symbol_color ||
               display_style.symbol_color === `none` ||
               display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
-            ) {
-              display_style.symbol_color = first_point_style.stroke
-            }
+            ) display_style.symbol_color = first_point_style.stroke
           }
         }
         // else: keep default display_style.symbol_type/color if no point_style
@@ -1532,7 +1532,7 @@
       <!-- Lines -->
       {#if styles.show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
-          {@const series_markers = series_data.markers ?? display.markers}
+          {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
           <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
             {#if series_markers?.includes(`line`)}
               {@const all_line_points = series_data.x.map((x, idx) => ({
@@ -1579,7 +1579,7 @@
       <!-- Points -->
       {#if styles.show_points}
         {#each filtered_series ?? [] as series_data (series_data._id)}
-          {@const series_markers = series_data.markers ?? display.markers}
+          {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
           <g data-series-id={series_data._id}>
             {#if series_markers?.includes(`points`)}
               {#each series_data.filtered_data as
@@ -1675,7 +1675,7 @@
       {@const { x, y, metadata, color_value, point_label, point_style, series_idx } =
       tooltip_point}
       {@const hovered_series = series_with_ids[series_idx]}
-      {@const series_markers = hovered_series?.markers ?? display.markers}
+      {@const series_markers = hovered_series?.markers ?? DEFAULT_MARKERS}
       {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
       !color || color === `none` || color === `transparent` ||
       (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}

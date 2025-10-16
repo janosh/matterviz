@@ -268,14 +268,13 @@ export interface AxisConfig {
   color?: string | null // Color for axis label, tick labels, and axis line
 }
 
-// Display configuration for grid lines and markers
+// Display configuration for grid lines and zero lines
 export interface DisplayConfig {
   x_grid?: boolean
   y_grid?: boolean
   y2_grid?: boolean
   x_zero_line?: boolean
   y_zero_line?: boolean
-  markers?: Markers
 }
 
 // Style overrides for point and line properties

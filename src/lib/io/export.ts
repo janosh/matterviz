@@ -226,16 +226,14 @@ export function export_svg_as_png(
   }
 }
 
-/** Generate FFmpeg command for WebM to MP4 conversion */
+// Generate FFmpeg command for WebM to MP4 conversion
 export function get_ffmpeg_conversion_command(input_filename: string): string {
   const output = input_filename.replace(/\.webm$/i, `.mp4`)
   return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
 }
 
-/**
- * Export trajectory video as WebM with frame-by-frame rendering (prevents dropped frames).
- * Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
- */
+// Export trajectory video as WebM with frame-by-frame rendering to prevent dropped frames.
+// Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
   filename: string,
@@ -278,9 +276,8 @@ export async function export_trajectory_video(
 
   // Calculate bitrate based on actual video dimensions
   // VP9 typically needs 0.08-0.12 bits per pixel per frame for good quality
-  const target_width = canvas.width * resolution_multiplier
-  const target_height = canvas.height * resolution_multiplier
-  const pixels_per_frame = target_width * target_height
+  // canvas dimensions include device pixel ratio and any resolution_multiplier
+  const pixels_per_frame = canvas.width * canvas.height
   const bits_per_pixel_per_frame = 0.1 // Good quality for VP9
   // Clamp bitrate to reasonable bounds (1 Mbps min, 200 Mbps max)
   const calculated_bitrate = pixels_per_frame * fps * bits_per_pixel_per_frame
@@ -361,7 +358,8 @@ export async function export_trajectory_video(
     recorder.onerror = (event) => {
       if (is_resolved) return
       is_resolved = true
-      reject(new Error(`MediaRecorder error: ${event}`))
+      // Extract error details from MediaRecorderErrorEvent or ErrorEvent
+      reject(new Error(`MediaRecorder error: ${event.error}`))
     }
 
     // Stop recording with safety timeout

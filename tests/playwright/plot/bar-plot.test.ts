@@ -236,8 +236,7 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`stacked mode handles positive and negative stacking separately and respects visibility`, async ({ page }) => {
-    const section = page.locator(`#modes-bar #stacked-mixed`)
-    const plot = section.locator(`.bar-plot`)
+    const plot = page.locator(`#stacked-mixed`)
     await expect(plot).toBeVisible()
 
     // Collect bars for first x index (approx top-left group); two series -> two rects per x
@@ -267,8 +266,7 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`zero-value bars render with minimal height/width and tooltips still appear`, async ({ page }) => {
-    const section = page.locator(`#modes-bar #zero-values`)
-    const plot = section.locator(`.bar-plot`)
+    const plot = page.locator(`#zero-values`)
     await expect(plot).toBeVisible()
     const rects = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(rects.first()).toBeVisible()
@@ -285,8 +283,7 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`per-bar width arrays change bar widths`, async ({ page }) => {
-    const section = page.locator(`#modes-bar #width-array`)
-    const plot = section.locator(`.bar-plot`)
+    const plot = page.locator(`#width-array`)
     await expect(plot).toBeVisible()
     const rects = await plot.locator(`svg rect[fill]:not([fill="none"])`).all()
     const boxes = (
@@ -299,8 +296,7 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`horizontal stacked mixed also separates positive/negative properly`, async ({ page }) => {
-    const section = page.locator(`#modes-bar #stacked-mixed-horizontal`)
-    const plot = section.locator(`.bar-plot`)
+    const plot = page.locator(`#stacked-mixed-horizontal`)
     await expect(plot).toBeVisible()
     const rects = plot.locator(`svg rect[fill]:not([fill="none"])`)
     await expect(rects.first()).toBeVisible()

@@ -137,7 +137,6 @@
   {series}
   x_axis={{ ...x_axis, range: [0, max_r] }}
   y_axis={{ ...y_axis, range: [0, max_g * 1.05] }}
-  display={{ markers: `line` }}
   styles={{ show_lines: true, show_points: false }}
   class={`${rest.class ?? ``} ${dragging ? `dragging` : ``}`}
   style={rest.style ?? `height: 400px;`}

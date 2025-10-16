@@ -294,7 +294,6 @@
     x_zero_line: orientation === `horizontal`,
     y_zero_line: orientation === `vertical`,
   }}
-  show_legend={true}
   {tooltip}
   ondrop={handle_file_drop}
   ondragover={(event) => {

@@ -283,12 +283,7 @@
     format: `.2f`,
     ...y_axis,
   }}
-  display={{
-    x_grid: false,
-    y_grid: true,
-    y_zero_line: true,
-    markers: `line`,
-  }}
+  display={{ x_grid: false, y_grid: true, y_zero_line: true }}
   legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
   {...rest}
 >
