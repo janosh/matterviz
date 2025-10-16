@@ -4,7 +4,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 
 // SHARED HELPER FUNCTIONS
 
-/** Click radio buttons reliably */
+// Click radio buttons reliably
 const click_radio = async (page: Page, selector: string): Promise<void> => {
   await page.evaluate((sel) => {
     const radio = document.querySelector(sel) as HTMLInputElement
@@ -12,7 +12,7 @@ const click_radio = async (page: Page, selector: string): Promise<void> => {
   }, selector)
 }
 
-/** Get tick values and calculate range */
+// Get tick values and calculate range
 const get_tick_range = async (
   axis_locator: Locator,
 ): Promise<{ ticks: number[]; range: number }> => {
@@ -29,7 +29,7 @@ const get_tick_range = async (
   return { ticks, range }
 }
 
-/** Get label positions based on parent group transform */
+// Get label positions based on parent group transform
 const get_label_positions = async (
   plot_locator: Locator,
 ): Promise<Record<string, XyObj>> => {
@@ -68,7 +68,7 @@ const get_label_positions = async (
   return positions
 }
 
-/** Get legend position using getBoundingClientRect */
+// Get legend position using getBoundingClientRect
 const get_legend_position = async (
   plot_locator: Locator,
 ): Promise<{ x: number; y: number }> => {
@@ -84,7 +84,7 @@ const get_legend_position = async (
   })
 }
 
-/** Set density sliders for colorbar placement tests */
+// Set density sliders for colorbar placement tests
 const set_density = async (
   section_locator: Locator,
   densities: { tl: number; tr: number; bl: number; br: number },
@@ -107,7 +107,7 @@ const set_density = async (
   await set_slider(`Bottom Right`, densities.br)
 }
 
-/** Get colorbar transform for placement tests */
+// Get colorbar transform for placement tests
 const get_colorbar_transform = async (
   section_locator: Locator,
 ): Promise<string> => {
@@ -144,7 +144,7 @@ const get_colorbar_transform = async (
   return transform
 }
 
-/** Get marker bounding box for sizing tests */
+// Get marker bounding box for sizing tests
 const get_marker_bbox = async (
   plot_locator: Locator,
   index: number,
@@ -154,14 +154,14 @@ const get_marker_bbox = async (
   return marker_locator.boundingBox()
 }
 
-/** Get bbox area */
+// Get bbox area
 const get_bbox_area = (
   bbox: { x: number; y: number; width: number; height: number } | null,
 ): number => {
   return bbox ? bbox.width * bbox.height : 0
 }
 
-/** Check and return marker sizes and relationships */
+// Check and return marker sizes and relationships
 const check_marker_sizes = async (
   plot_locator: Locator,
   first_idx: number,
@@ -201,7 +201,7 @@ const check_marker_sizes = async (
   }
 }
 
-/** Get tooltip background and text color after hover */
+// Get tooltip background and text color after hover
 const get_tooltip_colors = async (
   page: Page,
   plot_id: string,
@@ -228,14 +228,13 @@ const get_tooltip_colors = async (
   return colors
 }
 
-// MAIN TEST SUITE
-
+// Scatter plot tests
 test.describe(`ScatterPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
   })
 
-  // BASIC RENDERING TESTS
+  // Basic rendering tests
 
   test(`renders basic scatter plot with correct axis labels and ticks`, async ({ page }) => {
     const scatter_plot = page.locator(`#basic-example .scatter`)
@@ -262,8 +261,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot.locator(`svg >> path`)).toHaveCount(14)
   })
 
-  // MARKER AND LINE RENDERING TESTS
-
+  // Marker and line rendering tests
   const marker_test_cases = [
     { id: `#points-only`, expected_paths: 10, has_line: false },
     { id: `#line-only`, expected_paths: 2, has_line: true },
@@ -344,7 +342,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
   })
 
-  // SCALE AND RANGE TESTS
+  // Scale and range tests
 
   const range_test_cases = [
     {
@@ -705,8 +703,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
   })
 
-  // LEGEND TESTS
-
   const legend_visibility_test_cases = [
     {
       id: `#legend-single-default`,
@@ -894,8 +890,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(legend_stroke).toMatch(/^#[0-9a-f]{6}$/i) // Valid hex color
     expect(legend_stroke).toBe(`#440154`) // Viridis color for value 1 (first color_value)
   })
-
-  // COLORBAR PLACEMENT TESTS
 
   const colorbar_test_cases = [
     {

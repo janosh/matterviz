@@ -203,7 +203,7 @@
 
   <h2>Drag & Drop</h2>
   <p>Drop a JSON structure file to visualize its RDF.</p>
-  <RdfPlot mode="element_pairs" enable_drop={true} cutoff={7} style="height: 500px" />
+  <RdfPlot mode="element_pairs" enable_drop cutoff={7} style="height: 500px" />
 </div>
 
 <style>

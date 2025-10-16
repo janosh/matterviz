@@ -97,10 +97,12 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 </label>
 
 <ScatterPlot
-  series={[basic_data, second_series]}
+  series={[
+    { ...basic_data, markers: display_mode },
+    { ...second_series, markers: display_mode },
+  ]}
   x_axis={{ label: 'X Axis' }}
   y_axis={{ label: 'Y Value' }}
-  display={{ markers: display_mode }}
   point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
   on_point_hover={handle_point_hover}
   style="height: 300px"
@@ -246,10 +248,9 @@ Demonstrate various point styles, custom tooltips, and hover effects:
 </script>
 
 <ScatterPlot
-  series={series_with_styles}
+  series={series_with_styles.map((s) => ({ ...s, markers: 'points' }))}
   x_axis={{ label: 'X Axis' }}
   y_axis={{ label: 'Point Style Examples', range: [0, 12] }}
-  display={{ markers: 'points' }}
   change={(point) => (hovered_point = point)}
   style="height: 400px"
 >
@@ -370,10 +371,9 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 </div>
 
 <ScatterPlot
-  series={[spiral_data]}
+  series={[{ ...spiral_data, markers: 'points' }]}
   x_axis={{ label: 'X Axis', range: [-15, 15] }}
   y_axis={{ label: 'Y Axis', range: [-15, 15] }}
-  display={{ markers: 'points' }}
   {size_scale}
   style="height: 500px"
 >
@@ -451,10 +451,9 @@ This example shows categorized data with color coding, custom tick intervals, an
 {/each}
 
 <ScatterPlot
-  series={series_data}
+  series={series_data.map((s) => ({ ...s, markers: 'points' }))}
   x_axis={{ label: "X Value", range: [-15, 15], ticks: ticks.x }}
   y_axis={{ label: "Y Value", range: [-15, 15], ticks: ticks.y }}
-  display={{ markers: "points" }}
   style="height: 400px;"
 >
   {#snippet tooltip({ x, y, metadata })}
@@ -543,10 +542,9 @@ Using time data on the x-axis with custom formatting:
   </label>
 
   <ScatterPlot
-    series={time_series}
+    series={time_series.map((s) => ({ ...s, markers: 'line+points' }))}
     x_axis={{ format: date_format, ticks: -7, label: 'Date' }}
     y_axis={{ format: y_format, ticks: 5, label: 'Value' }}
-    display={{ markers: 'line+points' }}
     style="height: 350px"
     legend={{
       layout: `horizontal`,
@@ -651,10 +649,9 @@ This example shows how to add permanent text labels to your scatter points:
 </script>
 
 <ScatterPlot
-  series={[data]}
+  series={[{ ...data, markers: 'points' }]}
   x_axis={{ label: 'X Axis', range: [0, 10] }}
   y_axis={{ label: 'Y Axis', range: [0, 10] }}
-  display={{ markers: 'points' }}
   style="height: 350px"
 />
 ```
@@ -683,10 +680,9 @@ You can position labels in different directions relative to each point:
 </script>
 
 <ScatterPlot
-  series={[position_data]}
+  series={[{ ...position_data, markers: 'points' }]}
   x_axis={{ label: 'X Axis', range: [0, 10] }}
   y_axis={{ label: 'Y Axis', range: [0, 6] }}
-  display={{ markers: 'points' }}
   style="height: 350px"
 />
 ```
@@ -847,7 +843,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   </div>
 
   <ScatterPlot
-    series={all_series}
+    series={all_series.map((s) => ({ ...s, markers: 'line+points' }))}
     x_axis={{
       scale_type: x_scale_type,
       range: x_range,
@@ -861,7 +857,6 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
       format: '~s',
     }}
     {size_scale}
-    display={{ markers: 'line+points' }}
     style="height: 400px"
   >
     {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
@@ -988,10 +983,9 @@ This example combines multiple features including different display modes, custo
   </div>
 
   <ScatterPlot
-    series={displayed_series}
+    series={displayed_series.map((s) => ({ ...s, markers: display_mode }))}
     x_axis={{ label: axis_labels.x }}
     y_axis={{ label: axis_labels.y }}
-    display={{ markers: display_mode }}
     change={(point) => (hovered_point = point)}
     style="height: 400px;"
     legend={null}
@@ -1049,10 +1043,10 @@ This example combines multiple features including different display modes, custo
   </div>
 
   <ScatterPlot
-    series={random_series}
+    series={random_series.map((s) => ({ ...s, markers: 'points' }))}
     x_axis={{ label: axis_labels.x, range: [-15, 15], ticks: ticks.x }}
     y_axis={{ label: axis_labels.y, range: [-15, 15], ticks: ticks.y }}
-    display={{ x_grid: grid.x, markers: "points" }}
+    display={{ x_grid: grid.x }}
     style="height: 400px; position: relative;"
     legend={{
       wrapper_style: `
@@ -1184,10 +1178,9 @@ This example demonstrates how the color bar automatically positions itself in on
 </div>
 
 <ScatterPlot
-  series={plot_series}
+  series={plot_series.map((s) => ({ ...s, markers: 'points+text' }))}
   x_axis={{ label: 'X Position', range: [0, 100], format: '.2' }}
   y_axis={{ label: 'Y Position', range: [0, 100], format: '.2' }}
-  display={{ markers: 'points+text' }}
   color_scale={{ scheme: `turbo` }}
   color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
   style="height: 450px; margin-block: 1em"
@@ -1277,10 +1270,9 @@ This example demonstrates automatic placement with several clusters of points:
   </label>
 
   <ScatterPlot
-    series={series_data}
+    series={series_data.map((s) => ({ ...s, markers: 'points' }))}
     x_axis={{ label: 'X Position', range: [0, 100] }}
     y_axis={{ label: 'Y Position', range: [0, 100] }}
-    display={{ markers: 'points' }}
     style="height: 500px"
   />
 </div>
@@ -1342,10 +1334,9 @@ padding is increased to prevent overlap. Use the controls above to change the co
 and scale type.
 
 <ScatterPlot
-  series={[vertical_color_data]}
+  series={[{ ...vertical_color_data, markers: 'points' }]}
   x_axis={{ label: 'X Position', range: [0, 100], format: '.2' }}
   y_axis={{ label: 'Y Position', range: [0, 100], format: '.2' }}
-  display={{ markers: 'points' }}
   {color_scale}
   padding={plot_padding}
   color_bar={{
@@ -1460,10 +1451,9 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 </script>
 
 <ScatterPlot
-  series={clipping_series}
+  series={clipping_series.map((s) => ({ ...s, markers: 'line' }))}
   x_axis={{ range: [-5, 5], label: 'X Axis (Fixed Range)' }}
   y_axis={{ range: [-5, 5], label: 'Y Axis (Fixed Range)' }}
-  display={{ markers: 'line' }}
   style="height: 400px"
 />
 ```

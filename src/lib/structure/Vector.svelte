@@ -16,65 +16,57 @@
     arrow_head_length = DEFAULTS.structure.force_arrow_head_length,
     ...rest
   }: ComponentProps<typeof T.Mesh> & {
-    position: Vec3 // Starting position of the vector (atom position)
-    vector: Vec3 // Vector components [x, y, z] in appropriate units
-    scale?: number // Scale factor for vector visualization
-    color?: string // Color of the vector
-    // Arrow dimensions
-    shaft_radius?: number
+    position: Vec3
+    vector: Vec3
+    scale?: number
+    color?: string
+    shaft_radius?: number // negative = relative to length
     arrow_head_radius?: number
     arrow_head_length?: number
   } = $props()
 
-  // Calculate vector magnitude and normalized direction
-  let vector_magnitude = $derived(Math.hypot(...vector))
-  let vector_direction = $derived(
-    vector_magnitude > math.EPS
-      ? math.scale(vector, 1 / vector_magnitude)
-      : [0, 1, 0],
+  const mag = $derived(Math.hypot(...vector))
+  const dir = $derived(
+    mag > math.EPS ? math.scale(vector, 1 / mag) : ([0, 1, 0] as Vec3),
+  )
+  const vec_len = $derived(mag * scale)
+
+  const head_len = $derived(
+    arrow_head_length < 0 ? vec_len * -arrow_head_length : arrow_head_length,
+  )
+  const shaft_len = $derived(Math.max(0, vec_len - head_len * 0.5))
+  const shaft_r = $derived(
+    shaft_radius < 0 ? shaft_len * -shaft_radius : shaft_radius,
+  )
+  const head_r = $derived(
+    arrow_head_radius < 0 ? shaft_len * -arrow_head_radius : arrow_head_radius,
   )
 
-  // Scaled vector length
-  let vector_length = $derived(vector_magnitude * scale)
-
-  let shaft_length = $derived(
-    Math.max(0, vector_length - arrow_head_length * 0.5),
+  const shaft_pos = $derived(
+    math.add(position, math.scale(dir, shaft_len * 0.5)) as Vec3,
+  )
+  const head_pos = $derived(
+    math.add(position, math.scale(dir, shaft_len + head_len * 0.5)) as Vec3,
   )
 
-  // Calculate positions using math helpers
-  let shaft_center = $derived(
-    math.add(position, math.scale(vector_direction, shaft_length * 0.5)) as Vec3,
-  )
-  let arrow_head_position = $derived(
-    math.add(
-      position,
-      math.scale(vector_direction, shaft_length + arrow_head_length * 0.5),
-    ) as Vec3,
-  )
-
-  // Calculate rotation to align Y-axis with vector direction
-  let rotation = $derived.by((): Vec3 => {
-    if (vector_magnitude < math.EPS) return [0, 0, 0] // Handle zero vector
-
-    const quaternion = new Quaternion().setFromUnitVectors(
+  const rotation = $derived.by((): Vec3 => {
+    if (mag < math.EPS) return [0, 0, 0]
+    const quat = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0),
-      new Vector3(...vector_direction).normalize(),
+      new Vector3(...dir),
     )
-    const euler = new Euler().setFromQuaternion(quaternion)
-    return euler.toArray().slice(0, 3) as Vec3
+    return new Euler().setFromQuaternion(quat).toArray().slice(0, 3) as Vec3
   })
 </script>
 
-<!-- Vector shaft (cylinder) -->
-{#if shaft_length > 0.01}
-  <T.Mesh {...rest} position={shaft_center} {rotation}>
-    <T.CylinderGeometry args={[shaft_radius, shaft_radius, shaft_length, 12]} />
+{#if shaft_len > 0.01}
+  <T.Mesh {...rest} position={shaft_pos} {rotation}>
+    <T.CylinderGeometry args={[shaft_r, shaft_r, shaft_len, 12]} />
     <T.MeshStandardMaterial {color} />
   </T.Mesh>
 {/if}
 
-<!-- Arrow head (cone) -->
-<T.Mesh {...rest} position={arrow_head_position} {rotation}>
-  <T.ConeGeometry args={[arrow_head_radius, arrow_head_length, 12]} />
+<T.Mesh {...rest} position={head_pos} {rotation}>
+  <T.ConeGeometry args={[head_r, head_len, 12]} />
   <T.MeshStandardMaterial {color} />
 </T.Mesh>

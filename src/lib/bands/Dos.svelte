@@ -168,7 +168,7 @@
   series={series_data}
   x_axis={{ label: x_label, format: `.2f`, range: x_range, ...x_axis }}
   y_axis={{ label: y_label, format: `.2f`, range: y_range, ...y_axis }}
-  display={{ x_grid: true, y_grid: true, x_zero_line: true, markers: `line` }}
+  display={{ x_grid: true, y_grid: true, x_zero_line: true, y_zero_line: true }}
   legend={show_legend ? {} : null}
   {...rest}
 />

@@ -603,9 +603,6 @@ test(`critical default values are valid to prevent runtime errors`, () => {
   expect([`linear`, `log`]).toContain(DEFAULTS.plot.x_scale_type)
   expect([`linear`, `log`]).toContain(DEFAULTS.plot.y_scale_type)
 
-  // Marker types must be valid
-  expect([`line`, `points`, `line+points`]).toContain(DEFAULTS.scatter.markers)
-
   // Critical numeric values must be in valid ranges to prevent rendering issues
   expect(DEFAULTS.structure.atom_radius).toBeGreaterThan(0)
   expect(DEFAULTS.structure.zoom_speed).toBeGreaterThan(0)

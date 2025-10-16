@@ -12,9 +12,7 @@ const pattern: XrdPattern = {
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
 }
 
-/**
- * Helper to create a sized container for proper plot rendering.
- */
+// Helper to create a sized container for proper plot rendering.
 function create_sized_container(): HTMLDivElement {
   const target = document.createElement(`div`)
   target.style.width = `800px`
@@ -23,9 +21,7 @@ function create_sized_container(): HTMLDivElement {
   return target
 }
 
-/**
- * Helper to mock clientWidth/clientHeight and wait for render.
- */
+// Helper to mock clientWidth/clientHeight and wait for render.
 async function wait_for_plot_render(target: HTMLElement): Promise<void> {
   const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
   if (bar_plot) {
@@ -33,8 +29,7 @@ async function wait_for_plot_render(target: HTMLElement): Promise<void> {
     Object.defineProperty(bar_plot, `clientHeight`, { value: 600, configurable: true })
     bar_plot.dispatchEvent(new Event(`resize`))
   }
-  // Wait for reactive updates
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  await new Promise((resolve) => setTimeout(resolve, 10)) // Wait for reactive updates
 }
 
 describe(`XrdPlot`, () => {

@@ -256,75 +256,68 @@
 
 <section id="modes-bar">
   <h2>Modes and Orientation</h2>
-  <div id="overlay">
-    <BarPlot
-      series={modes_series_overlay}
-      x_axis={{ label: `X` }}
-      y_axis={{ label: `Y` }}
-      mode="overlay"
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
-  <div id="stacked">
-    <BarPlot
-      series={modes_series_stacked}
-      x_axis={{ label: `X` }}
-      y_axis={{ label: `Y` }}
-      mode="stacked"
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
-  <div id="stacked-mixed">
-    <BarPlot
-      series={stacked_mixed_series}
-      x_axis={{ label: `X` }}
-      y_axis={{ label: `Y` }}
-      mode="stacked"
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
-  <div id="zero-values">
-    <BarPlot
-      series={zero_value_series}
-      x_axis={{ label: `X` }}
-      y_axis={{ label: `Y` }}
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
-  <div id="width-array">
-    <BarPlot
-      series={width_array_series}
-      x_axis={{ label: `X` }}
-      y_axis={{ label: `Y` }}
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
-  <div id="stacked-mixed-horizontal">
-    <BarPlot
-      series={stacked_mixed_series}
-      x_axis={{ label: `Y` }}
-      y_axis={{ label: `X` }}
-      mode="stacked"
-      orientation="horizontal"
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
-  <div id="horizontal">
-    <BarPlot
-      series={modes_series_overlay}
-      x_axis={{ label: `Y` }}
-      y_axis={{ label: `X` }}
-      orientation="horizontal"
-      controls_toggle_props={{ class: `bar-controls-toggle` }}
-      style="height: 300px"
-    />
-  </div>
+  <BarPlot
+    id="overlay"
+    series={modes_series_overlay}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    mode="overlay"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
+  <BarPlot
+    id="stacked"
+    series={modes_series_stacked}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    mode="stacked"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
+  <BarPlot
+    id="stacked-mixed"
+    series={stacked_mixed_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    mode="stacked"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
+  <BarPlot
+    id="zero-values"
+    series={zero_value_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
+  <BarPlot
+    id="width-array"
+    series={width_array_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y` }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
+  <BarPlot
+    id="stacked-mixed-horizontal"
+    series={stacked_mixed_series}
+    x_axis={{ label: `Y` }}
+    y_axis={{ label: `X` }}
+    mode="stacked"
+    orientation="horizontal"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
+  <BarPlot
+    id="horizontal"
+    series={modes_series_overlay}
+    x_axis={{ label: `Y` }}
+    y_axis={{ label: `X` }}
+    orientation="horizontal"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 300px"
+  />
 </section>
 
 <section id="handlers-bar">

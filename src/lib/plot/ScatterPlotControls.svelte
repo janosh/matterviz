@@ -35,20 +35,10 @@
   // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
 
-  // Initialize show_points/show_lines from display.markers
+  // Initialize show_points/show_lines from defaults
   $effect(() => {
-    const markers_val = display.markers ?? DEFAULTS.scatter.markers
-    styles.show_points ??= markers_val?.includes(`points`) ?? false
-    styles.show_lines ??= markers_val?.includes(`line`) ?? false
-  })
-
-  // Sync display.markers when show_points/show_lines or nested styles change
-  $effect(() => {
-    const { show_points = true, show_lines = true } = styles
-    if (show_points && show_lines) display.markers = `line+points`
-    else if (show_points) display.markers = `points`
-    else if (show_lines) display.markers = `line`
-    else display.markers = `none`
+    styles.show_points ??= DEFAULTS.scatter.show_points
+    styles.show_lines ??= DEFAULTS.scatter.show_lines
   })
 </script>
 

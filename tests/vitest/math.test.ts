@@ -108,6 +108,21 @@ test(`add function comprehensive`, () => {
 })
 
 test.each([
+  [[5, 7, 9], [2, 3, 4], [3, 4, 5]],
+  [[10, 20], [3, 7], [7, 13]],
+  [[0, 0, 0], [1, 2, 3], [-1, -2, -3]],
+  [[5, 5, 5], [5, 5, 5], [0, 0, 0]],
+  [[-1, -2, -3], [-4, -5, -6], [3, 3, 3]],
+])(`subtract vectors`, (vec1, vec2, expected) => {
+  expect(math.subtract(vec1, vec2)).toEqual(expected)
+  expect(math.add(math.subtract(vec1, vec2), vec2)).toEqual(vec1)
+})
+
+test(`subtract throws on mismatched lengths`, () => {
+  expect(() => math.subtract([1, 2, 3], [4, 5])).toThrow(/same\s+length/i)
+})
+
+test.each([
   [[1, 2], [3, 4], 11],
   [[1, 2, 3], [4, 5, 6], 32],
 ])(`dot product`, (vec1, vec2, expected) => {

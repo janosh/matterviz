@@ -30,8 +30,8 @@
 
   let {
     series = $bindable([]),
-    orientation = $bindable(`vertical` as Orientation),
-    mode = $bindable(`overlay` as BarMode),
+    orientation = $bindable(`vertical`),
+    mode = $bindable(`overlay`),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),

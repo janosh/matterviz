@@ -491,7 +491,6 @@
     series={[basic_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -499,24 +498,21 @@
   <h2>Marker Types</h2>
   <h3>Points Only</h3>
   <ScatterPlot
-    series={[points_data]}
+    series={[{ ...points_data, markers: `points` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Points)` }}
-    display={{ markers: `points` }}
   />
   <h3>Line Only</h3>
   <ScatterPlot
-    series={[line_data]}
+    series={[{ ...line_data, markers: `line` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Line)` }}
-    display={{ markers: `line` }}
   />
   <h3>Line + Points</h3>
   <ScatterPlot
     series={[line_points_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Line+Points)` }}
-    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -528,7 +524,6 @@
     series={[wide_range_data]}
     x_axis={{ label: `X Axis`, range: [-1100, 1100] }}
     y_axis={{ label: `Y Axis`, range: [-550, 550] }}
-    display={{ markers: `line+points` }}
   />
 
   <h3>Very Small Range</h3>
@@ -536,7 +531,6 @@
     series={[small_range_data]}
     x_axis={{ label: `X Axis`, range: [0, 0.0006] }}
     y_axis={{ label: `Y Axis`, range: [0, 0.00006] }}
-    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -547,14 +541,12 @@
     series={[log_scale_data]}
     x_axis={{ label: `X Axis (Linear)`, range: [-1100, 1100] }}
     y_axis={{ label: `Y Axis (Log)`, range: [1, 6000], scale_type: `log` }}
-    display={{ markers: `line+points` }}
   />
   <h3>X-Axis Log Scale</h3>
   <ScatterPlot
     series={[log_scale_data2]}
     x_axis={{ label: `X Axis (Log)`, format: `~s`, range: [0.01, 1100], scale_type: `log` }}
     y_axis={{ label: `Y Axis (Linear)`, format: `~s` }}
-    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -562,17 +554,15 @@
   <h2>Custom Styling Examples</h2>
   <h3>Rainbow Points</h3>
   <ScatterPlot
-    series={[rainbow_data]}
+    series={[{ ...rainbow_data, markers: `points` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `points` }}
   />
   <h3>Multiple Series</h3>
   <ScatterPlot
     series={[multi_series_data1, multi_series_data2]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -588,10 +578,9 @@
     {/each}
   </div>
   <ScatterPlot
-    series={[color_scale_data]}
+    series={[{ ...color_scale_data, markers: `points` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `points` }}
     {color_scale}
     color_bar={{}}
   />
@@ -599,7 +588,7 @@
 
 <section id="custom-tooltip">
   <h2>Custom Tooltip Example</h2>
-  <ScatterPlot series={[custom_tooltip_data]} display={{ markers: `points` }}>
+  <ScatterPlot series={[{ ...custom_tooltip_data, markers: `points` }]}>
     {#snippet tooltip(props)}
       Point Info: <strong>{props.metadata?.info}</strong><br />
       Coords: ({props.x_formatted}, {props.y_formatted})
@@ -611,8 +600,7 @@
   <h2>bind:hovered Example</h2>
   <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
   <ScatterPlot
-    series={[bind_hovered_data]}
-    display={{ markers: `points` }}
+    series={[{ ...bind_hovered_data, markers: `points` }]}
     bind:hovered={is_plot_hovered}
   />
 </section>
@@ -628,10 +616,9 @@
   </label>
   {#key enable_auto_placement}
     <ScatterPlot
-      series={auto_placement_test_series}
+      series={auto_placement_test_series.map((s) => ({ ...s, markers: `points` }))}
       x_axis={{ label: `X`, range: [0, 100] }}
       y_axis={{ label: `Y`, range: [0, 100] }}
-      display={{ markers: `points` }}
       style="height: 450px; width: 100%"
     />
   {/key}
@@ -665,10 +652,9 @@
   </div>
 
   <ScatterPlot
-    series={auto_placement_plot_series}
+    series={auto_placement_plot_series.map((s) => ({ ...s, markers: `points` }))}
     x_axis={{ label: `X Position`, range: [0, 100] }}
     y_axis={{ label: `Y Position`, range: [0, 100] }}
-    display={{ markers: `points` }}
     color_scale={{ scheme: `Turbo` }}
     color_bar={{ title: `Color Bar Title` }}
   >
@@ -683,29 +669,25 @@
   <h2>Legend Rendering Tests</h2>
   <h3>Single Series (Default Legend) - No Legend Expected</h3>
   <ScatterPlot
-    series={legend_single_series}
-    display={{ markers: `points` }}
+    series={legend_single_series.map((s) => ({ ...s, markers: `points` }))}
     id="legend-single-default"
   />
   <h3>Single Series (legend=null) - No Legend Expected</h3>
   <ScatterPlot
-    series={legend_single_series}
+    series={legend_single_series.map((s) => ({ ...s, markers: `points` }))}
     legend={null}
-    display={{ markers: `points` }}
     id="legend-single-null"
   />
   <h3>Single Series (Configured Legend) - Legend Expected</h3>
   <ScatterPlot
-    series={legend_single_series}
+    series={legend_single_series.map((s) => ({ ...s, markers: `points` }))}
     legend={{ layout: `horizontal` }}
-    display={{ markers: `points` }}
     id="legend-single-config"
   />
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
   <ScatterPlot
-    series={legend_multi_series}
+    series={legend_multi_series.map((s) => ({ ...s, markers: `points` }))}
     legend={{ draggable: true }}
-    display={{ markers: `points` }}
     id="legend-multi-default"
   />
   <h3>Zero Series - No Legend Expected</h3>
@@ -739,7 +721,6 @@
       scale_type: lin_log_y_scale_type,
       range: lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null],
     }}
-    display={{ markers: `line+points` }}
   />
 </section>
 
@@ -778,10 +759,9 @@
 </label>
 
 <ScatterPlot
-  series={[spiral_data]}
+  series={[{ ...spiral_data, markers: `points` }]}
   x_axis={{ label: `X Axis`, range: [-15, 15] }}
   y_axis={{ label: `Y Axis`, range: [-15, 15] }}
-  display={{ markers: `points` }}
   {size_scale}
   style="height: 500px; width: 100%"
 >
@@ -800,26 +780,26 @@
   <h3>Solid Lines</h3>
   <ScatterPlot
     id="solid-line-plot"
-    series={[solid_line_data_1, solid_line_data_2]}
+    series={[
+      { ...solid_line_data_1, markers: `line` },
+      { ...solid_line_data_2, markers: `line` },
+    ]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `line` }}
   />
   <h3>Dashed Line</h3>
   <ScatterPlot
     id="dashed-line-plot"
-    series={[dashed_line_data]}
+    series={[{ ...dashed_line_data, markers: `line` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `line` }}
   />
   <h3>Custom Dashed Line</h3>
   <ScatterPlot
     id="custom-dash-plot"
-    series={[custom_dash_data]}
+    series={[{ ...custom_dash_data, markers: `line` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    display={{ markers: `line` }}
   />
 </section>
 
@@ -959,10 +939,9 @@
   <h2>Point Event Test</h2>
   <p>Clicking a point should update the text below.</p>
   <ScatterPlot
-    series={point_event_data}
+    series={point_event_data.map((s) => ({ ...s, markers: `points` }))}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
-    display={{ markers: `points` }}
     point_events={{
       onclick: handle_point_click,
       ondblclick: handle_point_double_click,

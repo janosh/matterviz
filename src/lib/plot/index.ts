@@ -59,3 +59,5 @@ export const DEFAULT_GRID_STYLE = {
   'stroke-dasharray': `4`,
   'stroke-width': `1`,
 } as const
+
+export const DEFAULT_MARKERS = `line+points` as const

@@ -105,7 +105,7 @@ Synchronize the y-axes between panels:
   const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
 </script>
 
-<BandsAndDos {band_structs} {doses} shared_y_axis={true} />
+<BandsAndDos {band_structs} {doses} shared_y_axis />
 ```
 
 ## With Controls
