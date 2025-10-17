@@ -68,7 +68,8 @@
     "typescript": "5.9.3",
     "typescript-eslint": "^8.46.1",
     "vite": "^7.1.10",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wasm-pack": "^0.13.1"
   },
   "keywords": [
     "svelte",

@@ -1,12 +1,24 @@
 import type { AnyStructure, BondPair, Matrix3x3, Pbc, Vec3 } from '$lib'
 import * as wasm_bonding from '$wasm/bonding_wasm.js'
 import bonding_wasm_url from '$wasm/bonding_wasm_bg.wasm?url'
+import process from 'node:process'
 
 let wasm_initialized = false
 
 async function ensure_wasm_ready(): Promise<void> {
   if (!wasm_initialized) {
-    await wasm_bonding.default({ module_or_path: bonding_wasm_url })
+    // In Node.js/vitest envs, fetch returns a Response but the WASM loader
+    // expects the bytes directly, so we need to manually convert
+    if (typeof process !== `undefined` && process.versions?.node) {
+      try {
+        const response = await fetch(bonding_wasm_url as unknown as string)
+        await wasm_bonding.default({ module_or_path: await response.arrayBuffer() })
+      } catch { // Fallback to URL-based loading
+        await wasm_bonding.default({ module_or_path: bonding_wasm_url })
+      }
+    } else { // Browser environment - use URL directly (fetch will be called internally)
+      await wasm_bonding.default({ module_or_path: bonding_wasm_url })
+    }
     wasm_initialized = true
   }
 }

@@ -129,6 +129,12 @@ fn default_strength_threshold() -> f64 {
     0.3
 }
 
+// Constants for electroneg_ratio bonding heuristics
+const IONIC_CHARACTER_BONUS: f64 = 1.3;
+const DISTANCE_WEIGHT_SIGMA: f64 = 0.3;
+const ELECTRO_WEIGHT_FACTOR: f64 = 0.3;
+const SATURATION_PENALTY_SIGMA: f64 = 0.5;
+
 impl Default for ElectronegRatioOptions {
     fn default() -> Self {
         Self {
@@ -145,6 +151,7 @@ impl Default for ElectronegRatioOptions {
 }
 
 
+// Penalize bonds longer than the closest bond to prevent over-coordination
 fn apply_saturation_penalty(
     strength: f64,
     distance: f64,
@@ -156,13 +163,13 @@ fn apply_saturation_penalty(
 
     if let Some(&closest_a) = closest_distances.get(&idx_a) {
         if distance > closest_a {
-            result *= (-(distance / closest_a - 1.0) / 0.5).exp();
+            result *= (-(distance / closest_a - 1.0) / SATURATION_PENALTY_SIGMA).exp();
         }
     }
 
     if let Some(&closest_b) = closest_distances.get(&idx_b) {
         if distance > closest_b {
-            result *= (-(distance / closest_b - 1.0) / 0.5).exp();
+            result *= (-(distance / closest_b - 1.0) / SATURATION_PENALTY_SIGMA).exp();
         }
     }
 
@@ -258,15 +265,15 @@ fn electroneg_ratio_impl(structure: &Structure, options: &ElectronegRatioOptions
                 } else if (props_a.is_metal && props_b.is_nonmetal) || (props_a.is_nonmetal && props_b.is_metal) {
                     bond_strength *= options.metal_nonmetal_bonus;
                     if en_diff > options.electronegativity_threshold {
-                        bond_strength *= 1.3;
+                        bond_strength *= IONIC_CHARACTER_BONUS;
                     }
                 } else if en_diff < 0.5 {
                     bond_strength *= options.similar_electronegativity_bonus;
                 }
 
                 let dist_ratio = distance / expected_dist;
-                let dist_weight = (-(dist_ratio - 1.0).powi(2) / (2.0 * 0.3_f64.powi(2))).exp();
-                let en_weight = (1.0 - 0.3 * en_ratio).max(0.0);
+                let dist_weight = (-(dist_ratio - 1.0).powi(2) / (2.0 * DISTANCE_WEIGHT_SIGMA.powi(2))).exp();
+                let en_weight = (1.0 - ELECTRO_WEIGHT_FACTOR * en_ratio).max(0.0);
 
                 let mut strength = bond_strength * dist_weight * en_weight;
                 if site_a.element == site_b.element {
@@ -344,6 +351,10 @@ fn default_min_face_area() -> f64 {
 fn default_max_distance() -> f64 {
     5.0  // Generous max distance
 }
+
+// Constants for Voronoi bonding heuristics
+const VORONOI_DISTANCE_PENALTY_SIGMA_SQ: f64 = 0.4;
+const VORONOI_MIN_STRENGTH: f64 = 0.05;
 
 impl Default for VoronoiOptions {
     fn default() -> Self {
@@ -426,7 +437,7 @@ fn voronoi_impl(structure: &Structure, options: &VoronoiOptions) -> Vec<BondPair
                 let distance_ratio = distance / expected_dist;
 
                 // Gentle distance penalty
-                let distance_penalty = (-(distance_ratio - 1.0).powi(2) / 0.4).exp();
+                let distance_penalty = (-(distance_ratio - 1.0).powi(2) / VORONOI_DISTANCE_PENALTY_SIGMA_SQ).exp();
 
                 // Normalize solid angle to bond strength
                 let strength_from_angle = (solid_angle / (4.0 * std::f64::consts::PI)).min(1.0);
@@ -434,7 +445,7 @@ fn voronoi_impl(structure: &Structure, options: &VoronoiOptions) -> Vec<BondPair
                 let final_strength = strength_from_angle * distance_penalty;
 
                 // Accept most bonds
-                if final_strength > 0.05 {
+                if final_strength > VORONOI_MIN_STRENGTH {
                     bonds.push(BondPair {
                         pos_1: site_a.xyz,
                         pos_2: site_b.xyz,

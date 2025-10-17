@@ -8,6 +8,7 @@ import type { Pbc } from './pbc'
 
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
+
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
@@ -192,4 +193,17 @@ export interface StructureHandlerData {
   performance_mode?: `quality` | `speed`
   scene_props?: ComponentProps<typeof StructureScene>
   lattice_props?: ComponentProps<typeof Lattice>
+}
+
+export interface BondInstance {
+  matrix: Float32Array
+  color_start: string
+  color_end: string
+}
+
+export interface BondGroupWithGradients {
+  thickness: number
+  instances: BondInstance[]
+  ambient_light?: number
+  directional_light?: number
 }
