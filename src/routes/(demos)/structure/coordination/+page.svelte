@@ -24,7 +24,7 @@
 
   // Single structure example
   let single_id = $state<string>(compute_ids[0] || ``)
-  let single_strategy = $state<CoordinationStrategy>(`nearest_neighbor`)
+  let single_strategy = $state<CoordinationStrategy>(`electroneg_ratio`)
   let single_split_mode = $state<SplitMode>(`by_element`)
 
   const single_struct = $derived<PymatgenStructure | null>(
@@ -34,7 +34,7 @@
   // Multiple structures example
   let selected_ids = $state<string[]>(compute_ids.slice(0, 3))
   let multi_split_mode = $state<SplitMode>(`by_element`)
-  let multi_strategy = $state<CoordinationStrategy>(`nearest_neighbor`)
+  let multi_strategy = $state<CoordinationStrategy>(`electroneg_ratio`)
 
   function toggle_select(id: string) {
     selected_ids = selected_ids.includes(id)

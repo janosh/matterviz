@@ -174,8 +174,7 @@
           "description": "Method for determining bonds between atoms",
           "enum": [
             "electroneg_ratio",
-            "max_dist",
-            "nearest_neighbor"
+            "voronoi"
           ]
         },
         "matterviz.structure.show_gizmo": {

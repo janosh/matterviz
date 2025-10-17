@@ -228,6 +228,7 @@
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
+  let latest_bond_request = 0 // needed to prevent race conditions when updating bond_pairs (i.e. ignore stale requests)
   $effect(() => {
     if (structure && show_bonds !== `never`) {
       const should_show_bonds = show_bonds === `always` ||
@@ -236,13 +237,14 @@
 
       if (should_show_bonds) {
         bond_pairs = []
+        const request_id = ++latest_bond_request
         BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
           .then((bonds) => {
-            bond_pairs = bonds
+            if (request_id === latest_bond_request) bond_pairs = bonds
           })
           .catch((err) => {
             console.error(`Bonding calculation failed:`, err)
-            bond_pairs = []
+            if (request_id === latest_bond_request) bond_pairs = []
           })
       } else {
         bond_pairs = []

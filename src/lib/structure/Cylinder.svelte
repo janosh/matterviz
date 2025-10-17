@@ -8,46 +8,30 @@
     to,
     color = `#808080`,
     thickness = 0.1,
-    offset = 0,
   }: {
     from: Vec3
     to: Vec3
     color?: string
     thickness?: number
-    offset?: number
   } = $props()
 
   const from_vec = new Vector3(...from)
   const to_vec = new Vector3(...to)
-  const { position, rotation, height } = calc_bond(
-    from_vec,
-    to_vec,
-    offset,
-    thickness,
-  )
+  const { position, rotation, height } = calc_bond(from_vec, to_vec)
 
   function calc_bond(
     from_vec: Vector3,
     to_vec: Vector3,
-    offset: number,
-    thickness: number,
   ): { position: Vec3; rotation: Vec3; height: number } {
-    // find the axis of the box
+    // find the axis of the cylinder
     const delta_vec = to_vec.clone().sub(from_vec)
-    // length of the bond
+    // length of the cylinder
     const height = delta_vec.length()
-    // calculate position
-    let position: Vec3
-    if (offset === 0) {
-      position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).toArray()
-    } else {
-      const offset_vec = new Vector3()
-        .crossVectors(delta_vec, new Vector3(1, 0, 0))
-        .normalize()
-      position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).add(
-        offset_vec.multiplyScalar(offset * thickness * 2),
-      ).toArray()
-    }
+    // calculate position (midpoint between from and to)
+    const position = from_vec
+      .clone()
+      .add(delta_vec.multiplyScalar(0.5))
+      .toArray() as Vec3
     // calculate rotation
     const quaternion = new Quaternion().setFromUnitVectors(
       new Vector3(0, 1, 0),

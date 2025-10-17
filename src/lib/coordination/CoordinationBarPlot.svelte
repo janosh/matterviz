@@ -28,7 +28,7 @@
   }
   let {
     structures,
-    strategy = `nearest_neighbor`,
+    strategy = `electroneg_ratio`,
     split_mode = `by_element`,
     mode = $bindable(`grouped`),
     orientation = `vertical` as Orientation,

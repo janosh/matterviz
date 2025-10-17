@@ -1,7 +1,7 @@
 import type { ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { atomic_weights } from '$lib/composition/parse'
 import { element_data } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Matrix4x4 } from '$lib/math'
 import * as math from '$lib/math'
 import type { ComponentProps } from 'svelte'
 import type { Pbc } from './pbc'
@@ -82,7 +82,7 @@ export type BondPair = {
   site_idx_2: number
   bond_length: number
   strength: number
-  transform_matrix: number[] // 4x4 transformation matrix for instanced rendering
+  transform_matrix: Matrix4x4
 }
 
 export type IdStructure = PymatgenStructure & { id: string }

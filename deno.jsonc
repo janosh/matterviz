@@ -9,7 +9,7 @@
     "vitest": "deno run -A --node-modules-dir npm:vitest",
     "e2e": "npx playwright test",
     "test:install": "npx playwright install chromium",
-    "package": "bash src/scripts/package.sh",
+    "package": "deno task build:wasm && mkdir -p tmp/wasm && cp -r dist/wasm/* tmp/wasm/ && svelte-package && mkdir -p dist/wasm && cp -r tmp/wasm/* dist/wasm/ && rm -rf tmp/wasm",
     "prepublishOnly": "deno task package",
     "changelog": "deno run -A https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts"
   },
@@ -18,7 +18,8 @@
     "$lib": "./src/lib",
     "$lib/": "./src/lib/",
     "$site": "./src/site",
-    "$site/": "./src/site/"
+    "$site/": "./src/site/",
+    "$wasm/": "./dist/wasm/"
   },
   "lint": {
     "rules": {

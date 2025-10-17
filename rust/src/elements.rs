@@ -1,51 +1,34 @@
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
 
+/// Minimal element data structure containing only fields used by the bonding algorithms.
+/// All fields except `symbol` are optional to ensure robust deserialization even if
+/// elements.json is missing or has null values for certain properties.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 struct ElementData {
-    #[serde(rename = "cpk-hex")]
-    cpk_hex: Option<String>,
-    appearance: Option<String>,
-    atomic_mass: f64,
-    atomic_radius: Option<f64>,
-    boiling_point: Option<f64>,
-    category: String,
-    column: i32,
-    covalent_radius: Option<f64>,
-    density: f64,
-    discoverer: String,
-    electron_affinity: Option<f64>,
-    electron_configuration_semantic: String,
-    electron_configuration: String,
-    electronegativity_pauling: Option<f64>,
-    electronegativity: Option<f64>,
-    first_ionization: Option<f64>,
-    ionization_energies: Vec<f64>,
-    melting_point: Option<f64>,
-    metal: Option<bool>,
-    metalloid: Option<bool>,
-    molar_heat: Option<f64>,
-    electrons: i32,
-    neutrons: i32,
-    protons: i32,
-    n_shells: i32,
-    n_valence: Option<i32>,
-    name: String,
-    natural: Option<bool>,
-    nonmetal: Option<bool>,
-    number_of_isotopes: Option<i32>,
-    number: i32,
-    period: i32,
-    phase: String,
-    radioactive: Option<bool>,
-    row: i32,
-    shells: Vec<i32>,
-    specific_heat: Option<f64>,
-    spectral_img: Option<String>,
-    summary: String,
+    /// Element symbol (e.g., "H", "He", "Li")
     symbol: String,
-    year: serde_json::Value, // Can be number or string
+
+    /// Covalent radius in Angstroms
+    #[serde(default)]
+    covalent_radius: Option<f64>,
+
+    /// Electronegativity value
+    #[serde(default)]
+    electronegativity: Option<f64>,
+
+    /// Pauling electronegativity (fallback if electronegativity is missing)
+    #[serde(default)]
+    electronegativity_pauling: Option<f64>,
+
+    /// Whether the element is classified as a metal
+    #[serde(default)]
+    metal: Option<bool>,
+
+    /// Whether the element is classified as a nonmetal
+    #[serde(default)]
+    nonmetal: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,24 +39,28 @@ pub struct ElementProps {
     pub is_nonmetal: bool,
 }
 
-fn load_element_data() -> Vec<ElementData> {
+static ELEMENT_DATA: Lazy<Vec<ElementData>> = Lazy::new(|| {
     const JSON_DATA: &str = include_str!("elements.json");
     serde_json::from_str(JSON_DATA).expect("Failed to parse elements.json")
+});
+
+fn load_element_data() -> &'static [ElementData] {
+    &ELEMENT_DATA
 }
 
 pub fn get_covalent_radii() -> HashMap<String, f64> {
     load_element_data()
-        .into_iter()
-        .filter_map(|elem| elem.covalent_radius.map(|radius| (elem.symbol, radius)))
+        .iter()
+        .filter_map(|elem| elem.covalent_radius.map(|radius| (elem.symbol.clone(), radius)))
         .collect()
 }
 
 pub fn get_element_props() -> HashMap<String, ElementProps> {
     load_element_data()
-        .into_iter()
+        .iter()
         .map(|elem| {
             (
-                elem.symbol,
+                elem.symbol.clone(),
                 ElementProps {
                     covalent_radius: elem.covalent_radius,
                     electronegativity: elem.electronegativity

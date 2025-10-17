@@ -13,7 +13,7 @@
   let sphere_segments = $state(16)
   let supercell_scaling = $state(`1x1x1`)
   let performance_mode = $state<`quality` | `speed`>(`quality`)
-  let bonding_strategy = $state<`nearest_neighbor` | `electroneg_ratio`>(
+  let bonding_strategy = $state<`electroneg_ratio` | `voronoi`>(
     `electroneg_ratio`,
   )
   let force_large_structure = $state(false)
@@ -222,7 +222,7 @@
 
     if (url_params.has(`bonding_strategy`)) {
       const strategy = url_params.get(`bonding_strategy`)
-      if (strategy === `nearest_neighbor` || strategy === `electroneg_ratio`) {
+      if (strategy === `electroneg_ratio` || strategy === `voronoi`) {
         new_bonding_strategy = strategy as typeof bonding_strategy
       }
     }
@@ -338,8 +338,8 @@
       <label>
         Bonding Strategy:
         <select bind:value={bonding_strategy} onchange={update_url}>
-          <option value="nearest_neighbor">Nearest Neighbor</option>
           <option value="electroneg_ratio">Electronegativity Ratio</option>
+          <option value="voronoi">Voronoi</option>
         </select>
       </label>
     </div>
@@ -538,8 +538,7 @@
         <code>performance_mode</code> - Performance mode (quality/speed, default: quality)
       </li>
       <li>
-        <code>bonding_strategy</code> - Bonding algorithm
-        (nearest_neighbor/electroneg_ratio)
+        <code>bonding_strategy</code> - Bonding algorithm (electroneg_ratio/voronoi)
       </li>
       <li>
         <code>force_large_structure</code> - Force bonding for large structures
@@ -566,7 +565,7 @@
       </li>
       <li>
         <a
-          href="?atoms=100&show_bonds=always&force_large_structure=true&bonding_strategy=nearest_neighbor"
+          href="?atoms=100&show_bonds=always&force_large_structure=true&bonding_strategy=voronoi"
         >
           100 atoms with forced bonding calculation
         </a>

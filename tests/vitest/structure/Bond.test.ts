@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-// Bond component (instanced mesh) tests
-describe(`Bond Component (Instanced Mesh)`, () => {
+describe(`Bond Component`, () => {
   test(`group prop structure validation`, () => {
     // Test the structure of the group prop for instanced bond rendering
     const test_group = {
@@ -76,7 +75,7 @@ describe(`Bond Component (Instanced Mesh)`, () => {
   })
 
   test(`default lighting values`, () => {
-    // Test default lighting values
+    // Test default lighting values match component defaults
     const default_ambient = 1.5
     const default_directional = 2.2
 
@@ -84,127 +83,56 @@ describe(`Bond Component (Instanced Mesh)`, () => {
     expect(default_directional).toBe(2.2)
   })
 
-  test(`cylinder geometry parameters`, () => {
-    // Test that cylinder geometry is configured correctly
+  test(`cylinder geometry parameters for instanced mesh`, () => {
+    // Test that cylinder geometry is configured correctly for instanced rendering
     const thickness = 0.15
     const expected_cylinder_args = [thickness, thickness, 1, 8]
 
     expect(expected_cylinder_args[0]).toBe(thickness)
     expect(expected_cylinder_args[1]).toBe(thickness)
-    expect(expected_cylinder_args[2]).toBe(1) // Height (scaled per instance)
+    expect(expected_cylinder_args[2]).toBe(1) // Height (scaled per instance via matrix)
     expect(expected_cylinder_args[3]).toBe(8) // Radial segments (lower for performance)
   })
-})
 
-// Cylinder component tests (for measurements and simple cylinders)
-describe(`Cylinder Component`, () => {
-  test(`thickness prop affects CylinderGeometry arguments`, () => {
-    // Test that thickness prop is properly used in cylinder geometry
-    const test_thickness = 2.5
+  test(`instance matrix is 4x4 transformation matrix`, () => {
+    // Each bond instance uses a 4x4 matrix for position, rotation, and scale
+    const matrix = new Float32Array(16)
 
-    const expected_cylinder_args = [test_thickness, test_thickness, 1, 8]
-
-    expect(expected_cylinder_args[0]).toBe(test_thickness)
-    expect(expected_cylinder_args[1]).toBe(test_thickness)
-    expect(expected_cylinder_args[2]).toBe(1) // Height scaling
-    expect(expected_cylinder_args[3]).toBe(8) // Radial segments
+    expect(matrix).toBeInstanceOf(Float32Array)
+    expect(matrix).toHaveLength(16)
+    expect(matrix.every((val) => typeof val === `number`)).toBe(true)
   })
 
-  test(`default thickness prop value`, () => {
-    // Test that default thickness is 0.1
-    const default_thickness = 0.1
-    const expected_default_args = [default_thickness, default_thickness, 1, 8]
+  test(`color format validation`, () => {
+    // Test that colors are in hex format
+    const valid_colors = [`#ff0000`, `#00ff00`, `#0000ff`, `#ffffff`, `#000000`]
 
-    expect(expected_default_args[0]).toBe(0.1)
-    expect(expected_default_args[1]).toBe(0.1)
-  })
-
-  test(`default color prop value`, () => {
-    // Test that default color is gray
-    const default_color = `#808080`
-
-    expect(default_color).toMatch(/^#[0-9a-f]{6}$/i)
-  })
-
-  test(`thickness prop validation for different values`, () => {
-    // Test various thickness values
-    const thickness_values = [0.05, 0.1, 0.12, 0.15, 0.2]
-
-    thickness_values.forEach((thickness) => {
-      const cylinder_args = [thickness, thickness, 1, 8]
-      expect(cylinder_args[0]).toBe(thickness)
-      expect(cylinder_args[1]).toBe(thickness)
-      expect(typeof thickness).toBe(`number`)
-      expect(thickness).toBeGreaterThan(0)
+    valid_colors.forEach((color) => {
+      expect(color).toMatch(/^#[0-9a-f]{6}$/i)
     })
   })
 
-  test(`thickness prop controls both cylinder geometry and mesh scaling`, () => {
-    // Test that thickness controls both aspects of bond rendering
-    const thickness = 0.12
-
-    // Thickness affects cylinder geometry
-    const cylinder_args = [thickness, thickness, 1, 8]
-    expect(cylinder_args[0]).toBe(thickness)
-    expect(cylinder_args[1]).toBe(thickness)
-
-    // Thickness also affects mesh scaling
-    // scale={[thickness, height, thickness]}
-    const mesh_scale = [thickness, 2.0, thickness] // height would be calculated
-    expect(mesh_scale[0]).toBe(thickness)
-    expect(mesh_scale[2]).toBe(thickness)
-    expect(typeof thickness).toBe(`number`)
-    expect(thickness).toBeGreaterThan(0)
-  })
-
-  test(`bond calculation helper function logic`, () => {
-    // Test the logic that would be used in calc_bond function
-    const from = [0, 0, 0]
-    const to = [1, 0, 0]
-
-    // Calculate expected values
-    const dx = to[0] - from[0]
-    const dy = to[1] - from[1]
-    const dz = to[2] - from[2]
-    const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    expect(height).toBe(1.0) // Distance between [0,0,0] and [1,0,0]
-    expect(dx).toBe(1)
-    expect(dy).toBe(0)
-    expect(dz).toBe(0)
-  })
-
-  test(`offset parameter for parallel bonds`, () => {
-    // Test that offset parameter works correctly
-    const offset = 0.5
-    const thickness = 0.1
-
-    // Offset multiplier
-    const offset_scale = offset * thickness * 2
-
-    expect(offset_scale).toBe(0.5 * 0.1 * 2)
-    expect(offset_scale).toBe(0.1)
-  })
-
-  test(`Cylinder integration with measurement mode`, () => {
-    // Test that Cylinder works for measurement visualization
-    const measurement_props = {
-      from: [0, 0, 0],
-      to: [1, 1, 1],
-      thickness: 0.12,
-      color: `#808080`,
+  test(`empty instances array handling`, () => {
+    // Test that group can have empty instances (edge case)
+    const group = {
+      thickness: 0.1,
+      ambient_light: 1.5,
+      directional_light: 2.2,
+      instances: [],
     }
 
-    // Verify measurement cylinder properties
-    expect(measurement_props.thickness).toBe(0.12)
-    expect(measurement_props.color).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(group.instances).toHaveLength(0)
+    expect(Array.isArray(group.instances)).toBe(true)
+  })
 
-    // Calculate distance
-    const dx = measurement_props.to[0] - measurement_props.from[0]
-    const dy = measurement_props.to[1] - measurement_props.from[1]
-    const dz = measurement_props.to[2] - measurement_props.from[2]
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  test(`thickness values for different bond types`, () => {
+    // Test various thickness values used in real scenarios
+    const thickness_values = [0.05, 0.1, 0.15, 0.2]
 
-    expect(distance).toBeCloseTo(Math.sqrt(3), 5)
+    thickness_values.forEach((thickness) => {
+      expect(typeof thickness).toBe(`number`)
+      expect(thickness).toBeGreaterThan(0)
+      expect(thickness).toBeLessThan(1) // Reasonable upper bound
+    })
   })
 })

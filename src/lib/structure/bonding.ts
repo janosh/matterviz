@@ -1,37 +1,60 @@
-import type { AnyStructure, BondPair } from '$lib'
-import init, {
-  electroneg_ratio as electroneg_ratio_wasm,
-  voronoi as voronoi_wasm,
-} from '../../../dist/wasm/bonding_wasm.js'
-import bonding_wasm_url from '../../../dist/wasm/bonding_wasm_bg.wasm?url'
+import type { AnyStructure, BondPair, Matrix3x3, Pbc, Vec3 } from '$lib'
+import * as wasm_bonding from '$wasm/bonding_wasm.js'
+import bonding_wasm_url from '$wasm/bonding_wasm_bg.wasm?url'
 
 let wasm_initialized = false
 
 async function ensure_wasm_ready(): Promise<void> {
   if (!wasm_initialized) {
-    await init({ module_or_path: bonding_wasm_url })
+    await wasm_bonding.default({ module_or_path: bonding_wasm_url })
     wasm_initialized = true
   }
 }
 
 function serialize_for_wasm(structure: AnyStructure) {
-  return {
-    sites: structure.sites.map((site) => ({
-      xyz: site.xyz,
-      element: site.species?.[0]?.element || ``,
-    })),
+  const serialized: {
+    sites: { xyz: Vec3; element: string }[]
+    lattice?: { matrix: Matrix3x3; pbc: Pbc }
+  } = {
+    sites: structure.sites.map((site) => {
+      // Select the species with the largest occupancy (majority species)
+      let majority_species = site.species?.[0]
+      if (site.species && site.species.length > 1) {
+        for (const species of site.species) {
+          if (species.occu > (majority_species?.occu ?? 0)) {
+            majority_species = species
+          }
+        }
+      }
+      const element = majority_species?.element || ``
+      return { xyz: site.xyz, element }
+    }),
   }
+
+  // Include lattice and PBC information if present on the structure
+  if (`lattice` in structure && structure.lattice) {
+    serialized.lattice = {
+      matrix: structure.lattice.matrix,
+      pbc: structure.lattice.pbc,
+    }
+  }
+
+  return serialized
 }
 
 async function call_wasm<T>(
-  wasm_fn: (structure: unknown, options: unknown) => T,
+  wasm_fn_name: `electroneg_ratio` | `voronoi`,
   structure: AnyStructure,
   options: Record<string, unknown>,
   fn_name: string,
 ): Promise<T> {
   await ensure_wasm_ready()
   try {
-    return wasm_fn(serialize_for_wasm(structure), options) as T
+    const fn = wasm_bonding?.[wasm_fn_name]
+    if (typeof fn !== `function`) {
+      throw new Error(`Function ${wasm_fn_name} not in WASM module`)
+    }
+    return fn(serialize_for_wasm(structure), options) as T
   } catch (error) {
     throw new Error(`${fn_name} failed: ${error}`)
   }
@@ -51,7 +74,7 @@ export function electroneg_ratio(
   } = {},
 ): Promise<BondPair[]> {
   return call_wasm(
-    electroneg_ratio_wasm,
+    `electroneg_ratio`,
     structure,
     {
       electronegativity_threshold: 1.7,
@@ -78,7 +101,7 @@ export function voronoi(
   } = {},
 ): Promise<BondPair[]> {
   return call_wasm(
-    voronoi_wasm,
+    `voronoi`,
     structure,
     {
       min_solid_angle: 0.01, // Very permissive - accept most neighbors

@@ -21,7 +21,7 @@ export interface CoordinationData {
 // Calculate coordination numbers for all sites in a structure using the specified bonding strategy
 export async function calc_coordination_numbers(
   structure: AnyStructure,
-  strategy: CoordinationStrategy = `nearest_neighbor`,
+  strategy: CoordinationStrategy = `electroneg_ratio`,
 ): Promise<CoordinationData> {
   // Get bonds using the specified strategy
   const bonds = await BONDING_STRATEGIES[strategy](structure)

@@ -187,122 +187,132 @@ pub fn electroneg_ratio(structure_js: JsValue, options_js: JsValue) -> Result<Js
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize bonds: {}", e)))
 }
 
+// Intermediate structure to hold candidate bonds before saturation penalty
+#[derive(Debug, Clone)]
+struct CandidateBond {
+    idx_a: usize,
+    idx_b: usize,
+    distance: f64,
+    raw_strength: f64,
+}
+
 fn electroneg_ratio_impl(structure: &Structure, options: &ElectronegRatioOptions) -> Vec<BondPair> {
     let sites = &structure.sites;
     if sites.len() < 2 {
         return Vec::new();
     }
 
-    let mut bonds = Vec::new();
     let covalent_radii = get_covalent_radii();
     let element_props = get_element_props();
     let min_dist_sq = options.min_bond_dist * options.min_bond_dist;
-    let mut closest_bond_distances: HashMap<usize, f64> = HashMap::new();
 
-    // Pre-calculate site properties
     let site_properties: Vec<_> = sites
         .iter()
         .map(|site| {
-            let props = element_props.get(&site.element).cloned().unwrap_or(ElementProps {
+            element_props.get(&site.element).cloned().unwrap_or(ElementProps {
                 covalent_radius: covalent_radii.get(&site.element).copied(),
                 electronegativity: 2.0,
                 is_metal: false,
                 is_nonmetal: false,
-            });
-            props
+            })
         })
         .collect();
 
+    // Pass 1: Collect candidate bonds with raw strength before saturation
+    let mut candidates = Vec::new();
     for idx_a in 0..sites.len() - 1 {
         let site_a = &sites[idx_a];
-        let [x1, y1, z1] = site_a.xyz;
         let props_a = &site_properties[idx_a];
 
         for idx_b in (idx_a + 1)..sites.len() {
             let site_b = &sites[idx_b];
-            let [x2, y2, z2] = site_b.xyz;
             let props_b = &site_properties[idx_b];
 
-            let dx = x2 - x1;
-            let dy = y2 - y1;
-            let dz = z2 - z1;
+            let [dx, dy, dz] = [
+                site_b.xyz[0] - site_a.xyz[0],
+                site_b.xyz[1] - site_a.xyz[1],
+                site_b.xyz[2] - site_a.xyz[2],
+            ];
             let dist_sq = dx * dx + dy * dy + dz * dz;
-            let distance = dist_sq.sqrt();
 
             if dist_sq < min_dist_sq {
                 continue;
             }
 
             if let (Some(r_a), Some(r_b)) = (props_a.covalent_radius, props_b.covalent_radius) {
+                let distance = dist_sq.sqrt();
                 let expected_dist = r_a + r_b;
-                let max_allowed_dist = expected_dist * options.max_distance_ratio;
 
-                if distance > max_allowed_dist {
+                if distance > expected_dist * options.max_distance_ratio {
                     continue;
                 }
 
-                // Enhanced electronegativity weighting
-                let electronegativity_diff = (props_a.electronegativity - props_b.electronegativity).abs();
-                let electronegativity_ratio = electronegativity_diff /
-                    (props_a.electronegativity + props_b.electronegativity);
+                let en_diff = (props_a.electronegativity - props_b.electronegativity).abs();
+                let en_sum = props_a.electronegativity + props_b.electronegativity;
+                let en_ratio = if en_sum.abs() < f64::EPSILON { 0.0 } else { en_diff / en_sum };
 
                 let mut bond_strength = 1.0;
 
-                // Chemical bonding preferences
                 if props_a.is_metal && props_b.is_metal {
                     bond_strength *= options.metal_metal_penalty;
-                } else if (props_a.is_metal && props_b.is_nonmetal) ||
-                          (props_a.is_nonmetal && props_b.is_metal) {
+                } else if (props_a.is_metal && props_b.is_nonmetal) || (props_a.is_nonmetal && props_b.is_metal) {
                     bond_strength *= options.metal_nonmetal_bonus;
-                    if electronegativity_diff > options.electronegativity_threshold {
-                        bond_strength *= 1.3; // Ionic character bonus
+                    if en_diff > options.electronegativity_threshold {
+                        bond_strength *= 1.3;
                     }
-                } else if electronegativity_diff < 0.5 {
+                } else if en_diff < 0.5 {
                     bond_strength *= options.similar_electronegativity_bonus;
                 }
 
-                // Distance-dependent weighting
-                let distance_ratio = distance / expected_dist;
-                let distance_weight = (-(distance_ratio - 1.0).powi(2) / (2.0 * 0.3_f64.powi(2))).exp();
+                let dist_ratio = distance / expected_dist;
+                let dist_weight = (-(dist_ratio - 1.0).powi(2) / (2.0 * 0.3_f64.powi(2))).exp();
+                let en_weight = (1.0 - 0.3 * en_ratio).max(0.0);
 
-                // Electronegativity-based weighting
-                let electro_weight = 1.0 - 0.3 * electronegativity_ratio;
-
-                let mut strength = bond_strength * distance_weight * electro_weight;
-
+                let mut strength = bond_strength * dist_weight * en_weight;
                 if site_a.element == site_b.element {
                     strength *= options.same_species_penalty;
                 }
 
-                strength = apply_saturation_penalty(
-                    strength,
-                    distance,
-                    idx_a,
-                    idx_b,
-                    &closest_bond_distances,
-                );
-
-                if strength > options.strength_threshold {
-                    bonds.push(BondPair {
-                        pos_1: site_a.xyz,
-                        pos_2: site_b.xyz,
-                        site_idx_1: idx_a,
-                        site_idx_2: idx_b,
-                        bond_length: distance,
-                        strength,
-                        transform_matrix: compute_bond_transform(site_a.xyz, site_b.xyz),
-                    });
-
-                    closest_bond_distances
-                        .entry(idx_a)
-                        .and_modify(|d| *d = d.min(distance))
-                        .or_insert(distance);
-                    closest_bond_distances
-                        .entry(idx_b)
-                        .and_modify(|d| *d = d.min(distance))
-                        .or_insert(distance);
-                }
+                candidates.push(CandidateBond { idx_a, idx_b, distance, raw_strength: strength });
             }
+        }
+    }
+
+    // Sort by distance to ensure order-independent saturation
+    candidates.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Pass 2: Apply saturation penalty and create bonds
+    let mut bonds = Vec::new();
+    let mut closest_distances: HashMap<usize, f64> = HashMap::new();
+
+    for cand in candidates {
+        let strength = apply_saturation_penalty(
+            cand.raw_strength,
+            cand.distance,
+            cand.idx_a,
+            cand.idx_b,
+            &closest_distances,
+        );
+
+        if strength > options.strength_threshold {
+            bonds.push(BondPair {
+                pos_1: sites[cand.idx_a].xyz,
+                pos_2: sites[cand.idx_b].xyz,
+                site_idx_1: cand.idx_a,
+                site_idx_2: cand.idx_b,
+                bond_length: cand.distance,
+                strength,
+                transform_matrix: compute_bond_transform(sites[cand.idx_a].xyz, sites[cand.idx_b].xyz),
+            });
+
+            closest_distances
+                .entry(cand.idx_a)
+                .and_modify(|d| *d = d.min(cand.distance))
+                .or_insert(cand.distance);
+            closest_distances
+                .entry(cand.idx_b)
+                .and_modify(|d| *d = d.min(cand.distance))
+                .or_insert(cand.distance);
         }
     }
 

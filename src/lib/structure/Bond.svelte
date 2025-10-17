@@ -8,16 +8,13 @@
     color_start: string
     color_end: string
   }
-
   interface BondGroupWithGradients {
     thickness: number
     instances: BondInstance[]
     ambient_light?: number
     directional_light?: number
   }
-
   let { group }: { group: BondGroupWithGradients } = $props()
-
   let mesh: InstancedMesh | undefined = $state()
 
   const vertex_shader = `
@@ -28,16 +25,14 @@
     varying vec3 vColorEnd;
     varying float vYPosition;
     varying vec3 vNormal;
-    varying vec3 vViewPosition;
 
     void main() {
       vColorStart = instanceColorStart;
       vColorEnd = instanceColorEnd;
       vYPosition = position.y;
 
-      vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
-      vViewPosition = worldPosition.xyz;
-      vNormal = normalize(mat3(modelMatrix * instanceMatrix) * normal);
+      mat3 normalMat = transpose(inverse(mat3(modelMatrix * instanceMatrix)));
+      vNormal = normalize(normalMat * normal);
 
       gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
     }
@@ -51,7 +46,6 @@
     varying vec3 vColorEnd;
     varying float vYPosition;
     varying vec3 vNormal;
-    varying vec3 vViewPosition;
 
     void main() {
       float t = vYPosition + 0.5;
