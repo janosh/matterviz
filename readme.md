@@ -116,7 +116,7 @@ npm install --dev matterviz
 - Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
 - Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.
 - Big thanks to all sources of element images. See [`fetch-elem-images.ts`](https://github.com/janosh/matterviz/blob/-/src/fetch-elem-images.ts) and [`static/elements`](https://github.com/janosh/matterviz/tree/main/static/elements).
-- Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for a lot of great suggestions, UX ideas, helping me learn [`threlte`](https://threlte.xyz) and contributing the [`Bond.svelte`](https://github.com/janosh/matterviz/blob/-/src/lib/structure/Bond.svelte) component.
+- Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for great suggestions.
 
 This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:
 

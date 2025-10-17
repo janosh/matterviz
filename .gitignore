@@ -22,3 +22,9 @@ src/site/trajectories/large
 !extensions/vscode/.vscode/
 
 src/site/phonons/*.json*
+
+# rust build artifacts
+rust/**/target/
+rust/Cargo.lock
+# generated from src/lib/elements/data.ts
+rust/src/elements.json

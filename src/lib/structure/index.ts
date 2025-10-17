@@ -9,6 +9,7 @@ import type { Pbc } from './pbc'
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
+export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
 export * from './pbc'
 export { default as Structure } from './Structure.svelte'
@@ -73,7 +74,7 @@ export type StructureGraph = {
   graphs: Graph[]
 }
 
-// Bond pair with position vectors, site indices, bond length, and strength score
+// Bond pair with position vectors, site indices, bond length, strength score, and transformation matrix
 export type BondPair = {
   pos_1: Vec3
   pos_2: Vec3
@@ -81,6 +82,7 @@ export type BondPair = {
   site_idx_2: number
   bond_length: number
   strength: number
+  transform_matrix: number[] // 4x4 transformation matrix for instanced rendering
 }
 
 export type IdStructure = PymatgenStructure & { id: string }

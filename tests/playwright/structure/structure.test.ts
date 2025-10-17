@@ -2957,7 +2957,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await bonds_reset.click()
 
       // Bonding strategy should be back to default
-      await expect(bonding_select).toHaveValue(`max_dist`)
+      await expect(bonding_select).toHaveValue(`electroneg_ratio`)
 
       // Reset button should disappear
       await expect(bonds_reset).not.toBeVisible()

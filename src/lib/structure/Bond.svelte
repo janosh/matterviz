@@ -1,171 +1,135 @@
 <script lang="ts">
-  import type { BondPair, Vec3 } from '$lib'
-  import { format_num } from '$lib/labels'
-  import { DEFAULTS } from '$lib/settings'
-  import { CanvasTooltip } from '$lib/structure'
-  import type { BondingStrategy } from '$lib/structure/bonding'
   import { T } from '@threlte/core'
-  import { interactivity } from '@threlte/extras'
-  import type { ComponentProps } from 'svelte'
-  import { CanvasTexture, Euler, Quaternion, Vector3 } from 'three'
+  import type { InstancedMesh } from 'three'
+  import { Color, InstancedBufferAttribute, Matrix4, ShaderMaterial } from 'three'
 
-  let {
-    from,
-    to,
-    color = DEFAULTS.structure.bond_color,
-    thickness = DEFAULTS.structure.bond_thickness,
-    offset = 0,
-    from_color,
-    to_color,
-    bond_data,
-    bonding_strategy,
-    active_tooltip,
-    hovered_bond_data,
-    onbondhover,
-    ontooltipchange,
-    onpointerenter,
-    onpointerleave,
-    ...rest
-  }: ComponentProps<typeof T.Mesh> & {
-    from: Vec3
-    to: Vec3
-    color?: string
-    thickness?: number
-    offset?: number
-    from_color?: string // color of atom 1
-    to_color?: string // color of atom 2
-    bond_data?: BondPair // full bond data for tooltips
-    bonding_strategy?: BondingStrategy // current bonding algorithm
-    active_tooltip?: `atom` | `bond` | null // global tooltip state
-    hovered_bond_data?: BondPair | null // currently hovered bond
-    onbondhover?: (bond_data: BondPair | null) => void // callback for bond hover
-    ontooltipchange?: (type: `atom` | `bond` | null) => void // callback for tooltip state
-  } = $props()
+  interface BondInstance {
+    matrix: Float32Array
+    color_start: string
+    color_end: string
+  }
 
-  interactivity()
+  interface BondGroupWithGradients {
+    thickness: number
+    instances: BondInstance[]
+    ambient_light?: number
+    directional_light?: number
+  }
 
-  const from_vec = new Vector3(...from)
-  const to_vec = new Vector3(...to)
-  const { position, rotation, height } = calc_bond(
-    from_vec,
-    to_vec,
-    offset,
-    thickness,
-  )
-  // Create gradient texture when both colors are provided
-  let gradient_texture = $derived.by(() => {
-    if (!from_color || !to_color) return null
+  let { group }: { group: BondGroupWithGradients } = $props()
 
-    // Create a canvas for the gradient
-    const canvas = document.createElement(`canvas`)
-    canvas.width = 1
-    canvas.height = 256
-    const ctx = canvas.getContext(`2d`)!
+  let mesh: InstancedMesh | undefined = $state()
 
-    // Create linear gradient along Y axis (cylinder height)
-    const gradient = ctx.createLinearGradient(0, 0, 0, 256)
-    gradient.addColorStop(0, to_color)
-    gradient.addColorStop(1, from_color)
+  const vertex_shader = `
+    attribute vec3 instanceColorStart;
+    attribute vec3 instanceColorEnd;
 
-    // Fill the canvas with the gradient
-    ctx.fillStyle = gradient
-    ctx.fillRect(0, 0, 1, 256)
+    varying vec3 vColorStart;
+    varying vec3 vColorEnd;
+    varying float vYPosition;
+    varying vec3 vNormal;
+    varying vec3 vViewPosition;
 
-    // Create texture from canvas
-    const texture = new CanvasTexture(canvas)
-    texture.needsUpdate = true
-    return texture
+    void main() {
+      vColorStart = instanceColorStart;
+      vColorEnd = instanceColorEnd;
+      vYPosition = position.y;
+
+      vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
+      vViewPosition = worldPosition.xyz;
+      vNormal = normalize(mat3(modelMatrix * instanceMatrix) * normal);
+
+      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    }
+  `
+
+  const fragment_shader = `
+    uniform float ambientIntensity;
+    uniform float directionalIntensity;
+
+    varying vec3 vColorStart;
+    varying vec3 vColorEnd;
+    varying float vYPosition;
+    varying vec3 vNormal;
+    varying vec3 vViewPosition;
+
+    void main() {
+      float t = vYPosition + 0.5;
+      vec3 baseColor = mix(vColorStart, vColorEnd, t);
+
+      vec3 lightDirection = normalize(vec3(3.0, 10.0, 10.0));
+      vec3 normal = normalize(vNormal);
+
+      float diffuse = max(dot(normal, lightDirection), 0.0);
+      float lighting = ambientIntensity + directionalIntensity * diffuse;
+
+      vec3 finalColor = baseColor * lighting;
+
+      gl_FragColor = vec4(finalColor, 1.0);
+    }
+  `
+
+  $effect(() => {
+    if (mesh && group.instances.length > 0) {
+      const count = group.instances.length
+      const matrix = new Matrix4()
+
+      // Set transformation matrices
+      for (let idx = 0; idx < count; idx++) {
+        matrix.fromArray(group.instances[idx].matrix)
+        mesh.setMatrixAt(idx, matrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+
+      // Set per-instance colors as attributes
+      const colors_start = new Float32Array(count * 3)
+      const colors_end = new Float32Array(count * 3)
+      const temp_color = new Color()
+
+      for (let idx = 0; idx < count; idx++) {
+        const instance = group.instances[idx]
+
+        // Start color
+        temp_color.set(instance.color_start)
+        colors_start[idx * 3 + 0] = temp_color.r
+        colors_start[idx * 3 + 1] = temp_color.g
+        colors_start[idx * 3 + 2] = temp_color.b
+
+        // End color
+        temp_color.set(instance.color_end)
+        colors_end[idx * 3 + 0] = temp_color.r
+        colors_end[idx * 3 + 1] = temp_color.g
+        colors_end[idx * 3 + 2] = temp_color.b
+      }
+
+      mesh.geometry.setAttribute(
+        `instanceColorStart`,
+        new InstancedBufferAttribute(colors_start, 3),
+      )
+      mesh.geometry.setAttribute(
+        `instanceColorEnd`,
+        new InstancedBufferAttribute(colors_end, 3),
+      )
+
+      mesh.count = count
+    }
   })
 
-  const pointer_handlers = {
-    onpointerenter: (event: PointerEvent) => {
-      if (bond_data) {
-        onbondhover?.(bond_data)
-        ontooltipchange?.(`bond`)
-      }
-      onpointerenter?.(event)
-    },
-    onpointerleave: (event: PointerEvent) => {
-      onbondhover?.(null)
-      ontooltipchange?.(null)
-      onpointerleave?.(event)
-    },
-  }
-
-  function calc_bond(
-    from_vec: Vector3,
-    to_vec: Vector3,
-    offset: number,
-    thickness: number,
-  ) {
-    // find the axis of the the box
-    const delta_vec = to_vec.clone().sub(from_vec)
-    // length of the bond
-    const height = delta_vec.length()
-    // calculate position
-    let position: Vec3
-    if (offset === 0) {
-      position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).toArray()
-    } else {
-      const offset_vec = new Vector3()
-        .crossVectors(delta_vec, new Vector3(1, 0, 0))
-        .normalize()
-      position = from_vec.clone().add(delta_vec.multiplyScalar(0.5)).add(
-        offset_vec.multiplyScalar(offset * thickness * 2),
-      ).toArray()
-    }
-    // calculate rotation
-    const quaternion = new Quaternion().setFromUnitVectors(
-      new Vector3(0, 1, 0),
-      delta_vec.normalize(),
-    )
-    const rotation = new Euler().setFromQuaternion(quaternion).toArray()
-    // return results
-    return { height, position, rotation }
-  }
+  let shader_material = $derived(
+    new ShaderMaterial({
+      vertexShader: vertex_shader,
+      fragmentShader: fragment_shader,
+      uniforms: {
+        ambientIntensity: { value: group.ambient_light ?? 1.5 },
+        directionalIntensity: { value: group.directional_light ?? 2.2 },
+      },
+    }),
+  )
 </script>
 
-{#if gradient_texture}
-  <!-- Use gradient material for bonds with two colors -->
-  <T.Mesh
-    {...rest}
-    {position}
-    {rotation}
-    scale={[thickness, height, thickness]}
-    {...pointer_handlers}
-  >
-    <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
-    <T.MeshStandardMaterial map={gradient_texture} />
-  </T.Mesh>
-{:else}
-  <!-- Fallback to solid color -->
-  <T.Mesh
-    {...rest}
-    {position}
-    {rotation}
-    scale={[thickness, height, thickness]}
-    {...pointer_handlers}
-  >
-    <T.CylinderGeometry args={[thickness, thickness, 1, 16]} />
-    <T.MeshStandardMaterial {color} />
-  </T.Mesh>
-{/if}
-
-<!-- Bond tooltip on hover -->
-{#if active_tooltip === `bond` && hovered_bond_data && bond_data &&
-    hovered_bond_data === bond_data}
-  {@const midpoint = [
-    (from[0] + to[0]) / 2,
-    (from[1] + to[1]) / 2,
-    (from[2] + to[2]) / 2,
-  ] as Vec3}
-  <CanvasTooltip position={midpoint}>
-    <strong>Distance:</strong> {format_num(bond_data.bond_length, `.3f`)} Å (sites {
-      bond_data.site_idx_1
-    } ↔ {bond_data.site_idx_2})<br>
-    {#if bond_data.strength}
-      <strong>Strength:</strong> {format_num(bond_data.strength, `.3f`)}
-      {#if bonding_strategy}({bonding_strategy.replace(/_/g, ` `)}){/if}
-    {/if}
-  </CanvasTooltip>
-{/if}
+<T.InstancedMesh
+  args={[undefined, shader_material, group.instances.length]}
+  bind:ref={mesh}
+>
+  <T.CylinderGeometry args={[group.thickness, group.thickness, 1, 8]} />
+</T.InstancedMesh>

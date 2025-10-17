@@ -52,16 +52,16 @@ describe(`calc_coordination_numbers`, () => {
     ],
   }
 
-  test(`should calculate coordination numbers`, () => {
-    const result = calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
+  test(`should calculate coordination numbers`, async () => {
+    const result = await calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
     expect(result.cn_by_element.size).toBe(2) // Na and Cl
   })
 
-  test(`should group by element`, () => {
-    const result = calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
+  test(`should group by element`, async () => {
+    const result = await calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
 
     expect(result.cn_by_element.has(`Na`)).toBe(true)
     expect(result.cn_by_element.has(`Cl`)).toBe(true)
@@ -69,14 +69,14 @@ describe(`calc_coordination_numbers`, () => {
     expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
   })
 
-  test(`should work with max distance ratio strategy`, () => {
-    const result = calc_coordination_numbers(simple_cubic, 4.0)
+  test(`should work with max distance ratio strategy`, async () => {
+    const result = await calc_coordination_numbers(simple_cubic, 4.0)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
   })
 
-  test(`should handle structure with distant atoms using max distance ratio`, () => {
+  test(`should handle structure with distant atoms using max distance ratio`, async () => {
     const isolated_atoms: PymatgenStructure = {
       lattice: {
         matrix: [
@@ -113,7 +113,7 @@ describe(`calc_coordination_numbers`, () => {
 
     // Use max distance ratio 1.2 — with atoms 50 Å apart and small covalent radii,
     // 1.2 × (r_H + r_He) << 50 Å, so no bonds should form
-    const result = calc_coordination_numbers(isolated_atoms, 1.2)
+    const result = await calc_coordination_numbers(isolated_atoms, 1.2)
 
     expect(result.sites.length).toBe(2)
     // Both atoms should have CN = 0 since bonding distance is well below separation

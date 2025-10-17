@@ -65,10 +65,8 @@
   }
 
   const strategies: { value: CoordinationStrategy; label: string }[] = [
-    { value: `nearest_neighbor`, label: `Nearest Neighbor` },
-    { value: `max_dist`, label: `Max Distance` },
     { value: `electroneg_ratio`, label: `Electronegativity` },
-    { value: 4.0, label: `Max Distance Ratio (4.0)` },
+    { value: `voronoi`, label: `Voronoi Tessellation` },
   ]
 
   const split_modes: { value: SplitMode; label: string }[] = [

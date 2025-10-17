@@ -331,13 +331,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 64,
     },
     bond_thickness: {
-      value: 0.25,
+      value: 0.07,
       description: `Thickness of bonds relative to atom radius`,
       minimum: 0.01,
       maximum: 1.0,
     },
     show_bonds: {
-      value: `molecules`,
+      value: `always`,
       description: `When to display bonds between atoms`,
       enum: show_bonds_options,
     },
@@ -350,8 +350,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Method for determining bonds between atoms`,
       enum: [
         `electroneg_ratio`,
-        `max_dist`,
-        `nearest_neighbor`,
+        `voronoi`,
       ],
     },
 

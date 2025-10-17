@@ -2,7 +2,7 @@
   import type { Vec3 } from '$lib'
   import { axis_colors, neg_axis_colors } from '$lib'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
-  import { Bond, Vector } from '$lib/structure'
+  import { Cylinder, Vector } from '$lib/structure'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -212,7 +212,7 @@
 
     <!-- BZ edges -->
     {#each bz_data.edges as edge_segment (edge_segment.map((v) => v.join(`,`)).join(`-`))}
-      <Bond
+      <Cylinder
         from={edge_segment[0]}
         to={edge_segment[1]}
         thickness={edge_width}

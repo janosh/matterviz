@@ -5,7 +5,7 @@
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import { Bond, get_center_of_mass, Lattice, Vector } from '$lib/structure'
+  import { Cylinder, get_center_of_mass, Lattice, Vector } from '$lib/structure'
   import {
     angle_between_vectors,
     displacement_pbc,
@@ -18,14 +18,12 @@
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
+  import Bond from './Bond.svelte'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
-  // Add pulsating animation for selected sites
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
-
-  // Update pulse time for animation
   $effect(() => {
     if (!selected_sites?.length && !active_sites?.length) return
     if (typeof globalThis === `undefined`) return
@@ -152,22 +150,18 @@
     hidden_elements?: Set<ElementSymbol>
   } = $props()
 
-  // Get scene and camera from Threlte context and expose them
   const threlte = useThrelte()
   $effect(() => {
-    // scene is directly a Scene object, camera needs .current
     scene = threlte.scene
     camera = threlte.camera.current
   })
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
-  let hovered_bond_data: BondPair | null = $state(null)
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
 
-    // Check if adding this site would exceed the soft cap
     if (
       !measured_sites.includes(site_index) &&
       measured_sites.length >= MAX_SELECTED_SITES
@@ -181,13 +175,10 @@
     measured_sites = measured_sites.includes(site_index)
       ? measured_sites.filter((idx) => idx !== site_index)
       : [...measured_sites, site_index]
-    // keep selected_sites in sync with user clicks
     selected_sites = selected_sites.includes(site_index)
       ? selected_sites.filter((idx) => idx !== site_index)
       : [...selected_sites, site_index]
   }
-
-  // Keep measured site selection valid across structure changes (new structure might have fewer sites)
   $effect(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
@@ -207,7 +198,6 @@
     structure && `lattice` in structure ? structure.lattice : null,
   )
 
-  // Get rotation target: cell center for crystalline structures, center of mass for molecular systems
   let rotation_target = $derived(
     lattice
       ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3)
@@ -216,16 +206,13 @@
       : [0, 0, 0] as Vec3,
   )
 
-  // Calculate structure size for camera setup
   let structure_size = $derived(
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
-  // Persisted zoom; recompute only on viewport changes
   let computed_zoom = $state<number>(initial_zoom)
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
-    // Avoid depending on structure/structure_size so trajectories don't retrigger zoom
     const structure_max_dim = Math.max(1, untrack(() => structure_size))
     const viewer_min_dim = Math.min(width, height)
     const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
@@ -236,28 +223,37 @@
   })
 
   $effect.pre(() => {
-    // Simple initial camera auto-position: proportional to structure size and fov
     if (camera_position.every((v) => v === 0) && structure) {
       const distance = Math.max(1, structure_size) * (60 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
-  $effect.pre(() => {
+  $effect(() => {
     if (structure && show_bonds !== `never`) {
-      // Determine if we should show bonds based on the setting and structure type
       const should_show_bonds = show_bonds === `always` ||
         (show_bonds === `crystals` && lattice) ||
         (show_bonds === `molecules` && !lattice)
 
       if (should_show_bonds) {
-        bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
-      } else bond_pairs = []
-    } else bond_pairs = []
+        bond_pairs = []
+        BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
+          .then((bonds) => {
+            bond_pairs = bonds
+          })
+          .catch((err) => {
+            console.error(`Bonding calculation failed:`, err)
+            bond_pairs = []
+          })
+      } else {
+        bond_pairs = []
+      }
+    } else {
+      bond_pairs = []
+    }
   })
 
-  let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
+  let atom_data = $derived.by(() => {
     if (!show_atoms || !structure?.sites) return []
-    // Build atom data with partial occupancy handling
     return structure.sites.flatMap((site, site_idx) => {
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
         (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
@@ -281,13 +277,11 @@
     })
   })
 
-  // Filter bonds to exclude those connected to hidden atoms
   let filtered_bond_pairs = $derived.by(() => {
     if (!structure?.sites || hidden_elements.size === 0) return bond_pairs
     return bond_pairs.filter((bond) => {
       const site_1 = structure.sites[bond.site_idx_1]
       const site_2 = structure.sites[bond.site_idx_2]
-      // Show bond only if both sites have at least one visible species
       const site_1_visible = site_1?.species.some(({ element }) =>
         !hidden_elements.has(element)
       )
@@ -298,7 +292,46 @@
     })
   })
 
-  let radius_by_site_idx = $derived.by(() => { // Precompute radius lookup to avoid per-frame search
+  let instanced_bond_groups = $derived.by(() => {
+    if (!structure?.sites || filtered_bond_pairs.length === 0) return []
+
+    const group = {
+      thickness: bond_thickness,
+      ambient_light,
+      directional_light,
+      instances: [] as Array<{
+        matrix: Float32Array
+        color_start: string
+        color_end: string
+      }>,
+    }
+
+    for (const bond_data of filtered_bond_pairs) {
+      const site_a = structure.sites[bond_data.site_idx_1]
+      const site_b = structure.sites[bond_data.site_idx_2]
+
+      const get_majority_color = (site: typeof site_a) => {
+        if (!site?.species || site.species.length === 0) return bond_color
+        const majority_species = site.species.reduce((max, spec) =>
+          spec.occu > max.occu ? spec : max
+        )
+        return colors.element?.[majority_species.element] || bond_color
+      }
+
+      const color_start = get_majority_color(site_a)
+      const color_end = get_majority_color(site_b)
+
+      group.instances.push({
+        matrix: new Float32Array(bond_data.transform_matrix),
+        color_start,
+        color_end,
+      })
+    }
+
+    return group.instances.length > 0 ? [group] : []
+  })
+
+  let radius_by_site_idx = $derived.by(() => {
     const map = new SvelteMap<number, number>()
     for (const atom of atom_data) {
       if (!map.has(atom.site_idx)) map.set(atom.site_idx, atom.radius)
@@ -306,7 +339,7 @@
     return map
   })
 
-  let force_data = $derived.by(() => { // Compute force vectors
+  let force_data = $derived.by(() => {
     return show_force_vectors && structure?.sites
       ? structure?.sites
         .map((site) => {
@@ -353,7 +386,6 @@
     ),
   )
 
-  // Pre-calculate unique site atoms for labeling
   let unique_instanced_atoms = $derived(
     Object.values(
       instanced_atom_groups
@@ -412,7 +444,6 @@
     },
   })
 
-  // Theme-aware measurement line color from CSS variable
   let measure_line_color = $derived.by(() => {
     if (typeof window === `undefined`) return
     const root_styles = getComputedStyle(document.documentElement)
@@ -420,6 +451,14 @@
     return text_color || `#808080`
   })
 </script>
+
+{#snippet bond_instanced_mesh_snippet(
+  group: ComponentProps<typeof Bond>[`group`],
+)}
+  {#key group.instances.length}
+    <Bond {group} />
+  {/key}
+{/snippet}
 
 {#snippet site_label_snippet(position: Vec3, site_idx: number)}
   {@const site = structure!.sites[site_idx]}
@@ -507,7 +546,6 @@
                 onpointerenter={() => {
                   hovered_idx = atom.site_idx
                   active_tooltip = `atom`
-                  hovered_bond_data = null
                 }}
                 onpointerleave={() => {
                   hovered_idx = null
@@ -533,7 +571,6 @@
             onpointerenter={() => {
               hovered_idx = atom.site_idx
               active_tooltip = `atom`
-              hovered_bond_data = null
             }}
             onpointerleave={() => {
               hovered_idx = null
@@ -590,34 +627,10 @@
         {/each}
       {/if}
 
-      {#if filtered_bond_pairs.length > 0}
-        {#each filtered_bond_pairs as bond_data (JSON.stringify(bond_data))}
-          {@const site_a = structure?.sites[bond_data.site_idx_1]}
-          {@const site_b = structure?.sites[bond_data.site_idx_2]}
-          {@const get_majority_color = (site: typeof site_a) => {
-          if (!site?.species || site.species.length === 0) return bond_color
-          // Find species with highest occupancy
-          const majority_species = site.species.reduce((max, spec) =>
-            spec.occu > max.occu ? spec : max
-          )
-          return colors.element?.[majority_species.element] || bond_color
-        }}
-          {@const from_color = get_majority_color(site_a)}
-          {@const to_color = get_majority_color(site_b)}
-          <Bond
-            from={bond_data.pos_1}
-            to={bond_data.pos_2}
-            thickness={bond_thickness}
-            {from_color}
-            {to_color}
-            color={bond_color}
-            {bond_data}
-            {bonding_strategy}
-            {active_tooltip}
-            {hovered_bond_data}
-            onbondhover={(data: BondPair | null) => hovered_bond_data = data}
-            ontooltipchange={(type: `atom` | `bond` | null) => active_tooltip = type}
-          />
+      <!-- Instanced bond rendering with gradient colors -->
+      {#if instanced_bond_groups.length > 0}
+        {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
+          {@render bond_instanced_mesh_snippet(group)}
         {/each}
       {/if}
 
@@ -739,7 +752,12 @@
               {@const site_j = structure.sites[idx_j]}
               {@const pos_i = site_i.xyz}
               {@const pos_j = site_j.xyz}
-              <Bond from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
+              <Cylinder
+                from={pos_i}
+                to={pos_j}
+                thickness={0.12}
+                color={measure_line_color}
+              />
               {@const midpoint = [
           (pos_i[0] + pos_j[0]) / 2,
           (pos_i[1] + pos_j[1]) / 2,
@@ -781,13 +799,13 @@
                 {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
                 {#if n1 > math.EPS && n2 > math.EPS}
                   <!-- draw rays from center to the two sites -->
-                  <Bond
+                  <Cylinder
                     from={center.xyz}
                     to={site_a.xyz}
                     thickness={0.05}
                     color={measure_line_color}
                   />
-                  <Bond
+                  <Cylinder
                     from={center.xyz}
                     to={site_b.xyz}
                     thickness={0.05}

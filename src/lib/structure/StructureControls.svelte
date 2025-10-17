@@ -781,8 +781,7 @@
         Bonding strategy
         <select bind:value={scene_props.bonding_strategy}>
           <option value="electroneg_ratio">Electronegativity Ratio</option>
-          <option value="max_dist">Max Distance</option>
-          <option value="nearest_neighbor">Nearest Neighbor</option>
+          <option value="voronoi">Voronoi Tessellation</option>
         </select>
       </label>
       <label>

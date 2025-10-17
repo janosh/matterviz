@@ -329,6 +329,24 @@
       : []
   })
 
+  let x_axis = $derived({
+    label: `Step`,
+    format: `.3~s`,
+    ticks: step_label_positions,
+  })
+  // Generate axis labels based on first visible series on each axis
+  let y_axis_labels = $derived(generate_axis_labels(plot_series))
+  let y_axis = $derived({
+    label: y_axis_labels.y1,
+    format: `.2~s`,
+    label_shift: { y: 20 },
+  })
+  let y2_axis = $derived({
+    label: y_axis_labels.y2,
+    format: `.2~s`,
+    label_shift: { y: 80 },
+  })
+
   // Helper function to get current frame data for callbacks
   function get_current_frame_data() {
     return {
@@ -345,9 +363,6 @@
   // Determine what to show based on display mode
   let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
-
-  // Generate axis labels based on first visible series on each axis
-  let y_axis_labels = $derived(generate_axis_labels(plot_series))
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(
@@ -1083,9 +1098,9 @@
         {#if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
-            x_axis={{ label: `Step`, format: `.3~s`, ticks: step_label_positions }}
-            y_axis={{ label: y_axis_labels.y1, format: `.2~s`, label_shift: { y: 20 } }}
-            y2_axis={{ label: y_axis_labels.y2, format: `.2~s`, label_shift: { y: 80 } }}
+            bind:x_axis
+            bind:y_axis
+            bind:y2_axis
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
             bind:controls={scatter_controls}
