@@ -1,12 +1,12 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-import { merge_nested } from '$lib'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import type { Orientation } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
+import { merge_nested } from './utils'
 
 // SettingType interface with optional context to control where settings apply
 // context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts

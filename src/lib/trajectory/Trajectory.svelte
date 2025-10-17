@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
+  import {
+    type ElementSymbol,
+    Icon,
+    Spinner,
+    Structure,
+    toggle_fullscreen,
+  } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
@@ -253,19 +259,28 @@
   // Current frame structure for display
   let current_structure = $derived(current_frame?.structure)
 
+  // Track hidden elements (persists across frame changes)
+  let hidden_elements = $state(new Set<ElementSymbol>())
+
   // Dynamically hide bonds during playback to improve FPS - bond computation is expensive
   // Maybe revisit this in future if we find much more efficient bonding algo
   let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
-    if (is_playing) { // Hide bonds during playback
-      const { scene_props = {} } = structure_props
-      if (scene_props.show_bonds !== `never`) {
-        const show_bonds = `never` as const
-        return { ...structure_props, scene_props: { ...scene_props, show_bonds } }
-      }
+    const { scene_props = {}, ...rest_props } = structure_props
+    const { show_bonds, ...rest_scene_props } = scene_props
+
+    // Hide bonds during playback (unless explicitly set to 'never')
+    const final_show_bonds = is_playing && show_bonds !== `never`
+      ? `never`
+      : show_bonds
+
+    return {
+      show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
+      ...rest_props,
+      scene_props: {
+        ...rest_scene_props,
+        show_bonds: final_show_bonds,
+      },
     }
-    // default show_image_atoms to false since usually undesired if new image atoms
-    // pup-up/disappear when moving near cell edge during the trajectory
-    return { show_image_atoms: false, ...structure_props }
   })
 
   let step_label_positions = $derived.by((): number[] => {
@@ -1060,6 +1075,7 @@
           {...final_structure_props}
           bind:controls_open={structure_controls_open}
           bind:info_pane_open={structure_info_open}
+          bind:hidden_elements
         />
       {/if}
 
