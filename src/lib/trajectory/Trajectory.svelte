@@ -266,10 +266,20 @@
   // Maybe revisit this in future if we find much more efficient bonding algo
   let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
     const { scene_props = {}, ...rest_props } = structure_props
+    const { show_bonds, ...rest_scene_props } = scene_props
+
+    // Hide bonds during playback (unless explicitly set to 'never')
+    const final_show_bonds = is_playing && show_bonds !== `never`
+      ? `never`
+      : show_bonds
+
     return {
       show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
       ...rest_props,
-      scene_props: { ...scene_props, show_bonds: `never`, hidden_elements }, // Hide bonds during playback
+      scene_props: {
+        ...rest_scene_props,
+        show_bonds: final_show_bonds,
+      },
     }
   })
 
@@ -1065,6 +1075,7 @@
           {...final_structure_props}
           bind:controls_open={structure_controls_open}
           bind:info_pane_open={structure_info_open}
+          bind:hidden_elements
         />
       {/if}
 

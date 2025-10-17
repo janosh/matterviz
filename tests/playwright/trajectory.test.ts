@@ -9,7 +9,9 @@ type GlobalWithMock = typeof globalThis & { __mockDownload: MockDownload[] }
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
-  const display_button = trajectory.locator(`.view-mode-button`)
+  const display_button = trajectory.locator(
+    `.view-mode-dropdown-wrapper .view-mode-button`,
+  )
   await expect(display_button).toBeVisible()
   await display_button.click()
 
@@ -2144,6 +2146,8 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         .locator(`button.toggle-visibility`)
       await expect(first_toggle).toBeAttached()
       await expect(first_toggle).toContainText(`×`)
+      // Tooltip consumes title attribute, stores in data-original-title
+      await expect(first_toggle).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
     })
 
     test(`hidden elements persist across frames and playback`, async ({ page }) => {
@@ -2198,14 +2202,16 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       await expect(label).toHaveClass(/hidden/)
 
       // Structure-only mode - still hidden with visual change
-      await select_display_mode(trajectory, `Structure`)
+      const content_area = await select_display_mode(trajectory, `Structure-only`)
+      await expect(content_area).toHaveClass(/show-structure-only/)
       await page.waitForTimeout(100)
       const structure_screenshot = await canvas.screenshot()
       await expect(legend.locator(`.legend-item`).first().locator(`label`))
         .toHaveClass(/hidden/)
 
       // Split mode - still hidden, can toggle
-      await select_display_mode(trajectory, `Split`)
+      await select_display_mode(trajectory, `Structure + Scatter`)
+      await expect(content_area).toHaveClass(/show-both/)
       await page.waitForTimeout(100)
       const split_label = legend.locator(`.legend-item`).first().locator(`label`)
       await expect(split_label).toHaveClass(/hidden/)

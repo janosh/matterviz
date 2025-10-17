@@ -38,8 +38,6 @@
     show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
   })
 
-  let hidden_elements = $state(new Set<ElementSymbol>())
-
   let {
     structure = $bindable(undefined),
     scene_props: scene_props_in = $bindable(undefined),
@@ -78,6 +76,8 @@
     measured_sites = $bindable<number[]>([]),
     // expose the displayed structure (with image atoms and supercell) for external use
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
+    // Track hidden elements across component lifecycle
+    hidden_elements = $bindable(new Set<ElementSymbol>()),
     children,
     on_file_load,
     on_error,
@@ -126,6 +126,8 @@
       measured_sites?: number[]
       // expose the displayed structure (with image atoms and/or supercell) for external use
       displayed_structure?: AnyStructure
+      // Track which elements are hidden (bindable across frames in trajectories)
+      hidden_elements?: Set<ElementSymbol>
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       children?: Snippet<[{ structure?: AnyStructure }]>
