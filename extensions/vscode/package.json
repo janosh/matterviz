@@ -351,23 +351,23 @@
         },
         "matterviz.structure.force_shaft_radius": {
           "type": "number",
-          "default": 0.02,
-          "description": "Radius of force vector shaft",
-          "minimum": 0.005,
+          "default": -0.01,
+          "description": "Radius of force vector shaft (negative = relative to length, positive = absolute)",
+          "minimum": -0.1,
           "maximum": 0.1
         },
         "matterviz.structure.force_arrow_head_radius": {
           "type": "number",
-          "default": 0.08,
-          "description": "Radius of force vector arrow head",
-          "minimum": 0.02,
+          "default": -0.025,
+          "description": "Radius of force vector arrow head (negative = relative to length, positive = absolute)",
+          "minimum": -0.2,
           "maximum": 0.2
         },
         "matterviz.structure.force_arrow_head_length": {
           "type": "number",
-          "default": 0.2,
-          "description": "Length of force vector arrow head",
-          "minimum": 0.05,
+          "default": -0.1,
+          "description": "Length of force vector arrow head (negative = relative to length, positive = absolute)",
+          "minimum": -0.5,
           "maximum": 0.5
         },
         "matterviz.structure.show_cell": {
@@ -501,41 +501,6 @@
           "minimum": 10,
           "maximum": 10000
         },
-        "matterviz.trajectory.histogram_mode": {
-          "type": "string",
-          "default": "overlay",
-          "description": "Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram",
-          "enum": [
-            "overlay",
-            "single"
-          ]
-        },
-        "matterviz.trajectory.histogram_show_legend": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show legend in histogram plots"
-        },
-        "matterviz.trajectory.histogram_bin_count": {
-          "type": "number",
-          "default": 100,
-          "description": "Number of bins for histogram plots",
-          "minimum": 1,
-          "maximum": 1000
-        },
-        "matterviz.trajectory.histogram_bar_opacity": {
-          "type": "number",
-          "default": 0.7,
-          "description": "Opacity of histogram bars",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.trajectory.histogram_bar_stroke_width": {
-          "type": "number",
-          "default": 1,
-          "description": "Stroke width for histogram bars",
-          "minimum": 0,
-          "maximum": 5
-        },
         "matterviz.trajectory.step_label_format": {
           "type": "string",
           "default": ".3~s",
@@ -627,6 +592,132 @@
           "default": true,
           "description": "Cache parsed trajectory data"
         },
+        "matterviz.histogram.mode": {
+          "type": "string",
+          "default": "overlay",
+          "description": "Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram",
+          "enum": [
+            "overlay",
+            "single"
+          ]
+        },
+        "matterviz.histogram.show_legend": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show legend in histogram plots"
+        },
+        "matterviz.histogram.bin_count": {
+          "type": "number",
+          "default": 100,
+          "description": "Number of bins for histogram plots",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "matterviz.histogram.bar.color": {
+          "type": "string",
+          "default": "#4A9EFF",
+          "description": "Histogram bar fill color"
+        },
+        "matterviz.histogram.bar.opacity": {
+          "type": "number",
+          "default": 0.7,
+          "description": "Histogram bar opacity",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.histogram.bar.stroke_width": {
+          "type": "number",
+          "default": 1,
+          "description": "Histogram bar stroke width",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "matterviz.histogram.bar.stroke_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Histogram bar stroke color"
+        },
+        "matterviz.histogram.bar.stroke_opacity": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Histogram bar stroke opacity",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.histogram.display.x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.histogram.display.y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.histogram.display.y2_grid": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y2-axis grid lines"
+        },
+        "matterviz.histogram.display.x_zero_line": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show X-axis zero reference line"
+        },
+        "matterviz.histogram.display.y_zero_line": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y-axis zero reference line"
+        },
+        "matterviz.bar.bar.color": {
+          "type": "string",
+          "default": "#4A9EFF",
+          "description": "Bar plot fill color"
+        },
+        "matterviz.bar.bar.opacity": {
+          "type": "number",
+          "default": 0.6,
+          "description": "Bar plot opacity (overlay mode)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.bar.line.width": {
+          "type": "number",
+          "default": 2,
+          "description": "Bar plot line width",
+          "minimum": 0.5,
+          "maximum": 10
+        },
+        "matterviz.bar.line.color": {
+          "type": "string",
+          "default": "#4A9EFF",
+          "description": "Bar plot line color"
+        },
+        "matterviz.bar.display.x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.bar.display.y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.bar.display.y2_grid": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y2-axis grid lines"
+        },
+        "matterviz.bar.display.x_zero_line": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show X-axis zero reference line"
+        },
+        "matterviz.bar.display.y_zero_line": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y-axis zero reference line"
+        },
         "matterviz.composition.display_mode": {
           "type": "string",
           "default": "pie",
@@ -670,82 +761,10 @@
             "Diamond2"
           ]
         },
-        "matterviz.scatter.line_width": {
-          "type": "number",
-          "default": 2,
-          "description": "Line width for scatter plot connections",
-          "minimum": 0.5,
-          "maximum": 10
-        },
-        "matterviz.scatter.point_size": {
-          "type": "number",
-          "default": 4,
-          "description": "Point size for scatter plots",
-          "minimum": 1,
-          "maximum": 20
-        },
         "matterviz.scatter.show_legend": {
           "type": "boolean",
           "default": true,
           "description": "Show legend in scatter plots"
-        },
-        "matterviz.scatter.markers": {
-          "type": "string",
-          "default": "line+points",
-          "description": "Scatter plot marker type",
-          "enum": [
-            "line",
-            "points",
-            "line+points"
-          ]
-        },
-        "matterviz.scatter.point_color": {
-          "type": "string",
-          "default": "#4A9EFF",
-          "description": "Default color for scatter plot points"
-        },
-        "matterviz.scatter.point_opacity": {
-          "type": "number",
-          "default": 1,
-          "description": "Opacity of scatter plot points",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.scatter.point_stroke_width": {
-          "type": "number",
-          "default": 1,
-          "description": "Stroke width for scatter plot points",
-          "minimum": 0,
-          "maximum": 5
-        },
-        "matterviz.scatter.point_stroke_color": {
-          "type": "string",
-          "default": "#000000",
-          "description": "Stroke color for scatter plot points"
-        },
-        "matterviz.scatter.point_stroke_opacity": {
-          "type": "number",
-          "default": 1,
-          "description": "Stroke opacity for scatter plot points",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.scatter.line_color": {
-          "type": "string",
-          "default": "#4A9EFF",
-          "description": "Default color for scatter plot lines"
-        },
-        "matterviz.scatter.line_opacity": {
-          "type": "number",
-          "default": 1,
-          "description": "Opacity of scatter plot lines",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "matterviz.scatter.line_dash": {
-          "type": "string",
-          "default": "solid",
-          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
         },
         "matterviz.scatter.show_points": {
           "type": "boolean",
@@ -756,6 +775,93 @@
           "type": "boolean",
           "default": true,
           "description": "Show connecting lines in scatter plots"
+        },
+        "matterviz.scatter.display.x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.scatter.display.y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.scatter.display.y2_grid": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y2-axis grid lines"
+        },
+        "matterviz.scatter.display.x_zero_line": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show X-axis zero reference line"
+        },
+        "matterviz.scatter.display.y_zero_line": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y-axis zero reference line"
+        },
+        "matterviz.scatter.point.size": {
+          "type": "number",
+          "default": 4,
+          "description": "Point size for scatter plots",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "matterviz.scatter.point.color": {
+          "type": "string",
+          "default": "#4A9EFF",
+          "description": "Default color for scatter plot points"
+        },
+        "matterviz.scatter.point.opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Opacity of scatter plot points",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.scatter.point.stroke_width": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke width for scatter plot points",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "matterviz.scatter.point.stroke_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Stroke color for scatter plot points"
+        },
+        "matterviz.scatter.point.stroke_opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Stroke opacity for scatter plot points",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.scatter.line.width": {
+          "type": "number",
+          "default": 2,
+          "description": "Line width for scatter plot connections",
+          "minimum": 0.5,
+          "maximum": 10
+        },
+        "matterviz.scatter.line.color": {
+          "type": "string",
+          "default": "#4A9EFF",
+          "description": "Default color for scatter plot lines"
+        },
+        "matterviz.scatter.line.opacity": {
+          "type": "number",
+          "default": 1,
+          "description": "Opacity of scatter plot lines",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.scatter.line.dash": {
+          "type": "string",
+          "default": "solid",
+          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
         },
         "matterviz.plot.animation_duration": {
           "type": "number",
@@ -791,22 +897,27 @@
           "default": true,
           "description": "Show axis labels in plots"
         },
-        "matterviz.plot.show_zero_lines": {
+        "matterviz.plot.show_x_zero_line": {
           "type": "boolean",
           "default": true,
-          "description": "Show zero reference lines in plots"
+          "description": "Show X-axis zero reference line"
         },
-        "matterviz.plot.x_grid": {
+        "matterviz.plot.show_y_zero_line": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis zero reference line"
+        },
+        "matterviz.plot.show_x_grid": {
           "type": "boolean",
           "default": true,
           "description": "Show X-axis grid lines"
         },
-        "matterviz.plot.y_grid": {
+        "matterviz.plot.show_y_grid": {
           "type": "boolean",
           "default": true,
           "description": "Show Y-axis grid lines"
         },
-        "matterviz.plot.y2_grid": {
+        "matterviz.plot.show_y2_grid": {
           "type": "boolean",
           "default": true,
           "description": "Show secondary Y-axis grid lines"

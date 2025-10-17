@@ -55,6 +55,17 @@ describe(`Export functionality`, () => {
       )
     })
 
+    it(`exports PNG with custom filename string`, () => {
+      const mock_canvas = create_mock_canvas()
+      export_canvas_as_png(mock_canvas, `custom-filename.png`, 72)
+      expect(mock_canvas.toBlob).toHaveBeenCalled()
+      expect(mock_download).toHaveBeenCalledWith(
+        expect.any(Blob),
+        `custom-filename.png`,
+        `image/png`,
+      )
+    })
+
     it(`exports high-res PNG with renderer`, () => {
       const mock_canvas = create_mock_canvas()
       const mock_renderer = {

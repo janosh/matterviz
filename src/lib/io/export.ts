@@ -12,7 +12,7 @@ export interface CanvasWithRenderer extends HTMLCanvasElement {
 // Export structure as PNG image from canvas
 export function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
-  structure: AnyStructure | undefined,
+  structure_or_filename: AnyStructure | string | undefined,
   png_dpi = 150,
   scene: THREE.Scene | null = null,
   camera: THREE.Camera | null = null,
@@ -25,6 +25,11 @@ export function export_canvas_as_png(
       return
     }
 
+    // Determine filename from either structure or direct filename
+    const filename = typeof structure_or_filename === `string`
+      ? structure_or_filename
+      : create_structure_filename(structure_or_filename, `png`)
+
     // Convert DPI to multiplier (72 DPI is baseline web resolution)
     // Cap to a reasonable upper bound to avoid excessive memory use
     const resolution_multiplier = Math.min(png_dpi / 72, 10)
@@ -35,7 +40,6 @@ export function export_canvas_as_png(
       try {
         canvas.toBlob((blob) => {
           if (blob) {
-            const filename = create_structure_filename(structure, `png`)
             download(blob, filename, `image/png`)
           } else {
             if (typeof window !== `undefined`) {
@@ -71,7 +75,6 @@ export function export_canvas_as_png(
         renderer.setSize(original_size.width, original_size.height, false)
 
         if (blob) {
-          const filename = create_structure_filename(structure, `png`)
           download(blob, filename, `image/png`)
         } else {
           if (typeof window !== `undefined`) {

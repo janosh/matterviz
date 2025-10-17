@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure, ElementSymbol } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
@@ -76,6 +76,8 @@
     measured_sites = $bindable<number[]>([]),
     // expose the displayed structure (with image atoms and supercell) for external use
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
+    // Track hidden elements across component lifecycle
+    hidden_elements = $bindable(new Set<ElementSymbol>()),
     children,
     on_file_load,
     on_error,
@@ -124,6 +126,8 @@
       measured_sites?: number[]
       // expose the displayed structure (with image atoms and/or supercell) for external use
       displayed_structure?: AnyStructure
+      // Track which elements are hidden (bindable across frames in trajectories)
+      hidden_elements?: Set<ElementSymbol>
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       children?: Snippet<[{ structure?: AnyStructure }]>
@@ -620,7 +624,10 @@
       {/if}
     </section>
 
-    <StructureLegend elements={get_elem_amounts(supercell_structure ?? structure!)} />
+    <StructureLegend
+      elements={get_elem_amounts(supercell_structure ?? structure!)}
+      bind:hidden_elements
+    />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
@@ -636,6 +643,7 @@
             bind:measured_sites
             bind:scene
             bind:camera
+            bind:hidden_elements
             {measure_mode}
             {width}
             {height}

@@ -3356,3 +3356,208 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await expect(axis_controls).toHaveCount(3)
   })
 })
+
+test.describe(`Element Visibility Toggle`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+  })
+
+  test(`toggle buttons are present on element badges`, async ({ page }) => {
+    const legend = page.locator(`#test-structure .structure-legend`)
+    await expect(legend).toBeVisible()
+
+    const legend_items = legend.locator(`.legend-item`)
+    const item_count = await legend_items.count()
+    expect(item_count).toBeGreaterThan(0)
+
+    // Verify first item has toggle button with correct attributes
+    const first_toggle = legend_items.first().locator(`button.toggle-visibility`)
+    await expect(first_toggle).toBeAttached()
+    await expect(first_toggle).toContainText(`×`)
+
+    // Tooltip consumes title attribute, stores in data-original-title
+    await expect(first_toggle).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
+  })
+
+  test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const legend = page.locator(`#test-structure .structure-legend`)
+    const first_item = legend.locator(`.legend-item`).first()
+    const toggle_button = first_item.locator(`button.toggle-visibility`)
+    const label = first_item.locator(`label`)
+
+    // Capture initial state
+    const initial_screenshot = await canvas.screenshot()
+    const initial_opacity = await label.evaluate((el) =>
+      parseFloat(globalThis.getComputedStyle(el).opacity)
+    )
+    // Initial check - tooltip stores in data-original-title
+    await expect(toggle_button).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
+
+    // Hide element
+    await first_item.hover()
+    await toggle_button.click()
+    await page.waitForTimeout(150)
+
+    // Verify hidden state
+    await expect(label).toHaveClass(/hidden/)
+    const hidden_screenshot = await canvas.screenshot()
+    expect(initial_screenshot.equals(hidden_screenshot)).toBe(false)
+
+    const hidden_opacity = await label.evaluate((el) =>
+      parseFloat(globalThis.getComputedStyle(el).opacity)
+    )
+    expect(hidden_opacity).toBeLessThan(initial_opacity)
+    expect(hidden_opacity).toBeGreaterThan(0.3)
+    expect(hidden_opacity).toBeLessThan(0.6)
+
+    // After interaction, Svelte updates title attribute (tooltip may not have re-processed)
+    await expect(toggle_button).toHaveAttribute(`title`, /Show .+ atoms/)
+    await expect(toggle_button).toHaveClass(/visible/)
+  })
+
+  test(`color picker remains functional with toggle button`, async ({ page }) => {
+    const legend = page.locator(`#test-structure .structure-legend`)
+    const first_item = legend.locator(`.legend-item`).first()
+    const label = first_item.locator(`label`)
+    const color_input = label.locator(`input[type="color"]`)
+
+    // Verify label is clickable and element remains visible
+    await label.click({ position: { x: 10, y: 10 } })
+    await expect(label).not.toHaveClass(/hidden/)
+
+    // Test color change functionality
+    await color_input.evaluate((input: HTMLInputElement) => {
+      input.value = `#ff0000`
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    })
+    await page.waitForTimeout(50)
+    expect(await color_input.inputValue()).toBe(`#ff0000`)
+
+    // Double-click to reset color
+    await label.dblclick({ position: { x: 10, y: 10 } })
+    await page.waitForTimeout(50)
+    const reset_color = await color_input.inputValue()
+    expect(reset_color).not.toBe(`#ff0000`)
+    // Should be close to original (may not be exact due to rounding)
+    expect(reset_color.length).toBe(7) // Valid hex color
+  })
+
+  test(`toggle shows atoms after hiding`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const legend = page.locator(`#test-structure .structure-legend`)
+    const first_item = legend.locator(`.legend-item`).first()
+    const toggle_button = first_item.locator(`button.toggle-visibility`)
+    const label = first_item.locator(`label`)
+
+    const initial_screenshot = await canvas.screenshot()
+
+    // Hide
+    await first_item.hover()
+    await toggle_button.click()
+    await page.waitForTimeout(150)
+    await expect(label).toHaveClass(/hidden/)
+    // After toggle, Svelte updates title
+    await expect(toggle_button).toHaveAttribute(`title`, /Show .+ atoms/)
+    const hidden_screenshot = await canvas.screenshot()
+    expect(initial_screenshot.equals(hidden_screenshot)).toBe(false)
+
+    // Show
+    await toggle_button.click()
+    await page.waitForTimeout(150)
+    await expect(label).not.toHaveClass(/hidden/)
+    // Title updates again
+    await expect(toggle_button).toHaveAttribute(`title`, /Hide .+ atoms/)
+    const shown_screenshot = await canvas.screenshot()
+    // Visual should change back (may not be pixel-perfect due to rendering variations)
+    expect(hidden_screenshot.equals(shown_screenshot)).toBe(false)
+  })
+
+  test(`multiple elements work independently`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const legend = page.locator(`#test-structure .structure-legend`)
+    const legend_items = legend.locator(`.legend-item`)
+    const item_count = await legend_items.count()
+
+    if (item_count < 2) {
+      test.skip()
+      return
+    }
+
+    const initial_screenshot = await canvas.screenshot()
+    const first_item = legend_items.nth(0)
+    const second_item = legend_items.nth(1)
+    const first_label = first_item.locator(`label`)
+    const second_label = second_item.locator(`label`)
+
+    // Hide first element
+    await first_item.hover()
+    await first_item.locator(`button.toggle-visibility`).click()
+    await page.waitForTimeout(150)
+    await expect(first_label).toHaveClass(/hidden/)
+    await expect(second_label).not.toHaveClass(/hidden/)
+    const after_first = await canvas.screenshot()
+    expect(initial_screenshot.equals(after_first)).toBe(false)
+
+    // Hide second element
+    await second_item.hover()
+    await second_item.locator(`button.toggle-visibility`).click()
+    await page.waitForTimeout(150)
+    await expect(first_label).toHaveClass(/hidden/)
+    await expect(second_label).toHaveClass(/hidden/)
+    const after_second = await canvas.screenshot()
+    expect(after_first.equals(after_second)).toBe(false)
+
+    // Show first element only
+    await first_item.locator(`button.toggle-visibility`).click()
+    await page.waitForTimeout(150)
+    await expect(first_label).not.toHaveClass(/hidden/)
+    await expect(second_label).toHaveClass(/hidden/)
+  })
+
+  test(`hidden state persists and button visibility works`, async ({ page }) => {
+    const legend = page.locator(`#test-structure .structure-legend`)
+    const first_item = legend.locator(`.legend-item`).first()
+    const toggle_button = first_item.locator(`button.toggle-visibility`)
+    const label = first_item.locator(`label`)
+
+    // Button hidden initially
+    const initial_opacity = await toggle_button.evaluate((el) =>
+      parseFloat(globalThis.getComputedStyle(el).opacity)
+    )
+    expect(initial_opacity).toBe(0)
+
+    // Button visible on hover
+    await first_item.hover()
+    await page.waitForTimeout(50)
+    const hover_opacity = await toggle_button.evaluate((el) =>
+      parseFloat(globalThis.getComputedStyle(el).opacity)
+    )
+    expect(hover_opacity).toBeGreaterThan(0)
+
+    // Hide element
+    await toggle_button.click()
+    await page.waitForTimeout(50)
+    await expect(label).toHaveClass(/hidden/)
+
+    // Button stays visible when element hidden
+    await page.mouse.move(0, 0)
+    await page.waitForTimeout(100)
+    await expect(toggle_button).toHaveClass(/visible/)
+    const hidden_opacity = await toggle_button.evaluate((el) =>
+      parseFloat(globalThis.getComputedStyle(el).opacity)
+    )
+    expect(hidden_opacity).toBe(1)
+
+    // Hidden state persists through control pane interactions
+    const controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await controls_checkbox.check()
+    await page.waitForTimeout(50)
+    await controls_checkbox.uncheck()
+    await page.waitForTimeout(50)
+    await expect(label).toHaveClass(/hidden/)
+  })
+})
