@@ -33,7 +33,8 @@
     if (!canvas || !scene || !camera) return
 
     const dpi = Math.max(50, Math.min(600, Math.trunc(png_dpi)))
-    export_canvas_as_png(canvas, undefined, dpi, scene, camera)
+    const png_name = `${filename}-${bz_data?.order ?? `1`}.png`
+    export_canvas_as_png(canvas, png_name, dpi, scene, camera)
   }
 
   function export_as_json() {
