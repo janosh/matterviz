@@ -2127,4 +2127,176 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       await expect(play_button).toBeVisible()
     })
   })
+
+  test.describe(`Element Visibility Toggle in Trajectory`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      const trajectory = page.locator(`#loaded-trajectory`)
+      await expect(trajectory).toBeVisible({ timeout: 10000 })
+    })
+
+    test(`toggle buttons exist on trajectory element badges`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const legend = trajectory.locator(`.structure-legend`)
+      await expect(legend).toBeVisible()
+
+      const first_toggle = legend.locator(`.legend-item`).first()
+        .locator(`button.toggle-visibility`)
+      await expect(first_toggle).toBeAttached()
+      await expect(first_toggle).toContainText(`×`)
+    })
+
+    test(`hidden elements persist across frames and playback`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const canvas = trajectory.locator(`canvas`)
+      const legend = trajectory.locator(`.structure-legend`)
+      const first_item = legend.locator(`.legend-item`).first()
+      const label = first_item.locator(`label`)
+      const step_input = trajectory.locator(`.step-input`)
+
+      // Capture frame 0
+      const frame_0_screenshot = await canvas.screenshot()
+
+      // Hide element
+      await first_item.hover()
+      await first_item.locator(`button.toggle-visibility`).click()
+      await page.waitForTimeout(150)
+      const frame_0_hidden = await canvas.screenshot()
+      expect(frame_0_screenshot.equals(frame_0_hidden)).toBe(false)
+
+      // Navigate to frame 1 - hidden state persists
+      await step_input.fill(`1`)
+      await step_input.press(`Enter`)
+      await page.waitForTimeout(150)
+      await expect(label).toHaveClass(/hidden/)
+      const frame_1_hidden = await canvas.screenshot()
+      expect(frame_0_screenshot.equals(frame_1_hidden)).toBe(false)
+
+      // Reset to frame 0 and test playback persistence
+      await step_input.fill(`0`)
+      await step_input.press(`Enter`)
+      await page.waitForTimeout(100)
+
+      const play_button = trajectory.locator(`.play-button`)
+      await play_button.click()
+      await page.waitForTimeout(400)
+      await expect(label).toHaveClass(/hidden/)
+      await play_button.click() // Stop playback
+    })
+
+    test(`toggle works across display modes`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const legend = trajectory.locator(`.structure-legend`)
+      const first_item = legend.locator(`.legend-item`).first()
+      const label = first_item.locator(`label`)
+      const canvas = trajectory.locator(`canvas`)
+
+      // Hide element in default mode
+      await first_item.hover()
+      await first_item.locator(`button.toggle-visibility`).click()
+      await page.waitForTimeout(100)
+      await expect(label).toHaveClass(/hidden/)
+
+      // Structure-only mode - still hidden with visual change
+      await select_display_mode(trajectory, `Structure`)
+      await page.waitForTimeout(100)
+      const structure_screenshot = await canvas.screenshot()
+      await expect(legend.locator(`.legend-item`).first().locator(`label`))
+        .toHaveClass(/hidden/)
+
+      // Split mode - still hidden, can toggle
+      await select_display_mode(trajectory, `Split`)
+      await page.waitForTimeout(100)
+      const split_label = legend.locator(`.legend-item`).first().locator(`label`)
+      await expect(split_label).toHaveClass(/hidden/)
+
+      // Show element
+      await first_item.locator(`button.toggle-visibility`).click()
+      await page.waitForTimeout(100)
+      await expect(split_label).not.toHaveClass(/hidden/)
+      const shown_screenshot = await canvas.screenshot()
+      expect(structure_screenshot.equals(shown_screenshot)).toBe(false)
+    })
+
+    test(`multiple elements and color picker functionality`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const legend = trajectory.locator(`.structure-legend`)
+      const legend_items = legend.locator(`.legend-item`)
+      const item_count = await legend_items.count()
+
+      if (item_count < 2) {
+        test.skip()
+        return
+      }
+
+      // Hide multiple elements
+      await legend_items.nth(0).hover()
+      await legend_items.nth(0).locator(`button.toggle-visibility`).click()
+      await page.waitForTimeout(50)
+      await legend_items.nth(1).hover()
+      await legend_items.nth(1).locator(`button.toggle-visibility`).click()
+      await page.waitForTimeout(50)
+
+      await expect(legend_items.nth(0).locator(`label`)).toHaveClass(/hidden/)
+      await expect(legend_items.nth(1).locator(`label`)).toHaveClass(/hidden/)
+
+      // Color picker still works
+      const first_item = legend_items.nth(0)
+      const label = first_item.locator(`label`)
+      const color_input = label.locator(`input[type="color"]`)
+      await label.click({ position: { x: 10, y: 10 } })
+      await expect(color_input).toBeFocused()
+    })
+
+    test(`button visibility and performance`, async ({ page }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const legend = trajectory.locator(`.structure-legend`)
+      const first_item = legend.locator(`.legend-item`).first()
+      const toggle_button = first_item.locator(`button.toggle-visibility`)
+      const play_button = trajectory.locator(`.play-button`)
+      const step_input = trajectory.locator(`.step-input`)
+
+      // Button hidden initially, visible on hover
+      const initial_opacity = await toggle_button.evaluate((el) =>
+        parseFloat(globalThis.getComputedStyle(el).opacity)
+      )
+      expect(initial_opacity).toBe(0)
+
+      await first_item.hover()
+      await page.waitForTimeout(50)
+      const hover_opacity = await toggle_button.evaluate((el) =>
+        parseFloat(globalThis.getComputedStyle(el).opacity)
+      )
+      expect(hover_opacity).toBeGreaterThan(0)
+
+      // Performance test: playback with/without hidden elements
+      const start_1 = Date.now()
+      await play_button.click()
+      await page.waitForTimeout(800)
+      await play_button.click()
+      const duration_1 = Date.now() - start_1
+
+      // Hide element and reset
+      await step_input.fill(`0`)
+      await step_input.press(`Enter`)
+      await page.waitForTimeout(50)
+      await first_item.hover()
+      await toggle_button.click()
+      await page.waitForTimeout(50)
+
+      // Button stays visible when element hidden
+      await page.mouse.move(0, 0)
+      await page.waitForTimeout(100)
+      await expect(toggle_button).toHaveClass(/visible/)
+
+      const start_2 = Date.now()
+      await play_button.click()
+      await page.waitForTimeout(800)
+      await play_button.click()
+      const duration_2 = Date.now() - start_2
+
+      // Hidden elements shouldn't slow down playback
+      expect(duration_2).toBeLessThanOrEqual(duration_1 * 1.2)
+    })
+  })
 })

@@ -265,23 +265,11 @@
   // Dynamically hide bonds during playback to improve FPS - bond computation is expensive
   // Maybe revisit this in future if we find much more efficient bonding algo
   let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
-    const base_props = { show_image_atoms: false, ...structure_props }
-
-    if (is_playing) { // Hide bonds during playback
-      const { scene_props = {} } = structure_props
-      if (scene_props.show_bonds !== `never`) {
-        const show_bonds = `never` as const
-        return {
-          ...base_props,
-          scene_props: { ...scene_props, show_bonds, hidden_elements },
-        }
-      }
-    }
-    // default show_image_atoms to false since usually undesired if new image atoms
-    // pup-up/disappear when moving near cell edge during the trajectory
+    const { scene_props = {}, ...rest_props } = structure_props
     return {
-      ...base_props,
-      scene_props: { ...structure_props.scene_props, hidden_elements },
+      show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
+      ...rest_props,
+      scene_props: { ...scene_props, show_bonds: `never`, hidden_elements }, // Hide bonds during playback
     }
   })
 

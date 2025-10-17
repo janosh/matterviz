@@ -287,7 +287,7 @@
     return bond_pairs.filter((bond) => {
       const site_1 = structure.sites[bond.site_idx_1]
       const site_2 = structure.sites[bond.site_idx_2]
-      // Show bond only if neither site has all its species hidden
+      // Show bond only if both sites have at least one visible species
       const site_1_visible = site_1?.species.some(({ element }) =>
         !hidden_elements.has(element)
       )
