@@ -34,10 +34,12 @@ test.describe(`Bond component`, () => {
 
     // Assert 4-5: Rotation works and changes view
     const box = await canvas.boundingBox()
+    expect(box).toBeTruthy()
     if (box) {
       await canvas.dragTo(canvas, {
         sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
         targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
+        force: true,
       })
       const rotated = await canvas.screenshot()
       expect(initial.equals(rotated)).toBe(false)
@@ -51,12 +53,16 @@ test.describe(`Bond component`, () => {
       expect(initial.equals(zoomed)).toBe(false)
       expect(count_non_white_pixels(zoomed)).toBeGreaterThan(100)
     }
-
     // Assert 8: No console errors
     expect(console_errors).toHaveLength(0)
   })
 
   test(`bonds visible from multiple angles with proper gradients`, async ({ page }) => {
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     const canvas = page.locator(`#test-structure canvas`)
     await canvas.waitFor({ state: `visible`, timeout: 5000 })
@@ -91,5 +97,7 @@ test.describe(`Bond component`, () => {
 
     // Assert 6: All three views are distinct
     expect(initial.equals(vertical)).toBe(false)
+    // Assert 7: No console errors
+    expect(console_errors).toHaveLength(0)
   })
 })

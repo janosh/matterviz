@@ -197,12 +197,10 @@ export function get_trajectory_stats(
     })
   } else {
     // Handle empty trajectory case
-    Object.assign(stats, {
-      steps: [],
-      step_range: undefined,
-      constant_atom_count: undefined,
-      total_atoms: undefined,
-    })
+    stats.steps = []
+    stats.step_range = undefined
+    stats.constant_atom_count = undefined
+    stats.total_atoms = undefined
   }
 
   // Additional metadata for large files
