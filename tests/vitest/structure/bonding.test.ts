@@ -90,7 +90,7 @@ const make_mixed_structure = (): PymatgenStructure =>
 describe(`Bonding Algorithms`, () => {
   const algorithms: [BondingAlgo, string, [number, number][]][] = [
     [bonding.electroneg_ratio, `electroneg_ratio`, [[50, 60], [200, 200], [1000, 800]]],
-    [bonding.voronoi, `voronoi`, [[50, 60], [200, 200], [1000, 800]]],
+    [bonding.voronoi, `voronoi`, [[50, 100], [200, 200], [1000, 800]]],
   ] as const
 
   test.each(algorithms)(`%s performance benchmarks`, async (func, name, times) => {

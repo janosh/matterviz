@@ -20,6 +20,7 @@
     varying vec3 vNormal;
 
     void main() {
+      // Colors from Three.js Color class are in linear RGB, pass them through
       vColorStart = instanceColorStart;
       vColorEnd = instanceColorEnd;
       vYPosition = position.y;
@@ -37,12 +38,38 @@
     varying float vYPosition;
     varying vec3 vNormal;
 
+    // Linear to sRGB conversion (gamma correction)
+    vec3 linearTosRGB(vec3 linear) {
+      return vec3(
+        linear.r <= 0.0031308 ? linear.r * 12.92 : 1.055 * pow(linear.r, 1.0/2.4) - 0.055,
+        linear.g <= 0.0031308 ? linear.g * 12.92 : 1.055 * pow(linear.g, 1.0/2.4) - 0.055,
+        linear.b <= 0.0031308 ? linear.b * 12.92 : 1.055 * pow(linear.b, 1.0/2.4) - 0.055
+      );
+    }
+
+    // Desaturate and darken colors for bonds
+    vec3 desaturateBondColor(vec3 color) {
+      // Convert to grayscale
+      float gray = dot(color, vec3(0.299, 0.587, 0.114));
+      // Mix with gray (50% desaturation) and darken (60% brightness)
+      return mix(vec3(gray), color, 0.5) * 0.6;
+    }
+
     void main() {
+      // Mix colors first: bottom (-0.5) = start color, top (+0.5) = end color
       vec3 baseColor = mix(vColorStart, vColorEnd, vYPosition + 0.5);
-      vec3 lightDirection = normalize(vec3(3.0, 10.0, 10.0));
-      float diffuse = max(dot(normalize(vNormal), lightDirection), 0.0);
-      float lighting = ambientIntensity + directionalIntensity * diffuse;
-      gl_FragColor = vec4(baseColor * lighting, 1.0);
+
+      // Desaturate and darken bond colors
+      baseColor = desaturateBondColor(baseColor);
+
+      // Apply lighting to the mixed color
+      vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
+      float diffuse = max(dot(vNormal, lightDir), 0.0);
+
+      vec3 finalColor = baseColor * (ambientIntensity + directionalIntensity * diffuse);
+
+      // Convert to sRGB for display
+      gl_FragColor = vec4(linearTosRGB(finalColor), 1.0);
     }
   `
 
@@ -111,8 +138,8 @@
       vertexShader: vertex_shader,
       fragmentShader: fragment_shader,
       uniforms: {
-        ambientIntensity: { value: group.ambient_light ?? 1.5 },
-        directionalIntensity: { value: group.directional_light ?? 2.2 },
+        ambientIntensity: { value: group.ambient_light ?? 0.7 },
+        directionalIntensity: { value: group.directional_light ?? 0.3 },
       },
     }),
   )

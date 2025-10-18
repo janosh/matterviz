@@ -786,8 +786,7 @@
       }}
     >
       <label>
-        Bonding strategy
-        <select bind:value={scene_props.bonding_strategy}>
+        Strategy <select bind:value={scene_props.bonding_strategy}>
           {#each Object.entries(
             SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
           ) as
@@ -799,11 +798,10 @@
         </select>
       </label>
       <label>
-        Bond color
-        <input type="color" bind:value={scene_props.bond_color} />
+        Color <input type="color" bind:value={scene_props.bond_color} />
       </label>
       <label>
-        Bond thickness
+        Thickness
         <input
           type="number"
           min={0.05}

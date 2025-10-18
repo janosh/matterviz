@@ -342,7 +342,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: show_bonds_options,
     },
     bond_color: {
-      value: `#ffffff`,
+      value: `#666666`,
       description: `Color for bonds (hex color code)`,
     },
     bonding_strategy: {
@@ -368,7 +368,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     camera_projection: {
       value: `orthographic` as const,
       description: `Camera projection type`,
-      enum: [`perspective`, `orthographic`],
+      enum: {
+        perspective: `Perspective`,
+        orthographic: `Orthographic`,
+      },
     },
     initial_zoom: {
       value: 35,
