@@ -29,7 +29,7 @@ describe(`decompress utility functions`, () => {
 
   describe(`decompress_data`, () => {
     test(`should throw error when DecompressionStream is not supported`, async () => {
-      const original_decompression_stream = globalThis.DecompressionStream
+      const orig_decompression_stream = globalThis.DecompressionStream
       // @ts-expect-error - intentionally deleting for test
       delete globalThis.DecompressionStream
 
@@ -37,7 +37,7 @@ describe(`decompress utility functions`, () => {
         `Failed to decompress gzip file: ReferenceError: DecompressionStream is not defined`,
       )
 
-      globalThis.DecompressionStream = original_decompression_stream
+      globalThis.DecompressionStream = orig_decompression_stream
     })
 
     test(`should throw error for ZIP format since browser doesn't support it`, async () => {
@@ -49,9 +49,7 @@ describe(`decompress utility functions`, () => {
     test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
       `should handle %s decompression errors gracefully`,
       async (format) => {
-        if (!globalThis.DecompressionStream) {
-          return
-        }
+        if (!globalThis.DecompressionStream) return
 
         const invalid_data = new ArrayBuffer(10)
         const view = new Uint8Array(invalid_data)
@@ -66,9 +64,7 @@ describe(`decompress utility functions`, () => {
     test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
       `should successfully decompress valid %s data`,
       async (format) => {
-        if (!globalThis.CompressionStream || !globalThis.DecompressionStream) {
-          return
-        }
+        if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
 
         const test_string = `{"test": "data", "format": "${format}"}`
         const encoder = new TextEncoder()
@@ -125,9 +121,7 @@ describe(`decompress utility functions`, () => {
     )(
       `should process %s compressed files and remove extension`,
       async (format, filename) => {
-        if (!globalThis.CompressionStream || !globalThis.DecompressionStream) {
-          return
-        }
+        if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return
 
         const test_content = `{"compressed": true, "format": "${format}"}`
         const encoder = new TextEncoder()

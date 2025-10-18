@@ -79,12 +79,12 @@ export function simplicity_score(vec: number[]): number {
 
 // Generate Wyckoff table rows from symmetry data
 export function wyckoff_positions_from_moyo(
-  sym_data: (MoyoDataset & { original_indices?: number[] }) | null,
+  sym_data: (MoyoDataset & { orig_indices?: number[] }) | null,
 ): WyckoffPos[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell
-  const { wyckoffs, original_indices } = sym_data
+  const { wyckoffs, orig_indices } = sym_data
 
   // Group sites by letter-element combination and track all indices
   const groups = new Map<string, {
@@ -116,8 +116,8 @@ export function wyckoff_positions_from_moyo(
     }, { pos: positions[0], score: simplicity_score(positions[0]) }).pos
 
     // Map standardized cell indices back to original structure indices
-    const orig_site_indices = original_indices
-      ? indices.map((i) => original_indices[i]).filter((idx) => idx !== undefined)
+    const orig_site_indices = orig_indices
+      ? indices.map((i) => orig_indices[i]).filter((idx) => idx !== undefined)
       : indices
 
     const wyckoff = letter ? `${indices.length}${letter}` : `1`
