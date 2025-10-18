@@ -262,27 +262,6 @@
   // Track hidden elements (persists across frame changes)
   let hidden_elements = $state(new Set<ElementSymbol>())
 
-  // Dynamically hide bonds during playback to improve FPS - bond computation is expensive
-  // Maybe revisit this in future if we find much more efficient bonding algo
-  let final_structure_props: ComponentProps<typeof Structure> = $derived.by(() => {
-    const { scene_props = {}, ...rest_props } = structure_props
-    const { show_bonds, ...rest_scene_props } = scene_props
-
-    // Hide bonds during playback (unless explicitly set to 'never')
-    const final_show_bonds = is_playing && show_bonds !== `never`
-      ? `never`
-      : show_bonds
-
-    return {
-      show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
-      ...rest_props,
-      scene_props: {
-        ...rest_scene_props,
-        show_bonds: final_show_bonds,
-      },
-    }
-  })
-
   let step_label_positions = $derived.by((): number[] => {
     if (!step_labels || total_frames <= 1) return []
 
@@ -329,6 +308,24 @@
       : []
   })
 
+  let x_axis = $derived({
+    label: `Step`,
+    format: `.3~s`,
+    ticks: step_label_positions,
+  })
+  // Generate axis labels based on first visible series on each axis
+  let y_axis_labels = $derived(generate_axis_labels(plot_series))
+  let y_axis = $derived({
+    label: y_axis_labels.y1,
+    format: `.2~s`,
+    label_shift: { y: 20 },
+  })
+  let y2_axis = $derived({
+    label: y_axis_labels.y2,
+    format: `.2~s`,
+    label_shift: { y: 80 },
+  })
+
   // Helper function to get current frame data for callbacks
   function get_current_frame_data() {
     return {
@@ -345,9 +342,6 @@
   // Determine what to show based on display mode
   let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
   let actual_show_plot = $derived(display_mode !== `structure` && show_plot)
-
-  // Generate axis labels based on first visible series on each axis
-  let y_axis_labels = $derived(generate_axis_labels(plot_series))
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(
@@ -1072,7 +1066,10 @@
           structure={current_structure}
           allow_file_drop={false}
           style="height: 100%; min-height: 0; z-index: 3; border-radius: 0"
-          {...final_structure_props}
+          {...{
+            show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
+            ...structure_props,
+          }}
           bind:controls_open={structure_controls_open}
           bind:info_pane_open={structure_info_open}
           bind:hidden_elements
@@ -1083,9 +1080,9 @@
         {#if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
-            x_axis={{ label: `Step`, format: `.3~s`, ticks: step_label_positions }}
-            y_axis={{ label: y_axis_labels.y1, format: `.2~s`, label_shift: { y: 20 } }}
-            y2_axis={{ label: y_axis_labels.y2, format: `.2~s`, label_shift: { y: 80 } }}
+            bind:x_axis
+            bind:y_axis
+            bind:y2_axis
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
             bind:controls={scatter_controls}

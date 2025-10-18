@@ -100,14 +100,13 @@
   The 3d structure viewer is built on the declarative <a href="https://threejs.org"
   >three.js</a>
   wrapper <a href="https://threlte.xyz"><code>threlte</code></a>. It gets Svelte-compiled
-  for great performance (even on supercells with 100+ atoms), is split up into
-  <code>Bond</code>, <code>Lattice</code>, <code>Scene</code> and <code>Site</code>
-  components for easy extensibility. You can pass various click, drag and touch event
-  handlers for rich interactivity as well as inject custom HTML into tooltips using child
-  components. These show
-  <a href="https://materialsproject.org">Materials Project</a>
-  structure for <a href="https://materialsproject.org/materials/mp-756175">mp-756175</a>
-  and a lithium iron manganese phosphate structure from a CIF file.
+  for better performance, is split up into <code>Bond</code>, <code>Lattice</code>, <code
+  >Scene</code> and atom components for easy extensibility. You can pass various click,
+  drag and touch event handlers for rich interactivity as well as inject custom HTML into
+  tooltips using child components. These show <a href="https://materialsproject.org"
+  >Materials Project</a> structure for <a
+    href="https://materialsproject.org/materials/mp-756175"
+  >mp-756175</a> and a lithium iron manganese phosphate structure from a CIF file.
 </p>
 
 <h2><a href="/trajectory">Trajectory Viewer</a></h2>

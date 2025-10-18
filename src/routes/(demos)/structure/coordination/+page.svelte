@@ -1,10 +1,11 @@
 <script lang="ts">
-  import type { PymatgenStructure } from '$lib'
+  import { type PymatgenStructure, SETTINGS_CONFIG } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/parse'
-  import type { CoordinationStrategy, SplitMode } from '$lib/coordination'
-  import { CoordinationBarPlot } from '$lib/coordination'
+  import type { SplitMode } from '$lib/coordination'
+  import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
   import { Structure } from '$lib/structure'
+  import type { BondingStrategy } from '$lib/structure/bonding'
   import { structures } from '$site/structures'
 
   // Map structures by id for O(1) lookup
@@ -24,7 +25,9 @@
 
   // Single structure example
   let single_id = $state<string>(compute_ids[0] || ``)
-  let single_strategy = $state<CoordinationStrategy>(`nearest_neighbor`)
+  let single_strategy = $state<BondingStrategy>(
+    SETTINGS_CONFIG.structure.bonding_strategy.value,
+  )
   let single_split_mode = $state<SplitMode>(`by_element`)
 
   const single_struct = $derived<PymatgenStructure | null>(
@@ -34,7 +37,9 @@
   // Multiple structures example
   let selected_ids = $state<string[]>(compute_ids.slice(0, 3))
   let multi_split_mode = $state<SplitMode>(`by_element`)
-  let multi_strategy = $state<CoordinationStrategy>(`nearest_neighbor`)
+  let multi_strategy = $state<BondingStrategy>(
+    SETTINGS_CONFIG.structure.bonding_strategy.value,
+  )
 
   function toggle_select(id: string) {
     selected_ids = selected_ids.includes(id)
@@ -64,18 +69,13 @@
     }
   }
 
-  const strategies: { value: CoordinationStrategy; label: string }[] = [
-    { value: `nearest_neighbor`, label: `Nearest Neighbor` },
-    { value: `max_dist`, label: `Max Distance` },
-    { value: `electroneg_ratio`, label: `Electronegativity` },
-    { value: 4.0, label: `Max Distance Ratio (4.0)` },
-  ]
+  const strategies = Object.entries(
+    SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
+  ).map(([value, label]) => ({ value, label }))
 
-  const split_modes: { value: SplitMode; label: string }[] = [
-    { value: `by_element`, label: `By Element` },
-    { value: `by_structure`, label: `By Structure` },
-    { value: `none`, label: `Combined` },
-  ]
+  const split_modes = Object.entries(SPLIT_MODES).map(
+    ([value, label]) => ({ value, label }),
+  )
 </script>
 
 <h1>Coordination Number Histograms</h1>

@@ -42,7 +42,7 @@ function sync_package_config() {
       if (schema.maximum !== undefined) config.maximum = schema.maximum
       if (schema.minItems !== undefined) config.minItems = schema.minItems
       if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
-      if (schema.enum) config.enum = schema.enum
+      if (schema.enum) config.enum = Object.keys(schema.enum)
 
       // Add array item type for arrays
       if (Array.isArray(schema.value)) {

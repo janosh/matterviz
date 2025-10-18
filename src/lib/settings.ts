@@ -13,7 +13,7 @@ import { merge_nested } from './utils'
 export interface SettingType<T = unknown> {
   value: T
   description: string
-  enum?: readonly string[]
+  enum?: Readonly<Record<Extract<T, string>, string>>
   minimum?: number
   maximum?: number
   minItems?: number
@@ -289,7 +289,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   color_scheme: {
     value: `Vesta`,
     description: `Color scheme for atoms and bonds`,
-    enum: [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`],
+    enum: {
+      Vesta: `Vesta`,
+      Jmol: `Jmol`,
+      Alloy: `Alloy`,
+      Pastel: `Pastel`,
+      Muted: `Muted`,
+      'Dark Mode': `Dark Mode`,
+    },
   },
   background_color: {
     value: `#000000`,
@@ -331,28 +338,29 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 64,
     },
     bond_thickness: {
-      value: 0.25,
+      value: 0.07,
       description: `Thickness of bonds relative to atom radius`,
       minimum: 0.01,
       maximum: 1.0,
     },
     show_bonds: {
-      value: `molecules`,
+      value: `always`,
       description: `When to display bonds between atoms`,
-      enum: show_bonds_options,
+      enum: Object.fromEntries(
+        show_bonds_options.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
+      ) as Readonly<Record<ShowBonds, string>>,
     },
     bond_color: {
-      value: `#ffffff`,
+      value: `#666666`,
       description: `Color for bonds (hex color code)`,
     },
     bonding_strategy: {
       value: `electroneg_ratio`,
       description: `Method for determining bonds between atoms`,
-      enum: [
-        `electroneg_ratio`,
-        `max_dist`,
-        `nearest_neighbor`,
-      ],
+      enum: {
+        electroneg_ratio: `Electronegativity Ratio`,
+        solid_angle: `Solid Angle`,
+      },
     },
 
     // Camera & Controls
@@ -369,7 +377,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     camera_projection: {
       value: `orthographic` as const,
       description: `Camera projection type`,
-      enum: [`perspective`, `orthographic`],
+      enum: {
+        perspective: `Perspective`,
+        orthographic: `Orthographic`,
+      },
     },
     initial_zoom: {
       value: 35,
@@ -573,13 +584,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display_mode: {
       value: `structure+scatter` as const,
       description: `Visualization mode for trajectory data`,
-      enum: [
-        `structure+scatter`,
-        `structure`,
-        `scatter`,
-        `histogram`,
-        `structure+histogram`,
-      ],
+      enum: {
+        'structure+scatter': `Structure + Scatter`,
+        structure: `Structure`,
+        scatter: `Scatter`,
+        histogram: `Histogram`,
+        'structure+histogram': `Structure + Histogram`,
+      },
     },
     show_controls: {
       value: true,
@@ -600,7 +611,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     layout: {
       value: `auto` as const,
       description: `Layout arrangement for trajectory viewer`,
-      enum: [`auto`, `horizontal`, `vertical`],
+      enum: {
+        auto: `Auto`,
+        horizontal: `Horizontal`,
+        vertical: `Vertical`,
+      },
     },
 
     // File handling and loading
@@ -720,7 +735,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: `overlay` as const,
       description:
         `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
-      enum: [`overlay`, `single`],
+      enum: {
+        overlay: `Overlay`,
+        single: `Single`,
+      },
     },
     show_legend: {
       value: true,
@@ -797,12 +815,23 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display_mode: {
       value: `pie` as const,
       description: `Display mode for composition data`,
-      enum: [`pie`, `bubble`, `bar`],
+      enum: {
+        pie: `Pie`,
+        bubble: `Bubble`,
+        bar: `Bar`,
+      },
     },
     color_scheme: {
       value: `Vesta`,
       description: `Color scheme for composition visualization`,
-      enum: [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`],
+      enum: {
+        Vesta: `Vesta`,
+        Jmol: `Jmol`,
+        Alloy: `Alloy`,
+        Pastel: `Pastel`,
+        Muted: `Muted`,
+        'Dark Mode': `Dark Mode`,
+      },
     },
   },
 
@@ -811,7 +840,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     symbol_type: {
       value: `Circle`,
       description: `Default symbol type for scatter plots`,
-      enum: symbol_names,
+      enum: Object.fromEntries(symbol_names.map((name) => [name, name])) as Readonly<
+        Record<D3SymbolName, string>
+      >,
     },
     show_legend: {
       value: true,
@@ -949,12 +980,18 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     x_scale_type: {
       value: `linear`,
       description: `Scale type for X-axis`,
-      enum: [`linear`, `log`],
+      enum: {
+        linear: `Linear`,
+        log: `Log`,
+      },
     },
     y_scale_type: {
       value: `linear`,
       description: `Scale type for Y-axis`,
-      enum: [`linear`, `log`],
+      enum: {
+        linear: `Linear`,
+        log: `Log`,
+      },
     },
     x_ticks: {
       value: 8,
@@ -989,7 +1026,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color_mode: {
         value: `energy`,
         description: `Color mode for 2D PD points`,
-        enum: [`stability`, `energy`],
+        enum: {
+          stability: `Stability`,
+          energy: `Energy`,
+        },
       },
       color_scale: {
         value: `interpolateViridis`,
@@ -1066,7 +1106,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color_mode: {
         value: `energy`,
         description: `Color mode for 3D PD points`,
-        enum: [`stability`, `energy`],
+        enum: {
+          stability: `Stability`,
+          energy: `Energy`,
+        },
       },
       color_scale: {
         value: `interpolateViridis`,
@@ -1157,7 +1200,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color_mode: {
         value: `energy`,
         description: `Color mode for 4D PD points`,
-        enum: [`stability`, `energy`],
+        enum: {
+          stability: `Stability`,
+          energy: `Energy`,
+        },
       },
       color_scale: {
         value: `interpolateViridis`,
