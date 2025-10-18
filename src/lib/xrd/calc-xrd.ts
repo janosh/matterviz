@@ -191,15 +191,14 @@ export function compute_xrd_pattern(
       }
       let coeff_entry: ScatteringCoeffs
       if (Array.isArray(raw_coeff)) {
-        const a_arr: number[] = []
-        const b_arr: number[] = []
-        for (let pair_idx = 0; pair_idx < raw_coeff.length; pair_idx++) {
-          const term_pair = raw_coeff[pair_idx]
-          const a_val = term_pair[0]
-          const b_val = term_pair[1]
-          a_arr.push(a_val)
-          b_arr.push(b_val)
-        }
+        const [a_arr, b_arr] = raw_coeff.reduce<[number[], number[]]>(
+          ([a_acc, b_acc], [a_val, b_val]) => {
+            a_acc.push(a_val)
+            b_acc.push(b_val)
+            return [a_acc, b_acc]
+          },
+          [[], []],
+        )
         coeff_entry = { a: a_arr, b: b_arr }
       } else {
         coeff_entry = { a: raw_coeff.a.slice(), b: raw_coeff.b.slice(), c: raw_coeff.c }
@@ -236,30 +235,28 @@ export function compute_xrd_pattern(
 
     // Atomic scattering factors (vectorized style)
     const f_scattering: number[] = coeffs.map((coeff_entry) => {
-      const a_arr = coeff_entry.a
-      const b_arr = coeff_entry.b
+      const { a: a_arr, b: b_arr } = coeff_entry
       const num_terms = Math.min(a_arr.length, b_arr.length)
-      let sum_terms = 0
-      for (let term_idx = 0; term_idx < num_terms; term_idx++) {
-        const a_i = a_arr[term_idx]
-        const b_i = b_arr[term_idx]
-        sum_terms += a_i * Math.exp(-b_i * s_sq)
-      }
-      if (coeff_entry.c !== undefined) sum_terms += coeff_entry.c
-      return sum_terms
+      const sum_terms = a_arr
+        .slice(0, num_terms)
+        .reduce((sum, a_i, term_idx) => sum + a_i * Math.exp(-b_arr[term_idx] * s_sq), 0)
+      return sum_terms + (coeff_entry.c ?? 0)
     })
 
     const dw_corr: number[] = dw_factors.map((dw_b) => Math.exp(-dw_b * s_sq))
 
     // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW)
-    let f_real = 0
-    let f_imag = 0
-    for (let idx = 0; idx < f_scattering.length; idx++) {
-      const phase = 2 * Math.PI * g_dot_r_all[idx]
-      const weight = f_scattering[idx] * occus[idx] * dw_corr[idx]
-      f_real += weight * Math.cos(phase)
-      f_imag += weight * Math.sin(phase)
-    }
+    const { real: f_real, imag: f_imag } = f_scattering.reduce(
+      (acc, fs, idx) => {
+        const phase = 2 * Math.PI * g_dot_r_all[idx]
+        const weight = fs * occus[idx] * dw_corr[idx]
+        return {
+          real: acc.real + weight * Math.cos(phase),
+          imag: acc.imag + weight * Math.sin(phase),
+        }
+      },
+      { real: 0, imag: 0 },
+    )
 
     const sin_theta = Math.sin(theta)
     const cos_theta = Math.cos(theta)
