@@ -273,10 +273,8 @@
   function extract_structure_from_entry(
     entry: TernaryPlotEntry,
   ): AnyStructure | null {
-    const original_entry = entries.find((orig_entry) =>
-      orig_entry.entry_id === entry.entry_id
-    )
-    return original_entry?.structure as AnyStructure || null
+    const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
+    return orig_entry?.structure as AnyStructure || null
   }
 
   const reset_camera = () => Object.assign(camera, camera_default)

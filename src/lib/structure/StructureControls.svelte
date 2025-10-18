@@ -147,13 +147,11 @@
       show_cell_vectors: lattice_props.show_cell_vectors,
     }}
     on_reset={() => {
-      Object.assign(scene_props, {
-        show_atoms: DEFAULTS.structure.show_atoms,
-        show_bonds: DEFAULTS.structure.show_bonds,
-        show_site_labels: DEFAULTS.structure.show_site_labels,
-        show_site_indices: DEFAULTS.structure.show_site_indices,
-        show_force_vectors: DEFAULTS.structure.show_force_vectors,
-      })
+      scene_props.show_atoms = DEFAULTS.structure.show_atoms
+      scene_props.show_bonds = DEFAULTS.structure.show_bonds
+      scene_props.show_site_labels = DEFAULTS.structure.show_site_labels
+      scene_props.show_site_indices = DEFAULTS.structure.show_site_indices
+      scene_props.show_force_vectors = DEFAULTS.structure.show_force_vectors
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
@@ -229,14 +227,12 @@
       rotation: scene_props.rotation,
     }}
     on_reset={() => {
-      Object.assign(scene_props, {
-        camera_projection: DEFAULTS.structure.camera_projection,
-        auto_rotate: DEFAULTS.structure.auto_rotate,
-        zoom_speed: DEFAULTS.structure.zoom_speed,
-        pan_speed: DEFAULTS.structure.pan_speed,
-        rotation_damping: DEFAULTS.structure.rotation_damping,
-        rotation: [...DEFAULTS.structure.rotation],
-      })
+      scene_props.camera_projection = DEFAULTS.structure.camera_projection
+      scene_props.auto_rotate = DEFAULTS.structure.auto_rotate
+      scene_props.zoom_speed = DEFAULTS.structure.zoom_speed
+      scene_props.pan_speed = DEFAULTS.structure.pan_speed
+      scene_props.rotation_damping = DEFAULTS.structure.rotation_damping
+      scene_props.rotation = [...DEFAULTS.structure.rotation]
     }}
   >
     <label>
@@ -381,10 +377,8 @@
       color_scheme,
     }}
     on_reset={() => {
-      Object.assign(scene_props, {
-        atom_radius: DEFAULTS.structure.atom_radius,
-        same_size_atoms: DEFAULTS.structure.same_size_atoms,
-      })
+      scene_props.atom_radius = DEFAULTS.structure.atom_radius
+      scene_props.same_size_atoms = DEFAULTS.structure.same_size_atoms
       color_scheme = DEFAULTS.color_scheme
       color_scheme_selected = [DEFAULTS.color_scheme]
     }}
@@ -457,11 +451,9 @@
         site_label_offset: scene_props.site_label_offset,
       }}
       on_reset={() => {
-        Object.assign(scene_props, {
-          site_label_size: DEFAULTS.structure.site_label_size,
-          site_label_padding: DEFAULTS.structure.site_label_padding,
-          site_label_offset: [...DEFAULTS.structure.site_label_offset],
-        })
+        scene_props.site_label_size = DEFAULTS.structure.site_label_size
+        scene_props.site_label_padding = DEFAULTS.structure.site_label_padding
+        scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
         site_label_hex_color = DEFAULTS.structure.site_label_color
         site_label_bg_hex_color = DEFAULTS.structure.site_label_bg_color
         site_label_background_opacity = 0
@@ -551,10 +543,8 @@
         force_color: scene_props.force_color,
       }}
       on_reset={() => {
-        Object.assign(scene_props, {
-          force_scale: DEFAULTS.structure.force_scale,
-          force_color: DEFAULTS.structure.force_color,
-        })
+        scene_props.force_scale = DEFAULTS.structure.force_scale
+        scene_props.force_color = DEFAULTS.structure.force_color
       }}
     >
       <label>
@@ -592,12 +582,10 @@
         supercell_scaling,
       }}
       on_reset={() => {
-        Object.assign(lattice_props, {
-          cell_edge_color: DEFAULTS.structure.cell_edge_color,
-          cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-          cell_surface_color: DEFAULTS.structure.cell_surface_color,
-          cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-        })
+        lattice_props.cell_edge_color = DEFAULTS.structure.cell_edge_color
+        lattice_props.cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity
+        lattice_props.cell_surface_color = DEFAULTS.structure.cell_surface_color
+        lattice_props.cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity
         supercell_scaling = `1x1x1`
       }}
     >
@@ -723,10 +711,8 @@
       ambient_light: scene_props.ambient_light,
     }}
     on_reset={() => {
-      Object.assign(scene_props, {
-        directional_light: DEFAULTS.structure.directional_light,
-        ambient_light: DEFAULTS.structure.ambient_light,
-      })
+      scene_props.directional_light = DEFAULTS.structure.directional_light
+      scene_props.ambient_light = DEFAULTS.structure.ambient_light
     }}
   >
     <label>
@@ -778,11 +764,9 @@
         bond_thickness: scene_props.bond_thickness,
       }}
       on_reset={() => {
-        Object.assign(scene_props, {
-          bonding_strategy: DEFAULTS.structure.bonding_strategy,
-          bond_color: DEFAULTS.structure.bond_color,
-          bond_thickness: DEFAULTS.structure.bond_thickness,
-        })
+        scene_props.bonding_strategy = DEFAULTS.structure.bonding_strategy
+        scene_props.bond_color = DEFAULTS.structure.bond_color
+        scene_props.bond_thickness = DEFAULTS.structure.bond_thickness
       }}
     >
       <label>

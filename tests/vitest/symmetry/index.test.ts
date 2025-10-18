@@ -323,8 +323,8 @@ describe(`stable atom ordering`, () => {
         numbers: [1, 8, 1, 1],
       },
       wyckoffs: [`2a`, `1b`, `2a`, `2a`],
-      original_indices: [0, 1, 2, 3],
-    } as unknown as MoyoDataset & { original_indices?: number[] }
+      orig_indices: [0, 1, 2, 3],
+    } as unknown as MoyoDataset & { orig_indices?: number[] }
 
     // Call the function multiple times to verify stable ordering
     const results = Array.from(
@@ -379,8 +379,8 @@ describe(`site coverage verification`, () => {
       const mock_data = {
         std_cell: { positions: test_case.positions, numbers: test_case.numbers },
         wyckoffs: test_case.wyckoffs,
-        original_indices: test_case.expected_coverage,
-      } as unknown as MoyoDataset & { original_indices?: number[] }
+        orig_indices: test_case.expected_coverage,
+      } as unknown as MoyoDataset & { orig_indices?: number[] }
 
       const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
       const covered_indices = new Set<number>()

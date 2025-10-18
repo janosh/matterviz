@@ -65,16 +65,16 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
 // Takes original 3x3 lattice matrix and [nx, ny, nz] scaling factors
 // Returns new scaled lattice matrix
 export function scale_lattice_matrix(
-  original_matrix: Matrix3x3,
+  orig_matrix: Matrix3x3,
   scaling_factors: Vec3,
 ): Matrix3x3 {
   const [nx, ny, nz] = scaling_factors
 
   // Scale each lattice vector by its corresponding factor
   return [
-    math.scale(original_matrix[0], nx),
-    math.scale(original_matrix[1], ny),
-    math.scale(original_matrix[2], nz),
+    math.scale(orig_matrix[0], nx),
+    math.scale(orig_matrix[1], ny),
+    math.scale(orig_matrix[2], nz),
   ] as Matrix3x3
 }
 
@@ -115,7 +115,7 @@ export function make_supercell(
   // Create new sites by replicating each original site at all lattice points
   const new_sites: Site[] = []
 
-  for (const original_site of structure.sites) {
+  for (const orig_site of structure.sites) {
     for (const lattice_point of lattice_points) {
       // Convert lattice point to cartesian coordinates using original lattice
       // Use transpose of lattice matrix for proper coordinate conversion
@@ -125,7 +125,7 @@ export function make_supercell(
       )
 
       // New cartesian position = original + translation
-      const new_xyz = math.add(original_site.xyz, translation_cart) as Vec3
+      const new_xyz = math.add(orig_site.xyz, translation_cart) as Vec3
 
       // Calculate new fractional coordinates in the supercell lattice
       // Use transpose convention for coordinate conversion
@@ -156,13 +156,13 @@ export function make_supercell(
 
       // Create new site
       const new_site: Site = {
-        ...original_site,
+        ...orig_site,
         xyz: final_xyz,
         abc: new_abc,
         // Update label to indicate supercell position if it has numeric suffix
         label: lattice_points.length > 1
-          ? `${original_site.label}_${lattice_point.join(``)}`
-          : original_site.label,
+          ? `${orig_site.label}_${lattice_point.join(``)}`
+          : orig_site.label,
       }
 
       new_sites.push(new_site)

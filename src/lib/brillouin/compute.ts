@@ -7,7 +7,7 @@ import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
 import type { BrillouinZoneData, ConvexHullData } from './types'
 
 const normalize = (vec: Vec3): Vec3 => {
-  const mag = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
+  const mag = Math.hypot(...vec)
   return mag < 1e-10 ? [0, 0, 0] : [vec[0] / mag, vec[1] / mag, vec[2] / mag]
 }
 

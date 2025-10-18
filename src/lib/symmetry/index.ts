@@ -79,12 +79,12 @@ export function simplicity_score(vec: number[]): number {
 
 // Generate Wyckoff table rows from symmetry data
 export function wyckoff_positions_from_moyo(
-  sym_data: (MoyoDataset & { original_indices?: number[] }) | null,
+  sym_data: (MoyoDataset & { orig_indices?: number[] }) | null,
 ): WyckoffPos[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell
-  const { wyckoffs, original_indices } = sym_data
+  const { wyckoffs, orig_indices } = sym_data
 
   // Group sites by letter-element combination and track all indices
   const groups = new Map<string, {
@@ -95,56 +95,33 @@ export function wyckoff_positions_from_moyo(
   }>()
 
   // Process all sites, including those without Wyckoff letters
-  wyckoffs.forEach((full: string | null, idx: number) => {
+  for (const [idx, full] of wyckoffs.entries()) {
     const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
     const atomic_num = numbers[idx]
     const elem = atomic_number_to_symbol[atomic_num] ?? `?`
     const position = positions[idx]
 
-    if (letter) {
-      // Symmetric site with Wyckoff letter
-      const key = `${letter}|${elem}`
-      if (!groups.has(key)) {
-        groups.set(key, { letter, elem, indices: [], positions: [] })
-      }
-      const group = groups.get(key)
-      if (group) {
-        group.indices.push(idx)
-        group.positions.push(position)
-      }
-    } else {
-      // Non-symmetric site (no Wyckoff letter) - each gets its own group
-      const key = `nosym|${elem}|${idx}`
-      groups.set(key, { letter: ``, elem, indices: [idx], positions: [position] })
-    }
-  })
+    const key = letter ? `${letter}|${elem}` : `nosym|${elem}|${idx}`
+    const group = groups.get(key) ?? { letter, elem, indices: [], positions: [] }
+    group.indices.push(idx)
+    group.positions.push(position)
+    groups.set(key, group)
+  }
 
   const rows = Array.from(groups.values()).map(({ letter, elem, indices, positions }) => {
     // Find the position with the best simplicity score to display
-    let best_pos = positions[0]
-    let best_score = simplicity_score(best_pos)
-
-    for (const pos of positions) {
+    const best_pos = positions.reduce((best, pos) => {
       const score = simplicity_score(pos)
-      if (score < best_score) {
-        best_score = score
-        best_pos = pos
-      }
-    }
+      return score < best.score ? { pos, score } : best
+    }, { pos: positions[0], score: simplicity_score(positions[0]) }).pos
 
     // Map standardized cell indices back to original structure indices
-    const orig_site_indices = original_indices
-      ? indices.map((i) => original_indices[i]).filter((i) => i !== undefined)
+    const orig_site_indices = orig_indices
+      ? indices.map((i) => orig_indices[i]).filter((idx) => idx !== undefined)
       : indices
 
-    if (letter) {
-      // For symmetric sites, show multiplicity
-      const wyckoff = `${indices.length}${letter}`
-      return { wyckoff, elem, abc: best_pos, site_indices: orig_site_indices }
-    } else {
-      // For non-symmetric sites, show multiplicity 1
-      return { wyckoff: `1`, elem, abc: best_pos, site_indices: orig_site_indices }
-    }
+    const wyckoff = letter ? `${indices.length}${letter}` : `1`
+    return { wyckoff, elem, abc: best_pos, site_indices: orig_site_indices }
   })
 
   rows.sort((w1, w2) => {
@@ -212,10 +189,10 @@ export function map_wyckoff_to_all_atoms(
     const indices = (wyckoff_pos.site_indices || [])
       .filter((idx) => idx < original_structure.sites.length)
       .flatMap((orig_idx) => {
-        const { abc: original_abc, species } = original_structure.sites[orig_idx]
+        const { abc: orig_abc, species } = original_structure.sites[orig_idx]
         const element = species[0]?.element
         const equivalent_positions = apply_symmetry_operations(
-          original_abc,
+          orig_abc,
           sym_data.operations,
           tolerance,
         )
