@@ -163,8 +163,8 @@ export function apply_gaussian_smearing(
   densities: number[],
   sigma: number,
 ): number[] {
-  const original_sum = densities.reduce((acc, d) => acc + d, 0)
-  if (sigma <= 0 || original_sum === 0) return densities
+  const orig_sum = densities.reduce((acc, d) => acc + d, 0)
+  if (sigma <= 0 || orig_sum === 0) return densities
 
   const smeared = new Array(densities.length).fill(0)
   const truncation_width = 4 // Truncate Gaussian at ±4σ (contribution < 0.01%)
@@ -188,7 +188,7 @@ export function apply_gaussian_smearing(
   // Normalize to preserve integral
   const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
   if (smeared_sum === 0) return densities
-  const normalization = original_sum / smeared_sum
+  const normalization = orig_sum / smeared_sum
   return smeared.map((d) => d * normalization)
 }
 

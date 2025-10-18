@@ -1,7 +1,8 @@
-import type { Vec3 } from '$lib'
-import { mat3x3_vec3_multiply, type Matrix3x3, matrix_inverse_3x3 } from '$lib/math'
-
 // functions for measuring distances and angles between structure sites
+
+import type { Vec3 } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
+import { mat3x3_vec3_multiply, matrix_inverse_3x3, subtract } from '$lib/math'
 
 export type AngleMode = `degrees` | `radians`
 
@@ -16,7 +17,7 @@ export function displacement_pbc(
   lattice_inv?: Matrix3x3,
 ): Vec3 {
   // For non-periodic structures, return direct displacement
-  if (!lattice_matrix) return [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
+  if (!lattice_matrix) return subtract(to, from)
 
   const inv_mat = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
   const frac_from = mat3x3_vec3_multiply(inv_mat, from)

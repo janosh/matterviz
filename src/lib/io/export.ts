@@ -54,15 +54,15 @@ export function export_canvas_as_png(
     }
 
     // Temporarily modify the renderer's pixel ratio for high-res capture
-    const original_pixel_ratio = renderer.getPixelRatio()
-    const original_size = renderer.getSize(new Vector2())
+    const orig_pixel_ratio = renderer.getPixelRatio()
+    const orig_size = renderer.getSize(new Vector2())
 
     try {
       // Set higher pixel ratio to increase rendering resolution
       renderer.setPixelRatio(resolution_multiplier)
 
       // Force the canvas to update its resolution
-      renderer.setSize(original_size.width, original_size.height, false)
+      renderer.setSize(orig_size.width, orig_size.height, false)
 
       if (scene && camera) {
         renderer.render(scene, camera)
@@ -71,8 +71,8 @@ export function export_canvas_as_png(
       // Capture the high-resolution render after paint completion
       canvas.toBlob((blob) => {
         // Restore original settings immediately
-        renderer.setPixelRatio(original_pixel_ratio)
-        renderer.setSize(original_size.width, original_size.height, false)
+        renderer.setPixelRatio(orig_pixel_ratio)
+        renderer.setSize(orig_size.width, orig_size.height, false)
 
         if (blob) {
           download(blob, filename, `image/png`)
@@ -85,8 +85,8 @@ export function export_canvas_as_png(
     } catch (error) {
       console.error(`Error during high-res rendering:`, error)
       // Restore original settings
-      renderer.setPixelRatio(original_pixel_ratio)
-      renderer.setSize(original_size.width, original_size.height, false)
+      renderer.setPixelRatio(orig_pixel_ratio)
+      renderer.setSize(orig_size.width, orig_size.height, false)
       if (typeof window !== `undefined`) {
         console.warn(
           `Failed to render at high resolution: ${
@@ -266,15 +266,15 @@ export async function export_trajectory_video(
   const renderer = canvas_with_renderer.__customRenderer
 
   // Store original renderer settings if changing resolution
-  let original_pixel_ratio: number | undefined
-  let original_size: THREE.Vector2 | undefined
+  let orig_pixel_ratio: number | undefined
+  let orig_size: THREE.Vector2 | undefined
 
   if (resolution_multiplier !== 1 && renderer) {
-    original_pixel_ratio = renderer.getPixelRatio()
-    original_size = renderer.getSize(new Vector2())
+    orig_pixel_ratio = renderer.getPixelRatio()
+    orig_size = renderer.getSize(new Vector2())
     // Adjust pixel ratio for different resolution export
-    renderer.setPixelRatio(original_pixel_ratio * resolution_multiplier)
-    renderer.setSize(original_size.width, original_size.height, false)
+    renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
+    renderer.setSize(orig_size.width, orig_size.height, false)
   }
 
   // Calculate bitrate based on actual video dimensions
@@ -333,9 +333,9 @@ export async function export_trajectory_video(
     }
   } finally {
     // Restore original renderer settings
-    if (original_pixel_ratio !== undefined && original_size && renderer) {
-      renderer.setPixelRatio(original_pixel_ratio)
-      renderer.setSize(original_size.width, original_size.height, false)
+    if (orig_pixel_ratio !== undefined && orig_size && renderer) {
+      renderer.setPixelRatio(orig_pixel_ratio)
+      renderer.setSize(orig_size.width, orig_size.height, false)
     }
   }
 

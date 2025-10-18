@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Vec3 } from '$lib'
   import { axis_colors, neg_axis_colors } from '$lib'
+  import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
-  import { Cylinder, Vector } from '$lib/structure'
+  import { Arrow, Cylinder } from '$lib/structure'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -135,25 +136,18 @@
     for (const face of bz_data.faces) {
       if (face.length < 3) continue
 
-      for (let i = 1; i < face.length - 1; i++) {
-        const indices = [face[0], face[i], face[i + 1]]
+      for (let face_idx = 1; face_idx < face.length - 1; face_idx++) {
+        const indices = [face[0], face[face_idx], face[face_idx + 1]]
         if (indices.some((idx) => idx < 0 || idx >= bz_data.vertices.length)) continue
         const [v0, v1, v2] = indices.map((idx) => bz_data.vertices[idx])
         positions.push(...v0, ...v1, ...v2)
 
         // Compute normal via cross product
-        const [e1, e2] = [[v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]], [
-          v2[0] - v0[0],
-          v2[1] - v0[1],
-          v2[2] - v0[2],
-        ]]
-        const n = [
-          e1[1] * e2[2] - e1[2] * e2[1],
-          e1[2] * e2[0] - e1[0] * e2[2],
-          e1[0] * e2[1] - e1[1] * e2[0],
-        ]
-        const len = Math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2)
-        const norm = len > 1e-10 ? n.map((x) => x / len) : [0, 0, 0]
+        const e1: Vec3 = math.subtract(v1, v0)
+        const e2: Vec3 = math.subtract(v2, v0)
+        const normal_vec = math.cross_3d(e1, e2)
+        const len = Math.hypot(...normal_vec)
+        const norm = len > 1e-10 ? normal_vec.map((x) => x / len) : [0, 0, 0]
         normals.push(...norm, ...norm, ...norm)
       }
     }
@@ -212,12 +206,8 @@
 
     <!-- BZ edges -->
     {#each bz_data.edges as edge_segment (edge_segment.map((v) => v.join(`,`)).join(`-`))}
-      <Cylinder
-        from={edge_segment[0]}
-        to={edge_segment[1]}
-        thickness={edge_width}
-        color={edge_color}
-      />
+      {@const [from, to] = edge_segment}
+      <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
     {/each}
 
     <!-- Reciprocal lattice vectors -->
@@ -225,7 +215,7 @@
       {#each bz_data.k_lattice as vec, idx (idx)}
         {@const scaled_vec = vec.map((x) => x * vector_scale) as Vec3}
         {@const label_position = scaled_vec.map((x) => x * 1.15) as Vec3}
-        <Vector
+        <Arrow
           position={[0, 0, 0]}
           vector={scaled_vec}
           color={vector_colors[idx]}

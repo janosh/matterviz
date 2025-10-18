@@ -14,10 +14,7 @@
   import { parse_any_structure } from '$lib/structure/parse'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import {
-    calc_coordination_numbers,
-    type CoordinationData,
-  } from './calc-coordination'
+  import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
   import type { SplitMode } from './index'
 
   interface StructureEntry {
@@ -83,7 +80,7 @@
   // Compute coordination data for each structure
   const entries_with_data = $derived(structure_entries.map((entry) => ({
     ...entry,
-    data: calc_coordination_numbers(entry.structure, strategy),
+    data: calc_coordination_nums(entry.structure, strategy),
   })))
 
   // Compute appropriate ranges
