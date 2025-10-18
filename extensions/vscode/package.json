@@ -147,14 +147,14 @@
         },
         "matterviz.structure.bond_thickness": {
           "type": "number",
-          "default": 0.25,
+          "default": 0.07,
           "description": "Thickness of bonds relative to atom radius",
           "minimum": 0.01,
           "maximum": 1
         },
         "matterviz.structure.show_bonds": {
           "type": "string",
-          "default": "molecules",
+          "default": "always",
           "description": "When to display bonds between atoms",
           "enum": [
             "never",

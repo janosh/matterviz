@@ -58,9 +58,17 @@ describe(`Settings`, () => {
       ]
 
       enum_settings.forEach((setting) => {
-        expect(Array.isArray(setting.enum)).toBe(true)
-        expect(setting.enum?.length).toBeGreaterThan(0)
-        expect(setting?.enum).toContain(setting?.value)
+        const is_array = Array.isArray(setting.enum)
+        const is_object = !is_array && typeof setting.enum === `object` &&
+          setting.enum !== null
+        expect(is_array || is_object).toBe(true)
+        if (is_array) {
+          expect(setting.enum?.length).toBeGreaterThan(0)
+          expect(setting?.enum).toContain(setting?.value)
+        } else if (is_object) {
+          expect(Object.keys(setting.enum ?? {}).length).toBeGreaterThan(0)
+          expect(Object.keys(setting.enum ?? {})).toContain(setting?.value)
+        }
       })
     })
   })

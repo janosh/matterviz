@@ -15,9 +15,9 @@
     thickness?: number
   } = $props()
 
-  const from_vec = new Vector3(...from)
-  const to_vec = new Vector3(...to)
-  const { position, rotation, height } = calc_bond(from_vec, to_vec)
+  let from_vec = $derived(new Vector3(...from))
+  let to_vec = $derived(new Vector3(...to))
+  let { position, rotation, height } = $derived(calc_bond(from_vec, to_vec))
 
   function calc_bond(
     from_vec: Vector3,

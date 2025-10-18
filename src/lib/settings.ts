@@ -13,7 +13,7 @@ import { merge_nested } from './utils'
 export interface SettingType<T = unknown> {
   value: T
   description: string
-  enum?: readonly string[]
+  enum?: readonly string[] | Record<string, string>
   minimum?: number
   maximum?: number
   minItems?: number
@@ -348,10 +348,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     bonding_strategy: {
       value: `electroneg_ratio`,
       description: `Method for determining bonds between atoms`,
-      enum: [
-        `electroneg_ratio`,
-        `voronoi`,
-      ],
+      enum: {
+        electroneg_ratio: `Electronegativity Ratio`,
+        voronoi: `Voronoi Tessellation`,
+      },
     },
 
     // Camera & Controls

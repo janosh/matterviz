@@ -208,8 +208,11 @@
     >
       Bonds:
       <select bind:value={scene_props.show_bonds}>
-        {#each SETTINGS_CONFIG.structure.show_bonds.enum ?? [] as option (option)}
-          <option value={option}>{option}</option>
+        {#each Object.entries(SETTINGS_CONFIG.structure.show_bonds.enum ?? {}) as
+          [value, label]
+          (value)
+        }
+          <option {value}>{label}</option>
         {/each}
       </select>
     </label>
@@ -245,8 +248,13 @@
         Projection
       </span>
       <select bind:value={scene_props.camera_projection}>
-        {#each SETTINGS_CONFIG.structure.camera_projection.enum ?? [] as option (option)}
-          <option value={option}>{option}</option>
+        {#each Object.entries(
+            SETTINGS_CONFIG.structure.camera_projection.enum ?? {},
+          ) as
+          [value, label]
+          (value)
+        }
+          <option {value}>{label}</option>
         {/each}
       </select>
     </label>
@@ -780,8 +788,14 @@
       <label>
         Bonding strategy
         <select bind:value={scene_props.bonding_strategy}>
-          <option value="electroneg_ratio">Electronegativity Ratio</option>
-          <option value="voronoi">Voronoi Tessellation</option>
+          {#each Object.entries(
+            SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
+          ) as
+            [value, label]
+            (value)
+          }
+            <option {value}>{label}</option>
+          {/each}
         </select>
       </label>
       <label>
