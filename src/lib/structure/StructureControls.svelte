@@ -208,8 +208,11 @@
     >
       Bonds:
       <select bind:value={scene_props.show_bonds}>
-        {#each SETTINGS_CONFIG.structure.show_bonds.enum ?? [] as option (option)}
-          <option value={option}>{option}</option>
+        {#each Object.entries(SETTINGS_CONFIG.structure.show_bonds.enum ?? {}) as
+          [value, label]
+          (value)
+        }
+          <option {value}>{label}</option>
         {/each}
       </select>
     </label>
@@ -245,8 +248,13 @@
         Projection
       </span>
       <select bind:value={scene_props.camera_projection}>
-        {#each SETTINGS_CONFIG.structure.camera_projection.enum ?? [] as option (option)}
-          <option value={option}>{option}</option>
+        {#each Object.entries(
+            SETTINGS_CONFIG.structure.camera_projection.enum ?? {},
+          ) as
+          [value, label]
+          (value)
+        }
+          <option {value}>{label}</option>
         {/each}
       </select>
     </label>
@@ -778,19 +786,22 @@
       }}
     >
       <label>
-        Bonding strategy
-        <select bind:value={scene_props.bonding_strategy}>
-          <option value="electroneg_ratio">Electronegativity Ratio</option>
-          <option value="max_dist">Max Distance</option>
-          <option value="nearest_neighbor">Nearest Neighbor</option>
+        Strategy <select bind:value={scene_props.bonding_strategy}>
+          {#each Object.entries(
+            SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
+          ) as
+            [value, label]
+            (value)
+          }
+            <option {value}>{label}</option>
+          {/each}
         </select>
       </label>
       <label>
-        Bond color
-        <input type="color" bind:value={scene_props.bond_color} />
+        Color <input type="color" bind:value={scene_props.bond_color} />
       </label>
       <label>
-        Bond thickness
+        Thickness
         <input
           type="number"
           min={0.05}

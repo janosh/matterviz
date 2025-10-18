@@ -1,340 +1,229 @@
-import type { AnyStructure, BondPair } from '$lib'
+// Bonding algorithms for structure visualization
+
+import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
 import { element_data } from '$lib/element'
 
-// Bonding strategy map
-export const BONDING_STRATEGIES = {
-  max_dist,
-  nearest_neighbor,
-  electroneg_ratio,
-} as const
+type SpatialGrid = Map<string, number[]>
 
-// Bonding strategy names
-export type BondingStrategy = keyof typeof BONDING_STRATEGIES
-// Bonding strategy function type
-export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
-
-// Performance-optimized element lookup map
 const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
-
-// Build covalent radii map from ground truth data
 const covalent_radii: Map<string, number> = new Map(
-  element_data
-    .filter((el) => el.covalent_radius !== null)
-    .map((el) => [el.symbol, el.covalent_radius]),
+  element_data.filter((el) => el.covalent_radius !== null).map((
+    el,
+  ) => [el.symbol, el.covalent_radius as number]),
 )
 
-// Simple distance-based bonding with relative distance ratios
-export function max_dist(
-  structure: AnyStructure,
-  { max_distance_ratio = 1.8, min_bond_dist = 0.4, same_species_penalty = 0.6 } = {},
-): BondPair[] {
-  const bonds: BondPair[] = []
-  const sites = structure.sites
-  if (sites.length < 2) return bonds
+// Get the species with highest occupancy from a site.
+function get_majority_species(site: Site) {
+  return (site.species ?? []).reduce(
+    (max, spec) => (spec.occu > max.occu ? spec : max),
+    site.species?.[0] ?? { element: ``, occu: -1 },
+  )
+}
 
-  const min_dist_sq = min_bond_dist ** 2
+// Compute 4x4 transformation matrix for bond cylinder between two positions.
+// Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
+function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
+  const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
+  const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
 
-  // Pre-calculate closest bond distances for each atom for efficient saturation penalty
-  const closest_bond_distances = new Map<number, number>()
+  if (height < 1e-10) {
+    return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+  }
 
-  for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
-    const [x1, y1, z1] = sites[idx_a].xyz
-    const element_a = sites[idx_a].species?.[0]?.element
-    const radius_a = covalent_radii.get(element_a)
+  const [dir_x, dir_y, dir_z] = [dx / height, dy / height, dz / height]
+  let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-    for (let idx_b = idx_a + 1; idx_b < sites.length; idx_b++) {
-      const [x2, y2, z2] = sites[idx_b].xyz
-      const element_b = sites[idx_b].species?.[0]?.element
-      const radius_b = covalent_radii.get(element_b)
+  // Special case: bond pointing straight up (+Y)
+  if (Math.abs(dir_y - 1.0) < 1e-10) {
+    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  } else if (Math.abs(dir_y + 1.0) < 1e-10) {
+    // Special case: bond pointing straight down (-Y)
+    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, -1, 0, 0, 0, 1]
+  } else {
+    // General case: construct orthonormal basis (right, dir, up)
+    // Right vector: perpendicular to dir in XZ plane
+    const [rx, rz] = [-dir_z, dir_x]
+    const r_len = Math.sqrt(rx * rx + rz * rz)
+    const [right_x, right_z] = [rx / r_len, rz / r_len]
+    // Up vector: cross product of dir and right
+    const [up_x, up_y, up_z] = [
+      dir_y * right_z,
+      dir_z * right_x - dir_x * right_z,
+      -dir_y * right_x,
+    ]
+    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [
+      right_x,
+      dir_x,
+      up_x,
+      0,
+      dir_y,
+      up_y,
+      right_z,
+      dir_z,
+      up_z,
+    ]
+  }
 
-      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
-      const dist_sq = dx * dx + dy * dy + dz * dz
-      const distance = Math.sqrt(dist_sq)
+  // Position at midpoint between the two atoms
+  const [px, py, pz] = [
+    (pos_1[0] + pos_2[0]) / 2,
+    (pos_1[1] + pos_2[1]) / 2,
+    (pos_1[2] + pos_2[2]) / 2,
+  ]
 
-      if (dist_sq < min_dist_sq) continue
+  return new Float32Array([ // Return flattened column-major 4x4 matrix for Three.js
+    ...[m00, m10, m20, 0],
+    ...[m01 * height, m11 * height, m21 * height, 0],
+    ...[m02, m12, m22, 0],
+    ...[px, py, pz, 1],
+  ])
+}
 
-      if (!radius_a || !radius_b) continue
-      const expected_dist = radius_a + radius_b
-      const max_allowed_dist = expected_dist * max_distance_ratio
+// Build spatial grid by dividing 3D space into cubic cells.
+function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
+  const grid: SpatialGrid = new Map()
+  for (let idx = 0; idx < sites.length; idx++) {
+    const [x, y, z] = sites[idx].xyz
+    const key = `${Math.floor(x / cell_size)},${Math.floor(y / cell_size)},${
+      Math.floor(z / cell_size)
+    }`
+    const cell = grid.get(key)
+    if (cell) cell.push(idx)
+    else grid.set(key, [idx])
+  }
+  return grid
+}
 
-      if (distance <= max_allowed_dist) {
-        // Distance-dependent strength (closer to expected = stronger)
-        const distance_ratio = distance / expected_dist
-        let strength = Math.exp(-((distance_ratio - 1) ** 2) / (2 * 0.3 ** 2))
-
-        // Apply same-species penalty
-        if (element_a === element_b) {
-          strength *= same_species_penalty
-        }
-
-        // Apply bond saturation penalty more efficiently
-        const closest_a = closest_bond_distances.get(idx_a) ?? Infinity
-        const closest_b = closest_bond_distances.get(idx_b) ?? Infinity
-
-        if (distance > closest_a) {
-          const distance_ratio_a = distance / closest_a
-          strength *= Math.exp(-(distance_ratio_a - 1) / 0.5)
-        }
-
-        if (distance > closest_b) {
-          const distance_ratio_b = distance / closest_b
-          strength *= Math.exp(-(distance_ratio_b - 1) / 0.5)
-        }
-
-        bonds.push({
-          pos_1: sites[idx_a].xyz,
-          pos_2: sites[idx_b].xyz,
-          site_idx_1: idx_a,
-          site_idx_2: idx_b,
-          bond_length: distance,
-          strength,
-        })
-
-        // Update closest bond distances
-        if (distance < closest_a) closest_bond_distances.set(idx_a, distance)
-        if (distance < closest_b) closest_bond_distances.set(idx_b, distance)
+// Get all site indices in 3x3x3 cube of cells around position.
+function get_neighbors_from_grid(
+  pos: Vec3,
+  grid: SpatialGrid,
+  cell_size: number,
+): number[] {
+  const [cx, cy, cz] = [
+    Math.floor(pos[0] / cell_size),
+    Math.floor(pos[1] / cell_size),
+    Math.floor(pos[2] / cell_size),
+  ]
+  const neighbors: number[] = []
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const cell = grid.get(`${cx + dx},${cy + dy},${cz + dz}`)
+        if (cell) neighbors.push(...cell)
       }
     }
   }
-  return bonds
+  return neighbors
 }
 
-// nearest neighbor bonding - only neighboring closest to the central atom are bonded
-export function nearest_neighbor(
-  structure: AnyStructure,
-  {
-    max_neighbors = 4,
-    tolerance_factor = 1.1,
-    min_bond_dist = 0.4,
-    same_species_penalty = 0.6,
-  } = {},
-): BondPair[] {
-  const sites = structure.sites
-  if (sites.length < 2) return []
-
-  const bonds: BondPair[] = []
-  const min_dist_sq = min_bond_dist ** 2
-
-  // Pre-calculate closest bond distances for each atom for efficient saturation penalty
-  const closest_bond_distances = new Map<number, number>()
-
-  // For each atom, find its true nearest neighbors
-  for (let idx_a = 0; idx_a < sites.length; idx_a++) {
-    const [x1, y1, z1] = sites[idx_a].xyz
-    const element_a = sites[idx_a].species?.[0]?.element
-    const radius_a = covalent_radii.get(element_a)
-
-    // Collect all potential neighbors with their distances
-    const neighbors: {
-      idx: number
-      distance: number
-      normalized_distance: number
-      element: string
-      radius: number
-    }[] = []
-
-    for (let idx_b = 0; idx_b < sites.length; idx_b++) {
-      if (idx_a === idx_b) continue
-
-      const [x2, y2, z2] = sites[idx_b].xyz
-      const element_b = sites[idx_b].species?.[0]?.element
-      const radius_b = covalent_radii.get(element_b)
-
-      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
-      const dist_sq = dx * dx + dy * dy + dz * dz
-      const distance = Math.sqrt(dist_sq)
-
-      if (dist_sq >= min_dist_sq) {
-        if (!radius_a || !radius_b) continue
-        const expected_dist = radius_a + radius_b
-        const normalized_distance = distance / expected_dist
-
-        neighbors.push({
-          idx: idx_b,
-          distance,
-          normalized_distance,
-          element: element_b,
-          radius: radius_b,
-        })
-      }
-    }
-
-    if (neighbors.length === 0) continue
-
-    // Sort by normalized distance to get true nearest neighbors
-    neighbors.sort((a, b) => a.normalized_distance - b.normalized_distance)
-
-    // Find the actual nearest neighbor distance
-    const nearest_normalized_dist = neighbors[0].normalized_distance
-    const tolerance_threshold = nearest_normalized_dist * tolerance_factor
-
-    // Select neighbors that are both:
-    // 1. Among the top max_neighbors closest
-    // 2. Within tolerance_factor of the nearest neighbor distance
-    const selected_neighbors = neighbors
-      .slice(0, max_neighbors)
-      .filter((neighbor, index) =>
-        index < max_neighbors && neighbor.normalized_distance <= tolerance_threshold
-      )
-
-    // Create bonds to selected nearest neighbors (avoid duplicates)
-    for (const neighbor of selected_neighbors) {
-      const idx_b = neighbor.idx
-
-      // Only create bond if idx_a < idx_b to avoid duplicates
-      if (idx_a < idx_b) {
-        // Calculate bond strength based on how close it is to the nearest neighbor
-        const distance_ratio = neighbor.normalized_distance / nearest_normalized_dist
-        let strength = Math.exp(-((distance_ratio - 1) ** 2) / (2 * 0.15 ** 2))
-
-        // Apply same-species penalty
-        if (element_a === neighbor.element) strength *= same_species_penalty
-
-        // Apply bond saturation penalty more efficiently
-        const closest_a = closest_bond_distances.get(idx_a) ?? Infinity
-        const closest_b = closest_bond_distances.get(idx_b) ?? Infinity
-
-        if (neighbor.distance > closest_a) {
-          const distance_ratio_a = neighbor.distance / closest_a
-          strength *= Math.exp(-(distance_ratio_a - 1) / 0.5)
-        }
-
-        if (neighbor.distance > closest_b) {
-          const distance_ratio_b = neighbor.distance / closest_b
-          strength *= Math.exp(-(distance_ratio_b - 1) / 0.5)
-        }
-
-        bonds.push({
-          pos_1: sites[idx_a].xyz,
-          pos_2: sites[idx_b].xyz,
-          site_idx_1: idx_a,
-          site_idx_2: idx_b,
-          bond_length: neighbor.distance,
-          strength,
-        })
-
-        // Update closest bond distances
-        if (neighbor.distance < closest_a) {
-          closest_bond_distances.set(idx_a, neighbor.distance)
-        }
-        if (neighbor.distance < closest_b) {
-          closest_bond_distances.set(idx_b, neighbor.distance)
-        }
-      }
-    }
-  }
-
-  return bonds
+// Setup spatial decomposition for structures with >50 atoms.
+function setup_spatial_grid(sites: Site[], cutoff: number) {
+  const use_grid = sites.length > 50
+  return use_grid ? { grid: build_spatial_grid(sites, cutoff), cell_size: cutoff } : null
 }
 
-// Electronegativity-based bonding with enhanced weighting
+// Get candidate neighbor indices using spatial grid or all sites.
+function get_candidates(
+  pos: Vec3,
+  sites: Site[],
+  spatial: ReturnType<typeof setup_spatial_grid>,
+): number[] {
+  return spatial
+    ? get_neighbors_from_grid(pos, spatial.grid, spatial.cell_size)
+    : Array.from({ length: sites.length }, (_, idx) => idx)
+}
+
+export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
+export type BondingStrategy = keyof typeof BONDING_STRATEGIES
+export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
+
+// Electronegativity-based bonding with chemical preferences.
+// This algorithm considers electronegativity differences between atoms, metal/nonmetal
+// properties, and distance to determine bond strength. Bonds are only created if the
+// computed strength exceeds the strength_threshold parameter (default: 0.3).
 export function electroneg_ratio(
   structure: AnyStructure,
   {
-    electronegativity_threshold = 1.7,
-    max_distance_ratio = 2.0,
-    min_bond_dist = 0.4,
-    metal_metal_penalty = 0.7,
-    metal_nonmetal_bonus = 1.5,
-    similar_electronegativity_bonus = 1.2,
-    same_species_penalty = 0.5,
-    strength_threshold = 0.3,
+    electronegativity_threshold = 1.7, // Max electronegativity difference for bonding
+    max_distance_ratio = 2.0, // Max distance as multiple of sum of covalent radii
+    min_bond_dist = 0.4, // Minimum bond distance in Angstroms
+    metal_metal_penalty = 0.7, // Strength penalty for metal-metal bonds
+    metal_nonmetal_bonus = 1.5, // Strength bonus for metal-nonmetal bonds
+    similar_electronegativity_bonus = 1.2, // Bonus for similar electronegativity
+    same_species_penalty = 0.5, // Penalty for bonds between same element
+    strength_threshold = 0.3, // Minimum bond strength to include in results
   } = {},
 ): BondPair[] {
-  const sites = structure.sites
+  const { sites } = structure
   if (sites.length < 2) return []
 
   const bonds: BondPair[] = []
   const min_dist_sq = min_bond_dist ** 2
+  const closest = new Map<number, number>()
 
-  // Pre-calculate closest bond distances for each atom for efficient saturation penalty
-  const closest_bond_distances = new Map<number, number>()
-
-  // Pre-calculate element properties
-  const site_properties = sites.map((site) => {
-    const element = element_lookup.get(site.species?.[0]?.element)
+  const props = sites.map((site) => {
+    const majority = get_majority_species(site)
+    const elem = majority.element
+    const data = element_lookup.get(elem)
     return {
-      element: site.species?.[0]?.element,
-      electronegativity: element?.electronegativity ?? 2.0,
-      is_metal: element?.metal ?? false,
-      is_nonmetal: element?.nonmetal ?? false,
-      covalent_radius: covalent_radii.get(site.species?.[0]?.element),
+      element: elem,
+      electroneg: data?.electronegativity ?? 2.0,
+      is_metal: data?.metal ?? false,
+      is_nonmetal: data?.nonmetal ?? false,
+      radius: elem ? covalent_radii.get(elem) : undefined,
     }
   })
 
-  // Phase 1: Find all potential bonds with electronegativity weighting
+  let max_radius = 0
+  for (const radius of covalent_radii.values()) {
+    if (radius > max_radius) max_radius = radius
+  }
+  const max_cutoff = max_radius * 2 * max_distance_ratio
+  const spatial = setup_spatial_grid(sites, max_cutoff)
+
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
-    const props_a = site_properties[idx_a]
+    const pa = props[idx_a]
 
-    for (let idx_b = idx_a + 1; idx_b < sites.length; idx_b++) {
+    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
+      if (idx_b <= idx_a) continue
+
       const [x2, y2, z2] = sites[idx_b].xyz
-      const props_b = site_properties[idx_b]
+      const pb = props[idx_b]
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
       const dist_sq = dx * dx + dy * dy + dz * dz
-      const distance = Math.sqrt(dist_sq)
+      const dist = Math.sqrt(dist_sq)
 
-      if (dist_sq < min_dist_sq) continue
+      if (dist_sq < min_dist_sq || !pa.radius || !pb.radius) continue
 
-      if (!props_a.covalent_radius || !props_b.covalent_radius) continue
-      const expected_dist = props_a.covalent_radius + props_b.covalent_radius
-      const max_allowed_dist = expected_dist * max_distance_ratio
+      const expected = pa.radius + pb.radius
+      if (dist > expected * max_distance_ratio) continue
 
-      if (distance > max_allowed_dist) continue
-
-      // Enhanced electronegativity weighting (CrystalNN-inspired)
-      const electronegativity_diff = Math.abs(
-        props_a.electronegativity - props_b.electronegativity,
-      )
-      const electronegativity_ratio = electronegativity_diff /
-        (props_a.electronegativity + props_b.electronegativity)
+      const en_diff = Math.abs(pa.electroneg - pb.electroneg)
+      const en_ratio = en_diff / (pa.electroneg + pb.electroneg)
 
       let bond_strength = 1.0
-
-      // Chemical bonding preferences
-      if (props_a.is_metal && props_b.is_metal) {
+      if (pa.is_metal && pb.is_metal) {
         bond_strength *= metal_metal_penalty
-      } else if (
-        (props_a.is_metal && props_b.is_nonmetal) ||
-        (props_a.is_nonmetal && props_b.is_metal)
-      ) {
+      } else if ((pa.is_metal && pb.is_nonmetal) || (pa.is_nonmetal && pb.is_metal)) {
         bond_strength *= metal_nonmetal_bonus
-        if (electronegativity_diff > electronegativity_threshold) {
-          bond_strength *= 1.3 // Ionic character bonus
-        }
-      } else if (electronegativity_diff < 0.5) {
+        if (en_diff > electronegativity_threshold) bond_strength *= 1.3
+      } else if (en_diff < 0.5) {
         bond_strength *= similar_electronegativity_bonus
       }
 
-      // Distance-dependent weighting (CrystalNN approach)
-      const distance_ratio = distance / expected_dist
-      const distance_weight = Math.exp(-((distance_ratio - 1) ** 2) / (2 * 0.3 ** 2))
+      const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
+      const en_weight = 1.0 - 0.3 * en_ratio
+      let strength = bond_strength * dist_weight * en_weight
 
-      // Electronegativity-based weighting
-      const electro_weight = 1.0 - 0.3 * electronegativity_ratio
+      if (pa.element === pb.element) strength *= same_species_penalty
 
-      // Combined strength score
-      let strength = bond_strength * distance_weight * electro_weight
-
-      // Apply same-species penalty
-      if (props_a.element === props_b.element) {
-        strength *= same_species_penalty
-      }
-
-      // Apply bond saturation penalty more efficiently
-      const closest_a = closest_bond_distances.get(idx_a) ?? Infinity
-      const closest_b = closest_bond_distances.get(idx_b) ?? Infinity
-
-      if (distance > closest_a) {
-        const distance_ratio_a = distance / closest_a
-        strength *= Math.exp(-(distance_ratio_a - 1) / 0.5)
-      }
-
-      if (distance > closest_b) {
-        const distance_ratio_b = distance / closest_b
-        strength *= Math.exp(-(distance_ratio_b - 1) / 0.5)
-      }
+      const ca = closest.get(idx_a) ?? Infinity
+      const cb = closest.get(idx_b) ?? Infinity
+      if (dist > ca) strength *= Math.exp(-(dist / ca - 1) / 0.5)
+      if (dist > cb) strength *= Math.exp(-(dist / cb - 1) / 0.5)
 
       if (strength > strength_threshold) {
         bonds.push({
@@ -342,13 +231,79 @@ export function electroneg_ratio(
           pos_2: sites[idx_b].xyz,
           site_idx_1: idx_a,
           site_idx_2: idx_b,
-          bond_length: distance,
+          bond_length: dist,
           strength,
+          transform_matrix: compute_bond_transform(sites[idx_a].xyz, sites[idx_b].xyz),
         })
+        if (dist < ca) closest.set(idx_a, dist)
+        if (dist < cb) closest.set(idx_b, dist)
+      }
+    }
+  }
+  return bonds
+}
 
-        // Update closest bond distances
-        if (distance < closest_a) closest_bond_distances.set(idx_a, distance)
-        if (distance < closest_b) closest_bond_distances.set(idx_b, distance)
+// Solid angle-based bonding using geometric proximity heuristics.
+// Inspired by Voronoi tessellation without having to actually compute Voronoi cells.
+// This algorithm computes bond strength based on the solid angle subtended by atoms
+// and their distance penalty. Bonds are only created if the computed strength exceeds
+// the strength_threshold parameter.
+export function solid_angle(
+  structure: AnyStructure,
+  {
+    min_solid_angle = 0.01,
+    min_face_area = 0.05,
+    max_distance = 5.0,
+    min_bond_dist = 0.4,
+    strength_threshold = 0.05,
+  } = {},
+): BondPair[] {
+  const { sites } = structure
+  if (sites.length < 2) return []
+
+  const bonds: BondPair[] = []
+  const min_dist_sq = min_bond_dist ** 2
+  const max_dist_sq = max_distance ** 2
+  const spatial = setup_spatial_grid(sites, max_distance)
+
+  for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
+    const [x1, y1, z1] = sites[idx_a].xyz
+    const majority_a = get_majority_species(sites[idx_a])
+    const ra = majority_a.element ? covalent_radii.get(majority_a.element) : undefined
+
+    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
+      if (idx_b <= idx_a) continue
+
+      const [x2, y2, z2] = sites[idx_b].xyz
+      const majority_b = get_majority_species(sites[idx_b])
+      const rb = majority_b.element ? covalent_radii.get(majority_b.element) : undefined
+
+      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
+      const dist_sq = dx * dx + dy * dy + dz * dz
+      const dist = Math.sqrt(dist_sq)
+
+      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq || !ra || !rb) continue
+
+      const avg_r = (ra + rb) / 2.0
+      const face_area = Math.PI * avg_r * avg_r
+      const solid_angle = face_area / dist_sq
+
+      if (solid_angle < min_solid_angle || face_area < min_face_area) continue
+
+      const dist_penalty = Math.exp(-((dist / (ra + rb) - 1) ** 2) / 0.4)
+      const angle_strength = Math.min(solid_angle / (4.0 * Math.PI), 1.0)
+      const strength = angle_strength * dist_penalty
+
+      if (strength > strength_threshold) {
+        bonds.push({
+          pos_1: sites[idx_a].xyz,
+          pos_2: sites[idx_b].xyz,
+          site_idx_1: idx_a,
+          site_idx_2: idx_b,
+          bond_length: dist,
+          strength,
+          transform_matrix: compute_bond_transform(sites[idx_a].xyz, sites[idx_b].xyz),
+        })
       }
     }
   }

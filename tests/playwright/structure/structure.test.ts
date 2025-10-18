@@ -1182,7 +1182,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test bonding strategy change
     const bonding_strategy_select = bonding_strategy_label.locator(`select`)
-    await bonding_strategy_select.selectOption(`nearest_neighbor`)
+    await bonding_strategy_select.selectOption(`solid_angle`)
   })
 
   test(`lattice opacity controls work correctly`, async ({ page }) => {
@@ -2945,7 +2945,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const bonding_select = page.locator(`text=Bonding strategy`).locator(`..`).locator(
         `select`,
       )
-      await bonding_select.selectOption(`nearest_neighbor`)
+      await bonding_select.selectOption(`solid_angle`)
 
       // Reset button should appear in Bonds section
       const bonds_reset = page.locator(`text=Bonds`).locator(`..`).locator(`button`, {
@@ -2957,7 +2957,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await bonds_reset.click()
 
       // Bonding strategy should be back to default
-      await expect(bonding_select).toHaveValue(`max_dist`)
+      await expect(bonding_select).toHaveValue(DEFAULTS.structure.bonding_strategy)
 
       // Reset button should disappear
       await expect(bonds_reset).not.toBeVisible()

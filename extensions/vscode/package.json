@@ -147,14 +147,14 @@
         },
         "matterviz.structure.bond_thickness": {
           "type": "number",
-          "default": 0.25,
+          "default": 0.07,
           "description": "Thickness of bonds relative to atom radius",
           "minimum": 0.01,
           "maximum": 1
         },
         "matterviz.structure.show_bonds": {
           "type": "string",
-          "default": "molecules",
+          "default": "always",
           "description": "When to display bonds between atoms",
           "enum": [
             "never",
@@ -165,7 +165,7 @@
         },
         "matterviz.structure.bond_color": {
           "type": "string",
-          "default": "#ffffff",
+          "default": "#666666",
           "description": "Color for bonds (hex color code)"
         },
         "matterviz.structure.bonding_strategy": {
@@ -174,8 +174,7 @@
           "description": "Method for determining bonds between atoms",
           "enum": [
             "electroneg_ratio",
-            "max_dist",
-            "nearest_neighbor"
+            "solid_angle"
           ]
         },
         "matterviz.structure.show_gizmo": {
