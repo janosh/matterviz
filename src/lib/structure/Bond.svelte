@@ -28,7 +28,7 @@
       vColorStart = instanceColorStart;
       vColorEnd = instanceColorEnd;
       vYPosition = position.y;
-      mat3 normalMat = transpose(inverse(mat3(modelMatrix * instanceMatrix)));
+      mat3 normalMat = normalMatrix;
       vNormal = normalize(normalMat * normal);
       gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
     }

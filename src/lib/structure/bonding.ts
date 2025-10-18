@@ -4,7 +4,7 @@ import { element_data } from '$lib/element'
 type SpatialGrid = Map<string, number[]>
 
 const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
-const covalent_radii = new Map(
+const covalent_radii: Map<string, number> = new Map(
   element_data.filter((el) => el.covalent_radius !== null).map((
     el,
   ) => [el.symbol, el.covalent_radius as number]),
@@ -161,7 +161,6 @@ export async function electroneg_ratio(
       electroneg: data?.electronegativity ?? 2.0,
       is_metal: data?.metal ?? false,
       is_nonmetal: data?.nonmetal ?? false,
-      // @ts-expect-error - element symbols may not all be in covalent_radii map type
       radius: elem ? covalent_radii.get(elem) : undefined,
     }
   })
@@ -254,20 +253,14 @@ export async function voronoi(
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
     const majority_a = get_majority_species(sites[idx_a])
-    const ra = majority_a.element
-      // @ts-expect-error - element symbols may not all be in covalent_radii map type
-      ? covalent_radii.get(majority_a.element)
-      : undefined
+    const ra = majority_a.element ? covalent_radii.get(majority_a.element) : undefined
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
       const [x2, y2, z2] = sites[idx_b].xyz
       const majority_b = get_majority_species(sites[idx_b])
-      const rb = majority_b.element
-        // @ts-expect-error - element symbols may not all be in covalent_radii map type
-        ? covalent_radii.get(majority_b.element)
-        : undefined
+      const rb = majority_b.element ? covalent_radii.get(majority_b.element) : undefined
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
       const dist_sq = dx * dx + dy * dy + dz * dz
