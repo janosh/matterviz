@@ -53,7 +53,7 @@ describe(`calc_coordination_numbers`, () => {
   }
 
   test(`should calculate coordination numbers`, () => {
-    const result = calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
+    const result = calc_coordination_numbers(simple_cubic, `electroneg_ratio`)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
@@ -61,7 +61,7 @@ describe(`calc_coordination_numbers`, () => {
   })
 
   test(`should group by element`, () => {
-    const result = calc_coordination_numbers(simple_cubic, `nearest_neighbor`)
+    const result = calc_coordination_numbers(simple_cubic, `electroneg_ratio`)
 
     expect(result.cn_by_element.has(`Na`)).toBe(true)
     expect(result.cn_by_element.has(`Cl`)).toBe(true)
@@ -69,14 +69,14 @@ describe(`calc_coordination_numbers`, () => {
     expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
   })
 
-  test(`should work with max distance ratio strategy`, () => {
-    const result = calc_coordination_numbers(simple_cubic, 4.0)
+  test(`should work with solid_angle strategy`, () => {
+    const result = calc_coordination_numbers(simple_cubic, `solid_angle`)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
   })
 
-  test(`should handle structure with distant atoms using max distance ratio`, () => {
+  test(`should handle structure with distant atoms`, () => {
     const isolated_atoms: PymatgenStructure = {
       lattice: {
         matrix: [
@@ -111,12 +111,11 @@ describe(`calc_coordination_numbers`, () => {
       ],
     }
 
-    // Use max distance ratio 1.2 — with atoms 50 Å apart and small covalent radii,
-    // 1.2 × (r_H + r_He) << 50 Å, so no bonds should form
-    const result = calc_coordination_numbers(isolated_atoms, 1.2)
+    // With atoms 50 Å apart, no bonds should form with default electroneg_ratio strategy
+    const result = calc_coordination_numbers(isolated_atoms, `electroneg_ratio`)
 
     expect(result.sites.length).toBe(2)
-    // Both atoms should have CN = 0 since bonding distance is well below separation
+    // Both atoms should have CN = 0 since they are too far apart for bonding
     const cn_values = result.sites.map((site) => site.coordination_number)
     expect(cn_values.every((cn) => cn === 0)).toBe(true)
     expect(result.cn_histogram.get(0)).toBe(2)

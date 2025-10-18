@@ -58,9 +58,10 @@ describe(`Settings`, () => {
       ]
 
       enum_settings.forEach((setting) => {
-        expect(Array.isArray(setting.enum)).toBe(true)
-        expect(setting.enum?.length).toBeGreaterThan(0)
-        expect(setting?.enum).toContain(setting?.value)
+        expect(typeof setting.enum).toBe(`object`)
+        expect(setting.enum).not.toBeNull()
+        expect(Object.keys(setting.enum ?? {}).length).toBeGreaterThan(0)
+        expect(Object.keys(setting.enum ?? {})).toContain(setting?.value)
       })
     })
   })

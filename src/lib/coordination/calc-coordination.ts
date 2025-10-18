@@ -1,8 +1,6 @@
-import type { AnyStructure, BondPair } from '$lib'
+import type { AnyStructure } from '$lib'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { BONDING_STRATEGIES } from '$lib/structure/bonding'
-
-export type CoordinationStrategy = BondingStrategy | number
 
 export interface CoordinationSite {
   site_idx: number
@@ -18,20 +16,13 @@ export interface CoordinationData {
   cn_histogram_by_element: Map<string, Map<number, number>>
 }
 
-// Calculate coordination numbers for all sites in a structure. Returned as both per-site and whole-structure aggregated data.
+// Calculate coordination numbers for all sites in a structure using the specified bonding strategy
 export function calc_coordination_numbers(
   structure: AnyStructure,
-  strategy: CoordinationStrategy = `nearest_neighbor`, // Either a bonding strategy name or a unitless max_distance_ratio (e.g., 4.0) that multiplies the sum of covalent radii to determine bonding cutoff
+  strategy: BondingStrategy = `electroneg_ratio`,
 ): CoordinationData {
   // Get bonds using the specified strategy
-  let bonds: BondPair[]
-  if (typeof strategy === `number`) {
-    // Use max distance ratio
-    bonds = BONDING_STRATEGIES.max_dist(structure, { max_distance_ratio: strategy })
-  } else {
-    // Use named bonding strategy
-    bonds = BONDING_STRATEGIES[strategy](structure)
-  }
+  const bonds = BONDING_STRATEGIES[strategy](structure)
 
   // Count neighbors for each site
   const neighbor_counts = new Map<number, Set<number>>()

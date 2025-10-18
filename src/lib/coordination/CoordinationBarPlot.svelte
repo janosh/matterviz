@@ -10,13 +10,13 @@
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
   import { BarPlot } from '$lib/plot'
+  import type { BondingStrategy } from '$lib/structure/bonding'
   import { parse_any_structure } from '$lib/structure/parse'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
     calc_coordination_numbers,
     type CoordinationData,
-    type CoordinationStrategy,
   } from './calc-coordination'
   import type { SplitMode } from './index'
 
@@ -28,7 +28,7 @@
   }
   let {
     structures,
-    strategy = `nearest_neighbor`,
+    strategy = `electroneg_ratio`,
     split_mode = `by_element`,
     mode = $bindable(`grouped`),
     orientation = `vertical` as Orientation,
@@ -44,7 +44,7 @@
       | AnyStructure
       | Record<string, AnyStructure | { structure: AnyStructure; color?: string }>
       | StructureEntry[]
-    strategy?: CoordinationStrategy
+    strategy?: BondingStrategy
     split_mode?: SplitMode
     x_axis?: AxisConfig
     y_axis?: AxisConfig

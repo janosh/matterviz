@@ -1,6 +1,7 @@
 import type { LatticeParams, Pbc } from '$lib/structure/index'
 
 export type Vec3 = [number, number, number]
+export type Vec4 = [number, number, number, number]
 export type Vec9 = [
   number,
   number,
@@ -13,6 +14,7 @@ export type Vec9 = [
   number,
 ]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
+export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export type NdVector = number[]
 
 export const LOG_EPS = 1e-9
@@ -132,9 +134,7 @@ export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
 
 export function add<T extends NdVector>(...vecs: T[]): T {
   // add up any number of same-length vectors
-  if (vecs.length === 0) {
-    throw new Error(`Cannot add zero vectors`)
-  }
+  if (vecs.length === 0) throw new Error(`Cannot add zero vectors`)
 
   const first_vec = vecs[0]
   const length = first_vec.length
