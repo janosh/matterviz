@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.1.13](https://github.com/janosh/matterviz/compare/v0.1.12...v0.1.13)
+
+> 18 October 2025
+
+### 💥 Breaking Changes
+
+- Plot component refactor: use grouped x/y axis, display, bar/line/point style props by @janosh in https://github.com/janosh/matterviz/pull/169
+- `y2`-axis support for `BarPlot` + `Histogram` by @janosh in https://github.com/janosh/matterviz/pull/171
+
+### 🛠 Enhancements
+
+- RDF plot component by @janosh in https://github.com/janosh/matterviz/pull/164
+- `CoordinationBarPlot` by @janosh in https://github.com/janosh/matterviz/pull/165
+- 3D `Structure` export as GLB/OBJ by @janosh in https://github.com/janosh/matterviz/pull/168
+- `Bands`, `Dos`, `BandsAndDos` components by @janosh in https://github.com/janosh/matterviz/pull/172
+- Brillouin zone by @janosh in https://github.com/janosh/matterviz/pull/174
+
+### 💡 Refactoring
+
+- Use spatial decomposition to speed up bond detection by @janosh in https://github.com/janosh/matterviz/pull/178
+
 ## [v0.1.12](https://github.com/janosh/matterviz/compare/v0.1.9...v0.1.12)
 
 > 6 October 2025
