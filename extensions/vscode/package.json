@@ -165,7 +165,7 @@
         },
         "matterviz.structure.bond_color": {
           "type": "string",
-          "default": "#ffffff",
+          "default": "#666666",
           "description": "Color for bonds (hex color code)"
         },
         "matterviz.structure.bonding_strategy": {
@@ -174,7 +174,7 @@
           "description": "Method for determining bonds between atoms",
           "enum": [
             "electroneg_ratio",
-            "voronoi"
+            "solid_angle"
           ]
         },
         "matterviz.structure.show_gizmo": {

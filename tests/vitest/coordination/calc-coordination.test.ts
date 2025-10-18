@@ -69,8 +69,8 @@ describe(`calc_coordination_numbers`, () => {
     expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
   })
 
-  test(`should work with voronoi strategy`, async () => {
-    const result = await calc_coordination_numbers(simple_cubic, `voronoi`)
+  test(`should work with solid_angle strategy`, async () => {
+    const result = await calc_coordination_numbers(simple_cubic, `solid_angle`)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)

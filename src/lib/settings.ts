@@ -13,7 +13,7 @@ import { merge_nested } from './utils'
 export interface SettingType<T = unknown> {
   value: T
   description: string
-  enum?: readonly string[] | Record<string, string>
+  enum?: Record<string, string>
   minimum?: number
   maximum?: number
   minItems?: number
@@ -289,7 +289,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   color_scheme: {
     value: `Vesta`,
     description: `Color scheme for atoms and bonds`,
-    enum: [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`],
+    enum: {
+      Vesta: `Vesta`,
+      Jmol: `Jmol`,
+      Alloy: `Alloy`,
+      Pastel: `Pastel`,
+      Muted: `Muted`,
+      'Dark Mode': `Dark Mode`,
+    },
   },
   background_color: {
     value: `#000000`,
@@ -339,7 +346,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_bonds: {
       value: `always`,
       description: `When to display bonds between atoms`,
-      enum: show_bonds_options,
+      enum: {
+        never: `Never`,
+        always: `Always`,
+        crystals: `Crystals`,
+        molecules: `Molecules`,
+      },
     },
     bond_color: {
       value: `#666666`,
@@ -350,7 +362,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Method for determining bonds between atoms`,
       enum: {
         electroneg_ratio: `Electronegativity Ratio`,
-        voronoi: `Voronoi Tessellation`,
+        solid_angle: `Solid Angle`,
       },
     },
 
@@ -575,13 +587,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display_mode: {
       value: `structure+scatter` as const,
       description: `Visualization mode for trajectory data`,
-      enum: [
-        `structure+scatter`,
-        `structure`,
-        `scatter`,
-        `histogram`,
-        `structure+histogram`,
-      ],
+      enum: {
+        'structure+scatter': `Structure + Scatter`,
+        structure: `Structure`,
+        scatter: `Scatter`,
+        histogram: `Histogram`,
+        'structure+histogram': `Structure + Histogram`,
+      },
     },
     show_controls: {
       value: true,
@@ -602,7 +614,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     layout: {
       value: `auto` as const,
       description: `Layout arrangement for trajectory viewer`,
-      enum: [`auto`, `horizontal`, `vertical`],
+      enum: {
+        auto: `Auto`,
+        horizontal: `Horizontal`,
+        vertical: `Vertical`,
+      },
     },
 
     // File handling and loading
@@ -722,7 +738,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: `overlay` as const,
       description:
         `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
-      enum: [`overlay`, `single`],
+      enum: {
+        overlay: `Overlay`,
+        single: `Single`,
+      },
     },
     show_legend: {
       value: true,
@@ -799,12 +818,23 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display_mode: {
       value: `pie` as const,
       description: `Display mode for composition data`,
-      enum: [`pie`, `bubble`, `bar`],
+      enum: {
+        pie: `Pie`,
+        bubble: `Bubble`,
+        bar: `Bar`,
+      },
     },
     color_scheme: {
       value: `Vesta`,
       description: `Color scheme for composition visualization`,
-      enum: [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`],
+      enum: {
+        Vesta: `Vesta`,
+        Jmol: `Jmol`,
+        Alloy: `Alloy`,
+        Pastel: `Pastel`,
+        Muted: `Muted`,
+        'Dark Mode': `Dark Mode`,
+      },
     },
   },
 
@@ -813,7 +843,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     symbol_type: {
       value: `Circle`,
       description: `Default symbol type for scatter plots`,
-      enum: symbol_names,
+      enum: Object.fromEntries(symbol_names.map((name) => [name, name])),
     },
     show_legend: {
       value: true,
@@ -951,12 +981,18 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     x_scale_type: {
       value: `linear`,
       description: `Scale type for X-axis`,
-      enum: [`linear`, `log`],
+      enum: {
+        linear: `Linear`,
+        log: `Log`,
+      },
     },
     y_scale_type: {
       value: `linear`,
       description: `Scale type for Y-axis`,
-      enum: [`linear`, `log`],
+      enum: {
+        linear: `Linear`,
+        log: `Log`,
+      },
     },
     x_ticks: {
       value: 8,
@@ -991,7 +1027,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color_mode: {
         value: `energy`,
         description: `Color mode for 2D PD points`,
-        enum: [`stability`, `energy`],
+        enum: {
+          stability: `Stability`,
+          energy: `Energy`,
+        },
       },
       color_scale: {
         value: `interpolateViridis`,
@@ -1068,7 +1107,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color_mode: {
         value: `energy`,
         description: `Color mode for 3D PD points`,
-        enum: [`stability`, `energy`],
+        enum: {
+          stability: `Stability`,
+          energy: `Energy`,
+        },
       },
       color_scale: {
         value: `interpolateViridis`,
@@ -1159,7 +1201,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color_mode: {
         value: `energy`,
         description: `Color mode for 4D PD points`,
-        enum: [`stability`, `energy`],
+        enum: {
+          stability: `Stability`,
+          energy: `Energy`,
+        },
       },
       color_scale: {
         value: `interpolateViridis`,

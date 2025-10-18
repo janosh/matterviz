@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { PymatgenStructure } from '$lib'
+  import { type PymatgenStructure, SETTINGS_CONFIG } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/parse'
   import type { CoordinationStrategy, SplitMode } from '$lib/coordination'
-  import { CoordinationBarPlot } from '$lib/coordination'
+  import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
   import { Structure } from '$lib/structure'
   import { structures } from '$site/structures'
 
@@ -64,16 +64,13 @@
     }
   }
 
-  const strategies: { value: CoordinationStrategy; label: string }[] = [
-    { value: `electroneg_ratio`, label: `Electronegativity` },
-    { value: `voronoi`, label: `Voronoi Tessellation` },
-  ]
+  const strategies = Object.entries(
+    SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
+  ).map(([value, label]) => ({ value, label }))
 
-  const split_modes: { value: SplitMode; label: string }[] = [
-    { value: `by_element`, label: `By Element` },
-    { value: `by_structure`, label: `By Structure` },
-    { value: `none`, label: `Combined` },
-  ]
+  const split_modes = Object.entries(SPLIT_MODES).map(
+    ([value, label]) => ({ value, label }),
+  )
 </script>
 
 <h1>Coordination Number Histograms</h1>

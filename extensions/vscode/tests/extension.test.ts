@@ -1395,7 +1395,7 @@ H 0.0 1.0 0.0`
       [`background_color`, `#111111`],
 
       // String enums
-      [`structure.bonding_strategy`, `voronoi`],
+      [`structure.bonding_strategy`, `solid_angle`],
       [`structure.camera_projection`, `orthographic`],
       [`color_scheme`, `Jmol`],
       [`composition.color_scheme`, `Alloy`],

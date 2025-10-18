@@ -3,6 +3,7 @@
   import type { ElementSymbol, Vec3 } from '$lib'
   import { type PymatgenStructure, Spinner, Structure } from '$lib'
   import { SETTINGS_CONFIG } from '$lib/settings'
+  import type { BondingStrategy } from '$lib/structure/bonding'
   import type { ComponentProps } from 'svelte'
 
   let atom_count = $state(100)
@@ -14,7 +15,7 @@
   let sphere_segments = $state(16)
   let supercell_scaling = $state(`1x1x1`)
   let performance_mode = $state<`quality` | `speed`>(`quality`)
-  let bonding_strategy = $state<`electroneg_ratio` | `voronoi`>(`electroneg_ratio`)
+  let bonding_strategy = $state<BondingStrategy>(`electroneg_ratio`)
   let force_large_structure = $state(false)
   let is_generating = $state(false)
   let test_structure = $state<PymatgenStructure | undefined>(undefined)
@@ -132,9 +133,10 @@
       [`quality`, `speed`].includes(params.get(`performance_mode`) || ``)
         ? (params.get(`performance_mode`) as typeof performance_mode)
         : performance_mode
-    bonding_strategy = [`electroneg_ratio`, `voronoi`].includes(
-        params.get(`bonding_strategy`) || ``,
-      )
+    const valid_strategies = Object.keys(
+      SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {},
+    )
+    bonding_strategy = valid_strategies.includes(params.get(`bonding_strategy`) || ``)
       ? (params.get(`bonding_strategy`) as typeof bonding_strategy)
       : bonding_strategy
     show_bonds = [`always`, `never`, `crystals`, `molecules`].includes(

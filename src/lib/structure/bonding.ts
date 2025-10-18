@@ -125,7 +125,7 @@ function get_candidates(
     : Array.from({ length: sites.length }, (_, idx) => idx)
 }
 
-export const BONDING_STRATEGIES = { electroneg_ratio, voronoi } as const
+export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
@@ -228,8 +228,8 @@ export function electroneg_ratio(
   return bonds
 }
 
-// Voronoi tessellation-based bonding using solid angle calculations.
-export function voronoi(
+// Solid angle-based bonding using geometric proximity heuristics.
+export function solid_angle(
   structure: AnyStructure,
   {
     min_solid_angle = 0.01,
