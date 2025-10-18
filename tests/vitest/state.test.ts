@@ -102,7 +102,7 @@ describe(`State Management`, () => {
   describe(`theme_state`, () => {
     test(`handles localStorage errors gracefully`, async () => {
       // Mock localStorage to throw an error
-      const original_localStorage = globalThis.localStorage
+      const orig_localStorage = globalThis.localStorage
       Object.defineProperty(globalThis, `localStorage`, {
         value: {
           getItem: () => {
@@ -120,7 +120,7 @@ describe(`State Management`, () => {
 
       // Restore original localStorage
       Object.defineProperty(globalThis, `localStorage`, {
-        value: original_localStorage,
+        value: orig_localStorage,
         writable: true,
       })
     })

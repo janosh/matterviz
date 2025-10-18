@@ -187,22 +187,17 @@ export function get_trajectory_stats(
       ? [first_frame.structure.sites.length]
       : frames.map((f) => f.structure.sites.length)
 
-    Object.assign(stats, {
-      steps: frames.map((f) => f.step),
-      step_range: [first_frame.step, last_frame.step],
-      constant_atom_count: constant,
-      ...(constant ? { total_atoms: first_frame.structure.sites.length } : {
-        atom_count_range: [Math.min(...all_counts), Math.max(...all_counts)],
-      }),
-    })
+    stats.steps = frames.map((f) => f.step)
+    stats.step_range = [first_frame.step, last_frame.step]
+    stats.constant_atom_count = constant
+    if (constant) stats.total_atoms = first_frame.structure.sites.length
+    else stats.atom_count_range = [Math.min(...all_counts), Math.max(...all_counts)]
   } else {
     // Handle empty trajectory case
-    Object.assign(stats, {
-      steps: [],
-      step_range: undefined,
-      constant_atom_count: undefined,
-      total_atoms: undefined,
-    })
+    stats.steps = []
+    stats.step_range = undefined
+    stats.constant_atom_count = undefined
+    stats.total_atoms = undefined
   }
 
   // Additional metadata for large files

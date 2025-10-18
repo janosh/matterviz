@@ -5,7 +5,7 @@ import { BONDING_STRATEGIES } from '$lib/structure/bonding'
 export interface CoordinationSite {
   site_idx: number
   element: string
-  coordination_number: number
+  coordination_num: number
   neighbor_elements: string[]
 }
 
@@ -17,7 +17,7 @@ export interface CoordinationData {
 }
 
 // Calculate coordination numbers for all sites in a structure using the specified bonding strategy
-export function calc_coordination_numbers(
+export function calc_coordination_nums(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
 ): CoordinationData {
@@ -48,48 +48,36 @@ export function calc_coordination_numbers(
   const cn_histogram = new Map<number, number>()
   const cn_histogram_by_element = new Map<string, Map<number, number>>()
 
-  for (let site_idx = 0; site_idx < sites.length; site_idx++) {
-    const site = sites[site_idx]
+  for (const [site_idx, site] of sites.entries()) {
     const element = site.species[0]?.element ?? `Unknown`
     const neighbors_set = neighbor_counts.get(site_idx) ?? new Set()
-    const coordination_number = neighbors_set.size
+    const coordination_num = neighbors_set.size
 
     // Get neighbor elements
     const neighbor_elements = Array.from(neighbors_set).map(
       (neighbor_idx) => sites[neighbor_idx].species[0]?.element ?? `Unknown`,
     )
 
-    coordination_sites.push({
-      site_idx,
-      element,
-      coordination_number,
-      neighbor_elements,
-    })
+    coordination_sites.push({ site_idx, element, coordination_num, neighbor_elements })
 
     // Update cn_by_element
-    if (!cn_by_element.has(element)) {
-      cn_by_element.set(element, [])
-    }
-    const element_array = cn_by_element.get(element)
-    if (element_array) element_array.push(coordination_number)
+    const element_array = cn_by_element.get(element) ?? []
+    element_array.push(coordination_num)
+    cn_by_element.set(element, element_array)
 
     // Update overall cn_histogram
     cn_histogram.set(
-      coordination_number,
-      (cn_histogram.get(coordination_number) ?? 0) + 1,
+      coordination_num,
+      (cn_histogram.get(coordination_num) ?? 0) + 1,
     )
 
     // Update cn_histogram_by_element
-    if (!cn_histogram_by_element.has(element)) {
-      cn_histogram_by_element.set(element, new Map())
-    }
-    const element_histogram = cn_histogram_by_element.get(element)
-    if (element_histogram) {
-      element_histogram.set(
-        coordination_number,
-        (element_histogram.get(coordination_number) ?? 0) + 1,
-      )
-    }
+    const element_histogram = cn_histogram_by_element.get(element) ?? new Map()
+    element_histogram.set(
+      coordination_num,
+      (element_histogram.get(coordination_num) ?? 0) + 1,
+    )
+    cn_histogram_by_element.set(element, element_histogram)
   }
 
   return {

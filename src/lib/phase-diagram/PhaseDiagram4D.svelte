@@ -313,21 +313,17 @@
 
   // Function to extract structure data from a phase diagram entry
   function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
-    const original_entry = entries.find((orig_entry) =>
-      orig_entry.entry_id === entry.entry_id
-    )
-    return original_entry?.structure as AnyStructure || null
+    const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
+    return orig_entry?.structure as AnyStructure || null
   }
 
-  const reset_camera = () =>
-    Object.assign(camera, {
-      rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
-      rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
-      zoom: PD_DEFAULTS.quaternary.camera_zoom,
-      center_x: 0,
-      center_y: 20, // Slight offset to avoid legend overlap
-    })
-
+  const reset_camera = () => {
+    camera.rotation_x = PD_DEFAULTS.quaternary.camera_rotation_x
+    camera.rotation_y = PD_DEFAULTS.quaternary.camera_rotation_y
+    camera.zoom = PD_DEFAULTS.quaternary.camera_zoom
+    camera.center_x = 0
+    camera.center_y = 20 // Slight offset to avoid legend overlap
+  }
   function reset_all() {
     reset_camera()
     fullscreen = PD_DEFAULTS.quaternary.fullscreen

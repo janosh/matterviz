@@ -189,7 +189,7 @@
   let parsing_progress = $state<ParseProgress | null>(null)
   let viewport = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
-  let original_data = $state<string | ArrayBuffer | null>(null)
+  let orig_data = $state<string | ArrayBuffer | null>(null)
 
   // Reactive layout based on viewport aspect ratio
   let actual_layout = $derived.by(() => {
@@ -239,7 +239,7 @@
     try {
       // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
       const frame = await trajectory.frame_loader.load_frame(
-        original_data || ``, // Use original_data for indexed files, empty string for external streaming
+        orig_data || ``, // Use original_data for indexed files, empty string for external streaming
         frame_idx,
       )
       current_frame = frame
@@ -613,7 +613,7 @@
     parsing_progress = null
 
     // Reset previous loading state
-    original_data = null
+    orig_data = null
 
     try {
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
@@ -676,7 +676,7 @@
       }, { use_indexing: true, ...loading_options })
 
       // Attach frame loader and original data directly to trajectory for unified access
-      original_data = data
+      orig_data = data
       // @ts-expect-error - dynamically adding frame_loader for indexed trajectories
       trajectory.frame_loader = create_frame_loader(filename)
     } catch (error) {

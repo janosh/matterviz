@@ -5,13 +5,8 @@
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import { Cylinder, get_center_of_mass, Lattice, Vector } from '$lib/structure'
-  import {
-    angle_between_vectors,
-    displacement_pbc,
-    distance_pbc,
-    MAX_SELECTED_SITES,
-  } from '$lib/structure/measure'
+  import { Arrow, Cylinder, get_center_of_mass, Lattice } from '$lib/structure'
+  import * as measure from '$lib/structure/measure'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -164,10 +159,10 @@
 
     if (
       !measured_sites.includes(site_index) &&
-      measured_sites.length >= MAX_SELECTED_SITES
+      measured_sites.length >= measure.MAX_SELECTED_SITES
     ) {
       console.warn(
-        `Selection size limit reached (${MAX_SELECTED_SITES}). Deselect some sites first.`,
+        `Selection size limit reached (${measure.MAX_SELECTED_SITES}). Deselect some sites first.`,
       )
       return
     }
@@ -608,7 +603,7 @@
 
       {#if force_data.length > 0}
         {#each force_data as force (force.position.join(`,`) + force.vector.join(`,`))}
-          <Vector {...force} />
+          <Arrow {...force} />
         {/each}
       {/if}
 
@@ -749,7 +744,9 @@
           (pos_i[2] + pos_j[2]) / 2,
         ] as Vec3}
               {@const direct = math.euclidean_dist(pos_i, pos_j)}
-              {@const pbc = lattice ? distance_pbc(pos_i, pos_j, lattice.matrix) : direct}
+              {@const pbc = lattice
+          ? measure.distance_pbc(pos_i, pos_j, lattice.matrix)
+          : direct}
               {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
               <extras.HTML center position={midpoint}>
                 <span class="measure-label">
@@ -777,11 +774,11 @@
               }
                 {@const site_a = structure.sites[idx_a]}
                 {@const site_b = structure.sites[idx_b]}
-                {@const v1 = displacement_pbc(center.xyz, site_a.xyz, lattice?.matrix)}
-                {@const v2 = displacement_pbc(center.xyz, site_b.xyz, lattice?.matrix)}
+                {@const v1 = measure.displacement_pbc(center.xyz, site_a.xyz, lattice?.matrix)}
+                {@const v2 = measure.displacement_pbc(center.xyz, site_b.xyz, lattice?.matrix)}
                 {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
                 {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
-                {@const angle_deg = angle_between_vectors(v1, v2, `degrees`)}
+                {@const angle_deg = measure.angle_between_vectors(v1, v2, `degrees`)}
                 {#if n1 > math.EPS && n2 > math.EPS}
                   <!-- draw rays from center to the two sites -->
                   <Cylinder

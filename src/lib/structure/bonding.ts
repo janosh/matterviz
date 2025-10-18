@@ -2,6 +2,7 @@
 
 import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
 import { element_data } from '$lib/element'
+import * as math from '$lib/math'
 
 type SpatialGrid = Map<string, number[]>
 
@@ -23,8 +24,8 @@ function get_majority_species(site: Site) {
 // Compute 4x4 transformation matrix for bond cylinder between two positions.
 // Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
 function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
-  const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
-  const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  const [dx, dy, dz] = math.subtract(pos_2, pos_1)
+  const height = Math.hypot(dx, dy, dz)
 
   if (height < 1e-10) {
     return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
@@ -43,7 +44,7 @@ function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
     // General case: construct orthonormal basis (right, dir, up)
     // Right vector: perpendicular to dir in XZ plane
     const [rx, rz] = [-dir_z, dir_x]
-    const r_len = Math.sqrt(rx * rx + rz * rz)
+    const r_len = Math.hypot(rx, rz)
     const [right_x, right_z] = [rx / r_len, rz / r_len]
     // Up vector: cross product of dir and right
     const [up_x, up_y, up_z] = [
@@ -83,10 +84,8 @@ function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
 function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
   const grid: SpatialGrid = new Map()
   for (let idx = 0; idx < sites.length; idx++) {
-    const [x, y, z] = sites[idx].xyz
-    const key = `${Math.floor(x / cell_size)},${Math.floor(y / cell_size)},${
-      Math.floor(z / cell_size)
-    }`
+    const [x, y, z] = sites[idx].xyz.map((coord) => Math.floor(coord / cell_size))
+    const key = `${x},${y},${z}`
     const cell = grid.get(key)
     if (cell) cell.push(idx)
     else grid.set(key, [idx])

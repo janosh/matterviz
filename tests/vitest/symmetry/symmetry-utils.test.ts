@@ -205,13 +205,13 @@ describe(`wyckoff_positions_from_moyo`, () => {
     positions: number[][],
     numbers: number[],
     wyckoffs: (string | null)[],
-    original_indices?: number[],
+    orig_indices?: number[],
   ) =>
     ({
       std_cell: { positions, numbers },
       wyckoffs,
-      ...(original_indices && { original_indices }),
-    }) as MoyoDataset & { original_indices?: number[] }
+      ...(orig_indices && { orig_indices }),
+    }) as MoyoDataset & { orig_indices?: number[] }
 
   test(`should return empty array for null data`, () => {
     expect(wyckoff_positions_from_moyo(null)).toEqual([])
