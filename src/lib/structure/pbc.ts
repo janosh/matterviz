@@ -88,10 +88,8 @@ export function find_image_atoms(
       ) as Vec3
 
       // Skip zero-displacement images (should not happen with epsilon nudging)
-      const displacement = math.add(img_xyz, math.scale(site.xyz, -1)) as Vec3
-      const displacement_len_sq = displacement[0] * displacement[0] +
-        displacement[1] * displacement[1] +
-        displacement[2] * displacement[2]
+      const displacement = math.subtract(img_xyz, site.xyz) as Vec3
+      const displacement_len_sq = displacement.reduce((sum, val) => sum + val * val, 0)
       if (displacement_len_sq < displacement_eps_sq) continue
 
       image_sites.push([idx, img_xyz, img_abc])
@@ -127,8 +125,8 @@ export function get_pbc_image_sites(
 
   // Add image atoms as new sites using provided (xyz, abc) from find_image_atoms
   for (const [site_idx, img_xyz, img_abc] of image_sites) {
-    const original_site = structure.sites[site_idx]
-    imaged_struct.sites.push({ ...original_site, abc: img_abc, xyz: img_xyz })
+    const orig_site = structure.sites[site_idx]
+    imaged_struct.sites.push({ ...orig_site, abc: img_abc, xyz: img_xyz })
   }
 
   return imaged_struct

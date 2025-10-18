@@ -9,6 +9,7 @@ import type { Pbc } from './pbc'
 export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
 
+export { default as Arrow } from './Arrow.svelte'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
@@ -20,7 +21,6 @@ export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureLegend } from './StructureLegend.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export * from './supercell'
-export { default as Vector } from './Vector.svelte'
 
 export type Species = {
   element: ElementSymbol
