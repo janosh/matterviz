@@ -10,6 +10,14 @@ const covalent_radii = new Map(
   ) => [el.symbol, el.covalent_radius as number]),
 )
 
+// Get the species with highest occupancy from a site.
+function get_majority_species(site: Site) {
+  return (site.species ?? []).reduce(
+    (max, spec) => (spec.occu > max.occu ? spec : max),
+    site.species?.[0] ?? { element: ``, occu: -1 },
+  )
+}
+
 // Compute 4x4 transformation matrix for bond cylinder between two positions.
 function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
@@ -145,7 +153,8 @@ export async function electroneg_ratio(
   const closest = new Map<number, number>()
 
   const props = sites.map((site) => {
-    const elem = site.species?.[0]?.element
+    const majority = get_majority_species(site)
+    const elem = majority.element
     const data = element_lookup.get(elem)
     return {
       element: elem,
@@ -244,18 +253,20 @@ export async function voronoi(
 
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
-    const ra = sites[idx_a].species?.[0]?.element
+    const majority_a = get_majority_species(sites[idx_a])
+    const ra = majority_a.element
       // @ts-expect-error - element symbols may not all be in covalent_radii map type
-      ? covalent_radii.get(sites[idx_a].species[0].element)
+      ? covalent_radii.get(majority_a.element)
       : undefined
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
       const [x2, y2, z2] = sites[idx_b].xyz
-      const rb = sites[idx_b].species?.[0]?.element
+      const majority_b = get_majority_species(sites[idx_b])
+      const rb = majority_b.element
         // @ts-expect-error - element symbols may not all be in covalent_radii map type
-        ? covalent_radii.get(sites[idx_b].species[0].element)
+        ? covalent_radii.get(majority_b.element)
         : undefined
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]

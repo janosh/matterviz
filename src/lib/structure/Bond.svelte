@@ -4,7 +4,11 @@
   import type { InstancedMesh } from 'three'
   import { Color, InstancedBufferAttribute, Matrix4, ShaderMaterial } from 'three'
 
-  let { group }: { group: BondGroupWithGradients } = $props()
+  let { group, saturation = 0.5, brightness = 0.6 }: {
+    group: BondGroupWithGradients
+    saturation?: number
+    brightness?: number
+  } = $props()
   let mesh: InstancedMesh | undefined = $state()
 
   // Reusable buffers to avoid reallocation on every update
@@ -33,6 +37,8 @@
   const fragment_shader = `
     uniform float ambientIntensity;
     uniform float directionalIntensity;
+    uniform float saturation;
+    uniform float brightness;
     varying vec3 vColorStart;
     varying vec3 vColorEnd;
     varying float vYPosition;
@@ -51,8 +57,8 @@
     vec3 desaturateBondColor(vec3 color) {
       // Convert to grayscale
       float gray = dot(color, vec3(0.299, 0.587, 0.114));
-      // Mix with gray (50% desaturation) and darken (60% brightness)
-      return mix(vec3(gray), color, 0.5) * 0.6;
+      // Mix with gray (controlled by saturation) and darken (controlled by brightness)
+      return mix(vec3(gray), color, saturation) * brightness;
     }
 
     void main() {
@@ -73,62 +79,54 @@
     }
   `
 
-  function set_color_buffer(
-    buffer: Float32Array,
-    idx: number,
-    color: string | number,
-  ) {
-    const temp_color = new Color(color)
-    buffer[idx * 3] = temp_color.r
-    buffer[idx * 3 + 1] = temp_color.g
-    buffer[idx * 3 + 2] = temp_color.b
-  }
-
-  function update_or_create_attribute(
-    geometry: InstancedMesh[`geometry`],
-    name: string,
-    buffer: Float32Array,
-  ) {
-    const existing_attr = geometry.getAttribute(name) as
-      | InstancedBufferAttribute
-      | undefined
-    if (existing_attr?.array === buffer) {
-      existing_attr.needsUpdate = true
-    } else {
-      geometry.setAttribute(name, new InstancedBufferAttribute(buffer, 3))
-    }
-  }
-
   $effect(() => {
-    if (!mesh || group.instances.length === 0) return
+    if (!mesh) return
 
     const count = group.instances.length
     const matrix = new Matrix4()
+    const temp_color = new Color()
 
-    // Set transformation matrices
-    for (let idx = 0; idx < count; idx++) {
-      matrix.fromArray(group.instances[idx].matrix)
-      mesh.setMatrixAt(idx, matrix)
-    }
-    mesh.instanceMatrix.needsUpdate = true
-
-    // Reallocate color buffers if count changed
+    // Reallocate color buffers if needed
     if (colors_start.length !== count * 3) {
       colors_start = new Float32Array(count * 3)
       colors_end = new Float32Array(count * 3)
     }
 
-    // Set per-instance colors
+    // Set matrices and colors in single loop
     for (let idx = 0; idx < count; idx++) {
       const instance = group.instances[idx]
-      set_color_buffer(colors_start, idx, instance.color_start)
-      set_color_buffer(colors_end, idx, instance.color_end)
+
+      // Set matrix
+      matrix.fromArray(instance.matrix)
+      mesh.setMatrixAt(idx, matrix)
+
+      // Set start color
+      temp_color.set(instance.color_start)
+      colors_start[idx * 3] = temp_color.r
+      colors_start[idx * 3 + 1] = temp_color.g
+      colors_start[idx * 3 + 2] = temp_color.b
+
+      // Set end color
+      temp_color.set(instance.color_end)
+      colors_end[idx * 3] = temp_color.r
+      colors_end[idx * 3 + 1] = temp_color.g
+      colors_end[idx * 3 + 2] = temp_color.b
     }
+
+    mesh.instanceMatrix.needsUpdate = true
 
     // Update or create color attributes
     const { geometry } = mesh
-    update_or_create_attribute(geometry, `instanceColorStart`, colors_start)
-    update_or_create_attribute(geometry, `instanceColorEnd`, colors_end)
+    for (
+      const [name, buffer] of [
+        [`instanceColorStart`, colors_start],
+        [`instanceColorEnd`, colors_end],
+      ] as const
+    ) {
+      const existing = geometry.getAttribute(name)
+      if (existing?.array === buffer) existing.needsUpdate = true
+      else geometry.setAttribute(name, new InstancedBufferAttribute(buffer, 3))
+    }
 
     mesh.count = count
   })
@@ -140,6 +138,8 @@
       uniforms: {
         ambientIntensity: { value: group.ambient_light ?? 0.7 },
         directionalIntensity: { value: group.directional_light ?? 0.3 },
+        saturation: { value: saturation },
+        brightness: { value: brightness },
       },
     }),
   )
