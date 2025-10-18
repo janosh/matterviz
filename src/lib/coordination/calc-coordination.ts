@@ -22,7 +22,7 @@ export interface CoordinationData {
 export function calc_coordination_numbers(
   structure: AnyStructure,
   strategy: CoordinationStrategy = `electroneg_ratio`,
-): Promise<CoordinationData> {
+): CoordinationData {
   // Get bonds using the specified strategy
   const bonds = BONDING_STRATEGIES[strategy](structure)
 

@@ -2,6 +2,7 @@
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol, Vec3 } from '$lib'
   import { type PymatgenStructure, Spinner, Structure } from '$lib'
+  import { SETTINGS_CONFIG } from '$lib/settings'
   import type { ComponentProps } from 'svelte'
 
   let atom_count = $state(100)
@@ -217,8 +218,12 @@
   <label>
     Bonding:
     <select bind:value={bonding_strategy} onchange={update_url}>
-      <option value="electroneg_ratio">Electronegativity</option>
-      <option value="voronoi">Voronoi</option>
+      {#each Object.entries(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}) as
+        [value, label]
+        (value)
+      }
+        <option {value}>{label}</option>
+      {/each}
     </select>
   </label>
 </div>

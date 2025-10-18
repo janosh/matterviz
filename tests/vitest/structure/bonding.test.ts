@@ -1,7 +1,7 @@
 import type { ElementSymbol, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure, Site } from '$lib/structure'
-import type { BondingAlgo } from '$lib/structure/bonding'
+import type { BondingAlgo, BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { test_molecules } from '$site/molecules'
 import process from 'node:process'
@@ -9,9 +9,9 @@ import { describe, expect, test } from 'vitest'
 import { create_test_structure } from '../setup'
 
 // Performance measurement utility
-async function measure_performance(func: () => Promise<void>): Promise<number> {
+function measure_performance(func: () => void): number {
   const start = performance.now()
-  await func()
+  func()
   const end = performance.now()
   return end - start
 }
@@ -93,23 +93,20 @@ describe(`Bonding Algorithms`, () => {
     [bonding.voronoi, `voronoi`, [[50, 100], [200, 200], [1000, 800]]],
   ] as const
 
-  test.each(algorithms)(`%s performance benchmarks`, async (func, name, times) => {
-    const test_runs = await Promise.all(
-      times.map(async ([atom_count, max_time]) => {
-        const structure = make_random_structure(atom_count)
-        await func(structure) // Warm-up run
-        const measurements = await Promise.all(
-          Array.from({ length: 3 }, () =>
-            measure_performance(async () => {
-              await func(structure)
-            })),
-        )
-        const avg_time = measurements.reduce((a, b) => a + b, 0) / measurements.length
-        const is_ci = typeof process !== `undefined` && process.env?.CI === `true`
-        const max_allowed = max_time * (is_ci ? 5 : 2)
-        return { avg_time, max_allowed, name, atom_count }
-      }),
-    )
+  test.each(algorithms)(`%s performance benchmarks`, (_func, name, times) => {
+    const test_runs = times.map(([atom_count, max_time]) => {
+      const structure = make_random_structure(atom_count)
+      const func = bonding.BONDING_STRATEGIES[name as BondingStrategy]
+      func(structure) // Warm-up run
+      const measurements = Array.from({ length: 3 }, () =>
+        measure_performance(() => {
+          func(structure)
+        }))
+      const avg_time = measurements.reduce((a, b) => a + b, 0) / measurements.length
+      const is_ci = typeof process !== `undefined` && process.env?.CI === `true`
+      const max_allowed = max_time * (is_ci ? 5 : 2)
+      return { avg_time, max_allowed, name, atom_count }
+    })
 
     for (const { avg_time, max_allowed, name, atom_count } of test_runs) {
       expect(
@@ -119,8 +116,8 @@ describe(`Bonding Algorithms`, () => {
     }
   })
 
-  test.each(algorithms)(`%s returns valid BondPair format`, async (func, name) => {
-    const bonds = await func(make_mixed_structure())
+  test.each(algorithms)(`%s returns valid BondPair format`, (func, name) => {
+    const bonds = func(make_mixed_structure())
     bonds.forEach((bond, idx) => {
       expect(bond, `Bond ${idx} in ${name}`).toBeTypeOf(`object`)
       expect(bond.pos_1, `Bond ${idx} from position`).toHaveLength(3)
@@ -134,8 +131,8 @@ describe(`Bonding Algorithms`, () => {
     })
   })
 
-  test.each(algorithms)(`%s generates unique bonds`, async (func, name) => {
-    const bonds = await func(make_random_structure(50))
+  test.each(algorithms)(`%s generates unique bonds`, (func, name) => {
+    const bonds = func(make_random_structure(50))
     const pairs = new Set(
       bonds.map((bond) =>
         `${Math.min(bond.site_idx_1, bond.site_idx_2)}-${
@@ -146,25 +143,25 @@ describe(`Bonding Algorithms`, () => {
     expect(pairs.size, `${name} should generate unique bonds`).toBe(bonds.length)
   })
 
-  test.each(algorithms)(`%s handles edge cases`, async (func, name) => {
-    expect(await func(get_test_structure([])), `${name} empty structure`).toHaveLength(0)
-    expect(await func(get_test_structure([{ xyz: [0, 0, 0] }])), `${name} single atom`)
+  test.each(algorithms)(`%s handles edge cases`, (func, name) => {
+    expect(func(get_test_structure([])), `${name} empty structure`).toHaveLength(0)
+    expect(func(get_test_structure([{ xyz: [0, 0, 0] }])), `${name} single atom`)
       .toHaveLength(0)
-    await expect(
+    expect(
       func(get_test_structure([
         { xyz: [0, 0, 0], element: `Xx` },
         { xyz: [1, 0, 0], element: `Yy` },
       ])),
-    ).resolves.toBeDefined()
+    ).toBeDefined()
   })
 
-  test.each(algorithms)(`%s handles distant atoms gracefully`, async (func) => {
+  test.each(algorithms)(`%s handles distant atoms gracefully`, (func) => {
     const distant_structure = create_test_structure(
       [[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],
       [`H`, `H`],
       [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]],
     )
-    const bonds = await func(distant_structure)
+    const bonds = func(distant_structure)
     // Some algorithms might still find bonds for very distant atoms due to their logic
     // Instead of expecting exactly 0, check that bonds are reasonable if any exist
     if (bonds.length > 0) {
@@ -183,8 +180,8 @@ describe(`Molecular Bonding Analysis`, () => {
     ] as const,
   )(
     `%s has expected bonds`,
-    async (_name, molecule, expected_bonds, min_dist, max_dist) => {
-      const bonds = await bonding.electroneg_ratio(molecule)
+    (_name, molecule, expected_bonds, min_dist, max_dist) => {
+      const bonds = bonding.electroneg_ratio(molecule)
       expect(bonds.length).toBeGreaterThanOrEqual(expected_bonds)
       bonds.forEach((bond) => {
         expect(bond.bond_length).toBeGreaterThan(min_dist)
@@ -193,10 +190,10 @@ describe(`Molecular Bonding Analysis`, () => {
     },
   )
 
-  test(`benzene has aromatic C-C bonds`, async () => {
+  test(`benzene has aromatic C-C bonds`, () => {
     // With the improved two-pass algorithm, we need to lower the strength threshold
     // to capture C-C bonds that are penalized after shorter C-H bonds are added
-    const bonds = await bonding.electroneg_ratio(test_molecules.benzene, {
+    const bonds = bonding.electroneg_ratio(test_molecules.benzene, {
       max_distance_ratio: 2.0,
       metal_metal_penalty: 0.5,
       metal_nonmetal_bonus: 1.5,
@@ -215,9 +212,9 @@ describe(`Molecular Bonding Analysis`, () => {
     expect(cc_bonds.length).toBeGreaterThanOrEqual(6)
   })
 
-  test(`ethanol has multiple bond types`, async () => {
+  test(`ethanol has multiple bond types`, () => {
     // With the improved two-pass algorithm, adjust thresholds for consistent results
-    const bonds = await bonding.electroneg_ratio(test_molecules.ethanol, {
+    const bonds = bonding.electroneg_ratio(test_molecules.ethanol, {
       max_distance_ratio: 2.0,
       metal_metal_penalty: 0.5,
       metal_nonmetal_bonus: 1.5,
@@ -233,7 +230,7 @@ describe(`Molecular Bonding Analysis`, () => {
 })
 
 describe(`Crystal Structure Bonding`, () => {
-  test(`simple cubic lattice bonding`, async () => {
+  test(`simple cubic lattice bonding`, () => {
     const cubic_lattice: Matrix3x3 = [
       [3.0, 0.0, 0.0],
       [0.0, 3.0, 0.0],
@@ -243,13 +240,13 @@ describe(`Crystal Structure Bonding`, () => {
       [0.0, 0.0, 0.0],
       [0.5, 0.5, 0.5],
     ])
-    const bonds = await bonding.electroneg_ratio(structure, { max_distance_ratio: 3.0 })
+    const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 3.0 })
     expect(bonds.length).toBeGreaterThan(0)
     const na_cl_bonds = bonds.filter((bond) => bond.site_idx_1 !== bond.site_idx_2)
     expect(na_cl_bonds.length).toBeGreaterThan(0)
   })
 
-  test(`diamond structure bonding`, async () => {
+  test(`diamond structure bonding`, () => {
     const diamond_lattice: Matrix3x3 = [
       [3.57, 0.0, 0.0],
       [0.0, 3.57, 0.0],
@@ -259,7 +256,7 @@ describe(`Crystal Structure Bonding`, () => {
       [0.0, 0.0, 0.0],
       [0.25, 0.25, 0.25],
     ])
-    const bonds = await bonding.electroneg_ratio(structure, { max_distance_ratio: 3.0 })
+    const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 3.0 })
     expect(bonds.length).toBeGreaterThan(0)
     bonds.forEach((bond) => {
       expect(bond.bond_length).toBeGreaterThan(1.2)
@@ -269,13 +266,13 @@ describe(`Crystal Structure Bonding`, () => {
 })
 
 describe(`Electronegativity-Based Bonding`, () => {
-  test(`favors metal-nonmetal bonds over metal-metal bonds`, async () => {
-    const ionic_bonds = await bonding.electroneg_ratio(make_ionic_structure(), {
+  test(`favors metal-nonmetal bonds over metal-metal bonds`, () => {
+    const ionic_bonds = bonding.electroneg_ratio(make_ionic_structure(), {
       max_distance_ratio: 2.5,
       metal_metal_penalty: 0.5,
       metal_nonmetal_bonus: 1.5,
     })
-    const metal_bonds = await bonding.electroneg_ratio(make_metal_structure(), {
+    const metal_bonds = bonding.electroneg_ratio(make_metal_structure(), {
       max_distance_ratio: 2,
       metal_metal_penalty: 0.7,
       metal_nonmetal_bonus: 1.5,
@@ -289,7 +286,7 @@ describe(`Electronegativity-Based Bonding`, () => {
     expect(ionic_density).toBeGreaterThan(0)
   })
 
-  test(`correctly identifies ionic vs covalent bonding tendencies`, async () => {
+  test(`correctly identifies ionic vs covalent bonding tendencies`, () => {
     const na_cl_structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [2.3, 0, 0], element: `Cl` },
@@ -298,12 +295,12 @@ describe(`Electronegativity-Based Bonding`, () => {
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `C` },
     ])
-    const ionic_bonds = await bonding.electroneg_ratio(na_cl_structure, {
+    const ionic_bonds = bonding.electroneg_ratio(na_cl_structure, {
       max_distance_ratio: 2.5,
       metal_metal_penalty: 0.5,
       metal_nonmetal_bonus: 1.5,
     })
-    const covalent_bonds = await bonding.electroneg_ratio(c_c_structure, {
+    const covalent_bonds = bonding.electroneg_ratio(c_c_structure, {
       max_distance_ratio: 2.5,
       metal_metal_penalty: 0.5,
       metal_nonmetal_bonus: 1.5,
@@ -314,62 +311,62 @@ describe(`Electronegativity-Based Bonding`, () => {
     expect(covalent_bonds[0].bond_length).toBeCloseTo(1.5, 1)
   })
 
-  test(`adjusts bonding based on electronegativity parameters`, async () => {
+  test(`adjusts bonding based on electronegativity parameters`, () => {
     const structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2.5, 0, 0], element: `Fe` },
       { xyz: [1.25, 2.2, 0], element: `O` },
     ])
-    const lenient_bonds = await bonding.electroneg_ratio(structure, {
+    const lenient_bonds = bonding.electroneg_ratio(structure, {
       metal_metal_penalty: 0.8,
       metal_nonmetal_bonus: 1.2,
     })
-    const strict_bonds = await bonding.electroneg_ratio(structure, {
+    const strict_bonds = bonding.electroneg_ratio(structure, {
       metal_metal_penalty: 0.1,
       metal_nonmetal_bonus: 2.5,
     })
     expect(lenient_bonds.length !== strict_bonds.length).toBe(true)
   })
 
-  test(`respects distance constraints`, async () => {
+  test(`respects distance constraints`, () => {
     const structure = get_test_structure([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [10, 0, 0], element: `Cl` },
     ])
-    const bonds = await bonding.electroneg_ratio(structure, { max_distance_ratio: 5.0 })
+    const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 5.0 })
     expect(bonds).toHaveLength(0)
   })
 })
 
 describe(`Algorithm Comparison`, () => {
-  test(`both algorithms agree on simple bonds`, async () => {
+  test(`both algorithms agree on simple bonds`, () => {
     const structure = get_test_structure([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `O` },
     ])
-    const voronoi_bonds = await bonding.voronoi(structure)
-    const electro_bonds = await bonding.electroneg_ratio(structure)
+    const voronoi_bonds = bonding.voronoi(structure)
+    const electro_bonds = bonding.electroneg_ratio(structure)
     expect(voronoi_bonds).toHaveLength(1)
     expect(electro_bonds).toHaveLength(1)
   })
 
-  test(`all algorithms handle large structures`, async () => {
+  test(`all algorithms handle large structures`, () => {
     const large_structure = make_random_structure(500)
-    await expect(bonding.electroneg_ratio(large_structure)).resolves.toBeInstanceOf(Array)
-    await expect(bonding.voronoi(large_structure)).resolves.toBeInstanceOf(Array)
+    expect(bonding.electroneg_ratio(large_structure)).toBeInstanceOf(Array)
+    expect(bonding.voronoi(large_structure)).toBeInstanceOf(Array)
   })
 })
 
 describe(`Bond Strength Validation`, () => {
   test.each(Object.values(bonding.BONDING_STRATEGIES))(
     `returns valid strength values`,
-    async (strategy) => {
+    (strategy) => {
       const structure = get_test_structure([
         { xyz: [0, 0, 0], element: `C` },
         { xyz: [1.5, 0, 0], element: `O` },
         { xyz: [0, 1.5, 0], element: `H` },
       ])
-      const bonds = await strategy(structure)
+      const bonds = strategy(structure)
       bonds.forEach((bond) => {
         expect(bond.strength).toBeGreaterThanOrEqual(0)
         expect(bond.strength).toBeLessThanOrEqual(2.0)
