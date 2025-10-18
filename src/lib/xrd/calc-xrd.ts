@@ -191,14 +191,8 @@ export function compute_xrd_pattern(
       }
       let coeff_entry: ScatteringCoeffs
       if (Array.isArray(raw_coeff)) {
-        const [a_arr, b_arr] = raw_coeff.reduce<[number[], number[]]>(
-          ([a_acc, b_acc], [a_val, b_val]) => {
-            a_acc.push(a_val)
-            b_acc.push(b_val)
-            return [a_acc, b_acc]
-          },
-          [[], []],
-        )
+        const a_arr = raw_coeff.map(([a]) => a)
+        const b_arr = raw_coeff.map(([_, b]) => b)
         coeff_entry = { a: a_arr, b: b_arr }
       } else {
         coeff_entry = { a: raw_coeff.a.slice(), b: raw_coeff.b.slice(), c: raw_coeff.c }

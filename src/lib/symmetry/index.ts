@@ -112,12 +112,12 @@ export function wyckoff_positions_from_moyo(
     // Find the position with the best simplicity score to display
     const best_pos = positions.reduce((best, pos) => {
       const score = simplicity_score(pos)
-      return score < simplicity_score(best) ? pos : best
-    }, positions[0])
+      return score < best.score ? { pos, score } : best
+    }, { pos: positions[0], score: simplicity_score(positions[0]) }).pos
 
     // Map standardized cell indices back to original structure indices
     const orig_site_indices = original_indices
-      ? indices.map((i) => original_indices[i]).filter((i) => i !== undefined)
+      ? indices.map((i) => original_indices[i]).filter((idx) => idx !== undefined)
       : indices
 
     const wyckoff = letter ? `${indices.length}${letter}` : `1`

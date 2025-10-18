@@ -2,7 +2,7 @@ import type { PymatgenStructure } from '$lib'
 import { calc_coordination_nums } from '$lib/coordination'
 import { describe, expect, test } from 'vitest'
 
-describe(`calc_coordination_numbers`, () => {
+describe(`calc_coordination_nums`, () => {
   // Simple cubic structure (NaCl-like)
   const simple_cubic: PymatgenStructure = {
     lattice: {

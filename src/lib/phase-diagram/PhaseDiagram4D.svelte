@@ -313,10 +313,8 @@
 
   // Function to extract structure data from a phase diagram entry
   function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
-    const original_entry = entries.find((orig_entry) =>
-      orig_entry.entry_id === entry.entry_id
-    )
-    return original_entry?.structure as AnyStructure || null
+    const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
+    return orig_entry?.structure as AnyStructure || null
   }
 
   const reset_camera = () =>
