@@ -130,7 +130,7 @@ export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
 // Electronegativity-based bonding with chemical preferences.
-export async function electroneg_ratio(
+export function electroneg_ratio(
   structure: AnyStructure,
   {
     electronegativity_threshold = 1.7,
@@ -142,9 +142,7 @@ export async function electroneg_ratio(
     same_species_penalty = 0.5,
     strength_threshold = 0.3,
   } = {},
-): Promise<BondPair[]> {
-  await Promise.resolve() // Keep async for UI compatibility
-
+): BondPair[] {
   const { sites } = structure
   if (sites.length < 2) return []
 
@@ -231,7 +229,7 @@ export async function electroneg_ratio(
 }
 
 // Voronoi tessellation-based bonding using solid angle calculations.
-export async function voronoi(
+export function voronoi(
   structure: AnyStructure,
   {
     min_solid_angle = 0.01,
@@ -239,9 +237,7 @@ export async function voronoi(
     max_distance = 5.0,
     min_bond_dist = 0.4,
   } = {},
-): Promise<BondPair[]> {
-  await Promise.resolve() // Keep async for UI compatibility
-
+): BondPair[] {
   const { sites } = structure
   if (sites.length < 2) return []
 

@@ -80,32 +80,11 @@
     return [...base_entries, ...dropped_entries]
   })
 
-  // Compute coordination data for each structure (async)
-  let entries_with_data = $state<(StructureEntry & { data: CoordinationData })[]>([])
-
-  $effect(() => {
-    // Reset data when structure_entries or strategy changes
-    entries_with_data = []
-    loading = true
-
-    // Calculate coordination data asynchronously for all structures
-    Promise.all(
-      structure_entries.map(async (entry) => ({
-        ...entry,
-        data: await calc_coordination_numbers(entry.structure, strategy),
-      })),
-    )
-      .then((results) => {
-        entries_with_data = results
-        loading = false
-        error_msg = undefined
-      })
-      .catch((err) => {
-        console.error(`Coordination calculation failed:`, err)
-        error_msg = `Coordination calculation failed: ${err}`
-        loading = false
-      })
-  })
+  // Compute coordination data for each structure
+  const entries_with_data = $derived(structure_entries.map((entry) => ({
+    ...entry,
+    data: calc_coordination_numbers(entry.structure, strategy),
+  })))
 
   // Compute appropriate ranges
   const ranges = $derived.by(() => {

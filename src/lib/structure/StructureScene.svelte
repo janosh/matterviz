@@ -222,39 +222,26 @@
     computed_zoom = new_zoom
   })
 
-  $effect.pre(() => {
+  $effect.pre(() => { // Simple initial camera auto-position: proportional to structure size and fov
     if (camera_position.every((v) => v === 0) && structure) {
       const distance = Math.max(1, structure_size) * (60 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
   })
-  let latest_bond_request = 0 // needed to prevent race conditions when updating bond_pairs (i.e. ignore stale requests)
   $effect(() => {
     if (structure && show_bonds !== `never`) {
+      // Determine if we should show bonds based on the setting and structure type
       const should_show_bonds = show_bonds === `always` ||
         (show_bonds === `crystals` && lattice) ||
         (show_bonds === `molecules` && !lattice)
 
       if (should_show_bonds) {
-        bond_pairs = []
-        const request_id = ++latest_bond_request
-        BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
-          .then((bonds) => {
-            if (request_id === latest_bond_request) bond_pairs = bonds
-          })
-          .catch((err) => {
-            console.error(`Bonding calculation failed:`, err)
-            if (request_id === latest_bond_request) bond_pairs = []
-          })
-      } else {
-        bond_pairs = []
-      }
-    } else {
-      bond_pairs = []
-    }
+        bond_pairs = BONDING_STRATEGIES[bonding_strategy](structure, bonding_options)
+      } else bond_pairs = []
+    } else bond_pairs = []
   })
 
-  let atom_data = $derived.by(() => {
+  let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
     if (!show_atoms || !structure?.sites) return []
     return structure.sites.flatMap((site, site_idx) => {
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
