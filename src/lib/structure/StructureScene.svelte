@@ -301,11 +301,11 @@
       thickness: bond_thickness,
       ambient_light,
       directional_light,
-      instances: [] as Array<{
+      instances: [] as {
         matrix: Float32Array
         color_start: string
         color_end: string
-      }>,
+      }[],
     }
 
     for (const bond_data of filtered_bond_pairs) {
@@ -322,12 +322,8 @@
 
       const color_start = get_majority_color(site_a)
       const color_end = get_majority_color(site_b)
-
-      group.instances.push({
-        matrix: new Float32Array(bond_data.transform_matrix),
-        color_start,
-        color_end,
-      })
+      const instance = { matrix: bond_data.transform_matrix, color_start, color_end }
+      group.instances.push(instance)
     }
 
     return group.instances.length > 0 ? [group] : []

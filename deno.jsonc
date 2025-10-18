@@ -1,15 +1,14 @@
 {
   "tasks": {
-    "build:wasm": "cd rust && bash build.sh",
-    "dev": "deno task build:wasm && deno run -A --node-modules-dir npm:vite dev",
-    "build": "deno task build:wasm && deno run -A --node-modules-dir npm:vite build",
+    "dev": "deno run -A --node-modules-dir npm:vite dev",
+    "build": "deno run -A --node-modules-dir npm:vite build",
     "preview": "deno run -A --node-modules-dir npm:vite preview",
     "serve": "deno task build && deno task preview",
     "test": "deno task vitest && deno task e2e",
     "vitest": "deno run -A --node-modules-dir npm:vitest",
     "e2e": "npx playwright test",
     "test:install": "npx playwright install chromium",
-    "package": "deno task build:wasm && mkdir -p tmp/wasm && cp -r dist/wasm/* tmp/wasm/ && svelte-package && mkdir -p dist/wasm && cp -r tmp/wasm/* dist/wasm/ && rm -rf tmp/wasm",
+    "package": "svelte-package",
     "prepublishOnly": "deno task package",
     "changelog": "deno run -A https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts"
   },
@@ -18,8 +17,7 @@
     "$lib": "./src/lib",
     "$lib/": "./src/lib/",
     "$site": "./src/site",
-    "$site/": "./src/site/",
-    "$wasm/": "./dist/wasm/"
+    "$site/": "./src/site/"
   },
   "lint": {
     "rules": {

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest'
 
-/** Tests for Cylinder.svelte - a cylinder component for measurements and visualizations */
 describe(`Cylinder Component`, () => {
   test.each([
     [0.05, `valid small thickness`],

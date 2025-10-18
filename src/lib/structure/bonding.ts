@@ -1,135 +1,291 @@
-import type { AnyStructure, BondPair, Matrix3x3, Pbc, Vec3 } from '$lib'
-import * as wasm_bonding from '$wasm/bonding_wasm.js'
-import bonding_wasm_url from '$wasm/bonding_wasm_bg.wasm?url'
-import process from 'node:process'
+import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
+import { element_data } from '$lib/element'
 
-let wasm_initialized = false
+type SpatialGrid = Map<string, number[]>
 
-async function ensure_wasm_ready(): Promise<void> {
-  if (!wasm_initialized) {
-    // In Node.js/vitest envs, fetch returns a Response but the WASM loader
-    // expects the bytes directly, so we need to manually convert
-    if (typeof process !== `undefined` && process.versions?.node) {
-      try {
-        const response = await fetch(bonding_wasm_url as unknown as string)
-        await wasm_bonding.default({ module_or_path: await response.arrayBuffer() })
-      } catch { // Fallback to URL-based loading
-        await wasm_bonding.default({ module_or_path: bonding_wasm_url })
+const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
+const covalent_radii = new Map(
+  element_data.filter((el) => el.covalent_radius !== null).map((
+    el,
+  ) => [el.symbol, el.covalent_radius as number]),
+)
+
+// Compute 4x4 transformation matrix for bond cylinder between two positions.
+function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
+  const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
+  const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+  if (height < 1e-10) {
+    return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+  }
+
+  const [dir_x, dir_y, dir_z] = [dx / height, dy / height, dz / height]
+  let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+  if (Math.abs(dir_y - 1.0) < 1e-10) {
+    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  } else if (Math.abs(dir_y + 1.0) < 1e-10) {
+    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, -1, 0, 0, 0, 1]
+  } else {
+    const [rx, rz] = [-dir_z, dir_x]
+    const r_len = Math.sqrt(rx * rx + rz * rz)
+    const [right_x, right_z] = [rx / r_len, rz / r_len]
+    const [up_x, up_y, up_z] = [
+      dir_y * right_z,
+      dir_z * right_x - dir_x * right_z,
+      -dir_y * right_x,
+    ]
+    ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [
+      right_x,
+      dir_x,
+      up_x,
+      0,
+      dir_y,
+      up_y,
+      right_z,
+      dir_z,
+      up_z,
+    ]
+  }
+
+  const [px, py, pz] = [
+    (pos_1[0] + pos_2[0]) / 2,
+    (pos_1[1] + pos_2[1]) / 2,
+    (pos_1[2] + pos_2[2]) / 2,
+  ]
+
+  return new Float32Array([ // Return flattened column-major 4x4 matrix for Three.js
+    ...[m00, m10, m20, 0],
+    ...[m01 * height, m11 * height, m21 * height, 0],
+    ...[m02, m12, m22, 0],
+    ...[px, py, pz, 1],
+  ])
+}
+
+// Build spatial grid by dividing 3D space into cubic cells.
+function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
+  const grid: SpatialGrid = new Map()
+  for (let idx = 0; idx < sites.length; idx++) {
+    const [x, y, z] = sites[idx].xyz
+    const key = `${Math.floor(x / cell_size)},${Math.floor(y / cell_size)},${
+      Math.floor(z / cell_size)
+    }`
+    const cell = grid.get(key)
+    if (cell) cell.push(idx)
+    else grid.set(key, [idx])
+  }
+  return grid
+}
+
+// Get all site indices in 3x3x3 cube of cells around position.
+function get_neighbors_from_grid(
+  pos: Vec3,
+  grid: SpatialGrid,
+  cell_size: number,
+): number[] {
+  const [cx, cy, cz] = [
+    Math.floor(pos[0] / cell_size),
+    Math.floor(pos[1] / cell_size),
+    Math.floor(pos[2] / cell_size),
+  ]
+  const neighbors: number[] = []
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const cell = grid.get(`${cx + dx},${cy + dy},${cz + dz}`)
+        if (cell) neighbors.push(...cell)
       }
-    } else { // Browser environment - use URL directly (fetch will be called internally)
-      await wasm_bonding.default({ module_or_path: bonding_wasm_url })
-    }
-    wasm_initialized = true
-  }
-}
-
-function serialize_for_wasm(structure: AnyStructure) {
-  const serialized: {
-    sites: { xyz: Vec3; element: string }[]
-    lattice?: { matrix: Matrix3x3; pbc: Pbc }
-  } = {
-    sites: structure.sites.map((site) => {
-      // Select the species with the largest occupancy (majority species)
-      let majority_species = site.species?.[0]
-      if (site.species && site.species.length > 1) {
-        for (const species of site.species) {
-          if (species.occu > (majority_species?.occu ?? 0)) {
-            majority_species = species
-          }
-        }
-      }
-      const element = majority_species?.element || ``
-      return { xyz: site.xyz, element }
-    }),
-  }
-
-  // Include lattice and PBC information if present on the structure
-  if (`lattice` in structure && structure.lattice) {
-    serialized.lattice = {
-      matrix: structure.lattice.matrix,
-      pbc: structure.lattice.pbc,
     }
   }
-
-  return serialized
+  return neighbors
 }
 
-async function call_wasm<T>(
-  wasm_fn_name: `electroneg_ratio` | `voronoi`,
-  structure: AnyStructure,
-  options: Record<string, unknown>,
-  fn_name: string,
-): Promise<T> {
-  await ensure_wasm_ready()
-  try {
-    const fn = wasm_bonding?.[wasm_fn_name]
-    if (typeof fn !== `function`) {
-      throw new Error(`Function ${wasm_fn_name} not in WASM module`)
-    }
-    return fn(serialize_for_wasm(structure), options) as T
-  } catch (error) {
-    throw new Error(`${fn_name} failed: ${error}`)
-  }
+// Setup spatial decomposition for structures with >50 atoms.
+function setup_spatial_grid(sites: Site[], cutoff: number) {
+  const use_grid = sites.length > 50
+  return use_grid ? { grid: build_spatial_grid(sites, cutoff), cell_size: cutoff } : null
 }
 
-export function electroneg_ratio(
-  structure: AnyStructure,
-  options: {
-    electronegativity_threshold?: number
-    max_distance_ratio?: number
-    min_bond_dist?: number
-    metal_metal_penalty?: number
-    metal_nonmetal_bonus?: number
-    similar_electronegativity_bonus?: number
-    same_species_penalty?: number
-    strength_threshold?: number
-  } = {},
-): Promise<BondPair[]> {
-  return call_wasm(
-    `electroneg_ratio`,
-    structure,
-    {
-      electronegativity_threshold: 1.7,
-      max_distance_ratio: 2.0,
-      min_bond_dist: 0.4,
-      metal_metal_penalty: 0.7,
-      metal_nonmetal_bonus: 1.5,
-      similar_electronegativity_bonus: 1.2,
-      same_species_penalty: 0.5,
-      strength_threshold: 0.3,
-      ...options,
-    },
-    `electroneg_ratio`,
-  )
+// Get candidate neighbor indices using spatial grid or all sites.
+function get_candidates(
+  pos: Vec3,
+  sites: Site[],
+  spatial: ReturnType<typeof setup_spatial_grid>,
+): number[] {
+  return spatial
+    ? get_neighbors_from_grid(pos, spatial.grid, spatial.cell_size)
+    : Array.from({ length: sites.length }, (_, idx) => idx)
 }
 
-export function voronoi(
-  structure: AnyStructure,
-  options: {
-    min_solid_angle?: number
-    min_face_area?: number
-    max_distance?: number
-    min_bond_dist?: number
-  } = {},
-): Promise<BondPair[]> {
-  return call_wasm(
-    `voronoi`,
-    structure,
-    {
-      min_solid_angle: 0.01, // Very permissive - accept most neighbors
-      min_face_area: 0.05, // Very low face area requirement
-      max_distance: 5.0, // Generous max distance
-      min_bond_dist: 0.4,
-      ...options,
-    },
-    `voronoi`,
-  )
-}
-
-export const BONDING_STRATEGIES = {
-  electroneg_ratio,
-  voronoi,
-} as const
-
+export const BONDING_STRATEGIES = { electroneg_ratio, voronoi } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
+
+// Electronegativity-based bonding with chemical preferences.
+export async function electroneg_ratio(
+  structure: AnyStructure,
+  {
+    electronegativity_threshold = 1.7,
+    max_distance_ratio = 2.0,
+    min_bond_dist = 0.4,
+    metal_metal_penalty = 0.7,
+    metal_nonmetal_bonus = 1.5,
+    similar_electronegativity_bonus = 1.2,
+    same_species_penalty = 0.5,
+    strength_threshold = 0.3,
+  } = {},
+): Promise<BondPair[]> {
+  await Promise.resolve() // Keep async for UI compatibility
+
+  const { sites } = structure
+  if (sites.length < 2) return []
+
+  const bonds: BondPair[] = []
+  const min_dist_sq = min_bond_dist ** 2
+  const closest = new Map<number, number>()
+
+  const props = sites.map((site) => {
+    const elem = site.species?.[0]?.element
+    const data = element_lookup.get(elem)
+    return {
+      element: elem,
+      electroneg: data?.electronegativity ?? 2.0,
+      is_metal: data?.metal ?? false,
+      is_nonmetal: data?.nonmetal ?? false,
+      // @ts-expect-error - element symbols may not all be in covalent_radii map type
+      radius: elem ? covalent_radii.get(elem) : undefined,
+    }
+  })
+
+  const max_cutoff = Math.max(...Array.from(covalent_radii.values())) * 2 *
+    max_distance_ratio
+  const spatial = setup_spatial_grid(sites, max_cutoff)
+
+  for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
+    const [x1, y1, z1] = sites[idx_a].xyz
+    const pa = props[idx_a]
+
+    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
+      if (idx_b <= idx_a) continue
+
+      const [x2, y2, z2] = sites[idx_b].xyz
+      const pb = props[idx_b]
+
+      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
+      const dist_sq = dx * dx + dy * dy + dz * dz
+      const dist = Math.sqrt(dist_sq)
+
+      if (dist_sq < min_dist_sq || !pa.radius || !pb.radius) continue
+
+      const expected = pa.radius + pb.radius
+      if (dist > expected * max_distance_ratio) continue
+
+      const en_diff = Math.abs(pa.electroneg - pb.electroneg)
+      const en_ratio = en_diff / (pa.electroneg + pb.electroneg)
+
+      let bond_strength = 1.0
+      if (pa.is_metal && pb.is_metal) {
+        bond_strength *= metal_metal_penalty
+      } else if ((pa.is_metal && pb.is_nonmetal) || (pa.is_nonmetal && pb.is_metal)) {
+        bond_strength *= metal_nonmetal_bonus
+        if (en_diff > electronegativity_threshold) bond_strength *= 1.3
+      } else if (en_diff < 0.5) {
+        bond_strength *= similar_electronegativity_bonus
+      }
+
+      const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
+      const en_weight = 1.0 - 0.3 * en_ratio
+      let strength = bond_strength * dist_weight * en_weight
+
+      if (pa.element === pb.element) strength *= same_species_penalty
+
+      const ca = closest.get(idx_a) ?? Infinity
+      const cb = closest.get(idx_b) ?? Infinity
+      if (dist > ca) strength *= Math.exp(-(dist / ca - 1) / 0.5)
+      if (dist > cb) strength *= Math.exp(-(dist / cb - 1) / 0.5)
+
+      if (strength > strength_threshold) {
+        bonds.push({
+          pos_1: sites[idx_a].xyz,
+          pos_2: sites[idx_b].xyz,
+          site_idx_1: idx_a,
+          site_idx_2: idx_b,
+          bond_length: dist,
+          strength,
+          transform_matrix: compute_bond_transform(sites[idx_a].xyz, sites[idx_b].xyz),
+        })
+        if (dist < ca) closest.set(idx_a, dist)
+        if (dist < cb) closest.set(idx_b, dist)
+      }
+    }
+  }
+  return bonds
+}
+
+// Voronoi tessellation-based bonding using solid angle calculations.
+export async function voronoi(
+  structure: AnyStructure,
+  {
+    min_solid_angle = 0.01,
+    min_face_area = 0.05,
+    max_distance = 5.0,
+    min_bond_dist = 0.4,
+  } = {},
+): Promise<BondPair[]> {
+  await Promise.resolve() // Keep async for UI compatibility
+
+  const { sites } = structure
+  if (sites.length < 2) return []
+
+  const bonds: BondPair[] = []
+  const min_dist_sq = min_bond_dist ** 2
+  const max_dist_sq = max_distance ** 2
+  const spatial = setup_spatial_grid(sites, max_distance)
+
+  for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
+    const [x1, y1, z1] = sites[idx_a].xyz
+    const ra = sites[idx_a].species?.[0]?.element
+      // @ts-expect-error - element symbols may not all be in covalent_radii map type
+      ? covalent_radii.get(sites[idx_a].species[0].element)
+      : undefined
+
+    for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
+      if (idx_b <= idx_a) continue
+
+      const [x2, y2, z2] = sites[idx_b].xyz
+      const rb = sites[idx_b].species?.[0]?.element
+        // @ts-expect-error - element symbols may not all be in covalent_radii map type
+        ? covalent_radii.get(sites[idx_b].species[0].element)
+        : undefined
+
+      const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
+      const dist_sq = dx * dx + dy * dy + dz * dz
+      const dist = Math.sqrt(dist_sq)
+
+      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq || !ra || !rb) continue
+
+      const avg_r = (ra + rb) / 2.0
+      const face_area = Math.PI * avg_r * avg_r
+      const solid_angle = face_area / dist_sq
+
+      if (solid_angle < min_solid_angle || face_area < min_face_area) continue
+
+      const dist_penalty = Math.exp(-((dist / (ra + rb) - 1) ** 2) / 0.4)
+      const angle_strength = Math.min(solid_angle / (4.0 * Math.PI), 1.0)
+      const strength = angle_strength * dist_penalty
+
+      if (strength > 0.05) {
+        bonds.push({
+          pos_1: sites[idx_a].xyz,
+          pos_2: sites[idx_b].xyz,
+          site_idx_1: idx_a,
+          site_idx_2: idx_b,
+          bond_length: dist,
+          strength,
+          transform_matrix: compute_bond_transform(sites[idx_a].xyz, sites[idx_b].xyz),
+        })
+      }
+    }
+  }
+  return bonds
+}
