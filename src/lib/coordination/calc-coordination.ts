@@ -2,8 +2,6 @@ import type { AnyStructure } from '$lib'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { BONDING_STRATEGIES } from '$lib/structure/bonding'
 
-export type CoordinationStrategy = BondingStrategy
-
 export interface CoordinationSite {
   site_idx: number
   element: string
@@ -21,7 +19,7 @@ export interface CoordinationData {
 // Calculate coordination numbers for all sites in a structure using the specified bonding strategy
 export function calc_coordination_numbers(
   structure: AnyStructure,
-  strategy: CoordinationStrategy = `electroneg_ratio`,
+  strategy: BondingStrategy = `electroneg_ratio`,
 ): CoordinationData {
   // Get bonds using the specified strategy
   const bonds = BONDING_STRATEGIES[strategy](structure)

@@ -13,7 +13,7 @@ import { merge_nested } from './utils'
 export interface SettingType<T = unknown> {
   value: T
   description: string
-  enum?: Record<string, string>
+  enum?: Readonly<Record<Extract<T, string>, string>>
   minimum?: number
   maximum?: number
   minItems?: number
@@ -346,12 +346,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     show_bonds: {
       value: `always`,
       description: `When to display bonds between atoms`,
-      enum: {
-        never: `Never`,
-        always: `Always`,
-        crystals: `Crystals`,
-        molecules: `Molecules`,
-      },
+      enum: Object.fromEntries(
+        show_bonds_options.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
+      ) as Readonly<Record<ShowBonds, string>>,
     },
     bond_color: {
       value: `#666666`,
@@ -843,7 +840,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     symbol_type: {
       value: `Circle`,
       description: `Default symbol type for scatter plots`,
-      enum: Object.fromEntries(symbol_names.map((name) => [name, name])),
+      enum: Object.fromEntries(symbol_names.map((name) => [name, name])) as Readonly<
+        Record<D3SymbolName, string>
+      >,
     },
     show_legend: {
       value: true,

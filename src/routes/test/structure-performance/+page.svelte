@@ -2,7 +2,7 @@
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol, Vec3 } from '$lib'
   import { type PymatgenStructure, Spinner, Structure } from '$lib'
-  import { SETTINGS_CONFIG } from '$lib/settings'
+  import { SETTINGS_CONFIG, show_bonds_options } from '$lib/settings'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import type { ComponentProps } from 'svelte'
 
@@ -139,7 +139,7 @@
     bonding_strategy = valid_strategies.includes(params.get(`bonding_strategy`) || ``)
       ? (params.get(`bonding_strategy`) as typeof bonding_strategy)
       : bonding_strategy
-    show_bonds = [`always`, `never`, `crystals`, `molecules`].includes(
+    show_bonds = (show_bonds_options as readonly string[]).includes(
         params.get(`show_bonds`) || ``,
       )
       ? (params.get(`show_bonds`) as typeof show_bonds)
@@ -256,7 +256,7 @@
     Force Large
   </label>
 
-  {#each [`always`, `never`, `crystals`, `molecules`] as option (option)}
+  {#each show_bonds_options as option (option)}
     <label>
       <input
         type="radio"

@@ -2,9 +2,10 @@
   import { type PymatgenStructure, SETTINGS_CONFIG } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/parse'
-  import type { CoordinationStrategy, SplitMode } from '$lib/coordination'
+  import type { SplitMode } from '$lib/coordination'
   import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
   import { Structure } from '$lib/structure'
+  import type { BondingStrategy } from '$lib/structure/bonding'
   import { structures } from '$site/structures'
 
   // Map structures by id for O(1) lookup
@@ -24,7 +25,9 @@
 
   // Single structure example
   let single_id = $state<string>(compute_ids[0] || ``)
-  let single_strategy = $state<CoordinationStrategy>(`electroneg_ratio`)
+  let single_strategy = $state<BondingStrategy>(
+    SETTINGS_CONFIG.structure.bonding_strategy.value,
+  )
   let single_split_mode = $state<SplitMode>(`by_element`)
 
   const single_struct = $derived<PymatgenStructure | null>(
@@ -34,7 +37,9 @@
   // Multiple structures example
   let selected_ids = $state<string[]>(compute_ids.slice(0, 3))
   let multi_split_mode = $state<SplitMode>(`by_element`)
-  let multi_strategy = $state<CoordinationStrategy>(`electroneg_ratio`)
+  let multi_strategy = $state<BondingStrategy>(
+    SETTINGS_CONFIG.structure.bonding_strategy.value,
+  )
 
   function toggle_select(id: string) {
     selected_ids = selected_ids.includes(id)

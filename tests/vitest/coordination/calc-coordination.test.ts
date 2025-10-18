@@ -52,16 +52,16 @@ describe(`calc_coordination_numbers`, () => {
     ],
   }
 
-  test(`should calculate coordination numbers`, async () => {
-    const result = await calc_coordination_numbers(simple_cubic, `electroneg_ratio`)
+  test(`should calculate coordination numbers`, () => {
+    const result = calc_coordination_numbers(simple_cubic, `electroneg_ratio`)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
     expect(result.cn_by_element.size).toBe(2) // Na and Cl
   })
 
-  test(`should group by element`, async () => {
-    const result = await calc_coordination_numbers(simple_cubic, `electroneg_ratio`)
+  test(`should group by element`, () => {
+    const result = calc_coordination_numbers(simple_cubic, `electroneg_ratio`)
 
     expect(result.cn_by_element.has(`Na`)).toBe(true)
     expect(result.cn_by_element.has(`Cl`)).toBe(true)
@@ -69,14 +69,14 @@ describe(`calc_coordination_numbers`, () => {
     expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
   })
 
-  test(`should work with solid_angle strategy`, async () => {
-    const result = await calc_coordination_numbers(simple_cubic, `solid_angle`)
+  test(`should work with solid_angle strategy`, () => {
+    const result = calc_coordination_numbers(simple_cubic, `solid_angle`)
 
     expect(result.sites.length).toBe(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
   })
 
-  test(`should handle structure with distant atoms`, async () => {
+  test(`should handle structure with distant atoms`, () => {
     const isolated_atoms: PymatgenStructure = {
       lattice: {
         matrix: [
@@ -112,7 +112,7 @@ describe(`calc_coordination_numbers`, () => {
     }
 
     // With atoms 50 Å apart, no bonds should form with default electroneg_ratio strategy
-    const result = await calc_coordination_numbers(isolated_atoms, `electroneg_ratio`)
+    const result = calc_coordination_numbers(isolated_atoms, `electroneg_ratio`)
 
     expect(result.sites.length).toBe(2)
     // Both atoms should have CN = 0 since they are too far apart for bonding

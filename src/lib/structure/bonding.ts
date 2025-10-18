@@ -1,3 +1,5 @@
+// Bonding algorithms for structure visualization
+
 import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
 import { element_data } from '$lib/element'
 
@@ -19,6 +21,7 @@ function get_majority_species(site: Site) {
 }
 
 // Compute 4x4 transformation matrix for bond cylinder between two positions.
+// Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
 function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   const [dx, dy, dz] = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
   const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
@@ -30,14 +33,19 @@ function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   const [dir_x, dir_y, dir_z] = [dx / height, dy / height, dz / height]
   let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
 
+  // Special case: bond pointing straight up (+Y)
   if (Math.abs(dir_y - 1.0) < 1e-10) {
     ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
   } else if (Math.abs(dir_y + 1.0) < 1e-10) {
+    // Special case: bond pointing straight down (-Y)
     ;[m00, m01, m02, m10, m11, m12, m20, m21, m22] = [1, 0, 0, 0, -1, 0, 0, 0, 1]
   } else {
+    // General case: construct orthonormal basis (right, dir, up)
+    // Right vector: perpendicular to dir in XZ plane
     const [rx, rz] = [-dir_z, dir_x]
     const r_len = Math.sqrt(rx * rx + rz * rz)
     const [right_x, right_z] = [rx / r_len, rz / r_len]
+    // Up vector: cross product of dir and right
     const [up_x, up_y, up_z] = [
       dir_y * right_z,
       dir_z * right_x - dir_x * right_z,
@@ -56,6 +64,7 @@ function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
     ]
   }
 
+  // Position at midpoint between the two atoms
   const [px, py, pz] = [
     (pos_1[0] + pos_2[0]) / 2,
     (pos_1[1] + pos_2[1]) / 2,
@@ -130,17 +139,20 @@ export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
 // Electronegativity-based bonding with chemical preferences.
+// This algorithm considers electronegativity differences between atoms, metal/nonmetal
+// properties, and distance to determine bond strength. Bonds are only created if the
+// computed strength exceeds the strength_threshold parameter (default: 0.3).
 export function electroneg_ratio(
   structure: AnyStructure,
   {
-    electronegativity_threshold = 1.7,
-    max_distance_ratio = 2.0,
-    min_bond_dist = 0.4,
-    metal_metal_penalty = 0.7,
-    metal_nonmetal_bonus = 1.5,
-    similar_electronegativity_bonus = 1.2,
-    same_species_penalty = 0.5,
-    strength_threshold = 0.3,
+    electronegativity_threshold = 1.7, // Max electronegativity difference for bonding
+    max_distance_ratio = 2.0, // Max distance as multiple of sum of covalent radii
+    min_bond_dist = 0.4, // Minimum bond distance in Angstroms
+    metal_metal_penalty = 0.7, // Strength penalty for metal-metal bonds
+    metal_nonmetal_bonus = 1.5, // Strength bonus for metal-nonmetal bonds
+    similar_electronegativity_bonus = 1.2, // Bonus for similar electronegativity
+    same_species_penalty = 0.5, // Penalty for bonds between same element
+    strength_threshold = 0.3, // Minimum bond strength to include in results
   } = {},
 ): BondPair[] {
   const { sites } = structure
@@ -163,8 +175,11 @@ export function electroneg_ratio(
     }
   })
 
-  const max_cutoff = Math.max(...Array.from(covalent_radii.values())) * 2 *
-    max_distance_ratio
+  let max_radius = 0
+  for (const radius of covalent_radii.values()) {
+    if (radius > max_radius) max_radius = radius
+  }
+  const max_cutoff = max_radius * 2 * max_distance_ratio
   const spatial = setup_spatial_grid(sites, max_cutoff)
 
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
@@ -229,6 +244,10 @@ export function electroneg_ratio(
 }
 
 // Solid angle-based bonding using geometric proximity heuristics.
+// Inspired by Voronoi tessellation without having to actually compute Voronoi cells.
+// This algorithm computes bond strength based on the solid angle subtended by atoms
+// and their distance penalty. Bonds are only created if the computed strength exceeds
+// the strength_threshold parameter.
 export function solid_angle(
   structure: AnyStructure,
   {
@@ -236,6 +255,7 @@ export function solid_angle(
     min_face_area = 0.05,
     max_distance = 5.0,
     min_bond_dist = 0.4,
+    strength_threshold = 0.05,
   } = {},
 ): BondPair[] {
   const { sites } = structure
@@ -274,7 +294,7 @@ export function solid_angle(
       const angle_strength = Math.min(solid_angle / (4.0 * Math.PI), 1.0)
       const strength = angle_strength * dist_penalty
 
-      if (strength > 0.05) {
+      if (strength > strength_threshold) {
         bonds.push({
           pos_1: sites[idx_a].xyz,
           pos_2: sites[idx_b].xyz,

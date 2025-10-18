@@ -65,11 +65,7 @@ function make_random_structure(n_atoms: number): PymatgenStructure {
 }
 
 describe(`Bonding Algorithms`, () => {
-  type BondingAlgo = (
-    structure: PymatgenStructure,
-    options?: Record<string, unknown>,
-  ) => BondPair[]
-  const algorithms: [BondingAlgo, BondingStrategy, [number, number][]][] = [
+  const algorithms: [bonding.BondingAlgo, BondingStrategy, [number, number][]][] = [
     [bonding.electroneg_ratio, `electroneg_ratio`, [[50, 60], [200, 200], [1000, 800]]],
     [bonding.solid_angle, `solid_angle`, [[50, 100], [200, 200], [1000, 800]]],
   ]
@@ -296,13 +292,13 @@ describe(`Algorithm Comparison`, () => {
 describe(`Bond Strength Validation`, () => {
   test.each(Object.values(bonding.BONDING_STRATEGIES))(
     `valid strength values`,
-    (_strategy) => {
+    (strategy) => {
       const structure = get_test_structure([
         { xyz: [0, 0, 0], element: `C` },
         { xyz: [1.5, 0, 0], element: `O` },
         { xyz: [0, 1.5, 0], element: `H` },
       ])
-      bonding.electroneg_ratio(structure).forEach((bond) => {
+      strategy(structure).forEach((bond: BondPair) => {
         expect(bond.strength).toBeGreaterThanOrEqual(0)
         expect(bond.strength).toBeLessThanOrEqual(2)
       })
