@@ -25,7 +25,6 @@
     error_msg?: string
     is_fullscreen?: boolean
   }
-
   let {
     structure = $bindable(undefined),
     bz_order = $bindable(1),
@@ -55,6 +54,10 @@
     spinner_props = {},
     loading = $bindable(false),
     error_msg = $bindable(undefined),
+    k_path_points = [],
+    k_path_labels = [],
+    hovered_k_point = null,
+    hovered_qpoint_index = null,
     children,
     on_file_load,
     on_error,
@@ -90,6 +93,12 @@
       loading?: boolean
       error_msg?: string
       structure_string?: string
+      k_path_points?: Array<[number, number, number]>
+      k_path_labels?: Array<
+        { position: [number, number, number]; label: string | null }
+      >
+      hovered_k_point?: [number, number, number] | null
+      hovered_qpoint_index?: number | null
       children?: Snippet<
         [{ structure?: PymatgenStructure; bz_data?: BrillouinZoneData }]
       >
@@ -144,7 +153,9 @@
 
     try {
       const k_lattice = reciprocal_lattice(structure.lattice.matrix)
-      bz_data = compute_brillouin_zone(k_lattice, bz_order)
+      // Ensure bz_order is 1, 2, or 3
+      const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
+      bz_data = compute_brillouin_zone(k_lattice, valid_order)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       error_msg = `BZ computation failed: ${msg}`
@@ -316,7 +327,6 @@
           bind:edge_color
           bind:edge_width
           bind:show_vectors
-          bind:vector_scale
           bind:camera_projection
         />
       {/if}
@@ -334,6 +344,10 @@
             {show_vectors}
             {vector_scale}
             {camera_projection}
+            {k_path_points}
+            {k_path_labels}
+            {hovered_k_point}
+            {hovered_qpoint_index}
             bind:scene
             bind:camera
           />

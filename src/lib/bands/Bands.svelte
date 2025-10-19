@@ -250,24 +250,31 @@
   ] as [number, number])
 
   // Compute final y-axis configuration with default label
-  let final_y_axis = $derived({
-    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
-    format: `.2f`,
-    ...y_axis,
-  })
-</script>
-
-<ScatterPlot
-  series={series_data}
-  x_axis={{
+  let final_x_axis = $derived({
     label: `Wave Vector`,
     ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
     format: ``,
     range: x_range,
     ...x_axis,
-  }}
-  y_axis={final_y_axis}
-  display={{ x_grid: false, y_grid: true, y_zero_line: true }}
+  })
+  let final_y_axis = $derived({
+    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
+    format: `.2f`,
+    label_shift: { y: 15 },
+    ...y_axis,
+  })
+  let display = $state({
+    x_grid: false,
+    y_grid: true,
+    y_zero_line: true,
+  })
+</script>
+
+<ScatterPlot
+  series={series_data}
+  bind:x_axis={final_x_axis}
+  bind:y_axis={final_y_axis}
+  bind:display
   legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
   hover_config={{ threshold_px: 50 }}
   {...rest}

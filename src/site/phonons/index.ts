@@ -35,12 +35,16 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   })
 
   // Find labeled points by matching coordinates with labels_dict
-  const labeled_indices = new Map(
-    Object.entries(labels_dict).flatMap(([label, coords]) => {
-      const idx = qpoints.findIndex((q) => math.euclidean_dist(q, coords) < 1e-5)
-      return idx >= 0 ? [[idx, label]] : []
-    }),
-  )
+  // Note: A label like GAMMA can appear multiple times in the path (e.g., Γ→X→Γ→L)
+  const labeled_indices = new Map<number, string>()
+  for (const [label, coords] of Object.entries(labels_dict)) {
+    // Find ALL occurrences of this label, not just the first
+    qpoints.forEach((q, idx) => {
+      if (math.euclidean_dist(q, coords) < 1e-5) {
+        labeled_indices.set(idx, label)
+      }
+    })
+  }
 
   // Detect branches (segments between labeled points)
   const sorted_indices = [...labeled_indices.keys()].sort((a, b) => a - b)

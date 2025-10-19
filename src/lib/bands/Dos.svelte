@@ -9,7 +9,7 @@
     normalize_densities,
     normalize_dos,
   } from './helpers'
-  import type { Dos, FrequencyUnit, NormalizationMode } from './types'
+  import type { DosData, FrequencyUnit, NormalizationMode } from './types'
 
   let {
     doses,
@@ -23,7 +23,7 @@
     y_axis = {},
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
-    doses: Dos | Record<string, Dos>
+    doses: DosData | Record<string, DosData>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     stack?: boolean
@@ -47,8 +47,8 @@
     }
 
     // Already a dict - normalize each DOS
-    const result: Record<string, Dos> = {}
-    for (const [key, dos] of Object.entries(doses as Record<string, Dos>)) {
+    const result: Record<string, DosData> = {}
+    for (const [key, dos] of Object.entries(doses as Record<string, DosData>)) {
       const normalized = normalize_dos(dos)
       if (normalized) result[key] = normalized
     }
@@ -155,13 +155,19 @@
     range: y_range,
     ...y_axis,
   })
+  let display = $state({
+    x_grid: true,
+    y_grid: true,
+    x_zero_line: true,
+    y_zero_line: true,
+  })
 </script>
 
 <ScatterPlot
   series={series_data}
-  x_axis={final_x_axis}
-  y_axis={final_y_axis}
-  display={{ x_grid: true, y_grid: true, x_zero_line: true, y_zero_line: true }}
+  bind:x_axis={final_x_axis}
+  bind:y_axis={final_y_axis}
+  bind:display
   legend={show_legend ? {} : null}
   hover_config={{ threshold_px: 50 }}
   {...rest}

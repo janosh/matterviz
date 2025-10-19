@@ -34,6 +34,10 @@
     camera_is_moving = $bindable(false),
     scene = $bindable(undefined),
     camera = $bindable(undefined),
+    k_path_points = [],
+    k_path_labels = [],
+    hovered_k_point = null,
+    hovered_qpoint_index = null,
   }: {
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
@@ -58,6 +62,12 @@
     camera_is_moving?: boolean
     scene?: Scene
     camera?: Camera
+    k_path_points?: Array<[number, number, number]>
+    k_path_labels?: Array<
+      { position: [number, number, number]; label: string | null }
+    >
+    hovered_k_point?: [number, number, number] | null
+    hovered_qpoint_index?: number | null
   } = $props()
 
   const threlte = useThrelte()
@@ -83,7 +93,7 @@
     camera_position || ([10, 3, 8].map((x) => x * Math.max(1, bz_size)) as Vec3)
   )
 
-  const gizmo_props = $derived.by(() => ({
+  const gizmo_props = $derived({
     background: { enabled: false },
     className: `responsive-gizmo`,
     ...Object.fromEntries(
@@ -103,7 +113,7 @@
     ),
     ...(typeof gizmo === `object` ? gizmo : {}),
     offset: { left: 5, bottom: 5 },
-  }))
+  })
 
   const is_ortho = $derived(camera_projection === `orthographic`)
   const orbit_controls_props = $derived({
@@ -231,6 +241,52 @@
           </span>
         </extras.HTML>
       {/each}
+    {/if}
+
+    <!-- K-path visualization -->
+    {#if k_path_points && k_path_points.length > 1}
+      {#each k_path_points.slice(0, -1) as
+        from_point,
+        idx
+        (`${from_point}${k_path_points[idx + 1]}`)
+      }
+        {@const to_point = k_path_points[idx + 1]}
+        {@const is_hovered = hovered_qpoint_index !== null &&
+      (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
+        <Cylinder
+          from={from_point as Vec3}
+          to={to_point as Vec3}
+          thickness={0.08}
+          color={is_hovered ? `#ff6b35` : `#ffcc00`}
+        />
+      {/each}
+    {/if}
+
+    <!-- Symmetry point labels on k-path -->
+    {#if k_path_labels}
+      {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
+        {#if label}
+          <extras.HTML center position={position.map((x) => x * 1.1) as Vec3}>
+            <span
+              style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px"
+            >
+              {label}
+            </span>
+          </extras.HTML>
+        {/if}
+      {/each}
+    {/if}
+
+    <!-- Hovered k-point highlight -->
+    {#if hovered_k_point}
+      <T.Mesh position={hovered_k_point}>
+        <T.SphereGeometry args={[0.03, 16, 16]} />
+        <T.MeshStandardMaterial
+          color="#ff0000"
+          emissive="#ff0000"
+          emissiveIntensity={1.2}
+        />
+      </T.Mesh>
     {/if}
   {/if}
 </T.Group>

@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { subscript_map } from '$lib/labels'
-import type { BaseBandStructure, Dos, FrequencyUnit, NormalizationMode } from './types'
+import type * as types from './types'
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s
@@ -46,7 +46,7 @@ export const get_segment_key = (start_label?: string, end_label?: string) =>
 
 // Get ordered segment keys from a band structure, preserving physical path order.
 export const get_ordered_segments = (
-  band_struct: BaseBandStructure | null,
+  band_struct: types.BaseBandStructure | null,
   segments: Set<string>,
 ) => {
   if (!band_struct) return Array.from(segments)
@@ -63,7 +63,7 @@ export const get_ordered_segments = (
 
 // Extract tick positions and labels for a band structure plot.
 export function get_band_xaxis_ticks(
-  band_struct: BaseBandStructure,
+  band_struct: types.BaseBandStructure,
   branches: string[] | Set<string> = [],
 ): [number[], string[]] {
   const ticks_x_pos: number[] = []
@@ -107,9 +107,9 @@ export function get_band_xaxis_ticks(
 // Convert frequencies from THz to specified units.
 export function convert_frequencies(
   frequencies: number[],
-  unit: FrequencyUnit = `THz`,
+  unit: types.FrequencyUnit = `THz`,
 ): number[] {
-  const conversion_factors: Record<FrequencyUnit, number> = {
+  const conversion_factors: Record<types.FrequencyUnit, number> = {
     'THz': 1,
     'eV': THz_TO_EV,
     'meV': THz_TO_MEV,
@@ -130,7 +130,7 @@ export function convert_frequencies(
 export function normalize_densities(
   densities: number[],
   freqs_or_energies: number[],
-  mode: NormalizationMode,
+  mode: types.NormalizationMode,
 ): number[] {
   if (!mode) return densities
 
@@ -194,10 +194,10 @@ export function apply_gaussian_smearing(
 
 export function normalize_band_structure(
   bs: unknown,
-): BaseBandStructure | null {
+): types.BaseBandStructure | null {
   if (!bs || typeof bs !== `object`) return null
 
-  const band_struct = bs as Partial<BaseBandStructure>
+  const band_struct = bs as Partial<types.BaseBandStructure>
 
   // Check required fields exist and are arrays
   const { qpoints, branches, bands, distance } = band_struct
@@ -223,11 +223,11 @@ export function normalize_band_structure(
     )
   ) return null
 
-  return band_struct as BaseBandStructure
+  return band_struct as types.BaseBandStructure
 }
 
 // Validate and normalize a DOS object.
-export function normalize_dos(dos: unknown): Dos | null {
+export function normalize_dos(dos: unknown): types.DosData | null {
   if (!dos || typeof dos !== `object`) return null
 
   const { densities, frequencies, energies, spin_polarized } = dos as Partial<
@@ -254,4 +254,38 @@ export function normalize_dos(dos: unknown): Dos | null {
   }
 
   return null
+}
+
+// Extract k-path points from band structure and convert to reciprocal space coordinates
+// Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
+export function extract_k_path_points(
+  band_struct: types.BaseBandStructure,
+  reciprocal_lattice_matrix: number[][],
+): Array<[number, number, number]> {
+  if (!band_struct?.qpoints || !reciprocal_lattice_matrix) return []
+
+  const [[a, b, c], [d, e, f], [g, h, i]] = reciprocal_lattice_matrix
+
+  return band_struct.qpoints.map(({ frac_coords: [x, y, z] }) =>
+    [
+      x * a + y * d + z * g,
+      x * b + y * e + z * h,
+      x * c + y * f + z * i,
+    ] as [number, number, number]
+  )
+}
+
+// Find the q-point index closest to a given distance along the band structure path
+export function find_qpoint_at_distance(
+  band_struct: types.BaseBandStructure,
+  target: number,
+): number | null {
+  const { distance } = band_struct
+  if (!distance?.length) return null
+
+  return distance.reduce(
+    (closest, dist, idx) =>
+      Math.abs(dist - target) < Math.abs(distance[closest] - target) ? idx : closest,
+    0,
+  )
 }

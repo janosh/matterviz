@@ -3,7 +3,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import type { BaseBandStructure, Dos as DosData } from './types'
+  import type { BaseBandStructure, DosData } from './types'
 
   let {
     band_structs,
