@@ -34,6 +34,8 @@
     show_legend?: boolean
   } = $props()
 
+  const is_horizontal = $derived(orientation === `horizontal`)
+
   // Normalize input to dict format
   let doses_dict = $derived.by(() => {
     if (!doses) return {}
@@ -54,10 +56,7 @@
   })
 
   // Determine if this is phonon or electronic DOS using discriminated union
-  let is_phonon = $derived.by(() => {
-    const first_dos = Object.values(doses_dict)[0]
-    return first_dos?.type === `phonon`
-  })
+  let is_phonon = $derived(Object.values(doses_dict)[0]?.type === `phonon`)
 
   // Convert DOS data to scatter plot series
   // Performance: Only recalculates when doses_dict, units, sigma, or normalize changes
@@ -102,73 +101,89 @@
       if (stack) cumulative_densities = densities
 
       // Determine x and y based on orientation
-      const series: DataSeries = orientation === `horizontal`
-        ? {
-          x: densities,
-          y: x_values,
-          markers: `line`,
-          label: label || `DOS ${dos_idx + 1}`,
-          line_style: {
-            stroke: color,
-            stroke_width: 1.5,
-          },
-          point_style: {
-            fill: stack ? color : undefined,
-          },
-        }
-        : {
-          x: x_values,
-          y: densities,
-          markers: `line`,
-          label: label || `DOS ${dos_idx + 1}`,
-          line_style: {
-            stroke: color,
-            stroke_width: 1.5,
-          },
-          point_style: {
-            fill: stack ? color : undefined,
-          },
-        }
-
+      const series: DataSeries = {
+        x: is_horizontal ? densities : x_values,
+        y: is_horizontal ? x_values : densities,
+        markers: `line`,
+        label: label || `DOS ${dos_idx + 1}`,
+        line_style: { stroke: color, stroke_width: 1.5 },
+        point_style: { fill: stack ? color : undefined },
+      }
       all_series.push(series)
     }
-
     return all_series
   })
 
   // Calculate axis ranges
-  let x_range = $derived.by((): [number, number] | undefined => {
+  let x_range = $derived.by(() => {
     if (!series_data.length) return undefined
     const all_x = series_data.flatMap((s) => s.x)
-    return [Math.min(...all_x), Math.max(...all_x)]
+    return [Math.min(...all_x), Math.max(...all_x)] as [number, number]
   })
 
-  let y_range = $derived.by((): [number, number] | undefined => {
+  let y_range = $derived.by(() => {
     if (!series_data.length) return undefined
     const all_y = series_data.flatMap((s) => s.y)
-    return [Math.min(...all_y), Math.max(...all_y)]
+    return [Math.min(...all_y), Math.max(...all_y)] as [number, number]
   })
 
   // Get axis labels based on orientation
   let x_label = $derived(
-    orientation === `horizontal`
+    is_horizontal
       ? `Density of States`
       : is_phonon
       ? `Frequency (${units})`
       : `Energy (eV)`,
   )
   let y_label = $derived(
-    orientation === `horizontal`
-      ? is_phonon ? `Frequency (${units})` : `Energy (eV)`
+    is_horizontal
+      ? (is_phonon ? `Frequency (${units})` : `Energy (eV)`)
       : `Density of States`,
   )
+
+  // Compute final axis configurations with default labels
+  let final_x_axis = $derived({
+    label: x_label,
+    format: `.2f`,
+    range: x_range,
+    ...(is_horizontal && { ticks: 4 }),
+    ...x_axis,
+  })
+  let final_y_axis = $derived({
+    label: y_label,
+    format: `.2f`,
+    range: y_range,
+    ...y_axis,
+  })
 </script>
 
 <ScatterPlot
   series={series_data}
-  x_axis={{ label: x_label, format: `.2f`, range: x_range, ...x_axis }}
-  y_axis={{ label: y_label, format: `.2f`, range: y_range, ...y_axis }}
+  x_axis={final_x_axis}
+  y_axis={final_y_axis}
   display={{ x_grid: true, y_grid: true, x_zero_line: true, y_zero_line: true }}
   legend={show_legend ? {} : null}
+  hover_config={{ threshold_px: 50 }}
   {...rest}
-/>
+>
+  {#snippet tooltip({ x_formatted, y_formatted, label })}
+    {@const x_label_full = final_x_axis.label ?? ``}
+    {@const y_label_full = final_y_axis.label ?? ``}
+    {@const x_match = x_label_full.match(/^(.+?)\s*\(([^)]+)\)$/)}
+    {@const y_match = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/)}
+    {@const x_label_text = x_match?.[1] ||
+      (x_label_full.includes(`Energy`) ? `Energy` : `Frequency`)}
+    {@const x_unit = x_match?.[2] || ``}
+    {@const y_label_text = y_match?.[1] || `Density`}
+    {@const y_unit = y_match?.[2] || ``}
+    {@const num_doses = Object.keys(doses_dict).length}
+    {#if num_doses > 1 && label}<strong>{label}</strong><br />{/if}
+    {#if is_horizontal}
+      <strong>{y_label_text}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}</strong><br />
+      {x_label_text}: {x_formatted}
+    {:else}
+      {y_label_text}: {y_formatted}<br />
+      {x_label_text}: {x_formatted}{x_unit ? ` ${x_unit}` : ``}
+    {/if}
+  {/snippet}
+</ScatterPlot>

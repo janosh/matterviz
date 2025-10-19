@@ -38,62 +38,50 @@
     frequencies: number[],
     band_idx: number,
   ): { stroke: string; stroke_width: number } {
-    let stroke = color
-    let stroke_width = is_acoustic ? 1.5 : 1
+    const defaults = { stroke: color, stroke_width: is_acoustic ? 1.5 : 1 }
 
     if (typeof line_kwargs === `function`) {
       const custom = line_kwargs(frequencies, band_idx)
       return {
-        stroke: (custom.stroke as string) ?? stroke,
-        stroke_width: (custom.stroke_width as number) ?? stroke_width,
+        stroke: (custom.stroke as string) ?? defaults.stroke,
+        stroke_width: (custom.stroke_width as number) ?? defaults.stroke_width,
       }
     }
 
     if (typeof line_kwargs === `object` && line_kwargs !== null) {
-      const lk = line_kwargs as Record<string, unknown>
-
-      // Check for mode-specific styling
-      if (`acoustic` in lk || `optical` in lk) {
-        const mode_kwargs = lk[mode_type] as Record<string, unknown> | undefined
-        if (mode_kwargs) {
-          stroke = (mode_kwargs.stroke as string) ?? stroke
-          stroke_width = (mode_kwargs.stroke_width as number) ?? stroke_width
-        }
-      } else {
-        // Global styling for all bands
-        stroke = (lk.stroke as string) ?? stroke
-        stroke_width = (lk.stroke_width as number) ?? stroke_width
+      const mode_kwargs = (line_kwargs as Record<string, unknown>)[mode_type] as
+        | Record<string, unknown>
+        | undefined
+      const source = (mode_kwargs ?? line_kwargs) as Record<string, unknown>
+      return {
+        stroke: (source.stroke as string) ?? defaults.stroke,
+        stroke_width: (source.stroke_width as number) ?? defaults.stroke_width,
       }
     }
 
-    return { stroke, stroke_width }
+    return defaults
   }
 
   // Normalize input to dict format
   let band_structs_dict = $derived.by(() => {
     if (!band_structs) return {}
 
-    const is_single_struct = `qpoints` in band_structs && `branches` in band_structs
-
-    if (is_single_struct) {
-      const normalized = helpers.normalize_band_structure(band_structs)
-      return normalized ? { default: normalized } : {}
-    }
-
-    // Normalize each structure in the dict
+    const is_single = `qpoints` in band_structs && `branches` in band_structs
     const result: Record<string, BaseBandStructure> = {}
-    for (
-      const [key, bs] of Object.entries(
-        band_structs as Record<string, BaseBandStructure>,
-      )
-    ) {
-      const normalized = helpers.normalize_band_structure(bs)
-      if (normalized) result[key] = normalized
+
+    if (is_single) {
+      const normalized = helpers.normalize_band_structure(band_structs)
+      if (normalized) result.default = normalized
+    } else {
+      for (const [key, bs] of Object.entries(band_structs)) {
+        const normalized = helpers.normalize_band_structure(bs)
+        if (normalized) result[key] = normalized
+      }
     }
     return result
   })
 
-  let detected_band_type = $derived.by((): BandStructureType => band_type ?? `phonon`)
+  let detected_band_type = $derived(band_type ?? `phonon`)
 
   // Determine which segments to plot based on path_mode
   let segments_to_plot = $derived.by(() => {
@@ -226,6 +214,7 @@
             markers: `line`,
             label: structure_label,
             line_style,
+            metadata: { band_idx },
           })
         }
       }
@@ -235,37 +224,36 @@
   })
 
   // Get x-axis tick positions with custom labels for symmetry points
-  let x_axis_ticks = $derived.by((): Record<number, string> => {
-    const tick_labels: Record<number, string> = {}
-
-    const sorted_positions = Object.entries(x_positions).sort(
-      ([, [a]], [, [b]]) => a - b,
+  let x_axis_ticks = $derived.by(() =>
+    Object.fromEntries(
+      Object.entries(x_positions)
+        .sort(([, [a]], [, [b]]) => a - b)
+        .flatMap(([segment_key, [x_start, x_end]]) => {
+          const [start_lbl, end_lbl] = segment_key.split(`_`)
+          const entries: [number, string][] = []
+          const pretty_start = start_lbl !== `null`
+            ? helpers.pretty_sym_point(start_lbl)
+            : ``
+          const pretty_end = end_lbl !== `null`
+            ? helpers.pretty_sym_point(end_lbl)
+            : ``
+          if (pretty_start) entries.push([x_start, pretty_start])
+          if (pretty_end) entries.push([x_end, pretty_end])
+          return entries
+        }),
     )
+  )
 
-    for (const [segment_key, [x_start, x_end]] of sorted_positions) {
-      const [start_label, end_label] = segment_key.split(`_`)
+  let x_range = $derived([
+    Object.values(x_positions).flat()[0] ?? 0,
+    Object.values(x_positions).flat().at(-1) ?? 1,
+  ] as [number, number])
 
-      // Add start label if not already present
-      if (!(x_start in tick_labels)) {
-        const pretty_start = start_label !== `null`
-          ? helpers.pretty_sym_point(start_label)
-          : ``
-        if (pretty_start) tick_labels[x_start] = pretty_start
-      }
-
-      // Add end label
-      const pretty_end = end_label !== `null`
-        ? helpers.pretty_sym_point(end_label)
-        : ``
-      if (pretty_end) tick_labels[x_end] = pretty_end
-    }
-
-    return tick_labels
-  })
-
-  let x_range = $derived.by((): [number, number] => {
-    const all_x = Object.values(x_positions).flat().sort()
-    return [all_x.at(0) ?? 0, all_x.at(-1) ?? 1]
+  // Compute final y-axis configuration with default label
+  let final_y_axis = $derived({
+    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
+    format: `.2f`,
+    ...y_axis,
   })
 </script>
 
@@ -275,22 +263,35 @@
     label: `Wave Vector`,
     ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
     format: ``,
-    range: x_range, // Explicitly set range to disable padding
+    range: x_range,
     ...x_axis,
   }}
-  y_axis={{
-    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
-    format: `.2f`,
-    ...y_axis,
-  }}
+  y_axis={final_y_axis}
   display={{ x_grid: false, y_grid: true, y_zero_line: true }}
   legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
+  hover_config={{ threshold_px: 50 }}
   {...rest}
 >
+  {#snippet tooltip({ x, y_formatted, label, metadata })}
+    {@const y_label_full = final_y_axis.label ?? ``}
+    {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
+      [, y_label_full, ``]}
+    {@const segment = Object.entries(x_positions).find(([, [start, end]]) =>
+      x >= start && x <= end
+    )}
+    {@const path = segment?.[0].split(`_`).map((lbl) =>
+      lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``
+    ).filter(Boolean).join(` → `) || null}
+    {@const band_idx = metadata?.band_idx}
+    {@const num_structs = Object.keys(band_structs_dict).length}
+    {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
+    {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
+    {#if path}Path: {path}<br />{/if}
+    {#if typeof band_idx === `number`}Band: {band_idx + 1}{/if}
+  {/snippet}
+
   {#snippet user_content({ height, x_scale_fn, pad })}
-    <!-- Vertical lines at high-symmetry points -->
-    {@const tick_positions = Object.keys(x_axis_ticks).map(Number).sort((a, b) => a - b)}
-    {#each tick_positions as x_pos (x_pos)}
+    {#each Object.keys(x_axis_ticks).map(Number) as x_pos (x_pos)}
       <line
         x1={x_scale_fn(x_pos)}
         x2={x_scale_fn(x_pos)}

@@ -28,9 +28,7 @@ Normalize the DOS to maximum value:
 <Dos doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]} normalize="max" />
 ```
 
-## Stacked DOS
-
-Compare multiple DOS with stacking:
+## Multiple DOS
 
 ```svelte example
 <script>
@@ -47,7 +45,7 @@ Compare multiple DOS with stacking:
   }
 </script>
 
-<Dos {doses} stack />
+<Dos {doses} />
 ```
 
 ## With Gaussian Smearing

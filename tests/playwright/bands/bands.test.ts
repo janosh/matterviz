@@ -81,4 +81,133 @@ test.describe(`Bands Component Tests`, () => {
     const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join()
     expect(x_labels).toContain(`K`)
   })
+
+  test(`shows tooltip with frequency and path on hover`, async ({ page }) => {
+    const plot = page.locator(`#single-bands + .scatter`)
+    await expect(plot).toBeVisible()
+
+    // Get the first band path
+    const first_path = plot.locator(`svg path[fill="none"]`).first()
+    await expect(first_path).toBeVisible()
+
+    // Hover directly over the path element with force to bypass intercept
+    await first_path.hover({ force: true })
+
+    const tooltip = plot.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toBeTruthy()
+
+    // Tooltip should show frequency with unit (e.g., "Frequency: 5.23 THz")
+    expect(tooltip_text).toMatch(/Frequency:\s*[\d.]+\s*THz/)
+
+    // Tooltip should show path segment (e.g., "Path: Γ → X")
+    expect(tooltip_text).toMatch(/Path:\s*\S+\s*→\s*\S+/)
+  })
+
+  test(`tooltip shows series label with multiple band structures`, async ({ page }) => {
+    const plot = page.locator(`#multiple-bands + .scatter`)
+    await expect(plot).toBeVisible()
+
+    // Get the first band path
+    const first_path = plot.locator(`svg path[fill="none"]`).first()
+    await first_path.hover({ force: true })
+
+    const tooltip = plot.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toBeTruthy()
+
+    // With multiple structures, series label should be at the top in bold
+    // The label should come before the frequency
+    expect(tooltip_text).toMatch(/BS[12]/)
+    expect(tooltip_text).toMatch(/Frequency:\s*[\d.]+\s*THz/)
+    expect(tooltip_text).toMatch(/→/)
+
+    // Verify label appears before frequency (series label should be first line)
+    const frequency_idx = tooltip_text?.indexOf(`Frequency`) ?? -1
+    const label_idx = tooltip_text?.search(/BS[12]/) ?? -1
+    expect(label_idx).toBeGreaterThan(-1)
+    expect(label_idx).toBeLessThan(frequency_idx)
+  })
+
+  test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
+    const plot = page.locator(`#single-bands + .scatter`)
+    const first_path = plot.locator(`svg path[fill="none"]`).first()
+
+    // Hover to show tooltip
+    await first_path.hover({ force: true })
+    await expect(plot.locator(`.tooltip`)).toBeVisible({ timeout: 2000 })
+
+    // Move mouse outside plot
+    const box = await plot.boundingBox()
+    expect(box).toBeTruthy()
+    if (!box) return
+
+    await page.mouse.move(box.x - 50, box.y - 50)
+
+    // Tooltip should be hidden
+    await expect(plot.locator(`.tooltip`)).not.toBeVisible()
+  })
+
+  test(`tooltip updates when hovering different segments`, async ({ page }) => {
+    const plot = page.locator(`#single-bands + .scatter`)
+    const paths = plot.locator(`svg path[fill="none"]`)
+
+    // Hover over first path
+    await paths.nth(0).hover({ force: true })
+
+    const tooltip = plot.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+    const first_text = await tooltip.textContent()
+    expect(first_text).toBeTruthy()
+
+    // Hover over a different path (different band)
+    await paths.nth(2).hover({ force: true })
+
+    const second_text = await tooltip.textContent()
+    expect(second_text).toBeTruthy()
+
+    // Tooltip text should change (different band = different frequency)
+    expect(first_text).not.toBe(second_text)
+  })
+
+  test(`tooltip shows band index`, async ({ page }) => {
+    const plot = page.locator(`#single-bands + .scatter`)
+    await expect(plot).toBeVisible()
+
+    // Get the first band path
+    const first_path = plot.locator(`svg path[fill="none"]`).first()
+    await first_path.hover({ force: true })
+
+    const tooltip = plot.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toBeTruthy()
+
+    // Tooltip should show band index (e.g., "Band: 1")
+    expect(tooltip_text).toMatch(/Band:\s*\d+/)
+  })
+
+  test(`tooltip shows different band indices for different bands`, async ({ page }) => {
+    const plot = page.locator(`#single-bands + .scatter`)
+    const paths = plot.locator(`svg path[fill="none"]`)
+
+    // Hover over first path (Band 1)
+    await paths.nth(0).hover({ force: true })
+
+    const tooltip = plot.locator(`.tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+    const first_text = await tooltip.textContent()
+    expect(first_text).toMatch(/Band:\s*1/)
+
+    // Hover over third path (Band 3)
+    await paths.nth(2).hover({ force: true })
+
+    const third_text = await tooltip.textContent()
+    expect(third_text).toMatch(/Band:\s*3/)
+  })
 })

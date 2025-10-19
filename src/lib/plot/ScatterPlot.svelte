@@ -1717,20 +1717,23 @@
       y,
       (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
     )}
-      {@const label = point_label?.text ?? null}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
       {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-      <div
-        class="tooltip overlay"
-        style={`position: absolute; left: ${
-          cx + 5
-        }px; top: ${cy}px; background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color}); z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
-      >
+      {@const style = `position: absolute; left: ${cx + 5}px; top: ${cy}px;
+      background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color});
+      z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
+      <div class="tooltip overlay" {style}>
         {#if tooltip}
-          {@const tooltip_props = { x_formatted, y_formatted, color_value, label, series_idx }}
+          {@const tooltip_props = {
+        x_formatted,
+        y_formatted,
+        color_value,
+        label: hovered_series?.label ?? null,
+        series_idx,
+      }}
           {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
         {:else}
-          {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
+          {point_label?.text ?? `Point`} - x: {x_formatted}, y: {y_formatted}
         {/if}
       </div>
     {/if}

@@ -131,16 +131,11 @@
     const [range_min, range_max] = x_range
 
     return CRYSTAL_SYSTEMS.map((system) => {
-      const [sg_min, sg_max] = CRYSTAL_SYSTEM_RANGES[system]
+      const [sg_start, sg_end] = CRYSTAL_SYSTEM_RANGES[system]
       const stats = crystal_system_stats.get(system)
-
-      return {
-        system,
-        sg_start: sg_min,
-        sg_end: sg_max,
-        count: stats?.count ?? 0,
-        color: CRYSTAL_SYSTEM_COLORS[system],
-      }
+      const count = stats?.count ?? 0
+      const color = CRYSTAL_SYSTEM_COLORS[system]
+      return { system, sg_start, sg_end, count, color }
     }).filter(
       (region) => region.sg_end >= range_min && region.sg_start <= range_max, // Only visible systems
     )
