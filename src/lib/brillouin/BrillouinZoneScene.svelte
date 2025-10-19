@@ -172,8 +172,9 @@
     return geometry
   })
 
-  $effect(() => { // Dispose previous geometry on change/unmount (prevent memory leaks)
-    return () => bz_geometry?.dispose()
+  $effect(() => {
+    const prev_geometry = bz_geometry // Dispose previous geometry on change/unmount; prevents memory leaks
+    return () => prev_geometry?.dispose() // (need to assign to a variable in function so closure captures old value)
   })
 </script>
 

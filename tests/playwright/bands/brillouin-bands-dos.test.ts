@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/bands-dos-brillouin`, { waitUntil: `networkidle` })
+    await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
     // Wait for WebGL/Three.js to initialize
     await page.waitForTimeout(500)
   })

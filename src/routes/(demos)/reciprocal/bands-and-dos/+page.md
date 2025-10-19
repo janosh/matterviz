@@ -15,7 +15,7 @@ Phonon band structure with DOS side-by-side:
   const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
 </script>
 
-<BandsAndDos {band_structs} {doses} />
+<BandsAndDos {band_structs} {doses} class="full-bleed" style="aspect-ratio: 3" />
 ```
 
 ## Custom Subplot Widths
@@ -31,7 +31,12 @@ Adjust the relative widths of the band structure and DOS panels:
   const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
 </script>
 
-<BandsAndDos {band_structs} {doses} style="grid-template-columns: 55% 45%" />
+<BandsAndDos
+  {band_structs}
+  {doses}
+  class="full-bleed"
+  style="aspect-ratio: 3; grid-template-columns: 55% 45%"
+/>
 ```
 
 ## Multiple Structures
@@ -64,7 +69,7 @@ Compare multiple band structures and DOS:
   }
 </script>
 
-<BandsAndDos {band_structs} {doses} />
+<BandsAndDos {band_structs} {doses} class="full-bleed" style="aspect-ratio: 3" />
 ```
 
 ## With Custom Styling
@@ -89,7 +94,14 @@ Apply custom styling to both panels:
   const dos_props = { normalize: 'max', sigma: 0.15 }
 </script>
 
-<BandsAndDos {band_structs} {doses} {bands_props} {dos_props} />
+<BandsAndDos
+  {band_structs}
+  {doses}
+  {bands_props}
+  {dos_props}
+  class="full-bleed"
+  style="aspect-ratio: 3"
+/>
 ```
 
 ## Shared Y-Axis
@@ -105,7 +117,13 @@ Synchronize the y-axes between panels:
   const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
 </script>
 
-<BandsAndDos {band_structs} {doses} shared_y_axis />
+<BandsAndDos
+  {band_structs}
+  {doses}
+  shared_y_axis
+  class="full-bleed"
+  style="aspect-ratio: 3"
+/>
 ```
 
 ## With Controls
@@ -124,7 +142,14 @@ Enable interactive controls for both panels:
   const dos_props = { controls: { show: true, open: false } }
 </script>
 
-<BandsAndDos {band_structs} {doses} {bands_props} {dos_props} />
+<BandsAndDos
+  {band_structs}
+  {doses}
+  {bands_props}
+  {dos_props}
+  class="full-bleed"
+  style="aspect-ratio: 3"
+/>
 ```
 
 ## Features

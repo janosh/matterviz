@@ -185,7 +185,7 @@
   y_scale_fn: (y: number) => number
   pad: { t: number; b: number; l: number; r: number }
 })}
-  <g class="crystal-system-overlays">
+  <g class="crystal-system-overlays" pointer-events="none">
     {#each crystal_system_regions as region (region.system)}
       {#if orientation === `vertical`}
         {@const x_start = x_scale_fn(region.sg_start - 0.5)}

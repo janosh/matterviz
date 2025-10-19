@@ -10,6 +10,7 @@
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import type { ComponentProps } from 'svelte'
+  import { SvelteMap } from 'svelte/reactivity'
 
   let {
     band_structs,
@@ -134,7 +135,8 @@
     const canonical = Object.values(band_structs_dict)[0]
     const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
-    for (const segment_key of ordered_segments) {
+    for (let seg_idx = 0; seg_idx < ordered_segments.length; seg_idx++) {
+      const segment_key = ordered_segments[seg_idx]
       if (positions[segment_key]) continue
 
       const [start_label, end_label] = segment_key.split(`_`)
@@ -148,10 +150,19 @@
         })
 
         if (matching_branch) {
-          const segment_len = bs.distance[matching_branch.end_index] -
-            bs.distance[matching_branch.start_index]
-          positions[segment_key] = [current_x, current_x + segment_len]
-          current_x += segment_len
+          // Check if this is a discontinuity: consecutive indices mean no path between points
+          const is_discontinuity =
+            matching_branch.end_index - matching_branch.start_index === 1
+
+          if (is_discontinuity) {
+            // Place at same x position as current, no advancement
+            positions[segment_key] = [current_x, current_x]
+          } else {
+            const segment_len = bs.distance[matching_branch.end_index] -
+              bs.distance[matching_branch.start_index]
+            positions[segment_key] = [current_x, current_x + segment_len]
+            current_x += segment_len
+          }
           break
         }
       }
@@ -180,6 +191,10 @@
         const segment_key = helpers.get_segment_key(start_label, end_label)
 
         if (!segments_to_plot.has(segment_key)) continue
+
+        // Skip discontinuous segments (consecutive labeled points)
+        const is_discontinuity = branch.end_index - branch.start_index === 1
+        if (is_discontinuity) continue
 
         const [x_start, x_end] = x_positions[segment_key] || [0, 1]
 
@@ -224,32 +239,56 @@
   })
 
   // Get x-axis tick positions with custom labels for symmetry points
-  let x_axis_ticks = $derived.by(() =>
-    Object.fromEntries(
-      Object.entries(x_positions)
-        .sort(([, [a]], [, [b]]) => a - b)
-        .flatMap(([segment_key, [x_start, x_end]]) => {
-          const [start_lbl, end_lbl] = segment_key.split(`_`)
-          const entries: [number, string][] = []
-          const pretty_start = start_lbl !== `null`
-            ? helpers.pretty_sym_point(start_lbl)
-            : ``
-          const pretty_end = end_lbl !== `null`
-            ? helpers.pretty_sym_point(end_lbl)
-            : ``
-          if (pretty_start) entries.push([x_start, pretty_start])
-          if (pretty_end) entries.push([x_end, pretty_end])
-          return entries
-        }),
+  let x_axis_ticks = $derived.by(() => {
+    const tick_map = new SvelteMap<number, string[]>()
+
+    Object.entries(x_positions)
+      .sort(([, [a]], [, [b]]) => a - b)
+      .forEach(([segment_key, [x_start, x_end]]) => {
+        const [start_lbl, end_lbl] = segment_key.split(`_`)
+        const pretty_start = start_lbl !== `null`
+          ? helpers.pretty_sym_point(start_lbl)
+          : ``
+        const pretty_end = end_lbl !== `null` ? helpers.pretty_sym_point(end_lbl) : ``
+
+        // Check if this is a discontinuity (zero-length segment)
+        const is_discontinuity = Math.abs(x_end - x_start) < 1e-6
+
+        if (is_discontinuity && pretty_start && pretty_end) {
+          // Combine labels at discontinuity points
+          if (!tick_map.has(x_start)) tick_map.set(x_start, [])
+          const labels = tick_map.get(x_start)!
+          if (!labels.includes(pretty_start)) labels.push(pretty_start)
+          if (!labels.includes(pretty_end)) labels.push(pretty_end)
+        } else {
+          // Normal segment with distinct start/end
+          if (pretty_start) {
+            if (!tick_map.has(x_start)) tick_map.set(x_start, [])
+            const labels = tick_map.get(x_start)!
+            if (!labels.includes(pretty_start)) labels.push(pretty_start)
+          }
+          if (pretty_end) {
+            if (!tick_map.has(x_end)) tick_map.set(x_end, [])
+            const labels = tick_map.get(x_end)!
+            if (!labels.includes(pretty_end)) labels.push(pretty_end)
+          }
+        }
+      })
+
+    // Merge labels at same position with pipe separator
+    return Object.fromEntries(
+      Array.from(tick_map.entries()).map(([pos, labels]) => [
+        pos,
+        labels.join(` | `),
+      ]),
     )
-  )
+  })
 
-  let x_range = $derived([
-    Object.values(x_positions).flat()[0] ?? 0,
-    Object.values(x_positions).flat().at(-1) ?? 1,
-  ] as [number, number])
-
-  // Compute final y-axis configuration with default label
+  let x_range = $derived.by(() => {
+    const flat = Object.values(x_positions).flat()
+    return [flat[0] ?? 0, flat.at(-1) ?? 1] as [number, number]
+  })
+  // Compute final x-axis configuration with default label
   let final_x_axis = $derived({
     label: `Wave Vector`,
     ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,

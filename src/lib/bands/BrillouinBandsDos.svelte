@@ -90,6 +90,7 @@
   <Dos
     {doses}
     orientation="horizontal"
+    x_axis={{ ticks: 4 }}
     y_axis={shared_y_axis ? { ...shared_y_axis_obj, label: `` } : { label: `` }}
     padding={{ l: 15, ...dos_props.padding }}
     {...dos_props}

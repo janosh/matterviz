@@ -120,11 +120,10 @@
     const all_x = series_data.flatMap((s) => s.x)
     return [Math.min(...all_x), Math.max(...all_x)] as [number, number]
   })
-
   let y_range = $derived.by(() => {
     if (!series_data.length) return undefined
     const all_y = series_data.flatMap((s) => s.y)
-    return [Math.min(...all_y), Math.max(...all_y)] as [number, number]
+    return [0, Math.max(...all_y)] as [number, number]
   })
 
   // Get axis labels based on orientation
