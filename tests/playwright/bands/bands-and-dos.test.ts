@@ -26,6 +26,12 @@ test.describe(`BandsAndDos Component Tests`, () => {
         await expect(plot.locator(`g.y-axis`)).toBeVisible()
       }),
     )
+
+    // Bands should have symmetry point labels (Γ, X, etc), DOS has numeric ticks
+    const bands_x_ticks = await plots.first().locator(`g.x-axis text`).allTextContents()
+    const dos_x_ticks = await plots.nth(1).locator(`g.x-axis text`).allTextContents()
+    expect(bands_x_ticks.join()).toMatch(/[ΓXM]/)
+    expect(dos_x_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
   })
 
   test(`shares y-axis and uses grid layout`, async ({ page }) => {
@@ -46,6 +52,16 @@ test.describe(`BandsAndDos Component Tests`, () => {
       const tolerance = Math.max(bands_box.height, dos_box.height) * 0.05 // 5% tolerance
       expect(Math.abs(bands_box.height - dos_box.height)).toBeLessThan(tolerance)
     }
+
+    // Verify shared y-axis: tick values should overlap significantly
+    const bands_y_ticks = await plots.first().locator(`g.y-axis text`).allTextContents()
+    const dos_y_ticks = await plots.nth(1).locator(`g.y-axis text`).allTextContents()
+    const common_ticks = bands_y_ticks.filter((tick) => dos_y_ticks.includes(tick))
+    expect(common_ticks.length).toBeGreaterThan(bands_y_ticks.length / 2)
+
+    // Both should have numeric y-axis ticks
+    expect(bands_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
+    expect(dos_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
@@ -83,6 +99,15 @@ test.describe(`BandsAndDos Component Tests`, () => {
     // Both should have their own tick labels
     expect(bands_y_ticks.length).toBeGreaterThan(0)
     expect(dos_y_ticks.length).toBeGreaterThan(0)
+
+    // Y-axis ranges should be completely different (high_freq_dos has frequencies 10-30)
+    const bands_max = Math.max(...bands_y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
+    const dos_max = Math.max(...dos_y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
+    expect(Math.abs(bands_max - dos_max)).toBeGreaterThan(5) // Should differ significantly
+
+    // Both should have numeric y-ticks
+    expect(bands_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
+    expect(dos_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
   })
 
   test(`maintains responsive layout`, async ({ page }) => {
@@ -93,5 +118,42 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await page.waitForTimeout(100)
     await expect(container).toBeVisible()
     expect(await container.boundingBox()).toBeTruthy()
+  })
+
+  test(`hovering over DOS shows reference lines in both plots`, async ({ page }) => {
+    const container = page.locator(`#default + .bands-and-dos`)
+    const plots = container.locator(`.scatter`)
+    const bands_plot = plots.first()
+    const dos_plot = plots.nth(1)
+
+    // Initially no reference lines should be visible
+    const initial_bands_lines = await bands_plot
+      .locator(`line[stroke-dasharray]`)
+      .count()
+    const initial_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
+
+    // Hover over DOS plot
+    const dos_svg = dos_plot.locator(`svg`)
+    const dos_box = await dos_svg.boundingBox()
+    if (dos_box) {
+      await page.mouse.move(
+        dos_box.x + dos_box.width / 2,
+        dos_box.y + dos_box.height / 2,
+      )
+
+      // Wait for hover state to update
+      await page.waitForTimeout(100)
+
+      // Both plots should now have reference lines
+      const hovered_bands_lines = await bands_plot
+        .locator(`line[stroke-dasharray]`)
+        .count()
+      const hovered_dos_lines = await dos_plot
+        .locator(`line[stroke-dasharray]`)
+        .count()
+
+      expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
+      expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
+    }
   })
 })

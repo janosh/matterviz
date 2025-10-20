@@ -6,7 +6,7 @@ export { default as Composition } from './Composition.svelte'
 export * from './parse'
 export { default as PieChart } from './PieChart.svelte'
 
-export type CompositionType = Partial<Record<ElementSymbol, number>>
+export type CompositionType = Record<ElementSymbol, number>
 
 // Base data type for args of all (bar, bubble, pie) chart segment snippets
 export type ChartSegmentData = {

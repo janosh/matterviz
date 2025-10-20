@@ -12,7 +12,7 @@
     minSelect = 0,
     key = $bindable(null),
     ...rest
-  }: Omit<ComponentProps<typeof Select>, `options`> & {
+  }: Omit<ComponentProps<typeof Select>, `options` | `key`> & {
     value?: keyof ChemicalElement | null
     empty?: boolean
     selected?: string[]

@@ -17,7 +17,6 @@
   import { SvelteMap } from 'svelte/reactivity'
 
   const MAX_SPACEGROUP = 230
-
   let {
     data,
     show_counts = true,
@@ -32,9 +31,7 @@
 
   // Normalize input data to space group numbers
   const normalized_data = $derived(
-    data.map((sg) => normalize_spacegroup(sg)).filter((sg): sg is number =>
-      sg !== null
-    ),
+    data.map(normalize_spacegroup).filter((sg): sg is number => sg !== null),
   )
 
   // Compute histogram of space group numbers
@@ -131,16 +128,11 @@
     const [range_min, range_max] = x_range
 
     return CRYSTAL_SYSTEMS.map((system) => {
-      const [sg_min, sg_max] = CRYSTAL_SYSTEM_RANGES[system]
+      const [sg_start, sg_end] = CRYSTAL_SYSTEM_RANGES[system]
       const stats = crystal_system_stats.get(system)
-
-      return {
-        system,
-        sg_start: sg_min,
-        sg_end: sg_max,
-        count: stats?.count ?? 0,
-        color: CRYSTAL_SYSTEM_COLORS[system],
-      }
+      const count = stats?.count ?? 0
+      const color = CRYSTAL_SYSTEM_COLORS[system]
+      return { system, sg_start, sg_end, count, color }
     }).filter(
       (region) => region.sg_end >= range_min && region.sg_start <= range_max, // Only visible systems
     )
@@ -190,7 +182,7 @@
   y_scale_fn: (y: number) => number
   pad: { t: number; b: number; l: number; r: number }
 })}
-  <g class="crystal-system-overlays">
+  <g class="crystal-system-overlays" pointer-events="none">
     {#each crystal_system_regions as region (region.system)}
       {#if orientation === `vertical`}
         {@const x_start = x_scale_fn(region.sg_start - 0.5)}

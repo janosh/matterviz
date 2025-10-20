@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib'
   import { axis_colors, neg_axis_colors } from '$lib'
+  import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { Arrow, Cylinder } from '$lib/structure'
@@ -34,6 +34,10 @@
     camera_is_moving = $bindable(false),
     scene = $bindable(undefined),
     camera = $bindable(undefined),
+    k_path_points = [],
+    k_path_labels = [],
+    hovered_k_point = null,
+    hovered_qpoint_index = null,
   }: {
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
@@ -58,6 +62,12 @@
     camera_is_moving?: boolean
     scene?: Scene
     camera?: Camera
+    k_path_points?: Vec3[]
+    k_path_labels?: Array<
+      { position: [number, number, number]; label: string | null }
+    >
+    hovered_k_point?: [number, number, number] | null
+    hovered_qpoint_index?: number | null
   } = $props()
 
   const threlte = useThrelte()
@@ -73,9 +83,7 @@
   // BZ size for camera positioning: average magnitude of k-vectors
   const bz_size = $derived.by(() => {
     if (!bz_data?.k_lattice) return 10
-    const mags = bz_data.k_lattice.map((v) =>
-      Math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-    )
+    const mags = bz_data.k_lattice.map((vec) => Math.hypot(...vec))
     return mags.reduce((sum, mag) => sum + mag, 0) / 3
   })
 
@@ -83,7 +91,7 @@
     camera_position || ([10, 3, 8].map((x) => x * Math.max(1, bz_size)) as Vec3)
   )
 
-  const gizmo_props = $derived.by(() => ({
+  const gizmo_props = $derived({
     background: { enabled: false },
     className: `responsive-gizmo`,
     ...Object.fromEntries(
@@ -103,7 +111,7 @@
     ),
     ...(typeof gizmo === `object` ? gizmo : {}),
     offset: { left: 5, bottom: 5 },
-  }))
+  })
 
   const is_ortho = $derived(camera_projection === `orthographic`)
   const orbit_controls_props = $derived({
@@ -162,8 +170,9 @@
     return geometry
   })
 
-  $effect(() => { // Dispose previous geometry on change/unmount (prevent memory leaks)
-    return () => bz_geometry?.dispose()
+  $effect(() => {
+    const prev_geometry = bz_geometry // Dispose previous geometry on change/unmount; prevents memory leaks
+    return () => prev_geometry?.dispose() // (need to assign to a variable in function so closure captures old value)
   })
 </script>
 
@@ -205,7 +214,7 @@
     {/if}
 
     <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment (edge_segment.map((v) => v.join(`,`)).join(`-`))}
+    {#each bz_data.edges as edge_segment (JSON.stringify(edge_segment))}
       {@const [from, to] = edge_segment}
       <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
     {/each}
@@ -231,6 +240,64 @@
           </span>
         </extras.HTML>
       {/each}
+    {/if}
+
+    <!-- K-path visualization -->
+    {#if k_path_points && k_path_points.length > 1}
+      {#each k_path_points.slice(0, -1) as
+        from_point,
+        idx
+        (`${from_point}${k_path_points[idx + 1]}`)
+      }
+        {@const to_point = k_path_points[idx + 1]}
+        {@const is_hovered = hovered_qpoint_index !== null &&
+      (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
+        <Cylinder
+          from={from_point as Vec3}
+          to={to_point as Vec3}
+          thickness={0.08}
+          color={is_hovered ? `#ff6b35` : `#ffcc00`}
+        />
+      {/each}
+    {/if}
+
+    <!-- Symmetry point spheres at labeled k-path points -->
+    {#if k_path_labels}
+      {#each k_path_labels as { position, label }, idx (`sphere-${idx}`)}
+        {#if label}
+          <T.Mesh position={[position[0], position[1], position[2]]}>
+            <T.SphereGeometry args={[0.015, 16, 16]} />
+            <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
+          </T.Mesh>
+        {/if}
+      {/each}
+    {/if}
+
+    <!-- Symmetry point labels on k-path -->
+    {#if k_path_labels}
+      {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
+        {#if label}
+          <extras.HTML center position={position.map((x) => x * 1.1) as Vec3}>
+            <span
+              style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px; color: white"
+            >
+              {label}
+            </span>
+          </extras.HTML>
+        {/if}
+      {/each}
+    {/if}
+
+    <!-- Hovered k-point highlight -->
+    {#if hovered_k_point}
+      <T.Mesh position={hovered_k_point}>
+        <T.SphereGeometry args={[0.03, 16, 16]} />
+        <T.MeshStandardMaterial
+          color="#ff0000"
+          emissive="#ff0000"
+          emissiveIntensity={1.2}
+        />
+      </T.Mesh>
     {/if}
   {/if}
 </T.Group>

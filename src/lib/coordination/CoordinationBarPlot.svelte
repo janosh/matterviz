@@ -53,6 +53,7 @@
 
   let dragover = $state(false)
   let dropped_entries = $state<StructureEntry[]>([])
+  let is_horizontal = $derived(orientation === `horizontal`)
 
   // Normalize input to consistent array of { label, structure, color }
   const structure_entries = $derived.by<StructureEntry[]>(() => {
@@ -277,19 +278,19 @@
   bind:mode
   x_axis={{
     label_shift: { y: 20 },
-    range: orientation === `horizontal` ? ranges.count : ranges.cn,
-    ticks: orientation === `horizontal` ? undefined : cn_ticks,
-    ...(orientation === `horizontal` ? y_axis : x_axis),
+    range: is_horizontal ? ranges.count : ranges.cn,
+    ticks: is_horizontal ? undefined : cn_ticks,
+    ...(is_horizontal ? y_axis : x_axis),
   }}
   y_axis={{
     label_shift: { x: 2 },
-    range: orientation === `horizontal` ? ranges.cn : ranges.count,
-    ticks: orientation === `horizontal` ? cn_ticks : undefined,
-    ...orientation === `horizontal` ? x_axis : y_axis,
+    range: is_horizontal ? ranges.cn : ranges.count,
+    ticks: is_horizontal ? cn_ticks : undefined,
+    ...is_horizontal ? x_axis : y_axis,
   }}
   display={{
-    x_zero_line: orientation === `horizontal`,
-    y_zero_line: orientation === `vertical`,
+    x_zero_line: is_horizontal,
+    y_zero_line: !is_horizontal,
   }}
   {tooltip}
   ondrop={handle_file_drop}

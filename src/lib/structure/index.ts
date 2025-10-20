@@ -1,4 +1,4 @@
-import type { ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
+import type { CompositionType, ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { atomic_weights } from '$lib/composition/parse'
 import { element_data } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
@@ -93,7 +93,7 @@ export type AnyStructure = PymatgenStructure | PymatgenMolecule
 export type AnyStructureGraph = AnyStructure & { graph: Graph }
 
 export function get_elem_amounts(structure: AnyStructure) {
-  const elements: Partial<Record<ElementSymbol, number>> = {}
+  const elements: Partial<CompositionType> = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
       const { element: elem, occu } = species
@@ -125,21 +125,18 @@ export function alphabetical_formula(structure: AnyStructure): string {
 
 export function electro_neg_formula(structure: AnyStructure): string {
   // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
-  return format_chemical_formula(structure, (symbols) => {
-    return symbols.sort((el1, el2) => {
-      const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
-        0
-      const elec_neg2 = element_data.find((el) => el.symbol === el2)?.electronegativity ??
-        0
-
-      // Sort by electronegativity (ascending), then alphabetically for ties
-      if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
-      return el1.localeCompare(el2)
-    })
-  })
+  return format_chemical_formula(structure, (symbols) => (symbols.sort((el1, el2) => {
+    const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
+      0
+    const elec_neg2 = element_data.find((el) => el.symbol === el2)?.electronegativity ??
+      0
+    // Sort by electronegativity (ascending), then alphabetically for ties
+    if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
+    return el1.localeCompare(el2)
+  })))
 }
 
-export const atomic_radii: Partial<Record<ElementSymbol, number>> = Object.fromEntries(
+export const atomic_radii: Partial<CompositionType> = Object.fromEntries(
   element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
 )
 

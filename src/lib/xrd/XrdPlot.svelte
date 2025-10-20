@@ -2,7 +2,7 @@
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
-  import type { AxisConfig, BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
+  import type { AxisConfig, BarSeries, BarTooltipProps } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
@@ -31,7 +31,7 @@
     annotate_peaks = 5,
     hkl_format = `compact`,
     show_angles = null,
-    orientation = `vertical` as Orientation,
+    orientation = `vertical`,
     wavelength = null,
     x_axis = $bindable({ label: `2θ (degrees)` }),
     y_axis = $bindable({ label: `Intensity (a.u.)` }),

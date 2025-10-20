@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { CompositionType, ElementSymbol } from '$lib'
 import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure/index'
@@ -40,9 +40,9 @@ export type RadiationKey = keyof typeof WAVELENGTHS
 const TWO_THETA_TOL = 1e-5
 const SCALED_INTENSITY_TOL = 1e-3
 
-const ELEMENT_Z: Record<ElementSymbol, number> = Object.fromEntries(
+const ELEMENT_Z = Object.fromEntries(
   element_data.map((entry) => [entry.symbol as ElementSymbol, entry.number]),
-) as Record<ElementSymbol, number>
+) as CompositionType
 
 function get_unique_families(hkls: Hkl[]): Map<string, number> {
   // Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations

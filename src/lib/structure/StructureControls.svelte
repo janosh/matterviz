@@ -28,6 +28,7 @@
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
     structure = undefined,
+    supercell_loading = false,
     pane_props = $bindable({}),
     toggle_props = $bindable({}),
     ...rest
@@ -41,6 +42,7 @@
     background_opacity?: number
     color_scheme?: string
     structure?: AnyStructure
+    supercell_loading?: boolean
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
@@ -603,6 +605,8 @@
           bind:value={supercell_scaling}
           placeholder="1x1x1"
           style:border={supercell_input_valid ? undefined : `1px dashed red`}
+          style:opacity={supercell_loading ? 0.5 : 1}
+          disabled={supercell_loading}
           inputmode="text"
           autocomplete="off"
           spellcheck="false"
@@ -613,6 +617,17 @@
           : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}
         />
       </label>
+      {#if supercell_loading}
+        <div
+          style="display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: var(--accent-color); margin-top: 4pt"
+        >
+          <span
+            class="spinner-icon"
+            style="display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite"
+          ></span>
+          <span>Generating supercell...</span>
+        </div>
+      {/if}
 
       {#if !supercell_input_valid}
         <div style="color: red; font-size: 0.8em; margin-top: 4pt">
@@ -815,5 +830,14 @@
     display: grid;
     gap: 0.3em;
     place-items: center;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

@@ -1255,9 +1255,9 @@ describe(`tensor conversion utilities`, () => {
       const voigt = math.to_voigt(tensor)
       const reconstructed = math.from_voigt(voigt)
 
-      if (tensor.some((row) => row.some((val) => isNaN(val)))) {
-        expect(voigt.some((val) => isNaN(val))).toBe(true)
-        expect(reconstructed.some((row) => row.some((val) => isNaN(val)))).toBe(true)
+      if (tensor.some((row) => row.some(isNaN))) {
+        expect(voigt.some(isNaN)).toBe(true)
+        expect(reconstructed.some((row) => row.some(isNaN))).toBe(true)
       } else if (tensor.some((row) => row.some((val) => !Number.isFinite(val)))) {
         expect(voigt.some((val) => !Number.isFinite(val))).toBe(true)
       } else {

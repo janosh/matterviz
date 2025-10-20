@@ -257,18 +257,17 @@
       : { ...default_padding, ...padding }
 
     // Only update if padding actually changed (prevents infinite loop)
-    if (
-      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
-      pad.r !== new_pad.r
-    ) pad = new_pad
+    if (JSON.stringify(pad) !== JSON.stringify(new_pad)) pad = new_pad
   })
 
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
-    x: pad.l,
-    y: pad.t,
-    width: Math.max(1, width - pad.l - pad.r),
-    height: Math.max(1, height - pad.t - pad.b),
+    x: pad.l || 0,
+    y: pad.t || 0,
+    width: isFinite(width - pad.l - pad.r) ? Math.max(1, width - pad.l - pad.r) : 1,
+    height: isFinite(height - pad.t - pad.b)
+      ? Math.max(1, height - pad.t - pad.b)
+      : 1,
   })
 
   // Calculate plot area center coordinates
@@ -859,8 +858,10 @@
         next_x_range[0] !== next_x_range[1] &&
         next_y_range[0] !== next_y_range[1]
       ) {
-        zoom_x_range = next_x_range
-        zoom_y_range = next_y_range
+        // Update axis ranges to trigger reactivity (like BarPlot/Histogram do)
+        x_axis = { ...x_axis, range: next_x_range }
+        y_axis = { ...y_axis, range: next_y_range }
+        // Note: y2_range zoom not yet implemented for scatter
       }
     }
 
@@ -874,14 +875,22 @@
   }
 
   function handle_mouse_down(evt: MouseEvent) {
-    const coords = get_relative_coords(evt)
-    if (!coords || !svg_element) return
+    if (!svg_element) return
+
+    // Store bounding box first, then calculate coords using it
+    svg_bounding_box = svg_element.getBoundingClientRect()
+
+    // Calculate initial coords using the same bounding box that will be used during drag
+    const initial_x = evt.clientX - svg_bounding_box.left
+    const initial_y = evt.clientY - svg_bounding_box.top
+    const coords = { x: initial_x, y: initial_y }
+
     drag_start_coords = coords
     drag_current_coords = coords
-    svg_bounding_box = svg_element.getBoundingClientRect()
 
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
+    document.body.style.cursor = `crosshair`
     evt.preventDefault()
   }
 
@@ -892,27 +901,14 @@
   }
 
   function handle_double_click() {
-    // Reset zoom to auto ranges
-    zoom_x_range = [
-      x_axis.range?.[0] ?? auto_x_range[0],
-      x_axis.range?.[1] ?? auto_x_range[1],
-    ]
-    zoom_y_range = [
-      y_axis.range?.[0] ?? auto_y_range[0],
-      y_axis.range?.[1] ?? auto_y_range[1],
-    ]
-    zoom_y2_range = [
-      y2_axis.range?.[0] ?? auto_y2_range[0],
-      y2_axis.range?.[1] ?? auto_y2_range[1],
-    ]
+    // Reset zoom to auto ranges (clear axis range to use auto-calculated ranges)
+    x_axis = { ...x_axis, range: undefined }
+    y_axis = { ...y_axis, range: undefined }
+    y2_axis = { ...y2_axis, range: undefined }
   }
 
   // tooltip logic: find closest point and update tooltip state
-  function update_tooltip_point(
-    x_rel: number,
-    y_rel: number,
-    evt?: MouseEvent,
-  ): void {
+  function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
     let closest_point_internal: InternalPoint | null = null
@@ -1043,7 +1039,7 @@
       .force(
         `link`,
         forceLink(links)
-          .id((d) => (d as { id: string }).id)
+          .id((data) => (data as { id: string }).id)
           .distance(actual_label_config.link_distance)
           .strength(actual_label_config.link_strength),
       )
@@ -1469,7 +1465,9 @@
       <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
 
       <!-- Zoom Selection Rectangle -->
-      {#if drag_start_coords && drag_current_coords}
+      {#if drag_start_coords && drag_current_coords && isFinite(drag_start_coords.x) &&
+        isFinite(drag_start_coords.y) && isFinite(drag_current_coords.x) &&
+        isFinite(drag_current_coords.y)}
         {@const x = Math.min(drag_start_coords.x, drag_current_coords.x)}
         {@const y = Math.min(drag_start_coords.y, drag_current_coords.y)}
         {@const rect_width = Math.abs(drag_start_coords.x - drag_current_coords.x)}
@@ -1717,20 +1715,23 @@
       y,
       (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
     )}
-      {@const label = point_label?.text ?? null}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
       {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-      <div
-        class="tooltip overlay"
-        style={`position: absolute; left: ${
-          cx + 5
-        }px; top: ${cy}px; background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color}); z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
-      >
+      {@const style = `position: absolute; left: ${cx + 5}px; top: ${cy}px;
+      background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color});
+      z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
+      <div class="tooltip overlay" {style}>
         {#if tooltip}
-          {@const tooltip_props = { x_formatted, y_formatted, color_value, label, series_idx }}
+          {@const tooltip_props = {
+        x_formatted,
+        y_formatted,
+        color_value,
+        label: hovered_series?.label ?? null,
+        series_idx,
+      }}
           {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
         {:else}
-          {label ?? `Point`} - x: {x_formatted}, y: {y_formatted}
+          {point_label?.text ?? `Point`} - x: {x_formatted}, y: {y_formatted}
         {/if}
       </div>
     {/if}

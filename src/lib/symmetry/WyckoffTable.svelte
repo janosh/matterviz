@@ -74,7 +74,7 @@
               {elem}
             </span>
           </td>
-          <td>({abc?.map((x) => format_fractional(x)).join(` , `) ?? `N/A`})</td>
+          <td>({abc?.map(format_fractional).join(` , `) ?? `N/A`})</td>
         </tr>
       {/each}
     </tbody>

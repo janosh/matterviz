@@ -63,7 +63,7 @@ export interface ElectronicDos {
   spin_polarized?: boolean
 }
 // Discriminated union for type-safe DOS handling
-export type Dos = PhononDos | ElectronicDos
+export type DosData = PhononDos | ElectronicDos
 
 // Line styling configuration
 export type LineKwargs =

@@ -230,7 +230,7 @@ test.describe(`Trajectory Component`, () => {
 
     // Check info pane is initially closed
     const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`).first()
-    await expect(info_pane).not.toBeVisible()
+    await expect(info_pane).toBeHidden()
   })
 
   test(`playback controls function properly`, async () => {
@@ -319,7 +319,7 @@ test.describe(`Trajectory Component`, () => {
     test(`controls can be hidden`, async ({ page }) => {
       await expect(
         page.locator(`#no-controls .trajectory-controls`),
-      ).not.toBeVisible()
+      ).toBeHidden()
     })
   })
 
@@ -444,7 +444,7 @@ test.describe(`Trajectory Component`, () => {
       if (await custom_controls.isVisible()) {
         await expect(
           custom_controls.locator(`.trajectory-controls .nav-section`),
-        ).not.toBeVisible()
+        ).toBeHidden()
         await expect(
           custom_controls.locator(`.trajectory-controls button`).first(),
         ).toBeVisible()
@@ -735,10 +735,10 @@ test.describe(`Trajectory Component`, () => {
         el.style.height = `600px`
       })
       // For equal dimensions, the component can choose either layout - just verify it has one
-      const has_layout_class = await trajectory.evaluate((el) => {
-        return el.classList.contains(`horizontal`) ||
-          el.classList.contains(`vertical`)
-      })
+      const has_layout_class = await trajectory.evaluate((el) =>
+        el.classList.contains(`horizontal`) ||
+        el.classList.contains(`vertical`)
+      )
       expect(has_layout_class).toBe(true)
     })
 
@@ -944,16 +944,14 @@ test.describe(`Trajectory Component`, () => {
 
     test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({ page }) => {
       // Helper function to get component dimensions
-      const get_dimensions = async (content_area: Locator) => {
-        return await content_area.evaluate((el: Element) => {
-          const structure = el.querySelector(`.structure`) as HTMLElement
-          const plot = el.querySelector(`.scatter`) as HTMLElement
-          return {
-            structure: structure?.getBoundingClientRect(),
-            plot: plot?.getBoundingClientRect(),
-          }
+      const get_dimensions = async (content_area: Locator) =>
+        await content_area.evaluate((el: Element) => {
+          const structure_node = el.querySelector(`.structure`) as HTMLElement
+          const plot_node = el.querySelector(`.scatter`) as HTMLElement
+          const structure = structure_node?.getBoundingClientRect()
+          const plot = plot_node?.getBoundingClientRect()
+          return { structure, plot }
         })
-      }
 
       // Helper function to check dimension ratios
       const check_ratios = (
@@ -1747,7 +1745,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Test closing
       await export_toggle.dispatchEvent(`click`)
       await page.waitForTimeout(500)
-      await expect(export_pane).not.toBeVisible()
+      await expect(export_pane).toBeHidden()
     })
 
     test(`video export settings can be configured`, async ({ page }) => {
@@ -1823,10 +1821,10 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       const webm_button = webm_section.locator(`button`)
 
       // Check if browser supports video export
-      const is_video_supported = await page.evaluate(() => {
-        return typeof MediaRecorder !== `undefined` &&
-          MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
-      })
+      const is_video_supported = await page.evaluate(() =>
+        typeof MediaRecorder !== `undefined` &&
+        MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+      )
 
       if (!is_video_supported) {
         // Skip the export test if not supported
@@ -1897,10 +1895,10 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         .locator(`input[type="number"]`).first().fill(`1`)
 
       // Check if browser supports video export
-      const is_video_supported = await page.evaluate(() => {
-        return typeof MediaRecorder !== `undefined` &&
-          MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
-      })
+      const is_video_supported = await page.evaluate(() =>
+        typeof MediaRecorder !== `undefined` &&
+        MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+      )
 
       if (!is_video_supported) {
         console.log(`Skipping MP4 export test - WebM not supported in this browser`)
@@ -2092,7 +2090,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         })
       } catch {
         // If filename doesn't appear, check if loading completed
-        await expect(trajectory.locator(`.spinner`)).not.toBeVisible({ timeout: 10000 })
+        await expect(trajectory.locator(`.spinner`)).toBeHidden({ timeout: 10000 })
       }
     })
 

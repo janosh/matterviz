@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DEFAULTS, type PymatgenStructure, Structure, StructureScene } from '$lib'
-  import mp1_struct from '$site/structures/mp-1.json'
+  import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import type { ComponentProps } from 'svelte'
 
   let controls_open = $state(false)

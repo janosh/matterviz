@@ -536,7 +536,7 @@ describe(`apply_symmetry_operations`, () => {
       rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1],
       translation: [0, 0, 0],
     },
-  } as const
+  }
 
   test.each([
     [

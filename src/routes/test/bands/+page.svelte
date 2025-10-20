@@ -70,36 +70,89 @@
       [3.2, 4.5, 5.8],
     ],
   }
+
+  // Band structure with discontinuities (consecutive labeled points = k-space jumps)
+  const bs_with_discontinuity: BaseBandStructure = {
+    ...mock_band_structure,
+    qpoints: [
+      { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
+      { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },
+      { label: `X`, frac_coords: [0.5, 0.0, 0.0], distance: 1.0 },
+      { label: `U`, frac_coords: [0.625, 0.25, 0.625], distance: 1.05 },
+      { label: `K`, frac_coords: [0.375, 0.375, 0.75], distance: 1.1 },
+      { label: null, frac_coords: [0.25, 0.25, 0.5], distance: 1.6 },
+      { label: `L`, frac_coords: [0.5, 0.5, 0.5], distance: 2.0 },
+    ],
+    branches: [
+      { start_index: 0, end_index: 2, name: `GAMMA-X` },
+      { start_index: 3, end_index: 4, name: `U-K` }, // Discontinuity: consecutive labeled points
+      { start_index: 4, end_index: 6, name: `K-L` },
+    ],
+    labels_dict: {
+      GAMMA: [0.0, 0.0, 0.0],
+      X: [0.5, 0.0, 0.0],
+      U: [0.625, 0.25, 0.625],
+      K: [0.375, 0.375, 0.75],
+      L: [0.5, 0.5, 0.5],
+    },
+    distance: [0.0, 0.5, 1.0, 1.05, 1.1, 1.6, 2.0],
+    bands: [
+      [0.0, 1.0, 2.0, 3.0, 3.2, 3.8, 4.5],
+      [1.0, 2.0, 3.0, 4.0, 4.2, 4.8, 5.5],
+      [2.0, 3.0, 4.0, 5.0, 5.2, 5.8, 6.5],
+      [3.0, 4.0, 5.0, 6.0, 6.2, 6.8, 7.5],
+    ],
+  }
 </script>
 
 <h1>Bands Component Test Page</h1>
 
 <h2 id="single-bands">Single Band Structure</h2>
-<Bands band_structs={mock_band_structure} />
+<Bands band_structs={mock_band_structure} data-testid="single-bands-plot" />
 
 <h2 id="multiple-bands">Multiple Band Structures</h2>
-<Bands band_structs={{ BS1: mock_band_structure, BS2: bs2 }} />
+<Bands
+  band_structs={{ BS1: mock_band_structure, BS2: bs2 }}
+  data-testid="multiple-bands-plot"
+/>
 
 <h2 id="custom-styling">Custom Line Styling</h2>
 <Bands
   band_structs={mock_band_structure}
   line_kwargs={{ acoustic: { stroke: `red` }, optical: { stroke: `blue` } }}
+  data-testid="custom-styling-plot"
 />
 
 <h2 id="union-path">Union Path Mode</h2>
-<Bands band_structs={mock_band_structure} path_mode="union" />
+<Bands
+  band_structs={mock_band_structure}
+  path_mode="union"
+  data-testid="union-path-plot"
+/>
 
 <h2 id="intersection-path">Intersection Path Mode</h2>
-<Bands band_structs={mock_band_structure} path_mode="intersection" />
+<Bands
+  band_structs={mock_band_structure}
+  path_mode="intersection"
+  data-testid="intersection-path-plot"
+/>
 
 <h2 id="no-legend">No Legend</h2>
-<Bands band_structs={{ BS1: mock_band_structure, BS2: bs2 }} show_legend={false} />
+<Bands
+  band_structs={{ BS1: mock_band_structure, BS2: bs2 }}
+  show_legend={false}
+  data-testid="no-legend-plot"
+/>
 
 <h2 id="union-non-canonical">Union Mode with Non-Canonical Segments</h2>
 <Bands
   band_structs={{ canonical: mock_band_structure, alt_path: bs_alt_path }}
   path_mode="union"
+  data-testid="union-non-canonical-plot"
 />
+
+<h2 id="discontinuity">Band Structure with Discontinuities</h2>
+<Bands band_structs={bs_with_discontinuity} data-testid="discontinuity-plot" />
 
 <style>
   h1 {

@@ -1,6 +1,7 @@
 // Helper utilities for band structure and DOS data processing
 import { subscript_map } from '$lib/labels'
-import type { BaseBandStructure, Dos, FrequencyUnit, NormalizationMode } from './types'
+import type { Vec3 } from '../math'
+import type * as types from './types'
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s
@@ -46,7 +47,7 @@ export const get_segment_key = (start_label?: string, end_label?: string) =>
 
 // Get ordered segment keys from a band structure, preserving physical path order.
 export const get_ordered_segments = (
-  band_struct: BaseBandStructure | null,
+  band_struct: types.BaseBandStructure | null,
   segments: Set<string>,
 ) => {
   if (!band_struct) return Array.from(segments)
@@ -63,7 +64,7 @@ export const get_ordered_segments = (
 
 // Extract tick positions and labels for a band structure plot.
 export function get_band_xaxis_ticks(
-  band_struct: BaseBandStructure,
+  band_struct: types.BaseBandStructure,
   branches: string[] | Set<string> = [],
 ): [number[], string[]] {
   const ticks_x_pos: number[] = []
@@ -107,9 +108,9 @@ export function get_band_xaxis_ticks(
 // Convert frequencies from THz to specified units.
 export function convert_frequencies(
   frequencies: number[],
-  unit: FrequencyUnit = `THz`,
+  unit: types.FrequencyUnit = `THz`,
 ): number[] {
-  const conversion_factors: Record<FrequencyUnit, number> = {
+  const conversion_factors: Record<types.FrequencyUnit, number> = {
     'THz': 1,
     'eV': THz_TO_EV,
     'meV': THz_TO_MEV,
@@ -123,14 +124,14 @@ export function convert_frequencies(
     throw new Error(`Invalid unit: ${unit}. Must be one of ${valid_units}`)
   }
 
-  return frequencies.map((f) => f * factor)
+  return frequencies.map((freq) => freq * factor)
 }
 
 // Normalize DOS densities according to specified mode.
 export function normalize_densities(
   densities: number[],
   freqs_or_energies: number[],
-  mode: NormalizationMode,
+  mode: types.NormalizationMode,
 ): number[] {
   if (!mode) return densities
 
@@ -139,18 +140,18 @@ export function normalize_densities(
   if (mode === `max`) {
     const max_val = Math.max(...normalized)
     if (max_val === 0) return normalized
-    return normalized.map((d) => d / max_val)
+    return normalized.map((dens) => dens / max_val)
   } else if (mode === `sum`) {
     const sum = normalized.reduce((acc, d) => acc + d, 0)
     if (sum === 0) return normalized
-    return normalized.map((d) => d / sum)
+    return normalized.map((dens) => dens / sum)
   } else if (mode === `integral`) {
     if (freqs_or_energies.length < 2) return normalized
     const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
     if (bin_width === 0) return normalized
     const sum = normalized.reduce((acc, d) => acc + d, 0)
     if (sum === 0) return normalized
-    return normalized.map((d) => d / (sum * bin_width))
+    return normalized.map((dens) => dens / (sum * bin_width))
   }
 
   return normalized
@@ -189,15 +190,15 @@ export function apply_gaussian_smearing(
   const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
   if (smeared_sum === 0) return densities
   const normalization = orig_sum / smeared_sum
-  return smeared.map((d) => d * normalization)
+  return smeared.map((dens) => dens * normalization)
 }
 
 export function normalize_band_structure(
   bs: unknown,
-): BaseBandStructure | null {
+): types.BaseBandStructure | null {
   if (!bs || typeof bs !== `object`) return null
 
-  const band_struct = bs as Partial<BaseBandStructure>
+  const band_struct = bs as Partial<types.BaseBandStructure>
 
   // Check required fields exist and are arrays
   const { qpoints, branches, bands, distance } = band_struct
@@ -223,11 +224,11 @@ export function normalize_band_structure(
     )
   ) return null
 
-  return band_struct as BaseBandStructure
+  return band_struct as types.BaseBandStructure
 }
 
 // Validate and normalize a DOS object.
-export function normalize_dos(dos: unknown): Dos | null {
+export function normalize_dos(dos: unknown): types.DosData | null {
   if (!dos || typeof dos !== `object`) return null
 
   const { densities, frequencies, energies, spin_polarized } = dos as Partial<
@@ -254,4 +255,140 @@ export function normalize_dos(dos: unknown): Dos | null {
   }
 
   return null
+}
+
+// Extract k-path points from band structure and convert to reciprocal space coordinates
+// Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
+export function extract_k_path_points(
+  band_struct: types.BaseBandStructure,
+  recip_lattice_matrix: number[][],
+): Vec3[] {
+  if (!band_struct?.qpoints || !recip_lattice_matrix) return []
+
+  if (
+    recip_lattice_matrix.length !== 3 ||
+    recip_lattice_matrix.some((row) => row?.length !== 3)
+  ) throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
+
+  const [[a, b, c], [d, e, f], [g, h, i]] = recip_lattice_matrix
+
+  return band_struct.qpoints.map(({ frac_coords: [x, y, z] }) => [
+    x * a + y * d + z * g,
+    x * b + y * e + z * h,
+    x * c + y * f + z * i,
+  ])
+}
+
+// Find the q-point index closest to a given distance along the band structure path
+export function find_qpoint_at_distance(
+  band_struct: types.BaseBandStructure,
+  target: number,
+): number | null {
+  const { distance } = band_struct
+  if (!distance?.length) return null
+
+  return distance.reduce(
+    (closest: number, dist: number, idx: number) =>
+      Math.abs(dist - target) < Math.abs(distance[closest] - target) ? idx : closest,
+    0,
+  )
+}
+
+// Find q-point index from rescaled x-coordinate (used in band structure plots)
+// This handles the case where the plot uses custom x-axis scaling per segment
+export function find_qpoint_at_rescaled_x(
+  band_struct: types.BaseBandStructure,
+  rescaled_x: number,
+  x_positions: Record<string, [number, number]>,
+): number | null {
+  if (!band_struct?.branches?.length || !x_positions) return null
+
+  // Find which segment contains this x coordinate
+  for (const branch of band_struct.branches) {
+    const start_idx = branch.start_index
+    const end_idx = branch.end_index
+    const start_label = band_struct.qpoints[start_idx]?.label ?? undefined
+    const end_label = band_struct.qpoints[end_idx]?.label ?? undefined
+    const segment_key = get_segment_key(start_label, end_label)
+
+    const segment_range = x_positions[segment_key]
+    if (!segment_range) continue
+
+    const [x_start, x_end] = segment_range
+
+    // Check if discontinuity (zero-length segment)
+    const is_discontinuity = Math.abs(x_end - x_start) < 1e-6
+    if (is_discontinuity) {
+      // For discontinuities, check if x is exactly at this point
+      if (Math.abs(rescaled_x - x_start) < 1e-6) {
+        return start_idx
+      }
+      continue
+    }
+
+    // Check if x is within this segment (with small tolerance for edges)
+    if (rescaled_x >= x_start - 1e-6 && rescaled_x <= x_end + 1e-6) {
+      // Map from rescaled x back to original distance
+      const segment_distances = band_struct.distance.slice(start_idx, end_idx + 1)
+      const dist_min = segment_distances[0]
+      const dist_max = segment_distances[segment_distances.length - 1]
+      const dist_range = dist_max - dist_min
+
+      // Handle zero-length segments
+      if (dist_range === 0) {
+        return start_idx
+      }
+
+      // Inverse of the scaling: x = x_start + ((dist - dist_min) / dist_range) * (x_end - x_start)
+      // Solving for dist: dist = dist_min + ((x - x_start) / (x_end - x_start)) * dist_range
+      const normalized_x = (rescaled_x - x_start) / (x_end - x_start)
+      const target_dist = dist_min + normalized_x * dist_range
+
+      // Find closest qpoint in this branch to the target distance
+      let closest_idx = start_idx
+      let min_diff = Math.abs(band_struct.distance[start_idx] - target_dist)
+
+      for (let idx = start_idx; idx <= end_idx; idx++) {
+        const diff = Math.abs(band_struct.distance[idx] - target_dist)
+        if (diff < min_diff) {
+          min_diff = diff
+          closest_idx = idx
+        }
+      }
+
+      return closest_idx
+    }
+  }
+
+  // Fallback: find closest labeled point
+  let closest_idx = 0
+  let min_dist = Infinity
+
+  for (const branch of band_struct.branches) {
+    const start_idx = branch.start_index
+    const end_idx = branch.end_index
+    const start_label = band_struct.qpoints[start_idx]?.label ?? undefined
+    const end_label = band_struct.qpoints[end_idx]?.label ?? undefined
+    const segment_key = get_segment_key(start_label, end_label)
+    const segment_range = x_positions[segment_key]
+
+    if (!segment_range) continue
+
+    const [x_start, x_end] = segment_range
+
+    for (
+      const [x_pos, idx] of [
+        [x_start, start_idx],
+        [x_end, end_idx],
+      ] as const
+    ) {
+      const dist = Math.abs(rescaled_x - x_pos)
+      if (dist < min_dist) {
+        min_dist = dist
+        closest_idx = idx
+      }
+    }
+  }
+
+  return closest_idx
 }

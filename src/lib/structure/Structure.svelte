@@ -5,6 +5,7 @@
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
+  import type { PymatgenStructure } from '$lib/structure'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import { Canvas } from '@threlte/core'
@@ -267,13 +268,57 @@
 
   // Create supercell if needed
   let supercell_structure = $state(structure)
+  let supercell_loading = $state(false)
+
   $effect(() => {
-    if (!structure || !(`lattice` in structure)) supercell_structure = structure
-    else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
+    if (!structure || !(`lattice` in structure)) {
       supercell_structure = structure
+      supercell_loading = false
+    } else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
+      supercell_structure = structure
+      supercell_loading = false
     } else if (!is_valid_supercell_input(supercell_scaling)) {
       supercell_structure = structure
-    } else supercell_structure = make_supercell(structure, supercell_scaling)
+      supercell_loading = false
+    } else {
+      // For large supercells, show loading state and use async generation
+      const sites_count = structure.sites?.length || 0
+      const [nx_str, ny_str, nz_str] = supercell_scaling.split(/[x×]/)
+      const scaling_mult = (parseInt(nx_str) || 1) * (parseInt(ny_str) || 1) *
+        (parseInt(nz_str) || 1)
+      const estimated_sites = sites_count * scaling_mult
+
+      // Show spinner for supercells with >1000 estimated sites or scaling >8
+      const show_loading = estimated_sites > 1000 || scaling_mult > 8
+
+      if (show_loading) {
+        supercell_loading = true
+        // Use setTimeout to allow UI to update before heavy computation
+        setTimeout(() => {
+          try {
+            if (structure && `lattice` in structure) {
+              supercell_structure = make_supercell(
+                structure as PymatgenStructure,
+                supercell_scaling,
+              )
+            }
+          } catch (error) {
+            console.error(`Failed to create supercell:`, error)
+            supercell_structure = structure
+          } finally {
+            supercell_loading = false
+          }
+        }, 10)
+      } else {
+        if (structure && `lattice` in structure) {
+          supercell_structure = make_supercell(
+            structure as PymatgenStructure,
+            supercell_scaling,
+          )
+        }
+        supercell_loading = false
+      }
+    }
   })
 
   // Clear selections when transformations change site indices (skip first run to preserve parent-provided selections)
@@ -620,6 +665,7 @@
           bind:background_opacity
           bind:color_scheme
           {structure}
+          {supercell_loading}
         />
       {/if}
     </section>

@@ -1,10 +1,10 @@
-import type { ElementSymbol, Sides } from '$lib'
+import type { CompositionType, ElementSymbol, Sides } from '$lib'
 import type { Vec3 } from '$lib/math'
 
 // Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseEntry {
   // Core required fields
-  composition: Record<ElementSymbol, number>
+  composition: CompositionType
   energy: number
   entry_id?: string
 

@@ -181,13 +181,13 @@ export function get_trajectory_stats(
       return result
     })()
 
-    const counts = sampled.map((f) => f.structure.sites.length)
+    const counts = sampled.map((frame) => frame.structure.sites.length)
     const constant = counts.every((c) => c === counts[0])
     const all_counts = constant
       ? [first_frame.structure.sites.length]
-      : frames.map((f) => f.structure.sites.length)
+      : frames.map((frame) => frame.structure.sites.length)
 
-    stats.steps = frames.map((f) => f.step)
+    stats.steps = frames.map((frame) => frame.step)
     stats.step_range = [first_frame.step, last_frame.step]
     stats.constant_atom_count = constant
     if (constant) stats.total_atoms = first_frame.structure.sites.length

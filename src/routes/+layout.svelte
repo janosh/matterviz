@@ -2,8 +2,8 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { Icon, Nav } from '$lib'
-  import { element_data } from '$lib/element'
   import '$lib/app.css'
+  import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'
   import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
@@ -52,9 +52,7 @@
   const actions = routes
     .map(({ route }) => route)
     .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
-    .map((name) => {
-      return { label: name, action: () => goto(name) }
-    })
+    .map((name) => ({ label: name, action: () => goto(name) }))
 </script>
 
 <CmdPalette bind:open={cmd_palette_open} {actions} placeholder="Go to..." />

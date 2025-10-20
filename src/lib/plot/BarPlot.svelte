@@ -562,7 +562,9 @@
       aria-label="Interactive bar plot with zoom and tooltip"
     >
       <!-- Zoom rectangle -->
-      {#if drag_state.start && drag_state.current}
+      {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
+        isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
+        isFinite(drag_state.current.y)}
         {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
         {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
         {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}

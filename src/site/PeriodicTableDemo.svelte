@@ -51,7 +51,7 @@
   ] as [number, number])
 
   let density_range = $derived([
-    Math.min(...element_data.map((el) => el.density || 0).filter((d) => d > 0)),
+    Math.min(...element_data.map((el) => el.density || 0).filter((dens) => dens > 0)),
     Math.max(...element_data.map((el) => el.density || 0)),
   ] as [number, number])
 

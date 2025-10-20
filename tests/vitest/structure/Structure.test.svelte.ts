@@ -461,9 +461,8 @@ describe(`Structure component nested JSON handling`, () => {
 
   test(`structure validation logic works correctly`, () => {
     // Test the exact validation logic used in the component
-    const validate_structure = (structure: AnyStructure | null | undefined) => {
-      return Array.isArray(structure?.sites) && (structure?.sites?.length ?? 0) > 0
-    }
+    const validate_structure = (structure: AnyStructure | null | undefined) =>
+      Array.isArray(structure?.sites) && (structure?.sites?.length ?? 0) > 0
 
     expect(validate_structure(undefined)).toBe(false)
     expect(validate_structure(null)).toBe(false)
@@ -852,7 +851,7 @@ describe(`Structure string parsing`, () => {
           set structure(val) {
             parsed = val
           },
-          on_file_load: (data) => {
+          on_file_load: (data: StructureHandlerData) => {
             loaded = true
             expect(data.total_atoms).toBe(atoms)
             expect(data.filename).toBe(`string`)
@@ -948,7 +947,7 @@ describe(`Structure string parsing`, () => {
       props: {
         data_url: `/test.poscar`,
         structure_string: `ignored`,
-        on_file_load: (data) => filename = data.filename || ``,
+        on_file_load: (data: StructureHandlerData) => filename = data.filename || ``,
       },
     })
     await tick()

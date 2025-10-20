@@ -301,7 +301,7 @@ describe(`calculate_rdf`, () => {
       // Check basic RDF properties
       check_basic_rdf_properties(result.r, result.g_r, n_bins)
       expect(result.g_r.some((val) => val > 0)).toBe(true)
-      expect(result.g_r.every((val) => isFinite(val))).toBe(true)
+      expect(result.g_r.every(isFinite)).toBe(true)
 
       // Check no negative or NaN values
       expect(result.g_r.every((val) => val >= 0 && !Number.isNaN(val))).toBe(true)
@@ -402,7 +402,7 @@ describe(`calculate_all_pair_rdfs`, () => {
       const max_g_r = Math.max(...result.g_r)
       expect(max_g_r).toBeGreaterThan(0)
       expect(max_g_r).toBeLessThan(max_peak)
-      expect(result.g_r.every((val) => isFinite(val))).toBe(true)
+      expect(result.g_r.every(isFinite)).toBe(true)
 
       // First few bins should not have crazy values
       for (let idx = 0; idx < Math.min(10, n_bins); idx++) {

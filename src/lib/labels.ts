@@ -24,8 +24,7 @@ function name_for_symbol(sym: unknown): D3SymbolName | null {
 
 export const symbol_names = (
   [...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke])]
-    .map((sym) => name_for_symbol(sym))
-    .filter((n): n is D3SymbolName => n !== null)
+    .map(name_for_symbol).filter((n): n is D3SymbolName => n !== null)
 ) as D3SymbolName[]
 
 const symbols_index = d3_symbols as unknown as Record<string, SymbolType>

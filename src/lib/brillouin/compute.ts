@@ -44,7 +44,6 @@ const TOL = 1e-8
 class VertexDeduplicator {
   private grid = new Map<string, Vec3[]>()
   private cell_size: number
-
   constructor(cell_size: number) {
     this.cell_size = cell_size
   }
@@ -57,10 +56,10 @@ class VertexDeduplicator {
         for (let dz = -1; dz <= 1; dz++) {
           const neighbors = this.grid.get(`${base_x + dx},${base_y + dy},${base_z + dz}`)
           if (
-            neighbors?.some((v) =>
-              Math.abs(v[0] - vertex[0]) < TOL &&
-              Math.abs(v[1] - vertex[1]) < TOL &&
-              Math.abs(v[2] - vertex[2]) < TOL
+            neighbors?.some(([v1, v2, v3]) =>
+              Math.abs(v1 - vertex[0]) < TOL &&
+              Math.abs(v2 - vertex[1]) < TOL &&
+              Math.abs(v3 - vertex[2]) < TOL
             )
           ) return true
         }
@@ -70,7 +69,7 @@ class VertexDeduplicator {
   }
 
   add(vertex: Vec3): void {
-    const key = vertex.map((v) => Math.floor(v / this.cell_size)).join(`,`)
+    const key = vertex.map((vert) => Math.floor(vert / this.cell_size)).join(`,`)
     const cell = this.grid.get(key)
     if (cell) cell.push(vertex)
     else this.grid.set(key, [vertex])
@@ -167,7 +166,7 @@ export function compute_convex_hull(
     throw new Error(`Need ≥4 vertices for convex hull, got ${vertices.length}`)
   }
 
-  const geometry = new ConvexGeometry(vertices.map((v) => new Vector3(...v)))
+  const geometry = new ConvexGeometry(vertices.map((cert) => new Vector3(...cert)))
   const pos = geometry.getAttribute(`position`)
   const idx = geometry.index
 

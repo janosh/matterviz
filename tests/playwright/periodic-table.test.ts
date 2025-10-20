@@ -149,7 +149,7 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toBeVisible()
 
       await clear_tooltip(page)
-      await expect(tooltip).not.toBeVisible()
+      await expect(tooltip).toBeHidden()
     })
 
     // Streamlined content tests using shared data

@@ -606,8 +606,8 @@ const extract_cif_cell_parameters = (
   text: string,
   type: string,
   strict = true,
-): number[] => {
-  return text
+): number[] =>
+  text
     .split(`\n`)
     .filter((line) => line.startsWith(`_${type}`))
     .map((line) => {
@@ -624,7 +624,6 @@ const extract_cif_cell_parameters = (
       return value
     })
     .filter((v): v is number => v !== null)
-}
 
 // build header index mapping for atom site data (supports fract and Cartn coordinates)
 const build_cif_atom_site_header_indices = (

@@ -75,15 +75,13 @@ test.describe(`Trajectory Performance Tests`, () => {
     const start_time = Date.now()
 
     // Wait for trajectory to complete using custom event
-    await page.evaluate(() => {
-      return new Promise<void>((resolve) => {
-        const handler = () => {
-          globalThis.removeEventListener(`trajectory-complete`, handler)
-          resolve()
-        }
-        globalThis.addEventListener(`trajectory-complete`, handler, { once: true })
-      })
-    })
+    await page.evaluate(() => (new Promise<void>((resolve) => {
+      const handler = () => {
+        globalThis.removeEventListener(`trajectory-complete`, handler)
+        resolve()
+      }
+      globalThis.addEventListener(`trajectory-complete`, handler, { once: true })
+    })))
 
     const end_time = Date.now()
 
