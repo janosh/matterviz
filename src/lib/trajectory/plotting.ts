@@ -413,10 +413,10 @@ export function should_hide_plot(
     if (srs.y.length <= 1) return true
 
     // Check if all values are NaN
-    if (srs.y.every((value) => isNaN(value))) return true
+    if (srs.y.every(isNaN)) return true
 
     // Check if values are constant (ignoring NaN values)
-    const valid_values = srs.y.filter((value) => !isNaN(value))
+    const valid_values = srs.y.filter((val) => !isNaN(val))
     if (valid_values.length <= 1) return true
 
     const first_valid = valid_values[0]

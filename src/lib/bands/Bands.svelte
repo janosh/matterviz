@@ -10,15 +10,18 @@
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import type { ComponentProps } from 'svelte'
+  import { SvelteMap } from 'svelte/reactivity'
 
   let {
     band_structs,
     line_kwargs = {},
-    path_mode = `strict` as PathMode,
+    path_mode = `strict`,
     band_type = undefined,
     show_legend = true,
     x_axis = {},
     y_axis = {},
+    x_positions = $bindable(undefined),
+    reference_frequency = null,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -28,76 +31,66 @@
     path_mode?: PathMode
     band_type?: BandStructureType
     show_legend?: boolean
+    x_positions?: Record<string, [number, number]>
+    reference_frequency?: number | null
   } = $props()
 
   // Helper function to get line styling for a band
   function get_line_style(
     color: string,
     is_acoustic: boolean,
-    mode_type: string,
+    mode_type: `acoustic` | `optical`,
     frequencies: number[],
     band_idx: number,
   ): { stroke: string; stroke_width: number } {
-    let stroke = color
-    let stroke_width = is_acoustic ? 1.5 : 1
+    const defaults = { stroke: color, stroke_width: is_acoustic ? 1.5 : 1 }
 
     if (typeof line_kwargs === `function`) {
       const custom = line_kwargs(frequencies, band_idx)
       return {
-        stroke: (custom.stroke as string) ?? stroke,
-        stroke_width: (custom.stroke_width as number) ?? stroke_width,
+        stroke: (custom.stroke as string) ?? defaults.stroke,
+        stroke_width: (custom.stroke_width as number) ?? defaults.stroke_width,
       }
     }
 
     if (typeof line_kwargs === `object` && line_kwargs !== null) {
-      const lk = line_kwargs as Record<string, unknown>
-
-      // Check for mode-specific styling
-      if (`acoustic` in lk || `optical` in lk) {
-        const mode_kwargs = lk[mode_type] as Record<string, unknown> | undefined
-        if (mode_kwargs) {
-          stroke = (mode_kwargs.stroke as string) ?? stroke
-          stroke_width = (mode_kwargs.stroke_width as number) ?? stroke_width
-        }
-      } else {
-        // Global styling for all bands
-        stroke = (lk.stroke as string) ?? stroke
-        stroke_width = (lk.stroke_width as number) ?? stroke_width
+      const mode_kwargs = (line_kwargs as Record<string, unknown>)[mode_type] as
+        | Record<string, unknown>
+        | undefined
+      const source = (mode_kwargs ?? line_kwargs) as Record<string, unknown>
+      return {
+        stroke: (source.stroke as string) ?? defaults.stroke,
+        stroke_width: (source.stroke_width as number) ?? defaults.stroke_width,
       }
     }
 
-    return { stroke, stroke_width }
+    return defaults
   }
 
   // Normalize input to dict format
   let band_structs_dict = $derived.by(() => {
     if (!band_structs) return {}
 
-    const is_single_struct = `qpoints` in band_structs && `branches` in band_structs
-
-    if (is_single_struct) {
-      const normalized = helpers.normalize_band_structure(band_structs)
-      return normalized ? { default: normalized } : {}
-    }
-
-    // Normalize each structure in the dict
+    const is_single = `qpoints` in band_structs && `branches` in band_structs
     const result: Record<string, BaseBandStructure> = {}
-    for (
-      const [key, bs] of Object.entries(
-        band_structs as Record<string, BaseBandStructure>,
-      )
-    ) {
-      const normalized = helpers.normalize_band_structure(bs)
-      if (normalized) result[key] = normalized
+
+    if (is_single) {
+      const normalized = helpers.normalize_band_structure(band_structs)
+      if (normalized) result.default = normalized
+    } else {
+      for (const [key, bs] of Object.entries(band_structs)) {
+        const normalized = helpers.normalize_band_structure(bs)
+        if (normalized) result[key] = normalized
+      }
     }
     return result
   })
 
-  let detected_band_type = $derived.by((): BandStructureType => band_type ?? `phonon`)
+  let detected_band_type = $derived(band_type ?? `phonon`)
 
   // Determine which segments to plot based on path_mode
   let segments_to_plot = $derived.by(() => {
-    const all_segments: Record<string, Array<[string, BaseBandStructure]>> = {}
+    const all_segments: Record<string, [string, BaseBandStructure][]> = {}
 
     // Collect all segments from all structures
     for (const [label, bs] of Object.entries(band_structs_dict)) {
@@ -138,7 +131,7 @@
   })
 
   // Map segments to x-axis positions
-  let x_positions = $derived.by(() => {
+  $effect(() => {
     const positions: Record<string, [number, number]> = {}
     let current_x = 0
 
@@ -146,7 +139,8 @@
     const canonical = Object.values(band_structs_dict)[0]
     const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
-    for (const segment_key of ordered_segments) {
+    for (let seg_idx = 0; seg_idx < ordered_segments.length; seg_idx++) {
+      const segment_key = ordered_segments[seg_idx]
       if (positions[segment_key]) continue
 
       const [start_label, end_label] = segment_key.split(`_`)
@@ -160,16 +154,25 @@
         })
 
         if (matching_branch) {
-          const segment_len = bs.distance[matching_branch.end_index] -
-            bs.distance[matching_branch.start_index]
-          positions[segment_key] = [current_x, current_x + segment_len]
-          current_x += segment_len
+          // Check if this is a discontinuity: consecutive indices mean no path between points
+          const is_discontinuity =
+            matching_branch.end_index - matching_branch.start_index === 1
+
+          if (is_discontinuity) {
+            // Place at same x position as current, no advancement
+            positions[segment_key] = [current_x, current_x]
+          } else {
+            const segment_len = bs.distance[matching_branch.end_index] -
+              bs.distance[matching_branch.start_index]
+            positions[segment_key] = [current_x, current_x + segment_len]
+            current_x += segment_len
+          }
           break
         }
       }
     }
 
-    return positions
+    x_positions = positions
   })
 
   // Convert band structures to scatter plot series
@@ -193,7 +196,11 @@
 
         if (!segments_to_plot.has(segment_key)) continue
 
-        const [x_start, x_end] = x_positions[segment_key] || [0, 1]
+        // Skip discontinuous segments (consecutive labeled points)
+        const is_discontinuity = branch.end_index - branch.start_index === 1
+        if (is_discontinuity) continue
+
+        const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
 
         // Scale distances for this segment
         const segment_distances = bs.distance.slice(start_idx, end_idx)
@@ -202,7 +209,7 @@
         const scaled_distances = dist_range === 0
           ? segment_distances.map(() => (x_start + x_end) / 2)
           : segment_distances.map(
-            (d) => x_start + ((d - dist_min) / dist_range) * (x_end - x_start),
+            (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
           )
 
         // Create series for each band
@@ -226,6 +233,7 @@
             markers: `line`,
             label: structure_label,
             line_style,
+            metadata: { band_idx },
           })
         }
       }
@@ -235,62 +243,105 @@
   })
 
   // Get x-axis tick positions with custom labels for symmetry points
-  let x_axis_ticks = $derived.by((): Record<number, string> => {
-    const tick_labels: Record<number, string> = {}
+  let x_axis_ticks = $derived.by(() => {
+    const tick_map = new SvelteMap<number, string[]>()
 
-    const sorted_positions = Object.entries(x_positions).sort(
-      ([, [a]], [, [b]]) => a - b,
-    )
-
-    for (const [segment_key, [x_start, x_end]] of sorted_positions) {
-      const [start_label, end_label] = segment_key.split(`_`)
-
-      // Add start label if not already present
-      if (!(x_start in tick_labels)) {
-        const pretty_start = start_label !== `null`
-          ? helpers.pretty_sym_point(start_label)
+    Object.entries(x_positions ?? {})
+      .sort(([, [a]], [, [b]]) => a - b)
+      .forEach(([segment_key, [x_start, x_end]]) => {
+        const [start_lbl, end_lbl] = segment_key.split(`_`)
+        const pretty_start = start_lbl !== `null`
+          ? helpers.pretty_sym_point(start_lbl)
           : ``
-        if (pretty_start) tick_labels[x_start] = pretty_start
-      }
+        const pretty_end = end_lbl !== `null` ? helpers.pretty_sym_point(end_lbl) : ``
 
-      // Add end label
-      const pretty_end = end_label !== `null`
-        ? helpers.pretty_sym_point(end_label)
-        : ``
-      if (pretty_end) tick_labels[x_end] = pretty_end
-    }
+        // Check if this is a discontinuity (zero-length segment)
+        const is_discontinuity = Math.abs(x_end - x_start) < 1e-6
 
-    return tick_labels
+        if (is_discontinuity && pretty_start && pretty_end) {
+          // Combine labels at discontinuity points
+          if (!tick_map.has(x_start)) tick_map.set(x_start, [])
+          const labels = tick_map.get(x_start)!
+          if (!labels.includes(pretty_start)) labels.push(pretty_start)
+          if (!labels.includes(pretty_end)) labels.push(pretty_end)
+        } else {
+          // Normal segment with distinct start/end
+          if (pretty_start) {
+            if (!tick_map.has(x_start)) tick_map.set(x_start, [])
+            const labels = tick_map.get(x_start)!
+            if (!labels.includes(pretty_start)) labels.push(pretty_start)
+          }
+          if (pretty_end) {
+            if (!tick_map.has(x_end)) tick_map.set(x_end, [])
+            const labels = tick_map.get(x_end)!
+            if (!labels.includes(pretty_end)) labels.push(pretty_end)
+          }
+        }
+      })
+
+    // Merge labels at same position with pipe separator
+    return Object.fromEntries(
+      Array.from(tick_map.entries()).map(([pos, labels]) => [
+        pos,
+        labels.join(` | `),
+      ]),
+    )
   })
 
-  let x_range = $derived.by((): [number, number] => {
-    const all_x = Object.values(x_positions).flat().sort()
-    return [all_x.at(0) ?? 0, all_x.at(-1) ?? 1]
+  let x_range = $derived.by(() => {
+    const flat = Object.values(x_positions ?? {}).flat()
+    return [flat[0] ?? 0, flat.at(-1) ?? 1] as [number, number]
+  })
+  // Compute final x-axis configuration with default label
+  let final_x_axis = $derived({
+    label: `Wave Vector`,
+    ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
+    format: ``,
+    range: x_range,
+    ...x_axis,
+  })
+  let final_y_axis = $derived({
+    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
+    format: `.2f`,
+    label_shift: { y: 15 },
+    ...y_axis,
+  })
+  let display = $state({
+    x_grid: false,
+    y_grid: true,
+    y_zero_line: true,
   })
 </script>
 
 <ScatterPlot
   series={series_data}
-  x_axis={{
-    label: `Wave Vector`,
-    ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
-    format: ``,
-    range: x_range, // Explicitly set range to disable padding
-    ...x_axis,
-  }}
-  y_axis={{
-    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
-    format: `.2f`,
-    ...y_axis,
-  }}
-  display={{ x_grid: false, y_grid: true, y_zero_line: true }}
+  bind:x_axis={final_x_axis}
+  bind:y_axis={final_y_axis}
+  bind:display
   legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
+  hover_config={{ threshold_px: 50 }}
   {...rest}
 >
-  {#snippet user_content({ height, x_scale_fn, pad })}
-    <!-- Vertical lines at high-symmetry points -->
-    {@const tick_positions = Object.keys(x_axis_ticks).map(Number).sort((a, b) => a - b)}
-    {#each tick_positions as x_pos (x_pos)}
+  {#snippet tooltip({ x, y_formatted, label, metadata })}
+    {@const y_label_full = final_y_axis.label ?? ``}
+    {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
+      [, y_label_full, ``]}
+    {@const segment = Object.entries(x_positions ?? {}).find(([, [start, end]]) =>
+      x >= start && x <= end
+    )}
+    {@const path = segment?.[0].split(`_`).map((lbl) =>
+      lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``
+    ).filter(Boolean).join(` → `) || null}
+    {@const band_idx = metadata?.band_idx}
+    {@const num_structs = Object.keys(band_structs_dict).length}
+    {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
+    {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
+    {#if path}Path: {path}<br />{/if}
+    {#if typeof band_idx === `number`}Band: {band_idx + 1}{/if}
+  {/snippet}
+
+  {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
+    {#each Object.keys(x_axis_ticks).map(Number) as x_pos (x_pos)}
       <line
         x1={x_scale_fn(x_pos)}
         x2={x_scale_fn(x_pos)}
@@ -301,5 +352,19 @@
         opacity="var(--bands-symmetry-line-opacity, 0.5)"
       />
     {/each}
+    {#if reference_frequency !== null}
+      {@const y_pos = y_scale_fn(reference_frequency)}
+      {@const x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+      <line
+        x1={pad.l}
+        x2={x_end}
+        y1={y_pos}
+        y2={y_pos}
+        stroke="var(--bands-reference-line-color, light-dark(#d48860, #c47850))"
+        stroke-width="var(--bands-reference-line-width, 1)"
+        stroke-dasharray="var(--bands-reference-line-dash, 4,3)"
+        opacity="var(--bands-reference-line-opacity, 0.5)"
+      />
+    {/if}
   {/snippet}
 </ScatterPlot>

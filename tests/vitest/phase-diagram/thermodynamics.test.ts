@@ -453,13 +453,13 @@ describe(`edge cases and error handling`, () => {
 
   test(`compute_quickhull_triangles handles degenerate cases`, () => {
     // All points on a line
-    const colinear = [
+    const collinear = [
       { x: 0, y: 0, z: 0 },
       { x: 1, y: 0, z: 0 },
       { x: 2, y: 0, z: 0 },
       { x: 3, y: 0, z: 0 },
     ]
-    expect(compute_quickhull_triangles(colinear)).toEqual([])
+    expect(compute_quickhull_triangles(collinear)).toEqual([])
 
     // All points on a plane
     const coplanar = [

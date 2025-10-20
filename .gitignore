@@ -16,9 +16,8 @@ coverage
 # coverage and large test files
 test-results*
 src/site/trajectories/large
+src/site/phonons/*.json
 
 # vscode extension
 *.vsix
 !extensions/vscode/.vscode/
-
-src/site/phonons/*.json*

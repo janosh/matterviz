@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { CompositionType, ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/phase-diagram/helpers'
 import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
@@ -163,14 +163,14 @@ describe(`helpers: energy range preserves zero formation energy`, () => {
   test(`zero e_form_per_atom is not dropped in energy range`, () => {
     const entries: PhaseEntry[] = [
       {
-        composition: { A: 1 },
+        composition: { A: 1 } as unknown as CompositionType,
         energy: 0,
         energy_per_atom: -1, // differs from e_form_per_atom to ensure we pick 0 over -1
         e_form_per_atom: 0, // critical zero value
         e_above_hull: 0,
       },
       {
-        composition: { B: 1 },
+        composition: { B: 1 } as unknown as CompositionType,
         energy: -2,
         energy_per_atom: -2,
         e_form_per_atom: -2,

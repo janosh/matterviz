@@ -241,7 +241,7 @@
                   const force_magnitude = Math.hypot(...prop_value)
                   formatted_value = `${format_num(force_magnitude, `.3~f`)} eV/Å`
                   tooltip = `Force vector: (${
-                    prop_value.map((f) => format_num(f, `.3~f`)).join(`, `)
+                    prop_value.map((force) => format_num(force, `.3~f`)).join(`, `)
                   }) eV/Å`
                 } else if (prop_key === `magmom` || prop_key.includes(`magnet`)) {
                   const num_val = Number(prop_value)

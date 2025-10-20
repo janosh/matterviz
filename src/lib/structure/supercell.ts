@@ -20,7 +20,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
       }
       return [val, val, val] as Vec3
     } else if (parts.length === 3) {
-      const values = parts.map((val) => parseInt(val))
+      const values = parts.map((val) => parseInt(val, 10))
       if (values.some((val) => isNaN(val) || val <= 0)) {
         throw new Error(`Invalid supercell scaling: ${scaling}`)
       }
@@ -92,15 +92,21 @@ export function make_supercell(
 
   const scaling_factors = parse_supercell_scaling(scaling)
   const [nx, ny, nz] = scaling_factors
+  const det = nx * ny * nz
+
+  // Short circuit for 1x1x1 (no actual supercell needed)
+  if (nx === 1 && ny === 1 && nz === 1) {
+    return {
+      ...structure,
+      supercell_scaling: scaling_factors,
+    } as SupercellType
+  }
 
   // Create new scaled lattice
   const new_lattice_matrix = scale_lattice_matrix(
     structure.lattice.matrix,
     scaling_factors,
   )
-  const det = nx * ny * nz
-
-  // Calculate new lattice parameters efficiently
   const lattice_params = math.calc_lattice_params(new_lattice_matrix)
 
   const new_lattice = {
@@ -109,78 +115,59 @@ export function make_supercell(
     ...lattice_params,
   }
 
-  // Generate all lattice points in the supercell
-  const lattice_points = generate_lattice_points(scaling_factors)
+  // Pre-compute matrices (constant for all sites)
+  const orig_T = math.transpose_3x3_matrix(structure.lattice.matrix)
+  const new_T = math.transpose_3x3_matrix(new_lattice_matrix)
+  const new_T_inv = math.matrix_inverse_3x3(new_T)
 
-  // Create new sites by replicating each original site at all lattice points
   const new_sites: Site[] = []
 
-  for (const orig_site of structure.sites) {
-    for (const lattice_point of lattice_points) {
-      // Convert lattice point to cartesian coordinates using original lattice
-      // Use transpose of lattice matrix for proper coordinate conversion
-      const translation_cart = math.mat3x3_vec3_multiply(
-        math.transpose_3x3_matrix(structure.lattice.matrix),
-        lattice_point,
-      )
+  // Generate sites
+  for (let kk = 0; kk < nz; kk++) {
+    for (let jj = 0; jj < ny; jj++) {
+      for (let ii = 0; ii < nx; ii++) {
+        const translation = math.mat3x3_vec3_multiply(orig_T, [ii, jj, kk])
+        const label_suffix = det > 1 ? `_${ii}${jj}${kk}` : ``
 
-      // New cartesian position = original + translation
-      const new_xyz = math.add(orig_site.xyz, translation_cart) as Vec3
+        for (const site of structure.sites) {
+          // Translate to new position in Cartesian coordinates
+          const cart_pos = math.add(site.xyz, translation)
 
-      // Calculate new fractional coordinates in the supercell lattice
-      // Use transpose convention for coordinate conversion
-      let new_abc = math.mat3x3_vec3_multiply(
-        math.matrix_inverse_3x3(math.transpose_3x3_matrix(new_lattice_matrix)),
-        new_xyz,
-      ) as Vec3
+          // Convert to fractional coordinates in new lattice
+          let frac_pos = math.mat3x3_vec3_multiply(new_T_inv, cart_pos)
 
-      // Fold back to unit cell if requested
-      if (to_unit_cell) {
-        new_abc = new_abc.map((coord) => {
-          // Use modulo to wrap coordinates to [0, 1)
-          let wrapped = coord % 1
-          if (wrapped < 0) wrapped += 1
-          // Handle floating point precision: if wrapped value is very close to 1 or exactly 1 due to
-          // numerical errors, set to 0
-          if (wrapped >= 1 - 1e-10) wrapped = 0
-          return wrapped
-        }) as Vec3
+          // Wrap to unit cell if requested
+          if (to_unit_cell) {
+            frac_pos = frac_pos.map((coord) => {
+              let wrapped = coord % 1
+              if (wrapped < 0) wrapped += 1
+              if (wrapped >= 0.9999999999) wrapped = 0
+              return wrapped
+            }) as Vec3
+          }
+
+          // Convert back to Cartesian in new lattice
+          const final_pos = math.mat3x3_vec3_multiply(new_T, frac_pos)
+
+          new_sites.push({
+            species: site.species,
+            xyz: final_pos,
+            abc: frac_pos,
+            label: label_suffix ? `${site.label}${label_suffix}` : site.label,
+            properties: site.properties,
+          })
+        }
       }
-
-      // Recalculate cartesian coordinates from wrapped fractional coordinates
-      // to ensure consistency
-      const final_xyz = math.mat3x3_vec3_multiply(
-        math.transpose_3x3_matrix(new_lattice_matrix),
-        new_abc,
-      ) as Vec3
-
-      // Create new site
-      const new_site: Site = {
-        ...orig_site,
-        xyz: final_xyz,
-        abc: new_abc,
-        // Update label to indicate supercell position if it has numeric suffix
-        label: lattice_points.length > 1
-          ? `${orig_site.label}_${lattice_point.join(``)}`
-          : orig_site.label,
-      }
-
-      new_sites.push(new_site)
     }
   }
 
-  // Create new supercell structure
-  const supercell: SupercellType = {
+  return {
     ...structure,
     lattice: new_lattice,
     sites: new_sites,
-    // Scale charge if present
     charge: structure.charge ? structure.charge * det : structure.charge,
-    // Add metadata for supercell detection
     supercell_scaling: scaling_factors,
-  }
-
-  return supercell
+  } as SupercellType
 }
 
 // Validate supercell input string

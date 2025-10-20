@@ -187,7 +187,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test tooltip disappears when moving away
     await canvas.hover({ position: { x: 50, y: 50 } })
-    await expect(tooltip).not.toBeVisible({ timeout: 1000 })
+    await expect(tooltip).toBeHidden({ timeout: 1000 })
   })
 
   // Combined interaction tests
@@ -237,7 +237,7 @@ test.describe(`StructureScene Component Tests`, () => {
     try {
       await tooltip.waitFor({ state: `visible`, timeout: 500 })
       const distance_section = tooltip.locator(`.distance`)
-      await expect(distance_section).not.toBeVisible()
+      await expect(distance_section).toBeHidden()
     } catch {
       // Tooltip not appearing is also acceptable for deselection verification
     }

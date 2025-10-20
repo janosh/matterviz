@@ -21,8 +21,8 @@ export interface StreamingProgress {
 export const stream_file_to_buffer = (
   file_path: string,
   on_progress?: (progress: StreamingProgress) => void,
-): Promise<ArrayBuffer> => {
-  return new Promise((resolve, reject) => {
+): Promise<ArrayBuffer> =>
+  new Promise((resolve, reject) => {
     // Get file size and validate
     let total_size: number
     try {
@@ -75,4 +75,3 @@ export const stream_file_to_buffer = (
       reject(new Error(`File read timeout: ${file_path}`))
     }, 600_000)
   })
-}

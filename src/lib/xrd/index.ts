@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { CompositionType } from '$lib'
 import type { RadiationKey } from './calc-xrd'
 export * from './calc-xrd'
 export { default as XrdPlot } from './XrdPlot.svelte'
@@ -18,7 +18,7 @@ export type XrdPattern = {
 export type XrdOptions = {
   wavelength?: number | RadiationKey
   symprec?: number
-  debye_waller_factors?: Partial<Record<ElementSymbol, number>>
+  debye_waller_factors?: CompositionType
   scaled?: boolean
   // When null, treat as unbounded up to 2/λ (Bragg maximum); when omitted, default [0, 180]
   two_theta_range?: [number, number] | null
