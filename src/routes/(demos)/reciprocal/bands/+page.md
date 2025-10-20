@@ -38,11 +38,11 @@ Compare multiple band structures on the same plot with interactive controls:
     'DFT': band_struct,
     'Model A': {
       ...band_struct,
-      bands: band_struct.bands.map((band) => band.map((f) => f * 1.05)),
+      bands: band_struct.bands.map((band) => band.map((freq) => freq * 1.05)),
     },
     'Model B': {
       ...band_struct,
-      bands: band_struct.bands.map((band) => band.map((f) => f * 0.95)),
+      bands: band_struct.bands.map((band) => band.map((freq) => freq * 0.95)),
     },
   }
 </script>

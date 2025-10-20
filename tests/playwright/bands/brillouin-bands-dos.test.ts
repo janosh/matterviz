@@ -117,4 +117,180 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     expect(bands_y.some((tick) => dos_y.includes(tick))).toBe(true)
   })
+
+  test(`desktop layout: three columns side by side`, async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 800 })
+    await page.waitForTimeout(200)
+
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    const grid_template = await container
+      .locator(`.bands-dos-brillouin`)
+      .evaluate((el) => getComputedStyle(el).gridTemplateAreas)
+
+    // Desktop layout: bz bands dos
+    expect(grid_template).toContain(`bz`)
+    expect(grid_template).toContain(`bands`)
+    expect(grid_template).toContain(`dos`)
+
+    // All three components should be visible
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+    await expect(container.locator(`svg`).nth(0)).toBeVisible()
+    await expect(container.locator(`svg`).nth(1)).toBeVisible()
+  })
+
+  test(`tablet layout: bands on top, BZ and DOS below`, async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 700 })
+    await page.waitForTimeout(200)
+
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    const grid_template = await container
+      .locator(`.bands-dos-brillouin`)
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          areas: style.gridTemplateAreas,
+          columns: style.gridTemplateColumns,
+        }
+      })
+
+    // Tablet layout should have bands spanning top, bz and dos below
+    expect(grid_template.areas).toMatch(/bands.*bands/)
+    expect(grid_template.areas).toContain(`bz`)
+    expect(grid_template.areas).toContain(`dos`)
+
+    // Should have 2 columns
+    const column_count = grid_template.columns.split(` `).length
+    expect(column_count).toBe(2)
+  })
+
+  test(`phone layout: all stacked vertically`, async ({ page }) => {
+    await page.setViewportSize({ width: 500, height: 900 })
+    await page.waitForTimeout(200)
+
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    const grid_template = await container
+      .locator(`.bands-dos-brillouin`)
+      .evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          areas: style.gridTemplateAreas,
+          columns: style.gridTemplateColumns,
+        }
+      })
+
+    // Phone layout: vertical stack
+    const area_lines = grid_template.areas.split(`"`)
+    expect(area_lines.length).toBeGreaterThanOrEqual(3)
+
+    // Should have 1 column
+    expect(grid_template.columns).not.toContain(` `)
+
+    // All components still visible
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+    await expect(container.locator(`svg`).nth(0)).toBeVisible()
+    await expect(container.locator(`svg`).nth(1)).toBeVisible()
+  })
+
+  test(`DOS orientation changes with viewport`, async ({ page }) => {
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+
+    // Desktop: horizontal DOS
+    await page.setViewportSize({ width: 1400, height: 800 })
+    await page.waitForTimeout(200)
+    const dos_svg_wide = container.locator(`svg`).nth(1)
+    const dos_box_wide = await dos_svg_wide.boundingBox()
+    expect(dos_box_wide).toBeTruthy()
+    if (dos_box_wide) {
+      expect(dos_box_wide.width).toBeLessThan(dos_box_wide.height * 2)
+    }
+
+    // Tablet/Phone: vertical DOS (wider than tall)
+    await page.setViewportSize({ width: 800, height: 700 })
+    await page.waitForTimeout(200)
+    const dos_svg_narrow = container.locator(`svg`).nth(1)
+    const dos_box_narrow = await dos_svg_narrow.boundingBox()
+    expect(dos_box_narrow).toBeTruthy()
+    if (dos_box_narrow) {
+      expect(dos_box_narrow.width).toBeGreaterThan(dos_box_narrow.height * 0.5)
+    }
+  })
+
+  test(`BZ respects height constraints on tablet layout`, async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 700 })
+    await page.waitForTimeout(200)
+
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    const bz_canvas = container.locator(`canvas`).first()
+    const canvas_box = await bz_canvas.boundingBox()
+    const container_box = await container.boundingBox()
+
+    expect(canvas_box).toBeTruthy()
+    expect(container_box).toBeTruthy()
+
+    if (canvas_box && container_box) {
+      // BZ should not overflow container height
+      expect(canvas_box.height).toBeLessThanOrEqual(container_box.height / 2 + 50)
+    }
+  })
+
+  test(`grid gap is applied consistently`, async ({ page }) => {
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+
+    // Test desktop
+    await page.setViewportSize({ width: 1400, height: 700 })
+    await page.waitForTimeout(100)
+    const gap_desktop = await container
+      .locator(`.bands-dos-brillouin`)
+      .evaluate((el) => getComputedStyle(el).gap)
+    expect(gap_desktop).toBeTruthy()
+    expect(gap_desktop).not.toBe(`0px`)
+
+    // Test tablet
+    await page.setViewportSize({ width: 800, height: 700 })
+    await page.waitForTimeout(100)
+    const gap_tablet = await container
+      .locator(`.bands-dos-brillouin`)
+      .evaluate((el) => getComputedStyle(el).gap)
+    expect(gap_tablet).toBeTruthy()
+    expect(gap_tablet).not.toBe(`0px`)
+
+    // Test phone
+    await page.setViewportSize({ width: 500, height: 700 })
+    await page.waitForTimeout(100)
+    const gap_phone = await container
+      .locator(`.bands-dos-brillouin`)
+      .evaluate((el) => getComputedStyle(el).gap)
+    expect(gap_phone).toBeTruthy()
+    expect(gap_phone).not.toBe(`0px`)
+  })
+
+  test(`responsive layout preserves interaction`, async ({ page }) => {
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+
+    // Test at tablet size
+    await page.setViewportSize({ width: 800, height: 700 })
+    await page.waitForTimeout(200)
+
+    const bz_canvas = container.locator(`canvas`).first()
+    const bands_svg = container.locator(`svg`).nth(0)
+
+    // BZ should still rotate
+    const initial = await bz_canvas.screenshot()
+    const box = await bz_canvas.boundingBox()
+    if (box) {
+      await page.mouse.move(box.x + 50, box.y + 50)
+      await page.mouse.down()
+      await page.mouse.move(box.x + 100, box.y + 50)
+      await page.mouse.up()
+      await page.waitForTimeout(200)
+    }
+    expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
+
+    // Bands should still be hoverable
+    await bands_svg.locator(`path[fill="none"]`).first().hover({
+      position: { x: 50, y: 50 },
+    })
+    await page.waitForTimeout(100)
+    await expect(bands_svg).toBeVisible()
+  })
 })

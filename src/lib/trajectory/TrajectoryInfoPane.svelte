@@ -54,7 +54,7 @@
     typeof val === `number` && isFinite(val)
 
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
-    frames.map((f) => f.metadata?.[prop]).filter(is_valid_number)
+    frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
 
   const format_range = (values: number[], unit = ``, decimals = `.2~f`) => {
     if (!values.length) return null
@@ -268,8 +268,9 @@
         ? current_frame.structure.lattice
         : null
       if (lattice) {
-        const volumes = trajectory.frames
-          .map((f) => (`lattice` in f.structure && f.structure.lattice?.volume))
+        const volumes = trajectory.frames.map((
+          { structure },
+        ) => (`lattice` in structure && structure.lattice?.volume))
           .filter(is_valid_number)
           .filter((v) => v > 0)
 

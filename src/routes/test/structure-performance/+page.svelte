@@ -94,13 +94,7 @@
       }
     }
 
-    return {
-      '@module': `pymatgen.core.structure`,
-      '@class': `Structure`,
-      lattice,
-      sites,
-      charge: 0,
-    } as PymatgenStructure
+    return { lattice, sites, charge: 0 } as PymatgenStructure
   }
 
   async function generate_structure_async(count: number): Promise<void> {

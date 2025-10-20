@@ -52,16 +52,13 @@ Compare multiple band structures and DOS with custom column widths:
     'DFT': bands_single,
     'Model': {
       ...bands_single,
-      bands: bands_single.bands.map((band) => band.map((f) => f * 1.05)),
+      bands: bands_single.bands.map((band) => band.map((freq) => freq * 1.05)),
     },
   }
 
   const doses = {
     'DFT': dos,
-    'Model': {
-      ...dos,
-      densities: dos.densities.map((d) => d * 1.1),
-    },
+    'Model': { ...dos, densities: dos.densities.map((dens) => dens * 1.1) },
   }
 </script>
 

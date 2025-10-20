@@ -118,7 +118,7 @@ test.describe(`RdfPlot Component Tests`, () => {
 
     // Y-axis values are non-negative
     const y_ticks = await plot.locator(`g.y-axis .tick text`).allTextContents()
-    const y_values = y_ticks.map((text) => parseFloat(text)).filter((val) => !isNaN(val))
+    const y_values = y_ticks.map(parseFloat).filter((val) => !isNaN(val))
 
     for (const val of y_values) {
       expect(val).toBeGreaterThanOrEqual(0)

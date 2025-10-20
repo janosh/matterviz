@@ -17,7 +17,6 @@
   import { SvelteMap } from 'svelte/reactivity'
 
   const MAX_SPACEGROUP = 230
-
   let {
     data,
     show_counts = true,
@@ -32,9 +31,7 @@
 
   // Normalize input data to space group numbers
   const normalized_data = $derived(
-    data.map((sg) => normalize_spacegroup(sg)).filter((sg): sg is number =>
-      sg !== null
-    ),
+    data.map(normalize_spacegroup).filter((sg): sg is number => sg !== null),
   )
 
   // Compute histogram of space group numbers

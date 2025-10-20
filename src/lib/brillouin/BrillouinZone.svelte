@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import type { Vec3 } from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { PymatgenStructure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -93,7 +94,7 @@
       loading?: boolean
       error_msg?: string
       structure_string?: string
-      k_path_points?: Array<[number, number, number]>
+      k_path_points?: Vec3[]
       k_path_labels?: Array<
         { position: [number, number, number]; label: string | null }
       >

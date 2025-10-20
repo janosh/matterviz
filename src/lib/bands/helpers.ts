@@ -1,5 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { subscript_map } from '$lib/labels'
+import { Vec3 } from '../math'
 import type * as types from './types'
 
 // Physical constants for unit conversions (SI units)
@@ -123,7 +124,7 @@ export function convert_frequencies(
     throw new Error(`Invalid unit: ${unit}. Must be one of ${valid_units}`)
   }
 
-  return frequencies.map((f) => f * factor)
+  return frequencies.map((freq) => freq * factor)
 }
 
 // Normalize DOS densities according to specified mode.
@@ -139,18 +140,18 @@ export function normalize_densities(
   if (mode === `max`) {
     const max_val = Math.max(...normalized)
     if (max_val === 0) return normalized
-    return normalized.map((d) => d / max_val)
+    return normalized.map((dens) => dens / max_val)
   } else if (mode === `sum`) {
     const sum = normalized.reduce((acc, d) => acc + d, 0)
     if (sum === 0) return normalized
-    return normalized.map((d) => d / sum)
+    return normalized.map((dens) => dens / sum)
   } else if (mode === `integral`) {
     if (freqs_or_energies.length < 2) return normalized
     const bin_width = freqs_or_energies[1] - freqs_or_energies[0]
     if (bin_width === 0) return normalized
     const sum = normalized.reduce((acc, d) => acc + d, 0)
     if (sum === 0) return normalized
-    return normalized.map((d) => d / (sum * bin_width))
+    return normalized.map((dens) => dens / (sum * bin_width))
   }
 
   return normalized
@@ -189,7 +190,7 @@ export function apply_gaussian_smearing(
   const smeared_sum = smeared.reduce((acc, d) => acc + d, 0)
   if (smeared_sum === 0) return densities
   const normalization = orig_sum / smeared_sum
-  return smeared.map((d) => d * normalization)
+  return smeared.map((dens) => dens * normalization)
 }
 
 export function normalize_band_structure(
@@ -260,19 +261,22 @@ export function normalize_dos(dos: unknown): types.DosData | null {
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
-  reciprocal_lattice_matrix: number[][],
-): Array<[number, number, number]> {
-  if (!band_struct?.qpoints || !reciprocal_lattice_matrix) return []
+  recip_lattice_matrix: number[][],
+): Vec3[] {
+  if (!band_struct?.qpoints || !recip_lattice_matrix) return []
 
-  const [[a, b, c], [d, e, f], [g, h, i]] = reciprocal_lattice_matrix
+  if (
+    recip_lattice_matrix.length !== 3 ||
+    recip_lattice_matrix.some((row) => row?.length !== 3)
+  ) throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
 
-  return band_struct.qpoints.map(({ frac_coords: [x, y, z] }) =>
-    [
-      x * a + y * d + z * g,
-      x * b + y * e + z * h,
-      x * c + y * f + z * i,
-    ] as [number, number, number]
-  )
+  const [[a, b, c], [d, e, f], [g, h, i]] = recip_lattice_matrix
+
+  return band_struct.qpoints.map(({ frac_coords: [x, y, z] }) => [
+    x * a + y * d + z * g,
+    x * b + y * e + z * h,
+    x * c + y * f + z * i,
+  ])
 }
 
 // Find the q-point index closest to a given distance along the band structure path

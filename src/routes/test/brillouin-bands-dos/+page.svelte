@@ -179,12 +179,17 @@
       'DFT': mock_band_structure,
       'Model': {
         ...mock_band_structure,
-        bands: mock_band_structure.bands.map((band) => band.map((f) => f * 1.1)),
+        bands: mock_band_structure.bands.map((band) =>
+          band.map((freq) => freq * 1.1)
+        ),
       },
     }}
     doses={{
       'DFT': mock_dos,
-      'Model': { ...mock_dos, densities: mock_dos.densities.map((d) => d * 1.2) },
+      'Model': {
+        ...mock_dos,
+        densities: mock_dos.densities.map((dens) => dens * 1.2),
+      },
     }}
   />
 </div>

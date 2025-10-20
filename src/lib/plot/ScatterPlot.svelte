@@ -1043,7 +1043,7 @@
       .force(
         `link`,
         forceLink(links)
-          .id((d) => (d as { id: string }).id)
+          .id((data) => (data as { id: string }).id)
           .distance(actual_label_config.link_distance)
           .strength(actual_label_config.link_strength),
       )

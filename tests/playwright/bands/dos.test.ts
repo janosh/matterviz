@@ -42,9 +42,7 @@ test.describe(`DOS Component Tests`, () => {
     const max_plot = page.locator(`#max-normalization + .scatter`)
     await expect(max_plot.locator(`path[fill="none"]`).first()).toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
-    const max_val = Math.max(
-      ...y_ticks.map((t) => parseFloat(t)).filter((n) => !isNaN(n)),
-    )
+    const max_val = Math.max(...y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
     expect(max_val).toBeLessThanOrEqual(1.1) // Allow small margin for tick rounding
 
     // Sum normalization should render and integrate to ~1

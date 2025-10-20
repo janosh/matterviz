@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib'
   import { axis_colors, neg_axis_colors } from '$lib'
+  import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { Arrow, Cylinder } from '$lib/structure'
@@ -62,7 +62,7 @@
     camera_is_moving?: boolean
     scene?: Scene
     camera?: Camera
-    k_path_points?: Array<[number, number, number]>
+    k_path_points?: Vec3[]
     k_path_labels?: Array<
       { position: [number, number, number]; label: string | null }
     >
@@ -83,9 +83,7 @@
   // BZ size for camera positioning: average magnitude of k-vectors
   const bz_size = $derived.by(() => {
     if (!bz_data?.k_lattice) return 10
-    const mags = bz_data.k_lattice.map((v) =>
-      Math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-    )
+    const mags = bz_data.k_lattice.map((vec) => Math.hypot(...vec))
     return mags.reduce((sum, mag) => sum + mag, 0) / 3
   })
 
@@ -216,7 +214,7 @@
     {/if}
 
     <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment (edge_segment.map((v) => v.join(`,`)).join(`-`))}
+    {#each bz_data.edges as edge_segment (JSON.stringify(edge_segment))}
       {@const [from, to] = edge_segment}
       <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
     {/each}

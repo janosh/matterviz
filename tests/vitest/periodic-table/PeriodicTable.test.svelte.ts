@@ -383,10 +383,7 @@ describe(`PeriodicTable`, () => {
       ({ values, segments }) => {
         mount(PeriodicTable, {
           target: document.body,
-          props: {
-            heatmap_values: values as never,
-            tile_props: { show_name: false },
-          },
+          props: { heatmap_values: values as never, tile_props: { show_name: false } },
         })
 
         // Verify all expected segments are present

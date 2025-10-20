@@ -852,7 +852,7 @@ describe(`Structure string parsing`, () => {
           set structure(val) {
             parsed = val
           },
-          on_file_load: (data) => {
+          on_file_load: (data: StructureHandlerData) => {
             loaded = true
             expect(data.total_atoms).toBe(atoms)
             expect(data.filename).toBe(`string`)
@@ -948,7 +948,7 @@ describe(`Structure string parsing`, () => {
       props: {
         data_url: `/test.poscar`,
         structure_string: `ignored`,
-        on_file_load: (data) => filename = data.filename || ``,
+        on_file_load: (data: StructureHandlerData) => filename = data.filename || ``,
       },
     })
     await tick()

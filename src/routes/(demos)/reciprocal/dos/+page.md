@@ -29,8 +29,8 @@ Compare multiple DOS curves with interactive unit conversion:
   // Create multiple versions for demo
   const doses = {
     'Total': dos,
-    'Partial A': { ...dos, densities: dos.densities.map((d) => d * 0.6) },
-    'Partial B': { ...dos, densities: dos.densities.map((d) => d * 0.4) },
+    'Partial A': { ...dos, densities: dos.densities.map((dens) => dens * 0.6) },
+    'Partial B': { ...dos, densities: dos.densities.map((dens) => dens * 0.4) },
   }
 
   let selected_unit = $state('THz')

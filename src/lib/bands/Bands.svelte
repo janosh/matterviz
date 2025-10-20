@@ -86,7 +86,7 @@
 
   // Determine which segments to plot based on path_mode
   let segments_to_plot = $derived.by(() => {
-    const all_segments: Record<string, Array<[string, BaseBandStructure]>> = {}
+    const all_segments: Record<string, [string, BaseBandStructure][]> = {}
 
     // Collect all segments from all structures
     for (const [label, bs] of Object.entries(band_structs_dict)) {
@@ -205,7 +205,7 @@
         const scaled_distances = dist_range === 0
           ? segment_distances.map(() => (x_start + x_end) / 2)
           : segment_distances.map(
-            (d) => x_start + ((d - dist_min) / dist_range) * (x_end - x_start),
+            (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
           )
 
         // Create series for each band

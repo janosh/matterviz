@@ -57,17 +57,11 @@
       ? (k_path_points[hovered_qpoint_index] as Vec3)
       : null,
   )
-
-  // Track screen width for responsive DOS orientation
-  let clientWidth = $state(0)
+  const desktop_width = 1200
+  let clientWidth = $state(desktop_width)
 </script>
 
-<div
-  {...rest}
-  class="bands-dos-brillouin {rest.class ?? ``}"
-  style={rest.style}
-  bind:clientWidth
->
+<div {...rest} class="bands-dos-brillouin {rest.class ?? ``}" bind:clientWidth>
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}
@@ -81,7 +75,7 @@
   />
 
   <BrillouinZone
-    style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; max-height: 100%"
+    style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%"
     {structure}
     {k_path_points}
     k_path_labels={first_band_struct?.qpoints?.map((q, idx) => ({
@@ -96,7 +90,7 @@
   <Dos
     style="grid-area: dos; min-width: 0; min-height: 0; overflow: hidden"
     {doses}
-    orientation={clientWidth < 1023 ? `vertical` : `horizontal`}
+    orientation={clientWidth < desktop_width ? `vertical` : `horizontal`}
     x_axis={{ ticks: 4 }}
     y_axis={shared_y_axis ? { ...shared_y_axis_obj, label: `` } : { label: `` }}
     padding={{ l: 15, ...dos_props.padding }}
@@ -112,17 +106,15 @@
     display: grid;
     gap: var(--bands-dos-bz-gap, 1em);
   }
-
   /* Desktop: BZ | Bands | DOS side by side */
-  @media (min-width: 1024px) {
+  @media (min-width: 1200px) {
     .bands-dos-brillouin {
       grid-template-columns: 30% 50% 20%;
       grid-template-areas: 'bz bands dos';
     }
   }
-
   /* Tablet: Bands on top, BZ and DOS below */
-  @media (min-width: 640px) and (max-width: 1023px) {
+  @media (min-width: 640px) and (max-width: 1199px) {
     .bands-dos-brillouin {
       grid-template-columns: 40% 60% !important;
       grid-template-rows: 50% 50% !important;
@@ -131,18 +123,11 @@
         'bz dos' !important;
     }
   }
-
   /* Phone: All stacked vertically */
   @media (max-width: 639px) {
     .bands-dos-brillouin {
       grid-template-columns: 1fr !important;
-      grid-template-rows: 400px 300px 400px !important;
-      grid-template-areas:
-        'bands'
-        'dos'
-        'bz' !important;
-      height: auto !important;
-      min-height: auto !important;
+      grid-template-areas: 'bands' 'dos' 'bz' !important;
     }
   }
 </style>

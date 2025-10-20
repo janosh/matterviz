@@ -40,11 +40,12 @@ test.describe(`Bands Component Tests`, () => {
     expect(legend_text).toContain(`BS2`)
 
     // Test toggling - should have 8 paths (2 structures × 4 bands)
-    expect(await svg.locator(`path[fill="none"]`).count()).toBe(8)
+    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8)
     await legend_items.first().click()
-    expect(await svg.locator(`path[fill="none"]`).count()).toBe(4) // Only BS2 visible
-    await legend_items.first().click() // Show all again
-    expect(await svg.locator(`path[fill="none"]`).count()).toBe(8)
+    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(4, { timeout: 2000 })
+    await page.waitForTimeout(100) // Small delay to ensure state is stable
+    await legend_items.first().click()
+    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8, { timeout: 2000 })
   })
 
   test(`applies custom line styling and hides legend when configured`, async ({ page }) => {

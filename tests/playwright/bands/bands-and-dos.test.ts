@@ -101,12 +101,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
     expect(dos_y_ticks.length).toBeGreaterThan(0)
 
     // Y-axis ranges should be completely different (high_freq_dos has frequencies 10-30)
-    const bands_max = Math.max(
-      ...bands_y_ticks.map((t) => parseFloat(t)).filter((n) => !isNaN(n)),
-    )
-    const dos_max = Math.max(
-      ...dos_y_ticks.map((t) => parseFloat(t)).filter((n) => !isNaN(n)),
-    )
+    const bands_max = Math.max(...bands_y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
+    const dos_max = Math.max(...dos_y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
     expect(Math.abs(bands_max - dos_max)).toBeGreaterThan(5) // Should differ significantly
 
     // Both should have numeric y-ticks
