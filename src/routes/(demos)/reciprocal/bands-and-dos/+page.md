@@ -10,25 +10,18 @@ Phonon band structure with DOS side-by-side, synchronized axes and custom stylin
 <script>
   import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_dos } from '$site/phonons'
+</script>
 
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-
-  const bands_props = {
+<BandsAndDos
+  band_structs={[phonon_bands['mp-2758-Sr4Se4-pbe']]}
+  doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]}
+  bands_props={{
     line_kwargs: {
       acoustic: { stroke: '#e74c3c', stroke_width: 2 },
       optical: { stroke: '#3498db', stroke_width: 1.5 },
     },
-  }
-
-  const dos_props = { normalize: 'max', sigma: 0.15 }
-</script>
-
-<BandsAndDos
-  {band_structs}
-  {doses}
-  {bands_props}
-  {dos_props}
+  }}
+  dos_props={{ normalize: 'max', sigma: 0.15 }}
   shared_y_axis
   class="full-bleed"
   style="aspect-ratio: 3"
@@ -55,7 +48,6 @@ Compare multiple band structures and DOS with custom column widths:
       bands: bands_single.bands.map((band) => band.map((freq) => freq * 1.05)),
     },
   }
-
   const doses = {
     'DFT': dos,
     'Model': { ...dos, densities: dos.densities.map((dens) => dens * 1.1) },
@@ -78,19 +70,13 @@ Enable interactive controls for both panels:
 <script>
   import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_dos } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-
-  const bands_props = { controls: { show: true, open: false } }
-  const dos_props = { controls: { show: true, open: false } }
 </script>
 
 <BandsAndDos
-  {band_structs}
-  {doses}
-  {bands_props}
-  {dos_props}
+  band_structs={[phonon_bands['mp-2758-Sr4Se4-pbe']]}
+  doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]}
+  bands_props={{ controls: { show: true, open: false } }}
+  dos_props={{ controls: { show: true, open: false } }}
   class="full-bleed"
   style="aspect-ratio: 3"
 />

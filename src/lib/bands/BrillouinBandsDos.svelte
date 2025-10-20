@@ -65,8 +65,8 @@
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}
-    y_axis={shared_y_axis ? shared_y_axis_obj : {}}
     {...bands_props}
+    y_axis={shared_y_axis ? shared_y_axis_obj : {}}
     padding={{ r: 15, ...bands_props.padding }}
     on_point_hover={({ point }) => {
       hovered_band_point = point

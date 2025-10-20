@@ -10,8 +10,8 @@ test.describe(`DOS Component Tests`, () => {
     const plot = page.locator(`#single-dos + .scatter`)
     await expect(plot).toBeVisible()
 
-    // Check SVG and DOS curve
-    const paths = plot.locator(`svg path[fill="none"]`)
+    // Check SVG and DOS curve (use stroke to identify line paths)
+    const paths = plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`)
     await expect(paths.first()).toBeVisible()
 
     // Check both axes
@@ -31,34 +31,43 @@ test.describe(`DOS Component Tests`, () => {
     expect(legend_text).toContain(`DOS1`)
     expect(legend_text).toContain(`DOS2`)
 
-    // Test toggling
-    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(2)
+    // Test toggling (use stroke to identify line paths)
+    await expect(svg.locator(`path.line, path[stroke]:not([stroke="none"])`)).toHaveCount(
+      2,
+    )
     await legend.locator(`.legend-item`).first().click()
-    await expect(svg.locator(`path[fill="none"]`)).not.toHaveCount(2)
+    await expect(svg.locator(`path.line, path[stroke]:not([stroke="none"])`)).not
+      .toHaveCount(2)
   })
 
   test(`applies normalization correctly`, async ({ page }) => {
     // Max normalization should have y-values <= 1
     const max_plot = page.locator(`#max-normalization + .scatter`)
-    await expect(max_plot.locator(`path[fill="none"]`).first()).toBeVisible()
+    await expect(max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
+      .toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
-    const max_val = Math.max(...y_ticks.map(parseFloat).filter((n) => !isNaN(n)))
-    expect(max_val).toBeLessThanOrEqual(1.1) // Allow small margin for tick rounding
+    const max_val = Math.max(
+      ...y_ticks.map((t) => Number.parseFloat(t)).filter(Number.isFinite),
+    )
+    expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
 
     // Sum normalization should render and integrate to ~1
     const sum_plot = page.locator(`#sum-normalization + .scatter`)
-    await expect(sum_plot.locator(`path[fill="none"]`).first()).toBeVisible()
+    await expect(sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
+      .toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
     // Stacked DOS should have 2 curves, second higher than first everywhere
     const stacked_plot = page.locator(`#stacked-dos + .scatter`)
-    const paths = stacked_plot.locator(`path[fill="none"]`)
+    // Use stroke presence to identify line paths (robust against fill="none" vs "transparent")
+    const paths = stacked_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
     expect(await paths.count()).toBe(2)
 
     // Check Gaussian smearing produces smooth curves
     const smeared_plot = page.locator(`#gaussian-smearing + .scatter`)
-    const path = smeared_plot.locator(`path[fill="none"]`).first()
+    const path = smeared_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
+      .first()
     await expect(path).toBeVisible()
     const path_d = await path.getAttribute(`d`)
     // Verify path has data and is sufficiently complex (indicates smoothing/interpolation)
@@ -70,7 +79,8 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`renders with horizontal orientation`, async ({ page }) => {
     const plot = page.locator(`#horizontal-dos + .scatter`)
-    await expect(plot.locator(`path[fill="none"]`).first()).toBeVisible()
+    await expect(plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
+      .toBeVisible()
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
 
@@ -201,7 +211,9 @@ test.describe(`DOS Component Tests`, () => {
     // This test is less critical, so we'll just verify the plot renders even if tooltip is elusive
     if (!tooltip_found) {
       console.log(`Tooltip not found for multiple DOS, but plot rendered successfully`)
-      await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
+      await expect(
+        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
+      ).toBeVisible()
     } else {
       expect(tooltip_found).toBe(true)
     }
@@ -247,7 +259,9 @@ test.describe(`DOS Component Tests`, () => {
     // Fallback: verify plot renders if tooltip is hard to hit
     if (!tooltip_found) {
       console.log(`Tooltip not found for horizontal DOS, but plot rendered successfully`)
-      await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
+      await expect(
+        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
+      ).toBeVisible()
     } else {
       expect(tooltip_found).toBe(true)
     }
@@ -290,7 +304,9 @@ test.describe(`DOS Component Tests`, () => {
     } else {
       // If tooltip didn't show, just verify plot rendered
       console.log(`Tooltip not found, but plot rendered successfully`)
-      await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
+      await expect(
+        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
+      ).toBeVisible()
     }
   })
 })

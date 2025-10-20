@@ -25,13 +25,13 @@
   let shared_y_axis_obj = $state<{ range?: [number, number] }>({})
   let bands_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
   let dos_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
-
-  let grid_style = $derived(
-    `display: grid; grid-template-columns: 1fr 200px; gap: 0; ${rest.style ?? ``}`,
-  )
 </script>
 
-<div {...rest} class="bands-and-dos {rest.class ?? ``}" style={grid_style}>
+<div
+  {...rest}
+  class="bands-and-dos {rest.class ?? ``}"
+  style={`display: grid; grid-template-columns: 1fr 200px; gap: 0;` + (rest.style ?? ``)}
+>
   <Bands
     {band_structs}
     y_axis={bands_y_axis}

@@ -17,7 +17,7 @@ A phonon DOS plot with normalization and Gaussian smearing:
 
 ## Multiple DOS with Unit Conversion
 
-Compare multiple DOS curves with interactive unit conversion:
+Compare multiple DOS curves with interactive unit conversion, normalization, and smearing:
 
 ```svelte example
 <script>
@@ -25,8 +25,6 @@ Compare multiple DOS curves with interactive unit conversion:
   import { phonon_dos } from '$site/phonons'
 
   const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
-
-  // Create multiple versions for demo
   const doses = {
     'Total': dos,
     'Partial A': { ...dos, densities: dos.densities.map((dens) => dens * 0.6) },
@@ -34,19 +32,39 @@ Compare multiple DOS curves with interactive unit conversion:
   }
 
   let selected_unit = $state('THz')
-  const units = ['THz', 'eV', 'meV', 'Ha', 'cm⁻¹']
+  const units = ['THz', 'meV']
+
+  let normalize = $state('none')
+  const normalize_options = ['none', 'max', 'sum', 'integral']
+  let sigma = $state(0.15)
 </script>
 
-<label>
-  Unit:
-  <select bind:value={selected_unit}>
-    {#each units as unit}
-      <option value={unit}>{unit}</option>
-    {/each}
-  </select>
-</label>
+<div style="display: flex; gap: 1em; margin-block: 1em">
+  <label>
+    Unit:
+    <select bind:value={selected_unit}>
+      {#each units as unit (unit)}
+        <option value={unit}>{unit}</option>
+      {/each}
+    </select>
+  </label>
 
-<Dos {doses} units={selected_unit} />
+  <label>
+    Normalize:
+    <select bind:value={normalize}>
+      {#each normalize_options as value (value)}
+        <option {value}>{value}</option>
+      {/each}
+    </select>
+  </label>
+
+  <label>
+    Smearing (σ):
+    <input type="number" bind:value={sigma} min={0} max={1} step={0.05} />
+  </label>
+</div>
+
+<Dos {doses} units={selected_unit} {normalize} {sigma} />
 ```
 
 ## Horizontal Orientation
