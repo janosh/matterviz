@@ -353,7 +353,7 @@ test.describe(`Histogram Component Tests`, () => {
       const after_click_count = await multiple_legend.locator(`.legend-item`).count()
       expect(after_click_count).toBe(legend_items)
     }
-    await expect(single_legend).not.toBeVisible()
+    await expect(single_legend).toBeHidden()
   })
 
   test(`legend remains functional when all series are disabled`, async ({ page }) => {
@@ -1374,7 +1374,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test double-click reset
     await histogram.dblclick()
-    await expect(zoom_rect).not.toBeVisible({ timeout: 1000 })
+    await expect(zoom_rect).toBeHidden({ timeout: 1000 })
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {

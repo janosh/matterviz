@@ -230,7 +230,7 @@ test.describe(`Trajectory Component`, () => {
 
     // Check info pane is initially closed
     const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`).first()
-    await expect(info_pane).not.toBeVisible()
+    await expect(info_pane).toBeHidden()
   })
 
   test(`playback controls function properly`, async () => {
@@ -319,7 +319,7 @@ test.describe(`Trajectory Component`, () => {
     test(`controls can be hidden`, async ({ page }) => {
       await expect(
         page.locator(`#no-controls .trajectory-controls`),
-      ).not.toBeVisible()
+      ).toBeHidden()
     })
   })
 
@@ -444,7 +444,7 @@ test.describe(`Trajectory Component`, () => {
       if (await custom_controls.isVisible()) {
         await expect(
           custom_controls.locator(`.trajectory-controls .nav-section`),
-        ).not.toBeVisible()
+        ).toBeHidden()
         await expect(
           custom_controls.locator(`.trajectory-controls button`).first(),
         ).toBeVisible()
@@ -1747,7 +1747,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Test closing
       await export_toggle.dispatchEvent(`click`)
       await page.waitForTimeout(500)
-      await expect(export_pane).not.toBeVisible()
+      await expect(export_pane).toBeHidden()
     })
 
     test(`video export settings can be configured`, async ({ page }) => {
@@ -2092,7 +2092,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
         })
       } catch {
         // If filename doesn't appear, check if loading completed
-        await expect(trajectory.locator(`.spinner`)).not.toBeVisible({ timeout: 10000 })
+        await expect(trajectory.locator(`.spinner`)).toBeHidden({ timeout: 10000 })
       }
     })
 

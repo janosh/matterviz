@@ -317,7 +317,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // SpacegroupBarPlot sets show_controls={false}
     const controls_toggle = plot.locator(`.pane-toggle`)
-    await expect(controls_toggle).not.toBeVisible()
+    await expect(controls_toggle).toBeHidden()
   })
 
   test(`no legend is shown`, async ({ page }) => {
@@ -326,7 +326,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // SpacegroupBarPlot sets show_legend={false}
     const legend = plot.locator(`.legend`)
-    await expect(legend).not.toBeVisible()
+    await expect(legend).toBeHidden()
   })
 
   test(`x-axis ticks are rotated 90 degrees in vertical mode`, async ({ page }) => {

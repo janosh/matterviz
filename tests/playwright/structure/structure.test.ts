@@ -180,7 +180,7 @@ test.describe(`Structure Component Tests`, () => {
     await page.keyboard.press(`Escape`)
 
     await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-    await expect(control_pane).not.toBeVisible()
+    await expect(control_pane).toBeHidden()
     await expect(controls_toggle_button).toHaveAttribute(
       `title`,
       `Open structure controls`,
@@ -244,7 +244,7 @@ test.describe(`Structure Component Tests`, () => {
     await outside_area.click({ position: { x: 0, y: 0 }, force: true })
 
     await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-    await expect(control_pane).not.toBeVisible()
+    await expect(control_pane).toBeHidden()
     await expect(controls_toggle_button).toHaveAttribute(
       `title`,
       `Open structure controls`,
@@ -354,7 +354,7 @@ test.describe(`Structure Component Tests`, () => {
     // Disable both - Labels section should hide
     await site_indices_checkbox.uncheck()
     expect(await site_indices_checkbox.isChecked()).toBe(false)
-    await expect(control_pane.locator(`h4:has-text("Labels")`)).not.toBeVisible()
+    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeHidden()
 
     // Re-enable site indices only
     await site_indices_checkbox.check()
@@ -1103,7 +1103,7 @@ test.describe(`Structure Component Tests`, () => {
     // Test that clicking on the canvas DOES close the pane (it's an outside click)
     await canvas.click({ position: { x: 100, y: 100 } })
     await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-    await expect(control_pane).not.toBeVisible()
+    await expect(control_pane).toBeHidden()
 
     // Re-open for toggle button test
     const { pane_div: control_pane2 } = await open_structure_control_pane(page)
@@ -1111,7 +1111,7 @@ test.describe(`Structure Component Tests`, () => {
     // Test that clicking controls toggle button does close the pane
     await controls_toggle_button.click()
     await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-    await expect(control_pane2).not.toBeVisible()
+    await expect(control_pane2).toBeHidden()
 
     // Re-open for escape key test using helper function
     const { pane_div: control_pane3 } = await open_structure_control_pane(page)
@@ -1119,7 +1119,7 @@ test.describe(`Structure Component Tests`, () => {
     // Test escape key closes the pane
     await page.keyboard.press(`Escape`)
     await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-    await expect(control_pane3).not.toBeVisible()
+    await expect(control_pane3).toBeHidden()
 
     // Re-open for outside click test using helper function
     const { pane_div: control_pane4 } = await open_structure_control_pane(page)
@@ -1127,7 +1127,7 @@ test.describe(`Structure Component Tests`, () => {
     // Test clicking outside the controls and toggle button closes the pane
     await page.locator(`body`).click({ position: { x: 10, y: 10 } })
     await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-    await expect(control_pane4).not.toBeVisible()
+    await expect(control_pane4).toBeHidden()
   })
 
   test(`bond controls appear when bonds are enabled`, async ({ page }) => {
@@ -1266,7 +1266,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(labels).toHaveCount(0)
 
     // Verify the reset button disappears after reset (since measured_sites is empty)
-    await expect(reset_button).not.toBeVisible()
+    await expect(reset_button).toBeHidden()
 
     // Verify we can set measured sites again (proving state was fully reset)
     await page.locator(`[data-testid="btn-set-measured"]`).click()
@@ -1537,7 +1537,7 @@ test.describe(`Reset Camera Button Tests`, () => {
     const structure_div = page.locator(`#test-structure`)
     const reset_camera_button = structure_div.locator(`button.reset-camera`)
 
-    await expect(reset_camera_button).not.toBeVisible()
+    await expect(reset_camera_button).toBeHidden()
   })
 
   test(`reset camera button structure and styling are correct`, async ({ page }) => {
@@ -1902,8 +1902,8 @@ test.describe(`Export Button Tests`, () => {
       `button[title="Download XYZ"]`,
     )
 
-    await expect(json_export_btn).not.toBeVisible()
-    await expect(xyz_export_btn).not.toBeVisible()
+    await expect(json_export_btn).toBeHidden()
+    await expect(xyz_export_btn).toBeHidden()
   })
 
   test(`JSON export button click does not cause errors`, async ({ page }) => {
@@ -2149,7 +2149,7 @@ test.describe(`Show Buttons Tests`, () => {
 
     await expect(page.locator(`#test-structure button.structure-info-toggle`)).not
       .toBeVisible()
-    await expect(page.locator(`.fullscreen-toggle`)).not.toBeVisible()
+    await expect(page.locator(`.fullscreen-toggle`)).toBeHidden()
   })
 
   test(`should hide buttons when structure width is narrower than show_controls number`, async ({ page }) => {
@@ -2926,7 +2926,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(directional_input).toHaveValue(`2.2`)
 
       // Reset button should disappear
-      await expect(lighting_reset).not.toBeVisible()
+      await expect(lighting_reset).toBeHidden()
     })
 
     test(`bonds section reset button appears when bonds are shown`, async ({ page }) => {
@@ -2960,7 +2960,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(bonding_select).toHaveValue(DEFAULTS.structure.bonding_strategy)
 
       // Reset button should disappear
-      await expect(bonds_reset).not.toBeVisible()
+      await expect(bonds_reset).toBeHidden()
     })
 
     test(`labels section reset button appears when labels are shown`, async ({ page }) => {
@@ -2994,11 +2994,11 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(size_range).toHaveValue(`1`)
 
       // Reset button should disappear
-      await expect(labels_reset).not.toBeVisible()
+      await expect(labels_reset).toBeHidden()
 
       // check that Labels control section hides after disabling labels
       await show_labels_checkbox.uncheck()
-      await expect(page.locator(`h4:has-text("Labels")`)).not.toBeVisible()
+      await expect(page.locator(`h4:has-text("Labels")`)).toBeHidden()
     })
 
     test(`multiple sections can have reset buttons simultaneously`, async ({ page }) => {
@@ -3035,7 +3035,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Only camera reset should disappear
       await expect(visibility_reset).toBeVisible()
-      await expect(camera_reset).not.toBeVisible()
+      await expect(camera_reset).toBeHidden()
       await expect(bg_reset).toBeVisible()
 
       // Projection should be reset but other changes remain

@@ -59,7 +59,7 @@ test.describe(`Bands Component Tests`, () => {
 
     // Check legend hidden
     const no_legend_plot = page.getByTestId(`no-legend-plot`)
-    await expect(no_legend_plot.locator(`.legend`)).not.toBeVisible()
+    await expect(no_legend_plot.locator(`.legend`)).toBeHidden()
   })
 
   test(`renders with different path modes`, async ({ page }) => {
@@ -152,7 +152,7 @@ test.describe(`Bands Component Tests`, () => {
     await page.mouse.move(box.x - 50, box.y - 50)
 
     // Tooltip should be hidden
-    await expect(plot.locator(`.tooltip`)).not.toBeVisible()
+    await expect(plot.locator(`.tooltip`)).toBeHidden()
   })
 
   test(`tooltip updates when hovering different segments`, async ({ page }) => {

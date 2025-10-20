@@ -66,7 +66,7 @@ test.describe(`RdfPlot Component Tests`, () => {
     const no_ref = page.locator(`#no-reference-line`)
     await expect(no_ref.locator(`svg line[stroke="gray"][stroke-dasharray="4"]`)).not
       .toBeVisible()
-    await expect(no_ref.locator(`svg text:has-text("g(r) = 1")`)).not.toBeVisible()
+    await expect(no_ref.locator(`svg text:has-text("g(r) = 1")`)).toBeHidden()
   })
 
   // Test structure-based RDF calculation in both modes

@@ -195,7 +195,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await page.waitForTimeout(100)
 
     // Click after drag should be suppressed (no structure popup)
-    await expect(diagram.locator(`.structure-popup`)).not.toBeVisible()
+    await expect(diagram.locator(`.structure-popup`)).toBeHidden()
   })
 
   test(`hull facets render and are toggleable`, async ({ page }) => {

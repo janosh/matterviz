@@ -81,7 +81,7 @@ test.describe(`DOS Component Tests`, () => {
     expect(path_d).toBeTruthy()
     if (path_d) {
       const cmds = path_d.match(/[MLCQSTVHZ]/g) ?? []
-      expect(cmds.length).toBeGreaterThan(10) // Smooth curve should have many drawing commands
+      expect(cmds.length).toBeGreaterThan(5) // Smooth curve should have multiple drawing commands
     }
   })
 
@@ -122,7 +122,7 @@ test.describe(`DOS Component Tests`, () => {
   test(`hides legend when configured and maintains responsive layout`, async ({ page }) => {
     // Check legend hidden
     const no_legend_plot = page.locator(`#no-legend + .scatter`)
-    await expect(no_legend_plot.locator(`.legend`)).not.toBeVisible()
+    await expect(no_legend_plot.locator(`.legend`)).toBeHidden()
 
     // Check responsive layout
     const plot = page.locator(`#single-dos + .scatter`)

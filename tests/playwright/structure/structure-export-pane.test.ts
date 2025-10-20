@@ -37,7 +37,7 @@ test.describe(`StructureExportPane Tests`, () => {
 
     // Close pane
     await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
-    await expect(pane_div).not.toBeVisible()
+    await expect(pane_div).toBeHidden()
   })
 
   test(`displays all export format buttons`, async ({ page }) => {
@@ -114,7 +114,7 @@ test.describe(`StructureExportPane Tests`, () => {
     await dpi_input.fill(`250`)
 
     await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
-    await expect(pane_div).not.toBeVisible()
+    await expect(pane_div).toBeHidden()
 
     await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(pane_div).toBeVisible()
@@ -167,17 +167,17 @@ test.describe(`StructureExportPane Tests`, () => {
 
     const control_pane = page.locator(`.draggable-pane.controls-pane`).first()
     await expect(control_pane).toBeVisible()
-    await expect(export_pane).not.toBeVisible()
+    await expect(export_pane).toBeHidden()
 
     // Opening export pane closes control pane
     await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(export_pane).toBeVisible()
-    await expect(control_pane).not.toBeVisible()
+    await expect(control_pane).toBeHidden()
 
     // Verify they toggle correctly
     await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(control_pane).toBeVisible()
-    await expect(export_pane).not.toBeVisible()
+    await expect(export_pane).toBeHidden()
   })
 
   test(`keyboard navigation and rapid toggle`, async ({ page }) => {
