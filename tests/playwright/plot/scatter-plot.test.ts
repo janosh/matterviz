@@ -949,7 +949,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       description: `line color (dark bg -> white text)`,
     },
   ]
-
   tooltip_precedence_test_cases.forEach(
     ({ plot_id, expected_bg, expected_text, description }) => {
       test(`tooltip uses ${description}`, async ({ page }) => {
@@ -976,7 +975,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(
       initial_transform === `none` || initial_transform === `matrix(1, 0, 0, 1, 0, 0)`,
     ).toBe(true)
-    expect(tooltip_locator).toBeHidden()
+    await expect(tooltip_locator).toBeHidden()
 
     // Test hover coordinates calculation
     const plot_bbox = await plot_locator.boundingBox()

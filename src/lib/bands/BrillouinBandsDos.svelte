@@ -101,7 +101,7 @@
   <Dos
     style="grid-area: dos; min-width: 0; min-height: 0; overflow: hidden"
     {doses}
-    orientation={clientWidth < desktop_width ? `vertical` : `horizontal`}
+    orientation={screen === `desktop` ? `horizontal` : `vertical`}
     x_axis={{ ticks: 4 }}
     y_axis={shared_y_axis ? { ...shared_y_axis_obj, label: `` } : { label: `` }}
     padding={{ l: 15, ...screen === `desktop` ? { r: 5 } : {}, ...dos_props.padding }}
