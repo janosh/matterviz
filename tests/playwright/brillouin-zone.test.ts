@@ -210,7 +210,7 @@ test.describe(`BrillouinZone Error Handling Tests`, () => {
       if ((await dismiss_btn.count()) > 0) {
         await expect(dismiss_btn).toBeVisible()
         await dismiss_btn.click()
-        await expect(error_state).not.toBeVisible()
+        await expect(error_state).toBeHidden()
       }
     }
   })

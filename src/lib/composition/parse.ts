@@ -4,7 +4,7 @@ import { element_data } from '$lib/element'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
 export const atomic_number_to_symbol: Record<number, ElementSymbol> = {}
-export const symbol_to_atomic_number: Partial<Record<ElementSymbol, number>> = {}
+export const symbol_to_atomic_number: Partial<CompositionType> = {}
 export const atomic_weights = new Map<ElementSymbol, number>()
 export const element_electronegativity_map = new Map<ElementSymbol, number>()
 export const elem_name_to_symbol: Record<string, ElementSymbol> = {}
@@ -274,12 +274,11 @@ export const get_electro_neg_formula = (
   plain_text = false,
   delim = ` `,
   amount_format = `.3~s`,
-): string => {
-  return format_formula_generic(
+): string =>
+  format_formula_generic(
     input,
     sort_by_electronegativity,
     plain_text,
     delim,
     amount_format,
   )
-}

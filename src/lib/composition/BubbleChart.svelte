@@ -60,17 +60,16 @@
     const pack_layout = pack<HierarchyData | Child>().size([
       size - 2 * padding,
       size - 2 * padding,
-    ])
-      .padding(padding * 0.1) // Small padding between circles
+    ]).padding(padding * 0.1) // Small padding between circles
 
     const root = pack_layout(
-      hierarchy<HierarchyData | Child>(hierarchy_data).sum((
-        d,
-      ) => (`amount` in d ? d.amount : 0)),
+      hierarchy<HierarchyData | Child>(hierarchy_data).sum(
+        (data) => (`amount` in data ? data.amount : 0),
+      ),
     )
 
     // Get max radius for font scaling
-    const max_radius = Math.max(...root.leaves().map((d) => d.r || 0))
+    const max_radius = Math.max(...root.leaves().map((data) => data.r || 0))
     const total_atoms = get_total_atoms(composition)
 
     return root.leaves().map((node) => {

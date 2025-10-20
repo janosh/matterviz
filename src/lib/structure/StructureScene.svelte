@@ -205,6 +205,11 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
+  // Compute dynamic camera clipping planes based on structure size
+  // This prevents z-fighting and disappearing objects when zooming in close on large supercells
+  let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
+  let camera_far = $derived(Math.max(1000, structure_size * 100))
+
   let computed_zoom = $state<number>(initial_zoom)
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
@@ -319,8 +324,8 @@
     return map
   })
 
-  let force_data = $derived.by(() => {
-    return show_force_vectors && structure?.sites
+  let force_data = $derived.by(() =>
+    show_force_vectors && structure?.sites
       ? structure?.sites
         .map((site) => {
           if (
@@ -338,7 +343,7 @@
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
       : []
-  })
+  )
 
   let instanced_atom_groups = $derived(
     Object.values(
@@ -485,7 +490,13 @@
 {/snippet}
 
 {#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault position={camera_position} {fov}>
+  <T.PerspectiveCamera
+    makeDefault
+    position={camera_position}
+    {fov}
+    near={camera_near}
+    far={camera_far}
+  >
     <extras.OrbitControls {...orbit_controls_props}>
       {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
     </extras.OrbitControls>
@@ -496,6 +507,7 @@
     position={camera_position}
     zoom={computed_zoom}
     near={-100}
+    far={camera_far}
   >
     <extras.OrbitControls {...orbit_controls_props}>
       {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
@@ -516,6 +528,7 @@
           <extras.InstancedMesh
             key="{group.element}-{group.radius}-{group.atoms.length}"
             range={group.atoms.length}
+            frustumCulled={false}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
             <T.MeshStandardMaterial color={group.color} />

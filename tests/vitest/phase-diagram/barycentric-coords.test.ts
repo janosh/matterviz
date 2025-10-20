@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { CompositionType, ElementSymbol } from '$lib'
 import {
   barycentric_to_ternary_xy,
   barycentric_to_ternary_xyz,
@@ -83,9 +83,21 @@ describe(`ternary: composition and plotting`, () => {
   test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {
     const elements = [`A`, `B`, `C`] as unknown as ElementSymbol[]
     const entries: PhaseEntry[] = [
-      { composition: { A: 1 }, energy: 0, e_form_per_atom: 0 },
-      { composition: { A: 1, B: 1 }, energy: 0, e_form_per_atom: -1 },
-      { composition: { A: 1, D: 1 }, energy: 0, e_form_per_atom: -1 }, // out-of-system
+      {
+        composition: { A: 1 } as unknown as CompositionType,
+        energy: 0,
+        e_form_per_atom: 0,
+      },
+      {
+        composition: { A: 1, B: 1 } as unknown as CompositionType,
+        energy: 0,
+        e_form_per_atom: -1,
+      },
+      {
+        composition: { A: 1, D: 1 } as unknown as CompositionType,
+        energy: 0,
+        e_form_per_atom: -1,
+      }, // out-of-system
     ]
     const out = get_ternary_3d_coordinates(entries, elements)
     expect(out.length).toBe(2)
@@ -168,9 +180,9 @@ describe(`quaternary: compute_4d_coords`, () => {
   test(`filters entries outside chemical system and projects coords`, () => {
     const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
     const entries: PhaseEntry[] = [
-      { composition: { A: 1 }, energy: 0 },
-      { composition: { A: 1, B: 1 }, energy: 0 },
-      { composition: { A: 1, E: 1 }, energy: 0 },
+      { composition: { A: 1 } as unknown as CompositionType, energy: 0 },
+      { composition: { A: 1, B: 1 } as unknown as CompositionType, energy: 0 },
+      { composition: { A: 1, E: 1 } as unknown as CompositionType, energy: 0 },
     ]
     const out = compute_4d_coords(entries, elems)
     expect(out.length).toBe(2)

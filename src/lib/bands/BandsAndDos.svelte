@@ -3,7 +3,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import type { BaseBandStructure, Dos as DosData } from './types'
+  import type { BaseBandStructure, DosData } from './types'
 
   let {
     band_structs,
@@ -26,15 +26,19 @@
   let bands_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
   let dos_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
 
-  let grid_style = $derived(
-    `display: grid; grid-template-columns: 1fr 200px; gap: 0; ${rest.style ?? ``}`,
-  )
+  // Track hovered frequency from DOS to show reference line in Bands
+  let hovered_frequency = $state<number | null>(null)
 </script>
 
-<div {...rest} class="bands-and-dos {rest.class ?? ``}" style={grid_style}>
+<div
+  {...rest}
+  class="bands-and-dos {rest.class ?? ``}"
+  style={`display: grid; grid-template-columns: 1fr 200px; gap: 0;` + (rest.style ?? ``)}
+>
   <Bands
     {band_structs}
     y_axis={bands_y_axis}
+    reference_frequency={hovered_frequency}
     {...bands_props}
     padding={{ r: 15 }}
   />
@@ -43,6 +47,8 @@
     {doses}
     orientation="horizontal"
     y_axis={{ ...dos_y_axis, label: `` }}
+    bind:hovered_frequency
+    reference_frequency={hovered_frequency}
     padding={{ l: 15 }}
     {...dos_props}
   />

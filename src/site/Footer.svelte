@@ -16,9 +16,8 @@
     <Icon icon="RepoFork" /> Contributing
   </a>
   <small>
-    Built with Svelte by
-    <a href="https://github.com/janosh">Janosh</a>
-    &copy; 2022
+    &copy; <a href="https://github.com/janosh">Janosh Riebesell</a>
+    2022
   </small>
 </footer>
 

@@ -15,3 +15,10 @@ declare module '*.md' {
   const component: import('svelte').Component
   export default component
 }
+
+// Global type declarations for theme system
+declare global {
+  const MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
+  const MATTERVIZ_CSS_MAP: Record<string, string> | undefined
+}
+export {}

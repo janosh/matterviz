@@ -115,9 +115,9 @@ const get_colorbar_transform = async (
     `div.colorbar[style*='position: absolute']`,
   )
   await colorbar_wrapper.waitFor({ state: `visible`, timeout: 1000 })
-  const transform = await colorbar_wrapper.evaluate((el) => {
-    return globalThis.getComputedStyle(el).transform
-  })
+  const transform = await colorbar_wrapper.evaluate((el) =>
+    globalThis.getComputedStyle(el).transform
+  )
 
   if (transform.startsWith(`matrix`)) {
     const parts = transform.match(/matrix\((.+)\)/)
@@ -155,11 +155,8 @@ const get_marker_bbox = async (
 }
 
 // Get bbox area
-const get_bbox_area = (
-  bbox: { x: number; y: number; width: number; height: number } | null,
-): number => {
-  return bbox ? bbox.width * bbox.height : 0
-}
+const get_bbox_area = (bbox: { width: number; height: number } | null): number =>
+  bbox ? bbox.width * bbox.height : 0
 
 // Check and return marker sizes and relationships
 const check_marker_sizes = async (
@@ -224,7 +221,7 @@ const get_tooltip_colors = async (
   if (plot_bbox) {
     await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
   }
-  await expect(tooltip_locator).not.toBeVisible({ timeout: 1000 })
+  await expect(tooltip_locator).toBeHidden({ timeout: 1000 })
   return colors
 }
 
@@ -606,7 +603,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(rect_box.height).toBeGreaterThan(0)
 
     await page.mouse.up()
-    await expect(zoom_rect).not.toBeVisible()
+    await expect(zoom_rect).toBeHidden()
 
     // Verify INSIDE zoom state
     const zoomed_inside_x = await get_tick_range(x_axis)
@@ -642,7 +639,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(rect_box_outside.height).toBeGreaterThan(rect_box_inside.height)
 
     await page.mouse.up()
-    await expect(zoom_rect).not.toBeVisible()
+    await expect(zoom_rect).toBeHidden()
 
     // Verify OUTSIDE zoom state
     const zoomed_outside_x = await get_tick_range(x_axis)
@@ -949,7 +946,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       description: `line color (dark bg -> white text)`,
     },
   ]
-
   tooltip_precedence_test_cases.forEach(
     ({ plot_id, expected_bg, expected_text, description }) => {
       test(`tooltip uses ${description}`, async ({ page }) => {
@@ -976,7 +972,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(
       initial_transform === `none` || initial_transform === `matrix(1, 0, 0, 1, 0, 0)`,
     ).toBe(true)
-    expect(tooltip_locator).not.toBeVisible()
+    await expect(tooltip_locator).toBeHidden()
 
     // Test hover coordinates calculation
     const plot_bbox = await plot_locator.boundingBox()
@@ -1013,7 +1009,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(controls_toggle).toBeVisible()
 
     const control_pane = scatter_plot.locator(`.scatter-controls-pane`)
-    await expect(control_pane).not.toBeVisible()
+    await expect(control_pane).toBeHidden()
 
     // Test toggle functionality
     await controls_toggle.click()
@@ -1129,7 +1125,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(y_format_input).toBeVisible()
 
     const y2_format_input = control_pane.locator(`input#y2-format`)
-    await expect(y2_format_input).not.toBeVisible()
+    await expect(y2_format_input).toBeHidden()
 
     // Get initial tick text
     const initial_x_tick_text = await scatter_plot.locator(`g.x-axis .tick text`).first()
@@ -1298,7 +1294,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await reset_axis(`y`)
 
     await toggle.click()
-    await expect(pane).not.toBeVisible()
+    await expect(pane).toBeHidden()
   })
 
   // AXIS COLOR TESTS
@@ -1637,7 +1633,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Move away to hide tooltip
       await plot_locator.hover()
-      await expect(tooltip).not.toBeVisible()
+      await expect(tooltip).toBeHidden()
     }
   })
 

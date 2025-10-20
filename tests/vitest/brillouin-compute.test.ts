@@ -79,7 +79,7 @@ describe(`Brillouin Zone Computation`, () => {
 
   describe(`Edge filtering`, () => {
     it(`should have correct edge counts for each lattice type`, () => {
-      const test_cases: Array<[keyof typeof reference_data, number]> = [
+      const test_cases: [keyof typeof reference_data, number][] = [
         [`cubic`, 12],
         [`tetragonal`, 12],
         [`orthorhombic`, 12],

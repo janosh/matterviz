@@ -96,7 +96,7 @@
   // Determine if we should show values - default to false if any array element is a color
   const should_show_values = $derived.by(() => {
     if (show_values !== undefined) return show_values
-    if (Array.isArray(value)) return !value.some((v) => is_color(v))
+    if (Array.isArray(value)) return !value.some(is_color)
     return !is_color(value)
   })
 
@@ -199,12 +199,7 @@
       {/each}
     {:else if Array.isArray(value)}
       <!-- Fallback for other array lengths -->
-      <span class="value">{
-        value
-        .map((v) => format_value(v))
-        .filter((v) => v)
-        .join(` / `)
-      }</span>
+      <span class="value">{value.map(format_value).filter(Boolean).join(` / `)}</span>
     {:else}
       <!-- Single value -->
       <span class="value">{format_value(value)}</span>

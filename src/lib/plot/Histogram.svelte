@@ -149,7 +149,7 @@
       const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
       const max_count = Math.max(
         0,
-        ...series_list.map((s) => max(hist(s.y), (d) => d.length) || 0),
+        ...series_list.map((s) => max(hist(s.y), (data) => data.length) || 0),
       )
       const [y0, y1] = get_nice_data_range(
         [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
@@ -272,7 +272,7 @@
           ? bar.color
           : extract_series_color(series_data),
         bins: bins_arr,
-        max_count: max(bins_arr, (d) => d.length) || 0,
+        max_count: max(bins_arr, (data) => data.length) || 0,
         y_axis: series_data.y_axis,
         y_scale: use_y2 ? scales.y2 : scales.y,
       }
@@ -501,7 +501,9 @@
       {/if}
 
       <!-- Zoom Selection Rectangle -->
-      {#if drag_state.start && drag_state.current}
+      {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
+        isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
+        isFinite(drag_state.current.y)}
         {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
         {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
         {@const rect_width = Math.abs(drag_state.start.x - drag_state.current.x)}

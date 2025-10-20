@@ -427,9 +427,8 @@ test.each([
     // Parse the structure
     let structure: PymatgenStructure
 
-    if (filename.endsWith(`.json`)) {
-      structure = content as unknown as PymatgenStructure
-    } else {
+    if (filename.endsWith(`.json`)) structure = content as unknown as PymatgenStructure
+    else {
       const parsed = parse_structure_file(content as string, filename)
       if (!parsed || !parsed.lattice) {
         throw new Error(`Failed to parse structure or no lattice found`)

@@ -72,7 +72,7 @@
           label: `a, b, c`,
           value: `${
             [structure.lattice.a, structure.lattice.b, structure.lattice.c]
-              .map((v) => format_num(v, `.3~f`))
+              .map((val) => format_num(val, `.3~f`))
               .join(`, `)
           } Å`,
           key: `real-lattice-abc`,
@@ -81,7 +81,7 @@
           label: `α, β, γ`,
           value: `${
             [structure.lattice.alpha, structure.lattice.beta, structure.lattice.gamma]
-              .map((v) => format_num(v, `.2~f`))
+              .map((val) => format_num(val, `.2~f`))
               .join(`, `)
           }°`,
           key: `real-lattice-angles`,

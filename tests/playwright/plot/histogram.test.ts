@@ -342,9 +342,9 @@ test.describe(`Histogram Component Tests`, () => {
       await expect(first_legend_item).toBeVisible()
 
       // Verify legend item has clickable appearance (cursor pointer or similar)
-      const cursor_style = await first_legend_item.evaluate((el) => {
-        return getComputedStyle(el).cursor
-      })
+      const cursor_style = await first_legend_item.evaluate((el) =>
+        getComputedStyle(el).cursor
+      )
       expect(cursor_style).toBe(`pointer`)
 
       // Test that clicking a legend item doesn't break the legend
@@ -353,7 +353,7 @@ test.describe(`Histogram Component Tests`, () => {
       const after_click_count = await multiple_legend.locator(`.legend-item`).count()
       expect(after_click_count).toBe(legend_items)
     }
-    await expect(single_legend).not.toBeVisible()
+    await expect(single_legend).toBeHidden()
   })
 
   test(`legend remains functional when all series are disabled`, async ({ page }) => {
@@ -1352,9 +1352,7 @@ test.describe(`Histogram Component Tests`, () => {
       timeout: 5000,
     })
 
-    const cursor_style = await histogram.evaluate((el) => {
-      return getComputedStyle(el).cursor
-    })
+    const cursor_style = await histogram.evaluate((el) => getComputedStyle(el).cursor)
     expect(cursor_style).toBe(`crosshair`)
 
     // Test actual zoom interaction by simulating mouse events
@@ -1374,7 +1372,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test double-click reset
     await histogram.dblclick()
-    await expect(zoom_rect).not.toBeVisible({ timeout: 1000 })
+    await expect(zoom_rect).toBeHidden({ timeout: 1000 })
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {
