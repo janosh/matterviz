@@ -89,7 +89,7 @@ test.describe(`DOS Component Tests`, () => {
       ].map(async ([unit, selector]) => {
         const plot = page.locator(`${selector} + .scatter`)
         await expect(plot).toBeVisible()
-        const x_label = plot.locator(`g.x-axis text.axis-label`)
+        const x_label = plot.locator(`.x-label`)
         if ((await x_label.count()) > 0) {
           expect(await x_label.textContent()).toContain(unit)
         }

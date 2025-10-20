@@ -78,10 +78,14 @@
     style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%"
     {structure}
     {k_path_points}
-    k_path_labels={first_band_struct?.qpoints?.map((q, idx) => ({
-      position: k_path_points[idx],
-      label: q.label ? helpers.pretty_sym_point(q.label) : null,
-    })) ?? []}
+    k_path_labels={first_band_struct?.qpoints?.flatMap((q, idx) =>
+      k_path_points[idx]
+        ? [{
+          position: k_path_points[idx],
+          label: q.label ? helpers.pretty_sym_point(q.label) : null,
+        }]
+        : []
+    ) ?? []}
     {hovered_k_point}
     {hovered_qpoint_index}
     {...bz_props}

@@ -34,7 +34,7 @@ Compare multiple DOS curves with interactive unit conversion:
   }
 
   let selected_unit = $state('THz')
-  const units = ['THz', 'eV', 'meV', 'Ha', 'cm-1']
+  const units = ['THz', 'eV', 'meV', 'Ha', 'cm⁻¹']
 </script>
 
 <label>

@@ -35,7 +35,7 @@
   function get_line_style(
     color: string,
     is_acoustic: boolean,
-    mode_type: string,
+    mode_type: `acoustic` | `optical`,
     frequencies: number[],
     band_idx: number,
   ): { stroke: string; stroke_width: number } {

@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { subscript_map } from '$lib/labels'
-import { Vec3 } from '../math'
+import type { Vec3 } from '../math'
 import type * as types from './types'
 
 // Physical constants for unit conversions (SI units)

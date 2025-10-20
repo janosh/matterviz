@@ -20,7 +20,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
       }
       return [val, val, val] as Vec3
     } else if (parts.length === 3) {
-      const values = parts.map(parseInt)
+      const values = parts.map((val) => parseInt(val, 10))
       if (values.some((val) => isNaN(val) || val <= 0)) {
         throw new Error(`Invalid supercell scaling: ${scaling}`)
       }
