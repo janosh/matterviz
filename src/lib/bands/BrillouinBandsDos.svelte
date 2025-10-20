@@ -57,14 +57,31 @@
       ? (k_path_points[hovered_qpoint_index] as Vec3)
       : null,
   )
+
+  // Track screen width for responsive DOS orientation
+  let clientWidth = $state(0)
 </script>
 
 <div
   {...rest}
   class="bands-dos-brillouin {rest.class ?? ``}"
-  style={`display: grid; grid-template-columns: 30% 50% 20%; gap: 8px; ${rest.style ?? ``}`}
+  style={rest.style}
+  bind:clientWidth
 >
+  <Bands
+    style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
+    {band_structs}
+    y_axis={shared_y_axis ? shared_y_axis_obj : {}}
+    {...bands_props}
+    padding={{ r: 15, ...bands_props.padding }}
+    on_point_hover={({ point }) => {
+      hovered_band_point = point
+      bands_props.on_point_hover?.({ point })
+    }}
+  />
+
   <BrillouinZone
+    style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; max-height: 100%"
     {structure}
     {k_path_points}
     k_path_labels={first_band_struct?.qpoints?.map((q, idx) => ({
@@ -76,20 +93,10 @@
     {...bz_props}
   />
 
-  <Bands
-    {band_structs}
-    y_axis={shared_y_axis ? shared_y_axis_obj : {}}
-    {...bands_props}
-    padding={{ r: 15, ...bands_props.padding }}
-    on_point_hover={({ point }) => {
-      hovered_band_point = point
-      bands_props.on_point_hover?.({ point })
-    }}
-  />
-
   <Dos
+    style="grid-area: dos; min-width: 0; min-height: 0; overflow: hidden"
     {doses}
-    orientation="horizontal"
+    orientation={clientWidth < 1023 ? `vertical` : `horizontal`}
     x_axis={{ ticks: 4 }}
     y_axis={shared_y_axis ? { ...shared_y_axis_obj, label: `` } : { label: `` }}
     padding={{ l: 15, ...dos_props.padding }}
@@ -102,5 +109,40 @@
     width: var(--bands-dos-bz-width, 100%);
     height: var(--bands-dos-bz-height, 600px);
     min-height: var(--bands-dos-bz-min-height, 400px);
+    display: grid;
+    gap: var(--bands-dos-bz-gap, 1em);
+  }
+
+  /* Desktop: BZ | Bands | DOS side by side */
+  @media (min-width: 1024px) {
+    .bands-dos-brillouin {
+      grid-template-columns: 30% 50% 20%;
+      grid-template-areas: 'bz bands dos';
+    }
+  }
+
+  /* Tablet: Bands on top, BZ and DOS below */
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .bands-dos-brillouin {
+      grid-template-columns: 40% 60% !important;
+      grid-template-rows: 50% 50% !important;
+      grid-template-areas:
+        'bands bands'
+        'bz dos' !important;
+    }
+  }
+
+  /* Phone: All stacked vertically */
+  @media (max-width: 639px) {
+    .bands-dos-brillouin {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 400px 300px 400px !important;
+      grid-template-areas:
+        'bands'
+        'dos'
+        'bz' !important;
+      height: auto !important;
+      min-height: auto !important;
+    }
   }
 </style>

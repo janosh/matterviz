@@ -9,16 +9,21 @@ test.describe(`Bands Component Tests`, () => {
     const plot = page.getByTestId(`single-bands-plot`)
     await expect(plot).toBeVisible()
 
-    // Check SVG and band paths
+    // Check SVG and band paths (4 bands expected from mock data)
     const paths = plot.locator(`svg path[fill="none"]`)
     await expect(paths.first()).toBeVisible()
-    expect(await paths.count()).toBeGreaterThan(0)
+    expect(await paths.count()).toBe(4)
 
     // Check axes and high-symmetry point labels
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
     const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join()
-    expect(x_labels.includes(`Γ`) || x_labels.includes(`X`)).toBe(true)
+    expect(x_labels).toContain(`Γ`)
+    expect(x_labels).toContain(`X`)
+
+    // Verify y-axis has tick values
+    const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
+    expect(y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
   })
 
   test(`renders multiple band structures with toggleable legend`, async ({ page }) => {
@@ -29,15 +34,17 @@ test.describe(`Bands Component Tests`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
     const legend_items = legend.locator(`.legend-item`)
-    expect(await legend_items.count()).toBeGreaterThanOrEqual(2)
+    expect(await legend_items.count()).toBe(2)
     const legend_text = await legend.textContent()
     expect(legend_text).toContain(`BS1`)
     expect(legend_text).toContain(`BS2`)
 
-    // Test toggling
-    const expected_count = await svg.locator(`path[fill="none"]`).count()
+    // Test toggling - should have 8 paths (2 structures × 4 bands)
+    expect(await svg.locator(`path[fill="none"]`).count()).toBe(8)
     await legend_items.first().click()
-    await expect(svg.locator(`path[fill="none"]`)).not.toHaveCount(expected_count)
+    expect(await svg.locator(`path[fill="none"]`).count()).toBe(4) // Only BS2 visible
+    await legend_items.first().click() // Show all again
+    expect(await svg.locator(`path[fill="none"]`).count()).toBe(8)
   })
 
   test(`applies custom line styling and hides legend when configured`, async ({ page }) => {
@@ -104,16 +111,10 @@ test.describe(`Bands Component Tests`, () => {
     const tooltip = plot.locator(`.tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
 
-    // Check tooltip elements using data-testid
-    const frequency_element = tooltip.getByTestId(`tooltip-frequency`)
-    await expect(frequency_element).toBeVisible()
-    const frequency_text = await frequency_element.textContent()
-    expect(frequency_text).toContain(`THz`)
-
-    const path_element = tooltip.getByTestId(`tooltip-path`)
-    await expect(path_element).toBeVisible()
-    const path_text = await path_element.textContent()
-    expect(path_text).toContain(`→`)
+    // Check tooltip content by text
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toContain(`THz`)
+    expect(tooltip_text).toContain(`→`)
   })
 
   test(`tooltip shows series label with multiple band structures`, async ({ page }) => {
@@ -127,18 +128,11 @@ test.describe(`Bands Component Tests`, () => {
     const tooltip = plot.locator(`.tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
 
-    // Check series label using data-testid
-    const series_element = tooltip.getByTestId(`tooltip-series`)
-    await expect(series_element).toBeVisible()
-    const series_text = await series_element.textContent()
-    expect(series_text).toMatch(/BS[12]/)
-
-    // Check other tooltip elements
-    const frequency_element = tooltip.getByTestId(`tooltip-frequency`)
-    await expect(frequency_element).toBeVisible()
-
-    const path_element = tooltip.getByTestId(`tooltip-path`)
-    await expect(path_element).toBeVisible()
+    // Check tooltip content contains series label, frequency, and path
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toMatch(/BS[12]/)
+    expect(tooltip_text).toContain(`THz`)
+    expect(tooltip_text).toContain(`→`)
   })
 
   test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
@@ -193,11 +187,9 @@ test.describe(`Bands Component Tests`, () => {
     const tooltip = plot.locator(`.tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
 
-    // Check band element using data-testid
-    const band_element = tooltip.getByTestId(`tooltip-band`)
-    await expect(band_element).toBeVisible()
-    const band_text = await band_element.textContent()
-    expect(band_text).toMatch(/Band:\s*\d+/)
+    // Check tooltip contains band index
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toMatch(/Band:\s*\d+/)
   })
 
   test(`tooltip shows different band indices for different bands`, async ({ page }) => {
@@ -209,15 +201,13 @@ test.describe(`Bands Component Tests`, () => {
 
     const tooltip = plot.locator(`.tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
-    const band_element = tooltip.getByTestId(`tooltip-band`)
-    await expect(band_element).toBeVisible()
-    const first_text = await band_element.textContent()
+    const first_text = await tooltip.textContent()
     expect(first_text).toMatch(/Band:\s*1/)
 
     // Hover over third path (Band 3)
     await paths.nth(2).hover({ force: true })
 
-    const third_text = await band_element.textContent()
+    const third_text = await tooltip.textContent()
     expect(third_text).toMatch(/Band:\s*3/)
   })
 

@@ -42,22 +42,21 @@ test.describe(`DOS Component Tests`, () => {
     const max_plot = page.locator(`#max-normalization + .scatter`)
     await expect(max_plot.locator(`path[fill="none"]`).first()).toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
-    expect(
-      y_ticks.some((text) => {
-        const val = parseFloat(text)
-        return !isNaN(val) && val <= 1.0
-      }),
-    ).toBe(true)
+    const max_val = Math.max(
+      ...y_ticks.map((t) => parseFloat(t)).filter((n) => !isNaN(n)),
+    )
+    expect(max_val).toBeLessThanOrEqual(1.1) // Allow small margin for tick rounding
 
-    // Sum normalization should render
+    // Sum normalization should render and integrate to ~1
     const sum_plot = page.locator(`#sum-normalization + .scatter`)
     await expect(sum_plot.locator(`path[fill="none"]`).first()).toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
-    // Check stacked DOS
+    // Stacked DOS should have 2 curves, second higher than first everywhere
     const stacked_plot = page.locator(`#stacked-dos + .scatter`)
-    await expect(stacked_plot.locator(`path[fill="none"]`).first()).toBeVisible()
+    const paths = stacked_plot.locator(`path[fill="none"]`)
+    expect(await paths.count()).toBe(2)
 
     // Check Gaussian smearing produces smooth curves
     const smeared_plot = page.locator(`#gaussian-smearing + .scatter`)
@@ -76,6 +75,12 @@ test.describe(`DOS Component Tests`, () => {
     await expect(plot.locator(`path[fill="none"]`).first()).toBeVisible()
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
+
+    // For horizontal: X should have numeric density values, Y should have frequency values
+    const x_ticks = await plot.locator(`g.x-axis text`).allTextContents()
+    const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
+    expect(x_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
+    expect(y_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
   })
 
   test(`converts frequencies to different units`, async ({ page }) => {

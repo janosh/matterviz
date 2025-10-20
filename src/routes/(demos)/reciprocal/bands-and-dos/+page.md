@@ -2,25 +2,9 @@
 
 Combined visualization of band structures with density of states.
 
-## Basic Combined Plot
+## Basic Combined Plot with Shared Y-Axis
 
-Phonon band structure with DOS side-by-side:
-
-```svelte example
-<script>
-  import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-</script>
-
-<BandsAndDos {band_structs} {doses} class="full-bleed" style="aspect-ratio: 3" />
-```
-
-## Custom Subplot Widths
-
-Adjust the relative widths of the band structure and DOS panels:
+Phonon band structure with DOS side-by-side, synchronized axes and custom styling:
 
 ```svelte example
 <script>
@@ -29,19 +13,31 @@ Adjust the relative widths of the band structure and DOS panels:
 
   const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
   const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
+
+  const bands_props = {
+    line_kwargs: {
+      acoustic: { stroke: '#e74c3c', stroke_width: 2 },
+      optical: { stroke: '#3498db', stroke_width: 1.5 },
+    },
+  }
+
+  const dos_props = { normalize: 'max', sigma: 0.15 }
 </script>
 
 <BandsAndDos
   {band_structs}
   {doses}
+  {bands_props}
+  {dos_props}
+  shared_y_axis
   class="full-bleed"
-  style="aspect-ratio: 3; grid-template-columns: 55% 45%"
+  style="aspect-ratio: 3"
 />
 ```
 
-## Multiple Structures
+## Multiple Structures with Custom Layout
 
-Compare multiple band structures and DOS:
+Compare multiple band structures and DOS with custom column widths:
 
 ```svelte example
 <script>
@@ -69,64 +65,15 @@ Compare multiple band structures and DOS:
   }
 </script>
 
-<BandsAndDos {band_structs} {doses} class="full-bleed" style="aspect-ratio: 3" />
-```
-
-## With Custom Styling
-
-Apply custom styling to both panels:
-
-```svelte example
-<script>
-  import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-
-  const bands_props = {
-    line_kwargs: {
-      acoustic: { stroke: '#e74c3c', stroke_width: 2 },
-      optical: { stroke: '#3498db', stroke_width: 1.5 },
-    },
-  }
-
-  const dos_props = { normalize: 'max', sigma: 0.15 }
-</script>
-
 <BandsAndDos
   {band_structs}
   {doses}
-  {bands_props}
-  {dos_props}
   class="full-bleed"
-  style="aspect-ratio: 3"
+  style="aspect-ratio: 3; grid-template-columns: 60% 40%"
 />
 ```
 
-## Shared Y-Axis
-
-Synchronize the y-axes between panels:
-
-```svelte example
-<script>
-  import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-</script>
-
-<BandsAndDos
-  {band_structs}
-  {doses}
-  shared_y_axis
-  class="full-bleed"
-  style="aspect-ratio: 3"
-/>
-```
-
-## With Controls
+## With Interactive Controls
 
 Enable interactive controls for both panels:
 

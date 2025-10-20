@@ -2,75 +2,9 @@
 
 Integrated visualization of band structures, density of states, and Brillouin zone with k-path synchronization.
 
-## Basic Combined Plot
+## Basic Three-Panel View with Custom Styling
 
-Phonon band structure with DOS and Brillouin zone:
-
-```svelte example
-<script>
-  import { BrillouinBandsDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-  import phonon_data from '$site/phonons/mp-2758-Sr4Se4-pbe.json'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-  const structure = phonon_data.primitive
-</script>
-
-<BrillouinBandsDos {structure} {band_structs} {doses} class="full-bleed" />
-```
-
-## Custom Column Widths
-
-Adjust the relative widths of the three panels:
-
-```svelte example
-<script>
-  import { BrillouinBandsDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-  import phonon_data from '$site/phonons/mp-2758-Sr4Se4-pbe.json'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-  const structure = phonon_data.primitive
-</script>
-
-<BrillouinBandsDos
-  {structure}
-  {band_structs}
-  {doses}
-  style="grid-template-columns: 35% 45% 20%"
-  class="full-bleed"
-/>
-```
-
-## With Brillouin Zone Controls
-
-Enable interactive controls for the Brillouin zone:
-
-```svelte example
-<script>
-  import { BrillouinBandsDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-  import phonon_data from '$site/phonons/mp-2758-Sr4Se4-pbe.json'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-  const structure = phonon_data.primitive
-</script>
-
-<BrillouinBandsDos
-  {structure}
-  {band_structs}
-  {doses}
-  bz_props={{ show_controls: true }}
-  class="full-bleed"
-/>
-```
-
-## Custom Band and DOS Styling
-
-Apply custom styling to both panels:
+Phonon band structure with DOS and Brillouin zone, customized layout and styling:
 
 ```svelte example
 <script>
@@ -98,37 +32,14 @@ Apply custom styling to both panels:
   {doses}
   {bands_props}
   {dos_props}
+  style="grid-template-columns: 35% 45% 20%; margin-block: 1em 2em"
   class="full-bleed"
 />
 ```
 
-## Independent Y-Axes
+## With Interactive BZ Controls and Custom Colors
 
-Disable shared y-axis between Bands and DOS:
-
-```svelte example
-<script>
-  import { BrillouinBandsDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
-  import phonon_data from '$site/phonons/mp-2758-Sr4Se4-pbe.json'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
-  const structure = phonon_data.primitive
-</script>
-
-<BrillouinBandsDos
-  {structure}
-  {band_structs}
-  {doses}
-  shared_y_axis={false}
-  class="full-bleed"
-/>
-```
-
-## Custom Brillouin Zone Appearance
-
-Customize the Brillouin zone colors and opacity:
+Enable Brillouin zone controls with custom appearance:
 
 ```svelte example
 <script>
@@ -149,8 +60,34 @@ Customize the Brillouin zone colors and opacity:
   {structure}
   {band_structs}
   {doses}
-  bz_props={{ surface_color, surface_opacity, edge_color }}
+  bz_props={{ show_controls: true, surface_color, surface_opacity, edge_color }}
   class="full-bleed"
+  style="margin-block: 1em 2em"
+/>
+```
+
+## Independent Y-Axes
+
+Disable shared y-axis between bands and DOS panels:
+
+```svelte example
+<script>
+  import { BrillouinBandsDos } from 'matterviz'
+  import { phonon_bands, phonon_dos } from '$site/phonons'
+  import phonon_data from '$site/phonons/mp-2758-Sr4Se4-pbe.json'
+
+  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
+  const doses = [phonon_dos['mp-2758-Sr4Se4-pbe']]
+  const structure = phonon_data.primitive
+</script>
+
+<BrillouinBandsDos
+  {structure}
+  {band_structs}
+  {doses}
+  shared_y_axis={false}
+  class="full-bleed"
+  style="margin-block: 1em 2em"
 />
 ```
 

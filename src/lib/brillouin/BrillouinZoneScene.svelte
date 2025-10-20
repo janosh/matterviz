@@ -269,7 +269,7 @@
         {#if label}
           <extras.HTML center position={position.map((x) => x * 1.1) as Vec3}>
             <span
-              style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px"
+              style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px; color: white"
             >
               {label}
             </span>

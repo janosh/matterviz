@@ -2,24 +2,9 @@
 
 Interactive phonon and electronic band structure visualization.
 
-## Basic Phonon Band Structure
+## Basic Phonon Bands with Custom Styling
 
-A simple phonon band structure plot showing acoustic and optical modes:
-
-```svelte example
-<script>
-  import { Bands } from 'matterviz'
-  import { phonon_bands } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
-</script>
-
-<Bands {band_structs} />
-```
-
-## Custom Line Styling
-
-Customize acoustic and optical modes with different styles:
+A phonon band structure plot with custom line styling for acoustic and optical modes:
 
 ```svelte example
 <script>
@@ -29,17 +14,17 @@ Customize acoustic and optical modes with different styles:
   const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
 
   const line_kwargs = {
-    acoustic: { stroke: 'red', stroke_width: 2 },
-    optical: { stroke: 'blue', stroke_width: 1 },
+    acoustic: { stroke: '#e74c3c', stroke_width: 2 },
+    optical: { stroke: '#3498db', stroke_width: 1.5 },
   }
 </script>
 
 <Bands {band_structs} {line_kwargs} />
 ```
 
-## Multiple Band Structures
+## Multiple Band Structures with Controls
 
-Compare multiple band structures on the same plot:
+Compare multiple band structures on the same plot with interactive controls:
 
 ```svelte example
 <script>
@@ -60,21 +45,6 @@ Compare multiple band structures on the same plot:
       bands: band_struct.bands.map((band) => band.map((f) => f * 0.95)),
     },
   }
-</script>
-
-<Bands {band_structs} />
-```
-
-## With Controls
-
-Enable interactive controls for customization:
-
-```svelte example
-<script>
-  import { Bands } from 'matterviz'
-  import { phonon_bands } from '$site/phonons'
-
-  const band_structs = [phonon_bands['mp-2758-Sr4Se4-pbe']]
 </script>
 
 <Bands {band_structs} controls={{ show: true, open: true }} />
