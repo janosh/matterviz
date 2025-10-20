@@ -57,11 +57,18 @@
       ? (k_path_points[hovered_qpoint_index] as Vec3)
       : null,
   )
-  const desktop_width = 1200
+  const [desktop_width, tablet_width] = [1200, 600]
   let clientWidth = $state(desktop_width)
+  let screen = $derived(
+    clientWidth >= desktop_width
+      ? `desktop`
+      : clientWidth >= tablet_width
+      ? `tablet`
+      : `phone`,
+  )
 </script>
 
-<div {...rest} class="bands-dos-brillouin {rest.class ?? ``}" bind:clientWidth>
+<div {...rest} class="bands-dos-brillouin {screen} {rest.class ?? ``}" bind:clientWidth>
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}
@@ -97,7 +104,7 @@
     orientation={clientWidth < desktop_width ? `vertical` : `horizontal`}
     x_axis={{ ticks: 4 }}
     y_axis={shared_y_axis ? { ...shared_y_axis_obj, label: `` } : { label: `` }}
-    padding={{ l: 15, ...dos_props.padding }}
+    padding={{ l: 15, ...screen === `desktop` ? { r: 5 } : {}, ...dos_props.padding }}
     {...dos_props}
   />
 </div>
@@ -110,28 +117,25 @@
     display: grid;
     gap: var(--bands-dos-bz-gap, 1em);
   }
+
   /* Desktop: BZ | Bands | DOS side by side */
-  @media (min-width: 1200px) {
-    .bands-dos-brillouin {
-      grid-template-columns: 30% 50% 20%;
-      grid-template-areas: 'bz bands dos';
-    }
+  .bands-dos-brillouin.desktop {
+    grid-template-columns: 30% 55% 15%;
+    grid-template-areas: 'bz bands dos';
   }
+
   /* Tablet: Bands on top, BZ and DOS below */
-  @media (min-width: 640px) and (max-width: 1199px) {
-    .bands-dos-brillouin {
-      grid-template-columns: 40% 60% !important;
-      grid-template-rows: 50% 50% !important;
-      grid-template-areas:
-        'bands bands'
-        'bz dos' !important;
-    }
+  .bands-dos-brillouin.tablet {
+    grid-template-columns: 40% 60%;
+    grid-template-rows: 50% 50%;
+    grid-template-areas:
+      'bands bands'
+      'bz dos';
   }
+
   /* Phone: All stacked vertically */
-  @media (max-width: 639px) {
-    .bands-dos-brillouin {
-      grid-template-columns: 1fr !important;
-      grid-template-areas: 'bands' 'dos' 'bz' !important;
-    }
+  .bands-dos-brillouin.phone {
+    grid-template-columns: 1fr;
+    grid-template-areas: 'bands' 'dos' 'bz';
   }
 </style>

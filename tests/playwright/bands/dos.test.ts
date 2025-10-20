@@ -31,13 +31,11 @@ test.describe(`DOS Component Tests`, () => {
     expect(legend_text).toContain(`DOS1`)
     expect(legend_text).toContain(`DOS2`)
 
-    // Test toggling (use stroke to identify line paths)
-    await expect(svg.locator(`path.line, path[stroke]:not([stroke="none"])`)).toHaveCount(
-      2,
-    )
+    // Test toggling
+    const curves = svg.locator(`path.line, path[stroke]:not([stroke="none"])`)
+    await expect(curves).toHaveCount(2)
     await legend.locator(`.legend-item`).first().click()
-    await expect(svg.locator(`path.line, path[stroke]:not([stroke="none"])`)).not
-      .toHaveCount(2)
+    await expect(curves).toHaveCount(1, { timeout: 2000 })
   })
 
   test(`applies normalization correctly`, async ({ page }) => {
@@ -46,23 +44,32 @@ test.describe(`DOS Component Tests`, () => {
     await expect(max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
       .toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
-    const max_val = Math.max(
-      ...y_ticks.map((t) => Number.parseFloat(t)).filter(Number.isFinite),
-    )
+    const nums = y_ticks
+      .map((tick) => Number.parseFloat(tick.replace(/[^\d.\-+eE]/g, ``)))
+      .filter(Number.isFinite)
+    const max_val = Math.max(...nums)
     expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
 
-    // Sum normalization should render and integrate to ~1
+    // Sum normalization should render correctly
     const sum_plot = page.locator(`#sum-normalization + .scatter`)
     await expect(sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
       .toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
-    // Stacked DOS should have 2 curves, second higher than first everywhere
+    // Stacked DOS should have 2 curves, second higher than first
     const stacked_plot = page.locator(`#stacked-dos + .scatter`)
     // Use stroke presence to identify line paths (robust against fill="none" vs "transparent")
     const paths = stacked_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
     expect(await paths.count()).toBe(2)
+
+    // Verify second curve spans greater vertical extent (stacked higher)
+    const bbox_1 = await paths.nth(0).boundingBox()
+    const bbox_2 = await paths.nth(1).boundingBox()
+    expect(bbox_1 && bbox_2).toBeTruthy()
+    if (bbox_1 && bbox_2) {
+      expect(bbox_2.height).toBeGreaterThan(bbox_1.height)
+    }
 
     // Check Gaussian smearing produces smooth curves
     const smeared_plot = page.locator(`#gaussian-smearing + .scatter`)
@@ -73,7 +80,8 @@ test.describe(`DOS Component Tests`, () => {
     // Verify path has data and is sufficiently complex (indicates smoothing/interpolation)
     expect(path_d).toBeTruthy()
     if (path_d) {
-      expect(path_d.length).toBeGreaterThan(50) // Smooth curve should have substantial path data
+      const cmds = path_d.match(/[MLCQSTVHZ]/g) ?? []
+      expect(cmds.length).toBeGreaterThan(10) // Smooth curve should have many drawing commands
     }
   })
 
@@ -87,8 +95,12 @@ test.describe(`DOS Component Tests`, () => {
     // For horizontal: X should have numeric density values, Y should have frequency values
     const x_ticks = await plot.locator(`g.x-axis text`).allTextContents()
     const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
-    expect(x_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
-    expect(y_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
+    expect(x_ticks.some((tick) => !Number.isNaN(Number.parseFloat(tick)))).toBe(true)
+    expect(y_ticks.some((tick) => !Number.isNaN(Number.parseFloat(tick)))).toBe(true)
+
+    // Assert axis labels reflect horizontal swap
+    await expect(plot.locator(`.x-label`)).toContainText(/Density/i)
+    await expect(plot.locator(`.y-label`)).toContainText(/(Frequency|Energy)/i)
   })
 
   test(`converts frequencies to different units`, async ({ page }) => {
@@ -123,34 +135,40 @@ test.describe(`DOS Component Tests`, () => {
     const plot = page.locator(`#single-dos + .scatter`)
     await expect(plot).toBeVisible()
 
-    // Get the SVG and hover in the middle of the plot area
     const svg = plot.locator(`svg[role="img"]`)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
     const tooltip = plot.locator(`.tooltip`)
+    const curve = plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first()
 
-    // Try hovering at different positions to find a data point
-    let tooltip_found = false
-    for (const [x_frac, y_frac] of [[0.3, 0.5], [0.5, 0.5], [0.7, 0.5]]) {
-      await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
+    // Try hovering the curve directly first
+    await curve.hover({ trial: true }).catch(() => {})
 
-      if (await tooltip.isVisible()) {
-        tooltip_found = true
-        const tooltip_text = await tooltip.textContent()
-        expect(tooltip_text).toBeTruthy()
+    let tooltip_found = await tooltip.isVisible()
 
-        // Tooltip should show density (y-axis)
-        expect(tooltip_text).toMatch(/Density.*:/)
+    // Fall back to grid probing if curve hover didn't work
+    if (!tooltip_found) {
+      for (const [x_frac, y_frac] of [[0.3, 0.5], [0.5, 0.5], [0.7, 0.5]]) {
+        await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
 
-        // Tooltip should show frequency/energy with unit (x-axis)
-        expect(tooltip_text).toMatch(/(Frequency|Energy)/)
-        break
+        if (await tooltip.isVisible()) {
+          tooltip_found = true
+          break
+        }
       }
     }
 
     expect(tooltip_found).toBe(true)
+    const tooltip_text = await tooltip.textContent()
+    expect(tooltip_text).toBeTruthy()
+
+    // Tooltip should show density (y-axis)
+    expect(tooltip_text).toMatch(/Density.*:/)
+
+    // Tooltip should show frequency/energy with unit (x-axis)
+    expect(tooltip_text).toMatch(/(Frequency|Energy)/)
   })
 
   test(`tooltip shows series label with multiple DOS`, async ({ page }) => {
@@ -183,23 +201,24 @@ test.describe(`DOS Component Tests`, () => {
         tooltip_found = true
         const tooltip_text = await tooltip.textContent()
         expect(tooltip_text).toBeTruthy()
+        if (!tooltip_text) break
 
         // With multiple DOS, series label should be at the top in bold
         expect(tooltip_text).toMatch(/DOS[12]/)
 
         // Verify label appears before density/frequency (series label should be first line)
         const value_idx = Math.min(
-          tooltip_text?.indexOf(`Density`) !== -1
+          tooltip_text.indexOf(`Density`) !== -1
             ? tooltip_text.indexOf(`Density`)
             : Infinity,
-          tooltip_text?.indexOf(`Frequency`) !== -1
+          tooltip_text.indexOf(`Frequency`) !== -1
             ? tooltip_text.indexOf(`Frequency`)
             : Infinity,
-          tooltip_text?.indexOf(`Energy`) !== -1
+          tooltip_text.indexOf(`Energy`) !== -1
             ? tooltip_text.indexOf(`Energy`)
             : Infinity,
         )
-        const label_idx = tooltip_text?.search(/DOS[12]/) ?? -1
+        const label_idx = tooltip_text.search(/DOS[12]/) ?? -1
         expect(label_idx).toBeGreaterThan(-1)
         if (value_idx !== Infinity) {
           expect(label_idx).toBeLessThan(value_idx)
@@ -300,7 +319,7 @@ test.describe(`DOS Component Tests`, () => {
       await page.mouse.move(box.x - 50, box.y - 50)
 
       // Tooltip should be hidden
-      await expect(tooltip).not.toBeVisible()
+      await expect(tooltip).toBeHidden()
     } else {
       // If tooltip didn't show, just verify plot rendered
       console.log(`Tooltip not found, but plot rendered successfully`)

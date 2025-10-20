@@ -2,7 +2,7 @@
 
 Integrated visualization of band structures, density of states, and Brillouin zone with k-path synchronization.
 
-## Phonon bands in three-panel view with custom styling
+## Phonon bands in three-panel view with custom column widths
 
 ```svelte example
 <script>

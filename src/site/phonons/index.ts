@@ -14,12 +14,9 @@ interface RawPhononBandStructure {
 }
 
 // Calculate distance between two points in reciprocal space
-function calc_recip_distance(
-  q1: math.Vec3,
-  q2: math.Vec3,
-  lattice_T: math.Matrix3x3, // pre-transposed lattice matrix to avoid repeated transposition in loops
-): number {
-  const delta = q1.map((val, idx) => val - q2[idx]) as math.Vec3
+function calc_recip_distance(q1: math.Vec3, q2: math.Vec3, lattice_T: math.Matrix3x3) {
+  const delta = math.subtract(q1, q2)
+  // lattice_T: pre-transposed lattice matrix to avoid repeated transposition in loops
   const cart = math.mat3x3_vec3_multiply(lattice_T, delta)
   return Math.hypot(...cart)
 }
@@ -28,6 +25,14 @@ function calc_recip_distance(
 function transform_band_structure(raw: RawPhononBandStructure): PhononBandStructure {
   const { lattice_rec: { matrix: lattice }, qpoints, bands, labels_dict } = raw
   const [n_qpoints, n_bands] = [qpoints.length, bands.length]
+  const band_lens = bands.map((band) => band.length)
+  if (new Set(band_lens).size !== 1) {
+    throw new Error(
+      `all bands should each have length ${n_qpoints}, received lengths=${
+        [...new Set(band_lens)].join(`, `)
+      }`,
+    )
+  }
 
   // Calculate cumulative distances
   // Pre-transpose lattice once to avoid repeated transposition per q-point
@@ -56,10 +61,26 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
 
   // Detect branches (segments between labeled points)
   // Include head/tail segments if path doesn't start/end on a labeled point
+  // Branch endpoints are inclusive (start_index and end_index both included in segment)
   const sorted_indices = [...labeled_indices.keys()].sort((a, b) => a - b)
   const branches: Branch[] = []
-  if (sorted_indices.length < 2) { // No labeled points or only one: treat entire path as single branch
+  if (sorted_indices.length === 0) {
     branches.push({ start_index: 0, end_index: n_qpoints - 1, name: `full` })
+  } else if (sorted_indices.length === 1) {
+    const label_idx = sorted_indices[0]
+    const label = label_idx !== undefined ? labeled_indices.get(label_idx) : undefined
+    if (label_idx !== undefined && label) {
+      if (label_idx > 0) {
+        branches.push({ start_index: 0, end_index: label_idx, name: `0-${label}` })
+      }
+      if (label_idx < n_qpoints - 1) {
+        branches.push({
+          start_index: label_idx,
+          end_index: n_qpoints - 1,
+          name: `${label}-end`,
+        })
+      }
+    }
   } else { // Optional head segment (if path doesn't start at a labeled point)
     if (sorted_indices[0] > 0) {
       const name = `0-${labeled_indices.get(sorted_indices[0])}`
@@ -105,13 +126,13 @@ type PhononData = {
   phonon_dos?: PhononDos
 }
 
-// Import all phonon data files (excluding compressed .xz files)
+// Import all phonon data files
 const phonon_data = Object.fromEntries(
   Object.entries(
-    import.meta.glob(`./*.json`, { eager: true, import: `default` }) as Record<
-      string,
-      PhononData
-    >,
+    import.meta.glob(
+      `./*.json`,
+      { eager: true, import: `default` },
+    ) as Record<string, PhononData>,
   ).map(([path, data]) => [path.split(`/`).pop()?.replace(`.json`, ``) ?? path, data]),
 )
 
