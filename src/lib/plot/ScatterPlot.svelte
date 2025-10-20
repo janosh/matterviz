@@ -859,8 +859,10 @@
         next_x_range[0] !== next_x_range[1] &&
         next_y_range[0] !== next_y_range[1]
       ) {
-        zoom_x_range = next_x_range
-        zoom_y_range = next_y_range
+        // Update axis ranges to trigger reactivity (like BarPlot/Histogram do)
+        x_axis = { ...x_axis, range: next_x_range }
+        y_axis = { ...y_axis, range: next_y_range }
+        // Note: y2_range zoom not yet implemented for scatter
       }
     }
 
@@ -874,14 +876,22 @@
   }
 
   function handle_mouse_down(evt: MouseEvent) {
-    const coords = get_relative_coords(evt)
-    if (!coords || !svg_element) return
+    if (!svg_element) return
+
+    // Store bounding box first, then calculate coords using it
+    svg_bounding_box = svg_element.getBoundingClientRect()
+
+    // Calculate initial coords using the same bounding box that will be used during drag
+    const initial_x = evt.clientX - svg_bounding_box.left
+    const initial_y = evt.clientY - svg_bounding_box.top
+    const coords = { x: initial_x, y: initial_y }
+
     drag_start_coords = coords
     drag_current_coords = coords
-    svg_bounding_box = svg_element.getBoundingClientRect()
 
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
+    document.body.style.cursor = `crosshair`
     evt.preventDefault()
   }
 
@@ -892,27 +902,14 @@
   }
 
   function handle_double_click() {
-    // Reset zoom to auto ranges
-    zoom_x_range = [
-      x_axis.range?.[0] ?? auto_x_range[0],
-      x_axis.range?.[1] ?? auto_x_range[1],
-    ]
-    zoom_y_range = [
-      y_axis.range?.[0] ?? auto_y_range[0],
-      y_axis.range?.[1] ?? auto_y_range[1],
-    ]
-    zoom_y2_range = [
-      y2_axis.range?.[0] ?? auto_y2_range[0],
-      y2_axis.range?.[1] ?? auto_y2_range[1],
-    ]
+    // Reset zoom to auto ranges (clear axis range to use auto-calculated ranges)
+    x_axis = { ...x_axis, range: undefined }
+    y_axis = { ...y_axis, range: undefined }
+    y2_axis = { ...y2_axis, range: undefined }
   }
 
   // tooltip logic: find closest point and update tooltip state
-  function update_tooltip_point(
-    x_rel: number,
-    y_rel: number,
-    evt?: MouseEvent,
-  ): void {
+  function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
     let closest_point_internal: InternalPoint | null = null

@@ -4,8 +4,11 @@ import { Buffer } from 'node:buffer'
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
-    // Wait for WebGL/Three.js to initialize
-    await page.waitForTimeout(500)
+    // Wait for the default container and basic structure to be present
+    const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    await expect(container).toBeVisible()
+    // Wait for canvas (BZ) to be present
+    await expect(container.locator(`canvas`).first()).toBeVisible()
   })
 
   test(`renders all three panels with content`, async ({ page }) => {
@@ -15,8 +18,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect(container.locator(`canvas`).first()).toBeVisible()
     await expect(container.locator(`svg`).nth(0).locator(`path[fill="none"]`).first())
       .toBeVisible()
+    // DOS may take longer to render, give it more time
     await expect(container.locator(`svg`).nth(1).locator(`path[fill="none"]`).first())
-      .toBeVisible()
+      .toBeVisible({ timeout: 15000 })
 
     // Check for high-symmetry labels in bands
     const x_labels = await container.locator(`svg`).nth(0).locator(`g.x-axis text`)
@@ -68,11 +72,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
 
     await page.setViewportSize({ width: 800, height: 600 })
-    await page.waitForTimeout(100)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
     expect(await container.boundingBox()).toBeTruthy()
 
     await page.setViewportSize({ width: 1600, height: 1200 })
-    await page.waitForTimeout(100)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
     expect(await container.boundingBox()).toBeTruthy()
   })
 
@@ -85,7 +89,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await container.locator(`svg`).nth(0).locator(`path[fill="none"]`).first().hover({
       position: { x: 100, y: 100 },
     })
-    await page.waitForTimeout(100)
+
+    // Wait for canvas to repaint by checking for any change
+    await page.waitForFunction(() => {
+      return new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
+    })
 
     expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
   })
@@ -102,7 +110,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       await page.mouse.down()
       await page.mouse.move(center_x + 50, center_y)
       await page.mouse.up()
-      await page.waitForTimeout(200)
+
+      // Wait for canvas to repaint after drag
+      await page.waitForFunction(() => {
+        return new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
+      })
     }
 
     expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
@@ -120,9 +132,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test(`desktop layout: three columns side by side`, async ({ page }) => {
     await page.setViewportSize({ width: 1400, height: 800 })
-    await page.waitForTimeout(200)
-
     const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+
     const grid_template = await container
       .locator(`.bands-dos-brillouin`)
       .evaluate((el) => getComputedStyle(el).gridTemplateAreas)
@@ -140,9 +152,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test(`tablet layout: bands on top, BZ and DOS below`, async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 700 })
-    await page.waitForTimeout(200)
-
     const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+
     const grid_template = await container
       .locator(`.bands-dos-brillouin`)
       .evaluate((el) => {
@@ -165,9 +177,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test(`phone layout: all stacked vertically`, async ({ page }) => {
     await page.setViewportSize({ width: 500, height: 900 })
-    await page.waitForTimeout(200)
-
     const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+
     const grid_template = await container
       .locator(`.bands-dos-brillouin`)
       .evaluate((el) => {
@@ -196,8 +208,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Desktop: horizontal DOS
     await page.setViewportSize({ width: 1400, height: 800 })
-    await page.waitForTimeout(200)
     const dos_svg_wide = container.locator(`svg`).nth(1)
+    await expect(dos_svg_wide).toBeVisible()
     const dos_box_wide = await dos_svg_wide.boundingBox()
     expect(dos_box_wide).toBeTruthy()
     if (dos_box_wide) {
@@ -206,8 +218,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Tablet/Phone: vertical DOS (wider than tall)
     await page.setViewportSize({ width: 800, height: 700 })
-    await page.waitForTimeout(200)
     const dos_svg_narrow = container.locator(`svg`).nth(1)
+    await expect(dos_svg_narrow).toBeVisible()
     const dos_box_narrow = await dos_svg_narrow.boundingBox()
     expect(dos_box_narrow).toBeTruthy()
     if (dos_box_narrow) {
@@ -217,10 +229,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test(`BZ respects height constraints on tablet layout`, async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 700 })
-    await page.waitForTimeout(200)
-
     const container = page.locator(`[data-testid="bands-dos-bz-default"]`)
     const bz_canvas = container.locator(`canvas`).first()
+    await expect(bz_canvas).toBeVisible()
     const canvas_box = await bz_canvas.boundingBox()
     const container_box = await container.boundingBox()
 
@@ -238,7 +249,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Test desktop
     await page.setViewportSize({ width: 1400, height: 700 })
-    await page.waitForTimeout(100)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
     const gap_desktop = await container
       .locator(`.bands-dos-brillouin`)
       .evaluate((el) => getComputedStyle(el).gap)
@@ -247,7 +258,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Test tablet
     await page.setViewportSize({ width: 800, height: 700 })
-    await page.waitForTimeout(100)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
     const gap_tablet = await container
       .locator(`.bands-dos-brillouin`)
       .evaluate((el) => getComputedStyle(el).gap)
@@ -256,7 +267,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Test phone
     await page.setViewportSize({ width: 500, height: 700 })
-    await page.waitForTimeout(100)
+    await expect(container.locator(`canvas`).first()).toBeVisible()
     const gap_phone = await container
       .locator(`.bands-dos-brillouin`)
       .evaluate((el) => getComputedStyle(el).gap)
@@ -269,10 +280,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Test at tablet size
     await page.setViewportSize({ width: 800, height: 700 })
-    await page.waitForTimeout(200)
-
     const bz_canvas = container.locator(`canvas`).first()
     const bands_svg = container.locator(`svg`).nth(0)
+    await expect(bz_canvas).toBeVisible()
 
     // BZ should still rotate
     const initial = await bz_canvas.screenshot()
@@ -282,7 +292,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       await page.mouse.down()
       await page.mouse.move(box.x + 100, box.y + 50)
       await page.mouse.up()
-      await page.waitForTimeout(200)
+
+      // Wait for canvas to repaint after drag
+      await page.waitForFunction(() => {
+        return new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
+      })
     }
     expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
 
@@ -290,7 +304,6 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await bands_svg.locator(`path[fill="none"]`).first().hover({
       position: { x: 50, y: 50 },
     })
-    await page.waitForTimeout(100)
     await expect(bands_svg).toBeVisible()
   })
 })
