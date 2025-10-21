@@ -6,8 +6,8 @@
 
   let {
     y,
-    x_axis = $bindable({ label: `Atomic Number` }),
-    y_axis = $bindable({ label: ``, format: `~s` }),
+    x_axis = { label: `Atomic Number` },
+    y_axis = { label: ``, format: `~s` },
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),

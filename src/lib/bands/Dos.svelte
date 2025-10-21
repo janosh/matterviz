@@ -158,19 +158,13 @@
     range: y_range,
     ...y_axis,
   })
-  let display = $state({
-    x_grid: true,
-    y_grid: true,
-    x_zero_line: true,
-    y_zero_line: true,
-  })
 </script>
 
 <ScatterPlot
   series={series_data}
-  bind:x_axis={final_x_axis}
-  bind:y_axis={final_y_axis}
-  bind:display
+  x_axis={final_x_axis}
+  y_axis={final_y_axis}
+  display={{ x_grid: true, y_grid: true, x_zero_line: true, y_zero_line: true }}
   legend={show_legend ? {} : null}
   hover_config={{ threshold_px: 50 }}
   on_point_hover={({ point }) => {

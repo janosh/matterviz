@@ -32,10 +32,10 @@
     series = $bindable([]),
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.bar.display),
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
+    display = DEFAULTS.bar.display,
     x_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
@@ -43,8 +43,8 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     legend = {},
     show_legend,
-    bar = $bindable({}),
-    line = $bindable({}),
+    bar = {},
+    line = {},
     tooltip,
     user_content,
     hovered = $bindable(false),
@@ -82,10 +82,10 @@
     on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
   } = $props()
 
-  // Initialize bar and line styles with defaults (runs once)
+  // Initialize bar, line, y2_axis with defaults (runs once)
   bar = { ...DEFAULTS.bar.bar, ...bar }
   line = { ...DEFAULTS.bar.line, ...line }
-  y2_axis = { // Initialize y2_axis defaults
+  y2_axis = {
     format: ``,
     scale_type: `linear`,
     ticks: 5,
@@ -1053,10 +1053,10 @@
         bind:controls_open
         bind:orientation
         bind:mode
-        bind:x_axis
-        bind:y_axis
-        bind:y2_axis
-        bind:display
+        {x_axis}
+        {y_axis}
+        {y2_axis}
+        {display}
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
         auto_y2_range={auto_ranges.y2 as [number, number]}

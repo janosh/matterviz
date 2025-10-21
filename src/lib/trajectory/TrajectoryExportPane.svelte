@@ -16,8 +16,8 @@
     video_fps = $bindable(30),
     resolution_multiplier = $bindable(1),
     on_step_change = undefined,
-    pane_props = $bindable({}),
-    toggle_props = $bindable({}),
+    pane_props = {},
+    toggle_props = {},
     ...rest
   }: {
     // Control pane state

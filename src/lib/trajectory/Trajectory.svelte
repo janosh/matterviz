@@ -1080,12 +1080,12 @@
         {#if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
-            bind:x_axis
-            bind:y_axis
-            bind:y2_axis
+            {x_axis}
+            {y_axis}
+            {y2_axis}
+            controls={scatter_controls}
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
-            bind:controls={scatter_controls}
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"

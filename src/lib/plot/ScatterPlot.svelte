@@ -58,12 +58,12 @@
 
   let {
     series = [],
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.scatter.display),
-    styles = $bindable({}),
-    controls = $bindable({}),
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
+    display = DEFAULTS.scatter.display,
+    styles = {},
+    controls = {},
     padding = {},
     range_padding = 0.05,
     current_x_value = null,
@@ -1741,12 +1741,11 @@
       <ScatterPlotControls
         toggle_props={controls.toggle_props}
         pane_props={controls.pane_props}
-        bind:x_axis
-        bind:y_axis
-        bind:y2_axis
-        bind:display
-        bind:styles
-        bind:controls
+        {x_axis}
+        {y_axis}
+        {y2_axis}
+        {display}
+        {styles}
         {auto_x_range}
         {auto_y_range}
         {auto_y2_range}
