@@ -179,11 +179,11 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   {series}
   mode="overlay"
   bins={50}
-  bind:bar
-  bind:x_axis
-  bind:y_axis
-  bind:y2_axis
-  bind:display
+  {bar}
+  {x_axis}
+  {y_axis}
+  {y2_axis}
+  {display}
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -256,8 +256,8 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   {series}
   mode="overlay"
   {bins}
-  bind:x_axis
-  bind:y_axis
+  {x_axis}
+  {y_axis}
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
@@ -350,9 +350,9 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 <Histogram
   series={series_data}
   {mode}
+  {x_axis}
+  {y_axis}
   bins={selected === `discrete` ? 10 : 40}
-  bind:x_axis
-  bind:y_axis
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
 >
@@ -474,9 +474,9 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 
 <Histogram
   {series}
+  {x_axis}
+  {y_axis}
   bins={35}
-  bind:x_axis
-  bind:y_axis
   style="height: 450px; border: 2px solid {color_schemes[color_scheme][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}

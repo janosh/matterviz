@@ -422,9 +422,9 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 
 <BarPlot
   series={yearly_data}
-  bind:x_axis
-  bind:y_axis
-  bind:y2_axis
+  {x_axis}
+  {y_axis}
+  {y2_axis}
   style="height: 400px"
 />
 ```

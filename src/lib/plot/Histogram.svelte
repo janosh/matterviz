@@ -22,10 +22,10 @@
 
   let {
     series = $bindable([]),
-    x_axis = $bindable({ label: `Value`, format: `.2~s`, scale_type: `linear` }),
-    y_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
-    y2_axis = $bindable({ label: `Count`, format: `d`, scale_type: `linear` }),
-    display = $bindable(DEFAULTS.histogram.display),
+    x_axis = { label: `Value`, format: `.2~s`, scale_type: `linear` },
+    y_axis = { label: `Count`, format: `d`, scale_type: `linear` },
+    y2_axis = { label: `Count`, format: `d`, scale_type: `linear` },
+    display = DEFAULTS.histogram.display,
     x_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
@@ -34,7 +34,7 @@
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar = $bindable({}),
+    bar = {},
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     tooltip,
@@ -763,13 +763,13 @@
       bind:controls_open
       bind:bins
       bind:mode
-      bind:bar
       bind:show_legend
       bind:selected_property
-      bind:x_axis
-      bind:y_axis
-      bind:y2_axis
-      bind:display
+      {bar}
+      {x_axis}
+      {y_axis}
+      {y2_axis}
+      {display}
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
-  import type { AxisConfig, ControlsConfig } from '$lib/plot'
+  import type { AxisConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type {
     DataSeries,
@@ -13,12 +13,11 @@
 
   let {
     series = [],
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable({}),
-    styles = $bindable({}),
-    controls = $bindable({}),
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
+    display = {},
+    styles = {},
     selected_series_idx = $bindable(0),
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
@@ -28,21 +27,17 @@
     y2_axis?: AxisConfig
     display?: DisplayConfig
     styles?: StyleOverrides
-    controls?: ControlsConfig
     selected_series_idx?: number
   } = $props()
 
-  // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
-
-  // Initialize show_points/show_lines from defaults
-  $effect(() => {
+  $effect(() => { // Initialize show_points/show_lines from defaults
     styles.show_points ??= DEFAULTS.scatter.show_points
     styles.show_lines ??= DEFAULTS.scatter.show_lines
   })
 </script>
 
-<PlotControls bind:x_axis bind:y_axis bind:y2_axis bind:display {...rest}>
+<PlotControls {x_axis} {y_axis} {y2_axis} {display} {...rest}>
   <!-- Add show_points and show_lines checkboxes to Display section by extending it -->
   <!-- This is done via the Display section in PlotControls, but we need custom controls -->
   <!-- For now, we'll add a separate section for markers -->

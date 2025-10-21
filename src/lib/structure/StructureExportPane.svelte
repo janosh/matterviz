@@ -14,8 +14,8 @@
     scene = undefined,
     camera = undefined,
     png_dpi = $bindable(150),
-    pane_props = $bindable({}),
-    toggle_props = $bindable({}),
+    pane_props = {},
+    toggle_props = {},
     ...rest
   }: {
     export_pane_open?: boolean

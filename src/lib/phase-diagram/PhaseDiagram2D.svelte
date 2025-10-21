@@ -48,8 +48,8 @@
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
+    x_axis = {},
+    y_axis = {},
     ...rest
   }: BasePhaseDiagramProps & {
     x_axis?: AxisConfig

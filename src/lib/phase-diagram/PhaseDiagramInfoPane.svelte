@@ -13,8 +13,8 @@
     max_hull_dist_show_labels,
     label_threshold,
     pane_open = $bindable(false),
-    toggle_props = $bindable({}),
-    pane_props = $bindable({}),
+    toggle_props = {},
+    pane_props = {},
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     phase_stats: PhaseStats | null
