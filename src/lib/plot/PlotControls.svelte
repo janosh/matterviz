@@ -10,10 +10,10 @@
     controls_open = $bindable(false),
     children,
     post_children,
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable({}),
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
+    display = {},
     auto_x_range = [0, 1],
     auto_y_range = [0, 1],
     auto_y2_range = undefined,
@@ -25,11 +25,6 @@
     pane_props = {},
   }: PlotControlsProps = $props()
 
-  // Local format state
-  let x_format_input = $state(x_axis.format ?? DEFAULTS.plot.x_format)
-  let y_format_input = $state(y_axis.format ?? DEFAULTS.plot.y_format)
-  let y2_format_input = $state(y2_axis.format ?? DEFAULTS.plot.y2_format)
-
   // Range input state
   let range_inputs = $state(
     { x: [null, null], y: [null, null], y2: [null, null] } as Record<
@@ -39,7 +34,6 @@
   )
   let range_els = $state<Record<string, HTMLInputElement>>({})
 
-  // Derived state
   let x_includes_zero = $derived(
     ((x_axis.range?.[0] ?? auto_x_range[0]) <= 0) &&
       ((x_axis.range?.[1] ?? auto_x_range[1]) >= 0),
@@ -52,7 +46,6 @@
   // Validation function for format specifiers
   function is_valid_format(format_string: string): boolean {
     if (!format_string) return true
-
     try {
       if (format_string.startsWith(`%`)) {
         timeFormat(format_string)(new Date())
@@ -69,17 +62,12 @@
   // Handle format input changes
   const format_input_handler = (format_type: `x` | `y` | `y2`) => (event: Event) => {
     const input = event.target as HTMLInputElement
-    const inputs = {
-      x: () => (x_format_input = input.value),
-      y: () => (y_format_input = input.value),
-      y2: () => (y2_format_input = input.value),
-    }
     const axes = { x: x_axis, y: y_axis, y2: y2_axis }
-    inputs[format_type]()
+    const axis = axes[format_type]
 
     if (is_valid_format(input.value)) {
       input.classList.remove(`invalid`)
-      axes[format_type].format = input.value
+      axis.format = input.value
     } else input.classList.add(`invalid`)
   }
 
@@ -101,13 +89,6 @@
       : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as [number, number]
   }
 
-  // Sync format inputs
-  $effect(() => {
-    x_format_input = x_axis.format ?? DEFAULTS.plot.x_format
-    y_format_input = y_axis.format ?? DEFAULTS.plot.y_format
-    y2_format_input = y2_axis.format ?? DEFAULTS.plot.y2_format
-  })
-
   // Sync range inputs from props
   $effect(() => {
     range_inputs.x = [x_axis.range?.[0] ?? null, x_axis.range?.[1] ?? null]
@@ -117,8 +98,6 @@
 </script>
 
 {#if show_controls}
-  {@const toggle_style =
-    `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;`}
   <DraggablePane
     bind:show={controls_open}
     closed_icon="Settings"
@@ -127,7 +106,9 @@
       title: `${controls_open ? `Close` : `Open`} ${controls_title} controls`,
       ...toggle_props,
       class: `${controls_class}-controls-toggle ${toggle_props?.class ?? ``}`,
-      style: `${toggle_style} ${toggle_props?.style ?? ``}`,
+      style:
+        `$position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;` +
+        (toggle_props?.style ?? ``),
     }}
     pane_props={{
       ...pane_props,
@@ -280,7 +261,7 @@
       <label style="white-space: nowrap">X-axis:
         <input
           type="text"
-          bind:value={x_format_input}
+          value={x_axis.format ?? DEFAULTS.plot.x_format}
           placeholder=".2~s / .0% / %Y-%m-%d"
           oninput={format_input_handler(`x`)}
         />
@@ -288,7 +269,7 @@
       <label style="white-space: nowrap">Y-axis:
         <input
           type="text"
-          bind:value={y_format_input}
+          value={y_axis.format ?? DEFAULTS.plot.y_format}
           placeholder="d / .1e / .0%"
           oninput={format_input_handler(`y`)}
           style="width: 100%"
@@ -298,7 +279,7 @@
         <label style="white-space: nowrap">Y2-axis:
           <input
             type="text"
-            bind:value={y2_format_input}
+            value={y2_axis.format ?? DEFAULTS.plot.y2_format}
             placeholder=".2f / .1e / .0%"
             oninput={format_input_handler(`y2`)}
             style="width: 100%"

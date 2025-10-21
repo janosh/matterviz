@@ -7,10 +7,10 @@
   let {
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable({}),
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
+    display = {},
     show_controls = $bindable(false),
     controls_open = $bindable(false),
     ...rest
@@ -29,10 +29,10 @@
 <PlotControls
   bind:show_controls
   bind:controls_open
-  bind:x_axis
-  bind:y_axis
-  bind:y2_axis
-  bind:display
+  {x_axis}
+  {y_axis}
+  {y2_axis}
+  {display}
   {...rest}
 >
   <SettingsSection

@@ -17,8 +17,8 @@
     structure,
     pane_open = $bindable(false),
     atom_count_thresholds = [50, 500],
-    toggle_props = $bindable({}),
-    pane_props = $bindable({}),
+    toggle_props = {},
+    pane_props = {},
     highlighted_sites = $bindable([]),
     selected_sites = $bindable([]),
     ...rest

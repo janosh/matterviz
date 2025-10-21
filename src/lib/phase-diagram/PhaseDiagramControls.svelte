@@ -43,8 +43,8 @@
     camera,
     merged_controls,
     controls_open = $bindable(false),
-    toggle_props = $bindable({}),
-    pane_props = $bindable({}),
+    toggle_props = {},
+    pane_props = {},
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     // Display controls

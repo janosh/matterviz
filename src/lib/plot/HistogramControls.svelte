@@ -9,13 +9,13 @@
     series = [],
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
-    bar = $bindable({}),
+    bar = {},
     show_legend = $bindable(DEFAULTS.histogram.show_legend),
     selected_property = $bindable(``),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable({}),
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
+    display = {},
     show_controls = $bindable(false),
     controls_open = $bindable(false),
     auto_y2_range = undefined,
@@ -39,10 +39,8 @@
     auto_y2_range?: [number, number]
   } = $props()
 
-  // Initialize bar styles with defaults (runs once)
-  bar = { ...DEFAULTS.histogram.bar, ...bar }
+  bar = { ...DEFAULTS.histogram.bar, ...bar } // Initialize bar styles with defaults (runs once)
 
-  // Derived state
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
   let visible_series = $derived(series.filter((srs) => srs && (srs.visible ?? true)))
   let series_options = $derived(visible_series.map((srs) => srs.label || `Series`))
@@ -51,10 +49,10 @@
 <PlotControls
   bind:show_controls
   bind:controls_open
-  bind:x_axis
-  bind:y_axis
-  bind:y2_axis
-  bind:display
+  {x_axis}
+  {y_axis}
+  {y2_axis}
+  {display}
   {auto_y2_range}
   {...rest}
 >

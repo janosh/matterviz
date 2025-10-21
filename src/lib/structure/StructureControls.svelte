@@ -13,7 +13,7 @@
 
   let {
     controls_open = $bindable(false),
-    scene_props = $bindable({}),
+    scene_props = {},
     lattice_props = $bindable({
       show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
@@ -29,8 +29,8 @@
     color_scheme = $bindable(DEFAULTS.color_scheme),
     structure = undefined,
     supercell_loading = false,
-    pane_props = $bindable({}),
-    toggle_props = $bindable({}),
+    pane_props = {},
+    toggle_props = {},
     ...rest
   }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
     controls_open?: boolean // Control pane state
