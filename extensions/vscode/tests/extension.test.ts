@@ -420,7 +420,7 @@ describe(`MatterViz Extension`, () => {
       filename: `test.cif`,
     })
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      `Failed to save binary data: Write failed`,
+      `Failed to save text file: Write failed`,
     )
   })
 

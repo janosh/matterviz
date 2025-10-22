@@ -395,6 +395,7 @@ export const handle_msg = async (
       })
     }
   } else if (msg.command === `saveAs` && msg.content) {
+    let is_binary_save = false
     try {
       const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(msg.filename || `structure`),
@@ -403,6 +404,7 @@ export const handle_msg = async (
 
       if (uri && msg.content) {
         if (msg.is_binary) {
+          is_binary_save = true
           const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
           if (!base64_data) throw new Error(`Invalid data URL: missing base64 data`)
           await vscode.workspace.fs.writeFile(
@@ -416,7 +418,8 @@ export const handle_msg = async (
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
-      vscode.window.showErrorMessage(`Failed to save binary data: ${message}`)
+      const error_type = is_binary_save ? `binary data` : `text file`
+      vscode.window.showErrorMessage(`Failed to save ${error_type}: ${message}`)
     }
   } else if (
     msg.command === `startWatching` &&
@@ -542,7 +545,7 @@ function create_webview_panel(
   file_data: FileData,
   file_path?: string,
   view_column: vscode.ViewColumn = vscode.ViewColumn.Beside,
-): Promise<vscode.WebviewPanel> {
+): vscode.WebviewPanel {
   const panel = vscode.window.createWebviewPanel(
     `matterviz`,
     `MatterViz - ${file_data.filename}`,
