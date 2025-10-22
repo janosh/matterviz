@@ -10,7 +10,6 @@ import {
   MAX_TEXT_FILE_SIZE,
   parse_trajectory_async,
 } from '$lib/trajectory/parse'
-import * as fs from 'fs'
 import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
@@ -89,9 +88,12 @@ type WatcherMeta = { request_id?: string; filename?: string; frame_index?: numbe
 
 // Track active file watchers by file path
 const active_watchers = new Map<string, vscode.FileSystemWatcher>()
-
 // Track active frame loaders by file path
 const active_frame_loaders = new Map<string, FrameLoaderData>()
+// Track auto-render timers to clear them on deactivate
+const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
+// Track active panels by URI to prevent duplicate opens
+const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
 
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): `trajectory` | `structure` => {
@@ -134,11 +136,14 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   // Check file size to avoid loading huge files into memory
   let file_size: number
   try {
-    const stats = await vscode.workspace.fs.stat(uri)
-    file_size = stats.size
+    file_size = (await vscode.workspace.fs.stat(uri)).size
   } catch (error) {
-    console.warn(`Failed to get file stats for ${file_path}:`, error)
-    throw error
+    console.warn(`Failed to get file stats for ${filename}:`, error)
+    throw new Error(
+      `Failed to access file ${filename}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
   }
 
   const threshold = is_base64_payload ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
@@ -152,11 +157,19 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   }
 
   // For normal-sized files, read using VSCode API
-  const uint8array = await vscode.workspace.fs.readFile(uri)
-  const content = is_base64_payload
-    ? Buffer.from(uint8array).toString(`base64`)
-    : Buffer.from(uint8array).toString(`utf8`)
-  return { filename, content, is_base64: is_base64_payload }
+  try {
+    const uint8array = await vscode.workspace.fs.readFile(uri)
+    const content = is_base64_payload
+      ? Buffer.from(uint8array).toString(`base64`)
+      : Buffer.from(uint8array).toString(`utf8`)
+    return { filename, content, is_base64: is_base64_payload }
+  } catch (error) {
+    throw new Error(
+      `Failed to read file ${filename}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  }
 }
 
 // Get file data from URI or active editor
@@ -390,30 +403,20 @@ export const handle_msg = async (
 
       if (uri && msg.content) {
         if (msg.is_binary) {
-          // Handle binary data (PNG images) - extract base64 from data URL
-          try {
-            const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
-            if (!base64_data) {
-              throw new Error(`Invalid data URL: missing base64 data`)
-            }
-            const buffer = Buffer.from(base64_data, `base64`)
-            fs.writeFileSync(uri.fsPath, buffer)
-          } catch (error) {
-            const error_message = error instanceof Error ? error.message : String(error)
-            vscode.window.showErrorMessage(`Failed to save binary data: ${error_message}`)
-            return
-          }
+          const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
+          if (!base64_data) throw new Error(`Invalid data URL: missing base64 data`)
+          await vscode.workspace.fs.writeFile(
+            uri,
+            Uint8Array.from(Buffer.from(base64_data, `base64`)),
+          )
         } else {
-          // Handle text data (JSON, XYZ)
-          fs.writeFileSync(uri.fsPath, msg.content, `utf8`)
+          await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(msg.content))
         }
-        vscode.window.showInformationMessage(
-          `Saved: ${path.basename(uri.fsPath)}`,
-        )
+        vscode.window.showInformationMessage(`Saved: ${path.basename(uri.fsPath)}`)
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
-      vscode.window.showErrorMessage(`Save failed: ${message}`)
+      vscode.window.showErrorMessage(`Failed to save binary data: ${message}`)
     }
   } else if (
     msg.command === `startWatching` &&
@@ -728,27 +731,55 @@ export const activate = (context: vscode.ExtensionContext): void => {
         document.uri.scheme === `file` &&
         should_auto_render(path.basename(document.uri.fsPath))
       ) {
-        setTimeout(async () => {
+        const file_path = document.uri.fsPath
+
+        // Clear existing timer and reveal existing panel if present
+        const existing_timer = auto_render_timers.get(file_path)
+        if (existing_timer) {
+          clearTimeout(existing_timer)
+          auto_render_timers.delete(file_path)
+        }
+        if (active_auto_render_panels.has(file_path)) {
+          active_auto_render_panels.get(file_path)?.reveal(vscode.ViewColumn.One)
+          return
+        }
+
+        const timer = setTimeout(async () => {
           try {
             if (
               !vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true)
             ) return
-            const file_data = await read_file(document.uri.fsPath)
-            await create_webview_panel(
+            const panel = await create_webview_panel(
               context,
-              file_data,
-              document.uri.fsPath,
+              await read_file(file_path),
+              file_path,
               vscode.ViewColumn.One,
             )
+            active_auto_render_panels.set(file_path, panel)
+            panel.onDidDispose(() => active_auto_render_panels.delete(file_path))
           } catch (error: unknown) {
             console.error(`Error auto-rendering file:`, error)
             vscode.window.showErrorMessage(`MatterViz auto-render failed: ${error}`)
+          } finally {
+            auto_render_timers.delete(file_path)
           }
         }, 100) // Small delay to allow VS Code to finish opening the document
+
+        auto_render_timers.set(file_path, timer)
       }
     }),
     vscode.window.onDidChangeActiveTextEditor((editor: vscode.TextEditor | undefined) => {
       update_supported_resource_context(editor?.document?.uri)
     }),
   )
+}
+
+// Deactivate extension and clean up resources
+export const deactivate = (): void => {
+  auto_render_timers.forEach(clearTimeout)
+  auto_render_timers.clear()
+  active_watchers.forEach((watcher) => watcher.dispose())
+  active_watchers.clear()
+  active_frame_loaders.clear()
+  active_auto_render_panels.clear()
 }
