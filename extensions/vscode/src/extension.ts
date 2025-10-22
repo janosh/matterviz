@@ -122,9 +122,11 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
   )
 }
 
-// Read file from filesystem
-export const read_file = (file_path: string): FileData => {
+// Read file from filesystem using VSCode API (works with remote SSH)
+export const read_file = async (file_path: string): Promise<FileData> => {
   const filename = path.basename(file_path)
+  const uri = vscode.Uri.file(file_path)
+
   // Files we serialize as base64 for the webview (compressed OR binary)
   const is_base64_payload = COMPRESSION_EXTENSIONS_REGEX.test(filename) ||
     /\.(traj|h5|hdf5)$/i.test(filename)
@@ -132,11 +134,11 @@ export const read_file = (file_path: string): FileData => {
   // Check file size to avoid loading huge files into memory
   let file_size: number
   try {
-    const stats = fs.statSync(file_path)
-    file_size = stats.size // For missing files, still access .size to get proper error
+    const stats = await vscode.workspace.fs.stat(uri)
+    file_size = stats.size
   } catch (error) {
     console.warn(`Failed to get file stats for ${file_path}:`, error)
-    file_size = 0
+    throw error
   }
 
   const threshold = is_base64_payload ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
@@ -149,16 +151,17 @@ export const read_file = (file_path: string): FileData => {
     }
   }
 
-  // For normal-sized files, read normally
+  // For normal-sized files, read using VSCode API
+  const uint8array = await vscode.workspace.fs.readFile(uri)
   const content = is_base64_payload
-    ? fs.readFileSync(file_path).toString(`base64`)
-    : fs.readFileSync(file_path, `utf8`)
+    ? Buffer.from(uint8array).toString(`base64`)
+    : Buffer.from(uint8array).toString(`utf8`)
   return { filename, content, is_base64: is_base64_payload }
 }
 
 // Get file data from URI or active editor
-export const get_file = (uri?: vscode.Uri): FileData => {
-  if (uri) return read_file(uri.fsPath)
+export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
+  if (uri) return await read_file(uri.fsPath)
 
   if (vscode.window.activeTextEditor) {
     const filename = path.basename(vscode.window.activeTextEditor.document.fileName)
@@ -170,7 +173,7 @@ export const get_file = (uri?: vscode.Uri): FileData => {
   if (
     active_tab?.input && typeof active_tab.input === `object` &&
     active_tab.input !== null && `uri` in active_tab.input
-  ) return read_file(active_tab.input.uri.fsPath)
+  ) return await read_file(active_tab.input.uri.fsPath)
 
   throw new Error(
     `No file selected. MatterViz needs an active editor to know what to render.`,
@@ -474,12 +477,12 @@ function start_watching_file(
 }
 
 // Handle file change events from VS Code file system watcher
-function handle_file_change(
+async function handle_file_change(
   event_type: `change` | `delete`,
   file_path: string,
   webview: WebviewLike,
   meta?: WatcherMeta,
-): void {
+): Promise<void> {
   if (event_type === `delete`) {
     try { // File was deleted - send notification
       webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
@@ -492,7 +495,7 @@ function handle_file_change(
   if (event_type === `change`) {
     // File was changed - send updated content
     try {
-      const updated_file = read_file(file_path)
+      const updated_file = await read_file(file_path)
 
       webview.postMessage({
         command: `fileUpdated`,
@@ -536,7 +539,7 @@ function create_webview_panel(
   file_data: FileData,
   file_path?: string,
   view_column: vscode.ViewColumn = vscode.ViewColumn.Beside,
-): vscode.WebviewPanel {
+): Promise<vscode.WebviewPanel> {
   const panel = vscode.window.createWebviewPanel(
     `matterviz`,
     `MatterViz - ${file_data.filename}`,
@@ -567,9 +570,9 @@ function create_webview_panel(
   )
 
   // Theme change handling
-  const update_theme = () => {
+  const update_theme = async () => {
     if (panel.visible) {
-      const current_file = file_path ? read_file(file_path) : file_data
+      const current_file = file_path ? await read_file(file_path) : file_data
       panel.webview.html = create_html(panel.webview, context, {
         type: infer_view_type(current_file),
         data: current_file,
@@ -596,13 +599,16 @@ function create_webview_panel(
 }
 
 // Enhanced render function with file watching
-export const render = (context: vscode.ExtensionContext, uri?: vscode.Uri) => {
+export const render = async (
+  context: vscode.ExtensionContext,
+  uri?: vscode.Uri,
+): Promise<void> => {
   try {
-    const file = get_file(uri)
+    const file = await get_file(uri)
     const file_path = uri?.fsPath ||
       vscode.window.activeTextEditor?.document.fileName
 
-    create_webview_panel(context, file, file_path)
+    await create_webview_panel(context, file, file_path)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     vscode.window.showErrorMessage(`Failed: ${message}`)
@@ -624,11 +630,11 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
     }
   }
 
-  resolveCustomEditor(
+  async resolveCustomEditor(
     document: vscode.CustomDocument,
     webview_panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
-  ) {
+  ): Promise<void> {
     try {
       const file_path = document.uri.fsPath
 
@@ -639,7 +645,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
           vscode.Uri.joinPath(this.context.extensionUri, `../../static`),
         ],
       }
-      const current = read_file(document.uri.fsPath)
+      const current = await read_file(document.uri.fsPath)
       webview_panel.webview.html = create_html(
         webview_panel.webview,
         this.context,
@@ -660,9 +666,9 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       start_watching_file(file_path, webview_panel.webview)
 
       // Listen for theme changes and update webview
-      const update_theme = () => {
+      const update_theme = async () => {
         if (webview_panel.visible) {
-          const current = read_file(document.uri.fsPath)
+          const current = await read_file(document.uri.fsPath)
           webview_panel.webview.html = create_html(
             webview_panel.webview,
             this.context,
@@ -722,13 +728,13 @@ export const activate = (context: vscode.ExtensionContext): void => {
         document.uri.scheme === `file` &&
         should_auto_render(path.basename(document.uri.fsPath))
       ) {
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
             if (
               !vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true)
             ) return
-            const file_data = read_file(document.uri.fsPath)
-            create_webview_panel(
+            const file_data = await read_file(document.uri.fsPath)
+            await create_webview_panel(
               context,
               file_data,
               document.uri.fsPath,
