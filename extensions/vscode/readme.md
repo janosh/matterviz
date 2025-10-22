@@ -61,6 +61,15 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 MatterViz automatically registers as a custom editor for trajectory files such as `.traj`, `.h5`, `.hdf5`, `.xyz.gz`, etc.
 
+### Remote SSH Support
+
+MatterViz supports [VSCode](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh)/[Cursor](https://open-vsx.org/extension/jajera/vsx-remote-ssh) remote SSH connections. Connect to your server via Remote SSH extension, and MatterViz should work just like it does locally.
+
+- ✅ **Remote file access**: Visualize structures and trajectories on remote servers (HPC clusters, cloud instances, etc.)
+- ✅ **No manual file transfer**: Files are read directly from the remote filesystem
+- ✅ **File watching**: Changes to remote files are automatically detected and reloaded
+- ⚠️ **File size limit**: Remote and local files are currently limited to 1GB due to memory constraints (see `MAX_STREAMING_FILE_SIZE` in `node-io.ts`)
+
 ## ⚙️ Configuration & Customization
 
 MatterViz provides extensive customization options through VSCode settings. Access these via:

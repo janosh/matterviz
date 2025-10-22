@@ -3,7 +3,7 @@ import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ExtensionContext, Tab, TextEditor, Webview } from 'vscode'
+import type { ExtensionContext, Tab, TextEditor } from 'vscode'
 import pkg from '../package.json' with { type: 'json' }
 import {
   activate,
@@ -62,7 +62,7 @@ const mock_vscode = vi.hoisted(() => ({
       onDidDelete: vi.fn(),
       dispose: vi.fn(),
     })),
-    fs: { stat: vi.fn() },
+    fs: { stat: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() },
   },
   commands: { registerCommand: vi.fn(), executeCommand: vi.fn() },
   Uri: {
@@ -89,7 +89,7 @@ describe(`MatterViz Extension`, () => {
 
   test(`extensionKind should be configured as ["ui", "workspace"] for optimal remote performance`, () => {
     // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
-    expect(pkg.extensionKind).toEqual([`ui`, `workspace`])
+    expect(pkg.extensionKind).toEqual([`workspace`])
   })
 
   beforeEach(() => {
@@ -97,6 +97,9 @@ describe(`MatterViz Extension`, () => {
 
     mock_fs.readFileSync = vi.fn().mockReturnValue(`mock content`)
     mock_vscode.window.activeTextEditor = null
+
+    // Reset theme to default Light theme to avoid inter-test coupling
+    mock_vscode.window.activeColorTheme = { kind: 1 } // Light theme by default
 
     // Set up file system watcher mock
     mock_file_system_watcher = {
@@ -106,6 +109,12 @@ describe(`MatterViz Extension`, () => {
     }
     mock_vscode.workspace.createFileSystemWatcher.mockReturnValue(
       mock_file_system_watcher,
+    )
+
+    // Set up default mock for vscode.workspace.fs.stat to return file stats
+    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: 1000, type: 1 })
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(
+      new Uint8Array(Buffer.from(`mock content`)),
     )
   })
 
@@ -132,13 +141,56 @@ describe(`MatterViz Extension`, () => {
     [`test.xyz`, false], // .xyz files are text format, not compressed binary
     [`test.json`, false],
     [``, false],
-  ])(`file reading: "%s" → compressed:%s`, (filename, expected_compressed) => {
-    const result = read_file(`/test/${filename}`)
+  ])(`file reading: "%s" → compressed:%s`, async (filename, expected_compressed) => {
+    const result = await read_file(`/test/${filename}`)
     expect(result.filename).toBe(filename)
     expect(result.is_base64).toBe(expected_compressed)
+    // Assert payload differences instead of redundant API calls
     if (expected_compressed) {
-      expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`)
-    } else expect(mock_fs.readFileSync).toHaveBeenCalledWith(`/test/${filename}`, `utf8`)
+      expect(result.content).toBe(Buffer.from(`mock content`).toString(`base64`))
+    } else {
+      expect(result.content).toBe(`mock content`)
+    }
+  })
+
+  test(`file reading: large file should return sentinel`, async () => {
+    const large_file_size = 60 * 1024 * 1024 // 60MB, above MAX_TEXT_FILE_SIZE (50MB)
+    const filename = `large-structure.cif`
+    const file_path = `/test/${filename}`
+
+    // Mock fs.stat to return a size above the threshold
+    mock_vscode.workspace.fs.stat.mockResolvedValue({
+      size: large_file_size,
+      type: 1,
+    })
+
+    const result = await read_file(file_path)
+
+    expect(result.filename).toBe(filename)
+    expect(result.content).toBe(`LARGE_FILE:${file_path}:${large_file_size}`)
+    expect(result.is_base64).toBe(false)
+    // readFile should not be called for large files
+    expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+  })
+
+  test(`file reading: large binary file should return sentinel with base64 flag`, async () => {
+    const large_file_size = 2 * 1024 * 1024 * 1024 // 2GB, above MAX_BIN_FILE_SIZE
+    const filename = `large-trajectory.traj`
+    const file_path = `/test/${filename}`
+
+    // Mock fs.stat to return a size above the threshold
+    mock_vscode.workspace.fs.stat.mockResolvedValue({
+      size: large_file_size,
+      type: 1,
+    })
+
+    const result = await read_file(file_path)
+
+    expect(result.filename).toBe(filename)
+    expect(result.content).toBe(`LARGE_FILE:${file_path}:${large_file_size}`)
+    expect(result.is_base64).toBe(true) // Binary files should have base64 flag
+    // readFile should not be called for large files
+    expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
   })
 
   test.each([
@@ -154,26 +206,27 @@ describe(`MatterViz Extension`, () => {
     [`test.cif`, false, false], // Not a trajectory file
   ])(
     `ASE trajectory file handling: "%s" → trajectory:%s, binary:%s`,
-    (filename, is_trajectory, is_binary) => {
+    async (filename, is_trajectory, is_binary) => {
       expect(is_trajectory_file(filename)).toBe(is_trajectory)
       if (is_trajectory) {
-        expect(read_file(`/test/${filename}`).is_base64).toBe(is_binary)
+        const result = await read_file(`/test/${filename}`)
+        expect(result.is_base64).toBe(is_binary)
       }
     },
   )
 
   // Integration test for ASE trajectory file processing (simulates the exact failing scenario)
-  test(`ASE trajectory file end-to-end processing`, () => {
+  test(`ASE trajectory file end-to-end processing`, async () => {
     const ase_filename = `ase-LiMnO2-chgnet-relax.traj`
 
     // Step 1: Extension should detect this as a trajectory file
     expect(is_trajectory_file(ase_filename)).toBe(true)
 
     // Step 2: Extension should read this as binary (compressed)
-    const file_result = read_file(`/test/${ase_filename}`)
+    const file_result = await read_file(`/test/${ase_filename}`)
     expect(file_result.filename).toBe(ase_filename)
     expect(file_result.is_base64).toBe(true)
-    expect(file_result.content).toBe(`mock content`) // base64 encoded binary data
+    expect(file_result.content).toBe(Buffer.from(`mock content`).toString(`base64`)) // base64 encoded binary data
 
     // Step 3: Verify webview data structure matches expected format
     const webview_data = {
@@ -199,37 +252,39 @@ describe(`MatterViz Extension`, () => {
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
     expect(parsed_data.data.is_base64).toBe(true)
-    expect(parsed_data.data.content).toBe(`mock content`)
+    expect(parsed_data.data.content).toBe(Buffer.from(`mock content`).toString(`base64`))
     expect(parsed_data.theme).toBe(`light`)
   })
 
   test.each([
     [{ fsPath: `/test/file.cif` }, `file.cif`],
     [{ fsPath: `/test/structure.xyz` }, `structure.xyz`],
-  ])(`get_file with URI`, (uri, expected_filename) => {
-    expect(get_file(uri).filename).toBe(expected_filename)
+  ])(`get_file with URI`, async (uri, expected_filename) => {
+    const result = await get_file(uri)
+    expect(result.filename).toBe(expected_filename)
   })
 
-  test(`get_file with active editor`, () => {
+  test(`get_file with active editor`, async () => {
     mock_vscode.window.activeTextEditor = {
       document: { fileName: `/test/active.cif`, getText: () => `active content` },
     } as TextEditor
-    const result = get_file()
+    const result = await get_file()
     expect(result.filename).toBe(`active.cif`)
     expect(result.content).toBe(`active content`)
     expect(result.is_base64).toBe(false)
   })
 
-  test(`get_file with active tab`, () => {
+  test(`get_file with active tab`, async () => {
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
       input: { uri: { fsPath: `/test/tab.cif` } },
     } as unknown as Tab
-    expect(get_file().filename).toBe(`tab.cif`)
+    const result = await get_file()
+    expect(result.filename).toBe(`tab.cif`)
   })
 
-  test(`get_file throws when no file found`, () => {
+  test(`get_file throws when no file found`, async () => {
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = null
-    expect(() => get_file()).toThrow(
+    await expect(get_file()).rejects.toThrow(
       `No file selected. MatterViz needs an active editor to know what to render.`,
     )
   })
@@ -302,10 +357,10 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/save.cif` })
     await handle_msg(message)
     if (should_succeed) {
-      expect(mock_fs.writeFileSync).toHaveBeenCalledWith(
-        `/test/save.cif`,
-        message.content,
-        `utf8`,
+      const enc = new TextEncoder()
+      expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
+        { fsPath: `/test/save.cif` },
+        enc.encode(message.content),
       )
       expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
         expected_info,
@@ -342,9 +397,9 @@ describe(`MatterViz Extension`, () => {
       is_binary,
     })
     const base64_data = data_url.replace(/^data:[^;]+;base64,/, ``)
-    const expected_buffer = Buffer.from(base64_data, `base64`)
-    expect(mock_fs.writeFileSync).toHaveBeenCalledWith(
-      `/test/${filename}`,
+    const expected_buffer = Uint8Array.from(Buffer.from(base64_data, `base64`))
+    expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
+      { fsPath: `/test/${filename}` },
       expected_buffer,
     )
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -356,9 +411,7 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({
       fsPath: `/test/save.cif`,
     })
-    ;(mock_fs.writeFileSync as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      throw new Error(`Write failed`)
-    })
+    mock_vscode.workspace.fs.writeFile.mockRejectedValue(new Error(`Write failed`))
 
     await handle_msg({
       command: `saveAs`,
@@ -367,7 +420,7 @@ describe(`MatterViz Extension`, () => {
       filename: `test.cif`,
     })
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      `Save failed: Write failed`,
+      `Failed to save text file: Write failed`,
     )
   })
 
@@ -380,7 +433,7 @@ describe(`MatterViz Extension`, () => {
       ...msg_args,
       filename: `test.cif`,
     })
-    expect(mock_fs.writeFileSync).not.toHaveBeenCalled()
+    expect(mock_vscode.workspace.fs.writeFile).not.toHaveBeenCalled()
   })
 
   test(`saveAs binary data validation: empty base64 data`, async () => {
@@ -397,7 +450,7 @@ describe(`MatterViz Extension`, () => {
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
       `Failed to save binary data: Invalid data URL: missing base64 data`,
     )
-    expect(mock_fs.writeFileSync).not.toHaveBeenCalled()
+    expect(mock_vscode.workspace.fs.writeFile).not.toHaveBeenCalled()
   })
 
   test.each([
@@ -408,7 +461,7 @@ describe(`MatterViz Extension`, () => {
     await expect(handle_msg({ ...msg, ...msg_args })).resolves.not.toThrow()
   })
 
-  test(`render creates webview panel`, () => {
+  test(`render creates webview panel`, async () => {
     const mock_panel = {
       webview: { ...mock_webview },
       onDidDispose: vi.fn(),
@@ -418,7 +471,7 @@ describe(`MatterViz Extension`, () => {
       document: { fileName: `/test/active.cif`, getText: () => `content` },
     } as TextEditor
 
-    render(mock_context)
+    await render(mock_context)
     expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
       `matterviz`,
       `MatterViz - active.cif`,
@@ -427,10 +480,10 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
-  test(`render handles errors`, () => {
+  test(`render handles errors`, async () => {
     mock_vscode.window.activeTextEditor = null
     mock_vscode.window.tabGroups.activeTabGroup.activeTab = null
-    render(mock_context)
+    await render(mock_context)
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
       `Failed: No file selected. MatterViz needs an active editor to know what to render.`,
     )
@@ -641,10 +694,10 @@ describe(`MatterViz Extension`, () => {
       return { mock_dispose, mock_panel }
     }
 
-    test(`sets up and cleans up theme listeners`, () => {
+    test(`sets up and cleans up theme listeners`, async () => {
       const { mock_dispose, mock_panel } = setup_panel()
 
-      render(mock_context)
+      await render(mock_context)
 
       expect(mock_vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled()
       expect(mock_panel.onDidDispose).toHaveBeenCalled()
@@ -654,7 +707,7 @@ describe(`MatterViz Extension`, () => {
       expect(mock_dispose).toHaveBeenCalledTimes(2)
     })
 
-    test(`respects panel visibility for theme updates`, () => {
+    test(`respects panel visibility for theme updates`, async () => {
       const mock_panel = {
         webview: { ...mock_webview },
         onDidDispose: vi.fn(),
@@ -672,7 +725,7 @@ describe(`MatterViz Extension`, () => {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
       } as TextEditor
 
-      render(mock_context)
+      await render(mock_context)
 
       // Store initial HTML after render (render always sets HTML initially)
       const initial_html = mock_panel.webview.html
@@ -682,17 +735,17 @@ describe(`MatterViz Extension`, () => {
 
       // Should not update when invisible
       if (theme_callback) {
-        theme_callback()
+        await theme_callback()
         expect(mock_panel.webview.html).toBe(initial_html)
 
         // Should update when visible
         mock_panel.visible = true
-        theme_callback()
+        await theme_callback()
         expect(mock_panel.webview.html).not.toBe(initial_html)
       }
     })
 
-    test(`multiple panels dispose independently`, () => {
+    test(`multiple panels dispose independently`, async () => {
       const dispose1 = vi.fn()
       const dispose2 = vi.fn()
       const panel1 = { webview: { ...mock_webview }, onDidDispose: vi.fn() }
@@ -713,8 +766,8 @@ describe(`MatterViz Extension`, () => {
         document: { fileName: `/test/active.cif`, getText: () => `content` },
       } as TextEditor
 
-      render(mock_context)
-      render(mock_context)
+      await render(mock_context)
+      await render(mock_context)
 
       panel1.onDidDispose.mock.calls[0][0]()
       expect(dispose1).toHaveBeenCalledTimes(2)
@@ -809,8 +862,6 @@ describe(`MatterViz Extension`, () => {
 
     describe(`file change notifications`, () => {
       test(`should send file change notification to webview`, async () => {
-        vi.mocked(fs.readFileSync).mockReturnValue(`updated content`)
-
         const message = {
           command: `startWatching` as const,
           ...msg_args,
@@ -823,19 +874,22 @@ describe(`MatterViz Extension`, () => {
         const change_handler = mock_file_system_watcher.onDidChange.mock.calls[0][0]
 
         // Trigger file change
-        change_handler()
+        await change_handler()
 
-        expect(mock_webview.postMessage).toHaveBeenCalledWith({
-          command: `fileUpdated`,
-          data: expect.objectContaining({
-            filename: `file.cif`,
-            content: `updated content`,
-            is_base64: false,
-          }),
-          type: `structure`,
-          ...msg_args,
-          file_path: `/test/file.cif`,
-          theme: `white`,
+        // Wait for postMessage to be called (it's async)
+        await vi.waitFor(() => {
+          expect(mock_webview.postMessage).toHaveBeenCalledWith({
+            command: `fileUpdated`,
+            data: expect.objectContaining({
+              filename: `file.cif`,
+              content: `mock content`,
+              is_base64: false,
+            }),
+            type: `structure`,
+            ...msg_args,
+            file_path: `/test/file.cif`,
+            theme: `light`,
+          })
         })
       })
 
@@ -1132,10 +1186,8 @@ describe(`MatterViz Extension`, () => {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
 
-      // Mock fs.readFileSync to throw an error
-      vi.mocked(mock_fs.readFileSync).mockImplementation(() => {
-        throw new Error(`File not found`)
-      })
+      // Mock vscode.workspace.fs.stat to throw an error
+      mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
 
       activate(mock_context)
 
