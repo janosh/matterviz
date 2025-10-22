@@ -4,12 +4,13 @@
 // Clean separation: this handles file I/O in NodeJs environments like VSCode,
 // while lib/trajectory/ handles parsing.
 
-import * as fs from 'fs'
-import { Buffer } from 'node:buffer'
+import * as vscode from 'vscode'
 
 // Memory management constants for streaming
-export const MAX_STREAMING_FILE_SIZE = 10 * 1024 * 1024 * 1024 // 10GB - practical limit
-export const LARGE_FILE_WARNING_SIZE = 5 * 1024 * 1024 * 1024 // 5GB - warn user
+// NOTE: vscode.workspace.fs.readFile() loads entire file into memory (no streaming support yet)
+// Consider making this a user setting: matterviz.max_file_size_mb (default 1024)
+export const MAX_STREAMING_FILE_SIZE = 1 * 1024 * 1024 * 1024 // set low at 1GB to prevent OOM
+export const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024 // 512MB - warn user
 
 export interface StreamingProgress {
   bytes_read: number
@@ -18,60 +19,41 @@ export interface StreamingProgress {
 }
 
 // Stream large files efficiently to avoid memory issues
-export const stream_file_to_buffer = (
+// Uses VSCode's filesystem API to support both local and remote files (SSH)
+export const stream_file_to_buffer = async (
   file_path: string,
   on_progress?: (progress: StreamingProgress) => void,
-): Promise<ArrayBuffer> =>
-  new Promise((resolve, reject) => {
-    // Get file size and validate
-    let total_size: number
-    try {
-      total_size = fs.statSync(file_path).size
-    } catch (error) {
-      return reject(new Error(`Failed to get file stats: ${error}`))
-    }
+): Promise<ArrayBuffer> => {
+  const uri = vscode.Uri.file(file_path)
 
-    if (total_size > MAX_STREAMING_FILE_SIZE) {
-      const size_gb = Math.round(total_size / 1024 / 1024 / 1024)
-      const max_gb = Math.round(MAX_STREAMING_FILE_SIZE / 1024 / 1024 / 1024)
-      return reject(new Error(`File too large (${size_gb}GB). Maximum: ${max_gb}GB`))
-    }
+  // Get file size and validate
+  let total_size: number
+  try {
+    const stats = await vscode.workspace.fs.stat(uri)
+    total_size = stats.size
+  } catch (error) {
+    throw new Error(`Failed to get file stats: ${error}`)
+  }
 
-    if (total_size > LARGE_FILE_WARNING_SIZE) {
-      const size_gb = Math.round(total_size / 1024 / 1024 / 1024)
-      console.warn(`Large file detected: ${size_gb}GB. Processing may be slow.`)
-    }
+  if (total_size > MAX_STREAMING_FILE_SIZE) {
+    const size_gb = Math.round(total_size / 1024 / 1024 / 1024)
+    const max_gb = Math.round(MAX_STREAMING_FILE_SIZE / 1024 / 1024 / 1024)
+    throw new Error(`File too large (${size_gb}GB). Maximum: ${max_gb}GB`)
+  }
 
-    // Pre-allocate result buffer for optimal performance
-    const result = new Uint8Array(total_size)
-    const stream = fs.createReadStream(file_path)
-    let bytes_read = 0
+  if (total_size > LARGE_FILE_WARNING_SIZE) {
+    const size_gb = Math.round(total_size / 1024 / 1024 / 1024)
+    console.warn(`Large file detected: ${size_gb}GB. Processing may be slow.`)
+  }
 
-    const cleanup = () => {
-      stream.destroy()
-      clearTimeout(timeout)
-    }
+  // Report initial progress to show activity started (better UX)
+  on_progress?.({ bytes_read: 0, total_size, progress: 0 })
 
-    stream.on(`data`, (chunk: string | Buffer) => {
-      const buffer_chunk = typeof chunk === `string` ? Buffer.from(chunk) : chunk
-      result.set(buffer_chunk, bytes_read)
-      bytes_read += buffer_chunk.length
-      on_progress?.({ bytes_read, total_size, progress: bytes_read / total_size })
-    })
+  // Read entire file using VSCode API (works with both local and remote files)
+  // note: loads entire file into memory - no per-chunk progress available. if common user need, check if vscode.workspace.fs.readFile() could support streaming.
+  const uint8array = await vscode.workspace.fs.readFile(uri)
 
-    stream.on(`end`, () => {
-      cleanup()
-      resolve(result.buffer)
-    })
+  on_progress?.({ bytes_read: uint8array.length, total_size, progress: 1.0 }) // Report completion
 
-    stream.on(`error`, (error) => {
-      cleanup()
-      reject(new Error(`Failed to read file: ${error.message}`))
-    })
-
-    // 10 minute timeout for very large files
-    const timeout = setTimeout(() => {
-      cleanup()
-      reject(new Error(`File read timeout: ${file_path}`))
-    }, 600_000)
-  })
+  return uint8array.buffer
+}
